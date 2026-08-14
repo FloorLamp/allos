@@ -1,14 +1,14 @@
-// DB INTEGRATION TIER — canonical-biomarkers framework migration (issue #860 Track B).
+// DB INTEGRATION TIER — canonical-result-definitions framework migration (issue #860 Track B).
 //
-// canonical-biomarkers is the ONE Track B dataset that is BOOT-SEEDED, not read-only:
-// its ranges are UPSERTed into the canonical_biomarkers table on every boot and drive a
+// canonical-result-definitions is the ONE Track B dataset that is BOOT-SEEDED, not read-only:
+// its ranges are UPSERTed into the canonical_result_definitions table on every boot and drive a
 // flag reconcile gated by canonicalFlagsSignature(). It was deferred precisely because
 // the JSON fixed-point proof the other datasets use can't see that seed path. This test
 // is that missing proof — it runs against the REAL schema + boot tasks (the db singleton
 // is redirected at a per-file temp DB by setup.ts, and migrate() runs on first import):
 //
-//   1. SEED PARITY — a fresh boot seeds canonical_biomarkers with exactly the rows the
-//      framework read layer (CANONICAL_BIOMARKERS) exposes, field-for-field. This is
+//   1. SEED PARITY — a fresh boot seeds canonical_result_definitions with exactly the rows the
+//      framework read layer (CANONICAL_RESULT_DEFINITIONS) exposes, field-for-field. This is
 //      what makes the read layer and the boot task provably ONE source of truth.
 //   2. FLAG-GATE STILL RECOMPUTES — the canonicalFlagsSignature() gate re-derives stored
 //      record flags on a (simulated) range change and is a no-op when the signature is
@@ -16,7 +16,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { CANONICAL_BIOMARKERS } from "@/lib/datasets/canonical-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "@/lib/datasets/canonical-result-definitions";
 import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 import { reconcileFlagsIfCanonicalChanged } from "@/lib/migrations/boot-tasks";
 
@@ -42,7 +42,7 @@ function seededByName(): Map<string, SeedRow> {
       `SELECT name, unit, category, ref_low, ref_high,
               ref_low_male, ref_high_male, ref_low_female, ref_high_female,
               optimal_low, optimal_high, direction, source
-       FROM canonical_biomarkers`
+       FROM canonical_result_definitions`
     )
     .all() as SeedRow[];
   return new Map(rows.map((r) => [r.name.toLowerCase(), r]));
@@ -53,12 +53,12 @@ function seededByName(): Map<string, SeedRow> {
 const num = (v: unknown) =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 
-describe("canonical-biomarkers seed parity (fresh boot === framework read layer)", () => {
-  it("seeds a canonical_biomarkers row for every framework entry, field-for-field", () => {
+describe("canonical-result-definitions seed parity (fresh boot === framework read layer)", () => {
+  it("seeds a canonical_result_definitions row for every framework entry, field-for-field", () => {
     const seeded = seededByName();
     // Every framework entry has a matching seeded row with identical flag-relevant
     // fields — so no value diverges between the read layer and the boot seed.
-    for (const b of CANONICAL_BIOMARKERS) {
+    for (const b of CANONICAL_RESULT_DEFINITIONS) {
       const row = seeded.get(b.name.toLowerCase());
       expect(row, `no seeded row for "${b.name}"`).toBeTruthy();
       expect(row!.source).toBe("seed");
@@ -83,7 +83,7 @@ describe("canonical-biomarkers seed parity (fresh boot === framework read layer)
   });
 });
 
-describe("canonical-biomarkers flag-version gate still recomputes on a range change", () => {
+describe("canonical-result-definitions flag-version gate still recomputes on a range change", () => {
   let profileId: number;
   let recId: number;
   // A previously-ORPHANED analyte (#1195): before its catalog entry existed, a

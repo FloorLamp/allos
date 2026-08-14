@@ -1,4 +1,4 @@
-import { classifyLoinc, isUnmappedLabLoinc } from "../biomarker-loinc";
+import { classifyLoinc, isUnmappedLabLoinc } from "../canonical-result-loinc";
 import { isNoKnownAllergyText } from "../clinical-parse";
 import { codeFromVaccineCode } from "../cvx-map";
 import type {

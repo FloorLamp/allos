@@ -6,7 +6,7 @@ import { continuousReadingSlug } from "@/lib/reading-cadence";
 import {
   documentLabel,
   getBiomarkerSeriesWithDerived,
-  getCanonicalBiomarker,
+  getCanonicalResultDefinition,
   getLabFollowUps,
   getIopFollowUps,
   getMedicalDocumentsByIds,
@@ -163,7 +163,7 @@ export default async function ReadingDetailPage(props: {
   }
 
   const cb: CanonicalResultDefinition | undefined =
-    getCanonicalBiomarker(canonical);
+    getCanonicalResultDefinition(canonical);
   const info = getBiomarkerInfo(canonical);
   // Deterministic food suggestions for THIS biomarker (issue #577): the same
   // getFoodSuggestions computation the coaching rollup reads, filtered to the

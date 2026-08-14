@@ -119,7 +119,7 @@ export interface BiomarkerSupplementEntry {
   label: string;
   // Canonical biomarker names whose CURRENT reading being flagged low triggers this
   // suggestion, matched case-insensitively. Spell them EXACTLY as
-  // lib/canonical-biomarkers.json spells them: the gather feeds the engine
+  // lib/canonical-result-definitions.json spells them: the gather feeds the engine
   // `COALESCE(NULLIF(TRIM(canonical_name), ''), name)`, i.e. the post-collapse canonical
   // spelling — "Ferritin", not "Ferritin, Serum". The dataset test resolves every name
   // against that file, so a wrong guess fails CI instead of silently never matching.

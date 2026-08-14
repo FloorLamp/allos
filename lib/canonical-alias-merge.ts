@@ -8,7 +8,7 @@
 // an ai-COINED row counts as a real entry. So:
 //
 //   1. a document spells an analyte its own way;
-//   2. the same import registers that spelling as an `ai` row in canonical_biomarkers;
+//   2. the same import registers that spelling as an `ai` row in canonical_result_definitions;
 //   3. someone adds the CANONICAL_ALIASES route for it;
 //   4. the route is dead on arrival — step 2 already claimed its key.
 //

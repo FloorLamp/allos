@@ -48,7 +48,7 @@
 //     scoped/deleted THROUGH their parent's profile_id via a JOIN/subquery
 //     (routine_days → routines, routine_slots → routine_days → routines).
 //   • GLOBAL tables (logins, profiles, login_profiles, sessions, login_attempts,
-//     settings, canonical_biomarkers, providers) — shared across the instance and
+//     settings, canonical_result_definitions, providers) — shared across the instance and
 //     intentionally not profile-scoped.
 export const OWNED_TABLES = [
   "activities",

@@ -10,7 +10,7 @@ import {
   flaggableDriNutrients,
   foodSourcesForDriNutrient,
 } from "@/lib/food-suggest";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import { FOOD_DRUG_INTERACTIONS } from "@/lib/datasets/food-drug-interactions";
 import dri from "@/lib/datasets/data/dri.json";
 
@@ -25,9 +25,9 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const OUT = path.join(REPO, "lib/datasets/data/nutrient-food-map.json");
 
 const CANONICAL_NAMES = new Set(
-  ((canonicalSeed as { biomarkers?: { name: string }[] }).biomarkers ?? []).map(
-    (b) => b.name.toLowerCase()
-  )
+  (
+    (canonicalSeed as { definitions?: { name: string }[] }).definitions ?? []
+  ).map((b) => b.name.toLowerCase())
 );
 const DRUG_KEYS = new Set(FOOD_DRUG_INTERACTIONS.map((e) => e.key));
 
@@ -44,7 +44,7 @@ describe("nutrient-food-map.json dataset", () => {
     );
     expect(
       missing,
-      `biomarker names in the map with no canonical-biomarkers.json entry: ${missing}`
+      `biomarker names in the map with no canonical-result-definitions.json entry: ${missing}`
     ).toEqual([]);
   });
 
@@ -108,7 +108,7 @@ describe("DRI ↔ food-map coverage (#774)", () => {
       .filter((n) => !CANONICAL_NAMES.has(n.toLowerCase()));
     expect(
       missing,
-      `ledger biomarker names with no canonical-biomarkers.json entry: ${missing}`
+      `ledger biomarker names with no canonical-result-definitions.json entry: ${missing}`
     ).toEqual([]);
   });
 

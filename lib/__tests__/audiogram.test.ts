@@ -30,7 +30,7 @@ import {
   type AudiogramReading,
   type ReportedPta,
 } from "@/lib/audiogram";
-import canonical from "@/lib/canonical-biomarkers.json";
+import canonical from "@/lib/canonical-result-definitions.json";
 
 let nextId = 1;
 function reading(
@@ -52,11 +52,11 @@ function point(
 describe("audiogram vocabulary (#1600)", () => {
   it("produces the analyte names the canonical dataset already curates", () => {
     // The store decision made concrete: every name this domain writes must ALREADY
-    // exist in lib/canonical-biomarkers.json, or a manually entered threshold would
+    // exist in lib/canonical-result-definitions.json, or a manually entered threshold would
     // land outside the reference band and never flag. This is the pin that keeps the
     // reuse honest — if the two ever drift, the entry surface stops flagging.
     const curated = new Set(
-      (canonical as { biomarkers: { name: string }[] }).biomarkers.map(
+      (canonical as { definitions: { name: string }[] }).definitions.map(
         (b) => b.name
       )
     );

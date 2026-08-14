@@ -1,8 +1,8 @@
-// Pre-generate the canonical biomarker reference dataset (lib/canonical-biomarkers.json).
+// Pre-generate the canonical clinical-result definition dataset (lib/canonical-result-definitions.json).
 //
 // Calls the Anthropic API once per category to produce structured reference +
 // longevity-optimal ranges for common biomarkers, then writes the merged result
-// to lib/canonical-biomarkers.json. The file is COMMITTED and meant to be
+// to lib/canonical-result-definitions.json. The file is COMMITTED and meant to be
 // HUMAN-REVIEWED before it is trusted — the ranges can be wrong. No per-request
 // cost at app runtime; this is a one-off (re)generation step.
 //
@@ -12,15 +12,15 @@
 // framing into the prompt is what taught the model to append it to 40 dataset rows
 // (#2342). The prompt states the prohibition; sanitizeGeneratedNote below enforces it.
 //
-//   ANTHROPIC_API_KEY=... npm run gen:biomarkers
+//   ANTHROPIC_API_KEY=... npm run gen:canonical-results
 //
 // Runs in batches by category to stay within the output budget. Existing entries
 // in the JSON are preserved unless --overwrite is passed (so hand-curated edits
 // survive a regen by default).
 //
 // The curated reference DATA it folds in — AGE_BANDS, CURATED_LABS, RETEST_DAYS,
-// VELOCITY_PER_YEAR, the Biomarker shape, and the pure curateBiomarkers()
-// transform — lives in lib/curated-biomarkers.ts (issue #80), not here. This
+// VELOCITY_PER_YEAR, the CanonicalResultDefinitionSeed shape, and the pure curateResultDefinitions()
+// transform — lives in lib/curated-result-definitions.ts (issue #80), not here. This
 // script keeps only the generator LOGIC (the Anthropic calls, the merge/write
 // orchestration, and the API-free --curated-only / --age-bands-only paths).
 
@@ -30,32 +30,36 @@ import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  type Biomarker,
+  type CanonicalResultDefinitionSeed,
   AGE_BANDS,
   CURATED_LABS,
-  curateBiomarkers,
-} from "@/lib/curated-biomarkers";
+  curateResultDefinitions,
+} from "@/lib/curated-result-definitions";
 import { stripDisclaimerSentences } from "@/lib/disclaimers";
 
 const MODEL = process.env.HEALTH_AI_MODEL || "claude-sonnet-5";
-const OUT = path.join(process.cwd(), "lib", "canonical-biomarkers.json");
+const OUT = path.join(
+  process.cwd(),
+  "lib",
+  "canonical-result-definitions.json"
+);
 const OVERWRITE = process.argv.includes("--overwrite");
 // Re-apply only the curated pediatric age bands to the existing committed JSON,
 // WITHOUT calling the model (no API key needed). Use this to refresh the age
-// bands after editing AGE_BANDS below:  npx tsx scripts/gen-canonical-biomarkers.ts --age-bands-only
+// bands after editing AGE_BANDS below:  npx tsx scripts/gen-canonical-result-definitions.ts --age-bands-only
 const AGE_BANDS_ONLY = process.argv.includes("--age-bands-only");
 // Re-apply the curated static lab entries (CURATED_LABS) AND the age bands to the
 // existing committed JSON, WITHOUT calling the model (no API key needed). Missing
 // curated entries are appended (existing order + human edits preserved); use this
 // after editing CURATED_LABS/AGE_BANDS:
-//   npx tsx scripts/gen-canonical-biomarkers.ts --curated-only
+//   npx tsx scripts/gen-canonical-result-definitions.ts --curated-only
 const CURATED_ONLY = process.argv.includes("--curated-only");
 
 // Attach the curated age bands to the matching biomarker rows (by exact canonical
 // name). Rows without a curated entry keep ranges_by_age null (adult fields only).
 // A name in AGE_BANDS with no matching row is reported so a rename can't silently
 // drop bands. Deterministic and API-free — this is what --age-bands-only runs.
-function applyAgeBands(map: Map<string, Biomarker>): void {
+function applyAgeBands(map: Map<string, CanonicalResultDefinitionSeed>): void {
   const byName = new Map(
     [...map.values()].map((b) => [b.name.toLowerCase(), b])
   );
@@ -69,15 +73,17 @@ function applyAgeBands(map: Map<string, Biomarker>): void {
   }
 }
 
-// Biomarker concentrations can't be negative, so clamp any negative bound the
+// CanonicalResultDefinitionSeed concentrations can't be negative, so clamp any negative bound the
 // model emits up to 0. And an optimal_high of 0 on a "lower_better" toxin
 // ("ideally undetectable") is unattainable — background exposure means almost
 // no one reads exactly 0 — and renders as a nonsensical "optimal ≤ 0". Drop the
 // optimal band in that case; a realistic low threshold is left to human review
 // of the committed JSON.
-function normalizeBounds(b: Biomarker): Biomarker {
+function normalizeBounds(
+  b: CanonicalResultDefinitionSeed
+): CanonicalResultDefinitionSeed {
   const clamp0 = (n: number | null) => (n != null && n < 0 ? 0 : n);
-  const out: Biomarker = {
+  const out: CanonicalResultDefinitionSeed = {
     ...b,
     ref_low: clamp0(b.ref_low),
     ref_high: clamp0(b.ref_high),
@@ -126,12 +132,13 @@ const BATCHES: { category: string; prompt: string }[] = [
 ];
 
 const TOOL: Anthropic.Tool = {
-  name: "save_biomarkers",
-  description: "Save the structured canonical biomarker reference dataset.",
+  name: "save_result_definitions",
+  description:
+    "Save the structured canonical clinical-result definition dataset.",
   input_schema: {
     type: "object",
     properties: {
-      biomarkers: {
+      definitions: {
         type: "array",
         items: {
           type: "object",
@@ -181,12 +188,12 @@ const TOOL: Anthropic.Tool = {
         },
       },
     },
-    required: ["biomarkers"],
+    required: ["definitions"],
   },
 };
 
-const SYSTEM = `You produce a controlled vocabulary of canonical biomarker names plus their
-reference and longevity-optimal ranges, for adults. For each biomarker emit one row:
+const SYSTEM = `You produce a controlled vocabulary of canonical clinical-result names plus their
+reference and longevity-optimal ranges, for adults. For each result definition emit one row:
 - name: a clean, consistent Title-Case canonical name with NO method/specimen qualifiers
   (no "direct"/"calculated"/"serum"). E.g. "LDL Cholesterol", "Hemoglobin A1c".
 - unit: the single canonical unit the ranges are expressed in (no conversion mixing).
@@ -213,7 +220,7 @@ footer of every surface. Do not restate it, in whole or in part, in \`note\` or 
 else — a row that carries a sentence of that kind has it removed before the file is
 written (#1049/#2342).
 
-Be accurate and conservative; prefer null over a guessed number. Call save_biomarkers
+Be accurate and conservative; prefer null over a guessed number. Call save_result_definitions
 exactly once.`;
 
 // Strip disclaimer boilerplate from a generated `note` before it is written. The prompt
@@ -231,7 +238,9 @@ export function sanitizeGeneratedNote(
 
 // Apply sanitizeGeneratedNote across a batch, reporting what it removed so a
 // regeneration run says out loud that the prompt was not obeyed.
-function sanitizeBatch(rows: Biomarker[]): Biomarker[] {
+function sanitizeBatch(
+  rows: CanonicalResultDefinitionSeed[]
+): CanonicalResultDefinitionSeed[] {
   return rows.map((row) => {
     const cleaned = sanitizeGeneratedNote(row.note);
     if (cleaned !== (row.note ?? null))
@@ -245,18 +254,18 @@ function sanitizeBatch(rows: Biomarker[]): Biomarker[] {
 async function genCategory(
   client: Anthropic,
   prompt: string
-): Promise<Biomarker[]> {
+): Promise<CanonicalResultDefinitionSeed[]> {
   const msg = await client.messages
     .stream({
       model: MODEL,
       max_tokens: 4000,
       system: SYSTEM,
       tools: [TOOL],
-      tool_choice: { type: "tool", name: "save_biomarkers" },
+      tool_choice: { type: "tool", name: "save_result_definitions" },
       messages: [
         {
           role: "user",
-          content: `Generate canonical biomarker entries for: ${prompt}`,
+          content: `Generate canonical result definitions for: ${prompt}`,
         },
       ],
     })
@@ -264,17 +273,17 @@ async function genCategory(
   const toolUse = msg.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
   );
-  const arr = (toolUse?.input as any)?.biomarkers;
-  return Array.isArray(arr) ? (arr as Biomarker[]) : [];
+  const arr = (toolUse?.input as any)?.definitions;
+  return Array.isArray(arr) ? (arr as CanonicalResultDefinitionSeed[]) : [];
 }
 
 // Load the committed dataset into a name-keyed map (empty when missing/malformed).
-function loadExisting(): Map<string, Biomarker> {
-  const existing = new Map<string, Biomarker>();
+function loadExisting(): Map<string, CanonicalResultDefinitionSeed> {
+  const existing = new Map<string, CanonicalResultDefinitionSeed>();
   if (fs.existsSync(OUT)) {
     try {
       const cur = JSON.parse(fs.readFileSync(OUT, "utf8"));
-      for (const b of cur.biomarkers ?? [])
+      for (const b of cur.definitions ?? [])
         existing.set(b.name.toLowerCase(), b);
     } catch {
       // ignore a malformed existing file
@@ -284,18 +293,18 @@ function loadExisting(): Map<string, Biomarker> {
 }
 
 // Apply age bands, sort by name, and write the committed JSON.
-function writeDataset(map: Map<string, Biomarker>): void {
+function writeDataset(map: Map<string, CanonicalResultDefinitionSeed>): void {
   applyAgeBands(map);
-  const biomarkers = [...map.values()].sort((a, b) =>
+  const definitions = [...map.values()].sort((a, b) =>
     a.name.localeCompare(b.name)
   );
   const out = {
     $comment:
-      "Canonical biomarker reference dataset. Committed and HUMAN-REVIEWABLE. Regenerate with `npm run gen:biomarkers`. Ranges may be inaccurate and often vary by sex/age.",
-    biomarkers,
+      "Canonical clinical-result definition dataset. Committed and HUMAN-REVIEWABLE. Regenerate with `npm run gen:canonical-results`. Ranges may be inaccurate and often vary by sex/age.",
+    definitions,
   };
   fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + "\n");
-  console.log(`\nWrote ${biomarkers.length} biomarkers to ${OUT}`);
+  console.log(`\nWrote ${definitions.length} result definitions to ${OUT}`);
   console.log("Review the ranges for plausibility before committing.");
 }
 
@@ -305,9 +314,9 @@ function writeDataset(map: Map<string, Biomarker>): void {
 // Only the matching entries gain/refresh `ranges_by_age`. API-free.
 function applyAgeBandsInPlace(): void {
   const cur = JSON.parse(fs.readFileSync(OUT, "utf8")) as {
-    biomarkers?: Biomarker[];
+    definitions?: CanonicalResultDefinitionSeed[];
   };
-  const rows = cur.biomarkers ?? [];
+  const rows = cur.definitions ?? [];
   const byName = new Map(rows.map((b) => [b.name.toLowerCase(), b]));
   let applied = 0;
   for (const [name, bands] of Object.entries(AGE_BANDS)) {
@@ -323,18 +332,18 @@ function applyAgeBandsInPlace(): void {
   console.log(`Applied age bands to ${applied} biomarker(s) in ${OUT}`);
 }
 
-// Apply curateBiomarkers to the committed JSON in place, preserving its $comment
+// Apply curateResultDefinitions to the committed JSON in place, preserving its $comment
 // and any other top-level fields. API-free.
 function applyCurationInPlace(): void {
   const cur = JSON.parse(fs.readFileSync(OUT, "utf8")) as {
-    biomarkers?: Biomarker[];
+    definitions?: CanonicalResultDefinitionSeed[];
     [k: string]: unknown;
   };
-  const before = cur.biomarkers ?? [];
-  cur.biomarkers = curateBiomarkers(before);
+  const before = cur.definitions ?? [];
+  cur.definitions = curateResultDefinitions(before);
   fs.writeFileSync(OUT, JSON.stringify(cur, null, 2) + "\n");
   console.log(
-    `Curated dataset: ${cur.biomarkers.length} biomarkers (${CURATED_LABS.length} curated entries + age bands applied)`
+    `Curated dataset: ${cur.definitions.length} result definitions (${CURATED_LABS.length} curated entries + age bands applied)`
   );
 }
 
@@ -356,7 +365,7 @@ async function main() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error(
-      "ANTHROPIC_API_KEY not set. Set it and re-run `npm run gen:biomarkers`\n" +
+      "ANTHROPIC_API_KEY not set. Set it and re-run `npm run gen:canonical-results`\n" +
         "(or use `--age-bands-only` to refresh just the pediatric age bands)."
     );
     process.exit(1);
@@ -364,9 +373,11 @@ async function main() {
   const client = new Anthropic({ apiKey });
 
   // Preserve existing curated entries (keyed by lowercased name) unless --overwrite.
-  const existing = OVERWRITE ? new Map<string, Biomarker>() : loadExisting();
+  const existing = OVERWRITE
+    ? new Map<string, CanonicalResultDefinitionSeed>()
+    : loadExisting();
 
-  const merged = new Map<string, Biomarker>(existing);
+  const merged = new Map<string, CanonicalResultDefinitionSeed>(existing);
   // Seed the API-free curated lab entries so a full (re)generation — including
   // --overwrite — never drops them. An AI-returned row of the same name overrides.
   for (const lab of CURATED_LABS) {
@@ -397,9 +408,9 @@ async function main() {
 }
 
 // Run only when invoked as the CLI entry point — NOT when imported (e.g. by the
-// drift unit test, which imports curateBiomarkers/CURATED_LABS from lib). tsx sets
+// drift unit test, which imports curateResultDefinitions/CURATED_LABS from lib). tsx sets
 // process.argv[1] to this script's path when run directly.
-if (process.argv[1]?.includes("gen-canonical-biomarkers")) {
+if (process.argv[1]?.includes("gen-canonical-result-definitions")) {
   main().catch((err) => {
     console.error(err);
     process.exit(1);

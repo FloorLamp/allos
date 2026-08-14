@@ -1,4 +1,4 @@
-import { classifyLoinc } from "../biomarker-loinc";
+import { classifyLoinc } from "../canonical-result-loinc";
 import { sourceDay, sourceInstant } from "../source-time";
 import {
   toConditionLaterality,

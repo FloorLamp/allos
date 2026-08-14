@@ -21,7 +21,7 @@ import {
   READING_IDENTITY_MAP,
   STREAM_READING_SOURCES,
 } from "@/lib/reading-identity-map";
-import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "@/lib/datasets/canonical-result-definitions";
 import { readingIdentity } from "@/lib/reading-model";
 import { continuousReadingSlug } from "@/lib/reading-cadence";
 import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
@@ -44,7 +44,7 @@ describe("the reading identity map is one declaration", () => {
   it("names a REAL canonical entry every time (#482: no invented vocabulary)", () => {
     for (const e of READING_IDENTITY_MAP) {
       expect(
-        canonicalBiomarkerForName(e.canonical),
+        canonicalResultDefinitionForName(e.canonical),
         `"${e.canonical}" is not in the canonical vocabulary`
       ).not.toBeNull();
     }

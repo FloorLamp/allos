@@ -6,7 +6,7 @@
 // (id/citation/identity/entries) consumed via lib/datasets/strength-standards.ts;
 // lib/strength-standards.ts is the pure lookup over its entries.
 //
-// Mirrors the gen-fitness-norms.ts / gen-canonical-biomarkers.ts pattern: the curated
+// Mirrors the gen-fitness-norms.ts / gen-canonical-result-definitions.ts pattern: the curated
 // anchor ratios + allometric formula below are the SOURCE OF TRUTH, HUMAN-REVIEWABLE,
 // and the committed JSON is a FIXED POINT of buildStrengthStandards() (guarded by
 // lib/__tests__/strength-standards-dataset.test.ts so the generator and the committed

@@ -22,7 +22,7 @@ import {
   metricObservationFoldIdentity,
 } from "@/lib/metric-judgment";
 import { readingIdentity } from "@/lib/reading-model";
-import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "@/lib/datasets/canonical-result-definitions";
 import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 
 const RHR = readingIdentity("Resting Heart Rate");
@@ -92,7 +92,7 @@ describe("metricJudgment resolves knowledge from the identity", () => {
   });
 
   it("prefers the caller's vocabulary over the bundled dataset", () => {
-    // The runtime path passes the seeded `canonical_biomarkers` row, so a re-seed
+    // The runtime path passes the seeded `canonical_result_definitions` row, so a re-seed
     // or an operator edit wins — one judgement, one vocabulary per call.
     const j = metricJudgment(RHR, { age: 40, value: 58 }, [
       { name: "Resting Heart Rate", unit: "bpm", ref_low: 40, ref_high: 70 },
@@ -120,7 +120,7 @@ describe("the slug → knowledge registry", () => {
       const knowledge = METRIC_KNOWLEDGE[slug];
       if (knowledge.source !== "canonical") continue;
       expect(
-        canonicalBiomarkerForName(knowledge.canonical),
+        canonicalResultDefinitionForName(knowledge.canonical),
         `${slug} names "${knowledge.canonical}", which is not in the canonical vocabulary`
       ).not.toBeNull();
       // …and it actually resolves to a judgement, so no slug claims knowledge it

@@ -49,7 +49,7 @@ export const BP_PERCENTILE_SOURCE = DATA.source;
 export const ADULT_BP_AGE = PEDIATRIC_BP_MAX_AGE;
 
 // The canonical biomarker names carrying pediatric BP interpretation. Must match
-// the canonical_biomarkers rows / vitals-input canonical names byte-for-byte.
+// the canonical_result_definitions rows / vitals-input canonical names byte-for-byte.
 const MARKER_COMPONENT: Record<string, BpComponent> = {
   "Blood Pressure Systolic": "systolic",
   "Blood Pressure Diastolic": "diastolic",

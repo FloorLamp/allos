@@ -2,11 +2,11 @@
 // status). The shared observation mapper plus the result/vitals/functional-status
 // section extractors.
 import {
-  canonicalBiomarkerForLoinc,
+  canonicalResultNameForLoinc,
   isDerivedPercentileLoinc,
   isNonAnalyteLoinc,
   isVitalLoinc,
-} from "../../biomarker-loinc";
+} from "../../canonical-result-loinc";
 import type {
   ImportedImagingStudy,
   ImportedProvider,
@@ -165,7 +165,7 @@ export function mapObservation(
   // (BMI/weight-for-length/head-circ percentile), which the app recomputes from the
   // raw measurements rather than importing as range-less lab rows.
   if (isNonAnalyteLoinc(loinc) || isDerivedPercentileLoinc(loinc)) return null;
-  const canonicalName = canonicalBiomarkerForLoinc(loinc);
+  const canonicalName = canonicalResultNameForLoinc(loinc);
   // Name resolution order:
   //   1. structured @_displayName on the code, then
   //   2. the code's <originalText> — for Epic MyChart the analyte name is inline

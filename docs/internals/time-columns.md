@@ -169,7 +169,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `audit_events` | `ts` | record | instant | bare |  |
 | `body_metrics` | `date` | day | day | n/a |  |
 | `body_metrics` | `occurred_at` | event | instant | canonical | Migration 165 (#2235, #2205 phase 2 wave 1). When the day's weigh-in was actually taken. Body weight moves a kilogram across a day, so morning-fasted and evening-fed are different measurements of one quantity and an unlabelled mix carries that swing as unattributable noise. NULL means DAY-GRAIN. Descriptive only — the natural key stays (profile_id, date, source), and one row per day is unchanged, so this records WHEN the day's reading was taken and does not enable two weigh-ins in one day. This table has no record stamp at all, so there is nothing here for an event column to be laundered from. |
-| `canonical_biomarkers` | `created_at` | bookkeeping | instant | bare |  |
+| `canonical_result_definitions` | `created_at` | bookkeeping | instant | bare |  |
 | `care_goals` | `target_date` | planned | day | n/a |  |
 | `care_goals` | `created_at` | bookkeeping | instant | bare |  |
 | `care_plan_items` | `planned_date` | planned | day | n/a |  |

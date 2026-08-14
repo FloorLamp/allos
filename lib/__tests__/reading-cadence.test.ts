@@ -13,7 +13,7 @@
 // a database and lives in lib/__db_tests__/vitals-reading-surface.test.ts.
 
 import { describe, it, expect } from "vitest";
-import canonicalData from "@/lib/canonical-biomarkers.json";
+import canonicalData from "@/lib/canonical-result-definitions.json";
 import {
   CATEGORY_CADENCE,
   CONTINUOUS_READING_METRIC,
@@ -24,8 +24,8 @@ import {
 import type { MedicalCategory } from "@/lib/types";
 
 const entries = (
-  canonicalData as { biomarkers: { name: string; category: string }[] }
-).biomarkers;
+  canonicalData as { definitions: { name: string; category: string }[] }
+).definitions;
 
 // Every `category = 'vitals'` canonical entry and the cadence it arrives at. The
 // continuous six stream from a wearable or a cuff and are read as a trend; every

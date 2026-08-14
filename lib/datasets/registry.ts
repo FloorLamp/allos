@@ -20,7 +20,7 @@ import {
   biomarkerSupplementMapDataset,
   supplementMapKeyStrategy,
 } from "./biomarker-supplement-map";
-import { canonicalBiomarkersDataset } from "./canonical-biomarkers";
+import { canonicalResultDefinitionsDataset } from "./canonical-result-definitions";
 import {
   bpPercentilesDataset,
   bpPercentileKeyStrategy,
@@ -116,7 +116,7 @@ export const DATASETS: RegisteredDataset[] = [
     strategy: nameStrategy,
   },
   {
-    dataset: canonicalBiomarkersDataset as unknown as LoadedDataset<
+    dataset: canonicalResultDefinitionsDataset as unknown as LoadedDataset<
       Record<string, unknown>,
       unknown
     >,

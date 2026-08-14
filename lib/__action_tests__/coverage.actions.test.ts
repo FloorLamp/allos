@@ -120,7 +120,7 @@ describe("coverage-gap actions", () => {
 
     // Simulate a later catalog update promoting the analyte to a curated seed row.
     db.prepare(
-      "INSERT OR IGNORE INTO canonical_biomarkers (name, source) VALUES (?, 'seed')"
+      "INSERT OR IGNORE INTO canonical_result_definitions (name, source) VALUES (?, 'seed')"
     ).run(NAME);
 
     expect(covRow().covered).toBe(true);

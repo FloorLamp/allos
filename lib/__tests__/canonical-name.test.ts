@@ -19,7 +19,7 @@ import {
   uncuratedAnalytes,
   isGarbageCanonical,
 } from "../canonical-name";
-import canonicalSeed from "../canonical-biomarkers.json";
+import canonicalSeed from "../canonical-result-definitions.json";
 
 describe("normalizeCanonicalKey", () => {
   it("is case-, punctuation- and order-insensitive", () => {
@@ -339,7 +339,7 @@ describe("biomarkerFamily (unified identity — #482)", () => {
 
   it("every family anchor is a real dataset name inside its own family", () => {
     const vocab = new Set(
-      (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers.map(
+      (canonicalSeed as { definitions: { name: string }[] }).definitions.map(
         (b) => b.name.toLowerCase()
       )
     );
@@ -365,8 +365,8 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
   // The real production vocabulary, so the alias routes are exercised against the
   // spellings the dataset actually ships.
   const vocab = (
-    canonicalSeed as { biomarkers: { name: string }[] }
-  ).biomarkers.map((b) => b.name);
+    canonicalSeed as { definitions: { name: string }[] }
+  ).definitions.map((b) => b.name);
   const index = buildCanonicalIndex(vocab);
   const rawKeys = new Set(vocab.map((n) => normalizeCanonicalKey(n)));
 
@@ -922,8 +922,8 @@ describe("deliberately uncurated analytes (#2313)", () => {
   // The real production vocabulary, as the dataset ships it — the same set a
   // curated entry is judged against everywhere else in this file.
   const vocabulary = (
-    canonicalSeed as { biomarkers: { name: string }[] }
-  ).biomarkers.map((b) => b.name);
+    canonicalSeed as { definitions: { name: string }[] }
+  ).definitions.map((b) => b.name);
   const curatedKeys = new Set(vocabulary.map((n) => normalizeCanonicalKey(n)));
 
   it("declares a non-empty reason for every entry", () => {

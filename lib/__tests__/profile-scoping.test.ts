@@ -49,7 +49,7 @@ import {
 //
 // GLOBAL tables are intentionally absent, so a statement touching only one of them
 // is never flagged: logins, profiles, login_profiles, sessions, login_attempts,
-// global settings, canonical_biomarkers, `providers`, and — added later —
+// global settings, canonical_result_definitions, `providers`, and — added later —
 // `shared_supplies`.
 // The providers registry is shared across the whole family/instance (a family sees
 // one "Quest Diagnostics"), modeled like logins/profiles: the per-record LINK

@@ -28,7 +28,7 @@
     "backup": "tsx scripts/backup.ts",
     "photo:backfill": "tsx scripts/photo-backfill.ts",
     "restore": "tsx scripts/restore.ts",
-    "gen:biomarkers": "tsx scripts/gen-canonical-biomarkers.ts",
+    "gen:canonical-results": "tsx scripts/gen-canonical-result-definitions.ts",
     "gen:exercise-guides": "tsx scripts/gen-exercise-guides.ts",
     "gen:mets": "tsx scripts/gen-mets.ts",
     "gen:dri": "tsx scripts/gen-dri.ts",

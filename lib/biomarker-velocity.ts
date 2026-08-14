@@ -3,17 +3,17 @@
 // canonical dataset — the same static JSON — keyed by canonical name. No DB or
 // network: a pure map over a bundled asset, so the trajectory velocity rule can
 // pick a per-analyte rate (eGFR decline, PSA rise) without a schema change to the
-// canonical_biomarkers table. Analytes without a curated threshold (the vast
+// canonical_result_definitions table. Analytes without a curated threshold (the vast
 // majority) carry none and get no velocity rule.
 
-import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "./datasets/canonical-result-definitions";
 
 // Lowercased canonical name → curated velocity_per_year (canonical units/year).
 // Built once at module load over the framework read layer (the same committed rows
 // the boot task seeds).
 const VELOCITY_BY_NAME: Map<string, number> = (() => {
   const map = new Map<string, number>();
-  const rows = CANONICAL_BIOMARKERS;
+  const rows = CANONICAL_RESULT_DEFINITIONS;
   for (const r of rows) {
     if (
       r?.name &&

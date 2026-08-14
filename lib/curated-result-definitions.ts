@@ -1,10 +1,10 @@
 // Hand-curated biomarker reference DATA (not generator logic).
 //
 // This module holds the human-curated reference tables that shape the committed
-// canonical dataset (lib/canonical-biomarkers.json): pediatric AGE_BANDS, the
+// canonical dataset (lib/canonical-result-definitions.json): pediatric AGE_BANDS, the
 // static CURATED_LABS entries, per-analyte RETEST_DAYS cadences, VELOCITY_PER_YEAR
-// thresholds, and the pure curateBiomarkers() transform that folds them together.
-// It was extracted out of scripts/gen-canonical-biomarkers.ts (issue #80) so the
+// thresholds, and the pure curateResultDefinitions() transform that folds them together.
+// It was extracted out of scripts/gen-canonical-result-definitions.ts (issue #80) so the
 // data lives under lib/ (consumed by the generator AND the drift-guard unit test)
 // rather than a test reaching into scripts/. It is API-free and side-effect free —
 // no Anthropic client, no filesystem access — so it is safe to import from lib/ and
@@ -17,7 +17,7 @@ import { panelForCanonicalName } from "./biomarker-panels";
 import { AGE_BANDS, CURATED_LABS } from "./curated/reference-data";
 
 // Re-exported so every existing importer of the reference data keeps its
-// `@/lib/curated-biomarkers` path (the data moved to ./curated/reference-data).
+// `@/lib/curated-result-definitions` path (the data moved to ./curated/reference-data).
 export { AGE_BANDS, CURATED_LABS };
 
 // One age-banded reference/optimal override. Ages are WHOLE YEARS and the band is
@@ -59,7 +59,7 @@ export type CyclePhaseRanges = Partial<
   Record<CyclePhaseRangeKey, ReproductiveStatusRange>
 >;
 
-export interface Biomarker {
+export interface CanonicalResultDefinitionSeed {
   name: string;
   category: string;
   unit: string | null;
@@ -103,7 +103,7 @@ export interface Biomarker {
   // The normalized clinical PANEL slug (issue #1502) — which panel/order this
   // analyte belongs to (`lipids`, `cbc`, `thyroid`, …), from the curated
   // BIOMARKER_PANELS assignment in lib/biomarker-panels.ts. Written into the
-  // committed JSON by curateBiomarkers below so the dataset is self-describing
+  // committed JSON by curateResultDefinitions below so the dataset is self-describing
   // and human-reviewable beside its ranges. NOT a flag input (absent from
   // FLAG_RELEVANT_FIELDS in lib/canonical-flags-version.ts), so adding or
   // changing it never re-derives a stored record's out-of-range flag. The
@@ -179,7 +179,7 @@ export const RETEST_DAYS: Record<string, number> = {
 // the U/L series. This is DELIBERATELY per-analyte and explicit — it does NOT make IU
 // equal U globally; the #759 dimension split stands for every other analyte (a true
 // international-unit U analyte still refuses a bare-U reading, and vice versa). Keyed
-// by exact canonical name; applied in curateBiomarkers below (idempotent, so the
+// by exact canonical name; applied in curateResultDefinitions below (idempotent, so the
 // committed JSON stays a fixed point of the --curated-only transform).
 export const ENZYME_IU_INTERCHANGEABLE: string[] = [
   "Alanine Aminotransferase (ALT)",
@@ -298,7 +298,7 @@ export const RETEST_WORTHY: string[] = [
 // Category corrections for AI-GENERATED rows not in CURATED_LABS (#1076). The
 // curated entries carry their corrected `category` inline; this table fixes the
 // handful of model-emitted rows whose category the generator got wrong. Keyed by
-// exact canonical name (case-insensitive), applied last in curateBiomarkers so the
+// exact canonical name (case-insensitive), applied last in curateResultDefinitions so the
 // committed JSON re-derives categories from ONE source without a model re-run. The
 // #482 principle: category is the surface-selector every consumer reads.
 //   • "Biological Age" — the display name of PhenoAge (both computed composites) →
@@ -308,7 +308,7 @@ export const CATEGORY_OVERRIDES: Record<string, string> = {
   "Biological Age": "derived",
 };
 
-// Pure transform: return a copy of `biomarkers` with every CURATED_LABS entry
+// Pure transform: return a copy of `definitions` with every CURATED_LABS entry
 // present (its canonical definition replacing any same-named row, so edits here
 // propagate), every AGE_BANDS override applied, every RETEST_DAYS cadence
 // attached, and every CATEGORY_OVERRIDES correction applied. Deterministic and
@@ -316,7 +316,9 @@ export const CATEGORY_OVERRIDES: Record<string, string> = {
 // test), so the generator and the committed dataset can't silently desync. Existing
 // (non-curated) rows are cloned and keep their order; curated rows are appended in
 // CURATED_LABS order.
-export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
+export function curateResultDefinitions(
+  definitions: CanonicalResultDefinitionSeed[]
+): CanonicalResultDefinitionSeed[] {
   const curatedNames = new Set(CURATED_LABS.map((l) => l.name.toLowerCase()));
   // Orphan prune (generator idempotency under RENAME/REMOVE): when a curated entry
   // is renamed, its old name is added as a CANONICAL_ALIAS source (a non-canonical
@@ -339,14 +341,17 @@ export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
       )
       .map(([from]) => normalizeCanonicalKey(from))
   );
-  const kept = biomarkers
+  const kept = definitions
     .filter(
       (b) =>
         !curatedNames.has(b.name.toLowerCase()) &&
         !orphanKeys.has(normalizeCanonicalKey(b.name))
     )
     .map((b) => ({ ...b }));
-  const out: Biomarker[] = [...kept, ...CURATED_LABS.map((l) => ({ ...l }))];
+  const out: CanonicalResultDefinitionSeed[] = [
+    ...kept,
+    ...CURATED_LABS.map((l) => ({ ...l })),
+  ];
   const byName = new Map(out.map((b) => [b.name.toLowerCase(), b]));
   for (const [name, bands] of Object.entries(AGE_BANDS)) {
     const row = byName.get(name.toLowerCase());
@@ -363,7 +368,7 @@ export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
   // Enzyme analytes measured interchangeably in U/L and IU/L (#828): attach a
   // factor-1 IU/L conversion so an IU/L reading flags against the U/L canonical and
   // joins its trend series. Merge (don't clobber) any existing conversions, and stay
-  // idempotent so the committed JSON remains a fixed point of curateBiomarkers.
+  // idempotent so the committed JSON remains a fixed point of curateResultDefinitions.
   for (const name of ENZYME_IU_INTERCHANGEABLE) {
     const row = byName.get(name.toLowerCase());
     if (row) row.conversions = { ...(row.conversions ?? {}), "IU/L": 1 };

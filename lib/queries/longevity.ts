@@ -22,7 +22,7 @@ import { retestDaysForBiomarker } from "../biomarker-retest";
 import {
   getLatestClinicalObservationByCanonical,
   getClinicalObservations,
-  getCanonicalBiomarker,
+  getCanonicalResultDefinition,
 } from "./medical";
 import { getBioAgeReadings } from "./derived";
 import { getSleepRegularity, getSleepRegularityTrend } from "./sleep";
@@ -175,7 +175,7 @@ function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
       canonicalName: r.canonical_name ?? null,
       value_num: r.value_num,
       unit: r.unit,
-      cb: getCanonicalBiomarker(r.canonical_name as string) ?? null,
+      cb: getCanonicalResultDefinition(r.canonical_name as string) ?? null,
       date: r.date,
       category: r.category,
       retestDays: retestDaysForBiomarker(r.canonical_name ?? r.name),

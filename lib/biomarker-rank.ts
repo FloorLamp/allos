@@ -3,7 +3,7 @@
 // boosts, and the three picker groups. No item is filtered.
 
 import { normalizeCanonicalKey } from "./canonical-name";
-import { CURATED_LABS } from "./curated-biomarkers";
+import { CURATED_LABS } from "./curated-result-definitions";
 import { defineRankTable, itemsFromLayout, rankItems } from "./rank-core";
 
 export type BiomarkerPickerGroup =

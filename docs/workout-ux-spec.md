@@ -81,7 +81,7 @@ interface ExerciseGuide {
 ```
 
 Authoring: `scripts/gen-exercise-guides.ts` (mirrors
-`scripts/gen-canonical-biomarkers.ts` — AI-assisted at generation time is fine)
+`scripts/gen-canonical-result-definitions.ts` — AI-assisted at generation time is fine)
 produces a first pass over `ALL_LIFT_NAMES`; the output is hand-reviewed and
 committed. A CI-checked invariant asserts every catalog `exerciseHistoryKey` has
 a guide, so a new catalog lift cannot ship guideless.

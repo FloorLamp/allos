@@ -7,7 +7,7 @@
 // Run against the real profile-scoped query (`getCoverageCandidacy`) over the real
 // curated vocabulary, because the two halves this issue joins are only equal in
 // production: Coverage compares `biomarkerCoverageKey` FAMILIES against the
-// `source = 'seed'` rows of `canonical_biomarkers`, where the debugger compares
+// `source = 'seed'` rows of `canonical_result_definitions`, where the debugger compares
 // `isSeededCanonical` on the exact name. Both reach `uncuratedAnalyte`, and the
 // contrast rows below are what prove the filter is the DECLARATION and not an
 // accident of the vocabulary.

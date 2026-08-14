@@ -71,7 +71,7 @@ export interface CuratedSupplementInput {
   // getCurrentFlaggedBiomarkers emits
   // `COALESCE(NULLIF(TRIM(canonical_name), ''), name)` — the reading's CANONICAL name
   // when it has been reconciled to one, else the raw document name. So a map entry's
-  // `biomarkers` must be spelled exactly as lib/canonical-biomarkers.json spells it
+  // `biomarkers` must be spelled exactly as lib/canonical-result-definitions.json spells it
   // ("Ferritin", not "Ferritin, Serum"; "Vitamin D, 25-Hydroxy", not "Vitamin D"). The
   // dataset test enforces that every referenced name resolves there, so a wrong guess
   // fails CI rather than silently never matching.

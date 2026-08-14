@@ -600,7 +600,7 @@ export function hasTrendMetricHome(name: string | null | undefined): boolean {
  * point), `observation-fold` keeps it (folded onto the stream by identity), and
  * `import-projection` DROPS it, because a `withoutCaptured*` helper wrote the stream
  * row instead. `derived-inputs` did nothing at all: no projector, no destination, no
- * drop — so the row survived, an AI import coined a `canonical_biomarkers` name for
+ * drop — so the row survived, an AI import coined a `canonical_result_definitions` name for
  * it, and `getUsedCanonicalNames` returned it forever as a Coverage candidate for a
  * quantity the app already answers on a chart.
  *

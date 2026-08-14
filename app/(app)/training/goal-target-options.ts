@@ -1,5 +1,5 @@
 import {
-  getCanonicalBiomarker,
+  getCanonicalResultDefinition,
   getRankedBiomarkerOptions,
 } from "@/lib/queries";
 import {
@@ -66,7 +66,7 @@ export function getGoalBiomarkerOptions(
     }))
   );
   return rows.map((row) => {
-    const cb = getCanonicalBiomarker(row.key);
+    const cb = getCanonicalResultDefinition(row.key);
     const ref = cb ? referenceRange(cb, sex, age, status) : null;
     return {
       name: row.key,

@@ -79,7 +79,7 @@ export async function addResult(formData: FormData): Promise<FormResult> {
       ? Number(value)
       : null;
   // Default the canonical name to the observation's own name (its own group until
-  // backfilled or edited). Manual entry never writes to canonical_biomarkers.
+  // backfilled or edited). Manual entry never writes to canonical_result_definitions.
   const canonical =
     sanitizeCanonical(formData.get("canonical_name") as string) ?? name;
   // Insert the observation and reconcile its flag in one transaction, so a throw in

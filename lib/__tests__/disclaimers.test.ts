@@ -45,7 +45,7 @@ const BANNED: readonly RegExp[] = DISCLAIMER_PHRASINGS;
 //
 // The scan above reads SOURCE under app/ and components/. The banned sentence reached
 // the domain pages anyway, through a route it cannot see: curated JSON under lib/,
-// rendered verbatim. `lib/canonical-biomarkers.json`'s `note` supplies the band-note
+// rendered verbatim. `lib/canonical-result-definitions.json`'s `note` supplies the band-note
 // clause on the reading detail page and `lib/datasets/data/biomarker-descriptions.json`'s
 // `description` fills its explainer card — 40 entries carried a phrasing, one of them
 // byte-identical to NOT_A_DIAGNOSIS, a hand-copied duplicate of the constant this whole
@@ -76,18 +76,18 @@ const DATASET_METADATA_KEYS = new Set([
 // still carry disclaimer framing in their own prose, and their datasets' entry payloads
 // are clean, so widening the list is a separate, deliberate pass rather than a silent
 // one taken here.
-const SCANNED_GENERATORS = ["scripts/gen-canonical-biomarkers.ts"];
+const SCANNED_GENERATORS = ["scripts/gen-canonical-result-definitions.ts"];
 
 // TypeScript modules that are themselves curated copy — CURATED_LABS holds the `note`
-// of every hand-curated canonical entry, and `curateBiomarkers` writes it back over the
+// of every hand-curated canonical entry, and `curateResultDefinitions` writes it back over the
 // JSON on every `--curated-only` regeneration. Stripping the JSON alone would have been
-// undone by the next run (the idempotency test in biomarker-loinc.test.ts is what
+// undone by the next run (the idempotency test in canonical-result-loinc.test.ts is what
 // caught it), so the source is scanned too, with COMMENTS removed: the surrounding
 // commentary explains the app's posture to a maintainer and is not rendered anywhere.
 const CURATED_COPY_MODULES = ["lib/curated/reference-data.ts"];
 
 function datasetFiles(): string[] {
-  const out = [path.join(REPO, "lib", "canonical-biomarkers.json")];
+  const out = [path.join(REPO, "lib", "canonical-result-definitions.json")];
   const dir = path.join(REPO, "lib", "datasets", "data");
   for (const name of fs.readdirSync(dir).sort())
     if (name.endsWith(".json")) out.push(path.join(dir, name));
@@ -256,16 +256,16 @@ describe("curated datasets carry no disclaimer copy either (issue #2342)", () =>
     expect(
       offenders,
       `A curated \`note\` written here is copied onto the committed dataset by ` +
-        `curateBiomarkers and rendered from there, so it is governed by the same rule ` +
+        `curateResultDefinitions and rendered from there, so it is governed by the same rule ` +
         `as the JSON. Delete the sentence:\n${offenders.join("\n")}`
     ).toEqual([]);
   });
 
   it("the generator of a scanned dataset is not itself written in disclaimer language", () => {
-    // The root cause (#2342): scripts/gen-canonical-biomarkers.ts told the model "These
+    // The root cause (#2342): scripts/gen-canonical-result-definitions.ts told the model "These
     // are INFORMATIONAL, not medical advice", and the model reasonably concluded the copy
     // it generated should carry the framing too. An output-only guard leaves the next
-    // `npm run gen:biomarkers` free to re-add it, so the prompt states the constraint as
+    // `npm run gen:canonical-results` free to re-add it, so the prompt states the constraint as
     // a PROHIBITION and this pins that it stays one.
     const offenders: string[] = [];
     for (const rel of SCANNED_GENERATORS) {
@@ -286,7 +286,7 @@ describe("curated datasets carry no disclaimer copy either (issue #2342)", () =>
 
   it("the generator prompt forbids the sentence and forbids restating a band", () => {
     const gen = fs.readFileSync(
-      path.join(REPO, "scripts/gen-canonical-biomarkers.ts"),
+      path.join(REPO, "scripts/gen-canonical-result-definitions.ts"),
       "utf8"
     );
     expect(gen).toMatch(/NO DISCLAIMER SENTENCES/);

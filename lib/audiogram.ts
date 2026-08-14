@@ -11,7 +11,7 @@
 //     "Hearing Threshold, Right Ear 4 kHz"   value_num 40   unit "dB HL"
 //
 // Twelve of these (2 ears × 6 frequencies) are already curated in
-// lib/canonical-biomarkers.json with unit `dB HL`, `ref_high: 25` (the WHO/ASHA normal
+// lib/canonical-result-definitions.json with unit `dB HL`, `ref_high: 25` (the WHO/ASHA normal
 // band) and `direction: lower_better`; lib/biomarker-panels.ts already groups them as
 // the `hearing` panel; lib/canonical-name.ts already argues (at length, #713) why each
 // ear/frequency keeps its OWN singleton identity rather than collapsing into a
@@ -55,7 +55,7 @@ export const AUDIOGRAM_EARS = ["right", "left"] as const;
 export type AudiogramEar = (typeof AUDIOGRAM_EARS)[number];
 
 // The six standard pure-tone air-conduction test frequencies, low → high. This is
-// exactly the set lib/canonical-biomarkers.json curates for the `hearing` panel; the
+// exactly the set lib/canonical-result-definitions.json curates for the `hearing` panel; the
 // ORDER is load-bearing (the "adjacent frequencies" shift criterion below walks it).
 export const AUDIOGRAM_FREQUENCIES_HZ = [
   250, 500, 1000, 2000, 4000, 8000,

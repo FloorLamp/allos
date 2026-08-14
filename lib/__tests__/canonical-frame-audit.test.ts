@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import descriptionsJson from "@/lib/datasets/data/biomarker-descriptions.json";
 import {
   DERIVED_NAMES,
@@ -40,7 +40,7 @@ type Biomarker = {
   [k: string]: unknown;
 };
 
-const BIOMARKERS = (canonicalSeed as { biomarkers: Biomarker[] }).biomarkers;
+const BIOMARKERS = (canonicalSeed as { definitions: Biomarker[] }).definitions;
 const VOCAB = BIOMARKERS.map((b) => b.name);
 const DESCRIPTION = new Map(
   (

@@ -296,13 +296,13 @@ export function unmappedCodeIssueUrl(u: {
 }): string {
   const title = `Unmapped LOINC ${u.loinc}: ${u.name}`;
   const body = [
-    "A health-record import surfaced a lab code with no canonical mapping, so its readings don't group with a canonical biomarker or pick up its reference band.",
+    "A health-record import surfaced a lab code with no canonical mapping, so its readings don't group with a canonical result or pick up its reference band.",
     "",
     `- LOINC: \`${u.loinc}\``,
     `- Display name: ${u.name}`,
     `- Unit: ${u.unit ? `\`${u.unit}\`` : "(none carried)"}`,
     "",
-    "Please consider adding this code to the canonical biomarker map (`scripts/gen-canonical-biomarkers.ts` / `lib/biomarker-loinc.ts`).",
+    "Please consider adding this code to the canonical result map (`scripts/gen-canonical-result-definitions.ts` / `lib/canonical-result-loinc.ts`).",
   ].join("\n");
   return `${NEW_ISSUE_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
@@ -321,12 +321,12 @@ export function unresolvedNameIssueUrl(u: {
 }): string {
   const title = `Unresolved analyte: ${u.name}`;
   const body = [
-    "An AI-extracted health record surfaced a lab analyte whose name matched no canonical biomarker, so its readings don't group with a canonical biomarker or pick up its reference band. (The AI path has no LOINC to fall back on — identity is the name alone.)",
+    "An AI-extracted health record surfaced a lab analyte whose name matched no canonical result definition, so its readings don't group with a canonical result or pick up its reference band. (The AI path has no LOINC to fall back on — identity is the name alone.)",
     "",
     `- Analyte name: ${u.name}`,
     `- Unit: ${u.unit ? `\`${u.unit}\`` : "(none carried)"}`,
     "",
-    "Please consider adding an alias (`lib/canonical-name.ts` `CANONICAL_ALIASES`) if this is a known analyte named differently, or curating a new entry (`lib/curated-biomarkers.ts`) if it isn't modeled yet.",
+    "Please consider adding an alias (`lib/canonical-name.ts` `CANONICAL_ALIASES`) if this is a known analyte named differently, or curating a new entry (`lib/curated-result-definitions.ts`) if it isn't modeled yet.",
   ].join("\n");
   return `${NEW_ISSUE_URL}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }

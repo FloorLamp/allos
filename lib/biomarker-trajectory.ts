@@ -12,7 +12,7 @@
 //   3. Velocity — change-per-time in the analyte's "bad" direction exceeding a
 //      curated per-analyte threshold, even while the value is still in range
 //      (curated conservatively: eGFR decline, PSA rise — see VELOCITY_PER_YEAR in
-//      scripts/gen-canonical-biomarkers).
+//      scripts/gen-canonical-result-definitions).
 //
 // Each rule that fires returns a Finding (lib/findings) with a stable
 // dedupeKey `trajectory:<analyte>:<rule>`, so the generalized suppression store

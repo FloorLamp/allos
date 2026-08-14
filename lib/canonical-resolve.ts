@@ -13,7 +13,7 @@
 // pushing alias-resolution into it would break the JS↔SQL agreement. This resolves
 // the NAME; the family layer keys on the resolved name as before.
 //
-// The alias index is derived from the canonical_biomarkers vocabulary, which is
+// The alias index is derived from the canonical_result_definitions vocabulary, which is
 // static within a process (seeded once at boot). It's cached per-DB-handle (a
 // WeakMap, so a test that swaps the db singleton gets its own entry and nothing
 // leaks) and invalidated when the row COUNT changes (a boot re-seed that adds/removes
@@ -31,14 +31,16 @@ const cache = new WeakMap<
 
 function indexFor(handle: Database.Database): Map<string, string> {
   const count = (
-    handle.prepare("SELECT COUNT(*) AS c FROM canonical_biomarkers").get() as {
+    handle
+      .prepare("SELECT COUNT(*) AS c FROM canonical_result_definitions")
+      .get() as {
       c: number;
     }
   ).c;
   const hit = cache.get(handle);
   if (hit && hit.count === count) return hit.index;
   const names = (
-    handle.prepare("SELECT name FROM canonical_biomarkers").all() as {
+    handle.prepare("SELECT name FROM canonical_result_definitions").all() as {
       name: string;
     }[]
   ).map((r) => r.name);

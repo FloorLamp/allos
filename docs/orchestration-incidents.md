@@ -266,7 +266,7 @@ is kept because it is the argument for the change:
   274 entries; the agent's own base had 278. At this merge rate, ask for a
   re-count in the brief and check the PR reports one.
 - **A curated dataset's diff must show only intended changes (#2544).** Four
-  `1.0`→`1` edits in `canonical-biomarkers.json` were the only visible
+  `1.0`→`1` edits in `canonical-result-definitions.json` were the only visible
   evidence of a `JSON.parse`/`stringify` round-trip — a regenerate is
   invisible whenever it preserves key order and loses no precision. (Prettier
   leaves JSON numbers alone; check before believing that story.)

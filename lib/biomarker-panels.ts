@@ -42,7 +42,7 @@
 // FALLBACK POSTURE. `other` is reserved for names the taxonomy does NOT know —
 // an un-canonicalized reading the extractor coined. It is NOT a dumping ground for
 // canonical entries: a pure test (lib/__tests__/biomarker-panels.test.ts) fails
-// when any of lib/canonical-biomarkers.json's entries lacks an explicit assignment,
+// when any of lib/canonical-result-definitions.json's entries lacks an explicit assignment,
 // so a NEW canonical biomarker added without a panel breaks the build instead of
 // silently becoming "Other".
 //
@@ -159,7 +159,7 @@ export const PANEL_LABELS: Record<PanelId, { label: string; order: number }> = {
 // ---- The curated assignment ------------------------------------------------
 
 // Every canonical biomarker name, keyed by its panel. Members are EXACT canonical
-// names from lib/canonical-biomarkers.json (matched case-/punctuation-/word-order-
+// names from lib/canonical-result-definitions.json (matched case-/punctuation-/word-order-
 // insensitively via normalizeCanonicalKey, so a stored "Creatinine, Urine" and
 // "Urine Creatinine" both land). `other` carries no members — it is the fallback,
 // and a canonical entry that ends up there fails the 0-unmapped test.

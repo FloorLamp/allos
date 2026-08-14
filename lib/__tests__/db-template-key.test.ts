@@ -8,7 +8,7 @@
 // no longer has, so a reused template keeps serving it.
 //
 // Measured before this guard existed: dropping an entry from
-// lib/canonical-biomarkers.json and re-running the tier still returned
+// lib/canonical-result-definitions.json and re-running the tier still returned
 // `{"name":"Audiologic Diagnosis","source":"seed"}` from the cached template,
 // where the same experiment without the cache answered `null`.
 //
@@ -52,9 +52,9 @@ describe("the DB template cache key", () => {
     // The half that was missed. A REMOVAL is the case that matters: an upsert
     // corrects a changed row on every boot, and nothing deletes a stale one.
     const before = templateKey();
-    const after = withEdited("lib/canonical-biomarkers.json", (s) => {
-      const parsed = JSON.parse(s) as { biomarkers: { name: string }[] };
-      parsed.biomarkers.pop();
+    const after = withEdited("lib/canonical-result-definitions.json", (s) => {
+      const parsed = JSON.parse(s) as { definitions: { name: string }[] };
+      parsed.definitions.pop();
       return JSON.stringify(parsed, null, 2) + "\n";
     });
     expect(
@@ -71,10 +71,10 @@ describe("the DB template cache key", () => {
     expect(templateKey()).toBe(templateKey());
     const parsed = JSON.parse(
       fs.readFileSync(
-        path.join(process.cwd(), "lib/canonical-biomarkers.json"),
+        path.join(process.cwd(), "lib/canonical-result-definitions.json"),
         "utf8"
       )
-    ) as { biomarkers: unknown[] };
-    expect(parsed.biomarkers.length).toBeGreaterThan(100);
+    ) as { definitions: unknown[] };
+    expect(parsed.definitions.length).toBeGreaterThan(100);
   });
 });

@@ -95,7 +95,9 @@ describe("migrate() — fresh boot", () => {
     ).toBe(1);
     expect(
       (
-        db.prepare("SELECT COUNT(*) AS c FROM canonical_biomarkers").get() as {
+        db
+          .prepare("SELECT COUNT(*) AS c FROM canonical_result_definitions")
+          .get() as {
           c: number;
         }
       ).c

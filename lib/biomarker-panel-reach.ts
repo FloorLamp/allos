@@ -27,7 +27,7 @@
 // panel is this analyte in?" here; this module only asks "can a row in that panel
 // carry a category the browser lists?".
 
-import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "./datasets/canonical-result-definitions";
 import { DERIVED_NAMES } from "./derived-biomarkers";
 import {
   OTHER_PANEL,
@@ -68,7 +68,7 @@ const LISTED = new Set<string>(RESULTS_CATALOG_CATEGORIES as readonly string[]);
 //     coined — routinely `lab` — so it is always reachable.
 const REACHABLE: ReadonlySet<PanelId> = (() => {
   const reachable = new Set<PanelId>([OTHER_PANEL]);
-  for (const entry of CANONICAL_BIOMARKERS) {
+  for (const entry of CANONICAL_RESULT_DEFINITIONS) {
     if (!LISTED.has(entry.category as MedicalCategory)) continue;
     // The SAME predicate the row gather applies (#2365), so the facet can never offer
     // a panel whose every member the gather drops.

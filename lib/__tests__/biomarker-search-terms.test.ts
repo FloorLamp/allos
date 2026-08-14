@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { biomarkerSearchTerms } from "@/lib/canonical-name";
 import { fuzzyFilterWithTerms } from "@/lib/fuzzy";
-import canonicalBiomarkers from "@/lib/canonical-biomarkers.json";
+import canonicalResultNames from "@/lib/canonical-result-definitions.json";
 
 // #2382. The app-wide combobox matcher is a greedy leftmost SUBSEQUENCE walk that
 // never backtracks, so #2335's `Long Name (ABBR)` convention puts an analyte's
@@ -11,7 +11,7 @@ import canonicalBiomarkers from "@/lib/canonical-biomarkers.json";
 // `psa` did not offer that entry AT ALL. Searching the abbreviation as its own key
 // is therefore not a nicety — it is the only way the abbreviation is reachable.
 
-const CATALOG: string[] = canonicalBiomarkers.biomarkers.map((b) => b.name);
+const CATALOG: string[] = canonicalResultNames.definitions.map((b) => b.name);
 
 // The Combobox's own cap. Ranking first is the claim; falling off an 8-row list is
 // the failure mode the cap adds on top of it.

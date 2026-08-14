@@ -4,7 +4,7 @@ import {
   BIOMARKER_FAMILIES,
   biomarkerRetestIdentity,
 } from "@/lib/canonical-name";
-import { CANONICAL_BIOMARKERS } from "@/lib/datasets/canonical-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "@/lib/datasets/canonical-result-definitions";
 
 describe("retestDaysForBiomarker", () => {
   it("reads the curated cadence, case-insensitively", () => {
@@ -74,7 +74,7 @@ describe("retestDaysForBiomarker", () => {
     // Structural guard for the identity-keyed lookup: folding members onto one clock
     // must never LOOSEN a curated analyte's interval, and a non-family analyte must
     // still resolve to exactly its own curated number.
-    for (const b of CANONICAL_BIOMARKERS) {
+    for (const b of CANONICAL_RESULT_DEFINITIONS) {
       if (typeof b.retest_days !== "number" || b.retest_days <= 0) continue;
       const resolved = retestDaysForBiomarker(b.name);
       expect(resolved).not.toBeNull();

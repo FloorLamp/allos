@@ -661,7 +661,9 @@ describe("intra-batch canonical collapse (end-to-end)", () => {
       "Zeta Antibody IgG",
     ]);
     const vocab = db
-      .prepare("SELECT name FROM canonical_biomarkers WHERE name LIKE 'Zeta%'")
+      .prepare(
+        "SELECT name FROM canonical_result_definitions WHERE name LIKE 'Zeta%'"
+      )
       .all() as { name: string }[];
     expect(vocab.map((v) => v.name)).toEqual(["Zeta Antibody IgG"]);
 

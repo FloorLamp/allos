@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import {
   BIOMARKER_PANELS,
   isPanelId,
@@ -27,8 +27,8 @@ import { medicalGroupLabel } from "@/lib/timeline-format";
 // like a deliberate classification.
 
 const CANONICAL_NAMES: string[] = (
-  canonicalSeed as { biomarkers: { name: string; panel?: string | null }[] }
-).biomarkers.map((b) => b.name);
+  canonicalSeed as { definitions: { name: string; panel?: string | null }[] }
+).definitions.map((b) => b.name);
 
 const ASSIGNED: [PanelId, string][] = (
   Object.entries(BIOMARKER_PANELS) as [PanelId, readonly string[]][]
@@ -139,14 +139,16 @@ describe("the curated 277-name assignment", () => {
 
   it("the committed JSON's `panel` field agrees with the resolver for every row", () => {
     const rows = (
-      canonicalSeed as { biomarkers: { name: string; panel?: string | null }[] }
-    ).biomarkers;
+      canonicalSeed as {
+        definitions: { name: string; panel?: string | null }[];
+      }
+    ).definitions;
     const mismatches = rows
       .filter((b) => b.panel !== panelForCanonicalName(b.name))
       .map((b) => `${b.name}: json=${b.panel}`);
     expect(
       mismatches,
-      "regenerate with `npx tsx scripts/gen-canonical-biomarkers.ts --curated-only`"
+      "regenerate with `npx tsx scripts/gen-canonical-result-definitions.ts --curated-only`"
     ).toEqual([]);
   });
 });

@@ -680,7 +680,7 @@ export default async function ImportDetailPage(props: {
                   canonical map, so they don’t trend with the matching biomarker
                   or pick up its reference band. Add the code to{" "}
                   <code className="rounded-sm bg-slate-100 px-1 dark:bg-ink-800">
-                    lib/biomarker-loinc.ts
+                    lib/canonical-result-loinc.ts
                   </code>{" "}
                   to canonicalize them, or report it below.{" "}
                   <strong>Report unmapped code</strong> opens a{" "}

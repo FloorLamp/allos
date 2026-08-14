@@ -14,7 +14,7 @@
 // here can pull the barrel back into a module the barrel itself re-exports.
 
 import { getBiomarkerSeriesWithDerivedFor } from "./derived";
-import { getCanonicalBiomarker } from "./medical";
+import { getCanonicalResultDefinition } from "./medical";
 import {
   getProfileSex,
   getProfileReproductiveStatus,
@@ -128,7 +128,7 @@ function shapePlot(
   }
 ): BiomarkerPlot | null {
   if (series.length === 0) return null;
-  const cb = getCanonicalBiomarker(canonical);
+  const cb = getCanonicalResultDefinition(canonical);
   const sex = demographics.sex();
   const latestDate = series[series.length - 1]?.date ?? null;
   const age = demographics.ageOn(latestDate);
@@ -185,5 +185,5 @@ export function biomarkerTargetUnit(
 ): string | null {
   const plot = biomarkerPlot(profileId, canonical);
   if (plot?.unit) return plot.unit;
-  return getCanonicalBiomarker(canonical)?.unit ?? null;
+  return getCanonicalResultDefinition(canonical)?.unit ?? null;
 }

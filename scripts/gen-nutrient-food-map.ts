@@ -87,7 +87,7 @@ export interface NutrientFoodEntry {
   key: string;
   // Display label for the nutrient ("Omega-3 (EPA/DHA)").
   label: string;
-  // The canonical biomarker names (lib/canonical-biomarkers.json) whose CURRENT reading
+  // The canonical biomarker names (lib/canonical-result-definitions.json) whose CURRENT reading
   // being flagged in `direction` triggers this suggestion. Matched case-insensitively.
   //
   // EMPTY IS A REAL STATE, not an omission: a nutrient the app has no blood biomarker for

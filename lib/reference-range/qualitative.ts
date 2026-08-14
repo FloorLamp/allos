@@ -10,7 +10,7 @@ import type {
   Sex,
 } from "../types";
 import type { CyclePhase } from "../cycle";
-import { qualitativeClassForLoinc } from "../biomarker-loinc";
+import { qualitativeClassForLoinc } from "../canonical-result-loinc";
 import {
   parseLeadingNumeric,
   parseReferenceRange,

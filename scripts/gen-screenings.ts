@@ -8,7 +8,7 @@
 //
 //   npm run gen:screenings
 //
-// This mirrors the other baked datasets (gen-canonical-biomarkers / gen-fitness-
+// This mirrors the other baked datasets (gen-canonical-result-definitions / gen-fitness-
 // norms / gen-bp-percentiles): a curated table → committed JSON → a pure engine
 // reads it. The engine, satisfaction inference, Upcoming surfacing, snooze/dismiss
 // suppression bus, and Telegram nudge are the EXISTING preventive-care machinery

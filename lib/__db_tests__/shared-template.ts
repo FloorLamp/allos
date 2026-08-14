@@ -51,10 +51,10 @@ export function templateKeyPath(): string {
 //
 // EXCEPT WHERE THE TASK REMOVES SOMETHING, which is why the seed dataset is
 // hashed too. "Effects are reapplied per file" holds for an ADD and an UPDATE —
-// `seedCanonicalBiomarkers` is an `ON CONFLICT … DO UPDATE` upsert, so a changed
+// `seedCanonicalResultDefinitions` is an `ON CONFLICT … DO UPDATE` upsert, so a changed
 // row is corrected on every boot — and fails for a DELETE, because no boot task
 // removes a `seed` row it no longer has. Measured on this branch: drop an entry
-// from `lib/canonical-biomarkers.json`, and a reused template still serves it
+// from `lib/canonical-result-definitions.json`, and a reused template still serves it
 // (`{"name":"Audiologic Diagnosis","source":"seed"}`), where an uncached run
 // answers `null`. So the dataset joins the key: it is the one input the
 // reapply-per-file argument does not cover.
@@ -74,7 +74,10 @@ export function templateKeyPath(): string {
 // locally and red on a cold CI checkout. Loud in the common direction, not in
 // every direction.
 const TEMPLATE_INPUT_DIRS = ["lib/migrations"];
-const TEMPLATE_INPUT_FILES = ["lib/db.ts", "lib/canonical-biomarkers.json"];
+const TEMPLATE_INPUT_FILES = [
+  "lib/db.ts",
+  "lib/canonical-result-definitions.json",
+];
 
 // The path is folded in REPO-RELATIVE, never absolute: a rename must change the
 // key, but the checkout's location must not. An absolute path would re-key the

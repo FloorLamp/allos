@@ -162,7 +162,7 @@ still be keyed by metric and still need this lookup.
   `referenceRange`/`optimalBand`/`rangeBadge` the flag reconcile uses, so a page's
   band can never disagree with the flag stored on a row of the same reading.
 - `lib/queries/metric-judgment.ts` — the runtime half: the seeded
-  `canonical_biomarkers` row as the vocabulary, and the subject's age **on the
+  `canonical_result_definitions` row as the vocabulary, and the subject's age **on the
   reading's date** (the #150 precedent), never today's.
 
 ### The domain is judged quantities, not one enum (#2086)

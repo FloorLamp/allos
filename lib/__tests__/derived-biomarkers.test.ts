@@ -17,7 +17,7 @@ import {
   type DerivedDemographics,
   type PhenoAgeReferenceResolver,
 } from "../derived-biomarkers";
-import { canonicalBiomarkerForName } from "../datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "../datasets/canonical-result-definitions";
 import { reconciledFlag } from "../reference-range";
 import {
   biomarkerFamily,
@@ -25,7 +25,7 @@ import {
   normalizeCanonicalKey,
 } from "../canonical-name";
 import { panelForCanonicalName } from "../biomarker-panels";
-import canonicalSeed from "../canonical-biomarkers.json";
+import canonicalSeed from "../canonical-result-definitions.json";
 
 // The two derived indices whose canonical names are long "Full Name (ABBR)" forms
 // since #2335 — aliased here so the assertions below stay readable.
@@ -221,7 +221,7 @@ describe("computeDerivedReadings — the cholesterol ratios", () => {
   // The dataset row as the flag machinery wants it: the curated entries carry no
   // sex-specific optimal bands, which reconciledFlag's shape lists explicitly.
   const rangesFor = (name: string) => {
-    const cb = canonicalBiomarkerForName(name);
+    const cb = canonicalResultDefinitionForName(name);
     if (!cb) throw new Error(`no canonical entry for ${name}`);
     return {
       ...cb,
@@ -1108,7 +1108,9 @@ describe("computeDerivedReadings — Omega-6 Total", () => {
 // and labs print "Can't Calc" rather than guess (#2300 §3).
 describe("Bilirubin, Indirect is curated but never computed", () => {
   it("has a canonical entry and no derived spec", () => {
-    expect(canonicalBiomarkerForName("Bilirubin, Indirect")).toBeTruthy();
+    expect(
+      canonicalResultDefinitionForName("Bilirubin, Indirect")
+    ).toBeTruthy();
     expect(DERIVED_NAMES).not.toContain("Bilirubin, Indirect");
   });
 });
@@ -1237,16 +1239,16 @@ describe("derivedInputCanonicalNames", () => {
 });
 
 // The registry is only half the contract: every index it emits must ALSO exist as a
-// canonical_biomarkers row, or the shared range/flag/panel machinery has nothing to
+// canonical_result_definitions row, or the shared range/flag/panel machinery has nothing to
 // judge the computed value against and it renders as a band-less orphan. This guards
 // the committed dataset against drifting away from the registry (#1582).
 describe("derived indices ↔ the canonical dataset", () => {
   it("every derived name has a canonical row whose unit the deriver emits", () => {
     for (const name of DERIVED_NAMES) {
-      const cb = canonicalBiomarkerForName(name);
+      const cb = canonicalResultDefinitionForName(name);
       expect(
         cb,
-        `${name} is missing from canonical-biomarkers.json`
+        `${name} is missing from canonical-result-definitions.json`
       ).toBeTruthy();
       expect(cb?.unit ?? null, `${name} unit`).toBe(
         DERIVED_DEFS_BY_NAME[name].unit
@@ -1260,10 +1262,10 @@ describe("derived indices ↔ the canonical dataset", () => {
     // they are separate families — so nothing dedups them, marks one current off the
     // other, or judges a fasting glucose against the unqualified entry's band.
     // Two separate curated rows (each carrying its own bands, whatever those are)…
-    expect(canonicalBiomarkerForName("Glucose, Fasting")?.name).toBe(
+    expect(canonicalResultDefinitionForName("Glucose, Fasting")?.name).toBe(
       "Glucose, Fasting"
     );
-    expect(canonicalBiomarkerForName("Glucose")?.name).toBe("Glucose");
+    expect(canonicalResultDefinitionForName("Glucose")?.name).toBe("Glucose");
     // …and two separate identities, which is what keeps the dedup partition, the
     // is_latest marker and the flag path from ever treating one as the other.
     expect(biomarkerFamily("Glucose, Fasting")).not.toBe(
@@ -1283,7 +1285,7 @@ describe("derived indices ↔ the canonical dataset", () => {
 
   it("normalizes the ratio spellings a lab prints onto the canonical names", () => {
     const index = buildCanonicalIndex(
-      (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers.map(
+      (canonicalSeed as { definitions: { name: string }[] }).definitions.map(
         (b) => b.name
       )
     );

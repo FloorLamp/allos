@@ -25,17 +25,17 @@ import {
   snapCanonicalName,
 } from "@/lib/canonical-name";
 import { reconciledFlag } from "@/lib/reference-range";
-import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "@/lib/datasets/canonical-result-definitions";
 import type { CanonicalResultDefinition } from "@/lib/types";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 // The committed JSON is the seed for CanonicalResultDefinition rows; treat it as such for the
 // reconciledFlag() calls below, which take the full CanonicalRanges shape (the same
-// cast the sibling biomarker-loinc test uses — the dataset's CanonicalBiomarkerEntry
+// cast the sibling canonical-result-loinc test uses — the dataset's CanonicalResultDefinitionEntry
 // omits the sex-specific optimal_* fields CanonicalRanges now Picks).
-const CB_ROWS = (canonicalSeed as { biomarkers: unknown[] })
-  .biomarkers as CanonicalResultDefinition[];
+const CB_ROWS = (canonicalSeed as { definitions: unknown[] })
+  .definitions as CanonicalResultDefinition[];
 const cbByName = new Map<string, CanonicalResultDefinition>(
   CB_ROWS.map((b) => [b.name.toLowerCase(), b])
 );
@@ -43,8 +43,8 @@ const cbRanges = (name: string): CanonicalResultDefinition | null =>
   cbByName.get(name.toLowerCase()) ?? null;
 
 const VOCAB = (
-  canonicalSeed as { biomarkers: { name: string }[] }
-).biomarkers.map((b) => b.name);
+  canonicalSeed as { definitions: { name: string }[] }
+).definitions.map((b) => b.name);
 const INDEX = buildCanonicalIndex(VOCAB);
 
 let p: SeededProfile;
@@ -122,15 +122,15 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 
     // BAND: only the TOTAL carries the 30–100 sufficiency band; the fractions carry
     // null bands, so a low D2 (5) never flags "deficient" (adult age).
-    expect(canonicalBiomarkerForName("Vitamin D, 25-Hydroxy")?.ref_low).toBe(
-      30
-    );
-    expect(canonicalBiomarkerForName("Vitamin D2, 25-Hydroxy")?.ref_low).toBe(
-      null
-    );
-    expect(canonicalBiomarkerForName("Vitamin D3, 25-Hydroxy")?.ref_low).toBe(
-      null
-    );
+    expect(
+      canonicalResultDefinitionForName("Vitamin D, 25-Hydroxy")?.ref_low
+    ).toBe(30);
+    expect(
+      canonicalResultDefinitionForName("Vitamin D2, 25-Hydroxy")?.ref_low
+    ).toBe(null);
+    expect(
+      canonicalResultDefinitionForName("Vitamin D3, 25-Hydroxy")?.ref_low
+    ).toBe(null);
     const totalEntry = cbRanges("Vitamin D, 25-Hydroxy");
     const d2Entry = cbRanges("Vitamin D2, 25-Hydroxy");
     // A total of 20 flags low (below 30); a D2 of 4 does NOT flag deficient (no band).
