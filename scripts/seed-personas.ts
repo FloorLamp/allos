@@ -41,10 +41,25 @@ export interface PersonaContext {
   profileId: number;
   /** Calendar-string date n days ago (negative = future), profile-local. */
   daysAgo(n: number): string;
+  /** Calendar-string arithmetic (lib/date shiftDateStr). */
+  shiftDateStr(date: string, days: number): string;
   /** Canonical UTC instant for a wall-clock time on a profile-local day. */
   occurredAt(day: string, hhmm: string): string;
   reconcileFlags(profileId: number, ids: number[]): void;
   saveFitnessEntry(profileId: number, entry: FitnessEntryInput): unknown;
+  /** The standard Overview metric saves every production-created profile gets. */
+  seedStandardMetricSaves(profileId: number): void;
+  /** The situation change-log helpers (lib/trend-annotations, lib/symptom-episode). */
+  diffSituations(before: string[], after: string[], date: string): unknown[];
+  serializeSituationEvents(
+    prior: readonly never[],
+    events: readonly unknown[]
+  ): string;
+  episodesForSituation(
+    name: string,
+    events: readonly unknown[],
+    includeOpen: boolean
+  ): readonly { start: string | null; end: string | null }[];
   /** Serialized COMPLETE onboarding state for the given path + focuses. */
   onboardingStateJson(
     profilePath: "self" | "caregiving",
@@ -449,6 +464,305 @@ function familyHistory(
   }
 }
 
+// A cloned context targeting another profile — every writer below reads
+// ctx.profileId, so household members reuse the same helpers unchanged.
+function forProfile(ctx: PersonaContext, profileId: number): PersonaContext {
+  return { ...ctx, profileId };
+}
+
+// A household member, created the way the baseline seed creates the child
+// profile: raw insert + the standard metric saves production createProfile
+// would have written, then attributes. Returns a context for the new profile.
+function addFamilyProfile(
+  ctx: PersonaContext,
+  attrs: { name: string; sex: "male" | "female"; birthdate: string }
+): PersonaContext {
+  const id = Number(
+    ctx.db.prepare(`INSERT INTO profiles (name) VALUES (?)`).run(attrs.name)
+      .lastInsertRowid
+  );
+  ctx.seedStandardMetricSaves(id);
+  const sub = forProfile(ctx, id);
+  setAttrs(sub, attrs);
+  return sub;
+}
+
+// An ACTIVE illness for the profile, wired the way the baseline seeds its
+// episode cluster: an illness-type situation row (active), the dated
+// change-log in profile_settings.situation_events, the illness_episodes rows
+// a 046→169 replay would reconstruct, day-by-day symptoms, and an optional
+// fever curve whose readings flag via reconcileFlags like real imports.
+function activeIllness(
+  ctx: PersonaContext,
+  opts: {
+    startedDaysAgo: number;
+    symptoms: [ago: number, symptom: string, severity: number][];
+    feverCurve?: [ago: number, hhmm: string, degF: number][];
+  }
+): void {
+  const transitions = [
+    { date: ctx.daysAgo(opts.startedDaysAgo), before: [], after: ["Illness"] },
+  ];
+  const events = transitions.flatMap((t) =>
+    ctx.diffSituations(t.before, t.after, t.date)
+  );
+  const situationId = Number(
+    ctx.db
+      .prepare(
+        `INSERT INTO situations (profile_id, name, active, illness_type) VALUES (?, 'Illness', 1, 1)`
+      )
+      .run(ctx.profileId).lastInsertRowid
+  );
+  void situationId;
+  ctx.db
+    .prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'situation_events', ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    )
+    .run(ctx.profileId, ctx.serializeSituationEvents([], events));
+  for (const run of ctx.episodesForSituation("Illness", events, true)) {
+    if (run.start == null) continue; // a startless run can't seed a row
+    ctx.db
+      .prepare(
+        `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+         VALUES (?, 'Illness', ?, ?)`
+      )
+      .run(
+        ctx.profileId,
+        run.start,
+        run.end == null ? null : ctx.shiftDateStr(run.end, -1)
+      );
+  }
+  const sym = ctx.db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+     VALUES (?, ?, ?, ?, NULL)
+     ON CONFLICT (profile_id, date, symptom)
+     DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+  );
+  for (const [ago, symptom, severity] of opts.symptoms) {
+    sym.run(ctx.profileId, ctx.daysAgo(ago), symptom, severity);
+  }
+  if (opts.feverCurve?.length) {
+    const w = recordWriter(ctx);
+    for (const [ago, hhmm, degF] of opts.feverCurve) {
+      w.rec(
+        ctx.daysAgo(ago),
+        "vitals",
+        "Body Temperature",
+        degF,
+        "degF",
+        null,
+        {
+          time: hhmm,
+        }
+      );
+    }
+    ctx.reconcileFlags(ctx.profileId, w.ids);
+  }
+}
+
+// A completed document import, the baseline import-log shape: no blob on disk
+// (content_hash pre-set so the boot backfill skips it), optionally re-pointing
+// existing records at the document so /import shows a real breakdown.
+function addDocument(
+  ctx: PersonaContext,
+  opts: {
+    filename: string;
+    docType: string;
+    dateDaysAgo: number;
+    hashSeed: string; // unique 4-char suffix for the synthetic content hash
+    linkCategory?: "lab" | "vitals";
+    linkDate?: string;
+  }
+): number {
+  const day = ctx.daysAgo(opts.dateDaysAgo);
+  const docId = Number(
+    ctx.db
+      .prepare(
+        `INSERT INTO medical_documents
+           (profile_id, filename, stored_path, mime_type, size_bytes, doc_type, source,
+            document_date, patient_name, extraction_status, extracted_count, content_hash, uploaded_at)
+         VALUES (?,?,?,'application/pdf',?, ?, 'upload', ?, NULL, 'done', 0, ?, ?)`
+      )
+      .run(
+        ctx.profileId,
+        opts.filename,
+        `data/uploads/medical/${ctx.profileId}/seed-${opts.filename}`,
+        120000 + opts.filename.length * 517,
+        opts.docType,
+        day,
+        `seed${"0".repeat(56)}${opts.hashSeed}`,
+        ctx.occurredAt(day, "08:30")
+      ).lastInsertRowid
+  );
+  if (opts.linkCategory) {
+    const linked = ctx.db
+      .prepare(
+        `UPDATE medical_records SET document_id = ?, source = 'extracted'
+         WHERE profile_id = ? AND date = ? AND category = ?`
+      )
+      .run(docId, ctx.profileId, opts.linkDate ?? day, opts.linkCategory);
+    ctx.db
+      .prepare(
+        `UPDATE medical_documents SET extracted_count = ? WHERE id = ? AND profile_id = ?`
+      )
+      .run(linked.changes, docId, ctx.profileId);
+  }
+  return docId;
+}
+
+// A connected integration. Status only — config carries a display-ish stub and
+// NO credentials, so the sync tick degrades gracefully (documented behavior)
+// while /integrations and hasConnectedDataSource read "connected".
+function connectIntegration(
+  ctx: PersonaContext,
+  provider: "strava" | "health-connect" | "oura" | "withings",
+  config: Record<string, unknown> = {}
+): void {
+  ctx.db
+    .prepare(
+      `INSERT INTO integration_connections (profile_id, provider, status, config)
+       VALUES (?, ?, 'connected', ?)
+       ON CONFLICT(profile_id, provider) DO UPDATE SET
+         status = excluded.status, config = excluded.config`
+    )
+    .run(ctx.profileId, provider, JSON.stringify(config));
+}
+
+// A provider-imported cardio session carrying source + external_id (and the
+// Strava-only rich metrics when given), so provenance chips, source filters,
+// and cross-source dedup surfaces have real subjects.
+function sourcedCardio(
+  ctx: PersonaContext,
+  opts: {
+    source: "strava" | "health-connect";
+    externalId: string;
+    day: string;
+    name: string;
+    title: string;
+    durationMin: number;
+    distanceKm: number;
+    startHhmm: string;
+    endHhmm: string;
+    activeKcal?: number;
+    strava?: { avgHr: number; maxHr: number; elevationM: number };
+  }
+): number {
+  const id = Number(
+    ctx.db
+      .prepare(
+        `INSERT INTO activities
+           (profile_id, date, type, title, duration_min, distance_km,
+            start_time, end_time, components, source, external_id,
+            avg_hr, max_hr, elevation_m, edited)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`
+      )
+      .run(
+        ctx.profileId,
+        opts.day,
+        "cardio",
+        opts.title,
+        opts.durationMin,
+        opts.distanceKm,
+        opts.startHhmm,
+        opts.endHhmm,
+        opts.source === "strava"
+          ? JSON.stringify([
+              {
+                name: opts.name,
+                type: "cardio",
+                distance_km: opts.distanceKm,
+                duration_min: opts.durationMin,
+              },
+            ])
+          : null,
+        opts.source,
+        opts.externalId,
+        opts.strava?.avgHr ?? null,
+        opts.strava?.maxHr ?? null,
+        opts.strava?.elevationM ?? null
+      ).lastInsertRowid
+  );
+  if (opts.activeKcal != null) {
+    ctx.db
+      .prepare(
+        `INSERT INTO metric_samples
+           (profile_id, source, metric, date, start_time, end_time, value, activity_external_id)
+         VALUES (?,?,?,?,?,?,?,?)`
+      )
+      .run(
+        ctx.profileId,
+        opts.source,
+        "active_kcal",
+        opts.day,
+        ctx.occurredAt(opts.day, opts.startHhmm),
+        ctx.occurredAt(opts.day, opts.endHhmm),
+        opts.activeKcal,
+        opts.externalId
+      );
+  }
+  return id;
+}
+
+// An Oura night: total + stage breakdown + HRV keyed on the bedtime window,
+// and the night's resting HR as an oura-sourced body_metrics row — the
+// mapOuraSleep shape (lib/integrations/oura.ts).
+function ouraNight(
+  ctx: PersonaContext,
+  wakeDay: string,
+  opts: {
+    totalMin: number;
+    deep: number;
+    rem: number;
+    hrv: number;
+    rhr: number;
+  }
+): void {
+  const bedDay = ctx.shiftDateStr(wakeDay, -1);
+  const start = ctx.occurredAt(bedDay, "23:05");
+  const end = ctx.occurredAt(wakeDay, "06:50");
+  const ins = ctx.db.prepare(
+    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'oura', ?, ?, ?, ?, ?)`
+  );
+  const light = Math.max(0, opts.totalMin - opts.deep - opts.rem);
+  ins.run(ctx.profileId, "sleep_min", wakeDay, start, end, opts.totalMin);
+  ins.run(ctx.profileId, "sleep_deep_min", wakeDay, start, end, opts.deep);
+  ins.run(ctx.profileId, "sleep_rem_min", wakeDay, start, end, opts.rem);
+  ins.run(ctx.profileId, "sleep_light_min", wakeDay, start, end, light);
+  ins.run(ctx.profileId, "sleep_awake_min", wakeDay, start, end, 18);
+  ins.run(ctx.profileId, "hrv_ms", wakeDay, start, end, opts.hrv);
+  ctx.db
+    .prepare(
+      `INSERT INTO body_metrics (profile_id, date, resting_hr, source, occurred_at)
+       VALUES (?,?,?,'oura',?)`
+    )
+    .run(ctx.profileId, wakeDay, opts.rhr, end);
+}
+
+// A Withings weigh-in: weight + body-fat on body_metrics plus the
+// body-composition point samples the sync writes (lib/integrations/withings.ts).
+function withingsWeighIn(
+  ctx: PersonaContext,
+  day: string,
+  opts: { kg: number; fatPct: number; muscleKg: number; waterKg: number }
+): void {
+  const at = ctx.occurredAt(day, "07:05");
+  ctx.db
+    .prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, source, occurred_at)
+       VALUES (?,?,?,?,'withings',?)`
+    )
+    .run(ctx.profileId, day, opts.kg, opts.fatPct, at);
+  const ins = ctx.db.prepare(
+    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'withings', ?, ?, ?, ?, ?)`
+  );
+  ins.run(ctx.profileId, "muscle_mass_kg", day, at, at, opts.muscleKg);
+  ins.run(ctx.profileId, "body_water_kg", day, at, at, opts.waterKg);
+}
+
 // ── The personas ─────────────────────────────────────────────────────────────
 
 const bodybuilder: SeedPersona = {
@@ -746,11 +1060,15 @@ const bodybuilder: SeedPersona = {
 
 const marathonRunner: SeedPersona = {
   name: "marathon-runner",
-  title: "Elena, 34 — marathon runner in a training block",
+  title: "Elena, 34 — marathon runner with Strava + Health Connect",
   description:
     "High weekly running volume with a long-run progression, an active " +
     "marathon plan, athlete-range vitals (RHR 43), runner's low ferritin, " +
-    "tracked shoes, and cycle data for phase-aware ranges.",
+    "tracked shoes, cycle data — and BOTH Strava and Health Connect " +
+    "connected, with recent runs arriving Strava-sourced and one of them " +
+    "ALSO pushed by Health Connect (the phone re-syncing the same Strava " +
+    "session), so cross-source provenance and duplicate handling have a " +
+    "live subject.",
   routes: [
     "/training",
     "/trends",
@@ -759,6 +1077,8 @@ const marathonRunner: SeedPersona = {
     "/results/readings",
     "/upcoming",
     "/medical/cycles",
+    "/integrations",
+    "/data",
   ],
   apply(ctx) {
     setAttrs(ctx, {
@@ -941,19 +1261,66 @@ const marathonRunner: SeedPersona = {
       });
     }
 
+    // Connected sources: Strava (the watch uploads there) and Health Connect
+    // (the phone). Credential-less config — the sync tick degrades gracefully
+    // while the /integrations cards and hasConnectedDataSource read connected.
+    connectIntegration(ctx, "strava", { athlete: "Elena R." });
+    connectIntegration(ctx, "health-connect", {});
+
+    // This week's runs arrive Strava-sourced with rich metrics…
+    const tempoDay = ctx.daysAgo(1);
+    sourcedCardio(ctx, {
+      source: "strava",
+      externalId: "strava:seed-elena-tempo",
+      day: tempoDay,
+      name: "Running",
+      title: "Tempo run",
+      durationMin: 44,
+      distanceKm: 10.1,
+      startHhmm: "06:30",
+      endHhmm: "07:14",
+      activeKcal: 612,
+      strava: { avgHr: 168, maxHr: 181, elevationM: 55 },
+    });
+    const longRunDay = ctx.daysAgo(6);
+    sourcedCardio(ctx, {
+      source: "strava",
+      externalId: "strava:seed-elena-long",
+      day: longRunDay,
+      name: "Running",
+      title: "Long run",
+      durationMin: 176,
+      distanceKm: 29.0,
+      startHhmm: "07:00",
+      endHhmm: "09:56",
+      activeKcal: 1740,
+      strava: { avgHr: 156, maxHr: 172, elevationM: 190 },
+    });
+    // …and Health Connect ALSO pushed the long run (the phone mirroring the
+    // Strava session): same window, different provider + external id — the
+    // cross-source duplicate shape the census should show being handled
+    // (or not) by the activity surfaces.
+    sourcedCardio(ctx, {
+      source: "health-connect",
+      externalId: `health-connect:${ctx.occurredAt(longRunDay, "07:00")}`,
+      day: longRunDay,
+      name: "Running",
+      title: "Morning run",
+      durationMin: 176,
+      distanceKm: 29.0,
+      startHhmm: "07:00",
+      endHhmm: "09:56",
+      activeKcal: 1731,
+    });
+
     completeOnboarding(ctx, "self", ["fitness"]);
   },
 };
 
-const midlifeLdl: SeedPersona = {
-  name: "midlife-ldl",
-  title: "Dave, 40 — average adult with rising LDL",
-  description:
-    "Sparse activity, slow weight creep, a three-draw LDL climb into flagged " +
-    "territory with no diagnosis or meds, a paternal early-MI history driving " +
-    "risk stratification, and an overdue flu shot.",
-  routes: ["/", "/results", "/upcoming", "/longevity", "/trends"],
-  apply(ctx) {
+// Dave, 40 — the average-adult-with-rising-LDL character. Seeds profile
+// attributes + data but NOT onboarding (the owning persona completes that).
+function seedDaveMidlife(ctx: PersonaContext): void {
+  {
     setAttrs(ctx, {
       name: "Dave",
       sex: "male",
@@ -1066,31 +1433,18 @@ const midlifeLdl: SeedPersona = {
         89.5,
         ctx.daysAgo(-180)
       );
+  }
+}
 
-    completeOnboarding(ctx, "self", ["metrics-labs", "preventive-care"]);
-  },
-};
-
-const toddler: SeedPersona = {
-  name: "toddler",
-  title: "Riley, 22 months — toddler tracked by a caregiver",
-  description:
-    "WHO growth curves (weight, height, head circumference), a childhood " +
-    "immunization series in progress, pediatric labs judged by age bands, an " +
-    "AAP-percentile blood pressure, and every adult surface at its age-gated " +
-    "or age-irrelevant extreme.",
-  routes: [
-    "/",
-    "/trends/growth",
-    "/trends",
-    "/records/history/immunizations",
-    "/upcoming",
-    "/nutrition",
-    "/training",
-  ],
-  apply(ctx) {
+// A ~22-month-old's data (growth track, immunization series, pediatric labs,
+// well-child visits). Attributes come from the caller (addFamilyProfile);
+// `kgOffset` separates the twins so their curves don't coincide.
+function seedToddlerData(
+  ctx: PersonaContext,
+  opts: { kgOffset: number }
+): void {
+  {
     const birth = ctx.daysAgo(670); // ~22 months
-    setAttrs(ctx, { name: "Riley", sex: "female", birthdate: birth });
 
     // Well-child measurement history: ~40th percentile track.
     const measurements: [
@@ -1114,8 +1468,13 @@ const toddler: SeedPersona = {
         .prepare(
           `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?,?,?,?)`
         )
-        .run(ctx.profileId, day, kg, "Well-child visit");
-      metricPoint(ctx, "height_cm", day, cm);
+        .run(
+          ctx.profileId,
+          day,
+          Math.round((kg + opts.kgOffset) * 10) / 10,
+          "Well-child visit"
+        );
+      metricPoint(ctx, "height_cm", day, cm + opts.kgOffset * 2);
       metricPoint(ctx, "head_circumference_cm", day, head);
     }
 
@@ -1198,35 +1557,14 @@ const toddler: SeedPersona = {
       "Children's Clinic",
       "scheduled"
     );
+  }
+}
 
-    completeOnboarding(ctx, "caregiving", ["caregiving", "preventive-care"]);
-  },
-};
-
-const senior75: SeedPersona = {
-  name: "senior-75",
-  title: "Margaret, 76 — older adult with chronic conditions",
-  description:
-    "Six-medication polypharmacy (including a warfarin + PRN-NSAID major " +
-    "interaction), T2D + AFib + CKD 3 + osteoporosis on the problem list, " +
-    "declining eGFR and rising potassium, elderly-band fitness results, and " +
-    "an overdue INR check.",
-  routes: [
-    "/medications",
-    "/upcoming",
-    "/records",
-    "/results/readings",
-    "/appointments",
-    "/longevity",
-    "/trends",
-  ],
-  apply(ctx) {
-    setAttrs(ctx, {
-      name: "Margaret",
-      sex: "female",
-      birthdate: ctx.daysAgo(76 * 365 + 150),
-    });
-
+// Margaret, 76 — the chronic-conditions senior. Attributes come from the
+// caller (addFamilyProfile); seeds conditions, the six-med stack, labs,
+// vitals, immunizations, appointments, and elderly-band fitness results.
+function seedMargaretSenior(ctx: PersonaContext): void {
+  {
     condition(
       ctx,
       "Type 2 diabetes mellitus",
@@ -1439,31 +1777,120 @@ const senior75: SeedPersona = {
       testKey: "restinghr",
       value: 72,
     });
+  }
+}
 
-    completeOnboarding(ctx, "self", ["medications", "preventive-care"]);
+const household: SeedPersona = {
+  name: "household",
+  title: "The Reyes household — Dave, 40; Margaret, 76; sick twin toddlers",
+  description:
+    "One caregiver login over four profiles: Dave (rising LDL, profile 1), " +
+    "his mother Margaret (six meds, T2D + AFib + CKD 3), and 22-month-old " +
+    "twins Riley and Rowan who are BOTH currently sick — active illness " +
+    "episodes, day-by-day symptoms, and a fever curve. Stresses the " +
+    "household roll-ups, cross-profile timeline/calendar, family settings, " +
+    "and every multi-profile merge surface the solo personas can't reach.",
+  routes: [
+    "/",
+    "/household",
+    "/upcoming",
+    "/timeline",
+    "/settings/family",
+    "/medications",
+    "/records",
+    "/trends",
+    "/medical/episodes",
+  ],
+  gaps: [
+    "The pages census drives only the acting profile (profile 1, Dave) — " +
+      "the members' own pages need an acting-profile switch the harness's " +
+      "profiles journey does not yet parameterize.",
+  ],
+  apply(ctx) {
+    seedDaveMidlife(ctx);
+
+    const margaret = addFamilyProfile(ctx, {
+      name: "Margaret",
+      sex: "female",
+      birthdate: ctx.daysAgo(76 * 365 + 150),
+    });
+    seedMargaretSenior(margaret);
+
+    // Twin toddlers — same birthdate, curves separated by a small offset,
+    // both currently sick. Riley runs the fever (day 3 of it — past the
+    // "more than 3 days" illness-care line); Rowan is a day behind and milder.
+    const riley = addFamilyProfile(ctx, {
+      name: "Riley",
+      sex: "female",
+      birthdate: ctx.daysAgo(670),
+    });
+    seedToddlerData(riley, { kgOffset: 0 });
+    activeIllness(riley, {
+      startedDaysAgo: 3,
+      symptoms: [
+        [3, "fever", 2],
+        [3, "runny_nose", 2],
+        [2, "fever", 3],
+        [2, "cough", 2],
+        [1, "fever", 2],
+        [1, "cough", 2],
+        [0, "fever", 2],
+      ],
+      feverCurve: [
+        [2, "08:00", 101.3],
+        [2, "20:00", 102.6],
+        [1, "08:30", 101.0],
+        [0, "07:45", 100.4],
+      ],
+    });
+
+    const rowan = addFamilyProfile(ctx, {
+      name: "Rowan",
+      sex: "male",
+      birthdate: ctx.daysAgo(670),
+    });
+    seedToddlerData(rowan, { kgOffset: 0.4 });
+    activeIllness(rowan, {
+      startedDaysAgo: 2,
+      symptoms: [
+        [2, "runny_nose", 2],
+        [1, "cough", 1],
+        [1, "runny_nose", 2],
+        [0, "cough", 2],
+      ],
+    });
+
+    completeOnboarding(ctx, "self", ["caregiving", "preventive-care"]);
   },
 };
 
 const pregnant: SeedPersona = {
   name: "pregnant",
-  title: "Sofia, 31 — pregnant (~20 weeks)",
+  title: "Sofia, 31 — pregnant (~20 weeks), with a 15-year-old",
   description:
     "Declared pregnancy risk attribute, a cycle history that stops at the " +
     "LMP, gestational weight gain, prenatal labs with a flagged 50 g glucose " +
-    "screen needing follow-up, prenatal supplement stack, and OB visit cadence.",
+    "screen needing follow-up, prenatal supplements, OB visit cadence, a " +
+    "PHQ-9 score, obstetric ultrasounds, carrier-screening genomic variants " +
+    "— and Maya, a 15-year-old on the pediatric/adult boundary (CDC growth " +
+    "curves still apply, adult BP regime already does, HPV series mid-course).",
   routes: [
     "/",
     "/upcoming",
     "/medical/cycles",
-    "/results/readings",
+    "/results",
     "/trends",
     "/nutrition",
     "/appointments",
+    "/records",
+    "/household",
   ],
   gaps: [
     "Pregnancy is only a risk-attribute flag plus a condition row — no " +
       "gestational-age model, so nothing renders weeks-pregnant or trimester " +
-      "context anywhere.",
+      "context anywhere (#1402).",
+    "No perinatal instrument (EPDS): PHQ-9 is the only depression screen the " +
+      "instrument flow offers a pregnant user.",
   ],
   apply(ctx) {
     setAttrs(ctx, {
@@ -1620,30 +2047,180 @@ const pregnant: SeedPersona = {
       encounter(ctx, ctx.daysAgo(ago), reason, "Pregnant state");
     }
 
+    // A PHQ-9 screen (mild range) with its per-item answers — the instrument
+    // shape (#1076): score row on category 'instrument' + instrument_responses.
+    {
+      const phq = ctx.db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, value_num, unit, canonical_name)
+           VALUES (?, ?, 'instrument', 'PHQ-9', '7', 7, NULL, 'PHQ-9')`
+        )
+        .run(ctx.profileId, ctx.daysAgo(25));
+      const answers = ctx.db.prepare(
+        `INSERT INTO instrument_responses (profile_id, medical_record_id, item_index, answer)
+         VALUES (?, ?, ?, ?)`
+      );
+      [1, 1, 1, 1, 1, 1, 1, 0, 0].forEach((answer, itemIndex) =>
+        answers.run(
+          ctx.profileId,
+          Number(phq.lastInsertRowid),
+          itemIndex,
+          answer
+        )
+      );
+    }
+
+    // Obstetric ultrasounds: the dating scan and the completed anatomy scan.
+    const usIns = ctx.db.prepare(
+      `INSERT INTO imaging_studies
+         (profile_id, modality, body_region, laterality, contrast, contrast_agent,
+          study_date, impression, indication, status, notes, source)
+       VALUES (?,?,?,'na',0,NULL,?,?,?,'final',NULL,NULL)`
+    );
+    usIns.run(
+      ctx.profileId,
+      "ultrasound",
+      "Obstetric",
+      ctx.daysAgo(95),
+      "Single intrauterine pregnancy. Crown-rump length consistent with dates.",
+      "Dating scan"
+    );
+    usIns.run(
+      ctx.profileId,
+      "ultrasound",
+      "Obstetric",
+      ctx.daysAgo(2),
+      "Normal anatomy survey. Anterior placenta, normal amniotic fluid.",
+      "Anatomy scan (~20 weeks)"
+    );
+
+    // Carrier screening — structured genomic variants, stored factually.
+    const gvIns = ctx.db.prepare(
+      `INSERT INTO genomic_variants
+         (profile_id, gene, variant, genotype, star_allele, zygosity, significance,
+          result_type, interpretation, source_lab, report_date, notes, source)
+       VALUES (?,?,?,?,NULL,?,?,?,?,?,?,NULL,NULL)`
+    );
+    gvIns.run(
+      ctx.profileId,
+      "CFTR",
+      "deltaF508",
+      null,
+      "heterozygous",
+      null,
+      "hereditary-risk",
+      "Carrier — partner screening recommended",
+      "Example Genomics Lab",
+      ctx.daysAgo(80)
+    );
+    gvIns.run(
+      ctx.profileId,
+      "MTHFR",
+      "C677T",
+      null,
+      "heterozygous",
+      null,
+      "other",
+      null,
+      "Example Genomics Lab",
+      ctx.daysAgo(80)
+    );
+
+    // Maya, 15 — the pediatric/adult boundary band: growth charts still apply
+    // (CDC 2–20), the adult BP regime already does (13+), HPV mid-series,
+    // school sports, and a teen-typical low-normal ferritin.
+    const maya = addFamilyProfile(ctx, {
+      name: "Maya",
+      sex: "female",
+      birthdate: ctx.daysAgo(15 * 365 + 40),
+    });
+    for (const [ago, kg, cm] of [
+      [720, 47.0, 155.0],
+      [360, 51.5, 159.5],
+      [10, 54.8, 162.0],
+    ] as const) {
+      const day = maya.daysAgo(ago);
+      ctx.db
+        .prepare(
+          `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?,?,?,NULL)`
+        )
+        .run(maya.profileId, day, kg);
+      metricPoint(maya, "height_cm", day, cm);
+    }
+    immunization(maya, maya.daysAgo(400), "hpv", "Dose 1");
+    immunization(maya, maya.daysAgo(200), "hpv", "Dose 2");
+    immunization(maya, maya.daysAgo(1100), "tdap", "Adolescent booster");
+    immunization(maya, maya.daysAgo(1100), "menacwy", "Dose 1");
+    immunization(maya, maya.daysAgo(70), "influenza", "This season");
+    for (const ago of [9, 5, 2]) {
+      cardioSession(
+        maya,
+        maya.daysAgo(ago),
+        "Running",
+        "Soccer practice run",
+        40,
+        5.5,
+        "moderate"
+      );
+    }
+    const mw = recordWriter(maya);
+    const teenLabDay = maya.daysAgo(30);
+    mw.rec(teenLabDay, "lab", "Ferritin", 19, "ng/mL", "16-154", {
+      panel: "Children's Clinic",
+    });
+    mw.rec(teenLabDay, "lab", "Hemoglobin", 12.6, "g/dL", "12.0-15.5", {
+      panel: "Children's Clinic",
+    });
+    mw.rec(
+      maya.daysAgo(30),
+      "vitals",
+      "Blood Pressure Systolic",
+      108,
+      "mmHg",
+      "90-120",
+      { time: "15:30" }
+    );
+    mw.rec(
+      maya.daysAgo(30),
+      "vitals",
+      "Blood Pressure Diastolic",
+      68,
+      "mmHg",
+      "60-80",
+      { time: "15:30" }
+    );
+    ctx.reconcileFlags(maya.profileId, mw.ids);
+    encounter(maya, maya.daysAgo(370), "Annual well-adolescent visit", null);
+
     completeOnboarding(ctx, "self", ["preventive-care", "metrics-labs"]);
   },
 };
 
 const diabeticCgm: SeedPersona = {
   name: "diabetic-cgm",
-  title: "Ray, 52 — type 2 diabetic wearing a CGM",
+  title: "Ray, 52 — type 2 diabetic wearing a CGM; partner with asthma",
   description:
     "Dense home glucose readings (4/day for two weeks, the CGM-export " +
     "shape), an improving A1c series, diabetes med stack with monitoring " +
-    "obligations (metformin B12/eGFR), microalbumin creeping up, and a " +
-    "flagged-readings pile on the results surfaces.",
+    "obligations (metformin B12/eGFR), microalbumin creeping up, a linked " +
+    "visit-summary document — plus Priya, his partner with chronic asthma: " +
+    "controller + rescue inhalers, a peak-flow stream with a flare dip, " +
+    "spirometry results, and her own imported pulmonology report.",
   routes: [
     "/",
     "/medications",
-    "/results/readings",
+    "/results",
     "/upcoming",
     "/trends",
     "/longevity",
+    "/data",
+    "/household",
   ],
   gaps: [
     "No continuous-glucose stream: metric_samples has no glucose metric and " +
       "no CGM integration exists, so CGM data can only land as discrete " +
-      "medical_records vitals rows.",
+      "medical_records vitals rows (#2810).",
   ],
   apply(ctx) {
     setAttrs(ctx, {
@@ -1833,18 +2410,129 @@ const diabeticCgm: SeedPersona = {
     );
     familyHistory(ctx, [["Mother", "Type 2 diabetes", "44054006", 50, 0]]);
 
+    // Ray's latest quarterly labs arrived as a visit-summary document.
+    addDocument(ctx, {
+      filename: "endocrinology-visit-summary.pdf",
+      docType: "visit_summary",
+      dateDaysAgo: 15,
+      hashSeed: "ray1",
+      linkCategory: "lab",
+    });
+
+    // Priya, 48 — chronic asthma: controller + rescue inhalers, a peak-flow
+    // stream dipping through a flare, spirometry results, and her own
+    // imported pulmonology report. Covers the respiratory machinery no solo
+    // persona touches.
+    const priya = addFamilyProfile(ctx, {
+      name: "Priya",
+      sex: "female",
+      birthdate: ctx.daysAgo(48 * 365 + 200),
+    });
+    condition(
+      priya,
+      "Asthma, moderate persistent",
+      "J45.40",
+      "2008-04-15",
+      "Well controlled on ICS/LABA"
+    );
+    ctx.db
+      .prepare(
+        `INSERT INTO allergies (profile_id, substance, reaction, severity, status, onset_date, notes)
+         VALUES (?,?,?,?,?,NULL,NULL)`
+      )
+      .run(priya.profileId, "Dust mites", "Wheezing", "moderate", "active");
+    const priyaIntake = intakeWriter(priya);
+    priyaIntake.medication({
+      name: "Fluticasone/Salmeterol",
+      notes: "Controller inhaler — rinse mouth after use",
+      prescriber: "Dr. Osei",
+      startedDaysAgo: 1600,
+      doses: [
+        ["1 puff", "Morning", "any"],
+        ["1 puff", "Evening", "any"],
+      ],
+    });
+    priyaIntake.medication({
+      name: "Albuterol",
+      notes: "Rescue inhaler — as needed",
+      obligation: "may",
+      prescriber: "Dr. Osei",
+      startedDaysAgo: 1600,
+      doses: [["2 puffs", "Anytime", "any"]],
+    });
+    logAdherence(priya);
+
+    // Peak flow: three weeks of morning/evening blows dipping through a flare
+    // — the #1850 stream shape — with the DECLARED personal best the zone
+    // card judges against.
+    for (let d = 20; d >= 0; d--) {
+      const day = priya.daysAgo(d);
+      const dip = d <= 11 && d >= 7 ? 90 - Math.abs(9 - d) * 20 : 0;
+      const jitter = (d * 5) % 12;
+      metricPoint(priya, "peak_flow_lmin", day, 430 - dip + jitter, "07:20:00");
+      metricPoint(priya, "peak_flow_lmin", day, 420 - dip + jitter, "20:10:00");
+    }
+    ctx.db
+      .prepare(
+        `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'peak_flow_personal_best', '460')
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+      )
+      .run(priya.profileId);
+
+    // Spirometry from the pulmonology visit, linked to her imported report.
+    // Printed name = the bare abbreviation a PFT report prints; canonical =
+    // the "Long Name (ABBR)" entry it snaps onto (#2335), mirroring the
+    // baseline spirometry block. Ratio just below the 70% cutoff → flags.
+    const pw = recordWriter(priya);
+    const spiroDay = priya.daysAgo(40);
+    pw.rec(
+      spiroDay,
+      "vitals",
+      "Forced Expiratory Volume in 1 Second (FEV1)",
+      2.4,
+      "L",
+      null,
+      { panel: "Spirometry", name: "FEV1" }
+    );
+    pw.rec(spiroDay, "vitals", "Forced Vital Capacity (FVC)", 3.4, "L", null, {
+      panel: "Spirometry",
+      name: "FVC",
+    });
+    pw.rec(spiroDay, "vitals", "FEV1/FVC Ratio", 69, "%", "≥70%", {
+      panel: "Spirometry",
+    });
+    priya.reconcileFlags(priya.profileId, pw.ids);
+    addDocument(priya, {
+      filename: "pulmonology-spirometry-report.pdf",
+      docType: "lab_report",
+      dateDaysAgo: 40,
+      hashSeed: "priy",
+      linkCategory: "lab",
+    });
+    encounter(priya, priya.daysAgo(40), "Pulmonology follow-up", "Asthma");
+    appointment(
+      priya,
+      priya.daysAgo(-50),
+      "11:00",
+      "Asthma review",
+      "Pulmonology Clinic",
+      "scheduled"
+    );
+
     completeOnboarding(ctx, "self", ["medications", "metrics-labs"]);
   },
 };
 
 const biohacker: SeedPersona = {
   name: "biohacker",
-  title: "Kai, 36 — optimization enthusiast",
+  title: "Kai, 36 — optimization enthusiast with Oura + Withings",
   description:
     "A 20-item supplement stack with stacks/splits and a deliberate zinc " +
     "UL overshoot, sauna + cold plunge + red light as protocol-owned " +
-    "practices, an NMN self-experiment, optimal-range bloodwork, and a " +
-    "fasting habit the app cannot yet track.",
+    "practices, an NMN self-experiment, optimal-range bloodwork, a fasting " +
+    "habit the app cannot yet track — and Oura + Withings connected: " +
+    "staged sleep with HRV and wearable resting HR nightly, smart-scale " +
+    "weigh-ins with body composition beside the manual weekly log.",
   routes: [
     "/nutrition",
     "/longevity",
@@ -1853,6 +2541,8 @@ const biohacker: SeedPersona = {
     "/results/readings",
     "/trends",
     "/timeline",
+    "/sleep",
+    "/integrations",
   ],
   gaps: [
     "No fasting model: time-restricted eating has no first-class surface, so " +
@@ -2109,23 +2799,34 @@ const biohacker: SeedPersona = {
     }
     ctx.reconcileFlags(ctx.profileId, w.ids);
 
-    // Wearable-shaped recovery data: 30 nights of sleep + daily RHR trend.
-    const insSleep = ctx.db.prepare(
-      `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
-       VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
-    );
+    // Connected wearables: Oura (sleep/HRV/RHR) + Withings (scale).
+    connectIntegration(ctx, "oura", {});
+    connectIntegration(ctx, "withings", {});
+
+    // 30 Oura nights: staged sleep + HRV keyed on the bedtime window, and the
+    // night's resting HR as an oura-sourced body_metrics row (the mapOuraSleep
+    // shape). Deterministic jitter keeps the series realistic.
     for (let i = 0; i <= 29; i++) {
       const wakeDay = ctx.daysAgo(i);
       const jitter = ((i * 9) % 25) - 12;
-      const bedMin = Math.max(0, 45 + jitter);
-      const prior = ctx.daysAgo(i + 1);
-      insSleep.run(
-        ctx.profileId,
-        wakeDay,
-        `${prior}T22:${String(bedMin).padStart(2, "0")}:00Z`,
-        `${wakeDay}T06:30:00Z`,
-        460 + jitter
-      );
+      ouraNight(ctx, wakeDay, {
+        totalMin: 455 + jitter,
+        deep: 82 + (jitter % 9),
+        rem: 104 + (jitter % 11),
+        hrv: 58 + (jitter % 13),
+        rhr: 49 + (i % 3),
+      });
+    }
+    // Two weeks of smart-scale weigh-ins beside the manual weekly log — the
+    // same quantity from two sources, the metric_source_priority subject.
+    for (let d = 13; d >= 0; d--) {
+      const j = (d * 3) % 7;
+      withingsWeighIn(ctx, ctx.daysAgo(d), {
+        kg: Math.round((78.2 + j * 0.1) * 10) / 10,
+        fatPct: Math.round((14.3 + (j % 3) * 0.2) * 10) / 10,
+        muscleKg: 36.5,
+        waterKg: 45.2,
+      });
     }
     for (let wk = 9; wk >= 0; wk--) {
       bodyMetric(
@@ -2183,9 +2884,7 @@ const biohacker: SeedPersona = {
 export const PERSONAS: readonly SeedPersona[] = [
   bodybuilder,
   marathonRunner,
-  midlifeLdl,
-  toddler,
-  senior75,
+  household,
   pregnant,
   diabeticCgm,
   biohacker,

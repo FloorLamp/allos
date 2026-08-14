@@ -79,7 +79,7 @@ describe("personaFromEnv", () => {
   });
 
   it("trims surrounding whitespace", () => {
-    const sel = personaFromEnv({ SEED_PERSONA: " toddler " });
+    const sel = personaFromEnv({ SEED_PERSONA: " household " });
     expect(sel.kind).toBe("found");
   });
 

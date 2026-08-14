@@ -119,6 +119,7 @@ if (PERSONA_SELECTION.kind === "found") {
     db,
     profileId: SEED_PROFILE_ID,
     daysAgo,
+    shiftDateStr,
     occurredAt: (day, hhmm) => {
       const [y, m, d] = day.split("-").map(Number);
       const [h, min] = hhmm.split(":").map(Number);
@@ -128,6 +129,11 @@ if (PERSONA_SELECTION.kind === "found") {
     },
     reconcileFlags,
     saveFitnessEntry,
+    seedStandardMetricSaves: (profileId) =>
+      seedStandardMetricSaves(db, profileId),
+    diffSituations,
+    serializeSituationEvents,
+    episodesForSituation,
     onboardingStateJson: (profilePath, focuses) =>
       serializeOnboardingState(
         completeOnboardingState(

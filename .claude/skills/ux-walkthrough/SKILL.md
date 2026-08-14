@@ -167,25 +167,29 @@ The proven workflow for an all-pages consistency audit:
    UX_ROUTES targets) live in the module; run one as e.g.:
 
    ```bash
-   SEED_PERSONA=toddler UX_SEED=1 UX_ROUTES=/trends/growth,/trends,/upcoming \
+   SEED_PERSONA=household UX_SEED=1 UX_ROUTES=/household,/upcoming,/timeline \
      node scripts/ux-walkthrough.mjs --serve pages
    ```
 
-   | persona           | who                               | most-affected targets                       |
-   | ----------------- | --------------------------------- | ------------------------------------------- |
-   | `bodybuilder`     | 28M, heavy 4-day split            | /training /progress /nutrition /longevity   |
-   | `marathon-runner` | 34F, marathon block, low ferritin | /training /equipment /results /trends       |
-   | `midlife-ldl`     | 40M, rising LDL, no diagnosis     | / /results /upcoming /longevity             |
-   | `toddler`         | 22-month-old, caregiver-tracked   | /trends/growth /records /upcoming /training |
-   | `senior-75`       | 76F, 6 meds, T2D+AFib+CKD         | /medications /upcoming /records /results    |
-   | `pregnant`        | 31F, ~20 weeks, flagged screen    | / /medical/cycles /upcoming /appointments   |
-   | `diabetic-cgm`    | 52M, dense glucose readings       | /medications /results /upcoming /trends     |
-   | `biohacker`       | 36M, 20 supplements, 3 practices  | /nutrition /longevity /supplies /timeline   |
+   | persona           | who                                                                    | most-affected targets                     |
+   | ----------------- | ---------------------------------------------------------------------- | ----------------------------------------- |
+   | `bodybuilder`     | 28M, heavy 4-day split                                                 | /training /progress /nutrition /longevity |
+   | `marathon-runner` | 34F, marathon block, Strava + Health Connect (one run from both)       | /training /equipment /integrations /data  |
+   | `household`       | caregiver over 4 profiles: 40M rising LDL, 76F on 6 meds, sick twins   | /household / /upcoming /timeline /records |
+   | `pregnant`        | 31F ~20wks: PHQ-9, ultrasounds, carrier variants; 15-year-old daughter | / /medical/cycles /upcoming /records      |
+   | `diabetic-cgm`    | 52M dense glucose + docs; partner with chronic asthma + docs           | /medications /results /upcoming /data     |
+   | `biohacker`       | 36M, 20 supplements, 3 practices, Oura + Withings                      | /nutrition /longevity /sleep /timeline    |
 
-   Some personas exist partly to make a GAP visible (their registry entries
-   carry `gaps`): pregnancy has no gestational-age model, CGM has no
-   continuous-glucose stream, fasting has no surface at all — expect those
-   absences in the shots and report them as findings, not census failures.
+   Several personas are multi-profile households (profile 1 is the acting
+   caregiver; members are created by the persona itself) and several carry
+   `connected` integration rows with credential-less configs — the sync tick
+   degrades gracefully while /integrations reads connected. Some exist partly
+   to make a GAP visible (their registry entries carry `gaps`): pregnancy has
+   no gestational-age model (#1402), CGM has no continuous-glucose stream
+   (#2810), fasting has no surface yet (#2756) — expect those absences in the
+   shots and report them as findings, not census failures. The pages census
+   drives only profile 1; household members' own pages need an
+   acting-profile switch the harness does not yet parameterize.
    Unit guards: `lib/__tests__/seed-personas.test.ts` (registry + route
    targets), `lib/__db_tests__/seed-personas.test.ts` (every persona against
    a live schema).
