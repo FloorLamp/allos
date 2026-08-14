@@ -1647,19 +1647,30 @@ another's. The template holds exactly one profile (the bootstrap admin, id 1), s
 every file's first fixture profile was id 2: six specs wrote real bytes into the
 same directories and removed them (`rm -rf <domainRoot>/2`) when they finished.
 
-The report was `export-media.test.ts` failing 4 tests once, immediately after a
-Playwright run, then passing three times — which reads as browser-run fallout and
-is not. `video-write.test.ts`'s `afterAll` removing
-`data/uploads/{symptom,activity}-videos/2` inside export-media's read window
-empties two of its five domains, and it fails exactly those 4 tests reading back
-rows whose files are gone. Reproduce it deliberately by SUPPLYING the ordering
-rather than waiting for it:
+**The reported failure was never reproduced.** The report was
+`export-media.test.ts` failing 4 tests once, immediately after a Playwright run,
+then passing three times. Neither half of that reproduced: not the Playwright
+adjacency, and not the failure on its own. Six runs of export-media, looped
+against eight rounds of its four media neighbours in the same working tree, were
+all green. What is established is the MECHANISM, and only by SUPPLYING the
+ordering rather than waiting for it:
 
 ```
 # a neighbour's afterAll, on a loop, during the victim's reads
 while :; do rm -rf data/uploads/{symptom,activity}-videos/2; done &
 npx vitest run --config vitest.db.config.ts lib/__db_tests__/export-media.test.ts
 ```
+
+Do not read the failure COUNT as a fingerprint identifying the neighbour. Under
+that forced ordering, removing `{symptom,activity}-videos/2` — which is exactly
+`video-write.test.ts`'s `afterAll` — gives 4 failures. But so does
+`progress-photos/2` alone (`progress-photo-write.test.ts`), and so does
+`symptom-photos/2` alone (`symptom-episode-photo-links.test.ts`) — the same four
+test names in all three cases. Only `lesion-photos/2` moves the count, to 6,
+because two further tests assert lesion rows. So "4 failures in export-media"
+narrows the culprit to "a neighbour that did not remove lesion-photos", and no
+further. Nothing here shows the ordering ever actually occurred; it shows that if
+it does, this is what it looks like.
 
 The fix is `lib/__db_tests__/fixture-profile-space.ts`: a test file owns a private
 block of profile ids, keyed on (process id, thread id) — the pair that runs

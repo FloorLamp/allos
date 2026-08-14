@@ -8,14 +8,21 @@
 // first fixture profile used to be id 2 and each of those trees was one shared
 // directory.
 //
-// The bug that produced was pure ORDERING: `video-write.test.ts`'s `afterAll`
-// (`rm -rf data/uploads/{symptom,activity}-videos/2`) landing inside
-// `export-media.test.ts`'s read window emptied two of its five domains, and
-// export-media failed 4 tests reading back rows whose files had gone. Both specs
-// are correct alone. So what is pinned here is not that ordering — it is the
-// invariant that makes ordering irrelevant: two files that are live at the same
-// moment can never be handed the same profile id, and a per-profile cleanup can
-// only ever reach its own.
+// The hazard that produces is pure ORDERING: a neighbour's `afterAll` (say
+// `video-write.test.ts`'s `rm -rf data/uploads/{symptom,activity}-videos/2`)
+// landing inside `export-media.test.ts`'s read window empties domains the victim
+// is about to read, and it fails reading back rows whose files have gone. Both
+// specs are correct alone. The reported #2670 failure was NOT reproduced —
+// forcing the deletion reproduces the shape, but nothing shows the ordering ever
+// occurred on its own. So what is pinned here is not that ordering. It is the
+// invariant that makes ordering irrelevant: two files live at the same moment can
+// never be handed the same profile id, and a per-profile cleanup can only ever
+// reach its own.
+//
+// Of the three tests below, only "allocates this file's profiles inside that
+// block" is a RATCHET — it fails against the pre-fix setup (#2677). The other two
+// exercise the helper and the cleanup shape and pass either way; they are
+// characterisation, kept for what they document, not as regression guards.
 
 import { describe, it, expect, afterAll } from "vitest";
 import fs from "node:fs";
