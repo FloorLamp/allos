@@ -10,7 +10,7 @@ import type { NotificationAction, NotificationMessage } from "./types";
 import type { ActivityType, IntakeItemKind } from "../types";
 import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
-import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
+import { intakeWindowNoun, intakeItemNoun } from "./intake-format";
 import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../intake-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";

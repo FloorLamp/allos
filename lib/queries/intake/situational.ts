@@ -18,13 +18,13 @@ import { getTimezone } from "../../settings";
 import { getEffectiveActiveSituations } from "../derived-situations";
 import { zonedDateParts } from "../../date";
 
-// The count of situational supplements currently DUE for the profile given its active
-// situations — the SAME figure the Supplements-bar activation line uses. Mirrors the
+// The count of situational intake items currently DUE for the profile given its active
+// situations — the SAME figure the intake activation line uses. Mirrors the
 // tab's ctx build (isWorkoutDay / activeSituations / predictedWorkoutDay /
 // postWorkoutReady) exactly so both read one truth.
 export function getSituationalDueCount(profileId: number): number {
   const on = today(profileId);
-  const supplements = getIntakeItems(profileId);
+  const items = getIntakeItems(profileId);
   // Derived context widens the active set (#1292/#1298): a Poor sleep / Period item
   // counts as due exactly while its derived context holds — the SAME set the bar uses.
   const activeSituations = getEffectiveActiveSituations(profileId, on);
@@ -37,7 +37,7 @@ export function getSituationalDueCount(profileId: number): number {
     todaysActivities.map((a) => a.end_time ?? a.start_time),
     nowMinutes
   );
-  return countSituationalDue(supplements, {
+  return countSituationalDue(items, {
     date: on,
     isWorkoutDay,
     activeSituations,

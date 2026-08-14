@@ -10,8 +10,8 @@ const candidate = (
   over: Partial<EscalationCandidate> = {}
 ): EscalationCandidate => ({
   doseId: 1,
-  supplementId: 10,
-  supplementName: "Lisinopril",
+  itemId: 10,
+  itemName: "Lisinopril",
   amount: "10 mg",
   window: "Morning",
   kind: "supplement",
@@ -109,7 +109,7 @@ describe("escalationsDue", () => {
         candidate({ doseId: 1, escalateChatId: "999" }),
         candidate({
           doseId: 2,
-          supplementName: "Metformin",
+          itemName: "Metformin",
           window: "Evening",
           slotMinute: 20 * 60,
           escalateAfterMin: 60,
@@ -145,7 +145,7 @@ describe("escalationsDue", () => {
   const bedtime = () =>
     candidate({
       doseId: 42,
-      supplementName: "Warfarin",
+      itemName: "Warfarin",
       window: "Bedtime",
       slotMinute: 22 * 60,
       escalateAfterMin: 120,
@@ -206,8 +206,8 @@ describe("renderEscalationMessage", () => {
       "Mom",
       {
         doseId: 1,
-        supplementId: 10,
-        supplementName: "Lisinopril",
+        itemId: 10,
+        itemName: "Lisinopril",
         amount: "10 mg",
         window: "Morning",
         kind: "medication",
@@ -228,8 +228,8 @@ describe("renderEscalationMessage", () => {
       "Child",
       {
         doseId: 1,
-        supplementId: 10,
-        supplementName: "Acetaminophen",
+        itemId: 10,
+        itemName: "Acetaminophen",
         amount: "160 mg",
         product: "Children's oral suspension (160 mg / 5 mL)",
         window: "Evening",
@@ -248,8 +248,8 @@ describe("renderEscalationMessage", () => {
       "",
       {
         doseId: 1,
-        supplementId: 10,
-        supplementName: "Vitamin D",
+        itemId: 10,
+        itemName: "Vitamin D",
         amount: null,
         window: "Evening",
         kind: "supplement",
@@ -263,15 +263,15 @@ describe("renderEscalationMessage", () => {
   });
 
   // The THREE caregiver buttons (#233 + #1716): ✅ Confirmed taken (esctake), ⏭️ Skip
-  // (escskip) and 👍 I'm on it (escack), carrying profile/dose/supp ids + the day —
+  // (escskip) and 👍 I'm on it (escack), carrying profile/dose/item ids + the day —
   // never a name — so a late tap resolves the right dose on the right date.
   it("carries the ✅ confirm, ⏭️ skip and 👍 ack buttons with id-only tokens", () => {
     const msg = renderEscalationMessage(
       "Mom",
       {
         doseId: 7,
-        supplementId: 10,
-        supplementName: "Lisinopril",
+        itemId: 10,
+        itemName: "Lisinopril",
         amount: "10 mg",
         window: "Morning",
         kind: "medication",
@@ -299,8 +299,8 @@ describe("renderEscalationMessage", () => {
       "Mom",
       {
         doseId: 7,
-        supplementId: 10,
-        supplementName: "Warfarin",
+        itemId: 10,
+        itemName: "Warfarin",
         amount: "5 mg",
         window: "Morning",
         kind: "medication",
@@ -320,8 +320,8 @@ describe("renderEscalationMessage", () => {
       "Mom",
       {
         doseId: 7,
-        supplementId: 10,
-        supplementName: "Warfarin",
+        itemId: 10,
+        itemName: "Warfarin",
         amount: "5 mg",
         window: "Morning",
         kind: "medication",
@@ -333,12 +333,12 @@ describe("renderEscalationMessage", () => {
       "https://allos.example/"
     );
     expect(med.actions?.at(-1)?.url).toBe("https://allos.example/medications");
-    const supp = renderEscalationMessage(
+    const supplementMessage = renderEscalationMessage(
       "Mom",
       {
         doseId: 7,
-        supplementId: 10,
-        supplementName: "Vitamin D",
+        itemId: 10,
+        itemName: "Vitamin D",
         amount: null,
         window: "Bedtime",
         kind: "supplement",
@@ -349,7 +349,7 @@ describe("renderEscalationMessage", () => {
       "2026-07-11",
       "https://allos.example"
     );
-    expect(supp.actions?.at(-1)?.url).toContain("/nutrition");
+    expect(supplementMessage.actions?.at(-1)?.url).toContain("/nutrition");
   });
 });
 

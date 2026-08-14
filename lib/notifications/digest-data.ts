@@ -316,9 +316,9 @@ export function gatherDigestInput(
   const sleep = gatherDigestSleep(profileId, demoted);
 
   const active = getIntakeItems(profileId).filter((s) => s.active);
-  const suppById = new Map(active.map((s) => [s.id, s]));
+  const itemById = new Map(active.map((item) => [item.id, item]));
   const doses = getIntakeDoses(profileId).filter((d) =>
-    suppById.has(d.item_id)
+    itemById.has(d.item_id)
   );
   // Per-day situation resolver (#654): "today" sees the current set (no events after
   // today), while yesterday's adherence is scored against the situations active THAT
@@ -334,7 +334,7 @@ export function gatherDigestInput(
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
     return doses
       .filter((d) =>
-        doseDueOn(suppById.get(d.item_id)!, d, {
+        doseDueOn(itemById.get(d.item_id)!, d, {
           date,
           isWorkoutDay,
           activeSituations: situationsOn(date),
@@ -454,7 +454,7 @@ export function gatherDigestInput(
       [...todayDoseIds, ...yDue]
         .map((id) => doseById.get(id))
         .filter((d): d is (typeof doses)[number] => d != null)
-        .map((d) => suppById.get(d.item_id)!.kind)
+        .map((d) => itemById.get(d.item_id)!.kind)
     ),
   ];
 

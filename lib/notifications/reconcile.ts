@@ -81,11 +81,11 @@ import {
   collectWindowDoses,
   slotSessionForKeyboard,
   withDoseCorrections,
-} from "./supplements";
+} from "./intake";
 import {
   renderMergedIntakeMessage,
   type IntakeSendSlot,
-} from "./supplement-format";
+} from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { now as clockNow } from "../clock";
 import { correctionTokenAnchor } from "../correction-time";
@@ -295,7 +295,7 @@ function resolvedDoseIds(profileId: number, date: string): Set<number> {
 // the take/skip pair beside them.
 //
 // NAMES, in the order the keyboard showed them (#2274). The token carries the item id
-// (`take:<profileId>:<doseId>:<suppId>:<date>`), so the lookup is one profile-scoped
+// (`take:<profileId>:<doseId>:<itemId>:<date>`), so the lookup is one profile-scoped
 // read of that profile's item names — never a name from another profile's ledger, even
 // in a shared chat. An item whose name cannot be resolved is named as neither, the same
 // posture as a dose in neither ledger set.
@@ -355,7 +355,7 @@ function doseCloseDetail(
 }
 
 // ── intake-dose ──────────────────────────────────────────────────────────────
-// take/skip: `take:<profileId>:<doseId>:<suppId>:<date>`
+// take/skip: `take:<profileId>:<doseId>:<itemId>:<date>`
 // all:       `all:<profileId>:<slot>:<date>`
 // demote:    `demote:<profileId>:<itemId>:<date>`
 const intakeDose: FamilyReconciler = {
@@ -509,7 +509,7 @@ const redoseWindow: FamilyReconciler = {
 };
 
 // ── escalation ───────────────────────────────────────────────────────────────
-// `esctake|escskip|escack:<profileId>:<doseId>:<suppId>:<date>`
+// `esctake|escskip|escack:<profileId>:<doseId>:<itemId>:<date>`
 // The safety tier's sharpest case: a caregiver's chat must not keep claiming a dose
 // was missed after it was confirmed anywhere.
 const escalation: FamilyReconciler = {

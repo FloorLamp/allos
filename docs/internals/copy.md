@@ -94,7 +94,7 @@ Range-scoped empties say what to change:
 Sentence case for buttons, labels, headings, and toasts. **Feature and nav names
 are Title Case as proper nouns** — "Supplements & Meds", the "Needs attention"
 hero — but a mid-sentence reference to the _concept_ stays lowercase. The
-Telegram `"supplements & meds"` pairing in `supplement-format.ts` is the
+Telegram `"supplements & meds"` pairing in `intake-format.ts` is the
 documented example of a correct lowercase concept reference, not a bug.
 
 ### 6. House voice: short, declarative, calm

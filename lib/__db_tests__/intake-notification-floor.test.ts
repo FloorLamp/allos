@@ -9,10 +9,10 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
-  buildSupplementReminder,
+  buildIntakeReminder,
   buildIntakeReminderForSlots,
   collectWindowDoses,
-} from "@/lib/notifications/supplements";
+} from "@/lib/notifications/intake";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { collectUpcoming } from "@/lib/queries/upcoming";
 import { runEscalations } from "@/lib/notifications/escalate";
@@ -80,7 +80,7 @@ describe("#1156/#1505 — `may` items: tracked, never pushed", () => {
     const { doseId } = seedItem(p, "Ashwagandha (test)", { obligation: "may" });
 
     // No notification…
-    expect(buildSupplementReminder(p, "Morning")).toBeNull();
+    expect(buildIntakeReminder(p, "Morning")).toBeNull();
     expect(buildIntakeReminderForSlots(p, ["Morning"])).toBeNull();
 
     // …and since #1505 no Upcoming row either: the ONE predicate now gates the whole
@@ -96,7 +96,7 @@ describe("#1156/#1505 — `may` items: tracked, never pushed", () => {
     seedItem(p, "Ashwagandha (test)", { obligation: "may" });
     seedItem(p, "Vitamin D (test)", { obligation: "should" });
 
-    const msg = buildSupplementReminder(p, "Morning");
+    const msg = buildIntakeReminder(p, "Morning");
     expect(msg).not.toBeNull();
     expect(msg!.body).toContain("Vitamin D (test)");
     expect(msg!.body).not.toContain("Ashwagandha (test)");
@@ -118,7 +118,7 @@ describe("#1156/#1505 — `may` items: tracked, never pushed", () => {
       kind: "medication",
       obligation: "may",
     });
-    const msg = buildSupplementReminder(p, "Morning");
+    const msg = buildIntakeReminder(p, "Morning");
     expect(msg).not.toBeNull();
     expect(msg!.body).toContain("Testoprim (test med)");
     expect(msg!.body).not.toContain("Testoprim PRN (test med)");
@@ -189,11 +189,11 @@ describe("#1156/#1505 — `may` items: tracked, never pushed", () => {
     // SEND floor — the floor is applied at assembly, never here.
     const gathered = collectWindowDoses(p, "Morning", today(p));
     expect(
-      gathered.some((e) => e.supp.name === "Critical Should Supp (test)")
+      gathered.some((e) => e.item.name === "Critical Should Supp (test)")
     ).toBe(true);
     // …and the send DOES go out (a `should` is pushed) — but escalation refuses it,
     // because escalation asks obligation, not the send floor.
-    expect(buildSupplementReminder(p, "Morning")).not.toBeNull();
+    expect(buildIntakeReminder(p, "Morning")).not.toBeNull();
     expect(escalatesOnMiss({ obligation: "should" })).toBe(false);
 
     // A `may` item, by contrast, is not even due, so it never reaches the gather.
@@ -203,6 +203,6 @@ describe("#1156/#1505 — `may` items: tracked, never pushed", () => {
       critical: 1,
     });
     expect(collectWindowDoses(q, "Morning", today(q))).toEqual([]);
-    expect(buildSupplementReminder(q, "Morning")).toBeNull();
+    expect(buildIntakeReminder(q, "Morning")).toBeNull();
   });
 });

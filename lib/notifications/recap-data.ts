@@ -132,9 +132,9 @@ function windowAdherence(
 } | null {
   const active = getIntakeItems(profileId).filter((s) => s.active);
   if (active.length === 0) return null;
-  const suppById = new Map(active.map((s) => [s.id, s]));
+  const itemById = new Map(active.map((item) => [item.id, item]));
   const doses = getIntakeDoses(profileId).filter((d) =>
-    suppById.has(d.item_id)
+    itemById.has(d.item_id)
   );
   if (doses.length === 0) return null;
   // Per-day situation resolver (#654): each past day in the recap window is scored
@@ -154,7 +154,7 @@ function windowAdherence(
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
     const dueIds = doses
       .filter((dose) =>
-        doseDueOn(suppById.get(dose.item_id)!, dose, {
+        doseDueOn(itemById.get(dose.item_id)!, dose, {
           date: d,
           isWorkoutDay,
           activeSituations: situationsOn(d),

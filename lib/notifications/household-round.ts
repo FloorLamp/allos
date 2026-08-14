@@ -21,11 +21,8 @@
 import { today } from "../db";
 import { getPublicUrl, getProfileHouseholdRound } from "../settings";
 import { disambiguateProfileNames } from "../profile-disambiguation";
-import { collectWindowDoses } from "./supplements";
-import {
-  notifiableWindowDoses,
-  type IntakeSendSlot,
-} from "./supplement-format";
+import { collectWindowDoses } from "./intake";
+import { notifiableWindowDoses, type IntakeSendSlot } from "./intake-format";
 import { householdRoundMembers } from "./household-round-access";
 import {
   renderHouseholdRoundMessage,
@@ -76,8 +73,8 @@ function sectionFor(
       seen.add(entry.dose.id);
       doses.push({
         doseId: entry.dose.id,
-        itemId: entry.supp.id,
-        itemName: entry.supp.name,
+        itemId: entry.item.id,
+        itemName: entry.item.name,
         amount: entry.dose.amount,
       });
     }

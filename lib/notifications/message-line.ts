@@ -275,7 +275,7 @@ export const MESSAGE_LINE_MODULES: readonly { module: string; why: string }[] =
       why: "The periodic recap message (#32/#2178). The second system-initiated message a profile receives, and the surface that had drifted to a parenthesis grammar (#2389) — it is in scope precisely because it is not under lib/notifications/.",
     },
     {
-      module: "lib/notifications/supplement-format.ts",
+      module: "lib/notifications/intake-format.ts",
       why: "The dose reminder: per-dose body lines and the window title (#232/#380).",
     },
     {

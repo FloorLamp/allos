@@ -36,6 +36,8 @@ describe("shared intake-item vocabulary (#2484)", () => {
     for (const current of [
       "lib/intake-schedule.ts",
       "lib/intake-adherence.ts",
+      "lib/notifications/intake.ts",
+      "lib/notifications/intake-format.ts",
       "app/(app)/nutrition/intake-actions.ts",
       "components/IntakeItemCombobox.tsx",
     ]) {
@@ -44,10 +46,45 @@ describe("shared intake-item vocabulary (#2484)", () => {
     for (const retired of [
       "lib/supplement-schedule.ts",
       "lib/supplement-adherence.ts",
+      "lib/notifications/supplements.ts",
+      "lib/notifications/supplement-format.ts",
       "app/(app)/nutrition/supplement-actions.ts",
       "components/SupplementCombobox.tsx",
     ]) {
       expect(fs.existsSync(path.join(repo, retired)), retired).toBe(false);
     }
+  });
+
+  it("keeps medication-capable notification and adherence code item-neutral", () => {
+    const roots = [
+      "lib/notifications",
+      "lib/queries/intake",
+      "lib/intake-adherence.ts",
+      "lib/intake-schedule.ts",
+      "lib/household.ts",
+      "lib/adherence-patterns.ts",
+      "lib/refill-nudge.ts",
+      "lib/rule-findings.ts",
+      "lib/queries/upcoming/intake-safety.ts",
+      "app/(app)/nutrition/intake-actions.ts",
+    ];
+    const files = roots.flatMap((relative) => {
+      const absolute = path.join(repo, relative);
+      if (fs.statSync(absolute).isFile()) return [absolute];
+      return fs
+        .readdirSync(absolute, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
+        .map((entry) => path.join(entry.parentPath, entry.name));
+    });
+    const retired =
+      /\b(?:supp|supps|suppId|suppById|supplementId|supplementName)\b|\b(?:const|let|var)\s+supplements\b/;
+    const offenders = files
+      .map((file) => ({
+        file: path.relative(repo, file),
+        source: fs.readFileSync(file, "utf8"),
+      }))
+      .filter(({ source }) => retired.test(source))
+      .map(({ file }) => file);
+    expect(offenders).toEqual([]);
   });
 });

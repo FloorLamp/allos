@@ -1376,7 +1376,7 @@ export function buildGoalPacingFindings(
 // ---- Domain 3: adherence pattern detection (Supplements & Meds) ------------
 
 // An adherence-pattern observation → the shared Finding envelope. Calm/observational
-// ("info" tone, like a stale-exercise FYI), deep-linking to the medicine page where
+// ("info" tone, like a stale-exercise FYI), deep-linking to the intake surface where
 // the dose can be re-timed.
 function adherencePatternToFinding(p: AdherencePattern): Finding {
   return {
@@ -1405,8 +1405,8 @@ export function buildAdherencePatternFindings(
   profileId: number,
   today: string
 ): Finding[] {
-  const supplements = getIntakeItems(profileId);
-  const suppById = new Map(supplements.map((s) => [s.id, s]));
+  const items = getIntakeItems(profileId);
+  const itemById = new Map(items.map((item) => [item.id, item]));
   const doses = getIntakeDoses(profileId);
   // The profile's timezone resolves the UTC creation stamps onto the same profile-local
   // calendar the `dates` window is built from (#1442).
@@ -1426,9 +1426,9 @@ export function buildAdherencePatternFindings(
 
   const inputs: DoseAdherenceInput[] = [];
   for (const d of doses) {
-    const supp = suppById.get(d.item_id);
+    const item = itemById.get(d.item_id);
     // Only active, scheduled (non-PRN) items produce due days to miss.
-    if (!supp || !supp.active || isOnDemand(supp)) continue;
+    if (!item || !item.active || isOnDemand(item)) continue;
     const status = takenByDose.get(d.id);
     // Clamp the window to the dose's EXISTENCE, and to nothing else (#1973).
     //
@@ -1442,7 +1442,7 @@ export function buildAdherencePatternFindings(
     // WIDENED by logged history, because a log is proof the dose existed on its date
     // (#1442). It is the same bound the adherence strip clamps to, so a pattern and the
     // strip it summarizes still cannot disagree about a day (#221).
-    const exists = doseWindowSince(supp.created_at, d.created_at, status, tz);
+    const exists = doseWindowSince(item.created_at, d.created_at, status, tz);
     // …plus the ONE case effective-dating cannot reach: a dose re-timed BEFORE #1973
     // shipped, whose old slot no version records. `updated_at` says a change happened
     // but not what it replaced, so those days cannot be judged — and judging them by
@@ -1458,7 +1458,7 @@ export function buildAdherencePatternFindings(
       doseStrip(
         windowDates,
         (date) =>
-          doseDueOn(supp, d, {
+          doseDueOn(item, d, {
             date,
             isWorkoutDay: workoutDays.has(date),
             activeSituations: situationsOn(date),
@@ -1469,7 +1469,7 @@ export function buildAdherencePatternFindings(
     );
     inputs.push({
       doseId: d.id,
-      supplementName: supp.name,
+      itemName: item.name,
       bucket: timeBucket(d.time_of_day),
       strip,
       // Episode anchor = the current year (#436): a same-weekday habit that recurs a
@@ -1485,7 +1485,7 @@ export function buildAdherencePatternFindings(
       // proportionate answer; erasing the history was not.
       suppressMoveSuggestion:
         timeBucket(d.time_of_day) === "Before sleep" ||
-        supp.kind === "medication" ||
+        item.kind === "medication" ||
         (windowDates.length > 0 && doseSlotChangedSince(d, windowDates[0])),
     });
   }

@@ -9,7 +9,7 @@ import {
   recordPreventiveDone,
   setPreventiveOverride,
   snoozeFinding,
-  supplementExists,
+  intakeItemExists,
   getDoseEscalateChatId,
   escalationAckState,
   logAdministration,
@@ -136,11 +136,11 @@ import {
   collectWindowDoses,
   slotSessionForKeyboard,
   withDoseCorrections,
-} from "./supplements";
+} from "./intake";
 import {
   notifiableWindowDoses,
   renderMergedIntakeMessage,
-} from "./supplement-format";
+} from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { countVisibleFoodButtons } from "./food-format";
 import { FOOD_QUICK_COUNT } from "../food-rank";
@@ -565,10 +565,10 @@ function applyRefillTap(
   profileId: number,
   rf: RefillCallback
 ): RefillTapOutcome {
-  if (!supplementExists(profileId, rf.suppId)) return "stale-item";
+  if (!intakeItemExists(profileId, rf.itemId)) return "stale-item";
   snoozeFinding(
     profileId,
-    refillSignalKey(rf.suppId),
+    refillSignalKey(rf.itemId),
     shiftDateStr(today(profileId), REFILL_SNOOZE_DAYS)
   );
   return "snoozed";
@@ -622,7 +622,7 @@ async function handleEscalationTap(
   // have FANNED OUT to for this profile (issue #1072 — each managing login's chat,
   // deduped) plus the escalate override of the supplement the tapped DOSE actually
   // belongs to (issue #615). The caregiver chat is derived from the dose row, NOT
-  // from the token's supp id — otherwise a token could pair supplement X's escalate
+  // from the token's item id — otherwise a token could pair supplement X's escalate
   // chat with a dose of supplement Y, letting X's caregiver confirm/silence Y's
   // doses. The fan-out set resolves through grants, so a forged id can't widen it.
   const authorizedChats = [
@@ -646,7 +646,7 @@ async function handleEscalationTap(
     const outcome = markDoseSkipped(
       profileId,
       esc.doseId,
-      esc.suppId,
+      esc.itemId,
       esc.date
     );
     await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome), {
@@ -668,7 +668,7 @@ async function handleEscalationTap(
     // anywhere. Left unattributed, it behaves like a web one-tap — its correction row
     // rides the newest live dose message — which keeps the chat-side correction
     // reachable instead of burying it on a closed message.
-    const outcome = markDoseTaken(profileId, esc.doseId, esc.suppId, esc.date);
+    const outcome = markDoseTaken(profileId, esc.doseId, esc.itemId, esc.date);
     await answerCallbackQuery(
       cq.id,
       tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome)),
@@ -836,7 +836,7 @@ async function handleDoseTap(
     return;
   }
 
-  // markDoseTaken/markDoseSkipped independently verify the dose → supplement →
+  // markDoseTaken/markDoseSkipped independently verify the dose → item →
   // profile chain before writing, so a forged dose id from another profile is
   // rejected there. The message the button lives in is a frozen snapshot — the
   // dose may have been deleted/retired by an edit, or its item paused, since it
@@ -852,14 +852,14 @@ async function handleDoseTap(
       ? markDoseTaken(
           profileId,
           tap.doseId,
-          tap.suppId,
+          tap.itemId,
           tap.date,
           undefined,
           chatId != null && messageId != null
             ? messagePointerIdAt(profileId, chatId, messageId)
             : null
         )
-      : markDoseSkipped(profileId, tap.doseId, tap.suppId, tap.date);
+      : markDoseSkipped(profileId, tap.doseId, tap.itemId, tap.date);
   await answerCallbackQuery(
     cq.id,
     kind === "take"
@@ -1083,7 +1083,7 @@ async function handleAllTaken(
       markDoseTaken(
         profileId,
         e.dose.id,
-        e.supp.id,
+        e.item.id,
         all.date,
         undefined,
         notifyMessageId

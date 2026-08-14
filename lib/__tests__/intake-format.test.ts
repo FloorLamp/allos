@@ -5,7 +5,7 @@ import {
   intakeWindowNoun,
   intakeItemNoun,
   type WindowDose,
-} from "../notifications/supplement-format";
+} from "../notifications/intake-format";
 import type { IntakeItemKind } from "../types";
 import type { AdherenceSummary } from "../intake-adherence";
 import type {
@@ -15,7 +15,7 @@ import type {
   IntakeObligation,
 } from "../types";
 
-function supp(
+function item(
   id: number,
   name: string,
   obligation: IntakeObligation = "should",
@@ -69,13 +69,13 @@ function supp(
 
 function dose(
   id: number,
-  supplementId: number,
+  itemId: number,
   amount: string | null,
   foodTiming: FoodTiming = "any"
 ): IntakeDose {
   return {
     id,
-    item_id: supplementId,
+    item_id: itemId,
     amount,
     time_of_day: "morning",
     food_timing: foodTiming,
@@ -100,7 +100,7 @@ const NONE: AdherenceSummary = {
 
 function entry(opts: {
   doseId: number;
-  suppId: number;
+  itemId: number;
   name: string;
   amount?: string | null;
   taken?: boolean;
@@ -114,12 +114,12 @@ function entry(opts: {
   return {
     dose: dose(
       opts.doseId,
-      opts.suppId,
+      opts.itemId,
       opts.amount ?? null,
       opts.food ?? "any"
     ),
-    supp: supp(
-      opts.suppId,
+    item: item(
+      opts.itemId,
       opts.name,
       opts.obligation ?? "should",
       opts.kind ?? "supplement",
@@ -138,7 +138,7 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
       entry({
         doseId: 10,
-        suppId: 1,
+        itemId: 1,
         name: "Acetaminophen",
         amount: "160 mg",
         kind: "medication",
@@ -152,12 +152,12 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
       entry({
         doseId: 10,
-        suppId: 1,
+        itemId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
         obligation: "must",
       }),
-      entry({ doseId: 11, suppId: 2, name: "Magnesium", amount: "400 mg" }),
+      entry({ doseId: 11, itemId: 2, name: "Magnesium", amount: "400 mg" }),
     ]);
     expect(msg.title).toBe("💊 Morning supplements");
     expect(msg.body).toBe("🔴 Vitamin D — 2000 IU\n• Magnesium — 400 mg");
@@ -174,8 +174,8 @@ describe("renderWindowMessage", () => {
 
   it("omits the All button when only one dose is pending", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, suppId: 1, name: "Vitamin D", amount: "2000 IU" }),
-      entry({ doseId: 11, suppId: 2, name: "Magnesium", taken: true }),
+      entry({ doseId: 10, itemId: 1, name: "Vitamin D", amount: "2000 IU" }),
+      entry({ doseId: 11, itemId: 2, name: "Magnesium", taken: true }),
     ]);
     // Only the single pending dose's ✅ take + ⏭️ skip — no redundant "All".
     expect(msg.actions).toEqual([
@@ -188,12 +188,12 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(2, "Evening", DATE, [
       entry({
         doseId: 10,
-        suppId: 1,
+        itemId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
         taken: true,
       }),
-      entry({ doseId: 11, suppId: 2, name: "Magnesium", amount: "400 mg" }),
+      entry({ doseId: 11, itemId: 2, name: "Magnesium", amount: "400 mg" }),
     ]);
     expect(msg.title).toBe("💊 Evening supplements");
     // pending first, taken (✅) after
@@ -209,19 +209,19 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
       entry({
         doseId: 10,
-        suppId: 1,
+        itemId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
         taken: true,
       }),
       entry({
         doseId: 11,
-        suppId: 2,
+        itemId: 2,
         name: "Magnesium",
         amount: "400 mg",
         taken: true,
       }),
-      entry({ doseId: 12, suppId: 3, name: "Omega-3", taken: true }),
+      entry({ doseId: 12, itemId: 3, name: "Omega-3", taken: true }),
     ]);
     expect(msg.title).toBe("💊 Morning supplements — all 3 taken ✅");
     expect(msg.body).toBe(
@@ -235,14 +235,14 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
       entry({
         doseId: 10,
-        suppId: 1,
+        itemId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
         food: "with_fat",
       }),
       entry({
         doseId: 11,
-        suppId: 2,
+        itemId: 2,
         name: "Zinc",
         food: "empty_stomach",
         taken: true,
@@ -254,7 +254,7 @@ describe("renderWindowMessage", () => {
 
   it("omits the take-with note when the dose is 'any' food timing", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, suppId: 1, name: "Creatine", food: "any" }),
+      entry({ doseId: 10, itemId: 1, name: "Creatine", food: "any" }),
     ]);
     expect(msg.body).toBe("• Creatine");
   });
@@ -262,11 +262,11 @@ describe("renderWindowMessage", () => {
   it("carries a food–drug guidance note on a matching pending med (#154), pending only", () => {
     const msg = renderWindowMessage(1, "Evening", DATE, [
       // A statin pending → grapefruit guidance appended to the tail.
-      entry({ doseId: 10, suppId: 1, name: "Simvastatin", amount: "40 mg" }),
+      entry({ doseId: 10, itemId: 1, name: "Simvastatin", amount: "40 mg" }),
       // A taken statin dose drops the guidance (moot once taken).
       entry({
         doseId: 11,
-        suppId: 2,
+        itemId: 2,
         name: "Simvastatin",
         amount: "40 mg",
         taken: true,
@@ -288,7 +288,7 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
       entry({
         doseId: 10,
-        suppId: 1,
+        itemId: 1,
         name: "Vitamin D",
         amount: "2000 IU",
         obligation: "must",
@@ -297,7 +297,7 @@ describe("renderWindowMessage", () => {
       }),
       entry({
         doseId: 11,
-        suppId: 2,
+        itemId: 2,
         name: "Magnesium",
         adherence: { pct: 50 },
       }),
@@ -315,7 +315,7 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(1, "Bedtime", DATE, [
       entry({
         doseId: 10,
-        suppId: 1,
+        itemId: 1,
         name: "Magnesium",
         amount: "400 mg",
         food: "with_food",
@@ -329,9 +329,9 @@ describe("renderWindowMessage", () => {
 
   it("sorts pending by priority then name, keeping buttons aligned with the lines", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, suppId: 1, name: "Zinc", obligation: "may" }),
-      entry({ doseId: 11, suppId: 2, name: "Creatine", obligation: "must" }),
-      entry({ doseId: 12, suppId: 3, name: "Iron", obligation: "should" }),
+      entry({ doseId: 10, itemId: 1, name: "Zinc", obligation: "may" }),
+      entry({ doseId: 11, itemId: 2, name: "Creatine", obligation: "must" }),
+      entry({ doseId: 12, itemId: 3, name: "Iron", obligation: "should" }),
     ]);
     expect(msg.body).toBe("🔴 Creatine\n• Iron\n• Zinc");
     // Buttons follow the sorted lines; each dose contributes ✅ then ⏭️. #232
@@ -358,15 +358,15 @@ describe("renderWindowMessage", () => {
 
   it("titles a medications-only window 'medications', not 'supplements' (#380)", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, suppId: 1, name: "Lisinopril", kind: "medication" }),
+      entry({ doseId: 10, itemId: 1, name: "Lisinopril", kind: "medication" }),
     ]);
     expect(msg.title).toBe("💊 Morning medications");
   });
 
   it("titles a mixed window 'supplements & meds' (#380)", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [
-      entry({ doseId: 10, suppId: 1, name: "Lisinopril", kind: "medication" }),
-      entry({ doseId: 11, suppId: 2, name: "Vitamin D", kind: "supplement" }),
+      entry({ doseId: 10, itemId: 1, name: "Lisinopril", kind: "medication" }),
+      entry({ doseId: 11, itemId: 2, name: "Vitamin D", kind: "supplement" }),
     ]);
     expect(msg.title).toBe("💊 Morning supplements & meds");
   });
@@ -375,7 +375,7 @@ describe("renderWindowMessage", () => {
     const msg = renderWindowMessage(1, "Evening", DATE, [
       entry({
         doseId: 10,
-        suppId: 1,
+        itemId: 1,
         name: "Metformin",
         kind: "medication",
         taken: true,

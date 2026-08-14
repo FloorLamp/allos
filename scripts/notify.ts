@@ -23,12 +23,12 @@
 import "./load-env";
 
 import {
-  buildSupplementReminder,
+  buildIntakeReminder,
   buildIntakeReminderForSlots,
   getPreWorkoutSlotMinute,
   type IntakeSendSlot,
   type ReminderWindow,
-} from "../lib/notifications/supplements";
+} from "../lib/notifications/intake";
 import {
   buildHouseholdRound,
   householdRoundMarkerKey,
@@ -168,7 +168,7 @@ async function manual(arg: string, profileId: number) {
   let msg: NotificationMessage | null;
   if (arg === "workout") msg = buildWorkoutTargetReminder(profileId);
   else if (arg === "practice") msg = buildPracticeReminder(profileId);
-  else if (WINDOWS[arg]) msg = buildSupplementReminder(profileId, WINDOWS[arg]);
+  else if (WINDOWS[arg]) msg = buildIntakeReminder(profileId, WINDOWS[arg]);
   else {
     console.error(
       "Usage: npm run notify -- <morning|midday|evening|bedtime|workout|practice> [--profile <id>]"

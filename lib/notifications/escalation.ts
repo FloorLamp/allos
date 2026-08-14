@@ -42,8 +42,8 @@ export const ESCALATION_SUPPRESSION_POLICY: LifecycleSuppressionPolicy =
 // the timing/dedup rules to decide whether it actually does this tick.
 export interface EscalationCandidate {
   doseId: number;
-  supplementId: number;
-  supplementName: string;
+  itemId: number;
+  itemName: string;
   amount: string | null;
   product?: string | null;
   window: EscalationWindow;
@@ -81,8 +81,8 @@ export interface EscalationDecisionInput {
 
 export interface EscalationDue {
   doseId: number;
-  supplementId: number;
-  supplementName: string;
+  itemId: number;
+  itemName: string;
   amount: string | null;
   product?: string | null;
   window: EscalationWindow;
@@ -138,8 +138,8 @@ export function escalationsDue(
     if (input.nowMinutes < threshold) continue;
     out.push({
       doseId: c.doseId,
-      supplementId: c.supplementId,
-      supplementName: c.supplementName,
+      itemId: c.itemId,
+      itemName: c.itemName,
       amount: c.amount,
       ...(c.product ? { product: c.product } : {}),
       window: c.window,
@@ -178,8 +178,8 @@ export function elapsedLabel(minutes: number): string {
 // and 👍 I'm on it acknowledges + suppresses re-nudge WITHOUT claiming the dose was
 // taken. Without Skip, "we decided not to give it" forced a false confirm, an
 // indefinite ack, or an app visit. All three authorize by chat id — the escalation may
-// go to the supp's escalate_chat_id, which the tap handler accepts alongside the
-// profile's own chat. The token carries ids only (profile/dose/supp) plus the day, so
+// go to the item's escalate_chat_id, which the tap handler accepts alongside the
+// profile's own chat. The token carries ids only (profile/dose/item) plus the day, so
 // a late tap still resolves the right dose to the right date. A deep link rides along
 // when a public URL is configured (every sibling builder carries one).
 export function renderEscalationMessage(
@@ -192,22 +192,22 @@ export function renderEscalationMessage(
   const who = profileName ? `${profileName} — ` : "";
   const dose = formatMedicationDoseProduct(due.amount, due.product);
   const amt = dose ? ` (${dose})` : "";
-  const suppId = due.supplementId;
+  const itemId = due.itemId;
   const base = deepLinkBase.replace(/\/$/, "");
   const actions: NotificationAction[] = [
     {
       label: `${GLYPH.done} Confirmed taken`,
-      data: `esctake:${profileId}:${due.doseId}:${suppId}:${date}`,
+      data: `esctake:${profileId}:${due.doseId}:${itemId}:${date}`,
       row: "esc",
     },
     {
       label: `${GLYPH.skipped} Skip`,
-      data: `escskip:${profileId}:${due.doseId}:${suppId}:${date}`,
+      data: `escskip:${profileId}:${due.doseId}:${itemId}:${date}`,
       row: "esc",
     },
     {
       label: `${GLYPH.acknowledged} I'm on it`,
-      data: `escack:${profileId}:${due.doseId}:${suppId}:${date}`,
+      data: `escack:${profileId}:${due.doseId}:${itemId}:${date}`,
       row: "esc",
     },
   ];
@@ -219,9 +219,9 @@ export function renderEscalationMessage(
     });
   }
   return {
-    title: `${GLYPH.caution} Missed dose: ${who}${due.supplementName}`,
+    title: `${GLYPH.caution} Missed dose: ${who}${due.itemName}`,
     body:
-      `${due.supplementName}${amt} — ${escalationWindowPhrase(due.window)} slot, ` +
+      `${due.itemName}${amt} — ${escalationWindowPhrase(due.window)} slot, ` +
       `unconfirmed for ${elapsedLabel(due.unconfirmedMinutes)}.`,
     kind: "escalation",
     actions,

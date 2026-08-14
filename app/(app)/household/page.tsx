@@ -44,7 +44,7 @@ import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
 import {
   goalHighlights,
-  supplementAdherenceToday,
+  intakeAdherenceToday,
   weightTrend,
 } from "@/lib/household";
 import { fmtWeight } from "@/lib/units";
@@ -89,15 +89,15 @@ export default async function HouseholdPage() {
     const pid = profile.id;
     const day = today(pid);
 
-    // Today's supplement adherence (x/y): due doses honored via isDueOn.
-    const activeSuppById = new Map(
+    // Today's intake adherence (x/y): due doses honored via isDueOn.
+    const activeItemById = new Map(
       getIntakeItems(pid)
         .filter((s) => s.active)
         .map((s) => [s.id, s])
     );
-    const adherence = supplementAdherenceToday(
+    const adherence = intakeAdherenceToday(
       getIntakeDoses(pid),
-      activeSuppById,
+      activeItemById,
       {
         date: day,
         isWorkoutDay: getActivitiesByDate(pid, day).length > 0,

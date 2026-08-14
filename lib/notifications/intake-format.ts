@@ -1,5 +1,5 @@
-// Pure rendering for the supplement reminder — kept DB-free so it's unit-tested
-// (lib/__tests__). supplements.ts gathers a window's doses (with taken state and
+// Pure rendering for the intake reminder — kept DB-free so it's unit-tested
+// (lib/__tests__). intake.ts gathers a window's doses (with taken state and
 // recent adherence) and hands them here. Listing already-taken doses (not just
 // the pending ones) is what lets a reminder reflect what's been taken this
 // session; once every dose is taken the same renderer produces a completion
@@ -36,7 +36,7 @@ import { MED_STOP_PREFIX } from "./callback-data";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
-// A supplement-reminder SEND SLOT (issue #1154): one of the four fixed
+// An intake-reminder SEND SLOT (issue #1154): one of the four fixed
 // time-of-day windows, or the workout-relative "PreWorkout" pseudo-slot — the
 // send timed off the inferred training hour rather than a fixed bucket. The
 // pseudo-slot exists only for `anytime` + `pre_workout` doses when a training
@@ -101,7 +101,7 @@ export function doseSendSlot(
 // body lines AND buttons — while medications are never gated (safety tier).
 // In-app surfaces don't route through this; dueness is untouched.
 export function notifiableWindowDoses(entries: WindowDose[]): WindowDose[] {
-  return entries.filter((e) => isPushedIntake(e.supp));
+  return entries.filter((e) => isPushedIntake(e.item));
 }
 
 // The noun a reminder/summary uses for its items, chosen from the ACTUAL kinds in
@@ -135,13 +135,13 @@ export function intakeItemNoun(kinds: Iterable<IntakeItemKind>): string {
   return "supplement";
 }
 
-// A dose due in a window, paired with its supplement, whether it's already been
+// A dose due in a window, paired with its intake item, whether it's already been
 // taken or deliberately skipped (#232) today, and its adherence over the recent
 // window (the adherence percentage). A dose is "pending" only when neither taken nor
 // skipped — both resolutions clear it from the reminder.
 export interface WindowDose {
   dose: IntakeDose;
-  supp: IntakeItem;
+  item: IntakeItem;
   taken: boolean;
   skipped: boolean;
   // This item is currently a DEMOTION CANDIDATE (#1505 part 2) — sustainedly untaken
@@ -177,8 +177,8 @@ export interface WindowDose {
 
 function byPriority(a: WindowDose, b: WindowDose): number {
   return (
-    OBLIGATION_ORDER[a.supp.obligation] - OBLIGATION_ORDER[b.supp.obligation] ||
-    a.supp.name.localeCompare(b.supp.name)
+    OBLIGATION_ORDER[a.item.obligation] - OBLIGATION_ORDER[b.item.obligation] ||
+    a.item.name.localeCompare(b.item.name)
   );
 }
 
@@ -190,7 +190,7 @@ function foodNote(dose: IntakeDose): string {
     : FOOD_TIMING_LABELS[dose.food_timing].toLowerCase();
 }
 
-// The adherence percentage, matching what the supplements page shows. The "🔥 Nd"
+// The adherence percentage, matching what the intake surfaces show. The "🔥 Nd"
 // streak that led this note is gone (#1936) — same run-with-a-cliff the page dropped,
 // and a reminder is the last place to carry one: the message that arrives when you
 // have NOT yet taken today's dose should not also tell you what you stand to lose.
@@ -210,14 +210,14 @@ function doseLine(
   age: number | null
 ): string {
   const doseDetail =
-    e.supp.kind === "medication"
-      ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
+    e.item.kind === "medication"
+      ? formatMedicationDoseProduct(e.dose.amount, e.item.product)
       : e.dose.amount;
   const mark = e.taken
     ? GLYPH.done
     : e.skipped
       ? GLYPH.skipped
-      : e.supp.obligation === "must"
+      : e.item.obligation === "must"
         ? GLYPH.required
         : GLYPH.bullet;
   const tail: string[] = [];
@@ -252,9 +252,9 @@ function doseLine(
     const foodDrug = foodGuidanceReminderNote(
       matchFoodInteractions(
         {
-          name: e.supp.name,
-          rxcui: e.supp.rxcui,
-          rxcuiIngredients: parseRxcuiIngredients(e.supp.rxcui_ingredients),
+          name: e.item.name,
+          rxcui: e.item.rxcui,
+          rxcuiIngredients: parseRxcuiIngredients(e.item.rxcui_ingredients),
         },
         age
       )
@@ -267,7 +267,7 @@ function doseLine(
   // the adherence percentage that follow are punctuated by the grammar and not here.
   return formatMessageLine({
     glyph: mark,
-    head: e.supp.name,
+    head: e.item.name,
     notes: [doseDetail, ...tail],
   });
 }
@@ -297,7 +297,7 @@ export function renderWindowMessage(
   // Name the items by their actual kinds so a medications-only window isn't
   // titled "supplements" (#380). Derived from every entry in the window (taken +
   // pending) so the noun is stable across the session's messages.
-  const noun = intakeWindowNoun(entries.map((e) => e.supp.kind));
+  const noun = intakeWindowNoun(entries.map((e) => e.item.kind));
 
   if (pending.length === 0) {
     const takenN = resolved.filter((e) => e.taken).length;
@@ -330,7 +330,7 @@ export function renderWindowMessage(
 }
 
 // The button set for one slot's pending doses. Each pending dose gets a ✅ take
-// and a ⏭️ skip button, side by side (same `row` group). The dose + supplement id
+// and a ⏭️ skip button, side by side (same `row` group). The dose + item id
 // and date are baked into each token so a late tap still resolves the correct
 // dose to the correct day. There is NO "skip all" — a blanket skip is a footgun
 // (#232); skip stays per-dose only. With 2+ doses pending, a single "✅ All" tap
@@ -352,16 +352,16 @@ function doseSessionActions(
       data: `all:${profileId}:${slot}:${date}`,
     });
   }
-  for (const { dose, supp, demotable, stoppable } of pending) {
+  for (const { dose, item, demotable, stoppable } of pending) {
     const row = `dose:${dose.id}`;
     actions.push({
-      label: `${GLYPH.done} ${supp.name}`,
-      data: `take:${profileId}:${dose.id}:${supp.id}:${date}`,
+      label: `${GLYPH.done} ${item.name}`,
+      data: `take:${profileId}:${dose.id}:${item.id}:${date}`,
       row,
     });
     actions.push({
       label: `${GLYPH.skipped} Skip`,
-      data: `skip:${profileId}:${dose.id}:${supp.id}:${date}`,
+      data: `skip:${profileId}:${dose.id}:${item.id}:${date}`,
       row,
     });
     // Take / Skip / DEMOTE (#1505 part 2). Present only past the detection threshold,
@@ -372,7 +372,7 @@ function doseSessionActions(
     if (demotable) {
       actions.push({
         label: "⤓ May",
-        data: `demote:${profileId}:${supp.id}:${date}`,
+        data: `demote:${profileId}:${item.id}:${date}`,
         row,
       });
     }
@@ -389,7 +389,7 @@ function doseSessionActions(
     if (stoppable) {
       actions.push({
         label: `${GLYPH.finish} Stop`,
-        data: `${MED_STOP_PREFIX}:${profileId}:${supp.id}:${date}`,
+        data: `${MED_STOP_PREFIX}:${profileId}:${item.id}:${date}`,
         row,
       });
     }
@@ -404,7 +404,7 @@ export interface IntakeSlotPart {
 }
 
 // Render ONE message covering every slot due this hour (issue #1154: at-most-one
-// supplement dose reminder per hour). A single slot renders EXACTLY the classic
+// intake dose reminder per hour). A single slot renders EXACTLY the classic
 // window message; two or more slots merge into one send — each slot's section
 // under a slot heading, pending-first within its section, per-dose buttons plus a
 // per-slot "✅ All <slot>" — so two windows configured at the same hour (or the
@@ -428,7 +428,7 @@ export function renderMergedIntakeMessage(
   }
 
   const all = parts.flatMap((p) => p.entries);
-  const noun = intakeWindowNoun(all.map((e) => e.supp.kind));
+  const noun = intakeWindowNoun(all.map((e) => e.item.kind));
   const labels = parts.map((p) => INTAKE_SLOT_LABELS[p.slot]);
   const pendingTotal = all.filter((e) => !e.taken && !e.skipped).length;
 

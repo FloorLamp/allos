@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   goalHighlights,
   pickNextAppointment,
-  supplementAdherenceToday,
+  intakeAdherenceToday,
   weightTrend,
 } from "@/lib/household";
 import type { OutcomeGoal, IntakeItem } from "@/lib/types";
@@ -86,7 +86,7 @@ function supp(overrides: Partial<IntakeItem> = {}): IntakeItem {
   };
 }
 
-describe("supplementAdherenceToday", () => {
+describe("intakeAdherenceToday", () => {
   const ctx = {
     date: "2026-03-04",
     isWorkoutDay: false,
@@ -103,7 +103,7 @@ describe("supplementAdherenceToday", () => {
       [1, supp({ id: 1, condition: "daily" })],
       [2, supp({ id: 2, condition: "daily" })],
     ]);
-    const adh = supplementAdherenceToday(doses, byId, ctx, new Set([10, 12]));
+    const adh = intakeAdherenceToday(doses, byId, ctx, new Set([10, 12]));
     expect(adh).toEqual({ taken: 2, due: 3 });
   });
 
@@ -113,7 +113,7 @@ describe("supplementAdherenceToday", () => {
       { id: 20, item_id: 99 }, // inactive/deleted supplement
     ];
     const byId = new Map([[1, supp({ id: 1 })]]);
-    const adh = supplementAdherenceToday(doses, byId, ctx, new Set([10, 20]));
+    const adh = intakeAdherenceToday(doses, byId, ctx, new Set([10, 20]));
     expect(adh).toEqual({ taken: 1, due: 1 });
   });
 
@@ -131,7 +131,7 @@ describe("supplementAdherenceToday", () => {
       isWorkoutDay: true,
       activeSituations: new Set<string>(),
     };
-    const adh = supplementAdherenceToday(
+    const adh = intakeAdherenceToday(
       doses,
       byId,
       workoutCtx,
@@ -147,7 +147,7 @@ describe("supplementAdherenceToday", () => {
     const byId = new Map([
       [1, supp({ id: 1, condition: "situational", situation: "Travel" })],
     ]);
-    expect(supplementAdherenceToday(doses, byId, ctx, new Set())).toEqual({
+    expect(intakeAdherenceToday(doses, byId, ctx, new Set())).toEqual({
       taken: 0,
       due: 0,
     });
@@ -156,9 +156,10 @@ describe("supplementAdherenceToday", () => {
       isWorkoutDay: false,
       activeSituations: new Set(["Travel"]),
     };
-    expect(
-      supplementAdherenceToday(doses, byId, travel, new Set([10]))
-    ).toEqual({ taken: 1, due: 1 });
+    expect(intakeAdherenceToday(doses, byId, travel, new Set([10]))).toEqual({
+      taken: 1,
+      due: 1,
+    });
   });
 });
 

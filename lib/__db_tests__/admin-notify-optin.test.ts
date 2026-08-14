@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import { setTelegramBotConfig, setTimezone } from "@/lib/settings";
-import { buildIntakeReminderForSlots } from "@/lib/notifications/supplements";
+import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
 import { prefixForProfile } from "@/lib/notifications/attribution";
 import { prefixMessage } from "@/lib/notifications/types";
 import {

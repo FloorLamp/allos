@@ -62,7 +62,7 @@ export const WEEKEND_RATIO = 2;
 // the intake surface dismiss action guards the whole domain with a single prefix check
 // (mirroring the training-observation / trajectory actions, #39/#45). Keyed on the
 // DOSE id (AUTOINCREMENT, never recycles — AGENTS.md #203), so a rename/re-time of
-// the supplement never re-attaches a stale dismissal to a different slot.
+// the item never re-attaches a stale dismissal to a different slot.
 export const ADHERENCE_PREFIX = "adherence:";
 
 // Legacy (pre-#436, episode-less) key builders — the old dose+weekday shapes. Kept
@@ -119,7 +119,7 @@ export interface AdherencePattern {
 // strip over the window (oldest-first).
 export interface DoseAdherenceInput {
   doseId: number;
-  supplementName: string;
+  itemName: string;
   bucket: TimeBucket;
   strip: AdherenceDot[];
   // The coarse period anchor (the current year, YYYY) appended to the finding's
@@ -260,9 +260,9 @@ export function detectWeekdayMissPattern(
     kind: "weekday",
     key: weekdayMissSignalKey(input.doseId, bestWd, input.periodAnchor ?? ""),
     legacyKey: weekdayMissLegacyKey(input.doseId, bestWd),
-    title: `${input.supplementName}: ${day}s slip`,
+    title: `${input.itemName}: ${day}s slip`,
     detail:
-      `You miss your ${bucketLower} ${input.supplementName} dose most ${day}s ` +
+      `You miss your ${bucketLower} ${input.itemName} dose most ${day}s ` +
       `— ${miss[bestWd]} of the last ${occ[bestWd]}. ` +
       `${moveSuggestion(input.bucket, input.suppressMoveSuggestion ?? false)}`,
     doseId: input.doseId,
@@ -314,9 +314,9 @@ export function detectWeekendAsymmetry(
     kind: "weekend",
     key: weekendAsymmetrySignalKey(input.doseId, input.periodAnchor ?? ""),
     legacyKey: weekendAsymmetryLegacyKey(input.doseId),
-    title: `${input.supplementName}: weekends slip`,
+    title: `${input.itemName}: weekends slip`,
     detail:
-      `Your ${bucketLower} ${input.supplementName} dose slips more on weekends ` +
+      `Your ${bucketLower} ${input.itemName} dose slips more on weekends ` +
       `— missed ${wePct}% of weekend days versus ${wdPct}% on weekdays. A ` +
       `weekend-specific reminder might help.`,
     doseId: input.doseId,
@@ -339,7 +339,7 @@ export function detectDoseAdherencePatterns(
 }
 
 // Every adherence-pattern finding across a profile's scheduled doses, deterministic
-// (by supplement name, then dose id). The caller applies the shared findings-bus
+// (by item name, then dose id). The caller applies the shared findings-bus
 // suppression filter.
 export function detectAdherencePatterns(
   inputs: readonly DoseAdherenceInput[]
@@ -347,7 +347,7 @@ export function detectAdherencePatterns(
   const out: { pat: AdherencePattern; name: string; doseId: number }[] = [];
   for (const input of inputs)
     for (const pat of detectDoseAdherencePatterns(input))
-      out.push({ pat, name: input.supplementName, doseId: input.doseId });
+      out.push({ pat, name: input.itemName, doseId: input.doseId });
   return out
     .sort((a, b) => a.name.localeCompare(b.name) || a.doseId - b.doseId)
     .map((x) => x.pat);

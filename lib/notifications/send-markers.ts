@@ -43,7 +43,7 @@
 
 import type { ReviewCadence } from "../recap-scale";
 import type { FoodNudgeWindow } from "./food-format";
-import type { IntakeSendSlot } from "./supplement-format";
+import type { IntakeSendSlot } from "./intake-format";
 
 /**
  * How a send marker is protected from re-attaching to a subject it was never set for —
@@ -258,7 +258,7 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     cadence: "per-day",
     store: "profile_settings",
     shape:
-      "`<IntakeSendSlot>` — Morning / Midday / Evening / Bedtime / PreWorkout (lib/notifications/supplement-format)",
+      "`<IntakeSendSlot>` — Morning / Midday / Evening / Bedtime / PreWorkout (lib/notifications/intake-format)",
     value: "the profile-local date this slot's merged reminder was delivered",
     writer:
       "scripts/notify.ts (the hourly tick), read back by lib/notifications/escalate.ts to know which windows actually went out today",

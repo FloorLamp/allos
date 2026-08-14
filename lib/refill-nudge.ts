@@ -141,8 +141,8 @@ export function leftRefillTrackedSet(
 // The stable suppression/identity key for a refill finding: `refill:<id>`. The
 // SINGLE source of truth for the key — the Upcoming refill item (lib/queries/upcoming.ts)
 // AND this nudge derive from it, so a page dismissal and its push cousin line up.
-export function refillSignalKey(supplementId: number): string {
-  return `refill:${supplementId}`;
+export function refillSignalKey(itemId: number): string {
+  return `refill:${itemId}`;
 }
 
 // ── Shared supply pools (issue #1374) ────────────────────────────────────────

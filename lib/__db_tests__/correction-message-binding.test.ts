@@ -26,7 +26,7 @@ import { buildFoodNudge } from "@/lib/notifications/food";
 import {
   buildIntakeReminderForSlots,
   withDoseCorrections,
-} from "@/lib/notifications/supplements";
+} from "@/lib/notifications/intake";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import {

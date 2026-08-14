@@ -28,7 +28,7 @@ import { db, today } from "@/lib/db";
 import { setTelegramBotConfig, setTimezone } from "@/lib/settings";
 import { dispatch } from "@/lib/notifications";
 import { buildFoodNudge } from "@/lib/notifications/food";
-import { buildIntakeReminderForSlots } from "@/lib/notifications/supplements";
+import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import { liveMessagePointers } from "@/lib/notifications/message-pointers";
