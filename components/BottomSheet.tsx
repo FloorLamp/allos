@@ -137,6 +137,11 @@ export default function BottomSheet({
     grabRef: handleRef,
     direction: "down",
     onOutcome: onClose,
+    // The panel unmounts between opens, so the motion latch expires with it
+    // (#2725) — without this, one drag on a sheet whose COMPONENT never
+    // unmounts (the quick-log sheet, the quick-entry host) mutes its animations
+    // for the rest of the page's life.
+    panelMounted: mounted,
     enabled: open,
   });
 
@@ -144,20 +149,30 @@ export default function BottomSheet({
 
   const entering = phase === "enter";
   const asDialog = presentation === "dialog";
-  // A hand-dragged panel owns its own transform for the rest of its life (see
-  // useOverlayDrag) — emitting a keyframe class on top would outrank the inline
-  // transform and freeze the drag.
-  const motion = (anchor: "scrim" | "bottom" | "dialog") =>
-    suppressMotion
-      ? ""
-      : overlayMotionClass(anchor, entering ? "enter" : "exit", reduceMotion);
-  const backdropMotion = motion("scrim");
-  // The panel's travel. A plain sheet always slides up; the responsive dialog
-  // uses the "dialog" anchor, which IS the slide-up below `md` and becomes a
-  // fade from `md` up — the media query lives in the stylesheet so one class
-  // name covers both viewports (a JS width check would need a resize listener
-  // and would still be wrong between hydration and the first paint).
-  const panelMotion = motion(asDialog ? "dialog" : "bottom");
+  const motionPhase = entering ? "enter" : "exit";
+  // The scrim animates UNCONDITIONALLY — the drawer's and the switcher's shape
+  // (#2725). The `suppressMotion` latch below exists for one reason only: a
+  // running keyframe outranks the inline transform a drag writes, so the two
+  // cannot both own the same element. The scrim is not that element. Nothing
+  // ever writes an inline transform to it, so gating it bought no handshake and
+  // cost the exit fade: after a drag-dismiss the panel left under its inline
+  // settle while the backdrop sat at full opacity — `dark:bg-black/70` over the
+  // whole viewport — until the presence timer blinked it out. The fade IS the
+  // signal that the close is progressing; without it the screen just holds dark.
+  const backdropMotion = overlayMotionClass("scrim", motionPhase, reduceMotion);
+  // The panel's travel — and the one element the latch is about. A plain sheet
+  // always slides up; the responsive dialog uses the "dialog" anchor, which IS
+  // the slide-up below `md` and becomes a fade from `md` up — the media query
+  // lives in the stylesheet so one class name covers both viewports (a JS width
+  // check would need a resize listener and would still be wrong between
+  // hydration and the first paint).
+  const panelMotion = suppressMotion
+    ? ""
+    : overlayMotionClass(
+        asDialog ? "dialog" : "bottom",
+        motionPhase,
+        reduceMotion
+      );
 
   return createPortal(
     <div

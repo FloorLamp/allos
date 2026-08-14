@@ -33,6 +33,44 @@ import {
 // not an awaited Server Action, so there is no action response to carry a fresh
 // tree (docs/internals/server-action-refresh.md).
 //
+// ── Standing down for an overlay (#2725) ─────────────────────────────────────
+//
+// The listeners are on the WINDOW, so they see every touch in the app including
+// the ones inside a sheet, drawer or modal. A bottom sheet's drag-dismiss is
+// downward, starts from a page sitting at its top and travels far past the
+// arming distance, so `classifyPull` — which asks only about direction, travel
+// and scroll position — armed on it: in the installed app every drag-dismiss
+// fired a whole-page `router.refresh()` at the exact moment the sheet was
+// closing. (`touch-action: none` on the drag handle stops the browser's scroll
+// arbitration, not event delivery, so these listeners still saw every move.)
+//
+// `overlayOwnsViewport` is the fact `classifyPull` needs, read once per gesture.
+// It is TWO questions because neither alone is honest, and this was checked
+// rather than assumed:
+//
+//   * "is body scroll locked?" — `useLockBodyScroll` is the only writer of
+//     `body.style.overflow` in the app and all seven of its callers are
+//     full-screen surfaces, so a lock is never a false positive. But it MISSES
+//     four modal surfaces that never lock (ModalShell and its consumers,
+//     MergeConflictDialog, PhotoGallery, FitnessTestTimer), which scroll their
+//     own `fixed inset-0` container and leave `window.scrollY` at 0 underneath —
+//     precisely the state that arms a pull.
+//   * "is a modal dialog open?" — catches those four, and unlike "did the
+//     touchstart land inside a dialog" it also covers a drag that begins on the
+//     SCRIM, which is a sibling of the panel and inside no dialog at all. But it
+//     misses the workout dock, which is deliberately NOT `aria-modal` (a live
+//     session is not a modal decision) and whose minimize swipe has the same
+//     exposure by the same mechanics.
+//
+// Either fact alone means a full-screen surface is up, so the union is the
+// honest answer to "is the page what this finger is on?".
+function overlayOwnsViewport(): boolean {
+  return (
+    document.body.style.overflow === "hidden" ||
+    document.querySelector('[aria-modal="true"]') !== null
+  );
+}
+
 // `data-state` / `data-refreshes` on the indicator are the observable contract —
 // they are what the e2e spec asserts against, since "did router.refresh() get
 // called" is otherwise invisible from the outside. `data-refreshes` counts
@@ -46,7 +84,12 @@ export default function PullToRefresh() {
   const [pending, startTransition] = useTransition();
   // Gesture origin. A ref, not state: touchmove fires at frame rate and must not
   // re-render on every sample beyond the indicator's own state.
-  const start = useRef<{ y: number; x: number; scrollY: number } | null>(null);
+  const start = useRef<{
+    y: number;
+    x: number;
+    scrollY: number;
+    overlayOpen: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -61,7 +104,12 @@ export default function PullToRefresh() {
     const onStart = (e: TouchEvent) => {
       const t = e.touches[0];
       if (!t) return;
-      start.current = { y: t.clientY, x: t.clientX, scrollY: window.scrollY };
+      start.current = {
+        y: t.clientY,
+        x: t.clientX,
+        scrollY: window.scrollY,
+        overlayOpen: overlayOwnsViewport(),
+      };
       setState({ kind: "idle" });
     };
     const onMove = (e: TouchEvent) => {
@@ -70,6 +118,7 @@ export default function PullToRefresh() {
       if (!origin || !t) return;
       setState(
         classifyPull({
+          overlayOpen: origin.overlayOpen,
           startScrollY: origin.scrollY,
           scrollY: window.scrollY,
           deltaY: t.clientY - origin.y,

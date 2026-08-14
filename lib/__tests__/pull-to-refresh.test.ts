@@ -15,7 +15,14 @@ import {
 const ARMING_TRAVEL = PTR_TRIGGER_PX / PTR_RESISTANCE;
 
 function pull(over: Partial<PullInput> = {}): PullInput {
-  return { startScrollY: 0, scrollY: 0, deltaY: 0, deltaX: 0, ...over };
+  return {
+    overlayOpen: false,
+    startScrollY: 0,
+    scrollY: 0,
+    deltaY: 0,
+    deltaX: 0,
+    ...over,
+  };
 }
 
 describe("classifyPull", () => {
@@ -29,6 +36,22 @@ describe("classifyPull", () => {
     const state = classifyPull(pull({ deltaY: ARMING_TRAVEL - 2 }));
     expect(state.kind).toBe("pulling");
     expect(shouldRefresh(state)).toBe(false);
+  });
+
+  it("ignores a textbook-perfect pull while an overlay owns the viewport", () => {
+    // #2725. A bottom sheet's drag-dismiss satisfies every other clause — it is
+    // downward, it starts and stays at the top of the page behind, and it
+    // travels far past the arming distance — so without this one the gesture
+    // that CLOSES a sheet also refreshed the whole page underneath it.
+    const state = classifyPull(pull({ overlayOpen: true, deltaY: 400 }));
+    expect(state.kind).toBe("idle");
+    expect(shouldRefresh(state)).toBe(false);
+  });
+
+  it("refuses on the overlay alone — every other clause held", () => {
+    // The control: the same gesture with nothing over the page DOES arm, so the
+    // clause above is what refused it and not some incidental input.
+    expect(classifyPull(pull({ deltaY: 400 })).kind).toBe("armed");
   });
 
   it("ignores a pull that did not START at the top of the page", () => {

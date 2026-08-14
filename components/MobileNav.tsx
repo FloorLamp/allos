@@ -199,6 +199,9 @@ export default function MobileNav({
     panelRef: drawerRef,
     direction: "left",
     onOutcome: () => setOpen(false),
+    // The latch expires with the panel it protects (#2725): this drawer's panel
+    // unmounts between opens, so a remounted one is owed its slide again.
+    panelMounted: drawer.mounted,
     enabled: open,
   });
 

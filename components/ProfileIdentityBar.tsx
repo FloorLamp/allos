@@ -137,6 +137,9 @@ export default function ProfileIdentityBar({
     grabRef: handleRef,
     direction: "up",
     onOutcome: () => setOpen(false),
+    // The latch expires with the panel it protects (#2725): this drawer's panel
+    // unmounts between opens, so a remounted one is owed its slide again.
+    panelMounted: drawer.mounted,
     enabled: isMobile && open,
   });
 
