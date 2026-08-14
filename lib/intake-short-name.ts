@@ -90,6 +90,24 @@ export const INTAKE_SHORT_NAMES: Record<string, string> = {
   "magnesium oxide": "Mag oxide",
   "magnesium taurate": "Mag taurate",
 
+  // Methylation / homocysteine support
+  "p-5-p (pyridoxal-5-phosphate)": "P5P",
+  "pyridoxal-5-phosphate": "P5P",
+  "p-5-p": "P5P",
+
+  // Botanicals and blends
+  "grape seed extract": "Grape seed",
+  "pine bark extract": "Pine bark",
+  pycnogenol: "Pine bark",
+  "olive leaf extract": "Olive leaf",
+  "evening primrose oil": "Primrose oil",
+  "stinging nettle": "Nettle",
+  "holy basil (tulsi)": "Holy basil",
+  "beetroot powder": "Beetroot",
+  "fadogia agrestis": "Fadogia",
+  "preservision areds 2": "AREDS 2",
+  "ritual essential multivitamin": "Ritual multi",
+
   // Common names with a redundant tail
   "creatine monohydrate": "Creatine",
   "collagen peptides": "Collagen",

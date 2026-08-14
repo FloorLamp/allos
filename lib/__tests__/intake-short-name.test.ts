@@ -12,6 +12,9 @@ describe("intakeShortName", () => {
     expect(intakeShortName("Vitamin D3")).toBe("D3");
     expect(intakeShortName("N-Acetyl Cysteine")).toBe("NAC");
     expect(intakeShortName("Creatine Monohydrate")).toBe("Creatine");
+    expect(intakeShortName("P-5-P (Pyridoxal-5-Phosphate)")).toBe("P5P");
+    expect(intakeShortName("Stinging Nettle")).toBe("Nettle");
+    expect(intakeShortName("PreserVision AREDS 2")).toBe("AREDS 2");
   });
 
   it("matches case-, whitespace- and separator-insensitively", () => {

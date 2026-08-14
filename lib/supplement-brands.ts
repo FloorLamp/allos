@@ -24,4 +24,11 @@ export const SUPPLEMENT_BRANDS: string[] = [
   "Nutricost",
   "Bulk Supplements",
   "Kirkland Signature",
+  "Athletic Greens",
+  "LMNT",
+  "Ritual",
+  "Liquid I.V.",
+  "Ka'Chava",
+  "Metagenics",
+  "Bausch + Lomb",
 ];
