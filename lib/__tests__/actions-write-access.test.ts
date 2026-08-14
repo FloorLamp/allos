@@ -64,7 +64,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   {
     file: "app/(app)/log-sheet-actions.ts",
     fn: "loadLogSheetContext",
-    why: "read-only (#2651): gathers the log sheet's due-and-usual context row — the composed usual-routine offer (getUsualRoutineOffer) and today's due-dose COUNT (collectHouseholdRollup) — and writes nothing; every tap still goes through the control's own gated action (logUsualRoutine / markTaken), so login-scoped requireSession() is the right gate, same posture as loadQuickEntry",
+    why: "read-only (#2651): gathers the log sheet's due-and-usual context row — the composed usual-routine offer (getUsualRoutineOffer) and the arrived-slot due-dose offer (collectDueDosesNow) — and writes nothing; every tap still goes through the control's own gated action (logUsualRoutine / markTaken), so login-scoped requireSession() is the right gate, same posture as loadQuickEntry",
   },
   {
     file: "app/(app)/search-actions.ts",

@@ -45,7 +45,7 @@ async function hydrated(page: Page): Promise<void> {
 
 async function openQuickLogSheet(page: Page) {
   const sheet = page.getByTestId("quick-log-sheet");
-  await hydratedClick(page, page.getByTestId("quick-log-more"));
+  await hydratedClick(page, page.getByTestId("dock-log-puck"));
   await expect(sheet).toBeVisible();
   return sheet;
 }

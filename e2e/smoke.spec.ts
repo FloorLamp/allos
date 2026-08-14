@@ -48,15 +48,15 @@ const ROUTES = [
 // (issue #1420 — this spec now runs in the `mobile` project too): the desktop
 // sidebar is `hidden md:flex` (app/(app)/layout.tsx) and MobileNav's top bar is
 // `md:hidden`, and the drawer holding the sidebar's links isn't even mounted
-// until the hamburger is tapped. Below the Tailwind `md` breakpoint (768px) the
-// anchor is that hamburger; at desktop widths it stays the sidebar's Data link.
+// until dock More is tapped. Below the Tailwind `md` breakpoint (768px) the
+// anchor is that slot; at desktop widths it stays the sidebar's Data link.
 // A ^-anchored regex, not exact text: the Import tab's provider links also contain
 // "Data", and since #1801 the sidebar entry itself carries the review-count badge,
 // so its accessible name is "Data <n>" whenever an import needs attention.
 function appShellAnchor(page: Page): Locator {
   const width = page.viewportSize()?.width ?? Number.POSITIVE_INFINITY;
   return width < 768
-    ? page.getByRole("button", { name: "Open menu" })
+    ? page.getByTestId("dock-slot-more")
     : page.locator("aside nav").getByRole("link", { name: /^Data/ });
 }
 

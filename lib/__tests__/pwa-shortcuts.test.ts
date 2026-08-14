@@ -95,7 +95,9 @@ describe("shortcutAction", () => {
       const action = shortcutAction(s.id);
       expect(action).not.toBeNull();
       if (action!.kind === "quick-log") {
-        expect(["activity", "overlay"]).toContain(action!.item.target.kind);
+        expect(["activity", "live", "overlay"]).toContain(
+          action!.item.target.kind
+        );
       }
     }
   });

@@ -3,7 +3,11 @@
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
-import { ageInMonthsFromBirthdate, shiftDateStr } from "@/lib/date";
+import {
+  ageInMonthsFromBirthdate,
+  shiftDateStr,
+  zonedDateParts,
+} from "@/lib/date";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
 import {
@@ -28,7 +32,7 @@ import {
   type CycleControlState,
 } from "@/lib/cycle-plausibility";
 import {
-  collectHouseholdRollup,
+  collectDueDosesNow,
   currentFoodSlot,
   getFoodMealDays,
   type FoodMealEvent,
@@ -338,23 +342,20 @@ export async function loadQuickEntry(
     };
   }
 
-  // Doses. `collectHouseholdRollup` is the EXISTING "what's due" computation —
-  // the one the household card and the medications strip read, already filtered
-  // through the shared findings-suppression bus — so the overlay can't grow a
-  // second opinion about which doses are due (the one-question-one-computation
-  // rule; a hand-rolled query here is exactly how the #221 workout-nudge split
-  // happened).
-  const doses = collectHouseholdRollup(profile.id, date).dueDoses.map(
-    (item) => ({
-      doseId: item.doseId!,
-      title: item.title,
-      detail: item.detail ?? null,
-      // Every dose here is due TODAY, so the band-aware fallback (#2579-B) never
-      // reaches its calendar-date arm — the prefs are passed because a formatter that
-      // CAN render a date is called with the reader's shape, not because this one does.
-      dueText: upcomingDueText(item, date, getDisplayFormatPrefs(login.id)),
-    })
-  );
+  // Doses. The overlay and its context chip read the SAME arrived-slot slice of
+  // the shared scheduled-dose evaluation, so an evening dose cannot be called
+  // "due right now" in the morning while Household/Upcoming retain their honest
+  // whole-day view.
+  const nowHhmm = zonedDateParts(getTimezone(profile.id), clockNow()).hhmm;
+  const doses = collectDueDosesNow(profile.id, date, nowHhmm).map((item) => ({
+    doseId: item.doseId!,
+    title: item.title,
+    detail: item.detail ?? null,
+    // Every dose here is due TODAY, so the band-aware fallback (#2579-B) never
+    // reaches its calendar-date arm — the prefs are passed because a formatter that
+    // CAN render a date is called with the reader's shape, not because this one does.
+    dueText: upcomingDueText(item, date, getDisplayFormatPrefs(login.id)),
+  }));
   if (doses.length === 0) {
     return { form: "unavailable", message: "No doses are due right now." };
   }

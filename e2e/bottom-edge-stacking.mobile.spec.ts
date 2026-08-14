@@ -3,6 +3,7 @@ import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
 import { hydratedClick } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { workerDbPath } from "./worker-env";
 
 // The bottom edge stacks; it does not overlap (issue #1520 part B, #2651).
@@ -88,10 +89,11 @@ test("a toast raised during a live workout stacks above the dock, never over it 
 }) => {
   test.slow();
   try {
-    // Start a live session from the mobile bar's own shortcut, then log enough of
+    // Start a live session from the sheet's Train segment, then log enough of
     // a set that the draft auto-saves — that INSERT is the presence the dock reads.
     await page.goto("/training");
-    await hydratedClick(page, page.getByTestId("start-workout-mobile"));
+    const sheet = await openLogSheet(page);
+    await hydratedClick(page, await showLogRow(sheet, "live-workout"));
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await pickActivity(page, "Barbell Bench Press");
     await page

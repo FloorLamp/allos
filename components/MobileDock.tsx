@@ -87,12 +87,11 @@ import {
 // (lib/adult-only-writes.ts). Hiding the door added no protection those gates were
 // not already providing, and removed one-tap logging for a minor.
 //
-// So this is a change to ONE affordance and to nothing else. It does not touch
-// `quickLogMenu`'s gates, `adultOnlyRefusal`, or any write core, and the top bar
-// is deliberately left exactly as it was — the ruling reinstates the puck, not the
-// caret. The activity entry stays gated away for a restricted profile, so its
-// sheet has a three-segment track with no Train on it, which is the pre-existing
-// `logSheetSegments` behaviour rather than anything new here.
+// It does not touch `quickLogMenu`'s gates, `adultOnlyRefusal`, or any write core.
+// #2745 later retired the duplicate top-bar cluster entirely, leaving this puck
+// as the one phone-chrome route to the sheet. The activity entries stay gated
+// away for a restricted profile, so its sheet has a three-segment track with no
+// Train on it.
 
 const ICONS: Record<DockIcon, typeof IconPlus> = {
   dashboard: IconLayoutDashboard,

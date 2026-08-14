@@ -197,7 +197,7 @@ export const RECAP_SCALES: readonly RecapScaleEntry[] = [
     value: "year",
     approxDays: 366,
     blurb:
-      "A calendar year: the long arcs, and the counts a year is allowed to keep as a record — commemorative, never a verdict.",
+      "A calendar year: the long arcs and the records you set — the story no single week can tell.",
   },
 ];
 

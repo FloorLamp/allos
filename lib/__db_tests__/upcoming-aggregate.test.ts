@@ -13,6 +13,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
+  collectDueDosesNow,
   doseDayProgress,
   collectMultiProfileDoseProgress,
 } from "@/lib/queries";
@@ -69,6 +70,17 @@ function mkDose(itemId: number, sort = 0): number {
          VALUES (?, '1 cap', 'morning', 'any', ?)`
       )
       .run(itemId, sort).lastInsertRowid
+  );
+}
+
+function mkTimedDose(itemId: number, timeOfDay: string): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '1 cap', ?, 'any', 0)`
+      )
+      .run(itemId, timeOfDay).lastInsertRowid
   );
 }
 
@@ -163,6 +175,43 @@ describe("doseDayProgress (#1504)", () => {
       scheduled: 0,
       taken: 0,
     });
+  });
+});
+
+describe("collectDueDosesNow (#2744)", () => {
+  it("withholds future slots without changing the whole-day due set", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    const morning = mkItem(profileId, "Current Morning");
+    const midday = mkItem(profileId, "Future Midday");
+    const evening = mkItem(profileId, "Future Evening");
+    const anytime = mkItem(profileId, "Current Anytime");
+    mkTimedDose(morning, "Morning");
+    mkTimedDose(midday, "Midday");
+    mkTimedDose(evening, "Evening");
+    mkTimedDose(anytime, "Anytime");
+
+    expect(doseItems(profileId, day).map((item) => item.title)).toHaveLength(4);
+    expect(
+      collectDueDosesNow(profileId, day, "08:00").map((item) => item.title)
+    ).toEqual(["Current Morning", "Current Anytime"]);
+    expect(
+      collectDueDosesNow(profileId, day, "13:00").map((item) => item.title)
+    ).toEqual(["Current Morning", "Future Midday", "Current Anytime"]);
+  });
+
+  it("carries #2853's short control label without replacing the full title", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    const creatine = mkItem(profileId, "Creatine Monohydrate");
+    mkTimedDose(creatine, "Morning");
+
+    expect(collectDueDosesNow(profileId, day, "08:00")).toMatchObject([
+      {
+        title: "Creatine Monohydrate",
+        shortLabel: "Creatine",
+      },
+    ]);
   });
 });
 

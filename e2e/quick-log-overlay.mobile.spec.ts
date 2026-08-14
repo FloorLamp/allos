@@ -325,7 +325,15 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     await page.goto("/");
     const dashboardUrl = page.url();
 
-    const overlay = await openQuickEntry(page, "log-dose");
+    // #2744: the context chip answers "which dose?" from the SAME due item the
+    // overlay will render; it no longer withholds the name behind a count.
+    const sheet = await openLogSheet(page);
+    const chip = sheet.getByTestId("log-sheet-chip-doses");
+    await expect(chip).toHaveText(`Due: ${SHELL_DOSE_ITEM}`);
+    await chip.click();
+    await expect(sheet).toHaveCount(0);
+    const overlay = page.getByTestId("quick-entry-sheet");
+    await expect(overlay).toBeVisible();
     const row = overlay.getByTestId(`quick-entry-dose-${doseId}`);
     await expect(row).toBeVisible();
     await expect(row).toContainText(SHELL_DOSE_ITEM);

@@ -3,8 +3,11 @@
 import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
+import { now as clockNow } from "@/lib/clock";
+import { zonedDateParts } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
 import { writeSubjectName } from "@/lib/own-profile";
-import { currentFoodSlot, collectHouseholdRollup } from "@/lib/queries";
+import { currentFoodSlot, collectDueDosesNow } from "@/lib/queries";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupBySlug } from "@/lib/datasets/food-groups";
 import type { UsualRoutineControlProps } from "@/components/dashboard/UsualRoutineControl";
@@ -23,11 +26,10 @@ import type { UsualRoutineControlProps } from "@/components/dashboard/UsualRouti
 //     `time_of_day` declaration read back. The sheet renders the SAME
 //     <UsualRoutineControl> the dashboard's nutrition widget renders, over the
 //     SAME props, so the two surfaces cannot promise different writes.
-//   • today's due doses — `collectHouseholdRollup(...).dueDoses`, the ONE
-//     "what's due" computation the household card, the medications strip and the
-//     quick-entry dose overlay all read, already filtered through the shared
-//     findings-suppression bus. The chip carries its COUNT and opens that same
-//     overlay; it confirms nothing itself.
+//   • doses due NOW — `collectDueDosesNow`, the arrived-slot slice of the same
+//     scheduled-dose evaluation Household and Upcoming read, already filtered
+//     through the shared findings-suppression bus. The chip carries the SAME
+//     items' titles and opens that same overlay; it confirms nothing itself.
 //
 // The third chip (an active or likely session) needs no server read at all: the
 // shell already resolves `workoutOffer` (lib/workout-offer.ts) into the activity
@@ -58,14 +60,11 @@ export interface LogSheetContext {
    */
   routine: UsualRoutineControlProps | null;
   /**
-   * How many doses are due today and still unresolved. Zero means no chip.
-   *
-   * DAY-GRAINED, deliberately: `dueDoses` is the app's one due-dose computation
-   * and it answers per day. A slot-grained count ("Evening meds ×3") would be a
-   * second derivation over `timeBucket`, and inventing one inside page chrome is
-   * how two surfaces start disagreeing about what is due.
+   * Doses whose scheduled slots have arrived and which remain unresolved. Zero
+   * count means no chip; names come from these same items, never from a second
+   * dueness derivation (#2744).
    */
-  dueDoses: number;
+  dueDoses: { count: number; names: string[] };
 }
 
 export async function loadLogSheetContext(): Promise<LogSheetContext> {
@@ -103,8 +102,15 @@ export async function loadLogSheetContext(): Promise<LogSheetContext> {
     };
   }
 
+  const nowHhmm = zonedDateParts(getTimezone(profile.id), clockNow()).hhmm;
+  const dueDoses = collectDueDosesNow(profile.id, date, nowHhmm);
+
   return {
     routine,
-    dueDoses: collectHouseholdRollup(profile.id, date).dueDoses.length,
+    dueDoses: {
+      count: dueDoses.length,
+      // #2853's curated CONTROL labels; full titles remain in the overlay rows.
+      names: dueDoses.map((dose) => dose.shortLabel),
+    },
   };
 }

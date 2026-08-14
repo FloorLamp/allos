@@ -8,6 +8,7 @@ import {
   IconBrain,
   IconCalendarEvent,
   IconChevronDown,
+  IconConfetti,
   IconChartLine,
   IconFileText,
   IconFlag,
@@ -931,6 +932,16 @@ export default async function TimelinePage(props: {
       <PageHeader
         title="Timeline"
         subtitle="A chronological view of workouts, labs, documents, medications, visits, goals, and other health events."
+        action={
+          <Link
+            href="/retrospective"
+            data-testid="timeline-retrospective-link"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            <IconConfetti className="h-4 w-4" stroke={1.75} />
+            Year in review
+          </Link>
+        }
       />
 
       <TimelineScrollRestorer

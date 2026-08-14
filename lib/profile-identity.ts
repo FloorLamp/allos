@@ -25,7 +25,7 @@ export interface IdentityProfile {
 }
 
 // How many names the line spells out before collapsing to "+N more". Two is the
-// most a 390px phone bar can hold beside the avatar stack and the hamburger.
+// most a 390px phone bar can hold beside the avatar stack and Search.
 export const IDENTITY_NAMES_SHOWN = 2;
 // How many avatars the stack renders. One more than the names, because an avatar
 // costs a fixed ~20px of overlap while a name costs an unbounded string.

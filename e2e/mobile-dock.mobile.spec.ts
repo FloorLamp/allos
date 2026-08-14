@@ -106,14 +106,13 @@ test("a route in the long tail lights no slot, and More opens the drawer that ho
   });
   await tapUntilOpen(page, dock.getByTestId("dock-slot-more"), drawer);
 
-  // It is the SAME drawer the hamburger opens — the shared <SidebarContent>,
-  // demoted to the long tail rather than removed. ^-anchored because the Data
+  // It is the shared <SidebarContent>, demoted to the long tail rather than
+  // removed. ^-anchored because the Data
   // entry carries the import-review badge in its accessible name (#1801).
   await expect(drawer.getByRole("link", { name: /^Data/ })).toBeVisible();
   await expect(drawer.getByTestId("signed-in-as")).toBeVisible();
-  // One drawer, not two: the dock's More and the top bar's hamburger share the
-  // provider's boolean, so there can never be a second copy of the whole
-  // navigation in the tree.
+  // One drawer: More owns the visible trigger and the edge gesture opens this
+  // same provider-backed overlay, never a second copy of the navigation.
   await expect(drawer).toHaveCount(1);
   // …and while it is open, the button that opened it says so.
   await expect(dock.getByTestId("dock-slot-more")).toHaveAttribute(

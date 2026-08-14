@@ -610,7 +610,7 @@ export async function followLink(
 // following `expect` just times out.
 //
 // openMobileDrawer solves that by RE-TAPPING until the drawer mounts, which is
-// only safe because its hamburger sets `open` TRUE and never toggles. A real
+// only safe because its More slot sets `open` TRUE and never toggles. A real
 // TOGGLE (the #1455 "Custom…" pill, the digest's "Show all N") flips state, so a
 // second tap UNDOES the first — a retry loop there is a coin flip. Instead: wait
 // for the hydration markers React attaches to the DOM node, then click ONCE.
@@ -761,7 +761,7 @@ export async function openConfirm(
 // Open MobileNav's slide-in drawer and return it (issue #1420 — the `mobile`
 // Playwright project's one shared interaction). The drawer is the phone shell's
 // only route to the app's navigation: below `md` the desktop sidebar is hidden and
-// the drawer's <aside> isn't even MOUNTED until the hamburger is tapped
+// the drawer's <aside> isn't even MOUNTED until the dock's More slot is tapped
 // (components/MobileNav.tsx renders it behind `{open && …}`), so a mobile spec that
 // needs a nav link has to open it first.
 //
@@ -769,7 +769,7 @@ export async function openConfirm(
 // client toggle — so neither settledClick nor followLink applies, and a tap landing
 // in the pre-hydration window (#500/#830) is silently swallowed with nothing to
 // await. This is decision-tree case 4: re-tap until the drawer mounts, guarded on
-// its visibility. Re-tapping is safe because the hamburger only ever sets `open`
+// its visibility. Re-tapping is safe because More only ever sets `open`
 // TRUE (it never toggles), so a late tap can't close what a prior one opened.
 export async function openMobileDrawer(page: Page): Promise<Locator> {
   // The drawer <aside> is identified by the close (✕) button that ONLY it renders
@@ -780,10 +780,10 @@ export async function openMobileDrawer(page: Page): Promise<Locator> {
   });
   await expect(async () => {
     if (!(await drawer.isVisible())) {
-      await page.getByRole("button", { name: "Open menu" }).click();
+      await page.getByTestId("dock-slot-more").click();
     }
     await expect(drawer).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the hamburger past the pre-hydration swallow — a pure client toggle with no POST/navigation to settle on; set-true-only, so a late tap can't re-close it
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap More past the pre-hydration swallow — a pure client toggle with no POST/navigation to settle on; set-true-only, so a late tap can't re-close it
   return drawer;
 }
 

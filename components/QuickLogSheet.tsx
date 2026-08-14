@@ -26,6 +26,7 @@ import {
   type LogSheetContext,
 } from "@/app/(app)/log-sheet-actions";
 import {
+  dueDoseChipLabel,
   logSheetSegments,
   openingLogSegment,
   type LogSegmentId,
@@ -33,10 +34,9 @@ import {
 } from "@/lib/log-sheet";
 import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 
-// The log sheet — what the dock's raised puck opens (issue #2651), and still
-// what the top bar's caret opens (issue #1416, section E1). ONE sheet with two
-// triggers, deliberately: a second "quick log" surface reachable from the same
-// screen is how two menus start disagreeing about what can be logged.
+// The log sheet — what the dock's raised puck opens (issue #2651). Since #2745
+// the puck is the one phone-chrome route here; the duplicate top-bar cluster is
+// gone, so there is one menu and one membership list.
 //
 // Since #2651 it has two SECTIONS.
 //
@@ -49,12 +49,12 @@ import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 //   • the composed morning one-tap (#2458) — the SAME <UsualRoutineControl> the
 //     dashboard's nutrition widget renders, over the SAME server-resolved offer.
 //     Not a copy: the component, the props and the write core are one each.
-//   • today's due doses — a count over `collectHouseholdRollup(...).dueDoses`,
-//     the app's one "what's due" computation. The chip OPENS the existing dose
-//     overlay; it confirms nothing itself.
+//   • doses due now — names from `collectDueDosesNow`, the arrived-slot slice of
+//     the app's shared scheduled-dose computation. The chip OPENS the existing
+//     dose overlay; it confirms nothing itself.
 //   • an active or likely session — `workoutOffer` from the activity editor
-//     context (lib/workout-offer.ts), the same derivation the top bar's ⚡ and
-//     the workout dock read. Its LABEL is the offer, so a live session reads
+//     context (lib/workout-offer.ts), the same derivation the workout dock and
+//     command palette read. Its LABEL is the offer, so a live session reads
 //     "Resume workout" rather than silently restarting the clock.
 //
 // Every one of them is an OFFER (#1505): the tap is the write, the app logs
@@ -89,6 +89,7 @@ import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 
 const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   barbell: IconBarbell,
+  bolt: IconBolt,
   salad: IconSalad,
   pill: IconPill,
   scale: IconScale,
@@ -150,6 +151,7 @@ export default function QuickLogSheet({
     // inner surface closes.
     onClose();
     if (item.target.kind === "activity") openCreate();
+    else if (item.target.kind === "live") openLive();
     else if (item.target.kind === "overlay") openQuickEntry(item.target.form);
     // No `navigate` branch: the registry guarantees no sheet row carries one
     // (#1468), and the exhaustive union makes a future one a compile error here
@@ -161,10 +163,9 @@ export default function QuickLogSheet({
       open={open}
       onClose={onClose}
       title="Log"
-      description="Log it right here — you'll stay on this page."
       testId="quick-log-sheet"
     >
-      {context && (context.routine || context.dueDoses > 0) && (
+      {context && (context.routine || context.dueDoses.count > 0) && (
         <section
           data-testid="log-sheet-context"
           className="mb-4 border-b border-black/5 pb-3 dark:border-white/5"
@@ -176,18 +177,13 @@ export default function QuickLogSheet({
           every dose the tap will write, and answers from the typed outcome. */}
           {context.routine && <UsualRoutineControl {...context.routine} />}
           <div className="flex flex-wrap gap-2">
-            {context.dueDoses > 0 && (
+            {context.dueDoses.count > 0 && (
               <ContextChip
                 testId="log-sheet-chip-doses"
                 icon={<IconPill className="h-4 w-4" stroke={1.75} />}
-                // Named by COUNT, not by verdict: it is a fact about today's
-                // ledger, and the chip opens the list where each dose keeps its
-                // own confirm control. It never confirms anything itself.
-                label={
-                  context.dueDoses === 1
-                    ? "1 dose due"
-                    : `${context.dueDoses} doses due`
-                }
+                // Names come from the SAME due items the count used to summarize;
+                // the chip still opens the list and confirms nothing itself.
+                label={dueDoseChipLabel(context.dueDoses)!}
                 onClick={() => {
                   onClose();
                   openQuickEntry("dose");
@@ -237,11 +233,16 @@ export default function QuickLogSheet({
       <ul className="flex flex-col gap-1 pb-1" data-testid="log-sheet-items">
         {(shown?.items ?? []).map((item) => {
           const Icon = ICONS[item.icon];
+          const label =
+            item.target.kind === "live" ? workoutOffer.label : item.label;
           return (
             <li key={item.id}>
               <button
                 type="button"
                 data-testid={`quick-log-${item.id}`}
+                data-workout-offer={
+                  item.target.kind === "live" ? workoutOffer.kind : undefined
+                }
                 onClick={() => run(item)}
                 className="tap-target press flex w-full items-center gap-3 rounded-xl border border-black/10 bg-white/70 px-3 py-3 text-left transition hover:bg-slate-100 dark:border-white/10 dark:bg-ink-850 dark:hover:bg-ink-750"
               >
@@ -250,7 +251,7 @@ export default function QuickLogSheet({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
-                    {item.label}
+                    {label}
                   </span>
                   <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
                     {item.hint}

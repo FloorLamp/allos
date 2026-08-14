@@ -25,7 +25,7 @@ import { workerDbPath } from "./worker-env";
 //      containment IS the fix — before it, the banner sat in the content flow and
 //      scrolled away, which is exactly when you most need to know whose data you
 //      are reading.
-//   B/E. Search is one tap, and the "+" names the CURRENT page's log.
+//   B/E. Search is one tap; the dock puck is the sole phone-chrome log route.
 //   E. The quick-log sheet opens, reaches a REAL existing form, and closes.
 //   F. Reduced motion: the same open/close STATES, no travel.
 //
@@ -125,7 +125,7 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     await expect(chrome).toHaveAttribute("data-hidden", "false");
   });
 
-  test("keeps the hamburger reachable after a hide/reveal cycle", async ({
+  test("keeps dock More reachable after a top-chrome hide/reveal cycle", async ({
     page,
   }) => {
     await page.goto("/timeline");
@@ -137,8 +137,8 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     );
     await scrollTo(page, 1100);
 
-    // The drawer still opens from the revealed bar — the hide is presentation
-    // only, never an unmount, so nothing about navigation depends on scroll.
+    // The drawer still opens from the fixed dock; top-chrome motion never owns
+    // navigation reachability after #2746.
     const drawer = await openMobileDrawer(page);
     await expect(
       drawer.getByRole("link", { name: "Timeline", exact: true })
@@ -235,39 +235,32 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the search icon past the pre-hydration swallow (#500) — a pure client toggle with no POST to settle on, and the visibility guard keeps a late tap from re-closing it
   });
 
-  test("the + names the CURRENT page's log", async ({ page }) => {
-    const primary = page.getByTestId("quick-log-primary");
-
-    // Fallback everywhere with no opinion: the bar's historical behavior.
+  test("the dock puck absorbs the bar's log cluster and keeps the workout offer", async ({
+    page,
+  }) => {
     await page.goto("/");
-    await expect(primary).toHaveAttribute("data-quick-log-id", "log-activity");
-    await expect(primary).toHaveAttribute("aria-label", "Log activity");
-    // Where the primary IS the activity editor, its companion shows.
-    await expect(page.getByTestId("start-workout-mobile")).toBeVisible();
-    // …and it is the ONLY one since #1509: the ⟳ repeat-last button left the bar
-    // (it was a fourth home for a shortcut the palette and the Training Log card's ⋯
-    // menu already carry, spending a slot of a 390px bar).
+    await expect(page.getByTestId("quick-log-primary")).toHaveCount(0);
+    await expect(page.getByTestId("dock-log-puck")).toBeVisible();
+    await expect(page.getByTestId("start-workout-mobile")).toHaveCount(0);
+    await expect(page.getByTestId("dock-log-puck")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open menu" })).toHaveCount(
+      0
+    );
+
+    const sheet = await openLogSheet(page);
+    await expect(
+      sheet.getByText("Log it right here — you'll stay on this page.")
+    ).toHaveCount(0);
+    const workout = await showLogRow(sheet, "live-workout");
+    await expect(workout).toContainText("Start workout");
+    await expect(workout).toHaveAttribute("data-workout-offer", "start");
+
+    // Repeat-last keeps exactly its palette and Training Log menu homes; it did
+    // not move into the sheet with the live-workout lifecycle.
     await expect(page.getByTestId("repeat-last-mobile")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Repeat last activity" })
     ).toHaveCount(0);
-
-    await page.goto("/nutrition");
-    await expect(primary).toHaveAttribute("data-quick-log-id", "log-food");
-    await expect(primary).toHaveAttribute("aria-label", "Log food");
-    // …and there it is noise competing for a 390px bar, so it is dropped.
-    await expect(page.getByTestId("start-workout-mobile")).toHaveCount(0);
-
-    await page.goto("/medications");
-    await expect(primary).toHaveAttribute("data-quick-log-id", "log-dose");
-
-    // Since #1644 the /trends ROUTE is the rule: the hub is one page and the Body
-    // census (with its measurements form) is always on it.
-    await page.goto("/trends");
-    await expect(primary).toHaveAttribute(
-      "data-quick-log-id",
-      "log-measurements"
-    );
   });
 
   test("repeat-last keeps its palette home after leaving the bar (#1509)", async ({
@@ -362,15 +355,15 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     const sheet = page.getByTestId("quick-log-sheet");
     await expect(async () => {
       if (!(await sheet.isVisible())) {
-        await page.getByTestId("quick-log-more").click();
+        await page.getByTestId("dock-log-puck").click();
       }
       await expect(sheet).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the caret past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the puck past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded
 
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);
 
-    await page.getByTestId("quick-log-more").click();
+    await page.getByTestId("dock-log-puck").click();
     await expect(sheet).toBeVisible();
     // Near the TOP of the scrim, not its centre: the scrim spans the viewport with
     // the panel stacked over its lower half, and with the context row and a
@@ -408,10 +401,10 @@ test.describe("reduced motion (#1416 F)", () => {
     const sheet = page.getByTestId("quick-log-sheet");
     await expect(async () => {
       if (!(await sheet.isVisible())) {
-        await page.getByTestId("quick-log-more").click();
+        await page.getByTestId("dock-log-puck").click();
       }
       await expect(sheet).toBeVisible({ timeout: 1000 });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the caret past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the puck past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded
     await page.keyboard.press("Escape");
     await expect(sheet).toHaveCount(0);
 
