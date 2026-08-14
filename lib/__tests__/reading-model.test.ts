@@ -273,7 +273,7 @@ describe("the Reading mapping from each store's row shape", () => {
     expect(r.provenance).toBeUndefined();
   });
 
-  it("maps a medical_records row with its clinical provenance", () => {
+  it("maps a non-lab clinic reading from its clinical provenance", () => {
     const r = readingFromObservation({
       id: 11,
       date: "2026-06-30",
@@ -297,9 +297,9 @@ describe("the Reading mapping from each store's row shape", () => {
       reportedRange: "60-100",
       flag: "high",
     });
-    // Clinical provenance, so the reading reads as a lab/clinic measurement even
-    // though its source stamp names the import.
-    expect(r?.source).toBe("lab");
+    // Pulse is not a laboratory analyte. Its document/encounter/provider links still
+    // make it a clinical reading even though its source stamp names the import.
+    expect(r?.source).toBe("clinical");
     expect(r?.store).toBe("medical_records");
   });
 
@@ -363,9 +363,9 @@ describe("source classification is about provenance, not about the table", () =>
     [{ sourceKey: "manual" }, "manual"],
     [{ sourceKey: "oura" }, "wearable"],
     [{ sourceKey: "document:12" }, "import"],
-    [{ sourceKey: "health-connect", documentId: 3 }, "lab"],
-    [{ sourceKey: null, encounterId: 8 }, "lab"],
-    [{ sourceKey: null, providerId: 2 }, "lab"],
+    [{ sourceKey: "health-connect", documentId: 3 }, "clinical"],
+    [{ sourceKey: null, encounterId: 8 }, "clinical"],
+    [{ sourceKey: null, providerId: 2 }, "clinical"],
   ])("%o → %s", (input, expected) => {
     expect(readingSourceFor(input)).toBe(expected);
   });
@@ -472,7 +472,7 @@ describe("series assembly", () => {
       ...base,
       value: 71,
       date: "2026-07-01",
-      source: "lab",
+      source: "clinical",
       store: "medical_records",
       rowId: 2,
       sourceKey: "document:4",
@@ -508,7 +508,7 @@ describe("series assembly", () => {
         ...base,
         value: 71,
         date: "2026-07-02",
-        source: "lab",
+        source: "clinical",
         store: "medical_records",
         rowId: 5,
         sourceKey: "document:4",
@@ -562,7 +562,7 @@ describe("series assembly", () => {
       ...base,
       value: 71,
       date: "2026-07-02",
-      source: "lab",
+      source: "clinical",
       store: "medical_records",
       rowId: 6,
       sourceKey: "document:4",

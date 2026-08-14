@@ -107,7 +107,7 @@ describe("the metric surface's series folds in same-identity observations", () =
 
     const observations = getMetricObservations(child.profileId, "resting-hr");
     expect(observations).toHaveLength(1);
-    expect(observations[0]).toMatchObject({ value: 128, source: "lab" });
+    expect(observations[0]).toMatchObject({ value: 128, source: "clinical" });
     expect(observations[0].provenance?.documentId).toBe(child.documentId);
 
     // The SHARED series folds it in, so the tile, the Body chart and the detail

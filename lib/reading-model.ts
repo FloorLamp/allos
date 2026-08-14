@@ -52,14 +52,14 @@ export type ReadingStore =
 // which table it landed in — the whole point of the model is that those are
 // different questions:
 //
-//   • "lab"      — an observation carrying clinical provenance: a document, an
+//   • "clinical" — an observation carrying clinical provenance: a document, an
 //                  encounter, or a performing provider. A clinic-measured value.
 //   • "import"   — a row a bulk/document import produced without any of those
 //                  links (a `document:<id>` source stamp on a stream row).
 //   • "wearable" — a device/integration sync (the row's `source` is an
 //                  integration id).
 //   • "manual"   — the user typed it (no source, or the literal 'manual').
-export type ReadingSource = "wearable" | "manual" | "import" | "lab";
+export type ReadingSource = "wearable" | "manual" | "import" | "clinical";
 
 // The observation-only half. ABSENT (not null) on a stream reading: a wearable
 // reading has no document, no encounter, no reporting lab and no lab-stated range,
@@ -185,7 +185,7 @@ export function readingSourceFor(input: {
     input.encounterId != null ||
     input.providerId != null
   ) {
-    return "lab";
+    return "clinical";
   }
   const key = (input.sourceKey ?? "").trim();
   if (!key || key.toLowerCase() === "manual") return "manual";

@@ -335,10 +335,13 @@ category ASSIGNMENT of a retired value (reads and filters are deliberately not m
 plus the prompt and enum assertions. `lib/__db_tests__/migration-185-legacy-biomarker-category.test.ts`
 covers the pass.
 
-## Still open (#2479)
+## Normalized reading provenance (#2735)
 
-Proposed by the issue and settled by neither part: `ReadingSource = "lab"` standing in
-for broadly clinical document provenance (`lib/reading-model.ts`).
+`ReadingSource = "clinical"` names any reading linked to a clinical document,
+encounter, or provider. It deliberately does not say `"lab"`: a clinic-recorded
+intraocular pressure or pulse has the same provenance without being a laboratory
+result. Raw provider/import source strings and genuinely laboratory-specific copy
+keep their own terminology.
 
 Deliberately NOT renamed by part 2, on the owner's ruling that `Biomarker` and
 `Analyte` are retained where clinically accurate: `biomarkerFamily()` and
