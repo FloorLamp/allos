@@ -14,7 +14,7 @@
 // here is ever evaluated in the receiver's context.
 //
 // ONE QUESTION, ONE COMPUTATION. The member's due set comes from `collectWindowDoses`
-// + the #1156 priority floor — byte for byte the gather that builds that member's OWN
+// + the #1156 obligation floor — byte for byte the gather that builds that member's OWN
 // dose reminder — so the round and the member's reminder can never disagree about
 // what is due. This module adds no dueness logic of its own.
 
@@ -61,7 +61,7 @@ function sectionFor(
   const seen = new Set<number>();
   const doses: HouseholdRoundSection["doses"] = [];
   for (const slot of slots) {
-    // The #1156 priority floor applies at send assembly, the same as the member's own
+    // The #1156 obligation floor applies at send assembly, the same as the member's own
     // reminder. On-demand items never appear: they are not scheduled-due, so `isDueOn`
     // inside the gather excludes them (a PRN med has no dose to confirm on a clock).
     for (const entry of notifiableWindowDoses(

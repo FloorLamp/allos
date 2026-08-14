@@ -428,7 +428,7 @@ export function poolRefillItems(
     const pool = getPoolView(supplyId);
     if (!pool || !pool.low || pool.daysLeft == null) continue;
     // Tracked, never pushed (#1505), pooled edition: a bottle whose every ACTIVE
-    // member is a low-priority supplement drops out of the nudge. Any pushable
+    // member is a `may` supplement drops out of the nudge. Any pushable
     // member keeps the whole pool's signal alive — see poolPushes.
     if (!poolPushes(pool.members)) continue;
     items.push({

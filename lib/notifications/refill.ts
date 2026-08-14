@@ -112,8 +112,8 @@ export async function runRefills(
   // Only active items that opted into quantity tracking — and only ones that may ride
   // a PUSH surface at all (#1505). A refill nudge IS a push, so the SAME shared
   // predicate the Upcoming refill items and the dose reminders consult gates it here:
-  // a LOW-priority supplement's supply state stays visible on the Supplements page,
-  // it just never nudges. Kind decides for medications, so a low med still nudges.
+  // a `may` supplement's supply state stays visible on the Supplements page,
+  // it just never nudges. Medications remain in the safety tier regardless.
   const tracked = getIntakeItems(profileId).filter(
     (s) => s.active && s.quantity_on_hand != null && isPushedIntake(s)
   );

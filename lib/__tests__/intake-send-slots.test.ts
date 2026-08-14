@@ -2,7 +2,7 @@
 // (doseSendSlot), its minute (preWorkoutSlotMinute), the merged one-per-tick render
 // (renderMergedIntakeMessage), and the callback plumbing that keeps a merged
 // message's buttons working (parseAllCallback / keyboardDoseFootprint).
-// Plus the #1156 notification priority floor's pure pieces.
+// Plus the #1156 notification obligation floor's pure pieces.
 
 import { describe, it, expect } from "vitest";
 import {

@@ -1059,7 +1059,7 @@ async function handleAllTaken(
   // The slot's doses are re-collected from CURRENT state (active, non-retired,
   // due today), so this tolerates schedule edits made after the message was
   // sent. Floor-filtered (#1156): "✅ All" marks only the doses the reminder
-  // actually listed — a low-priority supplement the send excluded is never
+  // actually listed — a `may` supplement the send excluded is never
   // silently logged by a bulk tap. Count only real inserts; when the whole slot
   // has since emptied (schedule restructured / items paused), say so instead of
   // "Logged ✅".

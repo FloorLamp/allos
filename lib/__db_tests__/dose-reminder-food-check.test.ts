@@ -18,7 +18,7 @@ import { WITH_FOOD_RECENT_MIN } from "@/lib/food-timing-check";
 import type { FoodTiming } from "@/lib/types/intake";
 
 // A scheduled daily medication with one pending Morning dose declaring `timing`. A
-// medication rather than a supplement so the #1156 priority floor can never be what
+// medication rather than a supplement so the #1156 obligation floor can never be what
 // decides whether the line renders.
 function seedDose(timing: FoodTiming): number {
   const profileId = Number(

@@ -198,7 +198,7 @@ export default function MedicationForm({
   // a prescription" disclosure. Defaults from the stored flag, or OTC for a new med;
   // the combobox pick and any recorded prescriber flip it on.
   const [rxFlag, setRxFlag] = useState(s?.rx === 1);
-  // Obligation (#1505) replaces both the old priority band and the as-needed
+  // Obligation (#1505) replaces both legacy commitment controls and the as-needed
   // checkbox. A medication DEFAULTS to `must` — the tier that reminds AND escalates —
   // because that is the posture a prescription is prescribed under; a new med the
   // user never touches is protected rather than quietly unmonitored.
