@@ -16,14 +16,12 @@
 - A fresh worktree has no `.next`, and compiling one costs ~200 s before a single
   browser assertion (#2605). `ensureBuild` now takes an identical build from a
   sibling worktree instead: measured 199 s → 1.7 s, first round 242 s → 55 s.
-- It is automatic. There is no dispatch step to add, because at worktree-creation
-  time no sibling has built yet either — the first cluster of a wave still builds,
-  and the rest inherit it.
+- It is automatic, with no dispatch step to add: at worktree-creation time no
+  sibling has built either, so the first cluster of a wave builds and the rest
+  inherit it.
 - The licence is a content fingerprint over the build inputs
-  (`e2e/build-inputs.mjs`), never a commit and never an mtime: the main checkout
-  usually differs from `origin/main` only in `scripts/` and `docs/`, which the build
-  does not read, and an identical commit with one uncommitted edit is a different
-  bundle.
+  (`e2e/build-inputs.mjs`), never a commit and never an mtime. Commit equality is
+  neither necessary nor sufficient — see `docs/internals/e2e-hygiene.md`.
 - A refusal is normal and always NAMED, one line per candidate. Refusals are the
   measure of this working; rounds-per-hour is the measure that cannot see it going
   wrong. `E2E_NO_SEED=1` opts out.

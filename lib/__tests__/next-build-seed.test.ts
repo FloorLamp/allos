@@ -53,9 +53,18 @@ function makeCheckout(marker: string): string {
   fs.mkdirSync(path.join(root, "app"), { recursive: true });
   fs.mkdirSync(path.join(root, "lib", "__tests__"), { recursive: true });
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, "app", "page.tsx"), `export const x = "${marker}";\n`);
-  fs.writeFileSync(path.join(root, "lib", "calc.ts"), "export const one = 1;\n");
-  fs.writeFileSync(path.join(root, "lib", "__tests__", "calc.test.ts"), "// spec\n");
+  fs.writeFileSync(
+    path.join(root, "app", "page.tsx"),
+    `export const x = "${marker}";\n`
+  );
+  fs.writeFileSync(
+    path.join(root, "lib", "calc.ts"),
+    "export const one = 1;\n"
+  );
+  fs.writeFileSync(
+    path.join(root, "lib", "__tests__", "calc.test.ts"),
+    "// spec\n"
+  );
   fs.writeFileSync(path.join(root, "docs", "notes.md"), "prose\n");
   fs.writeFileSync(path.join(root, "package.json"), '{"name":"fixture"}\n');
   return root;
@@ -67,9 +76,27 @@ function makeBuild(root: string, buildId: string): string {
   fs.mkdirSync(path.join(dist, "server"), { recursive: true });
   fs.mkdirSync(path.join(dist, "cache"), { recursive: true });
   fs.writeFileSync(path.join(dist, "BUILD_ID"), `${buildId}\n`);
-  fs.writeFileSync(path.join(dist, "server", "app.js"), `// built ${buildId}\n`);
+  fs.writeFileSync(
+    path.join(dist, "server", "app.js"),
+    `// built ${buildId}\n`
+  );
   fs.writeFileSync(path.join(dist, "cache", "compiler.bin"), "cache bytes\n");
   return dist;
+}
+
+/**
+ * Assert a refusal and hand back its reason.
+ *
+ * `seedDecision` returns a discriminated union, so `verdict.reason` does not
+ * exist until `seed: false` is established. Narrowing through one helper keeps
+ * that honest at every call site without five copies of the same guard — and it
+ * asserts the refusal, so a verdict that unexpectedly SUCCEEDS fails here rather
+ * than reading `undefined` into a `toMatch` that would pass on nothing.
+ */
+function refusal(verdict: { seed: boolean; reason?: string }): string {
+  expect(verdict.seed).toBe(false);
+  expect(verdict.reason, "a refusal must carry its reason").toBeTruthy();
+  return verdict.reason as string;
 }
 
 describe("seedDecision", () => {
@@ -94,22 +121,19 @@ describe("seedDecision", () => {
       ...base,
       recorded: { fingerprint: "print-b" },
     });
-    expect(verdict.seed).toBe(false);
-    expect(verdict.reason).toMatch(/different sources/);
+    expect(refusal(verdict)).toMatch(/different sources/);
   });
 
   it("refuses when the source has no build to give", () => {
     const verdict = seedDecision({ ...base, sourceBuildId: null });
-    expect(verdict.seed).toBe(false);
-    expect(verdict.reason).toMatch(/no production build/);
+    expect(refusal(verdict)).toMatch(/no production build/);
   });
 
   it("refuses rather than overwrite a build the target already has", () => {
     // An agent who has built once owns that build; a seed arriving later would
     // replace their own compiled work with the main checkout's.
     const verdict = seedDecision({ ...base, targetHasBuild: true });
-    expect(verdict.seed).toBe(false);
-    expect(verdict.reason).toMatch(/already has a production build/);
+    expect(refusal(verdict)).toMatch(/already has a production build/);
   });
 
   describe("with no record beside the build", () => {
@@ -123,14 +147,12 @@ describe("seedDecision", () => {
       // provenance is unknown — which is not the same as wrong, and is still a
       // refusal.
       const verdict = seedDecision({ ...base, sourceNewestInputMs: 900 });
-      expect(verdict.seed).toBe(false);
-      expect(verdict.reason).toMatch(/stale/);
+      expect(refusal(verdict)).toMatch(/stale/);
     });
 
     it("refuses when the two trees' build inputs differ", () => {
       const verdict = seedDecision({ ...base, targetFingerprint: "print-b" });
-      expect(verdict.seed).toBe(false);
-      expect(verdict.reason).toMatch(/differ/);
+      expect(refusal(verdict)).toMatch(/differ/);
     });
   });
 });
@@ -147,7 +169,10 @@ describe("buildInputFingerprint", () => {
   it("changes when a build input changes", () => {
     const root = makeCheckout("same");
     const before = buildInputFingerprint(root).fingerprint;
-    fs.writeFileSync(path.join(root, "lib", "calc.ts"), "export const one = 2;\n");
+    fs.writeFileSync(
+      path.join(root, "lib", "calc.ts"),
+      "export const one = 2;\n"
+    );
     expect(buildInputFingerprint(root).fingerprint).not.toBe(before);
   });
 
@@ -177,7 +202,13 @@ describe("buildInputFingerprint", () => {
     const root = makeCheckout("same");
     const before = buildInputFingerprint(root).fingerprint;
     const long_ago = new Date(Date.now() - 86_400_000);
-    for (const rel of ["app", "app/page.tsx", "lib", "lib/calc.ts", "package.json"]) {
+    for (const rel of [
+      "app",
+      "app/page.tsx",
+      "lib",
+      "lib/calc.ts",
+      "package.json",
+    ]) {
       fs.utimesSync(path.join(root, rel), long_ago, long_ago);
     }
     const quiet = newestBuildInputMtime(root).ms;
@@ -238,9 +269,9 @@ describe("seedNextBuild", () => {
 
     const seededBuildId = path.join(to, ".next", "BUILD_ID");
     expect(fs.readFileSync(seededBuildId, "utf8").trim()).toBe("build-one");
-    expect(fs.readFileSync(path.join(to, ".next", "server", "app.js"), "utf8")).toBe(
-      "// built build-one\n"
-    );
+    expect(
+      fs.readFileSync(path.join(to, ".next", "server", "app.js"), "utf8")
+    ).toBe("// built build-one\n");
     // Not a hard link: writing through into the main checkout is the trap this
     // whole path has to avoid.
     expect(fs.statSync(seededBuildId).nlink).toBe(1);
@@ -293,9 +324,9 @@ describe("seedNextBuild", () => {
     const result = seedNextBuild({ from, to });
     expect(result.seed).toBe(false);
     expect(result.attempts[0].reason).toMatch(/already has a production build/);
-    expect(fs.readFileSync(path.join(to, ".next", "BUILD_ID"), "utf8").trim()).toBe(
-      "build-mine"
-    );
+    expect(
+      fs.readFileSync(path.join(to, ".next", "BUILD_ID"), "utf8").trim()
+    ).toBe("build-mine");
   });
 
   it("never offers the target itself as a source", () => {

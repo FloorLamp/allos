@@ -19,7 +19,10 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { BUILD_RECORD_BASENAME, writeBuildRecord } from "../../e2e/build-inputs.mjs";
+import {
+  BUILD_RECORD_BASENAME,
+  writeBuildRecord,
+} from "../../e2e/build-inputs.mjs";
 import { seedNextBuild } from "../../e2e/build-seed.mjs";
 
 export const EXIT_SEEDED = 0;
@@ -68,14 +71,20 @@ export function main(argv) {
       );
       return EXIT_SEEDED;
     } catch (err) {
-      console.error(`[seed-next] could not record build inputs: ${err.message}`);
+      console.error(
+        `[seed-next] could not record build inputs: ${err.message}`
+      );
       return EXIT_ERROR;
     }
   }
 
   let result;
   try {
-    result = seedNextBuild({ to: opts.to, from: opts.from, distName: opts.dist });
+    result = seedNextBuild({
+      to: opts.to,
+      from: opts.from,
+      distName: opts.dist,
+    });
   } catch (err) {
     console.error(`[seed-next] ${err.message}`);
     return EXIT_ERROR;
@@ -89,7 +98,9 @@ export function main(argv) {
     return EXIT_SEEDED;
   }
   if (!result.attempts.length) {
-    console.log("[seed-next] REFUSED: no other checkout has a production build");
+    console.log(
+      "[seed-next] REFUSED: no other checkout has a production build"
+    );
   }
   for (const attempt of result.attempts) {
     console.log(`[seed-next] REFUSED ${attempt.from}: ${attempt.reason}`);

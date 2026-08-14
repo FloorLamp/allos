@@ -90,12 +90,36 @@ const MAX_DERIVED_CANDIDATES = 3;
  */
 const SEED_EXCLUDED_ENTRIES = new Set(["cache"]);
 
+// The result shapes, DECLARED rather than inferred. Every return below is an
+// object literal, and TypeScript infers their union structurally — which gives
+// consumers a six-way union whose members disagree about which keys exist, so
+// `seeded.from` does not narrow even after `if (seeded.seed)`. Naming the shapes
+// makes `seed` a real discriminant and is also the documentation: a refusal
+// always carries a reason, a success always carries its proof.
+/**
+ * @typedef {{ seed: true, proof: string }} SeedVerdictYes
+ * @typedef {{ seed: false, reason: string }} SeedVerdictNo
+ * @typedef {SeedVerdictYes | SeedVerdictNo} SeedVerdict
+ *
+ * @typedef {{ from: string, reason: string | undefined }} SeedAttempt
+ * @typedef {{ seed: true, proof: string, from: string, ms: number }} SeedFromYes
+ * @typedef {{ seed: false, reason: string, from?: string, ms?: number }} SeedFromNo
+ * @typedef {SeedFromYes | SeedFromNo} SeedFromResult
+ *
+ * @typedef {{ seed: true, proof: string, from: string, ms: number,
+ *             attempts: SeedAttempt[] }} SeedSucceeded
+ * @typedef {{ seed: false, attempts: SeedAttempt[] }} SeedRefused
+ * @typedef {SeedSucceeded | SeedRefused} SeedResult
+ */
+
 /**
  * The whole decision, over facts and nothing else — no filesystem, no clock.
  *
  * The refusal REASONS are the product here. This feature's measure of working is
  * its refusal count with causes, never rounds-per-hour: a seeding bug makes rounds
  * faster AND wrong, so speed is exactly the metric that cannot detect it.
+ *
+ * @returns {SeedVerdict}
  */
 export function seedDecision(facts) {
   const {
@@ -120,14 +144,18 @@ export function seedDecision(facts) {
     };
   }
   if (!targetFingerprint) {
-    return { seed: false, reason: "this worktree's build inputs could not be read" };
+    return {
+      seed: false,
+      reason: "this worktree's build inputs could not be read",
+    };
   }
 
   if (recorded) {
     if (recorded.fingerprint !== targetFingerprint) {
       return {
         seed: false,
-        reason: "its build was compiled from different sources than this worktree has",
+        reason:
+          "its build was compiled from different sources than this worktree has",
       };
     }
     return { seed: true, proof: "recorded" };
@@ -152,7 +180,10 @@ export function seedDecision(facts) {
     };
   }
   if (sourceFingerprint !== targetFingerprint) {
-    return { seed: false, reason: "its build inputs differ from this worktree's" };
+    return {
+      seed: false,
+      reason: "its build inputs differ from this worktree's",
+    };
   }
   return { seed: true, proof: "derived" };
 }
@@ -218,14 +249,27 @@ export function discoverSeedSources(to, distName = ".next") {
     if (dir !== target) dirs.push(dir);
   }
   return dirs
-    .map((dir) => ({ dir, builtAtMs: buildIdMtimeMs(path.join(dir, distName)) }))
+    .map((dir) => ({
+      dir,
+      builtAtMs: buildIdMtimeMs(path.join(dir, distName)),
+    }))
     .filter((c) => c.builtAtMs > 0)
     .sort((a, b) => b.builtAtMs - a.builtAtMs)
     .map((c) => c.dir);
 }
 
-/** Try one source. Copies on success; leaves the target untouched otherwise. */
-export function seedFrom({ from, to, distName = ".next", targetFingerprint, derive }) {
+/**
+ * Try one source. Copies on success; leaves the target untouched otherwise.
+ *
+ * @returns {SeedFromResult}
+ */
+export function seedFrom({
+  from,
+  to,
+  distName = ".next",
+  targetFingerprint,
+  derive,
+}) {
   const sourceDist = path.join(from, distName);
   const targetDist = path.join(to, distName);
   const recorded = readBuildRecord(sourceDist);
@@ -277,7 +321,9 @@ export function seedFrom({ from, to, distName = ".next", targetFingerprint, deri
       after.buildId !== before.buildId ||
       after.recordedFingerprint !== before.recordedFingerprint
     ) {
-      throw new Error("its build changed while it was being copied (a rebuild landed mid-seed)");
+      throw new Error(
+        "its build changed while it was being copied (a rebuild landed mid-seed)"
+      );
     }
 
     // `cp -a` preserved the source's mtimes, which read as older than this
@@ -291,7 +337,10 @@ export function seedFrom({ from, to, distName = ".next", targetFingerprint, deri
     fs.renameSync(tmp, targetDist);
   } catch (err) {
     fs.rmSync(tmp, { recursive: true, force: true });
-    return { seed: false, reason: err instanceof Error ? err.message : String(err) };
+    return {
+      seed: false,
+      reason: err instanceof Error ? err.message : String(err),
+    };
   }
 
   // The seeded tree carries the same proof, so it is auditable and can itself be
@@ -312,6 +361,12 @@ export function seedFrom({ from, to, distName = ".next", targetFingerprint, deri
  * Returns `{ seed: false, attempts }` when nothing matched. Every attempt carries
  * its reason: a silent refusal would be indistinguishable from no candidates, and
  * refusals are the signal this feature is judged by.
+ *
+ * `from` is annotated rather than inferred: its `null` default would otherwise
+ * type the parameter as `null` and reject the explicit source the tests pass.
+ *
+ * @param {{ to: string, from?: string | null, distName?: string }} options
+ * @returns {SeedResult}
  */
 export function seedNextBuild({ to, from = null, distName = ".next" }) {
   const targetDist = path.join(to, distName);
@@ -321,13 +376,16 @@ export function seedNextBuild({ to, from = null, distName = ".next" }) {
       attempts: [
         {
           from: to,
-          reason: "this worktree already has a production build — refusing to overwrite it",
+          reason:
+            "this worktree already has a production build — refusing to overwrite it",
         },
       ],
     };
   }
 
-  const candidates = from ? [path.resolve(from)] : discoverSeedSources(to, distName);
+  const candidates = from
+    ? [path.resolve(from)]
+    : discoverSeedSources(to, distName);
   if (!candidates.length) return { seed: false, attempts: [] };
 
   const targetFingerprint = buildInputFingerprint(to).fingerprint;

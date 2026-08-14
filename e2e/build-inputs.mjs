@@ -107,7 +107,8 @@ export function newestBuildInputMtime(root) {
     }
     if (!stat.isDirectory()) return;
     for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
-      if (NON_BUILD_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+      if (NON_BUILD_DIRS.has(entry.name) || entry.name.startsWith("."))
+        continue;
       consider(path.join(abs, entry.name), `${rel}/${entry.name}`);
     }
   };
@@ -153,7 +154,9 @@ export function buildInputFingerprint(root) {
  */
 export function readBuildId(distDir) {
   try {
-    return fs.readFileSync(path.join(distDir, "BUILD_ID"), "utf8").trim() || null;
+    return (
+      fs.readFileSync(path.join(distDir, "BUILD_ID"), "utf8").trim() || null
+    );
   } catch {
     return null;
   }
@@ -181,7 +184,8 @@ export function readBuildRecord(distDir) {
   }
   if (!parsed || typeof parsed !== "object") return null;
   if (parsed.algo !== FINGERPRINT_ALGO) return null;
-  if (typeof parsed.fingerprint !== "string" || !parsed.fingerprint) return null;
+  if (typeof parsed.fingerprint !== "string" || !parsed.fingerprint)
+    return null;
   const live = readBuildId(distDir);
   if (!live || parsed.buildId !== live) return null;
   return parsed;
@@ -194,7 +198,8 @@ export function readBuildRecord(distDir) {
  */
 export function writeBuildRecord(root, distDir, extra = {}) {
   const buildId = readBuildId(distDir);
-  if (!buildId) throw new Error(`no BUILD_ID in ${distDir} — nothing to record`);
+  if (!buildId)
+    throw new Error(`no BUILD_ID in ${distDir} — nothing to record`);
   const { algo, fingerprint, fileCount, bytes } = buildInputFingerprint(root);
   const record = {
     algo,
