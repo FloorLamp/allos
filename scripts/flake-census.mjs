@@ -18,24 +18,37 @@
 // flatters the fix.
 //
 // Usage:
-//   node scripts/flake-census.mjs <spec-substring> [sinceISO]
-//   node scripts/flake-census.mjs overlay-gestures 2026-08-14T07:54:00Z
+//   node scripts/flake-census.mjs <spec-substring> [sinceISO] [baselineRate]
+//   node scripts/flake-census.mjs overlay-gestures 2026-08-14T07:54:00Z 0.167
+//
+// The baseline is the flake's MEASURED pre-fix per-matrix rate. It is an argument
+// rather than a constant on purpose — see below.
 
 import { execFileSync } from "node:child_process";
 
 const OWNER = "FloorLamp";
 const REPO = "allos";
 const TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-/** The pre-fix per-matrix failure rate a clean streak is being judged against. */
-const BASELINE_RATE = 1 / 6;
 /** Below this, a clean streak stops being something chance explains comfortably. */
 const SIGNAL_P = 0.05;
 
-const [needle, since] = process.argv.slice(2);
+const [needle, since, baselineArg] = process.argv.slice(2);
 if (!needle) {
   console.error(
-    "usage: node scripts/flake-census.mjs <spec-substring> [sinceISO]"
+    "usage: node scripts/flake-census.mjs <spec-substring> [sinceISO] [baselineRate]\n" +
+      "  baselineRate: the flake's MEASURED pre-fix per-matrix rate, e.g. 0.167.\n" +
+      "  Omit it and no chance calculation is printed."
   );
+  process.exit(2);
+}
+// The baseline must be SUPPLIED, never assumed. A hardcoded default gets inherited
+// by whatever spec the next person types, and then the tool prints a confident
+// p-value computed against a rate that was measured on a different bug — which is
+// precisely the misreading this script exists to prevent, wearing the script's own
+// authority. No baseline, no verdict; the counts still print.
+const baseline = baselineArg === undefined ? null : Number(baselineArg);
+if (baseline !== null && !(baseline > 0 && baseline < 1)) {
+  console.error(`baselineRate must be between 0 and 1 (got ${baselineArg}).`);
   process.exit(2);
 }
 if (!TOKEN) {
@@ -122,13 +135,19 @@ if (others.size) {
   }
 }
 
-// The caveat ships WITH the number, so the number cannot be quoted without it.
-if (exposures > 0 && hits.length === 0) {
-  const p = Math.pow(1 - BASELINE_RATE, exposures);
-  const needed = Math.ceil(Math.log(SIGNAL_P) / Math.log(1 - BASELINE_RATE));
+// The caveat ships WITH the number, so the number cannot be quoted without it —
+// and only when a measured baseline was supplied to judge the streak against.
+if (exposures > 0 && hits.length === 0 && baseline !== null) {
+  const p = Math.pow(1 - baseline, exposures);
+  const needed = Math.ceil(Math.log(SIGNAL_P) / Math.log(1 - baseline));
   console.log(
-    `\nAt the pre-fix ~1-in-${Math.round(1 / BASELINE_RATE)} rate, ${exposures} clean ` +
+    `\nAt the stated pre-fix rate of ~1-in-${Math.round(1 / baseline)}, ${exposures} clean ` +
       `exposure(s) would happen by chance ${(p * 100).toFixed(1)}% of the time. ` +
       `About ${needed} are needed before a clean streak means anything (p < ${SIGNAL_P}).`
+  );
+} else if (exposures > 0 && hits.length === 0) {
+  console.log(
+    `\nNo chance calculation: pass the flake's measured pre-fix rate as a third ` +
+      `argument to judge this streak against something.`
   );
 }
