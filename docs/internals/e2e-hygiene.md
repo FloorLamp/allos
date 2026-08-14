@@ -1481,6 +1481,35 @@ Both `ci.yml`'s matrix and `e2e-full.yml` upload each shard's raw JSON report as
 `e2e-full.yml` is the alternative when you want a census run's numbers (its
 `repeat-each` inflates every file by the same factor, which DOES cancel).
 
+### When you cannot download an artifact
+
+An agent sandbox behind a filtering proxy cannot. Downloading a GitHub artifact
+redirects to `*.blob.core.windows.net`, which returns **403 CONNECT** — while the
+artifact LIST returns 200, so it reads as a permissions problem and is not, and
+`gh run download` fails with nothing useful to act on.
+
+Job LOGS are plain API reads and stay reachable. So each e2e shard also PRINTS
+its per-file totals, one tagged line per spec file:
+
+```
+e2e-durations<TAB>e2e/some.spec.ts<TAB>12345
+```
+
+Save the twelve shard logs and feed them back:
+
+```
+npx tsx scripts/gen-e2e-durations.ts --from-log shard-*.log
+```
+
+Same arithmetic and the same manifest — a printed line is the one number the JSON
+path would have summed, and `lib/__tests__/e2e-durations-log.test.ts` pins the
+round trip so the two sources cannot drift into disagreeing about one run.
+
+A log from a run BEFORE this shipped has no such lines. That is a hard error
+rather than an empty contribution, because a shard that silently adds nothing
+understates every file it owned and reshuffles the plan around a number nobody
+measured.
+
 ## Co-residency: an ABSENCE is the precondition that sharding breaks
 
 Two specs sharing a worker share its database. That is fine for the fixture rule
