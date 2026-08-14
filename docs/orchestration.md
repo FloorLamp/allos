@@ -72,6 +72,10 @@ label descriptions) or `parked`. `lib`/`ui` are secondary location labels.
   it to `needs-human` the same day. Resolution is the
   `.claude/skills/needs-human` skill, run with the owner present; an
   unanswered question keeps its label — silence is not consent.
+- **NEVER prompt the owner unprompted** (owner, 2026-08-14) — no
+  `AskUserQuestion`, no blocking ask. A human is not always at the terminal, so
+  an ask is a stall, not a question. Label, assign, keep working; the skill runs
+  when the owner engages.
 - **`recommend-adopt` / `recommend-hold`** — an evaluation's verdict, evidence
   in the eval comment; a verdict closes its own loop (owner, 2026-08-13).
   Hold pairs with `parked` (revisit trigger in the comment); adopt = the
