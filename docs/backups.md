@@ -39,6 +39,52 @@ recovers without waiting for the next weekly window.
 Snapshots live under `DATA_DIR` (the Docker bind mount, outside the checkout)
 and are **never served by any route** — they contain multi-profile health data.
 
+## Pre-migration snapshots
+
+Database migrations run automatically at startup, and some of them **delete
+rows**. Before applying any pending migration, Allos copies the database aside to
+`data/backups/pre-migration/allos-premigrate-<YYYY-MM-DD-HHmmss>.db` (UTC), so an
+upgrade whose deletions turn out to be wrong can be recovered from. This is
+separate from the nightly snapshot above and is **not** governed by the automated
+backup schedule or its retention.
+
+It is taken **only when an upgrade actually applies something** — never on an
+ordinary boot with nothing pending, and never on a fresh install (an empty
+database has nothing to lose). Two are kept, and any older than 30 days is
+removed: this is a recovery copy for a bad upgrade, not an archive, and the
+nightly snapshots are the long-horizon path.
+
+Each snapshot carries two sidecars: `<name>.db.json` (the same integrity
+verification the nightly snapshots use, which `npm run restore` reads) and
+`<name>.db.migration.json` (which migrations it precedes). The boot log names the
+file, its size and the exact restore command on the line it writes it.
+
+**If the copy cannot be made, the container refuses to start** rather than
+migrating unprotected — most likely a full data volume. Nothing has been applied
+at that point, so freeing space and starting again is a complete fix, and the
+previous image still runs against the database unchanged. To upgrade without a
+pre-migration snapshot (for example when you take host-level volume snapshots
+instead), set:
+
+```dotenv
+ALLOS_MIGRATION_SNAPSHOT=off        # skip it entirely
+ALLOS_MIGRATION_SNAPSHOT_DIR=/backup/premigrate   # or put it on another volume
+```
+
+Restoring one is the ordinary restore flow, with one caveat:
+
+```bash
+npm run restore -- --from data/backups/pre-migration                    # list
+npm run restore -- --from data/backups/pre-migration allos-premigrate-<stamp>.db
+```
+
+> **Restoring under the same image re-applies the same migrations.** The runner is
+> ledger-driven, so a restored pre-migration database has the same pending set it
+> had before. Either pin `IMAGE` to the previous tag first, or — usually simpler —
+> leave the live database alone and open the snapshot read-only
+> (`sqlite3 data/backups/pre-migration/allos-premigrate-<stamp>.db`) to copy out
+> just the rows you need.
+
 ## Off-volume backups (`BACKUP_DEST_DIR`)
 
 > **Same-volume caveat:** by default snapshots land in `data/backups` — the
