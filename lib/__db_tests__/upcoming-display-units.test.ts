@@ -13,6 +13,7 @@ import { db, today } from "@/lib/db";
 import { collectUpcoming } from "@/lib/queries";
 import { TEMP_RED_FLAG_PREFIX } from "@/lib/temp-red-flag";
 import { shiftDateStr } from "@/lib/date";
+import { pageRowDetail } from "@/lib/upcoming-aggregate";
 
 let profile: number;
 let planId: number;
@@ -92,5 +93,18 @@ describe("endurance event item distance unit (#1019)", () => {
     expect(km.detail).toBe("Run · 10 km");
     const mi = eventItem({ temperatureUnit: "F", distanceUnit: "mi" })!;
     expect(mi.key).toBe(km.key);
+  });
+
+  it("and the Upcoming page PRINTS that distance — it is the row, not a label", () => {
+    // #2579-E drops the second line off a weekly floor target, whose detail only
+    // restates its own status column. An event day shares the `training` DOMAIN with
+    // those targets and is nothing like one: this line is the distance — the single
+    // fact the row exists to state, and the whole visible point of #1019's mi pref. A
+    // density rule keyed on the domain deleted it. The row declares no `weeklyTarget`,
+    // so the rule leaves it alone.
+    const mi = eventItem({ temperatureUnit: "F", distanceUnit: "mi" })!;
+    expect(mi.weeklyTarget).toBeUndefined();
+    expect(pageRowDetail(mi)).toBe("Run · 6.21 mi");
+    expect(pageRowDetail(eventItem()!)).toBe("Run · 10 km");
   });
 });

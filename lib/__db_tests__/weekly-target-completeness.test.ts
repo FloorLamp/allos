@@ -17,6 +17,7 @@ import { practiceItems, trainingItems } from "@/lib/queries/upcoming/plans";
 import { getFrequencyTargetProgress } from "@/lib/queries";
 import { practiceIdentity, practiceSignalKey } from "@/lib/practice";
 import { setWeekMode, setWeekStart, type WeekStart } from "@/lib/settings";
+import { pageRowDetail } from "@/lib/upcoming-aggregate";
 import { trainingSignalKey } from "@/lib/workout-nudge";
 
 // A profile whose week window STARTS TODAY. That is the whole fixture: with one day
@@ -117,6 +118,31 @@ describe("every unmet weekly target reaches the ledger (#2579 ruling 1)", () => 
         (i) => i.key === trainingSignalKey(trainingId)
       )
     ).toBe(true);
+  });
+
+  it("both builders DECLARE the row a weekly target, so the page can drop its label", () => {
+    // The other half of #2579-E, closed end to end: the page's density rule reads a
+    // declaration, and this is where the declaration is made. Every scope kind that
+    // reaches trainingItems is covered, because each one's detail is the same shape of
+    // category label ("Weekly nutrition target"), and the page states all of it
+    // already. Nothing else in the `training` DOMAIN declares it — see the endurance
+    // event in upcoming-display-units.test.ts and the outdoor plan in
+    // outdoor-plan.test.ts, whose details ARE their rows.
+    const { profileId } = makeProfile("wtc-declared");
+    addTarget(profileId, "region", "Chest", 3);
+    addTarget(profileId, "food_group", "berries", 4);
+    addTarget(profileId, "mobility_region", "Glutes", 3);
+    addTarget(profileId, "practice", "Sauna", 3);
+
+    const rows = [...trainingItems(profileId), ...practiceItems(profileId)];
+    expect(rows).toHaveLength(4);
+    for (const row of rows) {
+      expect(row.weeklyTarget).toBe(true);
+      // The label the page stops printing, and the fact it keeps for every other
+      // surface — the hero and the digest still read `detail`.
+      expect(row.detail).toMatch(/^Weekly \w+ target$/);
+      expect(pageRowDetail(row)).toBeNull();
+    }
   });
 
   it("a BEHIND practice target still renders, with its range in the due-text", () => {

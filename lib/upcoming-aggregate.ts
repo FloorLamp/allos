@@ -158,41 +158,42 @@ export const AGGREGATE_MIN_ROWS = 3;
 // One-line rows: the density rule below the fold threshold
 // ---------------------------------------------------------------------------
 
-// The WEEKLY PACE domains — a floor target whose entire content is its progress
-// (#2578 gave each its own identity; #2579-E gives them their height).
-//
-// Closed and named, like the fold classes, and for the same reason: a new domain has
-// to CHOOSE whether it is one of these rather than inherit the treatment by looking
-// similar. The census in lib/__tests__/upcoming-aggregate.test.ts reflects over the
-// full UpcomingDomain union, so the choice is a test to update, not a silent drift.
-export const WEEKLY_TARGET_DOMAINS: readonly UpcomingDomain[] = [
-  "training",
-  "nutrition-target",
-  "mobility-target",
-  "practice",
-];
-
 // What the Upcoming PAGE prints as a row's second line — `item.detail`, or nothing.
 //
-// A weekly target's detail is "Weekly training target" / "Weekly nutrition target" /
-// "Weekly mobility target" / "Weekly practice target", and on THIS page all three
-// facts in that phrase are already on the row: the status column carries the pace
+// A weekly floor target's detail is "Weekly training target" / "Weekly nutrition
+// target" / "Weekly mobility target" / "Weekly practice target", and on THIS page
+// every fact in that phrase is already on the row: the status column carries the pace
 // ("1/2 this week"), the title names the scope ("Chest", "Berries"), and the leading
 // glyph plus the destination carry the domain (#2578's identity fix, which is what
-// makes dropping the line safe rather than a regression back to the barbell-on-
-// berries defect). Printing it again spends a second line per row restating the
-// heading — and after the owner's SURFACE-ALL-UNMET ruling there are more of these
+// makes dropping the line a compaction rather than a regression back to the
+// barbell-on-berries defect). Printing it again spends a second line per row restating
+// the heading — and after the owner's SURFACE-ALL-UNMET ruling there are more of these
 // rows, not fewer.
+//
+// IT ASKS THE ITEM, NOT THE DOMAIN, and that distinction is the whole correctness of
+// this function. `training` is a BUCKET, not a kind: four builders emit it, and only
+// one of them is a pace row.
+//
+//   trainingItems        → "Chest — Weekly training target"      ← the restatement
+//   enduranceEventItems  → "Event: E2E 10k — Run · 6.21 mi"      ← the event's distance
+//   outdoorPlanItems     → "…best window for your cycling (cycling 1/2)."
+//   stepsPaceItems       → "Steps today — <the observation>"
+//
+// The last three ARE their detail line: reading the domain deleted the distance off an
+// event day and the sentence off a planning line. That is exactly #2578's defect one
+// level up — treating a scope-generic bucket as a kind — so the answer is #2578's
+// answer: the PRODUCER declares what the row is (`weeklyTarget`), and a reader that
+// cannot tell two rows apart is not allowed to guess from the bucket they share.
 //
 // PAGE-SIDE on purpose. `detail` stays on the item, so the dashboard hero, the digest
 // and the calendar feed are untouched — the charter's "not touched, by construction"
 // list — and this is what it says it is: a density decision belonging to the surface
-// whose charter states the density rule. Every other domain's detail is returned
+// whose charter states the density rule. Every other row's detail is returned
 // unchanged, because for them this page is not restating anything.
 export function pageRowDetail(
-  item: Pick<UpcomingItem, "domain" | "detail">
+  item: Pick<UpcomingItem, "weeklyTarget" | "detail">
 ): string | null {
-  if (WEEKLY_TARGET_DOMAINS.includes(item.domain)) return null;
+  if (item.weeklyTarget === true) return null;
   return item.detail ?? null;
 }
 

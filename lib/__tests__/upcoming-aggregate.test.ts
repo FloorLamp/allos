@@ -20,7 +20,6 @@ import {
   pageRowDetail,
   planBandRender,
   sumDoseProgress,
-  WEEKLY_TARGET_DOMAINS,
   type BandNode,
 } from "../upcoming-aggregate";
 import { signalKey } from "../upcoming-suppress";
@@ -505,25 +504,10 @@ describe("one-line weekly targets (#2579-E)", () => {
       detail,
       band: "week",
       dueText: "1/2 this week",
+      weeklyTarget: true,
     });
 
-  it("drops the detail line on every weekly pace domain, and only those", () => {
-    // The census: which domains give up their second line. Reflected over the FULL
-    // union like the rollup scope above, so a newly added domain must choose a side
-    // instead of inheriting the treatment by looking similar.
-    const oneLine = UPCOMING_DOMAINS.filter(
-      (d) => pageRowDetail(item("x", d, { detail: "something" })) == null
-    );
-    expect(oneLine.sort()).toEqual([
-      "mobility-target",
-      "nutrition-target",
-      "practice",
-      "training",
-    ]);
-    expect([...WEEKLY_TARGET_DOMAINS].sort()).toEqual(oneLine.sort());
-  });
-
-  it("drops exactly the phrase the rest of the row already says", () => {
+  it("drops the detail line on a declared weekly target, whatever its scope", () => {
     // #2578 gave each scope its own honest detail; the row also carries the pace in
     // its status column, the scope in its title and the domain in its glyph — so on
     // THIS page the line is the heading, restated.
@@ -541,8 +525,50 @@ describe("one-line weekly targets (#2579-E)", () => {
     ).toBeNull();
   });
 
-  it("leaves every other domain's detail alone", () => {
-    // A dose's amount, a refill's supply line, a screening's reason: none of these is
+  it("keeps the detail of every OTHER row in the `training` bucket", () => {
+    // THE REGRESSION THIS FUNCTION SHIPPED WITH, pinned by example. `training` is a
+    // bucket four builders emit into, and for three of them the detail IS the row —
+    // an event's distance, a whole planning sentence, the day's step observation. A
+    // domain-keyed rule deleted all three, which is #2578's defect one level up.
+    const notATarget = (key: string, detail: string) =>
+      item(key, "training", { detail });
+    expect(
+      pageRowDetail(notATarget("endurance-event:1", "Run · 6.21 mi"))
+    ).toBe("Run · 6.21 mi");
+    expect(
+      pageRowDetail(
+        notATarget(
+          "outdoor-plan:cycling",
+          "This week: Thursday looks like the best window for your cycling (cycling 1/2)."
+        )
+      )
+    ).toBe(
+      "This week: Thursday looks like the best window for your cycling (cycling 1/2)."
+    );
+    expect(pageRowDetail(notATarget("steps:2026-03-10", "3,100 so far"))).toBe(
+      "3,100 so far"
+    );
+  });
+
+  it("reads the declaration, never the domain", () => {
+    // Stated as the rule rather than as the three examples above: across the FULL
+    // domain union, an undeclared row keeps its detail and a declared one loses it.
+    // No domain is privileged, so a new builder in an existing bucket cannot inherit
+    // a treatment it never asked for.
+    for (const domain of UPCOMING_DOMAINS) {
+      expect(pageRowDetail(item("x", domain, { detail: "a fact" }))).toBe(
+        "a fact"
+      );
+      expect(
+        pageRowDetail(
+          item("x", domain, { detail: "a fact", weeklyTarget: true })
+        )
+      ).toBeNull();
+    }
+  });
+
+  it("leaves an ordinary row's detail alone", () => {
+    // A dose's amount, a goal's kind, a screening's reason: none of these is
     // restating anything on the row, so the density rule has nothing to say about them.
     expect(pageRowDetail(item("dose:1", "dose", { detail: "500 mg" }))).toBe(
       "500 mg"
@@ -557,7 +583,7 @@ describe("one-line weekly targets (#2579-E)", () => {
     ).toBe("Due at 45");
   });
 
-  it("answers null for a domain that carried no detail at all", () => {
+  it("answers null for a row that carried no detail at all", () => {
     expect(pageRowDetail(item("review:1", "review", {}))).toBeNull();
     expect(
       pageRowDetail(item("review:1", "review", { detail: null }))

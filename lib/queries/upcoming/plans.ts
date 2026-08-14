@@ -187,6 +187,11 @@ export function trainingItems(profileId: number): UpcomingItem[] {
         dueDate: null,
         band: "week" as const,
         dueText: `${p.count}/${p.per_week} this week`,
+        // This IS a weekly floor target, said out loud (#2579-E). The `training`
+        // domain is a bucket the three builders below also emit into, so no reader can
+        // tell a pace row from an event day by domain alone — see the field's contract
+        // in lib/upcoming.ts.
+        weeklyTarget: true,
       };
     });
 }
@@ -245,6 +250,9 @@ export function practiceItems(profileId: number): UpcomingItem[] {
       dueDate: null,
       band: "week" as const,
       practiceTargetId: p.target.id,
+      // The practice scope's own weekly floor target (#2579-E), declared like its
+      // trainingItems twin — one rule, one property, both builders.
+      weeklyTarget: true,
       dueText:
         p.per_week_max != null && p.per_week_max > p.per_week
           ? `${p.count}/${p.per_week}–${p.per_week_max} this week`

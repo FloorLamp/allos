@@ -334,6 +334,19 @@ export interface UpcomingItem {
   // place (offeredItems), which is the point: a renderer must never reconstruct one by
   // slicing the other.
   offerHint?: string | null;
+  // A WEEKLY FLOOR TARGET row — an unmet scope of `frequency_targets`, whose `detail`
+  // is its CATEGORY LABEL ("Weekly nutrition target") rather than a fact about this
+  // particular row. Declared by the two builders that make them (trainingItems,
+  // practiceItems) and read by the Upcoming page's density rule (#2579-E), which drops
+  // that line because the page already states every part of it.
+  //
+  // DECLARED, never inferred, because `domain` cannot answer it: `training` is a
+  // BUCKET shared by the pace rows, the endurance event days (#839), the outdoor
+  // best-window plan (#1724) and the daily-step observation (#1723) — and for those
+  // three the detail IS the row (an event's distance, a whole planning sentence).
+  // Asking the domain deleted all three. Same lesson as #2578, one level up: what a
+  // row IS comes from its producer, not from the bucket it shares.
+  weeklyTarget?: boolean;
   // Optional primary navigation CTA for status-driven items whose next step is
   // clearer than a generic title link (for example Reconnect / Review result).
   // This is presentation data carried on the shared model so Dashboard and
