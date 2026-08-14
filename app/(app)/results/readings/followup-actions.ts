@@ -9,13 +9,10 @@ import {
 } from "@/lib/followup-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
-// Track a follow-up for a FLAGGED biomarker reading (#700 labs adapter): creates a
-// linked, OPEN care-plan item whose planned_date is the reading date + the chosen
-// interval, so an out-of-range result ("A1c 8.2%") becomes a tracked, legible,
-// resolvable "Recheck A1c" follow-up on Upcoming instead of falling through the cracks.
-// The write core is idempotent per #482 biomarker family (a second click, or a sibling
-// analyte of the same family, returns the existing one). Interval is a whole number of
-// days (the form offers 3/6/12-month presets).
+// Track a follow-up for a flagged lab reading (#700 labs adapter): creates a linked,
+// open care-plan item whose planned_date is the reading date + the chosen interval.
+// The write core is idempotent per #482 biomarker family. Interval is a whole number
+// of days (the form offers 3/6/12-month presets).
 export async function trackLabFollowUp(
   formData: FormData
 ): Promise<FormResult> {
@@ -40,13 +37,10 @@ export async function trackLabFollowUp(
   return formOk();
 }
 
-// Track a GLAUCOMA follow-up for a flagged intraocular-pressure reading (#698 §6 /
-// Part of #700). The IOP sibling of trackLabFollowUp: an elevated pressure becomes a
-// tracked, resolvable "Recheck IOP / glaucoma workup" on Upcoming instead of a bare red
-// dot. The write core is idempotent per profile (IOP is one bilateral question — a
-// single workup covers both eyes), so a second click, or the other eye, returns the
-// existing follow-up. Same shared resolve control + resolveFollowUp action as every
-// other adapter (dispatches on source_kind='iop').
+// Track a glaucoma follow-up for a flagged intraocular-pressure reading (#698 §6 /
+// Part of #700). The write core is idempotent per profile: IOP is one bilateral
+// question, so one workup covers both eyes. Resolution stays on the shared Upcoming
+// action, which dispatches on source_kind='iop'.
 export async function trackIopFollowUp(
   formData: FormData
 ): Promise<FormResult> {

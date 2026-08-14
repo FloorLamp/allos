@@ -385,7 +385,7 @@ saying" case, and a note that appears only where the page has already declined t
 judge cannot widen anything.
 
 The **list** surfaces (`ReadingsTable`, `StarredBiomarkers`) have no counterpart to
-this, for a reason worth writing down rather than re-deriving: `TrackLabFollowUpControl`
+this, for a reason worth writing down rather than re-deriving: `TrackReadingFollowUpControl`
 renders on the detail page ONLY, so no list row carries a recheck offer, and their
 `isBiomarkerStale` calls are the retest clock in its ordinary form (the table passes no
 immunity context at all; the starred tile passes one, whose flag can only ever exempt).

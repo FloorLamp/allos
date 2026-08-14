@@ -96,7 +96,7 @@ import type * as M49 from "@/app/(app)/results/actions";
 import type * as M50 from "@/app/(app)/results/genomics/actions";
 import type * as M51 from "@/app/(app)/results/imaging/actions";
 import type * as M52 from "@/app/(app)/results/reading-actions";
-import type * as M53 from "@/app/(app)/results/readings/biomarker-actions";
+import type * as M53 from "@/app/(app)/results/readings/followup-actions";
 import type * as M54 from "@/app/(app)/rightsize-actions";
 import type * as M55 from "@/app/(app)/saved-actions";
 import type * as M56 from "@/app/(app)/search-actions";
@@ -278,7 +278,7 @@ type Census = {
   "app/(app)/results/reading-actions.ts": Expect<
     ActionsAreSerializable<typeof M52>
   >;
-  "app/(app)/results/readings/biomarker-actions.ts": Expect<
+  "app/(app)/results/readings/followup-actions.ts": Expect<
     ActionsAreSerializable<typeof M53>
   >;
   "app/(app)/rightsize-actions.ts": Expect<ActionsAreSerializable<typeof M54>>;
@@ -432,7 +432,7 @@ const CENSUSED_MODULES = [
   "app/(app)/results/genomics/actions.ts",
   "app/(app)/results/imaging/actions.ts",
   "app/(app)/results/reading-actions.ts",
-  "app/(app)/results/readings/biomarker-actions.ts",
+  "app/(app)/results/readings/followup-actions.ts",
   "app/(app)/rightsize-actions.ts",
   "app/(app)/saved-actions.ts",
   "app/(app)/search-actions.ts",
