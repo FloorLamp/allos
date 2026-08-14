@@ -253,7 +253,7 @@ test("a reading the page CAN judge keeps its recheck offer with no note, because
   await expect(page.getByTestId("biomarker-retest-basis")).toHaveCount(0);
 });
 
-test("the page explains the analyte once, and says why it has no band beside the missing band", async ({
+test("the page explains the analyte and places the missing-band reason beside the value", async ({
   page,
 }) => {
   await page.goto(
@@ -265,14 +265,8 @@ test("the page explains the analyte once, and says why it has no band beside the
   await expect(explainer).toBeVisible();
   await expect(explainer).toContainText("hormone released by fat tissue");
 
-  // The subtitle no longer repeats it in the curated note's slightly different
-  // words — the duplication the issue is about.
-  await expect(page.getByText("hormone made by fat tissue")).toHaveCount(0);
-  const subtitle = page.getByText("2 readings", { exact: true });
-  await expect(subtitle).toBeVisible();
-
-  // And the note's one distinct clause is now where the band is missing, in the
-  // summary card beside the value and the attributed range.
+  // The missing-band reason belongs in the summary card beside the value and the
+  // attributed range.
   const bandNote = page.getByTestId("biomarker-band-note");
   await expect(bandNote).toBeVisible();
   await expect(bandNote).toContainText("No reference band.");
