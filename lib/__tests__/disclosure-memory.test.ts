@@ -242,10 +242,7 @@ describe("DISCLOSURE_BOOT_SCRIPT ≡ disclosureOpen (the pre-paint restore)", ()
   });
 
   it("is the script the root layout actually inlines", () => {
-    const layout = readFileSync(
-      join(process.cwd(), "app/layout.tsx"),
-      "utf8"
-    );
+    const layout = readFileSync(join(process.cwd(), "app/layout.tsx"), "utf8");
     expect(layout).toContain("DISCLOSURE_BOOT_SCRIPT");
   });
 
