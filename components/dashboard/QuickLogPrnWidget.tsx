@@ -1,5 +1,4 @@
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
-import RememberedDetails from "@/components/RememberedDetails";
 import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
 import type { PrnMedForQuickLog } from "@/lib/queries";
 import type { ReactNode } from "react";
@@ -162,23 +161,18 @@ export function QuickLogPrnContent({
       >
         {visibleMeds.map(medControl)}
         {remainingMeds.length > 0 && (
-          /* Remembered per DEVICE (#2652 behavior 3): a reader who opens the fuller PRN
-             list opens it every day, and the dashboard is the routine surface the
-             owner ruling scopes this to. Still a plain <details> underneath — memory is
-             applied after hydration, so it opens with JS off. */
-          <RememberedDetails
-            id="dashboard-prn-more"
-            testId="quick-log-prn-more"
-            summary={
-              <summary className="cursor-pointer py-1 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
-                More medications ({remainingMeds.length})
-              </summary>
-            }
-          >
+          /* Deliberately NOT remembered (#2652 behavior 3) — see the "tap path"
+             exclusion in lib/disclosure-memory.ts. Per-device state is invisible to the
+             server, so a remembered-open fold necessarily opens AFTER hydration, and
+             this one sits directly above a Log button. */
+          <details data-testid="quick-log-prn-more">
+            <summary className="cursor-pointer py-1 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
+              More medications ({remainingMeds.length})
+            </summary>
             <div className="mt-2 flex flex-col gap-2">
               {remainingMeds.map(medControl)}
             </div>
-          </RememberedDetails>
+          </details>
         )}
       </div>
     </div>

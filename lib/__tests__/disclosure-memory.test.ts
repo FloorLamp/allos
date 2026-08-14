@@ -26,6 +26,7 @@ describe("the registry declares its scope (#2652 behavior 3)", () => {
       "findings",
       "suppression",
       "narrowing-filter",
+      "tap-path",
     ]);
     for (const c of STATELESS_FOLD_CLASSES) {
       expect(c.reason.length, c.name).toBeGreaterThan(20);
@@ -46,10 +47,18 @@ describe("the registry declares its scope (#2652 behavior 3)", () => {
 });
 
 describe("disclosureKey", () => {
-  it("a non-instanced id ignores an instance — one fold, one memory", () => {
-    expect(disclosureKey("dashboard-prn-more", "whatever")).toBe(
-      "dashboard-prn-more"
-    );
+  // Registry-driven, so it keeps holding as ids are added: an instanced id must carry
+  // its instance and a non-instanced one must ignore it (one fold, one memory — a
+  // non-instanced id cannot be fragmented into per-page copies by a careless caller).
+  it("respects each declaration's `instanced` flag", () => {
+    for (const id of DISCLOSURE_IDS) {
+      const keyed = disclosureKey(id, "Some Instance");
+      if (DISCLOSURES[id].instanced) {
+        expect(keyed, id).toBe(`${id}/some-instance`);
+      } else {
+        expect(keyed, id).toBe(id);
+      }
+    }
   });
 
   it("an instanced id carries a slugged instance", () => {
@@ -66,23 +75,23 @@ describe("disclosureKey", () => {
 
 describe("disclosureOpen", () => {
   it("an unremembered fold takes its declared default", () => {
-    expect(disclosureOpen({}, "dashboard-prn-more")).toBe(
-      DISCLOSURES["dashboard-prn-more"].defaultOpen
+    expect(disclosureOpen({}, "settings-group")).toBe(
+      DISCLOSURES["settings-group"].defaultOpen
     );
   });
 
   it("memory fills the default in both directions", () => {
     expect(
-      disclosureOpen({ "dashboard-prn-more": 1 }, "dashboard-prn-more")
+      disclosureOpen({ "settings-group": 1 }, "settings-group")
     ).toBe(true);
     expect(
-      disclosureOpen({ "dashboard-prn-more": 0 }, "dashboard-prn-more")
+      disclosureOpen({ "settings-group": 0 }, "settings-group")
     ).toBe(false);
   });
 
   it("an explicit override WINS over memory (the URL-beats-memory rule)", () => {
     expect(
-      disclosureOpen({ "dashboard-prn-more": 1 }, "dashboard-prn-more", {
+      disclosureOpen({ "settings-group": 1 }, "settings-group", {
         override: false,
       })
     ).toBe(false);
@@ -102,16 +111,16 @@ describe("disclosureOpen", () => {
 describe("rememberDisclosure", () => {
   it("never mutates its input", () => {
     const before = {};
-    const after = rememberDisclosure(before, "dashboard-prn-more", true);
+    const after = rememberDisclosure(before, "settings-group", true);
     expect(before).toEqual({});
-    expect(after).toEqual({ "dashboard-prn-more": 1 });
+    expect(after).toEqual({ "settings-group": 1 });
   });
 
   it("DROPS a state that equals the default, so the store is only departures", () => {
-    const opened = rememberDisclosure({}, "dashboard-prn-more", true);
+    const opened = rememberDisclosure({}, "settings-group", true);
     const closedAgain = rememberDisclosure(
       opened,
-      "dashboard-prn-more",
+      "settings-group",
       false
     );
     expect(closedAgain).toEqual({});
@@ -136,14 +145,14 @@ describe("parseDisclosureMemory degrades, never throws", () => {
   it("drops unknown ids, so a removed disclosure leaves no residue", () => {
     expect(
       parseDisclosureMemory(
-        '{"dashboard-prn-more":1,"a-fold-that-no-longer-exists":1}'
+        '{"settings-group":1,"a-fold-that-no-longer-exists":1}'
       )
-    ).toEqual({ "dashboard-prn-more": 1 });
+    ).toEqual({ "settings-group": 1 });
   });
 
   it("drops non-0/1 values", () => {
     expect(
-      parseDisclosureMemory('{"dashboard-prn-more":true,"settings-group":2}')
+      parseDisclosureMemory('{"settings-group":true,"settings-group/units":2}')
     ).toEqual({});
   });
 

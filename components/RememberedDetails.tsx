@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useSyncExternalStore, type ReactNode } from "react";
 import {
   DISCLOSURES,
   DISCLOSURE_MEMORY_KEY,
@@ -12,50 +12,71 @@ import {
   type DisclosureMemory,
 } from "@/lib/disclosure-memory";
 
-// The I/O half of disclosure memory (#2652 behavior 3). Everything that DECIDES
-// anything is in lib/disclosure-memory.ts — including WHY this state is per-device
-// localStorage and not a `login_settings` row. This file only reads, writes, and
-// restores.
+// The I/O half of disclosure memory (#2652 behavior 3). Everything that DECIDES anything
+// is in lib/disclosure-memory.ts — including WHY this state is per-device localStorage
+// and not a `login_settings` row. This file only reads, writes and subscribes.
 //
-// PROGRESSIVE ENHANCEMENT, deliberately. The element rendered is a plain native
-// `<details>` with its declared default already applied on the server, exactly the
-// markup the stateless folds shipped: it opens with JS disabled, browser in-page find
-// still auto-expands it, and the keyboard behavior is the platform's. Memory is applied
-// AFTER hydration by setting `open` on the real element — never by rendering different
-// markup on the client, which would be a hydration mismatch and, worse, would make the
-// fold's state depend on a script arriving.
+// The element rendered is a plain native `<details>`: it opens with JS disabled, browser
+// in-page find still auto-expands it, and the keyboard behavior is the platform's. The
+// server renders the DECLARED DEFAULT, so the markup is the same one the stateless folds
+// shipped; memory takes over after hydration.
 //
-// REDUCED MOTION (#2654): restoring is a state assignment, not an animation. There is no
-// height transition to miss and both states are legible standing still.
+// STORE-BACKED, NOT IMPERATIVE, and that is a bug fix rather than a style choice. An
+// earlier version set `open` on the element from an effect. A `<details>` fires `toggle`
+// ASYNCHRONOUSLY, so any re-render landing between the user's click and that event saw
+// memory still holding the old value and snapped the fold shut under them. Here the same
+// `useSyncExternalStore` snapshot drives the `open` prop AND is written by `onToggle`, so
+// React's idea of the state and the stored one cannot get out of order. (Same shape as
+// components/TrendAnnotationToggles.tsx.)
 //
-// The store is read lazily and cached per tab, and cross-tab writes are picked up via
-// the `storage` event so two open tabs on one device do not disagree.
+// REDUCED MOTION (#2654): restoring is a state, not a transition. Nothing here animates,
+// and both states are legible standing still.
 
-let cached: DisclosureMemory | undefined;
+const MEMORY_CHANGED = "allos:disclosure-memory-changed";
+const EMPTY = "{}";
+let snapshot: string | undefined;
 
-function readMemory(): DisclosureMemory {
-  if (cached !== undefined) return cached;
+function readSnapshot(): string {
+  if (snapshot !== undefined) return snapshot;
   try {
-    cached = parseDisclosureMemory(
-      window.localStorage.getItem(DISCLOSURE_MEMORY_KEY)
-    );
+    snapshot = window.localStorage.getItem(DISCLOSURE_MEMORY_KEY) ?? EMPTY;
   } catch {
     // Private-mode / disabled storage: remember nothing, stay interactive.
-    cached = {};
+    snapshot = EMPTY;
   }
-  return cached;
+  return snapshot;
 }
 
-function writeMemory(next: DisclosureMemory): void {
-  cached = next;
+// Before hydration there is no device to read, so every fold takes its declared default.
+function serverSnapshot(): string {
+  return EMPTY;
+}
+
+function subscribe(onChange: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== DISCLOSURE_MEMORY_KEY) return;
+    // Another tab on this device wrote; adopt it so two tabs do not disagree.
+    snapshot = event.newValue ?? EMPTY;
+    onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(MEMORY_CHANGED, onChange);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(MEMORY_CHANGED, onChange);
+  };
+}
+
+function publish(next: DisclosureMemory): void {
+  const raw = serializeDisclosureMemory(next);
+  if (raw === snapshot) return;
+  snapshot = raw;
   try {
-    window.localStorage.setItem(
-      DISCLOSURE_MEMORY_KEY,
-      serializeDisclosureMemory(next)
-    );
+    window.localStorage.setItem(DISCLOSURE_MEMORY_KEY, raw);
   } catch {
-    // Persistence is a nicety; the current page keeps working without it.
+    // Persistence is a nicety; the page stays interactive without it.
   }
+  window.dispatchEvent(new Event(MEMORY_CHANGED));
 }
 
 export default function RememberedDetails({
@@ -71,63 +92,49 @@ export default function RememberedDetails({
   /** Distinguishes one instance of an instanced disclosure from another. */
   instance?: string;
   /**
-   * An explicit state from the caller. Supplied → it WINS and nothing is remembered
-   * for this render (the URL/parent-beats-memory precedence of #2652 §4). Omitted →
-   * the declared default renders and memory fills it in after hydration.
+   * An explicit state from the caller. Supplied → it WINS and nothing is remembered for
+   * this fold (the URL/parent-beats-memory precedence of #2652 §4). Omitted → the
+   * declared default renders and memory fills it in after hydration.
    */
   defaultOpen?: boolean;
   className?: string;
   testId?: string;
-  /** The `<summary>` contents. Always rendered, so the effective state is visible. */
+  /** The `<summary>` element. Always rendered, so the effective state stays visible. */
   summary: ReactNode;
   children: ReactNode;
 }) {
-  const ref = useRef<HTMLDetailsElement>(null);
   const remembering = defaultOpen === undefined;
+  const raw = useSyncExternalStore(
+    subscribe,
+    readSnapshot,
+    serverSnapshot
+  );
+  const open = remembering
+    ? disclosureOpen(parseDisclosureMemory(raw), id, { instance })
+    : defaultOpen;
 
-  // Re-applied after EVERY render, not just on mount: React owns the `open` attribute it
-  // rendered, so a parent re-render would otherwise snap a remembered fold back shut.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !remembering) return;
-    const want = disclosureOpen(readMemory(), id, { instance });
-    if (el.open !== want) el.open = want;
-  });
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // An explicit caller state is not memory's to overwrite or to record.
-    if (!remembering) return;
-
-    const apply = () => {
-      const want = disclosureOpen(readMemory(), id, { instance });
-      if (el.open !== want) el.open = want;
-    };
-
-    const onToggle = () => {
-      writeMemory(rememberDisclosure(readMemory(), id, el.open, instance));
-    };
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== DISCLOSURE_MEMORY_KEY) return;
-      cached = undefined;
-      apply();
-    };
-    el.addEventListener("toggle", onToggle);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      el.removeEventListener("toggle", onToggle);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, [id, instance, remembering]);
+  const onToggle = useCallback(
+    (event: React.SyntheticEvent<HTMLDetailsElement>) => {
+      if (!remembering) return;
+      publish(
+        rememberDisclosure(
+          parseDisclosureMemory(readSnapshot()),
+          id,
+          event.currentTarget.open,
+          instance
+        )
+      );
+    },
+    [id, instance, remembering]
+  );
 
   return (
     <details
-      ref={ref}
       className={className}
       data-testid={testId}
       data-disclosure={id}
-      open={defaultOpen ?? DISCLOSURES[id].defaultOpen}
+      open={open ?? DISCLOSURES[id].defaultOpen}
+      onToggle={onToggle}
     >
       {summary}
       {children}

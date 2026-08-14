@@ -55,7 +55,7 @@ export const DISCLOSURE_MEMORY_KEY = "allos:disclosure:v1";
  * The disclosures that may remember. Adding one is a deliberate edit with a reason and
  * a test to update, never an inheritance — see the scope rules above.
  */
-export type DisclosureId = "dashboard-prn-more" | "settings-group";
+export type DisclosureId = "settings-group";
 
 export interface DisclosureDeclaration {
   /** Why this fold is ROUTINE — the daily return that makes re-opening it friction. */
@@ -74,12 +74,6 @@ export interface DisclosureDeclaration {
 }
 
 export const DISCLOSURES: Record<DisclosureId, DisclosureDeclaration> = {
-  "dashboard-prn-more": {
-    reason:
-      "The as-needed log card's fuller controls. A reader who uses PRN logging uses it daily.",
-    defaultOpen: false,
-    instanced: false,
-  },
   "settings-group": {
     reason:
       "Settings groups. Returned to repeatedly while configuring one area; instanced per group.",
@@ -114,7 +108,30 @@ export const STATELESS_FOLD_CLASSES: readonly {
     reason:
       "Remembering which data is shown makes data read as missing. Modes may persist; narrowing never does.",
   },
+  {
+    name: "tap-path",
+    reason:
+      "A fold sitting directly above a log control must not grow after hydration and move that control under a thumb already reaching for it.",
+  },
 ] as const;
+
+// THE TAP-PATH EXCLUSION, at length, because it is the one that came out of building
+// this rather than out of the spec.
+//
+// Per-device state is INVISIBLE TO THE SERVER by construction — that is what makes it
+// per-device. So a remembered-open fold cannot be server-rendered open: it renders
+// closed, and grows once the client has read the store. On a settings page that is a
+// shrug. On a primary log affordance it is not: the fold expanding pushes the control
+// below it down the screen at exactly the moment a thumb is travelling toward it, and a
+// mis-tap on a dose control is a real cost, not a cosmetic one.
+//
+// This is why `dashboard-prn-more` is NOT in the registry even though #2652 §3 names
+// dashboard cards as in scope. Closing that gap properly needs a pre-paint boot script
+// (the shape `THEME_BOOT_SCRIPT` in app/layout.tsx already uses for the theme) so the
+// fold's height is correct in the first frame, or a server-visible tier — which is the
+// `login_settings` graduation, with the cross-device reach that comes with it. Both are
+// real designs; neither is a line of this change, so the dashboard folds stay stateless
+// until one is chosen.
 
 /** The stored shape: one entry per remembered fold, 1 = open, 0 = closed. */
 export type DisclosureMemory = Record<string, 0 | 1>;
