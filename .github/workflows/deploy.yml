@@ -75,7 +75,17 @@ jobs:
       # forever. Keep only the most recent handful and delete the rest. The
       # newest version always carries :latest (it's re-tagged onto each build),
       # so min-versions-to-keep protects it — no risk of nuking the live tag.
+      #
+      # Housekeeping, and it runs AFTER the push, so its failure says nothing
+      # about whether the image shipped. On 2026-08-14 it hit the GHCR API
+      # mid-blip ("get versions API failed. Unexpected end of JSON input") and
+      # turned a publish that had already pushed both tags red — a merge-watch
+      # false alarm that reads exactly like a broken main until you open the log.
+      # continue-on-error keeps the step's own failure annotated on the run
+      # (so a permanent break is still visible) without letting it claim the
+      # publish failed. Disk is the only thing at stake if it stays broken.
       - name: Prune old GHCR image versions
+        continue-on-error: true
         uses: actions/delete-package-versions@v5
         with:
           package-name: allos

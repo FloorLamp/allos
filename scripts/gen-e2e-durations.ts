@@ -22,8 +22,11 @@
 // GitHub artifact means reaching `*.blob.core.windows.net`, which an agent sandbox
 // behind a filtering proxy cannot do — the artifact LIST returns 200 and the
 // download returns 403 CONNECT, so the failure looks like a permissions problem
-// and is not. Job LOGS are plain API reads and stay reachable, so each e2e shard
-// also PRINTS its per-file durations:
+// and is not. Job LOGS stay reachable, but NOT via curl — `/actions/jobs/<id>/logs`
+// redirects to the same blob host and fails the same way; fetch them server-side
+// through the MCP GitHub tool (`get_job_logs`, `return_content: true`), with
+// `tail_lines` big enough to clear a post-job cleanup whose length varies per
+// shard (~150). So each e2e shard also PRINTS its per-file durations:
 //
 //   e2e-durations<TAB>e2e/some.spec.ts<TAB>12345
 //
