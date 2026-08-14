@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -21,11 +21,48 @@ import { describe, expect, it } from "vitest";
 // reference surfaces (environment facts, agent signals) and code blocks are
 // commands.
 
-const RUNBOOK = path.join(process.cwd(), "docs", "orchestration.md");
-
 const MAX_BULLET_LINES = 4;
 const MAX_PARAGRAPH_LINES = 2;
 const MAX_BLOCKQUOTE_LINES = 5;
+
+const FILE_LINE_BUDGETS = {
+  "AGENTS.md": 80,
+  "app/AGENTS.md": 80,
+  "components/AGENTS.md": 60,
+  "lib/AGENTS.md": 100,
+  "lib/migrations/AGENTS.md": 80,
+  "lib/queries/AGENTS.md": 60,
+  "docs/orchestration.md": 80,
+  "docs/orchestration/dispatch.md": 100,
+  "docs/orchestration/e2e-ci.md": 100,
+  "docs/orchestration/environment.md": 100,
+  "docs/orchestration/lifecycle.md": 80,
+  "docs/orchestration/review-merge.md": 100,
+} as const;
+
+const SKIPPED_DIRS = new Set([".git", "node_modules"]);
+
+function findAgentFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (SKIPPED_DIRS.has(entry.name)) return [];
+    const absolute = path.join(dir, entry.name);
+    if (entry.isDirectory()) return findAgentFiles(absolute);
+    return entry.name === "AGENTS.md"
+      ? [path.relative(process.cwd(), absolute)]
+      : [];
+  });
+}
+
+function guardedFiles(): string[] {
+  const agentFiles = findAgentFiles(process.cwd());
+  const orchestrationFiles = readdirSync(
+    path.join(process.cwd(), "docs", "orchestration"),
+    { withFileTypes: true }
+  )
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => path.posix.join("docs/orchestration", entry.name));
+  return [...agentFiles, "docs/orchestration.md", ...orchestrationFiles].sort();
+}
 
 type Block = {
   kind: "bullet" | "paragraph" | "quote";
@@ -90,20 +127,39 @@ const LIMITS: Record<Block["kind"], number> = {
 };
 
 describe("runbook brevity", () => {
-  it("docs/orchestration.md keeps every block within the short-bullet shape", () => {
-    const source = readFileSync(RUNBOOK, "utf8");
-    const violations = scanBlocks(source)
-      .filter((b) => b.lines > LIMITS[b.kind])
-      .map(
-        (b) =>
-          `line ${b.start}: ${b.kind} spans ${b.lines} lines (max ${LIMITS[b.kind]})`
-      );
-    expect(
-      violations,
-      `docs/orchestration.md has blocks past the short-bullet shape:\n` +
-        `${violations.join("\n")}\n` +
-        `Trim the rule to its decision and move the narrative to ` +
-        `docs/orchestration-incidents.md, citing it as "_incidents: §section_".`
-    ).toEqual([]);
+  it("registers every agent and orchestration instruction file", () => {
+    expect(guardedFiles()).toEqual(Object.keys(FILE_LINE_BUDGETS).sort());
   });
+
+  it.each(Object.entries(FILE_LINE_BUDGETS))(
+    "%s stays within its line and block budgets",
+    (relativePath, lineBudget) => {
+      const source = readFileSync(
+        path.join(process.cwd(), relativePath),
+        "utf8"
+      );
+      const lineCount = source.endsWith("\n")
+        ? source.split("\n").length - 1
+        : source.split("\n").length;
+      expect(
+        lineCount,
+        `${relativePath} has ${lineCount} lines (budget ${lineBudget}). ` +
+          `Move detail to a focused document instead of raising the budget.`
+      ).toBeLessThanOrEqual(lineBudget);
+
+      const violations = scanBlocks(source)
+        .filter((block) => block.lines > LIMITS[block.kind])
+        .map(
+          (block) =>
+            `line ${block.start}: ${block.kind} spans ${block.lines} lines ` +
+            `(max ${LIMITS[block.kind]})`
+        );
+      expect(
+        violations,
+        `${relativePath} has blocks past the short-instruction shape:\n` +
+          `${violations.join("\n")}\n` +
+          `Keep the decision here and move narrative or history elsewhere.`
+      ).toEqual([]);
+    }
+  );
 });
