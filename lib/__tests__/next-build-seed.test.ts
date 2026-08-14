@@ -65,8 +65,10 @@ function makeCheckout(marker: string): string {
 function makeBuild(root: string, buildId: string): string {
   const dist = path.join(root, ".next");
   fs.mkdirSync(path.join(dist, "server"), { recursive: true });
+  fs.mkdirSync(path.join(dist, "cache"), { recursive: true });
   fs.writeFileSync(path.join(dist, "BUILD_ID"), `${buildId}\n`);
   fs.writeFileSync(path.join(dist, "server", "app.js"), `// built ${buildId}\n`);
+  fs.writeFileSync(path.join(dist, "cache", "compiler.bin"), "cache bytes\n");
   return dist;
 }
 
@@ -250,6 +252,10 @@ describe("seedNextBuild", () => {
       newestBuildInputMtime(to).ms
     );
     expect(readBuildRecord(path.join(to, ".next"))?.seededFrom).toBe(from);
+    // The compiler cache is two thirds of the bytes and buys nothing in a
+    // differently-named directory — measured at 289 s to rebuild with it against
+    // 199 s cold. It is not carried.
+    expect(fs.existsSync(path.join(to, ".next", "cache"))).toBe(false);
   });
 
   it("refuses, and leaves no `.next` at all, when the sources differ", () => {

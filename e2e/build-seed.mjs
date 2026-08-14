@@ -74,6 +74,23 @@ import {
 const MAX_DERIVED_CANDIDATES = 3;
 
 /**
+ * `.next/cache` is NOT seeded, and that is a measurement rather than caution.
+ *
+ * It is 515 MB of a 753 MB build directory — two thirds of the copy and two thirds
+ * of the disk every worktree then holds. Its only possible payoff is a faster
+ * REBUILD after the agent edits something, and it does not deliver one: a worktree
+ * seeded with the cache, then given a one-line edit under `lib/`, rebuilt in 289 s
+ * against 199 s cold. The compiler's cache entries are keyed on absolute paths from
+ * the worktree that wrote them, so in a differently-named directory they are asked
+ * for by nobody — they cannot be wrongly HIT (no other tree's path resolves here),
+ * they are simply dead weight.
+ *
+ * So the seed carries the ~239 MB the server actually serves. `next start`
+ * recreates the runtime cache directory it needs.
+ */
+const SEED_EXCLUDED_ENTRIES = new Set(["cache"]);
+
+/**
  * The whole decision, over facts and nothing else — no filesystem, no clock.
  *
  * The refusal REASONS are the product here. This feature's measure of working is
@@ -142,7 +159,7 @@ export function seedDecision(facts) {
 
 // --- filesystem side -------------------------------------------------------
 
-function copyTree(src, dest) {
+function copyOne(src, dest) {
   // --reflink=auto: copy-on-write when the filesystem supports it, a full copy
   // otherwise. NEVER -l. See the hardlink hazard note at the top.
   let res = spawnSync("cp", ["-a", "--reflink=auto", src, dest], {
@@ -153,6 +170,15 @@ function copyTree(src, dest) {
   }
   if (res.status !== 0) {
     throw new Error(`cp failed: ${(res.stderr || "").trim() || res.status}`);
+  }
+}
+
+/** Copy a build directory entry by entry, minus what is not worth carrying. */
+function copyBuild(srcDist, destDist) {
+  fs.mkdirSync(destDist, { recursive: true });
+  for (const entry of fs.readdirSync(srcDist)) {
+    if (SEED_EXCLUDED_ENTRIES.has(entry)) continue;
+    copyOne(path.join(srcDist, entry), path.join(destDist, entry));
   }
 }
 
@@ -233,7 +259,7 @@ export function seedFrom({ from, to, distName = ".next", targetFingerprint, deri
   fs.rmSync(tmp, { recursive: true, force: true });
   const started = Date.now();
   try {
-    copyTree(sourceDist, tmp);
+    copyBuild(sourceDist, tmp);
 
     // The copy must own its bytes.
     const copiedBuildId = path.join(tmp, "BUILD_ID");
@@ -306,9 +332,14 @@ export function seedNextBuild({ to, from = null, distName = ".next" }) {
 
   const targetFingerprint = buildInputFingerprint(to).fingerprint;
   const attempts = [];
+  // A candidate whose RECORD answered is settled: the record is the authoritative
+  // proof, so re-asking it by deriving would spend a fingerprint to reach the same
+  // verdict, and would report the same refusal twice.
+  const settled = new Set();
   for (const derive of [false, true]) {
     let derived = 0;
     for (const candidate of candidates) {
+      if (settled.has(candidate)) continue;
       if (derive && derived >= MAX_DERIVED_CANDIDATES) break;
       if (derive) derived++;
       const result = seedFrom({
@@ -322,6 +353,7 @@ export function seedNextBuild({ to, from = null, distName = ".next" }) {
       // The cheap pass reports "no recorded build inputs" for every candidate the
       // expensive pass will look at properly — noise, not a reason.
       if (derive || result.reason !== "it has no recorded build inputs") {
+        settled.add(candidate);
         attempts.push({ from: candidate, reason: result.reason });
       }
     }
