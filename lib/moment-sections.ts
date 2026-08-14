@@ -90,6 +90,17 @@ export interface MomentSection<K = number> {
    * renderings cannot drift apart.
    */
   line: string;
+  /**
+   * The same line WITHOUT its leading label, for a renderer that already shows the slot
+   * name as a heading beside it. Split here rather than by string surgery at the call
+   * site, so the two renderings cannot come apart.
+   */
+  lineDetail: string;
+  /**
+   * Whether the line leads with a check — i.e. the slot is settled AND something in it
+   * was actually taken. A slot that was entirely skipped is settled but never checked.
+   */
+  checked: boolean;
   /** Doses resolved / total, and how the resolved ones resolved. */
   takenCount: number;
   skippedCount: number;
@@ -144,18 +155,18 @@ function slotHasArrived(bucket: TimeBucket, currentBucket: TimeBucket): boolean 
  *   open now               "Morning · 1 of 3 taken"    (header line for a full section)
  */
 export function momentSectionLine(
-  section: Omit<MomentSection, "line">,
+  section: Omit<MomentSection, "line" | "lineDetail" | "checked">,
   slotClock?: string
-): string {
+): { line: string; lineDetail: string; checked: boolean } {
   const { label, takenCount, skippedCount, total, state } = section;
   const resolved = takenCount + skippedCount;
   const settled = resolved === total && total > 0;
+  // A check mark is a claim that the slot was TAKEN. A slot that was entirely skipped is
+  // settled but was not taken, and must not wear one.
+  const checked = settled && takenCount > 0;
   const parts: string[] = [];
 
   if (settled) {
-    // A check mark is a claim that the slot was TAKEN. A slot that was entirely skipped
-    // is settled but was not taken, and must not wear one.
-    parts.push(takenCount > 0 ? `✓ ${label}` : label);
     if (skippedCount === 0) {
       parts.push(`${takenCount} of ${total} taken`);
     } else if (takenCount === 0) {
@@ -163,13 +174,10 @@ export function momentSectionLine(
     } else {
       parts.push(`${takenCount} taken, ${skippedCount} skipped`);
     }
+  } else if (takenCount > 0 || skippedCount > 0) {
+    parts.push(`${takenCount} of ${total} taken`);
   } else {
-    parts.push(label);
-    if (takenCount > 0 || skippedCount > 0) {
-      parts.push(`${takenCount} of ${total} taken`);
-    } else {
-      parts.push(`${total} ${total === 1 ? "dose" : "doses"}`);
-    }
+    parts.push(`${total} ${total === 1 ? "dose" : "doses"}`);
   }
 
   // The time. A settled slot quotes when it actually happened; a slot still to come
@@ -181,7 +189,12 @@ export function momentSectionLine(
       : undefined;
   if (stamp) parts.push(stamp);
 
-  return parts.join(" · ");
+  const lineDetail = parts.join(" · ");
+  return {
+    line: `${checked ? "✓ " : ""}${label} · ${lineDetail}`,
+    lineDetail,
+    checked,
+  };
 }
 
 function lastTakenClock(doses: readonly MomentDose[]): string | undefined {
@@ -243,8 +256,11 @@ export function buildMomentSections<K = number>({
     };
     sections.push({
       ...base,
-      line: momentSectionLine(
-        base as unknown as Omit<MomentSection, "line">,
+      ...momentSectionLine(
+        base as unknown as Omit<
+          MomentSection,
+          "line" | "lineDetail" | "checked"
+        >,
         slotClocks?.[bucket]
       ),
     });

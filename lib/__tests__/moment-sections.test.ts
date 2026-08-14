@@ -199,6 +199,39 @@ describe("the line is the section's whole truth, not a smaller lie", () => {
   });
 });
 
+describe("the line's parts are split here, not by string surgery in the renderer", () => {
+  it("lineDetail is the line without its label, and rejoining them restores it", () => {
+    const sections = build(
+      [
+        dose("Morning", { taken: true, at: "08:12" }),
+        dose("Evening"),
+        dose("Anytime", { skipped: true }),
+      ],
+      "19:00",
+      { Evening: "21:00" }
+    );
+    for (const s of sections) {
+      const rejoined = `${s.checked ? "✓ " : ""}${s.label} · ${s.lineDetail}`;
+      expect(rejoined, s.bucket).toBe(s.line);
+      expect(s.lineDetail, s.bucket).not.toContain(s.label);
+    }
+  });
+
+  it("checked is true only when the slot settled AND something was taken", () => {
+    const taken = build([dose("Morning", { taken: true, at: "08:00" })], "19:00");
+    expect(byBucket(taken, "Morning").checked).toBe(true);
+
+    const allSkipped = build([dose("Morning", { skipped: true })], "19:00");
+    expect(byBucket(allSkipped, "Morning").checked).toBe(false);
+
+    const unfinished = build(
+      [dose("Evening", { taken: true, at: "20:00" }), dose("Evening")],
+      "08:00"
+    );
+    expect(byBucket(unfinished, "Evening").checked).toBe(false);
+  });
+});
+
 describe("same data, only height moves", () => {
   it("every dose survives compression — nothing is filtered out", () => {
     const doses = [
