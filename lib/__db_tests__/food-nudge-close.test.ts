@@ -13,7 +13,9 @@
 // (5) a send that yields NO pointer strips nothing (#1945 — strip and record are one
 // decision, so a send that cannot record must not close anybody's keyboard); (6) across
 // three nudges with an unextractable middle one, the strip lands on the message the
-// pointer names and the middle one is never orphaned with a live keyboard.
+// pointer names and the middle one is never orphaned with a live keyboard; (7) the strip
+// finishes in the #1779 POINTER TABLE too (#2749) — a succeeding strip forgets the row
+// naming the message it emptied, a failing one keeps it.
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
@@ -78,7 +80,9 @@ beforeEach(() => {
   setProfileSetting(p.profileId, "food_nudge_last_message", "");
   // The OTHER pointer store this rotation now writes to (#2749). Scoped to this
   // file's own fixture profile (#2814), so it cannot reach a neighbour's rows.
-  db.prepare("DELETE FROM notify_messages WHERE profile_id = ?").run(p.profileId);
+  db.prepare("DELETE FROM notify_messages WHERE profile_id = ?").run(
+    p.profileId
+  );
 });
 
 // The food messages the #1779 pointer table still calls live, oldest first. A row IS a
