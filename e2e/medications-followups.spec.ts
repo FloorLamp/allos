@@ -85,7 +85,7 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   const row = page
     .getByTestId("medication-row")
     .filter({ hasText: "Ibuprofen" })
-    .first(); // first-ok: filtered to the Ibuprofen med this spec just added — one match
+    .filter({ hasText: "Generic" });
   await expect(row).toBeVisible();
   await expect(row.getByTestId("otc-badge")).toBeVisible();
   await expect(row.getByTestId("rx-badge")).toHaveCount(0);

@@ -155,6 +155,45 @@ The proven workflow for an all-pages consistency audit:
    on this shape. Use a scratch `ALLOS_DB_PATH` per shape, or delete the DB
    between runs — the seed refuses a non-empty database.
 
+   **Personas (`SEED_PERSONA`)**: the seeded shape can also swap WHO the
+   profile is — `scripts/seed-personas.ts` seeds a coherent alternate
+   character for profile 1 instead of the baseline story, targeted at the
+   surfaces its demographics most affect (whole page populations — growth
+   charts, AAP pediatric BP, elderly fitness norms, polypharmacy warnings —
+   are invisible from the baseline's one vantage). Needs `UX_SEED=1`
+   (the harness refuses other combinations); SEED_RNG dials do not apply.
+   An unknown name FAILS the seed and the run — a persona label must never
+   sit on data that isn't that persona. Registry + per-persona `routes` (the
+   UX_ROUTES targets) live in the module; run one as e.g.:
+
+   ```bash
+   SEED_PERSONA=household UX_SEED=1 UX_ROUTES=/household,/upcoming,/timeline \
+     node scripts/ux-walkthrough.mjs --serve pages
+   ```
+
+   | persona           | who                                                                    | most-affected targets                     |
+   | ----------------- | ---------------------------------------------------------------------- | ----------------------------------------- |
+   | `bodybuilder`     | 28M, heavy 4-day split                                                 | /training /progress /nutrition /longevity |
+   | `marathon-runner` | 34F, marathon block, Strava + Health Connect (one run from both)       | /training /equipment /integrations /data  |
+   | `household`       | caregiver over 4 profiles: 40M rising LDL, 76F on 6 meds, sick twins   | /household / /upcoming /timeline /records |
+   | `pregnant`        | 31F ~20wks: PHQ-9, ultrasounds, carrier variants; 15-year-old daughter | / /medical/cycles /upcoming /records      |
+   | `diabetic-cgm`    | 52M dense glucose + docs; partner with chronic asthma + docs           | /medications /results /upcoming /data     |
+   | `biohacker`       | 36M, 20 supplements, 3 practices, Oura + Withings                      | /nutrition /longevity /sleep /timeline    |
+
+   Several personas are multi-profile households (profile 1 is the acting
+   caregiver; members are created by the persona itself) and several carry
+   `connected` integration rows with credential-less configs — the sync tick
+   degrades gracefully while /integrations reads connected. Some exist partly
+   to make a GAP visible (their registry entries carry `gaps`): pregnancy has
+   no gestational-age model (#1402), CGM has no continuous-glucose stream
+   (#2810), fasting has no surface yet (#2756) — expect those absences in the
+   shots and report them as findings, not census failures. The pages census
+   drives only profile 1; household members' own pages need an
+   acting-profile switch the harness does not yet parameterize.
+   Unit guards: `lib/__tests__/seed-personas.test.ts` (registry + route
+   targets), `lib/__db_tests__/seed-personas.test.ts` (every persona against
+   a live schema).
+
 ### Live screenshots outrank the census
 
 The census's data is clean by construction, and a whole class of defect only
