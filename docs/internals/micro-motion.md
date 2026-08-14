@@ -6,18 +6,19 @@ document governs is motion that answers **"did that work?"** inside the interfac
 itself, which is faster and quieter than a toast. Motion here is information, and
 it is held to the same standard as copy.
 
-Four motions ship today (#2654). The last two are the two halves of one gesture —
-a dismissal travelling, and the fold answering — and they are deliberately **two**
-tokens, because they are two durations with two different justifications.
+Five motions ship today (#2654, #2657). `slide` and `fold` are the two halves of one
+gesture — a dismissal travelling, and the fold answering — and they are deliberately
+**two** tokens, because they are two durations with two different justifications.
 
 | Motion   | Token             | Duration             | What it says                                               |
 | -------- | ----------------- | -------------------- | ---------------------------------------------------------- |
 | `settle` | `--motion-settle` | 300 ms               | the control you tapped **became** its done state           |
 | `count`  | `--motion-count`  | 250 ms               | a **quantity** changed, rather than a value being replaced |
 | `slide`  | `--motion-slide`  | 300 ms               | the finding you dismissed **went somewhere**               |
+| `tick`   | `--motion-tick`   | 180 ms               | the scrub crossed **into a different month**               |
 | `fold`   | `--motion-fold`   | 500 ms (band-exempt) | the fold **caught** it — this is where to look             |
 
-One ease curve for all four, `--motion-ease`, decelerating: the move arrives and
+One ease curve for all five, `--motion-ease`, decelerating: the move arrives and
 settles, it never bounces back.
 
 ## The four rules
@@ -93,6 +94,8 @@ smuggle the row's travel out of the band too, and the test fails that.
   only works because its JS caller remembered to check is one refactor from animating
   someone who asked it not to.
 - `components/RollingNumber.tsx` — the one `requestAnimationFrame` case.
+- `app/(app)/timeline/TimelineScrubber.tsx` — the jump rail's bubble, beating once per
+  month boundary a drag crosses.
 - `components/SnoozeDismissMenu.tsx` — the dismissal's travel, started on the tap.
 - `app/(app)/upcoming/FoldSummary.tsx` — the fold line that pulses when it catches one.
 - `lib/__tests__/micro-motion.test.ts` — pins the CSS numbers to the module's, and
@@ -106,7 +109,9 @@ and no runtime dispatch. Adding a motion is a row in `MICRO_MOTIONS` plus a
 
 `lib/motion.ts` owns a different question — a panel _arriving_, at 240 ms, with an
 enter/exit pair and a `usePresence` unmount window (see `docs/internals/overlays.md`).
-That is navigation. Micro-motion is feedback on a write. Keep the vocabularies apart:
+That is navigation. Micro-motion is feedback on a write — and, since `tick`, on a
+GESTURE, which is the same question ("did that register?") asked of a drag instead of a
+save. Keep the vocabularies apart:
 a surface that slides a sheet does not reach into this module, and the token test
 fails a micro-motion name that collides with an overlay one.
 
@@ -175,6 +180,28 @@ not deleted, and _here_ is where to look.
 - The ring is drawn as `box-shadow` rather than a real border so the line's box never
   changes size, and it is **slate, not the success green** the confirm settle uses —
   catching a dismissal is a location, not an achievement.
+
+**`tick` — `app/(app)/timeline/TimelineScrubber.tsx`, the #2657 jump rail.** The first
+tenant that is not feedback on a write. Dragging the timeline's right-edge scrubber
+moves a floating bubble that names the period under the finger; the bubble beats once
+each time the finger crosses out of one month and into the next, which is the difference
+between scrubbing _through_ history and sliding around inside one month.
+
+- **Its other channel is missing on most of the devices it exists for.** One 8 ms haptic
+  fires alongside it (`HAPTIC_PATTERNS["scrubber-tick"]`), and iOS ships no web Vibration
+  API at all — so on an iPhone the beat is the only non-textual feedback there is. That is
+  why the #2657 ruling makes the visual pulse the universal channel and the haptic the
+  enhancement. The iOS 17.4+ `<input type="checkbox" switch>` haptic trick is deliberately
+  not used: unspecified behaviour Apple can remove, bought with a hidden form control that
+  assistive technology can see.
+- **The carrier is the bubble's own text**, correct on every frame with or without motion,
+  and the rail's `aria-valuetext`, which announces the same period change to a reader who
+  sees no bubble at all. Under reduced motion the haptic is suppressed by the same
+  preference and the text is the whole feedback.
+- **It fires on a crossing, never on arrival.** The bubble does not exist at rest — "no
+  text at rest" is the idiom's whole point — so there is no mount to pulse on.
+- The beat is replayed by **remounting the bubble's label** (React `key` on a counter),
+  because a one-shot CSS animation cannot re-run from a class that never left.
 
 ## How the browser suite proves it
 
