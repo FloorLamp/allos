@@ -24,7 +24,7 @@ import { biomarkerFamily } from "@/lib/canonical-name";
 import { getPanelSiblings } from "@/lib/queries/panel-siblings";
 import { PanelSiblingsCard } from "@/components/PanelSiblingsCard";
 import { isIopBiomarker } from "@/lib/followup-iop";
-import TrackLabFollowUpControl from "../TrackLabFollowUpControl";
+import TrackReadingFollowUpControl from "../TrackReadingFollowUpControl";
 import FoodSuggestions from "@/components/FoodSuggestions";
 import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
 import type {
@@ -777,7 +777,7 @@ export default async function ReadingDetailPage(props: {
         {showFollowUpControl && (
           <div data-testid="lab-followup">
             <div className="label">Recheck</div>
-            <TrackLabFollowUpControl
+            <TrackReadingFollowUpControl
               recordId={typeof latest.id === "number" ? latest.id : 0}
               existing={existingFollowUp}
               kind={isIop ? "iop" : "lab"}

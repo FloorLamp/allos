@@ -536,7 +536,7 @@ export function getLabFollowUpObservations(
 // One row per care_plan_items follow-up linked to a medical_records source, newest
 // first, carrying the source reading's display name so the caller can group by #482
 // family in JS. Profile-scoped (the JOIN carries medical_records' profile_id too).
-export interface LabFollowUpSummary {
+export interface ReadingFollowUpSummary {
   carePlanItemId: number;
   sourceRecordId: number;
   sourceName: string;
@@ -546,7 +546,7 @@ export interface LabFollowUpSummary {
   settledDisposition: string | null; // the #1866 terminator ('done'|'declined'), or null
 }
 
-export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
+export function getLabFollowUps(profileId: number): ReadingFollowUpSummary[] {
   return db
     .prepare(
       `SELECT cp.id AS carePlanItemId,
@@ -561,7 +561,7 @@ export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
           AND cp.source_medical_record_id IS NOT NULL
         ORDER BY cp.id DESC`
     )
-    .all(profileId) as LabFollowUpSummary[];
+    .all(profileId) as ReadingFollowUpSummary[];
 }
 
 // Every intraocular-pressure reading an IOP follow-up could link (#698 §6) — the pool
@@ -589,9 +589,9 @@ export function getIopFollowUpObservations(
 // The tracked IOP follow-ups (#698 §6), the labs mirror for the glaucoma-workup chain.
 // One row per source_kind='iop' care_plan_items follow-up joined to its source reading,
 // newest first, so the biomarker detail page can show the (single, bilateral) IOP
-// follow-up's state or offer to track one. Reuses LabFollowUpSummary (identical shape).
+// follow-up's state or offer to track one. Reuses the shared reading-follow-up shape.
 // Profile-scoped (the JOIN carries medical_records' profile_id too).
-export function getIopFollowUps(profileId: number): LabFollowUpSummary[] {
+export function getIopFollowUps(profileId: number): ReadingFollowUpSummary[] {
   return db
     .prepare(
       `SELECT cp.id AS carePlanItemId,
@@ -606,7 +606,7 @@ export function getIopFollowUps(profileId: number): LabFollowUpSummary[] {
           AND cp.source_medical_record_id IS NOT NULL
         ORDER BY cp.id DESC`
     )
-    .all(profileId) as LabFollowUpSummary[];
+    .all(profileId) as ReadingFollowUpSummary[];
 }
 
 // Family history, grouped by relative (relation) then condition. Rows with an

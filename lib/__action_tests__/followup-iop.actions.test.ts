@@ -1,6 +1,6 @@
 // SERVER-ACTION TIER — the IOP glaucoma follow-up chain write paths (#698 §6).
 //
-// Drives the real trackIopFollowUp (biomarkers) + the SHARED resolveFollowUp (upcoming)
+// Drives the real trackIopFollowUp + the SHARED resolveFollowUp (upcoming)
 // action against the REAL throwaway temp DB, with the auth boundary mocked by setup.ts.
 // Asserts: the create writes a linked, dated care_plan_item with source_kind='iop' and
 // the fixed glaucoma-workup title; the resolve records the outcome + closes the loop via
@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { trackIopFollowUp } from "@/app/(app)/results/readings/biomarker-actions";
+import { trackIopFollowUp } from "@/app/(app)/results/readings/followup-actions";
 import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
 import { deleteResult } from "@/app/(app)/results/reading-actions";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";

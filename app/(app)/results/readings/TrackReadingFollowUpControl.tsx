@@ -2,20 +2,18 @@
 
 import SubmitButton from "@/components/SubmitButton";
 import { followUpStateLabel } from "@/lib/followup";
-import { trackLabFollowUp, trackIopFollowUp } from "./biomarker-actions";
-import type { LabFollowUpSummary } from "@/lib/queries";
+import type { ReadingFollowUpSummary } from "@/lib/queries";
+import { trackLabFollowUp, trackIopFollowUp } from "./followup-actions";
 
-// Per-biomarker follow-up affordance on the biomarker detail page (issue #700 labs
-// adapter + #698 §6 IOP adapter). When a FLAGGED reading has no tracked follow-up, it
-// offers a compact interval picker + a "Track follow-up" button that creates a linked,
-// dated "Recheck …" care-plan follow-up (the finding→follow-up chain's create path).
-// When one already exists, it shows the follow-up's state instead — so a flagged
-// result's recheck is visible and resolvable from where the biomarker lives.
+// Shared follow-up affordance for episodic readings on the Results detail page
+// (issue #700 labs adapter + #698 §6 IOP adapter). When a flagged reading has no
+// tracked follow-up, it offers an interval picker that creates the adapter's linked,
+// dated care-plan follow-up. When one already exists, it shows that follow-up's state.
 //
-// One component, two adapters, chosen by `kind`: a generic biomarker ("lab") tracks a
-// "Recheck <name>" via trackLabFollowUp; an intraocular-pressure reading ("iop") tracks
-// the bilateral "Recheck IOP / glaucoma workup" via trackIopFollowUp (#698 §6). Only the
-// posted action, the button copy, and the test hooks differ. The imaging twin is
+// One component, two domain-specific adapters, chosen by `kind`: a lab reading tracks
+// "Recheck <name>" through trackLabFollowUp; intraocular pressure tracks the bilateral
+// "Recheck IOP / glaucoma workup" through trackIopFollowUp. Only the action, copy, and
+// test hooks differ. The imaging twin is
 // app/(app)/results/imaging/TrackFollowUpControl.tsx.
 const INTERVALS: { label: string; days: number }[] = [
   { label: "3 months", days: 91 },
@@ -46,13 +44,13 @@ const COPY: Record<
   },
 };
 
-export default function TrackLabFollowUpControl({
+export default function TrackReadingFollowUpControl({
   recordId,
   existing,
   kind = "lab",
 }: {
   recordId: number;
-  existing?: LabFollowUpSummary;
+  existing?: ReadingFollowUpSummary;
   kind?: "lab" | "iop";
 }) {
   const copy = COPY[kind];
