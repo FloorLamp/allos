@@ -108,30 +108,28 @@ export const STATELESS_FOLD_CLASSES: readonly {
     reason:
       "Remembering which data is shown makes data read as missing. Modes may persist; narrowing never does.",
   },
-  {
-    name: "tap-path",
-    reason:
-      "A fold sitting directly above a log control must not grow after hydration and move that control under a thumb already reaching for it.",
-  },
 ] as const;
 
-// THE TAP-PATH EXCLUSION, at length, because it is the one that came out of building
-// this rather than out of the spec.
+// THE LATE-RESTORE HAZARD, and why it is no longer a reason to exclude anything.
 //
 // Per-device state is INVISIBLE TO THE SERVER by construction — that is what makes it
-// per-device. So a remembered-open fold cannot be server-rendered open: it renders
-// closed, and grows once the client has read the store. On a settings page that is a
-// shrug. On a primary log affordance it is not: the fold expanding pushes the control
-// below it down the screen at exactly the moment a thumb is travelling toward it, and a
-// mis-tap on a dose control is a real cost, not a cosmetic one.
+// per-device — so a remembered-open fold cannot be server-rendered open. The first
+// version of this feature therefore restored it after hydration, and that was wrong in a
+// way that took CI to show: between first paint and hydration the fold is closed on
+// screen AND closed in the DOM, and then it opens. A tap issued in that window is aimed
+// at a closed fold and lands on an open one, so it shuts it. On a settings page that
+// costs a reader one confusing tap; above a log control it would move the control out
+// from under a thumb.
 //
-// This is why `dashboard-prn-more` is NOT in the registry even though #2652 §3 names
-// dashboard cards as in scope. Closing that gap properly needs a pre-paint boot script
-// (the shape `THEME_BOOT_SCRIPT` in app/layout.tsx already uses for the theme) so the
-// fold's height is correct in the first frame, or a server-visible tier — which is the
-// `login_settings` graduation, with the cross-device reach that comes with it. Both are
-// real designs; neither is a line of this change, so the dashboard folds stay stateless
-// until one is chosen.
+// `DISCLOSURE_BOOT_SCRIPT` closes that window rather than routing around it: the fold's
+// height is right in the FIRST PAINTED FRAME, so there is no interval in which the
+// pixels and the store disagree. With that in place the hazard is not a property of
+// certain folds; it is gone.
+//
+// What that leaves is a pure SCOPE question, not a safety one. `dashboard-prn-more` is
+// still out of the registry, but now only because #2652 §3's "dashboard cards" is a
+// broader claim than one fold and deserves to be chosen deliberately rather than
+// inherited from whichever fold this change happened to touch first.
 
 /** The stored shape: one entry per remembered fold, 1 = open, 0 = closed. */
 export type DisclosureMemory = Record<string, 0 | 1>;
@@ -214,3 +212,75 @@ export function parseDisclosureMemory(raw: string | null): DisclosureMemory {
 export function serializeDisclosureMemory(memory: DisclosureMemory): string {
   return JSON.stringify(memory);
 }
+
+/**
+ * The DOM attribute a remembering `<details>` carries its stored key in. The boot script
+ * below matches on it, so a fold with an explicit caller state simply omits it and is
+ * invisible to the restore.
+ */
+export const DISCLOSURE_KEY_ATTR = "data-disclosure-key";
+
+/**
+ * The PRE-PAINT restore, inlined by app/layout.tsx in `<head>` — the same shape
+ * `THEME_BOOT_SCRIPT` uses, and for the same reason: a state that must be right in the
+ * FIRST FRAME cannot wait for a bundle.
+ *
+ * WHY THIS EXISTS, precisely, because it was caught in CI rather than in review.
+ * Restoring AFTER hydration is not merely a flash, it is a correctness bug. A `<details>`
+ * the server rendered closed and memory then opens has a window — first paint to
+ * hydration — in which the DOM and the pixels agree, and both are about to change. A tap
+ * issued in that window is aimed at a closed fold and lands on an open one, so it CLOSES
+ * it: the reader asked to open something and it shut. Two e2e specs are exactly that
+ * reader — they read `open`, see false, click, and find the contents hidden.
+ *
+ * Two fixes that look reasonable and are NOT, worth recording so they are not retried:
+ * "only restore when a stored entry exists" does nothing, because the entry exists; and
+ * "never let a restore close what the user opened" does nothing, because this restore
+ * only ever OPENS. The harm is not the restore's direction. It is that the restore is
+ * LATE. So the fix is to stop being late.
+ *
+ * A MutationObserver rather than a `querySelectorAll` sweep, because the document is
+ * STREAMED and the folds do not exist when this runs. Observer callbacks are delivered as
+ * microtasks at the end of the task that parsed the node, and the browser paints between
+ * tasks — so a fold's height is right in the first frame it is painted in.
+ *
+ * Runs ONCE per document, and deliberately has no `ThemeReassert`-style safety net: on a
+ * client-side route change the folds are rendered by React, which reads the same store on
+ * its first render and is correct without help. Only the server-rendered first document
+ * needs this.
+ */
+export const DISCLOSURE_BOOT_SCRIPT = `
+(function () {
+  try {
+    var raw = localStorage.getItem('${DISCLOSURE_MEMORY_KEY}');
+    if (!raw) return;
+    var mem = JSON.parse(raw);
+    if (!mem || typeof mem !== 'object' || Array.isArray(mem)) return;
+    var sel = 'details[${DISCLOSURE_KEY_ATTR}]';
+    var apply = function (el) {
+      var v = mem[el.getAttribute('${DISCLOSURE_KEY_ATTR}')];
+      if (v === 1) el.open = true;
+      else if (v === 0) el.open = false;
+    };
+    var scan = function (node) {
+      if (!node || node.nodeType !== 1) return;
+      if (node.matches && node.matches(sel)) apply(node);
+      if (node.querySelectorAll) {
+        var found = node.querySelectorAll(sel);
+        for (var i = 0; i < found.length; i++) apply(found[i]);
+      }
+    };
+    var obs = new MutationObserver(function (records) {
+      for (var i = 0; i < records.length; i++) {
+        var added = records[i].addedNodes;
+        for (var j = 0; j < added.length; j++) scan(added[j]);
+      }
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener('DOMContentLoaded', function () {
+      scan(document.body);
+      obs.disconnect();
+    });
+  } catch (e) {}
+})();
+`;

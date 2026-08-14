@@ -3,7 +3,9 @@
 import { useCallback, useSyncExternalStore, type ReactNode } from "react";
 import {
   DISCLOSURES,
+  DISCLOSURE_KEY_ATTR,
   DISCLOSURE_MEMORY_KEY,
+  disclosureKey,
   disclosureOpen,
   parseDisclosureMemory,
   rememberDisclosure,
@@ -129,6 +131,12 @@ export default function RememberedDetails({
       className={className}
       data-testid={testId}
       data-disclosure={id}
+      // The stored key, for DISCLOSURE_BOOT_SCRIPT to match on before first paint. Only
+      // present when this fold is actually remembering — a caller-controlled fold must
+      // stay invisible to the restore.
+      {...(remembering
+        ? { [DISCLOSURE_KEY_ATTR]: disclosureKey(id, instance) }
+        : {})}
       open={open ?? DISCLOSURES[id].defaultOpen}
       onToggle={onToggle}
     >
