@@ -87,6 +87,11 @@ import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 //        → hydratedClick(page, locator) when the CLICK ITSELF can be lost — a
 //          disclosure/chip/menu whose handler React may not have attached yet, and
 //          which a retry loop would toggle back. Then assert what it revealed.
+//        → openConfirm(page, trigger) for the specific case where that handler calls
+//          `useConfirm()`. Same primitive, named for the thing it returns, and the
+//          one home for why a confirm may NEVER be re-clicked: the hook settles an
+//          in-flight request as CANCELLED when a second replaces it, so the retry
+//          can cancel the dialog it is waiting for (#2729).
 //    Do NOT reach for settledClick here. A client toggle posts nothing, so there is
 //    nothing to settle on; before #1952 it appeared to work only because it accepted
 //    a bystander's POST, which is the silent-green failure that issue is about.
