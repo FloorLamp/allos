@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page, type TestInfo } from "@playwright/test";
+import { type Locator, type Page, type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
@@ -119,6 +119,40 @@ function createSleepEditFixture(
   } finally {
     handle.close();
   }
+}
+
+// Open /sleep and return `main` only once the page's LAYOUT is done growing —
+// i.e. once both lazy chart bundles above the log have actually MOUNTED.
+//
+// The two trend charts (`sleep-duration-trend`'s line chart and the
+// `source-compare-sleep_min` comparison) are `next/dynamic(ssr: false)`: the
+// server HTML contains NOTHING in their boxes, the Suspense fallback paints at
+// hydration, and the chart itself at chunk evaluation — each step growing the
+// content ABOVE the sleep-mood log by a card height. On a loaded worker those
+// steps land tens of seconds after first paint (#2839's trace shows the
+// duration card still collapsed while the test was already driving the log).
+//
+// A row-menu round trip started before the last step is the #2839 hang: the
+// growth pushes the row's ⋯ trigger below the fold, the OverflowMenu panel is
+// `position: fixed` and glued to that trigger, and the pending click on the
+// menu item then retries forever — the item stays "visible" to Playwright
+// (off-viewport is not hidden), `scrollIntoViewIfNeeded` cannot move a fixed
+// element, and the hit test at its off-screen point reports `<html>`
+// intercepting pointer events until the test budget dies with a bare timeout.
+// So: any test that drives the log's row menus goes through here first, and
+// interacts with the same layout the menu will anchor to. The 20s budgets are
+// declared per hygiene pitfall 17 — chunk evaluation is exactly the kind of
+// loaded-shard latency the 5s default loses.
+async function gotoSleepLogSettled(page: Page): Promise<Locator> {
+  await page.goto("/sleep");
+  const main = page.getByRole("main");
+  await expect(
+    main.getByTestId("sleep-duration-trend").locator(".recharts-wrapper")
+  ).toBeVisible({ timeout: 20_000 });
+  await expect(
+    main.getByTestId("source-compare-sleep_min").locator(".recharts-wrapper")
+  ).toBeVisible({ timeout: 20_000 });
+  return main;
 }
 
 function destroySleepEditFixture(fixture: SleepEditFixture): void {
@@ -891,26 +925,28 @@ test.describe("Sleep and mood log historical editing", () => {
         username: fixture.username,
         password: E2E_MEMBER_PASSWORD,
       });
-      await page.goto("/sleep");
-      const main = page.getByRole("main");
+      const main = await gotoSleepLogSettled(page);
       await expect(main.getByTestId("sleep-regularity")).toHaveCount(0);
       const sparseDuration = main.getByTestId("sleep-duration-trend");
       const sparseConsistency = main.getByTestId("sleep-consistency");
       await expect(sparseConsistency).toBeVisible();
-      const [sparseDurationBox, sparseConsistencyBox] = await Promise.all([
-        sparseDuration.boundingBox(),
-        sparseConsistency.boundingBox(),
+      // settledBoxes, not two independent boundingBox() reads (#2437): the
+      // subject is the RELATIONSHIP between the two cards, and the duration
+      // card's chart mounts late, so a gap computed across two separate reads
+      // can describe a layout that never existed. (The mount itself is already
+      // behind gotoSleepLogSettled; this keeps the measurement atomic.)
+      const [sparseDurationBox, sparseConsistencyBox] = await settledBoxes([
+        sparseDuration,
+        sparseConsistency,
       ]);
-      expect(sparseDurationBox).not.toBeNull();
-      expect(sparseConsistencyBox).not.toBeNull();
       await expect(main.getByTestId("sleep-stages")).toHaveCount(0);
       // With neither SRI nor stage data, the two visible cards fill the first
       // row instead of reserving either missing card's grid position.
       expect(
-        Math.abs(sparseDurationBox!.x - sparseConsistencyBox!.x)
+        Math.abs(sparseDurationBox.x - sparseConsistencyBox.x)
       ).toBeGreaterThan(100);
       expect(
-        Math.abs(sparseDurationBox!.y - sparseConsistencyBox!.y)
+        Math.abs(sparseDurationBox.y - sparseConsistencyBox.y)
       ).toBeLessThanOrEqual(1);
 
       const log = page.getByTestId("sleep-mood-log");
@@ -1015,7 +1051,9 @@ test.describe("Sleep and mood log historical editing", () => {
         username: fixture.username,
         password: E2E_MEMBER_PASSWORD,
       });
-      await page.goto("/sleep");
+      // Same row-menu round trips as the edit test above, so the same
+      // settled-layout gate — see gotoSleepLogSettled.
+      await gotoSleepLogSettled(page);
       const { manualDate, importedDate } = fixture;
       const manualRow = page.locator(
         `[data-testid="sleep-mood-history-row"][data-date="${manualDate}"]`
@@ -1052,6 +1090,18 @@ test.describe("Sleep and mood log historical editing", () => {
         confirmMood.getByRole("button", { name: "Delete" })
       );
       await expect(manualRow).not.toContainText("(2/5)");
+
+      // Dismiss the delete's Undo toast before the next round trip: it sits
+      // fixed at the bottom-right — where this row's ⋯ menu opens — and it
+      // intercepts the next menu item's click until it auto-dismisses. The
+      // unbounded pre-#2839 click absorbed that window silently (most of this
+      // test's runtime); the run-wide action bound now names it instead of
+      // eating it. The Undo affordance itself is undo-delete.spec's subject.
+      const moodToast = page
+        .getByTestId("toast")
+        .filter({ hasText: "Mood check-in deleted" });
+      await moodToast.getByRole("button", { name: "Dismiss" }).click();
+      await expect(moodToast).toHaveCount(0);
 
       await hydratedClick(page, manualRow.getByTestId("overflow-menu-trigger"));
       await hydratedClick(page, page.getByTestId("sleep-history-delete-sleep"));
