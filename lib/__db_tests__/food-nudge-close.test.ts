@@ -13,7 +13,9 @@
 // (5) a send that yields NO pointer strips nothing (#1945 — strip and record are one
 // decision, so a send that cannot record must not close anybody's keyboard); (6) across
 // three nudges with an unextractable middle one, the strip lands on the message the
-// pointer names and the middle one is never orphaned with a live keyboard.
+// pointer names and the middle one is never orphaned with a live keyboard; (7) the strip
+// finishes in the #1779 POINTER TABLE too (#2749) — a succeeding strip forgets the row
+// naming the message it emptied, a failing one keeps it.
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
@@ -76,7 +78,27 @@ beforeEach(() => {
   setSetting("notify_last_error_at", "");
   setSetting("notify_last_error_channel", "");
   setProfileSetting(p.profileId, "food_nudge_last_message", "");
+  // The OTHER pointer store this rotation now writes to (#2749). Scoped to this
+  // file's own fixture profile (#2814), so it cannot reach a neighbour's rows.
+  db.prepare("DELETE FROM notify_messages WHERE profile_id = ?").run(
+    p.profileId
+  );
 });
+
+// The food messages the #1779 pointer table still calls live, oldest first. A row IS a
+// live keyboard here: the store only holds keyboard-bearing messages, and every close
+// in the system deletes the row rather than blanking a column.
+function liveFoodMessageIds(): number[] {
+  return (
+    db
+      .prepare(
+        `SELECT message_id FROM notify_messages
+          WHERE profile_id = ? AND chat_id = ? AND kind = 'food'
+          ORDER BY message_id`
+      )
+      .all(p.profileId, CHAT) as { message_id: number }[]
+  ).map((r) => r.message_id);
+}
 
 describe("food nudge close-previous keyboard (#947)", () => {
   it("first send stores the pointer and strips nothing (none prior)", async () => {
@@ -113,6 +135,39 @@ describe("food nudge close-previous keyboard (#947)", () => {
     const secondPtr = getFoodNudgePointer(p.profileId)!;
     expect(secondPtr.window).toBe("Midday");
     expect(secondPtr.messageId).toBe(firstPtr.messageId + 1);
+  });
+
+  // The strip has TWO halves and only the first one shipped with #947 (found by #2749):
+  // the keyboard leaves the chat, and the #1779 pointer row naming it must stop claiming
+  // it. That row is what the hourly sweep reasons from, and the food family RE-RENDERS
+  // from the same builder — so a pointer left behind puts a live food keyboard back on
+  // the stripped message at the first count change, tokens still carrying the send-time
+  // date.
+  it("a SUCCEEDING strip forgets the stripped message's pointer row (#2749)", async () => {
+    await dispatch(p.profileId, buildFoodNudge(p.profileId, "Morning", t)!);
+    const firstPtr = getFoodNudgePointer(p.profileId)!;
+    await dispatch(p.profileId, buildFoodNudge(p.profileId, "Midday", t)!);
+    const secondPtr = getFoodNudgePointer(p.profileId)!;
+
+    // Exactly one live food pointer, and it is the message that still has buttons —
+    // keeping the stripped one and dropping the live one is also "exactly one".
+    expect(liveFoodMessageIds()).toEqual([secondPtr.messageId]);
+    expect(secondPtr.messageId).not.toBe(firstPtr.messageId);
+  });
+
+  it("a FAILING strip KEEPS the pointer — that keyboard is still live (#2749)", async () => {
+    await dispatch(p.profileId, buildFoodNudge(p.profileId, "Morning", t)!);
+    const firstPtr = getFoodNudgePointer(p.profileId)!;
+    stripMock.mockImplementation(async () => {
+      throw new Error("Bad Request: message to edit not found");
+    });
+    await dispatch(p.profileId, buildFoodNudge(p.profileId, "Midday", t)!);
+
+    // The chat still shows the old keyboard, so forgetting its pointer would strand a
+    // live keyboard nothing could ever close. Both rows stay, and the sweep closes the
+    // stale one at rollover.
+    expect(liveFoodMessageIds()).toContain(firstPtr.messageId);
+    expect(liveFoodMessageIds()).toHaveLength(2);
   });
 
   it("swallows a strip failure and NEVER sets notify_last_error (send succeeded)", async () => {

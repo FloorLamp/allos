@@ -1488,8 +1488,18 @@ redirects to `*.blob.core.windows.net`, which returns **403 CONNECT** — while 
 artifact LIST returns 200, so it reads as a permissions problem and is not, and
 `gh run download` fails with nothing useful to act on.
 
-Job LOGS are plain API reads and stay reachable. So each e2e shard also PRINTS
-its per-file totals, one tagged line per spec file:
+Job LOGS stay reachable, but **not with `curl`**. `/actions/jobs/<id>/logs`
+redirects to the same blob host and fails the same `403 CONNECT` — reach them
+through the MCP GitHub tool instead, which fetches server-side:
+`mcp__github__get_job_logs` with `return_content: true`.
+
+Pass `tail_lines` large enough to clear the post-job cleanup, which varies per
+shard because some save caches and some do not: ~150 works, 55 was already too
+short for one shard. Every shard should yield roughly 30–35 lines, one per spec
+file it ran. A shard that yields none must not be skipped — `--from-log` exits
+non-zero on it deliberately, and that error is the guard.
+
+So each e2e shard also PRINTS its per-file totals, one tagged line per spec file:
 
 ```
 e2e-durations<TAB>e2e/some.spec.ts<TAB>12345
