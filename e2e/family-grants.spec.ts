@@ -103,13 +103,22 @@ async function cookielessPage(browser: Browser) {
 // (#830): the Edit button is a pure client setState with no Server Action to settle
 // on, so a tap lost before React attaches `onClick` is lost for good.
 //
-// hydratedClick, not a re-click loop (#2729). The loop this replaced called itself
-// idempotent and it was not: the button is `setOpen((v) => !v)`, so a click that
-// LANDED but whose grid had not painted inside the guard's 2 s left the next
-// iteration reading `grantRow` invisible and clicking again — closing what the first
-// click had opened. Measured under a 60× CDP CPU throttle, five sequential trials:
-// the loop 0/5, hydratedClick 5/5. Waiting for the hydration marker and clicking
-// ONCE cannot toggle anything twice.
+// hydratedClick, not a re-click loop (#2729). Measured under a 60× CDP CPU throttle,
+// five sequential trials, both at their shipped budgets: the loop 1/5, this 5/5.
+//
+// The reason is not the one the old loop's comment implied. A pre-hydration click is
+// swallowed, so it changes nothing — which also means it cannot be retried into
+// working, and every iteration before hydration burned the 20 s ceiling on a click
+// that could not land. Given a 60 s ceiling and nothing else changed, that same loop
+// passed 4/5. Its failure was the CEILING, and waiting for the hydration marker is
+// what spends the budget on the state actually being waited for.
+//
+// The loop was ALSO unsafe in the way it explicitly denied — the button is
+// `setOpen((v) => !v)`, so a landed click whose grid paints slower than the guard's
+// 2 s is closed again by the next iteration — but that was never observed: a
+// MutationObserver on `aria-expanded` recorded one `false → true` transition per
+// trial and never a flip back. It is fixed here because it is a live hazard, not
+// because it is the thing that was failing.
 async function expandGrantEdit(page: Page): Promise<void> {
   const summary = page.getByTestId(`grant-summary-${E2E_LOGIN_GRANTEDIT}`);
   await expect(summary).toBeVisible();

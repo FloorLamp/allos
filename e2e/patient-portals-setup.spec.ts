@@ -1094,9 +1094,11 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     const heldBefore = afterUpload.held.length;
     expect(heldBefore).toBeGreaterThan(0);
 
-    // 3. The user deletes it, through the real confirm dialog. openConfirm, not a
-    //    re-click loop: the tap is a discrete onClick with nothing to settle on, and
-    //    a retry can cancel the very dialog it waits for (#2729).
+    // 3. The user deletes it, through the real confirm dialog. openConfirm, not the
+    //    re-click loop this file carried at four sites (#2729) — this test and the
+    //    tombstone one below are the pair that issue was filed for. A swallowed
+    //    pre-hydration click changes nothing, so it cannot be retried into working,
+    //    and the loop's 15 s ceiling went on clicks that could not land.
     await page.goto(`/import/${docId}`);
     const dialog = await openConfirm(page, page.getByTestId("delete-document"));
     await dialog

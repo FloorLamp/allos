@@ -61,11 +61,12 @@ function fixtureIds(): {
 // (#830): Edit is a pure client setState with no Server Action to settle on, so a
 // tap lost before React attaches `onClick` is lost for good.
 //
-// hydratedClick, not a re-click loop (#2729) — the same repair, and the same reason,
-// as family-grants' expandGrantEdit: the button is `setOpen((v) => !v)`, so a landed
-// click whose body paints slower than the old guard's 2 s was CLOSED again by the
-// next iteration. Idempotent by inspection (an already-open body is left alone),
-// never by re-clicking.
+// hydratedClick, not a re-click loop (#2729) — the same repair and the same measured
+// reason as family-grants' expandGrantEdit, which carries the numbers: the old loop
+// spent its ceiling on pre-hydration clicks that could not land, so waiting for the
+// hydration marker is what converges. Idempotent by inspection (an already-open body
+// is left alone), never by re-clicking — `setOpen((v) => !v)` is a real toggle, so a
+// retry stays a hazard even where it was not the observed failure.
 async function expandLogin(
   page: Page,
   username: string,

@@ -685,29 +685,53 @@ export async function openCareOverviewSection(
 // below it fails as `element(s) not found`.
 //
 // Five call sites answered that with a `toPass` loop that re-clicked the trigger
-// until the dialog appeared. The premise was right and the repair was not, for two
-// reasons measured under a CDP CPU throttle (docs/internals/e2e-hygiene.md, "slow
-// the CPU, not the neighbours"):
+// until the dialog appeared. The premise was right and the repair was not. What is
+// wrong with it was MEASURED, under a CDP CPU throttle (docs/internals/e2e-hygiene.md,
+// "slow the CPU, not the neighbours"), and it is not what #2729 assumed:
 //
-//   • The loop spends its whole BUDGET on the pre-hydration window. Every iteration
-//     before hydration is a click into the void plus a 2 s wait, so the 15 s ceiling
-//     is consumed by attempts that could not have worked; hydration alone measured
-//     11.7 s on `/import/908` at a 60× throttle, leaving 3 s for the dialog. Waiting
-//     for a STATE costs nothing while it waits — this helper's budget is spent on
-//     the thing it is waiting for.
-//   • Once hydration HAS happened the retry becomes an interrupter. `useConfirm`
-//     settles an in-flight request as CANCELLED when a second replaces it
-//     (`prev?.resolve(false)`, components/ConfirmDialog.tsx) and remounts the panel
-//     on a fresh `retained.nonce` — so a dialog that merely paints slower than the
-//     loop's inner 2 s is torn down and restarted by the iteration waiting for it.
-//     A guard that cannot tell a swallowed click from a slow one gets that backwards
-//     exactly when the box is slow, which is the only time it is needed.
+//   • The loop spends its whole BUDGET on the window it exists to survive. A
+//     pre-hydration click is swallowed, so it changes nothing — which also means it
+//     cannot converge and cannot be retried into working. Every iteration before
+//     hydration is therefore a click into the void plus the inner guard's 2 s wait,
+//     and the 15 s ceiling is consumed by attempts that could not have worked. At a
+//     60× throttle on `/import/908` that loop failed 5/5; given a 60 s ceiling and
+//     nothing else changed it passed 5/5, converging in 10.8–23.9 s. Its failure is
+//     the CEILING. Waiting for a STATE spends the budget on the thing being waited
+//     for, which is why this helper converges where the loop cannot.
+//   • The destructive branch is a HAZARD, not the observed cause, and the difference
+//     matters. `useConfirm` settles an in-flight request as CANCELLED when a second
+//     replaces it (`prev?.resolve(false)`, components/ConfirmDialog.tsx) and remounts
+//     the panel on a fresh `retained.nonce`; the disclosure twins of this loop are
+//     `setOpen((v) => !v)` and a native `<details>`. So a click that LANDS and then
+//     renders slower than the inner guard is torn down by the iteration waiting for
+//     it. That is real by inspection — but across 15 throttled trials it was never
+//     observed: a MutationObserver on the disclosure's `aria-expanded` recorded a
+//     single `false → true` transition every time, never a flip back. It is a live
+//     hazard because it needs only a landed click and a slow render, and it is not
+//     the thing that has been failing.
+//
+// A third reason is not about the race at all: the loop SWALLOWS its own diagnosis.
+// Whatever goes wrong inside the predicate — the trigger missing, a backdrop
+// intercepting the tap, the click throwing — is reported as one line, `Timeout
+// 15000ms exceeded while waiting on the predicate`, naming neither the click nor the
+// dialog. That is the causeless-timeout shape #890 is about, and it is what the two
+// failures in #2729 were read through. Clicking once lets the click's own error, or
+// the dialog locator, name the failure.
 //
 // So: hydratedClick — poll for React's markers on the node, click ONCE — then wait
-// for the dialog on its own generous ceiling. No re-click, at any point. The marker
-// probe is a reliable hydration signal (it converted a deterministic throttled
-// failure into 5/5 passes on #2742's tap), which is what makes the single click safe
-// and the fallback unnecessary.
+// for the dialog on its own ceiling. No re-click, at any point. The marker probe is a
+// reliable enough hydration signal to make that single click safe and a fallback
+// unnecessary, on two separate pieces of evidence. The direct one is this issue's own
+// measurement: the disclosure twin of this helper passed 5/5 at a 60× CPU throttle at
+// its shipped budget, where the loop it replaced passed 1/5. The precedent — a
+// DIFFERENT spec, not one of these call sites — is #2742's tap, which the same probe
+// carried from a deterministic throttled failure to 5/5.
+//
+// The two ceilings are separate because they are separate waits, and 15 + 15 is
+// deliberately the whole per-test budget: `playwright.config.ts` sets no `timeout`,
+// so a test gets Playwright's default 30 s unless it declares `test.slow()`. Past
+// that the test dies whatever this helper says, so a bigger number here would only
+// look generous.
 //
 // Returns the dialog by its `confirm-dialog` testid rather than `getByRole("dialog")`
 // — a page may carry another modal, and this helper promises THE confirm.

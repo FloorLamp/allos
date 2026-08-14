@@ -218,8 +218,10 @@ test.describe("Import detail: tabbed records browser", () => {
     // Delete opens a CLIENT confirm (no POST to settle on), and this discrete click
     // can be swallowed pre-hydration; #1340 added a client preview island lower on
     // the page, widening that window on a cold first load. openConfirm waits for the
-    // hydration marker and clicks ONCE — the re-click loop this replaced spent its
-    // whole budget on pre-hydration attempts and could cancel a slow dialog (#2729).
+    // hydration marker and clicks ONCE (#2729): the loop this replaced spent its
+    // whole 15 s ceiling on pre-hydration clicks that could not land — 0/5 at a 60×
+    // CPU throttle, and 5/5 once given a 60 s ceiling instead — and, given a landed
+    // click and a slow paint, could cancel the dialog it was waiting for.
     const dialog = await openConfirm(page, page.getByTestId("delete-document"));
     await expect(dialog).toContainText(/Delete document & its records/);
     await expect(dialog).toContainText(/every record it imported/);

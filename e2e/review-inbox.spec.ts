@@ -93,12 +93,14 @@ test.describe("Data → Review import inbox", () => {
     // before React attaches its onToggle, or React may swallow the discrete
     // event outright.
     //
-    // hydratedClick, not the re-click loop this replaced (#2729). A <details> is a
-    // real TOGGLE, so that loop was safe only while its guard kept up with it: a
-    // click that LANDED but whose lazily-fetched tree had not rendered inside the
-    // guard's 4 s left the next iteration clicking the summary again, closing it.
-    // Waiting for React's markers on the node and clicking ONCE removes both the
-    // swallow and the toggle-back.
+    // hydratedClick, not the re-click loop this replaced (#2729). Measured at a 60×
+    // CDP CPU throttle, five sequential trials: the loop 1/5, this 5/5. A swallowed
+    // click changes nothing, so it cannot be retried into working — the loop was
+    // spending its 20 s ceiling on clicks that could not land, and given a 60 s one
+    // it passed 5/5. Waiting for React's markers spends that budget on the state.
+    // A <details> is also a real TOGGLE, so a retry that outran its own guard would
+    // close what it opened; that was never observed here, and clicking once removes
+    // the hazard regardless.
     const viewer = hcCard.getByTestId("raw-data-viewer");
     await hydratedClick(page, viewRaw, { timeout: 20_000 });
     await expect(viewer).toBeVisible({ timeout: 20_000 });

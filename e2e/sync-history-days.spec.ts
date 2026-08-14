@@ -125,9 +125,11 @@ test.describe("day-grouped sync history (#1991)", () => {
       // Opening it lists exactly those two and NAMES the remainder rather than
       // pretending the rest are openable.
       // hydratedClick, not a re-click loop (#2729): the SSR markup satisfies the
-      // assertions above, so the discrete onToggle can still be swallowed here — and
-      // a <details> is a real toggle, so a retry whose guard has not caught up
-      // closes what the previous click opened. One click, after the marker.
+      // assertions above, so the discrete onToggle can still be swallowed here. The
+      // same repair and measured reason as review-inbox's twin, which carries the
+      // numbers — a swallowed click cannot be retried into working, so the loop was
+      // spending its ceiling on clicks that could not land. One click, after the
+      // marker; a <details> is a real toggle, so a retry is a hazard besides.
       const walk = history.getByRole("link", { name: /Day-group walk/ });
       await hydratedClick(member, drill, { timeout: 20_000 });
       await expect(walk).toBeVisible({ timeout: 20_000 });
