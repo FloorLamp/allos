@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { type Page } from "@playwright/test";
-import { settledCheck, settledClick } from "./helpers";
+import { hydratedClick, settledCheck, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_GRANTEDIT,
@@ -58,9 +58,14 @@ function fixtureIds(): {
 }
 
 // Open a login's collapsed grant disclosure past the pre-hydration toggle swallow
-// (#830): Edit is a pure client setState with no Server Action to settle on, so
-// re-click until the lazily-mounted body renders. Idempotent — once the body is
-// visible the loop stops clicking, so it never toggles back to collapsed.
+// (#830): Edit is a pure client setState with no Server Action to settle on, so a
+// tap lost before React attaches `onClick` is lost for good.
+//
+// hydratedClick, not a re-click loop (#2729) — the same repair, and the same reason,
+// as family-grants' expandGrantEdit: the button is `setOpen((v) => !v)`, so a landed
+// click whose body paints slower than the old guard's 2 s was CLOSED again by the
+// next iteration. Idempotent by inspection (an already-open body is left alone),
+// never by re-clicking.
 async function expandLogin(
   page: Page,
   username: string,
@@ -68,12 +73,12 @@ async function expandLogin(
 ): Promise<void> {
   const summary = page.getByTestId(`grant-summary-${username}`);
   await expect(summary).toBeVisible();
-  const editBtn = summary.getByTestId(`grant-edit-${username}`);
   const body = page.getByTestId(bodyTestId);
-  await expect(async () => {
-    if (!(await body.isVisible())) await editBtn.click().catch(() => {});
-    await expect(body).toBeVisible({ timeout: 2000 });
-  }).toPass({ timeout: 20_000 }); // topass-ok: pre-hydration disclosure toggle swallow (#830), no POST to settle on — re-click until the lazily-mounted body renders (idempotent)
+  if (await body.isVisible()) return;
+  await hydratedClick(page, summary.getByTestId(`grant-edit-${username}`), {
+    timeout: 20_000,
+  });
+  await expect(body).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe("Settings → Family tells access and notifications apart (#2345)", () => {

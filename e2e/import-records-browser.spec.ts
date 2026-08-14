@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  openConfirm,
+  settledClick,
+} from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
@@ -211,15 +216,11 @@ test.describe("Import detail: tabbed records browser", () => {
     await page.goto("/import/908");
     // The document-level delete (not a per-record row delete) — scoped by testid.
     // Delete opens a CLIENT confirm (no POST to settle on), and this discrete click
-    // can be swallowed pre-hydration — re-click until the dialog opens (same guard
-    // as review-inbox's View-raw). #1340 added a client preview island lower on the
-    // page, widening that window on a cold first load.
-    const del = page.getByTestId("delete-document");
-    const dialog = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog.isVisible())) await del.click();
-      await expect(dialog).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: re-open the client confirm until it appears — no Server-Action POST to settle on, and the discrete onClick can be swallowed pre-hydration
+    // can be swallowed pre-hydration; #1340 added a client preview island lower on
+    // the page, widening that window on a cold first load. openConfirm waits for the
+    // hydration marker and clicks ONCE — the re-click loop this replaced spent its
+    // whole budget on pre-hydration attempts and could cancel a slow dialog (#2729).
+    const dialog = await openConfirm(page, page.getByTestId("delete-document"));
     await expect(dialog).toContainText(/Delete document & its records/);
     await expect(dialog).toContainText(/every record it imported/);
   });

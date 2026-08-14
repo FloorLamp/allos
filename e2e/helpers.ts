@@ -670,6 +670,55 @@ export async function openCareOverviewSection(
   return section;
 }
 
+// Tap a control whose handler calls `useConfirm()`, and return the confirm dialog
+// (issue #2729).
+//
+// A confirm is opened by a DISCRETE onClick with nothing to settle on: no Server
+// Action POST, no navigation, no URL. So a tap that lands in the #500/#830
+// pre-hydration window is swallowed in silence — Playwright's actionability checks
+// all pass, because the ELEMENT is fine — and the `expect(dialog).toBeVisible()`
+// below it fails as `element(s) not found`.
+//
+// Five call sites answered that with a `toPass` loop that re-clicked the trigger
+// until the dialog appeared. The premise was right and the repair was not, for two
+// reasons measured under a CDP CPU throttle (docs/internals/e2e-hygiene.md, "slow
+// the CPU, not the neighbours"):
+//
+//   • The loop spends its whole BUDGET on the pre-hydration window. Every iteration
+//     before hydration is a click into the void plus a 2 s wait, so the 15 s ceiling
+//     is consumed by attempts that could not have worked; hydration alone measured
+//     11.7 s on `/import/908` at a 60× throttle, leaving 3 s for the dialog. Waiting
+//     for a STATE costs nothing while it waits — this helper's budget is spent on
+//     the thing it is waiting for.
+//   • Once hydration HAS happened the retry becomes an interrupter. `useConfirm`
+//     settles an in-flight request as CANCELLED when a second replaces it
+//     (`prev?.resolve(false)`, components/ConfirmDialog.tsx) and remounts the panel
+//     on a fresh `retained.nonce` — so a dialog that merely paints slower than the
+//     loop's inner 2 s is torn down and restarted by the iteration waiting for it.
+//     A guard that cannot tell a swallowed click from a slow one gets that backwards
+//     exactly when the box is slow, which is the only time it is needed.
+//
+// So: hydratedClick — poll for React's markers on the node, click ONCE — then wait
+// for the dialog on its own generous ceiling. No re-click, at any point. The marker
+// probe is a reliable hydration signal (it converted a deterministic throttled
+// failure into 5/5 passes on #2742's tap), which is what makes the single click safe
+// and the fallback unnecessary.
+//
+// Returns the dialog by its `confirm-dialog` testid rather than `getByRole("dialog")`
+// — a page may carry another modal, and this helper promises THE confirm.
+export async function openConfirm(
+  page: Page,
+  trigger: Locator,
+  opts: { hydrationTimeout?: number; dialogTimeout?: number } = {}
+): Promise<Locator> {
+  await hydratedClick(page, trigger, {
+    timeout: opts.hydrationTimeout ?? 15_000,
+  });
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible({ timeout: opts.dialogTimeout ?? 15_000 });
+  return dialog;
+}
+
 // Open MobileNav's slide-in drawer and return it (issue #1420 — the `mobile`
 // Playwright project's one shared interaction). The drawer is the phone shell's
 // only route to the app's navigation: below `md` the desktop sidebar is hidden and

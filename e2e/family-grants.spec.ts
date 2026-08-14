@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledCheck, settledClick } from "./helpers";
+import { hydratedClick, settledCheck, settledClick } from "./helpers";
 import { createLoginViaFamily } from "./family-helpers";
 import {
   DUP_ACCESS_PROFILE,
@@ -100,19 +100,29 @@ async function cookielessPage(browser: Browser) {
 }
 
 // Open the grant-edit login's disclosure past the pre-hydration toggle swallow
-// (#830): the Edit button is a pure client setState (no Server Action to settle on),
-// so re-click until the lazily-mounted grant grid renders. Idempotent — a swallowed
-// click is a no-op, and once the grid is visible the loop stops clicking (so it never
-// double-toggles back to collapsed).
+// (#830): the Edit button is a pure client setState with no Server Action to settle
+// on, so a tap lost before React attaches `onClick` is lost for good.
+//
+// hydratedClick, not a re-click loop (#2729). The loop this replaced called itself
+// idempotent and it was not: the button is `setOpen((v) => !v)`, so a click that
+// LANDED but whose grid had not painted inside the guard's 2 s left the next
+// iteration reading `grantRow` invisible and clicking again — closing what the first
+// click had opened. Measured under a 60× CDP CPU throttle, five sequential trials:
+// the loop 0/5, hydratedClick 5/5. Waiting for the hydration marker and clicking
+// ONCE cannot toggle anything twice.
 async function expandGrantEdit(page: Page): Promise<void> {
   const summary = page.getByTestId(`grant-summary-${E2E_LOGIN_GRANTEDIT}`);
   await expect(summary).toBeVisible();
-  const editBtn = summary.getByTestId(`grant-edit-${E2E_LOGIN_GRANTEDIT}`);
   const grantRow = page.getByTestId(`grant-row-${E2E_LOGIN_GRANTEDIT}`);
-  await expect(async () => {
-    if (!(await grantRow.isVisible())) await editBtn.click().catch(() => {});
-    await expect(grantRow).toBeVisible({ timeout: 2000 });
-  }).toPass({ timeout: 20_000 }); // topass-ok: pre-hydration disclosure toggle swallow (#830), no POST to settle on — re-click until the lazily-mounted grid renders (idempotent)
+  // Idempotent by inspection, not by re-clicking (openMeasurementGroup's shape):
+  // an already-open disclosure is left alone rather than toggled shut.
+  if (await grantRow.isVisible()) return;
+  await hydratedClick(
+    page,
+    summary.getByTestId(`grant-edit-${E2E_LOGIN_GRANTEDIT}`),
+    { timeout: 20_000 }
+  );
+  await expect(grantRow).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe("Family grant matrix collapses to summary rows (#1412)", () => {
