@@ -88,7 +88,12 @@ questions cheap to answer). Typical survivors of a good investigation:
   of scope" lines prevent well-meaning scope creep during implementation.
 - **Design calls with real alternatives** — present 2–3 options with costs,
   the way #2837 and #2830 do, and let the user pick before filing.
-- **Priority** — propose one; the user confirms.
+
+Priority is NOT a question: set it yourself from the calibration in step 6 and
+state it in the draft. Ask only when the calibration genuinely can't settle it
+— e.g. a bug that might be preempting (P0/P1) depending on facts only the user
+has. Re-opening at confirm time a decision the draft already carries defeats
+the point of baking decisions in.
 
 The point of asking now is that the filed issue needs no mid-flight owner
 ruling. If one specific question genuinely cannot be answered yet, the issue
