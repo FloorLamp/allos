@@ -82,14 +82,34 @@ export function estimatedFiberGrams(servings: FiberServing[]): number {
 // IntakeItem/medication NAME → "is this a fiber supplement?" — the fiber twin of
 // lib/dri.ts NAME_MATCHERS, kept small and case-insensitive. Covers the common products
 // the supplement catalog ships (psyllium husk, generic "Fiber", methylcellulose, inulin,
-// flaxseed) plus the household brands (Metamucil, Benefiber, wheat dextrin). Deliberately
-// word-anchored so it does NOT match unrelated products — "fish oil" must never read as
-// fiber (the `\bfiber\b` alternative can't match "fish").
+// flaxseed, chia, beta-glucan, glucomannan, acacia — #2752) plus the household brands
+// (Metamucil, Benefiber, wheat dextrin). Deliberately word-anchored so it does NOT match
+// unrelated products — "fish oil" must never read as fiber (the `\bfiber\b` alternative
+// can't match "fish"), and FLAXSEED OIL is excluded by name: it is an omega-3 product
+// with ~no fiber, and counting it would flag "a fiber supplement was taken" on a day
+// that had none.
+//
+// DOUBLE-COUNT CAVEAT (#2752): chia and flax are ALSO food-loggable as `nuts_seeds`
+// servings, and the estimated and supplemented halves of fiberIntake SUM — a spoonful
+// logged in both places counts twice. That is a user-education line (the card's floor
+// caveat framing), deliberately NOT a dedupe engine; noted here so the next reader
+// doesn't rediscover it.
 const FIBER_NAME_MATCHERS: RegExp[] = [
   /psyllium/i,
+  /ispaghula/i, // psyllium's pharmacopeial synonym
   /methylcellulose/i,
   /\binulin\b/i,
-  /flax\s*seed|flaxseed|ground\s*flax/i,
+  /(?:flax\s*seed|flaxseed)(?!\s*oil)|ground\s*flax/i,
+  /\bchia\b/i,
+  /beta[\s-]?glucan/i,
+  /glucomannan/i,
+  /\bkonjac\b/i,
+  /\bacacia\b/i,
+  /gum\s*arabic/i,
+  /oat\s*bran/i,
+  /wheat\s*bran/i,
+  /guar\s*gum/i,
+  /\bphgg\b/i, // partially hydrolyzed guar gum
   /metamucil/i,
   /benefiber/i,
   /wheat\s*dextrin/i,

@@ -237,6 +237,45 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
     defaultTimeOfDay: "Anytime",
   },
   { name: "Fiber", dosages: ["5 g", "10 g"], defaultTimeOfDay: "Anytime" },
+  // Fiber products (#2752) — gram-dosed defaults lead so fiberDoseGrams
+  // quantifies a picked dose out of the box; a tsp/tbsp variant is honest-unknown.
+  {
+    name: "Ground Flaxseed",
+    dosages: ["7 g", "14 g", "1 tbsp"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Chia Seeds",
+    dosages: ["12 g", "28 g", "1 tbsp"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Beta-Glucan",
+    dosages: ["3 g", "5 g"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Glucomannan",
+    dosages: ["1 g", "3 g"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Acacia Fiber",
+    dosages: ["5 g", "10 g", "1 tbsp"],
+    defaultTimeOfDay: "Anytime",
+  },
+  // Household fiber brands, so the honest full spelling is the path of least
+  // resistance (a truncated free-text "metam" is invisible to the fiber matcher).
+  {
+    name: "Metamucil",
+    dosages: ["1 rounded tsp", "1 packet"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Benefiber",
+    dosages: ["2 tsp", "1 stick"],
+    defaultTimeOfDay: "Anytime",
+  },
   {
     name: "Digestive Enzymes",
     dosages: ["1 capsule", "1 tablet"],
