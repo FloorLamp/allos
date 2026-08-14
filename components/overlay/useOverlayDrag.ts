@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { OVERLAY_MOTION_MS } from "@/lib/motion";
 import type { GestureDirection } from "@/lib/gesture";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
@@ -103,14 +103,21 @@ export function useOverlayDrag({
   const [suppressMotion, setSuppressMotion] = useState(false);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The panel is gone; so is anything the latch was protecting. Releasing here
-  // rather than on close is deliberate — during the exit the element is still on
-  // screen carrying the drag's inline transform, and re-admitting the exit
-  // keyframe over it is the very fight the latch exists to prevent.
-  useEffect(() => {
-    if (panelMounted) return;
-    setSuppressMotion(false);
-  }, [panelMounted]);
+  // The panel's presence, mirrored so a CHANGE in it can be answered during
+  // render — the shape components/usePresence.ts uses for the same reason. An
+  // effect would be wrong twice over: React discourages the cascading render
+  // (`react-hooks/set-state-in-effect` fails it), and the release would land one
+  // paint late, which on a remount is exactly the paint that carries the enter
+  // keyframe.
+  const [panelWasMounted, setPanelWasMounted] = useState(panelMounted);
+  if (panelWasMounted !== panelMounted) {
+    setPanelWasMounted(panelMounted);
+    // The panel is gone; so is anything the latch was protecting. Releasing on
+    // UNMOUNT rather than on close is deliberate — through the exit the element
+    // is still on screen carrying the drag's inline transform, and re-admitting
+    // the exit keyframe over it is the very fight the latch exists to prevent.
+    if (!panelMounted) setSuppressMotion(false);
+  }
 
   // Everything below speaks the recognizer's language: DIRECTED travel, always
   // >= 0 (lib/gesture.ts clamps movement the other way at 0). The axis and the
