@@ -1,9 +1,8 @@
 # AGENTS.md
 
 Hi, this is a project for regular people to track health. Health is complex,
-this app shouldn't be.
-
-Keep things simple. Write concisely. No "editorial-policy language" to users.
+this app shouldn't be. Keep things simple. Write concisely. No
+"editorial-policy language" to users.
 
 ## Project
 

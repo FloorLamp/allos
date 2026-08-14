@@ -1257,34 +1257,61 @@ describe("classifyQualitativeResult (#549 qualitative choke-point)", () => {
   it("infection markers: positive is BAD, negative is GOOD", () => {
     expect(
       classifyQualitativeResult("Hepatitis B Surface Antigen", "Positive")
-    ).toEqual({ presence: "positive", polarity: "bad", immutable: false });
+    ).toEqual({
+      presence: "positive",
+      polarity: "bad",
+      immutable: false,
+      valueIndependent: false,
+    });
     expect(
       classifyQualitativeResult("HIV 1/2 Antibody", "Non-Reactive")
-    ).toEqual({ presence: "negative", polarity: "good", immutable: false });
+    ).toEqual({
+      presence: "negative",
+      polarity: "good",
+      immutable: false,
+      valueIndependent: false,
+    });
     expect(
       classifyQualitativeResult("Hepatitis C Antibody", "Reactive")
-    ).toEqual({ presence: "positive", polarity: "bad", immutable: false });
+    ).toEqual({
+      presence: "positive",
+      polarity: "bad",
+      immutable: false,
+      valueIndependent: false,
+    });
     // A blood/urine culture that grew something.
     expect(classifyQualitativeResult("Urine Culture", "Growth")).toEqual({
       presence: "positive",
       polarity: "bad",
       immutable: false,
+      valueIndependent: false,
     });
   });
 
   it("durable-immunity titers: an immune-positive titer is GOOD (not bad)", () => {
     expect(
       classifyQualitativeResult("Hepatitis B Surface Antibody", "Positive")
-    ).toEqual({ presence: "positive", polarity: "good", immutable: false });
+    ).toEqual({
+      presence: "positive",
+      polarity: "good",
+      immutable: false,
+      valueIndependent: false,
+    });
     expect(classifyQualitativeResult("Measles IgG", "Immune")).toEqual({
       presence: "positive",
       polarity: "good",
       immutable: false,
+      valueIndependent: false,
     });
     // A numeric titer at/above its positivity threshold reads immune too.
     expect(
       classifyQualitativeResult("Varicella Zoster IgG", "45", null, ">=10")
-    ).toEqual({ presence: "positive", polarity: "good", immutable: false });
+    ).toEqual({
+      presence: "positive",
+      polarity: "good",
+      immutable: false,
+      valueIndependent: false,
+    });
     // A negative/equivocal titer is NOT confidently classified — leave it alone.
     expect(classifyQualitativeResult("Measles IgG", "Non-Immune")).toBeNull();
   });
@@ -1305,16 +1332,19 @@ describe("classifyQualitativeResult (#549 qualitative choke-point)", () => {
       presence: "neutral",
       polarity: "neutral",
       immutable: true,
+      valueIndependent: true,
     });
     expect(classifyQualitativeResult("Blood Type", "RH(D) POSITIVE")).toEqual({
       presence: "positive",
       polarity: "neutral",
       immutable: true,
+      valueIndependent: true,
     });
     expect(classifyQualitativeResult("APOE Genotype", "e3/e3")).toEqual({
       presence: "neutral",
       polarity: "neutral",
       immutable: true,
+      valueIndependent: true,
     });
   });
 
@@ -1323,11 +1353,13 @@ describe("classifyQualitativeResult (#549 qualitative choke-point)", () => {
       presence: "neutral",
       polarity: "neutral",
       immutable: false,
+      valueIndependent: true,
     });
     expect(classifyQualitativeResult("LDL Pattern", "Pattern A")).toEqual({
       presence: "neutral",
       polarity: "neutral",
       immutable: false,
+      valueIndependent: true,
     });
   });
 
@@ -1347,7 +1379,12 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
     // The LOINC (6463-4 = culture organism) makes a positive bad (keeps flagging).
     expect(
       classifyQualitativeResult("Organism 1", "Detected", null, null, "6463-4")
-    ).toEqual({ presence: "positive", polarity: "bad", immutable: false });
+    ).toEqual({
+      presence: "positive",
+      polarity: "bad",
+      immutable: false,
+      valueIndependent: false,
+    });
     // Influenza A PCR (92142-9): "Not Detected" is reassuring (good).
     expect(
       classifyQualitativeResult(
@@ -1357,13 +1394,23 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
         null,
         "92142-9"
       )
-    ).toEqual({ presence: "negative", polarity: "good", immutable: false });
+    ).toEqual({
+      presence: "negative",
+      polarity: "good",
+      immutable: false,
+      valueIndependent: false,
+    });
   });
 
   it("classifies an immunity titer by LOINC (immune-positive is good)", () => {
     expect(
       classifyQualitativeResult("Rubella Ab", "Immune", null, null, "25514-1")
-    ).toEqual({ presence: "positive", polarity: "good", immutable: false });
+    ).toEqual({
+      presence: "positive",
+      polarity: "good",
+      immutable: false,
+      valueIndependent: false,
+    });
   });
 
   it("classifies a genetic-risk SCREEN by LOINC on the low/high-risk axis (#687)", () => {
@@ -1381,6 +1428,7 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
       presence: "neutral",
       polarity: "bad",
       immutable: false,
+      valueIndependent: false,
       risk: "high_risk",
     });
     // Low risk is reassuring (polarity good, never flags).
@@ -1390,6 +1438,7 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
       presence: "neutral",
       polarity: "good",
       immutable: false,
+      valueIndependent: false,
       risk: "low_risk",
     });
   });
@@ -1408,6 +1457,7 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
       presence: "neutral",
       polarity: "neutral",
       immutable: false,
+      valueIndependent: true,
       qc: true,
     });
   });
@@ -1431,12 +1481,18 @@ describe("classifyQualitativeResult — LOINC-hinted class (#684)", () => {
         null,
         "19057-9"
       )
-    ).toEqual({ presence: "positive", polarity: "neutral", immutable: true });
+    ).toEqual({
+      presence: "positive",
+      polarity: "neutral",
+      immutable: true,
+      valueIndependent: true,
+    });
     // …which is exactly what the recognized name resolves to.
     expect(classifyQualitativeResult("Blood Type", "A POSITIVE")).toEqual({
       presence: "positive",
       polarity: "neutral",
       immutable: true,
+      valueIndependent: true,
     });
   });
 });
@@ -1448,6 +1504,7 @@ describe("classifyQualitativeResult — screening/risk class (#687)", () => {
         presence: "neutral",
         polarity: "bad",
         immutable: false,
+        valueIndependent: false,
         risk: "high_risk",
       }
     );
@@ -1455,12 +1512,14 @@ describe("classifyQualitativeResult — screening/risk class (#687)", () => {
       presence: "neutral",
       polarity: "good",
       immutable: false,
+      valueIndependent: false,
       risk: "low_risk",
     });
     expect(classifyQualitativeResult("Trisomy 18 Screen", "No Call")).toEqual({
       presence: "neutral",
       polarity: "neutral",
       immutable: false,
+      valueIndependent: false,
       risk: "indeterminate",
     });
     // "Screen Positive" phrasing also reads high-risk.
@@ -2243,22 +2302,11 @@ describe("qualitativeFlagResolution — an identity-class row keeps a hand-set f
     ).toBeUndefined();
   });
 
-  it("does NOT reach a MUTABLE neutral attribute — the reach stays at identity", () => {
-    // Urinalysis colour and morphology pattern are #548 §1's other half: context-
-    // neutral but MUTABLE, `immutable: false`, and not what #2715 scoped itself to.
-    // Their guessed "abnormal" still clears while edit-locked. Widening to them is the
-    // same separate claim #2712 declined to make about this branch.
-    for (const [name, value] of [
-      ["Urine Color", "Yellow"],
-      ["RBC Morphology Pattern", "Pattern A"],
-    ] as const)
-      expect(
-        qualitativeFlagResolution(name, value, null, null, "abnormal", null, {
-          editLocked: true,
-        })
-      ).toBeNull();
-    // And #544's good-polarity non-immunity — an infection marker that is NEGATIVE —
-    // still clears its blunt "abnormal" too.
+  it("still clears a VALUE-DEPENDENT verdict's guess — the reach is not the whole branch", () => {
+    // #544's good-polarity non-immunity: an infection marker read as NEGATIVE. The
+    // verdict comes from the VALUE, so the app can restate it, and gating this clear
+    // would leave someone who corrected "Reactive" to "Non-Reactive" looking at
+    // `abnormal` forever. Deliberately outside the gate — see #2777 below.
     expect(
       qualitativeFlagResolution(
         "Hepatitis B Surface Antigen",
@@ -2273,12 +2321,167 @@ describe("qualitativeFlagResolution — an identity-class row keeps a hand-set f
   });
 });
 
+describe("qualitativeFlagResolution — a MUTABLE neutral attribute keeps a hand-set flag (#2777)", () => {
+  // The other half of the #548 §1 clear. #2715 gated only the identity class because
+  // `c.immutable` named exactly that set; #2777 is the decision that the set was the
+  // wrong one. `immutable` answers the RETEST question (#548 §2), and whether a value
+  // changes over time says nothing about whether a person meant what they typed. The
+  // gate now keys on `valueIndependent`: the app's verdict here is "a urine colour is
+  // never abnormal", a fact about the ANALYTE that no correction to the value revises,
+  // so withholding the clear cannot strand a flag the pass was holding back.
+  //
+  // This describe is the direct reversal of a pin #2715 left in place on purpose, the
+  // same way that PR reversed one of #2712's.
+  const cases = [
+    ["Urine Color", "Yellow"],
+    ["RBC Morphology Pattern", "Pattern A"],
+    // A QC metric is value-independent for the same reason: fetal fraction is a
+    // run-quality number, not a health signal, whatever it reads (#687).
+    ["Fetal Fraction", "8.2"],
+  ] as const;
+
+  it("clears on an untouched row and defers on an edit-locked one", () => {
+    for (const [name, value] of cases) {
+      const args = [name, value, null, null, "abnormal", null] as const;
+      expect(qualitativeFlagResolution(...args)).toBeNull();
+      expect(
+        qualitativeFlagResolution(...args, { editLocked: false })
+      ).toBeNull();
+      expect(
+        qualitativeFlagResolution(...args, { editLocked: true })
+      ).toBeUndefined();
+    }
+  });
+
+  it("leaves an already-neutral row alone either way", () => {
+    // Nothing to clear, so the lock changes nothing — both answers are "leave".
+    for (const locked of [false, true])
+      expect(
+        qualitativeFlagResolution(
+          "Urine Color",
+          "Yellow",
+          null,
+          null,
+          "normal",
+          null,
+          { editLocked: locked }
+        )
+      ).toBeUndefined();
+  });
+
+  it("does not gate a value-DEPENDENT neutral verdict — an indeterminate screen", () => {
+    // An indeterminate NIPT screen is polarity "neutral" too, but its verdict is read
+    // off the value (#687), so it is NOT value-independent and its clear still fires
+    // while locked. Gating on `polarity === "neutral"` would have swept it in and
+    // frozen `abnormal` on a screen whose value was later corrected.
+    expect(
+      qualitativeFlagResolution(
+        "Trisomy 21",
+        "Indeterminate",
+        null,
+        null,
+        "abnormal",
+        null,
+        { editLocked: true }
+      )
+    ).toBeNull();
+  });
+
+  it("does not gate either PROMOTION, on a locked row of any class", () => {
+    // #544's immune promotion and #629's bad-polarity promotion. The lock protects
+    // what a person WROTE; it is not a licence to leave an infection-positive
+    // displaying as `Normal`.
+    expect(
+      qualitativeFlagResolution(
+        "Rubella IgG",
+        "Reactive",
+        null,
+        null,
+        null,
+        null,
+        { editLocked: true }
+      )
+    ).toBe("immune");
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antigen",
+        "Reactive",
+        null,
+        null,
+        "normal",
+        null,
+        { editLocked: true }
+      )
+    ).toBe("abnormal");
+  });
+});
+
+describe("classifyQualitativeResult — `valueIndependent` means what it says", () => {
+  // The #2777 gate is only as good as this field, and a hand-maintained boolean that
+  // nobody exercises is the #2444 shape: it reads like a guarantee and guarantees
+  // nothing. So check it against its own definition rather than against a list —
+  // vary the VALUE across a battery and require polarity to move iff the class says
+  // it can. A class that declares `valueIndependent` and then reads its value, or one
+  // that reads its value and forgot to declare `false`, fails here rather than
+  // silently gaining or losing the edit lock.
+  const VALUES = [
+    "Positive",
+    "Negative",
+    "Reactive",
+    "Non-Reactive",
+    "Yellow",
+    "Cloudy",
+    "High Risk",
+    "Low Risk",
+    "8.2",
+    "O POSITIVE",
+  ];
+
+  // One exemplar per class that classifies at all, with the LOINC where the name
+  // regex cannot reach it (#910).
+  const classes: Array<[string, string, string | null]> = [
+    ["identity (name)", "ABO Blood Group", null],
+    ["identity (LOINC)", "ABORh Interpretation", ABO_RH_LOINC],
+    ["genotype", "APOE Genotype", null],
+    ["neutral attribute", "Urine Color", null],
+    ["qc metric", "Fetal Fraction", null],
+    ["infection marker", "Hepatitis B Surface Antigen", null],
+    ["immunity titer", "Rubella IgG", null],
+    ["risk screen", "Trisomy 21", null],
+  ];
+
+  it("is true exactly when the verdict does not move with the value", () => {
+    for (const [label, name, loinc] of classes) {
+      // Deferring on one value and answering on another is itself a value-dependent
+      // verdict, so "defer" counts as an outcome rather than being skipped — without
+      // that, an immunity titer (good on Reactive, null on everything else) would look
+      // constant and the test would demand the wrong answer.
+      const seen = new Set<string>();
+      let declared: boolean | null = null;
+      for (const v of VALUES) {
+        const c = classifyQualitativeResult(name, v, null, null, loinc);
+        seen.add(c ? c.polarity : "defer");
+        if (!c) continue;
+        // Every value this class DOES classify must agree about the field itself.
+        if (declared !== null) expect(c.valueIndependent, label).toBe(declared);
+        declared = c.valueIndependent;
+      }
+      expect(declared, `${label}: no value classified`).not.toBeNull();
+      expect(declared, `${label}: outcomes seen ${[...seen].join("/")}`).toBe(
+        seen.size === 1
+      );
+    }
+  });
+});
+
 describe("classifyQualitativeResult — `immutable` marks the identity class and nothing else", () => {
-  // The #2715 gate keys on `c.immutable`, which is a legible stand-in for "identity
-  // class" only while the two are the same set. Pin the coupling rather than assume
-  // it: a future class answering `immutable` without being identity would silently
-  // inherit the hand-edit gate, and a future identity path that forgot the field would
-  // silently lose it. Either way the failure would be invisible at the gate itself.
+  // `immutable` is now the RETEST field only (#548 §2 — isBiomarkerStale), the edit
+  // lock having moved to `valueIndependent` in #2777. Pin the coupling anyway, and for
+  // the same reason as before: a future class answering `immutable` without being
+  // identity would silently gain a permanent staleness exemption, and an identity path
+  // that forgot the field would silently lose one — either failure invisible at the
+  // read. The two fields deliberately disagree on the mutable-neutral and QC classes,
+  // which is the whole point of separating them; the row below is what states that.
   const immutableOf = (
     name: string,
     value: string,
@@ -2302,5 +2505,20 @@ describe("classifyQualitativeResult — `immutable` marks the identity class and
     expect(immutableOf("Trisomy 21", "Low Risk")).toBe(false);
     expect(immutableOf("Hepatitis B Surface Antigen", "Reactive")).toBe(false);
     expect(immutableOf("Rubella IgG", "Reactive")).toBe(false);
+  });
+
+  it("is a DIFFERENT set from `valueIndependent`, which is why they are two fields", () => {
+    // A urine colour and a fetal fraction change over time (so they keep their retest
+    // clock: `immutable: false`) and carry no derivable flag whatever they read (so
+    // they are edit-lock gated: `valueIndependent: true`). If these two ever coincide
+    // again, folding them back into one field becomes arguable; while this row passes,
+    // #2777's separation is load-bearing rather than ceremonial.
+    const bothOf = (name: string, value: string) => {
+      const c = classifyQualitativeResult(name, value, null, null, null);
+      return [c?.immutable, c?.valueIndependent];
+    };
+    expect(bothOf("Urine Color", "Yellow")).toEqual([false, true]);
+    expect(bothOf("Fetal Fraction", "8.2")).toEqual([false, true]);
+    expect(bothOf("ABO Blood Group", "O Positive")).toEqual([true, true]);
   });
 });

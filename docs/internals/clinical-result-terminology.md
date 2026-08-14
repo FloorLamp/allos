@@ -151,21 +151,52 @@ not be edit-locked (`isEditLocked`, #133): `updateResult` writes the user's chos
 flag and `edited = 1` and then reconciles on the next line, so without the lock the
 save deletes the flag it just stored.
 
-That lock reaches a **second** clear, and only a second one (#2715).
+That lock reaches a **second** clear, and only a second one (#2715, #2777).
 `qualitativeFlagResolution` deletes a stored flag in exactly two places: the no-result
 clear above, and the #548 §1 clear of a blunt `abnormal` on a context-neutral attribute.
-The **identity** half of that second clear — a blood type, an ABO/Rh, a genotype, marked
-by `immutable` on the classification and by nothing else — is gated the same way, because
-both clears exist to remove an **extractor guess** on a value that cannot be abnormal, and
-on an edit-locked row the flag is not a guess but the one thing in the row a human is known
-to have chosen. A rule that held on one branch and not its neighbour read as a bug either
-way. The gate stops there on purpose: a **mutable** neutral attribute (urinalysis colour,
-morphology pattern) still clears while locked, and neither PROMOTION moves — #544's immune
-titer and #629's bad-polarity positive still resolve on a locked row, because the lock
-protects what a person wrote and is not a licence to leave an infection-positive displaying
-as `Normal`. Nothing strips what is already stored, and the two axes stay independent: an
-identity row keeping its hand-set flag is still exempt from the retest clock (#548 §2 reads
-the same `immutable`).
+Both exist to remove an **extractor guess** on a value that cannot be abnormal, and on an
+edit-locked row the flag is not a guess but the one thing in the row a human is known to
+have chosen.
+
+Where the second clear's gate stops is decided by **`valueIndependent`** on the
+classification, and the reason it is not `immutable` is worth stating. #2715 gated the
+identity class by reading `immutable`, which happened to name exactly that set — but
+`immutable` answers the **retest** question (#548 §2: does this value change over time?),
+and whether a value changes over time says nothing about whether someone meant what they
+typed. The question the gate is actually asking is whether the verdict is a statement about
+the **analyte** rather than about this reading's **value**. "A blood type is never
+abnormal", "a urine colour is never abnormal" and "fetal fraction is a run-quality number,
+not a health signal" are analyte facts, and no correction to the value revises them — so
+withholding the clear strands nothing, because the app was never holding back a flag it
+could later produce. Those three classes are gated. "This HIV antibody reads Non-Reactive,
+therefore reassuring" (#544) and "this screen reads Low Risk" (#687) are read off the
+value, and gating them would leave someone who corrected `Reactive` to `Non-Reactive`
+looking at `abnormal` forever — the same argument #221 makes for re-deriving a corrected
+numeric row's flag. Those still clear on a locked row, as does an indeterminate screen,
+which is polarity-`neutral` but value-dependent. Neither PROMOTION moves either: #544's
+immune titer and #629's bad-polarity positive still resolve while locked, because the lock
+protects what a person wrote and is not a licence to leave an infection-positive
+displaying as `Normal`.
+
+The honest cost of the wider gate is that an edit lock stamps the **row**, not the flag
+field, so someone who corrects a urinalysis row's value and never touches its flag also
+protects whatever flag is sitting there. That population is small by construction:
+`applyImportFollowups` reconciles every inserted record at import, when no row is
+edit-locked, so a colour row's blunt `abnormal` is already gone before any human opens it
+— the gate's population and #548 §1's are disjoint at the door. What survives is a row the
+classifier could not read at import and can now (a rename, a widened vocabulary), and the
+record editor shows the flag in a visible select on the same form, so it is one tap from
+being corrected, which a silently deleted flag is not. Nothing strips what is already
+stored, and the two axes stay independent: an identity row keeping its hand-set flag is
+still exempt from the retest clock (#548 §2 reads `immutable`, now that field's only job).
+
+The **numeric** reconcile has no such gate and needs none. `RECONCILABLE_FLAGS`
+(`lib/queries/medical/flags.ts`) is that pass's own vocabulary — high / low / normal /
+non-optimal\* — which it may revisit because it can re-derive those, and must revisit
+because #221 says a corrected value re-derives its flag. `abnormal` and `immune` are not
+in it: the numeric pass cannot produce them, so it never touches a row carrying one, which
+is the edit lock's protection reached from the other side. The qualitative pass is the only
+place a hand-set `abnormal` was ever at risk, because it is the pass that owns the word.
 
 It sits on a **different axis from `Assessment`**, and the map says so explicitly
 because conflating the two is the mistake #2479's body made. A `QualitativeResult`

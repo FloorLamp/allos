@@ -50,6 +50,24 @@ export function flagReconcileProfileContext(profileId: number) {
 
 // The flag values reconcileFlags is allowed to revisit — a derived/range flag. A
 // qualitative 'abnormal'/'immune' etc. from the numeric pass's view is left alone.
+//
+// #2777 asked whether the NUMERIC pass should acquire the qualitative pass's edit-lock
+// gate, given it has none and `abnormal` is missing from this set. It should not, and
+// the two facts are the same fact seen twice. This set is the numeric pass's OWN
+// vocabulary: high / low / normal / non-optimal* are what it derives from a value and a
+// band, so it may revisit them — and MUST, because #221 requires a corrected value to
+// re-derive its flag (the correction stamps `edited = 1` on the same write, so a lock
+// here would freeze the old "high" on a blood pressure someone just fixed). `abnormal`
+// and `immune` are not in its vocabulary at all: it cannot produce them, so it cannot
+// restate them, so it declines to touch a row carrying one. That is already the edit
+// lock's protection arrived at from the other side — a hand-set `abnormal` on a NUMERIC
+// row has never been at risk from this pass, with or without a lock.
+//
+// Which leaves the QUALITATIVE pass as the only place a hand-set `abnormal` can be
+// deleted, because it is the pass that owns that word. It is the odd one out for a
+// reason, and the gate it carries (lib/reference-range/qualitative.ts, #2712/#2715/
+// #2777) draws the same line this set draws: revisit what you can restate, leave alone
+// what you cannot. Nothing to change here.
 const RECONCILABLE_FLAGS = new Set([
   "normal",
   "non-optimal",
