@@ -490,7 +490,7 @@ export default function LineChartCard({
               // the caller's hard override still wins, and a series dense enough
               // to need it can never be sparse.
               sparse && showDots
-                ? chartSparseDot(color)
+                ? chartSparseDot(c, color)
                 : chartLineDot(c, {
                     color,
                     // REAL readings, never calendar days (#2258 §5): the
