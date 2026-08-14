@@ -14,10 +14,11 @@ import {
   migrationSnapshotDir,
   migrationSnapshotName,
   parseMigrationSnapshotName,
+  parseSnapshotOptOut,
   planMigrationSnapshotPrune,
   requiredSnapshotBytes,
+  resolveSnapshotOptOut,
   shouldSnapshotBeforeMigrations,
-  snapshotDisabledByEnv,
   type PreMigrationSnapshotMeta,
 } from "@/lib/migrations/snapshot-policy";
 import { parseBackupStamp } from "@/lib/backup-rotation";
@@ -82,9 +83,15 @@ describe("the trigger — an upgrade is happening, not a delete is pending", () 
 });
 
 describe("the operator opt-out", () => {
+  const PENDING = ["20260814-drop-drafts", "20260815-add-column"];
+
+  const disabled = (raw: string | undefined | null, pending = PENDING) =>
+    resolveSnapshotOptOut(parseSnapshotOptOut(raw), pending).disabled;
+
   it("recognises the documented spellings and nothing else", () => {
     for (const on of ["off", "OFF", " off ", "0", "false", "no"]) {
-      expect(snapshotDisabledByEnv(on)).toBe(true);
+      expect(parseSnapshotOptOut(on)).toEqual({ kind: "all" });
+      expect(disabled(on)).toBe(true);
     }
     for (const off of [
       undefined,
@@ -96,8 +103,70 @@ describe("the operator opt-out", () => {
       "yes",
       "maybe",
     ]) {
-      expect(snapshotDisabledByEnv(off)).toBe(false);
+      expect(parseSnapshotOptOut(off)).toEqual({ kind: "none" });
+      expect(disabled(off)).toBe(false);
     }
+  });
+
+  it("bare `off` covers every upgrade, which is the footgun (#2781)", () => {
+    // Pinned so the permanence is a decision with a test on it rather than an
+    // accident: whatever is pending, the bare form disables the copy.
+    expect(disabled("off", ["20260814-drop-drafts"])).toBe(true);
+    expect(disabled("off", ["some-much-later-migration"])).toBe(true);
+    expect(resolveSnapshotOptOut({ kind: "all" }, PENDING).expired).toBe(false);
+  });
+
+  it("`off:<migration>` disables only while that migration is pending", () => {
+    expect(parseSnapshotOptOut("off:20260814-drop-drafts")).toEqual({
+      kind: "upgrade",
+      migration: "20260814-drop-drafts",
+    });
+    expect(disabled("off:20260814-drop-drafts")).toBe(true);
+    // Any name in the pending set, not just the first: the refusal prints them all
+    // and the operator may reasonably copy any one of them.
+    expect(disabled("off:20260815-add-column")).toBe(true);
+  });
+
+  it("expires by itself once that upgrade has applied — no state to unwind", () => {
+    const optOut = parseSnapshotOptOut("off:20260814-drop-drafts");
+    // The next upgrade: the named migration is in the LEDGER now, so it is not
+    // pending, so the hatch stops applying with nothing to remember or unwind.
+    expect(resolveSnapshotOptOut(optOut, ["20260901-add-index"])).toEqual({
+      disabled: false,
+      expired: true,
+    });
+  });
+
+  it("a name this build does not have never disables anything", () => {
+    // A typo fails CLOSED: the boot refuses and prints the real pending names.
+    expect(disabled("off:20260814-drop-draft")).toBe(false);
+    expect(disabled("off:not-a-migration")).toBe(false);
+  });
+
+  it("matches the migration name case-insensitively but echoes it verbatim", () => {
+    expect(parseSnapshotOptOut("OFF:20260814-DROP-drafts")).toEqual({
+      kind: "upgrade",
+      migration: "20260814-DROP-drafts",
+    });
+    expect(disabled("OFF:20260814-DROP-drafts")).toBe(true);
+  });
+
+  it("`off:` with no name is malformed and leaves the snapshot ON", () => {
+    // Fails closed. An operator who meant to scope the hatch and left the name out
+    // must not get the unscoped, permanent one by accident.
+    expect(parseSnapshotOptOut("off:")).toEqual({
+      kind: "malformed",
+      raw: "off:",
+    });
+    expect(disabled("off:")).toBe(false);
+    expect(disabled("off:   ")).toBe(false);
+  });
+
+  it("a scope on a non-off verb is still not an opt-out", () => {
+    expect(parseSnapshotOptOut("on:20260814-drop-drafts")).toEqual({
+      kind: "none",
+    });
+    expect(disabled("on:20260814-drop-drafts")).toBe(false);
   });
 });
 

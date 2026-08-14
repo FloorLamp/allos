@@ -67,9 +67,22 @@ pre-migration snapshot (for example when you take host-level volume snapshots
 instead), set:
 
 ```dotenv
-ALLOS_MIGRATION_SNAPSHOT=off        # skip it entirely
+ALLOS_MIGRATION_SNAPSHOT=off:20260814-some-slug   # skip it for ONE upgrade
+ALLOS_MIGRATION_SNAPSHOT=off                      # skip it for every upgrade
 ALLOS_MIGRATION_SNAPSHOT_DIR=/backup/premigrate   # or put it on another volume
 ```
+
+**Prefer the first form.** It names one of the pending migrations — the refusal
+that sent you here prints them all — and stops applying the moment that migration
+has run, so the next upgrade is protected again with nothing to remember. Bare
+`off` is not a one-time workaround: it disables the copy on every future upgrade
+too, including the one whose deletions turn out to be wrong. A name this build
+does not have disables nothing, and `off:` with no name after it is ignored; in
+both cases the snapshot is taken and the boot log says why.
+
+The boot log is where the setting reports itself — a warning naming the upgrade it
+is covering while it applies, and one line on the next upgrade saying it has
+expired and can be deleted from `.env`. Neither appears on an ordinary boot.
 
 Restoring one is the ordinary restore flow, with one caveat:
 

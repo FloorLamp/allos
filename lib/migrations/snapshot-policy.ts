@@ -266,13 +266,88 @@ export function shouldSnapshotBeforeMigrations(opts: {
   return { take: true };
 }
 
-// Whether the operator has switched the pre-flight snapshot off.
-// `ALLOS_MIGRATION_SNAPSHOT=off` (also `0`/`false`/`no`) is the documented opt-out,
-// named in the refusal message itself so the escape hatch is discoverable at the
-// moment it is needed.
-export function snapshotDisabledByEnv(raw: string | undefined | null): boolean {
-  const v = raw?.trim().toLowerCase();
-  return v === "off" || v === "0" || v === "false" || v === "no";
+// ---------------------------------------------------------------------------
+// THE OPT-OUT, AND WHY IT CAN NAME AN UPGRADE (#2781)
+// ---------------------------------------------------------------------------
+//
+// The refusal above needs an escape hatch, and `ALLOS_MIGRATION_SNAPSHOT=off` is
+// it. Unscoped, it is also a footgun: an operator whose disk is full during ONE
+// upgrade sets it in `.env` to get moving, the upgrade completes, and the
+// protection is off for every upgrade after it — with one per-boot WARN to notice,
+// in logs a self-hosted operator may never read. The protection then works, is
+// disabled once under pressure, and is silently absent on the upgrade that eats
+// someone's records.
+//
+// So the value may NAME the upgrade it covers: `off:20260814-some-slug` disables
+// the snapshot only while that migration is still pending, and stops mattering the
+// moment it applies. The name is not hidden state and the env var does not change
+// meaning after it is read — it is a scope, evaluated fresh against the pending
+// set on every boot. A one-shot form (consumed on first use) was rejected: an env
+// var that changes meaning after being read violates what an env var is, and
+// "consuming" it means writing state somewhere.
+//
+// The operator does not have to go looking for the name. The refusal that sends
+// them here already prints the pending set, and the message names the scoped form
+// with the first pending migration filled in.
+//
+// A malformed value FAILS CLOSED. `off:` with nothing after it is an operator who
+// meant to scope the hatch and left the name out; disabling a safety net is not the
+// safe reading of a value we could not parse, so the snapshot stays ON and the boot
+// says why.
+
+export type SnapshotOptOut =
+  /** No opt-out: `ALLOS_MIGRATION_SNAPSHOT` unset, or set to anything not off-ish. */
+  | { kind: "none" }
+  /** `off` — every upgrade, this one and all future ones. */
+  | { kind: "all" }
+  /** `off:<migration name>` — only while that migration is pending. */
+  | { kind: "upgrade"; migration: string }
+  /** `off:` with no name. Ignored, and said out loud. */
+  | { kind: "malformed"; raw: string };
+
+const OFF_WORDS = new Set(["off", "0", "false", "no"]);
+
+/** Read `ALLOS_MIGRATION_SNAPSHOT`. Never throws; anything unrecognised is `none`. */
+export function parseSnapshotOptOut(
+  raw: string | undefined | null
+): SnapshotOptOut {
+  const value = raw?.trim();
+  if (!value) return { kind: "none" };
+  const colon = value.indexOf(":");
+  const verb = (colon === -1 ? value : value.slice(0, colon))
+    .trim()
+    .toLowerCase();
+  if (!OFF_WORDS.has(verb)) return { kind: "none" };
+  if (colon === -1) return { kind: "all" };
+  // Migration names are the ledger's primary key and carry their own case; keep it
+  // verbatim so the boot log echoes back exactly what the operator typed.
+  const migration = value.slice(colon + 1).trim();
+  return migration
+    ? { kind: "upgrade", migration }
+    : { kind: "malformed", raw: value };
+}
+
+export interface SnapshotOptOutVerdict {
+  /** Skip the snapshot for this boot. */
+  disabled: boolean;
+  /**
+   * A scoped opt-out that no longer names anything pending — so it did nothing on
+   * this boot and can be removed. Only meaningful when something IS pending; a boot
+   * with an empty pending set has no upgrade for the scope to miss.
+   */
+  expired: boolean;
+}
+
+/** Apply an opt-out to the pending set. Case-insensitive on the migration name. */
+export function resolveSnapshotOptOut(
+  optOut: SnapshotOptOut,
+  pending: readonly string[]
+): SnapshotOptOutVerdict {
+  if (optOut.kind === "all") return { disabled: true, expired: false };
+  if (optOut.kind !== "upgrade") return { disabled: false, expired: false };
+  const named = optOut.migration.toLowerCase();
+  const matches = pending.some((n) => n.toLowerCase() === named);
+  return { disabled: matches, expired: !matches };
 }
 
 // Free bytes needed before attempting the copy. The factor is taken BY REFERENCE

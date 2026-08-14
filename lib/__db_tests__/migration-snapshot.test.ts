@@ -284,6 +284,99 @@ describe("pre-flight snapshot — NOT taken", () => {
   });
 });
 
+// The opt-out that expires by itself (#2781). An operator whose disk is full during
+// ONE upgrade sets the hatch in `.env` to get moving; unscoped, it then covers every
+// upgrade after it, and the protection is silently absent on the one that actually
+// eats someone's records. Driven through the real runner because the whole property
+// is about a SECOND boot with the same environment.
+describe("pre-flight snapshot — a one-upgrade opt-out stops mattering (#2781)", () => {
+  const addTags: Migration = {
+    name: "20260103-note-tags",
+    up(db) {
+      db.exec(`ALTER TABLE notes ADD COLUMN tags TEXT`);
+    },
+  };
+
+  function withOptOut<T>(value: string, run: () => T): T {
+    const prior = process.env.ALLOS_MIGRATION_SNAPSHOT;
+    process.env.ALLOS_MIGRATION_SNAPSHOT = value;
+    try {
+      return run();
+    } finally {
+      if (prior === undefined) delete process.env.ALLOS_MIGRATION_SNAPSHOT;
+      else process.env.ALLOS_MIGRATION_SNAPSHOT = prior;
+    }
+  }
+
+  it("covers the upgrade it names, then protects the next one with the SAME env set", () => {
+    const { dbPath, snapDir } = tmpDb();
+    const db = open(dbPath);
+    runMigrations(db, [base]);
+    seedNotes(db);
+
+    withOptOut("off:20260102-drop-drafts", () => {
+      // Boot one — the upgrade the operator was unblocking. No copy, by request.
+      runMigrations(db, [base, deleteDrafts]);
+      expect(fs.existsSync(snapDir)).toBe(false);
+      expect(noteBodies(db)).toEqual(["keep this one"]);
+
+      // Boot two, some releases later, with the line still in `.env`. The named
+      // migration is in the ledger now, so it is not pending, so the hatch does
+      // nothing — this is the whole difference from bare `off`, which would leave
+      // this upgrade uncovered too.
+      runMigrations(db, [base, deleteDrafts, addTags]);
+    });
+
+    expect(listMigrationSnapshots(snapDir)).toHaveLength(1);
+    expect(ledger(db)).toContain("20260103-note-tags");
+    db.close();
+  });
+
+  it("a bare `off` left in place leaves that same second upgrade uncovered", () => {
+    // The control for the case above: same two boots, unscoped hatch, no copy
+    // either time. Without this the test above proves only that a snapshot was
+    // taken, not that the SCOPE is what took it.
+    const { dbPath, snapDir } = tmpDb();
+    const db = open(dbPath);
+    runMigrations(db, [base]);
+    seedNotes(db);
+
+    withOptOut("off", () => {
+      runMigrations(db, [base, deleteDrafts]);
+      runMigrations(db, [base, deleteDrafts, addTags]);
+    });
+
+    expect(listMigrationSnapshots(snapDir)).toEqual([]);
+    expect(ledger(db)).toContain("20260103-note-tags");
+    db.close();
+  });
+
+  it("a scope naming a migration this build does not have does not disable it", () => {
+    const { dbPath, snapDir } = tmpDb();
+    const db = open(dbPath);
+    runMigrations(db, [base]);
+    seedNotes(db);
+
+    // A typo fails closed — the copy is taken rather than skipped.
+    withOptOut("off:20260102-drop-draft", () =>
+      runMigrations(db, [base, deleteDrafts])
+    );
+    expect(listMigrationSnapshots(snapDir)).toHaveLength(1);
+    db.close();
+  });
+
+  it("`off:` with no name is ignored rather than read as the permanent form", () => {
+    const { dbPath, snapDir } = tmpDb();
+    const db = open(dbPath);
+    runMigrations(db, [base]);
+    seedNotes(db);
+
+    withOptOut("off:", () => runMigrations(db, [base, deleteDrafts]));
+    expect(listMigrationSnapshots(snapDir)).toHaveLength(1);
+    db.close();
+  });
+});
+
 describe("pre-flight snapshot — the refusal", () => {
   it("refuses the boot with NOTHING applied when the copy cannot be made", () => {
     const { dbPath, snapDir } = tmpDb();

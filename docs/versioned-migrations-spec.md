@@ -415,13 +415,19 @@ argues for:
   database half-upgraded. Here nothing has been applied: refusing is reversible
   (the previous image still boots this database unchanged) while the delete it
   prevents is not. The message names the pending migrations and the
-  `ALLOS_MIGRATION_SNAPSHOT=off` override, so proceeding uncovered is a decision
+  `ALLOS_MIGRATION_SNAPSHOT` override, so proceeding uncovered is a decision
   rather than a silence.
+- **The override can name the upgrade it covers.**
+  `ALLOS_MIGRATION_SNAPSHOT=off:<migration name>` applies to one pending set and
+  stops mattering once that migration has applied, so a workaround taken under
+  pressure during one upgrade does not silently disable the protection forever.
+  Bare `off` still means every upgrade, and says so in its own warning.
 
 See [`docs/internals/migration-snapshot.md`](internals/migration-snapshot.md) for
-the retention policy, the crash-loop reuse, the discovery surfaces and the
-restore caveat (a restored pre-migration database has the same pending set it had
-before, so the same image re-applies the same migrations).
+the retention policy, the crash-loop reuse, the discovery surfaces, the opt-out's
+expiry, the boot-task enumeration and the restore caveat (a restored pre-migration
+database has the same pending set it had before, so the same image re-applies the
+same migrations).
 
 ### Downgrade guard
 

@@ -47,11 +47,13 @@ import {
   migrationSnapshotDir,
   migrationSnapshotName,
   parseMigrationSnapshotName,
+  parseSnapshotOptOut,
   planMigrationSnapshotPrune,
+  resolveSnapshotOptOut,
   shouldSnapshotBeforeMigrations,
-  snapshotDisabledByEnv,
   type PreMigrationSnapshotMeta,
   type PreMigrationState,
+  type SnapshotOptOut,
   type SnapshotSkipReason,
 } from "./snapshot-policy";
 
@@ -78,8 +80,9 @@ export type MigrationSnapshotRefusal =
  *
  * The refusal is also OVERRIDABLE and says so in its own message. An operator who
  * takes host-level volume snapshots, or who is deliberately upgrading a box with no
- * room, sets `ALLOS_MIGRATION_SNAPSHOT=off` — which turns proceeding into a
- * decision someone made instead of a silence.
+ * room, sets `ALLOS_MIGRATION_SNAPSHOT=off:<the pending migration>` — which turns
+ * proceeding into a decision someone made instead of a silence, and one that stops
+ * applying when that upgrade is done (#2781). Bare `off` still means every upgrade.
  */
 export class MigrationSnapshotError extends Error {
   constructor(
@@ -217,8 +220,8 @@ export interface TakeSnapshotParams {
   now?: Date;
   /** Directory override (tests); defaults to the env/derived location. */
   dir?: string;
-  /** Force-disable (tests); defaults to reading ALLOS_MIGRATION_SNAPSHOT. */
-  disabled?: boolean;
+  /** Opt-out override (tests); defaults to reading ALLOS_MIGRATION_SNAPSHOT. */
+  optOut?: SnapshotOptOut;
 }
 
 /**
@@ -233,28 +236,28 @@ export function takePreMigrationSnapshot(
   params: TakeSnapshotParams
 ): MigrationSnapshotOutcome {
   const dbPath = db.name;
+  const optOut =
+    params.optOut ?? parseSnapshotOptOut(process.env.ALLOS_MIGRATION_SNAPSHOT);
+  const verdict = resolveSnapshotOptOut(optOut, params.pending);
   const decision = shouldSnapshotBeforeMigrations({
     dbPath,
-    disabled:
-      params.disabled ??
-      snapshotDisabledByEnv(process.env.ALLOS_MIGRATION_SNAPSHOT),
+    disabled: verdict.disabled,
     pendingCount: params.pending.length,
     appliedCount: params.appliedCount,
   });
-  if (!decision.take) {
-    if (decision.reason === "disabled" && params.pending.length > 0) {
-      // The one skip worth a line: the operator switched off a protection that a
-      // pending upgrade would otherwise have had. The other three are the ordinary
-      // shape of a healthy boot and must not add noise to it.
-      log.warn(
-        `pre-migration snapshot DISABLED by ALLOS_MIGRATION_SNAPSHOT — ` +
-          `${params.pending.length} migration(s) will apply with no recoverable ` +
-          `copy behind them (#2702).`,
-        { pending: [...params.pending] }
-      );
-    }
-    return { status: "skipped", reason: decision.reason };
+  // Everything the opt-out has to say is said on an UPGRADE boot and nowhere else.
+  // The ordinary boot has nothing pending, so a scoped hatch left in `.env` after
+  // its upgrade stays silent until the next upgrade — where the operator is already
+  // reading, and where its expiry is the fact worth knowing. The other two skips
+  // (`in-memory`, `fresh-install`) would have skipped anyway, so an opt-out note
+  // there would describe a protection that was never going to run.
+  if (
+    params.pending.length > 0 &&
+    (decision.take || decision.reason === "disabled")
+  ) {
+    reportOptOut(optOut, verdict, params.pending);
   }
+  if (!decision.take) return { status: "skipped", reason: decision.reason };
 
   const now = params.now ?? new Date();
   const dir =
@@ -458,14 +461,83 @@ function verifySnapshotFile(full: string): BackupVerification {
 }
 
 // Every refusal reads the same way: what failed, what it was protecting, and the
-// one env var that turns the refusal off. The override is named in the message
-// because the moment an operator needs it is the moment they are reading this.
+// override that turns the refusal off. The override is named in the message because
+// the moment an operator needs it is the moment they are reading this — and the
+// SCOPED form is offered first, with the migration name already filled in, so the
+// hatch that expires by itself is the one that costs nothing extra to take (#2781).
 function refusalMessage(what: string, pending: readonly string[]): string {
   return (
     `Refusing to migrate: could not take a pre-migration snapshot — ${what}\n` +
     `Pending migration(s): ${pending.join(", ")}\n` +
     `A migration that deletes the wrong rows cannot be undone without a copy ` +
     `(#2702), so the boot stops here with NOTHING applied. To proceed without ` +
-    `one, set ALLOS_MIGRATION_SNAPSHOT=off.`
+    `one for THIS upgrade only, set ` +
+    `ALLOS_MIGRATION_SNAPSHOT=off:${pending[0] ?? ""} — it stops applying once ` +
+    `that migration has run, so the protection comes back by itself. ` +
+    `ALLOS_MIGRATION_SNAPSHOT=off switches it off for every future upgrade too.`
+  );
+}
+
+/**
+ * The opt-out's one line, on an upgrade boot (#2781).
+ *
+ * A flag that silences a safety net has to make its own expiry legible without
+ * nagging, so each branch says a different thing exactly once, on the boots where
+ * it is actionable:
+ *
+ *   • `off`        — WARN. This upgrade is uncovered AND so is every one after it,
+ *                    which is the fact the bare form hides. Names the scoped form.
+ *   • `off:<name>` — WARN while it applies, saying when it stops.
+ *   • expired      — INFO. The hatch names a migration that is not in this pending
+ *                    set, so it did nothing: the snapshot was taken and the line
+ *                    can be deleted from `.env`. This is the boot where a one-
+ *                    upgrade workaround left behind proves it is harmless.
+ *   • malformed    — WARN. Ignored, and why.
+ */
+function reportOptOut(
+  optOut: SnapshotOptOut,
+  verdict: { disabled: boolean; expired: boolean },
+  pending: readonly string[]
+): void {
+  const uncovered =
+    `${pending.length} migration(s) will apply with no recoverable copy behind ` +
+    `them (#2702).`;
+  if (optOut.kind === "all") {
+    log.warn(
+      `pre-migration snapshot DISABLED by ALLOS_MIGRATION_SNAPSHOT=off — ` +
+        `${uncovered} This applies to EVERY future upgrade, not just this one. ` +
+        `Scope it with ALLOS_MIGRATION_SNAPSHOT=off:${pending[0]} to cover one ` +
+        `upgrade and expire by itself.`,
+      { pending: [...pending] }
+    );
+    return;
+  }
+  if (optOut.kind === "malformed") {
+    log.warn(
+      `ALLOS_MIGRATION_SNAPSHOT is set to "${optOut.raw}", which names no ` +
+        `migration after the colon — IGNORED, and the pre-migration snapshot is ` +
+        `ON. Use ALLOS_MIGRATION_SNAPSHOT=off:${pending[0]} for this upgrade, or ` +
+        `ALLOS_MIGRATION_SNAPSHOT=off for all of them.`,
+      { pending: [...pending] }
+    );
+    return;
+  }
+  if (optOut.kind !== "upgrade") return;
+  if (verdict.disabled) {
+    log.warn(
+      `pre-migration snapshot DISABLED for this upgrade by ` +
+        `ALLOS_MIGRATION_SNAPSHOT=off:${optOut.migration} — ${uncovered} The ` +
+        `setting stops applying once that migration has been applied, so later ` +
+        `upgrades are protected again with nothing to remember.`,
+      { pending: [...pending] }
+    );
+    return;
+  }
+  log.info(
+    `ALLOS_MIGRATION_SNAPSHOT=off:${optOut.migration} has EXPIRED — that ` +
+      `migration is not in this pending set, so the pre-migration snapshot is on ` +
+      `and this upgrade is protected. The setting can be removed from the ` +
+      `environment.`,
+    { pending: [...pending] }
   );
 }
