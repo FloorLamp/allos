@@ -34,6 +34,13 @@ compliance:
   payload is built from exactly one field — `body`. If you find yourself
   wanting a tool that could close an issue, the answer is to write it in the
   report instead.
+  This is why reads here go through MCP's scoped read tools rather than REST,
+  which is the transport `docs/orchestration/environment.md` §GitHub access
+  otherwise mandates: `Bash(gh api:*)` would hand this run every verb including
+  the ones the guardrail forbids, and a grant cannot be narrowed after the fact.
+  §GitHub access names this exception, so it reads as the deliberate
+  capability restriction it is rather than as drift. The rule is unchanged for
+  every run that is allowed to write.
 - **Every patch is assertion-anchored.** A patch names the exact text it
   expects. Absent ⇒ skip and flag. Present more than once ⇒ skip and flag.
   There is no fuzzy fallback, and you must never hand-edit a body to work

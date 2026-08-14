@@ -16,13 +16,21 @@ typos — a hand audit found 7 of ~40 open issues resting on stale or false
 premises (`docs/internals/tracker-reconciliation.md`). This skill exists to
 file issues that don't join that list.
 
-Use `gh api` (GitHub REST) for **all** issue reads and writes. MCP GitHub
-tools are reserved for merging PRs and are not granted here. In an environment
-without the `gh` binary (some remote containers), `curl https://api.github.com/...`
-covers reads — but note the unauthenticated **search** endpoint is often
-rate-limited or blocked; fall back to listing issues (all open, plus the
-relevant label in any state) and filtering locally. Writes always need
-authenticated `gh`; without it, stop at the draft.
+**`docs/orchestration/environment.md` §GitHub access governs transport** — REST
+for every read and write here, `gh api` or plain `curl` for the same paths,
+reads unauthenticated, writes on `${GH_TOKEN:-$GITHUB_TOKEN}`, and no write
+believed until re-read. MCP is reserved there for merges and protected-ref
+writes; filing an issue is not one, and no MCP tool is granted to this run.
+
+Two consequences that shape this skill's steps rather than just its commands:
+
+- **The search endpoint is the one path you cannot count on** (§GitHub access
+  says why). Step 3 is written around listing and filtering locally, so a
+  blocked search degrades the duplicate hunt's speed, never its coverage.
+- **A missing token stops filing, not investigating.** Steps 1–6 are reads and
+  thinking; only step 7 needs the credential. Without one, finish the draft,
+  show the owner the complete package, and say it is unfiled — never abandon
+  the investigation at step 0 over a write you have not reached.
 
 ## 1. Capture the ask
 
@@ -59,14 +67,22 @@ distance between how the user said it and how the tracker says it is the whole
 reason duplicates slip through:
 
 ```bash
+# The dependable path: list, then filter locally (§GitHub access).
+gh api 'repos/FloorLamp/allos/issues?state=all&labels=<domain>&per_page=100'
+# Search when it is available — faster, but never the only method you try.
 gh api -X GET search/issues -f q='repo:FloorLamp/allos is:issue <terms>' --jq '.items[] | {number, title, state}'
 gh api repos/FloorLamp/allos/issues/<n>            # read a candidate body
 gh api repos/FloorLamp/allos/issues/<n>/comments   # comments carry owner rulings
 ```
 
-Read the near matches including comments — owner rulings live in bodies and
-comment threads, and a filed issue that re-litigates a recorded ruling wastes
-everyone's time. Outcomes:
+**Read every near match WHOLE — the entire body and every comment, never a
+slice.** Owner rulings are appended to the END of bodies by convention, and
+questions arrive as comments after filing, so a truncated read drops precisely
+the most binding text. This is not hypothetical: a run of this skill read a
+candidate to its first 3000 characters, missed a ruling the owner had made
+hours earlier that same day, and filed an issue proposing exactly what that
+ruling had struck. Re-read at draft time too, if the investigation was long —
+a ruling can land while you work. Outcomes:
 
 - **Duplicate** → stop. Show the user the existing issue; offer to comment on
   it instead of filing.
@@ -182,6 +198,12 @@ gh api -X POST repos/FloorLamp/allos/issues \
   -f 'labels[]=intake' -f 'labels[]=P2'
 ```
 
-Report back the issue number and URL. If the user amends anything at the
-confirm step, fold it in and show the diff of the draft, not the whole thing
-again.
+Report back the issue number and URL — the POST's own response carries both, so
+no verifying read is needed for a create (§GitHub access's re-read rule is
+about edits, where a silent no-op looks like success). If the user amends
+anything at the confirm step, fold it in and show the diff of the draft, not
+the whole thing again.
+
+If the investigation ended in a ruling rather than an issue — the premise was
+already shipped, or a recorded ruling covers it — say so and file nothing. A
+correct "this exists, here is where" is the skill working, not failing.
