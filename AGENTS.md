@@ -113,7 +113,10 @@ comment-only edit under `lib/queries/` still runs the matrix, which is the right
 conservative answer rather than a gap. Grow that set only against the question
 "what imports this" — and only with a guard, because a claim about imports rots
 silently. `lib/__tests__/ci-skip-set.test.ts` reads the regex out of the workflow
-and fails a test-directory entry the moment a non-test module imports from one. `.github/workflows/e2e-full.yml` provides the manually
+and fails a test-directory entry the moment a non-test module imports from one —
+RESOLVING each specifier against the importing file first, because a prefix test
+on the raw specifier cannot see `../__db_tests__/x`, the form the repo
+overwhelmingly writes (#2769). `.github/workflows/e2e-full.yml` provides the manually
 dispatched full-suite census. Pre-commit runs Prettier through lint-staged and
 `phi-scan --staged`.
 
@@ -1022,7 +1025,10 @@ See `docs/internals/e2e-hygiene.md`.
   ONLY carrier, so every motion declares what states the same fact when nothing
   moves. Tokens and a declaration, not a registry engine: a new motion is a
   `MICRO_MOTIONS` row plus a `--motion-<name>` property and a class, and
-  `lib/__tests__/micro-motion.test.ts` fails either half on its own. Never
+  `lib/__tests__/micro-motion.test.ts` fails either half on its own — the CSS
+  names are censused LOOSELY against the registry, because a pattern that skips a
+  name it cannot spell (`.motion-slide2`) reports a clean count for a motion
+  nothing checked (#2770). Never
   hand-write a duration, and never animate a property that triggers layout — the
   state change lands on its own frame and the animation only decorates a transition
   already made. See `docs/internals/micro-motion.md`.
