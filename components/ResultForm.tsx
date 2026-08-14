@@ -76,20 +76,6 @@ export default function ResultForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = mode === "edit";
   const uid = observation?.id ?? "new";
-  // The offered categories, plus the row's OWN category when it is one nothing may be
-  // filed under any more (#2479 part 2: the retired `biomarker` catch-all, on a row
-  // migration 185 could not classify). Without this the picker would silently
-  // re-file such a row onto whatever option happens to be first the next time anyone
-  // edits an unrelated field — the residue is meant to stay put until a human decides
-  // what it is, and this form is exactly where that decision gets made.
-  const current = observation?.category ?? null;
-  const categoryOptions = useMemo(
-    () =>
-      current && !categories.includes(current)
-        ? [current, ...categories]
-        : categories,
-    [categories, current]
-  );
   const [error, setError] = useState<string | null>(null);
   // The canonical-name field is a controlled Combobox (#1177), so form.reset() can't
   // clear it — the add path resets this state explicitly on a successful save.
@@ -199,9 +185,13 @@ export default function ResultForm({
           id={`rec-${uid}-category`}
           name="category"
           className="input capitalize"
-          defaultValue={observation?.category ?? defaultCategory ?? "lab"}
+          defaultValue={observation?.category ?? defaultCategory ?? ""}
+          required
         >
-          {categoryOptions.map((c) => (
+          {!observation?.category && !defaultCategory && (
+            <option value="">Choose category</option>
+          )}
+          {categories.map((c) => (
             <option key={c} value={c} className="capitalize">
               {c}
             </option>

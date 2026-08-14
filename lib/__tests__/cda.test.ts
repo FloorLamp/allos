@@ -150,7 +150,7 @@ describe("extractor seam", () => {
       matches: (s) => s.code === "11450-4",
       extract: (s) => ({
         observations: s.entries.map((_, i) => ({
-          category: "biomarker" as const,
+          category: "lab" as const,
           name: `Problem ${i}`,
           canonical: `Problem ${i}`,
           value: null,

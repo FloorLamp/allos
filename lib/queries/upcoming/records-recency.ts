@@ -104,19 +104,19 @@ export function archiveExclusiveFrontier(
   return { frontier, labels };
 }
 
-// The record categories that make up the CLINICAL FRONTIER (#2176). `lab` plus the
-// legacy `biomarker` bucket — the same pair the canonical-flag reconciler, the
-// qualitative-results read and the onboarding census use for "a biomarker reading on
-// file", so this ask ages against exactly the rows the biomarker surfaces render.
+// The record category that makes up the CLINICAL FRONTIER (#2176). `lab` is the same
+// category the canonical-flag reconciler, qualitative-results read, and onboarding
+// census use for "a lab reading on file", so this ask ages against exactly the rows
+// the clinical-result surfaces render.
 // Imaging, dental and instrument records are deliberately OUT: #2176 constraint 2 keeps
-// v1 to one profile-level ask on the lab/biomarker frontier, because those domains have
+// v1 to one profile-level ask on the lab frontier, because those domains have
 // different clinical rhythms and a per-domain matrix is where this becomes nagging.
 const CLINICAL_FRONTIER_STMT = hoistedStatement(
   `SELECT MAX(date) AS d FROM medical_records
-    WHERE profile_id = ? AND category IN ('lab','biomarker')`
+    WHERE profile_id = ? AND category = 'lab'`
 );
 
-/** The newest lab/biomarker COLLECTION date on file, or null when there is none. */
+/** The newest lab collection date on file, or null when there is none. */
 export function clinicalFrontier(profileId: number): string | null {
   return (
     (CLINICAL_FRONTIER_STMT.get(profileId) as { d: string | null }).d ?? null
@@ -213,7 +213,7 @@ export function archiveRefreshItems(
 }
 
 /**
- * The manual-upload records ask (#2176) — one item per profile, on the lab/biomarker
+ * The manual-upload records ask (#2176) — one item per profile, on the lab
  * frontier, for a household with no portal whose #1757 machinery already owns the ask.
  */
 export function clinicalRecencyItems(

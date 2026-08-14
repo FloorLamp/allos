@@ -283,23 +283,9 @@ Still retained on purpose:
 
 ## The retired catch-all (part 2)
 
-`biomarker` was never a class of clinical thing. It is the pre-#1076 bucket, and it
-meant **"this is a result and nothing narrower was picked"** — which is why the flat
-catalog excludes it (nothing browsable can be defined by the absence of a decision),
-why the retest clock reached it only by falling through the `biomarkerRetestStatus`
-exemptions, and why several SQL sites still read it as a synonym for `lab`.
-
-It is now a **fourth question** this vocabulary answers, and the only one about TIME
-rather than about a row:
-
-| name                            | question                                       |
-| ------------------------------- | ---------------------------------------------- |
-| `RETIRED_MEDICAL_CATEGORIES`    | may anything still be FILED under this?        |
-| `ASSIGNABLE_MEDICAL_CATEGORIES` | the derived complement — what a write may pick |
-
-The retirement is deliberately **one-sided**. Reading, filtering and storing the value
-all stay legal, and `MEDICAL_CATEGORIES` still lists it; what no longer exists is a way
-to CREATE one.
+`biomarker` was never a class of clinical thing. It was the pre-#1076 bucket meaning
+**"this is a result and nothing narrower was picked"**. No current type, schema,
+reader, writer, or category picker accepts it as a `medical_records.category`.
 
 ### The rows: migration 185
 
@@ -314,7 +300,8 @@ classification … its category WINS over the model's guess"), applied retroacti
 the rows that predate it, and it generalises migration 090's hand-list of seven names
 to the whole registry so the answer cannot drift from the vocabulary.
 
-Three properties make the pass small:
+Migration 185 was the evidence pass that made final retirement possible. Three
+properties made it small:
 
 - **Nothing is deleted and no id moves.** It is a single-column UPDATE, so the #2444
   child-link hazard cannot arise — `care_plan_items.source_medical_record_id`,
@@ -327,17 +314,23 @@ Three properties make the pass small:
   `getUsedCanonicalNames`, its ★, its dismissals, its coverage entry and its series —
   and there is no side-state sweep to get right, unlike #2318's pass. `assessment` is
   excluded from the targets for precisely that reason.
-- **Unclassifiable is a real answer.** A row whose identity the registry does not
-  recognise, or whose entry states no category (an ai-coined vocabulary row states
-  none), stays exactly where it is and is counted in the pass's `residue`. Nothing is
-  guessed, so the `medical_records` CHECK keeps admitting the value — a rebuild that
-  dropped it would only be honest if the pass were total, and it is not meant to be.
+- **Unclassifiable was measured, not guessed.** A row whose identity the registry did
+  not recognise stayed in the residue for the final migration to present for review.
 
 What the move changes on purpose: the rows the registry calls `lab` / `vitals` /
 `genomics` / `scan` **enter the flat Results catalog**, which the bucket had been
 hiding them from; and a row re-filed as `vitals` / `instrument` / `derived` /
 `reference` stops carrying a lab retest clock it never earned. Nothing else — value,
 flag, name, canonical name, document link and provenance are untouched.
+
+### Final retirement: migration `20260814-medical-category-residue`
+
+The final migration runs the same canonical-registry pass once more, rebuilds
+`medical_records` without `biomarker` in its CHECK, and copies any unresolved residue
+as `category = NULL`. `NULL` is not a replacement catch-all: it is an explicit review
+state shown on Results, where a user chooses one supported category. All row ids,
+revisions, care-plan links, source-record links, saved identity, dismissals, and series
+identity remain attached while review is pending.
 
 ### The writers
 
@@ -350,17 +343,13 @@ itself, so the same change closes every path:
 | the extractor's tool enum and accept-list                | `ASSIGNABLE_MEDICAL_CATEGORIES`                                |
 | VO₂ Max from Health Connect, Withings, the fitness check | `vitals` — the registry's own category for it                  |
 | `NormVital.category`, `FitnessStore`'s vital arm         | the string is **out of the type**: a writer no longer compiles |
-| the manual category picker (`ResultForm`)                | offers the assignable set, plus the row's own retired value    |
+| the manual category picker (`ResultForm`)                | requires one supported category                                |
 | `scripts/seed.ts`                                        | its three legacy analytes file as `lab`                        |
 
-The picker's exception matters: a residue row must keep its category through an
-unrelated edit, so the form unions in whatever the row already carries rather than
-silently re-filing it onto the first option.
-
-`lib/__tests__/retired-medical-category.test.ts` is the ratchet — a source scan for a
-category ASSIGNMENT of a retired value (reads and filters are deliberately not matched)
-plus the prompt and enum assertions. `lib/__db_tests__/migration-185-legacy-biomarker-category.test.ts`
-covers the pass.
+The final migration test proves the evidence-backed and review-state outcomes while
+preserving linked behavior. The category action test proves that a pending row is
+surfaced, cannot take an unsupported category, and keeps its identity when classified.
+Migration 185's tests remain as history for the preliminary evidence pass.
 
 ## Normalized reading provenance (#2735)
 

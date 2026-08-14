@@ -80,9 +80,6 @@ export const CATEGORY_CADENCE = {
   // reaches one, because it never claims a biomarker identity in the first place
   // (NON_IDENTITY_CATEGORIES).
   assessment: "episodic",
-  // The emptied pre-#1076 bucket. Nothing canonical carries it any more; it stays
-  // in the enum, so it stays classified.
-  biomarker: "episodic",
   // The one mixed category: physiologic vital signs stream, domain vitals do not.
   // CONTINUOUS_READING_METRIC below is the per-name split.
   vitals: "mixed",

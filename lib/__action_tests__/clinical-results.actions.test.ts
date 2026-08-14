@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   addResult,
+  classifyResultCategory,
   updateResult,
   deleteResult,
 } from "@/app/(app)/results/clinical-result-actions";
@@ -16,6 +17,7 @@ import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import {
   getClinicalObservations,
   getLatestClinicalObservationByCanonical,
+  getUnclassifiedClinicalObservations,
 } from "@/lib/queries";
 import { seedActor, createProfile, actAs, fd } from "./harness";
 import { MAX_AI_BYTES, MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
@@ -51,6 +53,58 @@ function attributesOf(id: number) {
 }
 
 beforeEach(() => revalidate.mockClear());
+
+describe("legacy category review (#2877)", () => {
+  it("surfaces the unresolved row and changes only its category after an explicit choice", async () => {
+    const { profile } = seedActor();
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, canonical_name, value, unit,
+              source, external_id, edited)
+           VALUES (?, '2020-04-05', NULL, 'Mystery Index', 'Mystery Index',
+                   '7', 'points', 'document', 'mystery-1', 0)`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    const before = db
+      .prepare(
+        `SELECT id, date, name, canonical_name, value, unit, source, external_id
+           FROM medical_records WHERE id = ?`
+      )
+      .get(id);
+    expect(getUnclassifiedClinicalObservations(profile.id)).toMatchObject([
+      { id, name: "Mystery Index", value: "7", unit: "points" },
+    ]);
+
+    expect(
+      await classifyResultCategory(
+        fd({ id, profile_id: profile.id, category: "bogus" })
+      )
+    ).toEqual({ ok: false, error: "Choose a category." });
+    expect(
+      await classifyResultCategory(
+        fd({ id, profile_id: profile.id, category: "lab" })
+      )
+    ).toEqual({ ok: true });
+
+    expect(
+      db
+        .prepare(
+          `SELECT id, date, name, canonical_name, value, unit, source, external_id
+             FROM medical_records WHERE id = ?`
+        )
+        .get(id)
+    ).toEqual(before);
+    expect(
+      db
+        .prepare("SELECT category, edited FROM medical_records WHERE id = ?")
+        .get(id)
+    ).toEqual({ category: "lab", edited: 1 });
+    expect(getUnclassifiedClinicalObservations(profile.id)).toEqual([]);
+  });
+});
 
 describe("addResult", () => {
   it("inserts a record and flags an out-of-range value in one transaction", async () => {

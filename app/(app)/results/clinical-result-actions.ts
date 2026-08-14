@@ -12,7 +12,7 @@ import { db, writeTx } from "@/lib/db";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { isRealIsoDate } from "@/lib/date";
 import {
-  MEDICAL_CATEGORIES,
+  ASSIGNABLE_MEDICAL_CATEGORIES,
   RESULTS_CATALOG_CATEGORIES,
   MEDICAL_FLAGS,
 } from "@/lib/medical-categories";
@@ -139,11 +139,12 @@ export async function updateResult(formData: FormData): Promise<FormResult> {
     return v ? v : null;
   };
   const categoryRaw = String(formData.get("category") ?? "");
-  const category = (MEDICAL_CATEGORIES as readonly string[]).includes(
-    categoryRaw
-  )
-    ? categoryRaw
-    : "lab";
+  if (
+    !(ASSIGNABLE_MEDICAL_CATEGORIES as readonly string[]).includes(categoryRaw)
+  ) {
+    return formError("Choose a category.");
+  }
+  const category = categoryRaw;
   const flagRaw = str("flag");
   const flag =
     flagRaw && (MEDICAL_FLAGS as readonly string[]).includes(flagRaw)
@@ -240,6 +241,37 @@ export async function updateResult(formData: FormData): Promise<FormResult> {
     migrateRenamedBiomarker(profileId, oldCanonical, canonical);
     cleanupOrphanBiomarkerKeyedState(profileId);
   }
+  revalidateResults();
+  return formOk();
+}
+
+// Resolve one migration-created category review (#2877). This intentionally changes
+// only category: identity, values, provenance, links, revision history, saved state,
+// and dismissals remain attached to the same row id. The WHERE keeps the action from
+// overwriting a row that an import or another editor already classified.
+export async function classifyResultCategory(
+  formData: FormData
+): Promise<FormResult> {
+  const profileId = await gateItemProfile(formData);
+  const id = Number(formData.get("id"));
+  const category = String(formData.get("category") ?? "");
+  if (!id) return formError("Couldn't find that result.");
+  if (
+    !(ASSIGNABLE_MEDICAL_CATEGORIES as readonly string[]).includes(category)
+  ) {
+    return formError("Choose a category.");
+  }
+  const changed = writeTx(() => {
+    const changes = db
+      .prepare(
+        `UPDATE medical_records SET category = ?, edited = 1
+          WHERE id = ? AND profile_id = ? AND category IS NULL`
+      )
+      .run(category, id, profileId).changes;
+    if (changes > 0) reconcileFlags(profileId, [id]);
+    return changes;
+  });
+  if (changed === 0) return formError("This result was already classified.");
   revalidateResults();
   return formOk();
 }

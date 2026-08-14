@@ -1,6 +1,6 @@
 // Copy policy for the Upcoming biomarker RETEST item (issues #513 / #514). An
 // Upcoming `biomarker` item is purely a retest-overdue signal: it fires for any
-// stale lab/biomarker reading whose last draw + curated cadence is in the past,
+// stale lab reading whose last draw + curated cadence is in the past,
 // REGARDLESS of range status. Two defects this module fixes, kept pure + tested
 // so the page and any future surface share one copy computation:
 //

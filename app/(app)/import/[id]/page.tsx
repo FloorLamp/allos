@@ -190,7 +190,7 @@ function ProvenanceRow({
 
 // Import detail: for one uploaded document — provenance, a tabbed per-category
 // records browser (#271: one tab per produced type, ?tab=-selected; record tabs
-// render the analyte grid for lab/biomarker/genomics and a read-only value/date
+// render the analyte grid for lab/genomics and a read-only value/date
 // table for vitals/scan/instrument/derived/reference (#1182), the rest read-only
 // deep-linking listings, providers their own per-document listing (#1182/#275)),
 // basic debug (error + raw extraction), reprocess/delete.
@@ -509,7 +509,7 @@ export default async function ImportDetailPage(props: {
             </div>
 
             {/* The active tab's panel: the records table for a medical_records
-            category tab (the analyte grid for lab/biomarker/genomics, a read-only
+            category tab (the analyte grid for lab/genomics, a read-only
             value/date table for the rest — #1182), the per-document Providers
             listing, or a read-only deep-linking listing for every other type. */}
             {/* A "Check these first" link that resolved to SEVERAL rows, or to none

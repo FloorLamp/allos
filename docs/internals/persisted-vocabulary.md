@@ -10,19 +10,20 @@ remains.
 
 ## Renamed contracts
 
-| old contract                             | current contract         | reason                                                                         |
-| ---------------------------------------- | ------------------------ | ------------------------------------------------------------------------------ |
-| `food_log`                               | `food_daily_totals`      | one aggregate row per food group and day, not an event log                     |
-| `protein_log`                            | `protein_daily_totals`   | one aggregate row per day, not an event log                                    |
-| `substance_log`                          | `substance_daily_totals` | one aggregate row per substance and day, not an event log                      |
-| substance source/default `user`          | `manual`                 | provenance describes how the value was entered, not who owns it                |
-| import type and result JSON `biomarkers` | `clinical-results`       | the import accepts the mixed Clinical results model                            |
-| protocol outcome `biomarker:<name>`      | `result:<name>`          | protocol outcomes use the same broad series namespace as Trends                |
-| undo kind/payload `biomarker-record`     | `clinical-observation`   | the restored row may be any `medical_records` observation                      |
-| export dataset `supplements`             | `intake_items`           | the dataset contains supplements and medications and now equals its table name |
-| dose timestamp `taken_at`                | `recorded_at`            | immutable capture uses the same name as the food event ledger                  |
-| dose timestamp `recorded_at`             | `occurred_at`            | the stored administration event is distinct from immutable capture             |
-| activity type `recovery`                 | `mobility`               | the activity is a mobility session; recovery remains an equipment kind         |
+| old contract                             | current contract                            | reason                                                                                          |
+| ---------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `food_log`                               | `food_daily_totals`                         | one aggregate row per food group and day, not an event log                                      |
+| `protein_log`                            | `protein_daily_totals`                      | one aggregate row per day, not an event log                                                     |
+| `substance_log`                          | `substance_daily_totals`                    | one aggregate row per substance and day, not an event log                                       |
+| substance source/default `user`          | `manual`                                    | provenance describes how the value was entered, not who owns it                                 |
+| import type and result JSON `biomarkers` | `clinical-results`                          | the import accepts the mixed Clinical results model                                             |
+| protocol outcome `biomarker:<name>`      | `result:<name>`                             | protocol outcomes use the same broad series namespace as Trends                                 |
+| undo kind/payload `biomarker-record`     | `clinical-observation`                      | the restored row may be any `medical_records` observation                                       |
+| export dataset `supplements`             | `intake_items`                              | the dataset contains supplements and medications and now equals its table name                  |
+| dose timestamp `taken_at`                | `recorded_at`                               | immutable capture uses the same name as the food event ledger                                   |
+| dose timestamp `recorded_at`             | `occurred_at`                               | the stored administration event is distinct from immutable capture                              |
+| activity type `recovery`                 | `mobility`                                  | the activity is a mobility session; recovery remains an equipment kind                          |
+| `medical_records.category = 'biomarker'` | supported category or `NULL` pending review | the catchall hid unlike clinical observations and could not be resolved safely without evidence |
 
 Migrations `20260814-persisted-vocabulary` and
 `20260814-intake-log-time-vocabulary` preserve row ids, timestamps, notes,
@@ -49,7 +50,8 @@ replay. The test helper now uses the same ledger-gated startup path as productio
 fresh installs still execute the complete immutable chain, while repeat startup does
 not prepare already-applied historical SQL against the final schema.
 
-The retired `medical_records.category = 'biomarker'` is a separate residue contract.
-No writer can create it, but unclassifiable established rows remain readable and legal
-until every residue row has an evidence-backed replacement category. Migration 185
-reports rather than guesses that population.
+Migration `20260814-medical-category-residue` gives the canonical registry one final
+evidence-only pass, then converts unresolved rows to the explicit `NULL` review state
+while preserving their ids and relationships. The Results surface asks the user to
+choose a supported category; neither the schema nor any writer accepts `biomarker` as
+a medical-record category.

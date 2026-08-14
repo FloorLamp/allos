@@ -461,7 +461,7 @@ export function getSafetyScreeningCoverage(
 
 // Lab categories a monitoring retest keys on — the SAME set the biomarker retest signal
 // uses (labs to redraw; vitals/scans/genomics aren't monitoring labs).
-const MONITORING_LAB_CATEGORIES = new Set(["lab", "biomarker"]);
+const MONITORING_LAB_CATEGORIES = new Set(["lab"]);
 
 // Medication → required-monitoring-lab bridge (issue #995): retest-shaped hits for the
 // profile's ACTIVE meds whose curated monitoring labs are DUE. The active meds come from

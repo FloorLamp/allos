@@ -110,7 +110,7 @@ export function previewReconcileFlags(
       : []
   );
   const qualRows = observations.flatMap((r, i) =>
-    r.value_num == null && (r.category === "lab" || r.category === "biomarker")
+    r.value_num == null && r.category === "lab"
       ? [
           {
             id: i,
@@ -185,7 +185,7 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
   // stored. The column is already in this SELECT, so the identity gate costs no query.
   let qsql = `SELECT id, canonical_name, name, value, notes, reference_range, flag, loinc, edited
      FROM medical_records
-     WHERE profile_id = ? AND value_num IS NULL AND category IN ('lab','biomarker')`;
+     WHERE profile_id = ? AND value_num IS NULL AND category = 'lab'`;
   const qargs: number[] = [profileId];
   if (ids) {
     qsql += ` AND id IN (${ids.map(() => "?").join(",")})`;

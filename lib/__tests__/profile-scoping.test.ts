@@ -220,7 +220,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/migrations/boot-tasks.ts",
     includes:
-      "FROM medical_records WHERE value_num IS NULL AND category IN ('lab','biomarker')",
+      "FROM medical_records WHERE value_num IS NULL AND category = 'lab'",
     why: "boot-time qualitative flag reconcile (#549): a GLOBAL maintenance re-derivation run once per canonical-flags-signature change — a qualitative value classifies the same for every profile (blood type / immunity titer), so it is intentionally profile-agnostic; it only rewrites the row's own flag, never reads across profiles",
   },
   {

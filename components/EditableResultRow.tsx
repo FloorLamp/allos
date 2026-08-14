@@ -49,7 +49,9 @@ export default function EditableResultRow({
   // Category-correct name link (#271): series categories link to the biomarker
   // series view, prescriptions to /medications, scans/notes get NO link rather than
   // a wrong one. Pure decision in lib/import-browser.
-  const nameLink = observationNameLink(r.category, r.canonical_name);
+  const nameLink = r.category
+    ? observationNameLink(r.category, r.canonical_name)
+    : null;
 
   if (!editing) {
     const showName = grouped ? grouped.isGroupStart : true;
@@ -123,7 +125,7 @@ export default function EditableResultRow({
           <NotesText notes={r.notes} />
         </Td>
         <td className="td">
-          <Tag value={r.category} />
+          <Tag value={r.category ?? "Needs category"} />
         </td>
         <Td slot="meta" label="Date" className="whitespace-nowrap">
           {r.date}

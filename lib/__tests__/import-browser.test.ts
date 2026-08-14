@@ -163,7 +163,7 @@ describe("observationCategoryLabel", () => {
 
 describe("observationNameLink (category-correct row links)", () => {
   it("links series categories to the biomarker series view", () => {
-    for (const cat of ["lab", "biomarker", "vitals", "genomics"]) {
+    for (const cat of ["lab", "vitals", "genomics"]) {
       const link = observationNameLink(cat, "LDL Cholesterol");
       expect(link?.href).toBe(
         "/results/clinical-results/view?name=LDL%20Cholesterol"
@@ -428,9 +428,8 @@ describe("imaging studies (#702)", () => {
 });
 
 describe("usesAnalyteGrid (#1182)", () => {
-  it("keeps the analyte grid for lab/biomarker/genomics", () => {
+  it("keeps the analyte grid for lab/genomics", () => {
     expect(usesAnalyteGrid("lab")).toBe(true);
-    expect(usesAnalyteGrid("biomarker")).toBe(true);
     expect(usesAnalyteGrid("genomics")).toBe(true);
   });
   it("routes vitals/scan/instrument/derived/reference to the value/date table", () => {

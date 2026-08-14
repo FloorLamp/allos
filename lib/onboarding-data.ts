@@ -19,7 +19,7 @@ export function getOnboardingDataPresence(profileId: number): StoredPresence {
           EXISTS(SELECT 1 FROM frequency_targets WHERE profile_id = @profileId)) AS fitness,
          (EXISTS(SELECT 1 FROM body_metrics WHERE profile_id = @profileId) OR
           EXISTS(SELECT 1 FROM medical_records
-                 WHERE profile_id = @profileId AND category IN ('lab','biomarker'))) AS metricsLabs,
+                 WHERE profile_id = @profileId AND category = 'lab')) AS metricsLabs,
          (EXISTS(SELECT 1 FROM appointments WHERE profile_id = @profileId) OR
           EXISTS(SELECT 1 FROM immunizations WHERE profile_id = @profileId) OR
           EXISTS(SELECT 1 FROM care_plan_items WHERE profile_id = @profileId)) AS preventiveCare`

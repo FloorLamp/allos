@@ -15,9 +15,6 @@
 // rendered as Results › Clinical results) can list/filter/add. It drops the #1076 re-homed
 // classes that HAVE a dedicated home:
 //   • 'prescription' — medications; live on the document view + Supplements & Meds.
-//   • 'biomarker'  — the legacy pre-#1076 bucket, RETIRED by #2479 part 2: migration
-//     185 re-files what the canonical registry classifies, no write path can produce
-//     it any more (RETIRED_MEDICAL_CATEGORIES below), and what is left is residue.
 //   • 'instrument' — screening scores → mental-health / substance-use (SENSITIVITY:
 //     a depression/alcohol score must never surface in a general health catalog).
 //   • 'derived'    — bio-age composites → the Longevity bio-age hero.
@@ -62,7 +59,6 @@ export const MEDICAL_CATEGORIES = [
   "vitals",
   "lab",
   "genomics",
-  "biomarker",
   "scan",
   "prescription",
   "instrument",
@@ -72,33 +68,10 @@ export const MEDICAL_CATEGORIES = [
   "assessment",
 ] as const satisfies readonly MedicalCategory[];
 
-// The categories NOTHING MAY BE FILED UNDER ANY MORE (#2479 part 2) — a fourth
-// question this file answers, and the only one about TIME rather than about a row.
-//
-// `biomarker` is the pre-#1076 catch-all. It never named a class of clinical thing; it
-// meant "this is a result and nothing narrower was picked", which is why the flat
-// catalog excludes it (nothing browsable can be defined by the absence of a decision),
-// why the retest clock reached it by falling through, and why several SQL sites still
-// read it as a synonym for `lab`. Migration 185 re-files the rows the canonical
-// registry can classify — the same rule the AI ingest path has followed since #1076,
-// applied to the rows that predate it — and rows it cannot classify STAY, reported
-// rather than guessed at. So the value remains LEGAL in the `medical_records` CHECK
-// (a rebuild that drops it would only be honest if the pass were total) and is retired
-// HERE instead: it is absent from the assignable set below, so the residue can only
-// shrink. Reading and FILTERING for it stay possible — a residue row must remain
-// findable — which is why `MEDICAL_CATEGORIES` still lists it.
-export const RETIRED_MEDICAL_CATEGORIES = [
-  "biomarker",
-] as const satisfies readonly MedicalCategory[];
-
-// The categories a NEW or EDITED row may be filed under: the full enum minus the
-// retired ones. The DERIVED complement, never hand-listed, so retiring the next
-// category cannot leave a stale copy behind. This is the set the AI extractor's tool
-// enum offers, the set its normalizer accepts, and the set the category picker shows —
-// the three paths that were refilling the catch-all.
-export const ASSIGNABLE_MEDICAL_CATEGORIES = MEDICAL_CATEGORIES.filter(
-  (c) => !(RETIRED_MEDICAL_CATEGORIES as readonly MedicalCategory[]).includes(c)
-);
+// The categories a NEW or EDITED row may be filed under. #2877 removed the final
+// retired enum member, so this alias keeps the shared writer/picker contract without a
+// second list that can drift.
+export const ASSIGNABLE_MEDICAL_CATEGORIES = MEDICAL_CATEGORIES;
 
 export const RESULTS_CATALOG_CATEGORIES = [
   "lab",
@@ -109,7 +82,7 @@ export const RESULTS_CATALOG_CATEGORIES = [
 
 // The complement of RESULTS_CATALOG_CATEGORIES — the categories the flat catalog
 // EXCLUDES (#1076): the re-homed classes with a dedicated home (instruments, derived
-// bio-age, immutable facts) plus the emptied legacy bucket and prescriptions. Kept as
+// bio-age, immutable facts) plus prescriptions. Kept as
 // the derived complement so the two sets can't drift. (Physiologic-vitals TRAJECTORY
 // scoping is a separate, tab-local exclusion in Trends → Biomarkers.)
 export const NON_RESULTS_CATALOG_CATEGORIES = MEDICAL_CATEGORIES.filter(

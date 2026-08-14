@@ -1,4 +1,8 @@
-import { getPickerProviders, getRankedBiomarkerOptions } from "@/lib/queries";
+import {
+  getPickerProviders,
+  getRankedBiomarkerOptions,
+  getUnclassifiedClinicalObservations,
+} from "@/lib/queries";
 import { today } from "@/lib/db";
 import { EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
@@ -32,6 +36,7 @@ import {
   parseClinicalResultFilters,
   type ClinicalResultsSearchParams,
 } from "./clinical-result-index";
+import UnclassifiedResultsCard from "./UnclassifiedResultsCard";
 
 export type { ClinicalResultsSearchParams };
 
@@ -81,6 +86,16 @@ export default function ClinicalResultsSection({
     now
   );
   const ids = scope.viewIds;
+  const profileNames = new Map(
+    scope.profiles.map((profile) => [profile.id, profile.name])
+  );
+  const unclassified = ids.flatMap((profileId) =>
+    getUnclassifiedClinicalObservations(profileId).map((row) => ({
+      ...row,
+      ...(multi ? { subjectLabel: profileNames.get(profileId) } : {}),
+      canWrite: scope.access.get(profileId) === "write",
+    }))
+  );
   const openEntryPanel = entryPanelOpen(searchParams);
 
   return (
@@ -127,6 +142,10 @@ export default function ClinicalResultsSection({
           its rows at that width (#1647). */}
           <div className={PHONE_STACK.warning}>
             <TrajectoryFindings />
+          </div>
+
+          <div className={PHONE_STACK.warning}>
+            <UnclassifiedResultsCard rows={unclassified} />
           </div>
 
           {/* Biological-age INPUTS (#209 → split by #2367): which of the nine PhenoAge

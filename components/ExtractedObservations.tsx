@@ -41,7 +41,9 @@ function ReadonlyObservationRow({
   focused: boolean;
   flag?: ConfidenceFlag;
 }) {
-  const nameLink = observationNameLink(r.category, r.canonical_name);
+  const nameLink = r.category
+    ? observationNameLink(r.category, r.canonical_name)
+    : null;
   return (
     <tr
       id={rowId}
@@ -108,8 +110,8 @@ function ReadonlyObservationRow({
 // preview flow), and the app-wide ExtractionToaster refreshes the page and toasts
 // when the background job finishes (clearing it).
 //
-// Presentation splits by category (#1182): analyte categories (lab/biomarker/
-// genomics) keep the editable analyte grid — Name · Panel · Value · Reference · …
+// Presentation splits by category (#1182): analyte categories (lab/genomics) keep
+// the editable analyte grid — Name · Panel · Value · Reference · …
 // — because those legitimately carry a value/unit/reference band; every other
 // category (vitals/scan/instrument/derived/reference) gets the read-only compact
 // value/date table above, with no Panel/Reference columns and no edit affordance.
