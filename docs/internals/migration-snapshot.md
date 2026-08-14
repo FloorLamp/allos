@@ -56,8 +56,8 @@ correctly, or remember.
 migration_: if a migration runs at all, the pending set was non-empty, so a
 snapshot was attempted. The residual gap is a delete performed by a **boot task**
 (`lib/migrations/boot-tasks.ts` runs after the runner, outside the ledger) or by
-the app at runtime. Neither is in scope here, and neither is a silent boot-time
-schema change.
+the app at runtime. The boot-task half is settled below; neither is a silent
+boot-time schema change.
 
 **A snapshot taken needlessly** does happen: an upgrade whose migrations only add
 a column still pays for one copy. That is the price of an unforgettable trigger,
@@ -71,7 +71,81 @@ policy.
 | `nothing-pending` | every boot after the first         | The dominant case. Costs one set difference the runner already computed.                                                                                                                    |
 | `fresh-install`   | the ledger is empty                | An empty ledger means an empty database. The numbered-era backfill runs first, so a pre-ledger install arrives with names, not zero. Applying 190 migrations to no rows can delete nothing. |
 | `in-memory`       | `:memory:` or an anonymous temp DB | No file to copy, and no operator to recover it.                                                                                                                                             |
-| `disabled`        | `ALLOS_MIGRATION_SNAPSHOT=off`     | The operator took the decision. Logged as a warning when something _was_ pending.                                                                                                           |
+| `disabled`        | `ALLOS_MIGRATION_SNAPSHOT` is off  | The operator took the decision. Logged as a warning when something _was_ pending. It can name the one upgrade it covers — see [the opt-out](#the-opt-out).                                  |
+
+## Boot tasks, which run after the copy
+
+`bootTasks(db)` runs immediately after the runner, on **every** boot, outside the
+ledger. Anything it deletes is deleted after the snapshot was taken, so the copy
+does not contain it (#2780).
+
+The trigger above cannot be reused. It works because a pending set is non-empty
+only on an upgrade; boot tasks run on every boot by design, so "boot tasks are
+about to run" is always true, and a copy on every start of every install is the
+unbounded disk cost this feature was careful to avoid.
+
+So the question was answered by **enumerating what boot tasks actually delete**,
+and the answer is that none of it is a person's records:
+
+| Delete                                                              | What it removes                                                                                                                                                         |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `saved_items`, `upcoming_dismissals`, `coverage_gaps` (alias merge) | The old-key row, after the `UPDATE OR IGNORE` above it already carried the ★ / snooze / gap onto the surviving spelling. A redundant duplicate, never the thing itself. |
+| `canonical_biomarkers` (alias merge)                                | An ai-coined vocabulary row the dataset has superseded, scoped to `source = 'ai'` so a curated row is untouchable. Nobody typed it, and the next import mints it again. |
+| `settings` key `canonical_flags_sig` (alias merge)                  | A derived signature cache, cleared so the flag reconcile re-derives on the same boot.                                                                                   |
+
+`resetInterruptedWork` deletes nothing — it only moves stranded jobs to `failed`.
+
+That is a verdict about today's code, so it is guarded rather than asserted:
+`lib/__tests__/boot-task-deletes.test.ts` scans `boot-tasks.ts` and the `lib/`
+modules it imports, and fails on a `DELETE FROM` that is not registered with its
+row class — or on one whose table it cannot read. The carries themselves are
+behavioural, in `lib/__db_tests__/canonical-alias-merge.test.ts`.
+
+The census is a tripwire on where boot-task code is **written**, not a proof about
+the whole call graph: a delete one hop further out, or a rebuild that drops rows
+with no `DELETE` token (#2703), is outside it. If a future boot task removes rows
+a person entered and nothing carries them forward, the answer is not another
+registry line — it is that the sweep belongs in a migration, where the copy above
+already covers it.
+
+## The opt-out
+
+`ALLOS_MIGRATION_SNAPSHOT=off` disables the copy. Unscoped, it is also a footgun
+(#2781): an operator whose disk is full during one upgrade sets it in `.env` to get
+moving, the upgrade completes, and the protection is off for every upgrade after
+it — with one per-boot `WARN` to notice, in logs a self-hosted operator may never
+read. The protection then works, is disabled once under pressure, and is silently
+absent on the upgrade that eats someone's records.
+
+So the value may **name the upgrade it covers**:
+
+| Value                    | Effect                                                                    |
+| ------------------------ | ------------------------------------------------------------------------- |
+| unset, or anything else  | Snapshot on.                                                              |
+| `off` / `0`/`false`/`no` | Off for this upgrade **and every future one**.                            |
+| `off:<migration name>`   | Off only while that migration is pending. Expires when it applies.        |
+| `off:` (no name)         | Malformed. **Ignored** — the snapshot is taken and the boot log says why. |
+
+The name is not hidden state and the variable does not change meaning after it is
+read: it is a scope, re-evaluated against the pending set on every boot. A one-shot
+form — an env var consumed on first use — was rejected as too clever for an env
+var, and "consuming" it would mean writing state somewhere.
+
+The operator does not have to go looking for the name. The refusal that sends them
+here prints the pending set and offers the scoped form with the first pending
+migration already filled in. A malformed or unknown name fails **closed**:
+disabling a safety net is not the safe reading of a value we could not resolve.
+
+Each branch says its piece exactly once, on an upgrade boot only — an ordinary boot
+has nothing pending and stays silent:
+
+- bare `off` — `WARN`, stating that every future upgrade is uncovered too, and
+  naming the scoped form.
+- `off:<name>` while it applies — `WARN`, stating when it stops.
+- `off:<name>` once it has expired — one `INFO`: it did nothing, the snapshot was
+  taken, the line can be removed. This is the boot where a one-upgrade workaround
+  left behind proves itself harmless.
+- malformed — `WARN`, ignored, with both correct forms.
 
 ## What is copied
 
@@ -137,9 +211,11 @@ rather than throws: by the time it runs, the migration's transaction has already
 committed, so a throw there would leave the database half-upgraded. Here nothing
 has been applied, which is exactly what makes the refusal safe to take.
 
-Every refusal names what failed, the pending migrations it was protecting, and
-`ALLOS_MIGRATION_SNAPSHOT=off` — so proceeding without a copy is a decision
-someone made, never a silence. **The operator can always tell which happened**:
+Every refusal names what failed, the pending migrations it was protecting, and the
+`ALLOS_MIGRATION_SNAPSHOT` override with the first pending migration already filled
+into the scoped form — so proceeding without a copy is a decision someone made,
+never a silence, and the hatch that expires by itself is the one that costs nothing
+extra to take. **The operator can always tell which happened**:
 a refusal is a boot failure with that message; a successful snapshot is one
 `INFO [migrate]` line naming the file; an opted-out upgrade is one
 `WARN [migrate]` line saying so.
@@ -234,6 +310,10 @@ boot correctly takes a fresh copy.
   already installs these files.
 - It does not copy uploads.
 - It does not snapshot before **boot tasks**, which run outside the versioned
-  runner.
+  runner — deliberately, on the enumeration above, which the delete census keeps
+  current.
+- It does not surface a snapshot's existence anywhere in the app. The discovery
+  path is the boot log plus the sidecar; whether the admin backup card should list
+  these files is open.
 - It does not tell you _what_ a migration removed. That is #2696's per-link tally
   and the runner's `foreign_key_check` delta; this is the copy you compare against.

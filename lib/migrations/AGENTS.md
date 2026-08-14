@@ -15,6 +15,8 @@ These instructions apply to the migration runner and migrations.
   links, and use `deleteRowsWithCascade()` for cascading children.
 - Register child-link fixtures in the migration child-link DB tests. Unknown or
   unexercised pairs must fail the test tier.
+- Spell every `CHILD_LINKS` entry as a `{ table: "…", column: "…" }` literal. The
+  shared scan fails on a registry it cannot read rather than reporting no pairs.
 - Migrations run individually with foreign keys temporarily disabled for safe
   SQLite rebuilds. Preserve the runner's post-migration foreign-key delta
   report.
@@ -25,6 +27,10 @@ These instructions apply to the migration runner and migrations.
 - A copy that cannot be taken refuses the boot, which is correct only because
   nothing has been applied yet. Every later failure in this runner reports
   instead.
+- `ALLOS_MIGRATION_SNAPSHOT=off` skips the copy for every upgrade;
+  `off:<migration name>` scopes it to one pending set and expires by itself.
+- Boot tasks run after the copy is taken, so their deletes have none behind
+  them. Register every one in the boot-task delete census with its row class.
 
 Read `docs/versioned-migrations-spec.md` before changing migrations or the
 runner, and `docs/internals/migration-snapshot.md` before changing the snapshot.
