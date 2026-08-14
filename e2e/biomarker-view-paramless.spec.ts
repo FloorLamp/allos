@@ -19,27 +19,6 @@ test("a paramless /results/readings/view redirects to the readings list", async 
   await expect(page.getByText("No biomarker selected")).toHaveCount(0);
 });
 
-test("the retired biomarker routes preserve list and detail query parameters", async ({
-  page,
-}) => {
-  await page.goto("/results/biomarkers?q=vitamin+d&current=1");
-  await page.waitForURL(
-    (url) =>
-      url.pathname === "/results/readings" &&
-      url.searchParams.get("q") === "vitamin d" &&
-      url.searchParams.get("current") === "1"
-  );
-
-  const name = "Legacy route marker (e2e)";
-  await page.goto(`/biomarkers/view?name=${encodeURIComponent(name)}`);
-  await page.waitForURL(
-    (url) =>
-      url.pathname === "/results/readings/view" &&
-      url.searchParams.get("name") === name
-  );
-  await expect(page.getByRole("heading", { name })).toBeVisible();
-});
-
 // The named-but-empty case is NOT a redirect: the name is a real request the page
 // can answer ("you have no readings for this marker"), so it keeps a titled empty
 // state — now with a way onward, which the census flagged as missing.

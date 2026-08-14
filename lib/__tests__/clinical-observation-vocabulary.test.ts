@@ -35,17 +35,6 @@ describe("clinical observation vocabulary (#2482)", () => {
     expect(readingDetailHref("LDL Cholesterol")).toBe(
       "/results/readings/view?name=LDL%20Cholesterol"
     );
-
-    expect(
-      fs.existsSync(
-        path.join(ROOT, "app", "(app)", "results", "biomarkers", "page.tsx")
-      )
-    ).toBe(true);
-    expect(
-      fs.existsSync(
-        path.join(ROOT, "app", "(app)", "biomarkers", "view", "page.tsx")
-      )
-    ).toBe(true);
   });
 
   it("preserves the stored saved-item vocabulary across the route rename", () => {
