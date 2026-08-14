@@ -5,7 +5,9 @@
 // 1.05 for runner weights. The documented source is the `e2e-results-shard-*`
 // artifacts, and an agent sandbox behind a filtering proxy cannot download one:
 // the artifact LIST returns 200 and the download returns 403 CONNECT, so it reads
-// as a permissions problem and is not. Job logs are plain API reads.
+// as a permissions problem and is not. Job logs stay reachable, though not via
+// curl — that endpoint redirects to the same blob host. See
+// docs/internals/e2e-hygiene.md for the route that works.
 //
 // So each shard also PRINTS its per-file totals, one tagged line per spec file,
 // and this module is the two halves of that channel. Tab-separated because a spec
