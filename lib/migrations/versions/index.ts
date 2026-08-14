@@ -192,6 +192,7 @@ import { migration as mSavedBackedRepair } from "./20260813-saved-backed-identit
 import { migration as mCanonicalResultDefinitions } from "./20260814-canonical-result-definitions";
 import { migration as mSavedClinicalResultNamespace } from "./20260814-saved-clinical-result-namespace";
 import { migration as mPersistedVocabulary } from "./20260814-persisted-vocabulary";
+import { migration as mIntakeLogTimeVocabulary } from "./20260814-intake-log-time-vocabulary";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -393,6 +394,7 @@ export const MIGRATIONS: Migration[] = [
   mCanonicalResultDefinitions,
   mSavedClinicalResultNamespace,
   mPersistedVocabulary,
+  mIntakeLogTimeVocabulary,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

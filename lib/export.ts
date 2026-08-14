@@ -804,9 +804,17 @@ export const DATASETS: ExportDataset[] = [
     // status + skip_reason distinguish a SKIPPED dose from a taken one (a skipped
     // dose used to export with a timestamp indistinguishable from a confirmed one —
     // an actively-wrong adherence history); amount is the #280 dose snapshot (#466).
-    columns: ["date", "item", "status", "taken_at", "amount", "skip_reason"],
-    select: `SELECT l.id, l.date, ii.name AS item, l.status, l.taken_at, l.amount,
-              l.skip_reason
+    columns: [
+      "date",
+      "item",
+      "status",
+      "occurred_at",
+      "recorded_at",
+      "amount",
+      "skip_reason",
+    ],
+    select: `SELECT l.id, l.date, ii.name AS item, l.status, l.occurred_at,
+              l.recorded_at, l.amount, l.skip_reason
        FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.item_id
        WHERE ii.profile_id = ? ORDER BY l.date DESC, ii.name`,
     countSql: `SELECT COUNT(*) AS n

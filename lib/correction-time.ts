@@ -135,7 +135,7 @@ export interface TapEvent {
   // across a rebuild, a rotation, and a restart, and carries no state of its own.
   id: number;
   // The IMMUTABLE audit stamp: when the tap landed — `food_log_events.recorded_at` for a
-  // serving, `intake_item_logs.taken_at` for a dose. Burst
+  // serving or dose. Burst identity always comes from `recorded_at`.
   // identity and FRESHNESS are computed from this and never from the corrected instant —
   // a correction is not a tap, so a multi-tap correction session must not extend its own
   // hour (#2206).

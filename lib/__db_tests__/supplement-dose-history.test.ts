@@ -135,12 +135,9 @@ describe("supplement dose history — the ungated shared cores", () => {
     expect(history).toHaveLength(1);
     expect(history[0].amount).toBe("800 mg");
     expect(history[0].date).toBe(date);
-    // The row carries `occurred_at` (the stated event instant, migration 165) so the
-    // panel call sites can ask the row-level question (#2228 decision 1a). The
-    // backfill's stated time still lands in `recorded_at` (only the AMENDMENT writes
-    // the event column — decision 2 keeps the backfill as it is), so it is NULL
-    // here, and the display tier renders the record chain marked "recorded".
-    expect(history[0].occurred_at).toBeNull();
+    // Historical entry states the event instant; immutable `recorded_at` captures when
+    // the backfill itself was stored (#2876).
+    expect(history[0].occurred_at).toContain("08:30");
     const logId = history[0].id;
 
     // AMEND: a stated wall time and a corrected amount, same day. The stated time
@@ -152,7 +149,7 @@ describe("supplement dose history — the ungated shared cores", () => {
     const amended = getIntakeDoseHistory(p, itemId, "0001-01-01")[0];
     expect(amended.amount).toBe("400 mg");
     expect(amended.occurred_at).toContain("21:15");
-    expect(amended.recorded_at).toContain("08:30");
+    expect(amended.recorded_at).toBe(history[0].recorded_at);
 
     // DELETE with undo, then RESTORE — the row comes back with a new id.
     const removed = deleteAdministrationLog(p, logId);
@@ -494,7 +491,7 @@ describe("the cross-item dose ledger reader", () => {
     );
     // A SKIP is adherence's business, not a record of what was taken.
     db.prepare(
-      `INSERT INTO intake_item_logs (item_id, dose_id, date, taken_at, status)
+      `INSERT INTO intake_item_logs (item_id, dose_id, date, recorded_at, status)
        VALUES (?, ?, ?, ?, 'skipped')`
     ).run(supp.itemId, supp.doseId, inWindow, `${inWindow}T09:00:00Z`);
 
@@ -618,6 +615,7 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     const date = shiftDateStr(today(p), -4);
     logHistoricalDose(p, itemId, doseId, at(date, "08:30"), "400 mg", false);
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
+    updateHistoricalDose(p, itemId, logId, date, null, null);
     const before = logRow(logId);
     expect(before.occurred_at).toBeNull();
 
@@ -641,6 +639,7 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
 
     updateHistoricalDose(p, itemId, logId, date, at(date, "14:00"), null);
     expect(logRow(logId).occurred_at).toContain("14:00");
+    const recordedBeforeClear = logRow(logId).recorded_at;
 
     // Clearing is a plain `logged` outcome (#2228 constraint 5): back to the
     // honest "nobody stated one", same day, record chain untouched.
@@ -649,7 +648,7 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     const cleared = logRow(logId);
     expect(cleared.occurred_at).toBeNull();
     expect(cleared.date).toBe(date);
-    expect(cleared.recorded_at).toContain("09:00");
+    expect(cleared.recorded_at).toBe(recordedBeforeClear);
   });
 
   it("a stated instant whose local date disagrees with the submitted date is refused, nothing written", () => {
@@ -684,7 +683,7 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     expect(logRow(logId)).toEqual(before);
   });
 
-  it("the PRN interval clock and proximity guard keep keying on recorded_at, identically", () => {
+  it("the PRN interval clock and historical proximity guard key on occurred_at", () => {
     const p = newProfile();
     const { itemId, doseId } = seedPrnMed(p);
     // A fully past day, so no wall time here can trip the future guard whatever
@@ -696,27 +695,24 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     const before = getRedoseArmingState(p, itemId, date);
     expect(before.latestGivenAt).toContain("10:00");
 
-    // Stating an occurred_at far from the tap leaves the redose window's arming
-    // instant exactly where it was — moving the window onto occurred_at is its
-    // own safety decision, explicitly NOT this change's (#2228 constraint 3).
+    // Moving the administration event moves the safety clock without changing row id.
     updateHistoricalDose(p, itemId, logId, date, at(date, "14:00"), null);
     const after = getRedoseArmingState(p, itemId, date);
-    expect(after.latestGivenAt).toBe(before.latestGivenAt);
+    expect(after.latestGivenAt).toContain("14:00");
     expect(after.latestId).toBe(before.latestId);
 
-    // The phantom-dose proximity guard is likewise unmoved: a new entry within
-    // the dedup window of the row's recorded_at still collapses…
+    // A different event time is not a duplicate…
     expect(
       logHistoricalDose(p, itemId, doseId, at(date, "10:01"), null, false)
-    ).toEqual({ kind: "duplicate" });
-    // …and one at the STATED occurred_at does not — the guard never sees it.
+    ).toEqual({ kind: "logged", date });
+    // …while one at the stated event does collapse.
     expect(
       logHistoricalDose(p, itemId, doseId, at(date, "14:00"), null, false)
-    ).toEqual({ kind: "logged", date });
+    ).toEqual({ kind: "duplicate" });
 
-    // A cleared time changes neither answer.
+    // Clearing the event makes the safety read fall back to immutable capture.
     updateHistoricalDose(p, itemId, logId, date, null, null);
-    expect(getRedoseArmingState(p, itemId, date).latestGivenAt).toContain(
+    expect(getRedoseArmingState(p, itemId, date).latestGivenAt).not.toContain(
       "14:00"
     );
   });

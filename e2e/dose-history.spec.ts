@@ -328,7 +328,7 @@ test("the ledger pages its rows, even on All time", async ({
       .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
       .get(item.id) as { id: number };
     const insert = handle.prepare(
-      `INSERT INTO intake_item_logs (item_id, dose_id, date, taken_at, status)
+      `INSERT INTO intake_item_logs (item_id, dose_id, date, recorded_at, status)
        VALUES (?, ?, ?, ?, 'taken')`
     );
     for (let i = 1; i <= logged; i++) {

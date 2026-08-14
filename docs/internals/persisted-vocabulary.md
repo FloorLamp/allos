@@ -20,8 +20,11 @@ remains.
 | protocol outcome `biomarker:<name>`      | `result:<name>`          | protocol outcomes use the same broad series namespace as Trends                |
 | undo kind/payload `biomarker-record`     | `clinical-observation`   | the restored row may be any `medical_records` observation                      |
 | export dataset `supplements`             | `intake_items`           | the dataset contains supplements and medications and now equals its table name |
+| dose timestamp `taken_at`                | `recorded_at`            | immutable capture uses the same name as the food event ledger                  |
+| dose timestamp `recorded_at`             | `occurred_at`            | the stored administration event is distinct from immutable capture             |
 
-Migration `20260814-persisted-vocabulary` preserves row ids, timestamps, notes,
+Migrations `20260814-persisted-vocabulary` and
+`20260814-intake-log-time-vocabulary` preserve row ids, timestamps, notes,
 autoincrement position, malformed opaque JSON, and unrelated namespace members. It
 deduplicates protocol keys only when an old and current spelling resolve to the same
 outcome. The current application neither dual-reads nor dual-writes these contracts.

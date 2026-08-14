@@ -165,7 +165,6 @@ export function assembleIllnessEpisode(
       `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name, ii.kind AS kind,
               COALESCE(l.product, ii.product) AS product, l.date AS date,
               l.occurred_at AS occurred_at, l.recorded_at AS recorded_at,
-              l.taken_at AS taken_at,
               COALESCE(l.amount, d.amount) AS amount
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
@@ -173,7 +172,7 @@ export function assembleIllnessEpisode(
            ON d.id = l.dose_id AND d.item_id = l.item_id
         WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
           AND l.date >= ? AND l.date <= ?
-        ORDER BY l.date ASC, COALESCE(l.recorded_at, l.taken_at) ASC, l.id ASC`
+        ORDER BY l.date ASC, COALESCE(l.occurred_at, l.recorded_at) ASC, l.id ASC`
     )
     .all(profileId, from, to) as {
     id: number;
@@ -183,8 +182,7 @@ export function assembleIllnessEpisode(
     product: string | null;
     date: string;
     occurred_at: string | null;
-    recorded_at: string | null;
-    taken_at: string;
+    recorded_at: string;
     amount: string | null;
   }[];
   const byMed = new Map<number, EpisodeMedication>();
@@ -207,9 +205,8 @@ export function assembleIllnessEpisode(
     }
     // #2205 phase 3: the administration's instant, asked once. `bestKnownInstant`
     // answers with the stated event instant (`occurred_at`) when the row has one and
-    // the record chain (recorded_at → taken_at) otherwise — and SAYS which, so the
-    // timeline can mark a record-chain clock as "recorded" instead of quoting a
-    // filing timestamp as an administration time (#2228 decision 4).
+    // the immutable capture (`recorded_at`) otherwise — and SAYS which, so the
+    // timeline can mark a capture clock as "recorded" (#2228 decision 4).
     const when = bestKnownInstant("intake_item_logs", r);
     const parsed = instantDate(when);
     const localClock = parsed ? zonedDateParts(tz, parsed).hhmm : null;

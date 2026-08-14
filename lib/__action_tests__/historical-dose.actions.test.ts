@@ -61,17 +61,18 @@ describe("logHistoricalDose", () => {
 
     const log = db
       .prepare(
-        `SELECT date, amount, recorded_at, status
+        `SELECT date, amount, occurred_at, recorded_at, status
            FROM intake_item_logs WHERE dose_id = ? AND date = ?`
       )
       .get(doseId, date) as {
       date: string;
       amount: string;
+      occurred_at: string;
       recorded_at: string;
       status: string;
     };
     expect(log).toMatchObject({ date, amount: "7.5 mg", status: "taken" });
-    expect(formatGivenAtClock(getTimezone(profile.id), log.recorded_at)).toBe(
+    expect(formatGivenAtClock(getTimezone(profile.id), log.occurred_at)).toBe(
       "8:30am"
     );
     expect(
@@ -179,6 +180,11 @@ describe("logHistoricalDose", () => {
         .prepare("SELECT id FROM intake_item_logs WHERE item_id = ?")
         .get(itemId) as { id: number }
     ).id;
+    const recordedBefore = (
+      db
+        .prepare("SELECT recorded_at FROM intake_item_logs WHERE id = ?")
+        .get(logId) as { recorded_at: string }
+    ).recorded_at;
 
     const result = await updateHistoricalDose(
       fd({
@@ -212,9 +218,7 @@ describe("logHistoricalDose", () => {
     expect(formatGivenAtClock(getTimezone(profile.id), log.occurred_at)).toBe(
       "9:45am"
     );
-    expect(formatGivenAtClock(getTimezone(profile.id), log.recorded_at)).toBe(
-      "8:00am"
-    );
+    expect(log.recorded_at).toBe(recordedBefore);
     expect(
       (
         db
@@ -392,6 +396,11 @@ describe("empty time: accepted on amend, refused on backfill", () => {
         .prepare("SELECT id FROM intake_item_logs WHERE item_id = ?")
         .get(itemId) as { id: number }
     ).id;
+    const recordedBefore = (
+      db
+        .prepare("SELECT recorded_at FROM intake_item_logs WHERE id = ?")
+        .get(logId) as { recorded_at: string }
+    ).recorded_at;
 
     const result = await updateHistoricalDose(
       fd({ id: itemId, log_id: logId, date, time: "", amount: "10 mg" })
@@ -410,9 +419,7 @@ describe("empty time: accepted on amend, refused on backfill", () => {
     expect(log.amount).toBe("10 mg");
     expect(log.occurred_at).toBeNull();
     expect(log.date).toBe(date);
-    expect(formatGivenAtClock(getTimezone(profile.id), log.recorded_at)).toBe(
-      "8:00am"
-    );
+    expect(log.recorded_at).toBe(recordedBefore);
   });
 
   it("still refuses an empty time on the backfill path", async () => {

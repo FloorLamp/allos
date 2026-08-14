@@ -294,10 +294,15 @@ describe("offline replay — dose confirms (issue #1427)", () => {
   function logFor(doseId: number, date: string) {
     return db
       .prepare(
-        "SELECT status, amount, recorded_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        "SELECT status, amount, recorded_at, occurred_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
       )
       .get(doseId, date) as
-      | { status: string; amount: string | null; recorded_at: string | null }
+      | {
+          status: string;
+          amount: string | null;
+          recorded_at: string;
+          occurred_at: string | null;
+        }
       | undefined;
   }
 
@@ -321,7 +326,7 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     const log = logFor(doseId, date);
     expect(log?.status).toBe("taken");
     expect(log?.amount).toBe("1 tab"); // amount snapshotted from the dose row at replay
-    expect(log?.recorded_at).toBe(utcSqlString(tapped));
+    expect(log?.occurred_at).toBe(utcInstant(tapped));
     // Supply moved through the same core, exactly once.
     expect(
       (
@@ -361,7 +366,7 @@ describe("offline replay — dose confirms (issue #1427)", () => {
         doseIntent(doseId, profile.id, date, tapped.toISOString()),
       ]);
       expect(body.results?.[0].status).toBe("done");
-      expect(logFor(doseId, date)?.recorded_at).toBe(utcSqlString(tapped));
+      expect(logFor(doseId, date)?.occurred_at).toBe(utcInstant(tapped));
     } finally {
       if (previous === undefined) delete process.env.ALLOS_TEST_NOW;
       else process.env.ALLOS_TEST_NOW = previous;

@@ -344,7 +344,7 @@ export function loadMedicationsData(
       id: a.id,
       label: formatGivenAtClockWithRelativeAge(
         tz,
-        a.recorded_at ?? a.taken_at,
+        a.occurred_at ?? a.recorded_at,
         timeFormat,
         nowInstant
       ),
@@ -352,7 +352,7 @@ export function loadMedicationsData(
       product: a.product,
     }));
     const last = admins[0]
-      ? (admins[0].recorded_at ?? admins[0].taken_at)
+      ? (admins[0].occurred_at ?? admins[0].recorded_at)
       : null;
     const fam = familyStates.get(s.id);
     const famLast = fam?.latestGivenAt ?? last;

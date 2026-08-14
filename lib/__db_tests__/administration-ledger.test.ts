@@ -377,7 +377,7 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
       .prepare(
         `SELECT product FROM intake_item_logs
           WHERE item_id = ? AND status = 'taken'
-          ORDER BY COALESCE(recorded_at, taken_at), id`
+          ORDER BY COALESCE(occurred_at, recorded_at), id`
       )
       .all(itemId) as { product: string | null }[];
     expect(products.map((row) => row.product)).toEqual([

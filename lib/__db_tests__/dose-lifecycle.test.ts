@@ -32,7 +32,7 @@ import {
   markDoseSkipped,
   escalationAckState,
 } from "@/lib/queries";
-import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
+import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
 import {
   tapAnswerText,
   tapSkipAnswerText,
@@ -128,15 +128,15 @@ function doseIntent(
   };
 }
 
-function recordedAt(doseId: number, date: string): string | null {
+function occurredAt(doseId: number, date: string): string | null {
   return (
     (
       db
         .prepare(
-          "SELECT recorded_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+          "SELECT occurred_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
         )
-        .get(doseId, date) as { recorded_at: string | null } | undefined
-    )?.recorded_at ?? null
+        .get(doseId, date) as { occurred_at: string | null } | undefined
+    )?.occurred_at ?? null
   );
 }
 
@@ -479,7 +479,7 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
       )
     ).toEqual({ status: "done" });
     expect(logRow(doseId, DATE)).toEqual({ amount: "2 caps", status: "taken" });
-    expect(recordedAt(doseId, DATE)).toBe(utcSqlString(tapped));
+    expect(occurredAt(doseId, DATE)).toBe(utcInstant(tapped));
     expect(onHand(itemId)).toBe(9);
   });
 
@@ -498,8 +498,8 @@ describe("offline dose replay rides the shared write cores (#1427)", () => {
       )
     ).toEqual({ status: "done" });
     expect(logRow(doseId, DATE)?.status).toBe("taken");
-    expect(recordedAt(doseId, DATE)).not.toBe(utcSqlString(skewed));
-    expect(recordedAt(doseId, DATE)).toBeTruthy();
+    expect(occurredAt(doseId, DATE)).not.toBe(utcInstant(skewed));
+    expect(occurredAt(doseId, DATE)).toBeTruthy();
   });
 
   it("REFUSES a paused item with an honest reason (the parallel-path regression)", () => {

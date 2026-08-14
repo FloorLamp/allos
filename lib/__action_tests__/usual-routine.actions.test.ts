@@ -226,7 +226,7 @@ describe("logUsualRoutine", () => {
     // longer in the standing bundle, so it drops out of the write entirely — the
     // servings still land and the answer names only what it actually did.
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, date, status, taken_at, recorded_at)
+      `INSERT INTO intake_item_logs (dose_id, date, status, recorded_at, occurred_at)
        VALUES (?, ?, 'taken', ?, ?)`
     ).run(doses.collagen, anchor, `${anchor}T07:00:00Z`, `${anchor}T07:00:00Z`);
 

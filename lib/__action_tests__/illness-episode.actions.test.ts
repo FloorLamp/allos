@@ -586,16 +586,28 @@ describe("episode event ledger actions", () => {
        VALUES (?, ?, NULL)`
     ).run(itemId, yesterday);
     const insertLog = db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
-       VALUES (?, ?, ?, ?, '100 mg', 'taken')`
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, recorded_at, occurred_at, amount, status)
+       VALUES (?, ?, ?, ?, ?, '100 mg', 'taken')`
     );
-    insertLog.run(doseId, itemId, yesterday, `${yesterday} 08:00:00`);
+    insertLog.run(
+      doseId,
+      itemId,
+      yesterday,
+      `${yesterday}T08:00:00Z`,
+      `${yesterday}T08:00:00Z`
+    );
     const logId = Number(
-      insertLog.run(doseId, itemId, yesterday, `${yesterday} 12:00:00`)
-        .lastInsertRowid
+      insertLog.run(
+        doseId,
+        itemId,
+        yesterday,
+        `${yesterday}T12:00:00Z`,
+        `${yesterday}T12:00:00Z`
+      ).lastInsertRowid
     );
 
-    // Stating a time within the proximity window of the sibling's recorded_at is now
+    // Stating a time within the proximity window of the sibling's occurred_at is now
     // refused from the episode surface — identically to the medication card.
     expect(
       await updateEpisodeDoseAction(

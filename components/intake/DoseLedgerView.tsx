@@ -132,7 +132,7 @@ export default function DoseLedgerView({
   const entries: DoseLedgerEntry[] = rows.map((row) => {
     // The row-level time question, asked once (#2205 phase 3): the stated event
     // instant (`occurred_at`) when somebody named one, else the record chain
-    // (recorded_at → taken_at), with the answer saying WHICH it was. A ledger IS the
+    // (recorded_at), with the answer saying WHICH it was. A ledger IS the
     // clinical record (#2228 decision 4), so a record-chain clock renders as
     // "recorded 7:02am" rather than presenting a filing timestamp as an
     // administration time.
