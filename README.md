@@ -134,8 +134,12 @@ To pin a particular build instead of using `latest`, set `IMAGE` in `.env`:
 IMAGE=ghcr.io/floorlamp/allos:<git-commit-sha>
 ```
 
-Database migrations run automatically at startup. Read the in-app **What's new**
-page after an update for release notes and any operator action.
+Database migrations run automatically at startup, and the database is copied
+aside to `data/backups/pre-migration/` first so a bad upgrade can be recovered
+from — see [pre-migration snapshots](docs/backups.md#pre-migration-snapshots). If
+that copy cannot be made (usually a full data volume) the container refuses to
+start, with nothing applied. Read the in-app **What's new** page after an update
+for release notes and any operator action.
 
 ## Data and backups
 
@@ -144,7 +148,8 @@ Allos stores persistent state under `DATA_DIR`, including:
 - `allos.db` — the SQLite database
 - `uploads/` — uploaded medical files
 - `logs/` — AI and server error logs
-- `backups/` — verified database snapshots
+- `backups/` — verified database snapshots, and `pre-migration/` copies taken
+  before an upgrade applies
 
 The built-in nightly snapshot is useful, but it is on the same volume as the
 live database. A disk loss can therefore remove both. For real data, configure

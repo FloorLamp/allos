@@ -17,5 +17,13 @@ These instructions apply to the migration runner and migrations.
   unexercised pairs must fail the test tier.
 - Migrations run individually with foreign keys temporarily disabled for safe
   SQLite rebuilds. Preserve the runner's post-migration foreign-key delta report.
+- The runner copies the database aside before applying anything, triggered on the
+  pending set being non-empty — never on a per-migration "this deletes rows"
+  declaration, which #2444 forgot and #2703 proved a scan cannot complete. Do not
+  narrow that trigger, and do not move the call out of autocommit.
+- A copy that cannot be taken refuses the boot. That is correct only because
+  nothing has been applied yet, which makes it reversible; every later failure in
+  this runner reports instead.
 
-Read `docs/versioned-migrations-spec.md` before changing migrations or the runner.
+Read `docs/versioned-migrations-spec.md` before changing migrations or the runner,
+and `docs/internals/migration-snapshot.md` before changing the snapshot.
