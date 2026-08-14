@@ -14,14 +14,37 @@
 // are bound by different things and those scale apart. Measured — plan CI's work
 // with laptop weights and the buckets come out predicted-equal while CI runs
 // 127-183s (max/mean 1.16 against an independent run); with runner weights, 1.05.
-// Refresh from `e2e-results-shard-*` artifacts when the SHAPE changes (a heavy
-// spec added, split, or deleted), not to chase drift.
+// Refresh when the SHAPE changes (a heavy spec added, split, or deleted), not to
+// chase drift.
+//
+// TWO WAYS TO GET RUNNER NUMBERS, because the obvious one is not always available.
+// The `e2e-results-shard-*` artifacts are the richer source, but downloading a
+// GitHub artifact means reaching `*.blob.core.windows.net`, which an agent sandbox
+// behind a filtering proxy cannot do — the artifact LIST returns 200 and the
+// download returns 403 CONNECT, so the failure looks like a permissions problem
+// and is not. Job LOGS are plain API reads and stay reachable, so each e2e shard
+// also PRINTS its per-file durations:
+//
+//   e2e-durations<TAB>e2e/some.spec.ts<TAB>12345
+//
+// Collect those lines from the twelve shard logs and feed them back:
+//
+//   npx tsx scripts/gen-e2e-durations.ts --from-log shard1.log [...more]
+//
+// Same arithmetic, same manifest — a log line is the JSON report's one number per
+// file, and this script only ever summed to that. `--emit-log` is what CI runs to
+// produce them.
 //
 // A stale manifest degrades balance, never correctness: an unlisted file is still
 // planned (estimated, see UNKNOWN_WEIGHT_FACTOR) and the planner refuses any plan
 // that is not an exact partition of the suite.
 import fs from "node:fs";
 import path from "node:path";
+import {
+  DURATION_LOG_TAG,
+  formatDurationLog,
+  parseDurationLog,
+} from "../lib/e2e-durations-log";
 import {
   movedFiles,
   planShards,
@@ -61,26 +84,66 @@ function collect(
   }
 }
 
-function main(): void {
-  const reports = process.argv.slice(2);
-  if (reports.length === 0) {
+/** Sum one Playwright JSON report into `totals`. */
+function collectReport(file: string, totals: Map<string, number>): void {
+  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as {
+    suites?: JsonSpec[];
+  };
+  for (const suite of raw.suites ?? []) collect(suite, undefined, totals);
+}
+
+/**
+ * Sum the tagged lines out of a saved CI log. A file that yields NONE is an
+ * error rather than an empty contribution — see `parseDurationLog`.
+ */
+function collectLog(file: string, totals: Map<string, number>): void {
+  const found = parseDurationLog(fs.readFileSync(file, "utf8"), totals);
+  if (found === 0) {
     console.error(
-      "usage: tsx scripts/gen-e2e-durations.ts <playwright-report.json> [...]"
+      `${file}: no \`${DURATION_LOG_TAG}\` lines — is that an e2e shard log from ` +
+        `a run AFTER the emit step shipped? An older run has no such lines and ` +
+        `would silently contribute nothing.`
+    );
+    process.exit(1);
+  }
+}
+
+/** Print this report's per-file totals for a log reader to recover later. */
+function emitLog(reports: string[]): void {
+  const totals = new Map<string, number>();
+  for (const file of reports) collectReport(file, totals);
+  for (const line of formatDurationLog(totals)) console.log(line);
+}
+
+function main(): void {
+  const args = process.argv.slice(2);
+  const fromLog = args.includes("--from-log");
+  const emit = args.includes("--emit-log");
+  const inputs = args.filter((a) => !a.startsWith("--"));
+  if (inputs.length === 0) {
+    console.error(
+      "usage: tsx scripts/gen-e2e-durations.ts <playwright-report.json> [...]\n" +
+        "       tsx scripts/gen-e2e-durations.ts --from-log <shard.log> [...]\n" +
+        "       tsx scripts/gen-e2e-durations.ts --emit-log <playwright-report.json>"
     );
     process.exit(2);
   }
+  if (emit) {
+    emitLog(inputs);
+    return;
+  }
 
   const totals = new Map<string, number>();
-  for (const file of reports) {
-    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as {
-      suites?: JsonSpec[];
-    };
-    for (const suite of raw.suites ?? []) collect(suite, undefined, totals);
+  for (const file of inputs) {
+    if (fromLog) collectLog(file, totals);
+    else collectReport(file, totals);
   }
 
   if (totals.size === 0) {
     console.error(
-      "no test durations found — is that a Playwright JSON report?"
+      fromLog
+        ? "no test durations found — are those e2e shard logs?"
+        : "no test durations found — is that a Playwright JSON report?"
     );
     process.exit(1);
   }
