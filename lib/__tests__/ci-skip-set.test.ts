@@ -10,13 +10,34 @@
 // (#2444's registry naming columns that never existed, #2677's entries nobody
 // exercised). So the claim is asserted rather than restated.
 //
-// The three TEST-DIRECTORY entries are the ones at risk. Prose cannot grow an
-// importer, and `.claude/skills/` is read only by Claude Code and one pure test.
-// But `lib/__tests__/`, `lib/__db_tests__/` and `lib/__action_tests__/` sit UNDER
-// `lib/`, beside modules the app imports constantly, and they legitimately contain
-// non-test modules — `lib/__db_tests__/migration-link-scan.ts` is the scanner
-// #2721's two guards share. The day a non-test consumer reaches into one, the entry
-// has to go, and this test is what says so.
+// The entries at risk are the ones naming a directory of IMPORTABLE CODE. Prose
+// cannot grow an importer. But `lib/__tests__/`, `lib/__db_tests__/` and
+// `lib/__action_tests__/` sit UNDER `lib/`, beside modules the app imports
+// constantly, and they legitimately contain non-test modules —
+// `lib/__db_tests__/migration-link-scan.ts` is the scanner #2721's two guards
+// share. The day a non-test consumer reaches into one, the entry has to go, and
+// this test is what says so.
+//
+// `scripts/orchestration/` IS CODE TOO (#2786). It shipped unverified on the
+// argument that nothing imports it today — which is the same argument AGENTS.md
+// made about the three test directories, and precisely why those got a guard
+// rather than a sentence. `dispatch-brief.mjs`, `reconcile-tracker-core.ts` and
+// their neighbours are exactly the shape a `scripts/` sibling starts reaching
+// into, and the moment one does, a change there skips the browser matrix while
+// genuinely affecting the app. Before #2769 extending the scan would have
+// inherited a matcher blind to the relative form; now it costs one entry.
+//
+// EVERY ENTRY IS NOW CLASSIFIED, which is the wider half of that fix. The old
+// filter took the entries starting with `lib/` and silently ignored the rest, so a
+// new code directory added to `ci.yml` got no guard AND no notice — the failure
+// mode this whole family exists to prevent, one level up. An entry is now either
+// verified by the census below or declared unverifiable WITH ITS REASON, and the
+// two together must equal the live regex.
+//
+// `.claude/skills/` stays deliberately unverified. Guarding it would mean deciding
+// what "reachable" means for a skill file, which is not an import-graph question,
+// and a guard extended to something it cannot honestly judge is worse than a
+// stated gap.
 //
 // The regex is READ OUT OF THE WORKFLOW rather than restated here, for the same
 // reason #2721's census reads FK parents out of the schema: a copy of the list
@@ -39,8 +60,16 @@ import { fileURLToPath } from "node:url";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const WORKFLOW = path.join(REPO, ".github/workflows/ci.yml");
 
-/** The alternation inside the workflow's `grep -qvE '^(…)'` detector. */
+let entries: string[] | null = null;
+
+/**
+ * The alternation inside the workflow's `grep -qvE '^(…)'` detector.
+ *
+ * Memoized: #2769 found this being re-read and re-regexed inside a filter over
+ * ~2,500 files (209 ms → 864 ms), and every assertion below wants the same list.
+ */
 function skipSetEntries(): string[] {
+  if (entries) return entries;
   const src = fs.readFileSync(WORKFLOW, "utf8");
   const match = /grep -qvE '\^\((.+?)\)'/.exec(src);
   expect(
@@ -49,13 +78,50 @@ function skipSetEntries(): string[] {
       "`grep -qvE '^(…)'` — this guard reads the live regex rather than a copy, so " +
       "reshaping the detector means reshaping this scan with it"
   ).not.toBeNull();
-  return match![1].split("|").map((e) => e.replace(/\\/g, ""));
+  entries = match![1].split("|").map((e) => e.replace(/\\/g, ""));
+  return entries;
 }
 
-/** The skip-set entries that name a directory under `lib/`. */
-function testDirEntries(): string[] {
-  return skipSetEntries().filter(
-    (e) => e.startsWith("lib/") && e.endsWith("/")
+/**
+ * The entries this scan VERIFIES: directories of importable code, where "nothing
+ * reachable imports this" is an import-graph question with an answer.
+ */
+const VERIFIED_DIRS = [
+  "lib/__action_tests__/",
+  "lib/__db_tests__/",
+  "lib/__tests__/",
+  "scripts/orchestration/",
+] as const;
+
+/** The entries this scan deliberately does NOT verify, each with its reason. */
+const UNVERIFIED_ENTRIES: Record<string, string> = {
+  "README.md": "prose; a Markdown file cannot become an import",
+  "SECURITY.md": "prose; a Markdown file cannot become an import",
+  LICENSE: "not a module in any language",
+  "AGENTS.md": "prose; the agent one-pager, guarded for length not for imports",
+  "CLAUDE.md": "a symlink to AGENTS.md, same reason",
+  "docs/": "prose; the whole point of the directory",
+  ".claude/skills/":
+    "read by Claude Code and one pure test. Deciding what 'reachable' means " +
+    "for a skill file is not an import-graph question, and a guard extended to " +
+    "something it cannot honestly judge reads as coverage while providing none",
+  "scripts/orchestrator-checkin.sh$":
+    "a shell script, which no import specifier in this repo can name. A module " +
+    "SHELLING OUT to it is a real reach and is out of this scan's sight — " +
+    "asserted as a gap below rather than left to be discovered",
+};
+
+/**
+ * The verified entries, taken from the LIVE regex.
+ *
+ * Read out of the workflow rather than from the constant, for the same reason the
+ * whole file does: deleting an entry from `ci.yml` removes its case here instead
+ * of leaving an assertion that passes vacuously. The census below is what makes
+ * the deletion a deliberate edit rather than a silent loss.
+ */
+function verifiedDirs(): string[] {
+  return skipSetEntries().filter((e) =>
+    (VERIFIED_DIRS as readonly string[]).includes(e)
   );
 }
 
@@ -65,13 +131,21 @@ let walked: string[] | null = null;
  * Every source file the app, the browser harness, or the non-orchestration scripts
  * could load — i.e. everything whose import of a skipped directory would mean the
  * browser CAN reach it.
+ *
+ * The verified directories are pruned as a SET, not one at a time, and that is the
+ * property that makes one hop enough. CI drops the matrix for a diff whose every
+ * path is in the union, so a reach from one skipped directory into another
+ * falsifies neither — `lib/__tests__/reconcile-tracker.test.ts` really does import
+ * `scripts/orchestration/reconcile-tracker-core`, and both entries are still
+ * honest. Any path from runtime code into the union must cross the boundary
+ * exactly once, and that crossing is what this scans for.
  */
 function runtimeSourceFiles(): string[] {
   // Memoized: the walk crosses most of the repo and several assertions below want
   // the same list. Nothing writes to the tree during a run.
   if (walked) return walked;
   const roots = ["app", "components", "e2e", "middleware.ts", "scripts", "lib"];
-  const skipped = testDirEntries();
+  const skipped = verifiedDirs();
   const out: string[] = [];
   const walk = (rel: string): void => {
     const abs = path.join(REPO, rel);
@@ -153,19 +227,28 @@ describe("the CI no-runtime-surface skip set", () => {
     expect(entries).toContain("docs/");
   });
 
-  it("names the test directories it claims nothing reachable imports", () => {
-    // Stated so that REMOVING an entry is a deliberate edit here too, rather than a
-    // silent loss of the case below. Adding a fourth test directory to ci.yml means
-    // adding it here, which is the moment to re-ask "what imports this".
-    expect(testDirEntries().sort()).toEqual([
-      "lib/__action_tests__/",
-      "lib/__db_tests__/",
-      "lib/__tests__/",
-    ]);
+  it("classifies EVERY entry as verified or unverifiable-with-a-reason", () => {
+    // #2786. The old filter took the entries starting with `lib/` and ignored the
+    // rest, so adding a code directory to ci.yml bought no guard and raised no
+    // objection. Now the two classifications must together equal the live regex:
+    // a new entry fails HERE until someone has answered "can an import graph judge
+    // this?", which is the moment to re-ask "what imports this".
+    expect(
+      [...VERIFIED_DIRS, ...Object.keys(UNVERIFIED_ENTRIES)].sort(),
+      "an entry in .github/workflows/ci.yml is neither verified by this scan nor " +
+        "declared unverifiable with a reason. Add it to VERIFIED_DIRS if it names " +
+        "a directory of importable code, or to UNVERIFIED_ENTRIES with the reason " +
+        "an import graph cannot judge it."
+    ).toEqual(skipSetEntries().sort());
+    // Non-vacuous in the direction that matters: the verified set is not empty of
+    // the entry this issue was about, and every reason is a reason.
+    expect(verifiedDirs()).toContain("scripts/orchestration/");
+    for (const [entry, reason] of Object.entries(UNVERIFIED_ENTRIES))
+      expect(reason.length, entry).toBeGreaterThan(20);
   });
 
-  it("holds: nothing the browser can reach imports a skipped test directory", () => {
-    const offenders = offendersIn(runtimeSources(), testDirEntries());
+  it("holds: nothing the browser can reach imports a skipped directory", () => {
+    const offenders = offendersIn(runtimeSources(), verifiedDirs());
     expect(
       offenders,
       "a reachable module imports a directory the CI skip set claims the running " +
@@ -194,9 +277,39 @@ describe("the skip-set scan's reach", () => {
             src: 'import { x } from "../__db_tests__/migration-link-scan";',
           },
         ],
-        testDirEntries()
+        verifiedDirs()
       )
     ).toEqual(["lib/queries/probe.ts → ../__db_tests__/migration-link-scan"]);
+  });
+
+  it("sees a reach into scripts/orchestration, which is CODE", () => {
+    // #2786's mutation. Against the pre-fix scan — whose verified set was the
+    // entries starting with `lib/` — every one of these returned nothing, because
+    // the entry was not being checked at all. A `scripts/` sibling importing the
+    // dispatch helper is the concrete way this entry goes wrong: the diff touches
+    // only `scripts/orchestration/`, CI drops the twelve-shard browser matrix, and
+    // a module the app loads changed behaviour underneath it.
+    const reaches = [
+      ["scripts/notify.ts", "./orchestration/dispatch-brief.mjs"],
+      ["scripts/seed.ts", "../scripts/orchestration/pr-board.mjs"],
+      ["lib/queries/probe.ts", "@/scripts/orchestration/reconcile-patch"],
+      ["app/api/probe/route.ts", "../../../scripts/orchestration/ci-watch.mjs"],
+      ["components/Probe.tsx", "scripts/orchestration/reconcile-tracker-core"],
+    ] as const;
+    const preFix = verifiedDirs().filter((dir) => dir.startsWith("lib/"));
+    for (const [file, spec] of reaches) {
+      const source = [{ file, src: `import { x } from "${spec}";` }];
+      expect(
+        offendersIn(source, verifiedDirs()),
+        `${file} → ${spec}`
+      ).toHaveLength(1);
+      // The control, and the whole of #2786: against the set the pre-fix version
+      // verified, every one of these is invisible.
+      expect(
+        offendersIn(source, preFix),
+        `${file} → ${spec} under the pre-fix verified set`
+      ).toEqual([]);
+    }
   });
 
   it("sees one reach in every spelling, from every scanned root", () => {
@@ -215,7 +328,7 @@ describe("the skip-set scan's reach", () => {
       expect(
         offendersIn(
           [{ file, src: `import { x } from "${spec}";` }],
-          testDirEntries()
+          verifiedDirs()
         ),
         `${file} → ${spec}`
       ).toHaveLength(1);
@@ -234,10 +347,15 @@ describe("the skip-set scan's reach", () => {
       'import { x } from "../__db_tests_helper/x";',
       "// see lib/__tests__/ci-skip-set.test.ts, which pins this",
       "/* pinned by lib/__db_tests__/migration-child-links.test.ts */",
+      // #2786's near-misses. `scripts/orchestrator-checkin.sh` is a DIFFERENT
+      // skip-set entry whose name shares a prefix with the directory, and a
+      // sibling directory one character off is the mistake a prefix test makes.
+      'import { x } from "../../scripts/orchestrator-checkin";',
+      'import { x } from "../../scripts/orchestration-helpers/x";',
     ];
     for (const src of quiet)
       expect(
-        offendersIn([{ file: "lib/queries/probe.ts", src }], testDirEntries()),
+        offendersIn([{ file: "lib/queries/probe.ts", src }], verifiedDirs()),
         src
       ).toEqual([]);
   });
@@ -247,7 +365,7 @@ describe("the skip-set scan's reach", () => {
     // imported by its neighbours constantly, and that is not a reach from outside.
     // The exemption lives in the WALK, so it is asserted there — and it is not
     // vacuous, because the shared module the whole entry is about really is in one.
-    const skipped = testDirEntries();
+    const skipped = verifiedDirs();
     const inside = runtimeSourceFiles().filter((f) =>
       skipped.some((dir) => f.startsWith(dir))
     );
@@ -255,12 +373,36 @@ describe("the skip-set scan's reach", () => {
     expect(
       fs.existsSync(path.join(REPO, "lib/__db_tests__/migration-link-scan.ts"))
     ).toBe(true);
+    // And the new directory really is one of the pruned ones, not a set member
+    // that happens to have no files: the walk must have skipped real code.
+    expect(
+      fs.readdirSync(path.join(REPO, "scripts/orchestration")).length
+    ).toBeGreaterThan(0);
+  });
+
+  it("exempts a reach BETWEEN two skipped directories, and really has one", () => {
+    // The exemption generalizes from "inside one entry" to "inside the union"
+    // (#2786), because CI drops the matrix for a diff whose every path is in the
+    // union — so a reach that never leaves it cannot make a skipped diff unsafe.
+    //
+    // Non-vacuous, and this is the whole reason to assert it: the reach is real.
+    // `lib/__tests__/reconcile-tracker.test.ts` imports the orchestration module
+    // it tests. Verify BOTH entries naively, one file at a time, and that honest
+    // import is an offender against `scripts/orchestration/`.
+    const file = "lib/__tests__/reconcile-tracker.test.ts";
+    const src = fs.readFileSync(path.join(REPO, file), "utf8");
+    expect(src).toContain("scripts/orchestration/reconcile-tracker-core");
+    expect(offendersIn([{ file, src }], verifiedDirs()).length).toBeGreaterThan(
+      0
+    );
+    // The walk is what makes it a non-offender: the file is never scanned.
+    expect(runtimeSourceFiles()).not.toContain(file);
   });
 
   it("states what it CANNOT see", () => {
-    // A guard credited with more than it does is worse than none, so the gap is
-    // asserted rather than left to be discovered. TWO things are out of reach and
-    // no text scan fixes either.
+    // A guard credited with more than it does is worse than none, so the gaps are
+    // asserted rather than left to be discovered. THREE things are out of reach
+    // and no text scan fixes any of them.
     //
     // A specifier assembled at runtime: there is no literal to resolve.
     const computed =
@@ -269,13 +411,27 @@ describe("the skip-set scan's reach", () => {
     expect(
       offendersIn(
         [{ file: "lib/queries/probe.ts", src: computed }],
-        testDirEntries()
+        verifiedDirs()
       )
     ).toEqual([]);
-    // And a module in a language the walk does not collect: only TS and ESM JS
+    // A module in a language the walk does not collect: only TS and ESM JS
     // sources are read, so a plain `.js` or `.cjs` reach is invisible.
     expect(
       runtimeSourceFiles().every((f) => /\.(ts|tsx|mts|mjs)$/.test(f))
+    ).toBe(true);
+    // And EXECUTION IS NOT IMPORT (#2786). Shelling out to a script reaches it
+    // just as surely, and there is no specifier to resolve — which is also why
+    // `scripts/orchestrator-checkin.sh` is declared unverifiable rather than
+    // verified. Naming this gap is the honest move; a partial exec-detector that
+    // caught the string form and missed the assembled one would read like a total
+    // rule and be the #2444 shape all over again.
+    const shelled =
+      'execFileSync("bash", ["scripts/orchestration/agent-gates.sh"]);';
+    expect(
+      offendersIn([{ file: "scripts/notify.ts", src: shelled }], verifiedDirs())
+    ).toEqual([]);
+    expect(
+      fs.existsSync(path.join(REPO, "scripts/orchestration/agent-gates.sh"))
     ).toBe(true);
   });
 });
