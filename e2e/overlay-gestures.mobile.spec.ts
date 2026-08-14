@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { hydratedClick, touchSwipe, touchSwipeFrom } from "./helpers";
+import { centerOf, hydratedClick, touchSwipe } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_PRESENCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -13,18 +13,10 @@ import { E2E_LOGIN_PRESENCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // A regression that unified those outcomes would look like a cleanup and would
 // lose people's workouts, so it is asserted directly.
 //
-// Every gesture here is driven through real Chromium touch input (helpers.ts).
-// That matters: the recognizer relies on the browser's own scroll arbitration —
-// including the `pointercancel` it fires when it decides a drag is a scroll —
-// and synthesised DOM events would bypass exactly that.
-//
-// A gesture that must START ON SOMETHING names that element: `touchSwipeFrom`
-// re-aims at it and proves the finger landed inside it before moving (#2714 — a
-// coordinate measured a moment earlier is a fact about the past, and this
-// sheet's lazily gathered context row moves the handle out from under it). The
-// point-taking `touchSwipe` is for the two gestures anchored to the document
-// instead: the drawer's edge swipe, and a mid-screen swipe that must open
-// nothing.
+// Every gesture here is driven through real Chromium touch input (`touchSwipe`
+// in helpers.ts). That matters: the recognizer relies on the browser's own
+// scroll arbitration — including the `pointercancel` it fires when it decides a
+// drag is a scroll — and synthesised DOM events would bypass exactly that.
 
 const PHONE_CONTEXT = {
   viewport: { width: 390, height: 844 },
@@ -103,9 +95,8 @@ test.describe("bottom sheet: swipe down discards", () => {
     await hydrated(page);
     const sheet = await openQuickLogSheet(page);
 
-    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
-      dy: 240,
-    });
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
+    await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
 
     // The sheet is transactional: dismissal means discard, and the panel is gone
     // from the tree (not merely hidden) once its exit finishes.
@@ -126,9 +117,8 @@ test.describe("bottom sheet: swipe down discards", () => {
     const sheet = await openQuickLogSheet(page);
 
     await recordOverlayClasses(page);
-    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
-      dy: 240,
-    });
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
+    await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
     await expect(sheet).toHaveCount(0);
 
     const worn = await recordedClasses(page);
@@ -158,11 +148,12 @@ test.describe("bottom sheet: swipe down discards", () => {
     await hydrated(page);
     const sheet = await openQuickLogSheet(page);
 
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
     // Under the commit distance and far under a flick — the sheet stays open.
-    await touchSwipeFrom(
+    await touchSwipe(
       page,
-      sheet.getByTestId("sheet-drag-handle"),
-      { dy: 30 },
+      grip,
+      { x: grip.x, y: grip.y + 30 },
       { stepDelayMs: 40 }
     );
     await expect(sheet).toBeVisible();
@@ -199,13 +190,14 @@ test.describe("bottom sheet: swipe down discards", () => {
     await hydrated(page);
     const sheet = await openQuickLogSheet(page);
 
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
     // 24px, deliberately slow: under the commit distance and far under a flick.
     // A gesture this cheap must never dismiss anything — the whole reason the
     // recognizer has a threshold at all.
-    await touchSwipeFrom(
+    await touchSwipe(
       page,
-      sheet.getByTestId("sheet-drag-handle"),
-      { dy: 24 },
+      grip,
+      { x: grip.x, y: grip.y + 24 },
       { stepDelayMs: 40 }
     );
 
@@ -227,11 +219,10 @@ test.describe("bottom sheet: swipe down discards", () => {
     await hydrated(page);
     const sheet = await openQuickLogSheet(page);
 
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
     // Travel the wrong way is not negative travel, it is no travel: a
     // bottom-anchored sheet cannot be dragged up off its resting edge.
-    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
-      dy: -200,
-    });
+    await touchSwipe(page, grip, { x: grip.x, y: grip.y - 200 });
 
     await expect(sheet).toBeVisible();
   });
@@ -252,7 +243,8 @@ test.describe("nav drawer: edge-swipe opens, swipe-left closes", () => {
     await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });
     await expect(drawer).toBeVisible();
 
-    await touchSwipeFrom(page, drawer, { dx: -260 });
+    const grip = await centerOf(drawer);
+    await touchSwipe(page, grip, { x: grip.x - 260, y: grip.y });
     await expect(drawer).toHaveCount(0);
   });
 
@@ -289,9 +281,8 @@ test.describe("the activity dock: the same swipe MINIMIZES", () => {
       const panel = page.getByTestId("activity-overlay-panel");
       await expect(panel).toBeVisible();
 
-      await touchSwipeFrom(page, page.getByTestId("workout-drag-handle"), {
-        dy: 240,
-      });
+      const grip = await centerOf(page.getByTestId("workout-drag-handle"));
+      await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
 
       // THE DIVERGENCE. The identical gesture that discards a sheet collapses
       // this to the bar — the workout is still running, and the bar is proof.
@@ -382,15 +373,18 @@ test.describe("reduced motion", () => {
     await hydrated(page);
 
     const sheet = await openQuickLogSheet(page);
-    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
-      dy: 240,
-    });
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
+    await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
     await expect(sheet).toHaveCount(0);
 
     const drawer = page.getByTestId("mobile-drawer");
     await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });
     await expect(drawer).toBeVisible();
-    await touchSwipeFrom(page, drawer, { dx: -260 });
+    const drawerGrip = await centerOf(drawer);
+    await touchSwipe(page, drawerGrip, {
+      x: drawerGrip.x - 260,
+      y: drawerGrip.y,
+    });
     await expect(drawer).toHaveCount(0);
   });
 });
