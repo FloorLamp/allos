@@ -5,7 +5,7 @@
 // WHICH obligations changed state, and it reads the same on the day a five-year
 // magnesium habit collapses as on an ordinary Tuesday. This module answers the
 // question a digest is actually for — what CHANGED — over exactly the pushed tier
-// (high/mandatory supplements + all medications; precisely what `isPushedIntake`
+// (`must`/`should` supplements + all medications; precisely what `isPushedIntake`
 // leaves in a push after #1505 part 1):
 //
 //   NOTABLY MISSED — a consistent taken-streak that has just broken, reported with
@@ -19,7 +19,7 @@
 // produces no deltas, `intakeDeltaLine` returns null, and the line is omitted.
 //
 // The raw adherence fraction is NOT removed; it stays as secondary detail. Adherence
-// answers "what did I do" (and still counts low-priority supplements — #221 at the
+// answers "what did I do" (and still counts `may` supplements — #221 at the
 // definition layer); this answers "what changed among the things that push me".
 
 import type { AdherenceDot } from "./intake-adherence";
@@ -28,7 +28,7 @@ import type { AdherenceDot } from "./intake-adherence";
 //
 // Deliberately NESTED inside the demotion detector's window
 // (DEMOTION_WINDOW_DAYS = 30, lib/supplement-demotion.ts): a broken streak is
-// today's news, a month of near-total non-adherence is a priority question. Keeping
+// today's news, a month of near-total non-adherence is an obligation question. Keeping
 // this window strictly shorter is what stops the two engines firing off the same
 // evidence and saying different things about the same item; the nesting is pinned
 // by a unit test.

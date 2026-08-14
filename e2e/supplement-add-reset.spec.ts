@@ -4,7 +4,7 @@ import { test, expect } from "./fixtures";
 // must start from a clean form so the `critical` checkbox can never leak into the
 // next item and silently enroll it in missed-dose escalation.
 
-const CRITICAL_NAME = "Reset Guard Critical Med";
+const CRITICAL_NAME = "Reset Guard Critical Supplement";
 
 test("add-mode form clears the critical flag for the next item (issue #627)", async ({
   page,
@@ -18,9 +18,9 @@ test("add-mode form clears the critical flag for the next item (issue #627)", as
     .locator("summary")
     .click();
 
-  let critical = addDialog.getByTestId("supp-critical-new");
+  let critical = addDialog.getByTestId("intake-critical-new");
 
-  // ── Add a CRITICAL medication ───────────────────────────────────────────────
+  // ── Add a CRITICAL supplement ───────────────────────────────────────────────
   await addDialog.getByLabel("Name").fill(CRITICAL_NAME);
   await critical.check();
   await expect(critical).toBeChecked();
@@ -39,7 +39,7 @@ test("add-mode form clears the critical flag for the next item (issue #627)", as
     .getByTestId("supplement-more-options")
     .locator("summary")
     .click();
-  critical = addDialog.getByTestId("supp-critical-new");
+  critical = addDialog.getByTestId("intake-critical-new");
   await expect(critical).not.toBeChecked();
   await expect(addDialog.getByLabel("Name")).toHaveValue("");
 });

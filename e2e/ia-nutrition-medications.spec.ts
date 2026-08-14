@@ -98,25 +98,25 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
     '[data-testid^="supplement-bucket-"] > h3'
   );
   expect(await bucketHeadings.count()).toBeGreaterThan(0);
-  const highPriorityRow = page
+  const mustRow = page
     .getByTestId("supplement-row")
     .filter({ hasText: "Evening Vitamin C (e2e)" });
   // The seeded item is a `must` (#1505 renamed the band); the badge renders for any
   // obligation other than the `should` default.
-  await expect(
-    highPriorityRow.getByTestId("intake-obligation-must")
-  ).toHaveText("Must");
-  await expect(highPriorityRow.getByTestId("adherence-summary")).toBeVisible();
-  const supplementNameBox = await highPriorityRow
+  await expect(mustRow.getByTestId("intake-obligation-must")).toHaveText(
+    "Must"
+  );
+  await expect(mustRow.getByTestId("adherence-summary")).toBeVisible();
+  const supplementNameBox = await mustRow
     .getByTestId("intake-item-name")
     .boundingBox();
-  const supplementActionBox = await highPriorityRow
+  const supplementActionBox = await mustRow
     .getByTestId("dose-status")
     .boundingBox();
   expect(supplementNameBox).not.toBeNull();
   expect(supplementActionBox).not.toBeNull();
   expect(supplementActionBox!.x).toBeGreaterThan(supplementNameBox!.x);
-  const markTaken = highPriorityRow.getByTestId("dose-take");
+  const markTaken = mustRow.getByTestId("dose-take");
   await expect(markTaken.locator("svg")).toBeVisible();
   await expect(markTaken).not.toHaveCSS("color", "rgba(0, 0, 0, 0)");
 

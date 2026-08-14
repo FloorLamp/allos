@@ -8,7 +8,7 @@
 // modelled as a compare-and-swap rather than a plain UPDATE: "demote this" is a
 // LIFECYCLE transition off a specific starting state, so a second tap (a double
 // submit, a stale card in another tab, a second caregiver's device) must report
-// "already low" rather than silently re-confirming a change it did not make.
+// "already may" rather than silently re-confirming a change it did not make.
 
 import { db, writeTx } from "./db";
 import type { DemotionOutcome } from "./supplement-demotion";
@@ -21,7 +21,7 @@ import type { DemotionOutcome } from "./supplement-demotion";
 //   not-found  — no such item for THIS profile (a stale card, a deleted item, or a
 //                cross-profile id; the profile filter is the authorization backstop
 //                behind the action's own access check).
-//   inactive   — the item is paused/stopped. A paused item's priority is left alone:
+//   inactive   — the item is paused/stopped. A paused item's obligation is left alone:
 //                the user may be mid-decision about the item itself, and a pause is
 //                not a lapse (the detector excludes paused items for the same reason).
 //   already-may — nothing to do; the suggestion has already been accepted.

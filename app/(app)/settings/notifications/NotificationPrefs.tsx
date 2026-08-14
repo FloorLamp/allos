@@ -714,7 +714,9 @@ export default function NotificationPrefs({
                       seed={SLOT_SEED[field]}
                       stepMinutes={gridMinutes}
                       label={`${w} reminder`}
-                      testId={w === "Morning" ? "supp-morning-hour" : undefined}
+                      testId={
+                        w === "Morning" ? "intake-morning-hour" : undefined
+                      }
                     />
                   </div>
                 </div>

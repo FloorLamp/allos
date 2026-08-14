@@ -40,7 +40,7 @@ export interface QuickAddMedicationInput {
 
 // The intake-form field entries the quick-add submits — the SAME names `addIntakeItem`
 // reads (kind='medication', condition='daily', the PRN interval/max, one dose row). A
-// blank/absent field is OMITTED so the action's own defaults (priority 'high', etc.)
+// blank/absent field is OMITTED so the action's own defaults (`obligation = 'must'`, etc.)
 // apply exactly as they do for the full form. Returned as [key, value] pairs so a
 // caller can fold them into a FormData.
 export function quickAddMedicationFields(

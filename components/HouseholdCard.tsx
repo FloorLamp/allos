@@ -69,7 +69,7 @@ export interface HouseholdCardData {
   // The pushed tier's state-change headline (#1505 part 3) — "Missed: Magnesium
   // (3 days)" — preformatted by the ONE shared `intakeDeltaLine` the morning digest
   // and the weekly recap also render. Null on a quiet window: no state change, no
-  // line. The x/y fraction beside it is unchanged and still counts low-priority
+  // line. The x/y fraction beside it is unchanged and still counts `may`
   // supplements — adherence answers "what did I do", this answers "what changed
   // among the things that push me".
   intakeDeltaLine: string | null;

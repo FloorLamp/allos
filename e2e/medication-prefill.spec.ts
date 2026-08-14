@@ -14,7 +14,7 @@ import {
 // #846 medication form split + selection prefill. The Medications page renders the
 // real MedicationForm (not a supplement-shaped shared body): its placeholders are
 // medication-shaped, and picking a catalogued med from the name combobox PRE-FILLS
-// every knowable field as an editable, marked suggestion (PRN toggle, dose strength,
+// every knowable field as an editable, marked suggestion (obligation, dose strength,
 // interval/max, food timing) from the curated datasets — so a pick → save with ZERO
 // edits produces a valid medication row. Naproxen (curated `typical` + OTC PRN
 // defaults, not in the seed) drives the flow without colliding with the seeded
