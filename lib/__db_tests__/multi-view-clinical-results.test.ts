@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — the multi-view Biomarkers table (#1331) merges PER-MEMBER
+// DB INTEGRATION TIER — the multi-view Clinical results table (#1331) merges PER-MEMBER
 // partitions. The load-bearing invariant proven end-to-end here against the real
 // query layer: is_latest / dedup / the reconciled reference-range flag are computed
 // in EACH member's OWN profile context, so a shared analyte family (both members
@@ -97,7 +97,7 @@ beforeAll(() => {
   reconcileFlags(female, [hbF]);
 });
 
-describe("multi-view Biomarkers table — per-member partitions (#1331)", () => {
+describe("multi-view Clinical results table — per-member partitions (#1331)", () => {
   it("both members' Vitamin D readings survive — a family collapse never crosses members", () => {
     const rows = mergedTable([male, female]);
     const vitD = rows.filter((r) => r.canonical_name === "Vitamin D");

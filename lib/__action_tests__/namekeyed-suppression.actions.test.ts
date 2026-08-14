@@ -17,7 +17,7 @@ import {
   addResult,
   updateResult,
   deleteResult,
-} from "@/app/(app)/results/reading-actions";
+} from "@/app/(app)/results/clinical-result-actions";
 import {
   addImmunization,
   updateImmunization,

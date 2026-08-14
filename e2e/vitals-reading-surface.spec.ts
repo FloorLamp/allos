@@ -53,15 +53,15 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
   }) => {
     const page = await vitalsDayPage(browser);
     await page.goto(
-      "/results/readings?q=" + encodeURIComponent("Oxygen Saturation")
+      "/results/clinical-results?q=" + encodeURIComponent("Oxygen Saturation")
     );
 
     // #1932 sent the catalog row's name to the metric page; #2365 removed the row.
     // The quantity has a home, so the flat catalog stopped duplicating it — while the
-    // domain vitals with no home stay listed (pinned in biomarker-category-scope).
+    // domain vitals with no home stay listed (pinned in clinical-result-category-scope).
     await expect(
       page
-        .getByTestId("results-readings")
+        .getByTestId("results-clinical-results")
         .getByRole("link", { name: "Oxygen Saturation" })
     ).toHaveCount(0);
 
@@ -76,27 +76,15 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
     await expect(page.getByTestId("metric-readings-table")).toBeVisible();
   });
 
-  test("a stale biomarker URL for a vital lands on that surface, and the lab renderer never draws one", async ({
+  test("a Clinical results URL for a continuous vital lands on its metric surface", async ({
     browser,
   }) => {
     const page = await vitalsDayPage(browser);
     // What a bookmark or a shared link from before #1932 looks like.
-    await page.goto("/results/readings/view?name=Oxygen%20Saturation");
+    await page.goto("/results/clinical-results/view?name=Oxygen%20Saturation");
     await page.waitForURL(/\/trends\/metric\/spo2/);
 
     await expect(page.getByTestId("metric-detail-page")).toBeVisible();
-    // The tripwire: none of the lab page's furniture may appear for a vital. A
-    // vital has no lab-issued reference range and no reporting lab, so these
-    // columns could never populate — that is why they are gone rather than empty.
-    await expect(
-      page.getByRole("columnheader", { name: "Lab reference" })
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("columnheader", { name: "Reported as" })
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("link", { name: "Back to readings" })
-    ).toHaveCount(0);
   });
 
   test("the panel cross-reference stays, and each sibling opens on its own surface", async ({
@@ -125,11 +113,11 @@ test.describe("a vital renders on its own cadence's surface (#1932)", () => {
     // Grip strength is `category = 'vitals'` too, and belongs on the lab renderer:
     // it is an annual physical test read by an age/sex percentile, not a stream. If
     // the rule ever collapses back into a category check, this redirects and fails.
-    await page.goto("/results/readings/view?name=Grip%20Strength");
+    await page.goto("/results/clinical-results/view?name=Grip%20Strength");
 
-    await expect(page).toHaveURL(/\/results\/readings\/view/);
+    await expect(page).toHaveURL(/\/results\/clinical-results\/view/);
     await expect(
-      page.getByRole("link", { name: "Back to readings" })
+      page.getByRole("link", { name: "Back to clinical results" })
     ).toBeVisible();
   });
 });

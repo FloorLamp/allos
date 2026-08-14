@@ -50,7 +50,7 @@ function parseSection(value: string | string[] | undefined): Section {
 // standalone Data page content) browses and exports everything you've logged,
 // with per-dataset CSV download and row edit/delete. The "Coverage" tab (issue
 // #1086) is the catalog-coverage-gaps workflow (formerly /coverage, then briefly
-// /records#coverage) — biomarkers/meds/conditions the curated catalogs don't cover
+// /records#coverage) — clinical results/meds/conditions the curated catalogs don't cover
 // yet, with the track/enrich/request paths — a data-management workflow about the
 // app's coverage of your data, not a clinical record. The "Trash" tab (issue #2013)
 // is the rendered view over the restorable capture every destructive delete has

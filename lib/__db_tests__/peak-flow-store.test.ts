@@ -41,7 +41,7 @@ import {
 import { getMetricReadings } from "@/lib/metric-readings";
 import { trendMetricSeriesFold } from "@/lib/trend-metric-series";
 import { getMetricJudgment } from "@/lib/queries/metric-judgment";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 
 function makeProfile(name: string): number {
   return Number(
@@ -185,7 +185,7 @@ describe("the home half — a blow through the measurements quick-add", () => {
   });
 
   it("routes a reading of this identity to the metric surface, not the lab page", () => {
-    expect(readingDetailHref(PEAK_FLOW_CANONICAL)).toBe(
+    expect(clinicalResultDetailHref(PEAK_FLOW_CANONICAL)).toBe(
       "/trends/metric/peak-flow"
     );
   });

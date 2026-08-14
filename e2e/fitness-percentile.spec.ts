@@ -13,7 +13,7 @@ test("VO2 Max detail shows the age/sex percentile + fitness age (#158)", async (
   page,
 }) => {
   // The seed logs a VO2 Max series for the adult under the canonical name "VO2 Max".
-  await page.goto("/results/readings/view?name=VO2%20Max");
+  await page.goto("/results/clinical-results/view?name=VO2%20Max");
 
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { name: "VO2 Max" })).toBeVisible();
@@ -42,7 +42,7 @@ test("the functional fitness markers are manually enterable and percentile-conte
 
   // The reading surfaces on its canonical detail page WITH the percentile card
   // (profile 1 is an adult with a known sex + age).
-  await page.goto("/results/readings/view?name=Grip%20Strength");
+  await page.goto("/results/clinical-results/view?name=Grip%20Strength");
   const main = page.getByRole("main");
   await expect(
     main.getByRole("heading", { name: "Grip Strength" })
@@ -58,7 +58,7 @@ test("the functional fitness markers are manually enterable and percentile-conte
 // detail page above — but the surface was reachable only by knowing to search the
 // biomarkers list, while the value is MEASURED in the Fitness check. This is the
 // reach: the check links a measured clinical test to the surface that interprets it,
-// through `readingDetailHref` (the one #1932 cadence-routing rule).
+// through `clinicalResultDetailHref` (the one #1932 cadence-routing rule).
 test("the Fitness check reaches the surface that judges a measured test (#2086)", async ({
   page,
 }) => {
@@ -70,7 +70,7 @@ test("the Fitness check reaches the surface that judges a measured test (#2086)"
   await followLink(
     page,
     modal.getByTestId("fitness-history-vo2max"),
-    /\/results\/readings\/view/
+    /\/results\/clinical-results\/view/
   );
 
   // The destination is the declared surface, with the age/sex percentile on it.

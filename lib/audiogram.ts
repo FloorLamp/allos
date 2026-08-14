@@ -28,7 +28,7 @@
 //     numeric value, unit, reference range, flag, notes, provenance (document_id /
 //     external_id / provider_id), and the edit lock are all already there.
 //   • it would STRAND the readings. Every observation surface in this app — the
-//     Biomarkers catalog, the trend series, the flagged hero, star/retest side-state,
+//     Clinical results catalog, the trend series, the flagged hero, star/retest side-state,
 //     document reassignment, imported-row cleanup, undo-delete, search projections —
 //     reads `medical_records`. A private table would have to re-earn every one of them,
 //     and #713's readings (already seeded and already trending) would split in two.
@@ -341,7 +341,7 @@ export function groupAudiogramReadings(
 
 // THE latest-per-group answer for this domain: which threshold is CURRENT for each
 // ear/frequency series. Routes through the shared `latestByGroup` (issue #944) keyed on
-// the domain identity, so "current" here can never disagree with the Biomarkers
+// the domain identity, so "current" here can never disagree with the Clinical results
 // is_latest marker. A partial re-test (say 4 kHz only) correctly refreshes just that
 // series and leaves the rest standing — which is why this is not "the newest date's
 // rows".
@@ -624,7 +624,7 @@ export interface HearingBaseline {
 // comparable baseline, and the ototoxic crosscheck correctly says nothing extra.
 // The "current" side uses
 // currentThresholds() — the shared latest-per-group answer — so the citation and the
-// Biomarkers is_latest marker are the same computation; the comparison side is the
+// Clinical results is_latest marker are the same computation; the comparison side is the
 // EARLIEST dated audiogram, which is what "since your baseline" means clinically.
 // Returns null when the profile has no audiogram at all (the crosscheck then says
 // nothing extra — it must not nag for a test the user never had).

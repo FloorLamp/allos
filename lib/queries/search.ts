@@ -27,7 +27,7 @@ import {
   ALLERGY_REPRESENTATIVE_IDS,
 } from "./clinical";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   encounterHref,
   episodeHref,
   equipmentHref,
@@ -45,7 +45,7 @@ import {
 import {
   medicationHitActions,
   appointmentHitActions,
-  biomarkerHitActions,
+  clinicalResultHitActions,
 } from "../hit-actions";
 import { skinLesionDisplayLabel, skinLesionIdentityKey } from "../skin-lesion";
 import {
@@ -84,7 +84,7 @@ import { rideDetailHref } from "../ride-detail";
 // SQL LIMIT.
 //
 // HREF RULE (#1568): a hit's href is the most PRECISE destination its row data
-// supports — the per-record page (biomarker/document/encounter/medication/vaccine,
+// supports — the per-record page (clinical result/document/encounter/medication/vaccine,
 // and since #1595 provider/episode/protocol/equipment) or a day/tab-scoped hub link
 // (a non-ride activity's timeline day, the goals tab). A bare hub route is correct ONLY where
 // no precise target exists: the passport list surfaces
@@ -105,11 +105,11 @@ function isoDate(value: string | null): string | null {
   return isoDay(value);
 }
 
-function biomarkerHits(profileId: number, like: string): SearchHit[] {
-  // One row per distinct canonical biomarker. Only canonical-named records are
-  // returned because the detail page (/results/readings/view) resolves its series by
+function clinicalResultHits(profileId: number, like: string): SearchHit[] {
+  // One row per distinct canonical clinical result. Only canonical-named records are
+  // returned because the detail page (/results/clinical-results/view) resolves its series by
   // canonical_name alone — a raw, uncanonicalized name has no viewable
-  // destination (the biomarkers list renders those as non-clickable text), so
+  // destination (the Clinical results list renders those as non-clickable text), so
   // surfacing it here would be a dead link. A query still matches on the raw
   // `name`, but the hit is shown/linked under its canonical identity.
   // MAX(date) with bare value/unit uses SQLite's documented min/max bare-column
@@ -132,15 +132,15 @@ function biomarkerHits(profileId: number, like: string): SearchHit[] {
     unit: string | null;
   }[];
   return rows.map((r) => ({
-    domain: "biomarker",
-    key: `biomarker:${r.title.toLowerCase()}`,
+    domain: "clinical-result",
+    key: `clinical-result:${r.title.toLowerCase()}`,
     title: r.title,
     subtitle:
       [r.value, r.unit].filter(Boolean).join(" ").trim() || isoDate(r.date),
-    href: readingDetailHref(r.title),
+    href: clinicalResultDetailHref(r.title),
     date: isoDate(r.date),
     // "Add result" — navigate to the add form prefilled with this analyte (#662).
-    actions: biomarkerHitActions(r.title),
+    actions: clinicalResultHitActions(r.title),
   }));
 }
 
@@ -251,7 +251,7 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     href: r.kind === "medication" ? medicationHref(r.id) : intakeHref(r.kind),
     date: null,
     // Contextual actions on a FOUND medication (#662): log a dose, and refill when
-    // it tracks supply. Supplements get none (issue-scoped to meds/appt/biomarker).
+    // it tracks supply. Supplements get none (issue-scoped to meds/appt/clinical result).
     ...(r.kind === "medication"
       ? {
           actions: medicationHitActions(r.id, r.quantity_on_hand != null),
@@ -1062,7 +1062,7 @@ const PAGES: {
     keywords: "health passport summary medical overview conditions medications",
   },
   {
-    // The merged Results page (#1042 phase 5) — Biomarkers + Imaging + Genomics.
+    // The merged Results page (#1042 phase 5) — Clinical results + Imaging + Reports + Genomics.
     title: "Results",
     href: "/results",
     keywords: "labs bloodwork biomarkers imaging radiology genomics variants",
@@ -1183,7 +1183,7 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
   const restricted = isTrainingRestricted(profileId);
 
   const hits: SearchHit[] = [
-    ...biomarkerHits(profileId, like),
+    ...clinicalResultHits(profileId, like),
     ...imagingHits(profileId, like),
     ...genomicHits(profileId, like),
     ...documentHits(profileId, like),

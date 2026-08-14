@@ -154,7 +154,7 @@ import {
 import { describeEta } from "./trend-projection";
 import type { Finding } from "./findings";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   nutritionTabHref,
   MEDICATIONS_HREF,
   PRACTICES_HREF,
@@ -946,7 +946,7 @@ function foodSuggestionToFinding(s: FoodSuggestion): Finding {
     // direction is coaching-tier too (#449), never a push/hero.
     tone: "info",
     evidence: `${s.evidence} Source: ${s.source}.`,
-    actionHref: readingDetailHref(s.triggeredBy[0] ?? null),
+    actionHref: clinicalResultDetailHref(s.triggeredBy[0] ?? null),
     actionLabel: "View biomarker",
   };
 }
@@ -1699,7 +1699,7 @@ export function buildSunExposureFindings(
       // Calm FYI — a neutral observation, never an alarm.
       tone: "info",
       // The biomarker browser lives on Results (#1164 merged the Trends duplicate in).
-      actionHref: "/results/readings",
+      actionHref: "/results/clinical-results",
       actionLabel: "View biomarkers",
     },
   ];

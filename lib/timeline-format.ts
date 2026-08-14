@@ -1,7 +1,7 @@
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
 import { OTHER_PANEL, panelLabel, parsePanelId } from "./biomarker-panels";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   dataSectionHref,
   importHref,
   protocolHref,
@@ -480,8 +480,8 @@ export function medicalGroupLabel(
 }
 
 // Destination for a grouped medical/lab panel event: the source document when
-// known, else a single-biomarker chart when the panel is one marker, else the
-// biomarkers index.
+// known, else a single-analyte chart when the panel is one marker, else the
+// Clinical results index.
 export function clinicalObservationHref(
   documentId: number | null,
   names: string[],
@@ -489,9 +489,9 @@ export function clinicalObservationHref(
 ): AppRoute {
   if (documentId != null) return importHref(documentId);
   if (names.length === 1 && firstName) {
-    return readingDetailHref(firstName);
+    return clinicalResultDetailHref(firstName);
   }
-  return "/results/readings";
+  return "/results/clinical-results";
 }
 
 // Parse the "label::value::unit::flag" pipe-delimited GROUP_CONCAT payloads the

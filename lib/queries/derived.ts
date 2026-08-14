@@ -2,7 +2,7 @@
 // biomarker records. This is the DB-facing seam over the pure lib/derived-biomarkers
 // math: it reads the stored component series (through the already profile-scoped
 // getBiomarkerSeries), resolves demographics from settings, computes the indices,
-// and shapes each result as a read-only ClinicalObservation the biomarkers table, the
+// and shapes each result as a read-only ClinicalObservation the clinical results table, the
 // biomarker detail page, and the Trends surfaces render like any other analyte.
 //
 // No raw SQL lives here — every read goes through an already-scoped query
@@ -256,7 +256,7 @@ export function getDerivedBiomarkerReadings(
 }
 
 // The derived analytes that actually have ≥1 computed reading for this profile —
-// the names the Trends digest/compare and the biomarkers table should include
+// the names the Trends digest/compare and the clinical results table should include
 // alongside the stored analytes.
 export function getDerivedCanonicalNames(profileId: number): string[] {
   const present = new Set(

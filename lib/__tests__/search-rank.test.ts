@@ -12,7 +12,7 @@ import {
 
 function hit(over: Partial<SearchHit> & Pick<SearchHit, "title">): SearchHit {
   return {
-    domain: "biomarker",
+    domain: "clinical-result",
     key: `k:${over.title}`,
     subtitle: null,
     href: "/training",
@@ -95,12 +95,16 @@ describe("rankAndGroup", () => {
     const groups = rankAndGroup(
       [
         hit({ domain: "goal", title: "Run a marathon", key: "g1" }),
-        hit({ domain: "biomarker", title: "HDL", key: "b1" }),
+        hit({ domain: "clinical-result", title: "HDL", key: "b1" }),
         hit({ domain: "page", title: "Settings", key: "p1" }),
       ],
       ""
     );
-    expect(groups.map((g) => g.domain)).toEqual(["biomarker", "goal", "page"]);
+    expect(groups.map((g) => g.domain)).toEqual([
+      "clinical-result",
+      "goal",
+      "page",
+    ]);
     // Order matches the canonical domain order.
     const idx = (d: string) => SEARCH_DOMAIN_ORDER.indexOf(d as never);
     for (let i = 1; i < groups.length; i++) {
@@ -129,7 +133,7 @@ describe("rankAndGroup", () => {
 // #19: the clinical passport domains (conditions, allergies, procedures,
 // encounters/visits, appointments, family history, care plan, care goals) joined
 // the fan-out. They must be first-class in the ranker: labelled, ordered, and
-// ranked with the same exact > prefix > substring quality as biomarkers so an
+// ranked with the same exact > prefix > substring quality as clinical results so an
 // exact clinical name (e.g. "Penicillin") tops its group.
 describe("clinical passport domains (#19)", () => {
   const CLINICAL: SearchDomain[] = [
@@ -150,7 +154,7 @@ describe("clinical passport domains (#19)", () => {
     }
   });
 
-  it("ranks an exact clinical name above a substring one (like biomarkers)", () => {
+  it("ranks an exact clinical name above a substring one (like clinical results)", () => {
     const out = sortHits(
       [
         hit({ domain: "allergy", title: "Penicillin V", key: "a-prefix" }), // prefix (2)
@@ -231,7 +235,7 @@ describe("second-generation entity domains (#1595)", () => {
 
   it("keeps the original domains in their established relative order", () => {
     const original: SearchDomain[] = [
-      "biomarker",
+      "clinical-result",
       "document",
       "condition",
       "allergy",
@@ -254,7 +258,7 @@ describe("second-generation entity domains (#1595)", () => {
 
   it("keeps the results family together, ahead of the record surfaces", () => {
     const idx = (d: SearchDomain) => SEARCH_DOMAIN_ORDER.indexOf(d);
-    expect(idx("imaging")).toBe(idx("biomarker") + 1);
+    expect(idx("imaging")).toBe(idx("clinical-result") + 1);
     expect(idx("genomic")).toBe(idx("imaging") + 1);
     // Pages stay last: a jump-to-page entry never outranks a real record.
     expect(idx("page")).toBe(SEARCH_DOMAIN_ORDER.length - 1);
@@ -295,8 +299,8 @@ describe("flattenHits", () => {
   it("walks groups top-to-bottom into one nav order", () => {
     const groups = rankAndGroup(
       [
-        hit({ domain: "biomarker", title: "HDL", key: "b1" }),
-        hit({ domain: "biomarker", title: "LDL", key: "b2" }),
+        hit({ domain: "clinical-result", title: "HDL", key: "b1" }),
+        hit({ domain: "clinical-result", title: "LDL", key: "b2" }),
         hit({ domain: "supplement", title: "Zinc", key: "s1" }),
       ],
       ""

@@ -3,7 +3,7 @@
 //
 // "Collapse cross-document duplicates to one representative row" is asked by every
 // clinical-list surface — the Conditions/Procedures/Family history/Allergies
-// managers, Visits, Immunizations, the Biomarkers table, the Timeline, and Search.
+// managers, Visits, Immunizations, the Clinical results table, the Timeline, and Search.
 // The SQL idiom is always the same window:
 //
 //   SELECT id FROM (

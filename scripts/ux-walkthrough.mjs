@@ -1630,12 +1630,12 @@ async function ccdJourney(browser) {
   await page.waitForTimeout(1500);
   await shot(page, "ccd-uploaded");
   // The structured import runs server-side; the lab should surface on the
-  // Results → Biomarkers list under its (synthetic) display name.
-  await visit(page, "/results?tab=biomarkers", 1500);
+  // Results → Clinical results list under its (synthetic) display name.
+  await visit(page, "/results/clinical-results", 1500);
   const landed = await checkVisible(
     page,
     () => page.getByText("Esoteric Marker XYZ"),
-    "ccd: imported lab NOT on Results → Biomarkers — the structured import may have failed",
+    "ccd: imported lab NOT on Results → Clinical results — the structured import may have failed",
     15
   );
   await shot(page, "ccd-results-after");

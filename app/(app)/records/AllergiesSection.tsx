@@ -16,7 +16,7 @@ import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import AllergyForm from "@/app/(app)/records/problems/allergies/AllergyForm";
 import AllergyList from "@/app/(app)/records/problems/allergies/AllergyList";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import { addAllergy } from "@/app/(app)/records/problems/allergies/actions";
 
 // Allergies (former /allergies index, #1042 phase 6): documented allergies (CCD
@@ -115,7 +115,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
                 {labSensitizations.map((a) => (
                   <li key={a.key}>
                     <Link
-                      href={readingDetailHref(
+                      href={clinicalResultDetailHref(
                         a.evidence?.canonicalName,
                         a.evidence?.marker
                       )}
@@ -182,8 +182,8 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
 
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Lab sensitizations come from{" "}
-            <Link href="/results/readings" className="underline">
-              Biomarkers
+            <Link href="/results/clinical-results" className="underline">
+              Clinical results
             </Link>
             ; documented allergies are managed here.
           </p>

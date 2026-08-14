@@ -51,7 +51,7 @@ test.describe("Import detail: tabbed records browser", () => {
     // A canonicalized lab row's name still links to its biomarker series view.
     await expect(
       page.getByRole("link", { name: "Ferritin", exact: true })
-    ).toHaveAttribute("href", "/results/readings/view?name=Ferritin");
+    ).toHaveAttribute("href", "/results/clinical-results/view?name=Ferritin");
     // The lab table keeps its editing affordances inside the tab.
     await page.getByRole("button", { name: "Result actions" }).first().click(); // first-ok: any lab row's Result actions menu carries Edit — order-agnostic (asserted next)
     await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
@@ -79,7 +79,9 @@ test.describe("Import detail: tabbed records browser", () => {
       "/medications"
     );
     // Nothing in the medications panel may point at a biomarker series page.
-    const biomarkerLinks = listing.locator('a[href^="/results/readings/view"]');
+    const biomarkerLinks = listing.locator(
+      'a[href^="/results/clinical-results/view"]'
+    );
     await expect(biomarkerLinks).toHaveCount(0);
   });
 

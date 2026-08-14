@@ -32,7 +32,7 @@ function resetEgfrTrajectoryDismissal(): void {
 test.beforeEach(() => resetEgfrTrajectoryDismissal());
 test.afterAll(() => resetEgfrTrajectoryDismissal());
 
-// Issue #41 (biomarker trajectory rules): the Results → Biomarkers section surfaces a
+// Issue #41 (biomarker trajectory rules): the Results → Clinical results section surfaces a
 // "Trajectory watch" card listing forward-looking findings — an in-range value
 // projected to cross a boundary, a persistent non-optimal pattern, or a concerning
 // velocity — BEFORE a single-value flag would catch them. (#1164 moved this card here
@@ -44,10 +44,10 @@ test.afterAll(() => resetEgfrTrajectoryDismissal());
 // #1499 section B folded the card into ONE capped rollup: an analyte's findings live
 // in a per-analyte expandable row, so the observation text is one disclosure away.
 // The engine, the dedupeKeys and the bus are untouched — only the shape is.
-test("Results → Biomarkers shows a trajectory finding for the seeded eGFR decline (#41)", async ({
+test("Results → Clinical results shows a trajectory finding for the seeded eGFR decline (#41)", async ({
   page,
 }) => {
-  await page.goto("/results/readings");
+  await page.goto("/results/clinical-results");
 
   const card = page.getByTestId("trajectory-findings");
   await expect(card).toBeVisible();
@@ -81,7 +81,7 @@ test("Results → Biomarkers shows a trajectory finding for the seeded eGFR decl
 test("dismissing a trajectory finding silences the analyte's trajectory watch (#41/#564)", async ({
   page,
 }) => {
-  await page.goto("/results/readings");
+  await page.goto("/results/clinical-results");
 
   // Inside the #1499 rollup the dismiss is still ITEM-wise: the velocity row keeps
   // its own form, posting the same analyte acknowledgment it always did.

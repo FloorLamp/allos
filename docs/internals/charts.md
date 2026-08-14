@@ -470,7 +470,7 @@ at once:
   chart (training volume, macros, zone minutes) points at the existing
   full-depth surface its bars are summed from, named at the call site. A chart of
   a stored clinical READING (a biomarker or a vital) uses
-  `readingDetailHref(canonicalName)` instead, which picks the surface by cadence
+  `clinicalResultDetailHref(canonicalName)` instead, which picks the surface by cadence
   (#1932) — never `metricDetailHref` directly, or the two link lanes could
   disagree about where one reading opens.
 - **The plot height.** The card owns it — square below `sm`, `plotHeightClass`

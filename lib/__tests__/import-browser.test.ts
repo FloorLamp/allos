@@ -165,7 +165,9 @@ describe("observationNameLink (category-correct row links)", () => {
   it("links series categories to the biomarker series view", () => {
     for (const cat of ["lab", "biomarker", "vitals", "genomics"]) {
       const link = observationNameLink(cat, "LDL Cholesterol");
-      expect(link?.href).toBe("/results/readings/view?name=LDL%20Cholesterol");
+      expect(link?.href).toBe(
+        "/results/clinical-results/view?name=LDL%20Cholesterol"
+      );
     }
   });
   it("gives a series category with no canonical name NO link", () => {

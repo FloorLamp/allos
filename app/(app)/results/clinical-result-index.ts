@@ -1,8 +1,8 @@
-// What the Readings browser READS, separated from what it renders.
+// What the Clinical results catalog reads, separated from what it renders.
 //
 // Two callers need the identical row set from the identical URL: the section that
 // renders the index on arrival, and the server action that loads one panel's
-// readings when the reader expands it (#1651). If they gathered independently, an
+// rows when the reader expands it (#1651). If they gathered independently, an
 // expansion could show a different set than the header it came from counted — so the
 // URL parsing, the stored+derived merge and the panel grouping all live here, once,
 // and both callers go through them.
@@ -18,9 +18,9 @@ import {
   filterDerivedForTable,
   prepareTableObservations,
   prepareMultiViewTableObservations,
-  parseBiomarkerSortColumn,
-  biomarkerRowKey,
-  type BiomarkerSortColumn,
+  parseClinicalResultSortColumn,
+  clinicalResultRowKey,
+  type ClinicalResultSortColumn,
 } from "@/lib/derived-table";
 import { parseSortDir } from "@/lib/table-sort";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
@@ -42,9 +42,9 @@ import {
   type ReferenceCell,
 } from "@/lib/reading-reference-cell";
 
-// The query params the Readings section consumes. They ride the canonical
-// `/results/readings` URL; the other Results sections ignore them.
-export interface ReadingsSearchParams {
+// The query params the Clinical results section consumes. They ride the canonical
+// `/results/clinical-results` URL; the other Results sections ignore them.
+export interface ClinicalResultsSearchParams {
   category?: string;
   panel?: string;
   range?: string;
@@ -53,7 +53,7 @@ export interface ReadingsSearchParams {
   dir?: string;
   current?: string;
   // Prefill the add form's name from the command palette's "Add result" hit
-  // action (#662). Reached as /results?new=1&name=<canonical>#biomarkers.
+  // action (#662). Reached as /results/clinical-results?new=1&name=<canonical>.
   name?: string;
   // The intent half of that deep link. Since #1499 section C the add form lives
   // behind "+ Add result", so an "I came here to add a reading" link has to say so:
@@ -62,19 +62,19 @@ export interface ReadingsSearchParams {
 }
 
 // The parsed, validated filter set — what the URL actually MEANS to the browser.
-export interface BiomarkerFilters {
+export interface ClinicalResultFilters {
   category?: string;
   panel?: PanelId;
   range?: "oor" | "nonoptimal";
   q?: string;
-  sort: BiomarkerSortColumn;
+  sort: ClinicalResultSortColumn;
   dir: SortDirection;
   current: boolean;
 }
 
 // A table row in multi-view carries its owning profile + stamped subject identity;
 // single-view rows omit both.
-export type ReadingTableObservation = ClinicalObservation & {
+export type ClinicalResultTableObservation = ClinicalObservation & {
   profileId?: number;
   subject?: SubjectInfo;
   // What the row's Reference cell says (#2315): the band(s) its FLAG came from,
@@ -90,10 +90,10 @@ export type ReadingTableObservation = ClinicalObservation & {
 // the single- and multi-view paths (a filter matches ANY member's rows), and
 // identical for the page and the expand-a-panel action. Kept as one helper so no two
 // of them can disagree about what the URL means.
-export function parseReadingFilters(
-  searchParams: ReadingsSearchParams
-): BiomarkerFilters {
-  // Prescriptions are medications and don't belong in the Readings browser —
+export function parseClinicalResultFilters(
+  searchParams: ClinicalResultsSearchParams
+): ClinicalResultFilters {
+  // Prescriptions are medications and don't belong in the Clinical results catalog —
   // they live on the document detail view and Supplements & Meds. So they're never
   // a valid `?category=` here, never listed (excludeCategories below), and never
   // an add-form / filter option (RESULTS_CATALOG_CATEGORIES).
@@ -127,7 +127,7 @@ export function parseReadingFilters(
   // emits the panels in curated clinical order, so "sort by panel" reorders groups
   // that are no longer paged apart and does nothing visible. An old `?sort=panel`
   // bookmark falls back to `name` through parseSortColumn rather than failing.
-  const sort = parseBiomarkerSortColumn(searchParams.sort);
+  const sort = parseClinicalResultSortColumn(searchParams.sort);
   const dir = parseSortDir(searchParams.dir);
   const current = searchParams.current === "1";
   return { category, panel, range, q, sort, dir, current };
@@ -147,10 +147,10 @@ export function isMultiView(scope: ProfileScope): boolean {
 // against that member's sex/age/reproductive status), tagged with their profileId,
 // then merged with is_latest recomputed PER (profile, family) — a family collapse can
 // never cross members — and subject-stamped (#534) for the leading chip column.
-export function readingIndexRows(
+export function clinicalResultIndexRows(
   scope: ProfileScope,
-  filters: BiomarkerFilters
-): ReadingTableObservation[] {
+  filters: ClinicalResultFilters
+): ClinicalResultTableObservation[] {
   const { category, panel, range, q, sort, dir, current } = filters;
   const storedFilters = {
     category,
@@ -234,8 +234,8 @@ const listedRows = (rows: ClinicalObservation[]): ClinicalObservation[] =>
 // computed, not measured, and the table renders that column as a placeholder).
 function withReferenceCells(
   scope: ProfileScope,
-  rows: ReadingTableObservation[]
-): ReadingTableObservation[] {
+  rows: ClinicalResultTableObservation[]
+): ClinicalResultTableObservation[] {
   const byProfile = new Map<number, number[]>();
   rows.forEach((r, i) => {
     if (r.derived) return;
@@ -268,20 +268,20 @@ function withReferenceCells(
 // Partition those rows into panel groups. The analyte identity is the table's OWN
 // row key, so a header's count and the name headings its expansion draws are one
 // computation in either view.
-export function biomarkerPanelGroups(
-  rows: ReadingTableObservation[],
+export function clinicalResultPanelGroups(
+  rows: ClinicalResultTableObservation[],
   multiView: boolean
-): PanelGroup<ReadingTableObservation>[] {
-  return groupRowsByPanel(rows, (r) => biomarkerRowKey(r, multiView));
+): PanelGroup<ClinicalResultTableObservation>[] {
+  return groupRowsByPanel(rows, (r) => clinicalResultRowKey(r, multiView));
 }
 
-// One panel's readings out of an already-gathered row set — what the expand-a-panel
+// One panel's results out of an already-gathered row set — what the expand-a-panel
 // action returns. Uses the SAME panel resolver groupRowsByPanel partitions on, over
 // rows already in the active sort order, so the rows a group reveals are exactly the
 // rows its header counted.
-export function biomarkerPanelRows(
-  rows: ReadingTableObservation[],
+export function clinicalResultPanelRows(
+  rows: ClinicalResultTableObservation[],
   panel: PanelId
-): ReadingTableObservation[] {
+): ClinicalResultTableObservation[] {
   return rows.filter((r) => tablePanelId(r) === panel);
 }

@@ -12,7 +12,7 @@ import { formatOutcomeDelta } from "./protocol-compare";
 export interface OutcomeOption {
   key: string;
   label: string;
-  group: "Body & indices" | "Biomarkers";
+  group: "Body & indices" | "Clinical results";
   panel: PanelId | null;
   searchTerms: string[];
   preview?: {
@@ -40,7 +40,7 @@ export function biomarkerOutcomeOption(name: string): OutcomeOption {
   return {
     key: `biomarker:${name}`,
     label: name,
-    group: "Biomarkers",
+    group: "Clinical results",
     panel: tablePanelId({ name, canonical_name: name }),
     searchTerms: outcomeSearchTerms(name),
   };

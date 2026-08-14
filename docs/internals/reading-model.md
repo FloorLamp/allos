@@ -192,7 +192,7 @@ marker added to the norms dataset without a declaration fails the build; a
 declaration naming a marker or canonical entry that does not exist fails too, so
 widening the **guard** can never widen the **vocabulary**. VO₂ max is the
 acceptance case: it declares `fitness-norms`, the surface it names is the one
-`readingDetailHref` actually routes its readings to, and the norms resolve to a
+`clinicalResultDetailHref` actually routes its readings to, and the norms resolve to a
 real percentile for a real subject.
 
 Its renderer stays the reading detail page, on purpose. The #1932 cadence audit
@@ -201,7 +201,7 @@ its population curve — so it earns a declaration and reach from the Fitness
 check, not a daily-trend surface. What was missing was discoverability: the value
 is measured in the Fitness check, and the surface that interprets it was
 reachable only by knowing to search the biomarkers list. The check's entry panel
-now links a measured clinical test to it through `readingDetailHref`.
+now links a measured clinical test to it through `clinicalResultDetailHref`.
 
 Two consequences on `/trends/metric/[kind]`:
 
@@ -273,7 +273,7 @@ with no band is a judgment with no visible basis. `MedicalValue` gains
 `showFlagLabel`, which renders `flagLabel` visibly **instead of** the `sr-only` span
 (never both — the severity is announced once), decided by
 `medicalValueFlagText`/`medicalValueCaret` in `lib/medical-value.ts`. The biomarkers
-table and `/results/readings/view`'s readings table adopt it, and `RecentLabsWidget`
+table and `/results/clinical-results/view`'s readings table adopt it, and `RecentLabsWidget`
 migrates onto it and drops the parallel label #1220 built beside the component. The
 other `MedicalValue` call sites — Timeline, Passport, ExtractedObservations,
 BiomarkerScale, the Longevity section, the import preview — keep the `sr-only` label
@@ -282,7 +282,7 @@ byte-identical.
 
 ### And the DETAIL page must be able to point at what it coloured (#2340)
 
-#2315 fixed the list. The detail page (`/results/readings/view`) had the mirror-image
+#2315 fixed the list. The detail page (`/results/clinical-results/view`) had the mirror-image
 defect: it coloured its latest value from `latest.flag` while building its range
 display — `referenceEntries` / `optimalEntries` — **exclusively from the curated
 entry**. When the catalog carries no band those lists are empty and no range renders
@@ -384,7 +384,7 @@ offer that already renders is the attention doctrine's "enrich what it was alrea
 saying" case, and a note that appears only where the page has already declined to
 judge cannot widen anything.
 
-The **list** surfaces (`ReadingsTable`, `StarredResults`) have no counterpart to
+The **list** surfaces (`ClinicalResultsTable`, `StarredResults`) have no counterpart to
 this, for a reason worth writing down rather than re-deriving: `TrackReadingFollowUpControl`
 renders on the detail page ONLY, so no list row carries a recheck offer, and their
 `isBiomarkerStale` calls are the retest clock in its ordinary form (the table passes no

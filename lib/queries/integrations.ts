@@ -36,7 +36,11 @@ import {
   type IntegrationDelivery,
 } from "@/lib/integrations/delivery";
 import { syncEventDay } from "@/lib/integrations/sync-history-days";
-import { timelineDayHref, readingDetailHref, type AppRoute } from "@/lib/hrefs";
+import {
+  timelineDayHref,
+  clinicalResultDetailHref,
+  type AppRoute,
+} from "@/lib/hrefs";
 import {
   getIntegrationBackfillJobs,
   type IntegrationBackfillJob,
@@ -1102,7 +1106,10 @@ export function getSyncRowProvenance(
       // identity — the link already commits to the canonical analyte, so a raw-first
       // label reads "URIC ACID" on a row that opens "Uric Acid".
       label = rec?.canonical_name?.trim() || rec?.name || "Lab result";
-      href = readingDetailHref(rec?.canonical_name ?? null, rec?.name ?? null);
+      href = clinicalResultDetailHref(
+        rec?.canonical_name ?? null,
+        rec?.name ?? null
+      );
     } else {
       const rec = findPractice.get(r.target_id, profileId) as
         { date: string; practice: string } | undefined;

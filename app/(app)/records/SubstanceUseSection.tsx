@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { today } from "@/lib/db";
 import { Notice } from "@/components/Notice";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import {
   getSubstanceInstrumentReadings,
   type SubstanceInstrumentReading,
@@ -153,7 +153,7 @@ export default function SubstanceUseSection({
               total: r.total,
               bandLabel: r.band.label,
               maxTotal: substanceInstrumentDef(r.instrument).maxTotal,
-              href: readingDetailHref(r.instrument),
+              href: clinicalResultDetailHref(r.instrument),
               documentId: r.documentId,
             }))}
           />

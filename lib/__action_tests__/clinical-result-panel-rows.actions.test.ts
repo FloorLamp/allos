@@ -1,7 +1,7 @@
 // SERVER-ACTION TIER — the expand-a-panel loader (issue #1651).
 //
-// The Biomarkers index ships a BOUNDED payload: a collapsed panel group arrives with
-// no readings at all, so expanding one asks the server for that panel's rows. This
+// The Clinical results index ships a BOUNDED payload: a collapsed panel group arrives
+// with no rows, so expanding one asks the server for that panel's results. This
 // tier pins the action's contract at the request boundary — it resolves its own
 // scope, returns ONE panel's rows out of the SAME filtered set the page would have
 // rendered (derived indices included), honors the URL filters it is replayed with,
@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
-import { loadBiomarkerPanelRows } from "@/app/(app)/results/actions";
+import { loadClinicalResultPanelRows } from "@/app/(app)/results/actions";
 import { seedActor, createLogin, createProfile, actAs } from "./harness";
 
 const DRAW = "2024-05-01";
@@ -37,18 +37,18 @@ function seedTwoPanels(profileId: number): void {
   seedLab(profileId, "Thyroxine, Free (Free T4)", 1.3);
 }
 
-function namesOf(res: Awaited<ReturnType<typeof loadBiomarkerPanelRows>>) {
+function namesOf(res: Awaited<ReturnType<typeof loadClinicalResultPanelRows>>) {
   if (!res.ok) throw new Error(`expected ok, got ${res.error}`);
   return res.rows.map((r) => r.canonical_name ?? r.name);
 }
 
-describe("loadBiomarkerPanelRows", () => {
-  it("returns one panel's readings, stored and derived, and nothing from another panel", async () => {
+describe("loadClinicalResultPanelRows", () => {
+  it("returns one panel's stored and derived results", async () => {
     const { profile } = seedActor();
     seedTwoPanels(profile.id);
 
     const names = namesOf(
-      await loadBiomarkerPanelRows({ panel: "lipids", searchParams: {} })
+      await loadClinicalResultPanelRows({ panel: "lipids", searchParams: {} })
     );
     expect(names).toContain("Total Cholesterol");
     expect(names).toContain("HDL Cholesterol");
@@ -70,11 +70,11 @@ describe("loadBiomarkerPanelRows", () => {
 
     // Two draws of total cholesterol, and `current=1` keeps only the newest.
     const all = namesOf(
-      await loadBiomarkerPanelRows({ panel: "lipids", searchParams: {} })
+      await loadClinicalResultPanelRows({ panel: "lipids", searchParams: {} })
     ).filter((n) => n === "Total Cholesterol");
     expect(all).toHaveLength(2);
 
-    const currentOnly = await loadBiomarkerPanelRows({
+    const currentOnly = await loadClinicalResultPanelRows({
       panel: "lipids",
       searchParams: { current: "1" },
     });
@@ -84,7 +84,7 @@ describe("loadBiomarkerPanelRows", () => {
 
     // A free-text search narrows the same way the page's own gather does.
     const searched = namesOf(
-      await loadBiomarkerPanelRows({
+      await loadClinicalResultPanelRows({
         panel: "lipids",
         searchParams: { q: "HDL Cholesterol" },
       })
@@ -97,16 +97,14 @@ describe("loadBiomarkerPanelRows", () => {
     const { profile } = seedActor();
     seedTwoPanels(profile.id);
 
-    const res = await loadBiomarkerPanelRows({
+    const res = await loadClinicalResultPanelRows({
       panel: "Quest Diagnostics",
       searchParams: {},
     });
-    expect(res.ok).toBe(false);
-    if (res.ok) throw new Error("expected a refusal");
-    expect(res.error).toBe("Unknown panel.");
+    expect(res).toEqual({ ok: false, error: "Unknown panel." });
   });
 
-  it("returns only the acting scope's readings", async () => {
+  it("returns only the acting scope's results", async () => {
     const login = createLogin();
     const acting = createProfile("Acting", login.id);
     actAs(login, acting);
@@ -117,11 +115,13 @@ describe("loadBiomarkerPanelRows", () => {
     const strangerProfile = createProfile("Stranger", stranger.id);
     seedLab(strangerProfile.id, "Total Cholesterol", 111);
 
-    const res = await loadBiomarkerPanelRows({
-      panel: "lipids",
-      searchParams: {},
-    });
-    if (!res.ok) throw new Error("expected ok");
-    expect(res.rows.map((r) => r.value)).toEqual(["205"]);
+    expect(
+      namesOf(
+        await loadClinicalResultPanelRows({
+          panel: "lipids",
+          searchParams: {},
+        })
+      )
+    ).toEqual(["Total Cholesterol"]);
   });
 });

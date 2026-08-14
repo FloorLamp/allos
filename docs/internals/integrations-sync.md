@@ -693,9 +693,9 @@ collected per sync and linked to the event id after `recordSyncEvent` returns it
 ingest). `getSyncRowProvenance(profileId, eventId)` reads it back —
 profile-scoped at both ends (the event join + a `profile_id` filter on every
 target lookup) — resolving each row to a human label + a typed `AppRoute` deep
-link (`timelineDayHref` for a day, `readingDetailHref` for a medical record —
+link (`timelineDayHref` for a day, `clinicalResultDetailHref` for a medical record —
 which resolves a continuous vital to its metric detail page and every episodic
-reading to `/results/readings/view`, #1932), marking a
+reading to `/results/clinical-results/view`, #1932), marking a
 since-deleted target as removed. `components/SyncRowsDrilldown.tsx` renders it lazily (on `<details>` open, the
 raw-payload-viewer pattern) via the `loadSyncRows` read action.
 

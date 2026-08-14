@@ -4,7 +4,7 @@ import { useState } from "react";
 
 // A block that is FOLDED on a phone and fully rendered from `sm` up (issue #1578).
 //
-// WHY. Results › Biomarkers is an index (#1499/#1581), and an index only works if its
+// WHY. Results › Clinical results is an index (#1499/#1581), and an index only works if its
 // first entry is reachable on the first screen. Two cards sit above it by design —
 // the starred lens you authored (#1455) and the biological-age hero (#209) — and at
 // 390px each renders one full-width item per element with no ceiling, so between them

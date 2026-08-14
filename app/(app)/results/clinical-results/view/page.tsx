@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
-import { metricDetailHref, READINGS_LIST_HREF } from "@/lib/hrefs";
+import { metricDetailHref, CLINICAL_RESULTS_LIST_HREF } from "@/lib/hrefs";
 import { continuousReadingSlug } from "@/lib/reading-cadence";
 import {
   documentLabel,
@@ -112,7 +112,7 @@ function formatRange(
 // its lifecycle status, its fasting state, its specimen. Empty when the source said
 // none of them — an unstated status is NOT "Final", and an unstated fasting state is
 // NOT "Non-fasting", so nothing is rendered rather than something invented.
-function readingAttributes(r: ClinicalObservation): string[] {
+function resultAttributes(r: ClinicalObservation): string[] {
   return [
     resultStatusLabel(r.result_status),
     fastingLabel(r.fasting ?? null),
@@ -120,22 +120,22 @@ function readingAttributes(r: ClinicalObservation): string[] {
   ].filter((x): x is string => !!x);
 }
 
-export default async function ReadingDetailPage(props: {
+export default async function ClinicalResultDetailPage(props: {
   searchParams: Promise<{ name?: string }>;
 }) {
   const searchParams = await props.searchParams;
   const { login, profile } = await requireSession();
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const canonical = searchParams.name?.trim();
-  // A paramless /results/readings/view is a degenerate page (#1447). It isn't a state anything
-  // links to — `readingDetailHref` (lib/hrefs) already returns the LIST route
+  // A paramless /results/clinical-results/view is a degenerate page (#1447). It isn't a state anything
+  // links to — `clinicalResultDetailHref` (lib/hrefs) already returns the LIST route
   // when it has no canonical name — so a hand-typed URL or a stale bookmark lands
   // where that helper would have sent it, rather than on an empty canvas.
-  if (!canonical) redirect(READINGS_LIST_HREF);
+  if (!canonical) redirect(CLINICAL_RESULTS_LIST_HREF);
   // This page renders EPISODIC readings only (#1932). A continuous vital — SpO2,
   // blood pressure, respiratory rate, body temperature — is read as a trend, not
   // against a lab's reference band, and has its own cadence-appropriate surface;
-  // every link to it already resolves there through `readingDetailHref`, so what
+  // every link to it already resolves there through `clinicalResultDetailHref`, so what
   // reaches here is a stale bookmark or a hand-typed URL. It goes where the helper
   // would have sent it, exactly as the paramless case above does. This is
   // current-IA plumbing (both routes are live and serve their own readings), not a
@@ -148,15 +148,18 @@ export default async function ReadingDetailPage(props: {
     return (
       <div>
         <Link
-          href={READINGS_LIST_HREF}
+          href={CLINICAL_RESULTS_LIST_HREF}
           className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
         >
-          <IconArrowLeft className="h-4 w-4" /> Back to readings
+          <IconArrowLeft className="h-4 w-4" /> Back to clinical results
         </Link>
         <PageHeader title={canonical} />
         <EmptyState
-          message={`No readings found for “${canonical}”.`}
-          action={{ href: READINGS_LIST_HREF, label: "Browse readings" }}
+          message={`No clinical results found for “${canonical}”.`}
+          action={{
+            href: CLINICAL_RESULTS_LIST_HREF,
+            label: "Browse clinical results",
+          }}
         />
       </div>
     );
@@ -593,10 +596,10 @@ export default async function ReadingDetailPage(props: {
   return (
     <div>
       <Link
-        href="/results/readings"
+        href="/results/clinical-results"
         className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline"
       >
-        <IconArrowLeft className="h-4 w-4" /> Back to readings
+        <IconArrowLeft className="h-4 w-4" /> Back to clinical results
       </Link>
 
       {/* One prose surface per fact (#2340). The subtitle used to append the curated
@@ -606,7 +609,7 @@ export default async function ReadingDetailPage(props: {
           summary card, beside the band it explains the absence of. */}
       <PageHeader
         title={canonical}
-        subtitle={`${series.length} reading${series.length === 1 ? "" : "s"}`}
+        subtitle={`${series.length} clinical result${series.length === 1 ? "" : "s"}`}
         action={
           <StarButton
             itemKey={resultSeriesKey(canonical)}
@@ -628,8 +631,8 @@ export default async function ReadingDetailPage(props: {
       {stale && (
         <Notice tone="amber" className="mb-6">
           <span className="font-semibold">These results are stale.</span> The
-          most recent reading is from {latest.date} ({humanizeAge(ageDays)}{" "}
-          ago). Most biomarkers should be retested at least once a year —{" "}
+          most recent result is from {latest.date} ({humanizeAge(ageDays)} ago).
+          It may be time to repeat it —{" "}
           <Link href="/data" className="font-medium underline">
             upload your latest records
           </Link>{" "}
@@ -940,7 +943,7 @@ export default async function ReadingDetailPage(props: {
               ))}
             </ol>
           ) : (
-            <EmptyState message="No numeric readings to chart (qualitative biomarker)." />
+            <EmptyState message="No numeric readings to chart." />
           )
         ) : (
           <BiomarkerTrendChart
@@ -969,10 +972,10 @@ export default async function ReadingDetailPage(props: {
         </p>
       </div>
 
-      {/* Readings table (newest first). */}
+      {/* Clinical results table (newest first). */}
       <div className="card overflow-hidden p-0">
         <h2 className="px-5 pt-5 font-semibold text-slate-800 dark:text-slate-100">
-          Readings
+          Clinical results
         </h2>
         <ScrollFade className="mt-3">
           <table className="w-full whitespace-nowrap">
@@ -1014,19 +1017,19 @@ export default async function ReadingDetailPage(props: {
                       />
                       {/* How this result was collected and where it sits in the lab
                         lifecycle (#1404) — shown only when the source said. */}
-                      {readingAttributes(r).length > 0 && (
+                      {resultAttributes(r).length > 0 && (
                         <div
                           className="text-xs text-slate-500 dark:text-slate-400"
-                          data-testid="reading-attributes"
+                          data-testid="clinical-result-attributes"
                         >
-                          {readingAttributes(r).join(" · ")}
+                          {resultAttributes(r).join(" · ")}
                         </div>
                       )}
                       {(revisionsByRecord.get(r.id) ?? []).map((rev) => (
                         <div
                           key={rev.id}
                           className="text-xs text-amber-700 dark:text-amber-400"
-                          data-testid="reading-revision"
+                          data-testid="clinical-result-revision"
                         >
                           {revisionSummary(rev)}
                         </div>

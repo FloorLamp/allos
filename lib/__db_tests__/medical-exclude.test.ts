@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER — getClinicalObservations excludeCategories filter.
 //
-// The Biomarkers browser hides medications (category='prescription') via a new
+// The Clinical results catalog hides medications (category='prescription') via a new
 // `excludeCategories` filter on getClinicalObservations (a parameterized category NOT IN
 // (…)). These tests seed a real (throwaway) SQLite DB with a mix of categories and
 // prove the clause drops exactly the excluded rows, no-ops on an empty list, and

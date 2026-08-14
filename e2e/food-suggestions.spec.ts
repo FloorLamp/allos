@@ -11,7 +11,7 @@ test("omega-3 detail page suggests fatty fish, swapped to the alternative for th
   page,
 }) => {
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent("Omega-3 Total (OmegaCheck)")}`
+    `/results/clinical-results/view?name=${encodeURIComponent("Omega-3 Total (OmegaCheck)")}`
   );
 
   const card = page.getByTestId("biomarker-food-suggestions");
@@ -33,7 +33,7 @@ test("folate detail page suggests leafy greens with the warfarin vitamin-K note 
   page,
 }) => {
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent("Folate")}`
+    `/results/clinical-results/view?name=${encodeURIComponent("Folate")}`
   );
 
   const suggestion = page.getByTestId("food-suggestion-folate");
@@ -47,7 +47,7 @@ test("selenium detail page suggests brazil nuts — expanded low-nutrient covera
   page,
 }) => {
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent("Selenium")}`
+    `/results/clinical-results/view?name=${encodeURIComponent("Selenium")}`
   );
 
   const suggestion = page.getByTestId("food-suggestion-selenium");
@@ -60,7 +60,7 @@ test("high LDL detail page shows a REDUCE suggestion (cut back on limit-tier foo
   page,
 }) => {
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent("LDL Cholesterol")}`
+    `/results/clinical-results/view?name=${encodeURIComponent("LDL Cholesterol")}`
   );
 
   const suggestion = page.getByTestId("food-suggestion-ldl-apob");

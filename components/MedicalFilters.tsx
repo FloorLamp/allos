@@ -12,7 +12,7 @@ import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import { activeFacetCount, filterTriggerLabel } from "@/lib/record-facets";
 import type { PanelId } from "@/lib/biomarker-panels";
 
-// Filter bar for the clinical readings table: a category dropdown, the clinical
+// Filter bar for the Clinical results table: a category dropdown, the clinical
 // PANEL dropdown (#1502), and the All/Non-optimal/Out-of-range "show" filter.
 // Each control navigates via query params, preserving the others (including the
 // active sort, which lives in `sort`/`dir`).
@@ -25,8 +25,8 @@ import type { PanelId } from "@/lib/biomarker-panels";
 //
 // COLLAPSED BELOW `sm` (#2316). Five controls plus the table's sort select wrap into
 // roughly a screen-height of chrome at phone width, every visit, whether or not
-// anything is filtered — so the first reading starts below the fold on a page whose
-// whole job is showing readings. Below `sm` the SEARCH field stays out (it is the
+// anything is filtered — so the first result starts below the fold on a page whose
+// whole job is showing results. Below `sm` the SEARCH field stays out (it is the
 // fastest path to a named analyte, and a filter you can see is not a filter that
 // hides); the facets and the sort control sit behind one **Filters** trigger.
 //
@@ -86,9 +86,9 @@ export default function MedicalFilters({
       else sp.delete(k);
     }
     const s = sp.toString();
-    // The browser lives on the /results/readings tab (#1079); a filter change
+    // The browser lives on the /results/clinical-results tab (#1079); a filter change
     // rewrites its searchparams and lands back on the same tab.
-    return s ? `/results/readings?${s}` : "/results/readings";
+    return s ? `/results/clinical-results?${s}` : "/results/clinical-results";
   }
 
   return (
@@ -127,7 +127,7 @@ export default function MedicalFilters({
               : "hidden"
           } sm:contents`}
         >
-          {/* Biomarkers browser: never offer 'prescription' — meds aren't listed
+          {/* Clinical results catalog: never offer 'prescription' — meds aren't listed
             here (see getClinicalObservations excludeCategories on the page). */}
           <CategoryFilterSelect
             value={category}

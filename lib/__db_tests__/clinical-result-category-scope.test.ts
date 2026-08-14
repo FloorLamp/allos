@@ -7,7 +7,7 @@
 //
 // #2365 refined the `vitals` half from a CATEGORY decision to a PER-ANALYTE one — a
 // vital whose quantity owns a /trends/metric/<slug> chart is not catalogued, one with
-// no chart anywhere still is — so this suite also pins the browser's own gather over a
+// no chart anywhere still is — so this suite also pins the catalog's own gather over a
 // fixture holding both populations in that one category.
 // All fixture values are synthetic (obviously-fictional profile, plain names).
 
@@ -36,9 +36,9 @@ import { METRIC_DOCUMENT_REACH } from "@/lib/trend-metric-analytes";
 import { METRIC_READING_STORE } from "@/lib/metric-readings";
 import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 import {
-  readingIndexRows,
-  parseReadingFilters,
-} from "@/app/(app)/results/reading-index";
+  clinicalResultIndexRows,
+  parseClinicalResultFilters,
+} from "@/app/(app)/results/clinical-result-index";
 
 function createProfile(name: string): number {
   return Number(
@@ -47,7 +47,7 @@ function createProfile(name: string): number {
   );
 }
 
-// A single-profile scope, hand-built: readingIndexRows takes an ALREADY-resolved
+// A single-profile scope, hand-built: clinicalResultIndexRows takes an ALREADY-resolved
 // scope and reads only the acting profile + the view set, so no login/grant fixture
 // is needed to exercise the gather.
 function singleScope(profileId: number): ProfileScope {
@@ -232,7 +232,7 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     }
   });
 
-  it("the biomarker browser excludes the re-homed classes with a home (instruments/derived/reference)", () => {
+  it("the Clinical results catalog excludes the re-homed classes with a home (instruments/derived/reference)", () => {
     const pid = seedMixedProfile();
     const rows = getClinicalObservations(pid, {
       excludeCategories: [...NON_RESULTS_CATALOG_CATEGORIES],
@@ -250,14 +250,17 @@ describe("biomarker surfaces scope to lab only (#1076)", () => {
     expect(rows).toContain("Blood Pressure Systolic");
   });
 
-  it("the browser gather drops a vitals analyte with a metric home and keeps one without (#2365)", () => {
+  it("the catalog gather drops a vitals analyte with a metric home and keeps one without (#2365)", () => {
     // The end-to-end shape of the rule against a real schema: the same profile, the
     // same URL, through the module BOTH browser callers gather with. #1076's
     // "nothing stranded" rule is kept and applied per analyte — the flat catalog stops
     // duplicating what /trends/metric/<slug> already charts, and stays the home of the
     // domain vitals that have no chart at all.
     const pid = seedMixedProfile();
-    const names = readingIndexRows(singleScope(pid), parseReadingFilters({}))
+    const names = clinicalResultIndexRows(
+      singleScope(pid),
+      parseClinicalResultFilters({})
+    )
       .map((r) => r.canonical_name ?? r.name)
       .filter((n): n is string => n !== null);
     // Gone: each is a TrendMetricSlug quantity with its own chart.

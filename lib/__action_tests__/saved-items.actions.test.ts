@@ -41,7 +41,7 @@ describe("toggleSavedItem", () => {
     const paths = revalidate.mock.calls.map((c) => c[0]);
     expect(paths).toContain("/trends");
     expect(paths).toContain("/results");
-    expect(paths).toContain("/results/readings/view");
+    expect(paths).toContain("/results/clinical-results/view");
     expect(paths).toContain("/trends/metric/[kind]");
   });
 

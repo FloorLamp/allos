@@ -12,9 +12,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { trackLabFollowUp } from "@/app/(app)/results/readings/followup-actions";
+import { trackLabFollowUp } from "@/app/(app)/results/clinical-results/followup-actions";
 import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
-import { deleteResult } from "@/app/(app)/results/reading-actions";
+import { deleteResult } from "@/app/(app)/results/clinical-result-actions";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);

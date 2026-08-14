@@ -11,7 +11,7 @@ import {
   addResult,
   updateResult,
   deleteResult,
-} from "@/app/(app)/results/reading-actions";
+} from "@/app/(app)/results/clinical-result-actions";
 import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import {
   getClinicalObservations,
@@ -116,10 +116,10 @@ describe("addResult", () => {
     ).toEqual({ category: "lab" });
   });
 
-  it("does not let 'prescription' be created from the Biomarkers add path (#385)", async () => {
+  it("does not let 'prescription' be created from the Clinical results add path (#385)", async () => {
     const { profile } = seedActor();
     // The add form only offers RESULTS_CATALOG_CATEGORIES (no 'prescription'); a crafted
-    // POST is coerced to 'lab' so meds can't sneak into the biomarkers browser.
+    // POST is coerced to 'lab' so meds can't sneak into the clinical results catalog.
     await addResult(
       fd({
         date: "2026-01-15",
@@ -356,7 +356,7 @@ describe("manual record (no document_id) round-trips edit + delete", () => {
     const { login, profile: profileA } = seedActor();
     const profileB = createProfile("ManualB", login.id);
 
-    // Add a manual record as A (the Biomarkers add slot's path — no document_id).
+    // Add a manual record as A (the Clinical results add slot's path — no document_id).
     actAs(login, profileA);
     await addResult(
       fd({

@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { panelLabel, type PanelId } from "@/lib/biomarker-panels";
-import { panelFilterHref, readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultPanelHref, clinicalResultDetailHref } from "@/lib/hrefs";
 
 // "Part of your <panel> panel. Also measured: …" (#1502), shared by both reading
 // detail surfaces since #1932 — a panel's members can now render on two different
 // pages by cadence (an SpO2 charts as a trend, a lipid reads against its band), and
 // this strip is the cross-reference that has to keep working across that split.
-// Each chip goes through `readingDetailHref`, so a sibling lands on ITS own surface
+// Each chip goes through `clinicalResultDetailHref`, so a sibling lands on ITS own surface
 // rather than on whichever page happened to draw the card.
 export function PanelSiblingsCard({
   panelId,
@@ -29,7 +29,7 @@ export function PanelSiblingsCard({
           Also measured:
         </span>
         <Link
-          href={panelFilterHref(panelId)}
+          href={clinicalResultPanelHref(panelId)}
           className="shrink-0 font-medium text-brand-700 hover:underline dark:text-brand-400"
         >
           See the whole panel →
@@ -39,7 +39,7 @@ export function PanelSiblingsCard({
         {names.map((name) => (
           <li key={name}>
             <Link
-              href={readingDetailHref(name)}
+              href={clinicalResultDetailHref(name)}
               className="badge bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-200 dark:hover:bg-ink-700"
             >
               {name}

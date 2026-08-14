@@ -84,8 +84,8 @@ describe("job labels", () => {
   it("titles and formats workouts/biomarkers", () => {
     expect(jobTitle("workouts")).toBe("Pasted workouts");
     expect(jobTitle("biomarkers")).toBe("Pasted labs");
-    expect(jobFormatLabel("workouts")).toContain("Workouts");
-    expect(jobFormatLabel("biomarkers")).toContain("Biomarkers");
+    expect(jobFormatLabel("workouts")).toBe("Workouts (paste/CSV)");
+    expect(jobFormatLabel("biomarkers")).toBe("Clinical results (paste/CSV)");
   });
 });
 

@@ -23,7 +23,7 @@ const TOOTH_SYSTEM_LABEL: Record<ToothSystem, string> = {
 // row + an `onDone` callback (renders a hidden id + a Cancel button). Enum fields
 // (status / tooth_system) are <select>s so a value can never miss the DB CHECK set;
 // the action also re-normalizes on the server. Periodontal MEASUREMENTS are captured
-// as biomarkers on the Biomarkers surface, not here — this is the procedure/finding.
+// as analytes under Clinical results, not here — this is the procedure/finding.
 export default function DentalProcedureForm({
   action,
   record,

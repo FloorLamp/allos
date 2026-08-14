@@ -4,7 +4,7 @@ import type {
   MedicalFlag,
   ClinicalObservation,
 } from "./types";
-import { readingDetailHref, type AppRoute } from "./hrefs";
+import { clinicalResultDetailHref, type AppRoute } from "./hrefs";
 import {
   freshnessAgeDays,
   freshnessState,
@@ -101,7 +101,7 @@ export function recentLabHighlights(
         unit: r.unit,
         flag: r.flag,
         date: r.date,
-        href: readingDetailHref(r.canonical_name, r.name),
+        href: clinicalResultDetailHref(r.canonical_name, r.name),
         freshness: freshnessState(age, RECENT_LAB_STALE_DAYS),
       };
     });

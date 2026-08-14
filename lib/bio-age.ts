@@ -382,7 +382,7 @@ export function isBioAgeHiddenForAge(age: number | null): boolean {
 // ONE decision shared by both bio-age surfaces, which since #2367 render DIFFERENT
 // parts of it on different pages: the Longevity §1 hero
 // (app/(app)/longevity/BioAgeSection.tsx) renders the "hero" state only — the number
-// is a longevity index and belongs on exactly one page — while the Biomarkers-page
+// is a longevity index and belongs on exactly one page — while the Clinical-results-page
 // input panel (app/(app)/results/BioAgeInputsCard.tsx) renders on BOTH non-hidden
 // states, because "which analytes does this still need" is a question about the
 // catalog and the answer is useful whether or not the panel is complete. The states

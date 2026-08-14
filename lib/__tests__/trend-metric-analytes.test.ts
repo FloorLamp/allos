@@ -9,7 +9,7 @@ import {
   listedInResultsCatalog,
 } from "../trend-metric-analytes";
 import { acronymNameForms } from "../canonical-name";
-import { readingDetailHref } from "../hrefs";
+import { clinicalResultDetailHref } from "../hrefs";
 import { CANONICAL_RESULT_DEFINITIONS } from "../datasets/canonical-result-definitions";
 import {
   METRIC_KNOWLEDGE,
@@ -27,7 +27,7 @@ import {
 } from "../trend-metrics";
 
 // #2365 — a `vitals` analyte with a body-metric home is not listed in the flat
-// Biomarkers browser; one without a home stays. BOTH directions are asserted, over the
+// Clinical results catalog; one without a home stays. BOTH directions are asserted, over the
 // REAL registries rather than a fixture list: a test that only proves the slugged
 // analytes left is half a test, and the removing direction is the expensive one — a
 // domain vital with no other home would disappear from the app.
@@ -155,9 +155,9 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
   it("a DEPARTING analyte keeps a detail page — so a star stays un-starrable", () => {
     // `StarredResults` reads `getSavedClinicalResults` straight from `saved_items`,
     // independently of the browser gather, so a starred analyte still renders its tile
-    // after leaving the catalog — and the tile links through `readingDetailHref`. Both
+    // after leaving the catalog — and the tile links through `clinicalResultDetailHref`. Both
     // branches of that helper land on a page that carries a StarButton (the metric
-    // detail page for a continuous vital, `/results/readings/view` otherwise), so the un-star
+    // detail page for a continuous vital, `/results/clinical-results/view` otherwise), so the un-star
     // path can never be orphaned by this change. Pinned because the failure mode would
     // be a tile you cannot remove.
     for (const name of [
@@ -169,10 +169,10 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
       "Body Mass Index (BMI)",
     ]) {
       expect(hasTrendMetricHome(name), name).toBe(true);
-      const href = readingDetailHref(name);
+      const href = clinicalResultDetailHref(name);
       expect(
         href.startsWith("/trends/metric/") ||
-          href.startsWith("/results/readings/view"),
+          href.startsWith("/results/clinical-results/view"),
         `${name} → ${href}`
       ).toBe(true);
     }
@@ -639,14 +639,14 @@ describe("a statistic signifier refuses the home too (#2700)", () => {
 
   it("the detail link never lands on the BMI chart", () => {
     // The issue's third clause. Worth pinning even though it was already true: nothing
-    // in `readingDetailHref` consults `trendMetricHomeFor` — the metric-detail branch is
+    // in `clinicalResultDetailHref` consults `trendMetricHomeFor` — the metric-detail branch is
     // `continuousReadingSlug`, whose per-name table has no BMI entry — so these labels
     // resolve to the episodic reading surface both before and after. The assertion
     // exists so a future attempt to route homed analytes by this recognizer has to
     // notice the percentile.
     for (const spelling of ["BMI%", "BMI %", "Body Mass Index Percentile"])
-      expect(readingDetailHref(spelling), spelling).not.toContain(
-        "/trends/metric"
+      expect(clinicalResultDetailHref(spelling), spelling).toBe(
+        `/results/clinical-results/view?name=${encodeURIComponent(spelling)}`
       );
   });
 });

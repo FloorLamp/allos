@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — the biomarker row states the band its own flag came from
+// DB INTEGRATION TIER — the clinical-result row states the band its own flag came from
 // (#2315).
 //
 // THE DEFECT. The Reference cell printed `reference_range`, the free-text string the
@@ -13,7 +13,7 @@
 // (lib/reading-reference-cell, unit-tested), but the thing that was WRONG is the
 // join: which bands the gather resolves for which row, against which subject. So
 // these fixtures store readings, let `reconcileFlags` derive the flag exactly as
-// ingest does, and then assert that the cell the browser gather produces names the
+// ingest does, and then assert that the cell the catalog gather produces names the
 // very bands that derivation used. The three cases below are the issue's own table
 // and are the regression surface.
 //
@@ -30,15 +30,15 @@ import { db } from "@/lib/db";
 import { reconcileFlags } from "@/lib/queries";
 import type { ProfileScope } from "@/lib/scope";
 import {
-  readingIndexRows,
-  parseReadingFilters,
-  type ReadingTableObservation,
-} from "@/app/(app)/results/reading-index";
+  clinicalResultIndexRows,
+  parseClinicalResultFilters,
+  type ClinicalResultTableObservation,
+} from "@/app/(app)/results/clinical-result-index";
 import { medicalValueFlagText } from "@/lib/medical-value";
 
 const DRAW_DATE = "2026-03-04";
 
-// A single-profile scope, hand-built: readingIndexRows takes an ALREADY-resolved
+// A single-profile scope, hand-built: clinicalResultIndexRows takes an ALREADY-resolved
 // scope and reads only the acting profile + the view set, so no login/grant fixture
 // is needed to exercise the gather.
 function singleScope(profileId: number): ProfileScope {
@@ -103,22 +103,24 @@ function newReading(
   );
 }
 
-function rowsFor(profileId: number): Map<string, ReadingTableObservation> {
-  const rows = readingIndexRows(singleScope(profileId), {
-    ...parseReadingFilters({}),
+function rowsFor(
+  profileId: number
+): Map<string, ClinicalResultTableObservation> {
+  const rows = clinicalResultIndexRows(singleScope(profileId), {
+    ...parseClinicalResultFilters({}),
   });
   return new Map(rows.map((r) => [r.canonical_name ?? r.name, r]));
 }
 
 // The severity word the surface renders beside the value, from the row's stored
 // flag — the same decision `MedicalValue showFlagLabel` makes.
-function flagWord(row: ReadingTableObservation): string | null {
+function flagWord(row: ClinicalResultTableObservation): string | null {
   return medicalValueFlagText(row.flag, true)?.label ?? null;
 }
 
 describe("the three readings from the issue's table", () => {
   let profileId: number;
-  let rows: Map<string, ReadingTableObservation>;
+  let rows: Map<string, ClinicalResultTableObservation>;
 
   beforeAll(() => {
     profileId = newProfile("Reference Cell Adult", {

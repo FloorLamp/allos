@@ -154,10 +154,10 @@ test.describe("relevance-ranked biomarker pickers (#1675)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      // ?new=1 opens the add-result panel directly (the Biomarkers-page add slot).
+      // ?new=1 opens the Clinical results add panel directly.
       // Its modal is portalled, so the form is addressed through the dialog rather
       // than through the panel's own container.
-      await page.goto("/results/readings?new=1");
+      await page.goto("/results/clinical-results?new=1");
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
 

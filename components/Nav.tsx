@@ -112,11 +112,12 @@ const RECORDS: Group = {
     // Vision/Dental panes are data-gated (getNavRelevance) — a hidden sub-tab's route
     // re-gates server-side; Skin/Mental health always render.
     { href: "/records", label: "Health record", icon: IconReportMedical },
-    // Results (#1042 phase 5, retabbed #1079): the Biomarkers / Imaging / Genomics
+    // Results (#1042 phase 5, retabbed #1079): the Clinical results / Imaging /
+    // Reports / Genomics
     // index pages merged into ONE surface, now route-per-tab under /results
-    // (/results/readings|/imaging|/genomics) — one leaf replaces the three; bare
-    // /results lands on /results/readings. The per-biomarker detail route
-    // (/results/readings/view) survives at its own URL; like other unlinked detail pages it
+    // (/results/clinical-results|/imaging|/genomics) — one leaf replaces the three; bare
+    // /results lands on /results/clinical-results. The per-analyte detail route
+    // (/results/clinical-results/view) survives at its own URL; like other unlinked detail pages it
     // highlights no nav entry.
     { href: "/results", label: "Results", icon: IconChartLine },
     // Supplements left this group for the Nutrition → Supplements tab (#746);

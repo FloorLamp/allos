@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
-import { deleteResult } from "@/app/(app)/results/reading-actions";
+import { deleteResult } from "@/app/(app)/results/clinical-result-actions";
 import { undoDelete, undoDeletes } from "@/app/(app)/undo-actions";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -63,7 +63,7 @@ function captureBodyMetric(profileId: number, date: string): number {
 describe("cross-profile undo round trip (#2104)", () => {
   it("restores the OTHER profile's row when the login may write it — the full multi-view round trip", async () => {
     // Acting as A, a member with write on BOTH profiles deletes B's reading off a
-    // multi-view Biomarkers table (the delete posts the ROW's profile_id) …
+    // multi-view Clinical results table (the delete posts the ROW's profile_id) …
     const login = createLogin({ role: "member" });
     const acting = createProfile("Undo Acting", login.id);
     const other = createProfile("Undo Other", login.id);

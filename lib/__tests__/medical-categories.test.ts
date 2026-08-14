@@ -39,7 +39,7 @@ describe("medical-categories: single source of truth", () => {
   });
 
   it("RESULTS_CATALOG_CATEGORIES is the flat-catalog browsable set (#1076)", () => {
-    // The flat Results catalog (/results/readings) lists `lab` + the
+    // The flat Results catalog (/results/clinical-results) lists `lab` + the
     // out-of-scope `genomics`/`scan` stores, and KEEPS `vitals` (the domain vitals —
     // audiogram/IOP/acuity — have no dedicated chart home, so removing them would
     // strand them). The re-homed classes with a home — instruments, derived bio-age,
@@ -99,7 +99,7 @@ describe("medical-categories: single source of truth", () => {
 describe("medical-categories: importers do not re-declare the enums", () => {
   const read = (rel: string) => fs.readFileSync(path.join(REPO, rel), "utf8");
 
-  const ACTION = "app/(app)/results/reading-actions.ts";
+  const ACTION = "app/(app)/results/clinical-result-actions.ts";
   // The AI extractor was barrel-split (#597); the shared-constant import now
   // lives in the extraction constants submodule rather than the barrel.
   const EXTRACT = "lib/medical-extract/constants.ts";

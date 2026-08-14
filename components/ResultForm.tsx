@@ -26,8 +26,8 @@ import type { FormResult, ClinicalObservation } from "@/lib/types";
 // canonical optimal band, so it's not offered here.
 const FLAGS = ["normal", "high", "low", "abnormal"] as const;
 
-// The shared clinical-result form, for both the add slot (Readings page) and the
-// inline observation editor (document view + Readings rows). `mode` toggles which fields
+// The shared clinical-result form, for both the add slot (Clinical results page) and the
+// inline observation editor (document view + Clinical results rows). `mode` toggles which fields
 // show and the submit label: add mode carries the manual-entry field set (the
 // columns addResult reads); edit mode additionally exposes panel / flag / provider
 // (the columns updateResult writes). `action` is the server action to call —
@@ -60,7 +60,7 @@ export default function ResultForm({
   writeProfileId?: number;
   // Called after a successful submit — the row editor closes on it.
   onDone?: () => void;
-  // Category <select> options. Defaults to the full enum; the Readings page
+  // Category <select> options. Defaults to the full enum; the Clinical results page
   // passes its prescription-less list so a med can't be added/relabelled there.
   categories?: readonly string[];
   // Add mode: the initial date (today in the profile's tz) and category.
@@ -94,7 +94,7 @@ export default function ResultForm({
   // The canonical-name field is a controlled Combobox (#1177), so form.reset() can't
   // clear it — the add path resets this state explicitly on a successful save.
   // Relevance-ranked, group-tagged canonical names (#1675) — same list, same order,
-  // in the Biomarkers add slot, the inline row editor, and the import mapping field.
+  // in the Clinical results add slot, the inline row editor, and the import mapping field.
   const canonicalOptions = useCanonicalNames();
   const canonicalNames = useMemo(
     () => canonicalOptions.map((option) => option.name),

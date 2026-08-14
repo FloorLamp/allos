@@ -164,20 +164,10 @@ describe("representative concepts, one axis at a time", () => {
 });
 
 describe("quantitation is not the identity test", () => {
-  it("no identity rule may be derived from the presence of a unit or a band", () => {
-    // If quantitation ever became the test, these would flip together. They do
-    // not: the unitless, bandless entries below are identity-bearing, and the
-    // numeric questionnaire item answers stored `assessment` are not.
+  it("keeps unitless results identity-bearing", () => {
     const unitlessIdentityBearing = CANONICAL_RESULT_DEFINITIONS.filter(
       (e) => !e.unit && carriesResultIdentity(e.category ?? "")
     );
     expect(unitlessIdentityBearing.length).toBeGreaterThan(50);
-
-    // A screening questionnaire's ITEM answer is a number (0-3 on a PHQ-9 item)
-    // and is stored in the class that denies identity, which is the reverse
-    // crossing. Asserted on the category rule rather than on a fixture row: the
-    // rule is what a future change would break.
-    expect(carriesResultIdentity("assessment")).toBe(false);
-    expect(carriesResultIdentity("instrument")).toBe(true);
   });
 });

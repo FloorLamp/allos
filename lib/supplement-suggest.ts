@@ -601,7 +601,7 @@ export async function autoSuggestFromBiomarkers(
     isOutOfRange(r.flag) || isNonOptimal(r.flag);
 
   // "New" = this biomarker FAMILY has only one reading total (this one). Count by
-  // the #482 family identity — the SAME key the biomarkers table partitions on
+  // the #482 family identity — the SAME key the clinical results table partitions on
   // (biomarkerFamilyKey / biomarkerFamily) — NOT the raw name, so a fresh reading
   // under a different family member's spelling (e.g. "Vitamin D, 25-Hydroxy Total"
   // when the profile already has a "Vitamin D2" history) is correctly seen as a prior

@@ -6,7 +6,7 @@ import { workerDbPath } from "./worker-env";
 
 // Per-hit command-palette actions (issue #662): a FOUND entity offers contextual
 // actions routed through the EXISTING gated Server Actions — med → Log dose /
-// Refill, appointment → Mark complete, biomarker → Add result. These drive the
+// Refill, appointment → Mark complete, clinical result → Add result. These drive the
 // palette end-to-end (query → server action → ranked hit → rendered action chip →
 // gated write / prefilled navigate).
 //
@@ -134,10 +134,10 @@ test.describe("command palette — create actions open the overlay in place (#21
 });
 
 test.describe("command palette — per-hit actions (#662)", () => {
-  // A biomarker hit offers "Add result": a navigate to the Biomarkers add form,
+  // A clinical-result hit offers "Add result": a navigate to the Clinical results form,
   // name-prefilled with the canonical analyte. Non-mutating, so it runs on the
   // shared seed (LDL Cholesterol is a seeded canonical biomarker).
-  test("a biomarker hit's 'Add result' opens the add form name-prefilled", async ({
+  test("a clinical-result hit's 'Add result' opens the form name-prefilled", async ({
     page,
   }) => {
     await page.goto("/");
@@ -148,7 +148,9 @@ test.describe("command palette — per-hit actions (#662)", () => {
     // The first palette search on a worker also warms the search route; on a
     // loaded runner that first fetch can outlast the default 5s. A named ceiling,
     // not a sleep — this still fails if the hit never arrives.
-    await expect(results.getByText("Biomarkers", { exact: true })).toBeVisible({
+    await expect(
+      results.getByText("Clinical results", { exact: true })
+    ).toBeVisible({
       timeout: 20_000,
     });
     const addResult = results
@@ -160,7 +162,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
     // past the pre-hydration window rather than a networkidle gate.
     await addResult.click();
     await expect(page).toHaveURL(
-      /\/results\/readings\?.*name=LDL(\+|%20)Cholesterol/
+      /\/results\/clinical-results\?.*name=LDL(\+|%20)Cholesterol/
     );
 
     // The add form's Name field is prefilled with the analyte the user searched.
@@ -184,7 +186,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
       .getByRole("listitem")
       .filter({ hasText: "Sertraline" })
       .first(); // first-ok: filtered to the Sertraline palette result — one match for the searched med
-    // Same first-search warm-up ceiling as the biomarker hit above.
+    // Same first-search warm-up ceiling as the clinical-result hit above.
     await expect(row).toBeVisible({ timeout: 20_000 });
     await expect(row.getByTestId("palette-hit-action-log-dose")).toBeVisible();
     await expect(row.getByTestId("palette-hit-action-refill")).toBeVisible();
@@ -222,7 +224,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
         .getByRole("listitem")
         .filter({ hasText: APPT_MARKER })
         .first(); // first-ok: filtered to APPT_MARKER, a unique marker THIS spec planted — one match
-      // Same first-search warm-up ceiling as the medication/biomarker hits above —
+      // Same first-search warm-up ceiling as the medication/clinical-result hits above —
       // this test's search is its palette's first, so index warm-up + a loaded
       // shard can outrun the 5 s default (#1556 interaction-latency class,
       // observed on shard 2, 2026-08-01).

@@ -38,10 +38,10 @@ export interface RecordCitation {
 }
 
 // A short, human label for each record's domain — the badge a citation shows so the
-// answer's sources read as "Medication", "Lab result", "Visit", … A closed record here
+// answer's sources read as "Medication", "Clinical result", "Visit", … A closed record here
 // keeps it enumerable; a new SearchDomain that reaches Q&A adds its label deliberately.
 export const DOMAIN_LABEL: Record<SearchDomain, string> = {
-  biomarker: "Lab result",
+  "clinical-result": "Clinical result",
   imaging: "Imaging study",
   genomic: "Genomic result",
   document: "Document",
