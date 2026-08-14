@@ -2068,10 +2068,10 @@ the recognizer's containment test rejects it, and the gesture is never claimed:
 That is the whole of #2714, and the shape of its failure is worth keeping,
 because it was mis-read three times as a slow exit:
 
-| what it looked like                                            | what it was                                                             |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `toHaveCount(0)` missing a 5 s budget against a 240 ms unmount | the unmount was never scheduled — the sheet stayed open indefinitely    |
-| a timing flake worth a bigger budget or an arrival signal      | no budget helps: the end state was not on its way                       |
+| what it looked like                                            | what it was                                                              |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `toHaveCount(0)` missing a 5 s budget against a 240 ms unmount | the unmount was never scheduled — the sheet stayed open indefinitely     |
+| a timing flake worth a bigger budget or an arrival signal      | no budget helps: the end state was not on its way                        |
 | CPU-bound, so reproducible under a throttle                    | 5/5 green at 20× and 60× — a throttle slows the RACE, not one side of it |
 
 The throttle row is the one worth internalising, because the recipe two sections

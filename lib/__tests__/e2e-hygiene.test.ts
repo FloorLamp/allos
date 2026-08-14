@@ -662,9 +662,9 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     expect(
       matches("await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });")
     ).toBe(false);
-    expect(
-      matches('await touchSwipeFrom(page, handle, { dy: 240 });')
-    ).toBe(false);
+    expect(matches("await touchSwipeFrom(page, handle, { dy: 240 });")).toBe(
+      false
+    );
   });
 
   it("no NEW inline create-login sequence in an e2e/*.ts (use createLoginViaFamily)", () => {
