@@ -87,6 +87,11 @@ import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 //        → hydratedClick(page, locator) when the CLICK ITSELF can be lost — a
 //          disclosure/chip/menu whose handler React may not have attached yet, and
 //          which a retry loop would toggle back. Then assert what it revealed.
+//        → openConfirm(page, trigger) for the specific case where that handler calls
+//          `useConfirm()`. Same primitive, named for the thing it returns, and the
+//          one home for why a confirm may NEVER be re-clicked: the hook settles an
+//          in-flight request as CANCELLED when a second replaces it, so the retry
+//          can cancel the dialog it is waiting for (#2729).
 //    Do NOT reach for settledClick here. A client toggle posts nothing, so there is
 //    nothing to settle on; before #1952 it appeared to work only because it accepted
 //    a bystander's POST, which is the silent-green failure that issue is about.
@@ -668,6 +673,82 @@ export async function openCareOverviewSection(
     await expect(section).toHaveJSProperty("open", true, { timeout: 1000 });
   }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-toggle a <details> whose hash-reveal effect races the click — a native disclosure with no POST and no navigation to settle on; guarded on `open`, so an already-open section is never clicked shut
   return section;
+}
+
+// Tap a control whose handler calls `useConfirm()`, and return the confirm dialog
+// (issue #2729).
+//
+// A confirm is opened by a DISCRETE onClick with nothing to settle on: no Server
+// Action POST, no navigation, no URL. So a tap that lands in the #500/#830
+// pre-hydration window is swallowed in silence — Playwright's actionability checks
+// all pass, because the ELEMENT is fine — and the `expect(dialog).toBeVisible()`
+// below it fails as `element(s) not found`.
+//
+// Five call sites answered that with a `toPass` loop that re-clicked the trigger
+// until the dialog appeared. The premise was right and the repair was not. What is
+// wrong with it was MEASURED, under a CDP CPU throttle (docs/internals/e2e-hygiene.md,
+// "slow the CPU, not the neighbours"), and it is not what #2729 assumed:
+//
+//   • The loop spends its whole BUDGET on the window it exists to survive. A
+//     pre-hydration click is swallowed, so it changes nothing — which also means it
+//     cannot converge and cannot be retried into working. Every iteration before
+//     hydration is therefore a click into the void plus the inner guard's 2 s wait,
+//     and the 15 s ceiling is consumed by attempts that could not have worked. At a
+//     60× throttle on `/import/908` that loop failed 5/5; given a 60 s ceiling and
+//     nothing else changed it passed 5/5, converging in 10.8–23.9 s. Its failure is
+//     the CEILING. Waiting for a STATE spends the budget on the thing being waited
+//     for, which is why this helper converges where the loop cannot.
+//   • The destructive branch is a HAZARD, not the observed cause, and the difference
+//     matters. `useConfirm` settles an in-flight request as CANCELLED when a second
+//     replaces it (`prev?.resolve(false)`, components/ConfirmDialog.tsx) and remounts
+//     the panel on a fresh `retained.nonce`; the disclosure twins of this loop are
+//     `setOpen((v) => !v)` and a native `<details>`. So a click that LANDS and then
+//     renders slower than the inner guard is torn down by the iteration waiting for
+//     it. That is real by inspection — but across 15 throttled trials it was never
+//     observed: a MutationObserver on the disclosure's `aria-expanded` recorded a
+//     single `false → true` transition every time, never a flip back. It is a live
+//     hazard because it needs only a landed click and a slow render, and it is not
+//     the thing that has been failing.
+//
+// A third reason is not about the race at all: the loop SWALLOWS its own diagnosis.
+// Whatever goes wrong inside the predicate — the trigger missing, a backdrop
+// intercepting the tap, the click throwing — is reported as one line, `Timeout
+// 15000ms exceeded while waiting on the predicate`, naming neither the click nor the
+// dialog. That is the causeless-timeout shape #890 is about, and it is what the two
+// failures in #2729 were read through. Clicking once lets the click's own error, or
+// the dialog locator, name the failure.
+//
+// So: hydratedClick — poll for React's markers on the node, click ONCE — then wait
+// for the dialog on its own ceiling. No re-click, at any point. The marker probe is a
+// reliable enough hydration signal to make that single click safe and a fallback
+// unnecessary, on two separate pieces of evidence. The direct one is this issue's own
+// measurement: the disclosure twin of this helper passed 5/5 at a 60× CPU throttle at
+// its shipped budget, where the loop it replaced passed 1/5. The precedent — a
+// DIFFERENT spec, not one of these call sites — is #2742's tap, which the same probe
+// carried from a deterministic throttled failure to 5/5.
+//
+// The two ceilings are separate because they are separate waits, and 15 + 15 is
+// deliberately the whole per-test budget: `playwright.config.ts` sets no `timeout`,
+// so a test gets Playwright's default 30 s unless it declares `test.slow()`. Past
+// that the test dies whatever this helper says, so a bigger number here would only
+// look generous. The one real lever is `test.slow()` at the call site, which triples
+// the budget — declined for the four long portal tests, because all it buys is a
+// better cell in a rate-60 table that is already past CI-realistic (the table is in
+// docs/internals/e2e-hygiene.md). Do not re-derive this: the ceiling IS the budget.
+//
+// Returns the dialog by its `confirm-dialog` testid rather than `getByRole("dialog")`
+// — a page may carry another modal, and this helper promises THE confirm.
+export async function openConfirm(
+  page: Page,
+  trigger: Locator,
+  opts: { hydrationTimeout?: number; dialogTimeout?: number } = {}
+): Promise<Locator> {
+  await hydratedClick(page, trigger, {
+    timeout: opts.hydrationTimeout ?? 15_000,
+  });
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible({ timeout: opts.dialogTimeout ?? 15_000 });
+  return dialog;
 }
 
 // Open MobileNav's slide-in drawer and return it (issue #1420 — the `mobile`

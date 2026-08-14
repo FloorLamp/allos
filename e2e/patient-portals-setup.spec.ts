@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledFill } from "./helpers";
+import { hydratedClick, openConfirm, settledFill } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath, frozenNow } from "./worker-env";
 import {
@@ -1094,14 +1094,13 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     const heldBefore = afterUpload.held.length;
     expect(heldBefore).toBeGreaterThan(0);
 
-    // 3. The user deletes it, through the real confirm dialog.
+    // 3. The user deletes it, through the real confirm dialog. openConfirm, not the
+    //    re-click loop this file carried at four sites (#2729) — this test and the
+    //    tombstone one below are the pair that issue was filed for. A swallowed
+    //    pre-hydration click changes nothing, so it cannot be retried into working,
+    //    and the loop's 15 s ceiling went on clicks that could not land.
     await page.goto(`/import/${docId}`);
-    const del = page.getByTestId("delete-document");
-    const dialog = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog.isVisible())) await del.click();
-      await expect(dialog).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: re-open the client confirm until it appears — no Server-Action POST to settle on, and the discrete onClick can be swallowed pre-hydration
+    const dialog = await openConfirm(page, page.getByTestId("delete-document"));
     await dialog
       .getByRole("button", { name: "Delete document & its records" })
       .click();
@@ -1149,12 +1148,10 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     // Clean up this test's own document so the feed it shares stays as it was found.
     const cleanupId = afterAllowDoc.id as number;
     await page.goto(`/import/${cleanupId}`);
-    const del2 = page.getByTestId("delete-document");
-    const dialog2 = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog2.isVisible())) await del2.click();
-      await expect(dialog2).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: same pre-hydration guard as the delete above
+    const dialog2 = await openConfirm(
+      page,
+      page.getByTestId("delete-document")
+    );
     await dialog2
       .getByRole("button", { name: "Delete document & its records" })
       .click();
@@ -1206,12 +1203,7 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     // A PORTAL-ACQUIRED document's confirm states the consequence: the acquirer will
     // not bring it back, and that is reversible from Data → Review.
     await page.goto(`/import/${acquiredDoc.id}`);
-    const del = page.getByTestId("delete-document");
-    const dialog = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog.isVisible())) await del.click();
-      await expect(dialog).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: re-open the client confirm until it appears — the discrete onClick can be swallowed pre-hydration
+    const dialog = await openConfirm(page, page.getByTestId("delete-document"));
     await expect(dialog.getByTestId("delete-tombstone-note")).toContainText(
       "will not bring this back"
     );
@@ -1239,12 +1231,10 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     });
     const manualDoc = (await manual.json()).documents[0];
     await page.goto(`/import/${manualDoc.id}`);
-    const del2 = page.getByTestId("delete-document");
-    const dialog2 = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog2.isVisible())) await del2.click();
-      await expect(dialog2).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: same pre-hydration guard as above
+    const dialog2 = await openConfirm(
+      page,
+      page.getByTestId("delete-document")
+    );
     await expect(dialog2).toContainText("every record it imported");
     await expect(dialog2.getByTestId("delete-tombstone-note")).toHaveCount(0);
     await dialog2

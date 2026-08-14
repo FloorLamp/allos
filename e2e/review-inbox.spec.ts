@@ -91,14 +91,19 @@ test.describe("Data → Review import inbox", () => {
     // The click can land while the page is still hydrating (all the assertions
     // above are satisfied by the SSR HTML alone): the native <details> may open
     // before React attaches its onToggle, or React may swallow the discrete
-    // event outright. The component now catches up on mount (loads if it finds
-    // itself already open), and this retry covers the swallowed-click case —
-    // re-clicking after hydration settles.
+    // event outright.
+    //
+    // hydratedClick, not the re-click loop this replaced (#2729). Measured at a 60×
+    // CDP CPU throttle, five sequential trials: the loop 1/5, this 5/5. A swallowed
+    // click changes nothing, so it cannot be retried into working — the loop was
+    // spending its 20 s ceiling on clicks that could not land, and given a 60 s one
+    // it passed 5/5. Waiting for React's markers spends that budget on the state.
+    // A <details> is also a real TOGGLE, so a retry that outran its own guard would
+    // close what it opened; that was never observed here, and clicking once removes
+    // the hazard regardless.
     const viewer = hcCard.getByTestId("raw-data-viewer");
-    await expect(async () => {
-      if (!(await viewer.isVisible())) await viewRaw.click();
-      await expect(viewer).toBeVisible({ timeout: 4000 });
-    }).toPass({ timeout: 20_000 }); // topass-ok: re-click the <details> until the tree loads — SSR satisfies the earlier asserts, so the discrete onToggle can be swallowed pre-hydration; no POST to settle on
+    await hydratedClick(page, viewRaw, { timeout: 20_000 });
+    await expect(viewer).toBeVisible({ timeout: 20_000 });
     // The captured JSON is navigable: the top-level "records" key renders in the
     // tree; expanding reveals the nested "Steps" value (depth-collapsed by default).
     await expect(viewer.getByText("records:", { exact: false })).toBeVisible();
@@ -127,14 +132,13 @@ test.describe("Data → Review import inbox", () => {
 
     // The healthy Health Connect sync wrote records (seed provenance rows), so the
     // card carries a "What this wrote" drill-in. It's behind a <details> with the
-    // same pre-hydration swallow as the raw viewer — re-click until the list loads.
+    // same pre-hydration swallow as the raw viewer, and the same repair (#2729):
+    // hydratedClick, one click, never a loop that can toggle it shut again.
     const drill = hcCard.getByText("What this wrote", { exact: false });
     await expect(drill).toBeVisible();
     const provRun = hcCard.getByRole("link", { name: /HC provenance run/ });
-    await expect(async () => {
-      if (!(await provRun.isVisible())) await drill.click();
-      await expect(provRun).toBeVisible({ timeout: 4000 });
-    }).toPass({ timeout: 20_000 }); // topass-ok: re-click the <details> until the provenance list loads — SSR satisfies the earlier asserts, so the discrete onToggle can be swallowed pre-hydration
+    await hydratedClick(page, drill, { timeout: 20_000 });
+    await expect(provRun).toBeVisible({ timeout: 20_000 });
 
     // The inserted run carries a "new" disposition badge — scoped to the run's own
     // link (spec-owned fixture) so it's an exact, single match, no ordinal.
