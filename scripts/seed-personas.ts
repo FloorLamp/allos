@@ -777,7 +777,7 @@ const bodybuilder: SeedPersona = {
     "/trends",
     "/nutrition",
     "/longevity",
-    "/results/readings",
+    "/results/clinical-results",
   ],
   apply(ctx) {
     setAttrs(ctx, {
@@ -1074,7 +1074,7 @@ const marathonRunner: SeedPersona = {
     "/trends",
     "/longevity",
     "/equipment",
-    "/results/readings",
+    "/results/clinical-results",
     "/upcoming",
     "/medical/cycles",
     "/integrations",
@@ -2538,7 +2538,7 @@ const biohacker: SeedPersona = {
     "/longevity",
     "/supplies",
     "/upcoming",
-    "/results/readings",
+    "/results/clinical-results",
     "/trends",
     "/timeline",
     "/sleep",
