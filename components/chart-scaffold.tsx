@@ -228,10 +228,44 @@ export function chartBarCursorProps(c: ChartColors) {
  *  being noise; hover carries the value instead, via a larger `activeDot`. */
 export const DENSE_SERIES_POINTS = 30;
 
+// ── THE FILL CHANNEL (#2653, owner call 3) ──────────────────────────────────
+//
+// A dot's FILL means ONE thing app-wide: whether the reading is EXACT.
+//
+//   • SOLID  — an exact reading. The ordinary case, and the default.
+//   • HOLLOW — an inexact BOUNDED reading ("<0.10", ">5"): the assay reported a
+//     side of the number, not the number, so the mark is drawn as an outline of
+//     a value rather than as one.
+//
+// It was carrying three meanings by 2026-08. `BiomarkerChartInner` had the one
+// above; the scaffold's own default dot was hollow and meant nothing; and #2689's
+// sparse demotion had just taken SOLID to mean "the readings are the content".
+// Two of those coexisted by accident because they rarely shared a chart. Three
+// could not, and the failure would have been silent — a reader seeing a hollow
+// dot with no way to know which claim it was making. So the channel was assigned
+// once, to inexactness, which is the meaning with clinical stakes.
+//
+// The two evictees moved to the channel each actually meant:
+//   • sparse emphasis → MARK SIZE (`CHART_SPARSE_DOT_R`, below): it was always
+//     about mark-vs-stroke prominence, not about the reading being exact.
+//   • two sources on one day (#2653 state 6) → paired OFFSET marks.
+//
+// `lib/__tests__/chart-fill-channel.test.ts` fails on a surface-filled dot
+// anywhere but `chartInexactDot`, so the channel cannot silently re-fork.
+
+/** The resting dot's radius. */
+export const CHART_DOT_R = 2.5;
+/** The hover dot's radius. Strictly above every resting radius below. */
+export const CHART_ACTIVE_DOT_R = 5;
+
 /**
- * Per-point dots for a line. Off for dense series; hollow (surface fill,
- * colored stroke) where they stay, so overlapping points stay countable and a
- * dot never reads as a heavier mark than the line it sits on.
+ * Per-point dots for a line. Off for dense series.
+ *
+ * SOLID in the series' colour — an ordinary reading is an exact one, and fill is
+ * the exactness channel. The 1px SURFACE-COLOURED ring is what keeps overlapping
+ * points countable (the same separator trick `chartStackSegmentProps` uses
+ * between stacked segments), and the small radius keeps the mark from out-weighing
+ * the stroke it sits on.
  *
  * `enabled: false` is the caller's hard override (an intraday series with ~1440
  * points already passes it).
@@ -245,6 +279,27 @@ export function chartLineDot(
   }: { color: string; pointCount: number; enabled?: boolean }
 ) {
   if (!enabled || pointCount > DENSE_SERIES_POINTS) return false as const;
+  return chartExactDot(c, color);
+}
+
+/** The resting mark for an EXACT reading, unconditionally — for the two cards
+ *  that draw their own `<circle>` per point and so cannot take a prop bag that
+ *  may be `false`. `chartLineDot` is this plus the density threshold. */
+export function chartExactDot(c: ChartColors, color: string) {
+  return {
+    r: CHART_DOT_R,
+    fill: color,
+    stroke: c.surface,
+    strokeWidth: 1,
+  } as const;
+}
+
+/**
+ * The ONE hollow dot. An inexact bounded reading — the value is known only to lie
+ * on one side of the number plotted, so the mark is an outline rather than a
+ * filled fact. Nothing else in the app may render a surface-filled dot.
+ */
+export function chartInexactDot(c: ChartColors, color: string) {
   return {
     r: 3,
     fill: c.surface,
@@ -253,19 +308,30 @@ export function chartLineDot(
   } as const;
 }
 
-/** The hover dot. Bigger than the resting dot (and present even when resting
- *  dots are off) so a dense line still has a hit target. */
+/** The hover dot. Bigger than every resting dot (and present even when resting
+ *  dots are off) so a dense line still has a hit target, and so hover stays a
+ *  visible state change on a series whose resting marks are already emphasised. */
 export function chartActiveDot(color: string) {
-  return { r: 4, fill: color, stroke: color, strokeWidth: 1 } as const;
+  return {
+    r: CHART_ACTIVE_DOT_R,
+    fill: color,
+    stroke: color,
+    strokeWidth: 1,
+  } as const;
 }
 
 // ── the demoted stroke (#2653 state 5) ──────────────────────────────────────
 //
 // A series whose readings sit further apart than its declared continuity span
 // (lib/trend-sparkline.ts) is drawn with the DOTS leading and the stroke demoted
-// to a hint. Both halves matter: filled dots make the facts the heaviest ink on
+// to a hint. Both halves matter: LARGER dots make the facts the heaviest ink on
 // the plot, and a thinner, dashed, part-transparent stroke makes the
 // interpolation visibly lighter than the facts it joins.
+//
+// Larger, not filled: the emphasis rides MARK SIZE because fill belongs to
+// exactness alone (see the fill channel above). Prominence was what this state
+// meant all along — the readings out-weighing the interpolation between them —
+// and size says exactly that without borrowing a word that means something else.
 //
 // THE DEMOTION MUST BE A DEMOTION. The failure mode of a state treatment is that
 // it makes the treated chart look deliberate, and therefore MORE trustworthy than
@@ -281,6 +347,10 @@ export const CHART_LINE_STROKE_WIDTH = 2;
 export const CHART_SPARSE_STROKE_WIDTH = 1;
 /** The demoted stroke's opacity. Strictly below the normal line's implicit 1. */
 export const CHART_SPARSE_STROKE_OPACITY = 0.4;
+/** The demoted line's resting dot radius. Strictly ABOVE `CHART_DOT_R` (that is
+ *  the demotion — the marks out-weigh the hint joining them) and strictly BELOW
+ *  `CHART_ACTIVE_DOT_R`, so hover still reads as a state change. */
+export const CHART_SPARSE_DOT_R = 4;
 
 /** Spread onto a `<Line>` whose series is too thin for a confident stroke. */
 export function chartSparseLineProps() {
@@ -292,13 +362,19 @@ export function chartSparseLineProps() {
 }
 
 /**
- * The resting dot on a demoted line. FILLED, unlike `chartLineDot`'s hollow
- * default: on a thin series the readings are the whole content, so they carry
- * the series' colour solid while the stroke between them fades. Deliberately
- * not larger than the hover dot, so hover still reads as a state change.
+ * The resting dot on a demoted line. Same solid fill as any exact reading — it
+ * says nothing about exactness, because it may not — and LARGER than the ordinary
+ * resting dot, which is the whole claim: on a thin series the readings are the
+ * content and the stroke between them is mostly assertion, so the marks carry
+ * more ink than the hint does. Still smaller than the hover dot.
  */
-export function chartSparseDot(color: string) {
-  return { r: 3, fill: color, stroke: color, strokeWidth: 1 } as const;
+export function chartSparseDot(c: ChartColors, color: string) {
+  return {
+    r: CHART_SPARSE_DOT_R,
+    fill: color,
+    stroke: c.surface,
+    strokeWidth: 1,
+  } as const;
 }
 
 /** A `ReferenceLine` / `ReferenceArea` label, at or above the legibility floor. */
