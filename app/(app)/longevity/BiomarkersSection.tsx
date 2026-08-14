@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { getOptimalShareRows, getOptimalHitRate } from "@/lib/queries";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import {
   optimalPillarDetail,
   type OptimalShareRow,
@@ -15,7 +15,7 @@ import PillarStat from "./PillarStat";
 // gather + rangeBadge judgment as the pillar count (getOptimalShareRows /
 // optimalShareRows — reconciliation pinned by a pure test), non-optimal first.
 // Links point at the biomarker surfaces that exist TODAY (/biomarkers +
-// readingDetailHref); phase 5 (Results) repoints them later.
+// clinicalResultDetailHref); phase 5 (Results) repoints them later.
 //
 // A row shows the CANONICAL name and leads with the VALUE (#1501):
 //   • `canonicalName?.trim() || name` — the vocabulary's canonical_name already IS clean,
@@ -37,7 +37,7 @@ function BiomarkerRow({ row: r }: { row: OptimalShareRow }) {
       data-testid="longevity-biomarker-row"
     >
       <Link
-        href={readingDetailHref(r.canonicalName, r.name)}
+        href={clinicalResultDetailHref(r.canonicalName, r.name)}
         className={`truncate hover:underline ${
           r.badge === "optimal"
             ? "text-slate-700 dark:text-slate-200"
@@ -102,7 +102,7 @@ export default async function BiomarkersSection({
           {section.title}
         </h2>
         <Link
-          href="/results/readings"
+          href="/results/clinical-results"
           className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
           All biomarkers

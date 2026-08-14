@@ -125,7 +125,7 @@ test.describe("Overview leads with charts (B)", () => {
     await expect(tile).toBeInViewport();
   });
 
-  test("the StarredResults status card is gone from Trends but stays on Results → Biomarkers", async ({
+  test("the StarredResults status card is gone from Trends but stays on Results → Clinical results", async ({
     page,
   }) => {
     await page.goto("/trends");
@@ -134,7 +134,7 @@ test.describe("Overview leads with charts (B)", () => {
 
     // Its one remaining card surface still renders it — the store and the lens are
     // untouched, only this page's layout changed.
-    await page.goto("/results/readings");
+    await page.goto("/results/clinical-results");
     await expect(page.getByTestId("starred-results")).toBeVisible();
   });
 

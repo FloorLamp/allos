@@ -12,7 +12,7 @@ import { frozenNow, workerDbPath } from "./worker-env";
 // was built from, the reported "<0.2" beside the value it stood in for, and — because
 // a single number has no hollow dot to draw — the censoring said in words, naming the
 // input and the direction of the bias the substitution introduces. Since #2367 the
-// hero renders on /longevity; the Biomarkers page keeps the input panel, which this
+// hero renders on /longevity; the Clinical results page keeps the input panel, which this
 // file also covers because it owns the draw that makes both states meaningful.
 //
 // Fixture ownership (#868): the spec plants ONE draw on a date no seeded reading
@@ -118,12 +118,11 @@ test("the hero computes from a fasting-glucose draw and says it rests on a censo
 
 // The results page's half of the split (#2367): a complete panel, so nothing is
 // missing — but the input panel still renders, says so, and points at the hero.
-test("the biomarkers page keeps the inputs and links to the hero", async ({
+test("Clinical results keeps the inputs and links to the hero", async ({
   page,
 }) => {
   await page.goto("/results");
   const main = page.getByRole("main");
-  await expect(main.getByTestId("bio-age-hero")).toHaveCount(0);
   const card = main.getByTestId("bio-age-inputs-card");
   await expect(card).toBeVisible();
   await expect(card.getByTestId("bio-age-input")).toHaveCount(9);

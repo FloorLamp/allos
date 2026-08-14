@@ -243,7 +243,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
     }
   }
 
-  const label = job.type === "workouts" ? "Workouts" : "Biomarkers";
+  const label = job.type === "workouts" ? "Workouts" : "Clinical results";
 
   return (
     <div className="card space-y-3">

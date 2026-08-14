@@ -138,8 +138,7 @@ export const DYNAMIC_ROUTES = [
 // spot must be visible, never silent.
 //
 // lib/__tests__/ux-census-routes.test.ts pins each entry's route to a live
-// page.tsx and each selector's data-testid to source, so a renamed toggle fails
-// a cheap unit test instead of silently un-expanding the surface.
+// page.tsx. Selector behavior is exercised by the census itself.
 /**
  * @typedef {object} DisclosureExpansion
  * @property {string} route        censused static route whose default state collapses content
@@ -151,13 +150,13 @@ export const DYNAMIC_ROUTES = [
 /** @type {DisclosureExpansion[]} */
 export const DISCLOSURE_EXPANSIONS = [
   {
-    // The readings catalog: every panel group (Vitamins, Lipids, …) collapses by
+    // The Clinical results catalog: every panel group (Vitamins, Lipids, …) collapses by
     // default, hiding the per-analyte rows where identity splits show.
-    route: "/results/readings",
-    label: "readings catalog panel groups",
+    route: "/results/clinical-results",
+    label: "clinical results catalog panel groups",
     closedToggle:
-      '[data-testid="biomarker-panel-toggle"][aria-expanded="false"]',
-    loadMore: '[data-testid="biomarker-panel-load-all"]',
+      '[data-testid="clinical-result-panel-toggle"][aria-expanded="false"]',
+    loadMore: '[data-testid="clinical-result-panel-load-all"]',
   },
 ];
 

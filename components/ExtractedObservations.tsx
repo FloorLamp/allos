@@ -18,7 +18,7 @@ import SortableHeader from "./SortableHeader";
 import ObservationSearch from "./ObservationSearch";
 
 // The grouping identity for a record: its canonical name when present, else the
-// raw name — the same key the biomarkers table groups on, so name-sorted rows
+// raw name — the same key the clinical results table groups on, so name-sorted rows
 // for the same analyte land adjacent under one heading.
 function nameKey(r: ClinicalObservation): string {
   return r.canonical_name?.trim() || r.name;
@@ -140,7 +140,7 @@ export default function ExtractedObservations({
   q?: string;
   range?: "oor" | "nonoptimal";
   // Active sort column, so we know whether to render contiguous name groups
-  // (only when the table is name-sorted, matching the biomarkers table).
+  // (only when the table is name-sorted, matching the clinical results table).
   sort: "name" | "panel" | "date";
   emptyMessage: string;
   // The tab these rows belong to — half of a row's DOM id, so a "Check these

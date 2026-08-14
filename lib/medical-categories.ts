@@ -11,8 +11,8 @@
 //
 // MEDICAL_CATEGORIES is the full enum (mirrors lib/types.ts MedicalCategory and
 // the medical_records CHECK — migration 090 grew it to include the #1076 classes).
-// RESULTS_CATALOG_CATEGORIES is the set the flat Results catalog (/results/readings,
-// rendered as Results › Biomarkers) can list/filter/add. It drops the #1076 re-homed
+// RESULTS_CATALOG_CATEGORIES is the set the flat Results catalog (/results/clinical-results,
+// rendered as Results › Clinical results) can list/filter/add. It drops the #1076 re-homed
 // classes that HAVE a dedicated home:
 //   • 'prescription' — medications; live on the document view + Supplements & Meds.
 //   • 'biomarker'  — the legacy pre-#1076 bucket, RETIRED by #2479 part 2: migration
@@ -50,7 +50,7 @@
 // analyte with no second edit here and the registries cannot drift apart. Category
 // membership in RESULTS_CATALOG_CATEGORIES therefore no longer settles the vitals
 // question on its own — ask that module (listedInResultsCatalog), which both the row gather
-// (app/(app)/results/reading-index.ts) and the panel facet
+// (app/(app)/results/clinical-result-index.ts) and the panel facet
 // (lib/biomarker-panel-reach.ts) go through.
 //
 // The TRAJECTORY tab (Trends → Biomarkers) separately scopes to lab-only — that is

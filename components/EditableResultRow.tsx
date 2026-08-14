@@ -17,7 +17,7 @@ import { useUndoableDelete } from "./useUndoableDelete";
 import {
   updateResult,
   deleteResult,
-} from "@/app/(app)/results/reading-actions";
+} from "@/app/(app)/results/clinical-result-actions";
 
 export default function EditableResultRow({
   observation,
@@ -28,7 +28,7 @@ export default function EditableResultRow({
 }: {
   observation: ClinicalObservation;
   // When the table is name-sorted it groups contiguous same-name rows (like the
-  // biomarkers table): the name shows once on the group's start row, and the
+  // clinical results table): the name shows once on the group's start row, and the
   // group-closing border falls only on its end row. Omit for ungrouped tables,
   // where every row shows its name and draws a border.
   grouped?: { isGroupStart: boolean; isGroupEnd: boolean };
@@ -67,7 +67,7 @@ export default function EditableResultRow({
             the card's identity, the reading its headline, and the reference band —
             the column the phone used to cut to "3.5-5.|" — a labelled meta line.
             Panel and Category claim no card line, the same call #2316 made on the
-            biomarkers table: they are facets worth a narrow desktop column, not a
+            clinical results table: they are facets worth a narrow desktop column, not a
             phone line each. */}
         <Td slot="title" className="font-medium">
           {!showName ? null : nameLink ? (

@@ -36,8 +36,8 @@ function revalidateResults() {
   revalidateRoute("/data");
   revalidateRoute("/import/[id]", "page");
   revalidateRoute("/results");
-  revalidateRoute("/results/readings");
-  revalidateRoute("/results/readings/view", "page");
+  revalidateRoute("/results/clinical-results");
+  revalidateRoute("/results/clinical-results/view", "page");
   revalidateRoute("/records");
   // The dashboard derives Recent labs and Needs attention from these records, so
   // a new/edited/deleted reading must refresh its summaries too.
@@ -119,8 +119,8 @@ export async function addResult(formData: FormData): Promise<FormResult> {
 }
 
 // Edit a single extracted/manual observation (used on the document subpage + the
-// Readings table). Multi-view (#1331): gate + target the ROW's own profile via
-// gateItemProfile — the Readings table posts each row's profile_id, so an edit on
+// Clinical results table). Multi-view (#1331): gate + target the ROW's own profile via
+// gateItemProfile — the Clinical results table posts each row's profile_id, so an edit on
 // a non-acting member's reading writes to that member (bouncing a read-only /
 // ungranted grant). With no profile_id (single view / the document subpage form) it
 // falls back to the acting-profile requireWriteAccess gate — byte-identical.
@@ -247,7 +247,7 @@ export async function updateResult(formData: FormData): Promise<FormResult> {
 export async function deleteResult(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  // Multi-view (#1331): the Readings table posts the row's profile_id, so a delete
+  // Multi-view (#1331): the Clinical results table posts the row's profile_id, so a delete
   // on a non-acting member's reading targets that member (gateItemProfile bounces a
   // read-only / ungranted grant); no profile_id falls back to the acting-profile gate.
   const profileId = await gateItemProfile(formData);

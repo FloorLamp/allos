@@ -16,7 +16,7 @@ import { providerDisambigLabel } from "./provider-merge";
 import { encounterTypeDisplay } from "./encounter-kind";
 import { fmtWeight } from "./units";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   encounterHref,
   providerHref,
   MEDICATIONS_HREF,
@@ -118,13 +118,13 @@ export interface ImportTabStrip {
 }
 
 // Display label for a medical_records category (mirrors the category vocabulary
-// of the biomarkers filter; an unknown category falls back to its raw name).
+// of the clinical-result filter; an unknown category falls back to its raw name).
 export function observationCategoryLabel(category: string): string {
   switch (category) {
     case "lab":
       return "Labs";
     case "biomarker":
-      return "Biomarkers";
+      return "Clinical results";
     case "genomics":
       return "Genomics";
     case "vitals":
@@ -282,7 +282,7 @@ export function observationNameLink(
       const name = canonicalName?.trim();
       if (!name) return null;
       return {
-        href: readingDetailHref(name),
+        href: clinicalResultDetailHref(name),
         title: `View ${name} over time`,
       };
     }

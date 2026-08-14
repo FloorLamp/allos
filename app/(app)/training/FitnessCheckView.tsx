@@ -15,7 +15,7 @@ import { useToast } from "@/components/Toast";
 // haptic cues in the live-workout tree (#1422); one media-query subscription, not two.
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { Notice } from "@/components/Notice";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import type { WeightUnit } from "@/lib/settings";
 import {
   BIG_LIFT_OPTIONS,
@@ -556,13 +556,13 @@ function EntryModal({
             charted and judged — for VO₂ max and its #158 siblings that is the age/sex
             percentile card. The check is where the value is MEASURED; without this the
             surface that interprets it was reachable only by knowing to search the
-            biomarkers list. The destination comes from `readingDetailHref`, the ONE
+            biomarkers list. The destination comes from `clinicalResultDetailHref`, the ONE
             cadence-routing rule (#1932), so this link follows the reading rather than
             naming a page. */}
         {def.store.kind === "vital" && tile.measured && (
           <p className="mb-2 text-xs">
             <Link
-              href={readingDetailHref(def.store.canonical)}
+              href={clinicalResultDetailHref(def.store.canonical)}
               className="text-brand-600 hover:underline dark:text-brand-400"
               data-testid={`fitness-history-${def.key}`}
             >

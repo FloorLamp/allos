@@ -5,7 +5,7 @@ import ImagingSection from "../ImagingSection";
 export const dynamic = "force-dynamic";
 
 // Results › Imaging (#1079): the radiology study list + add form. Numeric imaging
-// measurements (DEXA T-scores, calcium score) still live on Biomarkers. Content
+// measurements (DEXA T-scores, calcium score) still live under Clinical results. Content
 // component moved, not rewritten.
 export default async function ResultsImagingPage() {
   const scope = await requireScope();

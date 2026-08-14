@@ -39,7 +39,7 @@ describe("splitAtPhoneCap (#1578)", () => {
   });
 });
 
-// The phone reading order of Results › Biomarkers (#1647). These are class strings,
+// The phone reading order of Results › Clinical results (#1647). These are class strings,
 // not a computation — so what is worth holding is the two invariants that make them
 // safe: the order is a total, gap-free ranking (no two slots can tie into an
 // ambiguous stack, no rank is skipped), and EVERY slot resets at `sm` so desktop

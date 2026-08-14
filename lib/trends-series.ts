@@ -56,7 +56,11 @@ import {
   PRACTICE_DIGEST_MIN_CHANGE,
 } from "./trends-practices";
 import type { DateRange } from "./timeline-format";
-import { readingDetailHref, metricDetailHref, type AppRoute } from "./hrefs";
+import {
+  clinicalResultDetailHref,
+  metricDetailHref,
+  type AppRoute,
+} from "./hrefs";
 
 export interface TrendSeries {
   key: string; // "metric:weight" | "result:LDL Cholesterol" — also the pin key
@@ -289,7 +293,7 @@ export function buildBiomarkerSeries(
     label: canonical,
     unit: plot.unit ? ` ${plot.unit}` : "",
     color: bioColor(canonical),
-    href: readingDetailHref(canonical),
+    href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
     decimals: 1,
     points: windowed,
@@ -349,7 +353,7 @@ export function buildSavedClinicalResultTile(
     label: canonical,
     unit: plot.unit ? ` ${plot.unit}` : "",
     color: bioColor(canonical),
-    href: readingDetailHref(canonical),
+    href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
     decimals: BIO_TILE_DECIMALS,
     points: windowed,
@@ -392,7 +396,7 @@ export function placeholderBiomarkerTile(canonical: string): TrendSeries {
     label: canonical,
     unit: "",
     color: bioColor(canonical),
-    href: readingDetailHref(canonical),
+    href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
     decimals: 1,
     points: [],

@@ -6,12 +6,12 @@ import { requireScope } from "@/lib/scope";
 import { dismissFinding } from "@/lib/queries";
 import { parsePanelId } from "@/lib/biomarker-panels";
 import {
-  readingIndexRows,
-  biomarkerPanelRows,
-  parseReadingFilters,
-  type ReadingsSearchParams,
-  type ReadingTableObservation,
-} from "./reading-index";
+  clinicalResultIndexRows,
+  clinicalResultPanelRows,
+  parseClinicalResultFilters,
+  type ClinicalResultsSearchParams,
+  type ClinicalResultTableObservation,
+} from "./clinical-result-index";
 
 // Dismiss a biomarker trajectory finding (issues #41/#564), from the Results →
 // Biomarkers "Trajectory watch" rollup (#1164 moved the area here from the deleted
@@ -36,13 +36,13 @@ export async function dismissTrajectory(formData: FormData): Promise<void> {
   ).trim();
   if (!ackKey.startsWith("biomarker-flag:")) return;
   dismissFinding(profile.id, ackKey);
-  revalidateRoute("/results/readings");
+  revalidateRoute("/results/clinical-results");
   revalidateRoute("/");
 }
 
-// The readings of ONE panel group, loaded when the reader expands it (#1651).
+// The clinical results in ONE panel group, loaded when the reader expands it (#1651).
 //
-// The index arrives with its readings BOUNDED — a collapsed group ships none, an open
+// The index arrives with its rows BOUNDED — a collapsed group ships none, an open
 // one ships at most PANEL_ROW_LIMIT — because props handed to a client component are
 // serialized into the RSC payload whatever that component renders, so "collapsed"
 // alone never reduced what was downloaded. Asking for a panel is the user action that
@@ -54,18 +54,19 @@ export async function dismissTrajectory(formData: FormData): Promise<void> {
 // page render would have shown. The `panel` argument is validated against the closed
 // PanelId set, and the filters are re-parsed by the SAME parser the page used, so an
 // edited request can only ever name a real panel and a real filter set.
-export async function loadBiomarkerPanelRows(input: {
+export async function loadClinicalResultPanelRows(input: {
   panel: string;
-  searchParams: ReadingsSearchParams;
+  searchParams: ClinicalResultsSearchParams;
 }): Promise<
-  { ok: true; rows: ReadingTableObservation[] } | { ok: false; error: string }
+  | { ok: true; rows: ClinicalResultTableObservation[] }
+  | { ok: false; error: string }
 > {
   const scope = await requireScope();
   const panel = parsePanelId(input.panel);
   if (!panel) return { ok: false, error: "Unknown panel." };
-  const filters = parseReadingFilters(input.searchParams ?? {});
-  const rows = readingIndexRows(scope, filters);
+  const filters = parseClinicalResultFilters(input.searchParams ?? {});
+  const rows = clinicalResultIndexRows(scope, filters);
   // Plain serializable records: prepareTableObservations rebuilds every row as a new
   // object, so no better-sqlite3 row proxy crosses back to the client.
-  return { ok: true, rows: biomarkerPanelRows(rows, panel) };
+  return { ok: true, rows: clinicalResultPanelRows(rows, panel) };
 }

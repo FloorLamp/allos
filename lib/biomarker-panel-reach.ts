@@ -1,4 +1,4 @@
-// Which #1502 panels the Results › Biomarkers browser can actually RETURN a row
+// Which #1502 panels the Results › Clinical results browser can actually RETURN a row
 // for (issue #1581 section D). Pure — no DB, no auth, no React.
 //
 // WHY. The panel facet offered the whole 35-entry taxonomy "rather than only the
@@ -8,7 +8,7 @@
 // classes OUT of it — `instrument` (screening scores), `derived` (bio-age
 // composites), `reference` (immutable facts). A panel whose analytes ALL carry a
 // re-homed category is therefore a dead option: choosing it can only ever produce
-// "No readings match these filters".
+// "No clinical results match these filters".
 //
 // The mental-health case is not merely useless, it is a SENSITIVITY regression:
 // #1076's stated reason for excluding `instrument` is that "a depression/alcohol
@@ -54,7 +54,7 @@ const LISTED = new Set<string>(RESULTS_CATALOG_CATEGORIES as readonly string[]);
 //     because they have no other home. It is also why `vital-signs` no longer does:
 //     ALL SIX of its curated members (blood pressure ×2, oxygen saturation,
 //     respiratory rate, resting heart rate, body temperature) are body metrics with a
-//     chart of their own, so the facet option can only ever return "No readings match".
+//     chart of their own, so the facet option can only ever return "No clinical results match".
 //     The panel itself is untouched — it still groups those readings on the surfaces
 //     that DO show them; what goes is a filter that answers nothing here.
 //  2. A read-time DERIVED index (#40). Those are virtual rows synthesized with
@@ -80,7 +80,7 @@ const REACHABLE: ReadonlySet<PanelId> = (() => {
   return reachable;
 })();
 
-// True when the Biomarkers browser can return at least one row for this panel.
+// True when the Clinical results catalog can return at least one row for this panel.
 export function isPanelReachableInBrowser(id: PanelId): boolean {
   return REACHABLE.has(id);
 }

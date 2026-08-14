@@ -15,9 +15,9 @@ import {
   PANEL_GROUPS_OTHER_ANALYTE,
 } from "./fixture-logins";
 
-// Results › Readings becomes an INDEX (issue #1499). Mobile project (390×844)
+// Results › Clinical results becomes an INDEX (issue #1499). Mobile project (390×844)
 // because the feature is a page-height fix measured at phone width: this was the
-// tallest page in the app (13.4k px, first reading card 4.8k px down), and the
+// tallest page in the app (13.4k px, first result card 4.8k px down), and the
 // collapse is what makes it browsable with a thumb. The grouping itself is NOT
 // viewport-conditional — one `<tr>` per group header serves both the desktop table
 // and the card stack — and the desktop specs (#1482/#1502) still cover that side.
@@ -29,11 +29,11 @@ import {
 // un-canonicalized reading in "Other". Read-only — only the client-side disclosure is
 // driven — so it is repeat-safe with no reset.
 
-const BIOMARKERS = "/results/readings";
+const CLINICAL_RESULTS = "/results/clinical-results";
 
 async function openBrowser(
   browser: Parameters<typeof loginAs>[0],
-  url: string = BIOMARKERS
+  url: string = CLINICAL_RESULTS
 ) {
   const page = await loginAs(browser, {
     username: E2E_LOGIN_PANELGROUPS,
@@ -48,7 +48,7 @@ async function openBrowser(
 
 function group(page: Page, panel: string) {
   return page.locator(
-    `[data-testid="biomarker-panel-group"][data-panel="${panel}"]`
+    `[data-testid="clinical-result-panel-group"][data-panel="${panel}"]`
   );
 }
 
@@ -57,44 +57,44 @@ test("the master list arrives as collapsed panel groups, in clinical order (#149
 }) => {
   const page = await openBrowser(browser);
 
-  const table = page.getByTestId("biomarkers-table");
+  const table = page.getByTestId("clinical-results-table");
   await expect(table).toBeVisible();
 
   // Every panel this profile has readings in is present as ONE header, in
   // PANEL_LABELS order with the reserved `other` bucket last — nothing dropped.
-  await expect(page.getByTestId("biomarker-panel-header")).toHaveCount(3);
+  await expect(page.getByTestId("clinical-result-panel-header")).toHaveCount(3);
   const panels = await page
-    .getByTestId("biomarker-panel-group")
+    .getByTestId("clinical-result-panel-group")
     .evaluateAll((els) => els.map((e) => e.getAttribute("data-panel")));
   expect(panels).toEqual(["lipids", "thyroid", "other"]);
 
   // Each header states its analyte count, and the flagged group says so. These are
   // exact because the profile is spec-owned.
   const lipids = group(page, "lipids");
-  await expect(lipids.getByTestId("biomarker-panel-toggle")).toHaveAttribute(
-    "aria-label",
-    "Lipids · 5 analytes · 1 flagged"
-  );
+  await expect(
+    lipids.getByTestId("clinical-result-panel-toggle")
+  ).toHaveAttribute("aria-label", "Lipids · 5 analytes · 1 flagged");
   // The Triglycerides pair is the proof: a historical high whose CURRENT reading is
   // normal is NOT a flag — only the still-high LDL counts.
-  await expect(lipids.getByTestId("biomarker-panel-flagged")).toHaveText(
+  await expect(lipids.getByTestId("clinical-result-panel-flagged")).toHaveText(
     "1 flagged"
   );
 
   // The unflagged group carries no flag badge — the two self-identify apart.
   const thyroid = group(page, "thyroid");
-  await expect(thyroid.getByTestId("biomarker-panel-toggle")).toHaveAttribute(
-    "aria-label",
-    "Thyroid · 2 analytes"
-  );
-  await expect(thyroid.getByTestId("biomarker-panel-flagged")).toHaveCount(0);
+  await expect(
+    thyroid.getByTestId("clinical-result-panel-toggle")
+  ).toHaveAttribute("aria-label", "Thyroid · 2 analytes");
+  await expect(
+    thyroid.getByTestId("clinical-result-panel-flagged")
+  ).toHaveCount(0);
 
-  // Collapsed means COLLAPSED: no reading rows in the DOM at all — the height IS
+  // Collapsed means COLLAPSED: no result rows in the DOM at all — the height IS
   // the DOM, which is the whole point of the change.
   await expect(table.locator('td[data-card="title"]')).toHaveCount(0);
   await expect(lipids).toHaveAttribute("data-open", "false");
   // …and the header still publishes what the panel HOLDS, so a group that ships no
-  // readings is not a group that under-reports itself (#1651).
+  // results is not a group that under-reports itself (#1651).
   await expect(lipids).toHaveAttribute("data-total", "11");
 
   // And the index fits a phone without a sideways escape hatch.
@@ -103,15 +103,14 @@ test("the master list arrives as collapsed panel groups, in clinical order (#149
   await page.context().close();
 });
 
-test("tapping a group expands its readings, and only that group (#1499)", async ({
+test("tapping a group expands its results, and only that group (#1499)", async ({
   browser,
 }) => {
   const page = await openBrowser(browser);
   const lipids = group(page, "lipids");
   const thyroid = group(page, "thyroid");
-  await expect(lipids).toBeVisible();
 
-  await hydratedClick(page, lipids.getByTestId("biomarker-panel-toggle"));
+  await hydratedClick(page, lipids.getByTestId("clinical-result-panel-toggle"));
 
   await expect(lipids).toHaveAttribute("data-open", "true");
   await expect(
@@ -119,7 +118,7 @@ test("tapping a group expands its readings, and only that group (#1499)", async 
   ).not.toHaveCount(0);
   // The count the header published is the number of DISTINCT analytes the expansion
   // draws — one computation, two renderings. (Rows, not analytes, are what the
-  // expansion lists: LDL has three readings and Triglycerides two.)
+  // expansion lists: LDL has three results and Triglycerides two.)
   const names = await lipids
     .locator('td[data-card="title"]')
     .evaluateAll((els) => [
@@ -132,14 +131,14 @@ test("tapping a group expands its readings, and only that group (#1499)", async 
     "Triglycerides",
     "VLDL Cholesterol",
   ]);
-  await expect(lipids.locator("tr")).toHaveCount(12); // 1 header + 11 readings
+  await expect(lipids.locator("tr")).toHaveCount(12); // 1 header + 11 results
 
   // Its neighbour stayed shut: expansion is per group, not a page-wide "show all".
   await expect(thyroid).toHaveAttribute("data-open", "false");
   await expect(thyroid.locator('td[data-card="title"]')).toHaveCount(0);
 
   // Tapping again puts it back.
-  await hydratedClick(page, lipids.getByTestId("biomarker-panel-toggle"));
+  await hydratedClick(page, lipids.getByTestId("clinical-result-panel-toggle"));
   await expect(lipids).toHaveAttribute("data-open", "false");
 
   await page.context().close();
@@ -157,7 +156,7 @@ test("search expands the groups it matched, so a hit is never hidden (#1499)", a
   // canonical entry, which since #2335 spells the hormone and its fraction out and
   // keeps "Free T4" only inside its parenthetical. So this also pins that the search
   // still reaches an analyte through its abbreviation after the rename.
-  await page.goto(`${BIOMARKERS}?q=Free+T4`);
+  await page.goto(`${CLINICAL_RESULTS}?q=Free+T4`);
   const thyroid = group(page, "thyroid");
   await expect(thyroid).toHaveAttribute("data-open", "true");
   await expect(
@@ -168,7 +167,7 @@ test("search expands the groups it matched, so a hit is never hidden (#1499)", a
   ).toBeVisible();
 
   // The `?panel=` facet (#1502) composes the same way: naming one group opens it.
-  await page.goto(`${BIOMARKERS}?panel=lipids`);
+  await page.goto(`${CLINICAL_RESULTS}?panel=lipids`);
   const lipids = group(page, "lipids");
   await expect(lipids).toHaveAttribute("data-open", "true");
   await expect(group(page, "thyroid")).toHaveCount(0);
@@ -176,7 +175,7 @@ test("search expands the groups it matched, so a hit is never hidden (#1499)", a
   await page.context().close();
 });
 
-test("a collapsed group's readings are not in the payload until it is asked for (#1651)", async ({
+test("a collapsed group's results are not in the payload until requested (#1651)", async ({
   browser,
 }) => {
   const page = await openBrowser(browser);
@@ -185,15 +184,15 @@ test("a collapsed group's readings are not in the payload until it is asked for 
 
   // The claim this test exists for is about the WIRE, not the DOM: props handed to a
   // client component are serialized into the RSC payload whatever that component
-  // renders, so a collapsed group that was merely hidden still cost its readings.
-  // This profile's `other` reading is un-canonicalized, so its name appears in no
+  // renders, so a collapsed group that was merely hidden still cost its results.
+  // This profile's `other` result is un-canonicalized, so its name appears in no
   // vocabulary the page ships — if it is in the response at all, it is because the
   // row was sent. It is not.
-  const collapsed = await page.request.get(BIOMARKERS);
+  const collapsed = await page.request.get(CLINICAL_RESULTS);
   expect(await collapsed.text()).not.toContain(PANEL_GROUPS_OTHER_ANALYTE);
 
   // Expanding is the request that pays for that panel's rows, and only that panel's.
-  await hydratedClick(page, other.getByTestId("biomarker-panel-toggle"));
+  await hydratedClick(page, other.getByTestId("clinical-result-panel-toggle"));
   await expect(other.getByText(PANEL_GROUPS_OTHER_ANALYTE)).toBeVisible();
   await expect(
     group(page, "lipids").locator('td[data-card="title"]')
@@ -202,23 +201,22 @@ test("a collapsed group's readings are not in the payload until it is asked for 
   await page.context().close();
 });
 
-test("an un-canonicalized reading lands in Other rather than being dropped (#1499)", async ({
+test("an un-canonicalized result lands in Other rather than being dropped (#1499)", async ({
   browser,
 }) => {
   const page = await openBrowser(browser);
   const other = group(page, "other");
 
-  await expect(other.getByTestId("biomarker-panel-toggle")).toHaveAttribute(
-    "aria-label",
-    "Other · 1 analyte"
-  );
-  await hydratedClick(page, other.getByTestId("biomarker-panel-toggle"));
+  await expect(
+    other.getByTestId("clinical-result-panel-toggle")
+  ).toHaveAttribute("aria-label", "Other · 1 analyte");
+  await hydratedClick(page, other.getByTestId("clinical-result-panel-toggle"));
   await expect(other.getByText(PANEL_GROUPS_OTHER_ANALYTE)).toBeVisible();
 
   await page.context().close();
 });
 
-test("the add-a-reading CTA opens a modal, and deep links open it prefilled (#1499)", async ({
+test("the add-result CTA opens a modal, and deep links open it prefilled (#1499)", async ({
   browser,
 }) => {
   const page = await openBrowser(browser);
@@ -240,7 +238,7 @@ test("the add-a-reading CTA opens a modal, and deep links open it prefilled (#14
 
   // The palette / medication-monitoring "Add result" deep link says it came to add
   // something, so it arrives open and prefilled.
-  await page.goto(`${BIOMARKERS}?new=1&name=Ferritin#add-result`);
+  await page.goto(`${CLINICAL_RESULTS}?new=1&name=Ferritin#add-result`);
   await expect(page.getByTestId("add-result-panel")).toHaveAttribute(
     "data-open",
     "true"
@@ -262,7 +260,7 @@ test("the add-a-reading CTA opens a modal, and deep links open it prefilled (#14
 
 async function openIndex(
   browser: Parameters<typeof loginAs>[0],
-  url: string = BIOMARKERS
+  url: string = CLINICAL_RESULTS
 ) {
   const page = await loginAs(browser, {
     username: E2E_LOGIN_PANELINDEX,
@@ -276,7 +274,9 @@ async function openIndex(
 // `table-sort-select` is the shared card-mode control; scope it to this tab's own
 // section so the locator names one element rather than "whichever came first".
 function sortSelect(page: Page) {
-  return page.getByTestId("results-readings").getByTestId("table-sort-select");
+  return page
+    .getByTestId("results-clinical-results")
+    .getByTestId("table-sort-select");
 }
 
 // Below `sm` the facets and the sort select sit behind one **Filters** disclosure
@@ -311,10 +311,10 @@ test("the index lists every panel in the data, with no pager (#1581 section A)",
   browser,
 }) => {
   const page = await openIndex(browser);
-  await expect(page.getByTestId("biomarkers-table")).toBeVisible();
+  await expect(page.getByTestId("clinical-results-table")).toBeVisible();
 
   const panels = await page
-    .getByTestId("biomarker-panel-group")
+    .getByTestId("clinical-result-panel-group")
     .evaluateAll((els) => els.map((e) => e.getAttribute("data-panel")));
   expect(panels).toEqual(INDEX_PANELS);
 
@@ -332,12 +332,12 @@ test("the index lists every panel in the data, with no pager (#1581 section A)",
   // they imply — both ratios land inside their reference ceilings, and the HDL share
   // carries no band at all, so neither can flag).
   await expect(
-    group(page, "lipids").getByTestId("biomarker-panel-toggle")
+    group(page, "lipids").getByTestId("clinical-result-panel-toggle")
   ).toHaveAttribute("aria-label", "Lipids · 10 analytes · 3 flagged");
   // Twenty-seven stored analytes across seven panels, three draws each — eighty-one
   // rows plus the derived indices, all of it shipped at once.
   await expect(
-    group(page, "cbc").getByTestId("biomarker-panel-toggle")
+    group(page, "cbc").getByTestId("clinical-result-panel-toggle")
   ).toHaveAttribute("aria-label", "Complete blood count · 7 analytes");
 
   await page.context().close();
@@ -354,7 +354,7 @@ test("a differential row states which measure it is (#2335)", async ({
   // one current reading, so the row is named exactly once.
   const page = await openIndex(
     browser,
-    `${BIOMARKERS}?q=Lymphocytes&current=1`
+    `${CLINICAL_RESULTS}?q=Lymphocytes&current=1`
   );
   const cbc = group(page, "cbc");
   await expect(cbc).toHaveAttribute("data-open", "true");
@@ -376,7 +376,10 @@ test("no filter change leaves a group the reader opened collapsed (#1581 section
   const thyroid = group(page, "thyroid");
   await expect(thyroid).toHaveAttribute("data-open", "false");
 
-  await hydratedClick(page, thyroid.getByTestId("biomarker-panel-toggle"));
+  await hydratedClick(
+    page,
+    thyroid.getByTestId("clinical-result-panel-toggle")
+  );
   await expect(thyroid).toHaveAttribute("data-open", "true");
 
   // Every control in the filter bar narrows, and a narrowed view opens its groups —
@@ -416,14 +419,14 @@ test("sorts by name ascending by default, and an old ?sort=panel falls back to i
   expect(options.some((v) => v.startsWith("panel:"))).toBe(false);
 
   // An old bookmark parses to the default rather than failing.
-  const stale = await openIndex(browser, `${BIOMARKERS}?sort=panel`);
+  const stale = await openIndex(browser, `${CLINICAL_RESULTS}?sort=panel`);
   await expect(sortSelect(stale)).toHaveValue("name:asc");
   await stale.context().close();
 
   // Within an expanded group, one analyte's readings run newest-first.
   await hydratedClick(
     page,
-    group(page, "thyroid").getByTestId("biomarker-panel-toggle")
+    group(page, "thyroid").getByTestId("clinical-result-panel-toggle")
   );
   const dates = await group(page, "thyroid")
     .locator('td[data-card="meta"]')
@@ -449,7 +452,7 @@ test("the panel facet offers only panels this browser can return (#1581 section 
     .evaluateAll((els) => els.map((e) => (e.textContent ?? "").trim()));
 
   // Gone: their analytes carry a category this browser excludes, so choosing one
-  // could only ever say "No readings match these filters".
+  // could only ever say "No clinical results match these filters".
   //   Mental health screens → `instrument`, and #1076's exclusion is a SENSITIVITY
   //   decision — offering the facet advertised data the browser refuses to show.
   //   Blood type → `reference`, which lives in the passport.
@@ -458,7 +461,7 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   //   Vital signs → emptied ANALYTE by analyte (#2365): all six of its members
   //   (blood pressure ×2, oxygen saturation, respiratory rate, resting heart rate,
   //   body temperature) are body metrics with a /trends/metric/<slug> chart, so the
-  //   browser lists none of them and the option could only say "No readings match".
+  //   catalog lists none of them and the option could only say "No clinical results match".
   expect(labels).not.toContain("Vital signs");
 
   // Kept: PhenoAge still renders here as a derived row, so the panel is reachable.
@@ -473,7 +476,7 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   expect(labels).toContain("Respiratory function");
 
   // And the kept one actually returns its row.
-  await page.goto(`${BIOMARKERS}?panel=biological-age`);
+  await page.goto(`${CLINICAL_RESULTS}?panel=biological-age`);
   const bioAge = group(page, "biological-age");
   await expect(bioAge).toHaveAttribute("data-open", "true");
   await expect(
@@ -492,19 +495,24 @@ test("an open group over the cap says what it is holding back, and loads the res
   // this profile is five stored analytes over three draws plus FIVE derived indices
   // per draw (#2300 added HDL as % of Cholesterol to the four) — thirty readings, past
   // the cap.
-  const page = await openIndex(browser, `${BIOMARKERS}?panel=lipids`);
+  const page = await openIndex(browser, `${CLINICAL_RESULTS}?panel=lipids`);
   const lipids = group(page, "lipids");
   await expect(lipids).toHaveAttribute("data-open", "true");
   await expect(lipids).toHaveAttribute("data-total", "30");
 
-  const more = lipids.getByTestId("biomarker-panel-more");
-  await expect(more).toContainText(`Showing ${PANEL_ROW_LIMIT} of 30 readings`);
+  const more = lipids.getByTestId("clinical-result-panel-more");
+  await expect(more).toContainText(
+    `Showing ${PANEL_ROW_LIMIT} of 30 clinical results`
+  );
   await expect(lipids.locator("tr")).toHaveCount(PANEL_ROW_LIMIT + 2); // header + rows + footer
 
   // Asking for the rest is one request for one panel, and the footer goes away
   // because there is nothing left to hold back.
-  await hydratedClick(page, lipids.getByTestId("biomarker-panel-load-all"));
-  await expect(lipids.locator("tr")).toHaveCount(31); // header + 30 readings
+  await hydratedClick(
+    page,
+    lipids.getByTestId("clinical-result-panel-load-all")
+  );
+  await expect(lipids.locator("tr")).toHaveCount(31); // header + 30 results
   await expect(more).toHaveCount(0);
 
   await page.context().close();

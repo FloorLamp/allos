@@ -189,7 +189,7 @@ export interface ClinicalObservation {
   // what lets the retest/staleness path reach the qualitative class hint (#910).
   loinc?: string | null;
   // 1 when this is the most recent reading in its biomarker group; only set by
-  // queries that select it (e.g. the biomarkers table). Absent otherwise.
+  // queries that select it (e.g. the clinical results table). Absent otherwise.
   is_latest?: number;
   // The performing provider/organization. provider_id links the
   // shared GLOBAL registry; provider_name is joined for display. NULL/absent when
@@ -832,7 +832,7 @@ export interface OpticalPrescription {
 // the follow-up loop (#700), distinguished from history by `status`. Periodontal
 // MEASUREMENTS (probing depth, bleeding-on-probing) are NOT here — they reuse the
 // medical_records biomarker store as curated canonical analytes (the #698 vision-
-// analyte precedent), so they trend + flag on the Biomarkers surface.
+// analyte precedent), so they trend + flag on the Clinical results surface.
 
 // The dental record lifecycle classifier. 'completed' is history; 'planned' is a
 // planned procedure (the #704 planned-procedure signal when invasive); 'watch' is a

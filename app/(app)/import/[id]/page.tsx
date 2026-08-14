@@ -91,7 +91,7 @@ import {
   triageFocus,
   triageRowId,
 } from "@/lib/confidence-triage";
-import { importTabHref, readingDetailHref } from "@/lib/hrefs";
+import { importTabHref, clinicalResultDetailHref } from "@/lib/hrefs";
 import {
   parseImportReport,
   summarizeCoverage,
@@ -293,7 +293,7 @@ export default async function ImportDetailPage(props: {
         : undefined;
   const q = searchParams.q?.trim() || undefined;
   // Name/panel/date sort, whitelisted via the shared parser (matching the
-  // biomarkers table); name is the default so the table opens grouped by name.
+  // clinical results table); name is the default so the table opens grouped by name.
   const sort = parseSortColumn(
     searchParams.sort,
     ["name", "panel", "date"] as const,
@@ -375,7 +375,7 @@ export default async function ImportDetailPage(props: {
       ? items.filter((it) => focusFilter.has(triageRowId(activeKey, it.id)))
       : items;
   // The mapping field's canonical-name picker (#1675): relevance-ranked over the
-  // same shared builder the Biomarkers page uses, so re-mapping an import row offers
+  // same shared builder the Clinical results page uses, so re-mapping an import row offers
   // the analytes that matter before the A–Z body of ~200.
   const canonicalOptions = getRankedBiomarkerOptions(
     profile.id,
@@ -821,7 +821,7 @@ export default async function ImportDetailPage(props: {
                       </p>
                       {d.declaration.kind === "covered-elsewhere" && (
                         <Link
-                          href={readingDetailHref(d.declaration.instead)}
+                          href={clinicalResultDetailHref(d.declaration.instead)}
                           data-testid="declined-name-instead"
                           className="mt-0.5 inline-block text-xs text-brand-700 hover:underline dark:text-brand-400"
                         >

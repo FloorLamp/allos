@@ -104,8 +104,8 @@ six months or a resting heart rate older than two weeks — the value stays exac
 where it was, the date line becomes an age ("4 years ago") in amber, and the trend
 arrow drops, because an arrow is a claim about now. Readings taken in one sitting
 (three sequential cuff readings at a clinic visit) never draw an arrow between
-each other at any age. Biomarker stars remain available on Biomarkers and Trends as personal
-pins—what someone wants to follow even while normal—and are deliberately
+each other at any age. Saved clinical results remain available in Clinical results as
+personal pins—what someone wants to follow even while normal—and are deliberately
 separate from urgency. Healthspan pillars surfaces VO₂ Max percentile, strength
 standard, sleep regularity, biological age, and biomarkers in optimal range as
 separate signals, never one invented score.
@@ -364,7 +364,7 @@ The biomarker pillar states **how many markers** its ratio describes and **how
 current they are**, because "8 of 10 optimal" says nothing on its own about a
 two-analyte stub versus a forty-marker draw, or about results from last month
 versus five years ago. Each marker's retest state comes from the same retest
-clock the Biomarkers table and the Upcoming retest nudge use — Longevity has no
+clock the Clinical results table and the Upcoming retest nudge use — Longevity has no
 staleness rule of its own. A panel where **every** judged marker is past its own
 retest window renders **neutral** with "all based on older results" rather than a
 current-looking green; a mixed panel names its stale count; and a panel with no
@@ -935,7 +935,7 @@ specifically".
 
 Biomarker tables, flags, trajectories, reference ranges, food-first context,
 fitness percentiles, and pediatric interpretation live under
-**Medical → Results → Biomarkers**, not in Trends. Functional-fitness readings
+**Medical → Results → Clinical results**, not in Trends. Functional-fitness readings
 are entered through the Training **Fitness check**.
 
 The default window is the last 90 days. Every tab uses the same range model and
@@ -1413,16 +1413,16 @@ equipment recorded are unaffected, which is most of them.
 
 ## Medical
 
-Vitals, labs, genomics — the **Biomarkers** browser, **imaging studies**, and
-**genomic variants** share one merged **Results** page (#1042 phase 5, retabbed
-to route-per-tab in #1079: `/results`, Medical → Results, as three tabs
-`/results/readings` / `/results/imaging` / `/results/genomics` — bare
-`/results` lands on Biomarkers; the old `/biomarkers`, `/imaging`, and
-`/genomics` index routes were removed in #1635 and 404, and the per-biomarker
-detail page `/results/readings/view` survives at its own route).
+Clinical results, imaging studies, narrative reports, and genomic variants share
+one **Results** page (#1042 phase 5, retabbed to route-per-tab in #1079:
+`/results`, Medical → Results, as four tabs at `/results/clinical-results`,
+`/results/imaging`, `/results/reports`, and `/results/genomics` — bare `/results`
+lands on Clinical results; the old `/biomarkers`, `/imaging`, and `/genomics`
+index routes were removed in #1635 and 404, and the per-analyte
+detail page `/results/clinical-results/view` survives at its own route).
 
 **One renderer per cadence (#1932).** A dated reading opens on the surface its
-arrival rate calls for, and `readingDetailHref(canonicalName, rawName)`
+arrival rate calls for, and `clinicalResultDetailHref(canonicalName, rawName)`
 (`lib/hrefs.ts`) is the ONE helper every list, search hit, finding, panel chip
 and import drilldown asks — so no call site decides for itself. A **continuous**
 vital (blood pressure, SpO2, respiratory rate, body temperature) opens on its
@@ -1430,12 +1430,12 @@ metric detail page `/trends/metric/<slug>`: a windowed chart, the rolling
 7/30/90/365-day summary, and the readings table with row actions. Every **episodic**
 reading — labs, and the `category = 'vitals'` DOMAIN vitals (functional-fitness
 markers, audiogram thresholds, intraocular pressure, visual acuity, periodontal
-measures) — opens on `/results/readings/view`, which reads it against its reference and
+measures) — opens on `/results/clinical-results/view`, which reads it against its reference and
 optimal bands. The classification lives in `lib/reading-cadence.ts`; the pure
 test audits it against every canonical `vitals` entry, so a newly added vital
 cannot ship unclassified, and the DB-tier test pins that each continuous
 reading's metric kind really stores that canonical name. A vitals URL under
-`/results/readings/view` redirects to the metric page (current-IA plumbing for a stale
+`/results/clinical-results/view` redirects to the metric page (current-IA plumbing for a stale
 bookmark, not a compatibility shim — both routes are live), and blood pressure's
 pediatric AAP percentile card (#150) and the panel cross-reference (#1502)
 travelled with the reading to that surface.
@@ -1466,12 +1466,12 @@ known minor, its instruments being adult-validated), and Skin/Mental health
 always rendered — the latter because their in-page forms are the only creation
 path, and Mental health's crisis line travels with its pane).
 
-### Biomarkers browser
+### Clinical results catalog
 
-The Biomarkers tab (`/results/readings`) is a collapsed **panel index**, not a
-scroll: every reading is grouped under its normalized clinical panel ("Lipids ·
-7 analytes · 3 flagged"), and a group opens on tap to reveal its readings. A
-panel whose current readings include an out-of-range one says so on its header,
+The Clinical results tab (`/results/clinical-results`) is a collapsed **panel
+index**, not a scroll: every result is grouped under its normalized clinical panel
+("Lipids · 7 analytes · 3 flagged"), and a group opens on tap to reveal its
+results. A panel whose current results include an out-of-range one says so on its header,
 so a flagged group self-identifies while collapsed.
 
 **What it lists is decided per analyte, not per category (#2365).** Labs,
@@ -1520,7 +1520,7 @@ Opening a group, or asking a truncated one for the rest, loads that one panel's
 readings on the spot. So the page you land on costs the index, never the whole
 lab history, however many years of it there are.
 
-Readings sort by **name** (A–Z, newest reading first within an analyte) or by
+Clinical results sort by **name** (A–Z, newest result first within an analyte) or by
 date; panel is not a sort, because the groups are already emitted in clinical
 order. Filters are free-text search, category, clinical **panel**, an
 all/non-optimal/out-of-range lens, and "current values only". The panel facet
@@ -1660,7 +1660,7 @@ so it reuses the **observation store** rather than minting a table — each
 threshold is a canonical `vitals` `medical_records` row
 ("Hearing Threshold, Right Ear 4 kHz", `dB HL`), which is the same store, the
 same curated WHO ≤25 dB HL band, and the same rows that already trend and flag
-on Results → Biomarkers. Each ear/frequency stays its own independently-flagging
+on Results → Clinical results. Each ear/frequency stays its own independently-flagging
 series (deliberately never collapsed into one "hearing" family, so a normal
 frequency can't hide a flagged one). This change added **no migration**.
 
@@ -1717,7 +1717,7 @@ which is why they render in two places:
   the evening correcting the morning.
 - **Spirometry** — FEV1, FVC and the FEV1/FVC ratio — arrives on a pulmonology
   report the document-extraction pipeline already ingests, and lands as
-  `medical_records` readings that trend and flag on Results → Biomarkers exactly
+  `medical_records` readings that trend and flag on Results → Clinical results exactly
   like an audiogram threshold or a probing depth. All four share one
   **Respiratory function** panel, so a peak-flow reading's cross-reference points
   at the spirometry it was measured alongside.
@@ -2003,7 +2003,7 @@ apparently exact result.
 PhenoAge is also surfaced as a **biological-age hero**, on the Longevity page and
 nowhere else: your estimated biological age, how it compares to your calendar age
 (younger is better), your pace of aging across draws, and — ranked by how much
-each one moves the result — the inputs behind it. Results › Biomarkers keeps the
+each one moves the result — the inputs behind it. Results › Clinical results keeps the
 half of that block which is about the analyte catalog: which of the nine inputs
 you have, which you still need, and a link to the hero. That is the page where
 the missing analytes get added, so the prompt to complete the panel lives there

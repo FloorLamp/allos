@@ -1,6 +1,6 @@
 // DOES THIS ANALYTE ALREADY HAVE A BODY-METRIC HOME? (issue #2365)
 //
-// THE DEFECT. #1076 re-homed six medical-record CLASSES out of the flat Biomarkers
+// THE DEFECT. #1076 re-homed six medical-record CLASSES out of the Clinical results
 // browser and deliberately kept `vitals`, for a reason that is still right: the
 // DOMAIN vitals catalogued there — audiogram thresholds (#713), intraocular pressure
 // and visual acuity (#697), periodontal probing depth (#705) — have no dedicated
@@ -644,8 +644,8 @@ export function derivedInputsMetricFor(
 }
 
 /**
- * Whether the flat Results catalog (/results/readings, rendered as Results ›
- * Biomarkers) lists this analyte — the ONE place the question is asked, so the rows
+ * Whether the Clinical results catalog (/results/clinical-results) lists this analyte —
+ * the ONE place the question is asked, so the rows
  * the gather returns and the panels the facet offers can never disagree about what
  * "listed" means. The CATALOG axis, one level finer than
  * RESULTS_CATALOG_CATEGORIES; it says nothing about the row's identity (#2479).

@@ -543,7 +543,7 @@ export const DATASETS: ExportDataset[] = [
   }),
   tableDataset({
     key: "medical_records",
-    label: "Biomarkers & records",
+    label: "Clinical results & records",
     table: "medical_records",
     columns: [
       "date",
@@ -1449,7 +1449,7 @@ export const DELETE_POLICY = {
     // Also refresh the import document subpages, which list these readings.
     revalidate: [
       "/results",
-      "/results/readings/view",
+      "/results/clinical-results/view",
       revalidateTarget("/import/[id]"),
       "/",
     ],

@@ -1,5 +1,5 @@
 // DB INTEGRATION TIER — the starred clinical-result tile must agree with the
-// detail page and the Biomarkers table about the same analyte (#381):
+// detail page and the Clinical results table about the same analyte (#381):
 //
 //   1. getSavedClinicalResults carries the LATEST RECORD's category (not the
 //      canonical entry's), so the tile can fire the never-stale genomics rule the

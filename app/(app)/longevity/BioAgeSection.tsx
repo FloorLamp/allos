@@ -20,7 +20,7 @@ import {
   type BioAgeDirection,
 } from "@/lib/bio-age";
 import { formatLongDate } from "@/lib/format-date";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import CardFootnote from "@/components/CardFootnote";
 import PhoneFold from "@/components/PhoneFold";
 
@@ -29,7 +29,7 @@ import PhoneFold from "@/components/PhoneFold";
 // Biological age IS a longevity index, so the headline result lives here, beside the
 // other pillars that give it context, and it renders on exactly ONE page. The part of
 // the old shared hero that was about the biomarker CATALOG rather than about longevity
-// — the missing-inputs checklist and its import CTA — moved to Results › Biomarkers
+// — the missing-inputs checklist and its import CTA — moved to Results › Clinical results
 // (app/(app)/results/BioAgeInputsCard.tsx), which is where those analytes are added.
 // So this section now follows ordinary pillar-membership rules: no complete draw, no
 // section. The computation is untouched and unforked — both surfaces still read the
@@ -202,7 +202,7 @@ export default async function BioAgeSection() {
                           </span>
                         ) : (
                           <Link
-                            href={readingDetailHref(e.name)}
+                            href={clinicalResultDetailHref(e.name)}
                             className="truncate text-brand-700 hover:underline dark:text-brand-400"
                           >
                             {e.name}

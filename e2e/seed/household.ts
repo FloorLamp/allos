@@ -492,7 +492,7 @@ export function seedMultiProfile(): void {
     );
   }
 
-  // ── Multi-view Biomarkers (Results) table (issue #1331) ───────────────────────
+  // ── Multi-view Clinical results table (issue #1331) ───────────────────────
   // E2E_LOGIN_MVBIO: a base profile (WRITE, acting) + a second profile READ-ONLY. Both
   // carry the SHARED "Vitamin D" analyte family with DIFFERENT values/dates (so the
   // merged table proves per-member is_latest never crosses), plus one uniquely-named
@@ -554,7 +554,7 @@ export function seedMultiProfile(): void {
     const bioLoginId = seedMemberLogin(E2E_LOGIN_MVBIO, bioSelfId, "write");
     grantProfile(bioLoginId, bioRoId, "read");
     console.log(
-      `e2e: seeded biomarkers-table fixture — ${E2E_LOGIN_MVBIO} granted ${MVBIO_SELF_PROFILE} (${bioSelfId}, write) + ${MVBIO_RO_PROFILE} (${bioRoId}, read)`
+      `e2e: seeded clinical-results-table fixture — ${E2E_LOGIN_MVBIO} granted ${MVBIO_SELF_PROFILE} (${bioSelfId}, write) + ${MVBIO_RO_PROFILE} (${bioRoId}, read)`
     );
   }
 

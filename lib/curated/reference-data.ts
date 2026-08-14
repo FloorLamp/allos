@@ -1496,7 +1496,7 @@ export const CURATED_LABS: CanonicalResultDefinitionSeed[] = [
   // Periodontal analytes (#705) — the dental analogue of the vision analytes above:
   // measurable, flaggable, trendable dental-exam readings that reuse the biomarker
   // substrate (medical_records) rather than a parallel dental-readings table (#860/
-  // #944), so a worsening perio trend is visible on the Biomarkers surface (the "is
+  // #944), so a worsening perio trend is visible on the Clinical results surface (the "is
   // it getting worse" question). Captured from a dental exam record via AI extraction
   // (into `results`), or entered manually. INFORMATIONAL, NOT MEDICAL ADVICE.
   {
@@ -1539,7 +1539,7 @@ export const CURATED_LABS: CanonicalResultDefinitionSeed[] = [
   // (IOP/acuity, #698) and periodontal (#705) analytes above, these reuse the
   // biomarker substrate (medical_records) rather than a parallel audiogram table
   // (#860/#944 observation-substrate), so each series trends + flags on the
-  // Biomarkers surface for free ("is my hearing getting worse at 4 kHz?"). Normal
+  // Clinical results surface for free ("is my hearing getting worse at 4 kHz?"). Normal
   // hearing is ≤25 dB HL (WHO), so the band flags an elevated threshold; LOWER is
   // better. Each ear × frequency is its OWN trendable series that flags independently
   // — deliberately NOT collapsed into one biomarker family (see canonical-name.ts:
@@ -2199,7 +2199,7 @@ export const CURATED_LABS: CanonicalResultDefinitionSeed[] = [
   // The fourth specialty domain on the biomarker substrate, after the vision (#697),
   // periodontal (#705) and audiogram (#713) analytes above: peak flow and spirometry
   // reuse `medical_records` / `metric_samples` rather than a parallel table, so each
-  // series trends and (where a band exists) flags on the Biomarkers surface for free.
+  // series trends and (where a band exists) flags on the Clinical results surface for free.
   //
   // THE BANDS ARE WHERE THIS DOMAIN DIFFERS, and the difference is deliberate — see
   // lib/peak-flow.ts and the `personal-best` declaration in lib/metric-judgment.ts:

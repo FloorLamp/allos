@@ -19,7 +19,7 @@ import ModalShell from "./ModalShell";
 // fine for a daily-cadence surface (logging a dose, a meal, a set) — and wrong for a
 // RARE one: lab results, imaging studies and genomic variants arrive a few times a
 // year, mostly by import, so their forms rendered open on every read of the Results
-// hub. #1499's audit counted fifteen forms standing on the Biomarkers tab alone.
+// hub. #1499's audit counted fifteen forms standing on the Clinical results tab alone.
 //
 // Behind "+ Add" the form costs one button until it is wanted. Inline panels stay
 // MOUNTED while collapsed so <Collapse> can animate them and preserve their fields;

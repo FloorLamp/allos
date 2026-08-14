@@ -260,7 +260,7 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     icon: "chart",
     target: {
       kind: "navigate",
-      href: `/results/readings?${FOCUS_PARAM}=1`,
+      href: `/results/clinical-results?${FOCUS_PARAM}=1`,
     },
   },
 ];

@@ -33,7 +33,7 @@ import {
   fitnessContext,
   hasFitnessNorms,
 } from "@/lib/fitness-norms";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import { TREND_METRIC_SLUGS } from "@/lib/trend-metrics";
 
 describe("the domain is judged QUANTITIES, not one enum (#2086)", () => {
@@ -145,11 +145,11 @@ describe("VO₂ max — the acceptance case (#2086, owner ruling 2026-08-05)", (
 
   it("names a surface, and that surface is the one the reading actually routes to", () => {
     // The declaration is only worth anything if the named surface is where a VO₂ max
-    // reading really lands. `readingDetailHref` is the ONE routing rule (#1932), so
+    // reading really lands. `clinicalResultDetailHref` is the ONE routing rule (#1932), so
     // asking it is asking the app, not restating the registry.
     expect(knowledge?.source).toBe("fitness-norms");
-    expect(readingDetailHref("VO2 Max")).toBe(
-      "/results/readings/view?name=VO2%20Max"
+    expect(clinicalResultDetailHref("VO2 Max")).toBe(
+      "/results/clinical-results/view?name=VO2%20Max"
     );
   });
 

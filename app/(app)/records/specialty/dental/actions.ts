@@ -29,7 +29,7 @@ import {
 // never trip the CHECK — it degrades to the safe default ('completed' / null).
 //
 // Periodontal MEASUREMENTS are NOT written here — they are biomarker readings
-// (medical_records) captured on the Biomarkers surface, the #698 vision-analyte
+// (medical_records) captured on the Clinical results surface, the #698 vision-analyte
 // precedent. This form captures the tooth-anchored procedure/finding narrative.
 //
 // MULTI-VIEW (#2557): the pane now LISTS several members, so the per-row writes gate

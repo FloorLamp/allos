@@ -118,7 +118,7 @@ export const MVMEDS_RO_PROFILE = "Meds Board RO (e2e)";
 export const MVMEDS_SELF_MED = "Board Lisinopril";
 export const MVMEDS_RO_MED = "Board Metformin";
 
-// #1331 — multi-view Biomarkers (Results) table. A caregiver granted its OWN base
+// #1331 — multi-view Clinical results table. A caregiver granted its OWN base
 // profile (WRITE, the lowest-id grant → the acting profile on sign-in) plus a second
 // member profile READ-ONLY. Both carry the SHARED "Vitamin D" analyte family with
 // DIFFERENT values/dates, plus a uniquely-named analyte each, so the merged results

@@ -4,7 +4,7 @@
 // WHAT WAS BROKEN. `METRIC_DOCUMENT_REACH.bmi` declares `reaches: "derived-inputs"` —
 // BMI has no row of its own, and `/trends/metric/bmi` computes it from the weight and
 // height that arrive in the same document, both of which are themselves projected.
-// That declaration removes "Body Mass Index" from the flat Biomarkers browser. But
+// That declaration removes "Body Mass Index" from the flat Clinical results catalog. But
 // unlike every other REACHING variant it resolved nothing at ingest: no projector, no
 // destination, no drop. So the imported `medical_records` row survived, an AI import
 // coined an `ai` `canonical_result_definitions` name for it, and the name sat under

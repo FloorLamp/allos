@@ -17,14 +17,14 @@ import {
 } from "@/lib/settings";
 import { ageFromBirthdate } from "@/lib/date";
 import { today } from "@/lib/db";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import { requireSession } from "@/lib/auth";
 import { PHONE_STARRED_TILE_CAP, splitAtPhoneCap } from "@/lib/phone-fold";
 import BiomarkerScale from "./BiomarkerScale";
 import PhoneFold from "./PhoneFold";
 
 // Pinned card of the user's starred clinical results, shown at the top of Results →
-// Readings — its one card surface. (The comment used to claim a dashboard render
+// Clinical results — its one card surface. (The comment used to claim a dashboard render
 // too; nothing on the dashboard has ever imported this. The Trends Overview did
 // render it until #1455 dropped it there, where it collided with the trend_pins
 // chart grid.) Each tile links to the biomarker detail page and shows
@@ -114,7 +114,7 @@ export default async function StarredResults({
     return (
       <Link
         key={b.canonical_name}
-        href={readingDetailHref(b.canonical_name)}
+        href={clinicalResultDetailHref(b.canonical_name)}
         data-testid="starred-tile"
         className="rounded-lg border border-black/5 p-3 transition hover:border-brand-200 hover:shadow-xs dark:border-white/10"
       >

@@ -652,7 +652,7 @@ export function getMedicalDocumentsByIds(
     .all(profileId, ...ids) as MedicalDocument[];
 }
 
-// Filters for the per-document results table. Mirrors the biomarkers table's
+// Filters for the per-document results table. Mirrors the clinical results table's
 // affordances (category filter, flag-range filter, free-text search, and a
 // sortable name/panel/date column set), so the shared UI controls thread the
 // same params through to this query.
@@ -668,7 +668,7 @@ export interface DocumentObservationFilters {
 
 // Records imported from one document, grouped sensibly for review (by panel,
 // then name) unless an explicit sort is chosen. Optionally narrowed by category,
-// flag range, and free-text search — matching the biomarkers table's filters.
+// flag range, and free-text search — matching the clinical results table's filters.
 export function getObservationsForDocument(
   profileId: number,
   documentId: number,

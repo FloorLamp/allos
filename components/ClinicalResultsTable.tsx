@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { IconChevronRight } from "@tabler/icons-react";
-import type { ClinicalObservation } from "@/lib/types";
 import { Tag, MedicalValue } from "./ui";
 import SortableHeader from "./SortableHeader";
 import { ResponsiveTable, Td } from "./ResponsiveTable";
@@ -16,9 +15,12 @@ import { useUndoableDelete } from "./useUndoableDelete";
 import {
   updateResult,
   deleteResult,
-} from "@/app/(app)/results/reading-actions";
-import { loadBiomarkerPanelRows } from "@/app/(app)/results/actions";
-import type { ReadingsSearchParams } from "@/app/(app)/results/reading-index";
+} from "@/app/(app)/results/clinical-result-actions";
+import { loadClinicalResultPanelRows } from "@/app/(app)/results/actions";
+import type {
+  ClinicalResultTableObservation,
+  ClinicalResultsSearchParams,
+} from "@/app/(app)/results/clinical-result-index";
 import {
   referenceCell,
   type ReferenceCell,
@@ -27,48 +29,38 @@ import { groupContiguous } from "@/lib/table-sort";
 import { isBiomarkerStale } from "@/lib/reference-range";
 import { DATE_AGE_SEPARATOR, readingDateLine } from "@/lib/reading-date-line";
 import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
-import { readingDetailHref, type AppRoute } from "@/lib/hrefs";
+import { clinicalResultDetailHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
 import {
-  biomarkerRowKey,
+  clinicalResultRowKey,
   tableNameKey,
   tablePanelId,
-  DEFAULT_BIOMARKER_SORT,
-  type BiomarkerSortColumn,
+  DEFAULT_CLINICAL_RESULT_SORT,
+  type ClinicalResultSortColumn,
 } from "@/lib/derived-table";
 import { OTHER_PANEL, panelLabel, type PanelId } from "@/lib/biomarker-panels";
 import {
   panelGroupSummary,
   type BoundedPanelGroup,
 } from "@/lib/biomarker-panel-groups";
-import type { SubjectInfo } from "@/lib/scope";
 
 // A table row in multi-view carries its owning profile + stamped subject identity
 // (stampSubjects); single-view rows omit both. The subject powers the leading chip
 // column and the per-row write gate, and profileId re-keys grouping per member so
 // two members' same-named analytes never collapse into one heading (#1331).
-type TableObservation = ClinicalObservation & {
-  profileId?: number;
-  subject?: SubjectInfo;
-  // What the Reference cell says (#2315), resolved server-side by the gather —
-  // the bands the row's flag came from, not the string the lab printed. Absent on
-  // a derived index, whose Reference cell is structurally absent.
-  referenceCell?: ReferenceCell;
-};
-
 // Present ONLY when more than one profile is in view (#1331): the acting profile
 // (its own rows imply the subject, so they get no chip) + the flag that turns on the
 // leading Profile column and the subject-scoped grouping/write-targeting. Absent in
 // single view → the table renders byte-identical.
-export interface BiomarkersMultiView {
+export interface ClinicalResultsMultiView {
   actingProfileId: number;
 }
 
 // The column ordered when the URL names none. Read from lib/derived-table rather than
 // restated, so the (hidden) header arrows, the card-mode select and the server's
-// parseBiomarkerSortColumn fallback are ONE value instead of twins that can drift.
-const DEFAULT_SORT = DEFAULT_BIOMARKER_SORT;
+// parseClinicalResultSortColumn fallback are ONE value instead of twins that can drift.
+const DEFAULT_SORT = DEFAULT_CLINICAL_RESULT_SORT;
 
 // The active-filter context threaded through to build the panel/category filter
 // links (each preserves the current sort/range/etc., matching the server-built
@@ -78,28 +70,28 @@ interface FilterCtx {
   panel?: PanelId;
   range?: string;
   q?: string;
-  sort: BiomarkerSortColumn;
+  sort: ClinicalResultSortColumn;
   dir: "asc" | "desc";
   current: boolean;
 }
 
-// Build a filtered URL for the #biomarkers section of /results from the active
+// Build a filtered Clinical results URL from the active
 // filters, dropping empty ones (#1042 phase 5 — the anchor keeps a filter/sort/
 // pager navigation on the section).
 function qs(params: Record<string, string | undefined>): AppRoute {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v) sp.set(k, v);
   const s = sp.toString();
-  return s ? `/results/readings?${s}` : "/results/readings";
+  return s ? `/results/clinical-results?${s}` : "/results/clinical-results";
 }
 
-// A small amber badge flagging a biomarker whose latest reading has gone stale
+// A small amber badge flagging an analyte whose latest result has gone stale
 // (over a year old — a yearly-retest heuristic).
 function staleBadge() {
   return (
     <span
       className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400"
-      title="Latest reading over a year old — consider retesting"
+      title="Latest result over a year old — consider retesting"
     >
       Stale
     </span>
@@ -123,8 +115,8 @@ function derivedBadge(formula?: string) {
 
 // Show the canonical name (the grouping identity) when present, linking to the
 // biomarker detail page; fall back to the raw provided name otherwise. Flags the
-// group with a Stale badge when its latest reading is overdue, and a Derived badge
-// when the reading is a computed index.
+// group with a Stale badge when its latest result is overdue, and a Derived badge
+// when the result is a computed index.
 function nameCell(r: {
   name: string;
   canonical_name: string | null;
@@ -145,7 +137,7 @@ function nameCell(r: {
   return (
     <span>
       <Link
-        href={readingDetailHref(r.canonical_name)}
+        href={clinicalResultDetailHref(r.canonical_name)}
         className="font-medium text-brand-700 hover:underline dark:text-brand-400"
         title={`View ${r.canonical_name} over time`}
       >
@@ -180,7 +172,7 @@ function dateCell(
         <>
           {DATE_AGE_SEPARATOR}
           <span
-            data-testid="biomarker-age"
+            data-testid="clinical-result-age"
             className={`text-xs ${line.ageClassName}`}
             title={line.ageTitle ?? undefined}
           >
@@ -215,7 +207,7 @@ function PanelCell({
   observation,
   href,
 }: {
-  observation: TableObservation;
+  observation: ClinicalResultTableObservation;
   href: (id: PanelId) => AppRoute;
 }) {
   const id = tablePanelId(observation);
@@ -288,7 +280,7 @@ function ReferenceCellTd({
       className="hidden text-slate-500 sm:table-cell dark:text-slate-400"
     >
       <span
-        data-testid="biomarker-reference"
+        data-testid="clinical-result-reference"
         data-judged={resolved.judged ? "true" : "false"}
         title={resolved.title ?? undefined}
       >
@@ -298,8 +290,8 @@ function ReferenceCellTd({
   );
 }
 
-// The class that tightens a reading row NESTED INSIDE an open panel group (#1581
-// section C). In card mode the group already provides the container, so the reading
+// The class that tightens a result row NESTED INSIDE an open panel group (#1581
+// section C). In card mode the group already provides the container, so the result
 // under it does not also need the full row padding — that is the #1539 double-frame
 // pattern, and with the pager gone an expanded group is the whole panel rather than
 // whatever slice a page held. Same mechanism as `.table-section-row` one rule above
@@ -308,13 +300,13 @@ function ReferenceCellTd({
 // tables that render UNGROUPED never carry the class.
 const NESTED_ROW = "table-nested-row";
 
-// One biomarker reading row. Display mode keeps the rich Biomarkers presentation
+// One clinical-result row. Display mode keeps the rich analyte presentation
 // (canonical-name grouping heading + Stale badge, panel/category filter links,
 // relative-age date, responsive column hiding) and adds a kebab menu; edit swaps
 // the row in place for the shared ResultForm. Edit + delete run through the same
 // profile-scoped updateResult/deleteResult the document view uses — delete matches
 // the document view (any row, manual or extracted, behind a danger confirm).
-function BiomarkerRow({
+function ClinicalResultRow({
   r,
   isStart,
   isEnd,
@@ -323,13 +315,13 @@ function BiomarkerRow({
   filters,
   multiView,
 }: {
-  r: TableObservation;
+  r: ClinicalResultTableObservation;
   isStart: boolean;
   isEnd: boolean;
   stale: boolean;
   now: string;
   filters: FilterCtx;
-  multiView?: BiomarkersMultiView;
+  multiView?: ClinicalResultsMultiView;
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -590,7 +582,7 @@ function BiomarkerRow({
                     <SourceDocumentLink
                       documentId={r.document_id}
                       className={MENU_ITEM}
-                      testId="biomarker-source-document-link"
+                      testId="clinical-result-source-document-link"
                       role="menuitem"
                       onClick={close}
                     >
@@ -608,7 +600,7 @@ function BiomarkerRow({
 }
 
 // The collapsed PANEL-GROUP header (#1499 section A) — the row that replaces a wall
-// of readings with an index entry: "Lipids · 6 analytes · 1 flagged", tap to expand.
+// of results with an index entry: "Lipids · 6 analytes · 1 flagged", tap to expand.
 //
 // ONE ROW, BOTH VIEWPORTS. It is a `<tr>` inside the group's `<tbody>`, so the
 // desktop table and the phone's card stack (.table-cards re-lays this same DOM) get
@@ -627,7 +619,7 @@ function PanelGroupHeader({
   panelId,
   colSpan,
 }: {
-  group: BoundedPanelGroup<TableObservation>;
+  group: BoundedPanelGroup<ClinicalResultTableObservation>;
   open: boolean;
   onToggle: () => void;
   panelId: string;
@@ -635,11 +627,14 @@ function PanelGroupHeader({
 }) {
   const flagged = group.flaggedCount > 0;
   return (
-    <tr className="table-section-row" data-testid="biomarker-panel-header">
+    <tr
+      className="table-section-row"
+      data-testid="clinical-result-panel-header"
+    >
       <Td slot="full" colSpan={colSpan} className="px-0! py-0!">
         <button
           type="button"
-          data-testid="biomarker-panel-toggle"
+          data-testid="clinical-result-panel-toggle"
           data-panel={group.panel}
           aria-expanded={open}
           aria-controls={panelId}
@@ -666,7 +661,7 @@ function PanelGroupHeader({
           </span>
           {flagged && (
             <span
-              data-testid="biomarker-panel-flagged"
+              data-testid="clinical-result-panel-flagged"
               className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-400/15 dark:text-amber-300"
             >
               {group.flaggedCount} flagged
@@ -681,20 +676,20 @@ function PanelGroupHeader({
 // The rows a group is currently showing, and whether that is all of them. The
 // server's slice is what arrived; a fetched set replaces it wholesale.
 function groupRows(
-  group: BoundedPanelGroup<TableObservation>,
-  loaded: Map<PanelId, TableObservation[]>
-): TableObservation[] {
+  group: BoundedPanelGroup<ClinicalResultTableObservation>,
+  loaded: Map<PanelId, ClinicalResultTableObservation[]>
+): ClinicalResultTableObservation[] {
   return loaded.get(group.panel) ?? group.rows;
 }
 
 function groupComplete(
-  group: BoundedPanelGroup<TableObservation>,
-  loaded: Map<PanelId, TableObservation[]>
+  group: BoundedPanelGroup<ClinicalResultTableObservation>,
+  loaded: Map<PanelId, ClinicalResultTableObservation[]>
 ): boolean {
   return loaded.has(group.panel) || group.rows.length >= group.total;
 }
 
-// The footer inside an expanded group that has more readings than it was given —
+// The footer inside an expanded group that has more results than it was given —
 // the visible half of the payload bound (#1651). It states what is being held back
 // and loads the rest on demand; a collapsed group's expansion loads through the same
 // path, so there is one fetch, not two mechanisms.
@@ -706,7 +701,7 @@ function PanelRowsFooter({
   onLoad,
   colSpan,
 }: {
-  group: BoundedPanelGroup<TableObservation>;
+  group: BoundedPanelGroup<ClinicalResultTableObservation>;
   shown: number;
   loading: boolean;
   failed: boolean;
@@ -714,38 +709,38 @@ function PanelRowsFooter({
   colSpan: number;
 }) {
   return (
-    <tr className={NESTED_ROW} data-testid="biomarker-panel-more">
+    <tr className={NESTED_ROW} data-testid="clinical-result-panel-more">
       <Td slot="full" colSpan={colSpan} className="py-2">
         {loading ? (
           <span
             className="text-xs text-slate-500 dark:text-slate-400"
-            data-testid="biomarker-panel-loading"
+            data-testid="clinical-result-panel-loading"
           >
-            Loading readings…
+            Loading clinical results…
           </span>
         ) : (
           <span className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             {failed ? (
-              <span data-testid="biomarker-panel-error">
-                Couldn’t load these readings.
+              <span data-testid="clinical-result-panel-error">
+                Couldn’t load these clinical results.
               </span>
             ) : (
               shown > 0 && (
                 <span>
-                  Showing {shown} of {group.total} readings
+                  Showing {shown} of {group.total} clinical results
                 </span>
               )
             )}
             <button
               type="button"
-              data-testid="biomarker-panel-load-all"
+              data-testid="clinical-result-panel-load-all"
               data-panel={group.panel}
               onClick={onLoad}
               className="font-medium text-brand-700 hover:underline dark:text-brand-400"
             >
               {failed
                 ? "Try again"
-                : `Show all ${group.total} ${group.total === 1 ? "reading" : "readings"}`}
+                : `Show all ${group.total} clinical ${group.total === 1 ? "result" : "results"}`}
             </button>
           </span>
         )}
@@ -763,7 +758,7 @@ interface DisclosureState {
   open: Set<PanelId>;
   // Panels whose FULL row set has been fetched — the server's bounded slice is
   // replaced by it.
-  loaded: Map<PanelId, TableObservation[]>;
+  loaded: Map<PanelId, ClinicalResultTableObservation[]>;
   loading: Set<PanelId>;
   failed: Set<PanelId>;
 }
@@ -787,7 +782,7 @@ function without<T>(set: Set<T>, value: T): Set<T> {
   return next;
 }
 
-// The Biomarkers results table. Client-side so each row can swap in place for an
+// The Clinical results table. Client-side so each row can swap in place for an
 // inline editor and offer delete — but the display, grouping, sorting, staleness,
 // and filter links are unchanged from the prior server-rendered table.
 //
@@ -799,15 +794,15 @@ function without<T>(set: Set<T>, value: T): Set<T> {
 // construction instead — PANEL_IDS is a closed, small taxonomy (37 entries today), so
 // the header list has a hard ceiling no lab history can exceed.
 //
-// BOUNDED PAYLOAD (#1651). That ceiling is on the index, not on the readings inside
+// BOUNDED PAYLOAD (#1651). That ceiling is on the index, not on the results inside
 // it, and props handed to a client component are serialized into the RSC payload
 // whatever the component renders — so gating rows behind `{open && …}` bounded the
 // DOM and nothing else. The groups therefore arrive already grouped and already
 // BOUNDED (lib/biomarker-panel-groups' boundPanelGroups): whole-panel header facts
-// for every group, readings only for the groups that arrive expanded, capped at
+// for every group, results only for the groups that arrive expanded, capped at
 // PANEL_ROW_LIMIT. Expanding a group — or asking a truncated one for the rest — loads
-// that ONE panel's readings through loadBiomarkerPanelRows.
-export default function ReadingsTable({
+// that ONE panel's results through loadClinicalResultPanelRows.
+export default function ClinicalResultsTable({
   panelGroups,
   initialOpen,
   now,
@@ -818,27 +813,28 @@ export default function ReadingsTable({
   // Already grouped and bounded on the server. The header facts (label, analyte and
   // flagged counts) describe the WHOLE panel; `rows` is the slice that was sent and
   // `total` what the panel holds.
-  panelGroups: BoundedPanelGroup<TableObservation>[];
+  panelGroups: BoundedPanelGroup<ClinicalResultTableObservation>[];
   // The groups that arrive expanded — the same server decision that decided which
-  // groups' readings were sent. Initial state only: once the reader has opened or
+  // groups' results were sent. Initial state only: once the reader has opened or
   // closed a group, a re-render must not yank it back (#1455/#1517).
   initialOpen: PanelId[];
   now: string;
   filters: FilterCtx;
-  // The URL this view was built from, replayed to the server when a panel's readings
+  // The URL this view was built from, replayed to the server when a panel's results
   // are requested so the expansion returns rows from the same filtered set.
-  searchParams: ReadingsSearchParams;
+  searchParams: ClinicalResultsSearchParams;
   // Present ONLY when more than one profile is in view (#1331) — turns on the
   // leading Profile column, the subject-scoped grouping, and per-row write
   // targeting. Omitted in single view → byte-identical render.
-  multiView?: BiomarkersMultiView;
+  multiView?: ClinicalResultsMultiView;
 }) {
   const { category, panel, range, q, sort, dir, current } = filters;
   // In multi-view group by (profile, display name) so two members' same-named
   // analytes stay in DISTINCT groups (each keeps its heading + chip); single view
   // groups by display name alone. The SAME key the server counted the panel's
   // analytes with, so "Lipids · 6" can never disagree with the headings under it.
-  const groupKey = (r: TableObservation) => biomarkerRowKey(r, !!multiView);
+  const groupKey = (r: ClinicalResultTableObservation) =>
+    clinicalResultRowKey(r, !!multiView);
 
   // The URL that produced these groups. When it changes, the disclosure state and
   // everything loaded under it are replaced — they described the previous result set.
@@ -857,7 +853,7 @@ export default function ReadingsTable({
   if (state.signature !== signature)
     setState(initialDisclosure(signature, initialOpen));
 
-  // Fetch ONE panel's full readings. Guarded by the signature: a response that
+  // Fetch ONE panel's full results. Guarded by the signature: a response that
   // arrives after the reader has filtered away describes rows this view no longer
   // shows, so it is dropped rather than merged into a different result set.
   const loadPanel = (id: PanelId) => {
@@ -871,7 +867,7 @@ export default function ReadingsTable({
             failed: without(prev.failed, id),
           }
     );
-    loadBiomarkerPanelRows({ panel: id, searchParams })
+    loadClinicalResultPanelRows({ panel: id, searchParams })
       .then((res) =>
         setState((prev) => {
           if (prev.signature !== at) return prev;
@@ -898,12 +894,14 @@ export default function ReadingsTable({
       );
   };
 
-  // Opening a group it has no readings for fetches them — the reader asked for that
+  // Opening a group it has no results for fetches them — the reader asked for that
   // panel, which is what pays for its rows. A TRUNCATED open group is deliberately
-  // NOT auto-filled: it is already showing readings, and topping every open group up
+  // NOT auto-filled: it is already showing results, and topping every open group up
   // on arrival would rebuild the unbounded payload for exactly the narrowed views
   // that open them all. Its footer asks.
-  const toggleGroup = (group: BoundedPanelGroup<TableObservation>) => {
+  const toggleGroup = (
+    group: BoundedPanelGroup<ClinicalResultTableObservation>
+  ) => {
     const opening = !state.open.has(group.panel);
     setState((prev) => {
       const open = new Set(prev.open);
@@ -926,14 +924,17 @@ export default function ReadingsTable({
           replacement select (#1426) now lives in the filter block above the table
           (#2316), inside the same disclosure as the facets: on a phone "narrow this
           list" and "reorder this list" are one job, and splitting them across two
-          strips is what made the chrome above the first reading a screen tall. It is
+          strips is what made the chrome above the first result a screen tall. It is
           the same control writing the same `?sort=`/`?dir=` params — see
-          ReadingsSection, which passes it to MedicalFilters. */}
+          ClinicalResultsSection, which passes it to MedicalFilters. */}
       {/* The height cap is a desktop affordance (a tall table under a sticky
           header); on a phone the rows flow with the page instead of trapping a
           second scroll region inside it. */}
       <div className="overflow-auto sm:max-h-[70vh]">
-        <ResponsiveTable className="w-full" data-testid="biomarkers-table">
+        <ResponsiveTable
+          className="w-full"
+          data-testid="clinical-results-table"
+        >
           <thead>
             <tr className="border-b border-black/5 dark:border-white/10">
               {multiView && (
@@ -959,7 +960,7 @@ export default function ReadingsTable({
                 Value
               </th>
               {/* Reference hides below `sm`: the value cell already flags
-              out-of-range readings, and full ranges live on the detail page. */}
+              out-of-range results, and full ranges live on the detail page. */}
               <th className="th sticky top-0 z-10 hidden bg-white sm:table-cell dark:bg-ink-900">
                 Reference
               </th>
@@ -981,23 +982,23 @@ export default function ReadingsTable({
             </tr>
           </thead>
           {/* One <tbody> per PANEL group (#1499): its collapsed header, then its
-          readings when expanded. A collapsed group renders no rows at all — and
+          results when expanded. A collapsed group renders no rows at all — and
           since #1651 is sent none either, so the DOM and the payload agree. The
           group's rows keep the active sort (the server partition is stable), and
-          within a group adjacent readings of the same biomarker are still
+          within a group adjacent results of the same analyte are still
           run-grouped by the shared contiguous-group helper: the name shows once per
           run (on the start row) and a bottom border falls only at run ends. */}
           {panelGroups.map((group) => {
             const open = state.open.has(group.panel);
             const rows = groupRows(group, state.loaded);
             const complete = groupComplete(group, state.loaded);
-            const bodyId = `biomarker-panel-${group.panel}`;
+            const bodyId = `clinical-result-panel-${group.panel}`;
             const colSpan = multiView ? 9 : 8;
             return (
               <tbody
                 key={group.panel}
                 id={bodyId}
-                data-testid="biomarker-panel-group"
+                data-testid="clinical-result-panel-group"
                 data-panel={group.panel}
                 data-open={open ? "true" : "false"}
                 data-total={group.total}
@@ -1012,14 +1013,14 @@ export default function ReadingsTable({
                 {open &&
                   groupContiguous(rows, groupKey).map(
                     ({ row: r, isGroupStart, isGroupEnd }) => {
-                      // Flag the group as stale off its latest reading — the row
+                      // Flag the group as stale off its latest result — the row
                       // carrying is_latest holds the newest date, so its staleness
                       // is the biomarker's.
                       const stale =
                         !!r.is_latest &&
                         isBiomarkerStale(r.date, r.category, now);
                       return (
-                        <BiomarkerRow
+                        <ClinicalResultRow
                           // In multi-view two members can share a derived row id
                           // (negative, per-profile), so key on (profileId, id).
                           key={

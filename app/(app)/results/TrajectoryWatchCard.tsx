@@ -7,7 +7,7 @@ import {
   type TrajectoryAnalyteGroup,
 } from "@/lib/trajectory-rollup";
 
-// The Results › Biomarkers "Trajectory watch" card (#1499 section B) — ONE card,
+// The Results › Clinical results "Trajectory watch" card (#1499 section B) — ONE card,
 // capped, the #1496 Training-watch pattern applied to the hub that shipped the same
 // disease.
 //

@@ -982,7 +982,7 @@ const PANELS: Panel[] = [
   },
   // Not retested recently: these panels supply only the oldest few draws, so
   // their latest reading maps to an early LAB_DATES slot (>1 year ago) and the
-  // biomarkers table flags them stale (⏳). A short trend keeps grouping demoable.
+  // clinical results table flags them stale (⏳). A short trend keeps grouping demoable.
   {
     category: "lab",
     name: "Ferritin",
@@ -1034,7 +1034,7 @@ for (const p of PANELS) {
 // Periodontal analytes (#705) — the dental analogue of vision analytes: dated,
 // trendable perio measurements stored as biomarker readings (medical_records) rather
 // than a parallel table (#860 observation-substrate), so a WORSENING trend is visible
-// on the Biomarkers surface. A gently worsening probing depth (2.5 → 3.5 → 5 mm, the
+// on the Clinical results surface. A gently worsening probing depth (2.5 → 3.5 → 5 mm, the
 // last flagging above the 3 mm band) + a bleeding-on-probing reading.
 for (const [days, depth] of [
   [400, 2.5],

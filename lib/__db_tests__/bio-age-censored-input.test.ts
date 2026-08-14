@@ -117,7 +117,7 @@ describe("bio-age: below-detection hs-CRP still completes the PhenoAge draw", ()
       null
     );
 
-    // The derived-biomarker gather (the biomarkers-table path) recovers the same
+    // The derived-biomarker gather (the clinical-results-table path) recovers the same
     // censored input, so the PhenoAge row it emits matches the hero's draw — the
     // two surfaces don't disagree about whether the draw is complete.
     const heroBioAge = getBioAgeReadings(profileId).draws[0].bioAge;

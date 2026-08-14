@@ -89,7 +89,7 @@ const DOMAIN_ICONS: Record<
   SearchDomain,
   (props: { className?: string }) => React.ReactNode
 > = {
-  biomarker: (p) => <IconChartLine {...p} />,
+  "clinical-result": (p) => <IconChartLine {...p} />,
   imaging: (p) => <IconBodyScan {...p} />,
   genomic: (p) => <IconDna2 {...p} />,
   document: (p) => <IconFileText {...p} />,

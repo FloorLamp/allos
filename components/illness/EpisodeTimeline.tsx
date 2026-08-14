@@ -730,7 +730,7 @@ export default function EpisodeTimeline({
                           group-header treatment (#1499): the row drops the card frame
                           below `sm` and lets its own content own the surface, so one
                           `<tr>` reads as a header at both viewports. The band's fill
-                          rides an inner element for the same reason ReadingsTable's
+                          rides an inner element for the same reason ClinicalResultsTable's
                           does — the row class cannot carry it. */}
                       <tr className="table-section-row">
                         <Td

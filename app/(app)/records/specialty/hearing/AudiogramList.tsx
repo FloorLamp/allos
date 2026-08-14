@@ -28,7 +28,7 @@ import type { FormResult } from "@/lib/types";
 // audiogram: the per-ear pure-tone average with its descriptive grade, the full
 // threshold grid, and the test's note. A threshold above the ≤25 dB HL normal band is
 // marked — the same band the stored readings flag against, so this card and the
-// Biomarkers surface can never say different things about the same number.
+// Clinical results surface can never say different things about the same number.
 //
 // This is a RECORD, not an assessment: it transcribes, averages, and compares what an
 // audiologist measured. It never diagnoses, and the copy says so.

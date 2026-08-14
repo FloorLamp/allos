@@ -215,7 +215,7 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 });
 
 // The supplement-suggest "is this biomarker new" gate counts prior readings by the
-// SAME family identity the biomarkers table partitions on (#504) — not the raw name.
+// SAME family identity the clinical results table partitions on (#504) — not the raw name.
 // Before the fix it keyed on the literal canonical-or-name, so a fresh reading under a
 // DIFFERENT family member's spelling counted as 0 prior readings and was misjudged
 // "brand new" (eligible for a first-ever AI supplement suggestion) even when the

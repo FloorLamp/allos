@@ -4,7 +4,7 @@ Status: shipped (#2479 part 1 — the vocabulary and the type and predicate rena
 part 2 — the persisted `"biomarker"` catch-all retirement, migration 185)
 
 One word, "biomarker", used to name four unrelated things: the canonical
-definition registry, the identity a dated reading is keyed on, the flat catalog
+definition registry, the identity a dated result is keyed on, the flat catalog
 at Medical → Results, and a legacy `medical_records.category` value that means
 "nothing else fit". This file is the contract that separates them. Each term
 below states what it covers, what it does **not** cover, and which axis it lives
@@ -48,7 +48,7 @@ needed to interpret it** — `unit`, `ref_low/high` with sex, age-band, reproduc
 status and cycle-phase overrides, `optimal_low/high`, `direction`, `retest_days`,
 `panel`, `note`, `source`.
 
-It does **not** cover: a stored reading (that is a `Reading` or a
+It does **not** cover: a dated result (that is a `Reading` or a
 `ClinicalObservation`), and it is not a claim that the entry is a laboratory
 analyte or even a quantity — 68 of its 324 entries are not lab, 63 carry no unit
 and 98 carry no reference range.
@@ -61,6 +61,18 @@ already a category **value** inside the registry, held by those same three
 blood-type entries — an umbrella cannot share a name with one of its members),
 `CanonicalClinicalConcept` (says nothing about ranges or a retest clock, and
 invites anything clinical to be filed there).
+
+### `Clinical result`
+
+**Axis: presentation.** The umbrella for the mixed Results catalog and its broad
+APIs, components, filters, sort vocabulary, routes and copy. It includes numeric
+quantities and qualitative identity-bearing observations; the catalog row shape is
+therefore a `ClinicalObservation` plus presentation context, not a `Reading`.
+
+It does **not** mean every `ClinicalObservation` is catalog-browsable: category and
+per-analyte catalog rules still decide that axis. It also does not replace
+`Biomarker` / `Analyte` where the subject genuinely is one, or `Reading` where the
+subject is specifically a quantity.
 
 ### `Reading`
 
@@ -207,9 +219,10 @@ is registered, browsable where its category allows, and carries full identity; a
 
 **Retained only where clinically accurate.** #2479 is a de-conflation, not a purge:
 `biomarkerFamily()` (the #482 identity function), `biomarker_family()` in SQL,
-`biomarker_panels`, `biomarkerRetestStatus`, the lab-scoped trajectory grammar and
-the user-facing **Results › Biomarkers** section all keep the word, because those
-genuinely are about biomarkers. What was retired is the word standing in for
+`biomarker_panels`, `biomarkerRetestStatus`, and the lab-scoped trajectory grammar
+all keep the word, because those genuinely are about biomarkers. The mixed
+user-facing catalog is **Results › Clinical results**. What was retired is the
+word standing in for
 "clinical result of any kind".
 
 `Analyte` already existed (47 files) and already meant what it should: the
@@ -234,7 +247,7 @@ Category membership does **not** settle catalog browsability on its own: within
 (audiogram thresholds, intraocular pressure, visual acuity, periodontal depth).
 Browsability is the **conjunction** of the two — the category class, then the
 per-analyte refinement — which is how both the row gather
-(`app/(app)/results/reading-index.ts`) and the panel facet
+(`app/(app)/results/clinical-result-index.ts`) and the panel facet
 (`lib/biomarker-panel-reach.ts`) compose it. Asked alone, the predicate answers
 `true` for a PHQ-9: it refines `vitals` and says nothing about a category the
 catalog already excludes.

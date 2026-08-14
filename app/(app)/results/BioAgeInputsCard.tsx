@@ -13,9 +13,9 @@ import {
 } from "@/lib/bio-age";
 import { pillarHref } from "@/lib/longevity-pillars";
 import CardFootnote from "@/components/CardFootnote";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 
-// The bio-age INPUT PANEL on Results › Biomarkers (#2367).
+// The bio-age INPUT PANEL on Results › Clinical results (#2367).
 //
 // The hero used to render here AND on Longevity, so a reader moving between the two
 // pages met the same headline block twice. The split is by what each page lets you
@@ -87,7 +87,7 @@ export default async function BioAgeInputsCard() {
               )}
               {have ? (
                 <Link
-                  href={readingDetailHref(name)}
+                  href={clinicalResultDetailHref(name)}
                   className="truncate text-slate-700 hover:underline dark:text-slate-200"
                 >
                   {name}

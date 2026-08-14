@@ -8,7 +8,7 @@
 import type { AppRoute } from "./hrefs";
 
 export type SearchDomain =
-  | "biomarker"
+  | "clinical-result"
   | "imaging"
   | "genomic"
   | "document"
@@ -35,11 +35,11 @@ export type SearchDomain =
 
 // A per-hit contextual action (#662): act on a FOUND entity without first
 // navigating to its page — log a dose of this medication, refill it, complete
-// this appointment, add a result for this biomarker. A WRITE action (`log-dose`
+// this appointment, add a clinical result. A WRITE action (`log-dose`
 // /`refill`/`complete`) carries `entityId`, the row id the palette submits as
 // FormData `id` to the EXISTING gated Server Action (never a search-side bypass —
 // the auth gate stays in the action). A NAVIGATE action (`add-result`) carries an
-// `href` instead (the biomarker add form, name-prefilled). The applicable actions
+// `href` instead (the clinical-result add form, name-prefilled). The applicable actions
 // per kind are built by the pure `lib/hit-actions.ts` matchers so the labels/gates
 // stay unit-tested and out of the DB fan-out.
 export type HitActionKind = "log-dose" | "refill" | "complete" | "add-result";
@@ -80,16 +80,16 @@ export interface SearchGroup {
 
 // The order result groups appear in the palette (mirrors the issue's list).
 // The clinical passport domains (#19) are grouped with the medical domains they
-// live beside in the nav, keeping biomarker first and goal/page last.
+// live beside in the nav, keeping clinical results first and goal/page last.
 //
 // The second-generation ENTITY domains (#1595) slot in beside the surface each one
-// shares: imaging/genomics join biomarkers under Results; providers close the
+// shares: imaging/genomics join clinical results under Results; providers close the
 // history/visit run they were previously only a label on; illness episodes, dental,
 // and skin follow as the remaining record surfaces; protocols, practices, and
 // equipment sit with the training/lifestyle rows. The RELATIVE order of the original
 // domains is unchanged, so an existing reader's muscle memory survives.
 export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
-  "biomarker",
+  "clinical-result",
   "imaging",
   "genomic",
   "document",
@@ -116,7 +116,7 @@ export const SEARCH_DOMAIN_ORDER: SearchDomain[] = [
 ];
 
 export const SEARCH_DOMAIN_LABELS: Record<SearchDomain, string> = {
-  biomarker: "Biomarkers",
+  "clinical-result": "Clinical results",
   imaging: "Imaging",
   genomic: "Genomics",
   document: "Documents",

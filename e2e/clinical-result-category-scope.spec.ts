@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // #1076: the biomarker surfaces scope to labs, and the physiologic vitals gain a
-// Trends → Vitals home. These specs prove (a) the Biomarkers browser lists labs and
+// Trends → Vitals home. These specs prove (a) the Clinical results catalog lists labs and
 // excludes the re-homed classes with a dedicated home (a bio-age composite belongs on
 // the Longevity hero, not the general catalog), (b) #2365's per-analyte refinement of
 // the vitals half — a vitals analyte with a body-metric chart is gone, one without a
@@ -14,34 +14,39 @@ import { followLink } from "./helpers";
 // pressure vitals and seeded audiogram thresholds via scripts/seed.ts. Presence-only
 // assertions bounded by the `?q=` filter — never exact counts.
 
-test("the Biomarkers browser lists labs but not a re-homed instrument score (#1076)", async ({
+test("the Clinical results catalog lists labs but not a re-homed instrument score (#1076)", async ({
   page,
 }) => {
   // A lab is present.
-  await page.goto("/results/readings?q=Cholesterol");
-  const section = page.getByTestId("results-readings");
+  await page.goto("/results/clinical-results?q=Cholesterol");
+  const section = page.getByTestId("results-clinical-results");
   const cholesterol = section.getByText("Total Cholesterol").first(); // first-ok: read-only presence check; shared seed may hold several Total Cholesterol readings
   await expect(cholesterol).toBeVisible();
 
   // A screening instrument (the seeded AUDIT-C substance-use score) is NOT browsable
   // here — the SENSITIVITY case: a substance/depression score belongs on its own
   // surface, never the general biomarker catalog.
-  await page.goto("/results/readings?q=" + encodeURIComponent("AUDIT-C"));
+  await page.goto(
+    "/results/clinical-results?q=" + encodeURIComponent("AUDIT-C")
+  );
   await expect(
-    page.getByTestId("results-readings").getByText("AUDIT-C", { exact: true })
+    page
+      .getByTestId("results-clinical-results")
+      .getByText("AUDIT-C", { exact: true })
   ).toHaveCount(0);
 });
 
 test("the browser drops a vitals analyte with a metric home, keeps one without (#2365)", async ({
   page,
 }) => {
-  const section = page.getByTestId("results-readings");
+  const section = page.getByTestId("results-clinical-results");
 
   // Blood pressure is a TrendMetricSlug quantity charted at /trends/metric/systolic, so
   // the flat catalog no longer duplicates it — the 131-of-145 population #1076's
   // per-category decision dragged along.
   await page.goto(
-    "/results/readings?q=" + encodeURIComponent("Blood Pressure Systolic")
+    "/results/clinical-results?q=" +
+      encodeURIComponent("Blood Pressure Systolic")
   );
   await expect(
     section.getByText("Blood Pressure Systolic", { exact: true })
@@ -50,7 +55,7 @@ test("the browser drops a vitals analyte with a metric home, keeps one without (
   // An audiogram threshold has no chart anywhere, so the catalog is still its home —
   // the "nothing stranded" rule, kept and applied per analyte instead of per category.
   await page.goto(
-    "/results/readings?q=" + encodeURIComponent("Hearing Threshold")
+    "/results/clinical-results?q=" + encodeURIComponent("Hearing Threshold")
   );
   await expect(
     section.getByText("Hearing Threshold", { exact: false }).first() // first-ok: read-only presence check; the seed holds several ear/frequency series
@@ -70,8 +75,8 @@ test("the browser lists a bare `BMI%` a chart cannot plot (#2700)", async ({
   // shared profile — the same two spellings e2e/derived-result-drop.spec.ts asserts
   // survive ingest, asked one surface further on. `%` is escaped by the search's own
   // LIKE builder, so the query matches the literal spelling.
-  await page.goto("/results/readings?q=" + encodeURIComponent("BMI%"));
-  const table = page.getByTestId("biomarkers-table");
+  await page.goto("/results/clinical-results?q=" + encodeURIComponent("BMI%"));
+  const table = page.getByTestId("clinical-results-table");
 
   // Exact, because the parenthesised spelling below contains this one as a substring.
   await expect(table.getByText("BMI%", { exact: true })).toHaveCount(1);

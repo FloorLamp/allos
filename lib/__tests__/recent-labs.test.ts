@@ -77,15 +77,17 @@ describe("recentLabHighlights", () => {
       rec({ name: "raw name", canonical_name: "  LDL Cholesterol  " }),
     ]);
     expect(row.name).toBe("LDL Cholesterol");
-    expect(row.href).toBe("/results/readings/view?name=LDL%20Cholesterol");
+    expect(row.href).toBe(
+      "/results/clinical-results/view?name=LDL%20Cholesterol"
+    );
   });
 
-  it("links to the biomarkers index when there is no canonical name", () => {
+  it("links to the Clinical results index when there is no canonical name", () => {
     const [row] = recentLabHighlights([
       rec({ name: "Glucose", canonical_name: null }),
     ]);
     expect(row.name).toBe("Glucose");
-    expect(row.href).toBe("/results/readings");
+    expect(row.href).toBe("/results/clinical-results");
   });
 
   it("does not mutate the input array order", () => {

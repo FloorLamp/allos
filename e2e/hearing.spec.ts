@@ -11,7 +11,7 @@ import { workerDbPath } from "./worker-env";
 // Hearing / audiology domain (#713 + #717 + #1600). The user-visible surfaces the
 // build/typecheck/unit tiers can't prove render:
 //   • the AUDIOGRAM biomarker series (#713) — seeded per-ear/per-frequency pure-tone
-//     thresholds trend on the Biomarkers surface like any other analyte, and a recent
+//     thresholds trend on the Clinical results surface like any other analyte, and a recent
 //     4 kHz reading above the ≤25 dB HL band flags. Read-only over the shared seed
 //     (visibility, never an exact count).
 //   • the HEARING PANE (#1600) — Records › Specialty › Hearing, beside Vision: entering
@@ -113,7 +113,7 @@ test.describe("Hearing / audiology (#713, #717, #1600)", () => {
   });
   test.afterAll(cleanup);
 
-  test("seeded audiogram thresholds render + flag on the Biomarkers surface (#713)", async ({
+  test("seeded audiogram thresholds render + flag on Clinical results (#713)", async ({
     page,
   }) => {
     await page.goto("/results?q=" + encodeURIComponent("Hearing Threshold"));

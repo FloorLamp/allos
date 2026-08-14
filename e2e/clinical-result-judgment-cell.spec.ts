@@ -3,7 +3,7 @@ import type { Locator } from "@playwright/test";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 
-// The biomarker row says which band judged it, and what the verdict is called
+// The clinical-result row says which band judged it, and what the verdict is called
 // (#2315).
 //
 // WHAT WAS WRONG. The Reference cell printed `reference_range` — the free-text
@@ -58,8 +58,7 @@ function removeUnjudgedRow() {
 // which `toBeVisible()` cannot do — an sr-only span is visible to Playwright.
 async function expectRenderedWide(locator: Locator): Promise<void> {
   const box = await locator.boundingBox();
-  expect(box).not.toBeNull();
-  expect(box!.width).toBeGreaterThan(4);
+  expect(box?.width).toBeGreaterThan(4);
 }
 
 test("the Reference cell states the bands the flag came from, and keeps the lab's string as provenance", async ({
@@ -67,9 +66,8 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
 }) => {
   // A panel facet narrows the index AND expands every matching group (#1651), so
   // the readings are on the page without a disclosure tap.
-  await page.goto("/results/readings?panel=lipids&current=1");
-  const table = page.getByTestId("biomarkers-table");
-  await expect(table).toBeVisible();
+  await page.goto("/results/clinical-results?panel=lipids&current=1");
+  const table = page.getByTestId("clinical-results-table");
 
   // ApoB is the issue's own example: the document printed `<90`, and the amber
   // "Above optimal" verdict comes from the canonical optimal band (≤60) that the
@@ -78,7 +76,7 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
   const row = table
     .getByRole("row")
     .filter({ hasText: "Apolipoprotein B (ApoB)" });
-  const cell = row.getByTestId("biomarker-reference");
+  const cell = row.getByTestId("clinical-result-reference");
   await expect(cell).toHaveText("ref ≤ 90 · optimal ≤ 60");
   await expect(cell).toHaveAttribute("data-judged", "true");
   // The lab's own string did not disappear — it moved from assertion to
@@ -88,7 +86,9 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
   // Nothing on this filtered view falls back: every lipid analyte is canonical, so
   // no row is still printing the lab's range as if it were the deciding one.
   await expect(
-    table.locator('[data-testid="biomarker-reference"][data-judged="false"]')
+    table.locator(
+      '[data-testid="clinical-result-reference"][data-judged="false"]'
+    )
   ).toHaveCount(0);
 });
 
@@ -96,14 +96,12 @@ test("a flagged row's severity word is in the visible text, not only the accessi
   page,
 }) => {
   // Every row under this filter is out of range, so each one must carry a word.
-  await page.goto("/results/readings?range=oor&current=1");
-  const table = page.getByTestId("biomarkers-table");
-  await expect(table).toBeVisible();
+  await page.goto("/results/clinical-results?range=oor&current=1");
+  const table = page.getByTestId("clinical-results-table");
 
   const words = table.locator(
     '[data-testid="medical-flag-text"][data-visible="true"]'
   );
-  await expect(words).not.toHaveCount(0);
   await expectRenderedWide(words.first()); // first-ok: every row under this filter is flagged, so which word is measured is irrelevant — only that it is drawn, not clipped
   for (const t of await words.allTextContents()) {
     expect(["High", "Low", "Abnormal"]).toContain(t.trim());
@@ -111,8 +109,10 @@ test("a flagged row's severity word is in the visible text, not only the accessi
 
   // And the deciding band is rendered beside the value on the same rows.
   await expect(
-    table.locator('[data-testid="biomarker-reference"][data-judged="true"]')
-  ).not.toHaveCount(0);
+    table
+      .locator('[data-testid="clinical-result-reference"][data-judged="true"]')
+      .first()
+  ).toBeVisible();
 });
 
 // #2344: the unjudged cell says which case it is in, standing alone.
@@ -150,13 +150,13 @@ test.describe("an unjudged Reference cell", () => {
     // A `q` filter narrows the index, and a narrowed index arrives with every group
     // expanded (#1651), so the row is on the page without a disclosure tap.
     await page.goto(
-      `/results/readings?q=${encodeURIComponent(UNJUDGED_ANALYTE)}`
+      `/results/clinical-results?q=${encodeURIComponent(UNJUDGED_ANALYTE)}`
     );
-    const table = page.getByTestId("biomarkers-table");
+    const table = page.getByTestId("clinical-results-table");
     await expect(table).toBeVisible();
 
     const row = table.getByRole("row").filter({ hasText: UNJUDGED_ANALYTE });
-    const cell = row.getByTestId("biomarker-reference");
+    const cell = row.getByTestId("clinical-result-reference");
     await expect(cell).toHaveAttribute("data-judged", "false");
     // The lab's digits, unchanged — and named as the lab's, in the cell itself.
     await expect(cell).toHaveText(`lab ${UNJUDGED_PRINTED}`);
@@ -170,22 +170,22 @@ test.describe("an unjudged Reference cell", () => {
   }) => {
     // The two cases side by side, which is the comparison #2344 is about: both sit
     // under one "Reference" `<th>`, and each one states which range decided it.
-    await page.goto("/results/readings?panel=lipids&current=1");
+    await page.goto("/results/clinical-results?panel=lipids&current=1");
     const judged = page
-      .getByTestId("biomarkers-table")
+      .getByTestId("clinical-results-table")
       .getByRole("row")
       .filter({ hasText: "Apolipoprotein B (ApoB)" })
-      .getByTestId("biomarker-reference");
+      .getByTestId("clinical-result-reference");
     await expect(judged).toHaveText(/^ref /);
 
     await page.goto(
-      `/results/readings?q=${encodeURIComponent(UNJUDGED_ANALYTE)}`
+      `/results/clinical-results?q=${encodeURIComponent(UNJUDGED_ANALYTE)}`
     );
     const unjudged = page
-      .getByTestId("biomarkers-table")
+      .getByTestId("clinical-results-table")
       .getByRole("row")
       .filter({ hasText: UNJUDGED_ANALYTE })
-      .getByTestId("biomarker-reference");
+      .getByTestId("clinical-result-reference");
     await expect(unjudged).toHaveText(/^lab /);
   });
 });

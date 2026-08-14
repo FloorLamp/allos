@@ -215,7 +215,7 @@ export const VELOCITY_PER_YEAR: Record<string, number> = {
 // microscopy, thyroid antibodies…): it shouldn't nag with the SAME standing as a lipid
 // panel in the retest nudge, so — unless it is risk-elevated — the Upcoming retest
 // signal drops an unlisted one-off from the nudge entirely (issue #587; a flagged
-// one-off still surfaces on the Biomarkers flag/trajectory path) rather than nagging
+// one-off still surfaces on the clinical-result flag/trajectory path) rather than nagging
 // it like a lipid. A risk-elevated unlisted analyte keeps its clock. Curated CONSERVATIVELY and
 // INFORMATIONAL (not medical advice); reviewed against routine-panel practice. Keyed
 // by exact canonical name (matched family-aware by lib/biomarker-retest, so the

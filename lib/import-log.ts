@@ -102,7 +102,7 @@ export function jobTitle(type: string): string {
 
 export function jobFormatLabel(type: string): string {
   if (type === "workouts") return "Workouts (paste/CSV)";
-  if (type === "biomarkers") return "Biomarkers (paste/CSV)";
+  if (type === "biomarkers") return "Clinical results (paste/CSV)";
   return "Paste/CSV";
 }
 

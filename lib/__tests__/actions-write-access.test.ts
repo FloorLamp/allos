@@ -297,8 +297,8 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // (requireItemWriteAccess → requireProfileWriteAccess). ---
   {
     file: "app/(app)/results/actions.ts",
-    fn: "loadBiomarkerPanelRows",
-    why: "read-only (#1651): returns ONE panel group's readings when the reader expands it, so the Biomarkers index can ship a bounded payload instead of every reading up front; writes nothing, and it re-resolves requireScope() and re-parses the URL filters with the same helpers the page used, so it can only return rows that reader's own page render would have shown",
+    fn: "loadClinicalResultPanelRows",
+    why: "read-only (#1651): returns ONE panel group's results when the reader expands it, so the Clinical results index can ship a bounded payload instead of every result up front; writes nothing, and it re-resolves requireScope() and re-parses the URL filters with the same helpers the page used, so it can only return rows that reader's own page render would have shown",
   },
   {
     file: "app/(app)/supplies/actions.ts",
@@ -489,18 +489,18 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "deleteOpticalPrescription",
     why: "multi-view (#2557): deletes the ITEM's optical prescription via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
-  // --- Multi-view Readings table edits/deletes (issue #1331). Each merged row
+  // --- Multi-view Clinical results table edits/deletes (issue #1331). Each merged row
   // carries its OWN profileId, so an edit/delete on a non-acting member's reading
   // targets the ROW's profile via gateItemProfile() → requireProfileWriteAccess. The
   // paired addResult keeps its plain requireWriteAccess() (a new reading always lands
   // on the acting profile). ---
   {
-    file: "app/(app)/results/reading-actions.ts",
+    file: "app/(app)/results/clinical-result-actions.ts",
     fn: "updateResult",
     why: "multi-view (#1331): edits the ITEM's biomarker reading via gateItemProfile() → requireProfileWriteAccess(itemProfileId); the document subpage form posts no profile_id and falls back to the acting-profile gate",
   },
   {
-    file: "app/(app)/results/reading-actions.ts",
+    file: "app/(app)/results/clinical-result-actions.ts",
     fn: "deleteResult",
     why: "multi-view (#1331): deletes the ITEM's biomarker reading via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },

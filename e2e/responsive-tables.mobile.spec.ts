@@ -16,21 +16,21 @@ import {
 // which labels come back, where the tap goes) plus one ordering comparison that
 // holds for any fixture with two distinct names.
 
-const BIOMARKERS = "/results/readings";
+const CLINICAL_RESULTS = "/results/clinical-results";
 
 // The master list is an index of collapsed panel groups since #1499 section A, so a
 // spec about the ROW's card shape has to open a group first. `?q=` narrows the list
 // to one analyte AND auto-expands the groups that match it (a search hit must never
 // look like no-results), which is both the shortest route to a rendered card and a
 // bounded, fixture-agnostic one — "Cholesterol" is present in every seeded profile.
-const CARD_ROWS = `${BIOMARKERS}?q=Cholesterol`;
+const CARD_ROWS = `${CLINICAL_RESULTS}?q=Cholesterol`;
 
 test.describe("responsive tables: stacked rows below sm (#1426)", () => {
-  test("the biomarkers table stacks as flat rows — no header row, prominent value, no sideways scroll", async ({
+  test("the clinical results table stacks as flat rows — no header row, prominent value, no sideways scroll", async ({
     page,
   }) => {
     await page.goto(CARD_ROWS);
-    const table = page.getByTestId("biomarkers-table");
+    const table = page.getByTestId("clinical-results-table");
     await expect(table).toBeVisible();
 
     // The header strip is gone in card mode; each cell carries its own label instead.
@@ -77,16 +77,18 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     page,
   }) => {
     await page.goto(CARD_ROWS);
-    const table = page.getByTestId("biomarkers-table");
+    const table = page.getByTestId("clinical-results-table");
     await expect(table).toBeVisible();
-    // The canonical-name link is the SAME `readingDetailHref` anchor the desktop
+    // The canonical-name link is the SAME `clinicalResultDetailHref` anchor the desktop
     // table renders — the card is a re-layout of that cell, not a second one.
     const link = table
-      .locator('td[data-card="title"] a[href*="/results/readings/view"]')
+      .locator(
+        'td[data-card="title"] a[href*="/results/clinical-results/view"]'
+      )
       .first(); // first-ok: any canonical row's link proves the card keeps the desktop destination
     const destinationName = (await link.textContent())?.trim();
     expect(destinationName).toBeTruthy();
-    await followLink(page, link, /\/results\/readings\/view\?name=/);
+    await followLink(page, link, /\/results\/clinical-results\/view\?name=/);
     await expect(
       page.getByRole("heading", { name: destinationName!, exact: true })
     ).toBeVisible();
@@ -96,7 +98,7 @@ test.describe("responsive tables: stacked rows below sm (#1426)", () => {
     page,
   }) => {
     await page.goto(CARD_ROWS);
-    const table = page.getByTestId("biomarkers-table");
+    const table = page.getByTestId("clinical-results-table");
     await expect(table).toBeVisible();
     const firstTitle = table.locator('td[data-card="title"]').first(); // first-ok: the assertion is that whatever is first CHANGES when the sort flips — an ordering, not a fixture identity
     const ascending = (await firstTitle.innerText()).trim();

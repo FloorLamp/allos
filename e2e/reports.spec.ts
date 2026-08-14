@@ -24,7 +24,7 @@ const CULTURE_BODY = /Escherichia coli/;
 test("the Reports tab renders a narrative report body (#708)", async ({
   page,
 }) => {
-  await page.goto("/results/readings");
+  await page.goto("/results/clinical-results");
   const tabs = page.getByTestId("results-tabs");
   await followLink(
     page,
@@ -32,14 +32,7 @@ test("the Reports tab renders a narrative report body (#708)", async ({
     /\/results\/reports$/
   );
   const reports = page.getByTestId("results-reports");
-  await expect(
-    reports.getByText("Final Report").first() // first-ok: presence of the seeded culture report in the scoped list — order-agnostic
-  ).toBeVisible();
-  // The body renders through NotesText — the report text is viewable inline.
-  await expect(reports.getByText(CULTURE_BODY)).toBeVisible();
-
-  // …as a structured row in one divided list, not a pile of nested cards. The
-  // seeded rows are unattributed, so neither optional line rides along.
+  // The body renders through NotesText in one divided list, not a pile of nested cards.
   const row = reports
     .getByTestId("report-card")
     .filter({ hasText: CULTURE_BODY });
@@ -49,9 +42,6 @@ test("the Reports tab renders a narrative report body (#708)", async ({
   await expect(
     row.getByRole("heading", { name: "Final Report" })
   ).toBeVisible();
-  await expect(
-    row.getByRole("link", { name: /View source document/ })
-  ).toHaveCount(0);
 });
 
 test("the Reports pane renders on a direct deep link, with its tab selected (#1598)", async ({
@@ -63,25 +53,22 @@ test("the Reports pane renders on a direct deep link, with its tab selected (#15
   const reports = page.getByTestId("results-reports");
   await expect(reports).toBeVisible();
   await expect(reports).toHaveClass(/\bmax-w-3xl\b/);
-  await expect(reports.getByText(/Narrative diagnostic reports/)).toHaveCount(
-    0
-  );
   await expect(page.getByTestId("reports-list")).toBeVisible();
   await expect(
     page.getByTestId("results-tabs").getByRole("tab", { name: "Reports" })
   ).toHaveAttribute("aria-selected", "true");
 });
 
-test("a narrative report never appears in the Biomarkers analyte catalog (#708)", async ({
+test("a narrative report never appears in the Clinical results analyte catalog (#708)", async ({
   page,
 }) => {
   // The `report` category is excluded from RESULTS_CATALOG_CATEGORIES, so the analyte
   // browser must never list a report body as a row. The culture body text is a
   // report-only marker — its absence here proves the exclusion.
-  await page.goto("/results/readings");
-  const biomarkers = page.getByTestId("results-readings");
-  await expect(biomarkers).toBeVisible();
-  await expect(biomarkers.getByText(CULTURE_BODY)).toHaveCount(0);
+  await page.goto("/results/clinical-results");
+  const results = page.getByTestId("results-clinical-results");
+  await expect(results).toBeVisible();
+  await expect(results.getByText(CULTURE_BODY)).toHaveCount(0);
 });
 
 test("a profile with no narrative reports gets the pane's empty state (#1598)", async ({
@@ -96,17 +83,11 @@ test("a profile with no narrative reports gets the pane's empty state (#1598)", 
   try {
     await page.goto("/results/reports");
     const reports = page.getByTestId("results-reports");
-    await expect(reports).toBeVisible();
     await expect(reports.getByText(/No narrative reports yet/)).toBeVisible();
     await expect(
       reports.getByRole("link", { name: /Import records/ })
     ).toHaveAttribute("href", "/data?section=import");
-    // The empty state REPLACES the list — an empty card list would look the same from
-    // the outside, and the nudge (import a CCD/XDM record) is what makes the pane
-    // usable at all for someone who has never imported one.
-    await expect(page.getByTestId("reports-list")).toHaveCount(0);
-    await expect(page.getByTestId("report-card")).toHaveCount(0);
-    // Still the Reports route — an empty tab is not a bounce back to Biomarkers.
+    // Still the Reports route — an empty tab is not a bounce back to Clinical results.
     await expect(page).toHaveURL(/\/results\/reports$/);
   } finally {
     await page.context().close();

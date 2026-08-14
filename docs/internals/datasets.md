@@ -416,7 +416,7 @@ The registry above declines names one at a time. There is a second way a name ge
 onto **Uncatalogued items** and off it again, and it runs at ingest rather than at
 read: `METRIC_DOCUMENT_REACH` (`lib/trend-metric-analytes.ts`) declares, per trend
 metric, **how a document-imported reading of that quantity reaches its chart**, and a
-metric that answers is what removes its analyte from the flat Biomarkers browser.
+metric that answers is what removes its analyte from the flat Clinical results catalog.
 
 Every **reaching** variant must therefore resolve the imported `medical_records` row,
 because a row that leaves the catalog without arriving anywhere is stranded:

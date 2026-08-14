@@ -17,7 +17,7 @@ import {
   CONTINUOUS_READING_METRIC,
   continuousReadingSlug,
 } from "@/lib/reading-cadence";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import {
   TREND_METRIC_SLUGS,
   trendMetricPeriodStats,
@@ -97,7 +97,7 @@ describe("a category='vitals' reading reaches the metric detail surface", () => 
       category: string;
     };
     expect(row.category).toBe("vitals");
-    expect(readingDetailHref(row.canonical_name, row.name)).toBe(
+    expect(clinicalResultDetailHref(row.canonical_name, row.name)).toBe(
       "/trends/metric/spo2"
     );
   });
@@ -136,7 +136,7 @@ describe("a category='vitals' reading reaches the metric detail surface", () => 
     expect(siblings?.panelId).toBe("vital-signs");
     expect(siblings?.names).toContain("Blood Pressure Systolic");
     // …and each chip lands on ITS own surface.
-    expect(readingDetailHref("Blood Pressure Systolic")).toBe(
+    expect(clinicalResultDetailHref("Blood Pressure Systolic")).toBe(
       "/trends/metric/systolic"
     );
   });

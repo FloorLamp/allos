@@ -13,7 +13,7 @@ export { UNDO_TOAST_MS } from "@/lib/undo-offer";
 // Shared client wiring for an undoable delete (issue #30). Runs a delete server
 // action that returns an `{ undoId }` token, then shows a toast whose "Undo" action
 // calls undoDelete(token). Centralizes the pattern so every delete surface (activity
-// modal, body-metrics row, biomarkers table, supplement/medication cards) behaves
+// modal, body-metrics row, clinical results table, supplement/medication cards) behaves
 // the same.
 //
 // Since #2642 this is an ADAPTER over `useUndoableAction`, not a second undo lifecycle:

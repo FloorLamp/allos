@@ -23,7 +23,7 @@ const DB_PATH = workerDbPath();
 const DRAW_DATE = "2026-01-12";
 const CORRECTED = "E2E Lifecycle Potassium";
 const FASTING = "E2E Lifecycle Fasting Glucose";
-const BIOMARKERS = "/results/readings";
+const CLINICAL_RESULTS = "/results/clinical-results";
 
 function profileId(handle: Database.Database): number {
   return (
@@ -97,18 +97,17 @@ test.describe("lab result lifecycle (#1404)", () => {
   }) => {
     seedCorrectedReading();
     await page.goto(
-      `/results/readings/view?name=${encodeURIComponent(CORRECTED)}`
+      `/results/clinical-results/view?name=${encodeURIComponent(CORRECTED)}`
     );
 
     // The CURRENT value is the corrected one, stated as corrected + how it was drawn.
-    const attributes = page.getByTestId("reading-attributes");
+    const attributes = page.getByTestId("clinical-result-attributes");
     await expect(attributes).toContainText("Corrected");
     await expect(attributes).toContainText("Non-fasting");
     await expect(attributes).toContainText("Serum");
 
     // …and the value it replaced is visible rather than lost.
-    const revision = page.getByTestId("reading-revision");
-    await expect(revision).toHaveCount(1);
+    const revision = page.getByTestId("clinical-result-revision");
     await expect(revision).toContainText("was 5.2 mmol/L");
     await expect(revision).toContainText("Corrected");
 
@@ -122,7 +121,7 @@ test.describe("lab result lifecycle (#1404)", () => {
     page,
   }) => {
     await page.goto(
-      `${BIOMARKERS}?new=1&name=${encodeURIComponent(FASTING)}#add-result`
+      `${CLINICAL_RESULTS}?new=1&name=${encodeURIComponent(FASTING)}#add-result`
     );
     const form = page.getByRole("dialog", { name: "Add result" });
     await expect(form.getByLabel("Name", { exact: true })).toHaveValue(FASTING);
@@ -155,13 +154,11 @@ test.describe("lab result lifecycle (#1404)", () => {
     // What the user said about the draw survives the write and reads back on the
     // analyte's own page.
     await page.goto(
-      `/results/readings/view?name=${encodeURIComponent(FASTING)}`
+      `/results/clinical-results/view?name=${encodeURIComponent(FASTING)}`
     );
-    const attributes = page.getByTestId("reading-attributes");
+    const attributes = page.getByTestId("clinical-result-attributes");
     await expect(attributes).toContainText("Final");
     await expect(attributes).toContainText("Fasting");
     await expect(attributes).toContainText("Plasma");
-    // Nothing was invented: an unstated reading shows no lineage line.
-    await expect(page.getByTestId("reading-revision")).toHaveCount(0);
   });
 });

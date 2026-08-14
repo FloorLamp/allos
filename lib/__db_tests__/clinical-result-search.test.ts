@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — the Biomarkers table's free-text search must match the
+// DB INTEGRATION TIER — the Clinical results table's free-text search must match the
 // CANONICAL name (the row heading it renders), not only the raw lab string and
 // panel (#383). A record imported as "CHOLESTEROL, TOTAL" and displayed as "Total
 // Cholesterol" must be findable by "total cholesterol"; the raw string still

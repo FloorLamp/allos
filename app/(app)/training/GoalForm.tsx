@@ -682,7 +682,7 @@ export default function GoalForm({
             {referenceHint && (
               <p
                 className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="goal-biomarker-reference"
+                data-testid="goal-clinical-result-reference"
               >
                 {referenceHint}
               </p>

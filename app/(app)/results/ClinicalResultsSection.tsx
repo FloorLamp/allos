@@ -6,69 +6,69 @@ import { type ProfileScope } from "@/lib/scope";
 import StarredResults from "@/components/StarredResults";
 import BioAgeInputsCard from "./BioAgeInputsCard";
 import TrajectoryFindings from "./TrajectoryFindings";
-import ReadingsTable from "@/components/ReadingsTable";
+import ClinicalResultsTable from "@/components/ClinicalResultsTable";
 import TableSortSelect from "@/components/TableSortSelect";
 import {
-  BIOMARKER_SORT_CHOICES,
-  DEFAULT_BIOMARKER_SORT,
+  CLINICAL_RESULT_SORT_CHOICES,
+  DEFAULT_CLINICAL_RESULT_SORT,
 } from "@/lib/derived-table";
 import ResultForm from "@/components/ResultForm";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
-import { addResult } from "@/app/(app)/results/reading-actions";
+import { addResult } from "@/app/(app)/results/clinical-result-actions";
 import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
 import { reachablePanelIds } from "@/lib/biomarker-panel-reach";
 import { PHONE_STACK } from "@/lib/phone-fold";
-import { readingAddHref, dataSectionHref } from "@/lib/hrefs";
+import { clinicalResultAddHref, dataSectionHref } from "@/lib/hrefs";
 import {
   boundPanelGroups,
   defaultOpenPanels,
 } from "@/lib/biomarker-panel-groups";
 import {
-  readingIndexRows,
-  biomarkerPanelGroups,
+  clinicalResultIndexRows,
+  clinicalResultPanelGroups,
   isMultiView,
-  parseReadingFilters,
-  type ReadingsSearchParams,
-} from "./reading-index";
+  parseClinicalResultFilters,
+  type ClinicalResultsSearchParams,
+} from "./clinical-result-index";
 
-export type { ReadingsSearchParams };
+export type { ClinicalResultsSearchParams };
 
 // Does this visit want the entry panel OPEN on arrival? Only a deliberate
-// add-a-reading deep link — the command palette's "Add result" hit and the
+// add-result deep link — the command palette's "Add result" hit and the
 // medication-monitoring "log this lab" action both carry `new=1&name=<analyte>`.
 // An ordinary read of the hub gets the collapsed affordance.
-function entryPanelOpen(searchParams: ReadingsSearchParams): boolean {
+function entryPanelOpen(searchParams: ClinicalResultsSearchParams): boolean {
   return searchParams.new === "1" || !!searchParams.name?.trim();
 }
 
-// The Readings browser (#1042 phase 5 → #1331 multi-view). It reads the scope's
-// stored + derived readings through the shared gather (./reading-index), groups
+// The Clinical results catalog (#1042 phase 5 → #1331 multi-view). It reads the
+// scope's stored observations plus derived readings through the shared gather, groups
 // them into the panel index HERE on the server, and hands the client table a BOUNDED
-// payload (#1651): whole-panel header facts for every group, but readings only for
-// the groups that arrive expanded, capped. Expanding a group asks for its readings
-// then, through loadBiomarkerPanelRows.
+// payload (#1651): whole-panel header facts for every group, but results only for
+// the groups that arrive expanded, capped. Expanding a group asks for its results
+// then, through loadClinicalResultPanelRows.
 //
 // SINGLE vs MULTI view is one dimension of the same render, not two components:
 // multi-view adds the leading subject column, per-member grouping and per-row write
 // targeting, and gives each member in view its own starred card. The personal "you"
 // surfaces — the add form, the bio-age hero, the trajectory rules — stay acting-scoped
 // in both, because they write to / summarize the acting profile.
-export default function ReadingsSection({
+export default function ClinicalResultsSection({
   scope,
   searchParams,
 }: {
   scope: ProfileScope;
-  searchParams: ReadingsSearchParams;
+  searchParams: ClinicalResultsSearchParams;
 }) {
-  const filters = parseReadingFilters(searchParams);
+  const filters = parseClinicalResultFilters(searchParams);
   const { category: active, panel, range, q, current } = filters;
   const multi = isMultiView(scope);
-  const rows = readingIndexRows(scope, filters);
-  const groups = biomarkerPanelGroups(rows, multi);
+  const rows = clinicalResultIndexRows(scope, filters);
+  const groups = clinicalResultPanelGroups(rows, multi);
   // Which groups start expanded is a SERVER decision (search/facet/short list), and
-  // it decides the payload: an expanded group ships readings, a collapsed one ships
+  // it decides the payload: an expanded group ships results, a collapsed one ships
   // none. One computation, not a client re-derivation over rows already sent.
   const initialOpen = defaultOpenPanels(groups, filters);
   const panelGroups = boundPanelGroups(groups, initialOpen);
@@ -92,7 +92,10 @@ export default function ReadingsSection({
         renders, because every slot's order resets there. Below `sm` the slots are
         re-ordered so the INDEX leads (#1647); the reasoning, and why caps alone
         could not get there, is in lib/phone-fold's PHONE_STACK. */}
-        <div className={PHONE_STACK.container} data-testid="biomarkers-stack">
+        <div
+          className={PHONE_STACK.container}
+          data-testid="clinical-results-stack"
+        >
           {/* Starred leads on desktop because it is the only part the reader
           authored. On a phone it is a surface you go TO, so it sits below the
           index — still whole, still one scroll, never behind a tap. In multi-view the
@@ -151,13 +154,13 @@ export default function ReadingsSection({
               // The card-mode sort control (#1426) travels with the facets since
               // #2316: below `sm` "narrow this list" and "reorder this list" are one
               // job behind one disclosure, instead of two strips of chrome stacked
-              // above the first reading. Offered only when there is something to
+              // above the first result. Offered only when there is something to
               // order — the empty state has no rows to sort.
               sortControl={
                 panelGroups.length > 0 ? (
                   <TableSortSelect
-                    choices={BIOMARKER_SORT_CHOICES}
-                    defaultSort={DEFAULT_BIOMARKER_SORT}
+                    choices={CLINICAL_RESULT_SORT_CHOICES}
+                    defaultSort={DEFAULT_CLINICAL_RESULT_SORT}
                     label="Sort by"
                   />
                 ) : undefined
@@ -192,7 +195,7 @@ export default function ReadingsSection({
               <EmptyState
                 message={
                   active || panel || range || q || current
-                    ? "No readings match these filters."
+                    ? "No clinical results match these filters."
                     : multi
                       ? "No results yet for these profiles. Add one manually or import a document."
                       : "No results yet. Add one manually or import a document."
@@ -201,7 +204,7 @@ export default function ReadingsSection({
                   active || panel || range || q || current
                     ? undefined
                     : [
-                        { href: readingAddHref(), label: "Add result" },
+                        { href: clinicalResultAddHref(), label: "Add result" },
                         {
                           href: dataSectionHref("import"),
                           label: "Import documents",
@@ -210,7 +213,7 @@ export default function ReadingsSection({
                 }
               />
             ) : (
-              <ReadingsTable
+              <ClinicalResultsTable
                 panelGroups={panelGroups}
                 initialOpen={initialOpen}
                 now={now}

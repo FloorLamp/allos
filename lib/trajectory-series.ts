@@ -23,7 +23,7 @@ import {
   getProfileReproductiveStatus,
 } from "./settings";
 import { canonicalGroupKey, groupByCanonicalName } from "./biomarker-group";
-import { readingDetailHref } from "./hrefs";
+import { clinicalResultDetailHref } from "./hrefs";
 import type { ClinicalObservation, ReproductiveStatus, Sex } from "./types";
 import {
   referenceRange,
@@ -141,7 +141,7 @@ function buildInputFromSeries(
       reference
     ),
     today,
-    href: readingDetailHref(canonical),
+    href: clinicalResultDetailHref(canonical),
   };
 }
 

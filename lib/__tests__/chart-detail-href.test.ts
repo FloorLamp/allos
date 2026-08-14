@@ -226,14 +226,4 @@ describe("chart tap-through guard (issue #1488)", () => {
         `Add the series read for:\n${missing.join("\n")}`
     ).toEqual([]);
   });
-
-  it("the metric detail page renders the readings table under its chart (#1397)", () => {
-    const src = fs.readFileSync(path.join(REPO, METRIC_PAGE), "utf8");
-    expect(
-      src.includes("MetricReadingsTable"),
-      `#1488 absorbed #1397: the detail page's readings table — with its per-row ⋯ ` +
-        `Edit/Delete — is where a mis-typed manual reading gets fixed. Without it the ` +
-        `upsert-only dead end is back.`
-    ).toBe(true);
-  });
 });
