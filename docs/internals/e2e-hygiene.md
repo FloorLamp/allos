@@ -2024,7 +2024,16 @@ because it was mis-read three times as a slow exit:
 | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `toHaveCount(0)` missing a 5 s budget against a 240 ms unmount | the unmount was never scheduled — the sheet stayed open indefinitely    |
 | a timing flake worth a bigger budget or an arrival signal      | no budget helps: the end state was not on its way                       |
-| CPU-bound, so reproducible under a throttle                    | 5/5 green at 20× and 60× — throttling widens the window it needs to hit |
+| CPU-bound, so reproducible under a throttle                    | 5/5 green at 20× and 60× — a throttle slows the RACE, not one side of it |
+
+The throttle row is the one worth internalising, because the recipe two sections
+up is what everyone reaches for first and it answers "nothing wrong". The race
+here is between a settled measurement and a Server Action landing after it, and
+a CPU throttle stretches the settling poll at least as much as it stretches the
+arrival — so it does not pull the two apart, and can just as easily let the
+arrival land safely INSIDE the settle. **Concurrency reproduces this; slowness
+does not.** Before reaching for the throttle, ask what the two racers are and
+whether the instrument moves them independently.
 
 So `touchSwipeFrom(page, locator, { dx, dy })` re-aims and then **proves where
 the finger landed** before it moves: it reads the target of the touchstart the
