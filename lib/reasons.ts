@@ -104,7 +104,7 @@ export function flaggedReason(
 }
 
 // A "due because a situation is active" reason — the situational-dose explanation
-// the medicine page shows as a bare tag, lifted into a structured reason so the same
+// the intake surfaces show as a bare tag, lifted into a structured reason so the same
 // line can reach the digest / a reminder (issue #656 item 5).
 export function situationReason(situation: string): Reason {
   return {

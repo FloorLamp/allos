@@ -9,7 +9,7 @@
 //
 // No SQL of its own: everything is read through the existing profile-scoped query
 // functions, so profile scoping is inherited rather than re-implemented. The per-day
-// aggregation is `intakeAdherenceStrip` — the medicine page's own computation,
+// aggregation is `intakeAdherenceStrip` — the intake surface's own computation,
 // including its #430/#1442 lifetime clamp, so a freshly-added item never scores a
 // month of phantom misses.
 
@@ -132,7 +132,7 @@ export function intakeHistoryWindowStart(today: string, days: number): string {
 // them can compute its own variant of "what changed" (#221). The tier is chosen by
 // the SAME `isPushedIntake` predicate part 1 gates the push surfaces with, which is
 // what makes the digest's news exactly the set of obligations it is allowed to push
-// about: a low-priority supplement is tracked, so it still counts in the adherence
+// about: a `may` supplement is tracked, so it still counts in the adherence
 // fraction beside this line, but its misses are not news.
 export function getIntakeDeltas(
   profileId: number,

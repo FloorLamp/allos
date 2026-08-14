@@ -96,8 +96,8 @@ export function doseSendSlot(
   return bucketWindow(bucket);
 }
 
-// The notification priority floor (issue #1156) applied to a gathered window:
-// low-priority SUPPLEMENT doses are excluded from every dose-reminder send —
+// The notification obligation floor (issue #1156) applied to a gathered window:
+// `may` SUPPLEMENT doses are excluded from every dose-reminder send —
 // body lines AND buttons — while medications are never gated (safety tier).
 // In-app surfaces don't route through this; dueness is untouched.
 export function notifiableWindowDoses(entries: WindowDose[]): WindowDose[] {
@@ -410,7 +410,7 @@ export interface IntakeSlotPart {
 // per-slot "✅ All <slot>" — so two windows configured at the same hour (or the
 // PreWorkout pseudo-slot colliding with a window) can never produce two
 // notifications in one hour. The caller (buildIntakeReminderForSlots) has already
-// applied the #1156 priority floor and the merged-set empty check.
+// applied the #1156 obligation floor and the merged-set empty check.
 export function renderMergedIntakeMessage(
   profileId: number,
   parts: IntakeSlotPart[],

@@ -110,7 +110,7 @@ export function renderPostWorkoutFinishMessage(
   date: string,
   entries: WindowDose[]
 ): NotificationMessage | null {
-  // The #1156 priority floor: a low-priority SUPPLEMENT never rides a dose
+  // The #1156 obligation floor: a `may` SUPPLEMENT never rides a dose
   // reminder (body or buttons); medications are never gated (safety tier).
   const pending = notifiableWindowDoses(entries)
     .filter((e) => !e.taken && !e.skipped)

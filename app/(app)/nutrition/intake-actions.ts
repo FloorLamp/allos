@@ -1655,13 +1655,13 @@ export async function dismissAdherencePattern(
   return formOk();
 }
 
-// Accept a priority DEMOTION SUGGESTION (issue #1505 part 2): re-tag a high/mandatory
-// supplement the user has effectively stopped taking as `low` — tracked, never pushed.
+// Accept an obligation DEMOTION SUGGESTION (issue #1505 part 2): move a `must`/`should`
+// supplement the user has effectively stopped taking to `may` — tracked, never pushed.
 //
-// THIS TAP IS THE PRIORITY WRITE. The detector only ever suggests; nothing in the
-// system demotes on its own (#559 — priority is the user's declaration). The write
+// THIS TAP IS THE OBLIGATION WRITE. The detector only ever suggests; nothing in the
+// system demotes on its own (#559 — obligation is the user's declaration). The write
 // core is auth-blind and returns a typed outcome, which is surfaced verbatim rather
-// than confirmed unconditionally: accepting a stale card for a paused or already-low
+// than confirmed unconditionally: accepting a stale card for a paused or already-`may`
 // item legitimately refuses, and the caller must say so (the inline-action rule).
 //
 // The suggestion's finding is also dismissed on success, so the accepted card leaves
@@ -1687,7 +1687,7 @@ export async function acceptDemotionSuggestion(
   return formOk();
 }
 
-// Dismiss a priority DEMOTION SUGGESTION without acting on it — the calm half of the
+// Dismiss an obligation DEMOTION SUGGESTION without acting on it — the calm half of the
 // coaching-tier contract. Hides it through the shared findings-bus suppression store,
 // guarded to the demotion namespace; profile-scoped via dismissFinding.
 export async function dismissDemotionSuggestion(

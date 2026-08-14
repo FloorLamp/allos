@@ -184,7 +184,7 @@ describe("demotionItemIdFromKey", () => {
 describe("window coherence with the digest delta classifier", () => {
   it("the demotion window is strictly WIDER than the delta window", () => {
     // The two engines must not fire off the same evidence: a broken streak is
-    // today's news, a month of non-adherence is a priority question.
+    // today's news, a month of non-adherence is an obligation question.
     expect(DEMOTION_WINDOW_DAYS).toBeGreaterThan(INTAKE_DELTA_DAYS);
   });
 

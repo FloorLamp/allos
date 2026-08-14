@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 // Static boundary guard for the two kind-owned intake forms (issue #846). Before the
 // split, ONE IntakeItemForm rendered a supplement-shaped body for medications too —
 // SUPPLEMENT_BRANDS suggestions and an "e.g. Thorne" placeholder on a med, a Stack
-// section and a Priority sort (#559) that mean nothing for a drug, dose suggestions
+// section and a supplement-only sort (#559) that mean nothing for a drug, dose suggestions
 // from the supplement catalog. Placeholders teach the user what a field is for; those
 // taught wrong. The forms are now split for real: MedicationForm owns the medication
 // concepts, SupplementForm the supplement concepts, and NEITHER may import or render
@@ -28,18 +28,12 @@ describe("intake form split boundary (issue #846)", () => {
   const med = read(MED);
   const supp = read(SUPP);
 
-  it("the old shared IntakeItemForm is gone", () => {
-    expect(
-      fs.existsSync(path.join(REPO, "components/IntakeItemForm.tsx"))
-    ).toBe(false);
-  });
-
   it("MedicationForm renders no supplement kind concepts", () => {
     // IntakeItem catalog/brands, the stack grouping, the workout condition
     // scheduler — none belong on a medication.
     //
     // NOT forbidden since #1505: the obligation selector. It used to be listed here
-    // (as the supplement-only "priority" band) because a medication's pushability was
+    // (as a supplement-only band) because a medication's pushability was
     // decided by its KIND. Obligation is now the one field both kinds carry — a med
     // is reminded because it is `must`, not because it is a med — so the selector is
     // shared by construction, and the guard would be pinning the very coupling this

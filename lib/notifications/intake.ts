@@ -178,11 +178,11 @@ export function getPreWorkoutSlotMinute(profileId: number): number | null {
 // Taking the doses as an argument lets the callback path resolve a tapped dose's
 // slot and collect that slot in a single query.
 //
-// NOTE: this gather is deliberately UNFILTERED by the #1156 priority floor — the
+// NOTE: this gather is deliberately UNFILTERED by the #1156 obligation floor — the
 // send-assembly layer (buildIntakeReminderForSlots / the finish nudge) and the
 // button paths apply notifiableWindowDoses; the missed-dose escalation gather
 // (lib/notifications/escalate.ts) reads THIS unfiltered set on purpose, so the
-// safety tier is structurally never priority-gated.
+// safety tier is structurally never obligation-gated.
 function gatherWindowDoses(
   profileId: number,
   slot: IntakeSendSlot,
@@ -348,11 +348,11 @@ export function collectWindowDoses(
 }
 
 // The merged send for every slot due (and unsent) this hour — issue #1154's
-// one-reminder-per-hour invariant. Gathers each slot, applies the #1156 priority
+// one-reminder-per-hour invariant. Gathers each slot, applies the #1156 obligation
 // floor, drops empty slots, and renders ONE message (a single slot renders the
 // classic window message). Returns null — no send — when nothing is due after
 // the floor, or when EVERY dose across the merged set is already resolved
-// (taken or deliberately skipped, #232): the empty/all-low check runs on the
+// (taken or deliberately skipped, #232): the empty/all-resolved check runs on the
 // MERGED set. `slots` in the result are the slots that actually contributed
 // entries — the tick marks each of their per-day markers on delivery so none
 // re-fires today.

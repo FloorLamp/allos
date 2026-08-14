@@ -398,7 +398,7 @@ export function situationsActiveOn(
 }
 
 // Build a per-date "situations active that day" resolver over a window, from the
-// current active set + the change-log (#654). One computation the medicine page,
+// current active set + the change-log (#654). One computation the intake surfaces,
 // the notifier's adherence strip, the weekly recap, and the digest all reuse so
 // their historical dueness can never disagree about when a situation was active.
 export function situationHistoryResolver(

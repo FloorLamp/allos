@@ -1,7 +1,7 @@
 // The three MEASURES one `body_metrics` row carries (issue #2556).
 //
 // `body_metrics` is the WIDE store: one row per (profile, day), up to three readings
-// on it. The Trends → Body history table renders exactly those three columns, and
+// on it. The Trends Overview body census renders exactly those three columns, and
 // until now the only thing it offered per row was a whole-row delete — so a mistyped
 // weight could be removed but never corrected, and correcting it removed the day's
 // body fat and resting HR with it.

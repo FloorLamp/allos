@@ -159,7 +159,7 @@ export function detectUnconfirmedMedication(
 ): UnconfirmedMedication | null {
   // MEDICATIONS ONLY — the exact complement of the demotion detector's refusal, which
   // is what makes the two flags disjoint by construction rather than by coordination.
-  // A supplement nobody logs is a priority question and already has an answer.
+  // A supplement nobody logs is an obligation-demotion question and already has an answer.
   if (input.kind !== "medication") return null;
   // IMPORT-PROVENANCED ONLY. A medication somebody typed in is a medication somebody
   // decided to track; the absence of logs says something about their logging, not about

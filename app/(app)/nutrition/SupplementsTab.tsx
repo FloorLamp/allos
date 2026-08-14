@@ -543,7 +543,7 @@ export default async function SupplementsTab({
     suppressions,
     todayStr
   );
-  // Priority demotion suggestions (#1505 part 2) — the same coaching-tier engine the
+  // Obligation demotion suggestions (#1505 part 2) — the same coaching-tier engine the
   // dashboard rollup and the coaching tab read, filtered through the SAME suppression
   // bus, so dismissing here silences it everywhere.
   const demotionFindings = activeFindings(
@@ -1170,8 +1170,8 @@ export default async function SupplementsTab({
             </div>
           )}
 
-          {/* Priority demotion suggestions (#1505): high/mandatory supplements that have
-          gone sustainedly untaken, offered for the `low` tag. Calm and hideable —
+          {/* Obligation demotion suggestions (#1505): `must`/`should` supplements that have
+          gone sustainedly untaken, offered for the `may` obligation. Calm and hideable —
           accepting is the user's own obligation write, never the system's. */}
           {demotionFindings.length > 0 && (
             <div className="mb-4">

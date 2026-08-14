@@ -13,7 +13,7 @@ import type { BodyMetricMeasure } from "@/lib/body-metric-measures";
 import { deleteBodyMetric } from "./body-actions";
 import { updateMetricReading } from "./reading-actions";
 
-// Row actions for the Trends → Body history table (issue #2556).
+// Row actions for the body census history table on Trends Overview (issue #2556).
 //
 // The table used to offer delete and nothing else, so a mistyped weight could only be
 // removed and retyped — losing the row, its notes, and the day's body fat and resting

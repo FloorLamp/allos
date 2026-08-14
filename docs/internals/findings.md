@@ -1227,7 +1227,7 @@ you sure?".
 
 An **obligation** only exists where the user has committed to future behavior.
 Domains that merely RECORD what happened have nothing to demote, and trying to
-give them a priority band is how a model acquires a meaningless field.
+give them an obligation is how a model acquires a meaningless field.
 
 | Domain                                          | Commitment? | Its `may`-equivalent state                          |
 | ----------------------------------------------- | ----------- | --------------------------------------------------- |
@@ -1237,7 +1237,7 @@ give them a priority band is how a model acquires a meaningless field.
 | Food groups                                     | yes         | excluded: off the suggestion engine, still loggable |
 | Body metrics, labs, sleep, symptoms, activities | **no**      | n/a — an observation cannot be missed               |
 
-The right question when adding a domain is therefore not "what priority band does
+The right question when adding a domain is therefore not "what obligation does
 this get" but "**did the user promise anything?**" A no makes obligation
 inapplicable, and the domain's quiet state is simply "we still record it".
 

@@ -3469,12 +3469,12 @@ timed one hour before the inferred training hour) — coalesces into ONE message
 slot's `notify_last_supp_<slot>` marker is stamped on delivery. Telegram
 rebuilds re-render the whole merged keyboard footprint.
 
-**Priority floor (#1156).** `doseReminderNotifies`
-(`lib/intake-schedule.ts`): low-priority SUPPLEMENTS are excluded from every
+**Obligation floor (#1156).** `doseReminderNotifies`
+(`lib/intake-schedule.ts`): `may` SUPPLEMENTS are excluded from every
 dose-reminder send (window/merged/post-workout/digest count/buttons) at the
 send-assembly layer (`notifiableWindowDoses`); medications are never gated, and
 the escalation gather deliberately reads the unfiltered `collectWindowDoses` —
-the safety tier is structurally never priority-gated. An all-low send is silent
+the safety tier is structurally never obligation-gated. An all-`may` send is silent
 BY DESIGN.
 
 ## The tick's decision record (#2209)

@@ -1493,11 +1493,11 @@ export function buildAdherencePatternFindings(
   return detectAdherencePatterns(inputs).map(adherencePatternToFinding);
 }
 
-// ---- Domain: priority demotion suggestions (coaching tier, issue #1505) ----
+// ---- Domain: obligation demotion suggestions (coaching tier, issue #1505) ----
 
-// A calm, dismissible SUGGESTION that a high/mandatory SUPPLEMENT the profile has
-// effectively stopped taking be re-tagged `low` — "tracked, never pushed" — with the
-// user's tap as the only priority write (#559 intact; see lib/supplement-demotion for
+// A calm, dismissible SUGGESTION that a `must`/`should` SUPPLEMENT the profile has
+// effectively stopped taking move to `may` — "tracked, never pushed" — with the
+// user's tap as the only obligation write (#559 intact; see lib/supplement-demotion for
 // the full contract and the medication/PRN/paused/cold-start exclusions).
 //
 // COACHING tier (#449) by hard product contract: it joins collectCoachingFindings,

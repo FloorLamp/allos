@@ -1,9 +1,9 @@
-// DB INTEGRATION TIER — the supplement priority lifecycle (#1505), all three parts
+// DB INTEGRATION TIER — the supplement obligation lifecycle (#1505), all three parts
 // where they can actually be SEEN:
 //
-//   Part 1  the ONE shared push predicate's REACH: a low-priority supplement is off
+//   Part 1  the ONE shared push predicate's REACH: a `may` supplement is off
 //           Upcoming (and so off the hero/aggregate/digest) and off the refill nudge,
-//           while still tracked on the page and in the adherence fraction. A low
+//           while still tracked on the page and in the adherence fraction. A `may`
 //           MEDICATION is exempt everywhere, and the safety tier (an interaction
 //           warning with a low member) is untouched.
 //   Part 2  the demotion-suggestion builder end-to-end from a realistic ledger,
