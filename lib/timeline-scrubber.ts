@@ -7,9 +7,12 @@
 // reader who wants August 2025 should not have to hunt for its card.
 //
 // The decided idiom is the photo-app scrubber (owner ruling on #2657, "Scrubber spec
-// (decided)"), not a labeled button column: a slim right-edge strip, no text at rest,
-// a floating bubble naming the period under the finger during a drag. This module is
-// the half of it that can be decided without a browser, which is most of it:
+// (decided)"), not a labeled button column: a slim right-edge strip carrying month
+// dots and labelled year marks, plus a floating bubble naming the period under the
+// finger during a drag. The year digits are a later ruling (2026-08-14) reversing the
+// spec's own "at rest, no text" — see `scrubberYearLabels`, which owns both the
+// reversal and the collision cost it brought with it. This module is the half of the
+// rail that can be decided without a browser, which is most of it:
 //
 //   • WHICH periods the strip offers (`timelineScrubberTicks`) — the tick set,
 //   • WHERE each one sits on the strip (`scrubberTickFractions`),
@@ -97,6 +100,13 @@ export const SCRUBBER_HIT_WIDTH_PX = 44;
 export const SCRUBBER_TAP_SLOP_PX = 8;
 
 /**
+ * The smallest vertical gap, in CSS pixels, between two rendered year labels. Below it
+ * the lower one is dropped — see `scrubberYearLabels`. 14 is the 10px label plus enough
+ * air that two years read as two.
+ */
+export const SCRUBBER_YEAR_LABEL_MIN_GAP_PX = 14;
+
+/**
  * Below this many stops the rail is not offered. Not a height heuristic — a feed with
  * one period has nothing to scrub between, and a permanent strip down the edge of a
  * short page is chrome charging rent for nothing.
@@ -109,7 +119,11 @@ export interface ScrubberTick {
   key: string;
   /** `month` draws a dot; `year` draws the heavier year mark. */
   kind: "month" | "year";
-  /** What the drag bubble shows: "MAR 2026" / "2025". Terse, uppercase, no text at rest. */
+  /**
+   * What the drag bubble shows: "MAR 2026" / "2025". Terse and uppercase, and shown
+   * only while a drag is live — the rail's own text at rest is `year`, and only at a
+   * year mark.
+   */
   label: string;
   /**
    * What `aria-valuetext` announces. Spelled OUT — "March 2026" — because "MAR" is a
@@ -128,9 +142,10 @@ export interface ScrubberTick {
   year: string;
   /**
    * True on the first tick of each year. The strip draws a longer, heavier mark here
-   * — never the digits: "at rest, no text" is the idiom's whole point, and a column of
-   * years down the edge of every timeline is the labeled button rail the ruling
-   * rejected. The digits are the bubble's job, during a drag.
+   * AND — since the owner ruling of 2026-08-14 — the year's four digits beside it, the
+   * one thing on the rail that carries text at rest. `scrubberYearLabels` decides
+   * which of these actually get their digits; a mark whose label would collide with
+   * the one above it keeps the mark and loses the text.
    */
   yearMark: boolean;
 }
@@ -236,6 +251,62 @@ export function timelineScrubberTicks<D extends WindowableDay>(
 /** Whether the rail is worth rendering at all. */
 export function showTimelineScrubber(ticks: readonly unknown[]): boolean {
   return ticks.length >= SCRUBBER_MIN_TICKS;
+}
+
+/**
+ * Which year marks actually print their digits, in tick order.
+ *
+ * THE RULING (owner, 2026-08-14) OVERTURNED "at rest, no text" for year marks only.
+ * The spec asked for both "no text at rest" and "the photo-app idiom", and on a deep
+ * profile those pull apart: a textless rail cannot tell 2023 from 2021 without a drag,
+ * which is a rail failing on exactly the profiles it exists for. Month dots stay
+ * textless; each year mark is labelled.
+ *
+ * COLLISION IS THE COST THAT COMES WITH IT, and it is a real shape rather than a
+ * hypothetical: a year holding one month sits a few pixels from its neighbour, and two
+ * four-digit labels overlapping is worse than one missing. Two rules, and they are
+ * different because the two collisions are different:
+ *
+ *   • AGAINST THE DOTS — solved by GEOMETRY, not by hiding anything. The labels live in
+ *     their own horizontal column, inboard of the dot column, so a label and a dot can
+ *     never occupy the same pixels whatever their y. A rule that dropped a month DOT to
+ *     make room for a year's text would be trading an affordance for an ornament.
+ *   • AGAINST EACH OTHER — solved here. A label prints only if it clears the last
+ *     PRINTED one by `SCRUBBER_YEAR_LABEL_MIN_GAP_PX`. Measured against the last
+ *     printed label rather than the last year mark, so a run of tightly packed years
+ *     thins out evenly instead of dropping every label after the first collision.
+ *
+ * A suppressed label loses ONLY its digits: the mark is still drawn, the stop is still
+ * tappable, and the drag bubble still names it. Nothing becomes unreachable.
+ */
+export function scrubberYearLabels(
+  ticks: readonly { yearMark: boolean }[],
+  fractions: readonly number[],
+  stripHeightPx: number
+): boolean[] {
+  let lastPrintedPx: number | null = null;
+  return ticks.map((tick, index) => {
+    if (!tick.yearMark) return false;
+    const fraction = fractions[index];
+    // Unmeasured: the rail has no geometry yet, so nothing can be known to collide.
+    // Print it — a missing label on the first frame is worse than a rare overlap.
+    if (
+      fraction == null ||
+      !Number.isFinite(fraction) ||
+      !(stripHeightPx > 0)
+    ) {
+      return true;
+    }
+    const px = fraction * stripHeightPx;
+    if (
+      lastPrintedPx != null &&
+      px - lastPrintedPx < SCRUBBER_YEAR_LABEL_MIN_GAP_PX
+    ) {
+      return false;
+    }
+    lastPrintedPx = px;
+    return true;
+  });
 }
 
 function clamp01(value: number): number {

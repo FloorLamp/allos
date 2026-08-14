@@ -3,6 +3,7 @@ import {
   SCRUBBER_HIT_WIDTH_PX,
   SCRUBBER_MIN_TICKS,
   SCRUBBER_TAP_SLOP_PX,
+  SCRUBBER_YEAR_LABEL_MIN_GAP_PX,
   scrubberFraction,
   scrubberMonthLabel,
   scrubberRelease,
@@ -10,6 +11,7 @@ import {
   scrubberTickAt,
   scrubberTickAtScroll,
   scrubberTickFractions,
+  scrubberYearLabels,
   showTimelineScrubber,
   timelineScrubberTicks,
 } from "@/lib/timeline-scrubber";
@@ -352,6 +354,60 @@ describe("scrubberRelease", () => {
     // before committing must not have their history expanded for hesitating. There is
     // no time input here at all, which is the strongest form of that guarantee.
     expect(scrubberRelease.length).toBe(1);
+  });
+});
+
+describe("scrubberYearLabels", () => {
+  // The owner ruling of 2026-08-14 reversed "at rest, no text" for year marks: the
+  // rail prints each year's digits, because a textless strip cannot tell 2023 from
+  // 2021 without a drag. What this function owns is the cost that came with it.
+  const marks = (flags: boolean[]) => flags.map((yearMark) => ({ yearMark }));
+
+  it("labels the year marks and nothing else", () => {
+    expect(
+      scrubberYearLabels(
+        marks([true, false, false, true]),
+        [0, 0.4, 0.7, 1],
+        600
+      )
+    ).toEqual([true, false, false, true]);
+  });
+
+  it("drops a label that would land on the one above it", () => {
+    // Two year marks 6px apart on a 600px strip. The mark, the stop and the drag
+    // bubble all survive — only the digits go, because two overlapping four-digit
+    // labels are worse than one missing.
+    const fractions = [0, 0.01, 0.5];
+    expect(
+      scrubberYearLabels(marks([true, true, true]), fractions, 600)
+    ).toEqual([true, false, true]);
+  });
+
+  it("measures from the last PRINTED label, so a tight run thins out evenly", () => {
+    // Measured against the last MARK instead, a run of years 8px apart would print
+    // the first and suppress every one after it forever. Against the last printed
+    // label, the run prints roughly every other one and stays readable.
+    const step = (SCRUBBER_YEAR_LABEL_MIN_GAP_PX - 4) / 600;
+    const fractions = [0, step, step * 2, step * 3, step * 4];
+    expect(
+      scrubberYearLabels(marks([true, true, true, true, true]), fractions, 600)
+    ).toEqual([true, false, true, false, true]);
+  });
+
+  it("prints everything before the strip has been measured", () => {
+    // No geometry yet means nothing can be KNOWN to collide, and a year missing its
+    // digits on the first frame is the worse of the two failures.
+    expect(scrubberYearLabels(marks([true, true]), [], 0)).toEqual([
+      true,
+      true,
+    ]);
+    expect(
+      scrubberYearLabels(marks([true, true]), [0, Number.NaN], 600)
+    ).toEqual([true, true]);
+  });
+
+  it("never suppresses the first label", () => {
+    expect(scrubberYearLabels(marks([true]), [0.99], 600)[0]).toBe(true);
   });
 });
 

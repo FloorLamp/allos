@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AppRoute } from "@/lib/hrefs";
 import { useHaptics } from "@/components/useHaptics";
@@ -13,6 +13,7 @@ import {
   scrubberTickAt,
   scrubberTickAtScroll,
   scrubberTickFractions,
+  scrubberYearLabels,
   type ScrubberTick,
 } from "@/lib/timeline-scrubber";
 
@@ -20,9 +21,16 @@ import {
 // imported from lib/timeline-scrubber.ts; what lives here is measurement, pointer
 // plumbing and paint.
 //
-// The idiom is the photo app's, by owner ruling: a slim strip down the right edge,
-// NO TEXT AT REST — month dots and the heavier year marks, nothing else — and a
+// The idiom is the photo app's, by owner ruling: a slim strip down the right edge —
+// month dots, heavier year marks, and the YEAR'S DIGITS beside each mark — plus a
 // floating bubble that names the period under the finger only while a drag is live.
+//
+// The digits are a second ruling (2026-08-14) reversing the spec's own "at rest, no
+// text". The two halves of the spec pulled apart on a deep profile: textless, the rail
+// cannot tell 2023 from 2021 without a drag, which is the rail failing on exactly the
+// profiles it exists for. The cost accepted is a column of text at rest. MONTHS STAY
+// TEXTLESS — the reversal is for year marks only, and a month label per dot would be
+// the labelled button rail the issue prototyped and rejected.
 //
 // THREE THINGS ARE LOAD-BEARING AND EACH IS EASY TO GET WRONG.
 //
@@ -33,12 +41,21 @@ import {
 //    is the whole distinction and it is travel-based, never duration-based: a slow,
 //    hesitant tap is still a tap.
 //
-// 2. THE HIT AREA IS 44px WIDE AND THE VISUAL IS ~5px. Decoupled deliberately — the
+// 2. THE HIT AREA IS 44px WIDE AND THE VISUAL IS ~6px. Decoupled deliberately — the
 //    platform touch-target floor against a hairline that must not become chrome. The
 //    consequence is that the strip sits over 44px of the feed's own right edge, which
 //    would swallow taps on the event cards underneath, so the FEED gives up a gutter
 //    of exactly that width whenever the rail renders (see page.tsx). The rail owns the
 //    gutter; it does not squat on the content.
+//
+//    THE YEAR DIGITS LIVE INSIDE THAT SAME 44px. The hit area did not grow an inch to
+//    fit them, which is what forces the two other decisions here: 10px type (the
+//    density call `components/DayHistory.tsx` already makes for its tick labels, and
+//    allowlisted in lib/__tests__/micro-text-size.test.ts on the same grounds), and a
+//    label column strictly INBOARD of the dot column, so a label and a dot cannot
+//    share pixels whatever their y. Label-against-label is the collision geometry
+//    cannot solve, and `scrubberYearLabels` solves it by dropping digits — never a
+//    mark, and never a stop.
 //
 // 3. CROSSING A MONTH BOUNDARY IS FEEDBACK, AND ITS TWO CHANNELS ARE NOT EQUAL. The
 //    bubble beats (MICRO_MOTIONS.tick) and one 8 ms haptic fires where the platform
@@ -82,6 +99,9 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
 
   const stripRef = useRef<HTMLDivElement>(null);
   const [fractions, setFractions] = useState<number[]>([]);
+  // The strip's own pixel height. Only the year-label collision rule needs it — two
+  // labels are close when they are close ON SCREEN, which a fraction cannot say.
+  const [stripHeight, setStripHeight] = useState(0);
   const [active, setActive] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [bubbleTop, setBubbleTop] = useState(0);
@@ -110,6 +130,7 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
 
   const measure = useCallback(() => {
     rangeRef.current = scrollRangeNow();
+    setStripHeight(stripRef.current?.getBoundingClientRect().height ?? 0);
     const offsets = stops.map((stop) => {
       const el = document.getElementById(stop.anchorId);
       // An anchor the feed did not render is a stop that should not exist; the pure
@@ -228,6 +249,7 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
   }, [jumpTo]);
 
   const activeStop = stops[active] ?? stops[0];
+  const yearLabels = scrubberYearLabels(stops, fractions, stripHeight);
 
   return (
     <>
@@ -314,19 +336,36 @@ export default function TimelineScrubber({ stops }: { stops: ScrubberStop[] }) {
       >
         {stops.map((stop, index) => {
           const heavy = stop.kind === "year" || stop.yearMark;
+          const top = `${(fractions[index] ?? 0) * 100}%`;
           return (
-            <span
-              key={stop.key}
-              data-testid={`timeline-scrubber-tick-${stop.key}`}
-              data-scrubber-active={index === active ? "true" : undefined}
-              aria-hidden
-              className={`absolute right-1.5 h-px rounded-full ${
-                heavy
-                  ? "w-4 bg-slate-500/70 dark:bg-slate-300/60"
-                  : "w-1.5 bg-slate-400/60 dark:bg-slate-500/70"
-              }`}
-              style={{ top: `${(fractions[index] ?? 0) * 100}%` }}
-            />
+            <Fragment key={stop.key}>
+              <span
+                data-testid={`timeline-scrubber-tick-${stop.key}`}
+                data-scrubber-active={index === active ? "true" : undefined}
+                aria-hidden
+                // right-0.5 … right-2.5: the OUTBOARD column. The labels start at
+                // right-3 and grow inboard, so the two never share a pixel.
+                className={`absolute right-0.5 h-px rounded-full ${
+                  heavy
+                    ? "w-2 bg-slate-500/70 dark:bg-slate-300/60"
+                    : "w-1.5 bg-slate-400/60 dark:bg-slate-500/70"
+                }`}
+                style={{ top }}
+              />
+              {yearLabels[index] && (
+                <span
+                  data-testid={`timeline-scrubber-year-${stop.year}`}
+                  // Decoration for a sighted reader, not a second AT path: the rail's
+                  // `aria-valuetext` is the announced channel and already names the
+                  // period, so a screen reader must not also walk a column of digits.
+                  aria-hidden
+                  className="absolute right-3 -translate-y-1/2 text-[10px] font-medium leading-none tracking-tight tabular-nums text-slate-500 dark:text-slate-400"
+                  style={{ top }}
+                >
+                  {stop.year}
+                </span>
+              )}
+            </Fragment>
           );
         })}
       </div>

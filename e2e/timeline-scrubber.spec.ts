@@ -7,12 +7,15 @@ import { workerDbPath, frozenNow } from "./worker-env";
 // THE TIMELINE JUMP RAIL (issue #2657 item 4).
 //
 // The windowed feed (#2685/#2741) is a spine of period cards, and this is the rail
-// that scrubs it: a slim right-edge strip, no text at rest, a bubble naming the period
-// under the finger during a drag. Four claims from the ruling are only checkable in a
+// that scrubs it: a slim right-edge strip of month dots and labelled year marks, and a
+// bubble naming the period under the finger during a drag. Four claims from the ruling are only checkable in a
 // browser, and each of them is the kind a component quietly gets wrong:
 //
-//   1. AT REST, NO TEXT. The strip carries dots and marks; the bubble does not exist
-//      until a pointer is down on it.
+//   1. AT REST THE STRIP CARRIES YEAR DIGITS AND NOTHING ELSE. The owner ruling of
+//      2026-08-14 reversed the spec's own "at rest, no text" for year marks only, so
+//      the assertion this spec used to make is now exactly wrong: months stay
+//      textless, years are labelled, and the bubble still does not exist until a
+//      pointer is down.
 //   2. THE HIT AREA IS 44px WIDE while the visual is a hairline — and, because a 44px
 //      invisible target parked over the feed's own links would be a worse defect than
 //      no rail at all, the feed gives up a gutter of exactly that width.
@@ -140,7 +143,7 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
   test.beforeAll(seed);
   test.afterAll(cleanup);
 
-  test("is a text-free hairline at rest, on a 44px target that the feed makes room for", async ({
+  test("is a hairline of dots and year digits at rest, on a 44px target the feed makes room for", async ({
     page,
   }) => {
     await page.goto(FEED);
@@ -148,8 +151,14 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
     const rail = strip(page);
     await expect(rail).toBeVisible();
     await railReady(page);
-    // "At rest, no text" — the strip's whole subtree, not just its own node.
-    await expect(rail).toHaveText("");
+    // At rest the strip's ENTIRE text is year digits — the 2026-08-14 ruling's
+    // reversal, bounded. A month name or a count leaking in here would be the
+    // labelled button rail the issue prototyped and rejected.
+    await expect(rail).toHaveText(/^(\d{4})+$/);
+    await expect(
+      page.getByTestId(`timeline-scrubber-year-${LAST_YEAR}`)
+    ).toBeVisible();
+    // …and no bubble until a pointer is down on it.
     await expect(bubble(page)).toHaveCount(0);
 
     // The touch-target floor, decoupled from the ~5px visual. Asserted on the box
@@ -160,6 +169,18 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
     ]);
     expect(railBox.width).toBe(44);
     expect(dot.width).toBeLessThan(20);
+
+    // The digits went INSIDE the 44px — the hit area did not grow an inch to fit
+    // them — and they sit inboard of the dot column, which is the geometry that makes
+    // a label-on-dot collision impossible rather than merely unlikely.
+    const [label] = await settledBoxes([
+      page.getByTestId(`timeline-scrubber-year-${LAST_YEAR}`),
+    ]);
+    expect(label.x).toBeGreaterThanOrEqual(railBox.x);
+    expect(label.x + label.width).toBeLessThanOrEqual(
+      railBox.x + railBox.width
+    );
+    expect(label.x + label.width).toBeLessThanOrEqual(dot.x);
 
     // …and the feed gives up exactly that column, so the invisible strip is never
     // parked on top of a card's own links. This is the claim that makes a 44px
@@ -300,6 +321,12 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
     await expect(
       page.getByTestId(`timeline-scrubber-tick-${LAST_YEAR}`)
     ).toHaveCount(0);
+    // The year's digits move to whichever stop now leads that year — the label rides
+    // the year MARK, and opening the year moved the mark onto its newest month.
+    await railReady(page);
+    await expect(
+      page.getByTestId(`timeline-scrubber-year-${LAST_YEAR}`)
+    ).toBeVisible();
   });
 });
 
