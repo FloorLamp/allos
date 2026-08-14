@@ -446,6 +446,28 @@ export interface QualitativeClassification {
   // flags, never ranges, and (via isBiomarkerStale) never nudges. Absent on every
   // other class.
   qc?: boolean;
+  // Whether this verdict is a statement about the ANALYTE rather than about this
+  // reading's VALUE (#2777) — i.e. whether `polarity` would be the same for every
+  // value the analyte can carry. "A blood type is never abnormal" and "a urine colour
+  // is never abnormal" and "fetal fraction is not a health signal" are analyte facts:
+  // correcting the value teaches the classifier nothing new. "This HIV antibody is
+  // Non-Reactive, therefore reassuring" and "this screen is Low Risk" are reading
+  // facts, re-derived from the value every time.
+  //
+  // It exists because the edit-lock gate below needs exactly this question and had
+  // been asking a different one. `immutable` was minted for the RETEST clock (#548 §2
+  // — does this value change over time?) and #2715 reused it as the gate because it
+  // happened to name the identity class; whether a value changes over time has no
+  // bearing on whether a derived pass may delete what a person typed. What actually
+  // decides that is whether withholding the clear can strand a flag the app could
+  // otherwise have restated: on a value-INDEPENDENT verdict it never can, because the
+  // app's position is "no flag is derivable here" and no future correction changes it.
+  //
+  // Kept separate from `immutable` rather than folded into it: the two sets differ
+  // (a urine colour and a fetal fraction are value-independent and emphatically
+  // mutable), and merging them would put the retest clock and the edit lock back on
+  // one field, which is the conflation this field exists to undo.
+  valueIndependent: boolean;
 }
 
 // A screen-class classification from its resolved risk axis (#687), or null when the
@@ -458,7 +480,15 @@ function screenClassification(
   if (!risk) return null;
   const polarity =
     risk === "high_risk" ? "bad" : risk === "low_risk" ? "good" : "neutral";
-  return { presence: "neutral", polarity, immutable: false, risk };
+  // A screen verdict is read off the VALUE (screeningRisk), so it is never
+  // value-independent: correcting "High Risk" to "Low Risk" must re-derive the flag.
+  return {
+    presence: "neutral",
+    polarity,
+    immutable: false,
+    valueIndependent: false,
+    risk,
+  };
 }
 
 export function classifyQualitativeResult(
@@ -480,13 +510,28 @@ export function classifyQualitativeResult(
   switch (qualitativeClassForLoinc(loinc)) {
     case "infection":
       if (presence === "positive")
-        return { presence, polarity: "bad", immutable: false };
+        return {
+          presence,
+          polarity: "bad",
+          immutable: false,
+          valueIndependent: false,
+        };
       if (presence === "negative")
-        return { presence, polarity: "good", immutable: false };
+        return {
+          presence,
+          polarity: "good",
+          immutable: false,
+          valueIndependent: false,
+        };
       return null;
     case "immunity":
       if (isImmunePositiveResult({ name, value, notes, reference }))
-        return { presence: "positive", polarity: "good", immutable: false };
+        return {
+          presence: "positive",
+          polarity: "good",
+          immutable: false,
+          valueIndependent: false,
+        };
       return null;
     case "screen":
       // Prenatal/genetic risk screen (NIPT trisomy) — resolve the low/high-risk
@@ -501,6 +546,9 @@ export function classifyQualitativeResult(
         presence: "neutral",
         polarity: "neutral",
         immutable: false,
+        // "This is a run-quality number, not a health signal" is a fact about the
+        // ANALYTE — no value a fetal fraction can carry makes it flaggable.
+        valueIndependent: true,
         qc: true,
       };
     case "identity":
@@ -510,14 +558,24 @@ export function classifyQualitativeResult(
       // `\babo\b` regex can't match — is judged identically (#910): never abnormal,
       // never stale. The presence is carried through only for display; polarity is
       // what stops the flag.
-      return { presence, polarity: "neutral", immutable: true };
+      return {
+        presence,
+        polarity: "neutral",
+        immutable: true,
+        valueIndependent: true,
+      };
     default:
       break; // unknown LOINC → name-based resolution below
   }
 
   // 1. Immutable identity attributes (blood type, genotype) — never abnormal, never stale.
   if (IMMUTABLE_ATTRIBUTE.test(n))
-    return { presence, polarity: "neutral", immutable: true };
+    return {
+      presence,
+      polarity: "neutral",
+      immutable: true,
+      valueIndependent: true,
+    };
 
   // 1a. QC metric (fetal fraction) — a run-quality percentage, not a health signal
   //     (#687). Checked before the screen regex (fetal fraction also mentions cell-
@@ -527,6 +585,7 @@ export function classifyQualitativeResult(
       presence: "neutral",
       polarity: "neutral",
       immutable: false,
+      valueIndependent: true,
       qc: true,
     };
 
@@ -541,9 +600,19 @@ export function classifyQualitativeResult(
   //    is reassuring. An ambiguous reading yields null (don't fabricate a verdict).
   if (INFECTION_MARKER.test(n) && !isDurableImmunityTiter(name)) {
     if (presence === "positive")
-      return { presence, polarity: "bad", immutable: false };
+      return {
+        presence,
+        polarity: "bad",
+        immutable: false,
+        valueIndependent: false,
+      };
     if (presence === "negative")
-      return { presence, polarity: "good", immutable: false };
+      return {
+        presence,
+        polarity: "good",
+        immutable: false,
+        valueIndependent: false,
+      };
     return null;
   }
 
@@ -552,13 +621,23 @@ export function classifyQualitativeResult(
   //    what we're reconsidering). A negative/equivocal titer keeps its own flag + clock.
   if (isDurableImmunityTiter(name)) {
     if (isImmunePositiveResult({ name, value, notes, reference }))
-      return { presence: "positive", polarity: "good", immutable: false };
+      return {
+        presence: "positive",
+        polarity: "good",
+        immutable: false,
+        valueIndependent: false,
+      };
     return null;
   }
 
   // 4. Context-neutral descriptive attributes (urinalysis color, morphology pattern).
   if (NEUTRAL_ATTRIBUTE.test(n))
-    return { presence, polarity: "neutral", immutable: false };
+    return {
+      presence,
+      polarity: "neutral",
+      immutable: false,
+      valueIndependent: true,
+    };
 
   // 5. Unrecognized analyte — no confident qualitative interpretation (leave as-is).
   return null;
@@ -570,12 +649,25 @@ export function classifyQualitativeResult(
 // the unlocked answer, which is the right one for a record that does not exist.
 export interface QualitativeFlagContext {
   // `isEditLocked(medical_records.edited)` — a person has been in this row through
-  // the record editor. Gates the two transitions that would DELETE a flag a person
-  // chose: the #2687 no-result clear (#2712) and the #548 §1 clear on an IDENTITY-
-  // class row (#2715). It reaches nothing else. In particular the #544 immune
-  // promotion, the #629 bad-polarity promotion and the #548 §1 clear on a mutable
-  // NEUTRAL attribute (urinalysis colour, morphology pattern) are unchanged — those
-  // are separate claims about base behaviour and not these changes' to make.
+  // the record editor. It gates the flag-DELETING transitions whose verdict the app
+  // could never restate, and only those (#2712, #2715, #2777):
+  //
+  //   • the #2687 no-result clear — "there is no value here to judge";
+  //   • the #548 §1 clear on a value-INDEPENDENT class — "this ANALYTE carries no
+  //     flag": an identity attribute (blood type, ABO/Rh, genotype), a mutable
+  //     neutral one (urinalysis colour, morphology pattern), a QC metric.
+  //
+  // Both are the app declining to have an opinion, so withholding the clear strands
+  // nothing: no later correction produces a flag the pass was holding back.
+  //
+  // It deliberately reaches NO transition whose verdict is read off the value — the
+  // #544 immune promotion, the #629 bad-polarity promotion, the #544 clear on an
+  // infection-NEGATIVE, the #687 clear on a low-risk screen. Those the app can
+  // restate, and gating them would leave a person who corrected "Reactive" to
+  // "Non-Reactive" staring at `abnormal` forever, which is #221's argument for
+  // re-deriving a corrected numeric row's flag applied to the same act one column
+  // over. The lock protects what a person WROTE; it is not a licence to leave an
+  // infection-positive displaying as `Normal`.
   editLocked?: boolean;
 }
 
@@ -644,27 +736,41 @@ export function qualitativeFlagResolution(
       qualitativeClassForLoinc(loinc) === "immunity")
   )
     return currentFlag === "immune" ? undefined : "immune";
-  // An IDENTITY-class row a person has edited by hand keeps the flag they set (#2715).
-  // This branch's clear exists to delete an EXTRACTOR GUESS on a value that cannot be
+  // A row whose verdict is a statement about the ANALYTE, edited by hand, keeps the
+  // flag the person set (#2715 for the identity half, #2777 for the rest of it). This
+  // branch's clear exists to delete an EXTRACTOR GUESS on a value that cannot be
   // abnormal (#548 §1), and on an edit-locked row the flag is not a guess — it is the
   // one thing in the row the app knows a human chose. #133's rule is that a derived
-  // pass never overwrites a hand-edited row, and this is a derived pass; #2712 already
-  // conceded the point for the no-result clear above, and a rule that holds on one
-  // branch and not its neighbour reads as a bug either way.
+  // pass never overwrites a hand-edited row, and this is a derived pass.
   //
-  // `c.immutable` is precisely the identity class and nothing else: it is set by the
-  // LOINC `identity` branch and by the IMMUTABLE_ATTRIBUTE name branch, and every
-  // other classification in this file answers false. That is what keeps the reach
-  // narrow — a MUTABLE neutral attribute (urinalysis colour, morphology pattern) still
-  // clears while edit-locked, because its extractor guess is still a guess and #2715
-  // scoped itself to identity. The coupling is pinned by a test rather than assumed,
-  // so a future class that answers `immutable` without being identity fails loudly.
+  // The gate keys on `valueIndependent`, not on `immutable`. #2715 used `immutable`
+  // because it happened to name the identity class, but it answers the RETEST question
+  // (#548 §2 — does this value change over time?), and whether a value changes over
+  // time has no bearing on whether someone meant what they typed. The question that
+  // does decide it is whether withholding the clear can strand a flag: on a
+  // value-independent verdict the app's position is "no flag is derivable for this
+  // analyte", which no later correction revises, so there is nothing to strand. On a
+  // value-DEPENDENT verdict there is — an infection-negative or a low-risk screen is
+  // read off the value, and gating those would freeze `abnormal` on a reading the
+  // person just corrected. Hence the gate sits ABOVE the neutral/good clear and
+  // catches only the neutral half of it.
   //
-  // The two axes stay independent: the row is still exempt from the retest clock
-  // (#548 §2 reads the same `immutable` in isBiomarkerStale), so the flag survives and
-  // the nudge stays off. Nothing here writes, and nothing strips what is already
-  // stored — a row whose flag past boots already cleared is simply left as it is.
-  if (c.immutable && opts?.editLocked) return undefined;
+  // Its cost, stated plainly: a person who edits a urinalysis row's VALUE and never
+  // touches its flag also arms the lock, so an extractor guess sitting on that row
+  // survives. That population is very small, because the guess is normally already
+  // gone: `applyImportFollowups` reconciles every inserted record at import, when no
+  // row is edit-locked, so a colour row's blunt `abnormal` clears before any human
+  // opens it. What is left is a row the classifier could not read at import and can
+  // now — a rename, or a widened vocabulary — and the record editor shows the flag in
+  // a visible select on the same form, so it is one tap from being fixed by hand,
+  // which a silently deleted flag is not.
+  //
+  // The two axes stay independent: an identity row keeping its hand-set flag is still
+  // exempt from the retest clock (#548 §2 reads `immutable` in isBiomarkerStale), so
+  // the flag survives and the nudge stays off. Nothing here writes, and nothing strips
+  // what is already stored — a row whose flag past boots already cleared is left as it
+  // is.
+  if (c.valueIndependent && opts?.editLocked) return undefined;
   // Neutral attribute, or good non-immunity: never "abnormal". Clear an out-of-range
   // flag the extractor guessed; leave an already-neutral flag alone.
   return isOutOfRange(currentFlag) ? null : undefined;
