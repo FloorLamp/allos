@@ -40,12 +40,12 @@ describe("clinical observation vocabulary (#2482)", () => {
       fs.existsSync(
         path.join(ROOT, "app", "(app)", "results", "biomarkers", "page.tsx")
       )
-    ).toBe(true);
+    ).toBe(false);
     expect(
       fs.existsSync(
         path.join(ROOT, "app", "(app)", "biomarkers", "view", "page.tsx")
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("preserves the stored saved-item vocabulary across the route rename", () => {
