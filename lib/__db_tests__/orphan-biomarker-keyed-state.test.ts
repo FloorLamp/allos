@@ -51,7 +51,7 @@ const DATE = "2020-05-01";
 // need to back (or, once deleted, orphan) a star + dismissal.
 function glucoseInput(): PersistInput {
   return {
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Glucose",

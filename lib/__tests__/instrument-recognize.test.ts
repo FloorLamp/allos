@@ -27,7 +27,7 @@ import {
   instrumentItemOptions,
   severityBand,
 } from "@/lib/mental-health";
-import type { ImportedRecord } from "@/lib/health-import";
+import type { ImportedClinicalObservation } from "@/lib/health-import";
 
 const EPDS = instrumentDef("EPDS");
 
@@ -288,7 +288,10 @@ describe("recognizeInstrument", () => {
 
 // ---- the record fold -------------------------------------------------------
 
-function assessmentRow(name: string, value: string): ImportedRecord {
+function assessmentRow(
+  name: string,
+  value: string
+): ImportedClinicalObservation {
   return {
     category: "assessment",
     name,
@@ -301,7 +304,7 @@ function assessmentRow(name: string, value: string): ImportedRecord {
   };
 }
 
-function epdsRows(pick: (i: number) => number): ImportedRecord[] {
+function epdsRows(pick: (i: number) => number): ImportedClinicalObservation[] {
   return epdsCandidates(pick).map((c) =>
     assessmentRow(c.name, c.answerText ?? "")
   );
@@ -315,8 +318,8 @@ describe("foldInstrumentScores", () => {
       "Results"
     );
     expect(folded.drops).toEqual([]);
-    expect(folded.records).toHaveLength(1);
-    const score = folded.records[0];
+    expect(folded.observations).toHaveLength(1);
+    const score = folded.observations[0];
     // Every item answered with its FIRST PRINTED option, which is worth 0 on the three
     // forward items and 3 on the seven reversed ones — 21, not 0. Printed position is
     // not the score, and a fold that ignored orientation would answer 0 here.
@@ -329,9 +332,9 @@ describe("foldInstrumentScores", () => {
     });
     expect(score.instrumentAnswers).toHaveLength(10);
     // No question text survives as a canonical name.
-    expect(folded.records.some((r) => r.canonical.startsWith("I have "))).toBe(
-      false
-    );
+    expect(
+      folded.observations.some((r) => r.canonical.startsWith("I have "))
+    ).toBe(false);
   });
 
   it("keys the score on the instrument and the day, not on the total", () => {
@@ -345,14 +348,16 @@ describe("foldInstrumentScores", () => {
       OWN,
       "Results"
     );
-    expect(a.records[0].external_id).toBe(b.records[0].external_id);
+    expect(a.observations[0].external_id).toBe(b.observations[0].external_id);
   });
 
   it("leaves the rows alone and reports the SCORE as a reasoned drop when refused", () => {
     const rows = epdsRows(() => 0);
     const folded = foldInstrumentScores(rows, attr("other"), "Results");
-    expect(folded.records).toHaveLength(rows.length);
-    expect(folded.records.every((r) => r.category === "assessment")).toBe(true);
+    expect(folded.observations).toHaveLength(rows.length);
+    expect(folded.observations.every((r) => r.category === "assessment")).toBe(
+      true
+    );
     expect(folded.drops).toEqual([
       {
         kind: "lab",
@@ -383,7 +388,7 @@ describe("foldInstrumentScores", () => {
   // each row carries its own date and performer. Only a fold that reads DOCUMENT
   // position answers 2026-03-01 here; one that reads the instrument's item numbering
   // answers 2026-03-10, the row the document printed LAST.
-  const shuffledEpdsRows = (): ImportedRecord[] =>
+  const shuffledEpdsRows = (): ImportedClinicalObservation[] =>
     epdsRows(() => 0)
       .reverse()
       .map((row, position) => {
@@ -406,8 +411,8 @@ describe("foldInstrumentScores", () => {
 
   it("dates and provenances the score from the row the DOCUMENT printed first", () => {
     const folded = foldInstrumentScores(shuffledEpdsRows(), OWN, "Results");
-    expect(folded.records).toHaveLength(1);
-    expect(folded.records[0]).toMatchObject({
+    expect(folded.observations).toHaveLength(1);
+    expect(folded.observations[0]).toMatchObject({
       canonical: "EPDS",
       value_num: 21,
       date: "2026-03-01",
@@ -421,13 +426,13 @@ describe("foldInstrumentScores", () => {
     // sitting on a different row than a re-import whose section happened to print the
     // items in the instrument's order.
     const folded = foldInstrumentScores(shuffledEpdsRows(), OWN, "Results");
-    expect(folded.records[0].external_id).toBe(
+    expect(folded.observations[0].external_id).toBe(
       "ccda:instrument:epds:2026-03-01"
     );
   });
 
   it("never touches a real reading — a lab row is not a candidate", () => {
-    const lab: ImportedRecord = {
+    const lab: ImportedClinicalObservation = {
       category: "lab",
       name: "Glucose",
       canonical: "Glucose",
@@ -442,6 +447,6 @@ describe("foldInstrumentScores", () => {
       OWN,
       "Results"
     );
-    expect(folded.records).toContainEqual(lab);
+    expect(folded.observations).toContainEqual(lab);
   });
 });

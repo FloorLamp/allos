@@ -28,25 +28,27 @@ function durationObs(value: unknown): object {
 describe("FHIR duration door (#2322)", () => {
   it("normalizes a string-valued min:sec quantity to whole seconds", () => {
     const r = parseFhirBundle(bundle([durationObs("10:30")]));
-    expect(r.records.find((x) => x.name === "Exercise Duration")).toMatchObject(
-      {
-        value: "630",
-        value_num: 630,
-        unit: "s",
-      }
-    );
+    expect(
+      r.observations.find((x) => x.name === "Exercise Duration")
+    ).toMatchObject({
+      value: "630",
+      value_num: 630,
+      unit: "s",
+    });
   });
 
   it("reads a colon-less number at the unit's leading field grain", () => {
     const r = parseFhirBundle(bundle([durationObs(9)]));
     expect(
-      r.records.find((x) => x.name === "Exercise Duration")?.value_num
+      r.observations.find((x) => x.name === "Exercise Duration")?.value_num
     ).toBe(540);
   });
 
   it("DROPS an unparsable duration and reports it as unparsable_value", () => {
     const r = parseFhirBundle(bundle([durationObs("not recorded")]));
-    expect(r.records.some((x) => x.name === "Exercise Duration")).toBe(false);
+    expect(r.observations.some((x) => x.name === "Exercise Duration")).toBe(
+      false
+    );
     const drop = r.report?.drops.find((d) => d.label === "Exercise Duration");
     expect(drop?.reason).toBe("unparsable_value");
   });
@@ -63,7 +65,7 @@ describe("FHIR duration door (#2322)", () => {
         },
       ])
     );
-    expect(r.records.find((x) => x.name === "Glucose")).toMatchObject({
+    expect(r.observations.find((x) => x.name === "Glucose")).toMatchObject({
       value_num: 99,
       unit: "mg/dL",
     });

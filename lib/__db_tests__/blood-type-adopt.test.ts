@@ -15,7 +15,7 @@ import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { getBloodType, setBloodType } from "@/lib/settings";
 import {
-  adoptBloodTypeFromRecords,
+  adoptBloodTypeFromObservations,
   getBloodTypeParts,
 } from "@/lib/settings/profile-attrs";
 
@@ -32,12 +32,12 @@ const reading = (name: string, value: string | null) => ({
   value,
 });
 
-describe("adoptBloodTypeFromRecords", () => {
+describe("adoptBloodTypeFromObservations", () => {
   it("adopts from Epic's COMBINED row, canonicalized like a hand-entered value", () => {
     const p = newProfile("bt-combined");
     expect(getBloodType(p)).toBeNull();
 
-    const adopted = adoptBloodTypeFromRecords(p, [
+    const adopted = adoptBloodTypeFromObservations(p, [
       reading("ABORh Interpretation", "A POSITIVE"),
     ]);
 
@@ -50,7 +50,7 @@ describe("adoptBloodTypeFromRecords", () => {
   it("adopts from the two-row form (separate ABO + Rh records)", () => {
     const p = newProfile("bt-two-row");
     expect(
-      adoptBloodTypeFromRecords(p, [
+      adoptBloodTypeFromObservations(p, [
         reading("ABO Blood Group", "O"),
         reading("Rh Type", "NEGATIVE"),
       ])
@@ -62,7 +62,7 @@ describe("adoptBloodTypeFromRecords", () => {
     const p = newProfile("bt-manual");
     setBloodType(p, "O-");
 
-    const adopted = adoptBloodTypeFromRecords(p, [
+    const adopted = adoptBloodTypeFromObservations(p, [
       reading("ABORh Interpretation", "A POSITIVE"),
     ]);
 
@@ -75,16 +75,16 @@ describe("adoptBloodTypeFromRecords", () => {
     const p = newProfile("bt-idempotent");
     const rows = [reading("ABORh Interpretation", "AB NEGATIVE")];
 
-    expect(adoptBloodTypeFromRecords(p, rows)).toBe("AB-");
+    expect(adoptBloodTypeFromObservations(p, rows)).toBe("AB-");
     // The second run sees a value already set and leaves it alone.
-    expect(adoptBloodTypeFromRecords(p, rows)).toBeNull();
+    expect(adoptBloodTypeFromObservations(p, rows)).toBeNull();
     expect(getBloodType(p)).toBe("AB-");
   });
 
   it("adopts nothing when the document carries no blood group", () => {
     const p = newProfile("bt-none");
     expect(
-      adoptBloodTypeFromRecords(p, [
+      adoptBloodTypeFromObservations(p, [
         reading("Sodium", "140"),
         // An Rh factor alone is meaningless without the ABO group.
         reading("Rh Type", "POSITIVE"),
@@ -92,14 +92,14 @@ describe("adoptBloodTypeFromRecords", () => {
     ).toBeNull();
     expect(getBloodType(p)).toBeNull();
     // …and an empty/absent record set is a no-op, not a throw.
-    expect(adoptBloodTypeFromRecords(p, [])).toBeNull();
-    expect(adoptBloodTypeFromRecords(p, null)).toBeNull();
+    expect(adoptBloodTypeFromObservations(p, [])).toBeNull();
+    expect(adoptBloodTypeFromObservations(p, null)).toBeNull();
   });
 
   it("adopts nothing from a group-shaped value on an unrelated analyte", () => {
     const p = newProfile("bt-false-positive");
     expect(
-      adoptBloodTypeFromRecords(p, [
+      adoptBloodTypeFromObservations(p, [
         reading("Hepatitis B Surface Antigen", "A POSITIVE"),
       ])
     ).toBeNull();
@@ -111,7 +111,7 @@ describe("adoptBloodTypeFromRecords", () => {
   it("adopts a group written as a digit zero", () => {
     const p = newProfile("bt-zero-group");
     expect(
-      adoptBloodTypeFromRecords(p, [
+      adoptBloodTypeFromObservations(p, [
         reading("ABORh Interpretation", "0 Positive"),
       ])
     ).toBe("O+");
@@ -122,13 +122,13 @@ describe("adoptBloodTypeFromRecords", () => {
 // The halves are stored apart precisely so PARTIAL results accumulate. Held as one
 // composed string, "O" was not a member of BLOOD_TYPES, so normalizeBloodType
 // rejected it and an ABO-only import silently stored NOTHING.
-describe("adoptBloodTypeFromRecords — partial results accumulate across imports", () => {
+describe("adoptBloodTypeFromObservations — partial results accumulate across imports", () => {
   it("adopts an ABO-only document, then a later Rh completes it", () => {
     const p = newProfile("bt-partial-abo-first");
 
     // Document 1: the group only (Rh not drawn / not reported).
     expect(
-      adoptBloodTypeFromRecords(p, [reading("ABO Blood Group", "O")])
+      adoptBloodTypeFromObservations(p, [reading("ABO Blood Group", "O")])
     ).toBe("O");
     expect(getBloodTypeParts(p)).toEqual({ abo: "O", rh: null });
     // Renders as the group alone until the factor is known — never dropped.
@@ -136,7 +136,7 @@ describe("adoptBloodTypeFromRecords — partial results accumulate across import
 
     // Document 2, later: the Rh factor completes it, without a re-draw.
     expect(
-      adoptBloodTypeFromRecords(p, [reading("Rh Type", "RH(D) POSITIVE")])
+      adoptBloodTypeFromObservations(p, [reading("Rh Type", "RH(D) POSITIVE")])
     ).toBe("O+");
     expect(getBloodTypeParts(p)).toEqual({ abo: "O", rh: "+" });
     expect(getBloodType(p)).toBe("O+");
@@ -147,14 +147,14 @@ describe("adoptBloodTypeFromRecords — partial results accumulate across import
 
     // An Rh factor alone is meaningless to DISPLAY, so nothing renders yet…
     expect(
-      adoptBloodTypeFromRecords(p, [reading("Rh Type", "NEGATIVE")])
+      adoptBloodTypeFromObservations(p, [reading("Rh Type", "NEGATIVE")])
     ).toBeNull();
     expect(getBloodType(p)).toBeNull();
     // …but it IS kept, so the group's arrival completes the type.
     expect(getBloodTypeParts(p)).toEqual({ abo: null, rh: "-" });
 
     expect(
-      adoptBloodTypeFromRecords(p, [reading("ABO Blood Group", "AB")])
+      adoptBloodTypeFromObservations(p, [reading("ABO Blood Group", "AB")])
     ).toBe("AB-");
     expect(getBloodType(p)).toBe("AB-");
   });
@@ -167,7 +167,7 @@ describe("adoptBloodTypeFromRecords — partial results accumulate across import
 
     // A document disagreeing on BOTH halves changes neither.
     expect(
-      adoptBloodTypeFromRecords(p, [
+      adoptBloodTypeFromObservations(p, [
         reading("ABORh Interpretation", "A POSITIVE"),
       ])
     ).toBeNull();
@@ -181,7 +181,7 @@ describe("adoptBloodTypeFromRecords — partial results accumulate across import
 
     // The document's group is ignored (already set); only the Rh is taken.
     expect(
-      adoptBloodTypeFromRecords(p, [
+      adoptBloodTypeFromObservations(p, [
         reading("ABORh Interpretation", "A POSITIVE"),
       ])
     ).toBe("B+");

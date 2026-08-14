@@ -67,7 +67,7 @@ describe("CDA narrative-report extractor", () => {
         })
       )
     );
-    const reports = r.records.filter((x) => x.category === "report");
+    const reports = r.observations.filter((x) => x.category === "report");
     expect(reports).toHaveLength(1);
     expect(reports[0]).toMatchObject({
       category: "report",
@@ -81,7 +81,7 @@ describe("CDA narrative-report extractor", () => {
       external_id: "ccda:report:RPT-1",
     });
     // It must NOT also become a (null-value) lab record.
-    expect(r.records.some((x) => x.category === "lab")).toBe(false);
+    expect(r.observations.some((x) => x.category === "lab")).toBe(false);
   });
 
   it("resolves a gram-stain report alongside a real numeric lab in the same section", () => {
@@ -102,8 +102,8 @@ describe("CDA narrative-report extractor", () => {
         </observation></entry>`
       )
     );
-    const reports = r.records.filter((x) => x.category === "report");
-    const labs = r.records.filter((x) => x.category === "lab");
+    const reports = r.observations.filter((x) => x.category === "report");
+    const labs = r.observations.filter((x) => x.category === "lab");
     expect(reports).toHaveLength(1);
     expect(reports[0].name).toBe("Gram Stain Report");
     expect(reports[0].notes).toContain("gram-positive cocci");
@@ -123,7 +123,9 @@ describe("CDA narrative-report extractor", () => {
         })
       )
     );
-    expect(r.records.filter((x) => x.category === "report")).toHaveLength(0);
+    expect(r.observations.filter((x) => x.category === "report")).toHaveLength(
+      0
+    );
   });
 
   it("skips a negated report observation", () => {
@@ -140,7 +142,9 @@ describe("CDA narrative-report extractor", () => {
         })
       )
     );
-    expect(r.records.filter((x) => x.category === "report")).toHaveLength(0);
+    expect(r.observations.filter((x) => x.category === "report")).toHaveLength(
+      0
+    );
   });
 
   it("does NOT treat an ED value without a real LOINC as a report (Epic Result.Text component)", () => {
@@ -158,7 +162,9 @@ describe("CDA narrative-report extractor", () => {
         </observation></entry>`
       )
     );
-    expect(r.records.filter((x) => x.category === "report")).toHaveLength(0);
+    expect(r.observations.filter((x) => x.category === "report")).toHaveLength(
+      0
+    );
   });
 
   it("falls back to a content-keyed external_id when the report carries no id", () => {
@@ -173,7 +179,7 @@ describe("CDA narrative-report extractor", () => {
         })
       )
     );
-    const reports = r.records.filter((x) => x.category === "report");
+    const reports = r.observations.filter((x) => x.category === "report");
     expect(reports[0].external_id).toBe("ccda:report:2024-01-15:34574-4");
   });
 
@@ -196,7 +202,7 @@ describe("CDA narrative-report extractor", () => {
         })
       )
     );
-    const rep = r.records.find((x) => x.category === "report")!;
+    const rep = r.observations.find((x) => x.category === "report")!;
     expect(rep.notes).toBe(
       "Moderate S. aureus\nNo anaerobes isolated\nMany WBCs seen"
     );
@@ -222,7 +228,7 @@ describe("CDA narrative-report extractor", () => {
     );
     // Completing at all is the ReDoS assertion; a generous ceiling catches a regression.
     expect(Date.now() - started).toBeLessThan(2000);
-    const rep = r.records.find((x) => x.category === "report")!;
+    const rep = r.observations.find((x) => x.category === "report")!;
     expect(rep.notes).toBe("IMPRESSION: Normal study.");
   });
 
@@ -239,7 +245,7 @@ describe("CDA narrative-report extractor", () => {
         })
       )
     );
-    const reports = r.records.filter((x) => x.category === "report");
+    const reports = r.observations.filter((x) => x.category === "report");
     expect(reports).toHaveLength(1);
     expect(reports[0].notes).toBe("No organisms seen.");
   });

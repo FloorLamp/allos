@@ -161,11 +161,11 @@ the CCD (some portals hand you a `.xdm` file — same zip).
 **Extensibility.** `lib/cda/` exposes `parseCcdaDocument(xml)` (raw sections)
 and a `SectionExtractor` registry (`DEFAULT_EXTRACTORS`). A new clinical section
 is one `SectionExtractor` appended to the list — no change to the walker or the
-writer, since every record flows through the common
-`ImportedRecord { category, … }` shape. The built-in **medications** extractor
-already lands prescriptions in `medical_records` (category `prescription`), the
-interim "structured home" for structured medications; when a dedicated
-medications table ships, only that sink changes.
+writer, since every clinical observation flows through the common
+`ImportedClinicalObservation { category, … }` shape. The built-in **medications**
+extractor already lands prescriptions in `medical_records` (category
+`prescription`), the interim "structured home" for structured medications; when
+a dedicated medications table ships, only that sink changes.
 
 ### B.2 — SMART Health Card (secondary — usually COVID-only)
 

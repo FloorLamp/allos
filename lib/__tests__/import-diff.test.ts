@@ -11,13 +11,18 @@ import {
   emptySnapshot,
   type DiffRow,
 } from "@/lib/import-diff";
-import type { PersistInput, PersistRecord } from "@/lib/import-shape";
+import type {
+  PersistInput,
+  PersistClinicalObservation,
+} from "@/lib/import-shape";
 
 // Pure unit tests for the reprocess-diff logic. No DB — the
 // DB reader (lib/queries/imports.getReprocessSnapshot) and the extraction adapter
 // both reduce to the same neutral snapshot these functions diff.
 
-function rec(over: Partial<PersistRecord> = {}): PersistRecord {
+function rec(
+  over: Partial<PersistClinicalObservation> = {}
+): PersistClinicalObservation {
   return {
     category: "lab",
     name: "Glucose",
@@ -41,7 +46,7 @@ function rec(over: Partial<PersistRecord> = {}): PersistRecord {
 
 function input(over: Partial<PersistInput> = {}): PersistInput {
   return {
-    records: [],
+    observations: [],
     immunizations: [],
     allergies: [],
     conditions: [],
@@ -168,7 +173,7 @@ describe("diffRows", () => {
 describe("computeImportDiff", () => {
   it("is all-unchanged (no changes) when the fresh extraction equals persisted", () => {
     const persisted = input({
-      records: [rec({ external_id: "obs:glucose" })],
+      observations: [rec({ external_id: "obs:glucose" })],
     });
     const snap = snapshotFromPersistInput(persisted);
     const diff = computeImportDiff(snap, snap);
@@ -181,11 +186,13 @@ describe("computeImportDiff", () => {
 
   it("flags a changed value on the same external_id as a CHANGE, not add+remove", () => {
     const current = snapshotFromPersistInput(
-      input({ records: [rec({ external_id: "obs:glucose", value: "95" })] })
+      input({
+        observations: [rec({ external_id: "obs:glucose", value: "95" })],
+      })
     );
     const next = snapshotFromPersistInput(
       input({
-        records: [
+        observations: [
           rec({ external_id: "obs:glucose", value: "110", value_num: 110 }),
         ],
       })
@@ -202,10 +209,10 @@ describe("computeImportDiff", () => {
 
   it("reports added and removed rows across a reprocess", () => {
     const current = snapshotFromPersistInput(
-      input({ records: [rec({ external_id: "obs:a", name: "A" })] })
+      input({ observations: [rec({ external_id: "obs:a", name: "A" })] })
     );
     const next = snapshotFromPersistInput(
-      input({ records: [rec({ external_id: "obs:b", name: "B" })] })
+      input({ observations: [rec({ external_id: "obs:b", name: "B" })] })
     );
     const diff = computeImportDiff(current, next);
     expect(diff.totals.added).toBe(1);
@@ -223,7 +230,7 @@ describe("snapshotFromPersistInput medications", () => {
   it("derives one medication per cleaned drug name from prescription records", () => {
     const snap = snapshotFromPersistInput(
       input({
-        records: [
+        observations: [
           rec({ category: "prescription", name: "Lisinopril 10 mg" }),
           rec({ category: "prescription", name: "Lisinopril" }),
           rec({ category: "prescription", name: "Metformin 500 mg" }),

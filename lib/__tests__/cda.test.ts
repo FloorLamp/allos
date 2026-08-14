@@ -92,7 +92,7 @@ describe("parseCcda", () => {
 
   it("extracts labs, vitals, and medications into categorized records", () => {
     const byCat = (cat: string) =>
-      parseCcda(CCD).records.filter((r) => r.category === cat);
+      parseCcda(CCD).observations.filter((r) => r.category === cat);
 
     const lab = byCat("lab");
     expect(lab).toHaveLength(1);
@@ -140,7 +140,7 @@ describe("extractor seam", () => {
     // Immunizations only → no records, even though the doc has labs/vitals/meds.
     const r = parseCcda(CCD, [immunizationExtractor]);
     expect(r.immunizations.length).toBe(2);
-    expect(r.records).toEqual([]);
+    expect(r.observations).toEqual([]);
   });
 
   it("supports a brand-new section extractor without touching the core", () => {
@@ -149,7 +149,7 @@ describe("extractor seam", () => {
       key: "problems",
       matches: (s) => s.code === "11450-4",
       extract: (s) => ({
-        records: s.entries.map((_, i) => ({
+        observations: s.entries.map((_, i) => ({
           category: "biomarker" as const,
           name: `Problem ${i}`,
           canonical: `Problem ${i}`,
@@ -162,7 +162,7 @@ describe("extractor seam", () => {
       }),
     };
     // On our fixture (no problems section) it yields nothing but doesn't break.
-    expect(parseCcda(CCD, [problemExtractor]).records).toEqual([]);
+    expect(parseCcda(CCD, [problemExtractor]).observations).toEqual([]);
   });
 });
 
@@ -184,13 +184,13 @@ describe("canonical biomarker names", () => {
 
   it("maps a vital's LOINC to the app's canonical name (name kept as printed)", () => {
     const rec = parseCcda(vitalsDoc("8480-6", "Systolic blood pressure"))
-      .records[0];
+      .observations[0];
     expect(rec.name).toBe("Systolic blood pressure"); // provenance preserved
     expect(rec.canonical).toBe("Blood Pressure Systolic"); // canonical identity
   });
 
   it("falls back to the printed name for an unmapped LOINC", () => {
-    const rec = parseCcda(vitalsDoc("29463-7", "Body Weight")).records[0];
+    const rec = parseCcda(vitalsDoc("29463-7", "Body Weight")).observations[0];
     expect(rec.canonical).toBe("Body Weight");
   });
 });
@@ -215,7 +215,7 @@ describe("CCDA imported temperature → canonical °F (#1018)", () => {
 </ClinicalDocument>`;
 
   it("converts a UCUM Celsius reading (38.5 Cel → 101.3 degF)", () => {
-    const rec = parseCcda(tempDoc("38.5", "Cel")).records[0];
+    const rec = parseCcda(tempDoc("38.5", "Cel")).observations[0];
     expect(rec).toMatchObject({
       canonical: "Body Temperature",
       category: "vitals",
@@ -229,17 +229,17 @@ describe("CCDA imported temperature → canonical °F (#1018)", () => {
   });
 
   it("normalizes a UCUM Fahrenheit spelling ([degF]) onto the canonical unit", () => {
-    const rec = parseCcda(tempDoc("101.3", "[degF]")).records[0];
+    const rec = parseCcda(tempDoc("101.3", "[degF]")).observations[0];
     expect(rec).toMatchObject({ value_num: 101.3, unit: "degF" });
   });
 
   it("stores an unrecognized unit verbatim rather than guessing", () => {
-    const rec = parseCcda(tempDoc("311.2", "K")).records[0];
+    const rec = parseCcda(tempDoc("311.2", "K")).observations[0];
     expect(rec).toMatchObject({ value_num: 311.2, unit: "K" });
   });
 
   it("stores an implausible converted value verbatim (junk stays out of the series)", () => {
-    const rec = parseCcda(tempDoc("900", "Cel")).records[0];
+    const rec = parseCcda(tempDoc("900", "Cel")).observations[0];
     expect(rec).toMatchObject({ value_num: 900, unit: "Cel" });
   });
 });
@@ -357,7 +357,7 @@ describe("parseXdm", () => {
     ]);
     const r = parseXdm(zip);
     expect(r.immunizations.map((i) => i.code)).toEqual(["hepb", "covid"]);
-    expect(r.records.length).toBe(3); // lab + vital + medication
+    expect(r.observations.length).toBe(3); // lab + vital + medication
   });
 
   it("throws when the package contains no CCD", () => {
@@ -411,7 +411,7 @@ const MED_ATTRIBUTION_CCD = `<?xml version="1.0" encoding="UTF-8"?>
 
 describe("CCD medication attribution (#417)", () => {
   it("reads prescriber (author), pharmacy + Rx (<supply>), and the sig into `value`", () => {
-    const rx = parseCcda(MED_ATTRIBUTION_CCD).records.filter(
+    const rx = parseCcda(MED_ATTRIBUTION_CCD).observations.filter(
       (r) => r.category === "prescription"
     );
     expect(rx).toHaveLength(1);
@@ -428,7 +428,7 @@ describe("CCD medication attribution (#417)", () => {
 
   it("falls back to the doseQuantity string when no sig narrative is present", () => {
     // The baseline CCD med (no <text> sig) keeps its "10 mg" value — unchanged.
-    const rx = parseCcda(CCD).records.filter(
+    const rx = parseCcda(CCD).observations.filter(
       (r) => r.category === "prescription"
     );
     expect(rx[0].value).toBe("10 mg");

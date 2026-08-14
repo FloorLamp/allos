@@ -58,7 +58,7 @@ export interface PersistOutcome {
   // medications, body metrics, and height/head-circ samples. immCount/recCount
   // stay for the callers/tests that still tally those two kinds specifically.
   extractedCount: number;
-  insertedRecordIds: number[];
+  insertedObservationIds: number[];
 }
 
 // The import-footprint contract (the per-row footprint list + the side-effect
@@ -173,7 +173,7 @@ export function clearImportedDocumentRows(
   // Row-ops side-state (#705 dental adapter): a dental follow-up may link a
   // dental_procedures row THIS document imported as its SOURCE finding, or a
   // resolution may cite one. dental_procedures carries no ON DELETE for these FKs, so
-  // NULL those follow-up links FIRST — otherwise deleting the records (in the
+  // NULL those follow-up links FIRST — otherwise deleting the dental rows (in the
   // footprint loop) would trip the care_plan_items source/resolved FKs.
   db.prepare(
     `UPDATE care_plan_items SET source_kind = NULL, source_dental_procedure_id = NULL
@@ -538,7 +538,7 @@ export function documentFootprintByKind(
 
 // Write one document's parsed contents, replacing any rows it previously
 // produced (so this doubles as the reprocess path) and marking the document
-// 'done'. One transaction; returns the inserted record ids + counts. Does NOT
+// 'done'. One transaction; returns the inserted observation ids + counts. Does NOT
 // run the profile/flag follow-ups — see applyImportFollowups, which callers run
 // in their own best-effort block so a follow-up throw can't un-finalize a
 // document whose data is already committed.
@@ -702,7 +702,7 @@ export function persistDocumentImport(
     immCount: result.counts.immCount,
     recCount: result.counts.recCount,
     extractedCount: result.extractedCount,
-    insertedRecordIds: result.counts.insertedRecordIds,
+    insertedObservationIds: result.counts.insertedObservationIds,
   };
 }
 
@@ -720,7 +720,7 @@ export interface DocumentlessOutcome {
   heightCount: number;
   headCircCount: number;
   waistCircCount: number;
-  insertedRecordIds: number[];
+  insertedObservationIds: number[];
 }
 
 // Persist a paste/CSV import — the SAME extraction output a file upload produces,
@@ -752,17 +752,17 @@ export function persistDocumentlessImport(
     heightCount: counts.heightCount,
     headCircCount: counts.headCircCount,
     waistCircCount: counts.waistCircCount,
-    insertedRecordIds: counts.insertedRecordIds,
+    insertedObservationIds: counts.insertedObservationIds,
   };
 }
 
-// Resolve every captured provider (per-record/immunization performers + the
+// Resolve every captured provider (per-observation/immunization performers + the
 // section-level Care Teams) into the shared GLOBAL registry, memoized by dedup
 // key so one INSERT per distinct provider. Done up front, outside the
 // per-document transaction, because the providers table is global and its
 // resolve-or-create is independently idempotent — a reprocess re-resolves to the
 // same rows and never coins a duplicate. Returns the shared row id to stamp onto
-// the profile-owned immunization/record row's provider_id. Shared by both the
+// the profile-owned immunization/observation row's provider_id. Shared by both the
 // document and the documentless import paths.
 function buildProviderResolver(
   seed: ImportedProvider[]
@@ -796,7 +796,7 @@ interface ImportInsertCounts {
   heightCount: number;
   headCircCount: number;
   waistCircCount: number;
-  insertedRecordIds: number[];
+  insertedObservationIds: number[];
 }
 
 // THE shared insert loops — every table an import writes, run identically by the
@@ -898,7 +898,7 @@ function insertImportRows(
   const scopedExternalId = (raw: string | null): string | null =>
     raw == null || docSource == null ? null : `${docSource}|${raw}`;
 
-  // One insert covers every record type (lab / vital / prescription / …).
+  // One insert covers every observation type (lab / vital / prescription / …).
   // external_id is nullable — the deterministic path sets it (dedup via the
   // per-profile partial-unique index); the AI path leaves it null and relies on
   // the delete-by-document_id above.
@@ -921,12 +921,12 @@ function insertImportRows(
   );
 
   // Allergies + problem-list conditions. Own tables, same idempotency
-  // as the records path: a per-document delete-set clears this document's prior rows
+  // as the observations path: a per-document delete-set clears this document's prior rows
   // (below), then INSERT OR IGNORE dedups within the document via the per-profile
   // unique external_id index (scoped with the document source so two documents each
   // keep their own physical row and a delete never orphans another's).
   // created_at on these three is bound from the CLOCK SEAM (sqlNow, #1534): with no
-  // explicit clinical date the stamp IS the record's Timeline day
+  // explicit clinical date the stamp IS the observation's Timeline day
   // (`substr(created_at, 1, 10)` / dateFromCreatedAt), compared against
   // `today()`-derived bounds.
   const insAllergy = db.prepare(
@@ -1083,7 +1083,7 @@ function insertImportRows(
      VALUES (?,?,?, 'any', ?)`
   );
 
-  const insertedRecordIds: number[] = [];
+  const insertedObservationIds: number[] = [];
   let immCount = 0;
   let recCount = 0;
   let bodyMetricCount = 0;
@@ -1178,7 +1178,7 @@ function insertImportRows(
     );
     if (info.changes > 0) waistCircCount++;
   }
-  for (const r of input.records) {
+  for (const r of input.observations) {
     // #1178: a prescription is the SINGLE medication entity (projected into
     // intake_items by persistExtractedMedications below), never a paired
     // medical_records row — so it is NOT inserted here. Every other category (lab /
@@ -1217,8 +1217,8 @@ function insertImportRows(
     );
     if (info.changes > 0) {
       recCount++;
-      const recordId = Number(info.lastInsertRowid);
-      insertedRecordIds.push(recordId);
+      const observationId = Number(info.lastInsertRowid);
+      insertedObservationIds.push(observationId);
       // A folded screening-instrument SCORE (#2321) brings its per-item answers with
       // it. They go into the SAME `instrument_responses` table the in-app tap-through
       // writes, so item 9 / item 10 drives the crisis decision for an imported score
@@ -1226,7 +1226,12 @@ function insertImportRows(
       // (ON DELETE CASCADE), so the document's delete-set clears them with it and
       // nothing extra joins the import footprint.
       for (const a of r.instrumentAnswers ?? []) {
-        insInstrumentAnswer.run(profileId, recordId, a.itemIndex, a.answer);
+        insInstrumentAnswer.run(
+          profileId,
+          observationId,
+          a.itemIndex,
+          a.answer
+        );
       }
     }
   }
@@ -1490,7 +1495,7 @@ function insertImportRows(
       profileId,
       docSource,
       "medical_records",
-      input.records,
+      input.observations,
       resolveEnc
     );
     linkRowsByExternalId(
@@ -1535,7 +1540,7 @@ function insertImportRows(
   const medCount = persistExtractedMedications(
     profileId,
     docId,
-    input.records,
+    input.observations,
     {
       existing: getMedMatchStates(profileId),
       insMed,
@@ -1557,7 +1562,7 @@ function insertImportRows(
     heightCount,
     headCircCount,
     waistCircCount,
-    insertedRecordIds,
+    insertedObservationIds,
   };
 }
 

@@ -272,7 +272,7 @@ describe("Admitting Diagnoses (46241-6, #266)", () => {
 describe("Medications at Time of Discharge (10183-2, #266)", () => {
   it("imports the take-home med, trusting its own status (open course) with discharge provenance", () => {
     const r = extractFromCcda(doc(DISCHARGE_MEDICATIONS));
-    const meds = r.records.filter((x) => x.category === "prescription");
+    const meds = r.observations.filter((x) => x.category === "prescription");
     expect(meds).toHaveLength(1);
     const m = meds[0];
     expect(m.name).toBe("Amoxicillin 500 mg capsule");
@@ -289,7 +289,7 @@ describe("Medications at Time of Discharge (10183-2, #266)", () => {
 describe("Administered Medications (29549-3, #266)", () => {
   it("imports an inpatient administration as a CLOSED course (never a current med)", () => {
     const r = extractFromCcda(doc(ADMINISTERED_MEDICATIONS));
-    const meds = r.records.filter((x) => x.category === "prescription");
+    const meds = r.observations.filter((x) => x.category === "prescription");
     expect(meds).toHaveLength(1);
     const m = meds[0];
     expect(m.name).toBe("Ondansetron 4 mg tablet");
@@ -304,7 +304,7 @@ describe("Administered Medications (29549-3, #266)", () => {
 
   it("anchors an undated administration to the document date, still closed", () => {
     const r = extractFromCcda(doc(ADMINISTERED_UNDATED));
-    const meds = r.records.filter((x) => x.category === "prescription");
+    const meds = r.observations.filter((x) => x.category === "prescription");
     expect(meds).toHaveLength(1);
     const m = meds[0];
     expect(m.date).toBe("2026-06-03"); // the document date

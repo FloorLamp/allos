@@ -3,7 +3,7 @@ import { parseCcda } from "@/lib/cda";
 import { parseFhirBundle } from "@/lib/fhir";
 
 // End-to-end (still pure — no DB) checks that the CCD and FHIR importers carry
-// derived medication COURSES on their prescription records:
+// derived medication COURSES on their prescription observations:
 // effective period(s) → course dates, status → open/closed + stop_reason.
 
 function ccdWithMeds(entries: string): string {
@@ -39,7 +39,7 @@ describe("CCD medications → courses", () => {
         </manufacturedMaterial></manufacturedProduct></consumable>
       </substanceAdministration></entry>`)
     );
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx).toHaveLength(1);
     expect(rx[0].name).toBe("Lisinopril 10 mg tablet"); // resolved from narrative
     expect(rx[0].courses).toEqual([
@@ -67,7 +67,7 @@ describe("CCD medications → courses", () => {
         </manufacturedMaterial></manufacturedProduct></consumable>
       </substanceAdministration></entry>`)
     );
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx).toHaveLength(1);
     expect(rx[0].courses).toEqual([
       {
@@ -94,7 +94,7 @@ describe("CCD medications → courses", () => {
         </manufacturedMaterial></manufacturedProduct></consumable>
       </substanceAdministration></entry>`)
     );
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx[0].courses?.[0]).toMatchObject({
       started_on: "2024-01-01",
       stopped_on: "2024-01-14",
@@ -117,7 +117,9 @@ describe("CCD medications → courses", () => {
         </manufacturedMaterial></manufacturedProduct></consumable>
       </substanceAdministration></entry>`)
     );
-    expect(r.records.filter((x) => x.category === "prescription")).toEqual([]);
+    expect(r.observations.filter((x) => x.category === "prescription")).toEqual(
+      []
+    );
   });
 });
 
@@ -144,7 +146,7 @@ describe("CCD undated medication → document-date fallback (Fix 2)", () => {
 
   it("imports the undated med, dated to the document, with an open course", () => {
     const r = parseCcda(CCD_UNDATED_MED);
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx).toHaveLength(1);
     expect(rx[0].name).toBe("Atorvastatin 20 mg tablet");
     // Record date falls back to the document effectiveTime.
@@ -181,7 +183,7 @@ describe("CCD dateless suspended medication → closed course (eClinicalWorks sh
 
   it("derives one CLOSED course at the document date instead of an open fallback", () => {
     const r = parseCcda(CCD_SUSPENDED_MED);
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx).toHaveLength(1);
     expect(rx[0].name).toBe("Ibuprofen 100 mg/5 mL suspension");
     expect(rx[0].courses).toEqual([
@@ -207,7 +209,7 @@ describe("CCD dateless suspended medication → closed course (eClinicalWorks sh
       </encompassingEncounter></componentOf></ClinicalDocument>`
     );
     const r = parseCcda(withVisit);
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx).toHaveLength(1);
     expect(rx[0].date).toBe("2026-06-27");
     expect(rx[0].external_id).toBe(
@@ -243,7 +245,7 @@ describe("FHIR medications → courses", () => {
         },
       ])
     );
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx).toHaveLength(1);
     expect(rx[0].courses).toEqual([
       {
@@ -267,7 +269,7 @@ describe("FHIR medications → courses", () => {
         },
       ])
     );
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx[0].courses).toEqual([
       {
         started_on: "2024-02-01",
@@ -290,7 +292,7 @@ describe("FHIR medications → courses", () => {
         },
       ])
     );
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx[0].courses?.[0]).toMatchObject({
       started_on: "2023-05-01",
       stop_reason: "provider_discontinued",
@@ -314,7 +316,7 @@ describe("FHIR medications → courses", () => {
         },
       ])
     );
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     expect(rx[0].courses?.[0]).toMatchObject({
       started_on: "2022-01-01",
       stopped_on: "2022-06-01",
@@ -344,7 +346,7 @@ describe("FHIR medications → courses", () => {
         },
       ])
     );
-    const rx = r.records.filter((x) => x.category === "prescription");
+    const rx = r.observations.filter((x) => x.category === "prescription");
     // boundsPeriod (2024-09-02..09-12) is preferred; authoredOn is only the record date.
     expect(rx[0].courses?.[0]).toMatchObject({
       started_on: "2024-09-02",
@@ -364,6 +366,8 @@ describe("FHIR medications → courses", () => {
         },
       ])
     );
-    expect(r.records.filter((x) => x.category === "prescription")).toEqual([]);
+    expect(r.observations.filter((x) => x.category === "prescription")).toEqual(
+      []
+    );
   });
 });

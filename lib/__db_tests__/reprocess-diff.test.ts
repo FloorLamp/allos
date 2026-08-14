@@ -37,7 +37,7 @@ const DATE = "2020-05-01";
 
 function makeInput(over: Partial<PersistInput> = {}): PersistInput {
   return {
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Glucose",
@@ -205,7 +205,7 @@ describe("reprocess-diff preview then commit", () => {
     // A reprocess result that: changes Glucose's value, drops the immunization,
     // adds an HDL lab, and keeps everything else.
     const reprocessed = makeInput({
-      records: [
+      observations: [
         {
           category: "lab",
           name: "Glucose",
@@ -305,7 +305,7 @@ describe("reprocess preview phantoms", () => {
     const did = newDocument(pid, "flags.ccd");
     const glucoseHigh = () =>
       makeInput({
-        records: [
+        observations: [
           {
             // The FASTING glucose entry (#2337): the unqualified "Glucose" entry is
             // band-less by decision, so it derives no flag and could not prove the
@@ -360,7 +360,7 @@ describe("reprocess preview phantoms", () => {
     applyImportFollowups(pid, {
       demographics: null,
       canonicalNames: [],
-      insertedRecordIds: persisted.insertedRecordIds,
+      insertedObservationIds: persisted.insertedObservationIds,
     });
     // Sanity: the follow-ups really derived both flag flavors (else vacuous).
     const storedFlags = db
@@ -383,9 +383,9 @@ describe("reprocess preview phantoms", () => {
     ).toBe(true);
 
     // With the preview twin: both flavors derived identically → clean.
-    previewReconcileFlags(pid, raw.records);
-    expect(raw.records[0].flag).toBe("high");
-    expect(raw.records[1].flag).toBe("immune");
+    previewReconcileFlags(pid, raw.observations);
+    expect(raw.observations[0].flag).toBe("high");
+    expect(raw.observations[1].flag).toBe("immune");
     expect(
       computeImportDiff(
         getReprocessSnapshot(pid, did),
@@ -427,12 +427,15 @@ describe("reprocess preview phantoms", () => {
     persistDocumentImport(
       pid,
       docA,
-      makeInput({ ...bare, records: [rx("Ibuprofen 200 mg", "med:ibu-a")] })
+      makeInput({
+        ...bare,
+        observations: [rx("Ibuprofen 200 mg", "med:ibu-a")],
+      })
     );
     const inputB = () =>
       makeInput({
         ...bare,
-        records: [
+        observations: [
           rx("Ibuprofen 200 mg", "med:ibu-b"),
           rx("Cetirizine 10 mg", "med:cet-b"),
         ],
@@ -457,7 +460,7 @@ describe("reprocess preview phantoms", () => {
       pid,
       current,
       next.medications,
-      inputB().records
+      inputB().observations
     );
     const folded = computeImportDiff(current, next);
     const meds = folded.entities.find((e) => e.entity === "medications")!;
@@ -471,7 +474,7 @@ describe("reprocess preview phantoms", () => {
     // A derived drug the profile does NOT track still previews as added.
     const withNew = makeInput({
       ...bare,
-      records: [
+      observations: [
         rx("Ibuprofen 200 mg", "med:ibu-b"),
         rx("Cetirizine 10 mg", "med:cet-b"),
         rx("Amoxicillin 400 mg", "med:amox-b"),
@@ -483,7 +486,7 @@ describe("reprocess preview phantoms", () => {
       pid,
       current2,
       next2.medications,
-      withNew.records
+      withNew.observations
     );
     const diff2 = computeImportDiff(current2, next2);
     expect(
@@ -529,14 +532,20 @@ describe("reprocess preview phantoms", () => {
     persistDocumentImport(
       pid,
       docA,
-      makeInput({ ...bare, records: [rx("Ibuprofen 200 mg", "med:ibu-a")] })
+      makeInput({
+        ...bare,
+        observations: [rx("Ibuprofen 200 mg", "med:ibu-a")],
+      })
     );
     // Doc B owns only Cetirizine (so it exists as this document's tracked med).
     const docB = newDocument(pid, "B.ccd");
     persistDocumentImport(
       pid,
       docB,
-      makeInput({ ...bare, records: [rx("Cetirizine 10 mg", "med:cet-b")] })
+      makeInput({
+        ...bare,
+        observations: [rx("Cetirizine 10 mg", "med:cet-b")],
+      })
     );
 
     // Sanity: the existing Ibuprofen really has an open course at 200 mg.
@@ -552,7 +561,7 @@ describe("reprocess preview phantoms", () => {
     // different strength) → a NEW item. So the preview MUST surface it as an addition.
     const reB = makeInput({
       ...bare,
-      records: [
+      observations: [
         rx("Ibuprofen 800 mg", "med:ibu-b"),
         rx("Cetirizine 10 mg", "med:cet-b"),
       ],
@@ -564,7 +573,7 @@ describe("reprocess preview phantoms", () => {
       pid,
       current,
       next.medications,
-      reB.records
+      reB.observations
     );
     const diff = computeImportDiff(current, next);
     const meds = diff.entities.find((e) => e.entity === "medications")!;
@@ -576,7 +585,7 @@ describe("reprocess preview phantoms", () => {
     // — the #1204 phantom-diff fix is intact, the #1280 correction is precise.
     const renewB = makeInput({
       ...bare,
-      records: [
+      observations: [
         rx("Ibuprofen 200 mg", "med:ibu-b"),
         rx("Cetirizine 10 mg", "med:cet-b"),
       ],
@@ -587,7 +596,7 @@ describe("reprocess preview phantoms", () => {
       pid,
       current2,
       next2.medications,
-      renewB.records
+      renewB.observations
     );
     const meds2 = computeImportDiff(current2, next2).entities.find(
       (e) => e.entity === "medications"
@@ -660,21 +669,21 @@ describe("intra-batch canonical collapse (end-to-end)", () => {
     // batch-snap against the NOW-registered vocabulary, enrich, diff → clean.
     const { parsed, source } = parseHealthRecord(buffer);
     const index = buildCanonicalIndex(getCanonicalVocabulary());
-    for (const r of parsed.records) {
+    for (const r of parsed.observations) {
       r.canonical = snapCanonicalNameIntoBatch(
         distinguishVitaminDIsoform(r.canonical, r.name),
         index
       );
     }
     const input = healthRecordToPersistInput(parsed, source, "MyChart export");
-    previewReconcileFlags(pid, input.records);
+    previewReconcileFlags(pid, input.observations);
     const current = getReprocessSnapshot(pid, did);
     const next = snapshotFromPersistInput(input);
     foldConsolidatedMedsIntoSnapshot(
       pid,
       current,
       next.medications,
-      input.records
+      input.observations
     );
     expect(computeImportDiff(current, next).hasChanges).toBe(false);
   });

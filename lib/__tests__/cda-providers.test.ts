@@ -51,8 +51,8 @@ describe("CCD provider capture", () => {
   const r = parseCcda(CCD);
 
   it("captures the performing organization on a lab observation", () => {
-    expect(r.records).toHaveLength(1);
-    const p = r.records[0].provider;
+    expect(r.observations).toHaveLength(1);
+    const p = r.observations[0].provider;
     expect(p?.name).toBe("QUEST (BEAKER)");
     expect(p?.type).toBe("organization");
   });
@@ -100,7 +100,7 @@ const CCD_NON_NPI_ORG = `<?xml version="1.0"?>
 describe("CCD provider identifier namespacing", () => {
   it("qualifies a non-NPI identifier with its assigning-authority root OID", () => {
     const r = parseCcda(CCD_NON_NPI_ORG);
-    const p = r.records[0].provider;
+    const p = r.observations[0].provider;
     expect(p?.name).toBe("Community Clinic");
     expect(p?.npi).toBeNull();
     expect(p?.identifier).toBe("1.2.840.99999:100");

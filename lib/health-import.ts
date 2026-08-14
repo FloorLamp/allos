@@ -19,7 +19,7 @@ import type {
 import type { ImportReport } from "./import-report";
 import type { VisitDiagnosisRank } from "./visit-diagnosis-rank";
 
-// A derived medication COURSE (episode) carried on an imported medication record
+// A derived medication COURSE (episode) carried on an imported prescription observation
 //. started_on/stopped_on are the source's effective-period
 // bounds (YYYY-MM-DD); stopped_on null means the course is still open (the med is
 // ongoing). stop_reason is derived from the source status (completed →
@@ -53,7 +53,7 @@ export interface ImportedProvider {
   specialty?: string | null;
 }
 
-// Shared shapes for records pulled out of a portal export (MyChart CCD/XDM or a
+// Shared shapes for observations pulled out of a portal export (MyChart CCD/XDM or a
 // SMART Health Card). Keeping them provider-neutral lets one persistence path in
 // the import action handle everything, and lets the parsers grow to cover more
 // of the record (labs today; vitals, medications, problems, allergies as
@@ -72,10 +72,10 @@ export interface ImportedImmunization {
   encounter_external_id?: string | null;
 }
 
-// A generic clinical record destined for `medical_records`. `category` decides
+// A generic clinical observation destined for `medical_records`. `category` decides
 // the column value (lab result, vital sign, prescription, …) so a single insert
 // path can persist every section an extractor understands.
-export interface ImportedRecord {
+export interface ImportedClinicalObservation {
   category: MedicalCategory;
   name: string;
   canonical: string;
@@ -96,13 +96,13 @@ export interface ImportedRecord {
   // used to route body-height readings into metric_samples (lib/height-extract).
   // Optional — extractors that don't resolve a LOINC leave it unset.
   loinc?: string | null;
-  // Free-text body of a narrative report record (category === 'report', #708): the
+  // Free-text body of a narrative report observation (category === 'report', #708): the
   // resolved microbiology culture / gram stain / cytopathology report text. Set ONLY
-  // on report records — every analyte/vital reading leaves it unset, and the persist
+  // on report observations — every analyte/vital reading leaves it unset, and the persist
   // layer maps it into medical_records.notes.
   notes?: string | null;
   // The reading's OWN reference range + abnormal flag as stated by the SOURCE lab
-  // (CCD `<referenceRange>` + `<interpretationCode>`), captured on `lab` records so an
+  // (CCD `<referenceRange>` + `<interpretationCode>`), captured on `lab` observations so an
   // analyte with no canonical band still shows the lab's normal range and its H/L/A
   // interpretation. `flag` seeds medical_records.flag (reconcileFlags then refines a
   // MAPPED lab against the canonical band and leaves an UNMAPPED lab's source flag
@@ -121,21 +121,21 @@ export interface ImportedRecord {
   provider?: ImportedProvider | null;
   // The per-item answers behind a screening-instrument SCORE (#2321), 0-based item
   // index → the option value the document's printed answer carries. Set ONLY on
-  // `category === 'instrument'` records folded out of a document's per-question rows;
+  // `category === 'instrument'` observations folded out of a document's per-question rows;
   // every other reading leaves it unset. The persist layer writes them into
   // `instrument_responses` against the score's new row id — which is why they ride ON
-  // the record rather than in a sidecar list: the child rows have no other way to find
+  // the observation rather than in a sidecar list: the child rows have no other way to find
   // their parent, and the two can never drift apart in transit.
   instrumentAnswers?: { itemIndex: number; answer: number }[];
   // Medication COURSES derived from the source's effective
   // period(s) + lifecycle status — set ONLY on `category === 'prescription'`
-  // records by the CCD/FHIR importers. When present + non-empty, the persist layer
+  // observations by the CCD/FHIR importers. When present + non-empty, the persist layer
   // creates one medication_courses row per course (open/closed synced to
   // intake_items.active) INSTEAD of the Phase-1 single open course; when absent/
-  // empty it falls back to that single ensure-course. Other record categories
+  // empty it falls back to that single ensure-course. Other observation categories
   // leave it unset.
   courses?: ImportedMedicationCourse[] | null;
-  // Structured medication attribution, set ONLY on prescription records by the
+  // Structured medication attribution, set ONLY on prescription observations by the
   // CCD/FHIR importers (FHIR requester / dispenseRequest.performer / identifier;
   // CCD med <author> + <supply>). Threaded into the auto-structured intake_items
   // row's prescriber / pharmacy / rx_number columns so an imported med carries the
@@ -150,7 +150,7 @@ export interface ImportedRecord {
   encounter_external_id?: string | null;
   // Tier-1 indication link (#1052): the external_id of the Condition a
   // MedicationRequest.reasonReference pointed at, resolved within the bundle. Set only
-  // on prescription records; the persist layer maps it to the local condition row and
+  // on prescription observations; the persist layer maps it to the local condition row and
   // stamps the projected medication's indication_condition_id. Null when the source
   // carried no reason reference (or it dangled).
   indication_condition_external_id?: string | null;
@@ -380,7 +380,7 @@ export interface ImportDemographics {
 
 export interface ImportResult {
   immunizations: ImportedImmunization[];
-  records: ImportedRecord[];
+  observations: ImportedClinicalObservation[];
   // Allergies + problem-list conditions. Optional so the FHIR / SMART
   // Health Card parsers (which don't yet emit these) need no change — consumers
   // default to []. The CCD extractor populates them.

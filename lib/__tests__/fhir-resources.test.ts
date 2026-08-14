@@ -294,8 +294,8 @@ describe("FHIR MedicationRequest / MedicationStatement → medication record", (
         },
       ])
     );
-    expect(r.records).toHaveLength(1);
-    const m = r.records[0];
+    expect(r.observations).toHaveLength(1);
+    const m = r.observations[0];
     expect(m).toMatchObject({
       category: "prescription",
       name: "Lisinopril 10 MG Oral Tablet",
@@ -329,8 +329,8 @@ describe("FHIR MedicationRequest / MedicationStatement → medication record", (
         },
       ])
     );
-    expect(r.records).toHaveLength(1);
-    expect(r.records[0]).toMatchObject({
+    expect(r.observations).toHaveLength(1);
+    expect(r.observations[0]).toMatchObject({
       category: "prescription",
       name: "Metformin 500 MG Oral Tablet",
       prescriber: "Dr. Ada Prescriber",
@@ -366,8 +366,8 @@ describe("FHIR MedicationRequest / MedicationStatement → medication record", (
         },
       ])
     );
-    expect(r.records).toHaveLength(1);
-    expect(r.records[0]).toMatchObject({
+    expect(r.observations).toHaveLength(1);
+    expect(r.observations[0]).toMatchObject({
       name: "Metformin 500 MG",
       value: "500 mg twice daily",
       date: "2022-11-20",
@@ -391,7 +391,7 @@ describe("FHIR MedicationRequest / MedicationStatement → medication record", (
         },
       ])
     );
-    expect(r.records).toEqual([]);
+    expect(r.observations).toEqual([]);
   });
 });
 
@@ -1305,8 +1305,8 @@ describe("FHIR provider provenance on Observation / Immunization", () => {
         },
       ])
     );
-    expect(r.records).toHaveLength(1);
-    expect(r.records[0].provider).toMatchObject({
+    expect(r.observations).toHaveLength(1);
+    expect(r.observations[0].provider).toMatchObject({
       name: "Quest Diagnostics",
       type: "organization",
     });
@@ -1378,7 +1378,10 @@ describe("FHIR DiagnosticReport → contained lab Observations", () => {
       ])
     );
     // Glucose (top-level + referenced) dedups to one; Sodium (contained) added.
-    expect(r.records.map((x) => x.name).sort()).toEqual(["Glucose", "Sodium"]);
+    expect(r.observations.map((x) => x.name).sort()).toEqual([
+      "Glucose",
+      "Sodium",
+    ]);
   });
 });
 
@@ -1417,8 +1420,8 @@ describe("FHIR Observation component[] + valueless guard", () => {
       ])
     );
     // Two readings, canonicalized + routed to vitals via their component LOINCs.
-    expect(r.records).toHaveLength(2);
-    const byCanonical = new Map(r.records.map((x) => [x.canonical, x]));
+    expect(r.observations).toHaveLength(2);
+    const byCanonical = new Map(r.observations.map((x) => [x.canonical, x]));
     expect(byCanonical.get("Blood Pressure Systolic")).toMatchObject({
       category: "vitals",
       value_num: 122,
@@ -1431,7 +1434,7 @@ describe("FHIR Observation component[] + valueless guard", () => {
       loinc: "8462-4",
     });
     // The parent BP row is NOT imported as a nameless "—".
-    expect(r.records.every((x) => x.value_num != null)).toBe(true);
+    expect(r.observations.every((x) => x.value_num != null)).toBe(true);
   });
 
   it("drops a valueless, component-less Observation as no_value", () => {
@@ -1449,7 +1452,7 @@ describe("FHIR Observation component[] + valueless guard", () => {
         },
       ])
     );
-    expect(r.records).toHaveLength(0);
+    expect(r.observations).toHaveLength(0);
     const report = r.report!;
     expect(
       report.drops.some(
@@ -1507,7 +1510,7 @@ describe("FHIR component[] refusals reach the import report (#2411)", () => {
       ])
     );
     // The systolic still imports — a refused sibling never takes a good reading down.
-    expect(r.records.map((x) => x.canonical)).toEqual([
+    expect(r.observations.map((x) => x.canonical)).toEqual([
       "Blood Pressure Systolic",
     ]);
     const report = r.report!;
@@ -1544,7 +1547,7 @@ describe("FHIR component[] refusals reach the import report (#2411)", () => {
         },
       ])
     );
-    expect(r.records.map((x) => x.name)).toEqual(["Workload"]);
+    expect(r.observations.map((x) => x.name)).toEqual(["Workload"]);
     const drop = r.report!.drops.find((d) => d.label === "Exercise Duration");
     // "no value" would say the opposite of what happened — the source stated one.
     expect(drop?.reason).toBe("unparsable_value");
@@ -1568,7 +1571,7 @@ describe("FHIR component[] refusals reach the import report (#2411)", () => {
         },
       ])
     );
-    expect(r.records).toHaveLength(0);
+    expect(r.observations).toHaveLength(0);
     const report = r.report!;
     // TWO candidates, two drops — and no third resource-level "no value" on top of
     // them, which would count a candidate that never existed.
@@ -1635,8 +1638,8 @@ describe("FHIR imported temperature → canonical °F (#1018)", () => {
 
   it("converts a UCUM Celsius reading (38.5 Cel → 101.3 degF)", () => {
     const r = parseFhirBundle(bundle([tempObs(38.5, "Cel")]));
-    expect(r.records).toHaveLength(1);
-    expect(r.records[0]).toMatchObject({
+    expect(r.observations).toHaveLength(1);
+    expect(r.observations[0]).toMatchObject({
       canonical: "Body Temperature",
       category: "vitals",
       value_num: 101.3,
@@ -1645,22 +1648,22 @@ describe("FHIR imported temperature → canonical °F (#1018)", () => {
     });
     // Dedup identity keys on the AS-SHIPPED value, so a document whose Cel
     // reading was stored before the conversion re-imports onto the same row.
-    expect(r.records[0].external_id).toContain(":38.5");
+    expect(r.observations[0].external_id).toContain(":38.5");
   });
 
   it("normalizes a UCUM Fahrenheit spelling ([degF]) onto the canonical unit", () => {
     const r = parseFhirBundle(bundle([tempObs(101.3, "[degF]")]));
-    expect(r.records[0]).toMatchObject({ value_num: 101.3, unit: "degF" });
+    expect(r.observations[0]).toMatchObject({ value_num: 101.3, unit: "degF" });
   });
 
   it("stores an unrecognized unit verbatim rather than guessing", () => {
     const r = parseFhirBundle(bundle([tempObs(311.2, "K")]));
-    expect(r.records[0]).toMatchObject({ value_num: 311.2, unit: "K" });
+    expect(r.observations[0]).toMatchObject({ value_num: 311.2, unit: "K" });
   });
 
   it("stores an implausible converted value verbatim (junk stays out of the series)", () => {
     const r = parseFhirBundle(bundle([tempObs(900, "Cel")]));
-    expect(r.records[0]).toMatchObject({ value_num: 900, unit: "Cel" });
+    expect(r.observations[0]).toMatchObject({ value_num: 900, unit: "Cel" });
   });
 });
 
@@ -1683,7 +1686,7 @@ describe("FHIR unmapped-LOINC surfacing", () => {
       ])
     );
     // Still imported (under its printed name).
-    expect(r.records.map((x) => x.name)).toEqual(["Exotic Assay"]);
+    expect(r.observations.map((x) => x.name)).toEqual(["Exotic Assay"]);
     // And surfaced as an unmapped LOINC — not dropped.
     expect(r.report!.unmappedLoincs).toEqual([
       { loinc: "99999-9", name: "Exotic Assay", count: 1, unit: "ng/mL" },
@@ -1832,8 +1835,10 @@ describe("CDA ↔ FHIR cross-format external_id dedup (F15)", () => {
   });
 
   it("produces the SAME medication external_id when the dates align", () => {
-    const ccdRx = ccd.records.filter((r) => r.category === "prescription");
-    const fhirRx = fhir.records.filter((r) => r.category === "prescription");
+    const ccdRx = ccd.observations.filter((r) => r.category === "prescription");
+    const fhirRx = fhir.observations.filter(
+      (r) => r.category === "prescription"
+    );
     expect(ccdRx).toHaveLength(1);
     expect(fhirRx).toHaveLength(1);
     // FHIR now prefers effectiveDateTime, matching the CDA effectiveTime low.
@@ -1869,7 +1874,9 @@ describe("FHIR medicationReference resolution is type-guarded (F5)", () => {
       ])
     );
     // Only the Glucose lab survives; no prescription is fabricated.
-    expect(r.records.map((x) => x.category)).toEqual(["lab"]);
-    expect(r.records.some((x) => x.category === "prescription")).toBe(false);
+    expect(r.observations.map((x) => x.category)).toEqual(["lab"]);
+    expect(r.observations.some((x) => x.category === "prescription")).toBe(
+      false
+    );
   });
 });

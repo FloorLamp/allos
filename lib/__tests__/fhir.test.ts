@@ -54,8 +54,8 @@ describe("parseFhirBundle", () => {
     expect(covid.notes).toBe("Lot ABC");
     expect(covid.external_id).toBe("fhir:covid:2021-03-01");
 
-    expect(r.records).toHaveLength(1);
-    expect(r.records[0]).toMatchObject({
+    expect(r.observations).toHaveLength(1);
+    expect(r.observations[0]).toMatchObject({
       // Systolic BP (LOINC 8480-6) is a vital sign, not a lab — classified by
       // LOINC since a FHIR Observation has no section context.
       category: "vitals",
@@ -130,13 +130,13 @@ describe("parseFhirBundle", () => {
         },
       ])
     );
-    expect(r.records).toHaveLength(2);
-    expect(r.records.find((x) => x.name === "Hemoglobin A1c")?.category).toBe(
-      "lab"
-    );
-    const hr = r.records.find((x) => x.canonical === "Resting Heart Rate");
+    expect(r.observations).toHaveLength(2);
+    expect(
+      r.observations.find((x) => x.name === "Hemoglobin A1c")?.category
+    ).toBe("lab");
+    const hr = r.observations.find((x) => x.canonical === "Resting Heart Rate");
     expect(hr?.category).toBe("vitals");
-    expect(r.records.some((x) => x.value_num === 999)).toBe(false);
+    expect(r.observations.some((x) => x.value_num === 999)).toBe(false);
   });
 
   // #693: the FHIR importer must drop non-analyte administrative rows and derived
@@ -179,7 +179,7 @@ describe("parseFhirBundle", () => {
       ])
     );
     // Only the real analyte imports.
-    expect(r.records.map((x) => x.name)).toEqual(["Glucose"]);
+    expect(r.observations.map((x) => x.name)).toEqual(["Glucose"]);
     // Neither administrative noise nor the percentile leaks into the unmapped-code
     // report (the exact regression #693 describes for the FHIR path).
     expect(r.report!.unmappedLoincs).toEqual([]);
@@ -294,7 +294,7 @@ describe("parseFhirBundle", () => {
     expect(study.impression).toContain("Normal chest CT");
     expect(study.impression).toContain("Clear lungs");
     // The report's discrete Observations still flow to records — no imaging row here.
-    expect(r.records).toHaveLength(0);
+    expect(r.observations).toHaveLength(0);
   });
 
   it("routes a NON-imaging DiagnosticReport conclusion to a value-less lab record (#708)", () => {
@@ -321,7 +321,9 @@ describe("parseFhirBundle", () => {
       ])
     );
     expect(r.imagingStudies ?? []).toHaveLength(0);
-    const rec = r.records.find((x) => x.name === "Surgical Pathology Report");
+    const rec = r.observations.find(
+      (x) => x.name === "Surgical Pathology Report"
+    );
     expect(rec).toBeTruthy();
     expect(rec!.category).toBe("lab");
     expect(rec!.value).toContain("Benign");

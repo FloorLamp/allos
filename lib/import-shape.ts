@@ -131,7 +131,7 @@ function isSeededCanonical(name: string): boolean {
 // map into this, so a single persist core (lib/import-persist) does every insert.
 // Keeping the adapters here, free of any DB import, makes them unit-testable.
 
-export interface PersistRecord {
+export interface PersistClinicalObservation {
   category: MedicalCategory;
   name: string;
   canonical: string;
@@ -161,15 +161,15 @@ export interface PersistRecord {
   // The result LIFECYCLE + collection attributes (#1404), when the source states
   // them: FHIR `Observation.status` on the deterministic path, the printed
   // "CORRECTED REPORT" / "Fasting: Yes" / "Specimen: Serum" lines on the AI path.
-  // Optional so existing PersistRecord constructors need no change; every adapter
+  // Optional so existing PersistClinicalObservation constructors need no change; every adapter
   // sets them (null when the document doesn't say).
   result_status?: string | null;
   fasting?: number | null;
   specimen?: string | null;
-  // Derived medication COURSES, set only on prescription records by
+  // Derived medication COURSES, set only on prescription observations by
   // the deterministic CCD/FHIR path; null/absent on the AI path (which has no
   // structured period/status). The persist layer creates medication_courses from
-  // these. Optional so existing PersistRecord constructors need no change.
+  // these. Optional so existing PersistClinicalObservation constructors need no change.
   courses?: ImportedMedicationCourse[] | null;
   // Structured medication attribution (prescriber / pharmacy / Rx number) resolved
   // by the deterministic CCD/FHIR mappers; threaded into the auto-structured
@@ -189,7 +189,7 @@ export interface PersistRecord {
   // indication_condition_id. Null/absent on the AI path.
   indication_condition_external_id?: string | null;
   // The per-item answers behind a screening-instrument SCORE (#2321), on
-  // `category === 'instrument'` records only. The persist layer writes them into
+  // `category === 'instrument'` observations only. The persist layer writes them into
   // `instrument_responses` against the row it just inserted — the same child rows the
   // in-app administration path writes, so a document-imported score and a tapped-in
   // one are indistinguishable downstream (severity band, item 9 / item 10, undo).
@@ -458,7 +458,7 @@ export interface DocMeta {
 }
 
 export interface PersistInput {
-  records: PersistRecord[];
+  observations: PersistClinicalObservation[];
   immunizations: PersistImmunization[];
   allergies: PersistAllergy[];
   conditions: PersistCondition[];
@@ -498,26 +498,26 @@ export interface PersistInput {
   // medication names never enter the biomarker vocabulary).
   canonicalNamesToRegister: string[];
   // Section-level providers to register into the shared registry even when not
-  // tied to a specific reading (CCD Care Teams). Per-record/immunization
+  // tied to a specific reading (CCD Care Teams). Per-observation/immunization
   // performers ride on those rows; import-persist unions and dedups all of them.
   providers: ImportedProvider[];
 }
 
 // Body metrics (weight / body fat % / resting HR) have a single home —
-// body_metrics, not medical_records. Drop from `records` a body-metric
+// body_metrics, not medical_records. Drop from `observations` a body-metric
 // reading only when the projected row for its date actually STORED that measure,
 // so it lives in exactly one place. A reading whose kind is a body metric but
 // whose value was rejected by the projection's guards (a DEXA "Total Body Fat"
 // reported as a mass in kg, an implausible weight/HR) is not in the row, so it
-// stays a record rather than vanishing from both tables. A reading with no
-// resolvable date (never projected) also stays a record.
+// stays an observation rather than vanishing from both tables. A reading with no
+// resolvable date (never projected) also stays an observation.
 function withoutCapturedBodyMetrics(
-  records: PersistRecord[],
+  observations: PersistClinicalObservation[],
   bodyMetrics: DocBodyMetric[]
-): PersistRecord[] {
-  if (bodyMetrics.length === 0) return records;
+): PersistClinicalObservation[] {
+  if (bodyMetrics.length === 0) return observations;
   const byDate = new Map(bodyMetrics.map((w) => [w.date, w]));
-  return records.filter((r) => {
+  return observations.filter((r) => {
     const kind = bodyMetricKind(r.name, r.canonical);
     if (!kind) return true;
     const row = byDate.get(r.date);
@@ -528,57 +528,57 @@ function withoutCapturedBodyMetrics(
         : kind === "body_fat"
           ? row.body_fat_pct
           : row.resting_hr;
-    return stored == null; // keep the record when its measure wasn't stored
+    return stored == null; // keep the observation when its measure wasn't stored
   });
 }
 
 // Body height has a single home too — metric_samples (metric 'height_cm'), not
-// medical_records. Drop from `records` a height reading only when a height
+// medical_records. Drop from `observations` a height reading only when a height
 // sample was actually projected for its date. A height whose value was rejected by
 // heightToCm's guards (implausible / unknown unit) produced no sample, so it stays
-// a record rather than vanishing from both tables — mirroring the weight rule.
+// an observation rather than vanishing from both tables — mirroring the weight rule.
 // Recognized by LOINC (threaded on the deterministic path) or name/canonical.
 function withoutCapturedHeights(
-  records: PersistRecord[],
+  observations: PersistClinicalObservation[],
   heights: DocHeight[]
-): PersistRecord[] {
-  if (heights.length === 0) return records;
+): PersistClinicalObservation[] {
+  if (heights.length === 0) return observations;
   const capturedDates = new Set(heights.map((h) => h.date));
-  return records.filter((r) => {
+  return observations.filter((r) => {
     if (!isHeightReading(r.name, r.canonical, r.loinc)) return true;
     return !capturedDates.has(r.date); // drop when a sample was stored for its date
   });
 }
 
 // Head circumference has a single home too — metric_samples (metric
-// 'head_circumference_cm'), not medical_records. Drop from `records` a
+// 'head_circumference_cm'), not medical_records. Drop from `observations` a
 // head-circ reading only when a sample was actually projected for its date; a
-// reading rejected by headCircToCm's guards produced no sample and stays a record.
+// reading rejected by headCircToCm's guards produced no sample and stays an observation.
 // Mirrors withoutCapturedHeights exactly.
 function withoutCapturedHeadCircs(
-  records: PersistRecord[],
+  observations: PersistClinicalObservation[],
   headCircs: DocHeadCirc[]
-): PersistRecord[] {
-  if (headCircs.length === 0) return records;
+): PersistClinicalObservation[] {
+  if (headCircs.length === 0) return observations;
   const capturedDates = new Set(headCircs.map((h) => h.date));
-  return records.filter((r) => {
+  return observations.filter((r) => {
     if (!isHeadCircReading(r.name, r.canonical, r.loinc)) return true;
     return !capturedDates.has(r.date); // drop when a sample was stored for its date
   });
 }
 
 // Waist circumference has a single home too — metric_samples (metric
-// 'waist_circumference_cm'), not medical_records. Drop from `records` a waist reading
+// 'waist_circumference_cm'), not medical_records. Drop from `observations` a waist reading
 // only when a sample was actually projected for its date; a reading rejected by
-// waistCircToCm's guards produced no sample and stays a record. Mirrors
+// waistCircToCm's guards produced no sample and stays an observation. Mirrors
 // withoutCapturedHeadCircs exactly.
 function withoutCapturedWaistCircs(
-  records: PersistRecord[],
+  observations: PersistClinicalObservation[],
   waistCircs: DocWaistCirc[]
-): PersistRecord[] {
-  if (waistCircs.length === 0) return records;
+): PersistClinicalObservation[] {
+  if (waistCircs.length === 0) return observations;
   const capturedDates = new Set(waistCircs.map((w) => w.date));
-  return records.filter((r) => {
+  return observations.filter((r) => {
     if (!isWaistCircReading(r.name, r.canonical, r.loinc)) return true;
     return !capturedDates.has(r.date); // drop when a sample was stored for its date
   });
@@ -614,13 +614,13 @@ function withoutCapturedWaistCircs(
 // on its Data → Review detail. That is not a tombstone and not a reversal: the drop is
 // still by design and still unconditional. It is the visibility every other outcome
 // already had.
-function withoutDerivedResults(records: PersistRecord[]): {
-  kept: PersistRecord[];
+function withoutDerivedResults(observations: PersistClinicalObservation[]): {
+  kept: PersistClinicalObservation[];
   drops: ImportDrop[];
 } {
-  const kept: PersistRecord[] = [];
+  const kept: PersistClinicalObservation[] = [];
   const drops: ImportDrop[] = [];
-  for (const r of records) {
+  for (const r of observations) {
     const derived =
       derivedInputsMetricFor(r.canonical) ?? derivedInputsMetricFor(r.name);
     if (!derived) {
@@ -686,7 +686,7 @@ export function extractionConfidenceItems(
     reason: row.confidence_reason ?? null,
   });
   return [
-    // Which kind a records row is flagged under is the SAME question the triage
+    // Which kind a observations row is flagged under is the SAME question the triage
     // links ask of a persisted row, so both read one answer (#2339) — otherwise a
     // flag and the row it names could disagree about their own domain.
     ...result.results.map((r) =>
@@ -734,108 +734,110 @@ export function extractionToPersistInput(
   // string, and a string stored as a reading never plots, flags or trends. Normalize
   // it to seconds, or DROP it with a reason — never store it.
   const durationDrops: ImportDrop[] = [];
-  const allRecords: PersistRecord[] = result.results.flatMap((r) => {
-    // A structured prescription object (#414) supplies the sig / strength /
-    // prescriber / pharmacy / Rx / start-date straight off the label, so the med
-    // projection no longer depends on parsePrescription reconstructing them from a
-    // note. It is preferred; parsePrescription stays the fallback (its conservative
-    // "no invented schedule" rule still runs as post-validation on the sig). We
-    // route the structured sig into `notes` and the strength into `value` so the
-    // existing PersistRecord → parsePrescription path infers the schedule from clean
-    // directions rather than the model's free-text note.
-    const rx = r.category === "prescription" ? r.prescription : null;
-    // Force PRN through the sig so parseSig marks the med as-needed (PRN wins over
-    // any frequency token). Otherwise keep the verbatim sig, falling back to the
-    // model's note when it didn't structure one.
-    const sigNote =
-      rx?.prn === 1
-        ? [rx.sig, "as needed"].filter(Boolean).join("; ")
-        : (rx?.sig ?? r.notes);
-    const courses: ImportedMedicationCourse[] | null =
-      rx?.start_date != null
-        ? [
-            {
-              started_on: rx.start_date,
-              stopped_on: null,
-              stop_reason: null,
-              notes: null,
-            },
-          ]
+  const allObservations: PersistClinicalObservation[] = result.results.flatMap(
+    (r) => {
+      // A structured prescription object (#414) supplies the sig / strength /
+      // prescriber / pharmacy / Rx / start-date straight off the label, so the med
+      // projection no longer depends on parsePrescription reconstructing them from a
+      // note. It is preferred; parsePrescription stays the fallback (its conservative
+      // "no invented schedule" rule still runs as post-validation on the sig). We
+      // route the structured sig into `notes` and the strength into `value` so the
+      // existing PersistClinicalObservation → parsePrescription path infers the
+      // schedule from clean directions rather than the model's free-text note.
+      const rx = r.category === "prescription" ? r.prescription : null;
+      // Force PRN through the sig so parseSig marks the med as-needed (PRN wins over
+      // any frequency token). Otherwise keep the verbatim sig, falling back to the
+      // model's note when it didn't structure one.
+      const sigNote =
+        rx?.prn === 1
+          ? [rx.sig, "as needed"].filter(Boolean).join("; ")
+          : (rx?.sig ?? r.notes);
+      const courses: ImportedMedicationCourse[] | null =
+        rx?.start_date != null
+          ? [
+              {
+                started_on: rx.start_date,
+                stopped_on: null,
+                stop_reason: null,
+                notes: null,
+              },
+            ]
+          : null;
+      // A `report` row is a narrative document (#708 — an ECG/stress-test/imaging
+      // interpretation the model classified as `report`), not a valued analyte: its text
+      // belongs in `notes` with a NULL value, matching the CDA report shape that
+      // Results → Reports reads (getClinicalReports renders `notes`). The model puts the
+      // narrative in `value` (the natural result field), so fold value+notes into one
+      // body here — otherwise the report renders with an empty body.
+      const isReport = r.category === "report";
+      // A `report` row is narrative, so it never carries a unit to declare a duration.
+      const duration = isReport
+        ? ({ kind: "not-a-duration" } as const)
+        : normalizeDurationValue(r.value, r.value_num, r.unit);
+      if (duration.kind === "unparsable") {
+        durationDrops.push({
+          kind: r.category === "vitals" ? "vitals" : "lab",
+          label: r.name,
+          reason: "unparsable_value",
+        });
+        return [];
+      }
+      const stored =
+        duration.kind === "normalized"
+          ? {
+              value: duration.value,
+              value_num: duration.value_num,
+              unit: duration.unit,
+            }
+          : {
+              value: isReport ? null : (rx?.strength ?? r.value),
+              value_num:
+                isReport || !Number.isFinite(r.value_num) ? null : r.value_num,
+              unit: isReport ? null : r.unit,
+            };
+      const reportBody = isReport
+        ? [r.value, r.notes]
+            .map((s) => (s == null ? "" : String(s).trim()))
+            .filter(Boolean)
+            .join(" — ") || null
         : null;
-    // A `report` row is a narrative document (#708 — an ECG/stress-test/imaging
-    // interpretation the model classified as `report`), not a valued analyte: its text
-    // belongs in `notes` with a NULL value, matching the CDA report shape that
-    // Results → Reports reads (getClinicalReports renders `notes`). The model puts the
-    // narrative in `value` (the natural result field), so fold value+notes into one
-    // body here — otherwise the report renders with an empty body.
-    const isReport = r.category === "report";
-    // A `report` row is narrative, so it never carries a unit to declare a duration.
-    const duration = isReport
-      ? ({ kind: "not-a-duration" } as const)
-      : normalizeDurationValue(r.value, r.value_num, r.unit);
-    if (duration.kind === "unparsable") {
-      durationDrops.push({
-        kind: r.category === "vitals" ? "vitals" : "lab",
-        label: r.name,
-        reason: "unparsable_value",
-      });
-      return [];
+      return [
+        {
+          category: r.category,
+          name: r.name,
+          canonical: r.canonical_name || r.name,
+          value: stored.value,
+          value_num: stored.value_num,
+          unit: stored.unit,
+          date: isRealIsoDate(r.collected_date)
+            ? r.collected_date!
+            : fallbackDate,
+          reference_range: r.reference_range,
+          flag: r.flag,
+          panel: r.panel,
+          notes: isReport ? reportBody : rx ? sigNote : r.notes,
+          source: null,
+          external_id: null,
+          loinc: null,
+          provider: null,
+          // The lifecycle + collection attributes the model read off the page (#1404):
+          // a "CORRECTED REPORT" banner, a "Fasting: Yes" line, a printed specimen.
+          // Null whenever the document doesn't state one (the persist boundary
+          // normalizes an unrecognized word to null rather than guessing).
+          result_status: r.result_status ?? null,
+          fasting: r.fasting ?? null,
+          specimen: r.specimen ?? null,
+          // Structured medication period (a single open course from the printed start
+          // date) + attribution, when the label carried them (#414); else null and the
+          // persist layer's parsePrescription fallback fills what it can.
+          courses,
+          prescriber: rx?.prescriber ?? null,
+          pharmacy: rx?.pharmacy ?? null,
+          rxNumber: rx?.rx_number ?? null,
+        },
+      ];
     }
-    const stored =
-      duration.kind === "normalized"
-        ? {
-            value: duration.value,
-            value_num: duration.value_num,
-            unit: duration.unit,
-          }
-        : {
-            value: isReport ? null : (rx?.strength ?? r.value),
-            value_num:
-              isReport || !Number.isFinite(r.value_num) ? null : r.value_num,
-            unit: isReport ? null : r.unit,
-          };
-    const reportBody = isReport
-      ? [r.value, r.notes]
-          .map((s) => (s == null ? "" : String(s).trim()))
-          .filter(Boolean)
-          .join(" — ") || null
-      : null;
-    return [
-      {
-        category: r.category,
-        name: r.name,
-        canonical: r.canonical_name || r.name,
-        value: stored.value,
-        value_num: stored.value_num,
-        unit: stored.unit,
-        date: isRealIsoDate(r.collected_date)
-          ? r.collected_date!
-          : fallbackDate,
-        reference_range: r.reference_range,
-        flag: r.flag,
-        panel: r.panel,
-        notes: isReport ? reportBody : rx ? sigNote : r.notes,
-        source: null,
-        external_id: null,
-        loinc: null,
-        provider: null,
-        // The lifecycle + collection attributes the model read off the page (#1404):
-        // a "CORRECTED REPORT" banner, a "Fasting: Yes" line, a printed specimen.
-        // Null whenever the document doesn't state one (the persist boundary
-        // normalizes an unrecognized word to null rather than guessing).
-        result_status: r.result_status ?? null,
-        fasting: r.fasting ?? null,
-        specimen: r.specimen ?? null,
-        // Structured medication period (a single open course from the printed start
-        // date) + attribution, when the label carried them (#414); else null and the
-        // persist layer's parsePrescription fallback fills what it can.
-        courses,
-        prescriber: rx?.prescriber ?? null,
-        pharmacy: rx?.pharmacy ?? null,
-        rxNumber: rx?.rx_number ?? null,
-      },
-    ];
-  });
+  );
   const bodyMetrics = bodyMetricsFromExtraction(
     result.results,
     result.meta.document_date
@@ -856,7 +858,7 @@ export function extractionToPersistInput(
     withoutCapturedWaistCircs(
       withoutCapturedHeadCircs(
         withoutCapturedHeights(
-          withoutCapturedBodyMetrics(allRecords, bodyMetrics),
+          withoutCapturedBodyMetrics(allObservations, bodyMetrics),
           heights
         ),
         headCircs
@@ -864,12 +866,12 @@ export function extractionToPersistInput(
       waistCircs
     )
   );
-  const records = derived.kept;
+  const observations = derived.kept;
 
   // Clinical-narrative domains (parity with the deterministic importer). The AI path
   // leaves external_id null — a document's rows are cleared/reprocessed by
   // document_id (clearImportedDocumentRows), so reprocess is idempotent without a
-  // natural key — matching how the AI path already treats records/immunizations.
+  // natural key — matching how the AI path already treats observations/immunizations.
   // Status strings are normalized to the CHECK sets here (toAllergyStatus/
   // toConditionStatus); care-plan/care-goal status is free-text passthrough.
   const immunizations = immunizationsFromExtraction(
@@ -1064,7 +1066,7 @@ export function extractionToPersistInput(
 
   // Dental procedures (#705). Normalize the model's raw status / tooth-system onto the
   // DB CHECK sets (one shared coercion, lib/dental), so an off-vocabulary term can't
-  // fail the INSERT. A record with no name is noise — drop it.
+  // fail the INSERT. An observation with no name is noise — drop it.
   const dentalProcedures: PersistDentalProcedure[] = (
     result.dentalProcedures ?? []
   )
@@ -1110,7 +1112,7 @@ export function extractionToPersistInput(
     ...derived.drops,
   ];
   const imported = keptRowCount({
-    records,
+    observations,
     immunizations,
     allergies,
     conditions,
@@ -1133,7 +1135,7 @@ export function extractionToPersistInput(
   // unmapped LOINC (#918 §4). Surface them so the miss is self-reporting. Labs only:
   // vitals / scans / anthropometrics are intentionally not curated as biomarkers (§5).
   const unresolvedNames = tallyUnresolvedNames(
-    records
+    observations
       .filter((r) => r.category === "lab" && !isSeededCanonical(r.canonical))
       .map((r) => ({ name: r.canonical, unit: r.unit }))
   );
@@ -1164,7 +1166,7 @@ export function extractionToPersistInput(
     unmappedLoincs: [],
     unresolvedNames,
     reconciliation,
-    // Per-record confidence (#1601): the model's own certainty per row, summarized
+    // Per-observation confidence (#1601): the model's own certainty per row, summarized
     // and ranked lowest-first for the review surfaces. Null when NO row carried one
     // (a replay of a pre-#1601 stored extraction), so "the model was sure" stays
     // distinguishable from "nobody asked".
@@ -1174,7 +1176,7 @@ export function extractionToPersistInput(
   };
 
   return {
-    records,
+    observations,
     immunizations,
     allergies,
     conditions,
@@ -1209,11 +1211,11 @@ export function extractionToPersistInput(
       model: result.model,
       importReport: serializeImportReport(report),
     },
-    // Register only the names that stay as records (body metrics aren't
+    // Register only the names that stay as observations (body metrics aren't
     // biomarkers, so they don't enter the vocabulary), and only from the
     // categories that carry a biomarker identity at all (#2318) — an `assessment`
     // row names a questionnaire item or a qualifier, never an analyte.
-    canonicalNamesToRegister: records
+    canonicalNamesToRegister: observations
       .filter((r) => carriesResultIdentity(r.category))
       .map((r) => r.canonical),
     providers,
@@ -1228,55 +1230,57 @@ export function healthRecordToPersistInput(
 ): PersistInput {
   const allDates = [
     ...parsed.immunizations.map((i) => i.date),
-    ...parsed.records.map((r) => r.date),
+    ...parsed.observations.map((r) => r.date),
   ].sort();
   const docDate = allDates.length ? allDates[allDates.length - 1] : null;
-  const allRecords: PersistRecord[] = parsed.records.map((r) => ({
-    category: r.category,
-    name: r.name,
-    canonical: r.canonical,
-    value: r.value,
-    value_num: r.value_num,
-    unit: r.unit,
-    date: r.date,
-    // The absolute moment the document stated (#2243), when it stated one with a zone.
-    occurred_at: r.occurred_at ?? null,
-    // The source lab's own range + interpretation (#761 follow-up), when the CCD
-    // stated them; reconcileFlags then refines a mapped lab's flag against the
-    // canonical band and leaves an unmapped lab's source flag intact.
-    reference_range: r.reference_range ?? null,
-    flag: r.flag ?? null,
-    panel: null,
-    // Narrative report records (#708) carry their body text here; every other
-    // reading leaves it null.
-    notes: r.notes ?? null,
-    source,
-    external_id: r.external_id,
-    loinc: r.loinc ?? null,
-    provider: r.provider ?? null,
-    // FHIR `Observation.status` (#1404) when the bundle stated one; the CCD path
-    // leaves it null (C-CDA's observation statusCode is a completion state, not the
-    // preliminary/corrected/amended result lifecycle, so mapping it would invent a
-    // claim the document never made).
-    result_status: r.result_status ?? null,
-    // Derived medication courses ride on prescription records.
-    courses: r.courses ?? null,
-    // Structured attribution rides on prescription records (#417).
-    prescriber: r.prescriber ?? null,
-    pharmacy: r.pharmacy ?? null,
-    rxNumber: r.rxNumber ?? null,
-    // Tier-1 visit link (#1050): the resolved encounter reference rides through.
-    encounter_external_id: r.encounter_external_id ?? null,
-    // Tier-1 indication link (#1052): the resolved reason (condition) reference.
-    indication_condition_external_id:
-      r.indication_condition_external_id ?? null,
-    // The folded screening instrument's per-item answers (#2321), on the score row.
-    instrumentAnswers: r.instrumentAnswers,
-  }));
-  // Project body-metric records (weight / body fat / resting HR) into body_metrics
+  const allObservations: PersistClinicalObservation[] = parsed.observations.map(
+    (r) => ({
+      category: r.category,
+      name: r.name,
+      canonical: r.canonical,
+      value: r.value,
+      value_num: r.value_num,
+      unit: r.unit,
+      date: r.date,
+      // The absolute moment the document stated (#2243), when it stated one with a zone.
+      occurred_at: r.occurred_at ?? null,
+      // The source lab's own range + interpretation (#761 follow-up), when the CCD
+      // stated them; reconcileFlags then refines a mapped lab's flag against the
+      // canonical band and leaves an unmapped lab's source flag intact.
+      reference_range: r.reference_range ?? null,
+      flag: r.flag ?? null,
+      panel: null,
+      // Narrative report observations (#708) carry their body text here; every other
+      // reading leaves it null.
+      notes: r.notes ?? null,
+      source,
+      external_id: r.external_id,
+      loinc: r.loinc ?? null,
+      provider: r.provider ?? null,
+      // FHIR `Observation.status` (#1404) when the bundle stated one; the CCD path
+      // leaves it null (C-CDA's observation statusCode is a completion state, not the
+      // preliminary/corrected/amended result lifecycle, so mapping it would invent a
+      // claim the document never made).
+      result_status: r.result_status ?? null,
+      // Derived medication courses ride on prescription observations.
+      courses: r.courses ?? null,
+      // Structured attribution rides on prescription observations (#417).
+      prescriber: r.prescriber ?? null,
+      pharmacy: r.pharmacy ?? null,
+      rxNumber: r.rxNumber ?? null,
+      // Tier-1 visit link (#1050): the resolved encounter reference rides through.
+      encounter_external_id: r.encounter_external_id ?? null,
+      // Tier-1 indication link (#1052): the resolved reason (condition) reference.
+      indication_condition_external_id:
+        r.indication_condition_external_id ?? null,
+      // The folded screening instrument's per-item answers (#2321), on the score row.
+      instrumentAnswers: r.instrumentAnswers,
+    })
+  );
+  // Project body-metric observations (weight / body fat / resting HR) into body_metrics
   // — the same single-home rule the AI path uses.
   const bodyMetrics = bodyMetricsFromReadings(
-    parsed.records.map((r) => ({
+    parsed.observations.map((r) => ({
       name: r.name,
       canonical: r.canonical,
       value_num: r.value_num,
@@ -1285,10 +1289,10 @@ export function healthRecordToPersistInput(
     })),
     docDate
   );
-  // Project body-height records into metric_samples. LOINC is threaded from
+  // Project body-height observations into metric_samples. LOINC is threaded from
   // the CCD/FHIR mappers, so a height with a generic name still routes correctly.
   const heights = heightsFromReadings(
-    parsed.records.map((r) => ({
+    parsed.observations.map((r) => ({
       name: r.name,
       canonical: r.canonical,
       value_num: r.value_num,
@@ -1298,12 +1302,12 @@ export function healthRecordToPersistInput(
     })),
     docDate
   );
-  // Project head-circumference records into metric_samples. LOINC (8287-5 /
+  // Project head-circumference observations into metric_samples. LOINC (8287-5 /
   // 9843-4) is threaded from the CCD mappers, so an OFC reading routes correctly
   // even under a generic display name; the percentile code 8289-1 is not a
   // head-circ LOINC and so is never projected.
   const headCircs = headCircsFromReadings(
-    parsed.records.map((r) => ({
+    parsed.observations.map((r) => ({
       name: r.name,
       canonical: r.canonical,
       value_num: r.value_num,
@@ -1313,12 +1317,12 @@ export function healthRecordToPersistInput(
     })),
     docDate
   );
-  // Project waist-circumference records into metric_samples (#2322). LOINC (8280-0 /
+  // Project waist-circumference observations into metric_samples (#2322). LOINC (8280-0 /
   // 56086-2 / 56115-9) is threaded from the CCD mappers, so a waist reading routes
   // correctly even under a generic display name; the waist/hip RATIO code 60803-4 is
   // an explicit negative and is never projected as a length.
   const waistCircs = waistCircsFromReadings(
-    parsed.records.map((r) => ({
+    parsed.observations.map((r) => ({
       name: r.name,
       canonical: r.canonical,
       value_num: r.value_num,
@@ -1332,7 +1336,7 @@ export function healthRecordToPersistInput(
     withoutCapturedWaistCircs(
       withoutCapturedHeadCircs(
         withoutCapturedHeights(
-          withoutCapturedBodyMetrics(allRecords, bodyMetrics),
+          withoutCapturedBodyMetrics(allObservations, bodyMetrics),
           heights
         ),
         headCircs
@@ -1340,7 +1344,7 @@ export function healthRecordToPersistInput(
       waistCircs
     )
   );
-  const records = derived.kept;
+  const observations = derived.kept;
   // The deterministic parse already built its own report; the derived-result drops are
   // decided HERE, one layer above it, so they are appended rather than re-derived
   // (#2678). The COUNTS are deliberately left alone: `imported`/`considered` on a
@@ -1353,7 +1357,7 @@ export function healthRecordToPersistInput(
       ? { ...parsed.report, drops: [...parsed.report.drops, ...derived.drops] }
       : parsed.report;
   return {
-    records,
+    observations,
     immunizations: parsed.immunizations.map((im) => ({
       date: im.date,
       vaccine: im.code,
@@ -1528,7 +1532,7 @@ export function healthRecordToPersistInput(
     // `lab` only — a vital has its own home, and a `report` / `assessment` row
     // carries no analyte identity at all (#708/#2318), so this filter is already the
     // strictest form of the NON_IDENTITY_CATEGORIES rule the AI path applies.
-    canonicalNamesToRegister: parsed.records
+    canonicalNamesToRegister: parsed.observations
       .filter((r) => r.category === "lab")
       .map((r) => r.canonical),
     // Care-team providers (not tied to one reading) — registered so the family's

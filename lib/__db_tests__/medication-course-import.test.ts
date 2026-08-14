@@ -6,7 +6,10 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { persistDocumentImport } from "@/lib/import-persist";
-import type { PersistInput, PersistRecord } from "@/lib/import-shape";
+import type {
+  PersistInput,
+  PersistClinicalObservation,
+} from "@/lib/import-shape";
 import type { ImportedMedicationCourse } from "@/lib/health-import";
 import { db } from "@/lib/db";
 
@@ -15,7 +18,7 @@ const DATE = "2024-01-01";
 function rx(
   name: string,
   courses: ImportedMedicationCourse[] | null
-): PersistRecord {
+): PersistClinicalObservation {
   return {
     category: "prescription",
     name,
@@ -36,9 +39,9 @@ function rx(
   };
 }
 
-function inputWith(records: PersistRecord[]): PersistInput {
+function inputWith(observations: PersistClinicalObservation[]): PersistInput {
   return {
-    records,
+    observations,
     immunizations: [],
     allergies: [],
     conditions: [],

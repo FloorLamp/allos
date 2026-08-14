@@ -81,7 +81,7 @@ function makeInput(opts: InputOpts = {}): PersistInput {
     });
   }
   return {
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Glucose",

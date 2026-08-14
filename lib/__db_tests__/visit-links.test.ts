@@ -27,7 +27,7 @@ const DATE = "2026-03-03";
 
 function emptyInput(over: Partial<PersistInput> = {}): PersistInput {
   return {
-    records: [],
+    observations: [],
     immunizations: [],
     allergies: [],
     conditions: [],
@@ -101,7 +101,7 @@ function bundleWithVisitLinks(): PersistInput {
         external_id: "ccda:encounter:v1",
       },
     ],
-    records: [
+    observations: [
       {
         category: "prescription",
         name: "Amoxicillin 500 mg",
