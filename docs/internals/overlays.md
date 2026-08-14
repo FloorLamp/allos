@@ -128,12 +128,25 @@ past the arming distance — an armed pull by every test the classifier had.
 Installed as a PWA that fired a whole-page `router.refresh()` inside the sheet's
 exit window. `classifyPull` now takes `overlayOpen`, read once at `touchstart`
 (the gesture dismisses the overlay it began in, so a mid-gesture re-read would
-see none and re-arm). The reading is the union of two facts, because neither
-alone is honest: body scroll is locked (`useLockBodyScroll` is the only writer
-and every caller is a full-screen surface — but four modal surfaces never lock),
-or an `[aria-modal="true"]` element is in the document (which catches those four
-and a drag begun on the scrim, but not the dock, which is deliberately not
-modal).
+see none and re-arm).
+
+The measure is **body scroll lock, and only that** (`overlayOwnsViewport` in
+`lib/pull-to-refresh.ts`). `useLockBodyScroll` is the only writer of
+`body.style.overflow`, and its callers are exactly the surfaces that own the
+vertical drag: every downward-capable recognizer in the app runs under a locked
+body, and the lock is a document-level fact, so it covers a drag begun on a
+sheet's scrim too.
+
+It deliberately does **not** ask "is a modal open". That was the first version —
+added for four surfaces that never lock (`ModalShell` and its consumers,
+`MergeConflictDialog`, `PhotoGallery`, `FitnessTestTimer`) — and it was a second
+bug rather than a fix: none of the four has a touch gesture, so none can produce
+the drag being refused, and `e2e/dirty-form-refresh.mobile.spec.ts` already pins
+that a pull STILL refreshes while a record form in a `ModalShell` holds unsaved
+input (#1878: a refresh the user asked for is never deferred, and installed there
+is no other way to ask). "Is a modal open" is a question about ATTENTION; this
+one is about who owns the DRAG. A new fact belongs in it only if it names a
+surface that owns the gesture, and it owes the module a test in both directions.
 
 **`commitSettle: "away" | "rest"`.** A sheet is going away, so it finishes its
 travel while the consumer unmounts it. The dock is being PARKED — the same

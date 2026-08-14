@@ -8,6 +8,7 @@ import { useStandaloneDisplayMode } from "./useStandaloneDisplayMode";
 import {
   classifyPull,
   indicatorPresentation,
+  overlayOwnsViewport,
   shouldRefresh,
   type PullState,
 } from "@/lib/pull-to-refresh";
@@ -44,31 +45,15 @@ import {
 // closing. (`touch-action: none` on the drag handle stops the browser's scroll
 // arbitration, not event delivery, so these listeners still saw every move.)
 //
-// `overlayOwnsViewport` is the fact `classifyPull` needs, read once per gesture.
-// It is TWO questions because neither alone is honest, and this was checked
-// rather than assumed:
+// The DOM READING behind that clause; the decision itself is the pure
+// `overlayOwnsViewport` in lib/pull-to-refresh.ts, which is where the reasoning
+// for it lives. This file supplies the one fact and nothing else.
 //
-//   * "is body scroll locked?" — `useLockBodyScroll` is the only writer of
-//     `body.style.overflow` in the app and all seven of its callers are
-//     full-screen surfaces, so a lock is never a false positive. But it MISSES
-//     four modal surfaces that never lock (ModalShell and its consumers,
-//     MergeConflictDialog, PhotoGallery, FitnessTestTimer), which scroll their
-//     own `fixed inset-0` container and leave `window.scrollY` at 0 underneath —
-//     precisely the state that arms a pull.
-//   * "is a modal dialog open?" — catches those four, and unlike "did the
-//     touchstart land inside a dialog" it also covers a drag that begins on the
-//     SCRIM, which is a sibling of the panel and inside no dialog at all. But it
-//     misses the workout dock, which is deliberately NOT `aria-modal` (a live
-//     session is not a modal decision) and whose minimize swipe has the same
-//     exposure by the same mechanics.
-//
-// Either fact alone means a full-screen surface is up, so the union is the
-// honest answer to "is the page what this finger is on?".
-function overlayOwnsViewport(): boolean {
-  return (
-    document.body.style.overflow === "hidden" ||
-    document.querySelector('[aria-modal="true"]') !== null
-  );
+// `useLockBodyScroll` is the only writer of `body.style.overflow` in the app, so
+// reading the inline style — rather than a computed value that a stylesheet
+// could also produce — asks exactly "did an overlay lock this?".
+function bodyScrollLocked(): boolean {
+  return document.body.style.overflow === "hidden";
 }
 
 // `data-state` / `data-refreshes` on the indicator are the observable contract —
@@ -108,7 +93,9 @@ export default function PullToRefresh() {
         y: t.clientY,
         x: t.clientX,
         scrollY: window.scrollY,
-        overlayOpen: overlayOwnsViewport(),
+        overlayOpen: overlayOwnsViewport({
+          bodyScrollLocked: bodyScrollLocked(),
+        }),
       };
       setState({ kind: "idle" });
     };

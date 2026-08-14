@@ -13,13 +13,15 @@
 //
 // The five things that make a touch a pull-to-refresh, all of which have to hold:
 //
-//   1. NO OVERLAY OWNS THE VIEWPORT. This gesture refreshes the PAGE, and while
-//      a sheet, drawer, modal or the workout dock is up the page is not what the
-//      finger is on. Without this clause a bottom sheet's drag-dismiss — down,
-//      from a page sitting at its top, well past the arming distance — is
+//   1. NO OVERLAY OWNS THE VERTICAL DRAG. While a sheet, drawer or the workout
+//      dock is up, a downward drag belongs to that surface's own dismiss
+//      gesture. Without this clause a bottom sheet's drag-dismiss — down, from a
+//      page sitting at its top, well past the arming distance — is
 //      indistinguishable from a pull, so in the installed app every drag-dismiss
 //      fired a whole-page `router.refresh()` inside the sheet's exit window and
 //      surfaced the PTR spinner (`z-90`) over the sheet (`z-60`) (#2725).
+//      NOT "is anything on top of the page" — see `overlayOwnsViewport` below,
+//      where the difference is the whole point.
 //   2. It STARTED at the top of the page. Otherwise it is ordinary scrolling.
 //   3. It is STILL at the top. A flick that begins at the top and scrolls away
 //      mid-gesture is a scroll, and arming a refresh underneath it would fire on
@@ -28,6 +30,47 @@
 //   5. It is more vertical than horizontal — otherwise a sideways swipe (the
 //      horizontal chip strips, a chart pan) would arm the refresh as a side
 //      effect of its small vertical wobble.
+
+// ── Clause 1: does an overlay own the vertical drag? ─────────────────────────
+//
+// The facts a caller supplies, and the decision over them. Pure, and HERE rather
+// than in the component, because the first version of this got it wrong in a way
+// only a test could have caught and the test had nowhere to live.
+//
+// The measure is BODY SCROLL LOCK, and only that. `useLockBodyScroll` is the
+// only writer of `body.style.overflow` in the app, and every one of its callers
+// is a surface that has taken the screen: the bottom sheet, both mobile drawers,
+// the workout dock, the command palette, the mobile detail page, the image
+// cropper. That is exactly the set that owns the vertical drag — every
+// downward-capable recognizer in the app (both `direction: "down"` overlay drags
+// and the cropper's own) runs under a locked body. And the lock is a
+// DOCUMENT-level fact, so it also covers a drag begun on a sheet's scrim, which
+// is a sibling of the panel and inside no dialog at all.
+//
+// WHAT THIS DELIBERATELY DOES NOT ASK IS "is a modal open?" — that was the first
+// version and it was WRONG. It was added to catch four surfaces that never lock
+// (ModalShell and its 31 consumers, MergeConflictDialog, PhotoGallery,
+// FitnessTestTimer), but standing down under those is not a fix, it is a second
+// bug: none of the four has a touch gesture of any kind, so none can produce the
+// drag this clause exists to refuse, and a pull under one of them is a contract
+// the suite already pins. `e2e/dirty-form-refresh.mobile.spec.ts` asserts that a
+// pull STILL REFRESHES while a record form (an `aria-modal` ModalShell) holds
+// unsaved input — per #1878 a refresh the USER asked for is never deferred, and
+// installed there is no other way to ask, so swallowing it would leave someone
+// pulling with no recourse.
+//
+// The two questions are not interchangeable. "Is a modal open" is about
+// ATTENTION; this is about whether an overlay owns the vertical DRAG. A new fact
+// belongs here only if it names a surface that owns the gesture, and it owes
+// this module a test in BOTH directions.
+export interface ViewportOwnershipFacts {
+  // Has an overlay locked body scroll? (`document.body.style.overflow`.)
+  bodyScrollLocked: boolean;
+}
+
+export function overlayOwnsViewport(facts: ViewportOwnershipFacts): boolean {
+  return facts.bodyScrollLocked;
+}
 
 // Travel (after resistance) that arms the refresh. Releasing below it snaps back.
 export const PTR_TRIGGER_PX = 64;
