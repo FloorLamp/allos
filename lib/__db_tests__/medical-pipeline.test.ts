@@ -225,7 +225,7 @@ describe("medical-pipeline: reprocessFromRawById (no AI call)", () => {
     const res = await reprocessFromRawById(login.id, profile.id, id);
 
     expect(res.status).toBe("done");
-    expect(res.message).toMatch(/2 record\(s\)/);
+    expect(res.message).toMatch(/2 observation\(s\)/);
     expect(recordCount(profile.id)).toBe(2);
   });
 
