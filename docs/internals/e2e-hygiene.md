@@ -1988,10 +1988,10 @@ produces pointer events the app's gestures deliberately ignore). Two traps cost
 a debugging session each and are now handled inside the helpers, so specs never
 have to think about them:
 
-- **Measure only a settled element.** `centerOf` polls `boundingBox()` until two
-  reads agree. Every overlay arrives on a 240ms slide; coordinates taken
-  mid-animation send the touch to a position the panel has already left, and the
-  gesture silently lands on some other element.
+- **A gesture anchored to an element names the ELEMENT, never a point.** A point
+  measured from a locator is a fact about the past from the instant it is
+  returned — see the next section, which is #2714 and is the reason `centerOf`
+  is no longer exported.
 - **A swipe cannot be retried.** Unlike a tap, re-firing a day-swipe skips a
   day, so a gesture spec waits for hydration deterministically (`shell-chrome`'s
   `data-ready="true"`) instead of looping a `toPass`.
@@ -1999,6 +1999,58 @@ have to think about them:
 A swiped client navigation also commits only when the destination's RSC payload
 arrives, which on the Timeline can take several seconds cold — give those URL
 assertions a real timeout rather than the 5s default.
+
+### Settling proves the past, so the swipe proves the landing (#2714)
+
+The bullet above used to read "measure only a settled element", and pointed at
+`centerOf` — which polls `boundingBox()` until two reads 50 ms apart agree — as
+the thing that had "handled" the trap. It handles the 240 ms slide it was written
+for, and nothing else. **Two consecutive agreeing reads prove the element held
+still across one 50 ms window; they cannot prove it will hold still for the next
+one**, and the point is stale from the moment it is returned.
+
+The quick-log sheet is where that bites, because a BOTTOM-ANCHORED panel grows
+UPWARD. It gathers its "Due & usual now" row lazily on every open (#1468 — those
+offers must be fresher than the page), and when that Server Action lands the
+sheet gets taller and the drag handle leaves the coordinate a settled measurement
+had just certified. The touch then lands on whatever slid into that coordinate,
+the recognizer's containment test rejects it, and the gesture is never claimed:
+**nothing happens, silently**.
+
+That is the whole of #2714, and the shape of its failure is worth keeping,
+because it was mis-read three times as a slow exit:
+
+| what it looked like                                            | what it was                                                             |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `toHaveCount(0)` missing a 5 s budget against a 240 ms unmount | the unmount was never scheduled — the sheet stayed open indefinitely    |
+| a timing flake worth a bigger budget or an arrival signal      | no budget helps: the end state was not on its way                       |
+| CPU-bound, so reproducible under a throttle                    | 5/5 green at 20× and 60× — throttling widens the window it needs to hit |
+
+So `touchSwipeFrom(page, locator, { dx, dy })` re-aims and then **proves where
+the finger landed** before it moves: it reads the target of the touchstart the
+browser actually dispatched — the same `contains()` fact the recognizer keys on —
+and a landing that misses is cancelled before a single move, then re-aimed. That
+is a probe rather than a retry, and exactly rather than hopefully: every
+recognizer in the app requires a claimed axis before it calls anything, claiming
+requires movement, and nothing moved. The "a swipe cannot be retried" rule above
+is untouched.
+
+`touchSwipe(page, from, to)` survives for gestures anchored to the DOCUMENT — the
+drawer's edge swipe, the Timeline's day swipe — which name a screen coordinate
+and need no element under it. Un-exporting `centerOf` is the ratchet: there is no
+longer a supported way to turn an element into a point and swipe at it later.
+
+Two general lessons, both of which cost this diagnosis time:
+
+- **A settling helper cannot be a guarantee about the future.** Where a
+  measurement is CONSUMED by a later action, the action has to re-check, not the
+  measurement wait harder. (`settledBoxes` is the sibling case: it re-reads the
+  whole group precisely because separate reads describe layouts that never
+  coexisted.)
+- **A test that times out has not necessarily missed a deadline.** Ask whether
+  the awaited state was ever going to arrive before reaching for its budget. Here
+  the answer was visible in one attribute — the sheet's `data-phase` still read
+  `enter`, so `open` had never gone false.
 
 Full reasoning: `docs/internals/overlays.md`.
 

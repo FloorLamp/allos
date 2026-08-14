@@ -198,10 +198,24 @@ panel on screen.
 
 ## Testing gestures
 
-`e2e/helpers.ts` has `touchSwipe` (real Chromium touch input via CDP —
-Playwright's `touchscreen` only taps, and `page.mouse` produces pointer events
-these gestures ignore) and `centerOf`, which waits for the element to STOP
-MOVING before measuring. That settling is not a nicety: every overlay arrives on
-a 240ms slide, and a `boundingBox()` taken mid-animation sends the touch to a
-position the panel has already left — the gesture lands on some other element
-and the test fails having done nothing at all.
+`e2e/helpers.ts` drives real Chromium touch input via CDP — Playwright's
+`touchscreen` only taps, and `page.mouse` produces pointer events these gestures
+ignore. It offers two entry points, and the choice is about WHERE the gesture
+must start:
+
+- `touchSwipeFrom(page, locator, { dx, dy })` for a gesture that must begin
+  inside an element (a drag handle, a panel), which is what the recognizer's
+  containment test demands.
+- `touchSwipe(page, from, to)` for a gesture anchored to the DOCUMENT — the
+  drawer's edge swipe, the Timeline's day swipe.
+
+A point measured from an element is not good enough for the first kind, and
+`centerOf`-style settling does not rescue it (#2714): waiting for the box to stop
+moving proves the element held still across one past window, never that it will
+hold still until the touch is dispatched. A bottom-anchored sheet that gathers
+content lazily grows UPWARD after it has come to rest, the handle leaves the
+certified coordinate, the touch lands on whatever moved into it, and the gesture
+is rejected with **no error and no effect** — the test then waits out its budget
+on an exit that was never scheduled. So `touchSwipeFrom` re-aims and proves the
+landing (the target of the dispatched touchstart, the same fact the recognizer
+uses) before moving a pixel; `centerOf` is private to the helper module.
