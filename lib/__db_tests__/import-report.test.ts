@@ -51,7 +51,7 @@ function reportV1(): ImportReport {
 
 function makeInput(report: ImportReport | null): PersistInput {
   return {
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Glucose",
@@ -184,7 +184,7 @@ const ALL_DATE = "2022-08-09";
 
 function everyDomainInput(): PersistInput {
   return {
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Glucose",

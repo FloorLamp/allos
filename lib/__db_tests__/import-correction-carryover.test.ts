@@ -25,7 +25,7 @@ import { updateReadingAt } from "@/lib/reading-writes";
 
 const DATE = "2026-04-02";
 
-type Rec = PersistInput["records"][number];
+type Rec = PersistInput["observations"][number];
 
 function record(over: Partial<Rec> = {}): Rec {
   return {
@@ -50,9 +50,9 @@ function record(over: Partial<Rec> = {}): Rec {
   };
 }
 
-function input(records: Rec[]): PersistInput {
+function input(observations: Rec[]): PersistInput {
   return {
-    records,
+    observations,
     immunizations: [],
     allergies: [],
     conditions: [],

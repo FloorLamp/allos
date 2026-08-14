@@ -40,7 +40,7 @@ const DATE = "2020-06-01";
 
 function makeInput(): PersistInput {
   return {
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Glucose",
@@ -639,7 +639,7 @@ describe("reassignDocument", () => {
     // definite 'high' to derive.
     const input: PersistInput = {
       ...makeInput(),
-      records: [
+      observations: [
         {
           // The FASTING entry (#2337): unqualified "Glucose" is band-less by
           // decision, so only a banded analyte can prove a dest-side reconcile ran.

@@ -44,7 +44,9 @@ function doc(...entries: string[]): string {
 }
 
 function durationRow(xml: string) {
-  return parseCcda(xml).records.find((r) => r.name === "Exercise Duration");
+  return parseCcda(xml).observations.find(
+    (r) => r.name === "Exercise Duration"
+  );
 }
 
 describe("CDA duration door (#2322)", () => {
@@ -66,16 +68,16 @@ describe("CDA duration door (#2322)", () => {
   it("keeps two same-day durations apart (the key carries the as-shipped value)", () => {
     const records = parseCcda(
       doc(pqObs("10:30", "min:sec"), pqObs("12:00", "min:sec"))
-    ).records.filter((r) => r.name === "Exercise Duration");
+    ).observations.filter((r) => r.name === "Exercise Duration");
     expect(records.map((r) => r.value_num).sort()).toEqual([630, 720]);
     expect(new Set(records.map((r) => r.external_id)).size).toBe(2);
   });
 
   it("DROPS an unparsable duration with a reason instead of storing a string", () => {
     const parsed = parseCcda(doc(pqObs("not recorded", "min:sec")));
-    expect(parsed.records.some((r) => r.name === "Exercise Duration")).toBe(
-      false
-    );
+    expect(
+      parsed.observations.some((r) => r.name === "Exercise Duration")
+    ).toBe(false);
     const drop = parsed.report?.drops.find(
       (d) => d.label === "Exercise Duration"
     );
@@ -91,7 +93,7 @@ describe("CDA duration door (#2322)", () => {
           <value xsi:type="PQ" value="99" unit="mg/dL"/>
         </observation></entry>`
       )
-    ).records.find((r) => r.name === "Glucose");
+    ).observations.find((r) => r.name === "Glucose");
     expect(row).toMatchObject({ value_num: 99, unit: "mg/dL" });
   });
 });

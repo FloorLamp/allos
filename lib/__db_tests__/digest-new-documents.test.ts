@@ -63,7 +63,7 @@ function newDocument(
 // `source` becomes the digest label (source || doc_type || filename).
 function minimalInput(source: string): PersistInput {
   return {
-    records: [],
+    observations: [],
     immunizations: [],
     allergies: [],
     conditions: [],
@@ -194,7 +194,7 @@ describe("the new-document line names the document and its split (#1913)", () =>
   const labRecord = (
     name: string,
     date: string
-  ): PersistInput["records"][number] => ({
+  ): PersistInput["observations"][number] => ({
     category: "lab",
     name,
     canonical: name,
@@ -230,7 +230,7 @@ describe("the new-document line names the document and its split (#1913)", () =>
 
     persistDocumentImport(p, doc, {
       ...minimalInput("Example visit summary"),
-      records: [
+      observations: [
         labRecord("Hemoglobin", "2020-05-01"),
         labRecord("Ferritin", "2020-05-01"),
         labRecord("Sodium", "2020-05-01"),

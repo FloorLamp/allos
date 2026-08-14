@@ -350,7 +350,7 @@ describe("keptRowCount", () => {
   it("sums every row-bearing kept list, ignoring absent ones", () => {
     expect(
       keptRowCount({
-        records: [1, 2],
+        observations: [1, 2],
         immunizations: [1],
         allergies: [1],
         conditions: [1],
@@ -617,7 +617,7 @@ describe("parseCcda → import report", () => {
   it("attaches a report with kept-vs-considered counts", () => {
     expect(report).toBeDefined();
     // Only the Cholesterol lab imports.
-    expect(parsed.records.map((r) => r.name)).toEqual(["Cholesterol"]);
+    expect(parsed.observations.map((r) => r.name)).toEqual(["Cholesterol"]);
     // Exact, independently-derived counts (NOT `imported + rowDropCount`, which is
     // how `considered` is defined and so can never fail): one kept lab, exactly
     // three row drops — Comment(s) (null_flavor), value-less Result (no_value), and
@@ -715,7 +715,7 @@ describe("parseFhirBundle → import report", () => {
   const report = parsed.report!;
 
   it("keeps the good observation and drops the retracted one as negated", () => {
-    expect(parsed.records.map((r) => r.name)).toEqual(["Glucose"]);
+    expect(parsed.observations.map((r) => r.name)).toEqual(["Glucose"]);
     expect(
       report.drops.some(
         (d) => d.reason === "negated" && d.label === "Bad Reading"
@@ -734,7 +734,7 @@ describe("parseFhirBundle → import report", () => {
   // drop label — if the instrumentation double-counted a kept row as dropped, this
   // fails.
   it("never reports a kept reading as a genuine drop", () => {
-    const keptNames = new Set(parsed.records.map((r) => r.name));
+    const keptNames = new Set(parsed.observations.map((r) => r.name));
     const genuineDropLabels = report.drops
       .filter((d) => d.reason !== "deduped")
       .map((d) => d.label);
@@ -838,7 +838,7 @@ describe("parseFhirBundle → dedupe fidelity (c)", () => {
   const report = parsed.report!;
 
   it("keeps one copy and records exactly one deduped drop", () => {
-    expect(parsed.records).toHaveLength(1);
+    expect(parsed.observations).toHaveLength(1);
     const deduped = report.drops.filter((d) => d.reason === "deduped");
     expect(deduped).toHaveLength(1);
     expect(deduped[0].label).toBe("Heart rate");
@@ -906,7 +906,7 @@ describe("parseCcda → unmapped lab LOINC surfacing (Fix 3)", () => {
   const report = parsed.report!;
 
   it("imports both labs", () => {
-    expect(parsed.records.map((r) => r.name).sort()).toEqual([
+    expect(parsed.observations.map((r) => r.name).sort()).toEqual([
       "Cholesterol",
       "Novel Marker",
     ]);
@@ -955,7 +955,7 @@ describe("parseCcda → a kept imaging study counts as imported", () => {
 
   it("counts the study the parser kept (it used to report zero)", () => {
     expect(parsed.imagingStudies).toHaveLength(1);
-    expect(parsed.records).toHaveLength(0);
+    expect(parsed.observations).toHaveLength(0);
     expect(parsed.report!.imported).toBe(1);
   });
 });

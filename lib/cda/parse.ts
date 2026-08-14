@@ -11,7 +11,7 @@ import type {
   ImportedImmunization,
   ImportedProcedure,
   ImportedProvider,
-  ImportedRecord,
+  ImportedClinicalObservation,
 } from "../health-import";
 import {
   isRowDrop,
@@ -26,9 +26,9 @@ import type { CdaSection, SectionExtractor } from "./constants";
 import {
   buildCcdaCoverage,
   dedupeDrops,
-  recordDropKind,
-  recordDropSection,
-  unmappedLoincsFromRecords,
+  observationDropKind,
+  observationDropSection,
+  unmappedLoincsFromObservations,
 } from "./coverage";
 import type {
   ClinicalNote,
@@ -286,7 +286,7 @@ type FieldCombiners<T> = {
 // reason:null and no nested diagnoses (its extractFromCcda skips reason-correlation
 // because it has >1 encounter), while the per-visit document carries both. Field
 // backfill recovers the richer data (reason, diagnoses, provider, location, …)
-// without overwriting anything, so it's safe to apply across every record kind and
+// without overwriting anything, so it's safe to apply across every imported entity kind and
 // doesn't disturb the largest-first demographics selection.
 //
 // `combine` overrides the backfill for named fields — used for encounter `notes`,
@@ -465,7 +465,7 @@ export function extractFromCcda(
     subjectScope,
   } = parseCcdaDocument(xml);
   const immunizations: ImportedImmunization[] = [];
-  const records: ImportedRecord[] = [];
+  const observations: ImportedClinicalObservation[] = [];
   const providers: ImportedProvider[] = [];
   const allergies: ImportedAllergy[] = [];
   const conditions: ImportedCondition[] = [];
@@ -494,7 +494,7 @@ export function extractFromCcda(
     // about after the fact, because they are facts about a SET of observations.
     if (part.drops) extractorDrops.push(...part.drops);
     if (part.immunizations) immunizations.push(...part.immunizations);
-    if (part.records) records.push(...part.records);
+    if (part.observations) observations.push(...part.observations);
     if (part.providers) providers.push(...part.providers);
     if (part.allergies) allergies.push(...part.allergies);
     if (part.conditions) conditions.push(...part.conditions);
@@ -601,7 +601,7 @@ export function extractFromCcda(
   const keptImmunizations = dedupe(immunizations).sort((a, b) =>
     a.date.localeCompare(b.date)
   );
-  const keptRecords = dedupe(records).sort((a, b) =>
+  const keptObservations = dedupe(observations).sort((a, b) =>
     a.date.localeCompare(b.date)
   );
   const keptAllergies = dedupe(allergies).sort((a, b) =>
@@ -638,10 +638,10 @@ export function extractFromCcda(
   drops.push(
     ...extractorDrops,
     ...dedupeDrops(
-      records,
-      (r) => recordDropKind(r.category),
+      observations,
+      (r) => observationDropKind(r.category),
       (r) => r.name,
-      (r) => recordDropSection(r.category)
+      (r) => observationDropSection(r.category)
     ),
     ...dedupeDrops(
       immunizations,
@@ -698,7 +698,7 @@ export function extractFromCcda(
   // keeping. persistDocumentImport rebinds these counts to the post-persist
   // footprint tally, so the stored report can never disagree with extracted_count.
   const imported = keptRowCount({
-    records: keptRecords,
+    observations: keptObservations,
     immunizations: keptImmunizations,
     allergies: keptAllergies,
     conditions: keptConditions,
@@ -715,12 +715,12 @@ export function extractFromCcda(
     coverage,
     imported,
     considered: imported + rowDrops,
-    unmappedLoincs: unmappedLoincsFromRecords(keptRecords),
+    unmappedLoincs: unmappedLoincsFromObservations(keptObservations),
   };
 
   return {
     immunizations: keptImmunizations,
-    records: keptRecords,
+    observations: keptObservations,
     allergies: keptAllergies,
     conditions: keptConditions,
     // Newest visit first (also the page's display order).
@@ -733,7 +733,7 @@ export function extractFromCcda(
     demographics: enrichedDemographics,
     // Section-level providers (Care Teams) plus the header's serviceEvent
     // performers (the stated PCP / appointment provider). Per-reading performers
-    // ride on the records/immunizations above; import-persist unions them all and
+    // ride on the observations/immunizations above; import-persist unions them all and
     // dedups globally when resolving them into the shared registry.
     providers: [...providers, ...headerProviders],
     report,
@@ -748,7 +748,7 @@ export function parseCcda(
 }
 
 // Merge several parsed ImportResults (one per ClinicalDocument in an XDM package)
-// into one, de-duplicating each record kind by its stable external_id so a section
+// into one, de-duplicating each entity kind by its stable external_id so a section
 // carried in two documents (Allergies/Medications/Immunizations/Results appear in
 // both DOC0001 and DOC0002) collapses to a single row rather than double-counting,
 // with field-level backfill so the richer copy's fields survive (see mergeDedupe).
@@ -767,7 +767,7 @@ export function parseCcda(
 // cleanly, and manual rows are never touched by the importer regardless.
 export function mergeImportResults(results: ImportResult[]): ImportResult {
   const immunizations: ImportedImmunization[] = [];
-  const records: ImportedRecord[] = [];
+  const observations: ImportedClinicalObservation[] = [];
   const allergies: ImportedAllergy[] = [];
   const conditions: ImportedCondition[] = [];
   const encounters: ImportedEncounter[] = [];
@@ -780,7 +780,7 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
   let demographics: ImportDemographics | null = null;
   for (const r of results) {
     immunizations.push(...r.immunizations);
-    records.push(...r.records);
+    observations.push(...r.observations);
     allergies.push(...(r.allergies ?? []));
     conditions.push(...(r.conditions ?? []));
     encounters.push(...(r.encounters ?? []));
@@ -804,7 +804,7 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
   const keptImmunizations = mergeDedupe(immunizations).sort((a, b) =>
     a.date.localeCompare(b.date)
   );
-  const keptRecords = mergeDedupe(records).sort((a, b) =>
+  const keptObservations = mergeDedupe(observations).sort((a, b) =>
     a.date.localeCompare(b.date)
   );
   const keptAllergies = mergeDedupe(allergies).sort((a, b) =>
@@ -842,10 +842,10 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
   // in both DOC0001 and DOC0002. `imported` is the final merged row count.
   const crossDocDrops: ImportDrop[] = [
     ...dedupeDrops(
-      records,
-      (r) => recordDropKind(r.category),
+      observations,
+      (r) => observationDropKind(r.category),
       (r) => r.name,
-      (r) => recordDropSection(r.category)
+      (r) => observationDropSection(r.category)
     ),
     ...dedupeDrops(
       immunizations,
@@ -905,7 +905,7 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
   // can't drift from each other — the merged package's kept total is the merged
   // kept lists, whatever domains those are.
   const imported = keptRowCount({
-    records: keptRecords,
+    observations: keptObservations,
     immunizations: keptImmunizations,
     allergies: keptAllergies,
     conditions: keptConditions,
@@ -922,12 +922,12 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
     coverage: mergedCoverage,
     imported,
     considered: imported + rowDrops,
-    unmappedLoincs: unmappedLoincsFromRecords(keptRecords),
+    unmappedLoincs: unmappedLoincsFromObservations(keptObservations),
   };
 
   return {
     immunizations: keptImmunizations,
-    records: keptRecords,
+    observations: keptObservations,
     allergies: keptAllergies,
     conditions: keptConditions,
     encounters: keptEncounters,

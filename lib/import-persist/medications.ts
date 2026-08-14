@@ -30,8 +30,9 @@ function medImportKey(
 //     the union of its derived courses (the first occurrence's parse wins).
 //   - A drug whose cleaned/grouping name MATCHES an existing med (manual or another
 //     document's) attaches as a new COURSE on that med (renewal semantics) — its
-//     period + prescriber + dose snapshot — INSTEAD of the old skip-to-records-
-//     fallback. The one exception is the #1027 concurrent-different-strength case
+//     period + prescriber + dose snapshot — INSTEAD of the old fallback that skipped
+//     the med and kept only the imported observation. The one exception is the #1027
+//     concurrent-different-strength case
 //     (the existing med has an OPEN course at a PROVABLY DIFFERENT strength), which
 //     stays a SEPARATE item.
 //
@@ -41,7 +42,7 @@ function medImportKey(
 export function persistExtractedMedications(
   profileId: number,
   docId: number | null,
-  records: PersistRecord[],
+  observations: PersistClinicalObservation[],
   ctx: {
     existing: MedMatchState[];
     insMed: Stmt;
@@ -54,7 +55,9 @@ export function persistExtractedMedications(
     resolveCondition?: (raw: string | null | undefined) => number | null;
   }
 ): number {
-  const prescriptions = records.filter((r) => r.category === "prescription");
+  const prescriptions = observations.filter(
+    (r) => r.category === "prescription"
+  );
   if (prescriptions.length === 0) return 0;
 
   // Group prescriptions by cleaned drug name so repeated prescriptions — or several
@@ -69,7 +72,7 @@ export function persistExtractedMedications(
       courses: ImportedMedicationCourse[];
       encExt: string | null;
       indExt: string | null;
-      // The earliest prescribed date across the grouped records — the fallback
+      // The earliest prescribed date across the grouped observations — the fallback
       // course start when the source carried no explicit effective period.
       presDate: string | null;
     }
@@ -123,8 +126,8 @@ export function persistExtractedMedications(
       if (key && exKeys.has(key)) return ex;
     }
     // The RxCUI-first path stays open for a future import that captures a code on the
-    // prescription (records carry none today), so the cleaned name is the working
-    // signal — the SAME grouping medNameKey the #1027 duplication family + the records
+    // prescription (observations carry none today), so the cleaned name is the working
+    // signal — the SAME grouping medNameKey the #1027 duplication family + the observations
     // bridge use, so the identity can't diverge across surfaces (#482).
     return null;
   };
@@ -265,6 +268,6 @@ import {
   type CourseAttribution,
   type MedMatchState,
 } from "../queries";
-import type { PersistRecord } from "../import-shape";
+import type { PersistClinicalObservation } from "../import-shape";
 
 type Stmt = Database.Statement;

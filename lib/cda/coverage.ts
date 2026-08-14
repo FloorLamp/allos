@@ -6,7 +6,7 @@ import {
 } from "../biomarker-loinc";
 import { isNoKnownAllergy, isNoKnownProblemText } from "../clinical-parse";
 import { codeFromVaccineCode } from "../cvx-map";
-import type { ImportedRecord } from "../health-import";
+import type { ImportedClinicalObservation } from "../health-import";
 import type { CoverageEntry, DropKind, ImportDrop } from "../import-report";
 import { tallyUnmappedLoincs } from "../import-report";
 import {
@@ -261,8 +261,8 @@ function collectSectionDrops(
   const ids = buildNarrativeIdMap(section.raw?.text);
   const title = sectionTitle(section);
   // functionalStatus (#268) routes through the SAME observation walk/mapper as
-  // Results (as qualitative `assessment` records since #2318 — neither the class nor
-  // the stored-record loinc strip in its extractor changes WHETHER an observation
+  // Results (as qualitative `assessment` observations since #2318 — neither the class nor
+  // the stored-observation LOINC strip in its extractor changes WHETHER an observation
   // maps), so its drops are itemized identically.
   if (key === "results" || key === "vitals" || key === "functionalStatus") {
     // The SAME class the kept-path extractor passes, so a row the mapper maps is
@@ -276,7 +276,7 @@ function collectSectionDrops(
     for (const o of observationNodesOf(section.entries)) {
       // A radiology-study observation is CONSUMED into imaging_studies, and a
       // narrative report observation (ED-valued culture/gram-stain/cytology) is
-      // CONSUMED into a `report` record — neither is a dropped lab (their nullFlavor /
+      // CONSUMED into a `report` observation — neither is a dropped lab (their nullFlavor /
       // ED value would otherwise read as a no_value/null_flavor drop).
       if (
         isRadiologyStudyObs(o) ||
@@ -330,9 +330,11 @@ function collectSectionDrops(
 // Labs that imported but carry a LOINC with no canonical mapping (Fix 3): a
 // non-fatal "add these to LOINC_TO_CANONICAL" annotation surfaced in the debugger.
 // Vitals (routed by isVitalLoinc) and code-less rows are excluded.
-export function unmappedLoincsFromRecords(records: ImportedRecord[]) {
+export function unmappedLoincsFromObservations(
+  observations: ImportedClinicalObservation[]
+) {
   return tallyUnmappedLoincs(
-    records
+    observations
       // A `report` row carries a report LOINC (34574-4/11502-2/33718-8) that is
       // deliberately NOT an analyte — it must never surface as an "add to
       // LOINC_TO_CANONICAL" suggestion (#708). An `assessment` row is the same
@@ -348,7 +350,7 @@ export function unmappedLoincsFromRecords(records: ImportedRecord[]) {
 }
 
 // Which drop kind a deduped medical_records row belongs to (by its category).
-export function recordDropKind(category: string): DropKind {
+export function observationDropKind(category: string): DropKind {
   if (category === "vitals") return "vitals";
   if (category === "prescription") return "medication";
   return "lab";
@@ -358,7 +360,7 @@ export function recordDropKind(category: string): DropKind {
 // carries a `section` so the Dropped list always shows where a row came from).
 // Deduped rows have lost their originating <section> node by the time dedupe()
 // runs, so this names the standard CCD section their category maps to.
-export function recordDropSection(category: string): string {
+export function observationDropSection(category: string): string {
   if (category === "vitals") return "Vital Signs";
   if (category === "prescription") return "Medications";
   return "Results";

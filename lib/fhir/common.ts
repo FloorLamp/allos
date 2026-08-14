@@ -1,7 +1,10 @@
 import { classifyLoinc } from "../biomarker-loinc";
 import type { FhirCodeableConcept } from "../cvx-map";
 import { nuccLabel } from "../nucc-taxonomy";
-import type { ImportedProvider, ImportedRecord } from "../health-import";
+import type {
+  ImportedProvider,
+  ImportedClinicalObservation,
+} from "../health-import";
 import { fhirSourceTime, sourceDay, type SourceTime } from "../source-time";
 import { VITAL_CANONICAL, normalizeImportedTemperature } from "../vitals-input";
 import { isColonDurationUnit, normalizeDurationValue } from "../duration-value";
@@ -460,7 +463,7 @@ export function loincFromFhirCode(
   return code?.coding?.find((c) => (c.system ?? "").includes("loinc"))?.code;
 }
 
-// Build one ImportedRecord from a code + resolved value + the parent's date /
+// Build one ImportedClinicalObservation from a code + resolved value + the parent's date /
 // provenance. Shared by the scalar Observation path and each component reading, so
 // a BP component (LOINC 8480-6 / 8462-4) canonicalizes and routes to `vitals`
 // exactly like a top-level vital.
@@ -470,7 +473,7 @@ export function fhirReadingFromCode(
   date: string,
   idPrefix: string,
   provider: ImportedProvider | null
-): ImportedRecord {
+): ImportedClinicalObservation {
   const name =
     code?.text ||
     code?.coding?.find((c) => c.display)?.display ||

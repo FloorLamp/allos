@@ -608,7 +608,7 @@ export async function commitBiomarkers(
   const adopted = applyImportFollowups(profile.id, {
     demographics: input.demographics,
     canonicalNames: input.canonicalNamesToRegister,
-    insertedRecordIds: outcome.insertedRecordIds,
+    insertedObservationIds: outcome.insertedObservationIds,
   });
   const sampleCount =
     outcome.heightCount + outcome.headCircCount + outcome.waistCircCount;

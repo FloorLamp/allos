@@ -1,4 +1,4 @@
-// Reconcile each record's flag against our canonical ranges: clinical high/low
+// Reconcile each observation's flag against our canonical ranges: clinical high/low
 // from the reference range (overriding an over-strict or missing lab flag),
 // non-optimal from the optimal band, cleared when optimal — so the stored flag
 // never contradicts the live-computed status. Never touches 'abnormal'
@@ -78,8 +78,8 @@ const RECONCILABLE_FLAGS = new Set([
 ]);
 
 // Preview twin of reconcileFlags: derive the flags the post-commit reconcile WILL
-// write for a NOT-yet-persisted batch of records (the reprocess preview's fresh
-// extraction), mutating each record's `flag` in place. Without this, the preview
+// write for a NOT-yet-persisted batch of observations (the reprocess preview's fresh
+// extraction), mutating each observation's `flag` in place. Without this, the preview
 // diff compares post-follow-up persisted rows against pre-follow-up extraction, so
 // every app-derived flag (age-banded vitals, optimal bands, titer "immune") reads
 // as a phantom "flag → none" change on a byte-identical reprocess. Same
@@ -88,11 +88,11 @@ const RECONCILABLE_FLAGS = new Set([
 // drift.
 export function previewReconcileFlags(
   profileId: number,
-  records: PersistInput["records"]
+  observations: PersistInput["observations"]
 ): void {
-  if (records.length === 0) return;
+  if (observations.length === 0) return;
   const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
-  const numericRows = records.flatMap((r, i) =>
+  const numericRows = observations.flatMap((r, i) =>
     r.canonical?.trim() &&
     r.value_num != null &&
     (r.flag == null || RECONCILABLE_FLAGS.has(r.flag))
@@ -109,7 +109,7 @@ export function previewReconcileFlags(
         ]
       : []
   );
-  const qualRows = records.flatMap((r, i) =>
+  const qualRows = observations.flatMap((r, i) =>
     r.value_num == null && (r.category === "lab" || r.category === "biomarker")
       ? [
           {
@@ -128,7 +128,8 @@ export function previewReconcileFlags(
     ...computeFlagReconciliation(numericRows, cbByName, ctx),
     ...computeQualitativeFlagChanges(qualRows),
   ]) {
-    records[c.id].flag = c.flag as PersistInput["records"][number]["flag"];
+    observations[c.id].flag =
+      c.flag as PersistInput["observations"][number]["flag"];
   }
 }
 

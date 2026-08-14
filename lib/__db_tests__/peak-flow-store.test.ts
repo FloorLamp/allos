@@ -61,9 +61,9 @@ function importSpirometry(
   const outcome = persistDocumentImport(profileId, docId, input);
   applyImportFollowups(profileId, {
     demographics: input.demographics,
-    records: input.records,
+    observations: input.observations,
     canonicalNames: input.canonicalNamesToRegister,
-    insertedRecordIds: outcome.insertedRecordIds,
+    insertedObservationIds: outcome.insertedObservationIds,
   });
 }
 
@@ -226,7 +226,7 @@ describe("the clinic half — a spirometry report through the document pipeline"
       provider: null,
     });
     return {
-      records: [
+      observations: [
         row("FEV1", FEV1, 2.9, "L", "pft:fev1"),
         row("FVC", FVC, 4.4, "L", "pft:fvc"),
         row("FEV1/FVC Ratio", "FEV1/FVC Ratio", 66, "%", "pft:ratio"),

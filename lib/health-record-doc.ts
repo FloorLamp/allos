@@ -41,7 +41,7 @@ export interface HealthImportOutcome {
 }
 
 // Parse the (already-stored) document's buffer and import its immunizations +
-// records against the given document row, replacing any prior rows for that
+// clinical observations against the given document row, replacing any prior rows for that
 // document so this doubles as the reprocess path. Never throws — parse failures
 // are recorded on the row.
 export function persistHealthRecordDoc(
@@ -57,13 +57,13 @@ export function persistHealthRecordDoc(
   let outcome: PersistOutcome;
   try {
     const { parsed, source } = parseHealthRecord(buffer);
-    // Snap each parsed record's canonical name onto the app's existing biomarker
+    // Snap each parsed observation's canonical name onto the app's existing biomarker
     // vocabulary — the same code-level reconciliation the AI path applies — so a
     // CCD/FHIR lab groups under the app's canonical series (and picks up its
     // reference band) instead of coining a duplicate from the portal's spelling.
     // The tiny LOINC map alone covers only a handful of vitals.
     const canonicalIndex = buildCanonicalIndex(getCanonicalVocabulary());
-    for (const r of parsed.records) {
+    for (const r of parsed.observations) {
       // Batch-aware: a vocabulary miss claims its key in this batch's index, so
       // two spellings of one analyte within one import collapse onto the first
       // instead of both registering (and splitting the series).
@@ -102,8 +102,8 @@ export function persistHealthRecordDoc(
     const adopted = applyImportFollowups(profileId, {
       demographics: input.demographics,
       canonicalNames: input.canonicalNamesToRegister,
-      insertedRecordIds: outcome.insertedRecordIds,
-      records: input.records,
+      insertedObservationIds: outcome.insertedObservationIds,
+      observations: input.observations,
     });
     adoptedBirthdate = adopted.birthdate;
     adoptedSex = adopted.sexAdopted;

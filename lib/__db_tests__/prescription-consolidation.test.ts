@@ -8,7 +8,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import { persistDocumentImport } from "@/lib/import-persist";
-import type { PersistInput, PersistRecord } from "@/lib/import-shape";
+import type {
+  PersistInput,
+  PersistClinicalObservation,
+} from "@/lib/import-shape";
 import {
   getUnlinkedRecords,
   linkRecordToEncounter,
@@ -21,7 +24,7 @@ const DATE = "2026-03-03";
 
 function emptyInput(over: Partial<PersistInput> = {}): PersistInput {
   return {
-    records: [],
+    observations: [],
     immunizations: [],
     allergies: [],
     conditions: [],
@@ -50,7 +53,9 @@ function emptyInput(over: Partial<PersistInput> = {}): PersistInput {
   };
 }
 
-function prescription(over: Partial<PersistRecord>): PersistRecord {
+function prescription(
+  over: Partial<PersistClinicalObservation>
+): PersistClinicalObservation {
   return {
     category: "prescription",
     name: "Lisinopril 10 mg",
@@ -68,7 +73,7 @@ function prescription(over: Partial<PersistRecord>): PersistRecord {
     loinc: null,
     provider: null,
     ...over,
-  } as PersistRecord;
+  } as PersistClinicalObservation;
 }
 
 function newProfile(name: string): number {
@@ -100,7 +105,7 @@ describe("#1178 a CCD prescription imports as the single medication entity", () 
       profileId,
       doc,
       emptyInput({
-        records: [
+        observations: [
           prescription({ prescriber: "Dr. Alice Green", pharmacy: "MainRx" }),
         ],
       })
@@ -154,7 +159,7 @@ describe("#1178 a CCD prescription imports as the single medication entity", () 
       profileId,
       doc,
       emptyInput({
-        records: [
+        observations: [
           prescription({ name: "Lisinopril 10 mg", external_id: "med:lis" }),
           prescription({
             name: "Metformin 500 mg",
@@ -182,7 +187,7 @@ describe("#1204 cross-document re-prescription attaches a course", () => {
       profileId,
       doc1,
       emptyInput({
-        records: [prescription({ prescriber: "Dr. Alice Green" })],
+        observations: [prescription({ prescriber: "Dr. Alice Green" })],
       })
     );
     const doc2 = newDocument(profileId);
@@ -190,7 +195,7 @@ describe("#1204 cross-document re-prescription attaches a course", () => {
       profileId,
       doc2,
       emptyInput({
-        records: [
+        observations: [
           prescription({
             date: "2026-06-01",
             external_id: "med:lisinopril-2",
@@ -228,7 +233,7 @@ describe("#1204 cross-document re-prescription attaches a course", () => {
       profileId,
       doc1,
       emptyInput({
-        records: [
+        observations: [
           prescription({
             name: "Ibuprofen 200 mg",
             canonical: "Ibuprofen 200 mg",
@@ -243,7 +248,7 @@ describe("#1204 cross-document re-prescription attaches a course", () => {
       profileId,
       doc2,
       emptyInput({
-        records: [
+        observations: [
           prescription({
             name: "Ibuprofen 800 mg",
             canonical: "Ibuprofen 800 mg",
@@ -287,7 +292,7 @@ describe("#1178 reprocess re-applies an accepted visit link to the medication", 
             external_id: "ccda:encounter:v1",
           },
         ],
-        records: [prescription({})],
+        observations: [prescription({})],
       });
     persistDocumentImport(profileId, doc, bundle());
     const eid = (

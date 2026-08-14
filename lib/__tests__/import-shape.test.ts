@@ -49,7 +49,7 @@ describe("extractionToPersistInput (AI path)", () => {
       }),
       "2099-12-31"
     );
-    expect(input.records.map((r) => r.date)).toEqual([
+    expect(input.observations.map((r) => r.date)).toEqual([
       "2024-01-15",
       "2099-12-31",
       "2099-12-31",
@@ -74,7 +74,7 @@ describe("extractionToPersistInput (AI path)", () => {
         ],
       }),
       "2024-02-01"
-    ).records;
+    ).observations;
     expect(r).toMatchObject({
       canonical: "Thyroid Stimulating Hormone",
       value_num: 2.1,
@@ -106,7 +106,7 @@ describe("extractionToPersistInput (AI path)", () => {
         ],
       }),
       "2024-02-01"
-    ).records;
+    ).observations;
     expect(r.category).toBe("report");
     expect(r.value).toBeNull();
     expect(r.value_num).toBeNull();
@@ -127,7 +127,7 @@ describe("extractionToPersistInput (AI path)", () => {
         ],
       }),
       "2024-02-01"
-    ).records;
+    ).observations;
     expect(r.value).toBeNull();
     expect(r.notes).toBe(
       "Negative — No chest pain or significant ST-T changes"
@@ -142,7 +142,7 @@ describe("extractionToPersistInput (AI path)", () => {
         ],
       }),
       "2024-02-01"
-    ).records;
+    ).observations;
     expect(r.value_num).toBeNull();
     expect(r.canonical).toBe("Note");
   });
@@ -274,7 +274,7 @@ describe("extractionToPersistInput (AI path)", () => {
       { date: "2024-02-01", weight_kg: 80, body_fat_pct: null, resting_hr: 55 },
     ]);
     // ...and are gone from records; the clinical vital (BP) and the lab stay.
-    expect(input.records.map((r) => r.name)).toEqual([
+    expect(input.observations.map((r) => r.name)).toEqual([
       "Systolic blood pressure",
       "Glucose",
     ]);
@@ -306,7 +306,7 @@ describe("extractionToPersistInput (AI path)", () => {
         resting_hr: 60,
       },
     ]);
-    expect(input.records).toEqual([]);
+    expect(input.observations).toEqual([]);
   });
 
   it("keeps a body metric as a record when it has no resolvable date", () => {
@@ -328,7 +328,9 @@ describe("extractionToPersistInput (AI path)", () => {
       "2024-02-01"
     );
     expect(input.bodyMetrics).toEqual([]);
-    expect(input.records.map((r) => r.name)).toEqual(["Resting Heart Rate"]);
+    expect(input.observations.map((r) => r.name)).toEqual([
+      "Resting Heart Rate",
+    ]);
   });
 
   it("keeps a body-metric-kind reading whose value was rejected, even on a captured date", () => {
@@ -363,7 +365,7 @@ describe("extractionToPersistInput (AI path)", () => {
       },
     ]);
     // Weight is captured (removed from records); the un-stored fat-mass stays.
-    expect(input.records.map((r) => r.name)).toEqual(["Total Body Fat"]);
+    expect(input.observations.map((r) => r.name)).toEqual(["Total Body Fat"]);
   });
 
   it("projects Body Height into metric_samples heights and drops it from records", () => {
@@ -391,7 +393,7 @@ describe("extractionToPersistInput (AI path)", () => {
     );
     expect(input.heights).toEqual([{ date: "2024-02-01", height_cm: 178 }]);
     // Height is gone from records (single home); the lab stays.
-    expect(input.records.map((r) => r.name)).toEqual(["Glucose"]);
+    expect(input.observations.map((r) => r.name)).toEqual(["Glucose"]);
     expect(input.canonicalNamesToRegister).not.toContain("Body Height");
   });
 
@@ -411,7 +413,7 @@ describe("extractionToPersistInput (AI path)", () => {
       "2024-02-01"
     );
     expect(input.heights).toEqual([]);
-    expect(input.records.map((r) => r.name)).toEqual(["Body Height"]);
+    expect(input.observations.map((r) => r.name)).toEqual(["Body Height"]);
   });
 
   it("maps clinical domains, normalizing allergy/condition status to the CHECK set", () => {
@@ -609,7 +611,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
         external_id: "ccda:covid:2021-11-01",
       },
     ],
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Hepatitis B Surface Antibody",
@@ -636,7 +638,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
 
   it("maps records with external_id + source and preserves immunization codes", () => {
     const input = healthRecordToPersistInput(parsed, "ccda", "MyChart");
-    expect(input.records[0]).toMatchObject({
+    expect(input.observations[0]).toMatchObject({
       canonical: "Hepatitis B Surface Antibody",
       source: "ccda",
       external_id: "ccda:obs:16935-9:2020-06-01",
@@ -736,7 +738,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
   it("routes CDA body metrics to body_metrics, leaving clinical vitals as records", () => {
     const withBodyMetrics: ImportResult = {
       immunizations: [],
-      records: [
+      observations: [
         {
           category: "vitals",
           name: "Body Weight",
@@ -779,7 +781,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
       { date: "2024-01-10", weight_kg: 82, body_fat_pct: null, resting_hr: 61 },
     ]);
     // Weight + HR are gone from records; the clinical vital (BP) remains.
-    expect(input.records.map((r) => r.name)).toEqual([
+    expect(input.observations.map((r) => r.name)).toEqual([
       "Systolic blood pressure",
     ]);
   });
@@ -787,7 +789,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
   it("routes CDA/FHIR Body Height to metric_samples heights, incl. a LOINC-only reading", () => {
     const withHeight: ImportResult = {
       immunizations: [],
-      records: [
+      observations: [
         {
           category: "vitals",
           name: "Body Height",
@@ -840,14 +842,14 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
       },
     ]);
     // Both heights AND the weight are gone from records (each has one home).
-    expect(input.records).toEqual([]);
+    expect(input.observations).toEqual([]);
     expect(input.canonicalNamesToRegister).toEqual([]);
   });
 
   it("routes CDA head circumference (8287-5) to metric_samples headCircs, not records", () => {
     const withHeadCirc: ImportResult = {
       immunizations: [],
-      records: [
+      observations: [
         {
           category: "vitals",
           name: "Head Occipital-frontal circumference by Tape measure",
@@ -879,7 +881,7 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
       { date: "2024-06-10", head_circumference_cm: 46 },
     ]);
     // The measurement left records; the percentile row stays a record.
-    expect(input.records.map((r) => r.loinc)).toEqual(["8289-1"]);
+    expect(input.observations.map((r) => r.loinc)).toEqual(["8289-1"]);
   });
 });
 
@@ -1009,7 +1011,7 @@ describe("extractionToPersistInput — structured prescription (#414)", () => {
       }),
       "2099-12-31"
     );
-    const rec = input.records.find((r) => r.category === "prescription")!;
+    const rec = input.observations.find((r) => r.category === "prescription")!;
     // Attribution comes straight off the label, not NULL.
     expect(rec.prescriber).toBe("Grace Hopper, MD");
     expect(rec.pharmacy).toBe("Test Pharmacy #12");
@@ -1052,7 +1054,7 @@ describe("extractionToPersistInput — structured prescription (#414)", () => {
       }),
       "2099-12-31"
     );
-    const rec = input.records.find((r) => r.category === "prescription")!;
+    const rec = input.observations.find((r) => r.category === "prescription")!;
     expect(rec.notes).toBe("1 tablet for pain; as needed");
     expect(rec.prescriber).toBeNull();
     expect(rec.courses).toBeNull();
@@ -1072,7 +1074,7 @@ describe("extractionToPersistInput — structured prescription (#414)", () => {
       }),
       "2099-12-31"
     );
-    const rec = input.records.find((r) => r.category === "prescription")!;
+    const rec = input.observations.find((r) => r.category === "prescription")!;
     expect(rec.notes).toBe("Take 1 tablet twice daily");
     expect(rec.prescriber ?? null).toBeNull();
     expect(rec.courses ?? null).toBeNull();
@@ -1195,8 +1197,8 @@ describe("extractionToPersistInput — the duration door (#2322)", () => {
         }),
       ],
     });
-    expect(input.records).toHaveLength(1);
-    expect(input.records[0]).toMatchObject({
+    expect(input.observations).toHaveLength(1);
+    expect(input.observations[0]).toMatchObject({
       value: "630",
       value_num: 630,
       unit: "s",
@@ -1217,7 +1219,7 @@ describe("extractionToPersistInput — the duration door (#2322)", () => {
         }),
       ],
     });
-    expect(input.records[0]).toMatchObject({ value_num: 630, unit: "s" });
+    expect(input.observations[0]).toMatchObject({ value_num: 630, unit: "s" });
   });
 
   it("DROPS an unparsable duration with a reason instead of storing the string", () => {
@@ -1237,7 +1239,7 @@ describe("extractionToPersistInput — the duration door (#2322)", () => {
         }),
       ],
     });
-    expect(input.records.map((r) => r.name)).toEqual(["Glucose"]);
+    expect(input.observations.map((r) => r.name)).toEqual(["Glucose"]);
     const report = parseImportReport(input.meta.importReport);
     const drop = report?.drops.find((d) => d.label === "Exercise Duration");
     expect(drop?.reason).toBe("unparsable_value");
@@ -1278,7 +1280,7 @@ describe("derived results are dropped WITH a trail (#2678)", () => {
       "2099-12-31"
     );
     // Still dropped — unconditionally, exactly as #2646 decided.
-    expect(input.records.map((r) => r.name)).toEqual([
+    expect(input.observations.map((r) => r.name)).toEqual([
       "Blood Pressure Systolic",
     ]);
     const report = parseImportReport(input.meta.importReport);
@@ -1313,7 +1315,7 @@ describe("derived results are dropped WITH a trail (#2678)", () => {
       }),
       "2099-12-31"
     );
-    expect(input.records).toEqual([]);
+    expect(input.observations).toEqual([]);
     const report = parseImportReport(input.meta.importReport);
     expect(report!.drops.filter((d) => d.reason === "derived_result")).toEqual([
       {
@@ -1338,7 +1340,7 @@ describe("derived results are dropped WITH a trail (#2678)", () => {
       bmiExtraction(spellings),
       "2099-12-31"
     );
-    expect(input.records.map((r) => r.name)).toEqual(spellings);
+    expect(input.observations.map((r) => r.name)).toEqual(spellings);
     const report = parseImportReport(input.meta.importReport);
     expect(report!.drops.filter((d) => d.reason === "derived_result")).toEqual(
       []
@@ -1351,7 +1353,7 @@ describe("derived results are dropped WITH a trail (#2678)", () => {
     // counts are deliberately left for persist's footprint reconciliation to rebind.
     const withBmi: ImportResult = {
       immunizations: [],
-      records: [
+      observations: [
         {
           category: "vitals",
           name: "Body mass index",
@@ -1385,7 +1387,7 @@ describe("derived results are dropped WITH a trail (#2678)", () => {
     };
     const input = healthRecordToPersistInput(withBmi, "ccda", "MyChart");
     // The percentile stays; only the BMI itself goes.
-    expect(input.records.map((r) => r.canonical)).toEqual([
+    expect(input.observations.map((r) => r.canonical)).toEqual([
       "Body Mass Index Percentile (BMI%)",
     ]);
     const report = parseImportReport(input.meta.importReport);

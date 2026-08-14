@@ -2,7 +2,7 @@
 // effective-period / status / narrative helpers) and the four medication section
 // extractors (active, discharge, administered, ordered).
 import { medicationExternalId } from "../../clinical-parse";
-import type { ImportedRecord } from "../../health-import";
+import type { ImportedClinicalObservation } from "../../health-import";
 import {
   coursesFromImportedMedication,
   normalizeCcdaMedStatus,
@@ -63,10 +63,10 @@ function ccdaMedStatus(sa: any): ImportMedStatus {
   return "unknown";
 }
 
-// Map a medication <substanceAdministration> to a `prescription` record. This is
+// Map a medication <substanceAdministration> to a `prescription` observation. This is
 // the interim home (medication support) calls for — the extraction
 // pipeline's `prescription` category — until a dedicated medications table lands,
-// at which point only this sink changes. The record ALSO carries the derived
+// at which point only this sink changes. The observation ALSO carries the derived
 // medication COURSES: the effective period(s) → course dates, the
 // status → open/closed + stop_reason; the persist layer turns them into
 // medication_courses rows. A nullified/entered-in-error med yields null courses,
@@ -103,7 +103,7 @@ export function mapMedication(
   narrativeIds: Record<string, string> = {},
   contextDate: string | null = null,
   opts: { snapshot?: boolean; courseNote?: string | null } = {}
-): ImportedRecord | null {
+): ImportedClinicalObservation | null {
   if (!sa || truthyNegation(sa["@_negationInd"])) return null;
   const mat = sa?.consumable?.manufacturedProduct?.manufacturedMaterial;
   // The drug name: a structured <name>/<code displayName>, else the code's
@@ -120,12 +120,12 @@ export function mapMedication(
   const date = sourceDay(effTime(sa.effectiveTime));
   // A med-list entry commonly carries a name but NO effectiveTime (#Fix 2). Rather
   // than drop the whole medication, fall back to the CONTEXT date (the document's
-  // visit date when the header carries one, else the document date) for the record
+  // visit date when the header carries one, else the document date) for the observation
   // date — the course still opens UNDATED (started_on null) because we only build a
   // period from the med's OWN effectiveTime, never fabricating a start from the
   // fallback. Only a med with neither a name nor any date still drops.
-  const recordDate = date ?? contextDate;
-  if (!name || !recordDate) return null;
+  const observationDate = date ?? contextDate;
+  if (!name || !observationDate) return null;
   const rxnorm =
     mat?.code?.["@_codeSystem"] === "2.16.840.1.113883.6.88"
       ? mat?.code?.["@_code"]
@@ -137,7 +137,7 @@ export function mapMedication(
       : null;
   // The sig / directions text (Epic ships the printed instructions in the
   // section narrative, referenced by <text><reference value="#…"/>). FHIR keeps
-  // its dosageInstruction.text in the record's `value`; capture the CCD sig into
+  // its dosageInstruction.text in the observation's `value`; capture the CCD sig into
   // the SAME field so parsePrescription's schedule inference sees identical input
   // from both formats (#417). Fall back to the doseQuantity string when no sig
   // narrative is present, preserving the prior strength-only value.
@@ -187,11 +187,11 @@ export function mapMedication(
     value: sig ?? dose,
     value_num: null,
     unit: null,
-    date: recordDate,
+    date: observationDate,
     external_id: medicationExternalId({
       name: String(name),
       code: rxnorm ? String(rxnorm) : null,
-      date: recordDate,
+      date: observationDate,
     }),
     courses,
     prescriber,
@@ -221,11 +221,11 @@ export const medicationsExtractor: SectionExtractor = {
     // — same pattern as the lab/vital observation extractors.
     const narrativeIds = buildNarrativeIdMap(s.raw?.text);
     return {
-      records: s.entries
+      observations: s.entries
         .map((e) =>
           mapMedication(e?.substanceAdministration, narrativeIds, contextDate)
         )
-        .filter((x): x is ImportedRecord => x != null),
+        .filter((x): x is ImportedClinicalObservation => x != null),
     };
   },
 };
@@ -241,13 +241,13 @@ export const dischargeMedicationsExtractor: SectionExtractor = {
   extract: (s, contextDate) => {
     const narrativeIds = buildNarrativeIdMap(s.raw?.text);
     return {
-      records: s.entries
+      observations: s.entries
         .map((e) =>
           mapMedication(e?.substanceAdministration, narrativeIds, contextDate, {
             courseNote: "At hospital discharge",
           })
         )
-        .filter((x): x is ImportedRecord => x != null),
+        .filter((x): x is ImportedClinicalObservation => x != null),
     };
   },
 };
@@ -262,14 +262,14 @@ export const administeredMedicationsExtractor: SectionExtractor = {
   extract: (s, contextDate) => {
     const narrativeIds = buildNarrativeIdMap(s.raw?.text);
     return {
-      records: s.entries
+      observations: s.entries
         .map((e) =>
           mapMedication(e?.substanceAdministration, narrativeIds, contextDate, {
             snapshot: true,
             courseNote: "Administered during encounter",
           })
         )
-        .filter((x): x is ImportedRecord => x != null),
+        .filter((x): x is ImportedClinicalObservation => x != null),
     };
   },
 };
@@ -289,14 +289,14 @@ export const orderedPrescriptionsExtractor: SectionExtractor = {
   extract: (s, contextDate) => {
     const narrativeIds = buildNarrativeIdMap(s.raw?.text);
     return {
-      records: s.entries
+      observations: s.entries
         .map((e) =>
           mapMedication(e?.substanceAdministration, narrativeIds, contextDate, {
             snapshot: true,
             courseNote: "Ordered at visit",
           })
         )
-        .filter((x): x is ImportedRecord => x != null),
+        .filter((x): x is ImportedClinicalObservation => x != null),
     };
   },
 };

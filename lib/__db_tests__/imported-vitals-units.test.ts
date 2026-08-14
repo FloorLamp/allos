@@ -81,8 +81,8 @@ describe("imported temperature/BP unit normalization (#1018, import boundary)", 
     applyImportFollowups(profile, {
       demographics: input.demographics,
       canonicalNames: input.canonicalNamesToRegister,
-      insertedRecordIds: outcome.insertedRecordIds,
-      records: input.records,
+      insertedObservationIds: outcome.insertedObservationIds,
+      observations: input.observations,
     });
   });
 

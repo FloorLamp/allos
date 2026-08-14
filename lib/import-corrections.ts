@@ -121,7 +121,7 @@ export function captureDocumentCorrections(
  *
  * The re-applied row keeps `edited = 1`: the value is still the user's, and the next
  * reprocess must capture it again. Flags are NOT re-derived here — every persist
- * caller runs `applyImportFollowups` with this import's `insertedRecordIds`, and
+ * caller runs `applyImportFollowups` with this import's `insertedObservationIds`, and
  * these rows are among them, so the post-commit `reconcileFlags` sees the corrected
  * values (a corrected-down reading must not keep its old "high", #221).
  */

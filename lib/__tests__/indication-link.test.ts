@@ -34,7 +34,7 @@ describe("reasonConditionExternalId (tier-1)", () => {
       ],
       "fhir"
     );
-    const med = out.records.find((r) => r.category === "prescription");
+    const med = out.observations.find((r) => r.category === "prescription");
     expect(med?.indication_condition_external_id).toBeTruthy();
     // The condition sink forms the same external_id, so persist can map it locally.
     const cond = (out.conditions ?? []).find((c) => c.name === "Otitis media");
@@ -55,7 +55,7 @@ describe("reasonConditionExternalId (tier-1)", () => {
       ],
       "fhir"
     );
-    const med = out.records.find((r) => r.category === "prescription");
+    const med = out.observations.find((r) => r.category === "prescription");
     expect(med?.indication_condition_external_id ?? null).toBeNull();
   });
 

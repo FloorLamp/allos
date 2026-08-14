@@ -385,17 +385,17 @@ describe("mergeImportResults (multi-document XDM)", () => {
   it("collapses a lab shared across docs with identical coding, even at differing value precision (1B)", () => {
     const docA = extractFromCcda(doc(labSection("5.20", true)));
     const docB = extractFromCcda(doc(labSection("5.2", true)));
-    expect(docA.records).toHaveLength(1);
+    expect(docA.observations).toHaveLength(1);
     const merged = mergeImportResults([docA, docB]);
-    expect(merged.records).toHaveLength(1); // one real reading → one row
+    expect(merged.observations).toHaveLength(1); // one real reading → one row
   });
 
   it("collapses a medication shared across docs with identical RxNorm coding (1B)", () => {
     const docA = extractFromCcda(doc(MED_SECTION));
     const docB = extractFromCcda(doc(MED_SECTION));
-    expect(docA.records).toHaveLength(1);
+    expect(docA.observations).toHaveLength(1);
     const merged = mergeImportResults([docA, docB]);
-    expect(merged.records).toHaveLength(1);
+    expect(merged.observations).toHaveLength(1);
   });
 
   it("does NOT collapse a lab coded differently across docs (divergent-coding limitation, 1B)", () => {
@@ -405,7 +405,7 @@ describe("mergeImportResults (multi-document XDM)", () => {
     const withLoinc = extractFromCcda(doc(labSection("5.2", true)));
     const nameOnly = extractFromCcda(doc(labSection("5.2", false)));
     const merged = mergeImportResults([withLoinc, nameOnly]);
-    expect(merged.records).toHaveLength(2);
+    expect(merged.observations).toHaveLength(2);
   });
 });
 

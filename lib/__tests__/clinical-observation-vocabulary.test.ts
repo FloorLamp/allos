@@ -13,6 +13,15 @@ const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const read = (...parts: string[]) =>
   fs.readFileSync(path.join(ROOT, ...parts), "utf8");
 
+function productionTypeScriptFiles(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name.startsWith("__")) return [];
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return productionTypeScriptFiles(full);
+    return /\.tsx?$/.test(entry.name) ? [full] : [];
+  });
+}
+
 describe("clinical observation vocabulary (#2482)", () => {
   it("exposes observation/result APIs instead of calling one row a medical record", () => {
     const types = read("lib", "types", "medical.ts");
@@ -25,6 +34,23 @@ describe("clinical observation vocabulary (#2482)", () => {
     expect(queries).not.toMatch(/function getMedicalRecords\b/);
     expect(actions).toContain("function addResult(");
     expect(actions).not.toMatch(/function (?:add|update|delete)Record\b/);
+  });
+
+  it("keeps the import boundary on clinical-observation vocabulary", () => {
+    const healthImport = read("lib", "health-import.ts");
+    const importShape = read("lib", "import-shape.ts");
+    expect(healthImport).toContain("interface ImportedClinicalObservation");
+    expect(healthImport).toContain(
+      "observations: ImportedClinicalObservation[]"
+    );
+    expect(importShape).toContain("interface PersistClinicalObservation");
+    expect(importShape).toContain("observations: PersistClinicalObservation[]");
+
+    const banned = /\b(?:ImportedRecord|PersistRecord)\b/;
+    const offenders = productionTypeScriptFiles(path.join(ROOT, "lib"))
+      .filter((file) => banned.test(fs.readFileSync(file, "utf8")))
+      .map((file) => path.relative(ROOT, file));
+    expect(offenders).toEqual([]);
   });
 
   it("keeps list and episodic detail links in one canonical route family", () => {

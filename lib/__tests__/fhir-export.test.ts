@@ -152,7 +152,7 @@ describe("buildFhirBundle", () => {
     expect(result.immunizations[0].dose_label).toBe("Dose 1");
 
     // Observations (labs) — separated from medication records by category.
-    const labs = result.records.filter((r) => r.category === "lab");
+    const labs = result.observations.filter((r) => r.category === "lab");
     const chol = labs.find((r) => r.name === "Cholesterol");
     expect(chol).toMatchObject({
       value: "190",
@@ -164,7 +164,9 @@ describe("buildFhirBundle", () => {
     expect(bloodType).toMatchObject({ value: "O+", value_num: null });
 
     // Medication (a prescription record).
-    const meds = result.records.filter((r) => r.category === "prescription");
+    const meds = result.observations.filter(
+      (r) => r.category === "prescription"
+    );
     expect(meds).toHaveLength(1);
     expect(meds[0]).toMatchObject({
       name: "Lisinopril 10 mg",
@@ -352,6 +354,6 @@ describe("buildFhirBundle", () => {
     expect(bundle.entry).toHaveLength(0);
     // Still parseable.
     const result = parseFhirBundle(JSON.stringify(bundle));
-    expect(result.records).toHaveLength(0);
+    expect(result.observations).toHaveLength(0);
   });
 });

@@ -705,7 +705,7 @@ export interface ProfileAdoption {
 //
 // Without this a blood type only reaches the emergency card / passport / FHIR export
 // if the user types it in by hand: the derived path (profile-summary-load) looks up
-// two records canonically named "ABO Blood Group" and "Rh Type", which nothing maps
+// two observations canonically named "ABO Blood Group" and "Rh Type", which nothing maps
 // a LOINC onto, so a real imported row (Epic's combined "ABORh Interpretation")
 // resolves to nothing and the card reads "Unknown" with the record sitting in the DB.
 // Adopting at import time settles it once instead of re-deriving per read.
@@ -722,7 +722,7 @@ export interface ProfileAdoption {
 // completes the type rather than starting over.
 //
 // Returns the resulting printable type when anything was adopted, else null.
-export function adoptBloodTypeFromRecords(
+export function adoptBloodTypeFromObservations(
   profileId: number,
   readings: readonly BloodGroupReading[] | null | undefined
 ): string | null {

@@ -49,7 +49,7 @@ const DATE = "2020-05-01";
 // writes, so the produced-breakdown counts have something to find in each kind.
 function makeInput(): PersistInput {
   return {
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Glucose",
@@ -516,7 +516,7 @@ describe("extracted_count (toast + Review-feed tally)", () => {
     const profile = newProfile("ENCOUNTER-ONLY");
     const doc = newDocument(profile, "visit-only.ccd");
     const outcome = persistDocumentImport(profile, doc, {
-      records: [],
+      observations: [],
       immunizations: [],
       allergies: [],
       conditions: [],

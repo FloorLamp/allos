@@ -368,7 +368,7 @@ export function rowDropCount(report: ImportReport): number {
 // persistDocumentImport rebinds the stored report's counts onto it — see
 // withFootprintCounts.
 const KEPT_ROW_LISTS = [
-  "records",
+  "observations",
   "immunizations",
   "allergies",
   "conditions",

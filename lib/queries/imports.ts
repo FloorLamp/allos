@@ -53,7 +53,7 @@ import { integrationsWithDelivery } from "../integrations/registry";
 import { getMedMatchStates } from "./intake/medications";
 import { foldConsolidatedMeds } from "../medication-renewal";
 import { parsePrescription } from "../prescription-parse";
-import type { PersistInput, PersistRecord } from "../import-shape";
+import type { PersistInput, PersistClinicalObservation } from "../import-shape";
 import { getObservationsForDocument } from "./medical";
 import { observationCategoryRank, observationsTabKey } from "../import-browser";
 import { encounterTypeDisplay } from "../encounter-kind";
@@ -825,10 +825,10 @@ export function getDocumentTriageRows(
   // serves whichever of them were hedged on. Ordered by the tab strip's own
   // category order, so "the first match's tab" means the leftmost tab.
   if (want.has("lab") || want.has("vitals") || want.has("medication")) {
-    const records = getObservationsForDocument(profileId, docId)
+    const observations = getObservationsForDocument(profileId, docId)
       .map((r) => ({ r, rank: observationCategoryRank(r.category) }))
       .sort((a, b) => a.rank - b.rank || a.r.id - b.r.id);
-    for (const { r } of records) {
+    for (const { r } of observations) {
       const kind = recordConfidenceKind(r.category);
       if (!want.has(kind)) continue;
       push(kind, observationsTabKey(r.category), r.id, [
@@ -946,7 +946,7 @@ export function getReprocessSnapshot(
   const source = documentSource(docId);
   const snap = emptySnapshot();
 
-  const records = db
+  const observations = db
     .prepare(
       `SELECT date, category, name, value, value_num, unit, reference_range,
               panel, flag, canonical_name, notes, external_id
@@ -967,7 +967,7 @@ export function getReprocessSnapshot(
     notes: string | null;
     external_id: string | null;
   }[];
-  snap.records = records.map((r) =>
+  snap.records = observations.map((r) =>
     recordRow({
       date: r.date,
       category: r.category,
@@ -1149,20 +1149,20 @@ export function getReprocessSnapshot(
 // classifyReprescription. Critically (#1280) it does NOT fold a derived med that
 // would resolve to a "separate" item (existing open course + provably different
 // strength, the #1027 carve-out): that is a genuinely-new medication and must
-// preview as an addition, never be silently hidden. `derivedRecords` are the fresh
-// extraction's records, from which we recover each derived med's strength the same
+// preview as an addition, never be silently hidden. `derivedObservations` are the fresh
+// extraction's observations, from which we recover each derived med's strength the same
 // way the commit path does (parsePrescription), keyed by the medicationRow key.
 export function foldConsolidatedMedsIntoSnapshot(
   profileId: number,
   snap: ImportSnapshot,
   derivedMeds: DiffRow[],
-  derivedRecords: PersistRecord[]
+  derivedObservations: PersistClinicalObservation[]
 ): void {
   const newStrengthByKey = new Map<string, string | null>();
-  for (const r of derivedRecords) {
+  for (const r of derivedObservations) {
     if (r.category !== "prescription" || !r.name?.trim()) continue;
     const key = medicationRow(r.name).key;
-    if (newStrengthByKey.has(key)) continue; // first record per key wins (mirrors grouping)
+    if (newStrengthByKey.has(key)) continue; // first observation per key wins (mirrors grouping)
     newStrengthByKey.set(
       key,
       parsePrescription({

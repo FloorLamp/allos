@@ -72,7 +72,7 @@ describe("CDA lab reference range + interpretation flag", () => {
         })
       )
     );
-    const rec = r.records.find((x) => x.category === "lab")!;
+    const rec = r.observations.find((x) => x.category === "lab")!;
     expect(rec.flag).toBe("high");
     expect(rec.reference_range).toBe("34.0–71.1 %");
   });
@@ -83,7 +83,7 @@ describe("CDA lab reference range + interpretation flag", () => {
         doc(
           labObs({ loinc: "718-7", name: "X", value: "1", unit: "u", interp })
         )
-      ).records.find((x) => x.category === "lab")!.flag;
+      ).observations.find((x) => x.category === "lab")!.flag;
     expect(flags("L")).toBe("low");
     expect(flags("H")).toBe("high");
     expect(flags("N")).toBe("normal");
@@ -106,7 +106,7 @@ describe("CDA lab reference range + interpretation flag", () => {
         })
       )
     );
-    const rec = r.records.find((x) => x.category === "lab")!;
+    const rec = r.observations.find((x) => x.category === "lab")!;
     expect(rec.flag).toBeNull();
     expect(rec.reference_range).toBe("13–17 g/dL");
   });
@@ -116,7 +116,7 @@ describe("CDA lab reference range + interpretation flag", () => {
       doc(
         labObs({ loinc: "1", name: "A", value: "5", unit: "mg/L", high: "10" })
       )
-    ).records.find((x) => x.category === "lab")!;
+    ).observations.find((x) => x.category === "lab")!;
     expect(hi.reference_range).toBe("≤ 10 mg/L");
     const txt = parseCcda(
       doc(
@@ -129,7 +129,7 @@ describe("CDA lab reference range + interpretation flag", () => {
           rangeText: "Negative",
         })
       )
-    ).records.find((x) => x.category === "lab")!;
+    ).observations.find((x) => x.category === "lab")!;
     expect(txt.reference_range).toBe("Negative");
     expect(txt.flag).toBe("abnormal");
   });
@@ -150,7 +150,7 @@ describe("CDA lab reference range + interpretation flag", () => {
         })
       )
     );
-    const rec = r.records.find(
+    const rec = r.observations.find(
       (x) => x.canonical === "Heart Rate" || x.name === "Heart Rate"
     )!;
     expect(rec.category).toBe("vitals");

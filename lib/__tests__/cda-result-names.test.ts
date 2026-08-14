@@ -179,7 +179,7 @@ describe("Epic MyChart originalText-inline analyte names (primary shape)", () =>
         data: Buffer.from(EPIC_RESULTS_CCD),
       },
     ]);
-    const labs = parseXdm(xdm).records.filter((r) => r.category === "lab");
+    const labs = parseXdm(xdm).observations.filter((r) => r.category === "lab");
     // Two numeric analytes + one qualitative; the nullFlavor Result.Type marker
     // AND the named-but-empty "Comment(s)" (nullFlavor value) rows are dropped.
     expect(labs.map((r) => r.name)).toEqual([
@@ -213,7 +213,7 @@ describe("narrative-referenced analyte names (mode a)", () => {
         data: Buffer.from(NARRATIVE_RESULTS_CCD),
       },
     ]);
-    const labs = parseXdm(xdm).records.filter((r) => r.category === "lab");
+    const labs = parseXdm(xdm).observations.filter((r) => r.category === "lab");
     expect(labs).toHaveLength(2);
     // Names come from the narrative <reference> targets, not the literal "Result".
     expect(labs.map((r) => r.name).sort()).toEqual(["Glucose", "Potassium"]);
@@ -230,7 +230,7 @@ describe("narrative-referenced analyte names (mode a)", () => {
   it("routes the named labs into the lab sink via the persist shape", () => {
     const parsed = parseCcda(NARRATIVE_RESULTS_CCD);
     const input = healthRecordToPersistInput(parsed, "ccda", "Health record");
-    const names = input.records
+    const names = input.observations
       .filter((r) => r.category === "lab")
       .map((r) => r.name)
       .sort();
@@ -285,7 +285,7 @@ const RESULTS_WITH_VITALS_AND_NOISE_CCD = `<?xml version="1.0" encoding="UTF-8"?
 
 describe("Results-section vitals + non-analyte filtering (#681)", () => {
   it("routes body weight/BMI to vitals and drops administrative rows", () => {
-    const recs = parseCcda(RESULTS_WITH_VITALS_AND_NOISE_CCD).records;
+    const recs = parseCcda(RESULTS_WITH_VITALS_AND_NOISE_CCD).observations;
     // The administrative rows never become records at all.
     expect(recs.some((r) => /expiration|approved/i.test(r.name))).toBe(false);
     // Glucose stays a lab; weight + BMI are reclassified as vitals despite the
@@ -327,7 +327,7 @@ const RESULTS_LEAD_AND_PERCENTILE_CCD = `<?xml version="1.0" encoding="UTF-8"?>
 
 describe("Results-section lead mapping + derived-percentile drop (p3/p4)", () => {
   it("maps capillary lead to Lead and drops the BMI percentile", () => {
-    const recs = parseCcda(RESULTS_LEAD_AND_PERCENTILE_CCD).records;
+    const recs = parseCcda(RESULTS_LEAD_AND_PERCENTILE_CCD).observations;
     // The derived percentile never becomes a record.
     expect(recs.some((r) => r.loinc === "59576-9")).toBe(false);
     expect(recs.some((r) => /percentile/i.test(r.name))).toBe(false);
@@ -341,7 +341,7 @@ describe("Results-section lead mapping + derived-percentile drop (p3/p4)", () =>
 
 describe("LOINC carried via translation / codeSystemName (mode b)", () => {
   it("extracts the LOINC and reaches the canonical identity", () => {
-    const vitals = parseCcda(TRANSLATION_LOINC_CCD).records.filter(
+    const vitals = parseCcda(TRANSLATION_LOINC_CCD).observations.filter(
       (r) => r.category === "vitals"
     );
     expect(vitals).toHaveLength(2);

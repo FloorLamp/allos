@@ -32,7 +32,7 @@ describe("encounter-reference resolution", () => {
       ],
       "fhir"
     );
-    const med = out.records.find((r) => r.category === "prescription");
+    const med = out.observations.find((r) => r.category === "prescription");
     expect(med?.encounter_external_id).toBe("ccda:encounter:visit-1");
   });
 
@@ -56,7 +56,7 @@ describe("encounter-reference resolution", () => {
       "fhir"
     );
     expect(
-      out.records.some(
+      out.observations.some(
         (r) => r.encounter_external_id === "ccda:encounter:visit-1"
       )
     ).toBe(true);
@@ -115,7 +115,7 @@ describe("encounter-reference resolution", () => {
       ],
       "fhir"
     );
-    const med = out.records.find((r) => r.category === "prescription");
+    const med = out.observations.find((r) => r.category === "prescription");
     expect(med).toBeDefined();
     expect(med?.encounter_external_id ?? null).toBeNull();
   });
