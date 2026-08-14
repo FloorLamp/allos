@@ -149,8 +149,23 @@ only inside its recognized classes, so an unrecognized analyte's narrative was b
 discarded by the very clear that claims to follow the pointer. And the **row** must
 not be edit-locked (`isEditLocked`, #133): `updateResult` writes the user's chosen
 flag and `edited = 1` and then reconciles on the next line, so without the lock the
-save deletes the flag it just stored. The lock gates this clear only; the older
-#544/#548 transitions are unchanged.
+save deletes the flag it just stored.
+
+That lock reaches a **second** clear, and only a second one (#2715).
+`qualitativeFlagResolution` deletes a stored flag in exactly two places: the no-result
+clear above, and the #548 §1 clear of a blunt `abnormal` on a context-neutral attribute.
+The **identity** half of that second clear — a blood type, an ABO/Rh, a genotype, marked
+by `immutable` on the classification and by nothing else — is gated the same way, because
+both clears exist to remove an **extractor guess** on a value that cannot be abnormal, and
+on an edit-locked row the flag is not a guess but the one thing in the row a human is known
+to have chosen. A rule that held on one branch and not its neighbour read as a bug either
+way. The gate stops there on purpose: a **mutable** neutral attribute (urinalysis colour,
+morphology pattern) still clears while locked, and neither PROMOTION moves — #544's immune
+titer and #629's bad-polarity positive still resolve on a locked row, because the lock
+protects what a person wrote and is not a licence to leave an infection-positive displaying
+as `Normal`. Nothing strips what is already stored, and the two axes stay independent: an
+identity row keeping its hand-set flag is still exempt from the retest clock (#548 §2 reads
+the same `immutable`).
 
 It sits on a **different axis from `Assessment`**, and the map says so explicitly
 because conflating the two is the mistake #2479's body made. A `QualitativeResult`

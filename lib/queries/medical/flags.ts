@@ -159,9 +159,11 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
   // (#544), clear a blunt "abnormal" on a context-neutral attribute like a blood type
   // (#548 §1) — leaving infection markers + unrecognized values alone. Same profile
   // scoping and optional id filter as the numeric pass.
-  // `edited` rides along for the #2687 no-result clear's hand-edit gate (#2712 R3):
-  // updateResult writes the user's chosen flag AND edited = 1, then calls this on the
-  // very next line, so without it the save silently deletes the flag it just stored.
+  // `edited` rides along for the hand-edit gate on the two flag-DELETING transitions —
+  // the #2687 no-result clear (#2712 R3) and the #548 §1 clear on an identity-class row
+  // (#2715): updateResult writes the user's chosen flag AND edited = 1, then calls this
+  // on the very next line, so without it the save silently deletes the flag it just
+  // stored. The column is already in this SELECT, so the identity gate costs no query.
   let qsql = `SELECT id, canonical_name, name, value, notes, reference_range, flag, loinc, edited
      FROM medical_records
      WHERE profile_id = ? AND value_num IS NULL AND category IN ('lab','biomarker')`;
