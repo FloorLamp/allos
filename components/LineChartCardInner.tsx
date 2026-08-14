@@ -103,6 +103,7 @@ export default function LineChartCard({
   sparklineDots = false,
   animateTooltip = true,
   gapFill,
+  singleReadingAsChart = false,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
@@ -170,6 +171,13 @@ export default function LineChartCard({
   // Show resting points in sparkline mode. The shared density limit still removes
   // them when they would fuse into a heavy line.
   sparklineDots?: boolean;
+  // Keep a ONE-READING series chart-shaped, opting out of the single-reading mark
+  // below (#2653 state 1). A declared policy, not a styling preference: the sleep
+  // surface is a chart at every range, including a one-day one, and TrendMiniCard
+  // has carried this same per-caller opt-out since before the degrade moved into
+  // this component. Threading it here is what keeps a tile and the card it taps
+  // through to agreeing — which is the whole reason the degrade lives in one place.
+  singleReadingAsChart?: boolean;
   // Recharts animates tooltip transforms between points. A chart with labeled
   // horizontal bands can force a left/right edge flip; callers may disable that
   // transform so the tooltip snaps inside the plot instead of crossing the card.
@@ -297,11 +305,7 @@ export default function LineChartCard({
   // sentence and the drawing can never name different days.
   const lastReadingDate = trailingHole
     ? (series
-        .slice(
-          0,
-          series.findIndex((d) => d.date === trailingHole.from)
-        )
-        .filter((d) => d.value != null)
+        .filter((d) => d.value != null && d.date < trailingHole.from)
         .at(-1)?.date ?? null)
     : null;
   // THE BROKEN STROKE (#2653 state 3). recharts' `connectNulls` is all-or-nothing
@@ -401,7 +405,10 @@ export default function LineChartCard({
   // and "one reading on Jul 13" is not a sentence about it. A caller that has
   // already drawn its own mark never reaches this branch, so the two cannot
   // double up.
-  const lone = isoDates && key === "value" ? loneReading(data) : null;
+  const lone =
+    isoDates && key === "value" && !singleReadingAsChart
+      ? loneReading(data)
+      : null;
   if (lone && lone.value != null) {
     return (
       <div className={`${heightClass} min-w-0 max-w-full`}>
@@ -572,6 +579,12 @@ export default function LineChartCard({
               fill={c.grid}
               fillOpacity={0.45}
               stroke="none"
+              // A plot can now be shaded by two unrelated things — a protocol
+              // window the reader toggled on, and a silence in the data. Both are
+              // recharts reference areas, so the unlogged run carries its own
+              // class: "is a protocol shaded here?" must never be answered by a
+              // gap.
+              className="chart-unlogged-band"
               label={
                 hole.trailing
                   ? undefined

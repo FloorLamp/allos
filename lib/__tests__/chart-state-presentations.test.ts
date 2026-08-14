@@ -50,6 +50,20 @@ describe("state 1 — one reading is a marker, not a plot", () => {
     expect(/formatMonthDay\(lone\.date/.test(funnel)).toBe(true);
   });
 
+  it("a caller that declared itself chart-shaped is not overruled", () => {
+    // The regression this pins: moving the degrade into the funnel made it
+    // outrank `singleReadingAsChart`, a per-caller declaration that predates it
+    // ("sleep is a chart at every range"). Three sleep tiles rendered no chart
+    // subtree at all. A shared decision must still read the declarations its
+    // callers already carry.
+    const gate = funnel.slice(
+      funnel.indexOf("const lone ="),
+      funnel.indexOf("<SingleReadingMark")
+    );
+    expect(gate).toContain("!singleReadingAsChart");
+    expect(/singleReadingAsChart\?: boolean/.test(funnel)).toBe(true);
+  });
+
   it("only a dated day-grain series may take it", () => {
     // A per-event or intraday x is not a calendar day, so "one reading on Jul 13"
     // is not a sentence about it. Same gate as every other honesty state here.
@@ -78,6 +92,18 @@ describe("states 2 and 4 — the quiet span is visibly quiet, and names itself",
     expect(funnel).toContain("Data → Review");
   });
 
+  it("the since-date never reaches for an index that may not exist", () => {
+    // `findIndex` returns -1 for a date not in the series, and `slice(0, -1)`
+    // silently drops the LAST element instead of erroring — a wrong answer with
+    // no symptom. The date is selected by comparison instead.
+    const derive = funnel.slice(
+      funnel.indexOf("const lastReadingDate"),
+      funnel.indexOf("const strokeRuns")
+    );
+    expect(derive).not.toContain("findIndex");
+    expect(derive).toContain("d.date < trailingHole.from");
+  });
+
   it("the since-date is read off the plotted series, never recomputed", () => {
     // A caption naming a different day than the drawing is the failure mode of
     // any annotation derived twice.
@@ -95,6 +121,13 @@ describe("state 3 — an over-limit hole earns a hole", () => {
   it("the run is drawn as a band the width of the days it covers", () => {
     expect(/holes\.map\(\(hole\)/.test(funnel)).toBe(true);
     expect(funnel).toContain("unloggedGapLabel(hole.days)");
+  });
+
+  it("an unlogged band is distinguishable from a protocol window", () => {
+    // Both are recharts reference areas. Without a class of its own, a silence
+    // in the data answers "is a protocol shaded here?" — which is exactly how
+    // toggling protocols off came to leave ten shaded areas on the plot.
+    expect(funnel).toContain('className="chart-unlogged-band"');
   });
 
   it("the band is neutral ink, never a second series", () => {
