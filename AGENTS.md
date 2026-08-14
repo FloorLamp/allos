@@ -263,13 +263,37 @@ that could not be TAKEN answers `null`, which is a GAP: the baseline is re-taken
 for the next migration and the boot says so once, because carrying it forward as a
 baseline switched the guard off for the rest of the boot in silence.
 
+Those two guards are about a delete's SIDE EFFECTS. The delete ITSELF is the other
+half, and it splits: a migration that FAILS loses nothing (the transaction rolls
+back, no ledger row), while one that SUCCEEDS on the wrong rows was unrecoverable
+— #2699's open question 6 is rows already lost that way. So `runMigrations` copies
+the database aside first (#2702, `lib/migrations/snapshot.ts` over the pure
+`snapshot-policy.ts`), after the downgrade guards and before the foreign-key
+toggle, where it is in the autocommit `VACUUM INTO` needs and disturbs neither the
+`foreign_keys = OFF` posture nor the transaction structure rollback depends on.
+The trigger is AN UPGRADE IS HAPPENING, never a per-migration "this deletes rows"
+declaration: that declaration is #2444, a lexical scan is what #2703 proved cannot
+be complete (and is unavailable at runtime), and a behavioural check cannot run
+BEFORE the evidence exists. So it asks the one question the runner already answers
+exactly — is the pending set non-empty — and a new migration inherits the
+protection with nothing to declare or misspell. Nothing pending, a fresh install
+(empty ledger ⇒ empty database), `:memory:` and the operator opt-out all skip; two
+copies and 30 days bound the rest, because this is recovery from a bad upgrade and
+not an archive. A copy that CANNOT be taken REFUSES THE BOOT — the one place in
+this runner where refusing is right, because nothing has been applied so it is
+reversible (the previous image still boots this database) while the delete it
+prevents is not, which is the exact opposite of `reportOrphansIntroduced`'s
+already-committed report. The refusal names `ALLOS_MIGRATION_SNAPSHOT=off`, so
+proceeding uncovered is a decision rather than a silence.
+
 The runner applies migrations in individual immediate transactions, guards
 against a newer database being opened by older code, and temporarily disables
 foreign-key enforcement for safe SQLite table rebuilds. Per-boot work such as
 auth bootstrap, canonical biomarker reconciliation, cleanup, and timezone
 seeding belongs in `boot-tasks.ts`, outside the versioned runner.
 
-See `docs/versioned-migrations-spec.md` for the design and history.
+See `docs/versioned-migrations-spec.md` for the design and history, and
+`docs/internals/migration-snapshot.md` for the snapshot's policy and restore path.
 
 ### Observation-shaped data
 
