@@ -41,6 +41,8 @@ import {
   planUploadMirror,
   resolveOffsiteDir,
 } from "./backup-offsite";
+import { migrationSnapshotDir } from "./migrations/snapshot-policy";
+import { pruneMigrationSnapshots } from "./migrations/snapshot";
 import { createLogger } from "./log";
 
 const log = createLogger("backup");
@@ -635,6 +637,26 @@ export function performBackup(): {
       log.info("pruned pre-restore asides", { prunedAsides });
   } catch (e) {
     log.warn("pre-restore aside prune failed", {
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  // Prune pre-migration snapshots (#2702) on the same cadence, through the same
+  // pure plan the runner uses. The runner prunes them just before it writes a new
+  // one, which is enough while an instance keeps upgrading — this is what applies
+  // the AGE cap to one that has stopped, so a copy of the whole database does not
+  // sit on the bind mount indefinitely protecting an upgrade from last year.
+  try {
+    const prunedSnapshots = pruneMigrationSnapshots(
+      migrationSnapshotDir(
+        dbFilePath(),
+        process.env.ALLOS_MIGRATION_SNAPSHOT_DIR
+      )
+    );
+    if (prunedSnapshots > 0)
+      log.info("pruned pre-migration snapshots", { prunedSnapshots });
+  } catch (e) {
+    log.warn("pre-migration snapshot prune failed", {
       err: e instanceof Error ? e.message : String(e),
     });
   }
