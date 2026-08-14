@@ -24,21 +24,13 @@ import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 // primitives are stubbed for it (lib/__db_tests__/telegram-spies.ts). They
 // delegate to the real module by default, so this opt-in is what replaces the
 // per-spec `vi.mock` that used to cost this file a private module registry.
-beforeAll(() => {
-  stubTelegramSends();
-  // A CONSTANT message id, which is what this file's own mock returned before the
-  // stub moved to lib/__db_tests__/telegram-spies.ts. Keeping it preserves exactly
-  // what these tests verified; it is not cosmetic.
-  //
-  // Under the shared stub's realistic incrementing ids, "a second /food strips the
-  // first" counts TWO notify_messages rows instead of one — the two sends no longer
-  // collide on one (chat_id, message_id). That test's query counts every
-  // `kind = 'food'` row rather than only live ones, so it was passing because the
-  // ids were equal, not because the strip had happened. Worth settling on its own;
-  // a performance change is the wrong place to alter what a notification test
-  // asserts.
-  vi.mocked(sendMessageRaw).mockResolvedValue(1);
-});
+// The shared stub hands out a FRESH id per send, which is what Telegram does. This
+// file used to pin a CONSTANT one (#2747 kept it deliberately, #2749 removed it),
+// and four "one live keyboard" assertions below were passing because of it:
+// `notify_messages` is UNIQUE on `(chat_id, message_id)`, so two sends sharing an id
+// collided into ONE row and every `COUNT(*) = 1` held whether or not the supersede
+// had happened. Distinct ids are what make those counts mean anything at all.
+beforeAll(() => stubTelegramSends());
 
 const sendMock = vi.mocked(sendMessageRaw);
 
