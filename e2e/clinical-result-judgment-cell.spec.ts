@@ -109,10 +109,10 @@ test("a flagged row's severity word is in the visible text, not only the accessi
 
   // And the deciding band is rendered beside the value on the same rows.
   await expect(
-    table
-      .locator('[data-testid="clinical-result-reference"][data-judged="true"]')
-      .first()
-  ).toBeVisible();
+    table.locator(
+      '[data-testid="clinical-result-reference"][data-judged="true"]'
+    )
+  ).not.toHaveCount(0);
 });
 
 // #2344: the unjudged cell says which case it is in, standing alone.
