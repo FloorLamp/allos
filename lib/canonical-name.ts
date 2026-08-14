@@ -798,12 +798,19 @@ const DEXA_MASS_COMPARTMENTS = ["Fat", "Lean", "Total"];
 // "Trunk to Legs Fat Ratio" — a different denominator (all four limbs rather than the
 // legs), the same arithmetic over the same scan's segments — and a report that prints
 // one often prints both.
+//
+// "Bone Mineral Density Z-Score" left in #2679 — the THIRD time this one sentence was
+// found false of a member (#2322 for the two mass indices, #2675 declining to extend
+// it to "Bone Mineral Density, Total"). A Z-score IS an age- and sex-matched
+// population reference; "no population reference range exists for them" states the
+// opposite of what the value is, and the reason is shown to the reader as why their
+// marker isn't curated. See DEXA_BMD_Z_SCORE below. Every remaining member of this
+// list was re-read against both clauses of that sentence in the same pass.
 const DEXA_SCAN_LEVEL = [
   "Total Mass",
   "Total Fat Mass",
   "Total Lean Mass",
   "Bone Mineral Content, Total",
-  "Bone Mineral Density Z-Score",
   "Android/Gynoid Ratio",
   "Trunk to Legs Fat Ratio",
   "Trunk to Limb Fat Mass Ratio",
@@ -825,6 +832,45 @@ const DEXA_TOTAL_BMD: UncuratedAnalyte = {
   instead: "Bone Mineral Density T-Score",
   reason:
     "Whole-body bone mineral density in g/cm² isn’t comparable between scanners, which is why bone density is read as a T-score — the same measurement expressed against the reference population. Allos trends the T-score, so that is where your bone density is tracked.",
+};
+
+// The OTHER standardization of that same whole-body density (#2679), and the third
+// time DEXA_DECOMPOSITION's sentence was found false of a member it was covering.
+// The curation call is written out here because the next reader will ask it again.
+//
+// A DEXA measures one bone mineral density and prints two standardizations of it. The
+// T-score counts standard deviations from PEAK YOUNG-ADULT bone; the Z-score counts
+// them from AGE- AND SEX-MATCHED PEERS. One measurement, two reference populations,
+// diverging with age by construction: at seventy a T-score of -2.5 and a Z-score of
+// 0.0 can describe the same skeleton.
+//
+// `covered-elsewhere` → the T-score, on exactly the argument #2675 made for the
+// absolute g/cm²: all three are the same measurement, so the quantity IS tracked and
+// there is something real to point at. This is not the STRESS_TEST_PEAK_VITALS false
+// promise, where a peak reading has no resting series it could belong to — a reader
+// who follows this link lands on their own bone density from their own scan. An
+// `out-of-scope` declaration whose reason then named the T-score would be this shape
+// wearing the other one's clothes, and would drop the link the reader wants.
+//
+// NOT curated as a second entry — the alternative shape — and the reason is a property
+// of this app rather than of the clinic: a Z-score is age-adjusted, so it holds steady
+// while you lose bone at the population rate. A longitudinal tracker that plotted it
+// would draw a flat line straight through the decline it exists to surface. The
+// T-score's reference is fixed, so it moves when the bones do, and it is the score the
+// WHO thresholds (−1.0 osteopenia, −2.5 osteoporosis) in the curated entry's band are
+// defined on. Curating both would also put two lines on one measurement that separate
+// for a reason that is not bone.
+//
+// The wrinkle, recorded rather than buried: the ISCD reads bone density by Z-score
+// rather than T-score below age 50 and before menopause, where Z ≤ −2.0 ("below the
+// expected range for age") prompts a workup for secondary causes. That is an argument
+// about whether the CURATED T-score entry's band should be life-stage aware, not about
+// this name deserving its own series, and it is left open rather than settled here.
+const DEXA_BMD_Z_SCORE: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "Bone Mineral Density T-Score",
+  reason:
+    "A bone density Z-score compares you with others of your age and sex, so it holds steady for as long as your bones track the average for your age — including while that average falls. Allos trends the T-score from the same scan instead: the same bone density measured against peak young-adult bone, which is the comparison osteoporosis thresholds are defined on and the one that moves when your bone density does. The two scores are different numbers from one measurement, because the reference populations differ.",
 };
 
 // VAT area (cm²) and VAT volume (cm³) are the SAME visceral-fat estimate the curated
@@ -922,9 +968,10 @@ const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
   ["Stress Test Maximum Blood Pressure Systolic", STRESS_TEST_PEAK_VITALS],
   ["Stress Test Maximum Blood Pressure Diastolic", STRESS_TEST_PEAK_VITALS],
   ["Stress Test Maximum Heart Rate", STRESS_TEST_PEAK_VITALS],
-  // The two DEXA scan-level names that are covered ELSEWHERE rather than out of
-  // scope (#2643) — they carry an `instead`, so they cannot ride the cross product.
+  // The DEXA scan-level names that are covered ELSEWHERE rather than out of scope
+  // (#2643, #2679) — they carry an `instead`, so they cannot ride the cross product.
   ["Bone Mineral Density, Total", DEXA_TOTAL_BMD],
+  ["Bone Mineral Density Z-Score", DEXA_BMD_Z_SCORE],
   ["Visceral Adipose Tissue Area", DEXA_VAT_ALTERNATE_UNIT],
   ["Visceral Adipose Tissue Volume", DEXA_VAT_ALTERNATE_UNIT],
   ...dexaDecompositionNames().map((name): [string, UncuratedAnalyte] => [
