@@ -15,7 +15,7 @@ import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-daily-totals-write";
 import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
-import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
+import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./intake-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import { OFFER_COLLAPSE_PREFIX, OFFER_EXPAND_PREFIX } from "./offer-tail";
 import {
@@ -43,7 +43,7 @@ export type InlineKeyboard = {
 export interface TakeCallback {
   profileId: number;
   doseId: number;
-  suppId: number | null;
+  itemId: number | null;
   date: string;
 }
 
@@ -92,10 +92,10 @@ export function keyboardDoseFootprint(rows: InlineKeyboard): {
   return { doseIds: [...doseIds], slots: [...slots] };
 }
 
-// Parse a "<prefix>:<profileId>:<doseId>:<suppId>:<date>" dose button token for a
+// Parse a "<prefix>:<profileId>:<doseId>:<itemId>:<date>" dose button token for a
 // given prefix ("take" or "skip"). The profile id names who the button was sent
 // to; the handler still resolves the acting profile from the chat id and
-// re-checks the dose→supplement→profile chain, so this id is a cross-check, never
+// re-checks the dose→item→profile chain, so this id is a cross-check, never
 // trusted on its own. Anything malformed (wrong prefix, bad ids, missing date)
 // returns null.
 function parseDoseCallback(
@@ -103,18 +103,18 @@ function parseDoseCallback(
   prefix: "take" | "skip"
 ): TakeCallback | null {
   if (typeof data !== "string" || !data.startsWith(`${prefix}:`)) return null;
-  const [, profStr, doseStr, suppStr, date] = data.split(":");
+  const [, profStr, doseStr, itemStr, date] = data.split(":");
   const profileId = Number(profStr);
   const doseId = Number(doseStr);
   if (!profileId || !doseId || !date) return null;
-  return { profileId, doseId, suppId: Number(suppStr) || null, date };
+  return { profileId, doseId, itemId: Number(itemStr) || null, date };
 }
 
 export function parseTakeCallback(data: unknown): TakeCallback | null {
   return parseDoseCallback(data, "take");
 }
 
-// Parse a "skip:<profileId>:<doseId>:<suppId>:<date>" button token — the ⏭️ Skip
+// Parse a "skip:<profileId>:<doseId>:<itemId>:<date>" button token — the ⏭️ Skip
 // action (#232), mirroring parseTakeCallback exactly (same shape, "skip" prefix).
 export function parseSkipCallback(data: unknown): TakeCallback | null {
   return parseDoseCallback(data, "skip");
@@ -138,7 +138,7 @@ export function takeMatchesProfile(
 // button token was minted for — but only when that profile actually shares this
 // chat (else the token belongs to a different chat's profile: refuse). Returns
 // null when no chat profile matches the token. The caller still passes the
-// resolved id to markDoseTaken, which re-verifies the dose→supplement→profile
+// resolved id to markDoseTaken, which re-verifies the dose→item→profile
 // chain, so this only decides which profile to scope to.
 export function resolveTapProfile(
   take: { profileId: number },
@@ -389,21 +389,21 @@ export function preventiveCloseText(outcome: PreventiveTapOutcome): string {
 // 📦 Ordered — remind me in 3 days → bus snooze via refillSignalKey (#227). No
 // "mark refilled" button: that needs an amount, which a button handles badly (a
 // deep-link opens the form instead). The token carries the (integer, never-
-// recycled) supplement id.
+// recycled) intake-item id.
 
 export interface RefillCallback {
   profileId: number;
-  suppId: number;
+  itemId: number;
 }
 
-// Parse a "rfsnooze:<profileId>:<suppId>" token. Malformed → null.
+// Parse a "rfsnooze:<profileId>:<itemId>" token. Malformed → null.
 export function parseRefillCallback(data: unknown): RefillCallback | null {
   if (typeof data !== "string" || !data.startsWith("rfsnooze:")) return null;
-  const [, profStr, suppStr] = data.split(":");
+  const [, profStr, itemStr] = data.split(":");
   const profileId = Number(profStr);
-  const suppId = Number(suppStr);
-  if (!profileId || !suppId) return null;
-  return { profileId, suppId };
+  const itemId = Number(itemStr);
+  if (!profileId || !itemId) return null;
+  return { profileId, itemId };
 }
 
 export type RefillTapOutcome = "snoozed" | "stale-item";
@@ -417,7 +417,7 @@ export function refillAnswerText(outcome: RefillTapOutcome): string {
 // ---- Phase 2: escalation buttons (issue #233) ----
 // ✅ Confirmed taken → markDoseTaken (its DoseTakenOutcome answers honestly);
 // 👍 I'm on it → an ack that suppresses re-nudge WITHOUT claiming the dose taken.
-// The token mirrors a dose tap's shape (profile/dose/supp/date) under distinct
+// The token mirrors a dose tap's shape (profile/dose/item/date) under distinct
 // "esctake"/"escack" prefixes.
 
 // ⏭️ Skip joins the two original affordances (#1716): a skip is a RECORDED DELIBERATE
@@ -427,7 +427,7 @@ export type EscalationAction = "take" | "ack" | "skip";
 export interface EscalationCallback {
   profileId: number;
   doseId: number;
-  suppId: number | null;
+  itemId: number | null;
   date: string;
   action: EscalationAction;
 }
@@ -443,14 +443,14 @@ export function parseEscalationCallback(
   else if (data.startsWith("escskip:")) action = "skip";
   else if (data.startsWith("escack:")) action = "ack";
   else return null;
-  const [, profStr, doseStr, suppStr, date] = data.split(":");
+  const [, profStr, doseStr, itemStr, date] = data.split(":");
   const profileId = Number(profStr);
   const doseId = Number(doseStr);
   if (!profileId || !doseId || !date) return null;
   return {
     profileId,
     doseId,
-    suppId: Number(suppStr) || null,
+    itemId: Number(itemStr) || null,
     date,
     action,
   };
@@ -459,15 +459,15 @@ export function parseEscalationCallback(
 // AUTHORIZATION for an escalation tap (issue #233's recorded design decision).
 // Chat-id auth: a tap is authorized when the chat it came from is one of the
 // chats the escalation could have been delivered to for this profile — the
-// profile's OWN Telegram chat, or the supplement's escalate_chat_id (a caregiver
+// profile's OWN Telegram chat, or the item's escalate_chat_id (a caregiver
 // chat). This deliberately means ANYONE in that chat can confirm/ack on the
 // profile's behalf, consistent with the existing dose-button model and intended
 // for household caregiving. Returns the token's profile id when authorized, else
-// null. `authorizedChatIds` must be built from the DOSE's own supplement (issue
-// #615), never the token's supp id, so a caregiver chat can only act on the doses
-// of the supplement actually routed to it. The caller still passes the resolved id
-// to markDoseTaken, which re-verifies the dose→supplement→profile chain (and
-// refuses a token whose supp id contradicts the dose), so a forged dose/supp id
+// null. `authorizedChatIds` must be built from the DOSE's own item (issue
+// #615), never the token's item id, so a caregiver chat can only act on the doses
+// of the item actually routed to it. The caller still passes the resolved id
+// to markDoseTaken, which re-verifies the dose→item→profile chain (and
+// refuses a token whose item id contradicts the dose), so a forged dose/item id
 // from an authorized chat is rejected there too.
 export function resolveEscalationTap(
   token: { profileId: number },

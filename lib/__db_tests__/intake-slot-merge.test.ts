@@ -15,7 +15,7 @@ import {
   buildIntakeReminderForSlots,
   collectWindowDoses,
   getPreWorkoutSlotMinute,
-} from "@/lib/notifications/supplements";
+} from "@/lib/notifications/intake";
 import { inferWorkoutSchedule } from "@/lib/queries";
 
 function createProfile(name: string): number {
@@ -94,10 +94,10 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
 
     const td = today(p);
     const pre = collectWindowDoses(p, "PreWorkout", td);
-    expect(pre.map((e) => e.supp.name)).toContain("Creatine (test)");
+    expect(pre.map((e) => e.item.name)).toContain("Creatine (test)");
     // No double-listing: it left the Morning fold.
     const morning = collectWindowDoses(p, "Morning", td);
-    expect(morning.map((e) => e.supp.name)).not.toContain("Creatine (test)");
+    expect(morning.map((e) => e.item.name)).not.toContain("Creatine (test)");
   });
 
   it("an EXPLICIT Morning bucket is honored even with an inferred cadence", () => {
@@ -107,10 +107,10 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
 
     const td = today(p);
     expect(
-      collectWindowDoses(p, "Morning", td).map((e) => e.supp.name)
+      collectWindowDoses(p, "Morning", td).map((e) => e.item.name)
     ).toContain("Beta-Alanine (test)");
     expect(
-      collectWindowDoses(p, "PreWorkout", td).map((e) => e.supp.name)
+      collectWindowDoses(p, "PreWorkout", td).map((e) => e.item.name)
     ).not.toContain("Beta-Alanine (test)");
     // No anytime pre_workout dose → the pseudo-slot has no time.
     expect(getPreWorkoutSlotMinute(p)).toBeNull();
@@ -127,7 +127,7 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
 
     expect(getPreWorkoutSlotMinute(p)).toBeNull();
     expect(
-      collectWindowDoses(p, "Morning", today(p)).map((e) => e.supp.name)
+      collectWindowDoses(p, "Morning", today(p)).map((e) => e.item.name)
     ).toContain("Creatine (test)");
   });
 });

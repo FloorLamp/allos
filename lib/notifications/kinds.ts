@@ -22,7 +22,7 @@
 // or vice versa.
 
 import type { NotificationKind } from "./types";
-import type { ReminderWindow } from "./supplement-format";
+import type { ReminderWindow } from "./intake-format";
 
 // Every value of the NotificationKind union, as data. The union is the type-level
 // source of truth; this is its runtime shadow, and the reflection test fails if the

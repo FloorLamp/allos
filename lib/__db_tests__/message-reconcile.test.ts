@@ -71,7 +71,7 @@ import { setProfileFoodTelegram } from "@/lib/settings/notifications";
 import { discardWorkoutSession } from "@/lib/workout-finish";
 import { dispatch, prefixForProfile } from "@/lib/notifications";
 import { prefixMessage } from "@/lib/notifications/types";
-import { buildIntakeReminderForSlots } from "@/lib/notifications/supplements";
+import { buildIntakeReminderForSlots } from "@/lib/notifications/intake";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import {
   claimMessagePointerClose,

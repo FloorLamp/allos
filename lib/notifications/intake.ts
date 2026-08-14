@@ -1,8 +1,8 @@
-// Builds the supplement-reminder notification for a send slot (a time-of-day
+// Builds the intake-reminder notification for a send slot (a time-of-day
 // window, or the workout-relative PreWorkout pseudo-slot — issue #1154), reusing
 // the schedule helpers so workout/rest-day and situational logic is honored.
 // The DB-touching gather lives here; the message formatting is the pure
-// renderWindowMessage / renderMergedIntakeMessage in ./supplement-format.
+// renderWindowMessage / renderMergedIntakeMessage in ./intake-format.
 
 import { today } from "../db";
 import { lastNDates, zonedDateParts } from "../date";
@@ -44,7 +44,7 @@ import {
   type IntakeSlotPart,
   type ReminderWindow,
   type WindowDose,
-} from "./supplement-format";
+} from "./intake-format";
 import { preWorkoutSlotMinute } from "./schedule";
 import type { NotificationMessage } from "./types";
 import { isOnDemand } from "../intake-schedule";
@@ -189,10 +189,10 @@ function gatherWindowDoses(
   date: string,
   doses: IntakeDose[]
 ): WindowDose[] {
-  const supplements = getIntakeItems(profileId).filter((s) => s.active);
-  if (supplements.length === 0) return [];
+  const items = getIntakeItems(profileId).filter((item) => item.active);
+  if (items.length === 0) return [];
 
-  const suppById = new Map(supplements.map((s) => [s.id, s]));
+  const itemById = new Map(items.map((item) => [item.id, item]));
   const taken = getTakenDoseIds(profileId, date);
   const skipped = getSkippedDoseIds(profileId, date);
   const activeSituations = new Set(getActiveSituations(profileId));
@@ -277,33 +277,33 @@ function gatherWindowDoses(
 
   const entries: WindowDose[] = [];
   for (const dose of doses) {
-    const supp = suppById.get(dose.item_id);
-    if (!supp) continue;
+    const item = itemById.get(dose.item_id);
+    if (!item) continue;
     // The CALENDAR gate on the SEND path (#1602): a weekly med's reminder fires on its
     // on-days only, and an out-of-window taper row stops reminding without being
     // retired. This is the half that makes the whole feature safe to use — the item can
     // stay `must` (reminders + missed-dose escalation intact) precisely because the
     // machinery can now say "not today" instead of the user having to silence it.
-    if (!doseDueOn(supp, dose, ctx)) continue;
+    if (!doseDueOn(item, dose, ctx)) continue;
     if (
       doseSendSlot(
-        supp.condition,
+        item.condition,
         timeBucket(dose.time_of_day),
         workoutTimed
       ) !== slot
     )
       continue;
-    // A dose is "due" on a past date when its supplement was due that day
+    // A dose is "due" on a past date when its item was due that day
     // (workout/situational logic); situations are only known as of now.
     const dd = takenByDose.get(dose.id);
     // Clamp the window to the dose's lifetime (#430/#1442) before summarizing it:
     // a fixed lookback over a med added this morning is all pre-existence days,
     // and scoring them would make the very first reminder announce "0% adherence".
-    const since = doseWindowSince(supp.created_at, dose.created_at, dd, tz);
+    const since = doseWindowSince(item.created_at, dose.created_at, dd, tz);
     const strip = doseStrip(
       since ? windowDates.filter((d) => d >= since) : windowDates,
       (d) =>
-        doseDueOn(supp, dose, {
+        doseDueOn(item, dose, {
           date: d,
           isWorkoutDay: workoutDays.has(d),
           activeSituations: situationsOn(d),
@@ -313,7 +313,7 @@ function gatherWindowDoses(
     );
     entries.push({
       dose,
-      supp,
+      item,
       taken: taken.has(dose.id),
       skipped: skipped.has(dose.id),
       adherence: adherenceSummary(strip),
@@ -321,12 +321,12 @@ function gatherWindowDoses(
       // while the item is a live demotion candidate. Detection state alone governs
       // it — an in-app dismissal deliberately does NOT remove it, because for a
       // tap-only user this is the only escape hatch that ever reaches them.
-      demotable: demotableItemIds.has(supp.id),
+      demotable: demotableItemIds.has(item.id),
       // Ride-the-nag again (#2574): a Stop button appears on this dose's row only while
       // the item is a live unconfirmed-import candidate. Detection state alone governs
       // it, and any log of either status clears the candidacy on the next gather — so
       // the button cannot outlive the claim it is making.
-      stoppable: unconfirmedItemIds.has(supp.id),
+      stoppable: unconfirmedItemIds.has(item.id),
       // The declared timing as a live check (#2022). Today only — see the read above.
       ...(isForToday
         ? { foodCheck: foodTimingCheck(dose.food_timing, minutesSinceFood) }
@@ -398,12 +398,12 @@ export function buildIntakeReminderForSlots(
   return { message, slots: parts.map((p) => p.slot) };
 }
 
-// Reminder for supplements due in one slot today, or null when nothing is due —
+// Reminder for intake items due in one slot today, or null when nothing is due —
 // including when every dose for the slot is already logged, so a reminder is
 // never sent just to say everything's done. (The tick sends via
 // buildIntakeReminderForSlots; this single-slot form serves the manual CLI mode
 // and keeps the classic per-window shape.)
-export function buildSupplementReminder(
+export function buildIntakeReminder(
   profileId: number,
   window: IntakeSendSlot
 ): NotificationMessage | null {
@@ -422,7 +422,7 @@ export function slotSessionForKeyboard(
   date: string
 ): IntakeSlotPart[] {
   const doses = getIntakeDoses(profileId);
-  const supps = new Map<number, IntakeItem>(
+  const items = new Map<number, IntakeItem>(
     getIntakeItems(profileId).map((s) => [s.id, s])
   );
   const workoutTimed = preWorkoutTimed(profileId);
@@ -431,10 +431,10 @@ export function slotSessionForKeyboard(
   for (const id of doseIds) {
     const d = doseById.get(id);
     if (!d) continue;
-    const supp = supps.get(d.item_id);
-    if (!supp) continue;
+    const item = items.get(d.item_id);
+    if (!item) continue;
     wanted.add(
-      doseSendSlot(supp.condition, timeBucket(d.time_of_day), workoutTimed)
+      doseSendSlot(item.condition, timeBucket(d.time_of_day), workoutTimed)
     );
   }
   const parts: IntakeSlotPart[] = [];

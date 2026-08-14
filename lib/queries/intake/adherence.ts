@@ -146,7 +146,7 @@ export function getEverLoggedItemIds(profileId: number): Set<number> {
 }
 
 // Dose ids TAKEN on `date` (per-dose view for the schedule check-offs), scoped to
-// the profile through the dose's parent supplement. Skipped doses are NOT taken —
+// the profile through the dose's parent item. Skipped doses are NOT taken —
 // getSkippedDoseIds surfaces those separately for the tri-state (issue #232).
 // Hoisted: adherence is asked per member on every cross-profile surface (360
 // executions on one /household render). NOT cache()-wrapped — markDoseTaken writes
@@ -191,7 +191,7 @@ export function getTakenDoseTimes(
 
 // Dose ids deliberately SKIPPED on `date` (issue #232) — the other half of the
 // web tri-state and, together with getTakenDoseIds, the "resolved" set that
-// suppresses escalation and re-nudging. Scoped through the parent supplement.
+// suppresses escalation and re-nudging. Scoped through the parent item.
 export function getSkippedDoseIds(
   profileId: number,
   date: string
@@ -244,7 +244,7 @@ interface DoseResolveOptions {
   // The client-supplied item id riding on a Telegram callback token. NEVER trusted for
   // the write (#613/#614) — the write always uses the dose row's own item_id — but a
   // token whose item contradicts the dose's real one is forged/stale and is refused.
-  supplementId?: number | null;
+  itemId?: number | null;
   // An OPTIONAL captured intake instant (#1427), supplied only by the offline write
   // queue's replay: the tap happened when the user actually took the dose, possibly
   // hours before the connection came back. Validated (never trusted) by the pure
@@ -302,7 +302,7 @@ function applyDoseStatusCore(
     // this is the forged/stale-post case there — it is not a new refusal a real tap can
     // reach, it is the twin's missing half of the #232 contract.
     if (!owned.active) return "inactive";
-    if (opts.supplementId != null && opts.supplementId !== owned.item_id) {
+    if (opts.itemId != null && opts.itemId !== owned.item_id) {
       return "stale-dose";
     }
 
@@ -435,7 +435,7 @@ function resolvedOutcome(outcome: DoseStatusOutcome): DoseTakenOutcome {
 export function markDoseTaken(
   profileId: number,
   doseId: number,
-  supplementId: number | null,
+  itemId: number | null,
   date: string,
   takenAt?: Date,
   // Which message's tap this is (#2264) — Telegram reminder handlers only; see
@@ -445,7 +445,7 @@ export function markDoseTaken(
   return resolvedOutcome(
     applyDoseStatusCore(profileId, doseId, date, "taken", {
       resolveOnly: true,
-      supplementId,
+      itemId,
       takenAt,
       notifyMessageId,
     })
@@ -462,13 +462,13 @@ export function markDoseTaken(
 export function markDoseSkipped(
   profileId: number,
   doseId: number,
-  supplementId: number | null,
+  itemId: number | null,
   date: string
 ): DoseTakenOutcome {
   return resolvedOutcome(
     applyDoseStatusCore(profileId, doseId, date, "skipped", {
       resolveOnly: true,
-      supplementId,
+      itemId,
     })
   );
 }
@@ -1870,15 +1870,12 @@ export function getIntakeItemName(
 
 // Whether an intake item (supplement/med) exists for this profile — a scoped
 // existence check for the Telegram refill-snooze button (issue #233), so a forged
-// supplement id from a callback can't write a suppression for a row that isn't the
+// item id from a callback can't write a suppression for a row that isn't the
 // profile's. Profile-scoped (WHERE id AND profile_id).
-export function supplementExists(
-  profileId: number,
-  supplementId: number
-): boolean {
+export function intakeItemExists(profileId: number, itemId: number): boolean {
   return !!db
     .prepare("SELECT 1 FROM intake_items WHERE id = ? AND profile_id = ?")
-    .get(supplementId, profileId);
+    .get(itemId, profileId);
 }
 
 // One item's declared obligation, or null when the item isn't this profile's (#1779).
@@ -1900,27 +1897,26 @@ export function getIntakeItemObligation(
 // The escalate_chat_id (caregiver chat) configured on one of the profile's
 // intake items, or null. Used to AUTHORIZE an escalation-button tap (issue #233):
 // a tap from this chat may confirm/ack on the profile's behalf. Profile-scoped, so
-// a forged supplement id can't leak another profile's escalation chat.
+// a forged item id can't leak another profile's escalation chat.
 export function getIntakeEscalateChatId(
   profileId: number,
-  supplementId: number
+  itemId: number
 ): string | null {
   const row = db
     .prepare(
       "SELECT escalate_chat_id FROM intake_items WHERE id = ? AND profile_id = ?"
     )
-    .get(supplementId, profileId) as
-    { escalate_chat_id: string | null } | undefined;
+    .get(itemId, profileId) as { escalate_chat_id: string | null } | undefined;
   return row?.escalate_chat_id ?? null;
 }
 
-// The escalate_chat_id (caregiver chat) of the supplement a specific DOSE belongs
+// The escalate_chat_id (caregiver chat) of the intake item a specific DOSE belongs
 // to, or null. This is the authorization anchor for an escalation tap (issue #615):
-// the caregiver chat that authorizes a tap must be the one routed to the SUPPLEMENT
-// the tapped dose actually belongs to — NOT whatever supp id the client-supplied
+// the caregiver chat that authorizes a tap must be the one routed to the ITEM
+// the tapped dose actually belongs to — NOT whatever item id the client-supplied
 // token names. Deriving the chat from the dose row (profile-scoped through the
-// parent item) closes the widening where a token could pair one supplement's
-// escalate chat with a different supplement's dose. Returns null for a dose that
+// parent item) closes the widening where a token could pair one item's escalation
+// chat with a different item's dose. Returns null for a dose that
 // isn't this profile's (so only the profile's own chat can then authorize).
 export function getDoseEscalateChatId(
   profileId: number,

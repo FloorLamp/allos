@@ -41,7 +41,7 @@ import {
   getSituationEvents,
   getTimezone,
 } from "@/lib/settings";
-import { supplementAdherenceToday } from "@/lib/household";
+import { intakeAdherenceToday } from "@/lib/household";
 import { isDueOn } from "@/lib/intake-schedule";
 import {
   adherenceSummary,
@@ -53,7 +53,7 @@ import {
   buildDemotionSuggestionFindings,
   demotionCandidateItemIds,
 } from "@/lib/rule-findings";
-import { buildSupplementReminder } from "@/lib/notifications/supplements";
+import { buildIntakeReminder } from "@/lib/notifications/intake";
 import { activeFindings } from "@/lib/findings";
 import { dismissFinding, getFindingSuppressions } from "@/lib/queries";
 import { demoteIntakeObligation } from "@/lib/intake-obligation-write";
@@ -175,7 +175,7 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
 
     // The adherence x/y counts ONLY the pushed tier now (#1505): a `may` item has no
     // occurrences, so it cannot drag an honest fraction down.
-    const adherence = supplementAdherenceToday(
+    const adherence = intakeAdherenceToday(
       getIntakeDoses(p),
       new Map(
         getIntakeItems(p)
@@ -363,7 +363,7 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
 
     // The reminder carries ⤓ May for the candidate and NOT for the steady item —
     // ride-the-nag, zero extra sends.
-    const msg = buildSupplementReminder(p, "Morning");
+    const msg = buildIntakeReminder(p, "Morning");
     expect(msg).not.toBeNull();
     const demoteButtons = (msg!.actions ?? []).filter((a) =>
       a.data?.startsWith("demote:")

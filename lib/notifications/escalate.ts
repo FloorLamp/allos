@@ -19,7 +19,7 @@
 // is the user's explicit, warned choice, and the delivery accounting is honest either
 // way.
 
-import { collectWindowDoses, getPreWorkoutSlotMinute } from "./supplements";
+import { collectWindowDoses, getPreWorkoutSlotMinute } from "./intake";
 import { escalationMarkerKey } from "./escalation-keys";
 import { intakeSlotMarkerKey } from "./send-markers";
 import {
@@ -93,20 +93,20 @@ export async function runEscalations(
       // TWO gates, both required and neither redundant: `must` is the obligation
       // tier that may escalate at all, and `critical` is the per-item opt-in INSIDE
       // it. Dropping either would widen the loudest surface in the app.
-      if (!escalatesOnMiss(e.supp)) continue;
-      if (!e.supp.critical) continue;
+      if (!escalatesOnMiss(e.item)) continue;
+      if (!e.item.critical) continue;
       candidates.push({
         doseId: e.dose.id,
-        supplementId: e.supp.id,
-        supplementName: e.supp.name,
+        itemId: e.item.id,
+        itemName: e.item.name,
         amount: e.dose.amount,
-        product: e.supp.kind === "medication" ? e.supp.product : null,
+        product: e.item.kind === "medication" ? e.item.product : null,
         window: w,
-        kind: e.supp.kind,
+        kind: e.item.kind,
         slotMinute,
         escalateAfterMin:
-          e.supp.escalate_after_min ?? DEFAULT_ESCALATE_AFTER_MIN,
-        escalateChatId: e.supp.escalate_chat_id,
+          e.item.escalate_after_min ?? DEFAULT_ESCALATE_AFTER_MIN,
+        escalateChatId: e.item.escalate_chat_id,
       });
     }
   }
@@ -133,7 +133,7 @@ export async function runEscalations(
   // DELIVERY. Every configured channel, through dispatch() — so Web Push and Home
   // Assistant finally receive the escalations their routing already promised, and a
   // failed send folds into the delivery-health marker like any other send. The
-  // supplement's escalate_chat_id override (#615), when set, REPLACES the Telegram
+  // item's escalate_chat_id override (#615), when set, REPLACES the Telegram
   // fan-out for that item's message (per-item caregiver routing, unchanged in effect)
   // and rides as a dispatch option so the accounting still applies. The per-dose/day
   // marker is stamped once ANY channel took the message (the fire decision stays
@@ -163,7 +163,7 @@ export async function runEscalations(
       log.info("escalated missed dose", {
         profile: profileId,
         dose: d.doseId,
-        supp: d.supplementName,
+        item: d.itemName,
       });
     }
   }

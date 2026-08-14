@@ -5,7 +5,7 @@
 // lib/refill; this file is the DB gather + dedup + send, mirroring ./escalate.
 //
 // Dedup semantics — "once per low-supply EPISODE", not once per day:
-//   - notify_last_refill_<supplementId> is set (to the send date) once a nudge
+//   - notify_last_refill_<itemId> is set (to the send date) once a nudge
 //     goes out, and suppresses further nudges while the item stays low.
 //   - The marker is CLEARED the moment the item is no longer low (refilled above
 //     the threshold, or quantity tracking turned off / the item paused), so the next
@@ -188,7 +188,7 @@ export async function runRefills(
       setProfileSetting(profileId, refillMarkerKey(it.id), date);
       log.info("refill nudge sent", {
         profile: profileId,
-        supp: it.name,
+        item: it.name,
         daysLeft: it.daysLeft,
       });
     }

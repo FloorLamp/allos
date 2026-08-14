@@ -38,7 +38,7 @@ function input(
 ): DoseAdherenceInput {
   return {
     doseId: 42,
-    supplementName: "Magnesium",
+    itemName: "Magnesium",
     bucket: "Evening",
     strip,
     periodAnchor: "2025", // #436 episode anchor (the year)
@@ -160,7 +160,7 @@ describe("detectAdherencePatterns", () => {
       input(
         strip(28, (_d, wd) => (wd === FRIDAY ? "missed" : "taken")),
         {
-          supplementName: name,
+          itemName: name,
           doseId: id,
           ...over,
         }

@@ -402,10 +402,10 @@ const insertDoseStmt = () =>
 // core (#2131, lib/queries/intake/dose-lifecycle.ts) so the dose-edit path and the
 // retire/un-retire transitions share ONE version writer; imported above.
 
-// Insert a fresh set of doses for a supplement (used on add + accept). Must run
+// Insert a fresh set of doses for an intake item (used on add + accept). Must run
 // inside a transaction.
 function insertDoses(
-  suppId: number,
+  itemId: number,
   doses: {
     amount: string | null;
     time_of_day: string | null;
@@ -424,7 +424,7 @@ function insertDoses(
   const ins = insertDoseStmt();
   doses.forEach((d, i) => {
     const info = ins.run(
-      suppId,
+      itemId,
       d.amount,
       d.time_of_day,
       d.food_timing,
@@ -467,28 +467,28 @@ function parsePairs(formData: FormData): PairInput[] {
     .filter((p) => p.otherId > 0);
 }
 
-// Replace all pairs involving `suppId` with the submitted set. Pairs carry no
+// Replace all pairs involving `itemId` with the submitted set. Pairs carry no
 // child data, so delete-and-reinsert is simpler than diffing and is correct from
-// either supplement's edit form. Must run inside a transaction.
-function reconcilePairs(suppId: number, pairs: PairInput[], profileId: number) {
+// either item's edit form. Must run inside a transaction.
+function reconcilePairs(itemId: number, pairs: PairInput[], profileId: number) {
   db.prepare("DELETE FROM intake_item_pairs WHERE a_id = ? OR b_id = ?").run(
-    suppId,
-    suppId
+    itemId,
+    itemId
   );
   const ins = db.prepare(
     `INSERT OR IGNORE INTO intake_item_pairs (a_id, b_id, relation, note) VALUES (?,?,?,?)`
   );
-  // Only pair with supplements this profile owns — the other id comes from the
+  // Only pair with intake items this profile owns — the other id comes from the
   // form and must not be trusted to reference the caller's own data.
   const owned = db.prepare(
     "SELECT 1 FROM intake_items WHERE id = ? AND profile_id = ?"
   );
   for (const p of pairs) {
-    if (p.otherId === suppId) continue;
+    if (p.otherId === itemId) continue;
     if (!owned.get(p.otherId, profileId)) continue;
     // Normalize order so the pair is direction-independent (UNIQUE dedups; the
     // CHECK (a_id < b_id) requires it) — the one shared orderIntakePair helper.
-    const [a, b] = orderIntakePair(suppId, p.otherId);
+    const [a, b] = orderIntakePair(itemId, p.otherId);
     ins.run(a, b, p.relation, p.note);
   }
 }
@@ -622,16 +622,16 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
         f.cadenceAnchorDate,
         supplyId
       );
-    const suppId = Number(info.lastInsertRowid);
-    insertDoses(suppId, doses, todayStr);
-    reconcilePairs(suppId, pairs, profile.id);
+    const itemId = Number(info.lastInsertRowid);
+    insertDoses(itemId, doses, todayStr);
+    reconcilePairs(itemId, pairs, profile.id);
     // Ensure-course-on-create: a new medication opens an initial course
     // on the chosen date (today for quick-add). A no-op for supplements (kind
     // guard inside the helper).
     if (f.kind === "medication") {
       ensureMedicationCourse(
         profile.id,
-        suppId,
+        itemId,
         hasStartedOn ? startedOnRaw || null : f.isOnDemand ? null : todayStr,
         f.isOnDemand && (!hasStartedOn || !startedOnRaw)
       );
@@ -1581,9 +1581,9 @@ export async function acceptSuggestion(
         profile.id,
         sqlNow()
       );
-    const suppId = Number(info.lastInsertRowid);
+    const itemId = Number(info.lastInsertRowid);
     insertDoses(
-      suppId,
+      itemId,
       times.map((t) => ({
         amount,
         time_of_day: t,

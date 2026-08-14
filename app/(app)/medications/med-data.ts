@@ -298,8 +298,8 @@ export function loadMedicationsData(
   const refillRates = getRefillRates(profileId);
   const poolChips = getPoolChips(profileId);
   const pairs = getIntakePairs(profileId);
-  const pairsFor = (suppId: number) =>
-    pairs.filter((p) => p.a_id === suppId || p.b_id === suppId);
+  const pairsFor = (itemId: number) =>
+    pairs.filter((p) => p.a_id === itemId || p.b_id === itemId);
 
   // Per-PRN-med day summary + redose-window line (#797/#798), profile-tz aware and
   // formatted by the SAME redoseCardLabel/administrationDayLabel the dashboard uses.

@@ -22,7 +22,7 @@ import { dismissIntakeFinding } from "@/app/(app)/nutrition/intake-actions";
 // filtered out here (via `suppressedFoodKeys`, resolved on the server) and can be
 // dismissed inline — the same "calm observations must be suppressible" contract the
 // adherence/interaction findings follow. The dose-reminder tail stays un-gated (it
-// rides the safety-tier reminder, see lib/notifications/supplement-format.ts).
+// rides the safety-tier reminder, see lib/notifications/intake-format.ts).
 export default function FoodGuidance({
   itemId,
   name,

@@ -144,12 +144,12 @@ function stackDriContext(
   ageYears: number | null;
   sex: ReturnType<typeof getProfileSex>;
 } {
-  const supplements = getIntakeItems(profileId);
-  const dosesBySupp = new Map<number, (string | null)[]>();
+  const intakeItems = getIntakeItems(profileId);
+  const dosesByItem = new Map<number, (string | null)[]>();
   for (const d of getIntakeDoses(profileId)) {
-    const arr = dosesBySupp.get(d.item_id) ?? [];
+    const arr = dosesByItem.get(d.item_id) ?? [];
     arr.push(d.amount);
-    dosesBySupp.set(d.item_id, arr);
+    dosesByItem.set(d.item_id, arr);
   }
   // Only items on an EVERY-DAY schedule contribute to the DAILY UL/RDA totals (#635):
   // a workout/rest/situational item applies only on some days, so summing it as a full
@@ -162,13 +162,13 @@ function stackDriContext(
   // from the RDA reassurance share (disclosed as an aside). Filtering here would force
   // one direction on both questions, which is how the UL under-counted before.
   // The item's active flag is still gated downstream in the DRI math.
-  const items: StackItem[] = supplements
-    .filter((s) => contributesToDailyLimit(s))
-    .map((s) => ({
-      name: s.name,
-      active: !!s.active,
-      doseAmounts: dosesBySupp.get(s.id) ?? [],
-      optional: isOnDemand(s),
+  const items: StackItem[] = intakeItems
+    .filter((item) => contributesToDailyLimit(item))
+    .map((item) => ({
+      name: item.name,
+      active: !!item.active,
+      doseAmounts: dosesByItem.get(item.id) ?? [],
+      optional: isOnDemand(item),
     }));
 
   const birthdate = getProfileBirthdate(profileId);
@@ -486,9 +486,9 @@ export function getMedMonitoringItems(
 
   // Per-med start date (open course start, else created_at) + most recent change
   // (start / dose re-time / course restart), from the profile-scoped reads.
-  const supplements = getIntakeItems(profileId);
+  const intakeItems = getIntakeItems(profileId);
   const createdById = new Map<number, string | null>(
-    supplements.map((s) => [s.id, s.created_at ?? null])
+    intakeItems.map((item) => [item.id, item.created_at ?? null])
   );
   const coursesByItem = new Map<
     number,

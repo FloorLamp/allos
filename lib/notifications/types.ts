@@ -1,5 +1,5 @@
 // Channel-agnostic notification core. A message is built by a feature (e.g. the
-// supplement reminder) and dispatched to every configured channel; the core
+// intake reminder) and dispatched to every configured channel; the core
 // knows nothing about supplements and channels know nothing about features.
 
 import type { MessageBody } from "./rich-text";
@@ -48,7 +48,7 @@ export type NotificationKind =
 
 // An interactive action attached to a message. Either a callback action — `data`
 // is an opaque token the inbound webhook decodes to perform the action (e.g.
-// "take:<doseId>:<suppId>:<date>") — OR a deep-link action, where `url` opens a
+// "take:<doseId>:<itemId>:<date>") — OR a deep-link action, where `url` opens a
 // page in the app instead of firing a callback (issue #233's refill "Open form").
 // Exactly one of `data`/`url` is set. Channels that support buttons render it;
 // channels that don't (push) ignore actions entirely.

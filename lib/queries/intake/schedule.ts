@@ -194,7 +194,7 @@ export function getDoseScheduleVersions(
 //
 // WHY THE ATTACH CANNOT SIMPLY BE SKIPPED for callers that "only ask about today". That
 // was the tempting reading of the tick's cost, and it is wrong: the hourly intake gather
-// (lib/notifications/supplements.ts `gatherWindowDoses`) scores each due dose's ADHERENCE
+// (lib/notifications/intake.ts `gatherWindowDoses`) scores each due dose's ADHERENCE
 // STRIP over the trailing window, calling `doseDueOn` for every past day in it. Three of
 // the tick's four `getIntakeDoses` call sites reach that gather, so a lean
 // "current schedule only" reader would silently re-introduce exactly the retroactive

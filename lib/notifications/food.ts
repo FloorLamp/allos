@@ -1,6 +1,6 @@
 // The food-log nudge + first-connection opt-in prompt (issue #682). This is the
 // GATHER half (DB reads → the pure renderer in ./food-format), mirroring how
-// supplements.ts gathers for supplement-format.ts. The nudge rides the profile's
+// intake.ts gathers for intake-format.ts. The nudge rides the profile's
 // morning/midday/evening supplement slots (wired in scripts/notify.ts) and is
 // opt-in per profile (food_telegram_enabled) — so a household that doesn't want it
 // never sees it.

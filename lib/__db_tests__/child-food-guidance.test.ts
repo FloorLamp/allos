@@ -1,14 +1,14 @@
 // DB INTEGRATION TIER — an age-gated food-drug note is threaded end-to-end into the
 // dose reminder (#851 item 4). The alcohol rules gate to "adult" (lib/life-stage), so
 // a CHILD's medication reminder must never carry a "limit alcohol" line, while an
-// ADULT's does. buildSupplementReminder reads the profile's age (getProfileAge) and passes
+// ADULT's does. buildIntakeReminder reads the profile's age (getProfileAge) and passes
 // it through renderWindowMessage → matchFoodInteractions; this pins that whole thread
 // against the real DB rather than the pure renderer alone.
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { setStoredAge } from "@/lib/settings";
-import { buildSupplementReminder } from "@/lib/notifications/supplements";
+import { buildIntakeReminder } from "@/lib/notifications/intake";
 
 // A scheduled (daily) Acetaminophen with a pending Morning dose, owned by a fresh
 // profile of the given age. Acetaminophen's ONLY food-drug rule is the adult-gated
@@ -39,7 +39,7 @@ function seedAcetaminophenFor(age: number): number {
 describe("age-gated alcohol note in the dose reminder (#851 item 4)", () => {
   it("a child's (age 8) Morning reminder carries NO alcohol note", () => {
     const profileId = seedAcetaminophenFor(8);
-    const msg = buildSupplementReminder(profileId, "Morning");
+    const msg = buildIntakeReminder(profileId, "Morning");
     expect(msg).not.toBeNull();
     const text = `${msg!.title}\n${msg!.body}`;
     expect(text.toLowerCase()).not.toContain("alcohol");
@@ -49,7 +49,7 @@ describe("age-gated alcohol note in the dose reminder (#851 item 4)", () => {
 
   it("an adult's (age 40) Morning reminder DOES carry the alcohol note", () => {
     const profileId = seedAcetaminophenFor(40);
-    const msg = buildSupplementReminder(profileId, "Morning");
+    const msg = buildIntakeReminder(profileId, "Morning");
     expect(msg).not.toBeNull();
     const text = `${msg!.title}\n${msg!.body}`;
     expect(text.toLowerCase()).toContain("alcohol");

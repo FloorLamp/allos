@@ -23,7 +23,7 @@ import { cadenceDensity } from "../../intake-cadence";
 // gather is profile-scoped: the history read JOINs intake_items and filters
 // s.profile_id (logs/doses are child tables reached through the parent), and the
 // schedule count reuses the profile-scoped getIntakeDoses. Callers (the
-// supplements page, Upcoming, and the refill notifier) all read the shared rate
+// intake surfaces, Upcoming, and the refill notifier) all read the shared rate
 // from here rather than re-approximating it.
 export function getRefillRates(
   profileId: number,
@@ -119,24 +119,20 @@ export function getRefillRates(
 //
 // The item lookup is profile-scoped, so a forged id can neither touch another profile's
 // item nor reach the pool through it.
-function poolIdFor(profileId: number, supplementId: number): number | null {
+function poolIdFor(profileId: number, itemId: number): number | null {
   const row = db
     .prepare(
       `SELECT supply_id FROM intake_items WHERE id = ? AND profile_id = ?`
     )
-    .get(supplementId, profileId) as { supply_id: number | null } | undefined;
+    .get(itemId, profileId) as { supply_id: number | null } | undefined;
   return row?.supply_id ?? null;
 }
 
 // `sign` is +1 (credit, an untoggle/undo) or -1 (consume). The pool UPDATE draws the
 // LINKED ITEM's qty_per_dose via a scalar subquery so the two sides stay exact inverses,
 // and no-ops when the pool isn't tracking a quantity — mirroring the item branch.
-function adjustSupply(
-  profileId: number,
-  supplementId: number,
-  sign: 1 | -1
-): void {
-  const supplyId = poolIdFor(profileId, supplementId);
+function adjustSupply(profileId: number, itemId: number, sign: 1 | -1): void {
+  const supplyId = poolIdFor(profileId, itemId);
   if (supplyId != null) {
     db.prepare(
       `UPDATE shared_supplies
@@ -146,22 +142,22 @@ function adjustSupply(
               ),
               updated_at = datetime('now')
         WHERE id = ? AND quantity_on_hand IS NOT NULL`
-    ).run(sign, supplementId, profileId, supplyId);
+    ).run(sign, itemId, profileId, supplyId);
     return;
   }
   db.prepare(
     `UPDATE intake_items
         SET quantity_on_hand = quantity_on_hand + ? * qty_per_dose
       WHERE id = ? AND profile_id = ? AND quantity_on_hand IS NOT NULL`
-  ).run(sign, supplementId, profileId);
+  ).run(sign, itemId, profileId);
 }
 
-export function decrementSupply(profileId: number, supplementId: number): void {
-  adjustSupply(profileId, supplementId, -1);
+export function decrementSupply(profileId: number, itemId: number): void {
+  adjustSupply(profileId, itemId, -1);
 }
 
-export function incrementSupply(profileId: number, supplementId: number): void {
-  adjustSupply(profileId, supplementId, 1);
+export function incrementSupply(profileId: number, itemId: number): void {
+  adjustSupply(profileId, itemId, 1);
 }
 
 // The typed outcome of a one-tap "Refilled" (issue #852 item 3) — handlers answer from
