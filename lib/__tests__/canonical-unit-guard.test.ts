@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import { buildCanonicalIndex } from "@/lib/canonical-name";
 import { unitAwareCanonical, seededUnitFor } from "@/lib/canonical-unit-guard";
 import { normalizeResults } from "@/lib/medical-extract";
 
 const vocab = (
-  canonicalSeed as { biomarkers: { name: string }[] }
-).biomarkers.map((b) => b.name);
+  canonicalSeed as { definitions: { name: string }[] }
+).definitions.map((b) => b.name);
 const index = buildCanonicalIndex(vocab);
 const g = (snapped: string, printed: string, unit: string | null) =>
   unitAwareCanonical(snapped, printed, unit, index);

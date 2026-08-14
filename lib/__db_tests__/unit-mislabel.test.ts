@@ -89,10 +89,10 @@ beforeAll(() => {
 });
 
 describe("unit-mislabel cross-check (issue #761)", () => {
-  it("seeds MCHC into canonical_biomarkers (g/dL, ref 31.6–35.4)", () => {
+  it("seeds MCHC into canonical_result_definitions (g/dL, ref 31.6–35.4)", () => {
     const cb = db
       .prepare(
-        "SELECT unit, ref_low, ref_high FROM canonical_biomarkers WHERE name = 'Mean Corpuscular Hemoglobin Concentration (MCHC)'"
+        "SELECT unit, ref_low, ref_high FROM canonical_result_definitions WHERE name = 'Mean Corpuscular Hemoglobin Concentration (MCHC)'"
       )
       .get() as { unit: string; ref_low: number; ref_high: number } | undefined;
     expect(cb?.unit).toBe("g/dL");

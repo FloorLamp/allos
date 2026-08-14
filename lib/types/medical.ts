@@ -254,8 +254,8 @@ export interface ClinicalObservationRevision {
 // a value is judged against its optimal band (one-sided optima honor this).
 export type BiomarkerDirection = "higher_better" | "lower_better" | "in_range";
 
-// An entry in the committed canonical biomarker reference dataset
-// (lib/canonical-biomarkers.json), seeded into the canonical_biomarkers table.
+// An entry in the committed canonical clinical-result definition dataset
+// (lib/canonical-result-definitions.json), seeded into the canonical_result_definitions table.
 // Ranges are informational, not medical advice, and may vary by sex/age.
 export type Sex = "male" | "female";
 
@@ -280,7 +280,7 @@ export interface ReproductiveStatusRange {
 // partial map: only the statuses with a curated range are present. Applies to
 // FEMALE physiology only — male ranges are entirely unaffected. Highest precedence
 // in referenceRange (above the age band) when the subject's sex is female and their
-// reproductive status is set. Stored as JSON in canonical_biomarkers.
+// reproductive status is set. Stored as JSON in canonical_result_definitions.
 export type ReproductiveStatusRanges = Partial<
   Record<ReproductiveStatus, ReproductiveStatusRange>
 >;
@@ -294,7 +294,7 @@ export type ReproductiveStatusRanges = Partial<
 // the record's collection date, above the coarse reproductive-status proxy in
 // referenceRange (lib/reference-range.selectCyclePhaseRange). The range shape reuses
 // ReproductiveStatusRange (ref_low/ref_high/note; null low = open). Stored as JSON in
-// canonical_biomarkers.ranges_by_cycle_phase.
+// canonical_result_definitions.ranges_by_cycle_phase.
 export type CyclePhaseRangeKey = "follicular" | "luteal";
 export type CyclePhaseRanges = Partial<
   Record<CyclePhaseRangeKey, ReproductiveStatusRange>
@@ -325,15 +325,15 @@ export interface AgeBandedRange {
   note?: string | null;
 }
 
-// One entry of the canonical registry — a `canonical_biomarkers` row: the
+// One entry of the canonical registry — a `canonical_result_definitions` row: the
 // definition of a reportable clinical RESULT plus the knowledge needed to
 // interpret it (unit, reference and optimal bands with their sex / age / status /
 // cycle-phase overrides, direction, retest cadence). Named for what it defines
 // rather than for "biomarker" (#2479): 68 of the 324 curated entries are not lab,
 // 63 carry no unit and 98 no reference range — a blood group is a registered
-// result definition and is not a quantity. The TABLE keeps its shipped name (part
-// 1 makes no persisted change), so the accessors that read it still say
-// `canonical_biomarkers`. The three axes this type does NOT settle — storage
+// result definition and is not a quantity. The table and its general accessors use
+// the same `canonical_result_definitions` vocabulary. The three axes this type does
+// NOT settle — storage
 // category, catalog browsability, identity — are mapped in
 // docs/internals/clinical-result-terminology.md.
 export interface CanonicalResultDefinition {
@@ -363,28 +363,28 @@ export interface CanonicalResultDefinition {
   // band matches the data subject's age at the record's collection date, it
   // replaces the adult top-level fields (sex overrides then resolve within the
   // band); absent or no-match falls back to the adult fields. Stored as a JSON
-  // array in the canonical_biomarkers table.
+  // array in the canonical_result_definitions table.
   ranges_by_age: AgeBandedRange[] | null;
   // Reproductive-status reference overrides (female physiology only). When the
   // subject's sex is female and their reproductive_status is set and this map has a
   // range for that status, it REPLACES all other ranges (above the age band) — see
   // lib/reference-range.selectStatusRange. NULL when the analyte isn't hormone-like.
-  // Stored as a JSON object in the canonical_biomarkers table.
+  // Stored as a JSON object in the canonical_result_definitions table.
   ranges_by_status: ReproductiveStatusRanges | null;
   // Cycle-phase reference overrides (female physiology only) for the phase-dependent
   // reproductive hormones (issue #718). When the subject is female and their cycle
   // phase on the record's collection date is derivable from the logged cycle history,
   // the matching phase range REPLACES all other ranges (above ranges_by_status) — see
   // lib/reference-range.selectCyclePhaseRange. NULL when the analyte isn't cycle-phase
-  // dependent. Stored as a JSON object in the canonical_biomarkers table.
+  // dependent. Stored as a JSON object in the canonical_result_definitions table.
   ranges_by_cycle_phase: CyclePhaseRanges | null;
   // Recommended retest cadence, in days, for the Upcoming retest signal. NULL
   // falls back to the flat DEFAULT_RETEST_DAYS (365) — see lib/reference-range.
-  // Curated per-analyte in scripts/gen-canonical-biomarkers (RETEST_DAYS) so e.g.
+  // Curated per-analyte in scripts/gen-canonical-result-definitions (RETEST_DAYS) so e.g.
   // an HbA1c retests quarterly while a lipid panel is annual. NOT a flag input
   // (deliberately absent from FLAG_RELEVANT_FIELDS), so editing it never triggers
   // a flag re-derivation. Carried in the committed JSON; the retest signal reads
-  // it from there (lib/biomarker-retest), not from the canonical_biomarkers table.
+  // it from there (lib/biomarker-retest), not from the canonical_result_definitions table.
   retest_days?: number | null;
   note: string | null;
   source: string; // 'seed' | 'ai'

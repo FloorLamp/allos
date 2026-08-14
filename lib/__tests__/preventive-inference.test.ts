@@ -35,7 +35,7 @@ describe("preventive concept map", () => {
       expect(rule!.kind).toBe(m.kind);
       // Every matcher must carry at least one usable signal.
       expect(
-        m.codes.length + m.names.length + m.canonicalBiomarkers.length
+        m.codes.length + m.names.length + m.canonicalResultNames.length
       ).toBeGreaterThan(0);
     }
   });
@@ -79,18 +79,20 @@ describe("preventive concept map", () => {
           expect(["in-app", "total-only"]).toContain(sb.entry);
           // The named instrument must be one the rule actually recognizes as a
           // satisfying reading (its canonical biomarker).
-          expect(m.canonicalBiomarkers).toContain(sb.instrument);
+          expect(m.canonicalResultNames).toContain(sb.instrument);
         } else if (sb.kind === "lab") {
           // A prefill primary must be a canonical biomarker the rule lists.
           if (sb.primary) {
-            expect(m.canonicalBiomarkers, `${m.ruleKey} lab primary`).toContain(
-              sb.primary
-            );
+            expect(
+              m.canonicalResultNames,
+              `${m.ruleKey} lab primary`
+            ).toContain(sb.primary);
           }
         } else if (sb.kind === "vital") {
-          expect(m.canonicalBiomarkers, `${m.ruleKey} vital primary`).toContain(
-            sb.primary
-          );
+          expect(
+            m.canonicalResultNames,
+            `${m.ruleKey} vital primary`
+          ).toContain(sb.primary);
         } else {
           expect(
             sb.procedure.length,

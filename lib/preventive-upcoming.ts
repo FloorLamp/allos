@@ -36,7 +36,7 @@ import {
 const VITALS_ENTRY_HREF: AppRoute = "/trends?focus=blood-pressure#body";
 
 // The concrete deep link for a screening, from its explicit `satisfiedBy` concept
-// (#1083) — NOT the old `canonicalBiomarkers.length` guess (which pointed the
+// (#1083) — NOT the old `canonicalResultNames.length` guess (which pointed the
 // instrument/vital classes at the biomarker surface #1076 emptied of them). One
 // place so the Upcoming row, the page, and the nudge all resolve the same target.
 function screeningActionHref(sb: ScreeningSatisfiedBy): AppRoute {

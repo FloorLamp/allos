@@ -29,7 +29,7 @@ import {
   PEAK_FLOW_ZONES,
   SPIROMETRY_CANONICAL_NAMES,
 } from "@/lib/peak-flow";
-import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "@/lib/datasets/canonical-result-definitions";
 import { snapCanonicalName } from "@/lib/canonical-name";
 import { panelForCanonicalName } from "@/lib/biomarker-panels";
 import { METRIC_KNOWLEDGE, quantityKnowledge } from "@/lib/metric-judgment";
@@ -99,7 +99,7 @@ describe("with no personal best there is NO verdict (never a population fallback
     // The load-bearing consequence: the curated entry itself states no band, so
     // there is nothing to fall back TO — which is what makes "no verdict" the only
     // possible answer rather than a policy that could quietly change.
-    const entry = canonicalBiomarkerForName(PEAK_FLOW_CANONICAL);
+    const entry = canonicalResultDefinitionForName(PEAK_FLOW_CANONICAL);
     expect(entry).not.toBeNull();
     expect(entry?.ref_low).toBeNull();
     expect(entry?.ref_high).toBeNull();
@@ -194,7 +194,7 @@ describe("registration — the domain is an instance of the substrate", () => {
 describe("the spirometry half is ordinary observations", () => {
   it("curates all three, and only the RATIO carries a cutoff", () => {
     for (const name of SPIROMETRY_CANONICAL_NAMES) {
-      expect(canonicalBiomarkerForName(name), name).not.toBeNull();
+      expect(canonicalResultDefinitionForName(name), name).not.toBeNull();
       // Episodic: a pulmonology report, read against a band on the reading page.
       expect(readingCadence(name)).toBe("episodic");
       expect(placeReading({ name }).placed).toEqual({
@@ -206,14 +206,17 @@ describe("the spirometry half is ordinary observations", () => {
     // against an equation this app does not ship, and borrowing an adult average
     // would mis-judge every child and every tall adult.
     expect(
-      canonicalBiomarkerForName("Forced Expiratory Volume in 1 Second (FEV1)")
-        ?.ref_low
+      canonicalResultDefinitionForName(
+        "Forced Expiratory Volume in 1 Second (FEV1)"
+      )?.ref_low
     ).toBeNull();
     expect(
-      canonicalBiomarkerForName("Forced Vital Capacity (FVC)")?.ref_low
+      canonicalResultDefinitionForName("Forced Vital Capacity (FVC)")?.ref_low
     ).toBeNull();
     // The ratio is the one universal cutoff.
-    expect(canonicalBiomarkerForName("FEV1/FVC Ratio")?.ref_low).toBe(70);
+    expect(canonicalResultDefinitionForName("FEV1/FVC Ratio")?.ref_low).toBe(
+      70
+    );
   });
 
   it("shares one respiratory panel with peak flow", () => {
@@ -260,7 +263,7 @@ describe("the spirometry half is ordinary observations", () => {
   });
 
   it("states its unit on the canonical entry, so a stored row is comparable", () => {
-    expect(canonicalBiomarkerForName(PEAK_FLOW_CANONICAL)?.unit).toBe(
+    expect(canonicalResultDefinitionForName(PEAK_FLOW_CANONICAL)?.unit).toBe(
       PEAK_FLOW_UNIT
     );
   });

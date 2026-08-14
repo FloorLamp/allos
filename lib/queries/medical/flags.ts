@@ -15,7 +15,7 @@
 // disagreement the issue is about. lib/queries/metric-judgment.ts reads it.
 export function flagReconcileProfileContext(profileId: number) {
   const cbRows = db
-    .prepare("SELECT * FROM canonical_biomarkers")
+    .prepare("SELECT * FROM canonical_result_definitions")
     .all() as CanonicalResultDefinition[];
   const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
   // Alias-aware resolution: the pure core looks a row's canonical_name up by exact

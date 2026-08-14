@@ -8,7 +8,7 @@
 // lib/coverage-gaps.ts) hard-bars the model from emitting reference ranges, flag
 // thresholds, retest cadences, doses, or interaction severities — those drive the
 // flag/retest/interaction engines and stay curated. This path only ever produces
-// descriptive text; it never touches canonical_biomarkers or any clinical logic.
+// descriptive text; it never touches canonical_result_definitions or any clinical logic.
 //
 // Degrades gracefully with no AI (returns a typed "not configured" outcome, stores
 // nothing), and every call + outcome is logged (#410) and counted against the

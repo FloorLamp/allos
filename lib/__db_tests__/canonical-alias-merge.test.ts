@@ -8,7 +8,7 @@
 //
 // The fixture is a database in the state the issue describes: it imported the
 // drifted spelling BEFORE the curated route shipped, so the spelling sits in
-// canonical_biomarkers as an `ai` row and buildCanonicalIndex drops the route that
+// canonical_result_definitions as an `ai` row and buildCanonicalIndex drops the route that
 // exists to retire it. The "before" assertions PIN that defect; the "after" ones pin
 // the repair. Both use the routes that actually ship:
 //
@@ -49,7 +49,7 @@ function newProfile(name: string): number {
 // ai-coined vocabulary row (addCanonicalNames' INSERT OR IGNORE, verbatim).
 function coinVocabulary(name: string): void {
   db.prepare(
-    "INSERT OR IGNORE INTO canonical_biomarkers (name, source) VALUES (?, 'ai')"
+    "INSERT OR IGNORE INTO canonical_result_definitions (name, source) VALUES (?, 'ai')"
   ).run(name);
 }
 
@@ -74,7 +74,7 @@ function storedNames(profileId: number): string[] {
 function vocabularyHas(name: string): boolean {
   return Boolean(
     db
-      .prepare("SELECT 1 FROM canonical_biomarkers WHERE name = ?")
+      .prepare("SELECT 1 FROM canonical_result_definitions WHERE name = ?")
       .get(name) as unknown
   );
 }
@@ -168,7 +168,7 @@ describe("one boot resolves an alias its own database had blocked (#2306)", () =
     const curatedBefore = (
       db
         .prepare(
-          "SELECT COUNT(*) AS c FROM canonical_biomarkers WHERE source = 'seed'"
+          "SELECT COUNT(*) AS c FROM canonical_result_definitions WHERE source = 'seed'"
         )
         .get() as { c: number }
     ).c;
@@ -177,7 +177,7 @@ describe("one boot resolves an alias its own database had blocked (#2306)", () =
       (
         db
           .prepare(
-            "SELECT COUNT(*) AS c FROM canonical_biomarkers WHERE source = 'seed'"
+            "SELECT COUNT(*) AS c FROM canonical_result_definitions WHERE source = 'seed'"
           )
           .get() as { c: number }
       ).c

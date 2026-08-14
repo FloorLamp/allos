@@ -7,7 +7,7 @@
 // login's display unit HERE (the units boundary), keeping the engine unit-agnostic.
 
 import { db } from "../db";
-import { getAllBiomarkerSeries, getCanonicalBiomarker } from "./medical";
+import { getAllBiomarkerSeries, getCanonicalResultDefinition } from "./medical";
 import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
 import {
   getFrequencyTargetProgress,
@@ -739,7 +739,7 @@ export function resolveOutcomeSeries(
   if (!parsed) return null;
 
   if (parsed.kind === "biomarker") {
-    const cb = getCanonicalBiomarker(parsed.id);
+    const cb = getCanonicalResultDefinition(parsed.id);
     const samples: OutcomeSample[] = getBiomarkerSeriesWithDerived(
       profileId,
       parsed.id
@@ -869,7 +869,7 @@ export function getProtocolOutcomePickerData(
       ].sort((a, b) =>
         a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id
       );
-      const cb = getCanonicalBiomarker(canonical);
+      const cb = getCanonicalResultDefinition(canonical);
       return {
         key,
         label: canonical,

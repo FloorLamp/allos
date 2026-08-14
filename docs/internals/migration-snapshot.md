@@ -90,7 +90,7 @@ and the answer is that none of it is a person's records:
 | Delete                                                              | What it removes                                                                                                                                                         |
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `saved_items`, `upcoming_dismissals`, `coverage_gaps` (alias merge) | The old-key row, after the `UPDATE OR IGNORE` above it already carried the ★ / snooze / gap onto the surviving spelling. A redundant duplicate, never the thing itself. |
-| `canonical_biomarkers` (alias merge)                                | An ai-coined vocabulary row the dataset has superseded, scoped to `source = 'ai'` so a curated row is untouchable. Nobody typed it, and the next import mints it again. |
+| `canonical_result_definitions` (alias merge)                        | An ai-coined vocabulary row the dataset has superseded, scoped to `source = 'ai'` so a curated row is untouchable. Nobody typed it, and the next import mints it again. |
 | `settings` key `canonical_flags_sig` (alias merge)                  | A derived signature cache, cleared so the flag reconcile re-derives on the same boot.                                                                                   |
 
 `resetInterruptedWork` deletes nothing — it only moves stranded jobs to `failed`.

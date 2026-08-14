@@ -16,7 +16,7 @@ import type {
   MedicalFlag,
   ClinicalObservation,
 } from "../types";
-export { getCanonicalBiomarker } from "./medical/canonical";
+export { getCanonicalResultDefinition } from "./medical/canonical";
 export {
   ENCOUNTER_REPRESENTATIVE_IDS,
   getEncounter,
@@ -719,7 +719,7 @@ export function getCanonicalVocabulary(): string[] {
   return (
     db
       .prepare(
-        "SELECT name FROM canonical_biomarkers ORDER BY (source = 'ai'), name COLLATE NOCASE"
+        "SELECT name FROM canonical_result_definitions ORDER BY (source = 'ai'), name COLLATE NOCASE"
       )
       .all() as { name: string }[]
   ).map((r) => r.name);
@@ -733,7 +733,7 @@ export function addCanonicalNames(names: string[]): void {
   const distinct = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
   if (distinct.length === 0) return;
   const insert = db.prepare(
-    "INSERT OR IGNORE INTO canonical_biomarkers (name, source) VALUES (?, 'ai')"
+    "INSERT OR IGNORE INTO canonical_result_definitions (name, source) VALUES (?, 'ai')"
   );
   writeTx(() => {
     for (const n of distinct) insert.run(n);
@@ -1184,7 +1184,7 @@ export function getSavedBiomarkers(profileId: number): SavedBiomarker[] {
   // rather than a per-save lookup.
   const cbRows = db
     .prepare(
-      `SELECT * FROM canonical_biomarkers
+      `SELECT * FROM canonical_result_definitions
        WHERE name IN (${stars.map(() => "?").join(",")})`
     )
     .all(...stars) as CanonicalResultDefinition[];

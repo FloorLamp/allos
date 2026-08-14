@@ -36,7 +36,7 @@ import {
   type ConfidenceKind,
 } from "./extraction-confidence";
 import { recordConfidenceKind } from "./confidence-triage";
-import canonicalSeed from "./canonical-biomarkers.json";
+import canonicalSeed from "./canonical-result-definitions.json";
 import {
   toConditionLaterality,
   toConditionSeverity,
@@ -117,8 +117,8 @@ import { immunizationsFromExtraction } from "./immunization-extract";
 // lab reading that landed on a real dataset entry (has a reference band) from one
 // that matched nothing and imported under its raw name (#918 §4).
 const SEEDED_CANONICAL_KEYS = new Set(
-  (canonicalSeed as { biomarkers?: { name: string }[] }).biomarkers?.map((b) =>
-    normalizeCanonicalKey(b.name)
+  (canonicalSeed as { definitions?: { name: string }[] }).definitions?.map(
+    (b) => normalizeCanonicalKey(b.name)
   ) ?? []
 );
 function isSeededCanonical(name: string): boolean {

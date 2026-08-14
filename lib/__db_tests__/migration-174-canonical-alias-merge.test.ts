@@ -75,7 +75,7 @@ function preMigrationDb(): Database.Database {
   mem
     .prepare("INSERT INTO profiles (id, name) VALUES (1, 'A'), (2, 'B')")
     .run();
-  // The curated targets, as seedCanonicalBiomarkers writes them …
+  // The curated targets, as seedCanonicalResultDefinitions writes them …
   const vocab = mem.prepare(
     "INSERT INTO canonical_biomarkers (name, source) VALUES (?, ?)"
   );

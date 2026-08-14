@@ -194,7 +194,7 @@ for each m in MIGRATIONS where m.id > version:
 - **Determinism rule:** a migration may read only the DB and its own constants —
   no env vars, no `Date.now()`-dependent branching, no imports of live
   registries that evolve (`ENUM_CHECKS`, `lib/owned-tables.ts`,
-  `canonical-biomarkers.json`). Baseline is grandfathered (it already imports
+  `canonical-result-definitions.json`). Baseline is grandfathered (it already imports
   the registries); the rule applies from 002 on, enforced by review + the hash
   manifest making any drift-by-imported-value visible as a behavior bug rather
   than a silent one. Where a new migration needs a table list or enum set, it

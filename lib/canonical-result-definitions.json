@@ -1,6 +1,6 @@
 {
-  "$comment": "Canonical biomarker reference dataset. Committed and HUMAN-REVIEWABLE. Seeded into the canonical_biomarkers table (source='seed') and used as (1) the controlled vocabulary the AI reuses when canonicalizing names, and (2) the reference/optimal bands drawn on biomarker charts. Ranges are general adult values for an unconverted canonical unit. direction: 'higher_better' | 'lower_better' | 'in_range'. ref_* is a lab's standard reference range; optimal_* reflects general longevity literature for adults. Any field may be null (one-sided ranges are fine). Each entry may include 'conversions' (alternate-unit -> factor, where value_in_alt * factor = value in the canonical unit). Regenerate with `npm run gen:biomarkers`. Ranges may be inaccurate and often vary by sex/age.",
-  "biomarkers": [
+  "$comment": "Canonical clinical-result definition dataset. Committed and HUMAN-REVIEWABLE. Seeded into the canonical_result_definitions table (source='seed') and used as (1) the controlled vocabulary the AI reuses when canonicalizing names, and (2) the reference/optimal bands drawn on result charts. Ranges are general adult values for an unconverted canonical unit. direction: 'higher_better' | 'lower_better' | 'in_range'. ref_* is a standard reference range; optimal_* reflects general longevity literature for adults. Any field may be null (one-sided ranges are fine). Each entry may include 'conversions' (alternate-unit -> factor, where value_in_alt * factor = value in the canonical unit). Regenerate with `npm run gen:canonical-results`. Ranges may be inaccurate and often vary by sex/age.",
+  "definitions": [
     {
       "name": "Total Cholesterol",
       "category": "lab",

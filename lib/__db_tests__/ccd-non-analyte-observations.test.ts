@@ -4,7 +4,7 @@
 //
 //   "After import of a CCD carrying a temperature with a site qualifier, an
 //    immunization with lot/expiry, and a questionnaire: none of those appear in
-//    canonical_biomarkers, none appear as a Coverage candidate, and none renders as a
+//    canonical_result_definitions, none appear as a Coverage candidate, and none renders as a
 //    biomarker series. A genuinely scored, numeric observation still imports as a
 //    reading."
 //

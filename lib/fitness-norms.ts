@@ -30,7 +30,7 @@ import { ADULT_MIN_AGE, isAdultForClinical } from "@/lib/life-stage";
 const MARKERS: Record<string, MarkerNorms> = FITNESS_NORM_MARKERS_MAP;
 
 // The canonical biomarker names that carry fitness norms (must match the JSON keys
-// AND the canonical_biomarkers rows / vitals-input canonical names byte-for-byte).
+// AND the canonical_result_definitions rows / vitals-input canonical names byte-for-byte).
 export const FITNESS_NORM_MARKERS = Object.keys(MARKERS);
 
 // Adult-context floor: the norms are adult reference standards, so a subject below

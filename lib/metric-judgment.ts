@@ -5,7 +5,7 @@
 // keyed by `TrendMetricSlug`. Nothing mapped one to the other, so a streamed
 // reading was charted UNJUDGED — a three-year-old's 120 bpm daily resting-heart-
 // rate trend measured against nothing, while the very bands that judge it
-// (0–1 → 90–160, 1–3 → 80–150 …) sat in `canonical_biomarkers` waiting for an
+// (0–1 → 90–160, 1–3 → 80–150 …) sat in `canonical_result_definitions` waiting for an
 // imported observation that may never arrive.
 //
 // That is an IDENTITY problem, not a storage one: merging the stores would leave a
@@ -35,11 +35,11 @@
 // nothing else.
 //
 // PURE: no DB. The canonical vocabulary defaults to the committed dataset (which is
-// what boot seeds `canonical_biomarkers` FROM); the runtime caller passes the
+// what boot seeds `canonical_result_definitions` FROM); the runtime caller passes the
 // profile's DB row instead, so a re-seeded or AI-extended entry wins at runtime.
 // See lib/queries/metric-judgment.ts.
 
-import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "./datasets/canonical-result-definitions";
 import { readingIdentity, streamSourcesForIdentity } from "./reading-model";
 import {
   ageBandLabel,
@@ -491,7 +491,7 @@ export interface MetricJudgment {
 
 // The vocabulary entry this module needs, stated STRUCTURALLY so both shapes of
 // the same data satisfy it: the committed dataset row (`Biomarker`, which omits
-// the fields it never curates) and the `canonical_biomarkers` DB row
+// the fields it never curates) and the `canonical_result_definitions` DB row
 // (`CanonicalResultDefinition`, which carries every column). One judgement, two
 // vocabularies — never two judgements.
 export interface JudgmentEntry {
@@ -564,7 +564,7 @@ function entryForIdentity(
 export function metricJudgment(
   identity: string,
   subject: JudgmentSubject = {},
-  entries: readonly JudgmentEntry[] = CANONICAL_BIOMARKERS
+  entries: readonly JudgmentEntry[] = CANONICAL_RESULT_DEFINITIONS
 ): MetricJudgment | null {
   const entry = entryForIdentity(identity, entries);
   if (!entry) return null;

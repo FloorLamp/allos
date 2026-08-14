@@ -75,7 +75,7 @@ export function seedPassportSmalls(): void {
   // synthetic. Layered on profile 1 for the medical-smalls specs.
 
   // #381 — a STARRED genomics biomarker whose only reading is ~2 years old. The
-  // canonical name has no canonical_biomarkers row, so before the fix the pinned
+  // canonical name has no canonical_result_definitions row, so before the fix the pinned
   // tile judged staleness on the (null) canonical category and mislabelled a
   // genotype "stale"; after the fix it judges on the RECORD's 'genomics' category
   // (never stale). The starred-biomarker-stale spec asserts the tile shows no

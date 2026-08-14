@@ -44,7 +44,7 @@ export function normalizeCanonicalKey(name: string): string {
 // The rule the dataset is held to, written down here because this is where the
 // naming discipline already lives — and enforced, so it can't regrow: the scan in
 // lib/__tests__/canonical-naming-rule.test.ts fails a bare name that has a qualified
-// sibling in canonical-biomarkers.json.
+// sibling in canonical-result-definitions.json.
 //
 //   • A bare name is permitted ONLY where a single universal convention fixes its
 //     meaning. In practice that is the SERUM specimen: "Albumin", "Creatinine",

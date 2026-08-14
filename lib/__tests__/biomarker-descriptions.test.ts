@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import canonical from "@/lib/canonical-biomarkers.json";
+import canonical from "@/lib/canonical-result-definitions.json";
 import descriptionsJson from "@/lib/datasets/data/biomarker-descriptions.json";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 
@@ -32,12 +32,12 @@ const descriptions: Record<
 );
 
 const canonicalNames = (
-  canonical as { biomarkers: { name: string }[] }
-).biomarkers.map((b) => b.name);
+  canonical as { definitions: { name: string }[] }
+).definitions.map((b) => b.name);
 
 describe("biomarker-descriptions coverage", () => {
   // The build-failing guard: every canonical biomarker must have a description,
-  // so adding a biomarker to canonical-biomarkers.json without documenting it
+  // so adding a biomarker to canonical-result-definitions.json without documenting it
   // here trips CI and keeps the two datasets in sync.
   it("has an entry for every canonical biomarker (exact key)", () => {
     const missing = canonicalNames.filter((name) => !descriptions[name]);
@@ -52,7 +52,7 @@ describe("biomarker-descriptions coverage", () => {
   });
 
   // The REVERSE guard (symmetric drift): no description entry may name a biomarker
-  // that isn't in canonical-biomarkers.json. Without this, a canonical RENAME that
+  // that isn't in canonical-result-definitions.json. Without this, a canonical RENAME that
   // updates only one dataset leaves an orphaned description keyed to the OLD name —
   // dead weight that silently stops resolving. Together with the forward guard above
   // this pins the two datasets' name SETS as identical, so a rename must touch both.

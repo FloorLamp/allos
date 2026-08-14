@@ -14,7 +14,7 @@
 // touched, keeping the model's correct "Glucose, Urine" and never snapping the
 // ambiguous printed "GLUCOSE" onto the serum entry (#918 §2).
 
-import canonicalSeed from "./canonical-biomarkers.json";
+import canonicalSeed from "./canonical-result-definitions.json";
 import { normalizeCanonicalKey, snapCanonicalName } from "./canonical-name";
 import { sameUnit } from "./unit-conversions";
 
@@ -32,7 +32,7 @@ function stemKey(name: string): string {
 
 const UNIT_BY_KEY = new Map<string, string>();
 const SIBLINGS_BY_STEM = new Map<string, { name: string; unit: string }[]>();
-for (const b of (canonicalSeed as { biomarkers?: SeedEntry[] }).biomarkers ??
+for (const b of (canonicalSeed as { definitions?: SeedEntry[] }).definitions ??
   []) {
   if (!b?.name || !b.unit) continue;
   const key = normalizeCanonicalKey(b.name);

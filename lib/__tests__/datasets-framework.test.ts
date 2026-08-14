@@ -17,8 +17,8 @@ import {
 // for the datasets listed in lib/datasets/registry.ts, whose committed JSON is EITHER
 // (a) a file under lib/datasets/data/ (the common case) OR (b) an EXTERNAL source
 // file registered in EXTERNAL_SOURCE_DATASETS
-// below (canonical-biomarkers, whose generator-owned + boot-seeded JSON stays at its
-// historical path; see lib/datasets/canonical-biomarkers.ts for why). It DELIBERATELY
+// below (canonical-result-definitions, whose generator-owned + boot-seeded JSON stays at its
+// historical path; see lib/datasets/canonical-result-definitions.ts for why). It DELIBERATELY
 // does NOT apply the envelope contract to root-level JSON assets. Instead, the small
 // root inventory is classified explicitly in docs/internals/datasets.md and checked
 // below, so a new curated dataset cannot evade citations by landing there. Thus:
@@ -31,7 +31,7 @@ const DATA_DIR = path.join(REPO, "lib/datasets/data");
 const DATASETS_DOC = path.join(REPO, "docs/internals/datasets.md");
 
 const ROOT_JSON_FILES = [
-  "canonical-biomarkers.json",
+  "canonical-result-definitions.json",
   "exercise-guides.json",
   "release-notes.json",
   "symptoms.json",
@@ -44,11 +44,11 @@ const ROOT_JSON_FILES = [
 // below fully covers it) — the file itself is not an on-disk envelope, so it is scoped
 // OUT of the "every JSON under data/ is a valid envelope" check and INTO the lockstep
 // via this map. Keep it tiny and justified: the framework's default is a data-dir file.
-//   canonical-biomarkers — seeded into the canonical_biomarkers table on boot and read
+//   canonical-result-definitions — seeded into the canonical_result_definitions table on boot and read
 //   by eight other modules directly; its human-curated order isn't a generator fixed
-//   point, so it stays at lib/canonical-biomarkers.json. (#860 Track B)
+//   point, so it stays at lib/canonical-result-definitions.json. (#860 Track B)
 const EXTERNAL_SOURCE_DATASETS: Record<string, string> = {
-  "canonical-biomarkers": "lib/canonical-biomarkers.json",
+  "canonical-result-definitions": "lib/canonical-result-definitions.json",
 };
 
 function dataFiles(): string[] {

@@ -12,7 +12,7 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { up } from "@/lib/migrations/versions/178-canonical-name-qualifiers";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import {
   biomarkerDismissalKey,
   biomarkerFlagDismissalKey,
@@ -188,7 +188,7 @@ describe("migration 178 — canonical names that state what they measure", () =>
       expect(vocab, `${oldName} still in the vocabulary`).not.toContain(
         oldName
       );
-    // The surviving entries are inserted by seedCanonicalBiomarkers on the boot that
+    // The surviving entries are inserted by seedCanonicalResultDefinitions on the boot that
     // follows, so this migration leaves only what it did not retire.
     expect(vocab).toEqual([UNTOUCHED, "Fictional Unmapped Analyte"]);
 
@@ -414,8 +414,8 @@ describe("migration 178 — the surviving vocabulary answers for the old spellin
     // they are pinned together: for each pair, the shipped dataset must both carry the
     // new name and resolve the old one to it.
     const vocab = (
-      canonicalSeed as { biomarkers: { name: string }[] }
-    ).biomarkers.map((b) => b.name);
+      canonicalSeed as { definitions: { name: string }[] }
+    ).definitions.map((b) => b.name);
     const index = buildCanonicalIndex(vocab);
     const present = new Set(vocab.map((n) => n.toLowerCase()));
     for (const [oldName, newName] of RENAMES) {

@@ -32,7 +32,7 @@ import {
   getIntakeSafetyContext,
   getActiveMedicationFamilies,
   getBiomarkerSeries,
-  getCanonicalBiomarker,
+  getCanonicalResultDefinition,
   getDaylightOutdoorMinutesTotal,
   getProteinAdequacy,
   getFiberAdequacy,
@@ -1663,7 +1663,7 @@ export function buildSunExposureFindings(
   const latest = series.at(-1);
   if (!latest || latest.value_num == null) return [];
 
-  const cb = getCanonicalBiomarker(
+  const cb = getCanonicalResultDefinition(
     latest.canonical_name ?? VITAMIN_D_CANONICAL
   );
   const status = optimalStatus(

@@ -29,7 +29,7 @@ vi.mock("@/lib/auth", async () => vi.importActual("@/lib/auth"));
 import { db } from "@/lib/db";
 import {
   getBiomarkerSeriesWithDerived,
-  getCanonicalBiomarker,
+  getCanonicalResultDefinition,
   reconcileFlags,
 } from "@/lib/queries";
 import { optimalBand, referenceRange } from "@/lib/reference-range";
@@ -111,7 +111,9 @@ function seriesFor(canonicalName: string): ClinicalObservation[] {
 function basisFor(row: ClinicalObservation, canonicalName: string) {
   return biomarkerValueBasis({
     flag: row.flag,
-    hasCuratedBand: curatedBandShown(getCanonicalBiomarker(canonicalName)),
+    hasCuratedBand: curatedBandShown(
+      getCanonicalResultDefinition(canonicalName)
+    ),
     reportedRange: row.reference_range,
   });
 }

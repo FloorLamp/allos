@@ -1,12 +1,15 @@
 // Curated biomarker reference DATA — the pediatric AGE_BANDS + the static
-// CURATED_LABS table. Split out of lib/curated-biomarkers.ts (which keeps the
-// policy tables + the curateBiomarkers transform + the shared types and re-exports
+// CURATED_LABS table. Split out of lib/curated-result-definitions.ts (which keeps the
+// policy tables + the curateResultDefinitions transform + the shared types and re-exports
 // these) so the ~2,000 lines of clinical reference data live on their own and a
 // name/policy edit doesn't churn the whole file. Pure data; the transform that folds
-// it into the committed JSON stays in curated-biomarkers.ts. INFORMATIONAL, NOT
+// it into the committed JSON stays in curated-result-definitions.ts. INFORMATIONAL, NOT
 // MEDICAL ADVICE — human-review the committed JSON before it is trusted.
 
-import type { AgeBandedRange, Biomarker } from "../curated-biomarkers";
+import type {
+  AgeBandedRange,
+  CanonicalResultDefinitionSeed,
+} from "../curated-result-definitions";
 
 // Curated pediatric (and adolescent) reference bands for the highest-impact
 // age-dependent markers. These REPLACE the adult top-level fields
@@ -383,7 +386,7 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
 //  - Total T4/T3, Direct Bilirubin, LDH, CK (sex-specific), ESR (sex-specific),
 //    Anion Gap, Reticulocytes: Mayo Clinic Laboratories & ARUP Consult adult
 //    reference intervals (MedlinePlus for corroboration).
-export const CURATED_LABS: Biomarker[] = [
+export const CURATED_LABS: CanonicalResultDefinitionSeed[] = [
   // ── Derived biological-age index (issue #157) ──────────────────────────────
   // PhenoAge — Levine's Phenotypic Age (2018): a "biological age" in YEARS
   // computed (not measured) from nine routine analytes + chronological age via a
@@ -496,7 +499,7 @@ export const CURATED_LABS: Biomarker[] = [
   // entries — a count (×10^3/uL) and a fraction (%) are NOT interconvertible
   // without the WBC, the same #482 identity discipline as the WBC differential
   // above — and the alternate LOINCs of each form route to its ONE entry
-  // (lib/biomarker-loinc). Nucleated RBC and immature granulocytes are normally
+  // (lib/canonical-result-loinc). Nucleated RBC and immature granulocytes are normally
   // ABSENT (≈0) in child/adult peripheral blood, so direction is lower_better
   // (only a high bound matters; a low/zero reading is normal). They run HIGH in
   // neonates, so each carries a coarse infancy age band (see AGE_BANDS) that keeps
@@ -1846,7 +1849,7 @@ export const CURATED_LABS: Biomarker[] = [
   // ── Fasting glucose (issue #1195) ─────────────────────────────────────────
   // Fasting glucose has its OWN diagnostic thresholds (70–99 normal / 100–125 pre-DM /
   // ≥126 DM) distinct from a random "Glucose", so it is a distinct entry (LOINC 1558-6
-  // maps to it in lib/biomarker-loinc). Its own identity — NOT the A1c/eAG family and
+  // maps to it in lib/canonical-result-loinc). Its own identity — NOT the A1c/eAG family and
   // NOT the random-glucose series. Source: ADA Standards of Care fasting-glucose
   // diagnostic thresholds. INFORMATIONAL, NOT MEDICAL ADVICE.
   {
@@ -1869,7 +1872,7 @@ export const CURATED_LABS: Biomarker[] = [
   // Positive/Negative), so they carry NO numeric reference band — curated for
   // RECOGNITION + canonical grouping, exactly like the ABO/dipstick entries above,
   // NOT for a range. Their flag polarity (a POSITIVE is bad) is already settled by
-  // the LOINC → 'infection' class table in lib/biomarker-loinc (qualitativeClassForLoinc)
+  // the LOINC → 'infection' class table in lib/canonical-result-loinc (qualitativeClassForLoinc)
   // and the qualitative classifier — this just gives each a stable identity so a
   // result stacks under one series and dedups by LOINC instead of coining an ad-hoc
   // name. `direction: "in_range"` + null bounds = never a numeric flag. Category

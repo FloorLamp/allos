@@ -27,7 +27,7 @@ import {
 } from "@/lib/metric-judgment";
 import { readingIdentity } from "@/lib/reading-model";
 import { READING_IDENTITY_MAP } from "@/lib/reading-identity-map";
-import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "@/lib/datasets/canonical-result-definitions";
 import {
   FITNESS_NORM_MARKERS,
   fitnessContext,
@@ -98,7 +98,7 @@ describe("the declarations name real knowledge — no invented vocabulary (#482)
     for (const [name, k] of Object.entries(QUANTITY_KNOWLEDGE)) {
       if (k.source !== "canonical") continue;
       expect(
-        canonicalBiomarkerForName(k.canonical),
+        canonicalResultDefinitionForName(k.canonical),
         `${name} names "${k.canonical}", which is not in the canonical vocabulary`
       ).not.toBeNull();
     }

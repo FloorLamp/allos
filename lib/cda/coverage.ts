@@ -1,9 +1,9 @@
 import {
-  canonicalBiomarkerForLoinc,
+  canonicalResultNameForLoinc,
   isDerivedPercentileLoinc,
   isNonAnalyteLoinc,
   isUnmappedLabLoinc,
-} from "../biomarker-loinc";
+} from "../canonical-result-loinc";
 import { isNoKnownAllergy, isNoKnownProblemText } from "../clinical-parse";
 import { codeFromVaccineCode } from "../cvx-map";
 import type { ImportedClinicalObservation } from "../health-import";
@@ -82,7 +82,7 @@ function observationLabel(obs: any, ids: Record<string, string>): string {
     resolveNarrativeText(code?.originalText, ids) ||
     resolveNarrativeText(obs?.text, ids) ||
     loincDisplayName(code) ||
-    (loinc ? (canonicalBiomarkerForLoinc(loinc) ?? `LOINC ${loinc}`) : null) ||
+    (loinc ? (canonicalResultNameForLoinc(loinc) ?? `LOINC ${loinc}`) : null) ||
     (code?.["@_code"] != null ? `Code ${code["@_code"]}` : null) ||
     "Result"
   );

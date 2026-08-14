@@ -2,7 +2,7 @@
 
 Status: **shipped** · framework, harness, linter, and **31 registered datasets**
 are in place (#860 Track B and subsequent adoptions). **30** use envelope JSON
-under `lib/datasets/data/`; `canonical-biomarkers` is the one
+under `lib/datasets/data/`; `canonical-result-definitions` is the one
 **external-source** dataset (below). The registry census and the root-JSON
 inventory are checked against this document by
 `lib/__tests__/datasets-framework.test.ts`, so this count cannot silently drift.
@@ -13,7 +13,7 @@ inventory are checked against this document by
 - `biomarker-descriptions`
 - `biomarker-supplement-map`
 - `bp-percentiles`
-- `canonical-biomarkers`
+- `canonical-result-definitions`
 - `condition-training-considerations`
 - `contrast-safety`
 - `dental-safety`
@@ -46,7 +46,7 @@ inventory are checked against this document by
 The framework directory is the default home for new curated reference data.
 Every JSON file directly under `lib/` is an explicit exception:
 
-- `canonical-biomarkers.json` — the registered external-source dataset described
+- `canonical-result-definitions.json` — the registered external-source dataset described
   below;
 - `exercise-guides.json` and `symptoms.json` — documented framework
   non-candidates because they have no honest external provenance;
@@ -101,7 +101,7 @@ A framework dataset is an **envelope** (`lib/datasets/types.ts` →
 - **Age/sex/status bands**, when a dataset needs them, live **on the entries**
   (an entry is then one band). The framework deliberately does not privilege a
   single band schema, because the existing datasets band differently — half-open
-  `[min,max)` year ranges (canonical-biomarkers), month gates (prn/illness),
+  `[min,max)` year ranges (canonical-result-definitions), month gates (prn/illness),
   discrete age rows (bp-percentiles/growth-charts). A migration models its bands
   as entry fields and adds a band-aware accessor in its per-dataset module.
 
@@ -181,22 +181,22 @@ external-source entry (below). It does **not** retroactively scan the two
 documented non-candidates (`symptoms`, `exercise-guides`) that still live under
 `lib/*.json` with no honest external provenance.
 
-## External-source datasets (the canonical-biomarkers exception)
+## External-source datasets (the canonical-result-definitions exception)
 
 The framework's default is one envelope JSON per dataset under
-`lib/datasets/data/`. One dataset — **`canonical-biomarkers`** — is registered
+`lib/datasets/data/`. One dataset — **`canonical-result-definitions`** — is registered
 but keeps its committed JSON at its historical path
-`lib/canonical-biomarkers.json`, because it is unlike the read-only datasets in
+`lib/canonical-result-definitions.json`, because it is unlike the read-only datasets in
 two structural ways:
 
-- **Boot-seeded.** Its ranges are UPSERTed into the `canonical_biomarkers`
-  SQLite table on every boot (`seedCanonicalBiomarkers`) and drive a flag
+- **Boot-seeded.** Its ranges are UPSERTed into the `canonical_result_definitions`
+  SQLite table on every boot (`seedCanonicalResultDefinitions`) and drive a flag
   reconcile gated by `canonicalFlagsSignature()`
   (`lib/canonical-flags-version.ts`). The committed file is the shared source
   for both the boot seed and the framework read layer, so they can never
   diverge.
 - **Generator-owned, human-curated order.**
-  `scripts/gen-canonical-biomarkers.ts` writes it (an Anthropic call per
+  `scripts/gen-canonical-result-definitions.ts` writes it (an Anthropic call per
   category) and it is then hand-curated into a reviewed grouping — its order is
   **not** a deterministic name sort, so the "regenerate → byte-compare" fixed
   point the other datasets use does not hold offline. Eight modules + the boot
@@ -204,9 +204,9 @@ two structural ways:
   for no behavioral gain.
 
 So it adopts the framework as a pure **read layer**:
-`lib/datasets/canonical-biomarkers.ts` imports the byte-identical committed
+`lib/datasets/canonical-result-definitions.ts` imports the byte-identical committed
 JSON, wraps it in the envelope **in memory** (adding the required citations +
-`identity.keys`, entries = the file's `biomarkers`), validates it with
+`identity.keys`, entries = the file's `definitions`), validates it with
 `loadDataset()`, and exposes the entries + a name matcher. It is listed in
 `EXTERNAL_SOURCE_DATASETS` in the linter, which scopes it OUT of the "every JSON
 under `data/` is an envelope" check (the file isn't an on-disk envelope) and
@@ -214,8 +214,8 @@ INTO the registry harness + lockstep (so it still must carry a citation, resolve
 identity, and refuse absent queries). The behavior-preservation proof — a fresh
 boot seeds the SAME rows the read layer exposes, and the flag-version gate still
 recomputes on a range change — is the DB-tier
-`lib/__db_tests__/canonical-biomarkers-dataset.test.ts`, plus a flag-signature
-fixed-point in `lib/__tests__/datasets-canonical-biomarkers.test.ts`. **Identity
+`lib/__db_tests__/canonical-result-definitions-dataset.test.ts`, plus a flag-signature
+fixed-point in `lib/__tests__/datasets-canonical-result-definitions.test.ts`. **Identity
 (#482):** the dataset's framework identity is the exact canonical `name` (which
 curated row); that does not fight `biomarkerFamily()`, which collapses ACROSS
 names for dedup/series/dismissal — different layers. New datasets should still
@@ -224,8 +224,8 @@ boot-seeded file only.
 
 ### Superseded spellings: a curated alias must not be inert (#2306)
 
-The `canonical_biomarkers` table holds two kinds of row: the curated dataset
-entries (`source = 'seed'`, re-UPSERTed by `seedCanonicalBiomarkers` on every
+The `canonical_result_definitions` table holds two kinds of row: the curated dataset
+entries (`source = 'seed'`, re-UPSERTed by `seedCanonicalResultDefinitions` on every
 boot) and the spellings an extraction coined (`source = 'ai'`, registered by
 `addCanonicalNames` as documents arrive). `buildCanonicalIndex`
 (`lib/canonical-name.ts`) fills its index from the whole vocabulary first and
@@ -256,7 +256,7 @@ It runs in **two places, for two different reasons**:
 
 - **migration 174** — the one-shot data move for the drift already on disk, so
   the retroactive rename has a version, a transaction, and a replay test;
-- **`bootTasks`**, right after `seedCanonicalBiomarkers` and before the flag
+- **`bootTasks`**, right after `seedCanonicalResultDefinitions` and before the flag
   reconcile — the recurring guard, because `CANONICAL_ALIASES` and the dataset
   grow in releases with **no schema change**, and any import between two boots
   can mint a fresh blocking row. Exactly why the seed itself is a boot task.
@@ -429,7 +429,7 @@ because a row that leaves the catalog without arriving anywhere is stranded:
 | `derived-inputs`    | dropped, with **no** projection                                 |
 
 `derived-inputs` had no arm at all until #2646, and BMI — its only member — paid for
-it: the row survived, an AI import coined an `ai` `canonical_biomarkers` name for it,
+it: the row survived, an AI import coined an `ai` `canonical_result_definitions` name for it,
 and `getUsedCanonicalNames` returned it forever as an outstanding candidate for a
 quantity `/trends/metric/bmi` already charts. Waist circumference escaped the same
 fate only because `import-projection` came with both a drop and migration 180.
@@ -628,7 +628,7 @@ Ranking, not membership, is what the abbreviation key fixes.
 name is keyed by. It also **deletes** the retired vocabulary rows, which #2306's
 pass deliberately never does: there the retired row is `ai`-coined and a curated
 row is the authority, whereas here the retired name IS the curated one the dataset
-just dropped, and `seedCanonicalBiomarkers` has no delete pass — so left in place
+just dropped, and `seedCanonicalResultDefinitions` has no delete pass — so left in place
 it would win its own key forever and block the alias route added to rescue it.
 Because `name` is a `FLAG_RELEVANT_FIELD`, `canonicalFlagsSignature()` moves on
 its own and the boot reconcile re-derives once; `FLAG_LOGIC_VERSION` is

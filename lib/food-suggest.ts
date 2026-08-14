@@ -498,7 +498,7 @@ const DRI_KEY_TO_MAP_KEY: Record<string, string> = {
   molybdenum: "molybdenum",
 };
 
-// The canonical biomarker names (lib/canonical-biomarkers.json) that MEASURE each
+// The canonical biomarker names (lib/canonical-result-definitions.json) that MEASURE each
 // dri.json nutrient — the FLAGGABILITY LEDGER for the #774 coverage reflection guard.
 // A DRI nutrient with ≥1 name here is "flaggable" (the app can read it low), so it MUST
 // carry a food-map entry (a low flag would otherwise produce no food answer). An EMPTY

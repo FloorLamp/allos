@@ -10,7 +10,7 @@ import {
 } from "../trend-metric-analytes";
 import { acronymNameForms } from "../canonical-name";
 import { readingDetailHref } from "../hrefs";
-import { CANONICAL_BIOMARKERS } from "../datasets/canonical-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "../datasets/canonical-result-definitions";
 import {
   METRIC_KNOWLEDGE,
   metricIdentity,
@@ -246,7 +246,7 @@ describe("what LEAVES the browser (#2365)", () => {
   // The whole `vitals` half of the controlled vocabulary, partitioned by the rule. Kept
   // as an exact list on both sides so a vocabulary change that moves an analyte across
   // the line has to be looked at.
-  const vitalsEntries = CANONICAL_BIOMARKERS.filter(
+  const vitalsEntries = CANONICAL_RESULT_DEFINITIONS.filter(
     (e) => e.category === "vitals"
   );
 
@@ -292,7 +292,7 @@ describe("what LEAVES the browser (#2365)", () => {
 
 describe("what STAYS in the browser (#2365)", () => {
   it("every canonical `vitals` analyte with no metric chart", () => {
-    const staying = CANONICAL_BIOMARKERS.filter(
+    const staying = CANONICAL_RESULT_DEFINITIONS.filter(
       (e) => e.category === "vitals" && !hasTrendMetricHome(e.name)
     ).map((e) => e.name);
     // The specialty domains #1076 was protecting, in full.
@@ -620,7 +620,7 @@ describe("a statistic signifier refuses the home too (#2700)", () => {
     // vocabulary is swept rather than the `vitals` slice: the homed set is EXACTLY the
     // six physiologic vitals, peak flow, and the DEXA body-fat entry that homes but
     // stays listed because its category is `scan`. Nothing was evicted by #2700.
-    const homed = CANONICAL_BIOMARKERS.filter((e) =>
+    const homed = CANONICAL_RESULT_DEFINITIONS.filter((e) =>
       hasTrendMetricHome(e.name)
     ).map((e) => e.name);
     expect(homed.sort()).toEqual(
@@ -808,19 +808,19 @@ describe("derivedInputsMetricFor (#2646)", () => {
     // once. A curated entry is a quantity the app stores and charts under its own
     // identity; not one of them may resolve to a derived-input slug, because that
     // resolution is a DELETE.
-    const swallowed = CANONICAL_BIOMARKERS.map((e) => e.name).filter(
+    const swallowed = CANONICAL_RESULT_DEFINITIONS.map((e) => e.name).filter(
       (name) => derivedInputsMetricFor(name) !== null
     );
     expect(swallowed).toEqual([]);
     // Non-vacuous: the registry it swept is the whole curated vocabulary (327 entries
     // when this landed), not an empty list.
-    expect(CANONICAL_BIOMARKERS.length).toBeGreaterThan(300);
+    expect(CANONICAL_RESULT_DEFINITIONS.length).toBeGreaterThan(300);
     // #2700 extends the sweep to the SIGNIFIER-decorated spellings, now that the same
     // refusal runs at Tier 1: no curated name decorated with a statistic signifier may
     // resolve to a derived-input slug either. (Not the `(ABBR)` print form — appending
     // `(BMI)` to an unrelated curated name is the DISJOINT full half #2678 deliberately
     // lets the acronym corroborate, so that sweep would assert the opposite rule.)
-    const swallowedDecorated = CANONICAL_BIOMARKERS.flatMap((e) =>
+    const swallowedDecorated = CANONICAL_RESULT_DEFINITIONS.flatMap((e) =>
       STATISTIC_SIGNIFIERS.map((sig) => `${e.name} ${sig.token}`)
     ).filter((name) => derivedInputsMetricFor(name) !== null);
     expect(swallowedDecorated).toEqual([]);

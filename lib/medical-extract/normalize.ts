@@ -22,7 +22,7 @@ import {
   parseFasting,
   sanitizeSpecimen,
 } from "../lab-result-lifecycle";
-import { canonicalBiomarkerForName } from "../datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "../datasets/canonical-result-definitions";
 import { CATEGORIES, FLAGS } from "./constants";
 import type { ExtractedConfidence } from "./types";
 import type {
@@ -269,7 +269,7 @@ export function normalizeResults(
     // `vitals`, etc. A name outside the vocabulary keeps the model's category.
     // Prescriptions are never a canonical biomarker, so the rx branch is unaffected.
     const canonicalEntry = canonicalName
-      ? canonicalBiomarkerForName(canonicalName)
+      ? canonicalResultDefinitionForName(canonicalName)
       : null;
     const category: MedicalCategory =
       canonicalEntry &&

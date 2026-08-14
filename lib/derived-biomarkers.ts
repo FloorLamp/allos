@@ -30,7 +30,7 @@ import { convertToCanonical } from "./unit-conversions";
 import type { Sex } from "./types";
 import { ADULT_MIN_AGE, isAdultForClinical } from "./life-stage";
 
-// The canonical output names — each MUST exist as a canonical_biomarkers row so
+// The canonical output names — each MUST exist as a canonical_result_definitions row so
 // the shared reference/optimal-range + flag machinery treats a derived value like
 // any other analyte (ranges, badges, digest classification).
 export const DERIVED_NAMES = [
@@ -163,7 +163,7 @@ export interface DerivedReading {
   name: DerivedName;
   date: string;
   value: number;
-  // The canonical OUTPUT unit — mirroring the index's canonical_biomarkers row, so a
+  // The canonical OUTPUT unit — mirroring the index's canonical_result_definitions row, so a
   // computed reading is labelled exactly like a lab-reported one of the same analyte.
   // Null for an index whose canonical entry carries no unit (a dimensionless ratio the
   // curated dataset records as unitless); convertToCanonical treats a null canonical
@@ -187,7 +187,7 @@ export interface DerivedReading {
 
 interface InputSpec {
   // The canonical analyte name(s) this input accepts (each must match a
-  // canonical_biomarkers row) — also the keys the query layer reads stored series for.
+  // canonical_result_definitions row) — also the keys the query layer reads stored series for.
   //
   // A LIST is an ordered PREFERENCE, first match on the draw wins, and it is a claim
   // made by THIS formula about THIS input only (#2334): the curated dataset carries

@@ -3198,7 +3198,7 @@ disclaimer), and the point-of-action "discuss with your prescriber / pharmacist
 The rule is about **rendered user-facing copy, not about file type** (#2342). A
 source scan under `app/`/`components/` could not see the two other routes the
 sentence took to the same pages: 40 entries of curated JSON under `lib/` —
-`canonical-biomarkers.json`'s `note` and `biomarker-descriptions.json`'s
+`canonical-result-definitions.json`'s `note` and `biomarker-descriptions.json`'s
 `description`, both rendered verbatim on the reading detail page, one of them
 byte-identical to the `NOT_A_DIAGNOSIS` constant — and AI-written coverage
 descriptions, which are generated and stored at runtime and never pass through a
@@ -3206,7 +3206,7 @@ source file at all. All three now read the same banned-phrasing list, which live
 `lib/disclaimers.ts` beside the copy it protects: the guard scans every curated
 dataset's entry payloads (file-level `$comment`/`citation`/provenance metadata is
 out of scope — no surface renders it), `clampAiDescription` strips a disclaimer
-sentence out of a stored AI description, and `scripts/gen-canonical-biomarkers.ts`
+sentence out of a stored AI description, and `scripts/gen-canonical-result-definitions.ts`
 both forbids the sentence in its prompt and strips one from a generated `note`. The
 prompt was the root cause: it used to tell the model "These are INFORMATIONAL, not
 medical advice", which is what taught it to append the framing to the rows it wrote.

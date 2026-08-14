@@ -77,8 +77,13 @@ const BOOT_TASK_DELETES: BootTaskDelete[] = [
   },
   {
     file: "lib/canonical-alias-merge-db.ts",
-    table: "canonical_biomarkers",
+    table: "canonical_result_definitions",
     why: "an ai-coined vocabulary row the dataset has superseded. Scoped to source = 'ai', so a curated row is untouchable; nobody typed it, and the next import mints it again if it is still wanted.",
+  },
+  {
+    file: "lib/canonical-alias-merge-db.ts",
+    table: "canonical_biomarkers",
+    why: "the same ai-coined vocabulary cleanup while immutable migration 174 replays before the #2737 table rename. The branch is unreachable to post-migration bootTasks; it remains literal so the frozen migration and this delete census both keep their contracts.",
   },
   {
     file: "lib/canonical-alias-merge-db.ts",

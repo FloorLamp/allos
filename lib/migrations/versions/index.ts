@@ -189,6 +189,7 @@ import { migration as mEncounterDiagnosisRanks } from "./20260813-encounter-diag
 import { migration as mBmiDerived } from "./20260813-bmi-derived-rows";
 import { migration as mCascadeOrphanSweep } from "./20260813-cascade-orphan-sweep";
 import { migration as mSavedBackedRepair } from "./20260813-saved-backed-identity-repair";
+import { migration as mCanonicalResultDefinitions } from "./20260814-canonical-result-definitions";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -387,6 +388,7 @@ export const MIGRATIONS: Migration[] = [
   mBmiDerived,
   mCascadeOrphanSweep,
   mSavedBackedRepair,
+  mCanonicalResultDefinitions,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

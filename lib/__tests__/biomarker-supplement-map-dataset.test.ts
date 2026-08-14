@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildBiomarkerSupplementMap } from "@/scripts/gen-biomarker-supplement-map";
 import { curatedSupplementBiomarkers } from "@/lib/supplement-suggest-curated";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import { FOOD_DRUG_INTERACTIONS } from "@/lib/datasets/food-drug-interactions";
 import { FOOD_TIMINGS } from "@/lib/intake-schedule";
 
@@ -20,9 +20,9 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const OUT = path.join(REPO, "lib/datasets/data/biomarker-supplement-map.json");
 
 const CANONICAL_NAMES = new Set(
-  ((canonicalSeed as { biomarkers?: { name: string }[] }).biomarkers ?? []).map(
-    (b) => b.name.toLowerCase()
-  )
+  (
+    (canonicalSeed as { definitions?: { name: string }[] }).definitions ?? []
+  ).map((b) => b.name.toLowerCase())
 );
 const DRUG_KEYS = new Set(FOOD_DRUG_INTERACTIONS.map((e) => e.key));
 
@@ -44,7 +44,7 @@ describe("biomarker-supplement-map.json dataset", () => {
     );
     expect(
       missing,
-      `biomarker names in the map with no canonical-biomarkers.json entry: ${missing}`
+      `biomarker names in the map with no canonical-result-definitions.json entry: ${missing}`
     ).toEqual([]);
   });
 

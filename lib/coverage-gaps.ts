@@ -107,7 +107,7 @@ export function conditionCoverageKey(
 
 // ---- Per-item "is it covered by a curated catalog?" predicates --------------
 
-// Biomarker coverage is DB-derived (the curated canonical_biomarkers rows), so the
+// Biomarker coverage is DB-derived (the curated canonical_result_definitions rows), so the
 // caller passes the set of curated family keys (curatedBiomarkerFamilyKeys below).
 export function isBiomarkerCovered(
   name: string,

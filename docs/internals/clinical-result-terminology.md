@@ -42,7 +42,7 @@ report a word.
 ### `CanonicalResultDefinition`
 
 **Axis: none — it is the registry entry itself.** The row shape of the
-`canonical_biomarkers` table and of the committed `lib/canonical-biomarkers.json`
+`canonical_result_definitions` table and of the committed `lib/canonical-result-definitions.json`
 that seeds it: a **definition of a reportable clinical result plus the knowledge
 needed to interpret it** — `unit`, `ref_low/high` with sex, age-band, reproductive
 status and cycle-phase overrides, `optimal_low/high`, `direction`, `retest_days`,
@@ -84,7 +84,7 @@ Does **not** imply identity: an `assessment` row is a `ClinicalObservation` too.
 ### `Assessment`
 
 **Axis: identity.** A dated observation the app **deliberately denies biomarker
-identity**: no `canonical_biomarkers` registration, absent from
+identity**: no `canonical_result_definitions` registration, absent from
 `getUsedCanonicalNames`, never a Coverage candidate, never a series, no backing
 reading for the ★ / retest de-orphan sweeps. Viewable on its own document, which
 is the point — the observation is not hidden, only refused an identity.
@@ -242,14 +242,28 @@ catalog already excludes.
 `lib/__tests__/clinical-result-terminology.test.ts` is this file's ratchet, over
 the real registry and the real predicates, one representative concept per class.
 
-## Not renamed, on purpose
+## Canonical registry name (#2737)
 
-- **`canonical_biomarkers`, the table**, and the accessors that name it —
-  `seedCanonicalBiomarkers`, `getCanonicalBiomarker`, `canonicalBiomarkerForName`,
-  `CANONICAL_BIOMARKERS`, `CanonicalBiomarkerEntry`, the `canonical-biomarkers`
-  dataset id and the committed JSON. Part 1 ships **no persisted change**; a
-  function named for the table it reads is honest, and renaming it away from that
-  table would make the code say less, not more.
+The registry spans every result that carries identity, including vital signs,
+instruments, scans, genomics, derived quantities, and immutable reference facts. Its
+current umbrella name is therefore **canonical result definition**:
+`canonical_result_definitions`, `CanonicalResultDefinition`,
+`seedCanonicalResultDefinitions`, `getCanonicalResultDefinition`,
+`canonicalResultDefinitionForName`, and the `canonical-result-definitions` dataset.
+The LOINC vocabulary lives in `lib/canonical-result-loinc.ts` and resolves through
+`canonicalResultNameForLoinc` for the same reason.
+
+Migration `20260814-canonical-result-definitions` renames the established table in
+place. SQLite preserves its rows, columns, constraints, indexes, source values, and
+foreign-key targets. This is a clean namespace change: current code exposes no legacy
+view, dual write, module alias, dataset-id alias, JSON `biomarkers` property, or
+`gen:biomarkers` command. Repository consumers move atomically; existing databases
+move through the forward migration. Frozen earlier migrations and their historical
+shape fixtures retain `canonical_biomarkers`, because that is the table those versions
+actually ran against.
+
+Still retained on purpose:
+
 - **`biomarkerFamily`, `getBiomarkerSeries`, `biomarker_panels`, `biomarkerRetestStatus`**
   and the rest of the genuinely-biomarker surface (see above).
 - **`ClinicalObservation` and `Analyte`** — already correct, already shipped.
@@ -279,7 +293,7 @@ to CREATE one.
 `reclassifyLegacyBiomarkerCategory` (`lib/legacy-category-reclass-db.ts`) re-files each
 legacy row using the canonical registry's own `category`, matched on the row's identity
 — its `canonical_name`, else the printed `name` — by exact NOCASE name against
-`canonical_biomarkers`.
+`canonical_result_definitions`.
 
 That is **not a new policy**. It is the rule the AI ingest path has followed since
 #1076 (`lib/medical-extract/normalize.ts`: "the canonical dataset owns the

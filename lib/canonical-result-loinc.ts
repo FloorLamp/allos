@@ -1,5 +1,5 @@
-// Maps common LOINC codes to the app's canonical biomarker names (the ones
-// seeded from lib/canonical-biomarkers.json), so a vital sign / lab pulled out of
+// Maps common LOINC codes to the app's canonical result names (the ones
+// seeded from lib/canonical-result-definitions.json), so a vital sign / lab pulled out of
 // a CCD or SMART Health Card aggregates under the same identity — and picks up
 // the same reference band — as the rest of the app, instead of the portal's raw
 // display name (e.g. "Systolic blood pressure" vs the canonical "Blood Pressure
@@ -319,8 +319,8 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1504-0": "Glucose, Gestational Screen (50 g)", // 1-hour 50 g GCT
 };
 
-// The canonical biomarker name for a LOINC code, or null when unmapped.
-export function canonicalBiomarkerForLoinc(
+// The canonical result name for a LOINC code, or null when unmapped.
+export function canonicalResultNameForLoinc(
   loinc: string | null | undefined
 ): string | null {
   if (!loinc) return null;
@@ -340,7 +340,7 @@ const VITAL_LOINCS = new Set([
   "59408-5", // SpO2 by pulse oximetry
   "8310-5", // Body temperature
   // Body height/length is an anthropometric vital (not a lab), so it routes to
-  // the vitals category and stays out of the biomarker vocabulary. It is projected
+  // the vitals category and stays out of the result-definition vocabulary. It is projected
   // into metric_samples by the height recognizer — see lib/height-extract
   // (HEIGHT_LOINCS). Keep these two lists in sync.
   "8302-2", // Body height
@@ -572,7 +572,7 @@ export interface LoincClassification {
 export function classifyLoinc(
   loinc: string | null | undefined
 ): LoincClassification {
-  const canonical = canonicalBiomarkerForLoinc(loinc);
+  const canonical = canonicalResultNameForLoinc(loinc);
   const qualitative = qualitativeClassForLoinc(loinc);
   // Precedence: vital → non-analyte → percentile → (mapped) lab → unmapped lab.
   const disposition: LoincDisposition = isVitalLoinc(loinc)

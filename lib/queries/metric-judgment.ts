@@ -3,7 +3,7 @@
 //
 // Two reasons it is a query rather than a pure call at the call site:
 //
-//   • THE VOCABULARY. `canonical_biomarkers` is what boot seeds from the committed
+//   • THE VOCABULARY. `canonical_result_definitions` is what boot seeds from the committed
 //     dataset, what a re-seed updates, and what the flag reconcile judges rows
 //     against. Reading the DB row here is what keeps a metric page's band and the
 //     flag stored on a row of the same reading in agreement (#221) — a page that
@@ -14,7 +14,7 @@
 //
 // Auth-blind and profile-scoped: `profileId` first, no `lib/auth` import.
 
-import { getCanonicalBiomarker } from "./medical/canonical";
+import { getCanonicalResultDefinition } from "./medical/canonical";
 import { flagReconcileProfileContext } from "./medical/flags";
 import { cyclePhaseOnDate } from "../cycle";
 import { ageForRecord } from "../flag-reconcile";
@@ -51,7 +51,7 @@ export function getMetricJudgment(
 ): MetricJudgment | null {
   const knowledge = METRIC_KNOWLEDGE[slug];
   if (knowledge.source !== "canonical") return null;
-  const entry = getCanonicalBiomarker(knowledge.canonical) as
+  const entry = getCanonicalResultDefinition(knowledge.canonical) as
     JudgmentEntry | undefined;
   if (!entry) return null;
   return metricJudgment(

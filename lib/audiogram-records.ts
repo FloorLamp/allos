@@ -3,7 +3,7 @@
 // lib/instrument-records.ts, which does the same job for screening-instrument scores.
 //
 // STORE: `medical_records`, category `vitals`, one row per (ear, frequency) under the
-// canonical analyte names lib/canonical-biomarkers.json already curates for the
+// canonical analyte names lib/canonical-result-definitions.json already curates for the
 // `hearing` panel. The full justification for reusing that store rather than minting an
 // `audiograms` table lives at the top of lib/audiogram.ts — read it there; it is the
 // decision this issue turned on, and it is why this change ships NO migration.

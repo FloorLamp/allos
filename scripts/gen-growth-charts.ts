@@ -4,7 +4,7 @@
 // lib/datasets/growth-charts.ts; lib/growth.ts is the pure LMS ↔ z ↔ percentile math
 // over its entries.
 //
-// Unlike scripts/gen-canonical-biomarkers.ts (which calls the Anthropic API), the
+// Unlike scripts/gen-canonical-result-definitions.ts (which calls the Anthropic API), the
 // growth-chart LMS parameters are FIXED published constants from WHO and CDC, so
 // they are embedded directly in this script as the source of truth. The JSON is
 // GENERATED from these constants and COMMITTED; it is never hand-edited — edit the

@@ -624,7 +624,7 @@ db.prepare(
 ).run();
 
 // Medical records — comprehensive biomarker panels measured over the past ~3
-// years. Every canonical_name matches a canonical_biomarkers row that HAS an
+// years. Every canonical_name matches a canonical_result_definitions row that HAS an
 // optimal range, so trends render and the optimal-band ("non-optimal") flagging
 // is demoable. Flags are derived from the canonical ranges via reconcileFlags
 // below (not hand-set), so high/low/non-optimal stay consistent with the data.
@@ -634,7 +634,7 @@ type MedCategory = "lab" | "vitals" | "scan";
 interface Panel {
   category: MedCategory;
   name: string; // display name (also the canonical name unless noted)
-  canonical: string; // must match a canonical_biomarkers entry
+  canonical: string; // must match a canonical_result_definitions entry
   unit: string | null;
   ref: string | null; // reference range, as shown on a lab report
   values: number[]; // one per LAB_DATES entry, oldest → newest

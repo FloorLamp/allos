@@ -271,7 +271,7 @@ export const TOOL: Anthropic.Tool = {
             canonical_name: {
               type: "string",
               description:
-                "Clean canonical biomarker name for cross-document grouping; reuse a provided one when it matches. Qualifiers the LAYOUT encodes (specimen, panel/section, laterality, method) belong in it — a urinalysis row is 'Glucose, Urine'. A PATIENT-STATE condition the document does not print does NOT: fasting/non-fasting, post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise, morning/evening draw. A bare 'GLUCOSE' is 'Glucose', never 'Glucose, Fasting', however likely the panel makes it — the condition selects the reference range.",
+                "Clean canonical result name for cross-document grouping; reuse a provided one when it matches. Qualifiers the LAYOUT encodes (specimen, panel/section, laterality, method) belong in it — a urinalysis row is 'Glucose, Urine'. A PATIENT-STATE condition the document does not print does NOT: fasting/non-fasting, post-prandial, pre-/post-dose, supine/standing, at-rest/post-exercise, morning/evening draw. A bare 'GLUCOSE' is 'Glucose', never 'Glucose, Fasting', however likely the panel makes it — the condition selects the reference range.",
             },
             value: { type: ["string", "null"] },
             value_num: { type: ["number", "null"] },
@@ -934,7 +934,7 @@ export async function buildContent(
   const vocabBlock: Anthropic.TextBlockParam | null = vocab.length
     ? {
         type: "text",
-        text: `Canonical biomarker names to reuse when an analyte matches (set canonical_name to the matching entry; only coin a new name when none fits):\n${vocab.join(
+        text: `Canonical result names to reuse when an analyte matches (set canonical_name to the matching entry; only coin a new name when none fits):\n${vocab.join(
           ", "
         )}`,
       }

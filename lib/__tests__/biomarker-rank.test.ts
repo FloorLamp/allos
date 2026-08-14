@@ -6,7 +6,7 @@ import {
   emptyBiomarkerRankFacts,
   rankBiomarkers,
 } from "@/lib/biomarker-rank";
-import { CURATED_LABS } from "@/lib/curated-biomarkers";
+import { CURATED_LABS } from "@/lib/curated-result-definitions";
 
 describe("biomarker picker rank (#1675)", () => {
   it("preserves curated order, then alphabetizes the uncurated tail with no signals", () => {

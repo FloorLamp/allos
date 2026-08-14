@@ -1,4 +1,4 @@
-import { classifyLoinc } from "../biomarker-loinc";
+import { classifyLoinc } from "../canonical-result-loinc";
 import type { FhirCodeableConcept } from "../cvx-map";
 import { nuccLabel } from "../nucc-taxonomy";
 import type {

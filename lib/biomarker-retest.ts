@@ -3,7 +3,7 @@
 // flags-signature module imports — and exposes it keyed by canonical name. No DB
 // or network: it's a pure map over a bundled asset, so the Upcoming retest signal
 // can pick a per-analyte cadence (HbA1c quarterly, TSH every 6 months, lipids
-// annual) without a schema change to the canonical_biomarkers table. AI-discovered
+// annual) without a schema change to the canonical_result_definitions table. AI-discovered
 // analytes and uncurated rows carry no retest_days and fall back to the flat
 // DEFAULT_RETEST_DAYS in lib/reference-range.retestIntervalDays.
 //
@@ -11,8 +11,8 @@
 // same grouping the Upcoming retest generator partitions readings by — the cadence
 // and the clock are one question and must not be computed two ways (#1394/#1395).
 
-import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
-import { RETEST_WORTHY } from "./curated-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "./datasets/canonical-result-definitions";
+import { RETEST_WORTHY } from "./curated-result-definitions";
 import { biomarkerRetestIdentity } from "./canonical-name";
 
 // RETEST-clock identity → curated retest_days. Built once at module load over the
@@ -28,7 +28,7 @@ import { biomarkerRetestIdentity } from "./canonical-name";
 // family's representative, and the dataset has no "Estimated Average Glucose"
 // row — so a diabetic's quarterly A1c silently fell to the flat 365-day default.
 // The vitamin-D D2/D3 fractions were patched name-by-name against the same
-// mechanism (curated-biomarkers.RETEST_DAYS); keying on the identity fixes the
+// mechanism (curated-result-definitions.RETEST_DAYS); keying on the identity fixes the
 // class instead of the instance, so a family member added later inherits the
 // cadence without a second edit.
 //
@@ -39,7 +39,7 @@ import { biomarkerRetestIdentity } from "./canonical-name";
 // never let a due redraw go unmentioned.
 const RETEST_BY_IDENTITY: Map<string, number> = (() => {
   const map = new Map<string, number>();
-  const rows = CANONICAL_BIOMARKERS;
+  const rows = CANONICAL_RESULT_DEFINITIONS;
   for (const r of rows) {
     if (!r?.name || typeof r.retest_days !== "number" || r.retest_days <= 0)
       continue;
@@ -54,7 +54,7 @@ const RETEST_BY_IDENTITY: Map<string, number> = (() => {
 // has no curated interval (the caller then falls back to the default). Resolved
 // through the analyte's RETEST identity, so every member of a retest family
 // inherits the family's curated cadence — the same identity the retest generator
-// groups readings by. Case-insensitive, matching the canonical_biomarkers PK.
+// groups readings by. Case-insensitive, matching the canonical_result_definitions PK.
 export function retestDaysForBiomarker(
   name: string | null | undefined
 ): number | null {

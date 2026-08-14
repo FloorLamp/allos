@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
-import canonicalSeed from "./canonical-biomarkers.json";
+import canonicalSeed from "./canonical-result-definitions.json";
 
 // Bump when reconciledFlag's derivation LOGIC changes (e.g. how it maps a value
 // to high/low/non-optimal), so existing records are re-flagged on the next boot
 // even when the canonical dataset itself is unchanged.
-// v2: seedCanonicalBiomarkers now promotes AI-discovered rows to curated ranges
+// v2: seedCanonicalResultDefinitions now promotes AI-discovered rows to curated ranges
 // when the JSON lists them, and count/enzyme unit equivalence was fixed — both
 // change which readings convert and flag, so force one re-reconcile.
 // v3: age-banded reference ranges (ranges_by_age) — flags are now derived against
@@ -94,11 +94,11 @@ type RangeRow = Record<string, unknown>;
 // so the signature is stable across boots and insensitive to key order or
 // cosmetic edits.
 export function canonicalFlagsSignature(
-  biomarkers: RangeRow[] = (canonicalSeed as { biomarkers?: RangeRow[] })
-    .biomarkers ?? [],
+  definitions: RangeRow[] = (canonicalSeed as { definitions?: RangeRow[] })
+    .definitions ?? [],
   logicVersion: number = FLAG_LOGIC_VERSION
 ): string {
-  const rows = biomarkers
+  const rows = definitions
     .map((b) =>
       FLAG_RELEVANT_FIELDS.map((f) => (b[f] === undefined ? null : b[f]))
     )

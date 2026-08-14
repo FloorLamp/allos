@@ -18,7 +18,7 @@
 //   3. Otherwise title-case it, the honest approximation the resolver always used.
 //
 // Step 2 covers the CURATED vocabulary only, and deliberately. An ai-coined spelling
-// ("Body Mass Index (BMI)") lives in the profile's `canonical_biomarkers` rows, not in
+// ("Body Mass Index (BMI)") lives in the profile's `canonical_result_definitions` rows, not in
 // the shipped dataset, and this resolver is PURE by design — the suppression-display
 // coverage guard tests it with no database. Reaching into per-profile vocabulary to
 // recover the casing of a dismissed row's label is not worth threading a DB read
@@ -28,7 +28,7 @@ import {
   biomarkerIdentityAnchor,
   normalizeCanonicalKey,
 } from "./canonical-name";
-import canonicalSeed from "./canonical-biomarkers.json";
+import canonicalSeed from "./canonical-result-definitions.json";
 
 // normalized key -> the dataset's own spelling. Built once from the shipped seed,
 // which is the same source lib/import-shape.ts reads for its curated-vocabulary test.
@@ -36,8 +36,8 @@ const SEED_SPELLING_BY_KEY: ReadonlyMap<string, string> = (() => {
   const index = new Map<string, string>();
   // First entry wins a key collision, the same rule canonicalEntryIndex applies to a
   // profile's vocabulary — dataset order is the dataset's own preference.
-  for (const b of (canonicalSeed as { biomarkers?: { name: string }[] })
-    .biomarkers ?? []) {
+  for (const b of (canonicalSeed as { definitions?: { name: string }[] })
+    .definitions ?? []) {
     const key = normalizeCanonicalKey(b.name);
     if (key && !index.has(key)) index.set(key, b.name);
   }

@@ -81,7 +81,7 @@ export default defineConfig({
         "lib/__action_tests__/**",
         // Generated / pure-data modules (no logic to exercise) — same list the
         // pure gate excludes so the denominators line up.
-        "lib/canonical-biomarkers.json", // generated (scripts/gen-canonical-biomarkers.ts); not TS
+        "lib/canonical-result-definitions.json", // generated (scripts/gen-canonical-result-definitions.ts); not TS
         "lib/growth-charts.json", // generated (scripts/gen-growth-charts.ts); pure data
         "lib/supplement-catalog.ts", // hand-maintained pure data, no functions
       ],

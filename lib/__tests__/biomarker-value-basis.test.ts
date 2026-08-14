@@ -4,7 +4,7 @@ import {
   biomarkerValueBasis,
   REPORTED_RANGE_LABEL,
 } from "@/lib/biomarker-value-basis";
-import canonical from "@/lib/canonical-biomarkers.json";
+import canonical from "@/lib/canonical-result-definitions.json";
 import { flagTone } from "@/lib/reference-range";
 
 // A COLOURED VALUE MUST BE ABLE TO POINT AT ITS BASIS (#2340).
@@ -18,8 +18,8 @@ import { flagTone } from "@/lib/reference-range";
 // PHI: no real values. Ranges here are invented for the fixture; the notes read are
 // the repository's own curated dataset.
 
-const NOTES = (canonical as { biomarkers: { name: string; note?: string }[] })
-  .biomarkers;
+const NOTES = (canonical as { definitions: { name: string; note?: string }[] })
+  .definitions;
 
 function noteFor(name: string): string {
   const n = NOTES.find((b) => b.name === name)?.note;

@@ -124,7 +124,7 @@ const ACEI_REF =
 const METFORMIN_REF =
   "Metformin prescribing information — renal function and vitamin B12 monitoring";
 
-// Common labs, spelled to the CANONICAL biomarker names (lib/canonical-biomarkers.json)
+// Common labs, spelled to the CANONICAL biomarker names (lib/canonical-result-definitions.json)
 // wherever one exists, so a real reading satisfies the requirement family-aware.
 const TSH = {
   canonical: "Thyroid-Stimulating Hormone (TSH)",

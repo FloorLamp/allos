@@ -1,4 +1,4 @@
-import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "./datasets/canonical-result-definitions";
 
 // Unit handling for biomarker values, in two layers:
 //
@@ -9,7 +9,7 @@ import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
 //    functionally identical units equal for free (uIU/mL == mIU/L, mcg/dL ==
 //    ug/dL == µg/dL) and SI-prefix rescales automatic (mg/dL <-> mg/L is ×10).
 //
-// 2. Curated per-analyte factors (canonical-biomarkers.json `conversions`) for
+// 2. Curated per-analyte factors (canonical-result-definitions.json `conversions`) for
 //    CROSS-dimension conversions only — mass<->molar depends on molar mass
 //    (mg/dL <-> mmol/L differs for glucose vs cholesterol), so it can't be
 //    derived dimensionally.
@@ -262,7 +262,7 @@ function unitKey(unit: string): string {
 // Curated cross-dimension factors, keyed by canonical name then alternate unit
 // (lowercased). value_in_alt * factor = value in the canonical unit.
 const CONVERSIONS = new Map<string, Record<string, number>>();
-for (const b of CANONICAL_BIOMARKERS) {
+for (const b of CANONICAL_RESULT_DEFINITIONS) {
   if (b?.name && b?.conversions && typeof b.conversions === "object") {
     const m: Record<string, number> = {};
     for (const [unit, factor] of Object.entries(b.conversions)) {

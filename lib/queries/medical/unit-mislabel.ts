@@ -50,7 +50,7 @@ export function detectRecordUnitMislabel(
     | undefined;
   if (!row || !row.canonical_name || row.value_num == null) return null;
 
-  const cb = getCanonicalBiomarker(row.canonical_name);
+  const cb = getCanonicalResultDefinition(row.canonical_name);
   if (!cb) return null;
 
   const sex = getProfileSex(profileId);
@@ -126,7 +126,7 @@ export function getUnitMislabelReviews(
   const cbByName = new Map(
     (
       db
-        .prepare("SELECT * FROM canonical_biomarkers")
+        .prepare("SELECT * FROM canonical_result_definitions")
         .all() as CanonicalResultDefinition[]
     ).map((c) => [c.name.toLowerCase(), c])
   );
@@ -178,4 +178,4 @@ import {
   getProfileSex,
 } from "../../settings";
 import type { CanonicalResultDefinition } from "../../types";
-import { getCanonicalBiomarker } from "./canonical";
+import { getCanonicalResultDefinition } from "./canonical";

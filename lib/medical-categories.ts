@@ -126,7 +126,7 @@ export const NON_RESULTS_CATALOG_CATEGORIES = MEDICAL_CATEGORIES.filter(
 // name (docs/internals/clinical-result-terminology.md). A row in one of these
 // categories:
 //
-//   • registers no `canonical_biomarkers` name on import (both the deterministic
+//   • registers no `canonical_result_definitions` name on import (both the deterministic
 //     CCD/FHIR path and the AI path filter on this set), and
 //   • is excluded from `getUsedCanonicalNames`, which is what feeds Coverage
 //     candidacy (Data → Coverage → Uncatalogued items) AND every "the profile has

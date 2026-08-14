@@ -8,7 +8,7 @@
 // it, so a rule change is DETECTABLE — but only if something re-derives. A
 // migration could not: POWER_CURVE_DURATIONS and the derivation logic live in
 // lib/, and they change in releases with NO schema change at all. That is exactly
-// the reasoning seedCanonicalBiomarkers and reconcileFlagsIfCanonicalChanged are
+// the reasoning seedCanonicalResultDefinitions and reconcileFlagsIfCanonicalChanged are
 // boot tasks for, and it is the shape of the two bugs #2306 and PR #2309 fixed:
 // stored state silently out of sync with the rule that produced it.
 //
