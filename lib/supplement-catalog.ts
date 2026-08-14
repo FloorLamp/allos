@@ -57,6 +57,30 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
   { name: "Thiamine", dosages: ["100 mg", "250 mg"] },
   { name: "Pantothenic Acid", dosages: ["250 mg", "500 mg"] },
 
+  // Methylation / homocysteine support
+  {
+    name: "L-Methylfolate",
+    dosages: ["400 mcg", "1 mg", "5 mg"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "Methylcobalamin",
+    dosages: ["1000 mcg", "5000 mcg"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "P-5-P (Pyridoxal-5-Phosphate)",
+    dosages: ["25 mg", "50 mg"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "SAMe",
+    dosages: ["200 mg", "400 mg"],
+    defaultTimeOfDay: "Morning",
+    defaultFoodTiming: "empty_stomach",
+  },
+  { name: "Choline", dosages: ["250 mg", "500 mg"] },
+
   // Minerals
   {
     name: "Magnesium Glycinate",
@@ -213,6 +237,45 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
     defaultTimeOfDay: "Anytime",
   },
   { name: "Fiber", dosages: ["5 g", "10 g"], defaultTimeOfDay: "Anytime" },
+  // Fiber products (#2752) — gram-dosed defaults lead so fiberDoseGrams
+  // quantifies a picked dose out of the box; a tsp/tbsp variant is honest-unknown.
+  {
+    name: "Ground Flaxseed",
+    dosages: ["7 g", "14 g", "1 tbsp"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Chia Seeds",
+    dosages: ["12 g", "28 g", "1 tbsp"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Beta-Glucan",
+    dosages: ["3 g", "5 g"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Glucomannan",
+    dosages: ["1 g", "3 g"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Acacia Fiber",
+    dosages: ["5 g", "10 g", "1 tbsp"],
+    defaultTimeOfDay: "Anytime",
+  },
+  // Household fiber brands, so the honest full spelling is the path of least
+  // resistance (a truncated free-text "metam" is invisible to the fiber matcher).
+  {
+    name: "Metamucil",
+    dosages: ["1 rounded tsp", "1 packet"],
+    defaultTimeOfDay: "Anytime",
+  },
+  {
+    name: "Benefiber",
+    dosages: ["2 tsp", "1 stick"],
+    defaultTimeOfDay: "Anytime",
+  },
   {
     name: "Digestive Enzymes",
     dosages: ["1 capsule", "1 tablet"],
@@ -336,6 +399,36 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
   { name: "Spirulina", dosages: ["1 g", "3 g"] },
   { name: "Chlorella", dosages: ["1 g", "3 g"] },
 
+  // Carotenoids (fat-soluble — the with-fat default comes from the shared
+  // heuristic in intake-schedule)
+  { name: "Lutein", dosages: ["10 mg", "20 mg"], defaultTimeOfDay: "Morning" },
+  {
+    name: "Zeaxanthin",
+    dosages: ["2 mg", "4 mg"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "Lutein + Zeaxanthin",
+    dosages: ["10 mg / 2 mg", "20 mg / 4 mg"],
+    defaultTimeOfDay: "Morning",
+  },
+  { name: "Lycopene", dosages: ["10 mg", "20 mg"] },
+  { name: "Beta-Carotene", dosages: ["6 mg", "15 mg", "25000 IU"] },
+
+  // Mushrooms
+  {
+    name: "Cordyceps",
+    dosages: ["500 mg", "1000 mg"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "Reishi",
+    dosages: ["500 mg", "1000 mg"],
+    defaultTimeOfDay: "Evening",
+  },
+  { name: "Chaga", dosages: ["500 mg", "1000 mg"] },
+  { name: "Turkey Tail", dosages: ["500 mg", "1000 mg"] },
+
   // Joint
   { name: "Glucosamine", dosages: ["500 mg", "1500 mg"] },
   { name: "Chondroitin", dosages: ["400 mg", "1200 mg"] },
@@ -370,9 +463,116 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
     dosages: ["200 mg", "400 mg"],
     defaultTimeOfDay: "Morning",
   },
+  { name: "Ginger", dosages: ["500 mg", "1000 mg"] },
+  { name: "Boswellia", dosages: ["300 mg", "500 mg"] },
+  { name: "Cinnamon", dosages: ["500 mg", "1000 mg"] },
+  { name: "Fenugreek", dosages: ["500 mg", "600 mg"] },
+  {
+    name: "Holy Basil (Tulsi)",
+    dosages: ["300 mg", "600 mg"],
+    defaultTimeOfDay: "Evening",
+  },
+  {
+    name: "St. John's Wort",
+    dosages: ["300 mg", "600 mg", "900 mg"],
+    defaultTimeOfDay: "Morning",
+  },
+  { name: "Black Seed Oil", dosages: ["500 mg", "1000 mg", "1 tsp"] },
+  { name: "Stinging Nettle", dosages: ["300 mg", "500 mg"] },
+  {
+    name: "Passionflower",
+    dosages: ["250 mg", "500 mg"],
+    defaultTimeOfDay: "Before sleep",
+  },
+  {
+    name: "Lemon Balm",
+    dosages: ["300 mg", "600 mg"],
+    defaultTimeOfDay: "Evening",
+  },
+  {
+    name: "Chamomile",
+    dosages: ["350 mg", "500 mg"],
+    defaultTimeOfDay: "Before sleep",
+  },
+  { name: "Saffron", dosages: ["28 mg", "30 mg"] },
+  { name: "Grape Seed Extract", dosages: ["100 mg", "300 mg"] },
+  { name: "Pine Bark Extract", dosages: ["100 mg", "200 mg"] },
+  { name: "Olive Leaf Extract", dosages: ["500 mg", "750 mg"] },
+  { name: "Oregano Oil", dosages: ["150 mg", "1 softgel"] },
+  { name: "Evening Primrose Oil", dosages: ["500 mg", "1300 mg"] },
+  { name: "Black Cohosh", dosages: ["20 mg", "40 mg"] },
+  {
+    name: "Red Yeast Rice",
+    dosages: ["600 mg", "1200 mg"],
+    defaultTimeOfDay: "Evening",
+  },
+  { name: "Bilberry", dosages: ["80 mg", "160 mg"] },
+  { name: "Artichoke Extract", dosages: ["300 mg", "600 mg"] },
+  { name: "Triphala", dosages: ["500 mg", "1000 mg"] },
+  { name: "Moringa", dosages: ["500 mg", "1 tsp"] },
+  {
+    name: "Beetroot Powder",
+    dosages: ["5 g", "1 scoop"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "Shilajit",
+    dosages: ["250 mg", "500 mg"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "Fadogia Agrestis",
+    dosages: ["300 mg", "600 mg"],
+    defaultTimeOfDay: "Morning",
+  },
+  { name: "Sea Moss", dosages: ["1000 mg", "1 tsp"] },
   {
     name: "Multivitamin",
     dosages: ["1 tablet", "1 capsule", "1 serving"],
+    defaultTimeOfDay: "Morning",
+  },
+
+  // Brand blends — well-known branded formulations tracked as one item. The
+  // brand rides the item NAME here (it is the product's identity, e.g. "AG1");
+  // the free-text brand field stays for manufacturer detail on generic entries.
+  {
+    name: "AG1",
+    dosages: ["1 scoop", "12 g"],
+    defaultTimeOfDay: "Morning",
+    defaultFoodTiming: "empty_stomach",
+  },
+  { name: "LMNT", dosages: ["1 packet"], defaultTimeOfDay: "Anytime" },
+  { name: "Liquid I.V.", dosages: ["1 packet"], defaultTimeOfDay: "Anytime" },
+  { name: "Emergen-C", dosages: ["1 packet"], defaultTimeOfDay: "Morning" },
+  { name: "Ka'Chava", dosages: ["2 scoops"], defaultTimeOfDay: "Anytime" },
+  {
+    name: "Ritual Essential Multivitamin",
+    dosages: ["2 capsules"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "Basic Nutrients 2/Day",
+    dosages: ["2 capsules"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "O.N.E. Multivitamin",
+    dosages: ["1 capsule"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "Methyl-Guard Plus",
+    dosages: ["3 capsules"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "HomocysteX Plus",
+    dosages: ["1 capsule"],
+    defaultTimeOfDay: "Morning",
+  },
+  {
+    name: "PreserVision AREDS 2",
+    dosages: ["1 softgel", "2 softgels"],
     defaultTimeOfDay: "Morning",
   },
 ];

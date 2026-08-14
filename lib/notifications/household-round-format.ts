@@ -20,6 +20,8 @@
 import type { NotificationAction, NotificationMessage } from "./types";
 import type { AppRoute } from "../hrefs";
 import { householdDoseCallback } from "./callback-data";
+import { intakeItemShortLabel } from "../intake-short-name";
+import type { IntakeItemKind } from "../types";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
 
@@ -31,6 +33,10 @@ export interface HouseholdRoundDose {
   doseId: number;
   itemId: number;
   itemName: string;
+  // Kind + product feed the confirm button's short-label fallback (a supplement's
+  // shorter product name may stand in; a medication's formulation never does).
+  itemKind?: IntakeItemKind;
+  product?: string | null;
   // The dose amount label ("2000 IU", "500 mg"), or null when the item stores none.
   amount: string | null;
 }
@@ -155,7 +161,16 @@ function confirmActions(
   for (const section of sections) {
     for (const dose of section.doses) {
       actions.push({
-        label: `${GLYPH.done} ${section.name} · ${householdDoseLabel(dose)}`,
+        // The tightest button of all (member + item + amount), so the item takes
+        // its short label; the body section above keeps the full name.
+        label: `${GLYPH.done} ${section.name} · ${householdDoseLabel({
+          ...dose,
+          itemName: intakeItemShortLabel({
+            name: dose.itemName,
+            kind: dose.itemKind,
+            product: dose.product,
+          }),
+        })}`,
         data: householdDoseCallback({
           receiverProfileId,
           memberProfileId: section.profileId,

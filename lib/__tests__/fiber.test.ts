@@ -12,6 +12,7 @@ import {
   fiberBasisIsFloor,
   FIBER_ADEQUACY_PREFIX,
 } from "@/lib/fiber";
+import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 
 // Pure-tier tests for the fiber-adequacy engine (issue #976): the #767 protein pipeline
 // re-instantiated with a fourth (supplemented) basis. No DB/clock/network.
@@ -53,6 +54,20 @@ describe("isFiberSupplement", () => {
       "Fiber",
       "Generic Fiber supplement",
       "Wheat dextrin",
+      // #2752 — the mainstream fiber products the matcher used to miss.
+      "Chia Seeds",
+      "Chia powder",
+      "Beta-Glucan",
+      "Beta glucan powder",
+      "Glucomannan",
+      "Konjac root",
+      "Acacia Fiber",
+      "Gum arabic",
+      "Oat bran",
+      "Wheat bran",
+      "Ispaghula husk",
+      "Guar gum",
+      "PHGG",
     ]) {
       expect(isFiberSupplement(name), name).toBe(true);
     }
@@ -66,8 +81,36 @@ describe("isFiberSupplement", () => {
       "Magnesium glycinate",
       "Creatine",
       "Whey protein",
+      // #2752 — the near-misses: omega-3 products with ~no fiber whose names
+      // contain a fiber word. Counting one would flag a fiber dose that never was.
+      "Flaxseed Oil",
+      "Chia Seed Oil",
+      "Chia oil",
     ]) {
       expect(isFiberSupplement(name), name).toBe(false);
+    }
+  });
+
+  // The discovery half of #2752: the catalog names a fiber product, the matcher must
+  // recognize that exact name — otherwise a picked entry logs doses the fiber figure
+  // silently ignores. This list is the catalog's fiber products by name; a rename on
+  // either side breaks it here instead of in production.
+  it("recognizes every fiber product the supplement catalog ships", () => {
+    const fiberCatalogNames = [
+      "Psyllium Husk",
+      "Fiber",
+      "Ground Flaxseed",
+      "Chia Seeds",
+      "Beta-Glucan",
+      "Glucomannan",
+      "Acacia Fiber",
+      "Metamucil",
+      "Benefiber",
+    ];
+    const catalog = new Set(SUPPLEMENT_CATALOG.map((c) => c.name));
+    for (const name of fiberCatalogNames) {
+      expect(catalog.has(name), `${name} in catalog`).toBe(true);
+      expect(isFiberSupplement(name), `${name} recognized`).toBe(true);
     }
   });
 });

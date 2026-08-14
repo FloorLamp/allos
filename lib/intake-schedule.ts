@@ -658,6 +658,9 @@ const FAT_SOLUBLE = [
   "turmeric",
   "astaxanthin",
   "lutein",
+  "zeaxanthin",
+  "lycopene",
+  "carotene",
 ];
 
 // Best-effort default food timing for a supplement name (catalog entries can

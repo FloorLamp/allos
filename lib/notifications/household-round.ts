@@ -75,6 +75,8 @@ function sectionFor(
         doseId: entry.dose.id,
         itemId: entry.item.id,
         itemName: entry.item.name,
+        itemKind: entry.item.kind,
+        product: entry.item.product,
         amount: entry.dose.amount,
       });
     }

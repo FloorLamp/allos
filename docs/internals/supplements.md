@@ -672,6 +672,32 @@ is always available.
   row as a ride-along. Web Push / Home Assistant get a `+N available` text tail,
   since neither can expand a keyboard.
 
+**Button labels take a curated short name.** An inline keyboard button has a hard
+width budget the Telegram client enforces by cutting labels mid-word, so the
+one-tap surfaces label items through `lib/intake-short-name.ts` — a hand-curated
+map from intake item names to short display forms ("Vitamin D3 + K2" → "D3+K2",
+"Coenzyme Q10" → "CoQ10"), matched case-/whitespace-/separator-insensitively.
+Curated, never derived: an unknown name passes through WHOLE rather than being
+truncated on a guess (the #1817 lookup-not-strip posture). A MEDICATION is
+never shortened at all — `intakeItemShortLabel` gates on `kind` explicitly,
+because the map's supplement vocabulary contains names that are also drugs
+(ergocalciferol, magnesium citrate) and a shortened drug name is a misread
+risk; the medications-only `/dose` list applies no shortening for the same
+reason. Applied at the BUTTON label boundary only (dose-reminder take buttons,
+post-workout finish, the digest offer tail, the `/dose` list, household-round
+confirms); body lines, toasts and every in-app surface keep the full name — the
+full name is the record, the short name is a control label. When the map misses,
+`intakeItemShortLabel` falls back to a SUPPLEMENT's own `product` when it is
+genuinely shorter than the name — the "name carries the composition, product
+carries the product identity" convention (name "Astaxanthin/Lutein/Zeaxanthin",
+product "Eye Health+"); a medication's `product` is a formulation label already
+rendered beside the dose and never substitutes. Two rules for
+entries, pinned by `lib/__tests__/intake-short-name.test.ts`: a short form must
+be recognizable on its own (no bare "C" for Vitamin C), and two distinct
+substances must never collapse onto one short name (the K2 forms keep
+MK-4/MK-7), while aliases of one substance (Ubiquinone / Coenzyme Q10)
+deliberately share one.
+
 **Safety stays obligation-BLIND, pinned.** Missed-dose escalation reads the
 deliberately unfiltered gather (the send floor is applied at assembly, never at the
 gather), and the interaction / PGx / UL warnings fire identically for a `may`
