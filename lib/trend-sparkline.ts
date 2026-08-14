@@ -115,6 +115,15 @@ export function loneReading<T extends { value: number | null }>(
 //     (macros/fiber/protein): a day with no food logs means "didn't log", and a
 //     zero there would assert a fast nobody recorded. A total is not a level, so
 //     it does not bridge either.
+//   • "bridge-with-limit" — a LEVEL that stops being one across a long enough
+//     silence (#2653 state 3). The daily check-in ratings: how you felt existed
+//     on the days you did not rate it, so a skipped day bridges — but a stroke
+//     drawn across four unlogged days is describing a mood nobody was there for.
+//     Past the series' declared gap limit the stroke BREAKS and the hole is
+//     labelled. Deliberately OPT-IN and a value of its own rather than a
+//     threshold quietly bolted onto "bridge" (owner call 2, 2026-08-13): a
+//     declared policy is never silently changed, so a series that wants
+//     hole-past-threshold behaviour says so by name.
 //   • "exempt" — no densification at all. Every `bio:` series: lab draws are
 //     sparse BY NATURE, and expanding a 1-year window around three draws into 365
 //     mostly-null categories degrades the tile for no honesty gain (the biomarker
@@ -126,7 +135,12 @@ export function loneReading<T extends { value: number | null }>(
 // that decides bars.
 
 export type SeriesGap =
-  "bridge" | "break" | "slot-zero" | "slot-null" | "exempt";
+  | "bridge"
+  | "bridge-with-limit"
+  | "break"
+  | "slot-zero"
+  | "slot-null"
+  | "exempt";
 
 /** Both halves of the series-render decision, for a caller that needs each. */
 export interface SeriesRender {
@@ -187,9 +201,14 @@ export const METRIC_GAP: Readonly<Record<string, SeriesGap>> = {
   // existed on the days you didn't rate it — and deliberately NOT "break": these
   // series are sparse by nature, and a broken stroke over a 90-day window would
   // leave a tile of disconnected dots where a trajectory used to be.
-  mood: "bridge",
-  energy: "bridge",
-  calm: "bridge",
+  //
+  // They are the series that OPT IN to a limit (#2653 state 3): a skipped Tuesday
+  // is still a mood you had, a skipped week is not something the stroke may
+  // describe. Short holes bridge exactly as before; only a run past
+  // `METRIC_GAP_LIMIT_DAYS` breaks, and it says how long it was.
+  mood: "bridge-with-limit",
+  energy: "bridge-with-limit",
+  calm: "bridge-with-limit",
 
   // ── per-day totals ────────────────────────────────────────────────────────
   volume: "slot-zero",
@@ -238,6 +257,7 @@ export function seriesRenderForSeriesKey(key: string): SeriesRender {
 export function gapFillValue(gap: SeriesGap): DayGapFill | null {
   switch (gap) {
     case "bridge":
+    case "bridge-with-limit":
     case "break":
     case "slot-null":
       return "null";
@@ -248,9 +268,22 @@ export function gapFillValue(gap: SeriesGap): DayGapFill | null {
   }
 }
 
-/** Whether the mark bridges a null hole (`connectNulls`). Only a LEVEL does. */
+/**
+ * Whether the mark bridges a null hole (`connectNulls`). Only a LEVEL does.
+ *
+ * "bridge-with-limit" bridges too — the LIMIT is not expressible as this flag
+ * (recharts' `connectNulls` is all-or-nothing), so the over-limit holes are cut
+ * out of the plotted series instead and each surviving run is drawn bridged. See
+ * `overLimitHoles`.
+ */
 export function gapBridgesNulls(gap: SeriesGap): boolean {
-  return gap === "bridge";
+  return gap === "bridge" || gap === "bridge-with-limit";
+}
+
+/** Whether an over-limit hole BREAKS this series' stroke, rather than only being
+ *  named. Opt-in per owner call 2 — a declared bridge is never silently cut. */
+export function gapBreaksPastLimit(gap: SeriesGap): boolean {
+  return gap === "bridge-with-limit";
 }
 
 // ── The DENSITY floor (issue #2653, state 5) ────────────────────────────────
@@ -532,4 +565,202 @@ export function applyDayFillRows<
     for (const k of keys) row[k] = blankValue;
     return row as T;
   });
+}
+
+// ── The GAP LIMIT (issue #2653, states 2, 3 and 4) ──────────────────────────
+//
+// THE DEFECT, twice. A bridge-declared series (mood, energy, calm) draws one
+// unbroken stroke straight across a four-day outage — a trajectory through days
+// nobody logged. And at the other end of the same series, day-fill correctly
+// keeps the trailing hole, so the line stops short of the axis edge and says
+// nothing at all about why. Two renders, one missing fact: THIS SERIES WAS
+// SILENT FOR A WHILE, and the chart knows exactly how long.
+//
+// THE DECLARATION, in the same shape as the gap and the continuity span: one
+// number per series, on the same `metric:` / `bio:` vocabulary, because how long
+// a silence has to run before it is worth naming is a property of the QUANTITY.
+// A daily check-in going quiet for three days is news; a tape measure going quiet
+// for three days is a Tuesday.
+//
+// WHY NOT REUSE `METRIC_CONTINUITY_DAYS`. That answers "across what interval is
+// the stroke still a fair interpolation" — a question about the WHOLE series'
+// cadence, evaluated on the median. This one is about ONE hole. The relation is
+// an INVARIANT rather than an equality: a hole longer than the continuity span
+// must always be named, so every limit here sits at or below that metric's span,
+// and `lib/__tests__/chart-gap-limit.test.ts` pins it in both directions.
+//
+// WHAT THE LIMIT DOES NOT DO. It never changes a declared bridge. Only a series
+// that declared "bridge-with-limit" has its stroke cut (owner call 2); for every
+// other policy the over-limit hole is LABELLED and the stroke behaves exactly as
+// it did. Naming a hole the chart already draws is not a policy change.
+//
+// THE TIERS, named for how the reading arrives — the same discipline the two
+// registries above use.
+
+/** Arrives every day something is worn or a check-in is tapped. Miss one, miss
+ *  two; a third consecutive silent day is the stream stopping. */
+const STREAM_GAP_LIMIT = 2;
+
+/** Taken because of a question being asked that day. A week without one is not a
+ *  lapse — the question stopped being asked. */
+const ACUTE_GAP_LIMIT = 7;
+
+/** A scale step-on or a tape measure. A fortnight between two is an ordinary
+ *  habit; three weeks is a habit that stopped. */
+const HABIT_GAP_LIMIT = 21;
+
+/** Picked up when there is a reason. Months apart is the legitimate cadence, so
+ *  only a third of a year of silence is worth a word. */
+const EPISODIC_GAP_LIMIT = 120;
+
+/** A body attribute that moves over seasons. A year. */
+const SLOW_GAP_LIMIT = 365;
+
+/** A lab draw. The same span its stroke may cross — for an open vocabulary one
+ *  number serves the namespace. */
+export const BIO_GAP_LIMIT_DAYS = 540;
+
+/**
+ * The longest run of unlogged days this series may carry without saying so.
+ * EXHAUSTIVE over the same vocabulary as `METRIC_GAP` and
+ * `METRIC_CONTINUITY_DAYS` — the completeness test fails a key present in one
+ * registry and absent from another, in every direction, so the three cannot
+ * drift apart.
+ */
+export const METRIC_GAP_LIMIT_DAYS: Readonly<Record<string, number>> = {
+  // ── levels ────────────────────────────────────────────────────────────────
+  weight: HABIT_GAP_LIMIT,
+  bodyfat: HABIT_GAP_LIMIT,
+  bmi: HABIT_GAP_LIMIT,
+  "lean-mass": HABIT_GAP_LIMIT,
+  "bone-mass": HABIT_GAP_LIMIT,
+  bmr: HABIT_GAP_LIMIT,
+  "waist-circ": HABIT_GAP_LIMIT,
+  hydration: STREAM_GAP_LIMIT,
+  resting_hr: STREAM_GAP_LIMIT,
+  hrv: STREAM_GAP_LIMIT,
+  "skin-temp": STREAM_GAP_LIMIT,
+  hr: STREAM_GAP_LIMIT,
+  "peak-flow": STREAM_GAP_LIMIT,
+  height: SLOW_GAP_LIMIT,
+  "head-circ": SLOW_GAP_LIMIT,
+  systolic: EPISODIC_GAP_LIMIT,
+  diastolic: EPISODIC_GAP_LIMIT,
+  spo2: EPISODIC_GAP_LIMIT,
+  "respiratory-rate": EPISODIC_GAP_LIMIT,
+  temperature: ACUTE_GAP_LIMIT,
+  mood: STREAM_GAP_LIMIT,
+  energy: STREAM_GAP_LIMIT,
+  calm: STREAM_GAP_LIMIT,
+
+  // ── per-day totals ────────────────────────────────────────────────────────
+  volume: STREAM_GAP_LIMIT,
+  steps: STREAM_GAP_LIMIT,
+  "active-calories": STREAM_GAP_LIMIT,
+  sun: STREAM_GAP_LIMIT,
+  calories: STREAM_GAP_LIMIT,
+
+  // ── render-only series ────────────────────────────────────────────────────
+  "sleep-duration": STREAM_GAP_LIMIT,
+  "sleep-stages": STREAM_GAP_LIMIT,
+  "sleep-regularity": STREAM_GAP_LIMIT,
+  "oura-score": STREAM_GAP_LIMIT,
+  macros: STREAM_GAP_LIMIT,
+};
+
+/**
+ * The gap limit for any trend series, or null when the series declares none.
+ * Null means "say nothing", the safe answer: naming a silence on a series whose
+ * grain we cannot name is how a per-event axis would acquire a caption about days
+ * it does not plot.
+ */
+export function gapLimitDaysForSeriesKey(key: string): number | null {
+  if (key.startsWith("bio:")) return BIO_GAP_LIMIT_DAYS;
+  const prefix = "metric:";
+  if (!key.startsWith(prefix)) return null;
+  return METRIC_GAP_LIMIT_DAYS[key.slice(prefix.length)] ?? null;
+}
+
+/** A run of unlogged days long enough to be worth naming. */
+export interface SeriesHole {
+  /** First unlogged day. */
+  from: string;
+  /** Last unlogged day. */
+  to: string;
+  /** Unlogged days, inclusive of both ends. */
+  days: number;
+  /** Whether the run reaches the end of the plotted window — a LIVE outage
+   *  (#2653 state 4) rather than a closed one the series recovered from. */
+  trailing: boolean;
+}
+
+/**
+ * The runs of unlogged days in a DENSIFIED series that exceed `limitDays`.
+ *
+ * Densified: every calendar day in the window is a row, which is what makes a run
+ * of nulls a count of days rather than a count of missing rows. Asking this of a
+ * raw series would report one "hole" per unsampled interval on every level chart
+ * in the app.
+ *
+ * A LEADING run — nulls before the first real reading — is never a hole. The
+ * series had not started; an axis that begins before the data is not a silence,
+ * and calling it one would put "43 days unlogged" on the left edge of every chart
+ * whose window opens before its first reading.
+ */
+export function overLimitHoles(
+  points: readonly { date: string; value: number | null }[],
+  limitDays: number | null
+): SeriesHole[] {
+  if (limitDays == null) return [];
+  const holes: SeriesHole[] = [];
+  let started = false;
+  let runStart = -1;
+  const flush = (endIndex: number, trailing: boolean) => {
+    if (runStart < 0) return;
+    const days = endIndex - runStart + 1;
+    if (days > limitDays) {
+      holes.push({
+        from: points[runStart].date,
+        to: points[endIndex].date,
+        days,
+        trailing,
+      });
+    }
+    runStart = -1;
+  };
+  for (let i = 0; i < points.length; i++) {
+    if (points[i].value == null) {
+      if (!started) continue;
+      if (runStart < 0) runStart = i;
+      continue;
+    }
+    flush(i - 1, false);
+    started = true;
+  }
+  flush(points.length - 1, true);
+  return holes;
+}
+
+/**
+ * The label inside an interior hole: "4 days unlogged".
+ *
+ * RAW FACT ONLY — a count and the plainest word for what did not happen. Not
+ * "data gap", not "missing data", and no adjective: the label exists so a reader
+ * can price the break in the stroke, and a chart that editorialises about its own
+ * absence reads as more considered than the confident line it replaced.
+ */
+export function unloggedGapLabel(days: number): string {
+  return `${days} day${days === 1 ? "" : "s"} unlogged`;
+}
+
+/**
+ * The caption under a chart whose series is STILL silent: "No data since Aug 8".
+ *
+ * The date arrives already formatted, so the caller's format preferences decide
+ * how a day is written and this module never grows a second date style. The
+ * caller pairs it with the route to the diagnosis (#2146 owns the quiet-stream
+ * verdict; this annotation only explains a gap the chart already draws).
+ */
+export function trailingOutageCaption(lastReadingLabel: string): string {
+  return `No data since ${lastReadingLabel}`;
 }
