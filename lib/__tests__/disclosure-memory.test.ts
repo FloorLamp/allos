@@ -81,12 +81,12 @@ describe("disclosureOpen", () => {
   });
 
   it("memory fills the default in both directions", () => {
-    expect(
-      disclosureOpen({ "settings-group": 1 }, "settings-group")
-    ).toBe(true);
-    expect(
-      disclosureOpen({ "settings-group": 0 }, "settings-group")
-    ).toBe(false);
+    expect(disclosureOpen({ "settings-group": 1 }, "settings-group")).toBe(
+      true
+    );
+    expect(disclosureOpen({ "settings-group": 0 }, "settings-group")).toBe(
+      false
+    );
   });
 
   it("an explicit override WINS over memory (the URL-beats-memory rule)", () => {
@@ -99,9 +99,9 @@ describe("disclosureOpen", () => {
 
   it("instances are remembered apart", () => {
     const memory = { "settings-group/units": 1 } as const;
-    expect(disclosureOpen(memory, "settings-group", { instance: "units" })).toBe(
-      true
-    );
+    expect(
+      disclosureOpen(memory, "settings-group", { instance: "units" })
+    ).toBe(true);
     expect(
       disclosureOpen(memory, "settings-group", { instance: "privacy" })
     ).toBe(DISCLOSURES["settings-group"].defaultOpen);
@@ -118,11 +118,7 @@ describe("rememberDisclosure", () => {
 
   it("DROPS a state that equals the default, so the store is only departures", () => {
     const opened = rememberDisclosure({}, "settings-group", true);
-    const closedAgain = rememberDisclosure(
-      opened,
-      "settings-group",
-      false
-    );
+    const closedAgain = rememberDisclosure(opened, "settings-group", false);
     expect(closedAgain).toEqual({});
   });
 

@@ -138,7 +138,10 @@ function bucketRank(b: TimeBucket): number {
  * `buildTodayPanelModel` already makes, extended to include the CURRENT slot: a dose in
  * the slot you are standing in is owed now, not later.
  */
-function slotHasArrived(bucket: TimeBucket, currentBucket: TimeBucket): boolean {
+function slotHasArrived(
+  bucket: TimeBucket,
+  currentBucket: TimeBucket
+): boolean {
   if (bucket === ANYTIME) return true;
   return bucketRank(bucket) <= bucketRank(currentBucket);
 }

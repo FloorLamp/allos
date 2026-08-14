@@ -81,7 +81,7 @@ export default function MomentSlot({
       >
         <span
           aria-hidden
-          className="text-slate-400 group-open:rotate-90 dark:text-slate-500"
+          className="text-slate-500 group-open:rotate-90 dark:text-slate-400"
         >
           ›
         </span>

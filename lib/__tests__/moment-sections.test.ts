@@ -53,7 +53,9 @@ describe("the moment decides which slot earns full height (#2652 behavior 1)", (
     expect(byBucket(sections, "Morning").state).toBe("moment");
     expect(byBucket(sections, "Morning").expanded).toBe(true);
     expect(byBucket(sections, "Evening").expanded).toBe(false);
-    expect(byBucket(sections, "Evening").line).toBe("Evening · 2 doses · 21:00");
+    expect(byBucket(sections, "Evening").line).toBe(
+      "Evening · 2 doses · 21:00"
+    );
   });
 
   it("in the evening it INVERTS, and the morning line states the outcome", () => {
@@ -123,7 +125,14 @@ describe("a section that owes something NOW never collapses (#2385)", () => {
       [dose("Anytime"), dose("Evening", { taken: true, at: "20:00" })],
     ];
     for (const doses of mixes) {
-      for (const nowHhmm of ["06:30", "10:59", "11:00", "14:59", "20:59", "23:30"]) {
+      for (const nowHhmm of [
+        "06:30",
+        "10:59",
+        "11:00",
+        "14:59",
+        "20:59",
+        "23:30",
+      ]) {
         const current = currentTimeBucket(nowHhmm);
         for (const s of build(doses, nowHhmm)) {
           if (s.expanded) continue;
@@ -218,7 +227,10 @@ describe("the line's parts are split here, not by string surgery in the renderer
   });
 
   it("checked is true only when the slot settled AND something was taken", () => {
-    const taken = build([dose("Morning", { taken: true, at: "08:00" })], "19:00");
+    const taken = build(
+      [dose("Morning", { taken: true, at: "08:00" })],
+      "19:00"
+    );
     expect(byBucket(taken, "Morning").checked).toBe(true);
 
     const allSkipped = build([dose("Morning", { skipped: true })], "19:00");
@@ -242,7 +254,9 @@ describe("same data, only height moves", () => {
       dose("Anytime", { skipped: true }),
     ];
     for (const nowHhmm of ["07:00", "12:00", "18:00", "22:30"]) {
-      const seen = build(doses, nowHhmm).flatMap((s) => s.doses.map((d) => d.key));
+      const seen = build(doses, nowHhmm).flatMap((s) =>
+        s.doses.map((d) => d.key)
+      );
       expect(seen.sort(), nowHhmm).toEqual(doses.map((d) => d.key).sort());
     }
   });

@@ -104,11 +104,7 @@ export default function RememberedDetails({
   children: ReactNode;
 }) {
   const remembering = defaultOpen === undefined;
-  const raw = useSyncExternalStore(
-    subscribe,
-    readSnapshot,
-    serverSnapshot
-  );
+  const raw = useSyncExternalStore(subscribe, readSnapshot, serverSnapshot);
   const open = remembering
     ? disclosureOpen(parseDisclosureMemory(raw), id, { instance })
     : defaultOpen;
