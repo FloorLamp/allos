@@ -38,15 +38,26 @@
 // file, and this script only ever summed to that. `--emit-log` is what CI runs to
 // produce them.
 //
+// ONE RUN'S INPUTS, NOT TWO. Merging is additive, so two whole runs pasted in
+// double every weight — which is what made the manifest replaced in #2825 ~1.9x
+// high. This script refuses inputs whose spec files overlap, because a file lives
+// in exactly one shard and so one run never names it twice. `--allow-rerun` is
+// the escape hatch for the one legitimate duplicate, a single shard re-run; see
+// `crossInputDuplicates` in lib/e2e-durations-log.ts.
+//
 // A stale manifest degrades balance, never correctness: an unlisted file is still
 // planned (estimated, see UNKNOWN_WEIGHT_FACTOR) and the planner refuses any plan
 // that is not an exact partition of the suite.
 import fs from "node:fs";
 import path from "node:path";
 import {
+  ALLOW_RERUN_FLAG,
+  crossInputDuplicates,
   DURATION_LOG_TAG,
+  duplicateRunRefusal,
   formatDurationLog,
   parseDurationLog,
+  type DurationInputFiles,
 } from "../lib/e2e-durations-log";
 import {
   movedFiles,
@@ -111,10 +122,40 @@ function collectLog(file: string, totals: Map<string, number>): void {
   }
 }
 
-/** Print this report's per-file totals for a log reader to recover later. */
-function emitLog(reports: string[]): void {
+/**
+ * Merge every input into one per-file total, refusing a set that spans more than
+ * one CI run.
+ *
+ * Each input is read into its OWN map first, so the file sets can be compared
+ * before they are added together — once summed, one run and two are the same
+ * number. `allowRerun` is the deliberate spelling of the one legitimate
+ * duplicate, a single shard re-run whose two attempts are both cost that run paid.
+ */
+function collectAll(
+  inputs: string[],
+  { fromLog, allowRerun }: { fromLog: boolean; allowRerun: boolean }
+): Map<string, number> {
   const totals = new Map<string, number>();
-  for (const file of reports) collectReport(file, totals);
+  const perInput: DurationInputFiles[] = [];
+  for (const file of inputs) {
+    const one = new Map<string, number>();
+    if (fromLog) collectLog(file, one);
+    else collectReport(file, one);
+    perInput.push({ source: file, files: [...one.keys()] });
+    for (const [spec, ms] of one)
+      totals.set(spec, (totals.get(spec) ?? 0) + ms);
+  }
+  const duplicates = crossInputDuplicates(perInput);
+  if (duplicates.length > 0 && !allowRerun) {
+    console.error(duplicateRunRefusal(duplicates));
+    process.exit(1);
+  }
+  return totals;
+}
+
+/** Print this report's per-file totals for a log reader to recover later. */
+function emitLog(reports: string[], allowRerun: boolean): void {
+  const totals = collectAll(reports, { fromLog: false, allowRerun });
   for (const line of formatDurationLog(totals)) console.log(line);
 }
 
@@ -122,25 +163,24 @@ function main(): void {
   const args = process.argv.slice(2);
   const fromLog = args.includes("--from-log");
   const emit = args.includes("--emit-log");
+  const allowRerun = args.includes(ALLOW_RERUN_FLAG);
   const inputs = args.filter((a) => !a.startsWith("--"));
   if (inputs.length === 0) {
     console.error(
       "usage: tsx scripts/gen-e2e-durations.ts <playwright-report.json> [...]\n" +
         "       tsx scripts/gen-e2e-durations.ts --from-log <shard.log> [...]\n" +
-        "       tsx scripts/gen-e2e-durations.ts --emit-log <playwright-report.json>"
+        "       tsx scripts/gen-e2e-durations.ts --emit-log <playwright-report.json>\n" +
+        `\n${ALLOW_RERUN_FLAG}  sum inputs that name the same spec file — ONE shard ` +
+        `re-run, never two whole runs.`
     );
     process.exit(2);
   }
   if (emit) {
-    emitLog(inputs);
+    emitLog(inputs, allowRerun);
     return;
   }
 
-  const totals = new Map<string, number>();
-  for (const file of inputs) {
-    if (fromLog) collectLog(file, totals);
-    else collectReport(file, totals);
-  }
+  const totals = collectAll(inputs, { fromLog, allowRerun });
 
   if (totals.size === 0) {
     console.error(

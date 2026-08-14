@@ -1520,6 +1520,30 @@ rather than an empty contribution, because a shard that silently adds nothing
 understates every file it owned and reshuffles the plan around a number nobody
 measured.
 
+### Feed ONE run's inputs
+
+Merging is additive — that is the whole point, since one run's twelve shards
+carry disjoint file sets and the manifest is their union. Across two **runs** the
+same additivity doubles every weight, silently. That is what happened: the
+manifest replaced in #2825 was built from two runs summed rather than averaged
+and came out ~1.9x high, with a median old/new per-file ratio of 2.01.
+
+A uniform 2x would cancel, because the planner reads only the weight ORDER. This
+one was not uniform — run-to-run variance spread the per-file ratios from 1.10 to
+4.86, which reorders the heavy specs. Planning with the doubled weights and
+scoring against true cost predicted a 228–277s shard spread (max/mean 1.063)
+against 260–260 (1.001) for the corrected ones.
+
+The arithmetic cannot see the difference; the file sets can. **A spec file is the
+sharding atom, so it lives in exactly one shard — a file named by two inputs
+means more than one run.** `gen-e2e-durations.ts` refuses such a set, naming the
+duplicated files. The one legitimate duplicate is a single shard re-run, where
+both attempts are cost that run really paid, and it has to be spelled out:
+
+```
+npx tsx scripts/gen-e2e-durations.ts --from-log shard-*.log --allow-rerun
+```
+
 ## Co-residency: an ABSENCE is the precondition that sharding breaks
 
 Two specs sharing a worker share its database. That is fine for the fixture rule
