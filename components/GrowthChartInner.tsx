@@ -14,6 +14,7 @@ import { useChartColors } from "./useChartColors";
 import {
   CHART_LABEL_FONT_SIZE,
   chartActiveDot,
+  chartExactDot,
   chartAnnotationLabel,
   chartAxisLabelProps,
   chartAxisProps,
@@ -210,12 +211,10 @@ export default function GrowthChart({
             dataKey="traj"
             stroke={chartSeries.brand}
             strokeWidth={2.5}
-            dot={{
-              r: 3,
-              fill: c.surface,
-              stroke: chartSeries.brand,
-              strokeWidth: 1.5,
-            }}
+            // Solid: the fill channel means exactness alone (#2653, owner call
+            // 3), and a plotted measurement is an exact one. This dot was hollow
+            // for no reason but habit, which is the drift the ruling ends.
+            dot={chartExactDot(c, chartSeries.brand)}
             activeDot={chartActiveDot(chartSeries.brand)}
             isAnimationActive={false}
             connectNulls

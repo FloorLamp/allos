@@ -1199,6 +1199,11 @@ export default async function BodySection({
             color={chartSeries.violet}
             decimals={1}
             gapFill={sleepGapFill}
+            // Sleep is a chart at every range, including a one-night one — the
+            // same declaration its Body tile has always carried. #2653's
+            // single-reading mark is right for a metric card that would
+            // otherwise draw one dot in an empty band, and wrong here.
+            singleReadingAsChart
           />
         </ChartCard>
       ),

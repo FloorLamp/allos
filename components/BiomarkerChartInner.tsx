@@ -17,7 +17,9 @@ import {
   chartAnnotationLabel,
   chartAxisProps,
   chartDash,
+  chartExactDot,
   chartGridProps,
+  chartInexactDot,
   chartMarkMotion,
   chartTooltipProps,
   useChartMotion,
@@ -127,7 +129,10 @@ export default function BiomarkerChart({
     ? protocolWindowEpochs(windows, dates)
     : [];
 
-  // Hollow dot for bounded readings ("<0.10"), solid for exact ones.
+  // THE FILL CHANNEL (#2653, owner call 3). Hollow for a bounded reading
+  // ("<0.10"), solid for an exact one — and both marks now come from the
+  // scaffold, which owns that vocabulary app-wide, rather than being spelled out
+  // here where only this chart could see it.
   const renderDot = (props: {
     cx?: number;
     cy?: number;
@@ -137,16 +142,18 @@ export default function BiomarkerChart({
     const { cx, cy, index, payload } = props;
     const key = `dot-${payload?.date ?? ""}-${index ?? 0}`;
     if (cx == null || cy == null) return <g key={key} />;
-    const bounded = !!payload?.bound;
+    const mark = payload?.bound
+      ? chartInexactDot(c, c.line)
+      : chartExactDot(c, c.line);
     return (
       <circle
         key={key}
         cx={cx}
         cy={cy}
-        r={3}
-        fill={bounded ? c.surface : c.line}
-        stroke={c.line}
-        strokeWidth={bounded ? 1.5 : 1}
+        r={mark.r}
+        fill={mark.fill}
+        stroke={mark.stroke}
+        strokeWidth={mark.strokeWidth}
       />
     );
   };
