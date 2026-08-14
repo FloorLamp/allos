@@ -155,6 +155,41 @@ The proven workflow for an all-pages consistency audit:
    on this shape. Use a scratch `ALLOS_DB_PATH` per shape, or delete the DB
    between runs — the seed refuses a non-empty database.
 
+   **Personas (`SEED_PERSONA`)**: the seeded shape can also swap WHO the
+   profile is — `scripts/seed-personas.ts` seeds a coherent alternate
+   character for profile 1 instead of the baseline story, targeted at the
+   surfaces its demographics most affect (whole page populations — growth
+   charts, AAP pediatric BP, elderly fitness norms, polypharmacy warnings —
+   are invisible from the baseline's one vantage). Needs `UX_SEED=1`
+   (the harness refuses other combinations); SEED_RNG dials do not apply.
+   An unknown name FAILS the seed and the run — a persona label must never
+   sit on data that isn't that persona. Registry + per-persona `routes` (the
+   UX_ROUTES targets) live in the module; run one as e.g.:
+
+   ```bash
+   SEED_PERSONA=toddler UX_SEED=1 UX_ROUTES=/trends/growth,/trends,/upcoming \
+     node scripts/ux-walkthrough.mjs --serve pages
+   ```
+
+   | persona           | who                               | most-affected targets                       |
+   | ----------------- | --------------------------------- | ------------------------------------------- |
+   | `bodybuilder`     | 28M, heavy 4-day split            | /training /progress /nutrition /longevity   |
+   | `marathon-runner` | 34F, marathon block, low ferritin | /training /equipment /results /trends       |
+   | `midlife-ldl`     | 40M, rising LDL, no diagnosis     | / /results /upcoming /longevity             |
+   | `toddler`         | 22-month-old, caregiver-tracked   | /trends/growth /records /upcoming /training |
+   | `senior-75`       | 76F, 6 meds, T2D+AFib+CKD         | /medications /upcoming /records /results    |
+   | `pregnant`        | 31F, ~20 weeks, flagged screen    | / /medical/cycles /upcoming /appointments   |
+   | `diabetic-cgm`    | 52M, dense glucose readings       | /medications /results /upcoming /trends     |
+   | `biohacker`       | 36M, 20 supplements, 3 practices  | /nutrition /longevity /supplies /timeline   |
+
+   Some personas exist partly to make a GAP visible (their registry entries
+   carry `gaps`): pregnancy has no gestational-age model, CGM has no
+   continuous-glucose stream, fasting has no surface at all — expect those
+   absences in the shots and report them as findings, not census failures.
+   Unit guards: `lib/__tests__/seed-personas.test.ts` (registry + route
+   targets), `lib/__db_tests__/seed-personas.test.ts` (every persona against
+   a live schema).
+
 ### Live screenshots outrank the census
 
 The census's data is clean by construction, and a whole class of defect only

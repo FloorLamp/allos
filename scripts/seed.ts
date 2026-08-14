@@ -25,6 +25,7 @@ import { mobilityMoveName } from "../lib/mobility-moves";
 import {
   completeOnboardingState,
   initialOnboardingState,
+  normalizeOnboardingFocuses,
   serializeOnboardingState,
 } from "../lib/onboarding";
 import {
@@ -33,6 +34,7 @@ import {
   sampleDials,
   seedFromEnv,
 } from "./seed-rng";
+import { personaFromEnv } from "./seed-personas";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -52,7 +54,24 @@ function daysAgo(n: number): string {
 const SEED_ENTROPY = seedFromEnv(process.env);
 const DIALS = sampleDials(SEED_ENTROPY);
 const rand = jitterStream(SEED_ENTROPY);
-console.log(`seed entropy: SEED_RNG=${SEED_ENTROPY} — ${describeDials(DIALS)}`);
+// Persona axis (SEED_PERSONA, scripts/seed-personas.ts): WHO the profile is,
+// orthogonal to the dial vector's HOW-the-baseline-varies. A persona run
+// replaces the baseline story wholesale (dials do not apply), so the entropy
+// line only prints for baseline runs. An unknown name fails loudly: the census
+// records the persona it asked for, so the data must be that persona or
+// nothing — never a silently different look under the requested label.
+const PERSONA_SELECTION = personaFromEnv(process.env);
+if (PERSONA_SELECTION.kind === "unknown") {
+  console.error(
+    `Unknown SEED_PERSONA "${PERSONA_SELECTION.raw}". Known personas: ${PERSONA_SELECTION.known.join(", ")}`
+  );
+  process.exit(1);
+}
+if (PERSONA_SELECTION.kind === "none") {
+  console.log(
+    `seed entropy: SEED_RNG=${SEED_ENTROPY} — ${describeDials(DIALS)}`
+  );
+}
 // The current illness episode's day offset (#2594 dial: illnessNow). "active"
 // keeps the episode overlapping today (the baseline); "past" slides the whole
 // thing — situation run, symptom days, fever curve, illness-tagged moods — two
@@ -75,14 +94,69 @@ if (!profileOne) {
 }
 
 const count = db
-  .prepare("SELECT COUNT(*) c FROM activities WHERE profile_id = ?")
-  .get(SEED_PROFILE_ID) as {
+  .prepare(
+    `SELECT (SELECT COUNT(*) FROM activities WHERE profile_id = ?)
+          + (SELECT COUNT(*) FROM medical_records WHERE profile_id = ?) c`
+  )
+  .get(SEED_PROFILE_ID, SEED_PROFILE_ID) as {
   c: number;
 };
 if (count.c > 0) {
   console.log(
     "Database already has data — skipping seed. (Delete data/allos.db to reseed.)"
   );
+  process.exit(0);
+}
+
+// A persona run replaces the entire baseline story below: it seeds its own
+// character for profile 1 through scripts/seed-personas.ts and exits. The
+// medical_records leg of the guard above matters here — some personas (the
+// toddler) write no activities at all, and a rerun must still no-op.
+if (PERSONA_SELECTION.kind === "found") {
+  const persona = PERSONA_SELECTION.persona;
+  console.log(`seed persona: ${persona.name} — ${persona.title}`);
+  persona.apply({
+    db,
+    profileId: SEED_PROFILE_ID,
+    daysAgo,
+    occurredAt: (day, hhmm) => {
+      const [y, m, d] = day.split("-").map(Number);
+      const [h, min] = hhmm.split(":").map(Number);
+      return utcInstant(
+        zonedWallTimeToUtc(y, m, d, h, min, getTimezone(SEED_PROFILE_ID))
+      );
+    },
+    reconcileFlags,
+    saveFitnessEntry,
+    onboardingStateJson: (profilePath, focuses) =>
+      serializeOnboardingState(
+        completeOnboardingState(
+          {
+            ...initialOnboardingState(),
+            profilePath,
+            focuses: normalizeOnboardingFocuses(focuses),
+            basicsComplete: true,
+            layoutReviewed: true,
+            notificationIntent: "later",
+            notificationsReviewed: true,
+            checklistDismissed: true,
+          },
+          utcInstant(clockNow())
+        )
+      ),
+  });
+  // Own-profile link, mirroring the baseline tail: the seeded persona IS the
+  // admin's profile, so not-self write affordances stay demoable.
+  const personaAdminLogin = db
+    .prepare("SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1")
+    .get() as { id: number } | undefined;
+  if (personaAdminLogin) {
+    db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+      SEED_PROFILE_ID,
+      personaAdminLogin.id
+    );
+  }
+  console.log(`✅ Seeded persona "${persona.name}" (${persona.title}).`);
   process.exit(0);
 }
 
