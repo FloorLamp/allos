@@ -24,8 +24,10 @@ This is the entrypoint. Read only the procedure needed for the current job:
 - Every PR gets a full diff review posted as a COMMENT review.
 - Never submit `REQUEST_CHANGES` or `APPROVE`. Hold with a COMMENT, `parked`,
   and an explicit reason.
-- The orchestrator owns squash merges. Use MCP for protected-ref and Actions
-  writes; prefer REST for reads and ordinary writes.
+- The orchestrator owns squash merges. REST for everything outside the MCP set
+  (squash merges, draft-to-ready, protected-ref and Actions writes) — the full
+  rule, including transports and credentials, is
+  `docs/orchestration/environment.md` §GitHub access.
 - Dispatch continuously while viable work exists. Do not ask permission to
   resume or refill the pipeline.
 

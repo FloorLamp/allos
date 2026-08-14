@@ -25,40 +25,25 @@ rewrite the doctrine that governs another) · when the owner's answer contradict
 recorded doctrine, that tension belongs IN the question's options, stated before
 they answer — never discovered after.
 
-## 0. Transport — `gh` if you have it, curl if you do not
+## 0. Transport
 
-REST always, never `gh issue`/`gh pr` subcommands as the primary path (they ride
-GraphQL, whose rate pool exhausts independently; REST has survived every sweep).
+**`docs/orchestration/environment.md` §GitHub access governs, in full**: REST
+outside the MCP set, `gh api` or plain `curl` for the same paths, reads
+unauthenticated, writes on `${GH_TOKEN:-$GITHUB_TOKEN}`, PATCH where a sandbox
+refuses DELETE, and no write believed until re-read. Read it there; it is not
+restated here, and where this file shows `gh api X`, that means the path by
+whichever transport you have.
 
-**Check once, at the start: `command -v gh`.** `gh` is NOT installed in a Claude
-Code remote session, which is the session type that most often owns this queue —
-the first live run of this skill hit that at step 1. `docs/orchestration.md` §Tooling
-prescribes the fallback and it is exact:
+What that rule means for THIS sweep, and the reason it is worth naming:
 
-```bash
-TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
-curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/OWNER/REPO/..."
-```
-
-Never hunt for a credential — use the variable by name. Every `gh api X` below
-reads as "that path, by whichever transport you have".
-
-**READS NEED NO TOKEN.** This repo is public, so every GET in steps 1–3 — the
-label list, an issue body, its comments — works over plain
-`curl -sS https://api.github.com/repos/OWNER/REPO/...` with no header at all. An
-unset token is therefore NOT a reason to stop: gather, audit and ask all still
-run, and the sweep stops only at step 4, where it says plainly that it can
-record nothing and hands the owner the drafted rulings. Reaching for the auth
-header on a read is also how a sweep trips a permission classifier it never
-needed to involve.
-
-**WRITES need the token**, and one verb is worth knowing about in advance: some
-sandboxes' permission classifiers refuse `curl -X DELETE` outright while
-allowing `PATCH`. That is not a dead end — `PATCH /issues/N` takes `labels` and
-`assignees` as whole arrays, so step 5's removals are one authenticated PATCH
-(`{"labels":["ui","P3"],"assignees":[]}`) with no DELETE anywhere. Same
-transport, same result, and it sets the replacement labels in the same call.
+- **`command -v gh` once, at the start.** `gh` is absent in Claude Code remote
+  sessions, which is the session type that most often owns this queue — the
+  skill's first live run discovered that at step 1 rather than step 0.
+- **An unset token does not cancel the sweep.** Steps 1–3 are all reads, so
+  gather, audit and ask run unchanged; only step 4 stops, saying plainly that
+  it can record nothing and handing the owner the drafted rulings. A queue
+  sweep that quits at step 0 over a credential it does not need yet has thrown
+  away the whole conversation with the owner.
 
 ## 1. Gather
 
@@ -187,10 +172,11 @@ narrowed to Z**`) rather than rewriting or deleting the original — the
   Then cross-record on any issue that was filed in tension with the original,
   because whoever picks that issue up is the person the amendment is for.
 - **Mechanics:** PATCH bodies via REST with a body file
-  (`gh api repos/OWNER/REPO/issues/N -X PATCH -F body=@file.md`), and VERIFY
-  the write landed by re-reading and grepping for a phrase unique to the edit —
-  a transient empty-JSON response has silently dropped a PATCH before. Same
-  discipline for comments (`POST .../issues/N/comments -F body=@file.md`).
+  (`gh api repos/OWNER/REPO/issues/N -X PATCH -F body=@file.md`), same for
+  comments (`POST .../issues/N/comments -F body=@file.md`). The
+  verify-by-re-reading rule is §GitHub access's, and it is not optional here:
+  a ruling that silently failed to write is a question the owner answered and
+  the tracker never heard.
 
 ## 5. Un-label, un-assign, route
 
@@ -201,9 +187,9 @@ gh api -X DELETE "repos/OWNER/REPO/issues/N/labels/needs-human"
 gh api -X DELETE "repos/OWNER/REPO/issues/N/assignees" -f "assignees[]=OWNER"
 ```
 
-When `DELETE` is refused by a sandbox classifier (see step 0), do both in one
-authenticated PATCH instead — it sets the arrays wholesale, so the labels you
-want are stated positively and `needs-human` is gone by omission:
+When `DELETE` is refused by a sandbox classifier (§GitHub access), do both in
+one authenticated PATCH instead — it sets the arrays wholesale, so the labels
+you want are stated positively and `needs-human` is gone by omission:
 
 ```bash
 curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" \
@@ -224,8 +210,8 @@ stay, the remaining questions enumerated so the next sweep asks only those.
 Then route by what the answer was:
 
 - **A merge gate, now satisfied** → merge. Protected-branch merges 403 over
-  REST; merge goes through the MCP GitHub tool (squash), per
-  `docs/orchestration.md` §REST write limits. Gate stated but not yet met
+  REST, so a squash merge is one of the MCP-only writes named in
+  `docs/orchestration/environment.md` §GitHub access. Gate stated but not yet met
   (e.g. an e2e re-run) → leave the PR to the orchestrator with the gate
   recorded on it; do not sit polling.
 - **An unblocked issue** → it returns to the ordinary queue by its existing
