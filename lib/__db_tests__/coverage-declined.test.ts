@@ -77,8 +77,18 @@ describe("a DEXA regional label is never offered as a Coverage candidate (#2319)
     for (const d of declined) {
       expect(d.kind).toBe("biomarker");
       expect(d.declaration.kind).toBe("out-of-scope");
-      expect(d.declaration.reason).toContain("per-region decomposition");
     }
+    // …and it is the reason that FITS the row, checked on the surface a reader
+    // actually sees it on (#2765). Every row here but the spine density is a
+    // per-region decomposition output. The spine density is not: it is the quantity
+    // a T-score standardizes, so its sentence may not deny a reference exists.
+    const reasonFor = (label: string) =>
+      declined.find((d) => d.label === label)?.declaration.reason ?? "";
+    const SPINE_BMD = "Bone Mineral Density, Lumbar Spine";
+    for (const name of DEXA_REGIONAL.filter((n) => n !== SPINE_BMD))
+      expect(reasonFor(name), name).toContain("per-region decomposition");
+    expect(reasonFor(SPINE_BMD)).toContain("T-score");
+    expect(reasonFor(SPINE_BMD)).not.toContain("no population reference");
     // The two lists are a partition of one set on one identity key (the used-name
     // read orders alphabetically, so compare as sets).
     expect([...declined.map((d) => d.itemKey)].sort()).toEqual(

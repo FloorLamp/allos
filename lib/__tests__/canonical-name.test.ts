@@ -996,8 +996,10 @@ describe("deliberately uncurated analytes (#2313)", () => {
       "Body Fat Percentage, Left Arm",
       "Body Fat Percentage, Android",
       "Right Leg Body Fat Percentage",
-      // Per-site bone density and mineral content.
-      "Bone Mineral Density, Lumbar Spine",
+      // Per-site bone mineral CONTENT. The per-site DENSITY rows sat here until
+      // #2765 and do not any more: a density is what a T- and Z-score standardize,
+      // which this reason's second clause denies. They are asserted below, together
+      // with the audit that separated the two rows every site prints.
       "Bone Mineral Content, Pelvis",
       // "Bone Mineral Density Z-Score" sat here until #2679 and does not any more: a
       // Z-score IS an age- and sex-matched population reference, which this reason
@@ -1262,6 +1264,85 @@ describe("deliberately uncurated analytes (#2313)", () => {
     expect(uncuratedAnalyte("Bone Mineral Density T-Score")).toBeNull();
   });
 
+  // #2765 — the FOURTH member DEXA_DECOMPOSITION's sentence was found wrong of, and
+  // the first that is a whole grid rather than one row.
+  //
+  // The audit is written out in full — both rows of every site, the passes beside the
+  // hits — because "audit the site grid" is answered by a list that shows what it
+  // looked at. A test that asserted only the moved rows would be indistinguishable
+  // from one that stopped at the first site it checked.
+  //
+  // SYNTHETIC: label text only, in the word orders scanners print.
+  const DEXA_BONE_SITES = [
+    "Left Arm",
+    "Right Arm",
+    "Arms",
+    "Left Ribs",
+    "Right Ribs",
+    "Ribs",
+    "Thoracic Spine",
+    "Lumbar Spine",
+    "Spine",
+    "Left Pelvis",
+    "Right Pelvis",
+    "Pelvis",
+    "Left Leg",
+    "Right Leg",
+    "Legs",
+    "Trunk",
+    "Head",
+    "Subtotal",
+  ];
+
+  it("declines a per-site bone density without denying it has a reference (#2765)", () => {
+    // THE HITS: every density row in the grid, checked as the property rather than
+    // as a string diff. A bone density is the quantity population references are
+    // built for, so the one thing its reason may never do is say none exists.
+    for (const site of DEXA_BONE_SITES) {
+      const name = `Bone Mineral Density, ${site}`;
+      const d = uncuratedAnalyte(name);
+      expect(d?.kind, name).toBe("out-of-scope");
+      expect(d?.reason, name).not.toContain("no population reference");
+      // And it says where bone density IS read, which is what makes the decline
+      // informative rather than merely not-false.
+      expect(d?.reason, name).toContain("T-score");
+    }
+    // ONE declaration for the whole grid — the same "one decision per machine table"
+    // property #2643 protects, applied to the block that moved.
+    expect(
+      new Set(
+        DEXA_BONE_SITES.map((s) =>
+          uncuratedAnalyte(`Bone Mineral Density, ${s}`)
+        )
+      ).size
+    ).toBe(1);
+
+    // THE PASSES: the other row every site prints. Grams of mineral in one region is
+    // a compartment mass, both clauses of the per-region sentence are true of it, and
+    // nothing standardizes it — so it stays where it was, on purpose.
+    for (const site of DEXA_BONE_SITES) {
+      const name = `Bone Mineral Content, ${site}`;
+      const d = uncuratedAnalyte(name);
+      expect(d?.kind, name).toBe("out-of-scope");
+      expect(d?.reason, name).toContain("per-region decomposition");
+    }
+    // Which makes the two rows of one site two decisions, not one.
+    expect(uncuratedAnalyte("Bone Mineral Density, Lumbar Spine")).not.toBe(
+      uncuratedAnalyte("Bone Mineral Content, Lumbar Spine")
+    );
+
+    // NOT the whole-body decision either: "Bone Mineral Density, Total" points at the
+    // curated T-score, and a site may not, because a region is not its total.
+    const total = uncuratedAnalyte("Bone Mineral Density, Total");
+    expect(total?.kind).toBe("covered-elsewhere");
+    expect(uncuratedAnalyte("Bone Mineral Density, Spine")).not.toBe(total);
+
+    // Word order and casing fold onto the one declaration, as everywhere else here.
+    expect(uncuratedAnalyte("lumbar spine bone mineral density")).toBe(
+      uncuratedAnalyte("Bone Mineral Density, Lumbar Spine")
+    );
+  });
+
   // #2679 — THE RATCHET, and it is deliberately narrow.
   //
   // Three separate corrections (#2322, #2675, #2679) landed on ONE sentence:
@@ -1356,13 +1437,15 @@ describe("deliberately uncurated analytes (#2313)", () => {
       expect(d?.kind, name).toBe("out-of-scope");
       expect(d?.reason, name).toContain("per-region decomposition");
     }
-    // The same declaration object the limb's fat percentage and bone density carry —
-    // one decision for the whole machine's table, which is what went wrong.
+    // The same declaration object the limb's fat percentage and mineral content
+    // carry — one decision for the whole machine's table, which is what went wrong.
+    // The limb's bone DENSITY left this set in #2765 and is asserted below instead;
+    // it is a different sentence now, not a missing one.
     expect(
       new Set([
         ...limbRows.map((n) => uncuratedAnalyte(n)),
         uncuratedAnalyte("Body Fat Percentage, Left Arm"),
-        uncuratedAnalyte("Bone Mineral Density, Left Arm"),
+        uncuratedAnalyte("Bone Mineral Content, Left Arm"),
       ]).size
     ).toBe(1);
   });
