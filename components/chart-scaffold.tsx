@@ -252,8 +252,19 @@ export const DENSE_SERIES_POINTS = 30;
 //
 // `lib/__tests__/chart-fill-channel.test.ts` fails on a surface-filled dot
 // anywhere but `chartInexactDot`, so the channel cannot silently re-fork.
+//
+// AND SIZE MEANS PROMINENCE, only prominence (#2831). Three steps, no more:
+// ordinary (`CHART_DOT_R`), emphasised (`CHART_SPARSE_DOT_R`), hover
+// (`CHART_ACTIVE_DOT_R`). The hollow mark used to sit between the first two on an
+// `r: 3` literal it had inherited from the meaningless hollow default it
+// replaced — so inexactness rode size as well as fill, on the channel the move
+// above had just assigned to prominence. It is drawn at the ordinary radius now:
+// hollow is the whole of what it says. The same test file pins that, because the
+// lesson of the fill fork is that a meaning rides a channel unnoticed for exactly
+// as long as nothing looks.
 
-/** The resting dot's radius. */
+/** The resting dot's radius, and the size an unemphasised mark is drawn at
+ *  whatever else it is saying. */
 export const CHART_DOT_R = 2.5;
 /** The hover dot's radius. Strictly above every resting radius below. */
 export const CHART_ACTIVE_DOT_R = 5;
@@ -298,10 +309,15 @@ export function chartExactDot(c: ChartColors, color: string) {
  * The ONE hollow dot. An inexact bounded reading — the value is known only to lie
  * on one side of the number plotted, so the mark is an outline rather than a
  * filled fact. Nothing else in the app may render a surface-filled dot.
+ *
+ * At the ORDINARY radius. An inexact reading is not a prominent one, and size is
+ * the prominence channel — drawing it bigger said "look at this" alongside the
+ * outline, and half a pixel of radius is not a distinction a reader can make
+ * without both marks in view at once anyway. Hollow carries the whole claim.
  */
 export function chartInexactDot(c: ChartColors, color: string) {
   return {
-    r: 3,
+    r: CHART_DOT_R,
     fill: c.surface,
     stroke: color,
     strokeWidth: 1.5,
