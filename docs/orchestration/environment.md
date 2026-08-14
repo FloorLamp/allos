@@ -25,11 +25,10 @@ section rather than restating it, so the rule cannot drift per surface.
 - **REST for everything outside the MCP set below.** Never `gh issue` / `gh pr`
   subcommands: they ride GraphQL, whose rate pool exhausts independently of
   REST's.
-- **Two transports, one set of paths.** `gh api <path>` where the binary
-  exists; it is absent in Claude Code remote sessions, where the same path is
-  `curl -sS https://api.github.com/repos/OWNER/REPO/<path>`. Check once with
-  `command -v gh` and read every `gh api X` in these docs as "that path, by
-  whichever transport you have".
+- **Two transports, one set of paths.** Use `gh api <path>` when available;
+  otherwise use `curl -sS https://api.github.com/repos/OWNER/REPO/<path>` in
+  Claude Code remote. Check once with `command -v gh`; each `gh api X` below
+  means that REST path through the available transport.
 - **Reads need no credential.** The repository is public, so every GET works
   unauthenticated. An unset token blocks writing only — never gathering,
   auditing, or reporting — and sending an auth header on a read can trip a
@@ -37,14 +36,10 @@ section rather than restating it, so the rule cannot drift per surface.
 - **Writes read the token by variable name**, `${GH_TOKEN:-$GITHUB_TOKEN}`.
   Never search the filesystem or environment for credentials (see Lost
   credentials below); if it is unset, say so and stop at the write.
-- **MCP is for squash merges, draft-to-ready changes, protected-ref writes, and
-  Actions writes** — protected-branch merges 403 over REST. Nothing else, with
-  one principled exception: a run whose guardrail is that it MUST NOT be able to
-  close or edit issues may take its reads through MCP's individually scoped read
-  tools instead, because `Bash(gh api:*)` grants every verb at once and a
-  read-only intent cannot be expressed through it. That is a capability
-  restriction, not a transport preference; when a run is allowed to write at
-  all, REST governs.
+- **MCP only handles squash merges, draft-to-ready changes, protected refs, and
+  Actions writes.** A run forbidden from issue writes may use MCP scoped readers
+  because `Bash(gh api:*)` grants every verb. That is a capability restriction;
+  any write-authorized run uses REST.
 - **Some sandbox classifiers refuse `curl -X DELETE` while allowing `PATCH`.**
   Not a dead end: `PATCH /issues/N` sets `labels` and `assignees` as whole
   arrays, so a removal is a PATCH that omits what should go, and it sets the

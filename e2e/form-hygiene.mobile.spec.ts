@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import { expectNoClippedContent, settledFill } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 // Form hygiene at phone width (issue #1450 cluster A, the highest-stakes site).
 //
 // The strength set row (SET · WEIGHT stepper · × · REPS stepper · OPTIONS) is the
@@ -56,14 +57,11 @@ async function box(locator: Locator) {
   return b!;
 }
 
-// Open the phone editor on a fresh draft. The phone shell labels the entry point
-// "Log activity" (the desktop hub says "New activity").
+// Open the phone editor on a fresh draft through the dock's Train segment.
 async function openEditor(page: Page): Promise<void> {
   await page.goto("/training");
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Log activity" })
-    .click();
+  const sheet = await openLogSheet(page);
+  await (await showLogRow(sheet, "log-activity")).click();
 }
 
 // Fill set 1's weight. Plain now: #1971 retired the focus-applied suggestion, so
