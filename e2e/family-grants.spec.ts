@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledCheck, settledClick } from "./helpers";
+import { hydratedClick, settledCheck, settledClick } from "./helpers";
 import { createLoginViaFamily } from "./family-helpers";
 import {
   DUP_ACCESS_PROFILE,
@@ -100,19 +100,38 @@ async function cookielessPage(browser: Browser) {
 }
 
 // Open the grant-edit login's disclosure past the pre-hydration toggle swallow
-// (#830): the Edit button is a pure client setState (no Server Action to settle on),
-// so re-click until the lazily-mounted grant grid renders. Idempotent — a swallowed
-// click is a no-op, and once the grid is visible the loop stops clicking (so it never
-// double-toggles back to collapsed).
+// (#830): the Edit button is a pure client setState with no Server Action to settle
+// on, so a tap lost before React attaches `onClick` is lost for good.
+//
+// hydratedClick, not a re-click loop (#2729). Measured under a 60× CDP CPU throttle,
+// five sequential trials, both at their shipped budgets: the loop 1/5, this 5/5.
+//
+// The reason is not the one the old loop's comment implied. A pre-hydration click is
+// swallowed, so it changes nothing — which also means it cannot be retried into
+// working, and every iteration before hydration burned the 20 s ceiling on a click
+// that could not land. Given a 60 s ceiling and nothing else changed, that same loop
+// passed 4/5. Its failure was the CEILING, and waiting for the hydration marker is
+// what spends the budget on the state actually being waited for.
+//
+// The loop was ALSO unsafe in the way it explicitly denied — the button is
+// `setOpen((v) => !v)`, so a landed click whose grid paints slower than the guard's
+// 2 s is closed again by the next iteration — but that was never observed: a
+// MutationObserver on `aria-expanded` recorded one `false → true` transition per
+// trial and never a flip back. It is fixed here because it is a live hazard, not
+// because it is the thing that was failing.
 async function expandGrantEdit(page: Page): Promise<void> {
   const summary = page.getByTestId(`grant-summary-${E2E_LOGIN_GRANTEDIT}`);
   await expect(summary).toBeVisible();
-  const editBtn = summary.getByTestId(`grant-edit-${E2E_LOGIN_GRANTEDIT}`);
   const grantRow = page.getByTestId(`grant-row-${E2E_LOGIN_GRANTEDIT}`);
-  await expect(async () => {
-    if (!(await grantRow.isVisible())) await editBtn.click().catch(() => {});
-    await expect(grantRow).toBeVisible({ timeout: 2000 });
-  }).toPass({ timeout: 20_000 }); // topass-ok: pre-hydration disclosure toggle swallow (#830), no POST to settle on — re-click until the lazily-mounted grid renders (idempotent)
+  // Idempotent by inspection, not by re-clicking (openMeasurementGroup's shape):
+  // an already-open disclosure is left alone rather than toggled shut.
+  if (await grantRow.isVisible()) return;
+  await hydratedClick(
+    page,
+    summary.getByTestId(`grant-edit-${E2E_LOGIN_GRANTEDIT}`),
+    { timeout: 20_000 }
+  );
+  await expect(grantRow).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe("Family grant matrix collapses to summary rows (#1412)", () => {

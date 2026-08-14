@@ -22,6 +22,14 @@ async function switchProfile(page: Page, name: string) {
   // re-open the menu and re-submit until the header reflects the switch (the
   // openCommandPalette precedent). Under the merged dashboard's heavier hydration
   // this raw-click path flaked in full-batch runs.
+  //
+  // #2729 retired ten sibling re-click loops for hydratedClick and deliberately left
+  // this one. The interaction it re-drives is a Server Action (`setActiveProfile`)
+  // whose effect is IDEMPOTENT — switching to the profile you are already on is a
+  // no-op — and the guard is the OUTCOME (the header naming the profile), not a
+  // proxy for it. That pair is what the sweep was testing for. The loops that had to
+  // go were the ones re-driving a control that TOGGLED (`setOpen((v) => !v)`, a
+  // native `<details>`) or a `useConfirm` whose second request cancels the first.
   await expect(async () => {
     if (!((await trigger.textContent()) ?? "").includes(name)) {
       const popover = page.getByTestId("profile-switcher-panel");

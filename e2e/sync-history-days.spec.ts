@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { openAllSyncDays } from "./helpers";
+import { hydratedClick, openAllSyncDays } from "./helpers";
 import { E2E_LOGIN_SYNC_HISTORY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { frozenNow } from "./worker-env";
 
@@ -124,11 +124,15 @@ test.describe("day-grouped sync history (#1991)", () => {
 
       // Opening it lists exactly those two and NAMES the remainder rather than
       // pretending the rest are openable.
+      // hydratedClick, not a re-click loop (#2729): the SSR markup satisfies the
+      // assertions above, so the discrete onToggle can still be swallowed here. The
+      // same repair and measured reason as review-inbox's twin, which carries the
+      // numbers — a swallowed click cannot be retried into working, so the loop was
+      // spending its ceiling on clicks that could not land. One click, after the
+      // marker; a <details> is a real toggle, so a retry is a hazard besides.
       const walk = history.getByRole("link", { name: /Day-group walk/ });
-      await expect(async () => {
-        if (!(await walk.isVisible())) await drill.click();
-        await expect(walk).toBeVisible({ timeout: 4000 });
-      }).toPass({ timeout: 20_000 }); // topass-ok: re-click the <details> until the provenance list loads — SSR satisfies the earlier asserts, so the discrete onToggle can be swallowed pre-hydration
+      await hydratedClick(member, drill, { timeout: 20_000 });
+      await expect(walk).toBeVisible({ timeout: 20_000 });
       await expect(history.getByText(/\+28 more this run wrote/)).toBeVisible();
       await expect(history.getByText(/not itemizable/)).toBeVisible();
     } finally {

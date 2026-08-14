@@ -1645,9 +1645,61 @@ base, and the first single throttled run on `main` passed too. Both would have
 produced the opposite conclusion. Five trials is cheap; a wrong attribution is
 not, and it lands on whoever wrote the PR.
 
-The fix for this class is `hydratedClick`, never a retry loop: `useConfirm`
-settles an in-flight confirm as CANCELLED when a second replaces it, so
-re-clicking can cancel the dialog it is waiting for (#2729).
+The fix for this class is `hydratedClick`, never a retry loop. **The reason is
+the CEILING, not interruption** — worth reading before diagnosing the next one,
+because the intuitive mechanism is the wrong one and #2729 shipped it as fact
+before measuring it.
+
+A pre-hydration click is swallowed, so it changes NOTHING. That is also why it
+cannot be retried into working: every iteration before hydration spends the
+budget on a click that could not land, and the loop dies at its ceiling having
+never once been in a position to succeed. Waiting for a STATE spends that same
+budget on the thing actually being waited for.
+
+Measured for #2729, CDP throttle spanning the navigation, **five sequential
+trials per cell** on a quiet box:
+
+| shape                                  | old loop @ shipped ceiling | new helper @ shipped ceiling | old loop @ 60 s ceiling |
+| -------------------------------------- | -------------------------- | ---------------------------- | ----------------------- |
+| `useConfirm` delete confirm (15 s)     | 0 / 5                      | 1 / 5 — see below            | **5 / 5**               |
+| native `<details>` disclosure (20 s)   | 1 / 5                      | **5 / 5**                    | **5 / 5**               |
+| `setOpen((v) => !v)` disclosure (20 s) | 1 / 5                      | **5 / 5**                    | 4 / 5                   |
+
+The last column is the argument: given a 60 s ceiling and nothing else changed,
+the same loops converge — 10.8–23.9 s for the confirm, 17.0–29.2 s for the
+`<details>`. Their failure was the ceiling.
+
+**Read that `1 / 5` with its row, never alone.** At rate 60 `/import/908` cannot
+hydrate inside ANY per-test budget, so the cell measures the throttle and not the
+helper: 0 / 5 against 1 / 5 discriminates nothing. The confirm shape rests on the
+last column plus the diagnosability argument below; the two disclosure shapes
+carry the direct win.
+
+**Rate matters, and rate 20 answers "nothing wrong here".** At the documented
+recipe's rate 20 the bare `.click()` shape fails deterministically (the #2742
+table above) while EVERY re-click loop converged. Only rate 60 discriminated. So
+rate 60 is a DISCRIMINATOR, not a simulation of CI — it is past CI-realistic by a
+wide margin, and that is exactly what makes a latent mechanism deterministic
+enough to argue about. Run the recipe at 20 first; if everything passes, that is
+evidence about rate 20, not about the code.
+
+**The cancel path is a HAZARD that was not observed.** `useConfirm` does settle
+an in-flight confirm as CANCELLED when a second replaces it
+(`prev?.resolve(false)`, `components/ConfirmDialog.tsx`), and both a `<details>`
+and `setOpen((v) => !v)` are real toggles — so a click that LANDS and then renders
+slower than the loop's inner guard is torn down by the very iteration waiting for
+it. Real by inspection. But across 15 throttled trials a `MutationObserver` on the
+disclosure's `aria-expanded` recorded exactly one `false → true` transition every
+time and never a flip back. Fix it, because it needs only a landed click and a
+slow render — and do not attribute a failure to it without evidence.
+
+The reason that generalizes past this class: **a retry loop swallows its own
+diagnosis.** Whatever goes wrong inside the predicate — the trigger missing, a
+backdrop intercepting the tap, the click throwing — surfaces as one line,
+`Timeout 15000ms exceeded while waiting on the predicate`, naming neither the
+click nor the thing it was waiting for. That is #890's causeless timeout, and it
+is what #2729's two failures were read through. `openConfirm` (`e2e/helpers.ts`)
+is the shared repair for the confirm case; `hydratedClick` is the rest of it.
 
 ## Fix (f) — DB-per-worker isolation (#1538)
 

@@ -28,6 +28,14 @@ import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // `openMobileDrawer` documents it: re-tap until the surface mounts. Safe to
 // repeat because both triggers only ever set TRUE, so a late tap cannot close
 // what an earlier one opened.
+//
+// #2729 retired ten sibling re-click loops for hydratedClick and deliberately left
+// this one. The set-TRUE-only property is what that sweep was testing FOR — it is
+// the same property that makes `openMobileDrawer` a blessed loop — and it holds
+// here by inspection of both handlers (`setLogSheetOpen(true)`, and the More slot's
+// drawer open). The loops that had to go were the ones whose control TOGGLED
+// (`setOpen((v) => !v)`, a native `<details>`) or whose second request CANCELLED
+// the first (`useConfirm`); a re-tap here can do neither.
 async function tapUntilOpen(
   page: Page,
   trigger: Locator,
