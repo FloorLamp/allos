@@ -731,7 +731,10 @@ export async function openCareOverviewSection(
 // deliberately the whole per-test budget: `playwright.config.ts` sets no `timeout`,
 // so a test gets Playwright's default 30 s unless it declares `test.slow()`. Past
 // that the test dies whatever this helper says, so a bigger number here would only
-// look generous.
+// look generous. The one real lever is `test.slow()` at the call site, which triples
+// the budget — declined for the four long portal tests, because all it buys is a
+// better cell in a rate-60 table that is already past CI-realistic (the table is in
+// docs/internals/e2e-hygiene.md). Do not re-derive this: the ceiling IS the budget.
 //
 // Returns the dialog by its `confirm-dialog` testid rather than `getByRole("dialog")`
 // — a page may carry another modal, and this helper promises THE confirm.
