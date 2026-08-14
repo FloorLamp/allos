@@ -1633,6 +1633,43 @@ guilty neighbour. A bisect over such a spec converges on an arbitrary file,
 because its predicate ("did the victim fail") is true whatever the neighbours
 are. Rebuild before believing any of this.
 
+### The same class one tier down — a shared working directory (#2670)
+
+The DB tier has this collision too, and it is worse in one way: an e2e collision
+needs two specs on one worker, while the DB tier's needs only two files in flight
+at once, which is every run.
+
+Its shared resource is not a database — each file gets its own — it is the
+WORKING DIRECTORY. Every media store resolves its root from `process.cwd()`, so
+`data/uploads/<domain>/<profileId>/` is one tree for the whole tier, and the
+profile id in that path is all that separates one file's fixture files from
+another's. The template holds exactly one profile (the bootstrap admin, id 1), so
+every file's first fixture profile was id 2: six specs wrote real bytes into the
+same directories and removed them (`rm -rf <domainRoot>/2`) when they finished.
+
+The report was `export-media.test.ts` failing 4 tests once, immediately after a
+Playwright run, then passing three times — which reads as browser-run fallout and
+is not. `video-write.test.ts`'s `afterAll` removing
+`data/uploads/{symptom,activity}-videos/2` inside export-media's read window
+empties two of its five domains, and it fails exactly those 4 tests reading back
+rows whose files are gone. Reproduce it deliberately by SUPPLYING the ordering
+rather than waiting for it:
+
+```
+# a neighbour's afterAll, on a loop, during the victim's reads
+while :; do rm -rf data/uploads/{symptom,activity}-videos/2; done &
+npx vitest run --config vitest.db.config.ts lib/__db_tests__/export-media.test.ts
+```
+
+The fix is `lib/__db_tests__/fixture-profile-space.ts`: a test file owns a private
+block of profile ids, keyed on (process id, thread id) — the pair that runs
+exactly one file at a time — installed by raising `sqlite_sequence` before the
+file's first insert. No spec changes, and a spec written tomorrow is covered
+without knowing the module exists, which is why it is not a registry of today's
+six. `fixture-profile-isolation.test.ts` pins the invariant rather than the
+ordering: two live files can never be handed the same id, and a per-profile
+cleanup can only reach its own directory.
+
 ### When it is not co-residency at all — slow the CPU, not the neighbours
 
 The controls above answer "WHICH neighbour"; they cannot answer "was there a
