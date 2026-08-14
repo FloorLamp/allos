@@ -379,7 +379,13 @@ const MULTI_BOX_ALLOW: Record<string, number> = {
 //
 // `touchSwipeFrom(` is not matched — the `\(` is anchored to the end of the
 // name. The allowlist is EMPTY and there is no known reason to grow it.
-const SWIPE_POINT_RE = /touchSwipe\(\s*[A-Za-z_$][\w$]*\s*,\s*(?!\{)/g;
+//
+// The whitespace goes INSIDE the lookahead — `,(?!\s*\{)`, never `,\s*(?!\{)`.
+// The second spelling is the one that reads right and is always wrong: `\s*` can
+// match nothing, so on ` { x: 2 …` the lookahead is asked about the SPACE, which
+// is not a brace, and every compliant call site is reported. That bug is why
+// this comment exists.
+const SWIPE_POINT_RE = /touchSwipe\(\s*[A-Za-z_$][\w$]*\s*,(?!\s*\{)/g;
 const SWIPE_POINT_ALLOW: Record<string, number> = {};
 
 // ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────
@@ -636,6 +642,29 @@ describe("e2e suite hygiene guard (issue #868)", () => {
           `docs/internals/e2e-hygiene.md.`,
       }
     );
+  });
+
+  // The guard above has an EMPTY allowlist, so the suite passing proves only
+  // that nothing matched — a pattern that matches NOTHING would pass it forever.
+  // These four samples are what make the green mean something, and they are not
+  // hypothetical: the first draft of the pattern spelled the brace check
+  // `,\s*(?!\{)`, whose `\s*` matches nothing and hands the lookahead a SPACE,
+  // so it flagged every compliant call site in the tree.
+  it("the measured-point pattern discriminates a point from a literal", () => {
+    const matches = (src: string) => countMatches(src, SWIPE_POINT_RE) > 0;
+
+    expect(matches("await touchSwipe(page, grip, { x: grip.x, y: 1 });")).toBe(
+      true
+    );
+    expect(
+      matches("await touchSwipe(\n  page,\n  grip,\n  { x: 1, y: 2 }\n);")
+    ).toBe(true);
+    expect(
+      matches("await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });")
+    ).toBe(false);
+    expect(
+      matches('await touchSwipeFrom(page, handle, { dy: 240 });')
+    ).toBe(false);
   });
 
   it("no NEW inline create-login sequence in an e2e/*.ts (use createLoginViaFamily)", () => {
