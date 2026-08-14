@@ -2152,21 +2152,11 @@ describe("qualitativeFlagResolution — a hand-edited row is not overwritten (#2
     ).toBeUndefined();
   });
 
-  it("gates the no-result clear ONLY — the older transitions are unchanged", () => {
-    // #548 §1 clears a blunt "abnormal" on an immutable identity attribute, and #544
-    // promotes an immune titer. Whether THOSE should respect the edit lock is a
-    // separate claim about base behaviour; this change does not make it.
-    expect(
-      qualitativeFlagResolution(
-        "ABO Blood Group",
-        "O Positive",
-        null,
-        null,
-        "abnormal",
-        null,
-        { editLocked: true }
-      )
-    ).toBeNull();
+  it("does not gate the PROMOTIONS — a lock never invents or withholds a flag", () => {
+    // #544 promotes an immune titer. The edit lock protects what a person WROTE; it is
+    // not a licence to withhold a verdict from a row someone once opened. (The #548 §1
+    // clear on an IDENTITY row was pinned here too until #2715 decided the other way;
+    // it now lives in its own describe below.)
     expect(
       qualitativeFlagResolution(
         "HEPATITIS A Ab/TOTAL",
@@ -2178,5 +2168,139 @@ describe("qualitativeFlagResolution — a hand-edited row is not overwritten (#2
         { editLocked: true }
       )
     ).toBe("immune");
+  });
+});
+
+// The ABO+Rh interpretation code (#910) — a real LOINC, and the reason the identity
+// class cannot be recognized by name alone: "ABORh Interpretation" matches no regex.
+const ABO_RH_LOINC = "19057-9";
+
+describe("qualitativeFlagResolution — an identity-class row keeps a hand-set flag (#2715)", () => {
+  // The #548 §1 clear exists to delete an EXTRACTOR GUESS on a value that cannot be
+  // abnormal. On an edit-locked row the flag is not a guess, and deleting it is the
+  // same silent overwrite #2712 removed one branch over. This describe is the direct
+  // reversal of a pin #2712 left in place on purpose — that PR scoped its gate to the
+  // no-result branch because widening it was a separate decision, and #2715 is that
+  // decision.
+  const abo = [
+    "ABO Blood Group",
+    "O Positive",
+    null,
+    null,
+    "abnormal",
+    null,
+  ] as const;
+
+  it("clears on an untouched row and defers on an edit-locked one", () => {
+    expect(qualitativeFlagResolution(...abo)).toBeNull();
+    expect(qualitativeFlagResolution(...abo, { editLocked: false })).toBeNull();
+    expect(
+      qualitativeFlagResolution(...abo, { editLocked: true })
+    ).toBeUndefined();
+  });
+
+  it("reaches the LOINC-resolved identity class the name regex cannot match", () => {
+    // #910: a source spelling it "ABORh Interpretation" classifies by LOINC, not by
+    // the `\babo\b` regex. Both identity paths must answer the same, or whether a
+    // person's flag survives depends on how the document happened to print the name.
+    const args = [
+      "ABORh Interpretation",
+      "A POS",
+      null,
+      null,
+      "abnormal",
+      ABO_RH_LOINC,
+    ] as const;
+    expect(qualitativeFlagResolution(...args)).toBeNull();
+    expect(
+      qualitativeFlagResolution(...args, { editLocked: true })
+    ).toBeUndefined();
+  });
+
+  it("covers a genotype, and leaves an already-neutral identity row alone either way", () => {
+    expect(
+      qualitativeFlagResolution(
+        "APOE Genotype",
+        "e3/e4",
+        null,
+        null,
+        "abnormal",
+        null,
+        { editLocked: true }
+      )
+    ).toBeUndefined();
+    // Nothing to clear, so the lock changes nothing — both answers are "leave".
+    expect(
+      qualitativeFlagResolution(
+        "ABO Blood Group",
+        "O Positive",
+        null,
+        null,
+        "normal",
+        null,
+        { editLocked: true }
+      )
+    ).toBeUndefined();
+  });
+
+  it("does NOT reach a MUTABLE neutral attribute — the reach stays at identity", () => {
+    // Urinalysis colour and morphology pattern are #548 §1's other half: context-
+    // neutral but MUTABLE, `immutable: false`, and not what #2715 scoped itself to.
+    // Their guessed "abnormal" still clears while edit-locked. Widening to them is the
+    // same separate claim #2712 declined to make about this branch.
+    for (const [name, value] of [
+      ["Urine Color", "Yellow"],
+      ["RBC Morphology Pattern", "Pattern A"],
+    ] as const)
+      expect(
+        qualitativeFlagResolution(name, value, null, null, "abnormal", null, {
+          editLocked: true,
+        })
+      ).toBeNull();
+    // And #544's good-polarity non-immunity — an infection marker that is NEGATIVE —
+    // still clears its blunt "abnormal" too.
+    expect(
+      qualitativeFlagResolution(
+        "Hepatitis B Surface Antigen",
+        "Non-Reactive",
+        null,
+        null,
+        "abnormal",
+        null,
+        { editLocked: true }
+      )
+    ).toBeNull();
+  });
+});
+
+describe("classifyQualitativeResult — `immutable` marks the identity class and nothing else", () => {
+  // The #2715 gate keys on `c.immutable`, which is a legible stand-in for "identity
+  // class" only while the two are the same set. Pin the coupling rather than assume
+  // it: a future class answering `immutable` without being identity would silently
+  // inherit the hand-edit gate, and a future identity path that forgot the field would
+  // silently lose it. Either way the failure would be invisible at the gate itself.
+  const immutableOf = (
+    name: string,
+    value: string,
+    loinc?: string | null
+  ): boolean | null =>
+    classifyQualitativeResult(name, value, null, null, loinc)?.immutable ??
+    null;
+
+  it("answers true for both identity paths", () => {
+    expect(immutableOf("ABO Blood Group", "O Positive")).toBe(true);
+    expect(immutableOf("Rh Factor", "Positive")).toBe(true);
+    expect(immutableOf("APOE Genotype", "e3/e4")).toBe(true);
+    expect(immutableOf("ABORh Interpretation", "A POS", ABO_RH_LOINC)).toBe(
+      true
+    );
+  });
+
+  it("answers false for every other class that classifies at all", () => {
+    expect(immutableOf("Urine Color", "Yellow")).toBe(false);
+    expect(immutableOf("Fetal Fraction", "8.2")).toBe(false);
+    expect(immutableOf("Trisomy 21", "Low Risk")).toBe(false);
+    expect(immutableOf("Hepatitis B Surface Antigen", "Reactive")).toBe(false);
+    expect(immutableOf("Rubella IgG", "Reactive")).toBe(false);
   });
 });
