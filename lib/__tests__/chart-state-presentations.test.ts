@@ -131,7 +131,7 @@ describe("state 3 — an over-limit hole earns a hole", () => {
   it("the runs carry stroke only — one tooltip and one set of marks survive", () => {
     const runs = funnel.slice(
       funnel.indexOf("strokeRuns.length > 1 &&"),
-      funnel.indexOf('dataKey={key}')
+      funnel.indexOf("dataKey={key}")
     );
     expect(runs).toContain("dot={false}");
     expect(runs).toContain('tooltipType="none"');

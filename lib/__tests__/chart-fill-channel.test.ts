@@ -35,7 +35,9 @@ const scaffold = fs.readFileSync(path.join(REPO, SCAFFOLD), "utf8");
 /** A `export const NAME = <number>;` in the scaffold, read as text — the pure
  *  tier does not import components/. */
 function num(name: string): number | null {
-  const m = scaffold.match(new RegExp(`export const ${name}\\s*=\\s*([0-9.]+)\\s*;`));
+  const m = scaffold.match(
+    new RegExp(`export const ${name}\\s*=\\s*([0-9.]+)\\s*;`)
+  );
   return m ? Number(m[1]) : null;
 }
 
@@ -46,7 +48,9 @@ describe("fill means exactness, and only exactness", () => {
       "chart-scaffold must export chartInexactDot — the ONE hollow mark"
     ).toBe(true);
     // The helper's body is the only place a surface fill may appear.
-    const body = scaffold.slice(scaffold.indexOf("export function chartInexactDot"));
+    const body = scaffold.slice(
+      scaffold.indexOf("export function chartInexactDot")
+    );
     expect(body.slice(0, body.indexOf("}")).includes("fill: c.surface")).toBe(
       true
     );

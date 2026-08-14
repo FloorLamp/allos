@@ -297,7 +297,10 @@ export default function LineChartCard({
   // sentence and the drawing can never name different days.
   const lastReadingDate = trailingHole
     ? (series
-        .slice(0, series.findIndex((d) => d.date === trailingHole.from))
+        .slice(
+          0,
+          series.findIndex((d) => d.date === trailingHole.from)
+        )
         .filter((d) => d.value != null)
         .at(-1)?.date ?? null)
     : null;
@@ -398,8 +401,7 @@ export default function LineChartCard({
   // and "one reading on Jul 13" is not a sentence about it. A caller that has
   // already drawn its own mark never reaches this branch, so the two cannot
   // double up.
-  const lone =
-    isoDates && key === "value" ? loneReading(data) : null;
+  const lone = isoDates && key === "value" ? loneReading(data) : null;
   if (lone && lone.value != null) {
     return (
       <div className={`${heightClass} min-w-0 max-w-full`}>
