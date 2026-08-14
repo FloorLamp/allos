@@ -44,7 +44,7 @@ proportion to the change.
 - Keep changes focused. Do not edit shipped migrations or unrelated user work.
 - Add or update tests for behavior changes.
 - Do not write redundant assertions or defensive assert checks for conditions
-already proven by types or prior control flow.
+  already proven by types or prior control flow.
 
 - More specific instructions live in nested `AGENTS.md` files.
 - Domain design and history live in `docs/internals/`; read the relevant
