@@ -309,7 +309,8 @@ export function scrubberScrollTop(
   const range = scrollRange > 0 ? scrollRange : 0;
   if (offsets.length === 0) return clamp01(fraction) * range;
   const first = offsets[0];
-  const target = first + clamp01(fraction) * (offsets[offsets.length - 1] - first);
+  const target =
+    first + clamp01(fraction) * (offsets[offsets.length - 1] - first);
   if (!Number.isFinite(target)) return clamp01(fraction) * range;
   return Math.min(Math.max(target, 0), range);
 }
