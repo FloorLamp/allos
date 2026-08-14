@@ -105,6 +105,14 @@ This is **tokens and a declaration, not a registry engine**: there is no schedul
 and no runtime dispatch. Adding a motion is a row in `MICRO_MOTIONS` plus a
 `--motion-<name>` property and a class; the test fails either half on its own.
 
+It fails the CSS half by CENSUS, not by pattern match: the property, class and
+keyframe names are collected with a loose pattern and required to equal the
+registry keys exactly. A pattern that silently skips a name it cannot spell
+reports a clean count for a motion nothing checked — `[a-z]+` matched neither
+`.motion-slide2` nor `.motion-count-roll`, so a 900 ms motion animating `width`
+with no registry row passed every assertion (#2770). The name shape is pinned
+separately, so widening the pattern is not a permanent chase.
+
 ## Not the overlay family
 
 `lib/motion.ts` owns a different question — a panel _arriving_, at 240 ms, with an
