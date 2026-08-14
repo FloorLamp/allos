@@ -29,9 +29,25 @@ describe("intakeShortName", () => {
 
   it("passes unknown and custom names through whole", () => {
     expect(intakeShortName("Ibuprofen")).toBe("Ibuprofen");
-    expect(intakeShortName("Magnesium Glycinate")).toBe("Magnesium Glycinate");
     expect(intakeShortName("Dr. Kim's AM Stack")).toBe("Dr. Kim's AM Stack");
     expect(intakeShortName("")).toBe("");
+  });
+
+  it("shortens magnesium forms without dropping the form", () => {
+    expect(intakeShortName("Magnesium Glycinate")).toBe("Mag glycinate");
+    expect(intakeShortName("Magnesium L-Threonate")).toBe("Mag threonate");
+    // A bare "Magnesium" is already short and has no entry.
+    expect(intakeShortName("Magnesium")).toBe("Magnesium");
+    // The forms stay tellable apart — never a shared bare "Mag"/"Magnesium".
+    const forms = [
+      "Magnesium Glycinate",
+      "Magnesium Citrate",
+      "Magnesium L-Threonate",
+      "Magnesium Malate",
+      "Magnesium Oxide",
+      "Magnesium Taurate",
+    ].map(intakeShortName);
+    expect(new Set(forms).size).toBe(forms.length);
   });
 
   it("keeps distinct substances distinct (the K2 forms)", () => {

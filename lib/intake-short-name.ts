@@ -78,6 +78,18 @@ export const INTAKE_SHORT_NAMES: Record<string, string> = {
   "s-adenosyl-l-methionine": "SAMe",
   "beta-hydroxy beta-methylbutyrate": "HMB",
 
+  // Magnesium forms — "Mag" + the form, never a bare "Magnesium": the form is
+  // what tells two tracked magnesiums apart, so it survives the shortening.
+  // Bisglycinate and glycinate are the same chelate, so they share one.
+  "magnesium glycinate": "Mag glycinate",
+  "magnesium bisglycinate": "Mag glycinate",
+  "magnesium citrate": "Mag citrate",
+  "magnesium l-threonate": "Mag threonate",
+  "magnesium threonate": "Mag threonate",
+  "magnesium malate": "Mag malate",
+  "magnesium oxide": "Mag oxide",
+  "magnesium taurate": "Mag taurate",
+
   // Common names with a redundant tail
   "creatine monohydrate": "Creatine",
   "collagen peptides": "Collagen",
