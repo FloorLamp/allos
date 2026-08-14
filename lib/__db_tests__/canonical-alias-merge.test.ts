@@ -83,7 +83,7 @@ function stars(profileId: number): string[] {
   return (
     db
       .prepare(
-        "SELECT key FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' ORDER BY key"
+        "SELECT key FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result' ORDER BY key"
       )
       .all(profileId) as { key: string }[]
   ).map((r) => r.key);
@@ -196,7 +196,7 @@ describe("the rename carries every piece of name-keyed side-state", () => {
 
   it("moves the ★ save onto the target and drops a redundant old pin", () => {
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
     ).run(profileId, BLOCKED);
     mergeSupersededCanonicalNames(db);
     expect(stars(profileId)).toEqual([BLOCKED_TARGET]);
@@ -205,7 +205,7 @@ describe("the rename carries every piece of name-keyed side-state", () => {
   it("collapses onto an existing pin rather than leaving the profile two", () => {
     for (const key of [BLOCKED, BLOCKED_TARGET])
       db.prepare(
-        "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+        "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
       ).run(profileId, key);
     mergeSupersededCanonicalNames(db);
     expect(stars(profileId)).toEqual([BLOCKED_TARGET]);
@@ -283,10 +283,10 @@ describe("the rename carries every piece of name-keyed side-state", () => {
     const other = newProfile("ALIAS-OTHER");
     addReading(other, BLOCKED, "negative");
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
     ).run(profileId, BLOCKED);
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
     ).run(other, BLOCKED_TARGET);
     mergeSupersededCanonicalNames(db);
     // Each profile's rows moved under its OWN id; neither inherited the other's pin.
@@ -402,7 +402,7 @@ describe("the singular cast spellings resolve retroactively (#2319)", () => {
     coinVocabulary(singular);
     addReading(profileId, singular, "0-2");
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
     ).run(profileId, singular);
     db.prepare(
       "INSERT INTO coverage_gaps (profile_id, kind, item_key, label) VALUES (?, 'biomarker', ?, ?)"

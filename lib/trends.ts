@@ -39,7 +39,7 @@ export function filterSeriesByRange<T extends { date: string }>(
 // Returns that reading, or null when the fallback does not apply — which is both
 // of the cases where showing it would be a lie or a duplicate:
 //   • the window has points of its own (the tile draws the real series), and
-//   • the series is empty outright (a never-measured saved biomarker — the #1456
+//   • the series is empty outright (a never-measured saved clinical result — the #1456
 //     placeholder tile, whose ★ must stay reachable, still renders).
 // `series` must be chronological (oldest → newest), as every series here is.
 //

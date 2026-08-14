@@ -189,5 +189,6 @@
   "20260813-cascade-orphan-sweep.ts": "fd38b4d4e77f200d266e5d4de0dc069c05150d2bd39b139864ec5c591ddc5c4a",
   "20260813-encounter-diagnosis-ranks.ts": "4d8969ec00eb72a7cf5616fe38ee880788773865ae2bf097546f74e68d76ccf9",
   "20260813-saved-backed-identity-repair.ts": "3d274702d6fa4696937a8f7ee1e816c9420132ef01865e17a5e28989527c6dcc",
-  "20260814-canonical-result-definitions.ts": "1e7c35b98004fe319c667268608b2d91fb8dfedb83f3c944eeb504e4daf2a5d3"
+  "20260814-canonical-result-definitions.ts": "1e7c35b98004fe319c667268608b2d91fb8dfedb83f3c944eeb504e4daf2a5d3",
+  "20260814-saved-clinical-result-namespace.ts": "5752cc4e337853f387a1a21a7620fe3fc3f60a6b47485638b1a9645b6573cbd6"
 }

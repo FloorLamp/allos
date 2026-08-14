@@ -25,7 +25,7 @@ import {
 // Every field the passport shows already exists as a query; this module
 // takes the individual latest-value results and shapes them into one card model,
 // with the interesting derivations — blood-type resolution, BMI, and the merge of
-// flagged + starred biomarkers — done here so they're unit-testable without a DB
+// flagged + starred clinical results — done here so they're unit-testable without a DB
 // (lib/__tests__/profile-summary.test.ts). The DB gathering lives in
 // lib/profile-summary-load.ts.
 
@@ -223,7 +223,7 @@ export interface ProfileSummaryInput {
   weightDate: string | null;
   bodyFatDate: string | null;
   restingHrDate: string | null;
-  // Current flagged (out-of-range / non-optimal) biomarkers, and starred ones.
+  // Current flagged (out-of-range / non-optimal) results, and starred ones.
   flagged: SummaryVital[];
   starred: SummaryVital[];
   allergies: SummaryAllergy[];
@@ -394,8 +394,8 @@ function flagRank(flag: MedicalFlag | null): number {
   return 2;
 }
 
-// Merge the flagged + starred biomarker lists into one deduplicated vitals list,
-// keyed case-insensitively by name. A biomarker that is both flagged and starred
+// Merge the flagged + starred result lists into one deduplicated vitals list,
+// keyed case-insensitively by name. A result that is both flagged and starred
 // keeps its flag AND its star. Ordered by severity, then starred, then name; the
 // most clinically relevant rows lead and the list is capped for print.
 export function mergeVitals(

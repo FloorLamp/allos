@@ -4,7 +4,7 @@ import { getSavedItems } from "@/lib/queries/saved";
 import {
   buildMetricSeries,
   buildSavedTrendMetricSeries,
-  buildSavedBiomarkerTile,
+  buildSavedClinicalResultTile,
   listCompareOptions,
   type TrendSeries,
 } from "@/lib/trends-series";
@@ -45,9 +45,9 @@ import SavedTilesGrid, {
 // profile creation and, for the installed base, by migration 114 (#1487's data half,
 // lib/standard-metric-seeds.ts) — so day-one appearance is IDENTICAL and the change
 // is that the tiles are now REMOVABLE. One star answers "what's in my starred grid"
-// for every kind; SaveTrendPicker (metrics AND biomarkers) is the way back.
+// for every kind; SaveTrendPicker (metrics AND clinical results) is the way back.
 //
-// #1456 remains the store: ONE ★ behind ONE table (`saved_items`). A saved biomarker
+// #1456 remains the store: ONE ★ behind ONE table (`saved_items`). A saved clinical result
 // simultaneously earns the Results status card, a tile here, and passport inclusion.
 //
 // Two rules the grid must not break:
@@ -74,8 +74,8 @@ export default async function StarredSection({ range }: { range: DateRange }) {
   }));
 
   // One tile per saved ref, in saved order. Metrics resolve against the age-gated
-  // series set (a gated metric yields no tile and is skipped); a saved biomarker
-  // always resolves — buildSavedBiomarkerTile answers with a windowed series, the
+  // series set (a gated metric yields no tile and is skipped); a saved clinical result
+  // always resolves — buildSavedClinicalResultTile answers with a windowed series, the
   // #1485 G sparse fallback (latest reading + age), or an empty placeholder.
   const metricByKey = new Map(
     buildMetricSeries(profile.id, login.id, range, restricted).map((t) => [
@@ -97,7 +97,9 @@ export default async function StarredSection({ range }: { range: DateRange }) {
         );
       if (tile) tiles.push(tile);
     } else {
-      tiles.push(buildSavedBiomarkerTile(profile.id, ref.key, range, todayStr));
+      tiles.push(
+        buildSavedClinicalResultTile(profile.id, ref.key, range, todayStr)
+      );
     }
   }
 
@@ -137,7 +139,7 @@ export default async function StarredSection({ range }: { range: DateRange }) {
       // line through them draws a slope over training that never happened.
       sparklineShape={sparklineShapeForSeriesKey(t.key)}
       // …and so does the GAP (#2258): the same registry declares whether this
-      // series' missing days are holes, real zeros, or (for `bio:`) not to be
+      // series' missing days are holes, real zeros, or (for `result:`) not to be
       // densified at all. Passing the KEY, never a policy, is what keeps the tile
       // and the detail chart from disagreeing.
       gapFill={{ seriesKey: t.key, ...dayFillWindow(range) }}

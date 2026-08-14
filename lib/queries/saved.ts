@@ -8,11 +8,11 @@ import { orderSavedRefs, type SavedKind, type SavedRef } from "../saved-items";
 // Everything here is profileId-first and auth-blind (the lib write-core convention):
 // the Server Actions in app/(app)/saved-actions.ts are the auth boundary.
 //
-// BIOMARKER SAVES ARE FAMILY-KEYED (#482) AND LIVE IN lib/queries/medical.ts —
-// isBiomarkerSaved / saveBiomarker / unsaveBiomarkerFamily / getSavedBiomarkers /
-// cleanupOrphanSavedBiomarkers all need the biomarker family identity SQL that lives
+// CLINICAL-RESULT SAVES ARE FAMILY-KEYED (#482) AND LIVE IN lib/queries/medical.ts —
+// isClinicalResultSaved / saveClinicalResult / unsaveClinicalResultFamily / getSavedClinicalResults /
+// cleanupOrphanSavedClinicalResults all need the biomarker family identity SQL that lives
 // there. This module holds the KIND-GENERIC store operations; a caller that needs
-// biomarker semantics goes through those.
+// clinical-result semantics goes through those.
 
 export interface SavedItemRow extends SavedRef {
   id: number;
@@ -50,8 +50,8 @@ export function getSavedItems(
   return orderSavedRefs(rows);
 }
 
-// Whether an exact (kind, key) is saved. Biomarker callers should prefer
-// isBiomarkerSaved (family-aware, #482); this is the kind-generic check the
+// Whether an exact (kind, key) is saved. Clinical-result callers should prefer
+// isClinicalResultSaved (family-aware, #482); this is the kind-generic check the
 // trend-metric toggle uses.
 export function isItemSaved(
   profileId: number,
@@ -80,8 +80,8 @@ export function saveItem(
   ).run(profileId, kind, key);
 }
 
-// Unsave an exact (kind, key). Returns rows removed. Biomarker callers use
-// unsaveBiomarkerFamily instead, so a save on any family member clears the family.
+// Unsave an exact (kind, key). Returns rows removed. Clinical-result callers use
+// unsaveClinicalResultFamily instead, so a save on any family member clears the family.
 export function unsaveItem(
   profileId: number,
   kind: SavedKind,
@@ -120,7 +120,7 @@ export function toggleItemSaved(
 // It replaced the retired `moveSavedItem` (one-slot up/down over the stored order):
 // with the grid holding the list client-side, the drag AND the ⋯ menu's arrow
 // fallback both name a destination, so ONE write serves both and they cannot drift.
-// Ordering is ONE list across kinds (the Overview grid interleaves saved biomarker
+// Ordering is ONE list across kinds (the Overview grid interleaves saved clinical-result
 // and metric tiles), and the rewrite normalizes EVERY row to a dense 0..n-1
 // position, so a set that was half-unpositioned (a fresh star) becomes fully ordered
 // on the first reorder instead of drifting.

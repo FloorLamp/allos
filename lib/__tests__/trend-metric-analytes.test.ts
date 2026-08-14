@@ -153,7 +153,7 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
   });
 
   it("a DEPARTING analyte keeps a detail page — so a star stays un-starrable", () => {
-    // `StarredBiomarkers` reads `getSavedBiomarkers` straight from `saved_items`,
+    // `StarredResults` reads `getSavedClinicalResults` straight from `saved_items`,
     // independently of the browser gather, so a starred analyte still renders its tile
     // after leaving the catalog — and the tile links through `readingDetailHref`. Both
     // branches of that helper land on a page that carries a StarButton (the metric

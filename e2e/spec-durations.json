@@ -323,7 +323,7 @@
   "e2e/source-compare.spec.ts": 4.534,
   "e2e/stale-build-save.spec.ts": 19.749,
   "e2e/star-optimistic.spec.ts": 5.335,
-  "e2e/starred-biomarker-stale.spec.ts": 0.765,
+  "e2e/starred-result-stale.spec.ts": 0.765,
   "e2e/stream-lifecycle.spec.ts": 7.637,
   "e2e/strength-load-context.spec.ts": 6.064,
   "e2e/strength-standards.spec.ts": 1.86,

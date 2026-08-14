@@ -60,7 +60,9 @@ export function getRankedBiomarkerOptions(
     )
   );
   const starredFamilies = new Set(
-    getSavedItems(profileId, "biomarker").map((item) => familyKey(item.key))
+    getSavedItems(profileId, "clinical-result").map((item) =>
+      familyKey(item.key)
+    )
   );
   const retestSignals = getBiomarkerRetestRankSignals(profileId, today);
   const dueRetestIdentities = new Set(

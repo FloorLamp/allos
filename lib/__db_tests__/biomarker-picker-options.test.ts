@@ -11,7 +11,7 @@ import { shiftDateStr } from "@/lib/date";
 import {
   getRankedBiomarkerOptions,
   reconcileFlags,
-  toggleBiomarkerSaved,
+  toggleClinicalResultSaved,
 } from "@/lib/queries";
 import { listCompareOptions } from "@/lib/trends-series";
 import { biomarkerRankKey } from "@/lib/biomarker-rank";
@@ -72,7 +72,7 @@ beforeAll(() => {
   addReading(profileId, MEASURED, shiftDateStr(todayStr, -10), 4.5, "g/dL");
   // Starred WITHOUT any reading: a star is a declaration of interest, and the picker
   // must honour it before the profile has ever measured the analyte.
-  toggleBiomarkerSaved(profileId, STARRED);
+  toggleClinicalResultSaved(profileId, STARRED);
   reconcileFlags(profileId);
 
   // The other member's rows exist and must not leak into this profile's order.

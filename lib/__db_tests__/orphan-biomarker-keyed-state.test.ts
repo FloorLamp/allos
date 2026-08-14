@@ -26,7 +26,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
 import { persistDocumentImport } from "@/lib/import-persist";
-import { cleanupOrphanBiomarkerKeyedState, saveBiomarker } from "@/lib/queries";
+import {
+  cleanupOrphanBiomarkerKeyedState,
+  saveClinicalResult,
+} from "@/lib/queries";
 import {
   biomarkerDismissalKey,
   biomarkerFlagDismissalKey,
@@ -113,12 +116,12 @@ function newDocument(
   );
 }
 
-// Stars through the PRODUCT path, not a raw insert: saveBiomarker stamps
+// Stars through the PRODUCT path, not a raw insert: saveClinicalResult stamps
 // `backed` from whether a reading stands behind the star at that moment, and
 // that stamp is what tells a de-orphaned star from a never-measured watch. A raw
 // insert leaves backed = 0, i.e. "watch", which is not what these cases mean.
 function starOf(profileId: number, name: string): void {
-  saveBiomarker(profileId, name);
+  saveClinicalResult(profileId, name);
 }
 
 function dismiss(profileId: number, signalKey: string): void {
@@ -142,7 +145,7 @@ function hasStar(profileId: number, name: string): boolean {
   return Boolean(
     db
       .prepare(
-        "SELECT 1 FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE"
+        "SELECT 1 FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result' AND key = ? COLLATE NOCASE"
       )
       .get(profileId, name)
   );

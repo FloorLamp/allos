@@ -46,7 +46,7 @@ import { fullTrendMetricSeries } from "./trend-metric-series";
 // (#1853): one answer to "what does this analyte's series look like, in what unit".
 import { biomarkerPlot } from "./queries/biomarker-plot";
 import { activeRangeLabel } from "./trends-context";
-import { bioSeriesKey, metricSeriesKey } from "./saved-items";
+import { resultSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
 import type { DigestSeries } from "./trends-digest";
 import {
@@ -59,7 +59,7 @@ import type { DateRange } from "./timeline-format";
 import { readingDetailHref, metricDetailHref, type AppRoute } from "./hrefs";
 
 export interface TrendSeries {
-  key: string; // "metric:weight" | "bio:LDL Cholesterol" — also the pin key
+  key: string; // "metric:weight" | "result:LDL Cholesterol" — also the pin key
   label: string;
   // Registry-owned compact label for phone tiles. Full `label` remains the chart
   // and detail title; biomarkers omit this because their canonical name is the
@@ -285,7 +285,7 @@ export function buildBiomarkerSeries(
   if (windowed.length === 0) return null;
 
   return {
-    key: bioSeriesKey(canonical),
+    key: resultSeriesKey(canonical),
     label: canonical,
     unit: plot.unit ? ` ${plot.unit}` : "",
     color: bioColor(canonical),
@@ -320,7 +320,7 @@ function outOfWindowText(
   return { date: row.date, text: `${raw}${row.unit ? ` ${row.unit}` : ""}` };
 }
 
-// The Overview tile for a SAVED biomarker (#1456: always rendered, so its ★ stays
+// The Overview tile for a SAVED clinical result (#1456: always rendered, so its ★ stays
 // reachable at any window). Never null — it resolves to one of three honest states:
 //
 //   • readings in the window → the real windowed series (identical to
@@ -334,7 +334,7 @@ function outOfWindowText(
 // The out-of-window reading is deliberately NOT merged into `points`: it is carried
 // beside them so the renderer must mark it as outside the window rather than plot a
 // stale value on the line.
-export function buildSavedBiomarkerTile(
+export function buildSavedClinicalResultTile(
   profileId: number,
   canonical: string,
   range: DateRange,
@@ -345,7 +345,7 @@ export function buildSavedBiomarkerTile(
 
   const windowed = filterSeriesByRange(plot.points, range);
   const base: TrendSeries = {
-    key: bioSeriesKey(canonical),
+    key: resultSeriesKey(canonical),
     label: canonical,
     unit: plot.unit ? ` ${plot.unit}` : "",
     color: bioColor(canonical),
@@ -388,7 +388,7 @@ export function buildSavedBiomarkerTile(
 // tile so it slots into the Pinned section and TrendMiniCard shows its empty state.
 export function placeholderBiomarkerTile(canonical: string): TrendSeries {
   return {
-    key: bioSeriesKey(canonical),
+    key: resultSeriesKey(canonical),
     label: canonical,
     unit: "",
     color: bioColor(canonical),
@@ -429,7 +429,7 @@ export function listCompareOptions(
     today(profileId),
     names
   ).map((option) => ({
-    key: bioSeriesKey(option.name),
+    key: resultSeriesKey(option.name),
     label: option.name,
     kind: "biomarker" as const,
     group: option.group,
@@ -437,7 +437,7 @@ export function listCompareOptions(
   return { metrics, biomarkers };
 }
 
-// Resolve a single series by its key ("metric:…" or "bio:…"), windowed to `range`.
+// Resolve a single series by its key ("metric:…" or "result:…"), windowed to `range`.
 // Returns null for an unknown/empty key or a series with no points in the window.
 export function resolveSeriesByKey(
   profileId: number,
@@ -450,8 +450,8 @@ export function resolveSeriesByKey(
     const metrics = buildMetricSeries(profileId, loginId, range, restricted);
     return metrics.find((m) => m.key === key) ?? null;
   }
-  if (key.startsWith("bio:")) {
-    return buildBiomarkerSeries(profileId, key.slice("bio:".length), range);
+  if (key.startsWith("result:")) {
+    return buildBiomarkerSeries(profileId, key.slice("result:".length), range);
   }
   return null;
 }

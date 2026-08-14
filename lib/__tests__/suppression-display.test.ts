@@ -73,7 +73,7 @@ describe("prefix-coverage guard (#1151)", () => {
       "food-timing:3:grapefruit",
       "keep-apart:1-2",
       "coaching:rest-sleep",
-      "digest:bio:LDL:up",
+      "digest:result:LDL:up",
       `${MED_BRIDGE_PREFIX}amoxicillin`,
       `${DORMANT_PRN_PREFIX}9`,
       "condition-consideration:asthma",

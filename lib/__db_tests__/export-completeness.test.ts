@@ -59,7 +59,7 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
   // Preference / UI state — not the user's health record.
   {
     table: "saved_items",
-    why: "UI save state (which items the ★ star gesture marked — biomarkers, Trends tiles; #1456 folded starred_biomarkers + trend_pins here). Curation, not the user's health record; every saved biomarker's READINGS export via medical_records.",
+    why: "UI save state (which items the ★ star gesture marked — clinical results, Trends tiles; #1456 folded starred_biomarkers + trend_pins here). Curation, not the user's health record; every saved result's READINGS export via medical_records.",
   },
   {
     table: "upcoming_dismissals",

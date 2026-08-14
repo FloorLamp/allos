@@ -15,7 +15,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { buildSavedBiomarkerTile } from "@/lib/trends-series";
+import { buildSavedClinicalResultTile } from "@/lib/trends-series";
 import { defaultTrendsRange } from "@/lib/timeline-format";
 import { shiftDateStr } from "@/lib/date";
 
@@ -65,7 +65,7 @@ describe("#1485 G — the sparse-series tile falls back to the latest reading", 
   });
 
   it("shows the latest reading and its age when the default window is empty", () => {
-    const tile = buildSavedBiomarkerTile(
+    const tile = buildSavedClinicalResultTile(
       profileId,
       STALE_ANALYTE,
       defaultTrendsRange(todayStr),
@@ -88,7 +88,7 @@ describe("#1485 G — the sparse-series tile falls back to the latest reading", 
   });
 
   it("draws the real series — and no fallback — when the window has readings", () => {
-    const tile = buildSavedBiomarkerTile(
+    const tile = buildSavedClinicalResultTile(
       profileId,
       FRESH_ANALYTE,
       defaultTrendsRange(todayStr),
@@ -101,7 +101,7 @@ describe("#1485 G — the sparse-series tile falls back to the latest reading", 
   });
 
   it("draws the full series under an explicit all-time window", () => {
-    const tile = buildSavedBiomarkerTile(
+    const tile = buildSavedClinicalResultTile(
       profileId,
       STALE_ANALYTE,
       {},
@@ -114,7 +114,7 @@ describe("#1485 G — the sparse-series tile falls back to the latest reading", 
   // The APOE-genotype case: starred, real in the seed, and invisible to a
   // numeric-only fallback.
   it("falls back to a qualitative reading, which nothing can plot", () => {
-    const tile = buildSavedBiomarkerTile(
+    const tile = buildSavedClinicalResultTile(
       profileId,
       GENOTYPE_ANALYTE,
       defaultTrendsRange(todayStr),
@@ -125,10 +125,10 @@ describe("#1485 G — the sparse-series tile falls back to the latest reading", 
     expect(tile.outsideWindow?.age).toBe("1y ago");
   });
 
-  // #1456: a never-measured saved biomarker still renders a tile so its ★ stays
+  // #1456: a never-measured saved clinical result still renders a tile so its ★ stays
   // reachable — there is simply no reading to fall back to.
   it("keeps the plain placeholder for a never-measured analyte", () => {
-    const tile = buildSavedBiomarkerTile(
+    const tile = buildSavedClinicalResultTile(
       profileId,
       NEVER_MEASURED,
       defaultTrendsRange(todayStr),

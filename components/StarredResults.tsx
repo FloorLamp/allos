@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSavedBiomarkers } from "@/lib/queries";
+import { getSavedClinicalResults } from "@/lib/queries";
 import {
   rangeBadge,
   RANGE_BADGE_META,
@@ -23,13 +23,13 @@ import { PHONE_STARRED_TILE_CAP, splitAtPhoneCap } from "@/lib/phone-fold";
 import BiomarkerScale from "./BiomarkerScale";
 import PhoneFold from "./PhoneFold";
 
-// Pinned card of the user's starred biomarkers, shown at the top of Results →
-// Biomarkers — its one card surface. (The comment used to claim a dashboard render
+// Pinned card of the user's starred clinical results, shown at the top of Results →
+// Readings — its one card surface. (The comment used to claim a dashboard render
 // too; nothing on the dashboard has ever imported this. The Trends Overview did
 // render it until #1455 dropped it there, where it collided with the trend_pins
 // chart grid.) Each tile links to the biomarker detail page and shows
 // the latest value, an optimal-status chip (when known), and a sparkline.
-// Renders nothing when no biomarkers are starred.
+// Renders nothing when no clinical results are starred.
 //
 // PHONE FOLD (#1578): one tile per star at 390px is an UNBOUNDED card sitting above
 // an index — the more analytes you pin, the further the first panel header falls off
@@ -44,8 +44,8 @@ import PhoneFold from "./PhoneFold";
 // flag / staleness judgment then resolves in THAT member's own demographic context
 // (its sex, birthdate/age, reproductive status), never the acting profile's. Default
 // (no props) reads the acting profile via requireSession — single-view unchanged.
-export default async function StarredBiomarkers({
-  title = "Starred biomarkers",
+export default async function StarredResults({
+  title = "Starred results",
   profileId,
   subjectLabel,
 }: {
@@ -54,7 +54,7 @@ export default async function StarredBiomarkers({
   subjectLabel?: string;
 }) {
   const pid = profileId ?? (await requireSession()).profile.id;
-  const starred = getSavedBiomarkers(pid);
+  const starred = getSavedClinicalResults(pid);
   if (starred.length === 0) return null;
   const sex = getProfileSex(pid);
   // Reproductive status (female physiology only) overrides the age proxy for the
@@ -157,9 +157,7 @@ export default async function StarredBiomarkers({
     <div
       className="card mb-6"
       data-testid={
-        profileId != null
-          ? `starred-biomarkers-${profileId}`
-          : "starred-biomarkers"
+        profileId != null ? `starred-results-${profileId}` : "starred-results"
       }
     >
       <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">

@@ -2878,7 +2878,7 @@ upsertProfileSetting.run(
 // ONE store behind the ★ star gesture (migration 113 folded the old
 // starred_biomarkers table and trend_pins KV into it). Seeding both kinds keeps every
 // save surface exercised:
-//   • kind='biomarker' — name-keyed (saved_items.key COLLATE NOCASE); each name here
+//   • kind='clinical-result' — name-keyed (saved_items.key COLLATE NOCASE); each name here
 //     matches a seeded biomarker that HAS backing medical_records, so the Results
 //     status card renders real tiles, Trends Overview renders their chart tiles, the
 //     passport summary includes them, and the #203/#327 orphan sweep has real saves to
@@ -2889,9 +2889,9 @@ const saveItem = db.prepare(
   `INSERT OR IGNORE INTO saved_items (profile_id, kind, key, position) VALUES (1, ?, ?, ?)`
 );
 saveItem.run("trend-metric", "weight", 0);
-saveItem.run("biomarker", "LDL Cholesterol", 1);
+saveItem.run("clinical-result", "LDL Cholesterol", 1);
 for (const name of ["ApoB", "hs-CRP", "Lipoprotein(a)"])
-  saveItem.run("biomarker", name, null);
+  saveItem.run("clinical-result", name, null);
 // bootstrapAuth already seeded "weight" as a #1487 standard-metric row when it
 // created profile 1, so the INSERT above was IGNORED and the fixture's curated
 // position never landed. Set it explicitly — this fixture's whole point is that a

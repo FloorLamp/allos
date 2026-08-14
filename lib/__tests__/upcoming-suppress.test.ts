@@ -29,8 +29,8 @@ describe("findingKey", () => {
     expect(findingKey({ dedupeKey: "coaching:rest-sleep" })).toBe(
       "coaching:rest-sleep"
     );
-    expect(findingKey({ dedupeKey: "digest:bio:LDL:up" })).toBe(
-      "digest:bio:LDL:up"
+    expect(findingKey({ dedupeKey: "digest:result:LDL:up" })).toBe(
+      "digest:result:LDL:up"
     );
   });
 

@@ -185,9 +185,9 @@ describe("gap registry completeness (issue #2258)", () => {
     ).toEqual([]);
   });
 
-  it("bio: series are exempt from densification, with the reason on the record", () => {
-    expect(seriesGapForSeriesKey("bio:ApoB")).toBe("exempt");
-    expect(seriesGapForSeriesKey("bio:LDL Cholesterol")).toBe("exempt");
+  it("result: series are exempt from densification, with the reason on the record", () => {
+    expect(seriesGapForSeriesKey("result:ApoB")).toBe("exempt");
+    expect(seriesGapForSeriesKey("result:LDL Cholesterol")).toBe("exempt");
     expect(gapFillValue("exempt")).toBeNull();
     const src = fs.readFileSync(
       path.join(REPO, "lib/trend-sparkline.ts"),
@@ -195,7 +195,7 @@ describe("gap registry completeness (issue #2258)", () => {
     );
     expect(
       /sparse BY NATURE/.test(src),
-      "the bio: exemption must keep its stated reason in lib/trend-sparkline.ts"
+      "the result: exemption must keep its stated reason in lib/trend-sparkline.ts"
     ).toBe(true);
   });
 

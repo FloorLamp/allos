@@ -247,6 +247,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "schema introspection (#684): checks whether the migration-034 loinc column exists so the version-agnostic boot reconcile can run against an earlier schema — not a data query, reads no rows",
   },
   {
+    file: "lib/saved-clinical-result-kind.ts",
+    includes:
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'saved_items'",
+    why: "schema introspection for frozen migrations 174/177/178: selects only saved_items DDL to choose that migration era's saved-result kind; it reads no profile rows, and runtime always resolves the current schema",
+  },
+  {
     file: "lib/integrations/normalize.ts",
     includes: "UPDATE medical_records SET date = ?",
     why: "upsertVitals: the id comes from a profile-scoped find() just above",

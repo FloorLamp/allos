@@ -13,8 +13,8 @@ import { shiftDateStr } from "@/lib/date";
 import {
   getClinicalObservations,
   getBiomarkerSeries,
-  getSavedBiomarkers,
-  isBiomarkerSaved,
+  getSavedClinicalResults,
+  isClinicalResultSaved,
   collectUpcoming,
   biomarkerFamilyKey,
 } from "@/lib/queries";
@@ -188,9 +188,9 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 
     // A star on one total spelling lights the star on the other total spelling.
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Vitamin D, 25-Hydroxy')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
-    expect(isBiomarkerSaved(p.profileId, "Vitamin D")).toBe(true);
+    expect(isClinicalResultSaved(p.profileId, "Vitamin D")).toBe(true);
 
     // RETEST: a fresh total satisfies the family, so no retest nudge fires.
     expect(retestKeys()).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
@@ -201,11 +201,11 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     addReading("Vitamin D, 25-Hydroxy", old, 30);
     // Star the total; then a NEWER generic-"Vitamin D" total sibling arrives.
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Vitamin D, 25-Hydroxy')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
     addReading("Vitamin D", shiftDateStr(p.todayStr, -5), 41);
 
-    const star = getSavedBiomarkers(p.profileId).find(
+    const star = getSavedClinicalResults(p.profileId).find(
       (s) => s.canonical_name === "Vitamin D, 25-Hydroxy"
     );
     // The tile shows the family's latest reading — the newer total sibling.
@@ -368,10 +368,10 @@ describe("the SQL family key honours a family's match matcher (#1401)", () => {
     // "current reading" pointed at different rows.
     addReading(FREEFORM, shiftDateStr(p.todayStr, -5), 6.3, "%");
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Hemoglobin A1c')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', 'Hemoglobin A1c')"
     ).run(p.profileId);
-    expect(isBiomarkerSaved(p.profileId, FREEFORM)).toBe(true);
-    const star = getSavedBiomarkers(p.profileId).find(
+    expect(isClinicalResultSaved(p.profileId, FREEFORM)).toBe(true);
+    const star = getSavedClinicalResults(p.profileId).find(
       (s) => s.canonical_name === "Hemoglobin A1c"
     );
     expect(star?.latest_value_num).toBe(6.3);

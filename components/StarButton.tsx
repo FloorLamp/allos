@@ -5,7 +5,7 @@ import { useToast } from "@/components/Toast";
 import { toggleSavedItem } from "@/app/(app)/saved-actions";
 
 // THE save toggle (issue #1456) — one gesture, one intent, every savable kind. It
-// submits a Trends SERIES KEY ("bio:LDL Cholesterol" | "metric:weight"), which the
+// submits a Trends SERIES KEY ("result:LDL Cholesterol" | "metric:weight"), which the
 // action resolves to a (kind, key) row in `saved_items`; each kind's MEANING lives in
 // domain code, not here.
 //

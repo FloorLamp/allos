@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-// #381 — the pinned starred-biomarker tile must judge staleness on the LATEST
+// #381 — the starred clinical-result tile must judge staleness on the LATEST
 // RECORD's category, like the detail page and table. A genomics result never goes
 // stale (genetics don't change), but the tile used the canonical entry's category
 // (null for this analyte) and mislabelled a 2-year-old genotype "stale". The e2e
@@ -8,7 +8,7 @@ import { test, expect } from "./fixtures";
 test("a starred genomics tile is not marked stale (#381)", async ({ page }) => {
   await page.goto("/results");
 
-  const card = page.getByTestId("starred-biomarkers");
+  const card = page.getByTestId("starred-results");
   await expect(card).toBeVisible();
 
   // The pinned tile for the genomics marker (scoped to the starred card, not the

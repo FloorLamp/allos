@@ -39,7 +39,7 @@ import { getSavedItems } from "@/lib/queries/saved";
 import { metricSeriesKey, savedRefFromSeriesKey } from "@/lib/saved-items";
 import {
   buildMetricSeries,
-  buildSavedBiomarkerTile,
+  buildSavedClinicalResultTile,
   type TrendSeries,
 } from "@/lib/trends-series";
 import { isTrainingRestricted, setMinTrainingAge } from "@/lib/age-gate";
@@ -75,7 +75,9 @@ function overviewTileKeys(
       const tile = metricByKey.get(metricSeriesKey(ref.key));
       if (tile) tiles.push(tile);
     } else {
-      tiles.push(buildSavedBiomarkerTile(profileId, ref.key, range, todayStr));
+      tiles.push(
+        buildSavedClinicalResultTile(profileId, ref.key, range, todayStr)
+      );
     }
   }
   return tiles.map((t) => t.key);
@@ -83,7 +85,7 @@ function overviewTileKeys(
 
 // ── The composition it replaced (FROZEN — do not "fix") ──────────────────────
 // app/(app)/trends/OverviewSection.tsx before #1487: every standard metric series
-// rendered unconditionally, saved biomarkers earned a tile, and the two were split
+// rendered unconditionally, saved clinical results earned a tile, and the two were split
 // saved-first by lib/saved-items.ts's `partitionSaved` (retired with the sampler, so
 // its ordering logic is reproduced here rather than imported). The RENDERED sequence
 // was the saved row followed by the unsaved grid. This is the baseline the flip must
@@ -103,8 +105,10 @@ function legacyOverviewTileKeys(
   const tiles: TrendSeries[] = [
     ...buildMetricSeries(profileId, loginId, range, restricted),
     ...savedRefs
-      .filter((r) => r.kind === "biomarker")
-      .map((r) => buildSavedBiomarkerTile(profileId, r.key, range, todayStr)),
+      .filter((r) => r.kind === "clinical-result")
+      .map((r) =>
+        buildSavedClinicalResultTile(profileId, r.key, range, todayStr)
+      ),
   ];
   const refId = (kind: string, key: string) => `${kind}|${key.toLowerCase()}`;
   const byRef = new Map<string, TrendSeries>();
@@ -175,15 +179,15 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
     [
       "stars with no explicit position",
       (p) => {
-        star(p, "biomarker", "LDL Cholesterol");
-        star(p, "biomarker", "ApoB");
+        star(p, "clinical-result", "LDL Cholesterol");
+        star(p, "clinical-result", "ApoB");
       },
     ],
     [
       "an explicitly ordered saved set",
       (p) => {
-        star(p, "biomarker", "LDL Cholesterol");
-        star(p, "biomarker", "ApoB");
+        star(p, "clinical-result", "LDL Cholesterol");
+        star(p, "clinical-result", "ApoB");
         db.prepare(
           `UPDATE saved_items SET position = 0 WHERE profile_id = ? AND key = 'ApoB'`
         ).run(p);
@@ -196,15 +200,15 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
       "a standard metric the user already saved",
       (p) => {
         star(p, "trend-metric", "weight");
-        star(p, "biomarker", "hs-CRP");
+        star(p, "clinical-result", "hs-CRP");
       },
     ],
     [
       "a mix of positioned and unpositioned saves",
       (p) => {
         star(p, "trend-metric", "resting_hr");
-        star(p, "biomarker", "Lipoprotein(a)");
-        star(p, "biomarker", "hs-CRP");
+        star(p, "clinical-result", "Lipoprotein(a)");
+        star(p, "clinical-result", "hs-CRP");
         db.prepare(
           `UPDATE saved_items SET position = 0 WHERE profile_id = ? AND kind = 'trend-metric'`
         ).run(p);
@@ -215,7 +219,7 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
       (p) => {
         setMinTrainingAge(18);
         setProfileSetting(p, "birthdate", shiftDateStr(today(p), -365 * 10));
-        star(p, "biomarker", "LDL Cholesterol");
+        star(p, "clinical-result", "LDL Cholesterol");
       },
     ],
     [
@@ -289,7 +293,7 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
     // #2153 reverses #1485 A over the real composition: a never-measured saved
     // analyte stays first because it was saved first, with its empty data intact.
     const p = newProfile("Empty Slot");
-    star(p, "biomarker", "Ferritin"); // never measured on this profile
+    star(p, "clinical-result", "Ferritin"); // never measured on this profile
     seedStandardMetricSaves(db, p);
     db.prepare(
       `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
@@ -306,25 +310,25 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
         const tile = metricByKey.get(metricSeriesKey(ref.key));
         if (tile) tiles.push(tile);
       } else {
-        tiles.push(buildSavedBiomarkerTile(p, ref.key, {}, today(p)));
+        tiles.push(buildSavedClinicalResultTile(p, ref.key, {}, today(p)));
       }
     }
-    expect(tiles[0].key).toBe("bio:Ferritin");
+    expect(tiles[0].key).toBe("result:Ferritin");
     expect(tiles[0].points).toEqual([]);
     expect(tiles[1].key).toBe("metric:weight");
   });
 
   it("seeds every standard metric, in tile order, after existing curation", () => {
     const p = newProfile("Curation Ahead");
-    star(p, "biomarker", "LDL Cholesterol");
-    star(p, "biomarker", "ApoB");
+    star(p, "clinical-result", "LDL Cholesterol");
+    star(p, "clinical-result", "ApoB");
     seedStandardMetricSaves(db, p);
 
     // The user's two saves keep the front of the order; the four seeds follow in
     // tile order. This is the shape wave 2b's membership-driven grid will render.
     expect(savedKeys(p)).toEqual([
-      "biomarker:ApoB", // newest star first — the pre-seed canonical order
-      "biomarker:LDL Cholesterol",
+      "clinical-result:ApoB", // newest star first — the pre-seed canonical order
+      "clinical-result:LDL Cholesterol",
       ...STANDARD_TREND_METRIC_IDS.map((id) => `trend-metric:${id}`),
     ]);
     // The seeds are UNPOSITIONED and epoch-stamped — that, not a position, is what
@@ -337,19 +341,19 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
   });
 
   it("keeps a star made AFTER seeding ahead of the seeds", () => {
-    // The reason the seeds are unpositioned: a newly starred biomarker must still
+    // The reason the seeds are unpositioned: a newly saved clinical result must still
     // land at the FRONT of the grid, exactly where it lands today. Positioned seeds
     // would sort ahead of every later ★ and push it behind the standard tiles.
     const p = newProfile("Later Star");
     seedStandardMetricSaves(db, p);
-    star(p, "biomarker", "Ferritin");
-    expect(savedKeys(p)[0]).toBe("biomarker:Ferritin");
+    star(p, "clinical-result", "Ferritin");
+    expect(savedKeys(p)[0]).toBe("clinical-result:Ferritin");
   });
 
   it("keeps a metric the user already saved untouched — one row, not two", () => {
     const p = newProfile("Dedupe");
     star(p, "trend-metric", "weight");
-    star(p, "biomarker", "ApoB");
+    star(p, "clinical-result", "ApoB");
     seedStandardMetricSaves(db, p);
 
     const rows = db
@@ -371,7 +375,7 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
 
   it("is a pure no-op on a second run (never resurrects an unstarred metric in one pass)", () => {
     const p = newProfile("Idempotent");
-    star(p, "biomarker", "hs-CRP");
+    star(p, "clinical-result", "hs-CRP");
     seedStandardMetricSaves(db, p);
     const first = savedKeys(p);
     const stamps = STANDARD_TREND_METRIC_IDS.map(
@@ -390,9 +394,9 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
   it("touches only the profile it is given", () => {
     const a = newProfile("Isolation A");
     const b = newProfile("Isolation B");
-    star(b, "biomarker", "ApoB");
+    star(b, "clinical-result", "ApoB");
     seedStandardMetricSaves(db, a);
-    expect(savedKeys(b)).toEqual(["biomarker:ApoB"]);
+    expect(savedKeys(b)).toEqual(["clinical-result:ApoB"]);
   });
 
   it("seeds exactly the metric ids buildMetricSeries renders, in the same order", () => {

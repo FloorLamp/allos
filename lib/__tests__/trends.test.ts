@@ -318,7 +318,7 @@ describe("outOfWindowLatest", () => {
     expect(outOfWindowLatest(series, {})).toBeNull();
   });
 
-  // A never-measured saved biomarker keeps the #1456 placeholder tile (and its
+  // A never-measured saved clinical result keeps the #1456 placeholder tile (and its
   // reachable ★) — there is no reading to fall back to.
   it("returns null for an empty series", () => {
     expect(outOfWindowLatest([], { from: "2026-05-01" })).toBeNull();

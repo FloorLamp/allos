@@ -310,7 +310,7 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
       const emptyWrapper = empty.locator("xpath=..");
       await expect(emptyWrapper).toHaveAttribute(
         "data-tile-key",
-        `bio:${TRENDS_CURATE_EMPTY_ANALYTE}`
+        `result:${TRENDS_CURATE_EMPTY_ANALYTE}`
       );
       expect(
         await emptyWrapper.evaluate((element) =>
@@ -475,7 +475,7 @@ test.describe("reorder converges on drag (#1485 C)", () => {
       await expect(page.getByTestId("saved-tiles")).toBeVisible();
 
       const before = await tileOrder(page);
-      const emptyKey = `bio:${TRENDS_CURATE_EMPTY_ANALYTE}`;
+      const emptyKey = `result:${TRENDS_CURATE_EMPTY_ANALYTE}`;
       const beforeIndex = before.indexOf(emptyKey);
       expect(beforeIndex).toBeGreaterThanOrEqual(0);
       const menu = await openTileMenu(page, TRENDS_CURATE_EMPTY_ANALYTE);

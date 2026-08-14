@@ -60,8 +60,8 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   if (items.length === 0) return null;
 
   const hrefFor = (item: TrendItem): AppRoute | null => {
-    if (item.key.startsWith("bio:"))
-      return readingDetailHref(item.key.slice("bio:".length));
+    if (item.key.startsWith("result:"))
+      return readingDetailHref(item.key.slice("result:".length));
     // A practice chip taps through to the page that owns the habit (#1620).
     if (item.key.startsWith(PRACTICE_DIGEST_PREFIX)) return "/wellness";
     return null;
