@@ -1550,10 +1550,11 @@ courseIns.run(
 
 // A KNOWN-INTERACTING pair (issue #144): Warfarin (anticoagulant) + Ibuprofen (an
 // NSAID) — a MAJOR bleeding-risk interaction that surfaces on the intake surfaces, the
-// create/edit notice, and a dismissible Upcoming finding. Synthetic prescriber
-// ("Dr. Test Provider") — no real PHI. Warfarin carries its RxNorm ingredient CUI
-// (11289) to demo rxcui-KEYED matching; ibuprofen has none, demoing NAME-fallback
-// matching — both resolve, so the pair is detected.
+// create/edit notice, and a dismissible Upcoming finding. Warfarin's synthetic
+// prescriber ("Dr. Test Provider") is no real PHI. It carries its RxNorm ingredient
+// CUI (11289) to demo rxcui-KEYED matching; the self-directed OTC ibuprofen has
+// neither prescriber nor CUI, demoing NAME-fallback matching — both resolve, so the
+// pair is detected.
 const warfarinId = Number(
   medIns.run(
     "Warfarin",
@@ -1579,7 +1580,7 @@ const ibuprofenId = Number(
     "OTC NSAID — as needed for pain",
     "daily",
     "may",
-    "Dr. Test Provider",
+    null,
     1
   ).lastInsertRowid
 );
