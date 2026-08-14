@@ -35,7 +35,7 @@ interface Reading {
   measuredAt: string | null; // the instant, where the row records one:
   // metric_samples.start_time, or the stated occurred_at on body_metrics
   // (#2235) and medical_records (#2154). Null = day-grain, in every store.
-  source: "wearable" | "manual" | "import" | "lab";
+  source: "wearable" | "manual" | "import" | "clinical";
   store: ReadingStore; // the physical row a surface can still reach
   rowId: number;
   sourceKey: string | null; // the row's raw `source` column
@@ -57,7 +57,7 @@ Four rules the shape encodes:
   SpO2 into `medical_records` and resting HR into `body_metrics`, so "which
   table" says nothing about where a reading came from. `readingSourceFor()`
   classifies from the row's own links and source stamp: clinical links (document
-  / encounter / provider) → `lab`, a `document:<id>` stamp → `import`, an
+  / encounter / provider) → `clinical`, a `document:<id>` stamp → `import`, an
   integration id → `wearable`, otherwise `manual`.
 - **Provenance is ABSENT, not empty, on a stream reading.** A wearable reading
   has no document, no encounter, no reporting lab and no lab-stated range.

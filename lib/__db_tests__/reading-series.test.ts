@@ -110,7 +110,7 @@ describe("a series for one identity spans both stores", () => {
     const series = getReadingSeries(p.profileId, IDENTITY);
     const clinic = series.find((r) => r.date === d(-2) && r.value === 71)!;
     expect(clinic.store).toBe("medical_records");
-    expect(clinic.source).toBe("lab");
+    expect(clinic.source).toBe("clinical");
     expect(clinic.provenance).toEqual({
       documentId: p.documentId,
       reportedName: "Pulse",
