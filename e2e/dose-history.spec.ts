@@ -133,10 +133,11 @@ test("a supplement's dose history offers the medication row actions, and an edit
   const entry = panel.getByTestId("dose-history-row");
   await expect(entry).toHaveCount(1);
   await expect(entry).toContainText("250 mg");
-  // #2228 decision 4: this row's only clock is the record chain (the confirm's tap
-  // stamp — nothing has stated an intake time), so the panel marks it "recorded"
-  // rather than presenting a filing timestamp as an administration time.
-  await expect(entry).toContainText(/recorded \d{1,2}:\d{2}/);
+  // #2876: Mark taken asserts an administration at the tap while recorded_at keeps
+  // the separate immutable storage instant. The history therefore shows the stated
+  // administration clock, not the record-chain fallback label.
+  await expect(entry).toContainText(/Time\d{1,2}:\d{2}/);
+  await expect(entry).not.toContainText("recorded");
 
   // ── The same ⋯ row actions the medication history offers ───────────────────
   await entry.getByRole("button", { name: "Dose actions" }).click();
@@ -147,19 +148,18 @@ test("a supplement's dose history offers the medication row actions, and an edit
   // ── The amendment round-trips: the snapshotted amount is corrected in place ─
   const form = panel.getByTestId("historical-dose-form");
   await expect(form).toContainText("won’t change the schedule either");
-  // #2228 write half: the editor's time seeds ONLY from the row's stated
-  // occurred_at — this row has none, so the field opens EMPTY instead of
-  // laundering the confirm's filing timestamp into an administration time.
-  await expect(form.getByTestId("historical-dose-time")).toHaveValue("");
+  // The editor seeds from occurred_at only. This proves the stated administration
+  // is editable without treating recorded_at as an administration time.
+  await expect(form.getByTestId("historical-dose-time")).toHaveValue(
+    /\d{2}:\d{2}/
+  );
   await form.getByLabel("Amount").fill("375 mg");
   await form.getByRole("button", { name: "Save changes" }).click();
   await expect(form).toHaveCount(0);
   await expect(panel.getByTestId("dose-history-row")).toContainText("375 mg");
-  // The amount-only amendment stated no intake time (occurred_at stays NULL), so
-  // the row STILL carries the "recorded" marker — amending the amount of a dose
-  // whose intake time was never stated changes the amount and nothing else.
-  await expect(panel.getByTestId("dose-history-row")).toContainText(
-    /recorded \d{1,2}:\d{2}/
+  // An amount-only amendment preserves the existing stated administration.
+  await expect(panel.getByTestId("dose-history-row")).not.toContainText(
+    "recorded"
   );
 
   // ── Stating a time makes the row a real administration clock ───────────────
