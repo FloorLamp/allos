@@ -125,4 +125,27 @@ describe("the emphasis that replaced it rides mark size", () => {
       num("CHART_ACTIVE_DOT_R") as number
     );
   });
+
+  it("the inexact mark sits AT the ordinary radius, by name and not by luck", () => {
+    // #2831, and the same shape as #2829's surprise. `chartInexactDot` kept an
+    // `r: 3` literal from the hollow default it replaced, so inexactness rode
+    // SIZE as well as fill — on the channel the fill move had just assigned to
+    // prominence. Nothing chose the 3, and nothing looked.
+    //
+    // Asserted on the SPELLING rather than on the value, because a literal that
+    // happens to equal CHART_DOT_R today is the same bug back: it stops tracking
+    // the constant the moment the constant moves.
+    const body = scaffold.slice(
+      scaffold.indexOf("export function chartInexactDot")
+    );
+    const decl = body.slice(0, body.indexOf("\n}"));
+    const r = decl.match(/\br:\s*([^,\n]+)/);
+    expect(r, "chartInexactDot must set a radius").not.toBeNull();
+    expect(
+      (r as RegExpMatchArray)[1].trim(),
+      "an inexact reading is not a prominent one. Mark size means prominence " +
+        "alone — ordinary, emphasised, hover — so the hollow mark is drawn at " +
+        "CHART_DOT_R, never at a literal of its own."
+    ).toBe("CHART_DOT_R");
+  });
 });
