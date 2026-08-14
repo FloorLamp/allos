@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExtractedResult } from "../medical-extract";
+import { uncuratedAnalytes } from "../canonical-name";
 import {
   documentSource,
   bodyMetricsFromExtraction,
@@ -298,6 +299,95 @@ describe("bodyMetricKind classifier", () => {
     expect(bodyMetricKind("Body Temperature", "Body Temperature")).toBeNull();
     expect(bodyMetricKind("Oxygen Saturation", null)).toBeNull();
     expect(bodyMetricKind("Hepatitis B Surface Antibody", null)).toBeNull();
+  });
+});
+
+describe("a unit printed inside the name (#2835)", () => {
+  // A DEXA's total-mass row has two spellings in the wild, and both are declared
+  // out-of-scope, so both get a declination. Only the bare one used to get the
+  // thing the declination talks around: `normalizeCanonicalKey` keeps "(g)" as a
+  // token, so "Total Mass (g)" matched nothing and yielded neither a weight row
+  // nor a pointer to one — from a scan that had measured the person's weight.
+
+  it("reads the gram-suffixed total mass as the same weight as the bare one", () => {
+    expect(bodyMetricKind("Total Mass (g)", null)).toBe("weight");
+    expect(bodyMetricKind("Total Mass", null)).toBe("weight");
+  });
+
+  it("absorbs a printed unit for every body metric, not just that one name", () => {
+    // The class, not the symptom. A single added string would have fixed the row
+    // the audit happened to find and left its siblings.
+    expect(bodyMetricKind("Weight (kg)", null)).toBe("weight");
+    expect(bodyMetricKind("Body Weight (lb)", null)).toBe("weight");
+    expect(bodyMetricKind("Total Body Mass (kg)", null)).toBe("weight");
+    expect(bodyMetricKind("Total Body Fat (percent)", null)).toBe("body_fat");
+    expect(bodyMetricKind("Resting Heart Rate (bpm)", null)).toBe("resting_hr");
+    // Via the canonical column too, not only the verbatim name.
+    expect(bodyMetricKind("Gewicht", "Body Weight (kg)")).toBe("weight");
+  });
+
+  it("keeps a regional mass regional — the suffix is all that comes off", () => {
+    // "Arms Total Mass" is a limb, not a body weight, and de-suffixing must not
+    // widen what matches.
+    expect(bodyMetricKind("Arms Total Mass (g)", null)).toBeNull();
+    expect(bodyMetricKind("Trunk Lean Mass (g)", null)).toBeNull();
+  });
+
+  it("leaves a parenthetical that is not a unit alone", () => {
+    // A bracket can qualify the MEASUREMENT rather than state its unit, and those
+    // are different readings. Filing an ideal or a target as the weight itself
+    // would put a number nobody stepped on a scale for onto the weight chart.
+    expect(bodyMetricKind("Weight (Ideal)", null)).toBeNull();
+    expect(bodyMetricKind("Weight (Target)", null)).toBeNull();
+    // BMI is not a weight either, however mass-shaped its unit looks.
+    expect(bodyMetricKind("Body Mass (kg/m2)", null)).toBeNull();
+  });
+
+  it("projects the gram-suffixed row all the way to a weight in kg", () => {
+    const rows = bodyMetricsFromExtraction(
+      [
+        result({
+          name: "Total Mass (g)",
+          value_num: 78500,
+          unit: "g",
+          collected_date: "2026-06-01",
+        }),
+      ],
+      "2026-06-15"
+    );
+    expect(rows).toEqual([
+      {
+        date: "2026-06-01",
+        weight_kg: 78.5,
+        body_fat_pct: null,
+        resting_hr: null,
+      },
+    ]);
+  });
+
+  it("closes the gap for every declared name, not only the one that was found", () => {
+    // THE CLASS GUARD. Walks the whole uncurated-analyte registry: no declared
+    // spelling may extract nothing while its bare form extracts something. That
+    // asymmetry is the defect — a reader gets a declination for a measurement the
+    // app would otherwise have plotted, and no weight either — and it can arrive
+    // again from the registry side, since the "(g)" twins are minted by a cross
+    // product rather than hand-listed.
+    const asymmetric: string[] = [];
+    for (const [name] of uncuratedAnalytes()) {
+      const bare = name.replace(/\s*\([^()]*\)\s*$/, "");
+      if (bare === name) continue;
+      if (bodyMetricKind(bare, null) && !bodyMetricKind(name, null)) {
+        asymmetric.push(
+          `${name} (bare form extracts as ${bodyMetricKind(bare, null)})`
+        );
+      }
+    }
+    expect(
+      asymmetric,
+      "a declined name whose bare spelling IS extracted must be extracted too — " +
+        "otherwise one spelling of one measurement yields a weight and the other " +
+        "yields nothing at all"
+    ).toEqual([]);
   });
 });
 

@@ -58,6 +58,50 @@ const RESTING_HR_NAMES = keySet([
   "Resting Pulse Rate",
 ]);
 
+// THE UNIT PRINTED INSIDE THE NAME (#2835).
+//
+// A report's row label carries its unit as often as not — "Total Mass (g)" beside
+// "Total Mass" — and the two are one measurement written two ways.
+// `normalizeCanonicalKey` does NOT absorb that: it keeps "(g)" as a `g` token, on
+// purpose, because the uncurated-analyte registry declares the two spellings
+// separately and needs them distinct. So the suffix comes off HERE, at the
+// body-metrics matcher, rather than in the shared key.
+//
+// Left as a CLASS rather than as one more string in WEIGHT_NAMES. Only
+// "Total Mass (g)" is currently declared, but a hand-added string fixes that
+// spelling and leaves "Weight (kg)", "Body Weight (lb)" and "Resting Heart Rate
+// (bpm)" behind it — and the classifier's own contract already claims units do
+// not matter. A percent suffix happens to work today only because "%" is
+// punctuation the key strips to nothing; the letters never were.
+//
+// ONLY a unit is dropped. A parenthetical is not always one — "Weight (Ideal)"
+// and "Weight (Pre-Dialysis)" name different measurements, and stripping any
+// trailing bracket would file them as the reading itself.
+const UNIT_SUFFIX_KEYS = keySet([
+  "g",
+  "gram",
+  "grams",
+  "kg",
+  "kgs",
+  "kilogram",
+  "kilograms",
+  "lb",
+  "lbs",
+  "pound",
+  "pounds",
+  "percent",
+  "pct",
+  "bpm",
+  "beats per minute",
+]);
+
+/** `"Total Mass (g)"` → `"Total Mass"`. Any other trailing bracket is kept. */
+function withoutUnitSuffix(name: string): string {
+  const m = name.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
+  if (!m) return name;
+  return UNIT_SUFFIX_KEYS.has(normalizeCanonicalKey(m[2])) ? m[1] : name;
+}
+
 // body_metrics.date must stay YYYY-MM-DD (string ordering and chart parsing rely
 // on it), and the AI's collected_date/document_date are only *asked* to be ISO.
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -114,7 +158,8 @@ function restingHr(value: number): number | null {
 // A body metric that belongs in body_metrics rather than medical_records:
 // weight / body fat % / resting HR. Returns null for a clinical vital (BP, temp,
 // SpO2, respiratory rate) or a lab, which stay in medical_records. Matches on the
-// order-independent token key, so spellings/inversions/units don't matter.
+// order-independent token key with any printed unit suffix removed, so spellings,
+// comma inversions and "Total Mass (g)" all reach the same metric.
 // BodyMetricKind (weight | body_fat | resting_hr) is the shared metric-kind enum
 // from ./types, also used by goals and getLatestBodyMetric.
 export function bodyMetricKind(
@@ -122,8 +167,8 @@ export function bodyMetricKind(
   canonical: string | null | undefined
 ): BodyMetricKind | null {
   const keys = [
-    normalizeCanonicalKey(canonical ?? ""),
-    normalizeCanonicalKey(name ?? ""),
+    normalizeCanonicalKey(withoutUnitSuffix(canonical ?? "")),
+    normalizeCanonicalKey(withoutUnitSuffix(name ?? "")),
   ];
   if (keys.some((k) => WEIGHT_NAMES.has(k))) return "weight";
   if (keys.some((k) => BODY_FAT_NAMES.has(k))) return "body_fat";
