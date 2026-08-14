@@ -10,14 +10,28 @@
 // which runs inside migrate() on first open, is deterministic and doesn't print a
 // generated password.
 
-import { afterAll } from "vitest";
+import { afterAll, beforeAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { installFixtureProfileSpace } from "./fixture-profile-space";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-db-test-"));
 process.env.ALLOS_DB_PATH = path.join(tmpDir, "test.db");
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
+
+// The DATABASE this file gets is private; `data/uploads/**` is NOT — every media
+// store resolves its root from the shared cwd, so a per-profile fixture directory
+// belongs to this file only if the profile id does. See
+// ./fixture-profile-space.ts (#2670). This project's databases are booted rather
+// than copied from a template, so there is no file to patch before the spec
+// imports lib/db.ts; a `beforeAll` registered from a setup file still runs before
+// every hook the spec registers, and no spec in this project creates a profile at
+// module scope.
+beforeAll(async () => {
+  const dbModule = await import("../db");
+  installFixtureProfileSpace(dbModule.db);
+});
 
 afterAll(() => {
   // Best-effort: drop the whole temp dir (DB + WAL/SHM sidecars). The singleton
