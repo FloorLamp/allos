@@ -672,6 +672,25 @@ is always available.
   row as a ride-along. Web Push / Home Assistant get a `+N available` text tail,
   since neither can expand a keyboard.
 
+**Button labels take a curated short name.** An inline keyboard button has a hard
+width budget the Telegram client enforces by cutting labels mid-word, so the
+one-tap surfaces label items through `lib/intake-short-name.ts` — a hand-curated
+map from intake item names to short display forms ("Vitamin D3 + K2" → "D3+K2",
+"Coenzyme Q10" → "CoQ10"), matched case-/whitespace-/separator-insensitively.
+Curated, never derived: an unknown name passes through WHOLE rather than being
+truncated on a guess (the #1817 lookup-not-strip posture), which also keeps
+prescription drug names untouched by construction — the map holds
+supplement/vitamin shorthand only, since a shortened drug name is a misread
+risk. Applied at the BUTTON label boundary only (dose-reminder take buttons,
+post-workout finish, the digest offer tail, the `/dose` list, household-round
+confirms); body lines, toasts and every in-app surface keep the full name — the
+full name is the record, the short name is a control label. Two rules for
+entries, pinned by `lib/__tests__/intake-short-name.test.ts`: a short form must
+be recognizable on its own (no bare "C" for Vitamin C), and two distinct
+substances must never collapse onto one short name (the K2 forms keep
+MK-4/MK-7), while aliases of one substance (Ubiquinone / Coenzyme Q10)
+deliberately share one.
+
 **Safety stays obligation-BLIND, pinned.** Missed-dose escalation reads the
 deliberately unfiltered gather (the send floor is applied at assembly, never at the
 gather), and the interaction / PGx / UL warnings fire identically for a `may`

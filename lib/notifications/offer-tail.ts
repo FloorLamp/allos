@@ -23,6 +23,7 @@
 // even untapped. Hint-less items are offered in every slot — no hint means no opinion.
 
 import { TIME_BUCKET_LABELS, currentTimeBucket } from "../intake-schedule";
+import { intakeShortName } from "../intake-short-name";
 import type { NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
 
@@ -87,7 +88,7 @@ export function expandedOfferActions(
 ): NotificationAction[] {
   const actions: NotificationAction[] = items.map((it) => ({
     label:
-      `${GLYPH.dose} ${it.name}` +
+      `${GLYPH.dose} ${intakeShortName(it.name)}` +
       (it.detail ? ` · ${it.detail}` : "") +
       (it.countToday > 0 ? ` (${it.countToday} today)` : ""),
     data: `prn:${profileId}:${it.itemId}:${token()}`,

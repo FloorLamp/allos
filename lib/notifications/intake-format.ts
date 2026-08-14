@@ -21,6 +21,7 @@ import {
   foodTimingCheckNote,
   type FoodTimingCheck,
 } from "../food-timing-check";
+import { intakeShortName } from "../intake-short-name";
 import { parseRxcuiIngredients } from "../rxnorm";
 import type {
   IntakeItem,
@@ -354,8 +355,10 @@ function doseSessionActions(
   }
   for (const { dose, item, demotable, stoppable } of pending) {
     const row = `dose:${dose.id}`;
+    // The button carries the curated short name ("D3+K2"); the body line above it
+    // keeps the full name — a button has a width budget, a line has a grammar.
     actions.push({
-      label: `${GLYPH.done} ${item.name}`,
+      label: `${GLYPH.done} ${intakeShortName(item.name)}`,
       data: `take:${profileId}:${dose.id}:${item.id}:${date}`,
       row,
     });

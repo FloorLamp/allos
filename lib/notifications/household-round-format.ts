@@ -20,6 +20,7 @@
 import type { NotificationAction, NotificationMessage } from "./types";
 import type { AppRoute } from "../hrefs";
 import { householdDoseCallback } from "./callback-data";
+import { intakeShortName } from "../intake-short-name";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
 
@@ -155,7 +156,12 @@ function confirmActions(
   for (const section of sections) {
     for (const dose of section.doses) {
       actions.push({
-        label: `${GLYPH.done} ${section.name} · ${householdDoseLabel(dose)}`,
+        // The tightest button of all (member + item + amount), so the item takes
+        // its curated short name; the body section above keeps the full name.
+        label: `${GLYPH.done} ${section.name} · ${householdDoseLabel({
+          ...dose,
+          itemName: intakeShortName(dose.itemName),
+        })}`,
         data: householdDoseCallback({
           receiverProfileId,
           memberProfileId: section.profileId,
