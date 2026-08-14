@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { centerOf, hydratedClick, touchSwipe } from "./helpers";
+import { hydratedClick, touchSwipeFrom } from "./helpers";
 import { workerAuthPath } from "./worker-env";
 // Standalone-PWA pull-to-refresh (issue #1428, section B).
 //
@@ -161,8 +161,9 @@ test("dragging a bottom sheet closed is not a pull, and refreshes nothing", asyn
     await hydratedClick(page, page.getByTestId("quick-log-more"));
     await expect(sheet).toBeVisible();
 
-    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
-    await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
+    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+      dy: 240,
+    });
     // The gesture did what it was for…
     await expect(sheet).toHaveCount(0);
     // …and nothing else. The count is what makes that statable: the refresh is

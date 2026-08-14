@@ -355,6 +355,39 @@ const MULTI_BOX_ALLOW: Record<string, number> = {
   "trends-metric-pages.spec.ts": 4,
 };
 
+// ── (v-b) A swipe aimed at a point it MEASURED (issue #2714) ─────────────────
+//
+// `touchSwipe(page, from, to)` is for the gestures anchored to the DOCUMENT —
+// the drawer's edge swipe, the Timeline's day swipe, a mid-screen swipe that
+// must open nothing. Every one of them names its coordinates inline, because a
+// screen position IS the gesture and no element has to be under it.
+//
+// A gesture anchored to an ELEMENT cannot be spelled that way honestly. Its
+// point has to be measured, and a measured point is a fact about the PAST from
+// the instant it is returned. #2714 is what that costs: the quick-log sheet
+// gathers its "Due & usual now" row lazily (#1468) and a bottom-anchored panel
+// grows UPWARD when it lands, so the drag handle left the coordinate a settled
+// measurement had just certified, the recognizer's containment test rejected
+// the landing, and the swipe did NOTHING — silently, while the spec waited out
+// its budget for an exit that was never scheduled.
+//
+// So a `from` that is not an inline `{ x, y }` literal is banned: use
+// `touchSwipeFrom(page, locator, { dx, dy })`, which re-aims and then proves
+// where the finger landed. Un-exporting `centerOf` closed the blessed way to
+// mint such a point; this closes the hand-rolled way (a `boundingBox()` read
+// and some arithmetic), which is the half a helper change cannot reach.
+//
+// `touchSwipeFrom(` is not matched — the `\(` is anchored to the end of the
+// name. The allowlist is EMPTY and there is no known reason to grow it.
+//
+// The whitespace goes INSIDE the lookahead — `,(?!\s*\{)`, never `,\s*(?!\{)`.
+// The second spelling is the one that reads right and is always wrong: `\s*` can
+// match nothing, so on ` { x: 2 …` the lookahead is asked about the SPACE, which
+// is not a brace, and every compliant call site is reported. That bug is why
+// this comment exists.
+const SWIPE_POINT_RE = /touchSwipe\(\s*[A-Za-z_$][\w$]*\s*,(?!\s*\{)/g;
+const SWIPE_POINT_ALLOW: Record<string, number> = {};
+
 // ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────
 // Every seeded fixture login is a PERMANENT row on Settings → Family and a
 // permanent member of the grant matrix. That population is monotonic — it only
@@ -586,6 +619,51 @@ describe("e2e suite hygiene guard (issue #868)", () => {
           `whole group until two consecutive reads agree and returns non-null ` +
           `boxes; see docs/internals/e2e-hygiene.md.`,
       }
+    );
+  });
+
+  it("no NEW touchSwipe aimed at a measured point in an e2e/*.ts (use touchSwipeFrom)", () => {
+    checkPattern(
+      "touchSwipe from a non-literal point",
+      SWIPE_POINT_RE,
+      SWIPE_POINT_ALLOW,
+      {
+        hint:
+          `A swipe's starting point may only be an inline { x, y } literal — that ` +
+          `is a gesture anchored to the DOCUMENT (the drawer's edge swipe, the ` +
+          `Timeline's day swipe). A gesture that must START INSIDE AN ELEMENT ` +
+          `cannot aim at a measured point: the point is stale from the instant it ` +
+          `is returned, and a surface that relays out after settling (#2714 — the ` +
+          `quick-log sheet's lazily gathered context row grows the panel upward) ` +
+          `moves the target out from under it, whereupon the recognizer rejects ` +
+          `the landing and the gesture does nothing at all. Use ` +
+          `touchSwipeFrom(page, locator, { dx, dy }) from e2e/helpers.ts, which ` +
+          `re-aims and proves where the finger landed; see ` +
+          `docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  // The guard above has an EMPTY allowlist, so the suite passing proves only
+  // that nothing matched — a pattern that matches NOTHING would pass it forever.
+  // These four samples are what make the green mean something, and they are not
+  // hypothetical: the first draft of the pattern spelled the brace check
+  // `,\s*(?!\{)`, whose `\s*` matches nothing and hands the lookahead a SPACE,
+  // so it flagged every compliant call site in the tree.
+  it("the measured-point pattern discriminates a point from a literal", () => {
+    const matches = (src: string) => countMatches(src, SWIPE_POINT_RE) > 0;
+
+    expect(matches("await touchSwipe(page, grip, { x: grip.x, y: 1 });")).toBe(
+      true
+    );
+    expect(
+      matches("await touchSwipe(\n  page,\n  grip,\n  { x: 1, y: 2 }\n);")
+    ).toBe(true);
+    expect(
+      matches("await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });")
+    ).toBe(false);
+    expect(matches("await touchSwipeFrom(page, handle, { dy: 240 });")).toBe(
+      false
     );
   });
 

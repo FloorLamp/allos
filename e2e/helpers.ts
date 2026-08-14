@@ -1,5 +1,6 @@
 import {
   expect,
+  type CDPSession,
   type Locator,
   type Page,
   type Request,
@@ -199,9 +200,15 @@ export async function capturePhotoFile(
 // some other element entirely (a heading, the backdrop) with no error — the test
 // just fails to do anything. Polling until two consecutive reads agree costs a
 // few frames and removes the whole class.
-export async function centerOf(
-  locator: Locator
-): Promise<{ x: number; y: number }> {
+//
+// NOT EXPORTED, since #2714 — and that is the ratchet, not tidiness. Settling
+// proves the element held still across ONE 50ms window; it cannot prove the
+// element will not move AGAIN, so the point it returns is a fact about the past
+// from the instant it is returned. A spec holding such a point and handing it to
+// `touchSwipe` owns that staleness silently. The point therefore never leaves
+// this file: an element-anchored gesture goes through `touchSwipeFrom`, which
+// re-aims and then PROVES where the finger landed before it moves.
+async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
   let previous: string | null = null;
   for (let attempt = 0; attempt < 40; attempt++) {
     const box = await locator.boundingBox();
@@ -1504,35 +1511,162 @@ export async function settledUpload(
 // `stepDelayMs` is how a spec chooses between the two commit paths in
 // lib/gesture.ts: 0 (the default) is a fast flick, a delay makes the same
 // distance a slow drag that must clear `commitPx` on distance alone.
+//
+// TWO ENTRY POINTS, and the choice is about WHERE THE GESTURE MUST START:
+//
+//   * `touchSwipe(page, from, to)` — a gesture anchored to the DOCUMENT. The
+//     drawer's edge swipe and the Timeline's day swipe are these: they name a
+//     screen coordinate ("2px from the left edge", "mid-page"), no element has to
+//     be under it, and the recognizer runs with no `targetRef` to satisfy.
+//   * `touchSwipeFrom(page, locator, delta)` — a gesture that must start INSIDE
+//     an element: a drag handle, a panel. The recognizer tests containment at
+//     touch-start, so where the finger lands is not a detail of the gesture, it
+//     IS the gesture.
+//
+// Only the second can be made safe, and it has to be (#2714). See below.
+type SwipeOptions = { steps?: number; stepDelayMs?: number };
+
 export async function touchSwipe(
   page: Page,
   from: { x: number; y: number },
   to: { x: number; y: number },
-  opts: { steps?: number; stepDelayMs?: number } = {}
+  opts: SwipeOptions = {}
 ): Promise<void> {
-  const steps = Math.max(2, opts.steps ?? 10);
   const cdp = await page.context().newCDPSession(page);
   try {
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [{ x: from.x, y: from.y }],
     });
-    for (let i = 1; i <= steps; i++) {
-      if (opts.stepDelayMs) await page.waitForTimeout(opts.stepDelayMs);
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [
-          {
-            x: from.x + ((to.x - from.x) * i) / steps,
-            y: from.y + ((to.y - from.y) * i) / steps,
+    await dragToEnd(page, cdp, from, to, opts);
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// The moves and the lift, shared by both entry points so the two cannot drift
+// into two ideas of what a swipe is. The touch is already down when this runs.
+async function dragToEnd(
+  page: Page,
+  cdp: CDPSession,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  opts: SwipeOptions
+): Promise<void> {
+  const steps = Math.max(2, opts.steps ?? 10);
+  for (let i = 1; i <= steps; i++) {
+    if (opts.stepDelayMs) await page.waitForTimeout(opts.stepDelayMs);
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        {
+          x: from.x + ((to.x - from.x) * i) / steps,
+          y: from.y + ((to.y - from.y) * i) / steps,
+        },
+      ],
+    });
+  }
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+}
+
+// ── An element-anchored swipe PROVES where the finger landed (#2714) ─────────
+//
+// A point measured from an element is stale the instant it is measured, and
+// `centerOf`'s settling cannot fix that: it proves the element held still across
+// one 50ms window, never that it will hold still for the next one. On a
+// BOTTOM-ANCHORED surface that gap is not theoretical. The quick-log sheet
+// gathers its "Due & usual now" row lazily on every open (#1468 — the offers
+// must be fresher than the page), and when that Server Action lands the sheet
+// grows; a bottom-anchored panel grows UPWARD, so the drag handle leaves the
+// coordinate a settled measurement had just certified.
+//
+// What happens next is the reason this helper exists rather than a longer wait:
+// the touch lands on whatever slid into that coordinate, the recognizer's
+// containment test (components/overlay/useDragGesture.ts) rejects it, and the
+// gesture is never claimed — so NOTHING HAPPENS, silently. #2714 is that:
+// `expect(sheet).toHaveCount(0)` did not miss a deadline, it waited five seconds
+// for an exit that was never going to begin. No budget and no arrival signal
+// would have helped, because the end state was not on its way.
+//
+// So the finger is not committed until it is proven to be on the element. The
+// touch starts, the helper reads the target of the touchstart the browser
+// actually dispatched — the same `contains()` fact the recognizer keys on, not a
+// re-hit-test that could disagree with it — and only then moves. A landing that
+// misses is cancelled before a single move, and the aim is re-taken against the
+// element's new position.
+//
+// That is a PROBE, not a retry of an attempt, and the distinction is exact
+// rather than a hopeful reading: every recognizer in the app requires a claimed
+// axis before it calls anything, claiming requires MOVEMENT, and nothing has
+// moved. The #2437 rule against re-driving a non-idempotent interaction — and
+// this file's own "a swipe cannot be retried, a re-fired day-swipe skips a day"
+// — are both untouched, because no gesture was driven.
+//
+// The re-aim is bounded, and running out is a LOUD failure naming the cause. A
+// surface still relaying out after four settled measurements is a defect in the
+// surface, and quietly swiping at it forever would be the timeout raise this
+// issue refused.
+const GESTURE_AIM_ATTEMPTS = 4;
+const TOUCH_START_TARGET = "__e2eTouchStartTarget";
+
+export async function touchSwipeFrom(
+  page: Page,
+  target: Locator,
+  delta: { dx?: number; dy?: number },
+  opts: SwipeOptions = {}
+): Promise<void> {
+  const dx = delta.dx ?? 0;
+  const dy = delta.dy ?? 0;
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    for (let attempt = 1; attempt <= GESTURE_AIM_ATTEMPTS; attempt++) {
+      const from = await centerOf(target);
+      // Armed BEFORE the touch, read AFTER it: the browser's own dispatch is
+      // what decides the target, so that is what gets asked.
+      await page.evaluate((key) => {
+        const store = window as unknown as Record<string, unknown>;
+        store[key] = null;
+        document.addEventListener(
+          "touchstart",
+          (e) => {
+            store[key] = e.target;
           },
-        ],
+          { capture: true, once: true, passive: true }
+        );
+      }, TOUCH_START_TARGET);
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x: from.x, y: from.y }],
+      });
+      const landed = await target.evaluate((el, key) => {
+        const origin = (window as unknown as Record<string, unknown>)[key];
+        return origin instanceof Node && el.contains(origin);
+      }, TOUCH_START_TARGET);
+      if (landed) {
+        await dragToEnd(
+          page,
+          cdp,
+          from,
+          { x: from.x + dx, y: from.y + dy },
+          opts
+        );
+        return;
+      }
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchCancel",
+        touchPoints: [],
       });
     }
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: [],
-    });
+    throw new Error(
+      `touchSwipeFrom: the target moved out from under the gesture on all ` +
+        `${GESTURE_AIM_ATTEMPTS} attempts, each aimed at a settled measurement. ` +
+        `Something is still relaying the surface out after it comes to rest — ` +
+        `find what arrives late (a lazily gathered section is the usual answer, ` +
+        `see #2714) rather than widening a wait.`
+    );
   } finally {
     await cdp.detach();
   }
