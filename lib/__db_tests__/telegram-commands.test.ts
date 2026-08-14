@@ -16,7 +16,10 @@ import { stubTelegramSends } from "./telegram-spies";
 import { db, today } from "@/lib/db";
 import { setProfileSetting } from "@/lib/settings";
 import { handleIncomingMessage } from "@/lib/notifications/telegram-quick-log";
-import { sendMessageRaw } from "@/lib/notifications/telegram-api";
+import {
+  editMessageReplyMarkupRaw,
+  sendMessageRaw,
+} from "@/lib/notifications/telegram-api";
 import { TELEGRAM_COMMANDS } from "@/lib/notifications/telegram-commands";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 
@@ -33,6 +36,15 @@ import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 beforeAll(() => stubTelegramSends());
 
 const sendMock = vi.mocked(sendMessageRaw);
+const stripMock = vi.mocked(editMessageReplyMarkupRaw);
+
+// The id Telegram answered the most recent send with. Read off the stub's own result
+// rather than guessed, so the test never re-states the numbering it is testing against.
+async function sentMessageId(): Promise<number> {
+  const results = sendMock.mock.results;
+  expect(results.length).toBeGreaterThan(0);
+  return (await results[results.length - 1].value) as number;
+}
 
 const CHAT = "5550520";
 const UNLINKED_CHAT = "5559999";
@@ -87,6 +99,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   sendMock.mockClear();
+  stripMock.mockClear();
   for (const pid of [p.profileId, ada.profileId, ben.profileId]) {
     db.prepare("DELETE FROM notify_messages WHERE profile_id = ?").run(pid);
     db.prepare("DELETE FROM mood_logs WHERE profile_id = ?").run(pid);
@@ -276,14 +289,36 @@ describe("/food on demand (#1895)", () => {
 
   it("a second /food strips the first — one live food keyboard (#947/#1898)", async () => {
     await say("/food");
+    const first = await sentMessageId();
     await say("/food");
+    const second = await sentMessageId();
+    // Distinct ids, or the rest of this test is theatre: two sends sharing one id
+    // collide on `notify_messages`' UNIQUE (chat_id, message_id) and leave a single
+    // row no matter what the strip did (#2749).
+    expect(second).not.toBe(first);
+
+    // The CHAT: the predecessor's keyboard was taken away.
+    const stripCall = stripMock.mock.calls.find((c) => c[1] === first);
+    expect(stripCall).toBeDefined();
+    expect(String(stripCall![0])).toBe(CHAT);
+    expect(stripCall![2]).toEqual([]);
+
+    // The POINTER TABLE, which is what the hourly sweep reasons from. A row here is a
+    // live keyboard by construction — the store holds only keyboard-bearing (or prose)
+    // messages, and every close in the system DELETES the row rather than blanking a
+    // column — so counting rows IS the liveness question. It is deliberately not
+    // scoped by date: "one live keyboard per (chat, kind)" (#1898) spans days, and a
+    // yesterday-dated food keyboard left live is precisely the wrong-day tap #947
+    // exists to prevent.
     const live = db
       .prepare(
-        `SELECT COUNT(*) AS n FROM notify_messages
+        `SELECT message_id FROM notify_messages
           WHERE profile_id = ? AND chat_id = ? AND kind = 'food'`
       )
-      .get(p.profileId, CHAT) as { n: number };
-    expect(live.n).toBe(1);
+      .all(p.profileId, CHAT) as { message_id: number }[];
+    // WHICH one survives, not just how many: keeping the stripped message and closing
+    // the live one is also "exactly one row".
+    expect(live.map((r) => r.message_id)).toEqual([second]);
   });
 });
 
