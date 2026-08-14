@@ -33,7 +33,8 @@ import {
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand, chartSeries } from "@/lib/chart-colors";
-import { formatLongDate } from "@/lib/format-date";
+import SingleReadingMark from "./SingleReadingMark";
+import { formatLongDate, formatMonthDay } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
 import {
@@ -51,6 +52,7 @@ import {
 } from "@/lib/long-range-series";
 import {
   applyDayFill,
+  loneReading,
   sparseSeriesCaption,
   sparseSeriesVerdict,
   type DayFillSpec,
@@ -311,6 +313,44 @@ export default function LineChartCard({
         className={`flex ${heightClass} items-center justify-center text-sm text-slate-500 dark:text-slate-400`}
       >
         No data yet
+      </div>
+    );
+  }
+  // ONE READING IS A MARKER, NOT A PLOT (#2653 state 1).
+  //
+  // The Overview tiles have degraded a one-reading series to a dot-on-a-rule
+  // since #1485 G, and #2671 taught the trend metric CARDS the same thing — but
+  // it taught the call site, so every other consumer of this chart (sleep,
+  // nutrition, longevity) kept drawing a 30-day band empty apart from one marker
+  // half-clipped against the y-axis. That reads as a rendering failure rather
+  // than as the true statement, and the reason it survived one fix is that the
+  // decision was being made ABOVE the chart instead of inside it.
+  //
+  // So it moves here, into the one funnel every line chart renders through. The
+  // gate is the same one the other honesty states use — a dated day-grain series
+  // plotted on `value` — because a per-event or intraday x is not a calendar day
+  // and "one reading on Jul 13" is not a sentence about it. A caller that has
+  // already drawn its own mark never reaches this branch, so the two cannot
+  // double up.
+  const lone =
+    isoDates && key === "value" ? loneReading(data) : null;
+  if (lone && lone.value != null) {
+    return (
+      <div className={`${heightClass} min-w-0 max-w-full`}>
+        <SingleReadingMark
+          fill
+          color={color}
+          testid="chart-single-reading"
+          readingScope="inside"
+          caption={
+            <>
+              Single reading ·{" "}
+              <time dateTime={lone.date}>
+                {formatMonthDay(lone.date, formatPrefs)}
+              </time>
+            </>
+          }
+        />
       </div>
     );
   }
