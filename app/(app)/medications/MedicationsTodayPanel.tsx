@@ -2,13 +2,23 @@ import { IconCircleCheck } from "@tabler/icons-react";
 import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
+import MomentSlot from "@/components/medications/MomentSlot";
 import { medicationHref } from "@/lib/hrefs";
 import { buildTodayPanelModel } from "@/lib/medication-today";
+import { buildMomentSections, type MomentDose } from "@/lib/moment-sections";
+import {
+  currentTimeBucket,
+  isOnDemand,
+  timeBucket,
+  TIME_BUCKET_LABELS,
+} from "@/lib/intake-schedule";
 import type { TimeFormat } from "@/lib/format-date";
 import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
-import { formatGivenAtClockWithRelativeAge } from "@/lib/administration-format";
+import {
+  formatGivenAtClock,
+  formatGivenAtClockWithRelativeAge,
+} from "@/lib/administration-format";
 import type { MedCardData } from "./med-data";
-import { isOnDemand } from "@/lib/intake-schedule";
 
 // The Today panel that LEADS the Medications page (#817): the daily-use job first.
 // Scheduled meds due today get their dose check-offs (the shared tri-state
@@ -21,6 +31,11 @@ import { isOnDemand } from "@/lib/intake-schedule";
 // (bucket → priority → stack → name) via buildTodayPanelModel — the SAME order the
 // Supplements tab and Upcoming use — a past-bucket unresolved dose reads amber, and a
 // quiet "All done today ✓" line shows once every due dose is resolved.
+//
+// MOMENT-LED since #2652 behavior 1: those same rows are now grouped into their dose-day
+// slots, and a slot earns full height only when this moment is its moment. The decision
+// is `buildMomentSections` (pure, unit-tested, no DOM); this file only renders it, and
+// the row order INSIDE each slot is still buildTodayPanelModel's — one ordering, not two.
 export default function MedicationsTodayPanel({
   scheduled,
   prnToday,
@@ -92,6 +107,96 @@ export default function MedicationsTodayPanel({
     nowHhmm
   );
 
+  // Flattened in buildTodayPanelModel's order, so slot grouping never re-sorts anything.
+  const rowKeyOf = (medId: number, doseId: number) => `${medId}:${doseId}`;
+  const flat = model.meds.flatMap((m) =>
+    m.doses.map((dose) => ({ key: rowKeyOf(m.id, dose.id), medId: m.id, dose }))
+  );
+  const rowByKey = new Map(flat.map((entry) => [entry.key, entry]));
+
+  const momentDoses: MomentDose<string>[] = flat.map(({ key, medId, dose }) => {
+    const card = byId.get(medId)!;
+    const isTaken = taken.has(dose.id);
+    return {
+      key,
+      bucket: timeBucket(dose.timeOfDay),
+      resolved: isTaken || skipped.has(dose.id),
+      taken: isTaken,
+      // The bare clock, not the "(2h ago)" variant the ROW shows: a one-line slot
+      // summary states when the slot settled, and the relative age belongs to the row
+      // it annotates.
+      takenClock: isTaken
+        ? formatGivenAtClock(timezone, card.takenDoseTimes[dose.id], timeFormat)
+        : null,
+    };
+  });
+
+  const rowFor = (key: string) => {
+    const entry = rowByKey.get(key);
+    if (!entry) return null;
+    const { medId, dose } = entry;
+    const card = byId.get(medId)!;
+    const storedDose = card.doses.find((item) => item.id === dose.id);
+    const isTaken = taken.has(dose.id);
+    const takenTime = formatGivenAtClockWithRelativeAge(
+      timezone,
+      card.takenDoseTimes[dose.id],
+      timeFormat,
+      new Date(nowIso)
+    );
+    return (
+      <TodayMedRow
+        key={key}
+        testId="today-scheduled-med"
+        itemId={medId}
+        name={card.med.name}
+        detail={formatMedicationDoseLine({
+          amount: storedDose?.amount ?? null,
+          product: card.med.product,
+          timeOfDay: dose.timeOfDay,
+          asNeeded: false,
+          timeFormat,
+        })}
+        href={medicationHref(medId)}
+        pastDue={dose.pastDue}
+        status={
+          dose.pastDue || (isTaken && takenTime) ? (
+            <>
+              {dose.pastDue ? (
+                <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                  Past due
+                </span>
+              ) : null}
+              {isTaken && takenTime ? (
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {takenTime}
+                </span>
+              ) : null}
+            </>
+          ) : null
+        }
+        control={
+          <ScheduledDoseAction
+            doseId={dose.id}
+            doseLabel=""
+            taken={isTaken}
+            skipped={skipped.has(dose.id)}
+            compactActions
+            readOnly={!canWrite}
+            profileId={profileId}
+          />
+        }
+        variant="embedded"
+      />
+    );
+  };
+
+  const sections = buildMomentSections<string>({
+    doses: momentDoses,
+    currentBucket: currentTimeBucket(nowHhmm),
+    labels: TIME_BUCKET_LABELS,
+  });
+
   return (
     <section data-testid="medications-today" className="card">
       <div>
@@ -111,84 +216,34 @@ export default function MedicationsTodayPanel({
           All done today
         </div>
       )}
-      <div className="mt-3 divide-y divide-black/5 dark:divide-white/5">
-        {model.meds.flatMap((m) => {
-          const card = byId.get(m.id)!;
-          return m.doses.map((dose) => {
-            const storedDose = card.doses.find((item) => item.id === dose.id);
-            const isTaken = taken.has(dose.id);
-            const takenTime = formatGivenAtClockWithRelativeAge(
-              timezone,
-              card.takenDoseTimes[dose.id],
-              timeFormat,
-              new Date(nowIso)
-            );
-            return (
-              <TodayMedRow
-                key={dose.id}
-                testId="today-scheduled-med"
-                itemId={m.id}
-                name={card.med.name}
-                detail={formatMedicationDoseLine({
-                  amount: storedDose?.amount ?? null,
-                  product: card.med.product,
-                  timeOfDay: dose.timeOfDay,
-                  asNeeded: false,
-                  timeFormat,
-                })}
-                href={medicationHref(m.id)}
-                pastDue={dose.pastDue}
-                status={
-                  dose.pastDue || (isTaken && takenTime) ? (
-                    <>
-                      {dose.pastDue ? (
-                        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
-                          Past due
-                        </span>
-                      ) : null}
-                      {isTaken && takenTime ? (
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {takenTime}
-                        </span>
-                      ) : null}
-                    </>
-                  ) : null
-                }
-                control={
-                  <ScheduledDoseAction
-                    doseId={dose.id}
-                    doseLabel=""
-                    taken={isTaken}
-                    skipped={skipped.has(dose.id)}
-                    compactActions
-                    readOnly={!canWrite}
-                    profileId={profileId}
-                  />
-                }
-                variant="embedded"
-              />
-            );
-          });
-        })}
+      <div className="mt-3 flex flex-col gap-1">
+        {sections.map((section) => (
+          <MomentSlot key={section.bucket} section={section}>
+            {section.doses.map((d) => rowFor(d.key))}
+          </MomentSlot>
+        ))}
 
-        {showPrn &&
-          prnToday.map((m) => (
-            <QuickLogPrnControl
-              key={m.id}
-              itemId={m.id}
-              name={m.name}
-              doseAmount={m.amount}
-              product={m.product}
-              dayLabel={m.dayLabel}
-              redoseLine={m.redoseLine}
-              redosePrimary={m.redosePrimary}
-              linkToDetail
-              rowVariant="embedded"
-              compactActions
-              profileId={profileId}
-              tz={timezone}
-            />
-          ))}
+        {showPrn && (
+          <div className="divide-y divide-black/5 dark:divide-white/5">
+            {prnToday.map((m) => (
+              <QuickLogPrnControl
+                key={m.id}
+                itemId={m.id}
+                name={m.name}
+                doseAmount={m.amount}
+                product={m.product}
+                dayLabel={m.dayLabel}
+                redoseLine={m.redoseLine}
+                redosePrimary={m.redosePrimary}
+                linkToDetail
+                rowVariant="embedded"
+                compactActions
+                profileId={profileId}
+                tz={timezone}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

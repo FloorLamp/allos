@@ -161,6 +161,10 @@ export function QuickLogPrnContent({
       >
         {visibleMeds.map(medControl)}
         {remainingMeds.length > 0 && (
+          /* Deliberately NOT remembered (#2652 behavior 3) — see the "tap path"
+             exclusion in lib/disclosure-memory.ts. Per-device state is invisible to the
+             server, so a remembered-open fold necessarily opens AFTER hydration, and
+             this one sits directly above a Log button. */
           <details data-testid="quick-log-prn-more">
             <summary className="cursor-pointer py-1 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100">
               More medications ({remainingMeds.length})

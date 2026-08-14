@@ -9,6 +9,7 @@ import { isDemoMode } from "@/lib/demo";
 import ThemeReassert from "@/components/ThemeReassert";
 import UpdateTakenToast from "@/components/UpdateTakenToast";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
+import { DISCLOSURE_BOOT_SCRIPT } from "@/lib/disclosure-memory";
 
 export const metadata: Metadata = {
   title: "Allos",
@@ -77,6 +78,17 @@ export default async function RootLayout({
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
+        />
+        {/* Restores per-device disclosure state before first paint (#2652). Same
+            reason as the theme script: a fold that opens only once the bundle has
+            landed has a window in which a tap is aimed at the state the reader can
+            see and lands on the state that replaced it, so it shuts what they asked
+            to open. The source lives in lib/disclosure-memory.ts beside the rule it
+            transcribes, and a pure test executes it against `disclosureOpen` over a
+            real DOM so the two cannot drift. */}
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{ __html: DISCLOSURE_BOOT_SCRIPT }}
         />
       </head>
       <body>
