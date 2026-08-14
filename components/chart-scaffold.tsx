@@ -308,6 +308,62 @@ export function chartInexactDot(c: ChartColors, color: string) {
   } as const;
 }
 
+// ── PAIRED MARKS: two sources, one day (#2653 state 6) ──────────────────────
+//
+// A day two sources reported is drawn as TWO marks at one x: the series' own mark
+// where it always sat, and a companion beside it at what the other source said.
+// The PAIR is the channel — a lone mark means one account of the day, two means
+// two — which is the channel owner call 3 left for this state after assigning
+// fill to exactness.
+//
+// The three channels already spoken for are all left alone, deliberately:
+//   • FILL stays solid. Both readings are exact; a hollow companion would claim
+//     the second source reported a bound, which is a different fact entirely.
+//     This is why hollow was unavailable, not a workaround for it.
+//   • SIZE stays `CHART_DOT_R`. The companion is not emphasised and not
+//     de-emphasised — it is another reading, at ordinary weight. (#2831 is
+//     tightening the size ladder next door; nothing here touches it.)
+//   • COLOUR stays out of the series palette. The companion takes the NEUTRAL
+//     token, which `docs/internals/charts.md` §1 reserves for "a bucket that
+//     genuinely means other / none" — exactly what a source the election did not
+//     keep is. A second series colour would assert a second series.
+//
+// The x OFFSET is what makes the pair legible when the two numbers are close:
+// stacked coincident dots are the degenerate render the issue opened with, and a
+// few pixels of separation is the whole difference between "two marks" and "one
+// smudge". It is small enough that the companion still reads as belonging to its
+// day rather than leaning into the next one.
+
+/** How far a companion mark sits from its day's own x, in px. */
+export const CHART_PAIR_OFFSET_X = 4;
+
+/**
+ * The companion mark for a reading the source election did not keep. Returns a
+ * `dot` renderer rather than a prop bag because the offset needs the resolved
+ * `cx` recharts computes, which no static bag can carry.
+ */
+export function chartOtherSourceDot(c: ChartColors) {
+  return function OtherSourceDot({
+    cx,
+    cy,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+  }) {
+    if (typeof cx !== "number" || typeof cy !== "number") return <g />;
+    return (
+      <circle
+        cx={cx + CHART_PAIR_OFFSET_X}
+        cy={cy}
+        r={CHART_DOT_R}
+        fill={c.tick}
+        stroke={c.surface}
+        strokeWidth={1}
+      />
+    );
+  };
+}
+
 /** The hover dot. Bigger than every resting dot (and present even when resting
  *  dots are off) so a dense line still has a hit target, and so hover stays a
  *  visible state change on a series whose resting marks are already emphasised. */

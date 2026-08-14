@@ -47,6 +47,8 @@ import {
   getBodyCardPins,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
+import { sourceLabelMap, toDisplayUnits } from "@/lib/metric-sources";
+import { metricSourceLabel } from "@/lib/metric-source-priority";
 import { bodyMetricMeasures } from "@/lib/body-metric-measures";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { bmiSeriesDatePaired } from "@/lib/growth-series";
@@ -265,22 +267,23 @@ export default async function BodySection({
 
   // Keep the UNWINDOWED display-unit series named (…All) so the overview tiles and
   // charts apply the shared range to the SAME arrays — one gather feeds both (#221).
-  const weightAll = weightSeries.map((w) => ({
-    date: w.date,
-    value: dispWeight(w.value, wu),
-  }));
+  //
+  // `toDisplayUnits` rather than a `.map` over `value` (#2653 state 6): a day two
+  // scales reported carries their readings too, and the companion mark drawn from
+  // them has to be converted by the SAME function as the number it sits beside —
+  // canonical kg against a display lb would render an 85-unit disagreement that
+  // does not exist.
+  const weightAll = toDisplayUnits(weightSeries, (kg) => dispWeight(kg, wu));
   const weightChart = filterSeriesByRange(weightAll, range);
-  const bodyFatAll = getBodyMetricDailySeries(
-    profile.id,
-    "body_fat",
-    ALL_ROWS
-  ).map((w) => ({ date: w.date, value: round(w.value, 1) }));
+  const bodyFatAll = toDisplayUnits(
+    getBodyMetricDailySeries(profile.id, "body_fat", ALL_ROWS),
+    (v) => round(v, 1)
+  );
   const bodyFatChart = filterSeriesByRange(bodyFatAll, range);
-  const restingHrAll = getBodyMetricDailySeries(
-    profile.id,
-    "resting_hr",
-    ALL_ROWS
-  ).map((w) => ({ date: w.date, value: Math.round(w.value) }));
+  const restingHrAll = toDisplayUnits(
+    getBodyMetricDailySeries(profile.id, "resting_hr", ALL_ROWS),
+    Math.round
+  );
   const restingHrChart = filterSeriesByRange(restingHrAll, range);
 
   // The vitals' RAW, unwindowed reading rows (absorbed from the retired Vitals
@@ -657,6 +660,7 @@ export default async function BodySection({
       detailHref: metricDetailHref("resting-hr"),
       title: TREND_METRIC_META["resting-hr"].title,
       data: restingHrChart,
+      sourceLabels: sourceLabelMap(restingHrChart, metricSourceLabel),
       unit: " bpm",
       color: chartSeries.amber,
       ...goalOverlay("resting_hr", restingHrChart, " bpm", 0),
@@ -869,6 +873,7 @@ export default async function BodySection({
       detailHref: metricDetailHref("weight"),
       title: TREND_METRIC_META.weight.title,
       data: weightChart,
+      sourceLabels: sourceLabelMap(weightChart, metricSourceLabel),
       unit: ` ${wu}`,
       color: chartSeries.brand,
       ...goalOverlay("weight", weightChart, ` ${wu}`, 1),
@@ -893,6 +898,7 @@ export default async function BodySection({
       detailHref: metricDetailHref("body-fat"),
       title: TREND_METRIC_META["body-fat"].title,
       data: bodyFatChart,
+      sourceLabels: sourceLabelMap(bodyFatChart, metricSourceLabel),
       unit: "%",
       color: chartSeries.violet,
       ...goalOverlay("body_fat", bodyFatChart, "%", 1),
@@ -904,6 +910,7 @@ export default async function BodySection({
       detailHref: metricDetailHref("resting-hr"),
       title: TREND_METRIC_META["resting-hr"].title,
       data: restingHrChart,
+      sourceLabels: sourceLabelMap(restingHrChart, metricSourceLabel),
       unit: " bpm",
       color: chartSeries.amber,
     },

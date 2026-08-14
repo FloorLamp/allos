@@ -4,10 +4,12 @@ import { clampPage, pageCount, pageOffset } from "../pagination";
 import { tickCached } from "../tick-cache";
 import {
   SOURCE_PREFERENCE,
+  foldDaysBySource,
   pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
   pickRowsOneSourcePerWindow,
+  type DailySourcePoint,
   type SourceSelection,
 } from "../metric-sources";
 import {
@@ -1359,11 +1361,15 @@ export function getLatestBodyMetric(
 // day keeps ONE source's reading (primary source first — issue #14); several
 // same-day rows from the kept source (possible for manual rows, whose NULL
 // source is exempt from the unique key) are averaged.
+//
+// A day more than one source reported also carries `sources` — who won and what
+// the others said (#2653 state 6), in canonical units like the value beside it,
+// so a display-unit surface converts both together (`toDisplayUnits`).
 export function getBodyMetricDailySeries(
   profileId: number,
   metric: BodyMetricKind,
   limit = 365
-): { date: string; value: number }[] {
+): DailySourcePoint[] {
   const col = bodyMetricColumn(metric);
   const rows = db
     .prepare(
@@ -1385,26 +1391,20 @@ interface BodyMetricRow {
 // source's reading per day (primary source first — #14), then average any remaining
 // same-day rows from the kept source. Shared by the full-series read and the
 // latest-two trend read (#1367) so both compute the daily rollup ONE way.
+//
+// The kept value is unchanged; what the fold now also carries out is WHICH sources
+// it beat on a contested day (#2653 state 6). A second scale reporting the same
+// morning used to vanish here, leaving the chart one confident mark for a day two
+// devices disagreed about — so the election reports its losers instead of
+// discarding them, in the same pass, and `sources` is absent on every ordinary
+// single-source day.
 function foldBodyMetricDaily(
   rows: BodyMetricRow[],
   selection: SourceSelection
-): { date: string; value: number }[] {
-  const picked = pickRowsOneSourcePerDay(
-    rows,
-    selection,
-    (r) => r.date,
-    (r) => r.source
+): DailySourcePoint[] {
+  return foldDaysBySource(rows, selection, "mean").sort((a, b) =>
+    a.date < b.date ? -1 : 1
   );
-  const byDate = new Map<string, { sum: number; n: number }>();
-  for (const r of picked) {
-    const acc = byDate.get(r.date) ?? { sum: 0, n: 0 };
-    acc.sum += r.value;
-    acc.n += 1;
-    byDate.set(r.date, acc);
-  }
-  return [...byDate.entries()]
-    .map(([date, { sum, n }]) => ({ date, value: sum / n }))
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
 // The latest `dateLimit` DAILY points for a body metric, oldest→newest — the exact
@@ -1420,7 +1420,7 @@ export function getLatestBodyMetricDailyPoints(
   profileId: number,
   metric: BodyMetricKind,
   dateLimit = 2
-): { date: string; value: number }[] {
+): DailySourcePoint[] {
   const col = bodyMetricColumn(metric);
   const rows = db
     .prepare(

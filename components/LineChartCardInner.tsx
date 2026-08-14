@@ -24,6 +24,7 @@ import {
   chartGridProps,
   chartLineDot,
   chartMarkMotion,
+  chartOtherSourceDot,
   chartSparklineAxisProps,
   chartSparklineMargin,
   chartSparseDot,
@@ -66,6 +67,10 @@ import {
   type DayFillSpec,
   type SeriesHole,
 } from "@/lib/trend-sparkline";
+import {
+  sourceSpreadCaption,
+  type DaySourceSpread,
+} from "@/lib/metric-sources";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
@@ -104,8 +109,15 @@ export default function LineChartCard({
   animateTooltip = true,
   gapFill,
   singleReadingAsChart = false,
+  sourceLabels,
 }: {
-  data: { date: string; value: number | null }[];
+  // A day-grain point may carry `sources` (#2653 state 6): the source whose
+  // reading is the `value` here, and what the OTHER sources that reported the
+  // same profile-local day said. The election that picks between them lives in
+  // the read (lib/metric-sources), values arrive already in this chart's display
+  // unit alongside the one they sit beside, and a caller with no multi-source
+  // read simply omits the field.
+  data: { date: string; value: number | null; sources?: DaySourceSpread }[];
   dataKey?: string;
   label: string;
   color?: string;
@@ -178,6 +190,12 @@ export default function LineChartCard({
   // this component. Threading it here is what keeps a tile and the card it taps
   // through to agreeing — which is the whole reason the degrade lives in one place.
   singleReadingAsChart?: boolean;
+  // Source id → display name, for the companion marks above. A DICTIONARY rather
+  // than a label per point: an id repeats on every contested day, and naming a
+  // source is a question about the source. Resolved server-side
+  // (`metricSourceLabel`), because a document's name lives in a table this
+  // component cannot read; a missing id falls back to printing itself.
+  sourceLabels?: Record<string, string>;
   // Recharts animates tooltip transforms between points. A chart with labeled
   // horizontal bands can force a left/right edge flip; callers may disable that
   // transform so the tooltip snaps inside the plot instead of crossing the card.
@@ -351,6 +369,75 @@ export default function LineChartCard({
   const labelFmt =
     labelFormatter ??
     (isoDates ? (v: string) => formatLongDate(v, formatPrefs) : undefined);
+  // The value formatter the tooltip shares between the mean line, the companion
+  // marks and (aggregated charts only) the band's low–high pair — one number
+  // shape per chart.
+  const fmtValue = (n: number) =>
+    groupYTicks ? groupChartValue(n, decimals) : roundChartValue(n, decimals);
+  // TWO SOURCES, ONE DAY (#2653 state 6).
+  //
+  // The read already elected one source per day and, since this state, says which
+  // ones it beat. Here that becomes a second mark beside the day's own — but only
+  // where the two sources would PRINT DIFFERENT NUMBERS at this chart's own
+  // precision. A companion at the identical value is the stacked coincident dot
+  // the issue opened with: it adds ink and no fact, and two devices agreeing to
+  // the digit a reader can see is not a disagreement. Filtering on `fmtValue` is
+  // also what keeps the marks and the caption below counting the same days.
+  //
+  // Gated like every other honesty state on this chart: a dated day-grain series
+  // plotted on `value`. An AGGREGATED plot is excluded because a bucket mean is
+  // not a reading, and a SPARKLINE because a tile has no room for the caption that
+  // explains the grey mark — an unexplained one would be worse than none.
+  const spreadByDate = new Map<string, DaySourceSpread>();
+  if (isoDates && key === "value" && !longRange && !sparkline) {
+    for (const point of data) {
+      if (point.sources == null || point.value == null) continue;
+      const shown = fmtValue(point.value);
+      const others = point.sources.others.filter(
+        (other) => fmtValue(other.value) !== shown
+      );
+      if (others.length > 0) {
+        spreadByDate.set(point.date, { trusted: point.sources.trusted, others });
+      }
+    }
+  }
+  // One companion COLUMN per simultaneous other source: recharts needs a dataKey
+  // per mark, and a day answered by three devices must not lose the third.
+  const spreadColumns = Math.max(
+    0,
+    ...[...spreadByDate.values()].map((spread) => spread.others.length)
+  );
+  const sourceName = (source: string) => sourceLabels?.[source] ?? source;
+  const spreadCaption =
+    spreadByDate.size === 0
+      ? null
+      : sourceSpreadCaption({
+          trusted: [
+            ...new Set(
+              [...spreadByDate.values()].map((s) => sourceName(s.trusted))
+            ),
+          ],
+          others: [
+            ...new Set(
+              [...spreadByDate.values()].flatMap((s) =>
+                s.others.map((other) => sourceName(other.source))
+              )
+            ),
+          ],
+          days: spreadByDate.size,
+        });
+  const chartRows =
+    spreadColumns === 0
+      ? runData
+      : runData.map((row) => {
+          const out: Record<string, unknown> = { ...row };
+          const others = spreadByDate.get(String(row.date))?.others ?? [];
+          for (let i = 0; i < spreadColumns; i++) {
+            out[`other${i}`] = others[i]?.value ?? null;
+            out[`other${i}Source`] = others[i]?.source ?? null;
+          }
+          return out;
+        });
   // Snap annotation markers onto charted dates so their vertical ReferenceLines
   // land on the category axis (recharts otherwise drops an off-point x). Charted =
   // PLOTTED: an aggregated chart snaps them onto its bucket starts.
@@ -429,15 +516,11 @@ export default function LineChartCard({
       </div>
     );
   }
-  // The value formatter the tooltip shares between the mean line and (aggregated
-  // charts only) the band's low–high pair — one number shape per chart.
-  const fmtValue = (n: number) =>
-    groupYTicks ? groupChartValue(n, decimals) : roundChartValue(n, decimals);
   const chart = (
     <div className={`${heightClass} min-w-0 max-w-full`}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
-          data={runData}
+          data={chartRows}
           syncId={syncId}
           syncMethod={syncMethod}
           onMouseMove={(state: MouseHandlerDataParam) =>
@@ -473,7 +556,23 @@ export default function LineChartCard({
             // outage is a thing a reader will do, and the honest answer is a
             // named absence.
             filterNull={false}
-            formatter={(v, name) => {
+            formatter={(v, name, item) => {
+              // A COMPANION MARK (#2653 state 6). It carries the OTHER source's
+              // number for this day and is labelled with that source's name —
+              // which is the whole of "show it exactly at the conflict", and the
+              // reason the name travels on the row rather than on the series.
+              // Every other day has no companion, and a null one is dropped so a
+              // plot does not grow a "No data" row per uncontested day.
+              if (typeof name === "string" && /^other\d+$/.test(name)) {
+                if (v == null || !Number.isFinite(Number(v))) return null;
+                const row = (item as { payload?: Record<string, unknown> })
+                  ?.payload;
+                const source = row?.[`${name}Source`];
+                return [
+                  `${fmtValue(Number(v))}${unit}`,
+                  sourceName(String(source ?? "")),
+                ];
+              }
               // The band's [lo, hi] pair renders as one "Range" row; a lone value
               // is the series itself — labelled as an average when aggregated,
               // because a bucket mean is not a reading.
@@ -644,6 +743,25 @@ export default function LineChartCard({
                 connectNulls
               />
             ))}
+          {/* THE SECOND ACCOUNT OF A DAY (#2653 state 6). One strokeless line per
+              companion column, so a day answered by two devices shows both
+              numbers instead of the one the election happened to keep. Drawn
+              BEFORE the series' own line so the reading being plotted is never
+              painted over by the reading that was not. Static, like every other
+              mark this issue added. */}
+          {Array.from({ length: spreadColumns }, (_, column) => (
+            <Line
+              key={`other-${column}`}
+              type="monotone"
+              dataKey={`other${column}`}
+              stroke="none"
+              dot={chartOtherSourceDot(c)}
+              activeDot={false}
+              legendType="none"
+              {...chartMarkMotion(motion)}
+              connectNulls={false}
+            />
+          ))}
           <Line
             type="monotone"
             dataKey={key}
@@ -692,7 +810,8 @@ export default function LineChartCard({
   // Every caption here is an honesty note ABOUT THE MARK, and a sparkline takes
   // none of them: a tile has no room for a sentence, and its numbers are the
   // caller's.
-  if (sparkline || (!longRange && !sparse && !trailingHole)) return chart;
+  if (sparkline || (!longRange && !sparse && !trailingHole && !spreadCaption))
+    return chart;
   return (
     <div className="min-w-0 max-w-full">
       {chart}
@@ -737,6 +856,20 @@ export default function LineChartCard({
           >
             Data → Review
           </Link>
+        </p>
+      )}
+      {/* WHOSE READINGS THESE ARE (#2653 state 6). The grey marks are the only
+          thing on the plot a reader has no other way to name, so the caption
+          names them — which source is plotted, how many days another one also
+          covered, and who. It states no preference between them: which number is
+          right is not something the chart knows, and choosing lives in the
+          primary-source picker. */}
+      {spreadCaption && (
+        <p
+          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="chart-source-spread-note"
+        >
+          {spreadCaption}
         </p>
       )}
     </div>

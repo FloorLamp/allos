@@ -14,6 +14,8 @@
 import { assignHashedColors } from "./trend-colors";
 import { TREND_METRIC_META } from "./trend-metrics";
 import { documentSourceId } from "./document-source";
+import { getIntegration } from "./integrations/registry";
+import type { IntegrationId } from "./types";
 
 export { documentSourceId };
 
@@ -45,6 +47,25 @@ export function documentSourceLabel(
   const date = meta?.document_date?.trim();
   if (date) return `Document (${date})`;
   return `Document #${id}`;
+}
+
+// THE display name for any metric source id — the one answer, so the compare
+// overlay's legend, the primary-source picker and a chart's provenance caption
+// cannot name the same device three ways.
+//
+// `docs` is the per-profile document id→meta lookup `documentSourceLabel` needs;
+// omitting it is legitimate for a surface that has not joined `medical_documents`
+// (every document then reads "Document #<id>" rather than its filename — a
+// coarser label, never a wrong one). An unregistered integration id falls back to
+// printing itself.
+export function metricSourceLabel(
+  source: string,
+  docs: Record<number, DocumentMeta> = {}
+): string {
+  if (sourceKey(source) === "manual") return "Manual";
+  if (source === DOCUMENTS_SOURCE_CLASS) return DOCUMENTS_SOURCE_LABEL;
+  if (documentSourceId(source) != null) return documentSourceLabel(source, docs);
+  return getIntegration(source as IntegrationId)?.name ?? source;
 }
 
 // A source CLASS (issue #1640): one selectable id standing for EVERY source in a

@@ -49,6 +49,119 @@ export const SOURCE_PREFERENCE = [
   "strava",
 ];
 
+// ── TWO SOURCES, ONE DAY (issue #2653, state 6) ─────────────────────────────
+//
+// THE DEFECT, and it is not the one the issue filed. #2653 describes state 6 as
+// "stacked markers with nothing explaining the disagreement". Nothing stacks:
+// the election below has always collapsed a contested day to ONE point, so the
+// second source's number is not drawn faintly or ambiguously — it is GONE, and
+// the chart shows a single confident mark for a day two devices did not agree
+// about. The honest presentation therefore cannot be "fill the trusted marker
+// and hollow the other", because there is no other marker to hollow. What was
+// missing from the read is the FACT, and this is where it is discarded.
+//
+// So the election reports what it set aside. `foldDaysBySource` is one pass that
+// yields the folded point AND the sources it beat — not a second computation
+// that agrees with the first today, which is how a chart and its caption come to
+// name different days.
+//
+// THE DAY IS A PROFILE-LOCAL DAY. Every row handed here is already filed under
+// one (`body_metrics.date`, `metric_samples.date`, and the HR stream's
+// `localDayOf` projection), which is what makes "two sources, one day" a
+// statement a reader can check against their own calendar. Nothing here parses
+// an instant, and nothing here may start.
+
+/** One source's account of a day the election did not keep. */
+export interface OtherSourceReading {
+  /** The source id, as `sourceGroupKey` resolved it. */
+  source: string;
+  /** That source's own value for the day, combined the same way the kept one is. */
+  value: number;
+}
+
+/** A day more than one source reported. Present only when there IS more than one. */
+export interface DaySourceSpread {
+  /** The source the election kept — whose value is the one plotted. */
+  trusted: string;
+  /** Every source it set aside, ordered by id so the answer is deterministic. */
+  others: OtherSourceReading[];
+}
+
+/** One folded day: the value every existing caller reads, plus the provenance
+ *  the fold would otherwise have thrown away. */
+export interface DailySourcePoint {
+  date: string;
+  value: number;
+  sources?: DaySourceSpread;
+}
+
+/**
+ * Collapse per-(date, source) rows to one value per day, reporting the sources
+ * the election beat.
+ *
+ * `combine` is how several rows from ONE source on one day become that source's
+ * number, and it is also what the election weighs:
+ *   • "sum"  — an additive daily total (steps): a source's day is its subtotal,
+ *     and the fallback picks the LARGEST subtotal, which for a lone source is
+ *     just that source and never double-counts two unknown ones.
+ *   • "mean" — repeat measurements of one quantity (a weigh-in, a resting HR):
+ *     a source's day is the average of its rows, and the fallback picks the
+ *     source with the MOST rows, i.e. the most coverage.
+ *
+ * In STRICT mode (#1642) the fallback is skipped entirely: a day no selector
+ * covers yields no point at all, so the series shows an honest gap instead of
+ * another source's number.
+ *
+ * A CLASS selector (#1640) makes its members ONE candidate (`sourceGroupKey`),
+ * so the family resolves as a single source and never contests itself.
+ *
+ * Days come back in the order their first row arrived, exactly as the readers
+ * that sort afterwards expect.
+ */
+export function foldDaysBySource(
+  rows: readonly { date: string; source: string | null; value: number }[],
+  selection: SourceSelection,
+  combine: "sum" | "mean"
+): DailySourcePoint[] {
+  const resolution = asSourceResolution(selection);
+  const { order } = resolution;
+  const byDate = new Map<string, Map<string, { sum: number; n: number }>>();
+  for (const r of rows) {
+    let m = byDate.get(r.date);
+    if (!m) {
+      m = new Map();
+      byDate.set(r.date, m);
+    }
+    const src = sourceGroupKey(r.source, order);
+    const acc = m.get(src) ?? { sum: 0, n: 0 };
+    acc.sum += r.value;
+    acc.n += 1;
+    m.set(src, acc);
+  }
+  const valueOf = (acc: { sum: number; n: number }) =>
+    combine === "sum" ? acc.sum : acc.sum / acc.n;
+  const out: DailySourcePoint[] = [];
+  for (const [date, m] of byDate) {
+    const weights = new Map<string, number>();
+    for (const [src, acc] of m) {
+      weights.set(src, combine === "sum" ? valueOf(acc) : acc.n);
+    }
+    const chosen = electSourceGroup(weights, resolution);
+    if (chosen == null) continue;
+    const value = valueOf(m.get(chosen)!);
+    const others = [...m]
+      .filter(([src]) => src !== chosen)
+      .map(([source, acc]) => ({ source, value: valueOf(acc) }))
+      .sort((a, b) => (a.source < b.source ? -1 : 1));
+    out.push(
+      others.length > 0
+        ? { date, value, sources: { trusted: chosen, others } }
+        : { date, value }
+    );
+  }
+  return out;
+}
+
 // Collapse per-(date, source) subtotals to one value per day by choosing a single
 // source — the first present in `selection`, else the largest single-source
 // total (which for a lone source is just that source, and avoids double-counting
@@ -61,29 +174,19 @@ export const SOURCE_PREFERENCE = [
 // In STRICT mode (#1642) the "largest single-source total" fallback is skipped
 // entirely: a day no selector covers yields no point at all, so the series shows
 // an honest gap instead of another source's number.
+//
+// The additive case of `foldDaysBySource`, with the provenance dropped: these
+// callers sum subtotals into rollups where a per-day source is not a question
+// anyone asks. One election, so the two can never disagree about which source
+// won a day.
 export function pickOneSourcePerDay(
   rows: { date: string; source: string | null; value: number }[],
   selection: SourceSelection
 ): { date: string; value: number }[] {
-  const { order, strict } = asSourceResolution(selection);
-  const byDate = new Map<string, Map<string, number>>();
-  for (const r of rows) {
-    let m = byDate.get(r.date);
-    if (!m) {
-      m = new Map();
-      byDate.set(r.date, m);
-    }
-    const src = sourceGroupKey(r.source, order);
-    m.set(src, (m.get(src) ?? 0) + r.value);
-  }
-  const out: { date: string; value: number }[] = [];
-  for (const [date, m] of byDate) {
-    const chosen = order.find((p) => m.has(p));
-    if (chosen == null && strict) continue;
-    const value = chosen != null ? m.get(chosen)! : Math.max(...m.values());
-    out.push({ date, value });
-  }
-  return out;
+  return foldDaysBySource(rows, selection, "sum").map(({ date, value }) => ({
+    date,
+    value,
+  }));
 }
 
 // Health Connect is one integration source but may contain several device/app
@@ -265,4 +368,96 @@ export function pickRowsOneSourcePerWindow<T>(
     i = j;
   }
   return rows.filter((_, index) => keep.has(index));
+}
+
+// ── What the chart needs from the spread ────────────────────────────────────
+
+/**
+ * Convert a folded series to display units — the plotted value AND every other
+ * source's account of the same day, through ONE function.
+ *
+ * Canonical storage is kg/km (AGENTS.md), so a weight series converts at the
+ * display boundary. A companion mark drawn beside a converted primary from an
+ * UNCONVERTED number would plot 71 kg as though it disagreed with 156 lb by 85,
+ * which is the one way this state can lie outright. Taking the conversion as a
+ * single argument is what makes that unrepresentable rather than merely
+ * remembered.
+ */
+export function toDisplayUnits<
+  T extends { value: number; sources?: DaySourceSpread },
+>(series: readonly T[], toDisplay: (value: number) => number): T[] {
+  return series.map((point) => {
+    const value = toDisplay(point.value);
+    if (!point.sources) return { ...point, value } as T;
+    return {
+      ...point,
+      value,
+      sources: {
+        trusted: point.sources.trusted,
+        others: point.sources.others.map((other) => ({
+          source: other.source,
+          value: toDisplay(other.value),
+        })),
+      },
+    } as T;
+  });
+}
+
+/**
+ * Every source id a series mentions, resolved to a display name — the dictionary
+ * a chart looks a mark's provenance up in.
+ *
+ * A DICTIONARY rather than a label per point: the ids repeat on every contested
+ * day, and naming a source is a question about the source, not about the day. A
+ * chart that cannot find an id falls back to printing it, which is a poor label
+ * but never a wrong one.
+ *
+ * Undefined when the series has no contested day at all, so a caller passes
+ * nothing rather than an empty object.
+ */
+export function sourceLabelMap(
+  series: readonly { sources?: DaySourceSpread }[],
+  labelOf: (source: string) => string
+): Record<string, string> | undefined {
+  const out: Record<string, string> = {};
+  for (const point of series) {
+    if (!point.sources) continue;
+    for (const source of [
+      point.sources.trusted,
+      ...point.sources.others.map((other) => other.source),
+    ]) {
+      if (out[source] == null) out[source] = labelOf(source);
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** "Oura", "Oura and Withings", "Oura, Withings and Manual". */
+function nameList(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The caption under a chart whose series has days more than one source reported:
+ * "Showing Health Connect · 2 days also reported by Oura".
+ *
+ * RAW FACTS ONLY, in the same register as the other honesty captions on this
+ * chart — which source you are looking at, how many days another one also
+ * covered, and who. No adjective, no verdict, and in particular no word for the
+ * disagreement: which number is right is not something the chart knows, and a
+ * caption that implied it did would be the one editorial line on a plot built to
+ * avoid them. Choosing between sources lives in the primary-source picker.
+ */
+export function sourceSpreadCaption({
+  trusted,
+  others,
+  days,
+}: {
+  trusted: readonly string[];
+  others: readonly string[];
+  days: number;
+}): string {
+  const also = `${days} day${days === 1 ? "" : "s"} also reported by ${nameList(others)}`;
+  return trusted.length > 0 ? `Showing ${nameList(trusted)} · ${also}` : also;
 }

@@ -20,6 +20,7 @@ import {
 import { metricSeriesKey } from "@/lib/saved-items";
 import type { DayFillWindow } from "@/lib/day-fill";
 import { loneReading, type DayFillSpec } from "@/lib/trend-sparkline";
+import type { DaySourceSpread } from "@/lib/metric-sources";
 import SingleReadingMark from "./SingleReadingMark";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { formatMonthDay } from "@/lib/format-date";
@@ -41,9 +42,13 @@ export interface TrendChartSpec {
   // #1533 double-render shape, ~700px apart on a phone. The title stays in the
   // document outline (sr-only), so the card is still named for a screen reader.
   hideTitle?: boolean;
-  data: { date: string; value: number | null }[];
+  data: { date: string; value: number | null; sources?: DaySourceSpread }[];
   unit: string;
   color: string;
+  // Source id → display name for the points that carry `sources` (#2653 state 6),
+  // resolved server-side because a document's name lives in a table the chart
+  // cannot read. Omitted by a single-source series, which is most of them.
+  sourceLabels?: Record<string, string>;
   // A goal's target line (already in this chart's display unit), when the metric
   // has an active goal with a target value.
   referenceValue?: { value: number; label?: string; color?: string } | null;
@@ -302,6 +307,7 @@ export default function TrendMetricCharts({
             yDomain={chart.yDomain}
             groupYTicks={chart.groupYTicks}
             gapFill={gapFillFor(chart)}
+            sourceLabels={chart.sourceLabels}
           />
         )}
       </ChartCard>
