@@ -82,7 +82,11 @@ everyone's time. Outcomes:
 One batch, not a drip. Collect everything investigation couldn't settle and
 put it to the user together, each question with the options and your
 recommended default (the `needs-human` skill's posture — recommendations make
-questions cheap to answer). Typical survivors of a good investigation:
+questions cheap to answer). These questions go to a person, not another
+agent: when a question is technical, lead with what it means in plain terms —
+what they'd see or get under each option — and keep the code-level detail
+underneath. The user should be able to answer without reading the codebase.
+Typical survivors of a good investigation:
 
 - **Scope boundaries** — which surfaces are in, what is explicitly out. "Out
   of scope" lines prevent well-meaning scope creep during implementation.
@@ -117,12 +121,21 @@ one nutrient key". This habit is load-bearing: the reconciliation tooling can
 only re-verify a line citation when the sentence names its anchor, and a bare
 line number goes stale silently.
 
-**Shape.** Features read as `## Problem` (with real observed cases where
-possible), `## Proposal`, then `## Invariants` and `## Out of scope` when they
-earn their place. Bugs read as: what is wrong, the mechanism with citations,
-then `**Fix:**` — and if the fix is genuinely open, options with a stated
-default rather than false confidence. Write tight and concrete; the reader is
-an agent that will act on exactly what is written.
+**Shape.** Structure with real headings and bullets — the reader is a triager
+skimming for the verdict and then an agent acting on exactly what is written,
+and a wall of prose serves neither. Features read as `## Problem` (with real
+observed cases where possible), `## Proposal`, then `## Invariants` and
+`## Out of scope` when they earn their place. Bugs read as `## What is wrong`
+(the mechanism, with citations), `## Consequence` (who hits it and when), and
+`## Fix` — options with a stated default when the fix is genuinely open,
+rather than false confidence. Two closing elements every issue carries:
+
+- **Acceptance criteria** — a short bulleted list of what must be true for
+  the implementing agent to call this done (tests included). This is the
+  contract the reviewer checks the PR against.
+- **`## Refs`** — the related issues and PRs, one per line with half a line
+  on why each is related. Inline `(see #N)` point-cites stay where they are;
+  the Refs section is the collected map so nobody re-derives it.
 
 **Decisions baked.** Choices made in step 4 appear as decisions ("owner
 decision: extend it to the web's tight spots too"), not as open questions.
