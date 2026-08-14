@@ -42,6 +42,51 @@ async function openQuickLogSheet(page: Page) {
   return sheet;
 }
 
+// Every class string the quick-log sheet's scrim and panel wear from now on,
+// recorded rather than sampled (#2725).
+//
+// A polled assertion cannot answer "did the scrim carry its fade class": the
+// whole exit is 240ms and both elements are REMOVED at the end of it, so by the
+// time `expect.poll` looks a second time the window it is asking about has
+// closed — and a green run would then mean "we were too slow", the worst
+// possible reading of a motion assertion. A MutationObserver sees every state
+// either element passes through, so the question becomes a fact about the
+// recording instead of a race with it.
+//
+// Calling this again resets the buffer, which is how the "…and the NEXT open"
+// half of these tests is stated separately from the close that preceded it.
+async function recordOverlayClasses(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const store = window as unknown as { __overlayClasses?: string[] };
+    store.__overlayClasses = [];
+    const record = () => {
+      for (const el of document.querySelectorAll(
+        '[data-testid="quick-log-sheet-backdrop"],[data-sheet-panel]'
+      )) {
+        store.__overlayClasses?.push(el.className);
+      }
+    };
+    // The mount itself is a childList mutation, so a panel that arrives with its
+    // enter class already on it is caught; the initial call covers whatever is
+    // already on screen when recording starts.
+    record();
+    new MutationObserver(record).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  });
+}
+
+async function recordedClasses(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      (window as unknown as { __overlayClasses?: string[] }).__overlayClasses ??
+      []
+  );
+}
+
 test.describe("bottom sheet: swipe down discards", () => {
   test("a decisive downward drag on the handle dismisses the sheet", async ({
     page,
@@ -56,6 +101,88 @@ test.describe("bottom sheet: swipe down discards", () => {
     // The sheet is transactional: dismissal means discard, and the panel is gone
     // from the tree (not merely hidden) once its exit finishes.
     await expect(sheet).toHaveCount(0);
+  });
+
+  test("the scrim FADES on the drag path — the close is visibly progressing", async ({
+    page,
+  }) => {
+    // #2725's first defect. The sheet leaving the tree was already asserted
+    // above, and it kept passing while the screen held solid dark: the panel
+    // flicked away under its inline settle and the backdrop sat at full opacity
+    // — `dark:bg-black/70` over the whole viewport — until the presence timer
+    // blinked it out. The fade is the only signal that a close is under way, so
+    // it is asserted as its own fact rather than inferred from the unmount.
+    await page.goto("/");
+    await hydrated(page);
+    const sheet = await openQuickLogSheet(page);
+
+    await recordOverlayClasses(page);
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
+    await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
+    await expect(sheet).toHaveCount(0);
+
+    const worn = await recordedClasses(page);
+    expect(
+      worn.some((c) => c.includes("overlay-exit-scrim")),
+      "a drag-dismissed sheet must still fade its backdrop out"
+    ).toBe(true);
+    // …and the handshake the latch exists for is untouched: the PANEL owns its
+    // transform for the rest of its life, so no keyframe is emitted over it. A
+    // fix that simply stopped suppressing everything would fail here.
+    expect(
+      worn.every((c) => !c.includes("overlay-exit-bottom")),
+      "a hand-dragged panel must keep its inline transform, not gain a keyframe"
+    ).toBe(true);
+  });
+
+  test("a cancelled drag does not mute the sheet for the rest of the page's life", async ({
+    page,
+  }) => {
+    // #2725's third defect, in its sharpest form: the drag below dismisses
+    // NOTHING. It used to leave the motion latch set forever anyway, because
+    // this sheet's component is rendered unconditionally by MobileNav and never
+    // unmounts — so from then on every close of it ended in the dark hold and
+    // every open snapped in with no slide. The latch belongs to the PANEL, which
+    // usePresence does unmount.
+    await page.goto("/");
+    await hydrated(page);
+    const sheet = await openQuickLogSheet(page);
+
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
+    // Under the commit distance and far under a flick — the sheet stays open.
+    await touchSwipe(
+      page,
+      grip,
+      { x: grip.x, y: grip.y + 30 },
+      { stepDelayMs: 40 }
+    );
+    await expect(sheet).toBeVisible();
+
+    // Close it by an entirely different route. The drag is over and resolved to
+    // nothing, so this close is owed its ordinary animation.
+    await recordOverlayClasses(page);
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+    expect(
+      (await recordedClasses(page)).some((c) =>
+        c.includes("overlay-exit-scrim")
+      ),
+      "a cancelled drag must not silence the NEXT close's scrim fade"
+    ).toBe(true);
+
+    // And the panel that comes back is a fresh element with no transform to
+    // protect, so it arrives on its slide again.
+    await recordOverlayClasses(page);
+    await openQuickLogSheet(page);
+    const reopened = await recordedClasses(page);
+    expect(
+      reopened.some((c) => c.includes("overlay-enter-bottom")),
+      "a remounted panel must animate in again"
+    ).toBe(true);
+    expect(
+      reopened.some((c) => c.includes("overlay-enter-scrim")),
+      "…and so must its backdrop"
+    ).toBe(true);
   });
 
   test("a short, slow drag leaves the sheet open", async ({ page }) => {

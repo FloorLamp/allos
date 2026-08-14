@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { centerOf, hydratedClick, touchSwipe } from "./helpers";
 import { workerAuthPath } from "./worker-env";
 // Standalone-PWA pull-to-refresh (issue #1428, section B).
 //
@@ -121,6 +122,53 @@ test("a pull at the top of a standalone page refreshes; a mid-page pull does not
     await page.evaluate(() => window.scrollTo(0, 0));
     await pullDown(page, 30);
     await expect(indicator).toHaveAttribute("data-refreshes", "1");
+  } finally {
+    await context.close();
+  }
+});
+
+test("dragging a bottom sheet closed is not a pull, and refreshes nothing", async ({
+  browser,
+}) => {
+  // #2725's second defect. The listeners are on the WINDOW, so they see touches
+  // inside overlays too — and a sheet's drag-dismiss passed every test the
+  // classifier had: downward, from a page sitting at its top, far past the
+  // arming distance. Installed, that meant a whole-page `router.refresh()` at
+  // the exact moment the sheet was closing, plus the PTR spinner (`z-90`)
+  // surfacing over the sheet (`z-60`) during a gesture that was never a pull.
+  //
+  // The existing test above proves a mid-page pull does nothing; this proves an
+  // overlay gesture does nothing, which is a different clause of the classifier
+  // and was the one that did not exist. Real Chromium touch input (not the
+  // synthesised events `pullDown` uses), because the sheet has to actually drag.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    storageState: workerAuthPath(),
+  });
+  const page = await context.newPage();
+  await emulateStandalone(page);
+  try {
+    await page.goto("/");
+    await expect(page.getByTestId("shell-chrome")).toHaveAttribute(
+      "data-ready",
+      "true"
+    );
+    const indicator = page.getByTestId(INDICATOR);
+    await expect(indicator).toHaveAttribute("data-refreshes", "0");
+
+    const sheet = page.getByTestId("quick-log-sheet");
+    await hydratedClick(page, page.getByTestId("quick-log-more"));
+    await expect(sheet).toBeVisible();
+
+    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
+    await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
+    // The gesture did what it was for…
+    await expect(sheet).toHaveCount(0);
+    // …and nothing else. The count is what makes that statable: the refresh is
+    // counted synchronously on touchend, and the sheet's exit has since run to
+    // completion, so a fired refresh would already be visible here.
+    await expect(indicator).toHaveAttribute("data-refreshes", "0");
   } finally {
     await context.close();
   }
