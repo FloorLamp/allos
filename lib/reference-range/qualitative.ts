@@ -570,9 +570,12 @@ export function classifyQualitativeResult(
 // the unlocked answer, which is the right one for a record that does not exist.
 export interface QualitativeFlagContext {
   // `isEditLocked(medical_records.edited)` — a person has been in this row through
-  // the record editor. Gates the #2687 no-result clear ONLY: the older #548/#549
-  // transitions are unchanged, deliberately, because widening the edit lock to them
-  // is a separate claim about base behaviour and not this change's to make.
+  // the record editor. Gates the two transitions that would DELETE a flag a person
+  // chose: the #2687 no-result clear (#2712) and the #548 §1 clear on an IDENTITY-
+  // class row (#2715). It reaches nothing else. In particular the #544 immune
+  // promotion, the #629 bad-polarity promotion and the #548 §1 clear on a mutable
+  // NEUTRAL attribute (urinalysis colour, morphology pattern) are unchanged — those
+  // are separate claims about base behaviour and not these changes' to make.
   editLocked?: boolean;
 }
 
@@ -641,6 +644,27 @@ export function qualitativeFlagResolution(
       qualitativeClassForLoinc(loinc) === "immunity")
   )
     return currentFlag === "immune" ? undefined : "immune";
+  // An IDENTITY-class row a person has edited by hand keeps the flag they set (#2715).
+  // This branch's clear exists to delete an EXTRACTOR GUESS on a value that cannot be
+  // abnormal (#548 §1), and on an edit-locked row the flag is not a guess — it is the
+  // one thing in the row the app knows a human chose. #133's rule is that a derived
+  // pass never overwrites a hand-edited row, and this is a derived pass; #2712 already
+  // conceded the point for the no-result clear above, and a rule that holds on one
+  // branch and not its neighbour reads as a bug either way.
+  //
+  // `c.immutable` is precisely the identity class and nothing else: it is set by the
+  // LOINC `identity` branch and by the IMMUTABLE_ATTRIBUTE name branch, and every
+  // other classification in this file answers false. That is what keeps the reach
+  // narrow — a MUTABLE neutral attribute (urinalysis colour, morphology pattern) still
+  // clears while edit-locked, because its extractor guess is still a guess and #2715
+  // scoped itself to identity. The coupling is pinned by a test rather than assumed,
+  // so a future class that answers `immutable` without being identity fails loudly.
+  //
+  // The two axes stay independent: the row is still exempt from the retest clock
+  // (#548 §2 reads the same `immutable` in isBiomarkerStale), so the flag survives and
+  // the nudge stays off. Nothing here writes, and nothing strips what is already
+  // stored — a row whose flag past boots already cleared is simply left as it is.
+  if (c.immutable && opts?.editLocked) return undefined;
   // Neutral attribute, or good non-immunity: never "abnormal". Clear an out-of-range
   // flag the extractor guessed; leave an already-neutral flag alone.
   return isOutOfRange(currentFlag) ? null : undefined;
