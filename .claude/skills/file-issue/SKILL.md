@@ -1,7 +1,7 @@
 ---
 name: file-issue
 description: Interactively investigate and file a GitHub issue on FloorLamp/allos — verify the premise against the code, search the tracker for duplicates and prior rulings, pin citations to real file/lines, batch the clarifying questions, then file with every decision already baked in. Use whenever the user reports a bug, describes surprising behavior, proposes a feature, or says "file an issue", "write this up", "track this", or "add it to the backlog" — even when the idea is half-formed and needs shaping first. NOT for editing or reconciling issues that already exist (that is reconcile-tracker's job).
-allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(gh api:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(git diff:*), Bash(git fetch:*)
+allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(gh api:*), Bash(curl:*), Bash(git log:*), Bash(git show:*), Bash(git grep:*), Bash(git diff:*), Bash(git fetch:*)
 ---
 
 # file-issue — investigate first, decide together, file once
@@ -17,7 +17,12 @@ premises (`docs/internals/tracker-reconciliation.md`). This skill exists to
 file issues that don't join that list.
 
 Use `gh api` (GitHub REST) for **all** issue reads and writes. MCP GitHub
-tools are reserved for merging PRs and are not granted here.
+tools are reserved for merging PRs and are not granted here. In an environment
+without the `gh` binary (some remote containers), `curl https://api.github.com/...`
+covers reads — but note the unauthenticated **search** endpoint is often
+rate-limited or blocked; fall back to listing issues (all open, plus the
+relevant label in any state) and filtering locally. Writes always need
+authenticated `gh`; without it, stop at the draft.
 
 ## 1. Capture the ask
 
