@@ -100,7 +100,7 @@ const FIBER_NAME_MATCHERS: RegExp[] = [
   /methylcellulose/i,
   /\binulin\b/i,
   /(?:flax\s*seed|flaxseed)(?!\s*oil)|ground\s*flax/i,
-  /\bchia\b/i,
+  /\bchia\b(?!\s*(?:seed\s*)?oil)/i, // chia seed OIL is an omega-3 product, not fiber
   /beta[\s-]?glucan/i,
   /glucomannan/i,
   /\bkonjac\b/i,

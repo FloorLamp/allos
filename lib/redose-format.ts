@@ -11,7 +11,6 @@ import type {
   RedoseStatus,
 } from "./prn-redose";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
-import { intakeShortName } from "./intake-short-name";
 import { GLYPH } from "./notifications/glyphs";
 
 // A short "6h" / "6.5h" for an elapsed/remaining hour count, one decimal place at
@@ -167,9 +166,9 @@ export function prnQuickLogLabel(input: {
   familyMemberCount?: number;
 }): string {
   const members = input.familyMemberCount ?? 1;
-  // A button label, so the curated short name; the tap's answer toast keeps the
-  // full name (administrationOutcomeText renders it).
-  const head = `${input.prefix ?? ""}${intakeShortName(input.name)}${input.dose ? ` · ${input.dose}` : ""}`;
+  // Always the FULL name: this list is medications-only (getPrnMedicationsForQuickLog),
+  // and a medication is never label-shortened — a shortened drug name is a misread risk.
+  const head = `${input.prefix ?? ""}${input.name}${input.dose ? ` · ${input.dose}` : ""}`;
   const verdict =
     redoseCardLabel(input.status, members) ??
     (input.countToday > 0

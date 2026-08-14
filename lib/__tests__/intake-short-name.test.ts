@@ -114,6 +114,25 @@ describe("intakeItemShortLabel", () => {
     ).toBe("Acetaminophen");
   });
 
+  it("never shortens a medication's NAME either, even when the map knows it", () => {
+    // Several map entries are also drug names — an Rx ergocalciferol, an OTC
+    // magnesium citrate laxative. The kind gate, not the map's curation, is
+    // what keeps a drug name whole on a button.
+    expect(
+      intakeItemShortLabel({
+        name: "Ergocalciferol (Vitamin D2)",
+        kind: "medication",
+      })
+    ).toBe("Ergocalciferol (Vitamin D2)");
+    expect(
+      intakeItemShortLabel({ name: "Magnesium Citrate", kind: "medication" })
+    ).toBe("Magnesium Citrate");
+    // The same names shorten for a supplement row.
+    expect(
+      intakeItemShortLabel({ name: "Magnesium Citrate", kind: "supplement" })
+    ).toBe("Mag citrate");
+  });
+
   it("ignores a product that is not shorter, and copes with absences", () => {
     expect(
       intakeItemShortLabel({

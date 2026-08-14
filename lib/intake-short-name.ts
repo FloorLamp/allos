@@ -15,9 +15,10 @@
 //   • Two DISTINCT substances must never collapse onto one short name (the K2
 //     forms keep MK-4/MK-7); aliases of the SAME substance (Coenzyme Q10 /
 //     Ubiquinone) deliberately share one.
-//   • Prescription drug names stay out — a shortened drug name is a misread
-//     risk. The vocabulary here is supplement/vitamin shorthand, so medications
-//     pass through untouched by construction.
+//   • The vocabulary is supplement/vitamin shorthand — but several entries are
+//     ALSO drug names (ergocalciferol, magnesium citrate), so "medications are
+//     never shortened" is enforced by an explicit kind gate in
+//     intakeItemShortLabel, never by what the map happens to contain.
 //
 // Keys are stored normalized (see normalizeIntakeName); the invariant tests in
 // lib/__tests__/intake-short-name.test.ts pin key stability and idempotency.
@@ -139,27 +140,28 @@ export function intakeShortName(name: string): string {
 /**
  * The button label for an intake item, from the row's own fields: the curated
  * short form when the map knows the name; else the item's own PRODUCT when it
- * is a supplement's and genuinely shorter — the "name carries the composition,
- * product carries the product identity" convention (name
- * "Astaxanthin/Lutein/Zeaxanthin", product "Eye Health+"); else the full name.
+ * is genuinely shorter — the "name carries the composition, product carries
+ * the product identity" convention (name "Astaxanthin/Lutein/Zeaxanthin",
+ * product "Eye Health+"); else the full name.
  *
- * A MEDICATION's product never substitutes: there it is a formulation label
- * ("Children's oral suspension (160 mg / 5 mL)"), and the med surfaces already
- * render it beside the dose (formatMedicationDoseProduct).
+ * A MEDICATION is excluded from BOTH substitutions, explicitly: a shortened
+ * drug name is a misread risk however it was produced — the map holds
+ * supplement vocabulary, but several entries are drug names too (an Rx
+ * "Ergocalciferol (Vitamin D2)", an OTC "Magnesium Citrate" laxative), so the
+ * kind gate has to sit here, not in the map's curation. A medication's
+ * product is a formulation label besides ("Children's oral suspension
+ * (160 mg / 5 mL)"), already rendered beside the dose.
  */
 export function intakeItemShortLabel(item: {
   name: string;
   kind?: IntakeItemKind | null;
   product?: string | null;
 }): string {
+  if (item.kind === "medication") return item.name;
   const curated = INTAKE_SHORT_NAMES[normalizeIntakeName(item.name)];
   if (curated) return curated;
   const product = item.product?.trim();
-  if (
-    product &&
-    item.kind !== "medication" &&
-    product.length < item.name.trim().length
-  ) {
+  if (product && product.length < item.name.trim().length) {
     return product;
   }
   return item.name;

@@ -678,10 +678,12 @@ one-tap surfaces label items through `lib/intake-short-name.ts` — a hand-curat
 map from intake item names to short display forms ("Vitamin D3 + K2" → "D3+K2",
 "Coenzyme Q10" → "CoQ10"), matched case-/whitespace-/separator-insensitively.
 Curated, never derived: an unknown name passes through WHOLE rather than being
-truncated on a guess (the #1817 lookup-not-strip posture), which also keeps
-prescription drug names untouched by construction — the map holds
-supplement/vitamin shorthand only, since a shortened drug name is a misread
-risk. Applied at the BUTTON label boundary only (dose-reminder take buttons,
+truncated on a guess (the #1817 lookup-not-strip posture). A MEDICATION is
+never shortened at all — `intakeItemShortLabel` gates on `kind` explicitly,
+because the map's supplement vocabulary contains names that are also drugs
+(ergocalciferol, magnesium citrate) and a shortened drug name is a misread
+risk; the medications-only `/dose` list applies no shortening for the same
+reason. Applied at the BUTTON label boundary only (dose-reminder take buttons,
 post-workout finish, the digest offer tail, the `/dose` list, household-round
 confirms); body lines, toasts and every in-app surface keep the full name — the
 full name is the record, the short name is a control label. When the map misses,

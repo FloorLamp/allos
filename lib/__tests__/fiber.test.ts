@@ -81,9 +81,11 @@ describe("isFiberSupplement", () => {
       "Magnesium glycinate",
       "Creatine",
       "Whey protein",
-      // #2752 — the near-miss: an omega-3 product with ~no fiber, whose name
-      // contains "flaxseed". Counting it would flag a fiber dose that never was.
+      // #2752 — the near-misses: omega-3 products with ~no fiber whose names
+      // contain a fiber word. Counting one would flag a fiber dose that never was.
       "Flaxseed Oil",
+      "Chia Seed Oil",
+      "Chia oil",
     ]) {
       expect(isFiberSupplement(name), name).toBe(false);
     }
