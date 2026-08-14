@@ -116,6 +116,9 @@ export default function ActivityOverlay({
     onOutcome: () => onMinimize?.(),
     // The panel is PARKED by a minimize, not unmounted — it comes straight back
     // with the session still live, so it must return to its resting transform.
+    // Which is also why it passes no `panelMounted` (#2725): this element has no
+    // unmount for the motion latch to expire on, and it needs none — the commit
+    // clears the latch itself, and the dock renders no motion class anyway.
     commitSettle: "rest",
     enabled: Boolean(onMinimize) && !hidden,
   });

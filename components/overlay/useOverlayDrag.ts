@@ -21,11 +21,23 @@ import { useDragGesture } from "./useDragGesture";
 // inline `style.transform`. A running CSS animation OUTRANKS inline style, so if
 // both are live the drag silently does nothing and the panel snaps back. The fix
 // is a one-way latch: the moment a drag claims the panel this hook reports
-// `suppressMotion`, the consumer stops emitting the keyframe class for the rest
-// of that mount, and from then on the panel's transform is ours alone —
-// including its exit, which we run as an inline transition instead. The latch
-// never releases while mounted: re-adding the enter class after a cancelled drag
-// would replay the whole slide-up on a panel that is already sitting still.
+// `suppressMotion`, the consumer stops emitting the keyframe class, and from
+// then on the panel's transform is ours alone — including its exit, which we run
+// as an inline transition instead. It never releases while that panel is alive:
+// re-adding the enter class after a cancelled drag would replay the whole
+// slide-up on a panel that is already sitting still.
+//
+// THE LATCH'S SCOPE IS THE PANEL, NOT THE COMPONENT (#2725). The rationale above
+// is a claim about one DOM element — the one carrying the inline transform — and
+// it expires the moment that element is gone. `usePresence` unmounts the panel
+// between opens, so a remounted panel has no transform to fight and is owed its
+// enter animation. Scoping the latch to the component instead was invisible only
+// while every consumer unmounted with its panel: the quick-log sheet's
+// `BottomSheet` is rendered unconditionally by `MobileNav` and the quick-entry
+// host retains its form after close, so those instances never unmount and ONE
+// cancelled 30px drag muted that sheet's animations — every later open snapping
+// in, every later close ending in a dark hold — for the page's whole life.
+// Consumers whose panel unmounts pass `panelMounted`; see the option below.
 //
 // ── Reduced motion ───────────────────────────────────────────────────────────
 //
@@ -65,6 +77,16 @@ export interface OverlayDragOptions {
   //     already made `display: none`, and leaving the transform behind would
   //     restore the panel translated off the bottom of the screen.
   commitSettle?: "away" | "rest";
+  // Is the PANEL element currently in the DOM? The `suppressMotion` latch is
+  // released when this goes false, because that is when the transform it was
+  // protecting ceases to exist (see the handshake note above).
+  //
+  // Pass the consumer's `usePresence` `mounted` — the same flag that decides
+  // whether the panel renders at all, so the latch cannot outlive it. The
+  // default is `true`: a surface whose panel is PARKED rather than unmounted
+  // (the activity dock hides its element to keep a live workout running) has no
+  // unmount to key on, and clears the latch on commit instead.
+  panelMounted?: boolean;
   enabled?: boolean;
 }
 
@@ -74,11 +96,28 @@ export function useOverlayDrag({
   direction,
   onOutcome,
   commitSettle = "away",
+  panelMounted = true,
   enabled = true,
 }: OverlayDragOptions): { suppressMotion: boolean } {
   const reduceMotion = usePrefersReducedMotion();
   const [suppressMotion, setSuppressMotion] = useState(false);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The panel's presence, mirrored so a CHANGE in it can be answered during
+  // render — the shape components/usePresence.ts uses for the same reason. An
+  // effect would be wrong twice over: React discourages the cascading render
+  // (`react-hooks/set-state-in-effect` fails it), and the release would land one
+  // paint late, which on a remount is exactly the paint that carries the enter
+  // keyframe.
+  const [panelWasMounted, setPanelWasMounted] = useState(panelMounted);
+  if (panelWasMounted !== panelMounted) {
+    setPanelWasMounted(panelMounted);
+    // The panel is gone; so is anything the latch was protecting. Releasing on
+    // UNMOUNT rather than on close is deliberate — through the exit the element
+    // is still on screen carrying the drag's inline transform, and re-admitting
+    // the exit keyframe over it is the very fight the latch exists to prevent.
+    if (!panelMounted) setSuppressMotion(false);
+  }
 
   // Everything below speaks the recognizer's language: DIRECTED travel, always
   // >= 0 (lib/gesture.ts clamps movement the other way at 0). The axis and the

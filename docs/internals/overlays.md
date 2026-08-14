@@ -90,11 +90,63 @@ recognizer and reduced-motion posture, all of which it takes.
 **The keyframe/inline-transform handshake.** A running CSS animation OUTRANKS
 inline style. A panel that is both class-animated and finger-dragged therefore
 ignores the drag and snaps back. `useOverlayDrag` reports `suppressMotion` the
-moment a drag claims the panel; the consumer stops emitting the motion class for
-the rest of that mount, and the panel's transform is the hook's alone from then
-on (including its exit, run as an inline transition). The latch never releases
-while mounted — re-adding the enter class after a cancelled drag would replay
-the whole slide-up on a panel that is already sitting still.
+moment a drag claims the panel; the consumer stops emitting the motion class,
+and the panel's transform is the hook's alone from then on (including its exit,
+run as an inline transition). The latch does not release while that panel is
+alive — re-adding the enter class after a cancelled drag would replay the whole
+slide-up on a panel that is already sitting still.
+
+**The latch's scope is the PANEL, and only the panel** (#2725). Two corollaries,
+both of which were wrong first and composed into one symptom — drag a sheet
+closed on a phone and the screen holds dark.
+
+_It expires when the panel unmounts._ The rationale above is a claim about one
+DOM element, and `usePresence` destroys that element between opens: a remounted
+panel has no inline transform to fight and is owed its slide. Scoping the latch
+to the COMPONENT instead was invisible only while every consumer unmounted with
+its panel — but the quick-log sheet's `BottomSheet` is rendered unconditionally
+by `MobileNav`, and the quick-entry host retains its form after close, so those
+instances never unmount and one cancelled 30px drag muted that sheet's
+animations for the page's whole life. Consumers whose panel unmounts pass
+`panelMounted` (their `usePresence` `mounted`); the dock passes none, because a
+minimize parks its element rather than destroying it and its `commitSettle:
+"rest"` clears the latch itself.
+
+_It never reaches the scrim._ The backdrop carries no inline transform — nothing
+ever writes one — so there is no handshake to honour and gating it only cost the
+exit fade. `BottomSheet` used to route both classes through the latch; the
+drawer and the switcher always animated their scrim unconditionally, and that is
+now the one shape. The fade is what says a close is progressing: without it a
+drag-dismissed sheet leaves a full-opacity `dark:bg-black/70` scrim over the
+viewport until the presence timer blinks it out, and anything that delays that
+timer stretches the hold.
+
+**Pull-to-refresh stands down while an overlay is up** (#2725). `PullToRefresh`
+listens at the window, so it sees touches inside overlays too, and a sheet's
+drag-dismiss is downward, starts at the top of the page behind and travels well
+past the arming distance — an armed pull by every test the classifier had.
+Installed as a PWA that fired a whole-page `router.refresh()` inside the sheet's
+exit window. `classifyPull` now takes `overlayOpen`, read once at `touchstart`
+(the gesture dismisses the overlay it began in, so a mid-gesture re-read would
+see none and re-arm).
+
+The measure is **body scroll lock, and only that** (`overlayOwnsViewport` in
+`lib/pull-to-refresh.ts`). `useLockBodyScroll` is the only writer of
+`body.style.overflow`, and its callers are exactly the surfaces that own the
+vertical drag: every downward-capable recognizer in the app runs under a locked
+body, and the lock is a document-level fact, so it covers a drag begun on a
+sheet's scrim too.
+
+It deliberately does **not** ask "is a modal open". That was the first version —
+added for four surfaces that never lock (`ModalShell` and its consumers,
+`MergeConflictDialog`, `PhotoGallery`, `FitnessTestTimer`) — and it was a second
+bug rather than a fix: none of the four has a touch gesture, so none can produce
+the drag being refused, and `e2e/dirty-form-refresh.mobile.spec.ts` already pins
+that a pull STILL refreshes while a record form in a `ModalShell` holds unsaved
+input (#1878: a refresh the user asked for is never deferred, and installed there
+is no other way to ask). "Is a modal open" is a question about ATTENTION; this
+one is about who owns the DRAG. A new fact belongs in it only if it names a
+surface that owns the gesture, and it owes the module a test in both directions.
 
 **`commitSettle: "away" | "rest"`.** A sheet is going away, so it finishes its
 travel while the consumer unmounts it. The dock is being PARKED — the same
