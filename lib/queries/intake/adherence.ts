@@ -2024,6 +2024,8 @@ export function getOfferedIntakeForSlot(
 ): {
   itemId: number;
   name: string;
+  kind: IntakeItemKind;
+  product: string | null;
   detail: string | null;
   countToday: number;
 }[] {
@@ -2092,6 +2094,8 @@ export function getOfferedIntakeForSlot(
     .map((r) => ({
       itemId: r.id,
       name: r.name,
+      kind: r.kind,
+      product: r.product,
       detail:
         r.kind === "medication"
           ? formatMedicationDoseProduct(r.amount, r.product)

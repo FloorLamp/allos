@@ -55,7 +55,7 @@ import {
   type WindowDose,
 } from "./intake-format";
 import { OBLIGATION_ORDER } from "../intake-schedule";
-import { intakeShortName } from "../intake-short-name";
+import { intakeItemShortLabel } from "../intake-short-name";
 import { dispatch } from "./index";
 import { prefixForProfile } from "./attribution";
 import { workoutFinishCallback } from "./callback-data";
@@ -142,7 +142,7 @@ export function renderPostWorkoutFinishMessage(
   for (const { dose, item } of pending) {
     const row = `dose:${dose.id}`;
     actions.push({
-      label: `${GLYPH.done} ${intakeShortName(item.name)}`,
+      label: `${GLYPH.done} ${intakeItemShortLabel(item)}`,
       data: `take:${profileId}:${dose.id}:${item.id}:${date}`,
       row,
     });

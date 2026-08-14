@@ -23,7 +23,8 @@
 // even untapped. Hint-less items are offered in every slot — no hint means no opinion.
 
 import { TIME_BUCKET_LABELS, currentTimeBucket } from "../intake-schedule";
-import { intakeShortName } from "../intake-short-name";
+import { intakeItemShortLabel } from "../intake-short-name";
+import type { IntakeItemKind } from "../types";
 import type { NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
 
@@ -31,6 +32,11 @@ import { GLYPH } from "./glyphs";
 export interface OfferedItem {
   itemId: number;
   name: string;
+  // Kind + product feed the short-label fallback: a supplement's shorter product
+  // name may stand in for a long composition-style name; a medication's product
+  // is a formulation and never does (it already rides `detail` there).
+  kind?: IntakeItemKind;
+  product?: string | null;
   // The dose amount to show beside the name, already formatted by the caller.
   detail: string | null;
   // How many administrations are already logged today, so a re-tap is informed
@@ -88,7 +94,7 @@ export function expandedOfferActions(
 ): NotificationAction[] {
   const actions: NotificationAction[] = items.map((it) => ({
     label:
-      `${GLYPH.dose} ${intakeShortName(it.name)}` +
+      `${GLYPH.dose} ${intakeItemShortLabel(it)}` +
       (it.detail ? ` · ${it.detail}` : "") +
       (it.countToday > 0 ? ` (${it.countToday} today)` : ""),
     data: `prn:${profileId}:${it.itemId}:${token()}`,

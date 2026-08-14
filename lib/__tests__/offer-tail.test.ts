@@ -143,6 +143,25 @@ describe("the expanded tail", () => {
     expect(actions[1].label).toContain("(2 today)");
     expect(actions.at(-1)!.data).toBe(`${OFFER_COLLAPSE_PREFIX}:7:2026-07-29`);
   });
+
+  it("labels a supplement by its shorter product name when it has one", () => {
+    const actions = expandedOfferActions(
+      7,
+      "2026-07-29",
+      [
+        {
+          itemId: 13,
+          name: "Astaxanthin/Lutein/Zeaxanthin (test)",
+          kind: "supplement" as const,
+          product: "Eye Health+",
+          detail: "1 cap",
+          countToday: 0,
+        },
+      ],
+      () => "tok"
+    );
+    expect(actions[0].label).toBe("💊 Eye Health+ · 1 cap");
+  });
 });
 
 describe("offerTextTail (the channels that cannot expand)", () => {

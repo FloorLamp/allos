@@ -22,6 +22,8 @@
 // Keys are stored normalized (see normalizeIntakeName); the invariant tests in
 // lib/__tests__/intake-short-name.test.ts pin key stability and idempotency.
 
+import type { IntakeItemKind } from "./types";
+
 // Case-, whitespace- and separator-insensitive lookup form: lowercased, "&"
 // read as "+", runs of whitespace collapsed, and no spaces around "+" — so
 // "Vitamin D3 + K2", "vitamin d3+k2" and "Vitamin D3 & K2" are one key.
@@ -132,4 +134,33 @@ export const INTAKE_SHORT_NAMES: Record<string, string> = {
  */
 export function intakeShortName(name: string): string {
   return INTAKE_SHORT_NAMES[normalizeIntakeName(name)] ?? name;
+}
+
+/**
+ * The button label for an intake item, from the row's own fields: the curated
+ * short form when the map knows the name; else the item's own PRODUCT when it
+ * is a supplement's and genuinely shorter — the "name carries the composition,
+ * product carries the product identity" convention (name
+ * "Astaxanthin/Lutein/Zeaxanthin", product "Eye Health+"); else the full name.
+ *
+ * A MEDICATION's product never substitutes: there it is a formulation label
+ * ("Children's oral suspension (160 mg / 5 mL)"), and the med surfaces already
+ * render it beside the dose (formatMedicationDoseProduct).
+ */
+export function intakeItemShortLabel(item: {
+  name: string;
+  kind?: IntakeItemKind | null;
+  product?: string | null;
+}): string {
+  const curated = INTAKE_SHORT_NAMES[normalizeIntakeName(item.name)];
+  if (curated) return curated;
+  const product = item.product?.trim();
+  if (
+    product &&
+    item.kind !== "medication" &&
+    product.length < item.name.trim().length
+  ) {
+    return product;
+  }
+  return item.name;
 }

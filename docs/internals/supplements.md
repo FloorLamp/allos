@@ -684,7 +684,12 @@ supplement/vitamin shorthand only, since a shortened drug name is a misread
 risk. Applied at the BUTTON label boundary only (dose-reminder take buttons,
 post-workout finish, the digest offer tail, the `/dose` list, household-round
 confirms); body lines, toasts and every in-app surface keep the full name — the
-full name is the record, the short name is a control label. Two rules for
+full name is the record, the short name is a control label. When the map misses,
+`intakeItemShortLabel` falls back to a SUPPLEMENT's own `product` when it is
+genuinely shorter than the name — the "name carries the composition, product
+carries the product identity" convention (name "Astaxanthin/Lutein/Zeaxanthin",
+product "Eye Health+"); a medication's `product` is a formulation label already
+rendered beside the dose and never substitutes. Two rules for
 entries, pinned by `lib/__tests__/intake-short-name.test.ts`: a short form must
 be recognizable on its own (no bare "C" for Vitamin C), and two distinct
 substances must never collapse onto one short name (the K2 forms keep

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   INTAKE_SHORT_NAMES,
+  intakeItemShortLabel,
   intakeShortName,
   normalizeIntakeName,
 } from "@/lib/intake-short-name";
@@ -78,5 +79,52 @@ describe("intakeShortName", () => {
     for (const short of Object.values(INTAKE_SHORT_NAMES)) {
       expect(intakeShortName(short)).toBe(short);
     }
+  });
+});
+
+describe("intakeItemShortLabel", () => {
+  it("falls back to a supplement's shorter product name", () => {
+    // The "name carries the composition, product carries the identity" shape.
+    expect(
+      intakeItemShortLabel({
+        name: "Astaxanthin/Lutein/Zeaxanthin",
+        kind: "supplement",
+        product: "Eye Health+",
+      })
+    ).toBe("Eye Health+");
+  });
+
+  it("prefers the curated form over the product", () => {
+    expect(
+      intakeItemShortLabel({
+        name: "Vitamin D3 + K2",
+        kind: "supplement",
+        product: "D/K2 5000",
+      })
+    ).toBe("D3+K2");
+  });
+
+  it("never substitutes a medication's product (it is a formulation)", () => {
+    expect(
+      intakeItemShortLabel({
+        name: "Acetaminophen",
+        kind: "medication",
+        product: "Chewable",
+      })
+    ).toBe("Acetaminophen");
+  });
+
+  it("ignores a product that is not shorter, and copes with absences", () => {
+    expect(
+      intakeItemShortLabel({
+        name: "Zinc",
+        kind: "supplement",
+        product: "Zinc Picolinate 30mg 90 caps",
+      })
+    ).toBe("Zinc");
+    expect(intakeItemShortLabel({ name: "Custom Blend" })).toBe("Custom Blend");
+    expect(intakeItemShortLabel({ name: "Custom Blend", product: "  " })).toBe(
+      "Custom Blend"
+    );
   });
 });
