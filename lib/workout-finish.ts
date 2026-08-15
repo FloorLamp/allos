@@ -16,7 +16,7 @@
 
 import { db, writeTx } from "./db";
 import { now as clockNow, sqlNow } from "./clock";
-import { zonedDateParts } from "./date";
+import { utcSqlString, zonedDateParts } from "./date";
 import { minutesBetween } from "./activity-meta";
 import { getTimezone } from "./settings/display";
 import { parseComponents } from "./types/training";
@@ -164,6 +164,41 @@ export function discardWorkoutSession(
     );
   });
   return { kind: "discarded", activityId };
+}
+
+// Auto-expiry (#2870 step 3, owner-ruled: a zero-content unfinished activity
+// is a draft — auto-expire it). A husk older than DRAFT_EXPIRE_HOURS by last
+// touch is deleted by the notify tick's per-profile housekeeping; anything
+// with content (same bar as the close-path abandonment) is exempt, and the
+// live-draft shape already excludes finished and source-owned rows. 24 hours:
+// long enough that a phone dying mid-session never loses the address a user
+// might return to, short enough that husks don't outlive the day they meant.
+export const DRAFT_EXPIRE_HOURS = 24;
+
+export function expireWorkoutDrafts(
+  profileId: number,
+  now: Date = clockNow()
+): number {
+  const cutoff = utcSqlString(
+    new Date(now.getTime() - DRAFT_EXPIRE_HOURS * 3_600_000)
+  );
+  const rows = db
+    .prepare(
+      `SELECT id, start_time, end_time, duration_min, components, notes,
+              distance_km, source
+         FROM activities
+        WHERE profile_id = ? AND source IS NULL AND end_time IS NULL
+          AND start_time IS NOT NULL AND duration_min IS NULL
+          AND COALESCE(updated_at, created_at) < ?`
+    )
+    .all(profileId, cutoff) as DraftRow[];
+  let expired = 0;
+  for (const row of rows) {
+    if (hasLoggedContent(row)) continue;
+    if (discardWorkoutSession(profileId, row.id).kind === "discarded")
+      expired++;
+  }
+  return expired;
 }
 
 // Discard ONLY IF EMPTY (#2870 step 3): closing a live session that never

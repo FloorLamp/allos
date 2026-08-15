@@ -18,6 +18,7 @@ import {
 } from "./queries";
 import { getEquipment } from "./equipment";
 import { getActivityVideosForActivities } from "./activity-video-write";
+import { isDraftActivityRow } from "./activity-draft";
 import {
   buildTrainingLogCards,
   type TrainingLogCardData,
@@ -66,6 +67,10 @@ export interface ActivityDetailData {
   // Adjacent activities in ledger order (date, then id) for ‹ older / newer ›.
   olderId: number | null;
   newerId: number | null;
+  // A create-at-start session that never logged anything (#2870 step 3): this
+  // page is its ONLY address (the feed hides it), so the page must say so and
+  // offer the discard.
+  isDraft: boolean;
 }
 
 export function getActivityDetailData(
@@ -185,5 +190,9 @@ export function getActivityDetailData(
     heartRate: { window: heartRateWindow, minutes, zoneMinutes, zoneModel },
     olderId,
     newerId,
+    isDraft: isDraftActivityRow(
+      row,
+      sets.filter((s) => s.activity_id === row.id).length
+    ),
   };
 }
