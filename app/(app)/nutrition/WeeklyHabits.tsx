@@ -167,7 +167,7 @@ export default function WeeklyHabits({
         <select
           name="group_key"
           aria-label="Food group"
-          className="input flex-1 text-sm"
+          className="input flex-[2_1_12rem] text-sm"
           defaultValue="fatty_fish"
         >
           {FOOD_GROUPS.map((g) => (

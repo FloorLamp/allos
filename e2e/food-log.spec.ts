@@ -678,7 +678,7 @@ test("a serving logged with no stated time records no eating time (#2053)", asyn
     "false"
   );
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
-    "record no eating time"
+    "recorded with no eating time"
   );
 
   await revealFoodGroup(page, "nuts_seeds");
