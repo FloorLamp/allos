@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   isDeploymentSkewError,
+  isRetriableSaveError,
   isStaleActionError,
+  saveFailureEvent,
   nextSkewGuard,
   parseSkewGuard,
   SKEW_RECOVERY_MAX_ATTEMPTS,
@@ -320,6 +322,60 @@ describe("isDeploymentSkewError — the stale-build signature (#1906)", () => {
     expect(isDeploymentSkewError(null)).toBe(false);
     expect(isDeploymentSkewError(undefined)).toBe(false);
     expect(isDeploymentSkewError({})).toBe(false);
+  });
+});
+
+describe("isRetriableSaveError — the swap window's network shapes (#2866)", () => {
+  it("accepts the two shapes a mid-deploy save actually produces", () => {
+    // Behind a reverse proxy: a 502/503 HTML page makes Next's reducer throw
+    // the generic unexpected-response error.
+    expect(
+      isRetriableSaveError(
+        new Error("An unexpected response was received from the server.")
+      )
+    ).toBe(true);
+    // Port exposed directly: the connection fails outright.
+    expect(isRetriableSaveError(new TypeError("Failed to fetch"))).toBe(true);
+    // A minified TypeError that lost its prototype but kept its name.
+    expect(
+      isRetriableSaveError({ name: "TypeError", message: "load failed" })
+    ).toBe(true);
+  });
+
+  it("refuses everything a retry cannot help", () => {
+    // A genuine server rejection is deterministic — retrying repeats it.
+    expect(isRetriableSaveError(new Error("500 Internal Server Error"))).toBe(
+      false
+    );
+    // The stale signature is NEVER retriable, even though it is also a
+    // deploy-window shape — its remedy is a reload (trigger A), not a retry.
+    expect(
+      isRetriableSaveError(
+        Object.assign(new Error("failed to find server action"), {
+          name: "UnrecognizedActionError",
+        })
+      )
+    ).toBe(false);
+    expect(isRetriableSaveError(null)).toBe(false);
+    expect(isRetriableSaveError("string")).toBe(false);
+  });
+});
+
+describe("saveFailureEvent — one structured line per episode (#2866)", () => {
+  it("names the error shape and both classifier verdicts", () => {
+    const event = saveFailureEvent(
+      new Error("An unexpected response was received from the server.")
+    );
+    expect(event.name).toBe("Error");
+    expect(event.message).toContain("unexpected response");
+    expect(event.retriable).toBe(true);
+    expect(event.stale).toBe(false);
+  });
+
+  it("truncates a runaway message and survives non-Error shapes", () => {
+    const event = saveFailureEvent(new Error("x".repeat(500)));
+    expect((event.message as string).length).toBeLessThanOrEqual(160);
+    expect(saveFailureEvent(undefined).name).toBe("undefined");
   });
 });
 

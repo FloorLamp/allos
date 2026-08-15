@@ -351,6 +351,60 @@ export function isStaleActionError(error: unknown): boolean {
   return STALE_ACTION_SIGNATURES.some((s) => haystack.includes(s));
 }
 
+// The mid-deploy swap window's failure shapes (#2866), which the stale signature
+// deliberately is NOT: behind a reverse proxy the tab gets a 502/503 HTML error
+// page, which makes Next's action reducer throw the generic "unexpected
+// response"; with the port exposed directly it gets a connection failure
+// (TypeError). Both mean "the server wasn't there for a moment" — retriable in
+// place — where the stale signature means "this build's action ids are gone" —
+// never retriable, only reloadable.
+const RETRIABLE_SAVE_SIGNATURES = [
+  "an unexpected response was received from the server",
+];
+
+// Whether a failed Server Action save is worth a bounded in-place retry (#2866).
+// Deliberately narrow: an ordinary server rejection (a real 500 with a plain
+// message, a validation error) keeps its honest error rendering — retrying a
+// deterministic failure would just repeat it.
+export function isRetriableSaveError(error: unknown): boolean {
+  if (isStaleActionError(error)) return false;
+  if (error instanceof TypeError) return true;
+  if (!error || typeof error !== "object") return false;
+  const { name, message } = error as { name?: unknown; message?: unknown };
+  if (name === "TypeError") return true;
+  return (
+    typeof message === "string" &&
+    RETRIABLE_SAVE_SIGNATURES.some((s) => message.toLowerCase().includes(s))
+  );
+}
+
+// The once-per-episode structured failure log (#2866's observability criterion,
+// the themeReassertEvent pattern): the next mid-deploy episode names its leg —
+// error shape + both classifier verdicts — instead of being reconstructed from
+// memory. Pure so the shape is unit-testable.
+const SAVE_FAILURE_MAX_MESSAGE_CHARS = 160;
+
+export function saveFailureEvent(error: unknown): Record<string, unknown> {
+  const name =
+    error && typeof error === "object" && "name" in error
+      ? String((error as { name: unknown }).name)
+      : typeof error;
+  const message =
+    error && typeof error === "object" && "message" in error
+      ? String((error as { message: unknown }).message).slice(
+          0,
+          SAVE_FAILURE_MAX_MESSAGE_CHARS
+        )
+      : "";
+  return {
+    name,
+    message,
+    stale: isStaleActionError(error),
+    retriable: isRetriableSaveError(error),
+    online: typeof navigator === "undefined" ? null : navigator.onLine,
+  };
+}
+
 /**
  * THE LOOP GUARD, which is the load-bearing part of this fix.
  *
