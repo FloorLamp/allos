@@ -171,14 +171,23 @@ export function toNutrientUnit(
 // The app cannot see which convention a given entry used, so the reinterpretation is
 // gated on the one thing it CAN see being decisive: an amount too large to be a
 // labeled elemental dose. The ceiling is ~3x the largest elemental amount any single
-// magnesium label states (about 500 mg), which makes the gate one-directional:
+// magnesium label states (about 500 mg), so:
 //
-//   * every amount at or below the ceiling is counted exactly as entered — no total
-//     that exists today moves, and no warning that fires today can go quiet;
-//   * only a gram-scale amount, on an item the user named by its compound form, is
-//     re-read as that compound's mass.
+//   * every item whose DAILY TOTAL is at or below the ceiling is counted exactly as
+//     entered — no total that exists today moves at all;
+//   * only a gram-scale daily total, on an item the user named by its compound form,
+//     is re-read as that compound's mass.
 //
-// Erring high is deliberate. Leaving an over-warn in place is recoverable; silencing a
+// The ceiling is tested against the item's daily total, not against one dose row. The
+// number it protects IS a daily total, and a per-row test let the whole defect through
+// on any split schedule: Magtein's ordinary 1.5 g + 0.5 g regimen kept reading 2000 mg
+// of magnesium because neither row cleared the bar on its own.
+//
+// Above the ceiling the correction can legitimately take a total under the UL — that is
+// the point, since the number it replaces was wrong. What must never happen is the app
+// choosing a reading LESS cautious than the label supports, so where a name matches
+// several forms the LARGEST elemental fraction wins (see maxima below). Erring high is
+// deliberate everywhere here: leaving an over-warn in place is recoverable, silencing a
 // real exceedance is not. The fractions are stoichiometric (the metal's mass over the
 // compound's formula mass), which is also the CAUTIOUS choice where a form's hydration
 // varies — the threonate figure here (8.3%) is above the ~7.2% a Magtein label implies,
@@ -231,10 +240,19 @@ const COMPOUND_FORMS: CompoundForm[] = [
     elementalFraction: 0.089,
   },
   {
-    pattern: /oxide/i,
+    // Anchored on the left: "Magnesium Hydroxide" contains "oxide" (hydr-OXIDE) and
+    // used to take the oxide fraction, which then told the reader the app had read
+    // "magnesium oxide" — naming a product they did not enter, on a safety surface.
+    pattern: /(?<![a-z])oxide/i,
     nutrientKey: "magnesium",
     label: "magnesium oxide",
     elementalFraction: 0.603,
+  },
+  {
+    pattern: /hydroxide/i,
+    nutrientKey: "magnesium",
+    label: "magnesium hydroxide",
+    elementalFraction: 0.417,
   },
 ];
 
@@ -253,10 +271,18 @@ export interface ElementalReading {
   compound: string | null;
 }
 
-// Read one already-unit-converted dose amount as the nutrient's ELEMENTAL content.
-// Returns the amount unchanged (and `compound: null`) unless BOTH gates hold: the
-// amount is above the nutrient's stated-elemental ceiling, and the item's name carries
-// a recognized compound form for that same nutrient. Pure.
+// Read an item's DAILY TOTAL (already unit-converted) as the nutrient's ELEMENTAL
+// content. Returns the amount unchanged (and `compound: null`) unless BOTH gates hold:
+// the total is above the nutrient's stated-elemental ceiling, and the item's name
+// carries a recognized compound form for that same nutrient. Pure.
+//
+// When the name matches SEVERAL forms — "Magnesium Complex (Oxide, Citrate, Malate)",
+// an ordinary blend — the one with the LARGEST elemental fraction wins. Taking the
+// first declared match instead made the app pick a reading its own label contradicted:
+// that 2 g blend read at citrate's 16.2% is 324 mg and silent, while the same 2 g read
+// as the oxide the label also names is 1206 mg, 3.4x the UL. A blend is not a promise
+// that the least concentrated named form is the whole product, so the ceiling gate can
+// only stay honest if the reading is the most cautious one consistent with the name.
 export function elementalReading(
   itemName: string,
   nutrient: DriNutrient,
@@ -266,8 +292,12 @@ export function elementalReading(
   if (ceiling == null || statedAmount <= ceiling) {
     return { amount: statedAmount, compound: null };
   }
-  const form = COMPOUND_FORMS.find(
+  const form = COMPOUND_FORMS.filter(
     (f) => f.nutrientKey === nutrient.key && f.pattern.test(itemName)
+  ).reduce<CompoundForm | null>(
+    (best, f) =>
+      best == null || f.elementalFraction > best.elementalFraction ? f : best,
+    null
   );
   if (!form) return { amount: statedAmount, compound: null };
   return {
@@ -397,23 +427,25 @@ export function summarizeStack(
     const nutrient = BY_KEY.get(key);
     if (!nutrient) continue;
 
-    let itemAmount = 0;
+    // Sum the item's dose rows FIRST, then read the day's total as elemental (#2798).
+    // The compound/elemental question is asked once per item, of the number it is
+    // actually about: a person taking Magtein as 1.5 g + 0.5 g takes 2 g of the
+    // compound a day, and asking it of each row separately answered "neither row is
+    // gram-scale" and left the whole defect standing on every split schedule.
+    let statedTotal = 0;
     let contributed = false;
-    // The compound form any of this item's amounts had to be re-read as (#2798). One
-    // per item: an item's doses are the same product, so the last recognized form is
-    // the item's form.
-    let compound: string | null = null;
     for (const amount of item.doseAmounts) {
       const q = parseQuantity(amount);
       if (!q) continue;
       const converted = toNutrientUnit(q, nutrient);
       if (converted == null) continue;
-      const reading = elementalReading(item.name, nutrient, converted);
-      itemAmount += reading.amount;
-      if (reading.compound) compound = reading.compound;
+      statedTotal += converted;
       contributed = true;
     }
     if (!contributed) continue;
+    const reading = elementalReading(item.name, nutrient, statedTotal);
+    const itemAmount = reading.amount;
+    const compound = reading.compound;
 
     const bucket = totals.get(key) ?? {
       amount: 0,
