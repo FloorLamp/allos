@@ -166,7 +166,8 @@ export function getFoodSuggestions(profileId: number): FoodSuggestion[] {
 // computation every surface that renders a curated supplement claim formats. No model
 // call, so the same profile state yields the same suggestions on every run; a family the
 // map doesn't cover simply isn't here and falls through to the AI route
-// (lib/supplement-suggest.ts). Empty when nothing covered is flagged low.
+// (lib/supplement-suggest.ts). Empty when nothing covered is flagged on its entry's
+// declared trigger side (#2754).
 export function getCuratedSupplementSuggestions(
   profileId: number
 ): CuratedSupplementSuggestion[] {

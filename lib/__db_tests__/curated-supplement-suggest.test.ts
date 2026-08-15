@@ -72,6 +72,21 @@ describe("getCuratedSupplementSuggestions (#2378)", () => {
     expect(getCuratedSupplementSuggestions(pid)).toEqual([]);
   });
 
+  // #2754: the one add-on-high entry, end to end through the gather.
+  it("answers a flagged-HIGH lipid family with the soluble-fiber lipids entry — #2754", () => {
+    const pid = makeProfile("curated-supp-lipids");
+    insertReading(pid, { name: "LDL Cholesterol", flag: "high" });
+
+    const out = getCuratedSupplementSuggestions(pid);
+    expect(out.map((s) => s.key)).toEqual(["lipids"]);
+    expect(out[0].side).toBe("high");
+    expect(out[0].supplements[0].name).toMatch(/psyllium/i);
+    // A LOW lipid reading is not a trigger for it — the direction is declared.
+    const pid2 = makeProfile("curated-supp-lipids-low");
+    insertReading(pid2, { name: "LDL Cholesterol", flag: "low" });
+    expect(getCuratedSupplementSuggestions(pid2)).toEqual([]);
+  });
+
   it("only considers the CURRENT reading — a newer normal result retires the suggestion", () => {
     const pid = makeProfile("curated-supp-current");
     insertReading(pid, {

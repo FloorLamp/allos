@@ -60,7 +60,7 @@ describe("biomarker-supplement-map.json dataset", () => {
     ).toEqual([]);
   });
 
-  it("every entry carries an evidence note, a source, at least one supplement, and direction low", () => {
+  it("every entry carries an evidence note, a source, at least one supplement, and a declared direction", () => {
     const entries = buildBiomarkerSupplementMap().entries;
     expect(entries.length).toBeGreaterThan(0);
     for (const e of entries) {
@@ -68,13 +68,26 @@ describe("biomarker-supplement-map.json dataset", () => {
       expect(e.source.trim().length, e.key).toBeGreaterThan(0);
       expect(e.biomarkers.length, e.key).toBeGreaterThan(0);
       expect(e.supplements.length, e.key).toBeGreaterThan(0);
-      expect(e.direction, e.key).toBe("low");
+      expect(["low", "high"], e.key).toContain(e.direction);
       for (const s of [...e.supplements, e.allergyAlternative]) {
         if (!s) continue;
         expect(s.matchTokens.length, `${e.key}/${s.name}`).toBeGreaterThan(0);
         expect(FOOD_TIMINGS, `${e.key}/${s.name}`).toContain(s.foodTiming);
       }
     }
+  });
+
+  it("lipids is the ONLY add-on-high entry, keyed to the lipid family (#2754)", () => {
+    // A high-triggered entry is a deliberate, per-entry declaration — a new one must
+    // be added here with its own defense, never ride in silently.
+    const high = buildBiomarkerSupplementMap().entries.filter(
+      (e) => e.direction === "high"
+    );
+    expect(high.map((e) => e.key)).toEqual(["lipids"]);
+    expect(high[0].biomarkers).toEqual([
+      "LDL Cholesterol",
+      "Apolipoprotein B (ApoB)",
+    ]);
   });
 
   it("NO entry states a dose, anywhere in its text", () => {

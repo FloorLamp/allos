@@ -1,8 +1,10 @@
 // The DETERMINISTIC biomarker→food suggestion engine (issue #577), the OUTPUT half of
 // the nutrition umbrella (#576). When a profile's CURRENT reading for a diet-responsive
-// biomarker family is flagged low, this proposes the curated food sources that address
-// it (lib/nutrient-food-map.json) — each suggestion safety-screened against the
-// profile's allergies, medications, and conditions/situations BEFORE it renders.
+// biomarker family is flagged in the direction the curated entry DECLARES (low for the
+// classic deficiency route; high for the #2754 add-on-high soluble-fiber route), this
+// proposes the curated food sources that address it (lib/nutrient-food-map.json) — each
+// suggestion safety-screened against the profile's allergies, medications, and
+// conditions/situations BEFORE it renders.
 //
 // This is the food twin of lib/supplement-suggest.ts, but with a load-bearing
 // difference: the suggestions come ONLY from the curated, human-reviewable map — never
@@ -79,7 +81,8 @@ export function foodReduceSignalKey(reduceKey: string): string {
 }
 
 // A flag string is "low-side" when the current reading is below its reference or
-// optimal range — the only direction diet can address by ADDING a food.
+// optimal range — the classic direction diet addresses by ADDING a food (#577; the
+// #2754 add-on-high entry is the declared exception, see NutrientFoodEntry.direction).
 export function isLowFlag(flag: string | null | undefined): boolean {
   const f = (flag ?? "").trim().toLowerCase();
   return f === "low" || f === "non-optimal-low";
@@ -192,6 +195,12 @@ export interface FoodSuggestion {
   // `food-suggest:<key>` (add) or `food-reduce:<key>` (reduce) — the findings-bus
   // dedupeKey (family-keyed, #482; separate namespaces so the two can't collide).
   dedupeKey: string;
+  // Which flag SIDE triggered it — the entry's declared trigger direction, NOT the
+  // verb. The classic add routes are low-triggered and every reduce route is
+  // high-triggered, but the #2754 add-on-high entry (soluble fiber for LDL/ApoB) is
+  // an ADD triggered by a HIGH flag — copy that derives "is low"/"is high" from the
+  // verb would lie about it, so the trigger side rides along explicitly.
+  side: "low" | "high";
   // The flagged biomarker names that triggered this suggestion (for the concise
   // "Vitamin D is LOW" rationale). Current, family-collapsed readings only.
   triggeredBy: string[];
@@ -351,6 +360,7 @@ function buildSuggestion(
     label: entry.label,
     direction: "add",
     dedupeKey: foodSuggestSignalKey(entry.key),
+    side: entry.direction,
     triggeredBy,
     foods,
     evidence: entry.evidence,
@@ -375,6 +385,7 @@ function buildReduceSuggestion(
     label: entry.label,
     direction: "reduce",
     dedupeKey: foodReduceSignalKey(entry.key),
+    side: "high",
     triggeredBy,
     foods: entry.foods.map((f) => ({
       food: f.food,
@@ -434,14 +445,18 @@ export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
   const excluded = new Set(input.excludedGroups ?? []);
   const out: FoodSuggestion[] = [];
 
-  // Low side (ADD): a flagged-low nutrient, OR a directly-named shortfall target (#2383),
-  // → the curated food sources, safety-screened. The two doors compose: a nutrient that is
-  // both flagged low and short against its target cites both reasons on ONE suggestion,
-  // under the one dedupeKey the family already owns.
+  // ADD side: a nutrient flagged on the entry's DECLARED trigger side (low for the
+  // classic deficiency route; high for the #2754 add-on-high soluble-fiber entry), OR a
+  // directly-named shortfall target (#2383), → the curated food sources,
+  // safety-screened. The two doors compose: a nutrient that is both flagged and short
+  // against its target cites both reasons on ONE suggestion, under the one dedupeKey
+  // the family already owns.
   for (const entry of ENTRIES) {
+    const flaggedOnSide =
+      entry.direction === "high" ? flaggedHighNames : flaggedLow;
     const triggeredBy: string[] = [];
     for (const bm of entry.biomarkers) {
-      const original = flaggedLow.get(bm.trim().toLowerCase());
+      const original = flaggedOnSide.get(bm.trim().toLowerCase());
       if (original) triggeredBy.push(original);
     }
     triggeredBy.push(...(targeted.get(`add:${entry.key}`) ?? []));

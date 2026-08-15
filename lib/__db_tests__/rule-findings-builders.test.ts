@@ -712,6 +712,26 @@ describe("buildFoodSuggestionFindings (#577)", () => {
     expect(keys).toContain(foodSuggestSignalKey("iron"));
     expect(keys).toContain(foodReduceSignalKey("urate"));
   });
+
+  // #2754: the add-on-high route. A HIGH lipid reading yields BOTH the soluble-fiber
+  // ADD finding and the ldl-apob REDUCE finding, under independent dismissal keys, and
+  // the add finding's copy states the flag's real side.
+  it("high LDL → food-suggest:soluble-fiber AND food-reduce:ldl-apob, independently keyed — #2754", () => {
+    const { profileId, anchor } = makeProfile("food-soluble-fiber");
+    insertReading(profileId, "LDL Cholesterol", "high", anchor);
+
+    const findings = buildFoodSuggestionFindings(profileId);
+    expect(findings.map((f) => f.dedupeKey)).toEqual([
+      foodSuggestSignalKey("soluble-fiber"),
+      foodReduceSignalKey("ldl-apob"),
+    ]);
+    const add = findings[0];
+    expect(add.title?.toLowerCase()).toContain("food for");
+    // The copy names the HIGH side even though the verb is "eat more".
+    expect(add.detail?.toLowerCase()).toContain("ldl cholesterol is high");
+    expect(add.detail?.toLowerCase()).toContain("oats");
+    expect(add.tone).toBe("info");
+  });
 });
 
 // ---- #580: behind-target food-habit findings --------------------------------
