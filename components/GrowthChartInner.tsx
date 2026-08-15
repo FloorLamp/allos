@@ -24,6 +24,13 @@ import {
   useChartMotion,
 } from "./chart-scaffold";
 import { chartSeries } from "@/lib/chart-colors";
+import { ordinalPercentile } from "@/lib/growth-format";
+
+// The percentile a band series' key names: the bands are plotted under `p3`…`p97`,
+// so the key IS the number. Used for both the tooltip's ordinal and its ordering.
+function bandPercentileOf(dataKey: unknown): number {
+  return Number(String(dataKey).slice(1));
+}
 
 // One reference percentile band curve, sampled across ages.
 export interface GrowthBand {
@@ -171,7 +178,13 @@ export default function GrowthChart({
           <Tooltip
             formatter={(v, name) => {
               if (name === "traj") return [`${v}${unit}`, "This profile"];
-              return [`${v}${unit}`, `${String(name).replace("p", "")}th pct`];
+              // The ordinal helper, not a hardcoded "th" over the dataKey — p3 is
+              // the 3rd percentile, and the card headline one component up has
+              // always said so (#2804).
+              return [
+                `${v}${unit}`,
+                `${ordinalPercentile(bandPercentileOf(name))} pct`,
+              ];
             }}
             labelFormatter={(m) => {
               const mo = Number(m);
@@ -180,6 +193,13 @@ export default function GrowthChart({
                 : `Age ${Math.round(mo)} mo`;
             }}
             {...chartTooltipProps(c, motion)}
+            // The child's own reading first, then the bands low→high. Explicit
+            // rather than inherited: this chart's order is NUMERIC, which neither
+            // recharts' lexical default nor the scaffold's render order gives —
+            // the trajectory is declared last so it draws on top of the bands.
+            itemSorter={(item) =>
+              item.dataKey === "traj" ? -1 : bandPercentileOf(item.dataKey)
+            }
           />
 
           {/* Current-age marker. */}

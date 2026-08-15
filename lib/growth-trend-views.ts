@@ -5,6 +5,7 @@ import {
   type TrajectoryPoint,
 } from "./growth-series";
 import {
+  chartForAge,
   MAX_AGE_MONTHS,
   type BandCurve,
   type GrowthMetric,
@@ -112,19 +113,41 @@ export function buildGrowthTrendPresentation(input: {
         .slice()
         .reverse()
         .find((point) => point.percentile != null)?.percentile ?? null;
+    // WHICH REFERENCE THIS CARD IS ABOUT, and whether one exists (#2803).
+    //
+    // The age is the NEWEST measurement in view — its percentile is the one the card
+    // headlines — falling back to the profile's age today when the window holds no
+    // measurement at all. Not today's age in both cases: a reading taken at 20 months
+    // is scored against WHO even for a child who is 25 months now.
+    //
+    // `referenceAvailable` then means what the empty-state copy claims. It used to be
+    // `bands.length > 0`, which is a different question: bandCurves clamps a requested
+    // window to the table's own age range, so a 22-month-old's BMI card still got nine
+    // one-or-two-point CDC curves starting at month 24 and the card looked like it had
+    // a reference. It has none — there is no WHO BMI-for-age table under 24 months —
+    // so it said "No body mass index measurement is available in this date range"
+    // while the same page charted that very BMI. The measurement is there; the
+    // REFERENCE is not, and that is what the reader needs told.
+    const chart = chartForAge(
+      growth.sex,
+      selectedPoints.length > 0
+        ? selectedPoints[selectedPoints.length - 1].ageMonths
+        : growth.ageMonths,
+      metric.metric
+    );
     return {
       metric: metric.metric,
       ...meta[metric.metric],
       percentileTitle: `${meta[metric.metric].label} Percentile`,
-      referenceSource:
-        metric.metric === "head_circumference"
+      // With no table at that age, name the metric's only table so the description
+      // line still says which reference the chart would draw: head circumference is
+      // WHO-only (0–24 mo), every other metric's out-of-WHO-range table is CDC.
+      referenceSource: chart
+        ? ((chart.source === "who" ? "WHO" : "CDC") as const)
+        : metric.metric === "head_circumference"
           ? ("WHO" as const)
-          : metric.metric === "bmi"
-            ? ("CDC" as const)
-            : growth.ageMonths < 24
-              ? ("WHO" as const)
-              : ("CDC" as const),
-      referenceAvailable: metric.bands.length > 0,
+          : ("CDC" as const),
+      referenceAvailable: chart != null,
       bands: plot.bands,
       points: plot.points,
       latestPercentile,
