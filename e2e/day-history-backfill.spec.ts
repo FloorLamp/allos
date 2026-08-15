@@ -12,7 +12,9 @@ async function expectEmptyDayAddLink(
   expectedDate?: string
 ) {
   const emptyDay = expectedDate
-    ? section.locator(`button[data-date="${expectedDate}"]`)
+    ? section.locator(
+        `button[data-date="${expectedDate}"][aria-label*=" — no ${unitMany}"]`
+      )
     : section.locator(`button[aria-label*=" — no ${unitMany}"]`).first(); // first-ok: any in-range empty calendar day has the same close-the-loop contract
   await expect(emptyDay).toBeVisible();
   const date = await emptyDay.getAttribute("data-date");
