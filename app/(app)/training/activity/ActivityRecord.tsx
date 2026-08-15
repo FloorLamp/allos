@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconPencil } from "@tabler/icons-react";
-import { useActivityEditor } from "@/components/ActivityEditorProvider";
+import {
+  useActivityEditor,
+  useEditorDock,
+} from "@/components/ActivityEditorProvider";
 import TrainingLogCard from "../TrainingLogCard";
 import type { TrainingLogCardData } from "@/lib/training-log-card";
 import type { ActivityDetailSibling } from "@/lib/training-activity-detail";
@@ -35,25 +37,12 @@ export default function ActivityRecord({
   canWrite: boolean;
 }) {
   const router = useRouter();
-  const { openEdit, registerDock } = useActivityEditor();
-  const dockRef = useRef<HTMLDivElement | null>(null);
-
-  // Same discipline as TrainingLogView's dock: only ever register a REAL dock
-  // (null means "the dock went away" and closes the editor), and never during
-  // the first paint where the media query hasn't settled.
-  const [dockWide, setDockWide] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(ACTIVITY_PAGE_DOCK_QUERY);
-    const update = () => setDockWide(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-  useEffect(() => {
-    if (!dockWide) return;
-    registerDock(dockRef.current);
-    return () => registerDock(null);
-  }, [registerDock, dockWide]);
+  const { openEdit } = useActivityEditor();
+  // Scoped to THIS record's id: the page dock hosts only its own activity's
+  // edits — a global "New activity" or a live resume stays in the overlay
+  // instead of portaling an unrelated form under this record (the hook and the
+  // provider's registerDock own the shared registration discipline).
+  const { dockRef } = useEditorDock(ACTIVITY_PAGE_DOCK_QUERY, card.activity.id);
 
   return (
     <div>
