@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { shiftDateStr } from "@/lib/date";
 import { formatDateWithYear } from "@/lib/format-date";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { hydratedClick } from "./helpers";
 
 async function expectEmptyDayAddLink(
   section: Locator,
@@ -19,7 +20,7 @@ async function expectEmptyDayAddLink(
   await expect(emptyDay).toBeVisible();
   const date = await emptyDay.getAttribute("data-date");
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  await emptyDay.click();
+  await hydratedClick(emptyDay.page(), emptyDay);
   const panel = section.getByTestId("day-history-daypanel");
   await expect(panel).toContainText("Nothing logged this day.");
   const add = panel.getByTestId("day-history-add-link");
