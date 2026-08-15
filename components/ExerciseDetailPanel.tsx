@@ -29,7 +29,7 @@ import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import LevelBadge from "@/components/LevelBadge";
 import { StatBox } from "@/components/StatBox";
-import { trainingLogActivityHref } from "@/lib/timeline-format";
+import { trainingActivityPageHref } from "@/lib/hrefs";
 import type { AppRoute } from "@/lib/hrefs";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
 import { hasExerciseGuide } from "@/lib/exercise-guides";
@@ -246,7 +246,7 @@ export default function ExerciseDetailPanel({
           label="Last trained"
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
-          href={trainingLogActivityHref(stat.lastActivityId)}
+          href={trainingActivityPageHref(stat.lastActivityId)}
         />
         {matchedGoals.map((g) => {
           const pct = goalProgress?.[g.id]?.pct ?? 0;
