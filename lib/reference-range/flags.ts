@@ -23,6 +23,8 @@ import {
   referenceStatus,
   type CanonicalRanges,
 } from "./parsing";
+import { bpComponentFor } from "../bp-markers";
+import { isAdultBpRegime } from "../life-stage";
 // ---------------------------------------------------------------------------
 // Unit-mislabel plausibility cross-check (issue #761). A lab report that
 // MISLABELS a unit — the string parses cleanly but is factually wrong (MCHC "33
@@ -156,6 +158,84 @@ export function detectUnitMislabel(
   return { factor, corrected: { unit: canonUnit, value: valueNum } };
 }
 
+// ---------------------------------------------------------------------------
+// THE LAB'S OWN PRINTED RANGE, WHEN THE CATALOG PUBLISHES NONE (issue #2799).
+//
+// THE DEFECT. `Microalbumin/Creatinine Ratio, Urine` is band-less on purpose — KDIGO
+// staging needs repeat samples over months, so the catalog declines to publish an
+// interval. A real report prints `<30` beside the value anyway. A 44 mg/g therefore
+// rendered with NO marker on any surface: `referenceStatus` returned "unknown", and the
+// only thing that had ever read `reference_range` here was the #761 unit-mislabel veto.
+// Every step is deliberate; the composition is the gap, and it reads worst exactly where
+// the catalog was being careful — across ~95 band-less analytes.
+//
+// THE RULE. When nothing of ours judges the value, the row's OWN printed range may — and
+// it says so in its own register. `reported-high` / `reported-low` are not allos bands
+// and never claim to be: `isOutOfRange` stays false (they are absent from the timeline's
+// abnormal count, from the `oor` filter, from every "out of range" claim), `flagTone`
+// tiers them "warn", and `flagLabel` names the source out loud ("Above reported range").
+// A surface that colours one already has its basis on screen — the same
+// `medical_records.reference_range` string, rendered attributed by #2340's `reported`
+// basis — so this cannot produce the unexplained red that module exists to prevent.
+//
+// WHY THE RAW VALUE, NOT THE CANONICAL ONE. The lab printed the number and the range in
+// the same unit, on the same line. Comparing them as printed is the only comparison the
+// report actually vouches for, and it stays correct even when the unit LABEL is wrong
+// (#761's case: both sides are mislabeled identically, so the verdict survives).
+//
+// WHAT IT WILL NOT JUDGE — the #2337 guard. An analyte whose band-lessness is a FRAME
+// question (`Glucose`, `Insulin`, `Cortisol` — see lib/patient-state-qualifiers'
+// frameUnstatedNames) gets no lab-stated flag either. The printed range on such a row is
+// stated in one frame the draw never claimed, so judging by it re-commits the exact error
+// #2337 and migration 176 undid: a post-meal 120 mg/dL beside a CMP's fasting `65-99` is
+// entirely normal, and the CGM persona's every post-meal reading would light up.
+//
+// STILL UNIMPLEMENTED, on purpose: a per-entry opt-out for a curation ruling that means
+// "do not mark this analyte at all". That is the owner call recorded on #2799; guessing a
+// default would be worse than a small follow-up.
+// ---------------------------------------------------------------------------
+
+// The lab-stated flags — a verdict the SOURCE's printed range implies, never one of
+// ours. Distinct tokens so no surface can mistake them for `high`/`low`.
+export function isLabStated(flag: string | null | undefined): boolean {
+  return flag === "reported-high" || flag === "reported-low";
+}
+
+/**
+ * The flag a reading's OWN printed reference range implies, or null when it implies
+ * none: the range is unparseable, the value sits inside it, or the analyte's
+ * band-lessness is a frame question (#2337).
+ *
+ * `valueNum` and `reference` are both as the document printed them — no unit
+ * conversion, deliberately (see above).
+ */
+export function labStatedFlag(
+  reference: string | null | undefined,
+  valueNum: number | null | undefined,
+  opts?: { frameUnstated?: boolean }
+): "reported-high" | "reported-low" | null {
+  if (valueNum == null || !Number.isFinite(valueNum)) return null;
+  if (opts?.frameUnstated) return null;
+  const parsed = parseReferenceRange(reference);
+  if (!parsed) return null;
+  const status = referenceStatus(valueNum, parsed.low, parsed.high);
+  if (status === "above") return "reported-high";
+  if (status === "below") return "reported-low";
+  return null;
+}
+
+/** Per-call switches for the two guards that need context beyond one catalog entry. */
+export interface ReconcileOptions {
+  /**
+   * True when this analyte's band-lessness is a FRAME question (#2337) — the catalog
+   * carries a patient-state-qualified sibling of it, so the reading landed on the bare
+   * entry precisely because the document stated no condition. Suppresses the lab-stated
+   * flag only; nothing else about the derivation changes. Resolved by the caller, which
+   * is the layer holding the whole vocabulary (lib/flag-reconcile).
+   */
+  frameUnstated?: boolean;
+}
+
 export function reconciledFlag(
   currentFlag: MedicalFlag | string | null | undefined,
   valueNum: number | null | undefined,
@@ -174,11 +254,39 @@ export function reconciledFlag(
   // by the gather layer from the logged cycle history. When set (and the analyte
   // carries phase ranges), referenceRange picks the phase-specific range. Null (no
   // cycle data covers the date) → unchanged behavior.
-  cyclePhase?: CyclePhase | null
+  cyclePhase?: CyclePhase | null,
+  opts?: ReconcileOptions
 ): MedicalFlag | null | undefined {
   const f = currentFlag ?? null;
   if (f === "abnormal") return undefined;
   if (valueNum == null || !cb) return undefined;
+
+  // PEDIATRIC BLOOD PRESSURE IS A PERCENTILE, NOT A BAND (issue #2794).
+  //
+  // AAP 2017 reads a child's BP against their own age/sex/HEIGHT percentile — the app
+  // already computes that (lib/bp-percentiles → the pediatric card on the biomarker
+  // page). The curated BP entries carry only the ADULT 90–120 / 60–80 interval and no
+  // `ranges_by_age`, so a toddler's entirely normal 54 mmHg diastolic fell below 60 and
+  // was stored `low`: a red chip on the passport, the readings table and the timeline's
+  // "1 out of range", three cards below a header saying "82nd percentile · Normal for
+  // age". Every real write path reconciles (document import, manual entry, Health
+  // Connect ingest, the demographics-change re-reconcile), so a CCD import of a
+  // pediatric visit produced it for real.
+  //
+  // The ruling belongs in the pure core, not in a seed exclusion: judging is DECLINED
+  // for a BP component under PEDIATRIC_BP_MAX_AGE, and the percentile card — which has
+  // the height the AAP table needs, and which this module does not — is the surface that
+  // answers. A stored high/low/non-optimal-* on such a row is our own adult-band claim,
+  // so it is CLEARED rather than left to outlive the judgement that made it; a
+  // qualitative verdict (`abnormal` above, `immune`) is never ours and is untouched.
+  //
+  // Unknown age keeps the adult regime (isAdultBpRegime), so nothing changes for a
+  // profile with no birthdate — and an age is always taken ON the record's collection
+  // date, so a childhood reading does not re-flag when the person turns 13.
+  if (bpComponentFor(cb.name) && !isAdultBpRegime(age)) {
+    return isOutOfRange(f) || isNonOptimal(f) ? null : undefined;
+  }
+
   const v = convertToCanonical(valueNum, unit, cb);
   if (v == null) return undefined; // can't convert to the canonical unit — can't judge
 
@@ -223,6 +331,15 @@ export function reconciledFlag(
     const target = opt === "above" ? "non-optimal-high" : "non-optimal-low";
     return f === target ? undefined : target;
   }
+  // Nothing of OURS judges this value. Last resort (#2799): the row's own printed
+  // range — the lab's band for this draw, in its own register. Ordered after the
+  // optimal band on purpose: where we publish a band, ours is the one on screen.
+  const stated = labStatedFlag(reference, valueNum, opts);
+  if (stated) return f === stated ? undefined : stated;
+  // A lab-stated flag that nothing states any more (the value was corrected, or the
+  // printed range changed on re-import) is ours to retire — this pass is the only
+  // thing that writes one.
+  if (isLabStated(f)) return null;
   if (opt === "optimal") return isNonOptimal(f) ? null : undefined;
   return undefined;
 }
@@ -262,7 +379,23 @@ export function isOutOfRange(flag: string | null | undefined): boolean {
 // a row that would otherwise display "Normal", never one the extractor already flagged
 // (out-of-range, non-optimal, or immune).
 export function isNormalFlag(flag: string | null | undefined): boolean {
-  return !(isOutOfRange(flag) || isNonOptimal(flag) || flag === "immune");
+  return !(
+    isOutOfRange(flag) ||
+    isNonOptimal(flag) ||
+    isLabStated(flag) ||
+    flag === "immune"
+  );
+}
+
+// The NOTABLE tier (#544/#551, extended by #2799): a reading a surface may sort to the
+// top, badge as attention, or count as needing a look. Out-of-range and non-optimal have
+// always been notable; a lab-stated flag joins them, because the whole point of #2799 is
+// that a value outside the lab's own printed range is a signal the app was dropping.
+// The neutral "immune" and a normal/absent flag are NOT notable — that is #544's ruling
+// and it is unchanged. Route notability decisions through here rather than re-deriving
+// the union, so a future flag value cannot be miscategorized by omission.
+export function isNotableFlag(flag: string | null | undefined): boolean {
+  return isOutOfRange(flag) || isNonOptimal(flag) || isLabStated(flag);
 }
 
 // The shared color tier for a flag. Out-of-range takes precedence over
@@ -274,7 +407,10 @@ export type FlagTone = "bad" | "warn" | "default";
 
 export function flagTone(flag: string | null | undefined): FlagTone {
   if (isOutOfRange(flag)) return "bad";
-  if (isNonOptimal(flag)) return "warn";
+  // A lab-stated flag (#2799) shares the amber "warn" tier with non-optimal and is
+  // deliberately NOT "bad": red is the app's own out-of-range verdict, and this is the
+  // SOURCE's. The word beside it (flagLabel) is what separates the two registers.
+  if (isNonOptimal(flag) || isLabStated(flag)) return "warn";
   return "default";
 }
 
@@ -299,6 +435,14 @@ export function flagLabel(flag: string | null | undefined): string {
       return "Below optimal";
     case "non-optimal":
       return "Non-optimal";
+    // #2799: the label names WHOSE range said so. "Above reported range" pairs with
+    // biomarker-value-basis's REPORTED_RANGE_LABEL ("Reference range (as reported)"),
+    // which is the very string a surface showing this flag has on screen — so the word
+    // and its basis use one vocabulary, and neither reads as an allos band.
+    case "reported-high":
+      return "Above reported range";
+    case "reported-low":
+      return "Below reported range";
     default:
       return "Normal";
   }
