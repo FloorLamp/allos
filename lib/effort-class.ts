@@ -67,7 +67,7 @@ const TYPE_EFFORT_CLASS: Record<ActivityType, EffortClass | null> = {
   cardio: null,
   sport: null,
   // That is what the type MEANS (#840).
-  recovery: "incidental",
+  mobility: "incidental",
   // The source did not say (#2272). "Unspecified" is not "light": a provider that
   // declined to name a session still recorded a session, so it falls through to the
   // name keywords like every other performance-tier type. Deciding otherwise would
@@ -93,7 +93,7 @@ export function targetScopeEffortClass(
   scopeKind: string,
   scopeValue: string
 ): EffortClass {
-  if (scopeKind === "type" && scopeValue.trim().toLowerCase() === "recovery") {
+  if (scopeKind === "type" && scopeValue.trim().toLowerCase() === "mobility") {
     return "incidental";
   }
   return matchesIncidental(scopeValue) ? "incidental" : "training";

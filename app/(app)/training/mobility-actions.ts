@@ -11,7 +11,7 @@ import {
 } from "@/lib/mobility-log-write";
 
 // Server write-path for the mobility log (issue #840) — the tap-the-moves bar. A mobility
-// session is ONE `activities` row of type `recovery` per (profile, date) whose components
+// session is ONE `activities` row of type `mobility` per (profile, date) whose components
 // are the tapped moves. Toggling a move on/off and setting the overall duration each go
 // through an auth-blind lib core (lib/mobility-log-write.ts); these actions own the auth
 // gate + revalidation and answer with the session's AUTHORITATIVE post-write state so the

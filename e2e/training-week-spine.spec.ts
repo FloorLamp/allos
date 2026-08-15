@@ -99,7 +99,7 @@ test("the week spine draws seven days, blocks by type, and a caption that matche
     // …and each of the three earlier days carries exactly its own one type.
     for (const [date, type] of [
       [cardioDay, "cardio"],
-      [mobilityDay, "recovery"],
+      [mobilityDay, "mobility"],
       [sportDay, "sport"],
     ] as const) {
       const cell = spine.locator(`[data-date="${date}"]`);
@@ -121,7 +121,7 @@ test("the week spine draws seven days, blocks by type, and a caption that matche
     );
 
     // The legend names only the types this week actually contains, in the declared
-    // ACTIVITY_TYPES order — and `recovery` is called mobility, the app's own word.
+    // ACTIVITY_TYPES order, including mobility in the app's own word.
     const legend = spine.getByTestId("week-spine-legend-item");
     await expect(legend).toHaveCount(4);
     await expect(legend).toHaveText([

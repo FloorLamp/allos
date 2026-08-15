@@ -43,8 +43,8 @@ describe("effortClass (#1672)", () => {
     // mark the day trained — the #921 line this must uphold.
     expect(effortClass("cardio", "Dog walk")).toBe("incidental");
     expect(effortClass("cardio", "Evening walk")).toBe("incidental");
-    expect(effortClass("recovery", "Stretching")).toBe("incidental");
-    expect(effortClass("recovery", "")).toBe("incidental");
+    expect(effortClass("mobility", "Stretching")).toBe("incidental");
+    expect(effortClass("mobility", "")).toBe("incidental");
     expect(effortClass("strength", "Mobility flow")).toBe("incidental");
   });
 
@@ -52,7 +52,7 @@ describe("effortClass (#1672)", () => {
     expect(targetScopeEffortClass("type", "strength")).toBe("training");
     expect(targetScopeEffortClass("type", "cardio")).toBe("training");
     expect(targetScopeEffortClass("type", "walk")).toBe("incidental");
-    expect(targetScopeEffortClass("type", "recovery")).toBe("incidental");
+    expect(targetScopeEffortClass("type", "mobility")).toBe("incidental");
   });
 });
 

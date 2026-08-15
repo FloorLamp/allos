@@ -293,19 +293,19 @@ logEffort(
   "hard"
 );
 
-// A few recovery / mobility sessions (issue #840): one activity row of type `recovery`
+// A few mobility sessions (issue #840): one activity row of type `mobility`
 // per day whose components are the tapped moves (no per-move sets/weights — the habit
 // tier). Populates the mobility log, the region-coverage strip, and the mobility_region
 // weekly target below. Move slugs match lib/datasets/data/mobility-moves.json.
 const insertMobility = db.prepare(
   `INSERT INTO activities (profile_id, date, type, title, duration_min, components)
-   VALUES (1, ?, 'recovery', 'Mobility', ?, ?)`
+   VALUES (1, ?, 'mobility', 'Mobility', ?, ?)`
 );
 function logMobility(ago: number, durationMin: number | null, moves: string[]) {
   const components = JSON.stringify(
     moves.map((slug) => ({
       name: mobilityMoveName(slug), // DISPLAY name so the training log renders sanely
-      type: "recovery",
+      type: "mobility",
       distance_km: null,
       duration_min: null,
     }))
@@ -371,7 +371,7 @@ logEffort(
 
 // Session-level equipment (issue #342): a couple of pieces of gear + a linked
 // cardio session, so the Training Log renders the gear chip and the Settings → Equipment
-// page has cardio/recovery categories to show. Distinct from strength implements
+// page has cardio and recovery-device categories to show. Distinct from strength implements
 // (which live per-set on exercise_sets).
 const insertEquipment = db.prepare(
   `INSERT INTO equipment (profile_id, name, weight_kg, category) VALUES (1,?,?,?)`
@@ -658,7 +658,7 @@ freq.run("group", "Upper", 2); // push + pull days → met
 freq.run("group", "Lower", 1); // leg day → met
 freq.run("region", "Chest", 2); // one push day → partial
 freq.run("type", "cardio", 2); // one recent run → partial
-freq.run("mobility_region", "Legs", 3); // seeded recovery sessions → partial (#840)
+freq.run("mobility_region", "Legs", 3); // seeded mobility sessions → partial (#840)
 
 // A sample ACTIVE routine (#738) so the routine-aware surfaces (#740/#742) render on
 // a fresh seed. Adopt the PPL template (copies it into the routine tables), then mark

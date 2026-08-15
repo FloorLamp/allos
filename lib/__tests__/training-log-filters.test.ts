@@ -288,7 +288,7 @@ describe("filterTrainingLogGroups", () => {
     {
       date: "2026-05-01",
       label: "May 1",
-      cards: [card({ id: 3, title: "Rest-day mobility", type: "recovery" })],
+      cards: [card({ id: 3, title: "Rest-day mobility", type: "mobility" })],
     },
   ];
 

@@ -377,11 +377,11 @@ describe("Fitbit Takeout import", () => {
       },
     ]);
     const yoga = acts.find((a) => a.title === "Yoga")!;
-    expect(yoga.type).toBe("recovery");
+    expect(yoga.type).toBe("mobility");
     expect(JSON.parse(yoga.components!)).toEqual([
       {
         name: "Yoga",
-        type: "recovery",
+        type: "mobility",
         distance_km: null,
         duration_min: 40,
       },

@@ -41,7 +41,7 @@ const DURATION_BY_TYPE: Record<ActivityType, boolean> = {
   sport: true,
   // A mobility session is not the adult strength framing either, but it is also not
   // duration-based logging in the #489 sense; it keeps its pre-#2272 answer.
-  recovery: false,
+  mobility: false,
   // The source did not say (#2272) — so it carries NONE of the adult strength framing
   // the gate exists to protect, and a restricted profile's own imported workout must
   // not disappear from its Timeline, calendar and Search because a provider declined

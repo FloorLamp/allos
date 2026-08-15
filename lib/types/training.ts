@@ -7,7 +7,7 @@
 import type { MuscleRegion } from "../lifts";
 import type { FrequencyScopeKind } from "../frequency-targets";
 
-// `recovery` (issue #840, folding in #344) is the HABIT-tier mobility/flexibility
+// `mobility` (issue #840, renamed by #2880) is the HABIT-tier mobility/flexibility
 // session — one activity row whose `components` are the tapped moves, no per-move
 // sets/weights. Distinct from the performance-tier strength/cardio/sport types: it
 // never carries volume/1RM semantics and mobility coverage is kept a separate view
@@ -28,7 +28,7 @@ export const ACTIVITY_TYPES = [
   "strength",
   "cardio",
   "sport",
-  "recovery",
+  "mobility",
   "unclassified",
 ] as const;
 

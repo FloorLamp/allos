@@ -24,7 +24,7 @@ import {
   type StrengthLevel,
 } from "@/lib/strength-standards";
 
-// The three ANALYZABLE domains, deliberately NOT the full ActivityType set: `recovery`
+// The three ANALYZABLE domains, deliberately NOT the full ActivityType set: `mobility`
 // and `unclassified` (#2272) are excluded on purpose — this names which progression
 // view a person can open, and a session nobody classified has no progression to plot.
 export type AnalyzeKind = "strength" | "cardio" | "sport";

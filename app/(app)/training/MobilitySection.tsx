@@ -14,10 +14,10 @@ import MobilityLogBar from "./MobilityLogBar";
 
 // The mobility surface on the Training overview (issue #840) — SELF-CONTAINED so it can be
 // spliced next to (never merged into) the #736 muscle-coverage card. It renders:
-//   • the tap-the-moves log bar (one recovery activity row per day, its components the
+//   • the tap-the-moves log bar (one mobility activity row per day, its components the
 //     tapped moves — no per-move sets/weights, the habit-tier model);
 //   • the mobility region-coverage strip — a SEPARATE view from strength trained-coverage
-//     (#482: trained ≠ mobilized), computed only from recovery sessions.
+//     (#482: trained ≠ mobilized), computed only from mobility sessions.
 // Kept a plain component import so any future OverviewSection restructure is a one-line
 // splice.
 const COVERAGE_DAYS = 7;

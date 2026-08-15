@@ -210,7 +210,7 @@ export function importedRecapLine(facts: ImportedSessionFacts): string | null {
 //     (#2272), so it gets the generic training marker and a discipline-free word — the
 //     same restraint `pickActivityIconKey` shows, and the message is carrying the ask
 //     that fixes it.
-//   • `recovery` is a session, not a workout, and it gets its own face rather than the
+//   • `mobility` is a session, not a workout, and it gets its own face rather than the
 //     training marker: naming it one would tell a person their mobility work counted as
 //     training load, which is the #840/#482 distinction the app keeps everywhere else.
 //     "Mobility" is the app's own word for that surface.
@@ -220,7 +220,7 @@ const FINISH_TITLE: Record<ActivityType, string> = {
   strength: `${GLYPH.training} Workout complete`,
   cardio: `${GLYPH.cardio} Cardio complete`,
   sport: `${GLYPH.sport} Sport complete`,
-  recovery: `${GLYPH.mobility} Mobility complete`,
+  mobility: `${GLYPH.mobility} Mobility complete`,
   unclassified: `${GLYPH.training} Session complete`,
 };
 
@@ -234,7 +234,7 @@ export function finishNudgeTitle(type: ActivityType | null): string {
 // ---- The type ask (#2272) ----
 
 // The three answers the ask offers. Deliberately NOT the full ActivityType set:
-// `recovery` has its own surface, and `unclassified` is the question, not an answer.
+// `mobility` has its own surface, and `unclassified` is the question, not an answer.
 export const ACTIVITY_TYPE_ASK_CHOICES = [
   { type: "strength", label: `${GLYPH.training} Strength` },
   { type: "cardio", label: `${GLYPH.cardio} Cardio` },

@@ -1,8 +1,8 @@
 // Auth-blind write core for the mobility log (issue #840) — the tap-the-moves bar.
 //
-// A mobility session is ONE `activities` row of type `recovery` per (profile, date),
+// A mobility session is ONE `activities` row of type `mobility` per (profile, date),
 // whose `components` JSON is the list of tapped moves (ActivityComponent[]; each a move
-// slug typed `recovery`, no per-move sets/weights — the HABIT-tier "one move = one tap"
+// slug typed `mobility`, no per-move sets/weights — the HABIT-tier "one move = one tap"
 // model, the false-precision trap /nutrition refuses). Being an ordinary activities row
 // it rides the timeline, Training Log, streaks, and heatmap for free.
 //
@@ -47,18 +47,18 @@ interface DayRow {
   duration_min: number | null;
 }
 
-// The day's recovery activity row (at most one per profile/date), or undefined.
+// The day's mobility activity row (at most one per profile/date), or undefined.
 function dayRow(profileId: number, date: string): DayRow | undefined {
   return db
     .prepare(
       `SELECT id, components, duration_min FROM activities
-         WHERE profile_id = ? AND date = ? AND type = 'recovery'
+         WHERE profile_id = ? AND date = ? AND type = 'mobility'
          ORDER BY id ASC LIMIT 1`
     )
     .get(profileId, date) as DayRow | undefined;
 }
 
-// The canonical move SLUGS logged on a recovery row (recovery-typed components only),
+// The canonical move SLUGS logged on a mobility row (mobility-typed components only),
 // deduped and order-preserving. Components store the DISPLAY name (so Training Log and Timeline
 // render "Pigeon pose", not a raw slug), so each is canonicalized back to its slug here —
 // every downstream reader (the tap bar's selection, coverage, target counting) keys on the
@@ -68,7 +68,7 @@ function movesOf(row: DayRow | undefined): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const c of parseComponents(row.components)) {
-    if (c.type !== "recovery" || typeof c.name !== "string") continue;
+    if (c.type !== "mobility" || typeof c.name !== "string") continue;
     const slug = canonicalMobilityMove(c.name) ?? c.name;
     if (seen.has(slug)) continue;
     seen.add(slug);
@@ -83,7 +83,7 @@ function movesOf(row: DayRow | undefined): string[] {
 function componentsFor(moves: string[]): ActivityComponent[] {
   return moves.map((slug) => ({
     name: mobilityMoveName(slug),
-    type: "recovery" as const,
+    type: "mobility" as const,
     distance_km: null,
     duration_min: null,
   }));
@@ -129,7 +129,7 @@ export function logMobilityMoveCore(
     }
     db.prepare(
       `INSERT INTO activities (date, type, title, components, profile_id, created_at)
-       VALUES (?, 'recovery', ?, ?, ?, ?)`
+       VALUES (?, 'mobility', ?, ?, ?, ?)`
     ).run(date, MOBILITY_TITLE, json, profileId, sqlNow());
     return { kind: "logged", session: sessionOf(dayRow(profileId, date)) };
   });
@@ -179,7 +179,7 @@ export function setMobilityDurationCore(
       if (dur === null) return sessionOf(undefined);
       db.prepare(
         `INSERT INTO activities (date, type, title, components, duration_min, profile_id, created_at)
-         VALUES (?, 'recovery', ?, '[]', ?, ?, ?)`
+         VALUES (?, 'mobility', ?, '[]', ?, ?, ?)`
       ).run(date, MOBILITY_TITLE, dur, profileId, sqlNow());
       return sessionOf(dayRow(profileId, date));
     }

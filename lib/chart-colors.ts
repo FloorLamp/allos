@@ -242,6 +242,6 @@ export const chartActivityTypeBlock: Record<
   strength: { blockClass: "bg-violet-500", hex: chartSeries.violet },
   cardio: { blockClass: "bg-rose-600", hex: chartSeries.rose },
   sport: { blockClass: "bg-sky-600", hex: chartSeries.sky },
-  recovery: { blockClass: "bg-brand-600", hex: chartSeries.brand },
+  mobility: { blockClass: "bg-brand-600", hex: chartSeries.brand },
   unclassified: { blockClass: "bg-slate-500", hex: chartNeutral },
 };

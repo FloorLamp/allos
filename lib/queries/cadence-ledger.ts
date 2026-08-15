@@ -271,7 +271,7 @@ export function cadenceCounts(
     }
   }
 
-  // ---- activities → types, and the recovery sessions mobility reads -------------
+  // ---- activities → types, and the mobility sessions' component regions ---------
   const typeWeeks = new Map<string, Set<string>[]>();
   const mobilityWeeks = new Map<MuscleRegion, Set<string>[]>();
   if (needs.has("activity-type") || needs.has("mobility-moves")) {
@@ -306,11 +306,11 @@ export function cadenceCounts(
       // SAME mobilityRegionDays the coverage strip uses. The span is already SQL-
       // bounded, so the helper's own window filter is off (0).
       const sessions: MobilitySessionInput[] = rows
-        .filter((a) => a.type === "recovery")
+        .filter((a) => a.type === "mobility")
         .map((a) => ({
           date: a.date,
           moves: parseComponents(a.components)
-            .filter((c) => c?.type === "recovery" && typeof c.name === "string")
+            .filter((c) => c?.type === "mobility" && typeof c.name === "string")
             .map((c) => c.name),
         }));
       for (const [region, dates] of mobilityRegionDays(sessions, lastEnd, 0)) {

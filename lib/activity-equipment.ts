@@ -15,7 +15,7 @@ import { kindOf } from "./types";
 // or run (both `cardio`) offers cardio gear (Bike, Shoes); a sport also allows
 // generic `other` gear (rackets, etc.); strength keeps its set-level implement
 // picker, so the activity-level picker is not shown for it, but the mapping is
-// defined for completeness. A recovery (mobility) session offers recovery gear —
+// defined for completeness. A mobility session offers recovery gear —
 // sauna, cold plunge, red light, massage device (issue #840, folding in #344).
 //
 // `unclassified` (#2272) is an IMPORTED session whose source declined to say what it
@@ -26,7 +26,7 @@ const EQUIPMENT_KINDS_BY_TYPE: Record<ActivityType, EquipmentKind[]> = {
   strength: ["strength"],
   cardio: ["cardio"],
   sport: ["cardio", "other"],
-  recovery: ["recovery"],
+  mobility: ["recovery"],
   unclassified: ["strength", "cardio", "recovery", "other"],
 };
 

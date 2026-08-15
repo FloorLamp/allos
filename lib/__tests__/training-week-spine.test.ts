@@ -69,7 +69,7 @@ describe("buildWeekSpine", () => {
       rows: rows(
         { date: "2026-03-03", type: "sport", count: 1 },
         { date: "2026-03-03", type: "strength", count: 2 },
-        { date: "2026-03-03", type: "recovery", count: 1 },
+        { date: "2026-03-03", type: "mobility", count: 1 },
         { date: "2026-03-03", type: "cardio", count: 1 }
       ),
     });
@@ -80,7 +80,7 @@ describe("buildWeekSpine", () => {
       { type: "strength", count: 2 },
       { type: "cardio", count: 1 },
       { type: "sport", count: 1 },
-      { type: "recovery", count: 1 },
+      { type: "mobility", count: 1 },
     ]);
     expect(tue.sessions).toBe(5);
   });
@@ -174,7 +174,7 @@ describe("weekSpineDaySummary", () => {
   });
 
   it("gives mobility and an unstated type their own honest words", () => {
-    expect(WEEK_SPINE_TYPE_LABEL.recovery).toBe("mobility");
+    expect(WEEK_SPINE_TYPE_LABEL.mobility).toBe("mobility");
     expect(WEEK_SPINE_TYPE_LABEL.unclassified).toBe("unspecified");
   });
 });
@@ -184,7 +184,7 @@ describe("the block palette", () => {
     expect(chartActivityTypeBlock.strength.hex).toBe(chartSeries.violet);
     expect(chartActivityTypeBlock.cardio.hex).toBe(chartSeries.rose);
     expect(chartActivityTypeBlock.sport.hex).toBe(chartSeries.sky);
-    expect(chartActivityTypeBlock.recovery.hex).toBe(chartSeries.brand);
+    expect(chartActivityTypeBlock.mobility.hex).toBe(chartSeries.brand);
     // `unclassified` is the DECLARED neutral, not a fifth hue: a slate block says
     // "the source did not say what this was" (#2272) rather than naming a discipline.
     expect(chartActivityTypeBlock.unclassified.hex).toBe(chartNeutral);

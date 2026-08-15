@@ -40,7 +40,7 @@ export interface FinishedActivityCredit {
   // Distinct muscle regions the session's exercise_sets trained — for `region`
   // (direct) and `group` (region-union) targets.
   regions: MuscleRegion[];
-  // Distinct regions a recovery session MOBILIZED — for `mobility_region` targets
+  // Distinct regions a mobility session MOBILIZED — for `mobility_region` targets
   // (#482: trained ≠ mobilized, so a separate dimension from `regions`).
   mobilityRegions: MuscleRegion[];
 }

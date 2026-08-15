@@ -109,7 +109,7 @@ const RECAP_WORKOUT_BUCKET: Record<ActivityType, WorkoutType | null> = {
   // Pre-#2272 behavior, preserved deliberately: a mobility session has counted in the
   // strength bucket since the recap shipped, and re-cutting that line is its own
   // decision, not a side effect of adding a type.
-  recovery: "strength",
+  mobility: "strength",
   unclassified: null,
 };
 

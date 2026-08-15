@@ -31,7 +31,7 @@ function optionsFor(
   kind: FrequencyScopeKind
 ): { value: string; label: string }[] {
   // Mobility-region (#840) reuses the MuscleRegion vocabulary — a separate weekly view
-  // counted from recovery sessions, kept apart from strength `region` (#482).
+  // counted from mobility sessions, kept apart from strength `region` (#482).
   if (kind === "region" || kind === "mobility_region")
     return REGION_SCOPES.map((v) => ({ value: v, label: v }));
   if (kind === "group")

@@ -30,7 +30,7 @@ describe("the declared ActivityType tuple (#2272)", () => {
       "strength",
       "cardio",
       "sport",
-      "recovery",
+      "mobility",
       "unclassified",
     ]);
   });
@@ -46,7 +46,7 @@ describe("every per-type map answers for every type", () => {
       strength: "barbell",
       cardio: "run",
       sport: "medal",
-      recovery: "stretch",
+      mobility: "stretch",
       // The generic glyph is the HONEST picture for a stated absence — a barbell or a
       // medal would re-assert the claim the type exists to withhold.
       unclassified: "activity",
@@ -83,10 +83,10 @@ describe("every per-type map answers for every type", () => {
   });
 
   it("the effort-class map settles or defers for every type", () => {
-    // Only `recovery` is incidental BY TYPE; everything else defers to the name.
+    // Only `mobility` is incidental BY TYPE; everything else defers to the name.
     for (const t of ACTIVITY_TYPES)
       expect(effortClass(t, "Bench press")).toBe(
-        t === "recovery" ? "incidental" : "training"
+        t === "mobility" ? "incidental" : "training"
       );
     // "Unspecified" is not "light": a provider that declined to name a session still
     // recorded one, so it counts as training unless the NAME says otherwise.
@@ -128,7 +128,7 @@ describe("the narrower unions stay narrower on purpose", () => {
     // cardio — the ask (#2272 §3) is how it gets counted, not a silent inclusion.
     const scopes: readonly string[] = TYPE_SCOPES;
     expect(scopes).not.toContain("unclassified");
-    expect(scopes).not.toContain("recovery");
+    expect(scopes).not.toContain("mobility");
   });
 });
 

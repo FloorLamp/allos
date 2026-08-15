@@ -139,7 +139,7 @@ describe("activities record instants come off the clock seam (#2287)", () => {
     expect(logMobilityMoveCore(p, "neck_cars", date).kind).toBe("logged");
     const row = db
       .prepare(
-        "SELECT id FROM activities WHERE profile_id = ? AND date = ? AND type = 'recovery'"
+        "SELECT id FROM activities WHERE profile_id = ? AND date = ? AND type = 'mobility'"
       )
       .get(p, date) as { id: number };
     expect(stamps(row.id).created_at).toBe(utcSqlString(clockNow()));

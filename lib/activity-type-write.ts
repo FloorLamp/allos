@@ -33,7 +33,7 @@
 import { db, writeTx } from "./db";
 import { sqlNow } from "./clock";
 
-// The three answers the ask offers. NOT the full ActivityType set: `recovery` has its
+// The three answers the ask offers. NOT the full ActivityType set: `mobility` has its
 // own surface, and `unclassified` is the question, never an answer to it.
 export type ClassifiableActivityType = "strength" | "cardio" | "sport";
 
