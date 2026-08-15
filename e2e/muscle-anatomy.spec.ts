@@ -17,6 +17,10 @@ test("per-exercise anatomy renders in the detail panel guide section (#737)", as
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   const main = page.getByRole("main");
 
+  // Back Squat has logged sessions, so the guide sits behind the collapsed
+  // "How to" disclosure (#2895) — open it before asserting its content.
+  const disclosure = main.getByTestId("exercise-guide-disclosure").first(); // first-ok: asserts a guide disclosure renders — order-agnostic presence
+  await disclosure.locator("summary").click();
   const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
 
