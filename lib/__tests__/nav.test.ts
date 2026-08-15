@@ -12,18 +12,18 @@ import { DEFAULT_NAV_RELEVANCE } from "../nav-relevance";
 describe("isRouteActive", () => {
   it("matches the dashboard only on an exact '/'", () => {
     expect(isRouteActive("/", "/")).toBe(true);
-    expect(isRouteActive("/", "/biomarkers")).toBe(false);
+    expect(isRouteActive("/", "/results")).toBe(false);
     expect(isRouteActive("/", "/training")).toBe(false);
   });
 
   it("matches non-root entries by prefix so nested routes stay lit", () => {
-    expect(isRouteActive("/biomarkers", "/biomarkers")).toBe(true);
-    expect(isRouteActive("/biomarkers", "/biomarkers/123")).toBe(true);
+    expect(isRouteActive("/results", "/results")).toBe(true);
+    expect(isRouteActive("/results", "/results/clinical-results")).toBe(true);
     expect(isRouteActive("/profile", "/profile")).toBe(true);
   });
 
   it("does not match an unrelated route", () => {
-    expect(isRouteActive("/biomarkers", "/conditions")).toBe(false);
+    expect(isRouteActive("/results", "/nutrition")).toBe(false);
     expect(isRouteActive("/allergies", "/")).toBe(false);
   });
 });
@@ -115,14 +115,14 @@ describe("registry parent highlighting (#1522)", () => {
 describe("isGroupActive", () => {
   const medical = [
     "/profile",
-    "/biomarkers",
+    "/results",
     "/conditions",
     "/allergies",
     "/immunizations",
   ];
 
   it("is true when the active route is any child (including nested)", () => {
-    expect(isGroupActive(medical, "/biomarkers")).toBe(true);
+    expect(isGroupActive(medical, "/results")).toBe(true);
     expect(isGroupActive(medical, "/immunizations/new")).toBe(true);
     expect(isGroupActive(medical, "/profile")).toBe(true);
   });
@@ -130,7 +130,7 @@ describe("isGroupActive", () => {
   it("is false when no child matches the active route", () => {
     expect(isGroupActive(medical, "/training")).toBe(false);
     expect(isGroupActive(medical, "/")).toBe(false);
-    expect(isGroupActive([], "/biomarkers")).toBe(false);
+    expect(isGroupActive([], "/results")).toBe(false);
   });
 });
 
@@ -152,10 +152,10 @@ describe("isNavLeafVisible", () => {
   });
 
   it("shows a plain leaf to everyone", () => {
-    expect(isNavLeafVisible({ href: "/biomarkers" }, ctx())).toBe(true);
+    expect(isNavLeafVisible({ href: "/results" }, ctx())).toBe(true);
     expect(
       isNavLeafVisible(
-        { href: "/biomarkers" },
+        { href: "/results" },
         ctx({ isAdmin: false, multiProfile: false })
       )
     ).toBe(true);
@@ -219,7 +219,7 @@ describe("isNavLeafVisible", () => {
     // A plain leaf is unaffected by the food-logging gate.
     expect(
       isNavLeafVisible(
-        { href: "/biomarkers" },
+        { href: "/results" },
         ctx({ foodLoggingRelevant: false })
       )
     ).toBe(true);
@@ -230,7 +230,7 @@ describe("isNavLeafVisible", () => {
       isNavLeafVisible({ href: "/__gated__" }, ctx({ restricted: true }))
     ).toBe(false);
     expect(
-      isNavLeafVisible({ href: "/biomarkers" }, ctx({ restricted: true }))
+      isNavLeafVisible({ href: "/results" }, ctx({ restricted: true }))
     ).toBe(true);
     // Not restricted: even a gated href still shows.
     expect(
