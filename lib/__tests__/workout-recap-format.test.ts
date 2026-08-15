@@ -137,7 +137,7 @@ describe("finishNudgeTitle (#2503)", () => {
     // The leading glyph (everything before the first space, so a variation selector
     // travels with its base) is distinct per named discipline — one shared face would
     // put #2503 back on a different pair.
-    const named = ["strength", "cardio", "sport", "recovery"] as const;
+    const named = ["strength", "cardio", "sport", "mobility"] as const;
     const faces = named.map((t) => finishNudgeTitle(t).split(" ")[0]);
     expect(new Set(faces).size).toBe(named.length);
   });
@@ -157,9 +157,9 @@ describe("finishNudgeTitle (#2503)", () => {
   it("does not call a mobility session a workout (#840)", () => {
     // Its own face, not the training marker: announcing mobility work under a barbell
     // tells a person it counted as training load (#482, trained ≠ mobilized).
-    expect(finishNudgeTitle("recovery")).toBe("🤸 Mobility complete");
-    expect(finishNudgeTitle("recovery")).not.toMatch(/workout/i);
-    expect(finishNudgeTitle("recovery")).not.toContain("🏋️");
+    expect(finishNudgeTitle("mobility")).toBe("🤸 Mobility complete");
+    expect(finishNudgeTitle("mobility")).not.toMatch(/workout/i);
+    expect(finishNudgeTitle("mobility")).not.toContain("🏋️");
   });
 
   it("answers for every declared type", () => {

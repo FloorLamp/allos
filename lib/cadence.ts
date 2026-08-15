@@ -104,7 +104,7 @@ export const CADENCE_SCOPES: Record<FrequencyScopeKind, CadenceScopeSpec> = {
     source: "mobility-moves",
     grain: "distinct-days",
     direction: "floor",
-    note: "distinct days a recovery session's moves MOBILIZED the region (#840) — a separate view from the strength `region` scope",
+    note: "distinct days a mobility session's moves MOBILIZED the region (#840) — a separate view from the strength `region` scope",
   },
   practice: {
     source: "practice-logs",
@@ -161,7 +161,7 @@ export const SESSION_ADVANCE_RULES: Record<
   group: (value, facts) =>
     regionsForGroup(value as BodyGroup).some((r) => facts.regions.includes(r)),
   type: (value, facts) => facts.types.includes(value),
-  // The mobility ledger reads a recovery session's MOVES (#840), which these facts do
+  // The mobility ledger reads a mobility session's MOVES (#840), which these facts do
   // not carry: a `null` says so rather than answering a confident `false` that a future
   // recovery-recap author would inherit as a silent wrong answer.
   mobility_region: null,

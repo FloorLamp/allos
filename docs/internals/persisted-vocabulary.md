@@ -22,6 +22,7 @@ remains.
 | export dataset `supplements`             | `intake_items`           | the dataset contains supplements and medications and now equals its table name |
 | dose timestamp `taken_at`                | `recorded_at`            | immutable capture uses the same name as the food event ledger                  |
 | dose timestamp `recorded_at`             | `occurred_at`            | the stored administration event is distinct from immutable capture             |
+| activity type `recovery`                 | `mobility`               | the activity is a mobility session; recovery remains an equipment kind         |
 
 Migrations `20260814-persisted-vocabulary` and
 `20260814-intake-log-time-vocabulary` preserve row ids, timestamps, notes,

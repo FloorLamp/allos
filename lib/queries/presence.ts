@@ -42,7 +42,7 @@ export function getWorkoutPresence(
 // a frequency target can be declared on — for the workout-reminder SKIP gate (#981).
 // Uses the SAME scope→credit rules as getFrequencyTargetProgress: the activity's type
 // + component types (`type` scope), its exercise_sets' regions (`region`/`group`), and,
-// for a recovery session, the regions its moves mobilized (`mobility_region`). Scoped
+// for a mobility session, the regions its moves mobilized (`mobility_region`). Scoped
 // by profile_id on every read (exercise_sets reaches it via its parent activity).
 export function getFinishedActivityCredit(
   profileId: number,
@@ -83,9 +83,9 @@ export function getFinishedActivityCredit(
   }
 
   const mobilityRegions = new Set<MuscleRegion>();
-  if (act.type === "recovery") {
+  if (act.type === "mobility") {
     for (const c of components) {
-      if (c?.type !== "recovery" || typeof c.name !== "string") continue;
+      if (c?.type !== "mobility" || typeof c.name !== "string") continue;
       for (const region of regionsForMove(c.name)) mobilityRegions.add(region);
     }
   }

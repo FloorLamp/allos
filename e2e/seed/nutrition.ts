@@ -263,9 +263,9 @@ export function seedNutritionTrio(): void {
   // A dedicated ADULT profile for the mobility spec (#840): sex + birthdate so the
   // fitness-norms percentile gate opens, plus a LOW sit-and-reach vital so the Training
   // overview's Mobility section renders a deficit→habit SUGGESTION (a Legs mobility habit).
-  // NO seeded recovery session / mobility_region target — the log bar starts empty and the
+  // NO seeded mobility session / mobility_region target — the log bar starts empty and the
   // suggestion is present; the spec owns its own move toggles. Idempotent: clear the
-  // profile's recovery activities + mobility_region targets so a reused server re-plants a
+  // profile's mobility activities + mobility_region targets so a reused server re-plants a
   // clean slate.
   const mobilityId = fixtureProfileId(MOBILITY_PROFILE);
   db.prepare(
@@ -275,7 +275,7 @@ export function seedNutritionTrio(): void {
     `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-01-01')`
   ).run(mobilityId);
   db.prepare(
-    `DELETE FROM activities WHERE profile_id = ? AND type = 'recovery'`
+    `DELETE FROM activities WHERE profile_id = ? AND type = 'mobility'`
   ).run(mobilityId);
   db.prepare(
     `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'mobility_region'`

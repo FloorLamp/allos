@@ -195,8 +195,8 @@ describe("the cadence ledger (#2034)", () => {
     logActivity(
       pid,
       newer,
-      "recovery",
-      JSON.stringify([{ type: "recovery", name: "pigeon_pose" }])
+      "mobility",
+      JSON.stringify([{ type: "mobility", name: "pigeon_pose" }])
     );
     logPracticeSession(pid, "Sauna", newer);
     logPracticeSession(pid, "Sauna", newer); // same day, DAY-distinct not summed

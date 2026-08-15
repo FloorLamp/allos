@@ -18,7 +18,7 @@ function isValidScope(kind: FrequencyScopeKind, value: string): boolean {
   // Food-habit targets (#580): scope_value is a lib/food-groups.json slug.
   if (kind === "food_group") return isValidFoodGroup(value);
   // Mobility-habit targets (#840): scope_value is a MuscleRegion — the SAME vocabulary as
-  // `region`, but counted from recovery sessions (a separate view, #482).
+  // `region`, but counted from mobility sessions (a separate view, #482).
   if (kind === "mobility_region")
     return (REGION_SCOPES as string[]).includes(value);
   // Wellness-practice targets (#1259): scope_value is a free-text practice NAME (curated

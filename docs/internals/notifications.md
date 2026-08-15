@@ -1380,7 +1380,7 @@ advance is not eligible to lead. The membership rule is ONE computation:
 counts by, asked of a single activity — a region its logged sets map to, the
 union of a group's regions, its own type or a component's — and it is declared
 per scope kind as a rule or an explicit `null` ("unanswerable from an activity
-row": mobility reads a recovery session's MOVES, food and practice count their
+row": mobility reads a mobility session's MOVES, food and practice count their
 own ledgers, and a cap is never advanced at all). The recap's workout-affectable
 narrowing is DERIVED from those rules rather than hand-listed, so the two cannot
 drift. `getSessionCadenceFacts` (`lib/queries/cadence-ledger.ts`) is the gather,
@@ -1397,7 +1397,7 @@ arrived announced as a workout. `finishNudgeTitle` is an exhaustive
 `Record<ActivityType, string>` over the declared tuple: strength keeps
 `🏋️ Workout complete`; cardio and sport take the per-discipline glyphs the
 vocabulary already declared (`🏃 Cardio complete`, `⚽ Sport complete`);
-`recovery` takes the new `mobility` glyph (`🤸 Mobility complete`) rather than
+`mobility` takes the mobility glyph (`🤸 Mobility complete`) rather than
 the training marker, because announcing mobility work under a barbell says it
 counted as training load, which is the #840/#482 distinction the app keeps
 everywhere else; and `unclassified` takes the GENERIC training marker with a

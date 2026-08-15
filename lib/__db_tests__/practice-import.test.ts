@@ -90,7 +90,7 @@ describe("imported wellness practices", () => {
         .prepare(
           `INSERT INTO activities
              (profile_id, date, type, title, source, external_id, edited)
-           VALUES (?, '2026-06-10', 'recovery', 'Breathwork',
+           VALUES (?, '2026-06-10', 'mobility', 'Breathwork',
                    'fitbit-takeout', 'fitbit-takeout:legacy-edited', 1)`
         )
         .run(profileId).lastInsertRowid

@@ -6,8 +6,8 @@ import { equipmentForActivity } from "@/lib/activity-equipment";
 
 // The session-level equipment picker (issue #342): one piece of gear for a whole
 // non-strength activity — a bike for a ride, shoes for a run, recovery gear for a
-// recovery session. Reusable across every non-strength surface (CardioFields and
-// beyond) so the cardio picker (#339) and the recovery picker (#344) are the SAME
+// mobility session. Reusable across every non-strength surface (CardioFields and
+// beyond) so the cardio picker (#339) and the mobility picker (#344) are the SAME
 // component over the SAME activities.equipment_id link, not parallel one-offs.
 //
 // It filters the profile's equipment to the gear that fits the activity

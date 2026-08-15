@@ -834,7 +834,7 @@ export function seedWeekSpine(): void {
   const anchor = today(profileId);
   const SESSIONS: [number, string, string][] = [
     [-4, "sport", "Pickup game"],
-    [-3, "recovery", "Hip mobility"],
+    [-3, "mobility", "Hip mobility"],
     [-1, "cardio", "Easy run"],
     [0, "strength", "Squat day"],
     [0, "strength", "Evening accessories"],

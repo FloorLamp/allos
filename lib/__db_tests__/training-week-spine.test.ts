@@ -44,7 +44,7 @@ beforeAll(() => {
   add(0, "strength", "SPINE evening accessories");
   add(-1, "cardio", "SPINE easy run");
   add(-3, "sport", "SPINE pickup game");
-  add(-3, "recovery", "SPINE mobility");
+  add(-3, "mobility", "SPINE mobility");
   // Outside it, at BOTH ends: eight days back, and tomorrow.
   add(-8, "strength", "SPINE last week");
   add(1, "cardio", "SPINE planned run");
@@ -60,7 +60,7 @@ describe("getTrainingWeekDayTypes", () => {
   it("tallies (day, type) inside the window and drops both out-of-window rows", () => {
     const week = getTrainingWeekDayTypes(profileId);
     expect(week.rows).toEqual([
-      { date: day(-3), type: "recovery", count: 1 },
+      { date: day(-3), type: "mobility", count: 1 },
       { date: day(-3), type: "sport", count: 1 },
       { date: day(-1), type: "cardio", count: 1 },
       { date: todayStr, type: "strength", count: 2 },
@@ -89,7 +89,7 @@ describe("the spine and the caption are one computation", () => {
     expect(spine.days.map((d) => d.sessions)).toEqual([0, 0, 0, 2, 0, 1, 2]);
     expect(spine.days[3].blocks).toEqual([
       { type: "sport", count: 1 },
-      { type: "recovery", count: 1 },
+      { type: "mobility", count: 1 },
     ]);
     expect(spine.days[6].blocks).toEqual([{ type: "strength", count: 2 }]);
     // A rolling window ends on today, so no cell is "ahead".

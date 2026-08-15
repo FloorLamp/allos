@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CARDIO_ACTIVITIES,
-  RECOVERY_ACTIVITIES,
+  MOBILITY_ACTIVITIES,
   SPORTS,
 } from "@/lib/activities-catalog";
 import { zonedDateParts } from "@/lib/date";
@@ -842,10 +842,10 @@ describe("the archive's TWO timestamp conventions", () => {
         type: "sport",
       });
     }
-    for (const name of RECOVERY_ACTIVITIES) {
+    for (const name of MOBILITY_ACTIVITIES) {
       expect(fitbitActivityIdentity(name), name).toEqual({
         name,
-        type: "recovery",
+        type: "mobility",
       });
     }
   });

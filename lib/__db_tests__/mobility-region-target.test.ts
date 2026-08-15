@@ -3,7 +3,7 @@
 // target for that region — deduped once per day (#223) — through the SAME
 // getFrequencyTargetProgress read the strength/food targets use, kept a SEPARATE view
 // from the `region` scope (#482: trained ≠ mobilized). Proves the pieces compose against
-// the real schema (recovery activity + components → move → MuscleId → MuscleRegion).
+// the real schema (mobility activity + components → move → MuscleId → MuscleRegion).
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
@@ -22,25 +22,25 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
   return { profileId, anchor: today(profileId) };
 }
 
-// A recovery session on `date` with the given move slugs (the mobility log's storage
+// A mobility session on `date` with the given move slugs (the mobility log's storage
 // shape: one activities row, components typed `recovery`).
 function logMobility(profileId: number, date: string, moves: string[]) {
   const components = JSON.stringify(
     moves.map((name) => ({
       name,
-      type: "recovery",
+      type: "mobility",
       distance_km: null,
       duration_min: null,
     }))
   );
   db.prepare(
     `INSERT INTO activities (profile_id, date, type, title, components)
-     VALUES (?, ?, 'recovery', 'Mobility', ?)`
+     VALUES (?, ?, 'mobility', 'Mobility', ?)`
   ).run(profileId, date, components);
 }
 
 describe("mobility_region frequency target (#840)", () => {
-  it("counts distinct days a recovery session mobilized the region, once per day", () => {
+  it("counts distinct days a mobility session mobilized the region, once per day", () => {
     const { profileId, anchor } = makeProfile("mobility-hips");
 
     // Target: mobilize the Glutes region (hips) 3×/week.

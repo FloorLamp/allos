@@ -38,7 +38,7 @@ test.describe("Mobility (#840)", () => {
     await page.close();
   });
 
-  test("tapping a move logs a recovery session that persists and shows on the training log", async ({
+  test("tapping a move logs a mobility session that persists and shows on the training log", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -57,7 +57,7 @@ test.describe("Mobility (#840)", () => {
       await expect(chip).toHaveAttribute("aria-pressed", "false");
     }
 
-    // Tap ON → then prove PERSISTENCE across a reload (one recovery activity row
+    // Tap ON → then prove PERSISTENCE across a reload (one mobility activity row
     // holds the move). The chip is purely optimistic (no disabled-while-saving
     // state), so the pressed attribute alone can't prove the server write — and
     // settledClick's any-POST arm can be satisfied by an unrelated on-load POST
@@ -80,7 +80,7 @@ test.describe("Mobility (#840)", () => {
       ).toHaveAttribute("aria-pressed", "true", { timeout: 3000 });
     }).toPass({ timeout: 45_000 }); // topass-ok: reload-until-persisted: confirm the async move-toggle write survives a reload; no single event marks 'persisted AND reflected'
 
-    // The recovery session rides the shared training log feed (Training → Log) like any activity.
+    // The mobility session rides the shared training log feed (Training → Log) like any activity.
     await page.goto("/training?tab=log");
     await expect(page.getByText("Mobility").first()).toBeVisible(); // first-ok: asserts the Mobility heading renders — order-agnostic presence
 

@@ -55,9 +55,9 @@ const TYPE_FALLBACK: Record<ActivityType, ActivityIconKey> = {
   strength: "barbell",
   cardio: "run",
   sport: "medal",
-  // Recovery/mobility sessions (issue #840) icon as the stretch glyph by default;
+  // Mobility sessions (issue #840) icon as the stretch glyph by default;
   // per-move component names still match the yoga/stretch keyword rules first.
-  recovery: "stretch",
+  mobility: "stretch",
   // The source did not say what this session was (#2272). The generic activity glyph
   // is the honest picture — a barbell or a medal would re-assert the very claim the
   // type exists to withhold. Keyword matching on the title still runs first, so an
