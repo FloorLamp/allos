@@ -42,27 +42,11 @@ Portable exports intentionally contain no old-key alias.
   `biomarkerFamily`, biomarker goals and ranges, Coverage's biomarker kind, retest
   dismissal keys (`biomarker:`), and flag acknowledgements (`biomarker-flag:`).
 
-## Temporary read-only compatibility
-
-These names are not application contracts. They exist only so immutable historical
-migrations can replay against a current database, and no current writer may populate
-them:
-
-- `food_log_events.eaten_at`
-- `intake_item_logs.given_at`
-- `illness_episodes.started_at` / `ended_at` and
-  `illness_episodes_legacy_window_compat`
-- `intake_items.priority` / `as_needed` and
-  `intake_items_legacy_obligation_compat`
-- `savedClinicalResultKindForSchema()` returning the frozen `biomarker` saved-item
-  kind while migrations 174, 177, and 178 replay before the saved namespace migration
-- `rewriteResultOutcomeKeys()` recognizing the frozen `biomarker:` protocol prefix
-  while those same migrations replay against their historical protocol rows
-
-Their removal condition is concrete: the DB integration harness must stop replaying
-the complete immutable migration chain unconditionally, or those frozen migrations
-must otherwise stop preparing their historical names against the final schema. Until
-then the shells stay inert and declared; they are not compatibility promises.
+Migration `20260814-remove-legacy-schema-shells` removed the temporary read-only
+columns and triggers that had existed only for unconditional historical-migration
+replay. The test helper now uses the same ledger-gated startup path as production;
+fresh installs still execute the complete immutable chain, while repeat startup does
+not prepare already-applied historical SQL against the final schema.
 
 The retired `medical_records.category = 'biomarker'` is a separate residue contract.
 No writer can create it, but unclassifiable established rows remain readable and legal

@@ -22,7 +22,7 @@ import { db, today } from "@/lib/db";
 import { getMedicationFamilyStates } from "@/lib/queries";
 import { utcInstant } from "@/lib/date";
 
-const INDEX = "idx_intake_log_item_given";
+const INDEX = "idx_intake_log_item_recorded";
 
 // The latest-administration statement `getMedicationFamilyStates` prepares
 // (lib/queries/intake/prn-family.ts), verbatim for a single-member family. Kept as its
@@ -88,7 +88,7 @@ beforeAll(() => {
   }
 });
 
-describe("migration 156 — the (item_id, recorded_at) administration index", () => {
+describe("the (item_id, best administration instant) index", () => {
   it("applies: the index exists on the migrated schema", () => {
     const row = db
       .prepare(

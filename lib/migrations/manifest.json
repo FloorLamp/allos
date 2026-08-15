@@ -192,5 +192,6 @@
   "20260814-canonical-result-definitions.ts": "1e7c35b98004fe319c667268608b2d91fb8dfedb83f3c944eeb504e4daf2a5d3",
   "20260814-saved-clinical-result-namespace.ts": "5752cc4e337853f387a1a21a7620fe3fc3f60a6b47485638b1a9645b6573cbd6",
   "20260814-persisted-vocabulary.ts": "5acf3774cdc945fa49d22e5e64296a0f7fe825572518e680977b934b558bcbe2",
-  "20260814-intake-log-time-vocabulary.ts": "f6df11c2229f4f9186305bfb93c2e37a86494c152fda2e8922aa32b03ec5db79"
+  "20260814-intake-log-time-vocabulary.ts": "f6df11c2229f4f9186305bfb93c2e37a86494c152fda2e8922aa32b03ec5db79",
+  "20260814-remove-legacy-schema-shells.ts": "a3e1fad6e35425fc332cfdf0af2b1fc1c87188fe5df75ad7bb3ae233a917f99f"
 }
