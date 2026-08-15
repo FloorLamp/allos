@@ -689,7 +689,7 @@ function strengthView({
     chartLabel: chartMetric.chartLabel,
     chartUnit: activeMetric === "reps" ? "" : ` ${units.weightUnit}`,
     color: chartSeries.violet,
-    latestHref: trainingLogActivityHref(
+    latestHref: trainingActivityPageHref(
       newest[0]?.activityId ?? stat.lastActivityId
     ),
     chart: sessions.map((s) => ({
