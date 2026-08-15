@@ -143,7 +143,9 @@ export function buildGrowthTrendPresentation(input: {
       // line still says which reference the chart would draw: head circumference is
       // WHO-only (0–24 mo), every other metric's out-of-WHO-range table is CDC.
       referenceSource: chart
-        ? ((chart.source === "who" ? "WHO" : "CDC") as const)
+        ? chart.source === "who"
+          ? ("WHO" as const)
+          : ("CDC" as const)
         : metric.metric === "head_circumference"
           ? ("WHO" as const)
           : ("CDC" as const),

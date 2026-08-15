@@ -24,13 +24,11 @@ import {
   useChartMotion,
 } from "./chart-scaffold";
 import { chartSeries } from "@/lib/chart-colors";
-import { ordinalPercentile } from "@/lib/growth-format";
-
-// The percentile a band series' key names: the bands are plotted under `p3`…`p97`,
-// so the key IS the number. Used for both the tooltip's ordinal and its ordering.
-function bandPercentileOf(dataKey: unknown): number {
-  return Number(String(dataKey).slice(1));
-}
+import {
+  growthTooltipLabel,
+  growthTooltipOrder,
+  TRAJECTORY_KEY,
+} from "@/lib/growth-format";
 
 // One reference percentile band curve, sampled across ages.
 export interface GrowthBand {
@@ -100,7 +98,7 @@ export default function GrowthChart({
       row[`p${bm.percentile}`] = v == null ? null : round(v);
     }
     const t = trajMap.get(age);
-    row.traj = t ? round(t.value) : null;
+    row[TRAJECTORY_KEY] = t ? round(t.value) : null;
     return row;
   });
 
@@ -176,16 +174,7 @@ export default function GrowthChart({
           />
           <YAxis {...chartAxisProps(c)} domain={["auto", "auto"]} />
           <Tooltip
-            formatter={(v, name) => {
-              if (name === "traj") return [`${v}${unit}`, "This profile"];
-              // The ordinal helper, not a hardcoded "th" over the dataKey — p3 is
-              // the 3rd percentile, and the card headline one component up has
-              // always said so (#2804).
-              return [
-                `${v}${unit}`,
-                `${ordinalPercentile(bandPercentileOf(name))} pct`,
-              ];
-            }}
+            formatter={(v, name) => [`${v}${unit}`, growthTooltipLabel(name)]}
             labelFormatter={(m) => {
               const mo = Number(m);
               return showYears
@@ -193,13 +182,9 @@ export default function GrowthChart({
                 : `Age ${Math.round(mo)} mo`;
             }}
             {...chartTooltipProps(c, motion)}
-            // The child's own reading first, then the bands low→high. Explicit
-            // rather than inherited: this chart's order is NUMERIC, which neither
-            // recharts' lexical default nor the scaffold's render order gives —
-            // the trajectory is declared last so it draws on top of the bands.
-            itemSorter={(item) =>
-              item.dataKey === "traj" ? -1 : bandPercentileOf(item.dataKey)
-            }
+            // AFTER the spread: this chart wants its own numeric order, not the
+            // render order the shared props default to.
+            itemSorter={(item) => growthTooltipOrder(item.dataKey)}
           />
 
           {/* Current-age marker. */}
@@ -228,7 +213,7 @@ export default function GrowthChart({
           {/* The profile's own trajectory, drawn on top. */}
           <Line
             type="monotone"
-            dataKey="traj"
+            dataKey={TRAJECTORY_KEY}
             stroke={chartSeries.brand}
             strokeWidth={2.5}
             // Solid: the fill channel means exactness alone (#2653, owner call
