@@ -261,7 +261,6 @@ describe("buildProfileSummary", () => {
   const base: ProfileSummaryInput = {
     name: "Jane Doe",
     age: 40,
-    ageMonths: 40 * 12,
     sex: "female",
     hasBirthdate: true,
     birthdate: "1986-01-15",
@@ -318,7 +317,7 @@ describe("buildProfileSummary", () => {
       hasBirthdate: true,
     });
     expect(s.body.bmi).toBe(22.0);
-    // Adult (40 y) is out of pediatric chart range → no growth badge.
+    // No growth badge supplied (an adult's loader resolves none) → none shown.
     expect(s.body.growth).toBeNull();
     expect(s.vitals.map((v) => v.name)).toEqual(["LDL", "HDL"]);
     expect(s.medications).toHaveLength(1);
@@ -331,19 +330,26 @@ describe("buildProfileSummary", () => {
     expect(s.body.restingHrDate).toBe("2026-01-04");
   });
 
-  it("surfaces pediatric growth percentiles for an in-range child", () => {
+  it("passes the already-scored growth badge through untouched (#2802)", () => {
+    // The percentiles arrive scored — this module never re-derives them, so the
+    // passport cannot print a different number from /trends/growth.
     const s = buildProfileSummary({
       ...base,
       age: 5,
-      ageMonths: 60, // 5 y → CDC range
       sex: "male",
       heightCm: 110,
       weightKg: 18.5,
+      growth: {
+        heightPercentile: 64.2,
+        weightPercentile: 60.1,
+        bmiPercentile: 52.5,
+      },
     });
-    expect(s.body.growth).not.toBeNull();
-    expect(s.body.growth!.heightPercentile).toBeGreaterThan(0);
-    expect(s.body.growth!.weightPercentile).toBeGreaterThan(0);
-    expect(s.body.growth!.bmiPercentile).toBeGreaterThan(0);
+    expect(s.body.growth).toEqual({
+      heightPercentile: 64.2,
+      weightPercentile: 60.1,
+      bmiPercentile: 52.5,
+    });
   });
 
   it("degrades gracefully with missing birthdate / blood type / body", () => {
