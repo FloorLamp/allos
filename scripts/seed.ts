@@ -3194,21 +3194,17 @@ if (!existingChild) {
         panel
       ).lastInsertRowid
     );
-  const alpId = childLab(
-    "Alkaline Phosphatase",
-    300,
-    "U/L",
-    "40-129",
-    "lab",
-    "Metabolic"
-  );
+  childLab("Alkaline Phosphatase", 300, "U/L", "40-129", "lab", "Metabolic");
   childLab("Blood Pressure Systolic", 101, "mmHg", "90-120", "vitals", null);
   childLab("Blood Pressure Diastolic", 52, "mmHg", "60-80", "vitals", null);
-  // Derive the ALP flag against the child's age band (300 → normal-for-age),
-  // exactly like a real import would after boot's flag reconcile. BP is left
-  // unflagged: a child's blood pressure is judged by the AAP 2017 age/sex/height
-  // percentile (rendered on the biomarker page), NOT the adult reference flags.
-  reconcileFlags(childId, [alpId]);
+  // Reconcile ALL of the child's rows, exactly as a real import would. The ALP resolves
+  // against the age band (300 → normal-for-age, so no flag), and the BP rows resolve in
+  // the same shared decision: since #2794 reconciledFlag declines to judge a BP
+  // component under 13 and defers to the AAP 2017 age/sex/height percentile the
+  // biomarker page renders. This call used to pass `[alpId]` to hold the BP rows OUT,
+  // because reconciling them stamped a red "low" on a normal toddler — a workaround
+  // that documented the gap and covered only the seed. The ruling is in the core now.
+  reconcileFlags(childId);
 }
 
 // ── Sleep sessions → Sleep Regularity Index (#160) ────────────────────────────
