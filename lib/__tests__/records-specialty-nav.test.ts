@@ -44,7 +44,12 @@ describe("mental-health section gate (#2807) — adolescent and up", () => {
 });
 
 describe("visibleSpecialtyPanes — substance-use pane follows the gate", () => {
-  const shown = { vision: true, dental: true, substanceUse: true, mentalHealth: true };
+  const shown = {
+    vision: true,
+    dental: true,
+    substanceUse: true,
+    mentalHealth: true,
+  };
 
   it("includes the substance-use pane (with its jump-link href) for an adult", () => {
     const ids = visibleSpecialtyPanes(shown).map((p) => p.id);
@@ -89,7 +94,12 @@ describe("visibleSpecialtyPanes — substance-use pane follows the gate", () => 
   });
 
   it("gates substance-use independently of Vision/Dental data gating", () => {
-    const noOptical = { vision: false, dental: false, substanceUse: true, mentalHealth: true };
+    const noOptical = {
+      vision: false,
+      dental: false,
+      substanceUse: true,
+      mentalHealth: true,
+    };
     const ids = visibleSpecialtyPanes(noOptical).map((p) => p.id);
     expect(ids).not.toContain("vision");
     expect(ids).not.toContain("dental");
@@ -103,10 +113,20 @@ describe("visibleSpecialtyPanes — substance-use pane follows the gate", () => 
 // rather than inherited from the acting profile. The answer is split by the KIND of
 // question each bit asks, and this is where that split is pinned.
 describe("specialtyRelevanceForView — the pane set for a VIEW (#2557)", () => {
-  const adult = { vision: false, dental: false, substanceUse: true, mentalHealth: true };
+  const adult = {
+    vision: false,
+    dental: false,
+    substanceUse: true,
+    mentalHealth: true,
+  };
 
   it("reproduces the single-profile answer when the acting profile is the view", () => {
-    const acting = { vision: true, dental: false, substanceUse: true, mentalHealth: true };
+    const acting = {
+      vision: true,
+      dental: false,
+      substanceUse: true,
+      mentalHealth: true,
+    };
     expect(
       specialtyRelevanceForView({ acting, inView: [acting] })
     ).toStrictEqual(acting);

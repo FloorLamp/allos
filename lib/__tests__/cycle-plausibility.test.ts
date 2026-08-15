@@ -111,9 +111,9 @@ describe("cycleStateLine / cycleControlState (#1681 — the contextual state)", 
 
   it("formats cycle day and phase for a mid-cycle day", () => {
     // Started 04-15 → day 6 on 04-20, ended 04-19 → follicular.
-    expect(cycleStateLine([period(1, "2026-04-15", "2026-04-19")], TODAY, null)).toBe(
-      "Day 6 · Follicular"
-    );
+    expect(
+      cycleStateLine([period(1, "2026-04-15", "2026-04-19")], TODAY, null)
+    ).toBe("Day 6 · Follicular");
   });
 
   it("reads menstrual while a period is open", () => {
@@ -140,7 +140,11 @@ describe("cycleStateLine / cycleControlState (#1681 — the contextual state)", 
   });
 
   it("mid-cycle: the start CTA returns and the reopen has expired", () => {
-    const s = cycleControlState([period(1, "2026-04-01", "2026-04-05")], TODAY, null);
+    const s = cycleControlState(
+      [period(1, "2026-04-01", "2026-04-05")],
+      TODAY,
+      null
+    );
     expect(s.canStart).toBe(true);
     expect(s.canReopen).toBe(false);
     expect(s.stateLine).toBe("Day 20 · Follicular");
@@ -200,7 +204,10 @@ describe("cycleControlState under a suspension (#2801)", () => {
     expect(s.day).toBeNull();
     expect(s.stateLine).toBeNull();
     expect(s.canStart).toBe(true);
-    expect(cycleOffer(s)).toEqual({ write: "start", label: START_PERIOD_LABEL });
+    expect(cycleOffer(s)).toEqual({
+      write: "start",
+      label: START_PERIOD_LABEL,
+    });
   });
 
   it("cycleStateLine is silenced at the source, not by its callers", () => {
@@ -229,7 +236,11 @@ describe("cycleOffer (#1892 — the label names the write)", () => {
     });
     // Long-open is the OBSERVATION layer's business (cycle-observation.ts observes
     // prolonged bleeding); the end offer is never withdrawn by duration.
-    const stale = cycleControlState([period(1, "2026-04-05", null)], TODAY, null);
+    const stale = cycleControlState(
+      [period(1, "2026-04-05", null)],
+      TODAY,
+      null
+    );
     expect(stale.staleOpenPeriod).toBe(true);
     expect(cycleOffer(stale)).toEqual({
       write: "end",

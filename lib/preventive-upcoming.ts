@@ -234,7 +234,10 @@ export function preventiveAssessmentToUpcomingItem(
   const dueDate = a.nextDueDate;
   const statusFallback: Pick<UpcomingItem, "band" | "dueText"> =
     dueDate == null
-      ? { band: overdue ? "overdue" : "today", dueText: overdue ? "Overdue" : "Due" }
+      ? {
+          band: overdue ? "overdue" : "today",
+          dueText: overdue ? "Overdue" : "Due",
+        }
       : {};
   return {
     key: preventiveSignalKey(a.kind, a.key),
