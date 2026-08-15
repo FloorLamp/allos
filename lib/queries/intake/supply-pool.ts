@@ -14,7 +14,7 @@
 // Server Actions in app/(app)/supplies/actions.ts own the whole gate.
 
 import { db, writeTx } from "../../db";
-import { profileIdsIn } from "../../cross-profile";
+import { profileIdsIn, type AuthorizedProfileIds } from "../../cross-profile";
 import {
   daysOfSupplyForPool,
   isPoolVisibleTo,
@@ -351,7 +351,12 @@ function buildPoolView(supply: SharedSupply): PoolView {
 // window), which is exactly what the #1095 §3 convention reserves the `profile_id IN`
 // shape for. The ids arrive already ∩ the caller's accessible set, and this module is
 // registered in CROSS_PROFILE_SQL_MODULES.
-export function poolIdsForProfiles(profileIds: readonly number[]): number[] {
+//
+// #2898: "already ∩ the accessible set" is now the TYPE. A profile-scoped caller that
+// holds one already-authorized profile rather than a scope reaches this through
+// `authorizedSingleProfile(profileId)` — the single-active-profile model's own
+// authority, which cannot widen (see lib/cross-profile.ts).
+export function poolIdsForProfiles(profileIds: AuthorizedProfileIds): number[] {
   if (profileIds.length === 0) return [];
   const rows = db
     .prepare(

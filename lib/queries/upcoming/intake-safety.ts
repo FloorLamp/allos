@@ -48,6 +48,7 @@ import {
   poolIdsForProfiles,
   poolPushes,
 } from "../intake/supply-pool";
+import { authorizedSingleProfile } from "../../cross-profile";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";
@@ -456,7 +457,12 @@ export function poolRefillItems(
   today: string
 ): UpcomingItem[] {
   const items: UpcomingItem[] = [];
-  for (const supplyId of poolIdsForProfiles([profileId])) {
+  // The single-profile authority (#2898): this generator runs AS `profileId` — every
+  // other read in it is `WHERE profile_id = ?` on the same id — so it names that one
+  // profile explicitly rather than inventing a scope it does not hold.
+  for (const supplyId of poolIdsForProfiles(
+    authorizedSingleProfile(profileId)
+  )) {
     const pool = getPoolView(supplyId);
     if (!pool || !pool.low || pool.daysLeft == null) continue;
     // Tracked, never pushed (#1505), pooled edition: a bottle whose every ACTIVE

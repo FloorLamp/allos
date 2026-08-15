@@ -17,10 +17,11 @@
 //      what keeps it from silently spreading to modules that never validated the id
 //      list against the caller's grants.
 //
-// The id list a set-based reader receives MUST originate from a resolved
-// `ProfileScope` (`scope.ids` or a subset of `scope.viewIds`) — the ONLY legitimate
-// IN-list source, already ∩ the caller's accessible set. A registered module is the
-// place that promise is kept; registering a module asserts it upholds it.
+// The id list a set-based reader receives MUST originate from an authorization
+// boundary — already ∩ the caller's accessible set. Since #2898 that is a TYPE, not a
+// convention: the list is an `AuthorizedProfileIds` (below), which only a boundary,
+// a checked subset, or a single already-authorized profile can produce. Registering a
+// module is now the independent LOCATION backstop rather than the only guarantee.
 //
 // SCOPE LIMIT (the per-profile-context trap, #1095/#1096): set-based SQL is reserved
 // for FLAT record lists. Anything derived from a per-profile `today()`/timezone, week
@@ -28,16 +29,101 @@
 // assembly) — a cross-profile reader must never evaluate one member's window in
 // another member's context.
 
+// ── The authorized-set CAPABILITY (#2898) ─────────────────────────────────────
+//
+// The registered-module rule above controls WHERE a set-based query may live. It says
+// nothing about WHICH ids that query is allowed to see, and neither did the type:
+// `profileIdsIn(ids: readonly number[])` accepted any numbers at all, so the promise
+// that the list came from a resolved scope was kept by the comments above and by
+// review — not by the compiler. The set-based shape is exactly the shape where that
+// gap bites, because a single wrong id is a silent cross-household read rather than
+// an error.
+//
+// So the CAPABILITY is typed, and the capability is the SET, not the id. A branded
+// scalar profile id would say "someone, once, authorized this number" — which is not
+// the question a cross-profile query asks. The question is "may this caller see
+// exactly these people, together?", and only a set can answer it.
+//
+// `AuthorizedProfileIds` is nominal: the brand is a `declare`d unique symbol, so no
+// value expression anywhere can produce one. That makes an unauthorized id
+// UNREPRESENTABLE at the set-based boundary rather than merely unlikely — a plain
+// `number[]` is a compile error at `profileIdsIn`, and the only ways to hold the
+// capability are:
+//
+//   • an authorization boundary that DERIVES the set from grants —
+//     `resolveScope()`'s `ids`/`viewIds`, and lib/auth's
+//     `accessibleProfileIdsForLogin` / `writableProfileIdsForLogin` for the
+//     token-authenticated routes that have no session to scope;
+//   • `authorizedProfileSubset(parent, wanted)` below, which can only NARROW;
+//   • `authorizedSingleProfile(id)` below, which can only ever name ONE profile.
+//
+// There is no minter that takes a list of arbitrary numbers, and the branded arrays
+// do not compose: concatenating or spreading two of them yields a plain `number[]`,
+// so a cross-profile set can never be assembled out of single-profile authority.
+//
+// The casts this needs are the two in THIS module (both provably narrowing or
+// singular) plus one inside lib/auth.ts's grant derivation. Production CALL SITES
+// have none — a caller either holds a scope, narrows one, or names one profile.
+//
+// The CROSS_PROFILE_SQL_MODULES scan below is untouched and stays in force: it is the
+// independent LOCATION backstop, answering a different question (where the shape may
+// appear) from the one the type answers (whose ids it may carry). Neither replaces
+// the other.
+declare const AUTHORIZED_PROFILE_IDS: unique symbol;
+
+// A set of profile ids an authorization boundary has already decided this caller may
+// read TOGETHER. Assignable to `readonly number[]`, so it binds and iterates exactly
+// like the list it replaces; the reverse assignment is what the brand refuses.
+export type AuthorizedProfileIds = readonly number[] & {
+  readonly [AUTHORIZED_PROFILE_IDS]: true;
+};
+
+// Narrow an authorized set to the members a surface actually wants. The result is
+// authorized because it is a SUBSET of an already-authorized set: an id in `wanted`
+// that the parent does not contain is DROPPED, never carried through, so this cannot
+// widen no matter what it is handed. Parent order is preserved (the same rule
+// resolveScope applies to a stored view set) so a narrowed read stays deterministic.
+export function authorizedProfileSubset(
+  parent: AuthorizedProfileIds,
+  wanted: readonly number[]
+): AuthorizedProfileIds {
+  const asked = new Set(wanted);
+  // Safe by construction: every surviving id was already in `parent`.
+  return parent.filter((id) =>
+    asked.has(id)
+  ) as unknown as AuthorizedProfileIds;
+}
+
+// The ONE already-authorized profile a profile-scoped caller is running as — the
+// single-active-profile model's own authority, expressed as a one-element set so a
+// profile-scoped path can reach a set-based reader without inventing a scope it does
+// not have (#2116's `poolIdsForProfiles([profileId])` is the case).
+//
+// This grants NOTHING the single-profile model does not already grant: the caller is
+// a profile-scoped reader whose every other statement reads the same id through
+// `WHERE profile_id = ?`, which the profile-scoping scan already governs. What it
+// cannot do is widen — it takes one id and returns one id, and two of its results do
+// not combine into a cross-profile set, so the multi-profile capability still comes
+// only from a resolved scope.
+export function authorizedSingleProfile(
+  profileId: number
+): AuthorizedProfileIds {
+  return [profileId] as unknown as AuthorizedProfileIds;
+}
+
 // The bound-parameter placeholder tuple for a cross-profile IN-list. The caller
 // writes the literal `profile_id IN ${profileIdsIn(ids)}` (so the scanner sees the
 // `profile_id IN` shape and enforces the registered-module rule) and passes `...ids`
 // as the bound params. NEVER interpolate ids into SQL directly.
 //
+// Takes the CAPABILITY, not a list: a plain `number[]` here is a compile error, so
+// the provenance the comments above promise is the compiler's promise now.
+//
 // The empty set yields `(NULL)` — `IN (NULL)` binds nothing and matches NOTHING (a
 // cross-profile query over no profiles must return nothing, never everything), and
 // stays valid SQL (a bare `IN ()` is a syntax error). Callers that can pass an empty
 // set should still short-circuit to `[]` before querying.
-export function profileIdsIn(ids: readonly number[]): string {
+export function profileIdsIn(ids: AuthorizedProfileIds): string {
   if (ids.length === 0) return "(NULL)";
   return `(${ids.map(() => "?").join(",")})`;
 }

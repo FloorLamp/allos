@@ -12,6 +12,7 @@ import {
   sessionCookieOptions,
 } from "./session-cookie";
 import { isDemoMode, isDemoRestricted } from "./demo";
+import type { AuthorizedProfileIds } from "./cross-profile";
 import {
   parseViewProfileIds,
   serializeViewProfileIds,
@@ -399,6 +400,51 @@ export function accessibleProfilesForLogin(loginId: number): SessionProfile[] {
     .get(loginId) as { role: Role } | undefined;
   if (!acct) return [];
   return accessibleProfiles(loginId, acct.role);
+}
+
+// ── Minting the authorized-set capability (#2898) ─────────────────────────────
+//
+// `AuthorizedProfileIds` (lib/cross-profile.ts) is the type a set-based cross-profile
+// query demands. It has no constructor that takes a list of numbers; it is DERIVED,
+// here, from the same grant resolution every other access decision in this module
+// uses. That is what makes these boundaries and not casts in disguise: whatever a
+// caller believes about a login, the set that comes back is recomputed from
+// `accessibleProfiles` at call time, so a revoked grant drops out immediately and an
+// id nobody granted can never appear.
+//
+// The single `as` conversion the brand needs lives in this one helper, beside the
+// derivation that justifies it. It is deliberately NOT exported: an exported
+// `authorized(ids)` would be exactly the arbitrary-numbers minter the capability
+// exists to prevent.
+function authorized(ids: readonly number[]): AuthorizedProfileIds {
+  return ids as unknown as AuthorizedProfileIds;
+}
+
+// The login's accessible set as the capability — for the token-authenticated surfaces
+// that have no session to resolve a ProfileScope from (the portals registry endpoint,
+// the Patient portals page's reads). Session-backed pages take `scope.ids` instead.
+export function accessibleProfileIdsForLogin(
+  loginId: number
+): AuthorizedProfileIds {
+  return authorized(accessibleProfilesForLogin(loginId).map((p) => p.id));
+}
+
+// The subset of that set the login may WRITE — the authority a reporting token's
+// account gate and the "can this viewer act at all?" checks ask about. Reach FIRST,
+// then access (accessForProfile assumes reachability), and demo-restriction refuses
+// every non-admin write, so a demo-restricted token resolves to the empty set exactly
+// as it would be refused at an upload. One derivation, so the routes that used to
+// spell this filter out by hand cannot drift apart.
+export function writableProfileIdsForLogin(
+  loginId: number,
+  role: Role
+): AuthorizedProfileIds {
+  if (isDemoRestricted(isDemoMode(), role)) return authorized([]);
+  return authorized(
+    accessibleProfilesForLogin(loginId)
+      .filter((p) => accessForProfile(loginId, role, p.id) === "write")
+      .map((p) => p.id)
+  );
 }
 
 // ── Own-profile association (issue #1013) ─────────────────────────────────────

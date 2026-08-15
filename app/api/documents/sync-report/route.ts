@@ -1,5 +1,9 @@
 import { revalidateRoute } from "@/lib/revalidate";
-import { accessForProfile, accessibleProfilesForLogin } from "@/lib/auth";
+import {
+  accessForProfile,
+  accessibleProfilesForLogin,
+  writableProfileIdsForLogin,
+} from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { authenticateApiToken } from "@/lib/api-tokens";
 import { apiTokenRateLimitKey } from "@/lib/api-token-format";
@@ -202,13 +206,10 @@ export async function POST(req: Request): Promise<Response> {
   // several household members — so a caregiver token that may write only one of them must
   // not be able to change standing state on another's binding. Reach first, then access,
   // the order every gate here uses.
-  const writableProfileIds = accessibleProfilesForLogin(login.id)
-    .filter(
-      (p) =>
-        !isDemoRestricted(isDemoMode(), login.role) &&
-        accessForProfile(login.id, login.role, p.id) === "write"
-    )
-    .map((p) => p.id);
+  // Reach first, then access, then demo-restriction — one derivation, shared with the
+  // registry endpoint's gate (#2898), which also mints the authorized-set capability
+  // the account gate below demands.
+  const writableProfileIds = writableProfileIdsForLogin(login.id, login.role);
 
   const counts = parseSyncReportCounts({
     inserted: body.inserted,

@@ -78,7 +78,7 @@ export default function SidebarContent({
   // The session's multi-profile VIEW-SET (issue #1096) — threaded through to the
   // identity bar's stacked avatars and the panel's per-profile view toggles.
   // Defaults empty (single-view).
-  viewIds?: number[];
+  viewIds?: readonly number[];
   // Accessible profiles this login holds READ-only (issue #33); each carries the
   // hint on its switcher row.
   readOnlyIds?: number[];

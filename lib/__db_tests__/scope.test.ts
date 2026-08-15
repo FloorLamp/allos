@@ -18,7 +18,11 @@ vi.mock("@/lib/auth", async () => vi.importActual("@/lib/auth"));
 import { db } from "@/lib/db";
 import type { CurrentSession } from "@/lib/auth";
 import { resolveScope, stampSubjects } from "@/lib/scope";
-import { profileIdsIn } from "@/lib/cross-profile";
+import {
+  authorizedProfileSubset,
+  authorizedSingleProfile,
+  profileIdsIn,
+} from "@/lib/cross-profile";
 
 let seq = 0;
 function mkLogin(role: "admin" | "member" = "member"): number {
@@ -237,16 +241,67 @@ describe("set-based cross-profile SQL (profileIdsIn) confines to scope.ids", () 
   });
 
   it("an empty scope set matches nothing (IN (NULL)), never everything", () => {
+    const member = mkLogin("member");
     const a = mkProfile("Solo");
+    grant(member, a);
     db.prepare(
       "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, '2026-01-01', 70)"
     ).run(a);
+    // The empty capability comes from the boundary too — narrowing a real scope to
+    // nobody — because #2898 leaves no way to conjure one out of a bare `[]`.
+    const scope = resolveScope(sessionFor(member, "member", a));
+    const nobody = authorizedProfileSubset(scope.ids, []);
     const rows = db
       .prepare(
-        `SELECT profile_id AS pid FROM body_metrics WHERE profile_id IN ${profileIdsIn([])}`
+        `SELECT profile_id AS pid FROM body_metrics WHERE profile_id IN ${profileIdsIn(nobody)}`
       )
       .all() as { pid: number }[];
     expect(rows).toEqual([]);
+  });
+});
+
+// #2898 — the id list a set-based reader receives is a CAPABILITY, and these are the
+// ways to hold one. The compile-time half (a plain `number[]` is rejected) is pinned
+// with @ts-expect-error in lib/__tests__/cross-profile.test.ts; this half proves the
+// runtime sets the boundaries actually produce.
+describe("authorized profile-id sets: what each boundary mints", () => {
+  it("the full scope, the view scope, and a checked subset all confine to grants", () => {
+    const member = mkLogin("member");
+    const a = mkProfile("Set A");
+    const b = mkProfile("Set B");
+    const ungranted = mkProfile("Set X");
+    grant(member, a);
+    grant(member, b);
+
+    // FULL SCOPE — every granted profile, and nothing else.
+    const scope = resolveScope(sessionFor(member, "member", a));
+    expect([...scope.ids]).toEqual([a, b]);
+
+    // VIEW SCOPE — the persisted view set, already ∩ accessible in resolveScope.
+    const viewed = resolveScope(sessionFor(member, "member", a), [b]);
+    expect([...viewed.viewIds]).toEqual([b]);
+
+    // CHECKED SUBSET — narrowing an authorized parent keeps the capability.
+    expect([...authorizedProfileSubset(scope.ids, [b])]).toEqual([b]);
+
+    // AND REFUSES TO WIDEN: an id the parent does not hold is dropped, so a caller
+    // cannot smuggle an ungranted profile in through the subset operation.
+    expect([...authorizedProfileSubset(scope.ids, [ungranted])]).toEqual([]);
+    expect([...authorizedProfileSubset(scope.ids, [b, ungranted])]).toEqual([
+      b,
+    ]);
+  });
+
+  it("the single-profile path names one profile and cannot compose into a wider set", () => {
+    const a = mkProfile("Alone");
+    expect([...authorizedSingleProfile(a)]).toEqual([a]);
+    // Two singletons concatenate to a plain number[] — the brand does not survive, so
+    // single-profile authority can never be assembled into a cross-profile set.
+    const joined = [
+      ...authorizedSingleProfile(a),
+      ...authorizedSingleProfile(a),
+    ];
+    expect(joined).toEqual([a, a]);
   });
 });
 

@@ -32,6 +32,7 @@
 import {
   requireSession,
   accessibleProfilesForLogin,
+  accessibleProfileIdsForLogin,
   accessForProfile,
   getCurrentViewProfileIds,
   ownProfileForLogin,
@@ -40,6 +41,11 @@ import {
   type SessionProfile,
   type CurrentSession,
 } from "./auth";
+import {
+  authorizedProfileSubset,
+  authorizedSingleProfile,
+  type AuthorizedProfileIds,
+} from "./cross-profile";
 import { disambiguateProfileNames } from "./profile-disambiguation";
 
 export interface ProfileScope {
@@ -57,12 +63,17 @@ export interface ProfileScope {
   // The accessible set, with DISAMBIGUATED names (#534) — the source of truth every
   // surface labels from. Ordered by id (stable "first accessible").
   profiles: SessionProfile[];
-  // profiles.map(p => p.id) — the ONLY legitimate source of a cross-profile IN-list.
-  ids: number[];
+  // profiles.map(p => p.id), carried as the AUTHORIZED-SET CAPABILITY (#2898): a
+  // set-based cross-profile reader takes this type and nothing else, so "the ids came
+  // from a resolved scope" is a compiler fact rather than a comment. Still a
+  // `readonly number[]` for every other purpose.
+  ids: AuthorizedProfileIds;
   // #1096's persisted view-set ∩ accessible, defaulting to [actingProfileId]. A
   // single-profile page ignores this; a multi-view page passes it to its list-first
-  // readers. Validated here so an out-of-range or revoked id can never widen a view.
-  viewIds: number[];
+  // readers. Validated here so an out-of-range or revoked id can never widen a view —
+  // and carried as the capability (#2898), derived from `ids` by the checked subset
+  // operation, so the narrowing is the thing that keeps it authorized.
+  viewIds: AuthorizedProfileIds;
   // Per-profile read|write, resolved once. Powers read-only labels/gating WITHOUT a
   // second accessForProfile lookup — it is NOT the write gate (that stays
   // requireProfileWriteAccess at the action boundary).
@@ -93,7 +104,12 @@ export function resolveScope(
     ...p,
     name: nameByProfile.get(p.id) ?? p.name,
   }));
-  const ids = profiles.map((p) => p.id);
+  // The accessible ids in their CAPABILITY form (#2898). Minted by lib/auth's grant
+  // derivation rather than converted here, so this module — and every module
+  // downstream of it — holds no brand conversion at all. It costs one more indexed
+  // grant read per resolution and buys the property that a cross-profile id set can
+  // only ever come out of a grant derivation.
+  const ids = accessibleProfileIdsForLogin(login.id);
   const accessibleSet = new Set(ids);
 
   const access = new Map<number, Access>();
@@ -113,14 +129,17 @@ export function resolveScope(
       ? ownProfileId
       : null;
 
-  let viewIds: number[];
+  // The checked subset IS this validation (#2898): it drops anything the accessible
+  // set does not contain and preserves accessible order (not the raw input's), which
+  // is exactly what the hand-rolled intersection did — and it is the operation that
+  // keeps the result authorized, so the view set carries the capability too.
+  let viewIds: AuthorizedProfileIds;
   if (rawViewIds && rawViewIds.length > 0) {
-    const wanted = new Set(rawViewIds.filter((id) => accessibleSet.has(id)));
-    // Preserve accessible order (not the raw input's) so the view is deterministic.
-    viewIds = ids.filter((id) => wanted.has(id));
-    if (viewIds.length === 0) viewIds = [actingProfileId];
+    viewIds = authorizedProfileSubset(ids, rawViewIds);
+    if (viewIds.length === 0)
+      viewIds = authorizedSingleProfile(actingProfileId);
   } else {
-    viewIds = [actingProfileId];
+    viewIds = authorizedSingleProfile(actingProfileId);
   }
 
   return {

@@ -1,5 +1,7 @@
-import { accessForProfile, accessibleProfilesForLogin } from "@/lib/auth";
-import { isDemoMode, isDemoRestricted } from "@/lib/demo";
+import {
+  accessibleProfileIdsForLogin,
+  writableProfileIdsForLogin,
+} from "@/lib/auth";
 import { authenticateApiToken } from "@/lib/api-tokens";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { apiTokenRateLimitKey } from "@/lib/api-token-format";
@@ -78,13 +80,10 @@ export async function GET(req: Request): Promise<Response> {
   // The card's gate, recomputed: reach FIRST, then access (accessForProfile assumes
   // reachability — the same order the POST routes use). Demo mode refuses every
   // non-admin write, so a demo-restricted token has no writable profile and is refused
-  // here exactly as it would be at an upload.
-  const accessible = accessibleProfilesForLogin(login.id);
-  const canRead =
-    !isDemoRestricted(isDemoMode(), login.role) &&
-    accessible.some(
-      (p) => accessForProfile(login.id, login.role, p.id) === "write"
-    );
+  // here exactly as it would be at an upload. All three steps live in ONE derivation
+  // since #2898 (writableProfileIdsForLogin), so this gate and the sync-report route's
+  // copy of it cannot drift apart.
+  const canRead = writableProfileIdsForLogin(login.id, login.role).length > 0;
   if (!canRead) {
     return Response.json(
       { ok: false, error: "no write access to any profile" },
@@ -98,7 +97,7 @@ export async function GET(req: Request): Promise<Response> {
   // page passes, so both surfaces answer from one decision rather than two that happen
   // to agree.
   const registry = listVisiblePortalRegistry(
-    accessible.map((p) => p.id),
+    accessibleProfileIdsForLogin(login.id),
     canRead
   );
 

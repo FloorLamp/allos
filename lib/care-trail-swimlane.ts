@@ -94,7 +94,7 @@ const MIN_MARKER = 0.75; // a visit is a point; give it a tiny visible width els
 
 export function buildSwimlane(
   build: CareTrailBuild,
-  memberOrder: number[],
+  memberOrder: readonly number[],
   windowStart: string,
   windowEnd: string
 ): Swimlane {

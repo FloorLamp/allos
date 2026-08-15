@@ -105,6 +105,48 @@ vi.mock("@/lib/auth", async () => {
       photo_version: 0,
     }));
   };
+  const accessibleProfilesForLogin = (loginId: number) => {
+    const acct = dbMod.db
+      .prepare("SELECT role FROM logins WHERE id = ?")
+      .get(loginId) as { role: string } | undefined;
+    if (!acct) return [];
+    const rows =
+      acct.role === "admin"
+        ? (dbMod.db
+            .prepare("SELECT id, name FROM profiles ORDER BY id")
+            .all() as {
+            id: number;
+            name: string;
+          }[])
+        : (dbMod.db
+            .prepare(
+              `SELECT p.id, p.name FROM profiles p
+                 JOIN login_profiles lp ON lp.profile_id = p.id
+                WHERE lp.login_id = ? ORDER BY p.id`
+            )
+            .all(loginId) as { id: number; name: string }[]);
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      photo_path: null,
+      photo_version: 0,
+    }));
+  };
+
+  const accessForProfile = (
+    loginId: number,
+    role: string,
+    profileId: number
+  ) => {
+    if (role === "admin") return "write";
+    const row = dbMod.db
+      .prepare(
+        "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
+      )
+      .get(loginId, profileId) as { access: string | null } | undefined;
+    return row?.access === "read" ? "read" : "write";
+  };
+
   return {
     requireSession: () => getActingSession(),
     // Faithful to the prod guard (issue #33): a read-only acting session is
@@ -201,44 +243,23 @@ vi.mock("@/lib/auth", async () => {
     // household round, whose offer set is "the profiles the receiving profile's own
     // login can write". Same rule as accessibleProfiles(): admins reach every profile,
     // members only their granted set.
-    accessibleProfilesForLogin: (loginId: number) => {
-      const acct = dbMod.db
-        .prepare("SELECT role FROM logins WHERE id = ?")
-        .get(loginId) as { role: string } | undefined;
-      if (!acct) return [];
-      const rows =
-        acct.role === "admin"
-          ? (dbMod.db
-              .prepare("SELECT id, name FROM profiles ORDER BY id")
-              .all() as {
-              id: number;
-              name: string;
-            }[])
-          : (dbMod.db
-              .prepare(
-                `SELECT p.id, p.name FROM profiles p
-                   JOIN login_profiles lp ON lp.profile_id = p.id
-                  WHERE lp.login_id = ? ORDER BY p.id`
-              )
-              .all(loginId) as { id: number; name: string }[]);
-      return rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        photo_path: null,
-        photo_version: 0,
-      }));
-    },
+    accessibleProfilesForLogin,
     // Faithful to prod accessForProfile: admins are implicit all-write; a member
     // resolves the REAL grant row from the temp DB, with anything other than an
     // explicit 'read' reading as 'write' (the permissive legacy default).
-    accessForProfile: (loginId: number, role: string, profileId: number) => {
-      if (role === "admin") return "write";
-      const row = dbMod.db
-        .prepare(
-          "SELECT access FROM login_profiles WHERE login_id = ? AND profile_id = ?"
-        )
-        .get(loginId, profileId) as { access: string | null } | undefined;
-      return row?.access === "read" ? "read" : "write";
+    accessForProfile,
+    // The #2898 authorized-set MINTERS. Faithful because they are DERIVED from the
+    // two faithful primitives above rather than fabricated: the accessible set comes
+    // from the temp DB's real grants, and the writable subset re-applies the same
+    // reach-then-access-then-demo order prod uses. The brand is a type-only marker,
+    // so the mock returns a plain array exactly as the real derivation does.
+    accessibleProfileIdsForLogin: (loginId: number) =>
+      accessibleProfilesForLogin(loginId).map((p) => p.id),
+    writableProfileIdsForLogin: (loginId: number, role: string) => {
+      if (isDemoRestricted(isDemoMode(), role as "admin" | "member")) return [];
+      return accessibleProfilesForLogin(loginId)
+        .filter((p) => accessForProfile(loginId, role, p.id) === "write")
+        .map((p) => p.id);
     },
     // Faithful to prod canAccessProfile: admins reach every profile, members only
     // their granted ones. Used by login-scoped actions that take a profile id

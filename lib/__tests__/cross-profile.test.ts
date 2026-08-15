@@ -1,37 +1,77 @@
 import { describe, it, expect } from "vitest";
 import {
+  authorizedProfileSubset,
+  authorizedSingleProfile,
   profileIdsIn,
   usesProfileIdInList,
   isCrossProfileSqlModule,
   CROSS_PROFILE_SQL_MODULES,
 } from "@/lib/cross-profile";
+import { testAuthorizedIds as authorized } from "./authorized-ids";
 
 describe("profileIdsIn: bound-parameter placeholder construction", () => {
   it("builds one placeholder per id", () => {
-    expect(profileIdsIn([1])).toBe("(?)");
-    expect(profileIdsIn([1, 2, 3])).toBe("(?,?,?)");
-    expect(profileIdsIn([7, 7, 7, 7, 7])).toBe("(?,?,?,?,?)");
+    expect(profileIdsIn(authorized([1]))).toBe("(?)");
+    expect(profileIdsIn(authorized([1, 2, 3]))).toBe("(?,?,?)");
+    expect(profileIdsIn(authorized([7, 7, 7, 7, 7]))).toBe("(?,?,?,?,?)");
   });
 
   it("never interpolates the ids themselves (only ? placeholders)", () => {
-    const out = profileIdsIn([42, 99, 1000]);
+    const out = profileIdsIn(authorized([42, 99, 1000]));
     expect(out).not.toMatch(/\d/); // no digit leaks into the SQL text
     expect(out).toBe("(?,?,?)");
   });
 
   it("the empty set yields (NULL) — matches NOTHING, never everything, and stays valid SQL", () => {
-    expect(profileIdsIn([])).toBe("(NULL)");
+    expect(profileIdsIn(authorized([]))).toBe("(NULL)");
     // Composed into a clause it reads `profile_id IN (NULL)`, which binds no params
     // and can never match a row (NULL is never equal), so an empty scope returns [].
-    expect(`profile_id IN ${profileIdsIn([])}`).toBe("profile_id IN (NULL)");
+    expect(`profile_id IN ${profileIdsIn(authorized([]))}`).toBe(
+      "profile_id IN (NULL)"
+    );
   });
 
   it("composes into a scanner-visible `profile_id IN` literal", () => {
     // The caller writes the literal `profile_id IN ${profileIdsIn(ids)}`, so the SQL
     // string carries the `profile_id IN` shape the companion scanner rule keys on.
-    const clause = `SELECT id FROM activities WHERE profile_id IN ${profileIdsIn([1, 2])}`;
+    const clause = `SELECT id FROM activities WHERE profile_id IN ${profileIdsIn(authorized([1, 2]))}`;
     expect(clause).toContain("profile_id IN (?,?)");
     expect(usesProfileIdInList(clause)).toBe(true);
+  });
+});
+
+// #2898 — the capability, at the type level. The runtime behaviour of each boundary is
+// exercised against real grants in lib/__db_tests__/scope.test.ts; what only a
+// TYPE-level test can pin is the REFUSAL, because a refused program never runs.
+describe("AuthorizedProfileIds: an unauthorized id is unrepresentable", () => {
+  it("refuses a plain number[] at the set-based SQL boundary", () => {
+    // If this ever compiles, the capability has decayed back into a comment and any
+    // module could hand `profileIdsIn` ids nobody authorized.
+    // @ts-expect-error a bare number[] carries no authorization and must not compile
+    profileIdsIn([1, 2, 3]);
+    // The empty list too — "no ids" is still a claim about which ids were checked.
+    // @ts-expect-error an empty bare array is not an authorized set either
+    profileIdsIn([]);
+  });
+
+  it("refuses a hand-built value wearing the brand's shape", () => {
+    // The brand is a `declare`d unique symbol, so no value expression can produce the
+    // property — structural forgery does not typecheck.
+    // @ts-expect-error the brand symbol has no value form to spell
+    profileIdsIn(Object.assign([1], { authorized: true }));
+  });
+
+  it("keeps the capability through a checked subset and loses it through concat", () => {
+    const parent = authorized([1, 2, 3]);
+    // A narrowed set is still the capability — it goes straight back in.
+    expect(profileIdsIn(authorizedProfileSubset(parent, [1, 3]))).toBe("(?,?)");
+    // Joining two authorized sets is NOT authorized: the result is a plain number[],
+    // so a wider set can never be assembled out of narrower ones.
+    // @ts-expect-error concatenating two capabilities yields an unbranded number[]
+    profileIdsIn([
+      ...authorizedSingleProfile(1),
+      ...authorizedSingleProfile(2),
+    ]);
   });
 });
 
