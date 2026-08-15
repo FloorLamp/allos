@@ -22,6 +22,7 @@ import {
   ANCHOR_TOLERANCE_LINES,
   anchorsNear,
   checkDocsContracts,
+  checkLabelHygiene,
   checkLineCitation,
   fencedRanges,
   gatherEvidence,
@@ -629,6 +630,68 @@ describe("gatherEvidence", () => {
     expect(renderReport(blind).indexOf("## What was examined")).toBeLessThan(
       renderReport(blind).indexOf("## Patch candidates")
     );
+  });
+});
+
+describe("label hygiene (dispatch.md §Queue labels)", () => {
+  it("flags a doubled priority slot, a missing slot, a missing domain, and a retired label", () => {
+    const findings = checkLabelHygiene([
+      // The live defect this check exists for: #2701 carried P2 AND parked.
+      issue({ number: 1, labels: ["feat", "P2", "ui", "parked"] }),
+      issue({ number: 2, labels: ["training"] }),
+      issue({ number: 3, labels: ["P2", "ui"] }),
+      issue({ number: 4, labels: ["P3", "intake", "cleanup"] }),
+    ]);
+    expect(findings).toEqual([
+      { issue: 1, kind: "priority-slot", detail: expect.stringContaining("2") },
+      {
+        issue: 1,
+        kind: "no-domain",
+        detail: expect.stringContaining("domain"),
+      },
+      {
+        issue: 2,
+        kind: "priority-slot",
+        detail: expect.stringContaining("exactly one"),
+      },
+      {
+        issue: 3,
+        kind: "no-domain",
+        detail: expect.stringContaining("design"),
+      },
+      {
+        issue: 4,
+        kind: "retired-label",
+        detail: expect.stringContaining("cleanup"),
+      },
+    ]);
+  });
+
+  it("passes the two-axis contract and ignores closed issues entirely", () => {
+    expect(
+      checkLabelHygiene([
+        issue({ number: 5, labels: ["bug", "P1", "biomarkers"] }),
+        issue({ number: 6, labels: ["P2", "design", "ui"] }),
+        // Closed issues keep their history — retired labels and all.
+        issue({ number: 7, labels: ["lib", "cleanup"], state: "closed" }),
+      ])
+    ).toEqual([]);
+  });
+
+  it("rides gatherEvidence into the report's own section", () => {
+    const evidence = gatherEvidence(
+      {
+        issues: [issue({ number: 8, labels: ["P2", "parked", "training"] })],
+        mergedPrs: [],
+        issueStates: new Map(),
+      },
+      repo({ "lib/real.ts": "" }),
+      { previous: null, current: "2026-08-15T00:00:00Z" }
+    );
+    expect(evidence.labelFindings).toHaveLength(1);
+    const report = renderReport(evidence);
+    expect(report).toContain("## Label hygiene (1)");
+    expect(report).toContain("#8");
   });
 });
 

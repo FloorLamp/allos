@@ -2,8 +2,19 @@
 
 ## Queue labels
 
-- Every issue has a domain label and P0–P3 priority, or `parked`. `lib` and
-  `ui` are secondary location labels.
+Two axes are load-bearing, and `reconcile-tracker` flags violations of both
+(`checkLabelHygiene`, 2026-08-15):
+
+- **Exactly one priority-slot label**: `P0`–`P3` or `parked`. Never two — a
+  `P2` + `parked` issue is in no queue and every queue at once.
+- **At least one domain label.** Cross-cutting design/UX work takes `design` —
+  it is a real domain, not a missing one.
+- `bug` is the only type label dispatch reads (P0/P1 bugs preempt features);
+  `feat`/`refactor` are optional color, and `ui` optionally marks screen-heavy
+  — therefore e2e-heavy — work (the two-agent cap).
+- `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15):
+  history on closed issues, a hygiene finding on open ones. `lib` routed
+  nothing — business logic living in `lib/` is the repo's own rule.
 - `needs-human` means one specific owner answer is required. Apply it, assign
   the owner, and keep working elsewhere; never prompt the owner uninvited.
 - Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
