@@ -8,8 +8,7 @@ import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
 import FitnessCheckSection from "./FitnessCheckSection";
 import AnalyzeSection from "./AnalyzeSection";
-import GoalsSection from "./GoalsSection";
-import RoutinesSection from "./RoutinesSection";
+import PlanSection from "./PlanSection";
 import RestrictedActivityView from "./RestrictedActivityView";
 import { isRealIsoDate } from "@/lib/date";
 import { today } from "@/lib/db";
@@ -61,10 +60,8 @@ export default async function TrainingPage(props: {
         );
       case "fitness":
         return <FitnessCheckSection />;
-      case "routines":
-        return <RoutinesSection />;
-      case "goals":
-        return <GoalsSection />;
+      case "plan":
+        return <PlanSection />;
       case "log":
       default:
         return <HistorySection initialCreateDate={initialCreateDate} />;
@@ -77,13 +74,14 @@ export default async function TrainingPage(props: {
       testId="training-page"
       // A stable, ungated door to the equipment registry (#592) — gear lives
       // conceptually under training, but /equipment has no top-level nav item.
-      // Reachable on a phone too since #1661; the vertical padding is what makes
-      // it a real tap target there (it costs desktop nothing, the row is taller).
+      // Desktop-only since #2892: on phones the header action rendered as a
+      // full-width row above every tab, and the Plan tab's Equipment card is
+      // the phone door now.
       action={
         <Link
           href="/equipment"
           data-testid="training-equipment-link"
-          className="inline-flex shrink-0 items-center py-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="hidden shrink-0 items-center py-1 text-sm font-medium text-brand-600 hover:underline md:inline-flex dark:text-brand-400"
         >
           Equipment
         </Link>

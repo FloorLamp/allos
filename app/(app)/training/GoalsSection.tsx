@@ -1,22 +1,21 @@
 import {
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
-  getFrequencyTargetProgress,
   getActivitySuggestions,
   getLoggedEquipmentByExercise,
 } from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
-import { getUnitPrefs, getWeekMode } from "@/lib/settings";
+import { getUnitPrefs } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
-import { frequencyScopeLabel } from "@/lib/frequency-targets";
-import FrequencyTargets from "@/app/(app)/training/FrequencyTargets";
 import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import { today } from "@/lib/db";
 import { getGoalBiomarkerOptions } from "./goal-target-options";
 import GoalsManager from "./GoalsManager";
 import GoalPacingFindings from "./GoalPacingFindings";
 
-// Goals (with a create/edit modal) on top, weekly frequency targets below.
+// The goals half of the Plan tab (#2892): pacing findings, the goal cards, and
+// the right-size offers. The weekly-routine targets card that used to sit below
+// moved to the top of PlanSection — Plan is its one editing home.
 export default async function GoalsSection() {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
@@ -26,8 +25,6 @@ export default async function GoalsSection() {
   const goalProgress = Object.fromEntries(
     getOutcomeGoalProgressMap(profile.id, goals)
   );
-  const targets = getFrequencyTargetProgress(profile.id);
-  const weekMode = getWeekMode(profile.id);
   const lifts = getActivitySuggestions(profile.id).lifts;
   // Load-context inputs for the goal form (#1610). Retired gear is included: it still
   // labels history, and a goal may legitimately track a machine you've stopped using.
@@ -62,42 +59,11 @@ export default async function GoalsSection() {
         )}
       />
 
-      {/* Right-sizing suggestions (#1670) for the weekly routine below: a training
+      {/* Right-sizing suggestions (#1670) for the weekly routine: a training
           frequency target the profile has been under for four completed weeks,
           offered for the cadence they actually keep or for no target at all. */}
       <div className="mt-6">
         <RightSizeSuggestions profileId={profile.id} domain="training" />
-      </div>
-
-      {/* Weekly frequency targets, below the goals. */}
-      <div className="card mt-6">
-        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-          Weekly routine
-        </h3>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          “Hit X at least N times per week.” Counts distinct training days{" "}
-          {weekMode === "rolling"
-            ? "over the last 7 days"
-            : "in the current week"}
-          . Click a routine to edit it.
-        </p>
-        <FrequencyTargets
-          items={targets
-            .filter((t) => t.target.scope_kind !== "practice")
-            .map((t) => ({
-              id: t.target.id,
-              scopeKind: t.target.scope_kind,
-              scopeValue: t.target.scope_value,
-              label: frequencyScopeLabel(
-                t.target.scope_kind,
-                t.target.scope_value
-              ),
-              count: t.count,
-              perWeek: t.per_week,
-              met: t.met,
-              pace: t.pace,
-            }))}
-        />
       </div>
     </section>
   );

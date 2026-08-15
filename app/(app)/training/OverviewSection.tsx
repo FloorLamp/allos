@@ -518,7 +518,16 @@ export default async function OverviewSection() {
         <WeekSpine spine={spine} />
 
         <div className="mt-5 border-t border-black/10 pt-4 dark:border-white/10">
-          <h4 className="section-label">Weekly routine</h4>
+          <div className="flex items-baseline justify-between gap-2">
+            <h4 className="section-label">Weekly routine</h4>
+            {/* The chips RENDER here and are EDITED in Plan (#2892) — one home. */}
+            <Link
+              href="/training?tab=plan#targets"
+              className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+            >
+              Edit targets →
+            </Link>
+          </div>
           {targets.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               No weekly routine set yet.

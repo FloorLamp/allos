@@ -141,8 +141,10 @@ export default function RoutinesManager({
       data-testid="routines-section"
       className="scroll-mt-[calc(5rem+env(safe-area-inset-top))]"
     >
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div>
+      {/* flex-wrap (#2892): on phones the shrink-proof button cluster used to
+          squeeze the heading cell — the actions wrap to their own line instead. */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             Routines
           </h2>

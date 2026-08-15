@@ -21,7 +21,6 @@ import type { UnitPrefs } from "@/lib/settings";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { exerciseHistoryKey } from "@/lib/lifts";
 import { PageHeader, EmptyState } from "@/components/ui";
-import { WeeklyTargets } from "@/components/WeeklyTargets";
 import MobileDetailPage from "@/components/MobileDetailPage";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
@@ -806,22 +805,15 @@ export default function TrainingLogView({
         />
       )}
 
-      {/* Routine progress and a compact, literal trailing-14-day cadence strip.
-          Hidden on first-run (issue #809): an empty cadence strip + no targets is
-          noise above the "log your first activity" prompt. */}
+      {/* A compact, literal trailing-14-day cadence strip. The weekly-routine
+          chips left this tab (#2892): they render on Overview and are edited in
+          Plan — one home, not three. Hidden on first-run (issue #809): an empty
+          cadence strip is noise above the "log your first activity" prompt. */}
       {showWeeklyTargets && hasActivities && (
         <div
           data-testid="training-log-routine-row"
           className="mb-5 space-y-3 xl:flex xl:items-center xl:gap-5 xl:space-y-0"
         >
-          {weekSummary.targets.length > 0 && (
-            <div className="lg:flex lg:min-w-0 lg:items-center lg:gap-3">
-              <h2 className="mb-1.5 shrink-0 text-xs font-semibold tracking-wide text-slate-500 uppercase lg:mb-0 dark:text-slate-400">
-                Weekly routine
-              </h2>
-              <WeeklyTargets targets={weekSummary.targets} />
-            </div>
-          )}
           <ActiveDaysStrip data={activeDaysStrip} />
         </div>
       )}
