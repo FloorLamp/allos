@@ -109,7 +109,6 @@ export type MedicalCategory =
   | "vitals"
   | "lab"
   | "genomics"
-  | "biomarker"
   | "scan"
   | "prescription"
   // Non-lab analyte classes split out of the old "has a canonical range" bucket
@@ -167,7 +166,9 @@ export interface ClinicalObservation {
   // because minimal read shapes may not select it; the `SELECT *` observation queries
   // always carry it.
   occurred_at?: string | null;
-  category: MedicalCategory;
+  // NULL is the explicit #2877 review state for a pre-existing result whose legacy
+  // catch-all category had no authoritative replacement. New writers never emit it.
+  category: MedicalCategory | null;
   name: string;
   value: string | null;
   unit: string | null;

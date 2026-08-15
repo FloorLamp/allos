@@ -78,7 +78,7 @@ export type ImportTabKind =
 // age, an immutable reference fact (blood type) — added by #1076 and kept in
 // medical_records storage. For them the "Panel" and "Reference" columns mean
 // nothing and the editable affordance exposes fields that don't apply. Every
-// OTHER category keeps the analyte grid AS-IS: lab/biomarker/genomics (which
+// OTHER category keeps the analyte grid AS-IS: lab/genomics (which
 // legitimately have a value/unit/reference band) AND prescription (whose story
 // #1178 owns — deliberately not re-litigated here) AND any unknown category.
 // Pure so the page and its tests agree.

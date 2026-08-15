@@ -826,12 +826,13 @@ export function getDocumentTriageRows(
   // category order, so "the first match's tab" means the leftmost tab.
   if (want.has("lab") || want.has("vitals") || want.has("medication")) {
     const observations = getObservationsForDocument(profileId, docId)
-      .map((r) => ({ r, rank: observationCategoryRank(r.category) }))
+      .filter((r) => r.category !== null)
+      .map((r) => ({ r, rank: observationCategoryRank(r.category!) }))
       .sort((a, b) => a.rank - b.rank || a.r.id - b.r.id);
     for (const { r } of observations) {
-      const kind = recordConfidenceKind(r.category);
+      const kind = recordConfidenceKind(r.category!);
       if (!want.has(kind)) continue;
-      push(kind, observationsTabKey(r.category), r.id, [
+      push(kind, observationsTabKey(r.category!), r.id, [
         r.name,
         r.canonical_name,
       ]);

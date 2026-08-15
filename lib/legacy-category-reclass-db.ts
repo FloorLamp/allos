@@ -56,11 +56,10 @@
 //   • Nothing else. `name`, `canonical_name`, `value`, `flag`, `loinc`, the document
 //     link and the provenance are all untouched.
 //
-// The `'biomarker'` value stays LEGAL in the `medical_records` CHECK. Dropping it
-// would need a table rebuild that can only be safe if this pass is total, and it is
-// deliberately not total — the residue above is the point. The value is retired in
-// CODE instead (`RETIRED_MEDICAL_CATEGORIES` in lib/medical-categories.ts): no write
-// path this build ships can produce it, so the residue can shrink and never grow.
+// Migration 185 deliberately left `'biomarker'` legal so it could report residue
+// without guessing. The final #2877 caller runs this evidence pass once more, then
+// rebuilds the table without that value and copies residue into the explicit NULL
+// review state.
 //
 // It takes an explicit handle rather than the lib/db singleton because a migration
 // runs before that singleton exists, and it assumes the caller has already opened a

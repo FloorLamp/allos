@@ -104,7 +104,7 @@ function rowMatches(row: TriageRow, label: string): boolean {
 // of the kind an extracted row was FLAGGED under (lib/import-shape's
 // extractionConfidenceItems), so a persisted row and the flag that describes it
 // agree: a prescription is a medication, a vitals row is a vital, and every other
-// category — lab, biomarker, genomics, scan, report — is flagged as "lab".
+// category — lab, genomics, scan, report — is flagged as "lab".
 export function recordConfidenceKind(
   category: string | null | undefined
 ): ConfidenceKind {

@@ -169,7 +169,12 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
 // its own (#2023 non-goal).
 function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
   return getClinicalObservations(profileId, { current: true })
-    .filter((r) => LAB_CATEGORIES.has(r.category) && r.canonical_name)
+    .filter(
+      (r) =>
+        r.category !== null &&
+        LAB_CATEGORIES.has(r.category) &&
+        r.canonical_name
+    )
     .map((r) => ({
       name: r.name,
       canonicalName: r.canonical_name ?? null,

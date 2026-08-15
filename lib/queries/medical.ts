@@ -85,6 +85,40 @@ export interface ClinicalObservationFilters {
   current?: boolean;
 }
 
+export interface UnclassifiedClinicalObservation {
+  id: number;
+  profile_id: number;
+  date: string;
+  name: string;
+  canonical_name: string | null;
+  value: string | null;
+  unit: string | null;
+  source: string | null;
+  document_id: number | null;
+  encounter_id: number | null;
+  provider_name: string | null;
+}
+
+// Legacy catch-all rows that still need an explicit category decision (#2877).
+// NULL is never a writer output; it is the migration-created review state. Keep this
+// read separate from the ordinary result catalog so an unresolved row cannot acquire
+// lab/vitals behavior before a person classifies it.
+export function getUnclassifiedClinicalObservations(
+  profileId: number
+): UnclassifiedClinicalObservation[] {
+  return db
+    .prepare(
+      `SELECT mr.id, mr.profile_id, mr.date, mr.name, mr.canonical_name,
+              mr.value, mr.unit, mr.source, mr.document_id, mr.encounter_id,
+              p.name AS provider_name
+         FROM medical_records mr
+         LEFT JOIN providers p ON p.id = mr.provider_id
+        WHERE mr.profile_id = ? AND mr.category IS NULL
+        ORDER BY mr.date DESC, mr.id DESC`
+    )
+    .all(profileId) as UnclassifiedClinicalObservation[];
+}
+
 // Display/grouping identity for a biomarker: the canonical name when present,
 // otherwise the raw name. Name sorting and the "current value" filter both key
 // off this so the table orders and dedupes by the same identity it shows.
@@ -514,7 +548,7 @@ const CURRENT_QUALITATIVE_STMT = hoistedStatement(
           value, notes, reference_range AS reference, loinc, date
      FROM medical_records
     WHERE profile_id = ? AND ${LATEST_IN_GROUP}
-      AND category IN ('lab', 'biomarker')
+      AND category = 'lab'
       AND value_num IS NULL
     ORDER BY date DESC, id ASC`
 );
@@ -593,7 +627,7 @@ export function getCurrentFlaggedVitals(
   return stmt.all(...args) as CurrentFlaggedReading[];
 }
 
-// The CURRENT qualitative (value_num IS NULL) lab/biomarker readings — one per
+// The CURRENT qualitative (value_num IS NULL) lab readings — one per
 // biomarker family, newest-first — with the name/value/notes/reference/loinc the
 // shared classifier (#549) reads. Feeds the condition-suggestion builder (#685):
 // unlike getCurrentFlaggedBiomarkers this does NOT pre-filter on the stored `flag`,

@@ -576,7 +576,7 @@ export default async function Dashboard() {
   // and the combined duration appear without changing the main-sleep card.
   const todayNaps = has("naps-today") ? getNapHistory(profile.id, 1).today : [];
 
-  // recent-labs (medical): the current reading per lab/biomarker marker, flagged
+  // recent-labs (medical): the current reading per lab marker, flagged
   // markers surfaced first so an out-of-range result is the headline. Selection
   // policy is the shared recentLabHighlights (issue #313).
   let labRows: RecentLabRow[] = [];

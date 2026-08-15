@@ -501,6 +501,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/results/clinical-result-actions.ts",
+    fn: "classifyResultCategory",
+    why: "multi-view (#2877): classifies the ITEM's pending clinical observation via gateItemProfile() → requireProfileWriteAccess(itemProfileId), so a shared profile's row is writable only with that profile's write grant",
+  },
+  {
+    file: "app/(app)/results/clinical-result-actions.ts",
     fn: "deleteResult",
     why: "multi-view (#1331): deletes the ITEM's biomarker reading via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },

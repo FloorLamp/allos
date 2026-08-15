@@ -124,7 +124,8 @@ export function filterDerivedForTable(
   const q = filters.q?.trim().toLowerCase();
   return derived.filter((r) => {
     if (filters.category && r.category !== filters.category) return false;
-    if (filters.excludeCategories?.includes(r.category)) return false;
+    if (r.category && filters.excludeCategories?.includes(r.category))
+      return false;
     if (filters.panel && tablePanelId(r) !== filters.panel) return false;
     if (filters.range === "oor") {
       if (!isOutOfRange(r.flag)) return false;

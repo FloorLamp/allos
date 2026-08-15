@@ -433,7 +433,7 @@ function ClinicalResultRow({
           empty={!r.category}
           className="hidden md:table-cell"
         >
-          <Tag value={r.category} />
+          {r.category ? <Tag value={r.category} /> : null}
         </Td>
         <Td slot="meta" label="Date">
           {dateCell(r, now, !!r.is_latest)}
@@ -492,7 +492,7 @@ function ClinicalResultRow({
       <Td label="Category" empty={!r.category} className="hidden md:table-cell">
         <Link
           href={qs({
-            category: r.category,
+            category: r.category ?? undefined,
             panel,
             range,
             q,
@@ -503,7 +503,7 @@ function ClinicalResultRow({
           title={`Filter by ${r.category}`}
           className="hover:opacity-80"
         >
-          <Tag value={r.category} />
+          {r.category ? <Tag value={r.category} /> : null}
         </Link>
       </Td>
       <Td slot="meta" label="Date">

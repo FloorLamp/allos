@@ -6,8 +6,11 @@ import { up } from "@/lib/migrations/versions/20260814-mobility-activity-type";
 
 function beforeMobilityRename(): Database.Database {
   const mem = new Database(":memory:");
-  expect(MIGRATIONS.at(-1)?.name).toBe("20260814-mobility-activity-type");
-  runMigrations(mem, MIGRATIONS.slice(0, -1));
+  const target = MIGRATIONS.findIndex(
+    (migration) => migration.name === "20260814-mobility-activity-type"
+  );
+  expect(target).toBeGreaterThan(0);
+  runMigrations(mem, MIGRATIONS.slice(0, target));
   return mem;
 }
 

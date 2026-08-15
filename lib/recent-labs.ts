@@ -26,11 +26,11 @@ export const RECENT_LAB_STALE_LABEL = "a year";
 // Which medical-record categories count as "labs" for the recent-labs surfaces:
 // `lab` ONLY (#1076). Vitals, screening instruments, derived composites, and
 // immutable facts each have their own home and must not appear in a recent-labs
-// list; the legacy `biomarker` bucket is emptied of real labs (Glucose is now `lab`).
+// list.
 export const LAB_CATEGORIES: ReadonlySet<MedicalCategory> =
   new Set<MedicalCategory>(["lab"]);
 
-// One latest lab/biomarker reading, flattened for display by a surface.
+// One latest lab reading, flattened for display by a surface.
 export interface RecentLabRow {
   name: string;
   value: string | null;
@@ -64,7 +64,7 @@ type LabRecord = Pick<
 >;
 
 // Recent-labs highlight selection (issue #313, extracted from the dashboard).
-// Of the current (latest-per-marker) lab/biomarker readings, pick the few to
+// Of the current (latest-per-marker) lab readings, pick the few to
 // surface: out-of-range markers float to the top, then newest-first, then take
 // the first `limit`. A flagged marker being the headline is the whole point, so
 // the flag precedence leads and the date tie-break is only among equally-flagged
@@ -84,7 +84,7 @@ export function recentLabHighlights(
   const notable = (flag: MedicalFlag | null): boolean =>
     isOutOfRange(flag) || isNonOptimal(flag);
   return records
-    .filter((r) => LAB_CATEGORIES.has(r.category))
+    .filter((r) => r.category !== null && LAB_CATEGORIES.has(r.category))
     .slice()
     .sort((a, b) => {
       const af = notable(a.flag) ? 0 : 1;

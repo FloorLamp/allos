@@ -638,7 +638,7 @@ export function getCareGoals(profileId: number): CareGoal[] {
 }
 
 // Derive the positive allergen-specific IgE sensitizations from the profile's
-// current lab/biomarker readings (RAST / ImmunoCAP). Total serum IgE is excluded;
+// current lab readings (RAST / ImmunoCAP). Total serum IgE is excluded;
 // only above-range / class≥1 results become sensitizations. Read-time only.
 export function getAllergenSensitizations(
   profileId: number

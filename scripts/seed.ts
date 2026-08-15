@@ -2642,7 +2642,7 @@ for (let d = 30; d >= 8; d--) {
 // rollup). The alcohol servings the food log above already records are the
 // consumption ledger — a standard drink IS one `alcohol` food-group serving.
 // category 'instrument' (#1076): a screening score files on its own class, off the
-// general lab/biomarker surfaces (and the flagged hero).
+// general lab surfaces (and the flagged hero).
 {
   const suScore = db
     .prepare(

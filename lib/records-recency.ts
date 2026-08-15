@@ -89,7 +89,7 @@ export const RECORDS_RECENCY_PREFIX = "records-recency:";
 export const RECORDS_RECENCY_SOURCES = [
   // #2164 — the Fitbit (Google Takeout) archive's exclusive streams.
   "archive:fitbit-takeout",
-  // #2176 — the profile's lab/biomarker frontier, for a household with no portal.
+  // #2176 — the profile's lab frontier, for a household with no portal.
   "clinical-records",
 ] as const;
 
@@ -204,7 +204,7 @@ export const DEFAULT_CLINICAL_RECENCY_MONTHS = 15;
 const DAYS_PER_MONTH = 30.4375;
 
 /**
- * The lab/biomarker recency horizon in whole days for a profile of this age (in
+ * The lab recency horizon in whole days for a profile of this age (in
  * months; null = unknown).
  */
 export function clinicalRecencyHorizonDays(

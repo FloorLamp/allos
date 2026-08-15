@@ -218,7 +218,7 @@ export function seedNutritionTrio(): void {
   db.prepare(
     `INSERT INTO medical_records
      (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
-   VALUES (?, ?, 'biomarker', 'VO2 Max', '48', 48, 'mL/kg/min', 'VO2 Max', 'oura')`
+   VALUES (?, ?, 'vitals', 'VO2 Max', '48', 48, 'mL/kg/min', 'VO2 Max', 'oura')`
   ).run(fitnessId, fitnessRecent);
   reconcileFlags(fitnessId);
   db.prepare(

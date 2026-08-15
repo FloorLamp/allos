@@ -352,7 +352,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     // RECORDS-RECENCY asks (#2164 + #2176) — the other two legs of the #1757 pattern,
     // under ONE namespace because they are one question about two person-operated
     // sources: an archive whose exclusive streams have aged past their declared horizon,
-    // and a manual-upload profile whose lab/biomarker frontier has aged past the
+    // and a manual-upload profile whose lab frontier has aged past the
     // preventive catalog's check-up cadence.
     //
     // COACHING tier, and the ceiling is the same hard contract the portal request has:

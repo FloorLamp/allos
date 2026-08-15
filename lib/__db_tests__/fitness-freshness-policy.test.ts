@@ -42,7 +42,7 @@ function seedVital(
   db.prepare(
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
-     VALUES (?, ?, 'biomarker', ?, ?, ?, 'mL/kg/min', ?, ?)`
+     VALUES (?, ?, 'vitals', ?, ?, ?, 'mL/kg/min', ?, ?)`
   ).run(profileId, date, canonical, String(value), value, canonical, source);
   addCanonicalNames([canonical]);
 }

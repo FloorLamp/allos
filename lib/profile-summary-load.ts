@@ -218,6 +218,7 @@ export function getProfileSummary(
     sort: "date",
     dir: "desc",
   })
+    .filter((r) => r.category !== null)
     .slice(0, MAX_HISTORY)
     .map((r) => ({
       name: recordName(r),
@@ -225,7 +226,7 @@ export function getProfileSummary(
       unit: r.unit,
       flag: r.flag,
       date: r.date,
-      category: r.category,
+      category: r.category!,
     }));
 
   // Allergies: documented allergies merged with positive lab-derived IgE

@@ -800,7 +800,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
             ${hasLoinc ? "loinc" : "NULL AS loinc"},
             ${hasEdited ? "edited" : "0 AS edited"}
        FROM medical_records
-      WHERE value_num IS NULL AND category IN ('lab','biomarker')`
+      WHERE value_num IS NULL AND category = 'lab'`
   );
 
   // What this pass TOUCHED. It rewrites stored clinical flags on every profile's

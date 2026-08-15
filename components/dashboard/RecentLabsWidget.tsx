@@ -4,7 +4,7 @@ import { MedicalValue } from "@/components/ui";
 import { RECENT_LAB_STALE_LABEL, type RecentLabRow } from "@/lib/recent-labs";
 import { glanceAgeToken } from "@/lib/glance-age";
 
-// One latest lab/biomarker reading, flattened for display by the page. The shape
+// One latest lab reading, flattened for display by the page. The shape
 // and its selection policy live in lib/recent-labs (issue #313); re-exported here
 // so existing import sites (the dashboard page) stay unchanged.
 export type { RecentLabRow };
