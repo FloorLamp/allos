@@ -342,11 +342,42 @@ describe("isRetriableSaveError — the swap window's network shapes (#2866)", ()
     ).toBe(true);
   });
 
+  it("trusts Next's stable error code over the prose — the text/plain 502 has no matchable message", () => {
+    // Next stamps __NEXT_ERROR_CODE on its non-RSC-response throw at runtime.
+    // When the proxy answers >=400 as text/plain, the MESSAGE is the raw
+    // response body — no signature can match it; the code is the only signal.
+    expect(
+      isRetriableSaveError(
+        Object.assign(new Error("Bad Gateway"), { __NEXT_ERROR_CODE: "E394" })
+      )
+    ).toBe(true);
+    // The same body WITHOUT the code stays unmatched — an ordinary server
+    // error page must not become retriable by wording alone.
+    expect(isRetriableSaveError(new Error("Bad Gateway"))).toBe(false);
+    // The stale verdict still outranks the code: a reload-shaped failure that
+    // happens to carry it is never retriable.
+    expect(
+      isRetriableSaveError(
+        Object.assign(new Error("Failed to find Server Action"), {
+          __NEXT_ERROR_CODE: "E394",
+        })
+      )
+    ).toBe(false);
+  });
+
   it("refuses everything a retry cannot help", () => {
     // A genuine server rejection is deterministic — retrying repeats it.
     expect(isRetriableSaveError(new Error("500 Internal Server Error"))).toBe(
       false
     );
+    // A deterministic CLIENT TypeError (a programming bug in form assembly,
+    // thrown inside the same try) is not a network failure — retrying
+    // re-crashes it identically, and the honest error rendering must stand.
+    expect(
+      isRetriableSaveError(
+        new TypeError("Cannot read properties of undefined (reading 'reps')")
+      )
+    ).toBe(false);
     // The stale signature is NEVER retriable, even though it is also a
     // deploy-window shape — its remedy is a reload (trigger A), not a retry.
     expect(
@@ -370,6 +401,15 @@ describe("saveFailureEvent — one structured line per episode (#2866)", () => {
     expect(event.message).toContain("unexpected response");
     expect(event.retriable).toBe(true);
     expect(event.stale).toBe(false);
+    expect(event.code).toBe(null);
+  });
+
+  it("carries Next's error code when the throw is stamped with one", () => {
+    const event = saveFailureEvent(
+      Object.assign(new Error("Bad Gateway"), { __NEXT_ERROR_CODE: "E394" })
+    );
+    expect(event.code).toBe("E394");
+    expect(event.retriable).toBe(true);
   });
 
   it("truncates a runaway message and survives non-Error shapes", () => {
