@@ -66,7 +66,7 @@ function sample(
 ): void {
   const ts = `${date}T00:00:00`;
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', ?, ?, ?, ?, ?)`
   ).run(profileId, metric, date, ts, ts, value);
 }

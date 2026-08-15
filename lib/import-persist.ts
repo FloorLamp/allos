@@ -840,12 +840,12 @@ function insertImportRows(
   );
   // Body height lives in metric_samples (metric 'height_cm'), not body_metrics
   //. A point sample uses the date as both start/end. INSERT OR IGNORE keeps
-  // the (profile_id, metric, start_time, end_time) natural key idempotent; the
+  // the (profile_id, metric, started_at, ended_at) natural key idempotent; the
   // per-source delete in the transaction clears this document's own prior rows on
   // reprocess. Integration rows carry full ISO timestamps, so they never collide.
   const insHeight = db.prepare(
     `INSERT OR IGNORE INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, ?, 'height_cm', ?, ?, ?, ?)`
   );
   // Does another source (manual/integration/another document) already have a height
@@ -858,12 +858,12 @@ function insertImportRows(
   );
   // Head circumference lives in metric_samples (metric 'head_circumference_cm'),
   // exactly like height. Same idempotency: INSERT OR IGNORE on the
-  // (profile_id, metric, start_time, end_time) natural key, a per-source delete on
+  // (profile_id, metric, started_at, ended_at) natural key, a per-source delete on
   // reprocess (below), and a defer probe so a manual/integration/another-document
   // reading for a date is never overwritten.
   const insHeadCirc = db.prepare(
     `INSERT OR IGNORE INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, ?, 'head_circumference_cm', ?, ?, ?, ?)`
   );
   const headCircCovered = db.prepare(
@@ -872,12 +872,12 @@ function insertImportRows(
   );
   // Waist circumference lives in metric_samples (metric 'waist_circumference_cm'),
   // exactly like the other two length measures (#2322). Same idempotency: INSERT OR
-  // IGNORE on the (profile_id, metric, start_time, end_time) natural key, a per-source
+  // IGNORE on the (profile_id, metric, started_at, ended_at) natural key, a per-source
   // delete on reprocess, and a defer probe so a manual tape reading for a date is
   // never overwritten by a document.
   const insWaistCirc = db.prepare(
     `INSERT OR IGNORE INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, ?, 'waist_circumference_cm', ?, ?, ?, ?)`
   );
   const waistCircCovered = db.prepare(

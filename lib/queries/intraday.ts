@@ -44,19 +44,19 @@ const STAGE_METRICS: Record<string, SleepStage> = {
 
 interface StageRow {
   metric: string;
-  start_time: string;
-  end_time: string;
+  started_at: string;
+  ended_at: string;
 }
 
 function stageWindows(profileId: number, date: string): StageRow[] {
   return db
     .prepare(
-      `SELECT metric, start_time, end_time
+      `SELECT metric, started_at, ended_at
          FROM metric_samples
         WHERE profile_id = ?
           AND metric IN ('sleep_deep_min','sleep_rem_min','sleep_light_min','sleep_awake_min')
           AND date >= ? AND date <= ?
-        ORDER BY start_time`
+        ORDER BY started_at`
     )
     .all(profileId, date, shiftDateStr(date, 1)) as StageRow[];
 }
@@ -99,8 +99,8 @@ function sleepSpans(
   for (const row of stageWindows(profileId, date)) {
     const stage = STAGE_METRICS[row.metric];
     if (!stage) continue;
-    const startMinute = instantMinute(tz, date, row.start_time);
-    const endMinute = instantMinute(tz, date, row.end_time);
+    const startMinute = instantMinute(tz, date, row.started_at);
+    const endMinute = instantMinute(tz, date, row.ended_at);
     if (startMinute == null || endMinute == null) continue;
     if (endMinute <= startMinute) continue;
     // Keep a stage only where it sits INSIDE one of the kept session windows: a

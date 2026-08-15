@@ -37,7 +37,7 @@ export function seedRestEpisode(): void {
     `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min' AND date = ?`
   ).run(PROFILE_ID, COACH_TODAY);
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
   ).run(
     PROFILE_ID,
@@ -108,7 +108,7 @@ export function seedRestCard(): void {
     // rest-rhr becomes the lone primary, and the "Also:" line vanishes.
     const rcTz = getTimezone(rcId);
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
     ).run(
       rcId,

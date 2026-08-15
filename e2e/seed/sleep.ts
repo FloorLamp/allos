@@ -31,7 +31,7 @@ export function seedSleep(): void {
   // a Z so they're timezone-unambiguous. Idempotent: clear this range first (the
   // coaching low-sleep row on wake-day `today` is outside it and untouched).
   const sriInsert = db.prepare(
-    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
   );
   for (let i = 1; i <= 28; i++) {
@@ -74,7 +74,7 @@ export function seedSleep(): void {
   const sleepTz = getTimezone(PROFILE_ID);
   const iso = (d: Date) => d.toISOString();
   const sleepStageInsert = db.prepare(
-    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'manual', ?, ?, ?, ?, ?)`
   );
   for (let i = 0; i <= 13; i++) {
@@ -112,13 +112,13 @@ export function seedSleep(): void {
   const napStart = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "13:00")!);
   const napEnd = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "13:45")!);
   const sleepSessionInsert = db.prepare(
-    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
   );
   // Own wake-day `today` entirely: clear ALL of today's manual sleep_min sessions —
   // crucially the NAIVE-timestamp overnight the coaching block above seeded for
   // COACH_TODAY (23:00→04:00 as bare, non-tz strings → fixed 23:00Z→04:00Z). Its
-  // old per-start_time DELETE only matched THIS block's own tz-correct start, so the
+  // old per-started_at DELETE only matched THIS block's own tz-correct start, so the
   // coaching duplicate survived: two 300-min overnights on today, and mainSleepSession's
   // duration-tie → earliest-END tiebreak flipped to the coaching row whenever the
   // pinned tz is west of UTC (ALLOS_TEST_NOW hour ≥ 14:00 UTC — utcHour drives the
@@ -206,7 +206,7 @@ export function seedSleep(): void {
   // parser keys each day at UTC midnight, so match that natural key here. Source
   // 'oura'. Synthetic values only (no PHI). Idempotent: clears its own kind/day rows.
   const ouraScoreInsert = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'oura', ?, ?, ?, ?, ?)`
   );
   for (let i = 0; i <= 13; i++) {
@@ -254,7 +254,7 @@ function seedWaitingNights(profileId: number, wakeHhmm: string): void {
   const tz = getTimezone(profileId);
   const insert = db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', 'sleep_min', ?, ?, ?, 450)`
   );
   for (let back = 1; back <= 14; back++) {

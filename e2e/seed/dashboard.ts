@@ -422,7 +422,7 @@ export function seedNowStrip(): void {
   const daytimeSleepDate = shiftDateStr(sleepPhaseToday, -2);
   const insertSleepPhase = db.prepare(
     `INSERT INTO metric_samples
-     (profile_id, source, metric, date, start_time, end_time, value)
+     (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'oura', 'sleep_min', ?, ?, ?, ?)`
   );
   insertSleepPhase.run(
@@ -459,7 +459,7 @@ export function seedNowStrip(): void {
   const sleepSegmentedToday = today(sleepSegmentedId);
   const insertSegmentedSleep = db.prepare(
     `INSERT INTO metric_samples
-     (profile_id, source, metric, date, start_time, end_time, value)
+     (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'health-connect', 'sleep_min', ?, ?, ?, 240)`
   );
   for (let offset = 14; offset >= 0; offset--) {
@@ -703,7 +703,7 @@ export function seedDailyLoop(): void {
       `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'steps'`
     ).run(dailyId);
     const insSteps = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
     );
     for (const [ago, steps] of [
@@ -1125,7 +1125,7 @@ export function seedDormantDomains(): void {
   // Sleep: a week of nights, the newest exactly 150 days back.
   const insSleep = db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'oura', 'sleep_min', ?, ?, ?, 450)`
   );
   for (let offset = 156; offset >= 150; offset--) {

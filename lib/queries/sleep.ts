@@ -724,7 +724,7 @@ export function getSleepArrivalLagMinutes(
 ): number | null {
   const rows = db
     .prepare(
-      `SELECT (julianday(r.created_at) - julianday(s.end_time)) * 1440 AS lag
+      `SELECT (julianday(r.created_at) - julianday(s.ended_at)) * 1440 AS lag
          FROM integration_sync_rows r
          JOIN integration_sync_events e ON e.id = r.event_id
          JOIN metric_samples s ON s.id = r.target_id

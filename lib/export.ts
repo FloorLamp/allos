@@ -930,14 +930,14 @@ export const DATASETS: ExportDataset[] = [
       "date",
       "metric",
       "value",
-      "start_time",
-      "end_time",
+      "started_at",
+      "ended_at",
       "source",
       "origin",
     ],
-    select: `SELECT id, date, metric, value, start_time, end_time, source, origin
+    select: `SELECT id, date, metric, value, started_at, ended_at, source, origin
        FROM metric_samples WHERE profile_id = ?
-       ORDER BY date DESC, metric, start_time DESC`,
+       ORDER BY date DESC, metric, started_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ?`,
   }),
   tableDataset({
@@ -1311,8 +1311,8 @@ export const DATASETS: ExportDataset[] = [
     key: "substance_daily_totals",
     label: "Substance log",
     table: "substance_daily_totals",
-    columns: ["date", "substance", "units", "logged_at", "notes"],
-    select: `SELECT id, date, substance, units, logged_at, notes
+    columns: ["date", "substance", "units", "recorded_at", "notes"],
+    select: `SELECT id, date, substance, units, recorded_at, notes
        FROM substance_daily_totals WHERE profile_id = ? ORDER BY date DESC, substance`,
     countSql: `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`,
   }),

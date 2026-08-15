@@ -41,8 +41,8 @@ const sample = (
 ): NormMetricSample => ({
   metric,
   date,
-  start_time: start,
-  end_time: end,
+  started_at: start,
+  ended_at: end,
   value,
 });
 

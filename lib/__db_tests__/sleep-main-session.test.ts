@@ -54,8 +54,8 @@ const session = (
 ): NormMetricSample => ({
   metric,
   date,
-  start_time: start,
-  end_time: end,
+  started_at: start,
+  ended_at: end,
   value,
 });
 
@@ -367,7 +367,7 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
 // hand-logged nap, which cannot happen: the only manual sleep writer is the
 // measurements quick-add (lib/offline/writes.ts), which stores a duration-only row
 // at `date||'T00:00:00'` for BOTH ends, and every session read filters on
-// `julianday(end_time) > julianday(start_time)`. A manual sleep row is therefore
+// `julianday(ended_at) > julianday(started_at)`. A manual sleep row is therefore
 // never a session at all. What IS reachable is two syncing sources: a ring
 // reporting the night while the phone's Health Connect reports an afternoon nap.
 // health-connect outranks oura in SOURCE_PREFERENCE, so the nap won the day and the
@@ -560,7 +560,7 @@ describe("two syncing sources, one nap: the stream election (#2603)", () => {
   const NIGHTS = 10;
 
   // A ring reporting `NIGHTS` consecutive overnights, plus one phone nap this
-  // afternoon — the newest session in the profile by end_time.
+  // afternoon — the newest session in the profile by ended_at.
   const napFlipProfile = (name: string): { id: number; wakeDay: string } => {
     const id = Number(
       db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
@@ -975,7 +975,7 @@ describe("duration-only manual sleep", () => {
     setTimezone(manualProfileId, "UTC");
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'sleep_min', '2026-02-03',
                '2026-02-03T00:00:00', '2026-02-03T00:00:00', 450)`
     ).run(manualProfileId);
@@ -1014,7 +1014,7 @@ describe("duration-only manual sleep", () => {
     }
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'sleep_min', '2026-04-16',
                '2026-04-16T00:00:00', '2026-04-16T00:00:00', 450)`
     ).run(mixedProfileId);
@@ -1066,7 +1066,7 @@ describe("duration-only manual sleep", () => {
     );
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'sleep_min', '2026-05-04',
                '2026-05-04T00:00:00', '2026-05-04T00:00:00', 450)`
     ).run(baselineProfileId);
@@ -1091,7 +1091,7 @@ describe("duration-only manual sleep", () => {
     const bedDay = shiftDateStr(wakeDay, -1);
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 420),
               (?, 'manual', 'sleep_min', ?, ?, ?, 360)`
     ).run(

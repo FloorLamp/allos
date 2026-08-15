@@ -690,7 +690,7 @@ export function foldDailySums(
 }
 
 // A day's total becomes ONE sample spanning that local day. The natural key
-// (metric, source, start_time) is therefore one row per metric per day, so a
+// (metric, source, started_at) is therefore one row per metric per day, so a
 // re-import of the same archive updates in place rather than accumulating.
 export function finalizeDailySums(
   acc: Map<string, number>,
@@ -703,8 +703,8 @@ export function finalizeDailySums(
     out.push({
       metric,
       date,
-      start_time: `${date}T00:00:00.000Z`,
-      end_time: `${date}T23:59:59.999Z`,
+      started_at: `${date}T00:00:00.000Z`,
+      ended_at: `${date}T23:59:59.999Z`,
       value,
     });
   }
@@ -788,8 +788,8 @@ export function parseComputedTemperatureCsv(
     out.samples.push({
       metric: "skin_temp_delta_c",
       date,
-      start_time: instant,
-      end_time: instant,
+      started_at: instant,
+      ended_at: instant,
       value,
     });
   }
@@ -895,8 +895,8 @@ export function parseSleepJson(text: string, tz: string): TakeoutParsed {
     out.samples.push({
       metric: "sleep_min",
       date,
-      start_time: start,
-      end_time: end,
+      started_at: start,
+      ended_at: end,
       value: total,
     });
     // The stage breakdown comes ONLY from a stage-scored log. A `classic` log — an
@@ -921,8 +921,8 @@ export function parseSleepJson(text: string, tz: string): TakeoutParsed {
       out.samples.push({
         metric,
         date,
-        start_time: `${start}#${key}`,
-        end_time: end,
+        started_at: `${start}#${key}`,
+        ended_at: end,
         value,
       });
     }
@@ -1188,7 +1188,7 @@ export function parseVendorScoreCsv(
       : FITBIT_READINESS_SCORE_METRIC;
   const column = kind === "sleep_score" ? "overall_score" : "score";
   // One row per day per kind; a re-import of the same archive dedups on the natural
-  // key (metric, source, start_time), like every other sample.
+  // key (metric, source, started_at), like every other sample.
   const byDate = new Map<string, number>();
   for (const row of parsed.rows) {
     const iso = row.timestamp;
@@ -1205,8 +1205,8 @@ export function parseVendorScoreCsv(
     out.samples.push({
       metric,
       date,
-      start_time: instant,
-      end_time: instant,
+      started_at: instant,
+      ended_at: instant,
       value,
     });
   }

@@ -82,12 +82,12 @@ function makeDocument(profileId: number, filename: string): number {
 function peakFlowRows(profileId: number) {
   return db
     .prepare(
-      `SELECT date, start_time, value, source, metric FROM metric_samples
-        WHERE profile_id = ? AND metric = ? ORDER BY start_time`
+      `SELECT date, started_at, value, source, metric FROM metric_samples
+        WHERE profile_id = ? AND metric = ? ORDER BY started_at`
     )
     .all(profileId, PEAK_FLOW_METRIC) as {
     date: string;
-    start_time: string;
+    started_at: string;
     value: number;
     source: string;
     metric: string;
@@ -132,7 +132,7 @@ describe("the home half — a blow through the measurements quick-add", () => {
 
     const rows = peakFlowRows(profileId);
     expect(rows.map((r) => r.value)).toEqual([520, 430]);
-    expect(rows.map((r) => r.start_time)).toEqual([
+    expect(rows.map((r) => r.started_at)).toEqual([
       "2026-04-03T07:30:00",
       "2026-04-03T20:00:00",
     ]);

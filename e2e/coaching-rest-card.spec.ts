@@ -41,7 +41,7 @@ function resetRestCardState(): void {
       // The #2159 wake-day rule: the overnight window is built through the
       // profile timezone (pinned to UTC just above), never bare `…Z` stamps.
       db.prepare(
-        `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+        `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
       ).run(
         row.id,

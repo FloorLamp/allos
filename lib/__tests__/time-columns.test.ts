@@ -69,6 +69,11 @@ function entries(): { table: TemporalTable; col: TimeColumn }[] {
   return out;
 }
 
+// A suffix exception must name the physical column and explain why its grain cannot
+// use the ordinary persisted vocabulary. Empty today; keeping the reasoned shape
+// here makes any future exception an explicit review decision rather than a skip.
+const TIME_SUFFIX_ALLOW: Record<string, string> = {};
+
 describe("the declared index is internally consistent", () => {
   it("uses only the declared vocabulary", () => {
     // The types already say this; the registry is DATA, and a `satisfies` clause is
@@ -103,6 +108,27 @@ describe("the declared index is internally consistent", () => {
     expect(bad, bad.join("\n")).toEqual([]);
   });
 
+  it("reserves `_at` for instants and `_time` for profile-local clock values", () => {
+    const bad: string[] = [];
+    const used = new Set<string>();
+    for (const { table, col } of entries()) {
+      const key = `${table}.${col.column}`;
+      const wrong =
+        (col.grain === "instant" && col.column.endsWith("_time")) ||
+        (col.grain === "time-of-day" && col.column.endsWith("_at"));
+      if (!wrong) continue;
+      if (TIME_SUFFIX_ALLOW[key]) used.add(key);
+      else bad.push(`${key}: ${col.grain}`);
+    }
+    const thin = Object.entries(TIME_SUFFIX_ALLOW)
+      .filter(([, reason]) => reason.trim().length < 20)
+      .map(([key]) => `${key}: exception has no useful reason`);
+    const stale = Object.keys(TIME_SUFFIX_ALLOW)
+      .filter((key) => !used.has(key))
+      .map((key) => `${key}: exception is no longer needed`);
+    expect([...bad, ...thin, ...stale]).toEqual([]);
+  });
+
   it("keeps `day` semantics day-grained", () => {
     // #2205 constraint 4: a profile-local day is a different question from an instant,
     // and nothing in phase 3 may quietly promote one.
@@ -110,6 +136,14 @@ describe("the declared index is internally consistent", () => {
       .filter(({ col }) => col.semantic === "day" && col.grain !== "day")
       .map(({ table, col }) => `${table}.${col.column}`);
     expect(bad, bad.join(", ")).toEqual([]);
+  });
+
+  it("keeps practice and activity rhythm inputs at profile-local clock grain", () => {
+    const grain = (table: TemporalTable, column: string) =>
+      TIME_COLUMNS[table].find((entry) => entry.column === column)?.grain;
+    expect(grain("practice_logs", "time")).toBe("time-of-day");
+    expect(grain("activities", "start_time")).toBe("time-of-day");
+    expect(grain("activities", "end_time")).toBe("time-of-day");
   });
 
   it("declares at most one event column per table", () => {
@@ -184,8 +218,8 @@ describe("the declared index is internally consistent", () => {
       "integration_backfill_jobs.started_at",
       "integration_connections.last_sync_at",
       "integration_connections.refresh_claimed_at",
-      "metric_samples.end_time",
-      "metric_samples.start_time",
+      "metric_samples.ended_at",
+      "metric_samples.started_at",
     ]);
   });
 

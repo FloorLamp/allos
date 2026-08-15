@@ -348,7 +348,7 @@ db.prepare(
 // re-ingest dedups exactly as the real normalization path does.
 db.prepare(
   `INSERT INTO metric_samples
-     (profile_id, source, metric, date, start_time, end_time, value,
+     (profile_id, source, metric, date, started_at, ended_at, value,
       activity_external_id)
    VALUES (1, 'health-connect', 'active_kcal', ?, ?, ?, ?, ?)`
 ).run(
@@ -443,7 +443,7 @@ const stravaRideId = Number(
 // activity estimate stored in activities.est_calories.
 db.prepare(
   `INSERT INTO metric_samples
-     (profile_id, source, metric, date, start_time, end_time, value,
+     (profile_id, source, metric, date, started_at, ended_at, value,
       activity_external_id)
    VALUES (1, 'strava', 'active_kcal', ?, ?, ?, ?, 'strava:seed-ride-1')`
 ).run(
@@ -1227,7 +1227,7 @@ reconcileFlags(SEED_PROFILE_ID, medIds);
 // has something to judge against: 620 L/min, which puts the flare's 430 in the yellow
 // zone (69%) and leaves the normal days green.
 const insPeakFlow = db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (1, 'manual', 'peak_flow_lmin', ?, ?, ?, ?)`
 );
 for (let d = 20; d >= 0; d--) {
@@ -1258,7 +1258,7 @@ db.prepare(
 // the weight trend. One point per date (a point measure averages, never sums), in
 // the same metric_samples store the import projection writes.
 const insWaist = db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (1, 'manual', 'waist_circumference_cm', ?, ?, ?, ?)`
 );
 for (let i = 0; i < 8; i++) {
@@ -2621,7 +2621,7 @@ db.prepare(
 // protein-adequacy spec pins. Synthetic full-day totals with a small deterministic
 // jitter so the stacked bars vary day to day.
 const insMacro = db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (1, 'health-connect', ?, ?, ?, ?, ?)`
 );
 for (let d = 30; d >= 8; d--) {
@@ -2668,7 +2668,7 @@ for (let d = 30; d >= 8; d--) {
   // Nicotine intake section + trend render with data. Cannabis stays empty
   // (sections render regardless — logging starts in-app).
   const suNic = db.prepare(
-    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, logged_at)
+    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, recorded_at)
      VALUES (1, ?, 'nicotine', ?, ?)`
   );
   for (let d = 20; d >= 0; d -= 1) {
@@ -3132,7 +3132,7 @@ if (!existingChild) {
   // growth charts + Body height/head-circ charts read (source 'manual', a fixed
   // midnight point window per date, mirroring the manual quick-add writer).
   const insChildSample = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)`
   );
   const point = (metric: string, ago: number, value: number) => {
@@ -3217,7 +3217,7 @@ if (!existingChild) {
 // dates rather than calling "Last night". Seeding a night nobody woke from would
 // make the sleep surfaces demo their own not-synced-yet path.
 const insSleep = db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
 );
 for (let i = 0; i <= 29; i++) {

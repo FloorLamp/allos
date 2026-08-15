@@ -729,8 +729,8 @@ openable. `SyncRowsDrilldown` also re-labels itself from the LOADED rows once op
 so the promise and the list can never disagree in front of the reader.
 
 **Metric sample identity (#1101/#1102).** `metric_samples` keys a provider
-record on `(profile_id, metric, source, origin, start_time)`; nullable `origin`
-is normalized by the unique index. `end_time` is mutable because Health
+record on `(profile_id, metric, source, origin, started_at)`; nullable `origin`
+is normalized by the unique index. `ended_at` is mutable because Health
 Connect's daily exporter sends a cumulative day-so-far snapshot whose end
 advances to the push moment. A delayed snapshot with an older end is counted
 unchanged and never replaces the newer stored value; distinct bucket starts
@@ -744,7 +744,7 @@ those secondary consumers from disagreeing with authoritative totals.
 Metric-sample tombstones use the same origin/start identity, so deleting an
 in-progress snapshot remains sticky when its next push has a later end.
 
-**A stored sleep session is an ABSOLUTE INSTANT (#2096).** `start_time` is both
+**A stored sleep session is an ABSOLUTE INSTANT (#2096).** `started_at` is both
 the natural upsert key and the value every read path hands to `new Date()`, and
 ECMAScript resolves an offset-less date-time in the PROCESS zone — so a boundary
 stored as bare wall clock denotes a moment that is a property of the container's

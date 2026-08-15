@@ -92,7 +92,7 @@ export interface Reading {
   /** The profile-local day. */
   date: string;
   /**
-   * The absolute instant, where the row records one: `metric_samples.start_time`,
+   * The absolute instant, where the row records one: `metric_samples.started_at`,
    * or the stated `occurred_at` on `body_metrics` (#2235) and `medical_records`
    * (#2154). Null means the reading is day-grain — honest absence, one meaning
    * across all three stores.
@@ -215,7 +215,7 @@ export interface MetricSampleReadingRow {
   date: string;
   value: number;
   source: string | null;
-  start_time?: string | null;
+  started_at?: string | null;
   edited?: number | null;
 }
 
@@ -271,7 +271,7 @@ export function readingFromMetricSample(
     value: row.value,
     unit: src.unit,
     date: row.date,
-    measuredAt: row.start_time ?? null,
+    measuredAt: row.started_at ?? null,
     source: readingSourceFor({ sourceKey: row.source }),
     store: "metric_samples",
     rowId: row.id,

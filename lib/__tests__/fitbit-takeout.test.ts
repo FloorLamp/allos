@@ -326,8 +326,8 @@ describe("vendor daily scores (extends #1069)", () => {
       {
         metric: FITBIT_SLEEP_SCORE_METRIC,
         date: "2026-07-26",
-        start_time: "2026-07-26T00:00:00.000Z",
-        end_time: "2026-07-26T00:00:00.000Z",
+        started_at: "2026-07-26T00:00:00.000Z",
+        ended_at: "2026-07-26T00:00:00.000Z",
         value: 48,
       },
     ]);
@@ -348,8 +348,8 @@ describe("vendor daily scores (extends #1069)", () => {
       {
         metric: FITBIT_READINESS_SCORE_METRIC,
         date: "2026-06-16",
-        start_time: "2026-06-16T00:00:00.000Z",
-        end_time: "2026-06-16T00:00:00.000Z",
+        started_at: "2026-06-16T00:00:00.000Z",
+        ended_at: "2026-06-16T00:00:00.000Z",
         value: 76,
       },
     ]);
@@ -479,15 +479,15 @@ describe("intraday: the summable daily streams", () => {
       {
         metric: "steps",
         date: "2026-07-20",
-        start_time: "2026-07-20T00:00:00.000Z",
-        end_time: "2026-07-20T23:59:59.999Z",
+        started_at: "2026-07-20T00:00:00.000Z",
+        ended_at: "2026-07-20T23:59:59.999Z",
         value: 7005,
       },
       {
         metric: "steps",
         date: "2026-07-21",
-        start_time: "2026-07-21T00:00:00.000Z",
-        end_time: "2026-07-21T23:59:59.999Z",
+        started_at: "2026-07-21T00:00:00.000Z",
+        ended_at: "2026-07-21T23:59:59.999Z",
         value: 900,
       },
     ]);
@@ -572,8 +572,8 @@ describe("computed (nightly) temperature", () => {
       {
         metric: "skin_temp_delta_c",
         date: "2026-07-26",
-        start_time: "2026-07-26T00:00:00.000Z",
-        end_time: "2026-07-26T00:00:00.000Z",
+        started_at: "2026-07-26T00:00:00.000Z",
+        ended_at: "2026-07-26T00:00:00.000Z",
         value: 0.47,
       },
     ]);
@@ -949,11 +949,11 @@ describe("the archive's TWO timestamp conventions", () => {
     const total = out.samples.find((x) => x.metric === "sleep_min")!;
     // The wake day is `dateOfSleep`, stated by the vendor, and must NOT start moving.
     expect(total.date).toBe("2026-07-26");
-    expect(total.start_time).toBe("2026-07-26T03:14:30.000Z");
-    expect(total.end_time).toBe("2026-07-26T10:11:30.000Z");
+    expect(total.started_at).toBe("2026-07-26T03:14:30.000Z");
+    expect(total.ended_at).toBe("2026-07-26T10:11:30.000Z");
     // …and reading it back in the profile zone returns the clock Fitbit wrote,
     // seconds included: the conversion is lossless, not a truncation to the minute.
-    expect(zonedDateParts(TZ, new Date(total.start_time))).toMatchObject({
+    expect(zonedDateParts(TZ, new Date(total.started_at))).toMatchObject({
       date: "2026-07-25",
       hhmm: "23:14",
     });
@@ -977,7 +977,7 @@ describe("the archive's TWO timestamp conventions", () => {
       const under = (serverTz: string) => {
         process.env.TZ = serverTz;
         const s = parseSleepJson(log, TZ).samples[0];
-        return [s.start_time, s.end_time, s.date];
+        return [s.started_at, s.ended_at, s.date];
       };
       expect(under("UTC")).toEqual(under("America/New_York"));
       expect(under("UTC")).toEqual(under("Asia/Tokyo"));
@@ -1005,8 +1005,8 @@ describe("the archive's TWO timestamp conventions", () => {
       TZ
     );
     const deep = out.samples.find((x) => x.metric === "sleep_deep_min")!;
-    expect(deep.start_time).toBe("2026-07-26T03:14:30.000Z#deep");
-    expect(deep.end_time).toBe("2026-07-26T10:11:30.000Z");
+    expect(deep.started_at).toBe("2026-07-26T03:14:30.000Z#deep");
+    expect(deep.ended_at).toBe("2026-07-26T10:11:30.000Z");
   });
 
   it("refuses an unresolvable boundary instead of guessing one", () => {
@@ -1041,7 +1041,7 @@ describe("the archive's TWO timestamp conventions", () => {
       ]),
       TZ
     );
-    expect(out.samples[0].start_time).toBe("2026-07-26T03:14:30.000Z");
+    expect(out.samples[0].started_at).toBe("2026-07-26T03:14:30.000Z");
   });
 
   it("wraps an end clock past midnight rather than rolling the date", () => {
@@ -1079,8 +1079,8 @@ describe("classic (unstaged) sleep logs", () => {
       {
         metric: "sleep_min",
         date: "2026-06-13",
-        start_time: "2026-06-13T17:20:00.000Z",
-        end_time: "2026-06-13T18:34:00.000Z",
+        started_at: "2026-06-13T17:20:00.000Z",
+        ended_at: "2026-06-13T18:34:00.000Z",
         value: 74,
       },
     ]);

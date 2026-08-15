@@ -134,7 +134,7 @@ const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
   },
   "lib/reading-writes.ts": {
     count: 1,
-    why: "`${date}T00:00:00` — the DAY, not an instant. A reading with no stated time is filed at its profile-local day's midnight, and that string is the metric_samples natural key (profile, metric, source, origin, start_time) that makes a re-entry a correction instead of a duplicate. Moving it onto a UTC instant would change a day attribution, which #2205 constraint 4 puts out of scope by definition, AND would break the dedupe.",
+    why: "`${date}T00:00:00` — the DAY, not an instant. A reading with no stated time is filed at its profile-local day's midnight, and that string is the metric_samples natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction instead of a duplicate. Moving it onto a UTC instant would change a day attribution, which #2205 constraint 4 puts out of scope by definition, AND would break the dedupe.",
   },
   "lib/ttc-store.ts": {
     count: 1,
@@ -146,7 +146,7 @@ const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
   },
   "scripts/seed.ts": {
     count: 24,
-    why: "the sample-data generator, whose job is to reproduce what each column's PRODUCTION writer actually stores — including the shapes phase 1 has not converted. Two are the Health Connect 5k session's start/end in the live normalizer's millisecond ISO shape (metric_samples' natural-key dedupe is keyed on that exact string, so a different serialization of the same session would make a real re-push insert a duplicate instead of being free); four are the #1850 peak-flow stream's morning/evening `${date}T07:30:00` / `${date}T20:00:00` start_time+end_time pairs, the same profile-local wall-clock instants recordReading writes for a timed reading and the same natural key it dedupes on; two more are the #2322 waist-circumference stream's `${date}T07:00:00` start_time+end_time pair, the same wall-clock shape and the same natural key one metric over; the rest are per-column bare/`Z` stamps and day-midnight anchors matching their writers. Frozen: seeding a NEW shape fails here, and each migration that converts a column lowers this count in the same change.",
+    why: "the sample-data generator, whose job is to reproduce what each column's PRODUCTION writer actually stores — including the shapes phase 1 has not converted. Two are the Health Connect 5k session's start/end in the live normalizer's millisecond ISO shape (metric_samples' natural-key dedupe is keyed on that exact string, so a different serialization of the same session would make a real re-push insert a duplicate instead of being free); four are the #1850 peak-flow stream's morning/evening `${date}T07:30:00` / `${date}T20:00:00` started_at+ended_at pairs, the same profile-local wall-clock instants recordReading writes for a timed reading and the same natural key it dedupes on; two more are the #2322 waist-circumference stream's `${date}T07:00:00` started_at+ended_at pair, the same wall-clock shape and the same natural key one metric over; the rest are per-column bare/`Z` stamps and day-midnight anchors matching their writers. Frozen: seeding a NEW shape fails here, and each migration that converts a column lowers this count in the same change.",
   },
   "scripts/seed-personas.ts": {
     count: 3,

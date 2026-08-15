@@ -95,7 +95,7 @@ function samplesFor(metric: string): { date: string; value: number }[] {
     .prepare(
       `SELECT date, value FROM metric_samples
         WHERE profile_id = ? AND metric = ? AND source = 'health-connect'
-        ORDER BY start_time`
+        ORDER BY started_at`
     )
     .all(profileId, metric) as { date: string; value: number }[];
 }

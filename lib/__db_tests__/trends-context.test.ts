@@ -43,7 +43,7 @@ function seedSamples(
   endOffset = 0
 ): void {
   const stmt = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'test-device', ?, ?, ?, ?, ?)`
   );
   for (let i = 0; i < count; i++) {

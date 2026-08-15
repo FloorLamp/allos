@@ -278,8 +278,8 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
       {
         metric: "steps",
         date: "2024-05-04",
-        start_time: "2024-05-04T00:00",
-        end_time: "2024-05-04T23:59",
+        started_at: "2024-05-04T00:00",
+        ended_at: "2024-05-04T23:59",
         value: 8000,
       },
     ];

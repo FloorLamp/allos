@@ -263,7 +263,7 @@ function upsertManualSample(
 ): void {
   const ts = `${date}T00:00:00`;
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
        value = excluded.value, date = excluded.date`
@@ -292,7 +292,7 @@ function upsertManualSample(
 // same `recordReading` call the observation half does — which is the point: the caller
 // names "Peak Expiratory Flow" and the policy routes it to `metric_samples`, exactly as
 // it routes a blood pressure to `medical_records`. Its "HH:MM" becomes the row's
-// `start_time`, so a second blow the same day is a second reading rather than a
+// `started_at`, so a second blow the same day is a second reading rather than a
 // correction of the first (the natural key includes the instant).
 //
 // THE SITTING'S STATED TIME (#2154). `occurredAt` is the one WhenControl statement
@@ -302,7 +302,7 @@ function upsertManualSample(
 // (BP, glucose, SpO₂, temperature) carries it into `medical_records.occurred_at`
 // through `recordReading`'s acceptance gate — a refused statement (future, or off
 // the row's day) costs the statement, never the reading — and the peak-flow blow
-// derives its profile-local `start_time` from the SAME accepted instant, so one
+// derives its profile-local `started_at` from the SAME accepted instant, so one
 // sitting states one "when" everywhere it lands.
 //
 // LEGACY per-measure times: an intent queued before the fold carries
@@ -425,7 +425,7 @@ export function insertVitals(
 // writers land them — so a manually entered value feeds the WHO/CDC growth charts
 // and the height/head-circ Body charts identically to an imported reading. A point
 // metric uses a fixed midnight start, so the natural key (profile_id, metric,
-// source='manual', origin=NULL, start_time) is stable across re-entries: logging
+// source='manual', origin=NULL, started_at) is stable across re-entries: logging
 // the same date again CORRECTS that day rather than stacking a second point.
 // Returns false on a rejected/empty input, true on a successful write.
 export function insertGrowth(
@@ -457,7 +457,7 @@ export function insertGrowth(
 // (lib/waist-circ-extract.ts) — so a tape reading typed at home feeds the
 // `waist-circ` chart identically to an imported one. A point metric uses a fixed
 // midnight start, so the natural key (profile_id, metric, source='manual',
-// origin=NULL, start_time) is stable across re-entries: logging the same date again
+// origin=NULL, started_at) is stable across re-entries: logging the same date again
 // CORRECTS that day rather than stacking a second point. Auth-blind + profileId-first
 // like its neighbours. Returns false on a rejected/empty input, true on a write.
 export function insertWaistCirc(

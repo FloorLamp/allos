@@ -99,7 +99,7 @@ const DATE_COLUMNS = [
   "date",
   "observed_date",
   "onset_date",
-  "logged_at",
+  "recorded_at",
   "created_at",
 ] as const;
 

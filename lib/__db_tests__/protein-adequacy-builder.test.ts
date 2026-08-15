@@ -46,7 +46,7 @@ function logFood(
 
 function seedTrackedProtein(profileId: number, date: string, grams: number) {
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health_connect', 'protein_g', ?, ?, ?, ?)`
   ).run(profileId, date, `${date}T08:00:00Z`, `${date}T08:00:00Z`, grams);
 }
@@ -127,7 +127,7 @@ describe("buildProteinAdequacyFindings (#767)", () => {
     const anchor = today(p);
     seedWeight(p, anchor, 90);
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'withings', 'lean_mass_kg', ?, ?, ?, 60)`
     ).run(p, anchor, `${anchor}T08:00:00Z`, `${anchor}T08:00:00Z`);
     logFood(p, anchor, "poultry", 1);

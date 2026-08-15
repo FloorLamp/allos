@@ -166,7 +166,7 @@ describe("a series for one identity spans both stores", () => {
     };
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'health-connect', 'hrv_ms', ?, ?, ?, 44)`
     ).run(p.profileId, d(-3), `${d(-3)}T03:00:00Z`, `${d(-3)}T03:05:00Z`);
     const readings = getStreamReadings(p.profileId, src);
@@ -249,7 +249,7 @@ describe("the migration-free guarantee", () => {
   // EDITED ONCE, DELIBERATELY, by #2237 (#2205 phase 2 wave 1): migration 165 adds a
   // nullable `occurred_at` to body_metrics and medical_records. That is a real schema
   // change and this pin's one legitimate edit path — it is the announcement, not an
-  // obstacle. `metric_samples` is untouched: it already had `start_time`.
+  // obstacle. `metric_samples` is untouched: it already had `started_at`.
   const columns = (table: string) =>
     (db.pragma(`table_info(${table})`) as { name: string }[])
       .map((c) => c.name)
@@ -275,13 +275,13 @@ describe("the migration-free guarantee", () => {
       "activity_external_id",
       "date",
       "edited",
-      "end_time",
+      "ended_at",
       "id",
       "metric",
       "origin",
       "profile_id",
       "source",
-      "start_time",
+      "started_at",
       "value",
     ]);
   });

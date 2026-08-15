@@ -116,7 +116,7 @@ function seedSyncArrival(
         db
           .prepare(
             `INSERT INTO metric_samples
-               (profile_id, source, metric, date, start_time, end_time, value)
+               (profile_id, source, metric, date, started_at, ended_at, value)
              VALUES (?, ?, ?, ?, ?, ?, 1)`
           )
           .run(
@@ -142,7 +142,7 @@ function seedSteps(
 ) {
   db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
   ).run(profileId, date, `${date}T00:00:00Z`, endTime, value);
 }
@@ -682,8 +682,8 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
     // The seeded samples share the natural key with the ones the NEXT seed writes for
     // the same metric, so move them off today the way a real prior night's data is.
     db.prepare(
-      `UPDATE metric_samples SET date = ?, start_time = start_time || '-old',
-              end_time = end_time || '-old'
+      `UPDATE metric_samples SET date = ?, started_at = started_at || '-old',
+              ended_at = ended_at || '-old'
         WHERE profile_id = ?`
     ).run(shiftDateStr(today(profileId), -3), profileId);
   }

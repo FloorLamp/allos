@@ -165,7 +165,7 @@ test.describe("a metric_samples reading is undoable too (#2123)", () => {
     withProbeDb((db) => {
       db.prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, metric, date, start_time, end_time, value)
+           (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (1, 'manual', 'hrv_ms', ?, ?, ?, ?)`
       ).run(HRV_PROBE_DATE, HRV_PROBE_AT, HRV_PROBE_AT, HRV_PROBE_VALUE);
     });

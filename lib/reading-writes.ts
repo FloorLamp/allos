@@ -456,7 +456,7 @@ export function recordReading<U extends string>(
       }
       case "metric_samples": {
         // The natural key the tall store dedups on: (profile_id, metric, source,
-        // origin, start_time). A reading with no stated instant is filed at the day's
+        // origin, started_at). A reading with no stated instant is filed at the day's
         // midnight, so a re-entry corrects rather than duplicates.
         const ts = input.measuredAt ?? `${input.date}T00:00:00`;
         // `metric_samples.source` is NOT NULL, so an unstamped write is the user's own:
@@ -465,7 +465,7 @@ export function recordReading<U extends string>(
         const found = db
           .prepare(
             `SELECT id, edited, value FROM metric_samples
-              WHERE profile_id = ? AND metric = ? AND source IS ? AND start_time = ?
+              WHERE profile_id = ? AND metric = ? AND source IS ? AND started_at = ?
               ORDER BY id LIMIT 1`
           )
           .get(profileId, placement.metric, sampleSource, ts) as
@@ -491,7 +491,7 @@ export function recordReading<U extends string>(
         }
         const info = db
           .prepare(
-            `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+            `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
              VALUES (?, ?, ?, ?, ?, ?, ?)`
           )
           .run(

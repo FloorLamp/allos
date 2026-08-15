@@ -147,15 +147,15 @@ describe("integration_sync_events: simulated Health Connect ingest path", () => 
       {
         metric: "steps",
         date: "2024-05-01",
-        start_time: "2024-05-01T00:00",
-        end_time: "2024-05-01T23:59",
+        started_at: "2024-05-01T00:00",
+        ended_at: "2024-05-01T23:59",
         value: 8000,
       },
       {
         metric: "steps",
         date: "2024-05-02",
-        start_time: "2024-05-02T00:00",
-        end_time: "2024-05-02T23:59",
+        started_at: "2024-05-02T00:00",
+        ended_at: "2024-05-02T23:59",
         value: 9000,
       },
     ];

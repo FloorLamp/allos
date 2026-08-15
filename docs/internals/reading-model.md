@@ -33,7 +33,7 @@ interface Reading {
   unit: string;
   date: string; // profile-local day
   measuredAt: string | null; // the instant, where the row records one:
-  // metric_samples.start_time, or the stated occurred_at on body_metrics
+  // metric_samples.started_at, or the stated occurred_at on body_metrics
   // (#2235) and medical_records (#2154). Null = day-grain, in every store.
   source: "wearable" | "manual" | "import" | "clinical";
   store: ReadingStore; // the physical row a surface can still reach

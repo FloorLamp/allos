@@ -825,7 +825,7 @@ export function getActiveCaloriesForActivities(
   const dates = legacyCandidates.map((activity) => activity.date).sort();
   const rows = db
     .prepare(
-      `SELECT source, date, start_time, end_time, value
+      `SELECT source, date, started_at, ended_at, value
          FROM metric_samples
         WHERE profile_id = ? AND metric = 'active_kcal'
           AND source = 'strava'
@@ -835,8 +835,8 @@ export function getActiveCaloriesForActivities(
     .all(profileId, dates[0], dates[dates.length - 1]) as {
     source: string;
     date: string;
-    start_time: string;
-    end_time: string;
+    started_at: string;
+    ended_at: string;
     value: number;
   }[];
   const storedClock = (value: string): string =>
@@ -860,7 +860,7 @@ export function getActiveCaloriesForActivities(
   ): string => `${source}\0${date}\0${storedClock(start)}\0${storedClock(end)}`;
   const byWindow = new Map(
     rows.map((row) => [
-      sampleKey(row.source, row.date, row.start_time, row.end_time),
+      sampleKey(row.source, row.date, row.started_at, row.ended_at),
       row.value,
     ])
   );

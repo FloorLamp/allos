@@ -87,11 +87,11 @@ describe("day-counter ledger: bump (#2037)", () => {
     );
     const row = db
       .prepare(
-        "SELECT units, logged_at FROM substance_daily_totals WHERE profile_id = ? AND date = ? AND substance = ?"
+        "SELECT units, recorded_at FROM substance_daily_totals WHERE profile_id = ? AND date = ? AND substance = ?"
       )
-      .get(p, DATE, "nicotine") as { units: number; logged_at: string };
+      .get(p, DATE, "nicotine") as { units: number; recorded_at: string };
     expect(row.units).toBe(2);
-    expect(row.logged_at).toBe("2026-03-04T21:30:00Z");
+    expect(row.recorded_at).toBe("2026-03-04T21:30:00Z");
   });
 
   it("never lets one profile's counter reach another's", () => {

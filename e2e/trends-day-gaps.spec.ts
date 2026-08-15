@@ -193,7 +193,7 @@ test("a multi-night sleep outage BREAKS the duration stroke and says so on hover
     // signal the fill deliberately keeps).
     const stmt = handle.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'oura', 'sleep_min', ?, ?, ?, ?)`
     );
     handle
@@ -279,7 +279,7 @@ test("the macros chart obeys the Trends range instead of plotting all history", 
   try {
     const stmt = handle.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'health-connect', ?, ?, ?, ?, ?)`
     );
     const logDay = (back: number) => {

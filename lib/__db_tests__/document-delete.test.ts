@@ -405,7 +405,7 @@ describe("clearImportedDocumentRows never touches same-profile survivors", () =>
     // An integration height sample (source 'health-connect', not a document source).
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'health-connect', 'height_cm', ?, ?, ?, 180)`
     ).run(profile, survivorDate, survivorDate, survivorDate);
     // A manual immunization (source NULL).

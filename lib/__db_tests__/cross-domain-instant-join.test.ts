@@ -12,9 +12,9 @@
 //
 //   1. event/record pair — food_log_events and intake_item_logs, both canonical;
 //                          the dose event is NULL because nobody said when
-//   2. record-only       — substance_daily_totals (logged_at canonical)
+//   2. record-only       — substance_daily_totals (recorded_at canonical)
 //   3. optional event    — practice_logs (a local HH:MM, and a NULL one)
-//   4. window            — metric_samples (start_time / end_time)
+//   4. window            — metric_samples (started_at / ended_at)
 //   5. day-only          — body_metrics (a date, and an `occurred_at` nobody stated)
 //
 // plus hr_minutes, whose instant is canonical since migration 164.
@@ -78,7 +78,7 @@ beforeAll(() => {
 
   // Pattern 2 — record-only.
   db.prepare(
-    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, logged_at)
+    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, recorded_at)
      VALUES (?, ?, 'alcohol', 1, ?)`
   ).run(profileId, DAY, "2026-03-10T22:40:00Z");
 
@@ -95,7 +95,7 @@ beforeAll(() => {
 
   // Pattern 4 — a window.
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'fixture', 'steps', ?, ?, ?, 4200)`
   ).run(profileId, DAY, "2026-03-10T12:00:00Z", "2026-03-10T13:00:00Z");
 
@@ -228,7 +228,7 @@ describe("one ordering across all five patterns", () => {
 
     const drinks = db
       .prepare(
-        "SELECT date, logged_at, created_at FROM substance_daily_totals WHERE profile_id = ? AND date = ?"
+        "SELECT date, recorded_at, created_at FROM substance_daily_totals WHERE profile_id = ? AND date = ?"
       )
       .all(profileId, DAY) as Record<string, unknown>[];
     for (const r of drinks) push("drink", "substance_daily_totals", r);
@@ -339,7 +339,7 @@ describe("day attribution across the same join", () => {
       .get(profileId, DAY) as Record<string, unknown>;
     const sample = db
       .prepare(
-        "SELECT date, start_time, end_time FROM metric_samples WHERE profile_id = ? AND date = ?"
+        "SELECT date, started_at, ended_at FROM metric_samples WHERE profile_id = ? AND date = ?"
       )
       .get(profileId, DAY) as Record<string, unknown>;
     expect(rowLocalDay("body_metrics", weighIn, TZ)).toMatchObject({

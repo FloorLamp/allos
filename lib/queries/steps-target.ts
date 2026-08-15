@@ -98,12 +98,12 @@ export function getStepsPaceObservation(
   // timezone edge can't read as fresh data.
   const latest = db
     .prepare(
-      `SELECT end_time FROM metric_samples
+      `SELECT ended_at FROM metric_samples
         WHERE profile_id = ? AND metric = 'steps'
-        ORDER BY end_time DESC LIMIT 1`
+        ORDER BY ended_at DESC LIMIT 1`
     )
-    .get(profileId) as { end_time: string } | undefined;
-  const endMs = latest ? Date.parse(latest.end_time) : NaN;
+    .get(profileId) as { ended_at: string } | undefined;
+  const endMs = latest ? Date.parse(latest.ended_at) : NaN;
   const dataAgeMin = Number.isFinite(endMs)
     ? Math.max(0, Math.round((now.getTime() - endMs) / 60000))
     : null;

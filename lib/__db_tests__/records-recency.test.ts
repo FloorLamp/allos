@@ -86,7 +86,7 @@ function metricSample(
   value: number
 ): void {
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(
     profileId,

@@ -111,7 +111,7 @@ function sync(hhmmss: string, ok = true): void {
 function seedSleepHistory(nights = 3): void {
   const insert = db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, origin, metric, date, start_time, end_time, value)
+       (profile_id, source, origin, metric, date, started_at, ended_at, value)
      VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
   );
   for (let back = 1; back <= nights; back++) {
@@ -318,7 +318,7 @@ describe("bedtime wear reminder (#2161)", () => {
     ).run(eastern, PROVIDER);
     const insertNight = db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, origin, metric, date, start_time, end_time, value)
+         (profile_id, source, origin, metric, date, started_at, ended_at, value)
        VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
     );
     for (let back = 1; back <= 3; back++) {

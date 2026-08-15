@@ -1049,18 +1049,18 @@ export const TIME_COLUMNS = {
   metric_samples: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
-      column: "start_time",
+      column: "started_at",
       semantic: "window-start",
       grain: "instant",
       convention: "mixed",
-      note: "THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, start_time) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe.",
+      note: "THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe.",
     },
     {
-      column: "end_time",
+      column: "ended_at",
       semantic: "window-end",
       grain: "instant",
       convention: "mixed",
-      note: "The same two shapes as start_time, and equal to it for an instantaneous reading.",
+      note: "The same two shapes as started_at, and equal to it for an instantaneous reading.",
     },
   ],
   milestones: [
@@ -1488,7 +1488,7 @@ export const TIME_COLUMNS = {
   substance_daily_totals: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
-      column: "logged_at",
+      column: "recorded_at",
       semantic: "record",
       grain: "instant",
       convention: "canonical",
