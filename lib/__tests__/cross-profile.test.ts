@@ -48,35 +48,55 @@ describe("profileIdsIn: bound-parameter placeholder construction", () => {
 // its `@ts-expect-error` AND asserts the runtime guard rejects the same value, which
 // is what makes the two rails visibly independent.
 describe("AuthorizedProfileIds: the type refuses ordinary expressions", () => {
+  // EVERY directive below sits INSIDE the arrow, immediately above the call it
+  // covers, and never on the `expect(` line. `@ts-expect-error` suppresses exactly
+  // the next line, and Prettier is free to rewrap `expect(() => f(x)).toThrow()`
+  // onto three lines the moment the expression grows — which silently slides the
+  // call off the directive and turns a passing typecheck into an unused-directive
+  // error plus an unsuppressed one. That is what broke CI on 082ecb290. Keeping the
+  // comment adjacent to the call also PINS the layout, because Prettier will not
+  // collapse a line carrying a comment.
   it("refuses a plain number[] at the set-based SQL boundary", () => {
-    // If the directive ever goes unused, the capability has decayed back into a
+    // If a directive ever goes unused, the capability has decayed back into a
     // comment and any module could hand `profileIdsIn` ids nobody authorized.
-    // @ts-expect-error a bare number[] carries no authorization and must not compile
-    expect(() => profileIdsIn([1, 2, 3])).toThrow(/authorization boundary/);
+    expect(() =>
+      // @ts-expect-error a bare number[] carries no authorization
+      profileIdsIn([1, 2, 3])
+    ).toThrow(/authorization boundary/);
     // The empty list too — "no ids" is still a claim about which ids were checked.
-    // @ts-expect-error an empty bare array is not an authorized set either
-    expect(() => profileIdsIn([])).toThrow(/authorization boundary/);
+    expect(() =>
+      // @ts-expect-error an empty bare array is not an authorized set either
+      profileIdsIn([])
+    ).toThrow(/authorization boundary/);
   });
 
   it("refuses a hand-built object with an unrelated key", () => {
-    // @ts-expect-error a plain object property is not the declared brand symbol
-    expect(() => profileIdsIn(Object.assign([1], { ok: true }))).toThrow(
-      /authorization boundary/
-    );
+    expect(() =>
+      // @ts-expect-error a plain object property is not the declared brand symbol
+      profileIdsIn(Object.assign([1], { ok: true }))
+    ).toThrow(/authorization boundary/);
   });
 
   it("refuses the array methods that would rebuild a set from a real one", () => {
     const parent = authorized([1, 2, 3]);
-    // @ts-expect-error filter returns a plain number[]
-    expect(() => profileIdsIn(parent.filter((id) => id > 1))).toThrow();
-    // @ts-expect-error map returns a plain number[]
-    expect(() => profileIdsIn(parent.map((id) => id))).toThrow();
-    // @ts-expect-error slice returns a plain number[]
-    expect(() => profileIdsIn(parent.slice(0, 1))).toThrow();
-    // @ts-expect-error spreading into a literal drops the brand
-    expect(() => profileIdsIn([...parent])).toThrow();
-    // @ts-expect-error concatenating two capabilities yields an unbranded number[]
     expect(() =>
+      // @ts-expect-error filter returns a plain number[]
+      profileIdsIn(parent.filter((id) => id > 1))
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error map returns a plain number[]
+      profileIdsIn(parent.map((id) => id))
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error slice returns a plain number[]
+      profileIdsIn(parent.slice(0, 1))
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error spreading into a literal drops the brand
+      profileIdsIn([...parent])
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error concatenating two capabilities yields an unbranded number[]
       profileIdsIn([...authorized([1]), ...authorized([2])])
     ).toThrow();
   });
