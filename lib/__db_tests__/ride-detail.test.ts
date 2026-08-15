@@ -80,7 +80,7 @@ beforeAll(() => {
   ).run(rideId, POLYLINE);
   db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value,
+       (profile_id, source, metric, date, started_at, ended_at, value,
         activity_external_id)
      VALUES (?, 'strava', 'active_kcal', '2026-06-10',
              '2026-06-10T08:00', '2026-06-10T09:05', 648,

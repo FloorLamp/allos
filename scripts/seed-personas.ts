@@ -198,7 +198,7 @@ function metricPoint(
   const ts = `${day}T${time}`;
   ctx.db
     .prepare(
-      `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)`
     )
     .run(ctx.profileId, metric, day, ts, ts, value);
@@ -688,7 +688,7 @@ function sourcedCardio(
     ctx.db
       .prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, metric, date, start_time, end_time, value, activity_external_id)
+           (profile_id, source, metric, date, started_at, ended_at, value, activity_external_id)
          VALUES (?,?,?,?,?,?,?,?)`
       )
       .run(
@@ -723,7 +723,7 @@ function ouraNight(
   const start = ctx.occurredAt(bedDay, "23:05");
   const end = ctx.occurredAt(wakeDay, "06:50");
   const ins = ctx.db.prepare(
-    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'oura', ?, ?, ?, ?, ?)`
   );
   const light = Math.max(0, opts.totalMin - opts.deep - opts.rem);
@@ -756,7 +756,7 @@ function withingsWeighIn(
     )
     .run(ctx.profileId, day, opts.kg, opts.fatPct, at);
   const ins = ctx.db.prepare(
-    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'withings', ?, ?, ?, ?, ?)`
   );
   ins.run(ctx.profileId, "muscle_mass_kg", day, at, at, opts.muscleKg);
@@ -913,7 +913,7 @@ const bodybuilder: SeedPersona = {
 
     // High-protein macros for the nutrition chart (~2.2 g/kg).
     const macro = ctx.db.prepare(
-      `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)`
     );
     for (let d = 21; d >= 0; d--) {

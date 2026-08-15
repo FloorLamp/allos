@@ -127,7 +127,7 @@ describe("pattern 2 — record-only", () => {
   it("has no event instant for any row, ever", () => {
     const drink = {
       date: "2026-03-10",
-      logged_at: "2026-03-10T23:10:00Z",
+      recorded_at: "2026-03-10T23:10:00Z",
       created_at: "2026-03-10 23:10:00",
     };
     // Not "this row is missing one" — the schema records when a drink was LOGGED and
@@ -139,7 +139,7 @@ describe("pattern 2 — record-only", () => {
     });
     expect(recordInstant("substance_daily_totals", drink)).toMatchObject({
       at: "2026-03-10T23:10:00Z",
-      column: "logged_at",
+      column: "recorded_at",
     });
     expect(bestKnownInstant("substance_daily_totals", drink)).toMatchObject({
       semantic: "record",
@@ -148,11 +148,11 @@ describe("pattern 2 — record-only", () => {
 
   it("reports the record's absence when the table has no event column at all", () => {
     expect(
-      bestKnownInstant("substance_daily_totals", { logged_at: null })
+      bestKnownInstant("substance_daily_totals", { recorded_at: null })
     ).toEqual({
       known: false,
       why: "not-recorded",
-      column: "logged_at",
+      column: "recorded_at",
     });
   });
 
@@ -224,7 +224,7 @@ describe("pattern 4 — windows", () => {
     // activities/metric_samples declare start/end, not event/record-of-the-subject, so
     // asking the event question of them is answered rather than approximated.
     expect(
-      eventInstant("metric_samples", { start_time: "2026-03-10T11:00:00Z" })
+      eventInstant("metric_samples", { started_at: "2026-03-10T11:00:00Z" })
     ).toEqual({ known: false, why: "not-declared", column: null });
   });
 

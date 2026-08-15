@@ -393,8 +393,8 @@ export function mapStravaActivity(
     samples.push({
       metric: "active_kcal",
       date: p.date,
-      start_time: startIso,
-      end_time: endIso,
+      started_at: startIso,
+      ended_at: endIso,
       value: Math.round(calories),
       activity_external_id: activity.external_id,
     });

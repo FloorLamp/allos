@@ -28,7 +28,7 @@ function uniqueKeyCols(): string[] {
     const cols = (
       db.prepare(`PRAGMA index_info("${idx.name}")`).all() as { name: string }[]
     ).map((c) => c.name);
-    if (cols.includes("metric") && cols.includes("start_time")) return cols;
+    if (cols.includes("metric") && cols.includes("started_at")) return cols;
   }
   return [];
 }
@@ -38,8 +38,8 @@ const WINDOW = { start: "2024-01-01T00:00", end: "2024-01-01T23:59" };
 const sample = (metric: string, value: number): NormMetricSample => ({
   metric,
   date: "2024-01-01",
-  start_time: WINDOW.start,
-  end_time: WINDOW.end,
+  started_at: WINDOW.start,
+  ended_at: WINDOW.end,
   value,
 });
 
@@ -65,7 +65,7 @@ describe("metric_samples: source is part of the unique key", () => {
       .prepare(
         `SELECT source, value FROM metric_samples
           WHERE profile_id = ? AND metric = 'steps'
-            AND start_time = ? AND end_time = ?
+            AND started_at = ? AND ended_at = ?
           ORDER BY source`
       )
       .all(profileId, WINDOW.start, WINDOW.end) as {
@@ -95,8 +95,8 @@ describe("metric_samples: source is part of the unique key", () => {
     const first: NormMetricSample = {
       metric: "steps",
       date: "2024-01-02",
-      start_time: start,
-      end_time: "2024-01-02T12:00:00Z",
+      started_at: start,
+      ended_at: "2024-01-02T12:00:00Z",
       value: 4000,
       origin: "com.fitbit.FitbitMobile",
     };
@@ -107,10 +107,10 @@ describe("metric_samples: source is part of the unique key", () => {
       upsertMetricSamples(
         profileId,
         [
-          { ...first, end_time: "2024-01-02T20:00:00Z", value: 8000 },
+          { ...first, ended_at: "2024-01-02T20:00:00Z", value: 8000 },
           {
             ...first,
-            end_time: "2024-01-02T20:00:00Z",
+            ended_at: "2024-01-02T20:00:00Z",
             value: 7000,
             origin: "com.garmin.android.apps.connectmobile",
           },
@@ -121,39 +121,39 @@ describe("metric_samples: source is part of the unique key", () => {
 
     const rows = db
       .prepare(
-        `SELECT origin, end_time, value FROM metric_samples
-          WHERE profile_id = ? AND metric = 'steps' AND start_time = ?
+        `SELECT origin, ended_at, value FROM metric_samples
+          WHERE profile_id = ? AND metric = 'steps' AND started_at = ?
           ORDER BY origin`
       )
       .all(profileId, start);
     expect(rows).toEqual([
       {
         origin: "com.fitbit.FitbitMobile",
-        end_time: "2024-01-02T20:00:00Z",
+        ended_at: "2024-01-02T20:00:00Z",
         value: 8000,
       },
       {
         origin: "com.garmin.android.apps.connectmobile",
-        end_time: "2024-01-02T20:00:00Z",
+        ended_at: "2024-01-02T20:00:00Z",
         value: 7000,
       },
     ]);
 
     const stale = upsertMetricSamples(
       profileId,
-      [{ ...first, end_time: "2024-01-02T12:00:00Z", value: 4000 }],
+      [{ ...first, ended_at: "2024-01-02T12:00:00Z", value: 4000 }],
       "health-connect"
     );
     expect(stale).toMatchObject({ updated: 0, unchanged: 1 });
     expect(
       db
         .prepare(
-          `SELECT end_time, value FROM metric_samples
-            WHERE profile_id = ? AND metric = 'steps' AND start_time = ?
+          `SELECT ended_at, value FROM metric_samples
+            WHERE profile_id = ? AND metric = 'steps' AND started_at = ?
               AND origin = 'com.fitbit.FitbitMobile'`
         )
         .get(profileId, start)
-    ).toEqual({ end_time: "2024-01-02T20:00:00Z", value: 8000 });
+    ).toEqual({ ended_at: "2024-01-02T20:00:00Z", value: 8000 });
   });
 });
 

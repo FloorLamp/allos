@@ -145,8 +145,8 @@ const sample = (
 ): NormMetricSample => ({
   metric,
   date,
-  start_time: window?.start ?? `${date}T00:00`,
-  end_time: window?.end ?? `${date}T23:59`,
+  started_at: window?.start ?? `${date}T00:00`,
+  ended_at: window?.end ?? `${date}T23:59`,
   value,
 });
 
@@ -382,7 +382,7 @@ describe("getMetricDailyTotals — cumulative snapshots plus disjoint buckets (#
     upsertMetricSamples(
       profileId,
       [
-        { ...cumulative, value: 8, end_time: `${date}T20:00` },
+        { ...cumulative, value: 8, ended_at: `${date}T20:00` },
         {
           ...sample("distance_km", date, 2, {
             start: `${date}T21:00`,

@@ -1,7 +1,7 @@
 # The temporal-column index
 
-Status: shipped (issue #2205 phase 3 — the declared index and the row-level readers.
-Phase 2's column renames are still open, so the names below are today's names.)
+Status: shipped (issue #2205 phases 2 and 3 — the persisted naming vocabulary,
+declared index, and row-level readers.)
 
 Every temporal column in the schema, with what it MEANS, what SHAPE is in it, and how
 it is SERIALIZED. `docs/internals/time-model.md` is the companion: it owns the stored
@@ -35,9 +35,9 @@ Every reader returns a discriminated union, never a nullable string. `known: fal
 carries a reason, and the reasons are different facts:
 
 - `not-declared` — the table has no column with that semantic, for every row, forever.
-  `substance_daily_totals` records when a drink was logged and nothing about when it was drunk.
+  `substance_daily_totals` records when a use was stored and nothing about when it happened.
 - `not-recorded` — the column exists and this row is NULL. Nobody stated an eating time
-  (`food_log_events.eaten_at`); the quick practice path recorded no clock
+  (`food_log_events.occurred_at`); an explicitly untimed practice records no clock
   (`practice_logs.time`). **A real answer, not a gap to fill.**
 - `needs-zone` — the value is a local wall clock and no timezone was supplied.
 - `day-only` — the column is a day. `allergies.onset_date` and
@@ -86,14 +86,14 @@ substitution stays available and stops being invisible.
 | `unverified` | not settled by a DEFAULT or a writer that was read               |
 | `n/a`        | not instant-grained, so there is no instant convention           |
 
-`unverified` is not a shrug. It is the phase-2 worklist: the scan requires a note on
+`unverified` is not a shrug. It is the remaining convention worklist: the scan requires a note on
 every one and freezes the count, so it can only shrink. Readers do not depend on it —
 `eventInstant` normalizes whatever it finds to the canonical shape on the way out, which
 is what makes a caller immune both to phase 2's renames and to a later convention change.
 
 ## The entries worth reading before writing SQL
 
-- **`metric_samples.start_time`** holds vendor ISO-with-milliseconds for an imported
+- **`metric_samples.started_at`** holds vendor ISO-with-milliseconds for an imported
   sample AND `${date}T00:00:00` — a profile-local day midnight, not an instant — for a
   reading whose author stated only a day. It is also the natural key that makes a
   re-entry a correction rather than a duplicate, so neither shape can be normalized
@@ -110,13 +110,12 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
   column at all**, so `eventInstant("intake_item_logs", row)` answered `not-declared`
   for every row; today it answers `not-recorded` for a row nobody timed. Those are
   different facts and neither one is the record instant. What remains of the ruling is
-  the **rename** of `given_at` to `recorded_at` — a rebuild plus a dozen COALESCE
-  readers, on its own slot.
+  the rename of `given_at` to `recorded_at`, shipped in migration 173.
 - **`occurred_at` means one thing in all three observation stores** (`medical_records`,
   `body_metrics`, `intake_item_logs`, migration 165): the instant the reading or intake
   actually happened, canonical shape, and **NULL means day-grain** — absence, not empty
   apparatus. The asymmetry with `metric_samples` is deliberate: that table files an
-  untimed reading at `${date}T00:00:00` because `start_time` is part of its natural key
+  untimed reading at `${date}T00:00:00` because `started_at` is part of its natural key
   and a re-entry has to be a correction rather than a duplicate. These three carry a
   real `date` column and key on it, so they can afford honest absence. Two stores spell
   "not stated" as NULL, one spells it as midnight; that is a real thing an eventual
@@ -131,6 +130,9 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
   web bar never defaults it to now (#2019/#2053).
 - **`practice_logs.time`** is a bare local `HH:MM` and often NULL. It is not an instant;
   resolving it needs the row's `date` and the profile timezone.
+- **`activities.start_time` / `end_time`** are likewise profile-local `HH:MM` clock
+  values. They remain `_time` deliberately because training-rhythm inference reads
+  the stated local hour; they are not unconverted instants.
 - **`notify_lifecycle.at`** was `new Date().toISOString()` — milliseconds and a `Z`, a
   third serialization phase 1's rule C did not see because the module that builds the
   string writes no SQL of its own. Migration 167 (#2233) normalized it onto the
@@ -288,8 +290,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `medication_courses` | `stopped_on` | window-end | day | n/a |  |
 | `medication_courses` | `created_at` | record | instant | bare |  |
 | `metric_samples` | `date` | day | day | n/a |  |
-| `metric_samples` | `start_time` | window-start | instant | mixed | THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, start_time) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe. |
-| `metric_samples` | `end_time` | window-end | instant | mixed | The same two shapes as start_time, and equal to it for an instantaneous reading. |
+| `metric_samples` | `started_at` | window-start | instant | mixed | THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe. |
+| `metric_samples` | `ended_at` | window-end | instant | mixed | The same two shapes as started_at, and equal to it for an instantaneous reading. |
 | `milestones` | `achieved_on` | event | day | n/a |  |
 | `milestones` | `created_at` | record | instant | bare |  |
 | `mood_logs` | `date` | day | day | n/a |  |
@@ -356,7 +358,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `stream_frontiers` | `advanced_at` | lifecycle | instant | canonical | When the frontier was last observed to MOVE. A transition in this watermark row's own life, not in the subject's: it is the instant the observation was made, never the instant the data carries. Migration 179 (#2341), born canonical. |
 | `stream_frontiers` | `observed_at` | record | instant | canonical | When ingest last looked at all, advancing or not — the stamp that makes `syncs_since_advance` auditable. Migration 179 (#2341), born canonical. |
 | `substance_daily_totals` | `date` | day | day | n/a |  |
-| `substance_daily_totals` | `logged_at` | record | instant | canonical |  |
+| `substance_daily_totals` | `recorded_at` | record | instant | canonical |  |
 | `substance_daily_totals` | `created_at` | bookkeeping | instant | bare |  |
 | `symptom_logs` | `date` | day | day | n/a |  |
 | `symptom_logs` | `created_at` | record | instant | bare |  |

@@ -88,8 +88,8 @@ describe("setMetricPrimarySource", () => {
     const sample = (value: number) => ({
       metric: "steps",
       date: "2024-03-01",
-      start_time: "2024-03-01T00:00",
-      end_time: "2024-03-01T23:59",
+      started_at: "2024-03-01T00:00",
+      ended_at: "2024-03-01T23:59",
       value,
     });
     upsertMetricSamples(profile.id, [sample(9000)], "health-connect");
@@ -143,8 +143,8 @@ describe("setMetricPrimarySource", () => {
     const day = (date: string, value: number) => ({
       metric: "steps",
       date,
-      start_time: `${date}T00:00`,
-      end_time: `${date}T23:59`,
+      started_at: `${date}T00:00`,
+      ended_at: `${date}T23:59`,
       value,
     });
     upsertMetricSamples(

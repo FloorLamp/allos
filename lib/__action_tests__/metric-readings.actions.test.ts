@@ -55,8 +55,8 @@ function sample(value: number) {
     {
       metric: HRV_METRIC,
       date: DATE,
-      start_time: START,
-      end_time: END,
+      started_at: START,
+      ended_at: END,
       value,
     },
   ];
@@ -75,8 +75,8 @@ describe("updateMetricReading", () => {
         {
           metric: SKIN_TEMP_DELTA_METRIC,
           date: DATE,
-          start_time: START,
-          end_time: END,
+          started_at: START,
+          ended_at: END,
           value: -0.3,
         },
       ],

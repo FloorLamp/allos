@@ -77,7 +77,7 @@ function createSleepEditFixture(
         handle
           .prepare(
             `INSERT INTO metric_samples
-           (profile_id, source, metric, date, start_time, end_time, value)
+           (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 420)`
           )
           .run(
@@ -89,7 +89,7 @@ function createSleepEditFixture(
         handle
           .prepare(
             `INSERT INTO metric_samples
-           (profile_id, source, metric, date, start_time, end_time, value)
+           (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (?, 'oura', 'sleep_min', ?, ?, ?, 390)`
           )
           .run(
@@ -1025,7 +1025,7 @@ test.describe("Sleep and mood log historical editing", () => {
             .prepare(
               `SELECT value FROM metric_samples
                 WHERE profile_id = ? AND metric = 'sleep_min'
-                  AND source = 'manual' AND start_time = end_time`
+                  AND source = 'manual' AND started_at = ended_at`
             )
             .get(fixture.profileId)
         ).toEqual({ value: 525 });
@@ -1186,7 +1186,7 @@ test.describe("Sleep and mood log historical editing", () => {
             .prepare(
               `SELECT value FROM metric_samples
                 WHERE profile_id = ? AND metric = 'sleep_min' AND date = ?
-                  AND source = 'manual' AND start_time = end_time`
+                  AND source = 'manual' AND started_at = ended_at`
             )
             .get(fixture.profileId, entryDate)
         ).toEqual({ value: 455 });

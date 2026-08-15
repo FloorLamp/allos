@@ -102,8 +102,8 @@ describe("importTombstoneForRow — derive (table, key) from a captured root row
         metric: "steps",
         source: "health-connect",
         origin: "com.fitbit.FitbitMobile",
-        start_time: "t0",
-        end_time: "t1",
+        started_at: "t0",
+        ended_at: "t1",
       })
     ).toEqual({
       table: "metric_samples",
@@ -119,8 +119,8 @@ describe("importTombstoneForRow — derive (table, key) from a captured root row
       importTombstoneForRow("metric_samples", {
         metric: "steps",
         source: null,
-        start_time: "t0",
-        end_time: "t1",
+        started_at: "t0",
+        ended_at: "t1",
       })
     ).toBeNull();
   });

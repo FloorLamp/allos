@@ -25,11 +25,14 @@ remains.
 | activity type `recovery`                 | `mobility`                                  | the activity is a mobility session; recovery remains an equipment kind                          |
 | `medical_records.category = 'biomarker'` | supported category or `NULL` pending review | the catchall hid unlike clinical observations and could not be resolved safely without evidence |
 | integration columns `provider`           | `source_id`                                 | registry ids name connected data sources, not healthcare providers                              |
+| substance timestamp `logged_at`          | `recorded_at`                               | the aggregate row stores its last capture instant, not a separate log event                     |
+| metric window `start_time` / `end_time`  | `started_at` / `ended_at`                   | metric windows are absolute instants; `_time` is reserved for profile-local clock values        |
 
-Migrations `20260814-persisted-vocabulary` and
-`20260814-intake-log-time-vocabulary` preserve row ids, timestamps, notes,
-autoincrement position, malformed opaque JSON, and unrelated namespace members. It
-deduplicates protocol keys only when an old and current spelling resolve to the same
+Migrations `20260814-persisted-vocabulary`,
+`20260814-intake-log-time-vocabulary`, `20260815-substance-recorded-at`, and
+`20260815-metric-sample-instants` preserve row ids, timestamps, notes,
+autoincrement position, malformed opaque JSON, and unrelated namespace members. They
+deduplicate protocol keys only when an old and current spelling resolve to the same
 outcome. The current application neither dual-reads nor dual-writes these contracts.
 Portable exports intentionally contain no old-key alias.
 

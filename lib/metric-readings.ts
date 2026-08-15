@@ -237,7 +237,7 @@ export function getMetricReadings(
           `SELECT id, date, value, source, edited
              FROM metric_samples
             WHERE profile_id = ? AND metric = ?
-            ORDER BY date DESC, start_time DESC, id DESC
+            ORDER BY date DESC, started_at DESC, id DESC
             LIMIT ?`
         )
         .all(profileId, store.metric, limit) as {

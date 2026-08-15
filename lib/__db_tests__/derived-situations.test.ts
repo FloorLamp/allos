@@ -50,8 +50,8 @@ function night(wakeDay: string, minutes: number): NormMetricSample {
   return {
     metric: "sleep_min",
     date: wakeDay,
-    start_time: start,
-    end_time: end,
+    started_at: start,
+    ended_at: end,
     value: minutes,
   };
 }

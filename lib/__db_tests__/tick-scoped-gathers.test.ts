@@ -127,7 +127,7 @@ const FAMILY_SIGNATURE =
 //   • the arrival join — issued only by getSleepArrivals (#2249), whose callers in a
 //     tick are the Dynamic deadline and the decision's own evidence line.
 const ARRIVAL_SIGNATURE =
-  /SELECT ms\.end_time AS endTime, MIN\(r\.created_at\)/;
+  /SELECT ms\.ended_at AS endTime, MIN\(r\.created_at\)/;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -428,7 +428,7 @@ function seedArrivalNight(
     db
       .prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, origin, metric, date, start_time, end_time, value)
+           (profile_id, source, origin, metric, date, started_at, ended_at, value)
          VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
       )
       .run(
@@ -589,7 +589,7 @@ function seedSendNight(
   const start = new Date(end.getTime() - 420 * 60_000);
   db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, origin, metric, date, start_time, end_time, value)
+       (profile_id, source, origin, metric, date, started_at, ended_at, value)
      VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
   ).run(
     profileId,

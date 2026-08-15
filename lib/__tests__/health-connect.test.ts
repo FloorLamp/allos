@@ -658,8 +658,8 @@ describe("parseHealthConnectPayload — skin temperature variation", () => {
       {
         metric: "skin_temp_delta_c",
         date: "2026-06-15",
-        start_time: "2026-06-15T03:23:00Z",
-        end_time: "2026-06-15T03:23:00Z",
+        started_at: "2026-06-15T03:23:00Z",
+        ended_at: "2026-06-15T03:23:00Z",
         value: 0.6,
         origin: "com.fitbit.FitbitMobile",
       },

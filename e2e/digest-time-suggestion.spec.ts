@@ -96,7 +96,7 @@ function seedArrivals(): void {
         db
           .prepare(
             `INSERT INTO metric_samples
-               (profile_id, source, origin, metric, date, start_time, end_time, value)
+               (profile_id, source, origin, metric, date, started_at, ended_at, value)
              VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
           )
           .run(PROFILE, PROVIDER, arrived.day, start, end).lastInsertRowid

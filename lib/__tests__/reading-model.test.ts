@@ -262,7 +262,7 @@ describe("the Reading mapping from each store's row shape", () => {
         date: "2026-07-02",
         value: 44,
         source: "health-connect",
-        start_time: "2026-07-02T03:11:00Z",
+        started_at: "2026-07-02T03:11:00Z",
       },
       HRV_SAMPLE
     );

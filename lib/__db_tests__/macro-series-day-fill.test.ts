@@ -29,7 +29,7 @@ const MACRO_KEYS = ["protein", "carbs", "fat", "fiber"] as const;
 
 function sample(metric: string, date: string, value: number) {
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', ?, ?, ?, ?, ?)`
   ).run(
     profileId,

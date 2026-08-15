@@ -118,19 +118,19 @@ describe("BBT reuses metric_samples", () => {
 
     const rows = db
       .prepare(
-        `SELECT source, origin, start_time, value FROM metric_samples
+        `SELECT source, origin, started_at, value FROM metric_samples
           WHERE profile_id = ? AND metric = ?`
       )
       .all(p, BBT_METRIC) as {
       source: string;
       origin: string | null;
-      start_time: string;
+      started_at: string;
       value: number;
     }[];
     expect(rows).toHaveLength(1);
     expect(rows[0].source).toBe("manual");
     expect(rows[0].origin).toBeNull();
-    expect(rows[0].start_time).toBe(`${d}T00:00:00`);
+    expect(rows[0].started_at).toBe(`${d}T00:00:00`);
     expect(rows[0].value).toBe(97.9);
 
     expect(listBbtReadings(p, WINDOW_START)).toEqual([{ date: d, degF: 97.9 }]);

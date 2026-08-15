@@ -67,8 +67,8 @@ describe("mapOuraSleep", () => {
     // Every sample is attributed to the wake day and keyed on the bedtime window.
     for (const s of res!.samples) {
       expect(s.date).toBe("2024-05-02");
-      expect(s.start_time).toBe("2024-05-01T23:10:00-07:00");
-      expect(s.end_time).toBe("2024-05-02T07:10:00-07:00");
+      expect(s.started_at).toBe("2024-05-01T23:10:00-07:00");
+      expect(s.ended_at).toBe("2024-05-02T07:10:00-07:00");
     }
     // Resting (lowest) HR → a body_metrics row on the wake day; measured_at = the
     // bedtime end, so two same-wake-day periods collapse deterministically (#605).
@@ -233,8 +233,8 @@ describe("mapOuraDailyScore (issue #1069)", () => {
     expect(s).toEqual({
       metric: "oura_sleep_score",
       date: "2024-06-02",
-      start_time: "2024-06-02T00:00:00.000Z",
-      end_time: "2024-06-02T00:00:00.000Z",
+      started_at: "2024-06-02T00:00:00.000Z",
+      ended_at: "2024-06-02T00:00:00.000Z",
       value: 82,
     });
     // The same parser serves daily_readiness under its own kind.
@@ -255,9 +255,9 @@ describe("mapOuraDailyScore (issue #1069)", () => {
       { day: "2024-06-03", score: 55 },
       OURA_SLEEP_SCORE_METRIC
     );
-    // Identical natural key (metric/start_time) across two parses of the same day.
-    expect(a?.start_time).toBe(b?.start_time);
-    expect(a?.start_time).toBe("2024-06-03T00:00:00.000Z");
+    // Identical natural key (metric/started_at) across two parses of the same day.
+    expect(a?.started_at).toBe(b?.started_at);
+    expect(a?.started_at).toBe("2024-06-03T00:00:00.000Z");
   });
 
   it("bounds the score to 0–100 and skips junk (null/absent/out-of-range/bad day)", () => {

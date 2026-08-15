@@ -87,7 +87,7 @@ export const OURA_READINESS_SCORE_METRIC = "oura_readiness_score";
 // score metric_sample under the given vendor-prefixed metric. Both endpoints share
 // the shape `{ day: "YYYY-MM-DD", score: 0–100 }`, so one parser serves both.
 // The natural key is the wake-day at UTC midnight — one row per day per kind — so a
-// rolling-window re-fetch dedups on (metric, source, start_time) like every other
+// rolling-window re-fetch dedups on (metric, source, started_at) like every other
 // sample. A missing/malformed day or an out-of-bounds/absent score (Oura returns
 // `score: null` before the day is finalized) yields null → the caller counts it
 // skipped, never a bogus 0.
@@ -104,8 +104,8 @@ export function mapOuraDailyScore(
   return {
     metric,
     date,
-    start_time: instant,
-    end_time: instant,
+    started_at: instant,
+    ended_at: instant,
     value: score,
   };
 }
@@ -152,7 +152,7 @@ export function mapOuraSleep(
   const samples: NormMetricSample[] = [];
   const push = (metric: string, value: number | null) => {
     if (value != null)
-      samples.push({ metric, date, start_time: start, end_time: end, value });
+      samples.push({ metric, date, started_at: start, ended_at: end, value });
   };
 
   push("sleep_min", totalMin);
@@ -334,8 +334,8 @@ export function mapOuraWorkout(
     samples.push({
       metric: "active_kcal",
       date,
-      start_time: new Date(startMs).toISOString(),
-      end_time: new Date(endMs).toISOString(),
+      started_at: new Date(startMs).toISOString(),
+      ended_at: new Date(endMs).toISOString(),
       value: Math.round(calories),
       activity_external_id: activity.external_id,
     });

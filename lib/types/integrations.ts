@@ -438,8 +438,8 @@ export interface MetricSample {
   origin: string | null;
   metric: string;
   date: string;
-  start_time: string;
-  end_time: string;
+  started_at: string;
+  ended_at: string;
   value: number;
 }
 

@@ -438,7 +438,7 @@ describe("one editability contract across the stores", () => {
     const sampleId = Number(
       db
         .prepare(
-          `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+          `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, 'manual', 'hrv_ms', '2026-04-02', '2026-04-02T00:00:00', '2026-04-02T00:00:00', 40)`
         )
         .run(p.profileId).lastInsertRowid
@@ -585,7 +585,7 @@ describe("delete routes by the row too", () => {
     const id = Number(
       db
         .prepare(
-          `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+          `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, 'oura', 'hrv_ms', '2026-05-03', '2026-05-03T00:00:00', '2026-05-03T00:00:00', 38)`
         )
         .run(p.profileId).lastInsertRowid
@@ -626,7 +626,7 @@ describe("delete routes by the row too", () => {
     const id = Number(
       db
         .prepare(
-          `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+          `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, 'manual', 'steps', '2026-05-04', '2026-05-04T00:00:00', '2026-05-04T00:00:00', 900)`
         )
         .run(p.profileId).lastInsertRowid

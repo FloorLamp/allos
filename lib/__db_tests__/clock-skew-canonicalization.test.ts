@@ -194,7 +194,7 @@ describe("branch A — the instant canonicalizes the row at ingest", () => {
       TZ
     );
     expect(mapped?.samples).toHaveLength(1);
-    expect(mapped?.samples[0].start_time).toBe("2026-07-08T21:30:00.000Z");
+    expect(mapped?.samples[0].started_at).toBe("2026-07-08T21:30:00.000Z");
     expect(mapped?.samples[0].date).toBe("2026-07-08");
   });
 });

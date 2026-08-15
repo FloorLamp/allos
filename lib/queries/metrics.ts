@@ -381,7 +381,7 @@ export function getMetricDailyTotals(
 }
 
 // The most recent value for a point metric (e.g. 'height_cm'), or null.
-// The most recent metric_samples reading with its measured date (the end_time's
+// The most recent metric_samples reading with its measured date (the ended_at's
 // calendar day), or null. The passport surfaces the date next to each stat.
 // A configured primary source (issue #14) wins when it has any reading; a
 // profile without one (or whose chosen source has no data) reads the newest
@@ -396,9 +396,9 @@ export function getLatestMetricSample(
     const cond = sourceMatchSql(chosen.source);
     const row = db
       .prepare(
-        `SELECT value, substr(end_time, 1, 10) AS date FROM metric_samples
+        `SELECT value, substr(ended_at, 1, 10) AS date FROM metric_samples
           WHERE profile_id = ? AND metric = ? AND ${cond.sql}
-          ORDER BY end_time DESC LIMIT 1`
+          ORDER BY ended_at DESC LIMIT 1`
       )
       .get(profileId, metric, ...cond.params) as
       { value: number; date: string } | undefined;
@@ -407,7 +407,7 @@ export function getLatestMetricSample(
   }
   const row = db
     .prepare(
-      "SELECT value, substr(end_time, 1, 10) AS date FROM metric_samples WHERE profile_id = ? AND metric = ? ORDER BY end_time DESC LIMIT 1"
+      "SELECT value, substr(ended_at, 1, 10) AS date FROM metric_samples WHERE profile_id = ? AND metric = ? ORDER BY ended_at DESC LIMIT 1"
     )
     .get(profileId, metric) as { value: number; date: string } | undefined;
   return row ?? null;
@@ -455,7 +455,7 @@ export function getSleepStageDailyTotals(
   const cutoff = recentDates[recentDates.length - 1].date;
   const rows = db
     .prepare(
-      `SELECT date, metric, start_time AS start, end_time AS end,
+      `SELECT date, metric, started_at AS start, ended_at AS end,
               source, origin, value
          FROM metric_samples
         WHERE profile_id = ? AND date >= ?
@@ -482,10 +482,10 @@ export function getSleepStageDailyTotals(
   // entire stage stack disappeared from the chart.
   const rawSessions = db
     .prepare(
-      `SELECT date, start_time AS start, end_time AS end, source, origin, value
+      `SELECT date, started_at AS start, ended_at AS end, source, origin, value
          FROM metric_samples
         WHERE profile_id = ? AND metric = 'sleep_min' AND date >= ?
-          AND julianday(end_time) > julianday(start_time)`
+          AND julianday(ended_at) > julianday(started_at)`
     )
     .all(profileId, cutoff) as SelectedSleepSessionRow[];
   const sessions = pickRowsOneSourcePerWindow(
@@ -640,7 +640,7 @@ function readSleepSessions(
   profileId: number,
   opts: { limit?: number; since?: string; through?: string }
 ): SleepSessionRow[] {
-  const validWindow = " AND julianday(end_time) > julianday(start_time)";
+  const validWindow = " AND julianday(ended_at) > julianday(started_at)";
   const sources = (
     db
       .prepare(
@@ -670,14 +670,14 @@ function readSleepSessions(
       // The newest OVERNIGHT, falling back to the newest session of any length —
       // both in ONE statement, so this stays the three-statement read the memo above
       // getSleepSessions describes. `value >= ?` sorts overnights ahead of naps and
-      // `end_time DESC` picks the newest inside whichever group survives, so a
+      // `ended_at DESC` picks the newest inside whichever group survives, so a
       // nap-only profile still elects somebody instead of nobody.
       const newest = db
         .prepare(
           `SELECT source FROM metric_samples
             WHERE profile_id = ? AND metric = 'sleep_min'
               ${validWindow}
-            ORDER BY (value >= ?) DESC, end_time DESC LIMIT 1`
+            ORDER BY (value >= ?) DESC, ended_at DESC LIMIT 1`
         )
         .get(profileId, SLEEP_OVERNIGHT_MIN_MINUTES) as
         { source: string | null } | undefined;
@@ -711,13 +711,13 @@ function readSleepSessions(
   if (opts.through) rowParams.push(opts.through);
   const rows = db
     .prepare(
-      `SELECT date, start_time AS start, end_time AS end, source, origin, value
+      `SELECT date, started_at AS start, ended_at AS end, source, origin, value
        FROM metric_samples
         WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
           ${validWindow}
           AND date >= ?
           ${throughFilter}
-        ORDER BY end_time DESC`
+        ORDER BY ended_at DESC`
     )
     .all(...rowParams) as {
     date: string;
@@ -812,11 +812,11 @@ export function getDailySleepSessionsSince(
 ): SleepSessionRow[] {
   const rows = db
     .prepare(
-      `SELECT date, start_time AS start, end_time AS end, source, origin, value
+      `SELECT date, started_at AS start, ended_at AS end, source, origin, value
          FROM metric_samples
         WHERE profile_id = ? AND metric = 'sleep_min' AND date >= ?
-          AND julianday(end_time) > julianday(start_time)
-        ORDER BY end_time DESC`
+          AND julianday(ended_at) > julianday(started_at)
+        ORDER BY ended_at DESC`
     )
     .all(profileId, since) as SelectedSleepSessionRow[];
   return pickRowsOneSourcePerWindow(
@@ -862,7 +862,7 @@ export function getSleepSessionsInRange(
 // timestamps, and takes no percentile of its own.
 //
 // THREE CONVENTIONS CROSSED IN ONE READ, all through shared helpers (#2205):
-//   • `ms.end_time` is a canonical instant carrying `Z`;
+//   • `ms.ended_at` is a canonical instant carrying `Z`;
 //   • `r.created_at` was moved onto the same canonical instant by migration 163,
 //     so `MIN(...)` over it is a chronological minimum rather than a lexical
 //     accident, and both sides parse through `parseUtcSql`;
@@ -908,15 +908,15 @@ function getSleepArrivalsUncached(
   const tz = getTimezone(profileId);
   const rows = db
     .prepare(
-      `SELECT ms.end_time AS endTime, MIN(r.created_at) AS arrivedAt
+      `SELECT ms.ended_at AS endTime, MIN(r.created_at) AS arrivedAt
          FROM metric_samples ms
          JOIN integration_sync_rows r
            ON r.target_table = 'metric_samples' AND r.target_id = ms.id
         WHERE ms.profile_id = ?
           AND ms.metric = 'sleep_min'
-          AND ms.start_time IS NOT NULL
-          AND ms.end_time IS NOT NULL
-          AND julianday(ms.end_time) > julianday(ms.start_time)
+          AND ms.started_at IS NOT NULL
+          AND ms.ended_at IS NOT NULL
+          AND julianday(ms.ended_at) > julianday(ms.started_at)
           AND ms.value >= ?
         GROUP BY ms.id
         ORDER BY ms.date DESC
@@ -963,20 +963,20 @@ function getManualSleepEditability(
     .prepare(
       `SELECT date,
               MAX(CASE WHEN source = 'manual' AND origin IS NULL
-                            AND start_time = date || 'T00:00:00'
-                            AND end_time = date || 'T00:00:00'
+                            AND started_at = date || 'T00:00:00'
+                            AND ended_at = date || 'T00:00:00'
                        THEN value END) AS value,
               -- Safe as a MAX: the editable flag below only holds when the day
               -- has EXACTLY ONE sample and that one is the manual duration-only
               -- row, so there is never a second id for this to pick between.
               MAX(CASE WHEN source = 'manual' AND origin IS NULL
-                            AND start_time = date || 'T00:00:00'
-                            AND end_time = date || 'T00:00:00'
+                            AND started_at = date || 'T00:00:00'
+                            AND ended_at = date || 'T00:00:00'
                        THEN id END) AS id,
               CASE WHEN COUNT(*) = 1
                          AND SUM(CASE WHEN source = 'manual' AND origin IS NULL
-                                           AND start_time = date || 'T00:00:00'
-                                           AND end_time = date || 'T00:00:00'
+                                           AND started_at = date || 'T00:00:00'
+                                           AND ended_at = date || 'T00:00:00'
                                       THEN 1 ELSE 0 END) = 1
                    THEN 1 ELSE 0 END AS editable
          FROM metric_samples

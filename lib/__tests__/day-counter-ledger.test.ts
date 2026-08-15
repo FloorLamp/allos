@@ -91,7 +91,7 @@ describe("the compiled discipline (#2037)", () => {
 
   it("touches the last-tap stamp only where one is declared", () => {
     expect(dayCounterSql(DAY_COUNTERS.substance).upsert).toContain(
-      "logged_at = excluded.logged_at"
+      "recorded_at = excluded.recorded_at"
     );
     // The other two move the count and nothing else: their only `excluded.` reference
     // is the additive amount clause every counter has.

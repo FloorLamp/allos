@@ -192,7 +192,7 @@ export function seedCycleAndDerived(): void {
     const d = shiftDateStr(ttcAnchor, -i);
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, origin, metric, date, start_time, end_time, value)
+         (profile_id, source, origin, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', NULL, 'bbt_f', ?, ?, ?, ?)`
     ).run(ttcId, d, `${d}T00:00:00`, `${d}T00:00:00`, 97.3);
   }
@@ -318,7 +318,7 @@ export function seedCycleAndDerived(): void {
     for (let i = 5; i >= 1; i--) {
       const wake = shiftDateStr(dsToday, -i);
       db.prepare(
-        `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+        `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 480)`
       ).run(
         dsId,
@@ -328,7 +328,7 @@ export function seedCycleAndDerived(): void {
       );
     }
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
     ).run(
       dsId,

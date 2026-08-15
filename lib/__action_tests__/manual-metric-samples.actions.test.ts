@@ -1,7 +1,7 @@
 // SERVER-ACTION TIER — manual metric_samples writers after migration 081.
 //
 // The origin-aware natural key is an expression index over
-// (profile, metric, source, COALESCE(origin, ''), start_time). Exercise the manual
+// (profile, metric, source, COALESCE(origin, ''), started_at). Exercise the manual
 // writer against the real migrated schema so a stale explicit UPSERT target cannot
 // make the form fail at runtime. Since #1486 there is ONE such form — the combined
 // "Log measurements" — so both the growth (height / head circ) and the vitals
@@ -16,15 +16,15 @@ import { actAs, createLogin, createProfile, fd } from "./harness";
 interface SampleRow {
   metric: string;
   origin: string | null;
-  start_time: string;
-  end_time: string;
+  started_at: string;
+  ended_at: string;
   value: number;
 }
 
 function sampleRows(profileId: number): SampleRow[] {
   return db
     .prepare(
-      `SELECT metric, origin, start_time, end_time, value
+      `SELECT metric, origin, started_at, ended_at, value
          FROM metric_samples
         WHERE profile_id = ? AND source = 'manual'
         ORDER BY metric`
@@ -49,8 +49,8 @@ describe("manual metric samples", () => {
       {
         metric: "height_cm",
         origin: null,
-        start_time: "2026-07-20T00:00:00",
-        end_time: "2026-07-20T00:00:00",
+        started_at: "2026-07-20T00:00:00",
+        ended_at: "2026-07-20T00:00:00",
         value: 83,
       },
     ]);
@@ -72,15 +72,15 @@ describe("manual metric samples", () => {
       {
         metric: "hrv_ms",
         origin: null,
-        start_time: "2026-07-20T00:00:00",
-        end_time: "2026-07-20T00:00:00",
+        started_at: "2026-07-20T00:00:00",
+        ended_at: "2026-07-20T00:00:00",
         value: 45,
       },
       {
         metric: "sleep_min",
         origin: null,
-        start_time: "2026-07-20T00:00:00",
-        end_time: "2026-07-20T00:00:00",
+        started_at: "2026-07-20T00:00:00",
+        ended_at: "2026-07-20T00:00:00",
         value: 450,
       },
     ]);

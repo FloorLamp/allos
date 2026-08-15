@@ -183,7 +183,7 @@ export const DAY_COUNTERS = {
     amountColumn: "units",
     // A use re-stamps the day row's LAST tap instant, which is why the substance bump
     // carries a touch column and the other two do not.
-    touchColumns: ["logged_at"],
+    touchColumns: ["recorded_at"],
   },
   /** Quick-add protein grams (#824) — one row per day, no identity column. */
   protein: {

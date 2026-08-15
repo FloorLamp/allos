@@ -984,7 +984,7 @@ const KIND_SPECS = {
   // accidental rather than decided.
 
   // ONE device/manual sample. `metric_samples` IS tombstone-tracked (it dedups on
-  // (metric, source, origin, start_time) — TOMBSTONE_TABLES), and captureDelete owns
+  // (metric, source, origin, started_at) — TOMBSTONE_TABLES), and captureDelete owns
   // that write, so routing here PRESERVES the #508/#653 re-import protection the bare
   // delete had rather than duplicating it: the tombstone goes down with the capture and
   // comes back up with the restore. It also means a resync can never have re-taken the

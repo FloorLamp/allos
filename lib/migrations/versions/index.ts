@@ -197,6 +197,8 @@ import { migration as mRemoveLegacySchemaShells } from "./20260814-remove-legacy
 import { migration as mMobilityActivityType } from "./20260814-mobility-activity-type";
 import { migration as mMedicalCategoryResidue } from "./20260814-medical-category-residue";
 import { migration as mIntegrationSourceId } from "./20260814-integration-source-id";
+import { migration as mSubstanceRecordedAt } from "./20260815-substance-recorded-at";
+import { migration as mMetricSampleInstants } from "./20260815-metric-sample-instants";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -403,6 +405,8 @@ export const MIGRATIONS: Migration[] = [
   mMobilityActivityType,
   mMedicalCategoryResidue,
   mIntegrationSourceId,
+  mSubstanceRecordedAt,
+  mMetricSampleInstants,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

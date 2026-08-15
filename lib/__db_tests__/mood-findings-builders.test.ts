@@ -44,7 +44,7 @@ function seedMoodRun(
 function seedNight(profileId: number, date: string, minutes: number) {
   const ts = `${date}T00:00:00`;
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
   ).run(profileId, date, ts, ts, minutes);
 }

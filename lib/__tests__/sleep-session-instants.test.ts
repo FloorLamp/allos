@@ -8,7 +8,7 @@ import type { NormMetricSample } from "@/lib/integrations/normalize";
 // A stored sleep session is an ABSOLUTE INSTANT, full stop — the invariant #2096
 // broke and this file exists to keep from breaking again silently.
 //
-// It is not a stylistic preference. `metric_samples.start_time` is (a) the natural
+// It is not a stylistic preference. `metric_samples.started_at` is (a) the natural
 // upsert key for the row, and (b) the value every read path hands to `new Date()` to
 // reconstruct a bed/wake clock. A zoneless wall clock survives (a) fine and fails (b)
 // catastrophically: ECMAScript resolves an offset-less date-time in the PROCESS zone,
@@ -27,13 +27,13 @@ const ABSOLUTE = /(Z|[+-]\d{2}:?\d{2})$/i;
 
 const TZ = "America/New_York";
 
-// A stage row's start_time carries a `#<stage>` discriminator so the four stages of
+// A stage row's started_at carries a `#<stage>` discriminator so the four stages of
 // one night do not collide on the shared window key; the instant is the part before
 // it.
 function instants(samples: NormMetricSample[]): string[] {
   const sleep = samples.filter((s) => s.metric.startsWith("sleep_"));
   expect(sleep.length).toBeGreaterThan(0);
-  return sleep.flatMap((s) => [s.start_time.split("#")[0], s.end_time]);
+  return sleep.flatMap((s) => [s.started_at.split("#")[0], s.ended_at]);
 }
 
 describe("every sleep parser writes an absolute instant", () => {

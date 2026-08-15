@@ -125,7 +125,7 @@ function night(
     db
       .prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, origin, metric, date, start_time, end_time, value)
+           (profile_id, source, origin, metric, date, started_at, ended_at, value)
          VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, ?)`
       )
       .run(

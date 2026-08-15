@@ -39,7 +39,7 @@ function logFood(
 }
 function seedTrackedProtein(profileId: number, date: string, grams: number) {
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health_connect', 'protein_g', ?, ?, ?, ?)`
   ).run(profileId, date, `${date}T08:00:00Z`, `${date}T08:00:00Z`, grams);
 }

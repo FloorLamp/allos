@@ -10,7 +10,7 @@
 //   • a statement whose profile-local date disagrees with the row's `date` is
 //     REFUSED at the boundary: the reading lands, the statement is dropped, the
 //     row is never re-dated;
-//   • the peak-flow blow derives its metric_samples `start_time` from the SAME
+//   • the peak-flow blow derives its metric_samples `started_at` from the SAME
 //     accepted instant (that store's natural key wants its own profile-local
 //     shape), so one sitting states one "when" everywhere it lands;
 //   • a PRE-FOLD queued intent's legacy `temperatureTime` still replays: the
@@ -142,7 +142,7 @@ describe("the manual vitals core (insertVitals)", () => {
     expect(rows[0].date).toBe("2026-03-04");
   });
 
-  it("drives the peak-flow blow's start_time from the same sitting statement", () => {
+  it("drives the peak-flow blow's started_at from the same sitting statement", () => {
     expect(
       insertVitals(
         profileId,
@@ -156,11 +156,11 @@ describe("the manual vitals core (insertVitals)", () => {
     // another time is a second reading, not a correction.
     const sample = db
       .prepare(
-        `SELECT start_time, value FROM metric_samples
+        `SELECT started_at, value FROM metric_samples
           WHERE profile_id = ? AND metric = 'peak_flow_lmin' AND date = '2026-03-05'`
       )
-      .all(profileId) as { start_time: string; value: number }[];
-    expect(sample).toEqual([{ start_time: "2026-03-05T07:30:00", value: 410 }]);
+      .all(profileId) as { started_at: string; value: number }[];
+    expect(sample).toEqual([{ started_at: "2026-03-05T07:30:00", value: 410 }]);
     expect(
       insertVitals(
         profileId,

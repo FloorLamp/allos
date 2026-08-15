@@ -206,8 +206,8 @@ export function mapWithingsMeasureGroup(
     samples.push({
       metric,
       date: loc.date,
-      start_time: loc.iso,
-      end_time: loc.iso,
+      started_at: loc.iso,
+      ended_at: loc.iso,
       value,
     });
   };
@@ -331,8 +331,8 @@ export function mapWithingsSleep(
       samples.push({
         metric,
         date,
-        start_time: start.iso,
-        end_time: end.iso,
+        started_at: start.iso,
+        ended_at: end.iso,
         value,
       });
   };

@@ -18,7 +18,7 @@ function seedManualSleep(profileId: number, date: string, minutes: number) {
     db
       .prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, metric, date, start_time, end_time, value)
+           (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
       )
       .run(profileId, date, `${date}T00:00:00`, `${date}T00:00:00`, minutes)
@@ -86,7 +86,7 @@ describe("deleteSleepMoodRow", () => {
       db
         .prepare(
           `INSERT INTO metric_samples
-             (profile_id, source, metric, date, start_time, end_time, value)
+             (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, 'manual', 'steps', ?, ?, ?, 9000)`
         )
         .run(profile.id, date, `${date}T00:00:00`, `${date}T00:00:00`)

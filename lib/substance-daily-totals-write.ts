@@ -131,7 +131,7 @@ export function addSubstanceDailyTotalCore(
     const info = db
       .prepare(
         `INSERT INTO substance_daily_totals
-           (profile_id, date, substance, units, logged_at, notes, edited)
+           (profile_id, date, substance, units, recorded_at, notes, edited)
          VALUES (?, ?, ?, ?, ?, ?, 1)`
       )
       .run(profileId, input.date, substance, input.amount, instantNow(), notes);

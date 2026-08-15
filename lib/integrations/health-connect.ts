@@ -783,8 +783,8 @@ export function parseHealthConnectPayload(
       out.samples.push({
         metric,
         date: p.date,
-        start_time: start,
-        end_time: end,
+        started_at: start,
+        ended_at: end,
         value,
         origin: dataOrigin(rec),
         activity_external_id: null,
@@ -832,8 +832,8 @@ export function parseHealthConnectPayload(
       out.samples.push({
         metric,
         date: p.date,
-        start_time: start,
-        end_time: end,
+        started_at: start,
+        ended_at: end,
         value,
         origin: dataOrigin(rec),
       });
@@ -857,8 +857,8 @@ export function parseHealthConnectPayload(
       out.samples.push({
         metric,
         date: p.date,
-        start_time: t,
-        end_time: t,
+        started_at: t,
+        ended_at: t,
         value,
         origin: dataOrigin(rec),
       });
@@ -991,8 +991,8 @@ export function parseHealthConnectPayload(
     out.samples.push({
       metric: "hrv_ms",
       date: p.date,
-      start_time: t,
-      end_time: t,
+      started_at: t,
+      ended_at: t,
       value: ms,
       origin: dataOrigin(h),
     });
@@ -1050,8 +1050,8 @@ export function parseHealthConnectPayload(
     out.samples.push({
       metric: "sleep_min",
       date: wakeDay,
-      start_time: start,
-      end_time: end,
+      started_at: start,
+      ended_at: end,
       value: sleepMin,
       origin: dataOrigin(s),
     });
@@ -1095,8 +1095,8 @@ export function parseHealthConnectPayload(
       out.samples.push({
         metric: stMetric,
         date: wakeDay,
-        start_time: stStart,
-        end_time: stEnd,
+        started_at: stStart,
+        ended_at: stEnd,
         value: stMin,
         origin: dataOrigin(s),
       });
@@ -1140,8 +1140,8 @@ export function parseHealthConnectPayload(
     out.samples.push({
       metric: SKIN_TEMP_DELTA_METRIC,
       date: night?.wakeDay ?? p.date,
-      start_time: t,
-      end_time: t,
+      started_at: t,
+      ended_at: t,
       value: delta,
       origin: dataOrigin(rec),
     });
@@ -1246,7 +1246,7 @@ export function parseHealthConnectPayload(
   for (const sample of out.samples) {
     if (sample.metric !== "active_kcal") continue;
     sample.activity_external_id =
-      exerciseByWindow.get(`${sample.start_time}\0${sample.end_time}`) ?? null;
+      exerciseByWindow.get(`${sample.started_at}\0${sample.ended_at}`) ?? null;
   }
 
   out.details.origins = originChoices(out.samples);

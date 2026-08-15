@@ -134,7 +134,7 @@ export function seedBodyMobile(): void {
     // gives the tile full-series history outside a 1D range, pinning the empty-in-
     // range state instead of letting the derived tile disappear.
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'height_cm', ?, ?, ?, 178)`
     ).run(
       tbId,
@@ -145,7 +145,7 @@ export function seedBodyMobile(): void {
 
     // Steps (additive) — three recent days so the chart + chip render and are recent.
     const insSteps = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
     );
     for (const [ago, steps] of [
@@ -161,7 +161,7 @@ export function seedBodyMobile(): void {
     // instead of deciding presence from the newer global latest session.
     const oldSleepPrev = shiftDateStr(TRENDS_BODY_OLD_DAY, -1);
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 420)`
     ).run(
       tbId,
@@ -173,7 +173,7 @@ export function seedBodyMobile(): void {
     // One sleep night ending today → the default compact Sleep tile renders.
     const sleepPrev = shiftDateStr(tbToday, -1);
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 445)`
     ).run(tbId, tbToday, `${sleepPrev}T23:10:00Z`, `${tbToday}T06:35:00Z`);
 
@@ -432,7 +432,7 @@ export function seedTrendsReadings(): void {
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(rdId);
 
   const insHrv = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, ?, 'hrv_ms', ?, ?, ?, ?)`
   );
   const manualDay = shiftDateStr(rdToday, -1);
@@ -510,7 +510,7 @@ export function seedRankedCardOrder(): void {
     setProfileBirthdate(id, shiftDateStr(anchor, -365 * 6 - 30));
 
     const insHeight = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'height_cm', ?, ?, ?, ?)`
     );
     const insBm = db.prepare(
@@ -575,7 +575,7 @@ export function seedRankedCardOrder(): void {
        VALUES (?, ?, 'vitals', 'Oxygen Saturation', 'Oxygen Saturation', ?, ?, '%', 'e2e:trends-rank')`
     );
     const insSample = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'e2e-device', ?, ?, ?, ?, ?)`
     );
     db.prepare(
@@ -675,7 +675,7 @@ export function seedPinnedCardOrder(): void {
      VALUES (?, ?, ?, 'e2e:trends-pin')`
   );
   const insSample = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'e2e-pin', 'steps', ?, ?, ?, ?)`
   );
   for (const [ago, kg, steps] of [
@@ -950,7 +950,7 @@ export function seedWaistCircumference(): void {
   ).run(pid);
 
   const insWaist = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'waist_circumference_cm', ?, ?, ?, ?)`
   );
   for (let i = WAIST_SEEDED_READINGS; i >= 1; i--) {
@@ -991,7 +991,7 @@ export function seedPeakFlow(): void {
   ).run(pid);
 
   const insBlow = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'peak_flow_lmin', ?, ?, ?, ?)`
   );
   for (let ago = PEAK_FLOW_DAYS; ago >= 1; ago--) {

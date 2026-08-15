@@ -258,7 +258,7 @@ describe("deleteDatasetRows — metric_samples writes a re-import tombstone (#65
       db
         .prepare(
           `INSERT INTO metric_samples
-             (profile_id, source, metric, date, start_time, end_time, value)
+             (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, ?, 'lean_mass_kg', '2026-03-10', ?, ?, 42.5)`
         )
         .run(profileId, source, "2026-03-10T07:00:00Z", "2026-03-10T07:00:00Z")
@@ -282,8 +282,8 @@ describe("deleteDatasetRows — metric_samples writes a re-import tombstone (#65
         {
           metric: "lean_mass_kg",
           date: "2026-03-10",
-          start_time: "2026-03-10T07:00:00Z",
-          end_time: "2026-03-10T07:00:00Z",
+          started_at: "2026-03-10T07:00:00Z",
+          ended_at: "2026-03-10T07:00:00Z",
           value: 42.5,
         },
       ],
