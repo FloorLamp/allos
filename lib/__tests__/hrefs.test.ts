@@ -186,8 +186,8 @@ describe("integrationDetailHref", () => {
 
 describe("currentPathHref", () => {
   it("passes a runtime pathname+query through unchanged", () => {
-    expect(currentPathHref("/biomarkers?sort=date")).toBe(
-      "/biomarkers?sort=date"
+    expect(currentPathHref("/results/clinical-results?sort=date")).toBe(
+      "/results/clinical-results?sort=date"
     );
   });
 });

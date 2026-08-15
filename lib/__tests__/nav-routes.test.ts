@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 // Direction that matters: every nav destination (and every remaining
 // next.config redirect target) MUST resolve to a real route. We deliberately do
 // NOT assert the reverse (every route has a nav entry) — many routes are
-// intentionally unlinked detail/new/API pages (e.g. /biomarkers/[id],
+// intentionally unlinked detail/new/API pages (e.g. /results/clinical-results/view,
 // /goals, /import, /integrations) reached by deep links, not the sidebar.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
