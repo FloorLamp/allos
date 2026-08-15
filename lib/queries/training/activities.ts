@@ -718,8 +718,11 @@ export function isPredictedWorkoutDay(
 // and the coverage attribution. Rows carry the set's warm-up flag: coverage drops
 // flagged rows (#2891 — coverage counts what the strength queries count, #338),
 // while the pattern/familiarity consumers ignore the flag (a warm-up is still an
-// exposure to the lift and a training day for the pattern).
-export function getRecentDatedExercises(
+// exposure to the lift and a training day for the pattern). cache()d like
+// getActivitySuggestions above: the Overview render runs this scan for the
+// coverage card AND the volume findings in one request — and #2893 made
+// Overview the default landing — so the two collapse to one scan per request.
+export const getRecentDatedExercises = cache(function getRecentDatedExercises(
   profileId: number,
   days = 56
 ): { date: string; exercise: string; warmup: number }[] {
@@ -736,7 +739,7 @@ export function getRecentDatedExercises(
     exercise: string;
     warmup: number;
   }[];
-}
+});
 
 // Sets belong to a profile only through their parent activity, so the ids (which
 // arrive from forms) are filtered via a join on activities.profile_id — a set id

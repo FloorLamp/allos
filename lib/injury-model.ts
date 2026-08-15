@@ -150,11 +150,23 @@ export function parseRegions(raw: string | null | undefined): MuscleRegion[] {
   return dedupe(parseStringArray(raw).filter(isValidRegion));
 }
 
+// Fine muscles retired from the MuscleId enum fold into their absorbing muscle
+// instead of being dropped (#2891): an injury saved with only "chest-upper" must
+// keep constraining Chest — silently voiding it would resume pushing chest work
+// against a declared active injury.
+const RETIRED_MUSCLE_FOLDS: Record<string, MuscleId> = {
+  "chest-upper": "chest",
+};
+
 // Parse a stored/submitted `muscles` JSON blob into a de-duplicated MuscleId[]. Also folds
 // each fine muscle's coarse region into the region set at shaping time (below), so a user
 // who picks only fine muscles still constrains the right coarse regions.
 export function parseMuscles(raw: string | null | undefined): MuscleId[] {
-  return dedupe(parseStringArray(raw).filter(isValidMuscleId));
+  return dedupe(
+    parseStringArray(raw)
+      .map((m) => RETIRED_MUSCLE_FOLDS[m] ?? m)
+      .filter(isValidMuscleId)
+  );
 }
 
 // Parse a stored/submitted `movements` blob into a de-duplicated MovementPattern[].

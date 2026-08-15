@@ -37,7 +37,7 @@ const PRIMARY_CREDIT = 1.0;
 export interface CoverageSet {
   exercise: string;
   date: string; // YYYY-MM-DD
-  warmup?: number | boolean;
+  warmup?: number | boolean | null;
 }
 
 /** Per-muscle coverage: accumulated (possibly fractional) set credit + recency. */

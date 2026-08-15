@@ -10,7 +10,6 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { usePathname } from "next/navigation";
 import { useHistoryBackClose } from "./useHistoryBackClose";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
@@ -32,10 +31,12 @@ import { useTimezone } from "./TimezoneProvider";
 import { resumeContinuation } from "./resume-continuation";
 import type { PracticeType } from "@/lib/protocol-practice";
 
-// The training route hosts the inline docked editor (TrainingLogView registers a dock
-// column), so the app-wide bottom bar is suppressed there — the session is already
-// visible in the page column. Everywhere else the minimized bar carries it.
-const TRAINING_LOG_ROUTE = "/training";
+// The training LOG TAB hosts the inline docked editor (TrainingLogView registers a
+// dock column), so the app-wide bottom bar is suppressed while that view is mounted —
+// the session is already visible in the page column. Everywhere else the minimized
+// bar carries it. Mount-based, not route-based (#2893 review): /training now lands on
+// Overview by default, and a pathname test would hide the bar on tabs that have no
+// dock, stranding a fresh-loaded live session with no resume affordance.
 
 interface ActivityEditorApi {
   openCreate: (prefill?: { type?: PracticeType; date?: string }) => void;
@@ -93,6 +94,10 @@ interface ActivityEditorApi {
   // Register a DOM node for the editor to render into inline instead of the
   // overlay. Pass null to unregister.
   registerDock: (el: HTMLElement | null) => void;
+  // TrainingLogView announces itself while mounted (every width — the dock is
+  // desktop-only, but the Log view carries its own session affordances), so the
+  // bar suppression tracks the view, not the route. Returns the cleanup.
+  registerTrainingLogView: () => () => void;
 }
 
 const Ctx = createContext<ActivityEditorApi | null>(null);
@@ -162,7 +167,6 @@ export default function ActivityEditorProvider({
   children: React.ReactNode;
 }) {
   const tz = useTimezone();
-  const pathname = usePathname();
   const [mountedAt] = useState(Date.now);
   const [open, setOpen] = useState(false);
   // Minimized-but-MOUNTED: the live overlay collapses to the bottom bar without
@@ -194,6 +198,12 @@ export default function ActivityEditorProvider({
   // memoized api on every dock registration).
   const [docked, setDocked] = useState(false);
   const dockElRef = useRef<HTMLElement | null>(null);
+
+  const [logViewCount, setLogViewCount] = useState(0);
+  const registerTrainingLogView = useCallback(() => {
+    setLogViewCount((n) => n + 1);
+    return () => setLogViewCount((n) => n - 1);
+  }, []);
 
   const registerDock = useCallback((el: HTMLElement | null) => {
     dockElRef.current = el;
@@ -416,12 +426,14 @@ export default function ActivityEditorProvider({
       minimized,
       editData,
       registerDock,
+      registerTrainingLogView,
     }),
     [
       open,
       minimized,
       editData,
       registerDock,
+      registerTrainingLogView,
       tz,
       lastActivity,
       restricted,
@@ -438,10 +450,11 @@ export default function ActivityEditorProvider({
   // (see `docked`) and that dock is still mounted; otherwise it's the overlay.
   const showDock = docked && dockEl != null;
 
-  const onTrainingLog = pathname === TRAINING_LOG_ROUTE;
+  const onTrainingLog = logViewCount > 0;
   // The bar shows for a client-minimized live session (mounted, hidden) anywhere,
-  // and for a fresh-load active session everywhere except the training log route (where
-  // the editor docks inline instead). A docked-open editor never shows the bar.
+  // and for a fresh-load active session everywhere except while the training Log
+  // view is mounted (where the editor docks inline instead). A docked-open editor
+  // never shows the bar.
   const showBar =
     (minimized && !showDock) || (hydrationActive && !onTrainingLog);
   // Elapsed baseline + copy for the bar: the mounted session's own start when

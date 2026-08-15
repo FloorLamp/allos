@@ -55,12 +55,9 @@ export default async function PlanSection() {
         />
       </section>
 
-      <section
-        id="routines"
-        className="scroll-mt-[calc(5rem+env(safe-area-inset-top))]"
-      >
-        <RoutinesSection />
-      </section>
+      {/* RoutinesManager's own root carries id="routines" + the scroll margin —
+          no wrapper anchor here, or the page would emit a duplicate id. */}
+      <RoutinesSection />
 
       <GoalsSection />
 

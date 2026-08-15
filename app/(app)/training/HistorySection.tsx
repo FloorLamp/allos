@@ -4,13 +4,11 @@ import {
   getSportByActivity,
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
-  getFrequencyTargetProgress,
   getLatestBodyMetric,
   getTrainingLogWeekSummary,
   getRecentByExercise,
   getActiveDaysStrip,
 } from "@/lib/queries";
-import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import {
   getUnitPrefs,
   getProfileSex,
@@ -59,14 +57,6 @@ export default async function HistorySection({
   const goalProgress = Object.fromEntries(
     getOutcomeGoalProgressMap(profile.id, goals)
   );
-  const targets = getFrequencyTargetProgress(profile.id).map((t) => ({
-    label: frequencyScopeLabel(t.target.scope_kind, t.target.scope_value),
-    count: t.count,
-    perWeek: t.per_week,
-    met: t.met,
-    pace: t.pace,
-  }));
-
   return (
     <TrainingLogView
       initialCreateDate={initialCreateDate}
@@ -92,7 +82,6 @@ export default async function HistorySection({
       weekSummary={{
         sessions: summary.sessions,
         activeDays: summary.activeDays,
-        targets,
       }}
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}

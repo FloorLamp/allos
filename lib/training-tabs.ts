@@ -19,6 +19,8 @@
 // PURE + unit-tested: the tab set, the parser and the strip are one decision here
 // instead of three inline literals on a Server Component the pure tier can't see.
 
+import type { AppRoute } from "./hrefs";
+
 export const TRAINING_TABS = ["overview", "log", "analyze", "plan"] as const;
 
 export type TrainingTab = (typeof TRAINING_TABS)[number];
@@ -37,11 +39,31 @@ const TAB_LABELS: Record<TrainingTab, string> = {
   plan: "Plan",
 };
 
-// The Fitness check left the tab bar for its own route (#2894): the battery is
-// quarterly work, and Overview's strip is its standing surface. The page (not
-// this parser — a parser can only pick a tab) redirects the retired
-// `?tab=fitness` links there; this name is what it matches on.
-export const RETIRED_FITNESS_TAB = "fitness";
+// Retired tab names → the canonical URL the training page redirects them to.
+// ONE mechanism for every retired name (#2892/#2894 review): a redirect
+// NORMALIZES the URL, which is what makes the client tab strip highlight the
+// right tab (NavTabsStrip resolves ?tab= itself and knows nothing of merges)
+// and what restores the section anchor historic hashless links relied on —
+// ?tab=goals used to open directly on the goal cards, so it must land on
+// plan#goals, not the top of Plan. The MERGED_TABS parser mapping above stays
+// as the belt for any caller that parses without redirecting.
+const RETIRED_TAB_TARGETS: Record<string, AppRoute> = {
+  goals: "/training?tab=plan#goals",
+  routines: "/training?tab=plan#routines",
+  // The Fitness check left the tab bar for its own route (#2894): the battery
+  // is quarterly work, and Overview's strip is its standing surface.
+  fitness: "/training/fitness-check",
+};
+
+/** The canonical redirect target for a retired ?tab= value, or null for live
+ *  names and unknowns. Shares first()'s normalization with parseTrainingTab so
+ *  the two can never disagree about what a raw param says. */
+export function retiredTrainingTabTarget(
+  value: string | string[] | undefined
+): AppRoute | null {
+  const raw = first(value);
+  return (raw && RETIRED_TAB_TARGETS[raw]) || null;
+}
 
 // Retired tab names → the tab that absorbed them (#2892). A parser-level mapping,
 // not an HTTP redirect: the links keep working with zero navigation cost.
