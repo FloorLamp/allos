@@ -710,7 +710,7 @@ export const DOMAIN_LABELS = [
   "wellness",
 ] as const;
 
-/** Retired 2026-08-15 — kept on closed issues as history, invalid on open ones. */
+/** Retired 2026-08-15 and deleted repo-side; flagged wherever they reappear on an open issue. */
 export const RETIRED_LABELS = [
   "enhancement",
   "cleanup",
