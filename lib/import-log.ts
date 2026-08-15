@@ -162,7 +162,7 @@ export function interleaveImportLog<
 // strip, so the tab counts and the toast/Review-feed tally share one source.
 export interface DocumentProducedCounts {
   // medical_records grouped by their `category` column.
-  recordsByCategory: { category: string; count: number }[];
+  recordsByCategory: { category: string | null; count: number }[];
   immunizations: number;
   allergies: number;
   conditions: number;

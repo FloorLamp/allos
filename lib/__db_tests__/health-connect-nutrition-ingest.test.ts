@@ -79,7 +79,7 @@ function latestSplit(): {
   return db
     .prepare(
       `SELECT ok, inserted, updated, unchanged FROM integration_sync_events
-        WHERE profile_id = ? AND provider = 'health-connect'
+        WHERE profile_id = ? AND source_id = 'health-connect'
         ORDER BY id DESC LIMIT 1`
     )
     .get(profileId) as {

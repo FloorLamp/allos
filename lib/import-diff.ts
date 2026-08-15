@@ -150,7 +150,7 @@ function serializeFields(payload: Record<string, unknown>): string {
 
 export interface RecordFields {
   date: string;
-  category: string;
+  category: string | null;
   name: string;
   value: string | null;
   value_num: number | null;

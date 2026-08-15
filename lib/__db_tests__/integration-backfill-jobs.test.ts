@@ -400,7 +400,7 @@ describe("integration backfill jobs", () => {
     // serialization the fixture happened to pick.
     const insert = db.prepare(
       `INSERT INTO integration_backfill_jobs
-         (profile_id, provider, kind, label, item_noun, status, total_items,
+         (profile_id, source_id, kind, label, item_noun, status, total_items,
           updated_at)
        VALUES (?, 'strava', ?, 'Test backfill', 'ride', 'running', 2, ?)`
     );

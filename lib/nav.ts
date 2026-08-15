@@ -56,8 +56,8 @@ export function navParentFor(pathname: string): string | null {
 
 // True when `href` should be treated as the active route for the current
 // `pathname`. The dashboard ("/") matches exactly so it isn't lit up on every
-// page; every other entry matches by prefix so nested routes (e.g.
-// /biomarkers/123) still highlight their parent nav item. A registry route in
+// page; every other entry matches by prefix so nested routes still highlight
+// their parent nav item. A registry route in
 // NAV_PARENT_ROUTES delegates entirely to its declared parent — exactly one entry
 // lights up, and it is never the child's own (the child has no nav row).
 export function isRouteActive(href: string, pathname: string): boolean {

@@ -1,7 +1,4 @@
-// THE #2487 BOUNDARY for this module: TypeScript names an integration source
-// `sourceId`, and the persisted column is still named `provider` — the column rename
-// is deferred to its own forward migration (see docs/internals/integrations-sync.md).
-// Reads alias `provider AS source_id`; writes bind the TS value into the old column.
+// Integration ids use the same source vocabulary in TypeScript and SQLite.
 import { db, writeTx } from "@/lib/db";
 import { toUtcInstant, utcInstant } from "@/lib/date";
 import { createLogger } from "@/lib/log";
@@ -74,11 +71,11 @@ export function queueIntegrationBackfill(
     const now = utcInstant();
     db.prepare(
       `INSERT INTO integration_backfill_jobs
-         (profile_id, provider, kind, label, item_noun, status, total_items,
+         (profile_id, source_id, kind, label, item_noun, status, total_items,
           completed_items, failed_items, request_count, active_seconds,
           started_at, retry_after_at, finished_at, error, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, ?, NULL, ?, ?)
-       ON CONFLICT(profile_id, provider, kind) DO UPDATE SET
+       ON CONFLICT(profile_id, source_id, kind) DO UPDATE SET
          label = excluded.label, item_noun = excluded.item_noun,
          status = excluded.status, total_items = excluded.total_items,
          completed_items = excluded.completed_items, failed_items = 0,
@@ -123,7 +120,7 @@ export async function runIntegrationBackfillJob(
         `UPDATE integration_backfill_jobs
             SET status = 'running', retry_after_at = NULL, error = NULL,
                 updated_at = ?
-          WHERE profile_id = ? AND provider = ? AND kind = ?
+          WHERE profile_id = ? AND source_id = ? AND kind = ?
             AND status IN ('queued','paused')`
       )
       .run(utcInstant(), profileId, sourceId, kind)
@@ -151,7 +148,7 @@ export async function runIntegrationBackfillJob(
             `UPDATE integration_backfill_jobs
                 SET completed_items = ?, failed_items = ?, request_count = ?,
                     active_seconds = ?, updated_at = ?
-              WHERE profile_id = ? AND provider = ? AND kind = ? AND status = 'running'`
+              WHERE profile_id = ? AND source_id = ? AND kind = ? AND status = 'running'`
           )
           .run(
             completed,
@@ -178,7 +175,7 @@ export async function runIntegrationBackfillJob(
           .prepare(
             `UPDATE integration_backfill_jobs
                 SET status = 'failed', error = ?, finished_at = ?, updated_at = ?
-              WHERE profile_id = ? AND provider = ? AND kind = ? AND status = 'running'`
+              WHERE profile_id = ? AND source_id = ? AND kind = ? AND status = 'running'`
           )
           .run(result.error, now, now, profileId, sourceId, kind)
       );
@@ -216,7 +213,7 @@ export async function runIntegrationBackfillJob(
                 SET status = ?, completed_items = ?, failed_items = ?,
                     request_count = ?, active_seconds = ?, retry_after_at = ?,
                     finished_at = ?, error = ?, updated_at = ?
-              WHERE profile_id = ? AND provider = ? AND kind = ? AND status = 'running'`
+              WHERE profile_id = ? AND source_id = ? AND kind = ? AND status = 'running'`
           )
           .run(
             status,
@@ -247,7 +244,7 @@ export async function runIntegrationBackfillJob(
         .prepare(
           `UPDATE integration_backfill_jobs
               SET status = 'failed', error = ?, finished_at = ?, updated_at = ?
-            WHERE profile_id = ? AND provider = ? AND kind = ? AND status = 'running'`
+            WHERE profile_id = ? AND source_id = ? AND kind = ? AND status = 'running'`
         )
         .run(
           err instanceof Error ? err.message : String(err),
@@ -268,7 +265,7 @@ export async function resumeDueIntegrationBackfills(
 ): Promise<void> {
   const due = db
     .prepare(
-      `SELECT provider AS source_id, kind FROM integration_backfill_jobs
+      `SELECT source_id, kind FROM integration_backfill_jobs
         WHERE profile_id = ?
           AND (status = 'queued' OR (
             status = 'paused' AND retry_after_at IS NOT NULL AND retry_after_at <= ?

@@ -10,7 +10,7 @@ guide is [`integrations.md`](../integrations.md).
 
 ---
 
-## Vocabulary: `sourceId` in TypeScript, `provider` in SQL (#2487)
+## Vocabulary: `sourceId` in TypeScript, `source_id` in SQL (#2487/#2878)
 
 `Provider` and `provider_id` are reserved for **healthcare** clinicians and
 organizations (the `providers` table). A connected integration — Strava, Oura,
@@ -18,15 +18,11 @@ Health Connect and friends — is a **source**, named `sourceId` in every
 TypeScript parameter, field, and query API, matching the user-facing "Connected
 sources" wording.
 
-The **persisted columns still say `provider`** on `integration_connections`,
-`integration_sync_events`, `integration_backfill_jobs` and `stream_frontiers`.
-That rename is deliberately deferred to its own forward migration, so phase 1
-leaves a named boundary rather than a hidden one: reads select
-`provider AS source_id` explicitly, writes bind the TS value into the old
-column, and every such statement carries a short `#2487 boundary` comment. Row
-shapes therefore expose `source_id` (snake case, mirroring the aliased result
-column); everything else — parameters, locals, derived types — uses `sourceId`.
-There is no wrapper type and no adapter layer; the alias is the mapping.
+Migration `20260814-integration-source-id` completed that vocabulary at rest:
+`integration_connections`, `integration_sync_events`,
+`integration_backfill_jobs`, and `stream_frontiers` all persist `source_id`.
+Row shapes expose the same snake-case name; parameters, locals, and derived
+types use `sourceId`. There is no compatibility alias, adapter, or dual write.
 
 ---
 
@@ -1208,7 +1204,7 @@ the tick rate a quota decision rather than a scheduling one.
   (09:00:01 → 10:00:00 measures 59m59s) and that then drifts the effective cadence
   earlier at fine tick rates.
 - **No new state.** The last-run fact was already recorded: every run appends an
-  `integration_sync_events` row, indexed on `(profile_id, provider, at)` and swept
+  `integration_sync_events` row, indexed on `(profile_id, source_id, at)` and swept
   by the #388 retention pass. The guard reads it. It keys on the last ATTEMPT, not
   the last SUCCESS — a failed poll spent an API call, and "the remote is failing"
   is the worst case in which to retry on every tick.
@@ -1368,7 +1364,7 @@ and the morning digest all read one list and cannot disagree about which sources
 are broken. A provider whose latest run is a RECORDED failure contributes that
 real event instead (it names a cause) — one row per provider either way. Because the
 sentinel is shared across providers it is **not unique per row**: any list
-rendering these keys on `(provider, id)`. The signal is self-clearing: one healthy
+rendering these keys on `(sourceId, id)`. The signal is self-clearing: one healthy
 sync and the derivation stops firing, with no lifecycle of its own.
 
 The copy is deliberately distinct from the reauth wording. A revoked grant needs
@@ -1525,7 +1521,7 @@ the phone off, no push lands, so nothing is ever OBSERVED frozen — that is #16
 connection outage, which already owns and names it.
 
 **The stored watermark.** `stream_frontiers` (migration 179) holds one row per
-`(profile_id, provider, stream)`: the frontier as last observed, when it was last
+`(profile_id, source_id, stream)`: the frontier as last observed, when it was last
 seen to ADVANCE, when it was last looked at, and how many successful syncs have
 landed since. The pure fold is `observeFrontier` (`lib/stream-frontier.ts`); the
 ingest-path writer is `lib/stream-frontier-db.ts`; the read is

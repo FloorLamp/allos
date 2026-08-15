@@ -62,13 +62,13 @@ describe("health-connect ingest — bearer denials (#1210)", () => {
     // Force the stored expiry into the past.
     const conn = db
       .prepare(
-        "SELECT config FROM integration_connections WHERE profile_id = ? AND provider = 'health-connect'"
+        "SELECT config FROM integration_connections WHERE profile_id = ? AND source_id = 'health-connect'"
       )
       .get(expProfile) as { config: string };
     const cfg = JSON.parse(conn.config);
     cfg.tokenExpiresAt = new Date(Date.now() - 3_600_000).toISOString();
     db.prepare(
-      "UPDATE integration_connections SET config = ? WHERE profile_id = ? AND provider = 'health-connect'"
+      "UPDATE integration_connections SET config = ? WHERE profile_id = ? AND source_id = 'health-connect'"
     ).run(JSON.stringify(cfg), expProfile);
 
     const res = await POST(ingest({ authorization: `Bearer ${expiredToken}` }));

@@ -204,7 +204,7 @@ describe("a delivery-only report (contacted: false)", () => {
     expect(chip?.lastOkAt).toBeTruthy();
     const events = db
       .prepare(
-        "SELECT COUNT(*) AS n FROM integration_sync_events WHERE profile_id = ? AND provider = ?"
+        "SELECT COUNT(*) AS n FROM integration_sync_events WHERE profile_id = ? AND source_id = ?"
       )
       .get(f.profile, PROVIDER) as { n: number };
     expect(events.n).toBe(1);
@@ -500,7 +500,7 @@ describe("declined — one login, three patients, three answers", () => {
     // so Data → Review's badge never lights for it.
     const failures = db
       .prepare(
-        "SELECT COUNT(*) AS n FROM integration_sync_events WHERE provider = ? AND ok = 0 AND profile_id IN (?, ?)"
+        "SELECT COUNT(*) AS n FROM integration_sync_events WHERE source_id = ? AND ok = 0 AND profile_id IN (?, ?)"
       )
       .get(PROVIDER, f.holder, f.proxy) as { n: number };
     expect(failures.n).toBe(0);

@@ -96,7 +96,7 @@ function seedSyncArrival(
     db
       .prepare(
         `INSERT INTO integration_sync_events
-           (profile_id, provider, at, ok, inserted, updated, unchanged)
+           (profile_id, source_id, at, ok, inserted, updated, unchanged)
          VALUES (?, ?, ?, 1, ?, 0, 0)`
       )
       .run(profileId, provider, utcInstant(), kinds.length + bareInserted)

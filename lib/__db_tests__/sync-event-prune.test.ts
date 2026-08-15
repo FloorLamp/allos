@@ -37,7 +37,7 @@ function insertAged(
     // Bound in the column's own convention (#2205, migration 163). Seeding SQLite's
     // bare `datetime('now', ?)` here would have put a second serialization in the
     // column the sweep compares, which is the failure this whole issue is about.
-    `INSERT INTO integration_sync_events (profile_id, provider, at, ok)
+    `INSERT INTO integration_sync_events (profile_id, source_id, at, ok)
        VALUES (?, ?, ?, ?)`
   ).run(
     profileId,
@@ -52,7 +52,7 @@ type Ev = { id: number; profile_id: number; sourceId: string; at: string };
 function allEvents(): Ev[] {
   return db
     .prepare(
-      "SELECT id, profile_id, provider, at FROM integration_sync_events ORDER BY id"
+      "SELECT id, profile_id, source_id AS sourceId, at FROM integration_sync_events ORDER BY id"
     )
     .all() as Ev[];
 }

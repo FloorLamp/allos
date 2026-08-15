@@ -104,7 +104,7 @@ function seedArrivals(): void {
       const eventId = Number(
         db
           .prepare(
-            `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+            `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
              VALUES (?, ?, ?, 1, 1)`
           )
           .run(PROFILE, PROVIDER, arrived.iso).lastInsertRowid
@@ -151,7 +151,7 @@ test.afterAll(() => {
         WHERE target_table = 'metric_samples'
           AND target_id IN (SELECT id FROM metric_samples WHERE source = ?)`
     ).run(PROVIDER);
-    db.prepare("DELETE FROM integration_sync_events WHERE provider = ?").run(
+    db.prepare("DELETE FROM integration_sync_events WHERE source_id = ?").run(
       PROVIDER
     );
     db.prepare("DELETE FROM metric_samples WHERE source = ?").run(PROVIDER);

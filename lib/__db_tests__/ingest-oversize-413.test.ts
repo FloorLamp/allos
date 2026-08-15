@@ -30,7 +30,7 @@ beforeAll(() => {
   // hashing it. The 413 path runs before auth, but a valid token is still needed to
   // reach it — a bad token would 401 first.
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status, config)
+    `INSERT INTO integration_connections (profile_id, source_id, status, config)
      VALUES (?, 'health-connect', 'connected', ?)`
   ).run(profileId, JSON.stringify({ tokenHash: hashShareToken(TOKEN) }));
 });

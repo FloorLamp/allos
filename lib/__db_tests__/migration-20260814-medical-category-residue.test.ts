@@ -6,7 +6,12 @@ import { up } from "@/lib/migrations/versions/20260814-medical-category-residue"
 function beforeRetirement(): Database.Database {
   const mem = new Database(":memory:");
   mem.pragma("foreign_keys = OFF");
-  for (const migration of MIGRATIONS.slice(0, -1)) migration.up(mem);
+  const target = MIGRATIONS.findIndex(
+    (migration) => migration.name === "20260814-medical-category-residue"
+  );
+  if (target < 0)
+    throw new Error("medical category migration is not registered");
+  for (const migration of MIGRATIONS.slice(0, target)) migration.up(mem);
   return mem;
 }
 

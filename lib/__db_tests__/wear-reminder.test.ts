@@ -62,7 +62,7 @@ let profileId: number;
 
 function connect(): void {
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status, config)
+    `INSERT INTO integration_connections (profile_id, source_id, status, config)
      VALUES (?, ?, 'connected', NULL)`
   ).run(profileId, PROVIDER);
 }
@@ -101,7 +101,7 @@ function stream(endHhmm: string, minutes = 5): void {
 function sync(hhmmss: string, ok = true): void {
   const at = `${DAY}T${hhmmss}Z`;
   db.prepare(
-    `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted, error)
+    `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted, error)
      VALUES (?, ?, ?, ?, 0, ?)`
   ).run(profileId, PROVIDER, at, ok ? 1 : 0, ok ? null : "push rejected");
   if (ok) observeStreamFrontiers(profileId, PROVIDER, at);
@@ -235,7 +235,7 @@ describe("bedtime wear reminder (#2161)", () => {
     // pushes are landing has no silence to measure.
     db.prepare(
       `UPDATE integration_connections SET status = 'needs_reauth'
-        WHERE profile_id = ? AND provider = ?`
+        WHERE profile_id = ? AND source_id = ?`
     ).run(profileId, PROVIDER);
     sync("22:04:00", false);
     expect(buildWearReminder(profileId)).toBeNull();
@@ -313,7 +313,7 @@ describe("bedtime wear reminder (#2161)", () => {
     setTimezone(eastern, "America/New_York");
     setProfileWearReminder(eastern, true);
     db.prepare(
-      `INSERT INTO integration_connections (profile_id, provider, status, config)
+      `INSERT INTO integration_connections (profile_id, source_id, status, config)
        VALUES (?, ?, 'connected', NULL)`
     ).run(eastern, PROVIDER);
     const insertNight = db.prepare(
@@ -347,7 +347,7 @@ describe("bedtime wear reminder (#2161)", () => {
       "2026-07-14T21:55:00Z",
     ]) {
       db.prepare(
-        `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+        `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
          VALUES (?, ?, ?, 1, 0)`
       ).run(eastern, PROVIDER, at);
       observeStreamFrontiers(eastern, PROVIDER, at);
@@ -518,7 +518,7 @@ describe("the frontier, not the clock (#2341)", () => {
     setProfileWearReminder(profileId, true);
     db.prepare(
       `INSERT INTO stream_frontiers
-         (profile_id, provider, stream, frontier_at, advanced_at, observed_at,
+         (profile_id, source_id, stream, frontier_at, advanced_at, observed_at,
           syncs_since_advance)
        VALUES (?, 'fitbit-takeout', 'heart-rate', ?, ?, ?, 0)`
     ).run(

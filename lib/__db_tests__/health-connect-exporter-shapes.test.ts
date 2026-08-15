@@ -126,7 +126,7 @@ describe("Health Connect exporter v1.9 shapes", () => {
       .prepare(
         `SELECT inserted, updated, unchanged, skipped, details
            FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'health-connect'
+          WHERE profile_id = ? AND source_id = 'health-connect'
           ORDER BY id DESC LIMIT 1`
       )
       .get(profileId) as {

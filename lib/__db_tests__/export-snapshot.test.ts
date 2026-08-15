@@ -46,6 +46,22 @@ describe("collectExportSnapshot (issue #135 item 1)", () => {
     expect(Array.isArray(snap.files)).toBe(true);
   });
 
+  it("exports unclassified clinical observations but not prescription rows", () => {
+    const insert = db.prepare(
+      `INSERT INTO medical_records (profile_id, date, category, name, value)
+       VALUES (?, '2026-08-15', ?, ?, 'kept')`
+    );
+    insert.run(a.profileId, null, "Unclassified export result");
+    insert.run(a.profileId, "prescription", "Structured medication only");
+
+    const names = collectExportSnapshot(
+      a.profileId,
+      "Snap A"
+    ).fhirInput.observations.map((row) => row.name);
+    expect(names).toContain("Unclassified export result");
+    expect(names).not.toContain("Structured medication only");
+  });
+
   it("is scoped to the asked profile (no cross-profile bleed)", () => {
     const snapA = collectExportSnapshot(a.profileId, "Snap A");
     const intakeItems = snapA.datasets.find((d) => d.key === "intake_items")!;

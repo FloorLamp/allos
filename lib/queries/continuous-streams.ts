@@ -223,11 +223,10 @@ export function readStreamFrontier(
   stream: ContinuousStreamId
 ): StreamFrontierState | null {
   const row = db
-    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     .prepare(
       `SELECT frontier_at, advanced_at, observed_at, syncs_since_advance
          FROM stream_frontiers
-        WHERE profile_id = ? AND provider = ? AND stream = ?`
+        WHERE profile_id = ? AND source_id = ? AND stream = ?`
     )
     .get(profileId, sourceId, stream) as
     | {

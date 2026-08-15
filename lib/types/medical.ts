@@ -197,7 +197,7 @@ export interface ClinicalObservation {
   // unlinked.
   provider_id: number | null;
   provider_name?: string | null;
-  // Integration/import provenance: `source` names the provider ('health-connect',
+  // Integration/import provenance: `source` names the data source ('health-connect',
   // etc.), `external_id` is the sync's natural key (NULL for manual/document rows).
   // `edited` is 1 when a source-owned row was hand-edited so ingest leaves it alone
   // on re-sync (#133); it drives the edit-lock badge (#659). Absent on some minimal

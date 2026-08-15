@@ -14,7 +14,7 @@ export const PROFILE_ID = 1;
 
 export const ins = db.prepare(
   `INSERT INTO integration_sync_events
-     (profile_id, provider, at, ok, window_start, window_end,
+     (profile_id, source_id, at, ok, window_start, window_end,
       received, written, inserted, updated, unchanged, skipped, raw_ref, error)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );

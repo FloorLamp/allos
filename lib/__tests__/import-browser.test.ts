@@ -131,6 +131,25 @@ describe("buildImportTabs", () => {
       category: "weird",
     });
   });
+
+  it("keeps rows awaiting review in their own first tab", () => {
+    const strip = buildImportTabs(
+      counts({
+        recordsByCategory: [
+          { category: "lab", count: 2 },
+          { category: null, count: 1 },
+        ],
+      })
+    );
+
+    expect(strip.tabs.map((t) => t.key)).toEqual(["needs-category", "lab"]);
+    expect(strip.tabs[0]).toMatchObject({
+      label: "Needs category",
+      count: 1,
+      kind: "records",
+      category: null,
+    });
+  });
 });
 
 describe("resolveImportTab", () => {
@@ -158,6 +177,7 @@ describe("observationCategoryLabel", () => {
     expect(observationCategoryLabel("lab")).toBe("Labs");
     expect(observationCategoryLabel("prescription")).toBe("Prescriptions");
     expect(observationCategoryLabel("weird")).toBe("weird");
+    expect(observationCategoryLabel(null)).toBe("Needs category");
   });
 });
 
@@ -174,10 +194,9 @@ describe("observationNameLink (category-correct row links)", () => {
     expect(observationNameLink("lab", null)).toBeNull();
     expect(observationNameLink("lab", "  ")).toBeNull();
   });
-  it("REGRESSION: a prescription row links to /medications, never a biomarker page", () => {
+  it("links a prescription row to medications", () => {
     const link = observationNameLink("prescription", "Lisinopril 10 mg");
     expect(link?.href).toBe("/medications");
-    expect(link?.href).not.toContain("/biomarkers");
     // Even with no canonical name, prescriptions still point at medications.
     expect(observationNameLink("prescription", null)?.href).toBe(
       "/medications"

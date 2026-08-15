@@ -326,18 +326,18 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/integrations/connections.ts",
     includes: "DELETE FROM integration_sync_events WHERE at < ?",
-    why: "pruneSyncEvents: a GLOBAL retention prune (one call per tick clears every profile's aged sync events, keeping the newest per (profile_id, provider)). profile_id appears only in the retained-newest GROUP BY subquery, never a predicate — deliberately profile-agnostic, mirroring sweepDeletedRows/sweepReplayedKeys.",
+    why: "pruneSyncEvents: a GLOBAL retention prune (one call per tick clears every profile's aged sync events, keeping the newest per (profile_id, source_id)). profile_id appears only in the retained-newest GROUP BY subquery, never a predicate — deliberately profile-agnostic, mirroring sweepDeletedRows/sweepReplayedKeys.",
   },
   {
     file: "lib/integrations/connections.ts",
     includes:
-      "SELECT profile_id, config FROM integration_connections WHERE provider = 'health-connect'",
+      "SELECT profile_id, config FROM integration_connections WHERE source_id = 'health-connect'",
     why: "resolveHealthConnectProfile: the token→profile resolver for the UNAUTHENTICATED Health Connect push ingest. The caller has no profile context; the presented bearer token IS the identity, constant-time-compared against every stored HC token to find WHOSE data the push lands under — inherently cross-profile, the getShareLinkByToken class. Its result then scopes every downstream write.",
   },
   {
     file: "lib/integrations/connections.ts",
     includes:
-      "SELECT profile_id FROM integration_connections WHERE provider = 'health-connect' AND status != 'disconnected'",
+      "SELECT profile_id FROM integration_connections WHERE source_id = 'health-connect' AND status != 'disconnected'",
     why: "recordUnmatchedHealthConnectPush: attributes a rotated/expired-token push to a profile ONLY when exactly one non-disconnected HC connection exists (else it skips). A cross-profile enumeration by design — the token didn't match, so there is no caller profile; profile_id is selected, not filtered.",
   },
 ];
@@ -552,7 +552,7 @@ describe("profile-scoping scanner rules (issue #1208)", () => {
     // A GROUP BY / ORDER BY mention is not a predicate.
     expect(
       scopedByProfileId(
-        "SELECT MAX(id) FROM integration_sync_events GROUP BY profile_id, provider"
+        "SELECT MAX(id) FROM integration_sync_events GROUP BY profile_id, source_id"
       )
     ).toBe(false);
   });

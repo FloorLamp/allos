@@ -32,6 +32,7 @@ import {
   type MedicationFamily,
 } from "../../medication-family";
 import { prnDayExposure, type PrnDayExposure } from "../../prn-redose";
+import { bestKnownInstant } from "../../row-instants";
 import type { IntakeObligation } from "../../types";
 
 // The per-family safety state every cross-item counter reads. One object is shared
@@ -42,7 +43,8 @@ export interface MedFamilyState {
   memberNames: string[];
   // Human label for the family ("Ibuprofen") — the duplication/over-max copy.
   label: string;
-  // Latest administration across ALL members (recorded_at required — the arming dose),
+  // Latest administration across ALL members (the stated event instant when present,
+  // otherwise the immutable capture instant),
   // plus WHICH member it belongs to, so a notice can honestly say "6h since OTC
   // Ibuprofen" when a sibling's dose armed the clock.
   latestId: number | null;
@@ -119,34 +121,31 @@ export function redoseWindowState(
   if (!family) return "unavailable";
   const ids = family.members.map((m) => m.id);
   const placeholders = ids.map(() => "?").join(", ");
-  // Establish that the administration which opened THIS window still exists as a
-  // taken, timed fact in the item's current family. If the user undid it in the app,
-  // an older remaining administration must not be misreported as a newer dose.
-  const arming = db
+  // Read the current family's administrations once inside the caller's write
+  // transaction. The shared row-instant model chooses administration time first and
+  // immutable capture second; this window check does not invent a third pairing.
+  const administrations = db
     .prepare(
-      `SELECT 1
-         FROM intake_item_logs l
-         JOIN intake_items s ON s.id = l.item_id
-        WHERE s.profile_id = ? AND l.item_id IN (${placeholders}) AND l.id = ?
-          AND l.status = 'taken' AND l.recorded_at IS NOT NULL
-        LIMIT 1`
-    )
-    .get(profileId, ...ids, armingAdministrationId);
-  if (!arming) return "cancelled";
-  const latest = db
-    .prepare(
-      `SELECT l.id AS id
+      `SELECT l.id, l.occurred_at, l.recorded_at
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-          AND l.status = 'taken' AND l.recorded_at IS NOT NULL
-        ORDER BY l.recorded_at DESC, l.id DESC
-        LIMIT 1`
+          AND l.status = 'taken'`
     )
-    .get(profileId, ...ids) as { id: number } | undefined;
-  // `arming` is itself eligible for this query, so absence is only possible if the
-  // ledger changed between these two reads outside the callback's write transaction.
-  if (!latest) return "cancelled";
+    .all(profileId, ...ids) as {
+    id: number;
+    occurred_at: string | null;
+    recorded_at: string;
+  }[];
+  if (!administrations.some((row) => row.id === armingAdministrationId))
+    return "cancelled";
+  const latest = administrations.reduce((best, row) => {
+    const at = bestKnownInstant("intake_item_logs", row);
+    const bestAt = bestKnownInstant("intake_item_logs", best);
+    if (!at.known) return best;
+    if (!bestAt.known || at.at > bestAt.at) return row;
+    return at.at === bestAt.at && row.id > best.id ? row : best;
+  });
   return latest.id === armingAdministrationId ? "current" : "superseded";
 }
 

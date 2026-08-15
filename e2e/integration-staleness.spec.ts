@@ -49,17 +49,17 @@ function staleSince(): string {
 function seedStoppedSync(): void {
   withDb((db) => {
     db.prepare(
-      `INSERT INTO integration_connections (profile_id, provider, status)
+      `INSERT INTO integration_connections (profile_id, source_id, status)
        VALUES (?, ?, 'connected')
-       ON CONFLICT (profile_id, provider) DO UPDATE SET status = 'connected'`
+       ON CONFLICT (profile_id, source_id) DO UPDATE SET status = 'connected'`
     ).run(PROFILE_ID, PROVIDER);
     db.prepare(
-      `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = ?`
+      `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = ?`
     ).run(PROFILE_ID, PROVIDER);
     // One healthy sync, long ago — and nothing since. No failure row: that is the case
     // the event-driven detectors cannot see.
     db.prepare(
-      `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted, updated, unchanged)
+      `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted, updated, unchanged)
        VALUES (?, ?, ?, 1, 0, 0, 24)`
     ).run(PROFILE_ID, PROVIDER, staleAt());
   });
@@ -68,10 +68,10 @@ function seedStoppedSync(): void {
 function clearStoppedSync(): void {
   withDb((db) => {
     db.prepare(
-      `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = ?`
+      `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = ?`
     ).run(PROFILE_ID, PROVIDER);
     db.prepare(
-      `DELETE FROM integration_connections WHERE profile_id = ? AND provider = ?`
+      `DELETE FROM integration_connections WHERE profile_id = ? AND source_id = ?`
     ).run(PROFILE_ID, PROVIDER);
   });
 }

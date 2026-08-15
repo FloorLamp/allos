@@ -322,6 +322,34 @@ describe("a dose resolved IN THE APP stops being displayed as outstanding", () =
 });
 
 describe("a PRN administration spends its redose window", () => {
+  it("orders redose windows by administration time, not capture time", () => {
+    const pid = newProfile("Redose clock");
+    const { itemId, doseId } = seedPrnMedication(pid, "Clock Ibuprofen");
+    const insert = db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, amount, recorded_at, occurred_at, status)
+       VALUES (?, ?, ?, '200 mg', ?, ?, 'taken')`
+    );
+    const armingId = Number(
+      insert.run(
+        doseId,
+        itemId,
+        today(pid),
+        "2026-08-15T12:00:00Z",
+        "2026-08-15T10:00:00Z"
+      ).lastInsertRowid
+    );
+    insert.run(
+      doseId,
+      itemId,
+      today(pid),
+      "2026-08-15T11:00:00Z",
+      "2026-08-15T11:00:00Z"
+    );
+
+    expect(redoseWindowState(pid, itemId, armingId)).toBe("superseded");
+  });
+
   it("closes the old redose button when a newer dose is logged in the app", async () => {
     const pid = newProfile("Redose Rina");
     const { itemId, doseId } = seedPrnMedication(pid, "Rina Ibuprofen");
