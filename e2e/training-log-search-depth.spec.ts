@@ -86,7 +86,7 @@ test.afterAll(() => {
 test("search finds an activity in an UNFETCHED window without Load more (#1634)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const search = page.getByPlaceholder("Search activities or exercises…");
   await expect(search).toBeVisible();
@@ -122,7 +122,7 @@ test("search finds an activity in an UNFETCHED window without Load more (#1634)"
 test("'Load more' pages DEEPER under an active filter, and the loaded window sticks", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const search = page.getByPlaceholder("Search activities or exercises…");
   await search.fill(PAGED_MARKER);
@@ -177,7 +177,7 @@ test("'Load more' pages DEEPER under an active filter, and the loaded window sti
 test("the source filter narrows a matching day by provider (#1634)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const search = page.getByPlaceholder("Search activities or exercises…");
   await search.fill(MARKER);

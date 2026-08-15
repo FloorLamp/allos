@@ -59,7 +59,7 @@ async function box(locator: Locator) {
 
 // Open the phone editor on a fresh draft through the dock's Train segment.
 async function openEditor(page: Page): Promise<void> {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   const sheet = await openLogSheet(page);
   await (await showLogRow(sheet, "log-activity")).click();
 }
@@ -260,5 +260,5 @@ test("a per-side set keeps the same two-row grouping at 390px (#1612)", async ({
   expect(values.x + values.width).toBeLessThanOrEqual(viewport.width);
 
   await expectNoClippedContent(page);
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 });

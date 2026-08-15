@@ -33,7 +33,7 @@ test("the functional fitness markers are manually enterable and percentile-conte
   // left the daily measurements form; canonical storage is unchanged, which
   // lib/__action_tests__/measurements.actions.test.ts pins). The date defaults to
   // today, so a wide biomarkers window includes it.
-  await page.goto("/training?tab=fitness");
+  await page.goto("/training/fitness-check");
   await hydratedClick(page, page.getByTestId("fitness-tile-grip"));
   const modal = page.getByTestId("fitness-entry-grip");
   await expect(modal).toBeVisible();
@@ -62,7 +62,7 @@ test("the functional fitness markers are manually enterable and percentile-conte
 test("the Fitness check reaches the surface that judges a measured test (#2086)", async ({
   page,
 }) => {
-  await page.goto("/training?tab=fitness");
+  await page.goto("/training/fitness-check");
   await hydratedClick(page, page.getByTestId("fitness-tile-vo2max"));
 
   const modal = page.getByTestId("fitness-entry-vo2max");

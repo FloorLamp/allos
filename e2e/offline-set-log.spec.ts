@@ -57,7 +57,7 @@ test("a workout logged offline queues at close, then syncs exactly once (#1596)"
 }) => {
   const marker = `Offline session ${Date.now()}`; // clock-ok: unique-name suffix for this spec's own session title, never a stored timestamp
 
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await hydratedClick(
     page,
     page.getByRole("main").getByRole("button", { name: "New activity" })

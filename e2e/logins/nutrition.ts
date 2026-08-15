@@ -52,7 +52,7 @@ export const RECAP_PROFILE = "Session Recap (e2e)";
 // vital, and set rows on an assessment activity), which would perturb profile 1's seeded
 // fitness sessions / pillar coverage under --repeat-each. Both carry sex + birthdate so
 // the norms percentiles resolve; FITNESS also carries a PRIOR check so a re-record shows a
-// check-over-check delta. FITNESS_SENIOR is age 72 so /training?tab=fitness renders the
+// check-over-check delta. FITNESS_SENIOR is age 72 so /training/fitness-check renders the
 // older-adult battery variant (arm curl, timed up-and-go, 4-stage balance — never a
 // Cooper run or dead hang).
 export const E2E_LOGIN_FITNESS = "e2e_fitness";

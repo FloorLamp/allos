@@ -254,7 +254,7 @@ test.describe("Weather & UV integration (#1172)", () => {
       // The seeded RIDE is outdoor-flagged, so its training log card carries the conditions
       // it happened in. The seeded walk is not outdoor-flagged and carries none —
       // the catalog flag decides, not the availability of data.
-      await member.goto("/training");
+      await member.goto("/training?tab=log");
       const rideCard = member.locator(".card", { hasText: "Cycling" }).first(); // first-ok: fixture-owned single seeded ride
       await expect(rideCard).toBeVisible();
       // Rendered in the LOGIN's scale (the fixture login reads Fahrenheit), which is

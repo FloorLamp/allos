@@ -114,7 +114,7 @@ test("a half-entered workout survives a reload and comes back on request (#1699)
 }) => {
   test.slow();
   try {
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await openNewActivity(page);
 
     // A workout with a name but no exercise yet is NOT savable, so the server
@@ -178,7 +178,7 @@ test("a half-entered workout survives a reload and comes back on request (#1699)
 
 test("Discard throws the draft away for good (#1699)", async ({ page }) => {
   try {
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await openNewActivity(page);
     await settledFill(page, page.getByLabel("Activity name"), WORKOUT_TITLE);
     await expect
@@ -278,7 +278,7 @@ test("a live session's draft never outlives a successful save (#1699/#451)", asy
 }) => {
   test.slow();
   try {
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await page.getByRole("main").getByTestId("start-workout").click();
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 

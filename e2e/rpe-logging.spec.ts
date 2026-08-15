@@ -54,7 +54,7 @@ async function confirmDelete(page: Page): Promise<void> {
 // this spec's own fixture, so deleting them all is safe and order-agnostic.
 async function sweepProbes(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   const probes = cardsByTitle(page, PROBE_PREFIX);
   for (let guard = 0; guard < 12; guard++) {
     const n = await probes.count();
@@ -73,7 +73,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   await sweepProbes(page);
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh CREATE editor from the training log actions toolbar.
   await page
@@ -152,7 +152,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // guard against a slow reopen render, not the persistence race the await closed).
   await page.keyboard.press("Escape");
   await expect(async () => {
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     const card = cardsByTitle(page, title);
     await expect(card).toBeVisible();
     // Reopen the stored session for edit by clicking its title.

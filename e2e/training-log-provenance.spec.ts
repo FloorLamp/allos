@@ -28,7 +28,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   page,
 }) => {
   // /training defaults to the Log tab, which renders the training log feed.
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const stravaCard = page.locator(".card", {
     hasText: "Strava morning ride",
@@ -133,7 +133,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
 test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const stravaCard = page.locator(".card", {
     hasText: "Strava morning ride",
@@ -159,7 +159,7 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
 test("training log cards prioritize a summary and progressively disclose details", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const ride = page.locator(".card", { hasText: "Strava morning ride" });
   await expect(ride).toBeVisible();
@@ -300,7 +300,7 @@ test("training log cards prioritize a summary and progressively disclose details
 test("strength target status is named and muscle filters are quiet text", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const push = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the seeded Push day routine card — order-agnostic
   await expect(push).toBeVisible();
@@ -350,7 +350,7 @@ test("strength target status is named and muscle filters are quiet text", async 
 test("an imported cycling ride shows the bike icon in the training log", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const stravaCard = page.locator(".card", {
     hasText: "Strava morning ride",
@@ -365,7 +365,7 @@ test("an imported cycling ride shows the bike icon in the training log", async (
 test("the activity editor shows all stored Strava measurements as read-only", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const stravaCard = page.locator(".card", {
     hasText: "Strava morning ride",
@@ -471,7 +471,7 @@ test("the activity editor shows all stored Strava measurements as read-only", as
 test("the Log feed pages older days in via 'Load more' (#451)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const days = page.locator('section[id^="day-"]');
   await expect(days.first()).toBeVisible(); // first-ok: asserts a day section renders — order-agnostic presence

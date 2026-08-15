@@ -60,7 +60,7 @@ async function cleanUpDraft(page: Page): Promise<void> {
 test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   const sheet = await openLogSheet(page);
   await (await showLogRow(sheet, "log-activity")).click();
 

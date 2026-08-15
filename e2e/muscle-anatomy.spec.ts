@@ -54,7 +54,7 @@ test("per-session anatomy renders on a strength session's training log card, abs
   // "Push day" strength session (Bench Press, Overhead Press, Lateral Raise,
   // Tricep Pushdown — all catalog lifts) resolves to tagged muscles, so its card
   // carries the per-session figure. Multiple weeks exist; the newest is on page one.
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const pushCard = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the seeded Push day routine card — order-agnostic
   await expect(pushCard).toBeVisible();

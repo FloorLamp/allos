@@ -118,7 +118,7 @@ test("a new build waits instead of taking over the open page (#1700)", async ({
 
   await spendAutoReloadRation(page);
   const deploy = await interceptVersion(page);
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await waitForController(page);
   const before = await controllerScript(page);
   expect(before).toContain("/sw.js?v=");
@@ -182,7 +182,7 @@ test("the update lands on the user's tap, exactly once (#1700)", async ({
 
   await spendAutoReloadRation(page);
   const deploy = await interceptVersion(page);
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await waitForController(page);
   deploy.arm();
 
@@ -322,7 +322,7 @@ test("a deploy under a controlled tab raises the bar, with no second worker (#23
   test.slow();
   await spendAutoReloadRation(page);
   const deploy = await interceptVersion(page);
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await waitForController(page);
   expect(await controllerScript(page)).toContain("/sw.js?v=");
 
@@ -354,7 +354,7 @@ test("that bar's Reload loads the document, and nothing re-offers (#2329)", asyn
   test.slow();
   await spendAutoReloadRation(page);
   const deploy = await interceptVersion(page);
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await waitForController(page);
 
   deploy.arm();

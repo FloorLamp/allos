@@ -21,7 +21,7 @@ test.describe("Type-aware training restriction (#489)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/training");
+      await member.goto("/training?tab=log");
       // It does NOT redirect to the dashboard — the restricted profile stays on
       // /training and gets the activity log.
       await expect(member).toHaveURL(/\/training/);
@@ -33,7 +33,7 @@ test.describe("Type-aware training restriction (#489)", () => {
       const form = member.getByTestId("activity-log-form");
       await expect(form).toBeVisible();
       await expect(member.getByRole("tab", { name: "Analyze" })).toHaveCount(0);
-      await expect(member.getByRole("tab", { name: "Goals" })).toHaveCount(0);
+      await expect(member.getByRole("tab", { name: "Plan" })).toHaveCount(0);
       // No adult strength framing — the type picker only offers sport/cardio.
       await expect(form.getByRole("option", { name: /Sport/ })).toHaveCount(1);
       await expect(form.getByRole("option", { name: /Strength/ })).toHaveCount(

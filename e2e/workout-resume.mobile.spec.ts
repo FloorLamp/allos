@@ -13,7 +13,7 @@ import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 test("the sheet's workout row resumes a running session with its clock intact (#1893/#2745)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const sheet = await openLogSheet(page);
   const workout = await showLogRow(sheet, "live-workout");

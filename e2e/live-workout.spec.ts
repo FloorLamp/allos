@@ -27,7 +27,7 @@ async function pickActivity(page: Page, name: string) {
 test("'Start workout' opens live mode with a rest timer (#340)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The training log aside header carries a "Start workout" button (strength-centric,
   // shown for non-restricted profiles). It opens the create editor in live mode.
@@ -62,7 +62,7 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
 test("checking off a set auto-starts rest, and Finish stamps the end time (#340)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
@@ -118,7 +118,7 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
 test("mid-session, the workout entry point resumes and the session clock survives (#1893)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const entry = page.getByRole("main").getByTestId("start-workout");
   await expect(entry).toHaveAttribute("data-workout-offer", "start");

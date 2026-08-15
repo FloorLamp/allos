@@ -87,7 +87,7 @@ async function pickActivity(page: Page, name: string) {
 
 // Open the live editor from the training log aside and wait for the control strip.
 async function startLiveWorkout(page: Page) {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 }

@@ -45,7 +45,7 @@ async function confirmDelete(page: Page): Promise<void> {
 // this spec's own fixture, so deleting them all is safe and order-agnostic.
 async function sweepProbes(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   const probes = cardsByTitle(page, PROBE_PREFIX);
   for (let guard = 0; guard < 12; guard++) {
     const n = await probes.count();
@@ -63,7 +63,7 @@ async function sweepProbes(page: Page): Promise<void> {
 // the unique title.
 async function createProbe(page: Page): Promise<string> {
   const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page
     .getByRole("main")
     .getByRole("button", { name: "New activity" })

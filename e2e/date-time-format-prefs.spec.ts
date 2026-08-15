@@ -57,7 +57,7 @@ test("flipping the date/time prefs re-renders a record date and a training log t
     await page.goto("/records/problems/conditions");
     await expect(page.getByText("Mar 1, 2019").first()).toBeVisible(); // first-ok: asserts a date renders in the mdy long-date format — order-agnostic presence
 
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // first-ok: the seeded Strava ride activity — order-agnostic presence
     // 24h default — the ride's start renders as "07:15", never a 12h "7:15 AM".
     await expect(page.getByText(/07:15/).first()).toBeVisible(); // first-ok: asserts a time renders in 24h format — order-agnostic presence
@@ -104,7 +104,7 @@ test("flipping the date/time prefs re-renders a record date and a training log t
     await expect(page.getByText("2019-03-01").first()).toBeVisible(); // first-ok: asserts a date renders in ISO format — order-agnostic presence
 
     // The training log timestamp now renders a 12-hour clock on Training → Log.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // first-ok: the seeded Strava ride activity — order-agnostic presence
     await expect(page.getByText(/7:15\s*AM/).first()).toBeVisible(); // first-ok: asserts a time renders in 12h format — order-agnostic presence
 

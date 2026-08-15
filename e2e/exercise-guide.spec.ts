@@ -34,11 +34,15 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   const main = page.getByRole("main");
 
-  // A COVERED catalog lift → the panel carries the "How to" section with setup
-  // steps and the medical disclaimer.
+  // A COVERED catalog lift with logged sessions → the guide sits behind a
+  // collapsed "How to" disclosure (#2895 — familiar lifts collapse it; the
+  // guide stays permanently reachable). Open it, then assert the content.
+  const disclosure = main.getByTestId("exercise-guide-disclosure").first(); // first-ok: asserts a guide disclosure renders — order-agnostic presence
+  await expect(disclosure).toBeVisible();
+  await expect(disclosure).toContainText("How to");
+  await disclosure.locator("summary").click();
   const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
-  await expect(guide).toContainText("How to");
   await expect(guide).toContainText("Form reference");
   await expect(guide).not.toContainText("Informational, not medical advice");
   await expect(guide.getByTestId("guide-setup")).toBeVisible();
@@ -59,7 +63,7 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
 test("the strength set editor's ⓘ opens the shared guide overlay for a catalog lift (#734)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form (fields addressed by testid/role — the editor mounts
   // in the dock or the overlay portal; see entry-ergonomics.spec.ts's note).
