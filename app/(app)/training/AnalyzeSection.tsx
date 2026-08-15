@@ -1,4 +1,5 @@
 import Link from "next/link";
+import HrefSelect from "@/components/HrefSelect";
 import {
   getCardioByActivity,
   getCyclingOverviewData,
@@ -240,38 +241,30 @@ export default async function AnalyzeSection({
   const cyclingNoun = cyclingOverview?.indoorOnly ? "session" : "ride";
   const cyclingPlural = cyclingOverview?.indoorOnly ? "sessions" : "rides";
   const quickLinks = analyzeQuickLinks(analyzeOptions);
+  // Two compact selects, not two segmented rows (#2895): on phones the rows
+  // pushed the details card below the fold, and the picker semantics (navigate,
+  // server re-reads the params) survive unchanged — the hrefs are still minted
+  // here, HrefSelect only follows them.
   const analysisControls = (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex rounded-md border border-black/10 p-0.5 dark:border-white/10">
-        {view.metrics.map((m) => (
-          <Link
-            key={m.id}
-            href={hrefFor({ item: currentItem, metric: m.id })}
-            className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-              m.id === view.metric
-                ? "bg-brand-600 text-white"
-                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
-            }`}
-          >
-            {m.label}
-          </Link>
-        ))}
-      </div>
-      <div className="flex rounded-md border border-black/10 p-0.5 dark:border-white/10">
-        {RANGES.map((r) => (
-          <Link
-            key={r.id}
-            href={hrefFor({ item: currentItem, range: r.id })}
-            className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-              r.id === activeRange
-                ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-ink-950"
-                : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
-            }`}
-          >
-            {r.label}
-          </Link>
-        ))}
-      </div>
+      <HrefSelect
+        ariaLabel="Metric"
+        value={view.metric}
+        options={view.metrics.map((m) => ({
+          value: m.id,
+          label: m.label,
+          href: hrefFor({ item: currentItem, metric: m.id }),
+        }))}
+      />
+      <HrefSelect
+        ariaLabel="Range"
+        value={activeRange}
+        options={RANGES.map((r) => ({
+          value: r.id,
+          label: r.label,
+          href: hrefFor({ item: currentItem, range: r.id }),
+        }))}
+      />
     </div>
   );
 
@@ -286,9 +279,18 @@ export default async function AnalyzeSection({
           : "grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]"
       }
     >
-      <div className="space-y-6">
+      {/* Below xl the wrapper dissolves (display: contents) so its cards become
+          items of the section grid and the ASIDE can interleave by order:
+          picker → details → chart → sessions — details first on phones (#2895).
+          On xl it is a normal block column and order resets. Cycling overview
+          keeps the plain column (it has no aside to interleave). */}
+      <div
+        className={
+          isCyclingOverview ? "space-y-6" : "contents xl:block xl:space-y-6"
+        }
+      >
         <div
-          className="card relative z-20 focus-within:z-50"
+          className="order-1 card relative z-20 focus-within:z-50 xl:order-none"
           data-testid={isCyclingOverview ? "cycling-overview" : undefined}
         >
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
@@ -400,7 +402,7 @@ export default async function AnalyzeSection({
         </div>
 
         <div
-          className="card"
+          className="order-3 card xl:order-none"
           data-testid={isCyclingOverview ? "cycling-progression" : undefined}
         >
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
@@ -485,7 +487,7 @@ export default async function AnalyzeSection({
         ) : null}
 
         <div
-          className="card"
+          className="order-4 card xl:order-none"
           data-testid={isCyclingOverview ? "cycling-ride-history" : undefined}
         >
           <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
@@ -589,7 +591,7 @@ export default async function AnalyzeSection({
       </div>
 
       {!isCyclingOverview ? (
-        <aside className="space-y-6">{view.detail}</aside>
+        <aside className="order-2 space-y-6 xl:order-none">{view.detail}</aside>
       ) : null}
     </section>
   );
