@@ -156,14 +156,16 @@ test("mid-session, the workout entry point resumes and the session clock survive
     .getByRole("complementary")
     .getByRole("link", { name: "Training" })
     .click();
-  // Let the hub land before finding the Log tab — queried too early, a
-  // non-exact "Log" also matches the session page's "Training log" back link,
-  // which unmounts under the click.
+  // Let the hub land before finding the Log tab, then follow the tab by HREF —
+  // role-name matching here is fragile both ways (a non-exact "Log" also
+  // matches the session page's "Training log" back link; exact can miss a
+  // decorated label).
   await page.waitForURL(/\/training(\?.*)?$/);
   await page
-    .getByRole("main")
-    .getByRole("link", { name: "Log", exact: true })
+    .locator('main a[href="/training?tab=log"]')
+    .first() // first-ok: any Log link on the hub reaches the same tab
     .click();
+  await page.waitForURL(/tab=log/);
   await expect(entry).toHaveAttribute("data-workout-offer", "resume");
   await expect(entry).toHaveText("Resume workout");
 
