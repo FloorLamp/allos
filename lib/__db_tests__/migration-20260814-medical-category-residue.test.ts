@@ -9,7 +9,8 @@ function beforeRetirement(): Database.Database {
   const target = MIGRATIONS.findIndex(
     (migration) => migration.name === "20260814-medical-category-residue"
   );
-  if (target < 0) throw new Error("medical category migration is not registered");
+  if (target < 0)
+    throw new Error("medical category migration is not registered");
   for (const migration of MIGRATIONS.slice(0, target)) migration.up(mem);
   return mem;
 }

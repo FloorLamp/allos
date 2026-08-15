@@ -123,8 +123,6 @@ export function observationCategoryLabel(category: string): string {
   switch (category) {
     case "lab":
       return "Labs";
-    case "biomarker":
-      return "Clinical results";
     case "genomics":
       return "Genomics";
     case "vitals":
@@ -146,14 +144,7 @@ export function observationCategoryLabel(category: string): string {
 
 // Canonical display order for record-category tabs (matching the category
 // filter's option order); unknown categories sort after, alphabetically.
-const CATEGORY_ORDER = [
-  "vitals",
-  "lab",
-  "genomics",
-  "biomarker",
-  "scan",
-  "prescription",
-];
+const CATEGORY_ORDER = ["vitals", "lab", "genomics", "scan", "prescription"];
 
 // Where a records category sits in the tab strip. Exported so anything that has
 // to order rows the way the STRIP orders their tabs (the #2339 triage rows, whose
@@ -266,9 +257,9 @@ export function resolveImportTab(
 // ---- Category-correct record links ----
 
 // Where a medical_records row's NAME should link, by category. Series-style
-// categories (labs/vitals/biomarkers/genomics) go to the biomarker series view
+// categories (labs/vitals/genomics) go to the clinical-result series view
 // for their canonical name; prescriptions go to the medications page (the
-// prescription→biomarker bug this fixes); scans/notes/unknown categories get NO
+// prescription→series bug this fixes); scans/notes/unknown categories get NO
 // link rather than a wrong one.
 export function observationNameLink(
   category: string,
@@ -276,7 +267,6 @@ export function observationNameLink(
 ): { href: AppRoute; title: string } | null {
   switch (category) {
     case "lab":
-    case "biomarker":
     case "vitals":
     case "genomics": {
       const name = canonicalName?.trim();

@@ -174,10 +174,9 @@ describe("observationNameLink (category-correct row links)", () => {
     expect(observationNameLink("lab", null)).toBeNull();
     expect(observationNameLink("lab", "  ")).toBeNull();
   });
-  it("REGRESSION: a prescription row links to /medications, never a biomarker page", () => {
+  it("links a prescription row to medications", () => {
     const link = observationNameLink("prescription", "Lisinopril 10 mg");
     expect(link?.href).toBe("/medications");
-    expect(link?.href).not.toContain("/biomarkers");
     // Even with no canonical name, prescriptions still point at medications.
     expect(observationNameLink("prescription", null)?.href).toBe(
       "/medications"

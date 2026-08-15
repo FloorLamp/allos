@@ -42,7 +42,8 @@ export interface MedFamilyState {
   memberNames: string[];
   // Human label for the family ("Ibuprofen") — the duplication/over-max copy.
   label: string;
-  // Latest administration across ALL members (recorded_at required — the arming dose),
+  // Latest administration across ALL members (the stated event instant when present,
+  // otherwise the immutable capture instant),
   // plus WHICH member it belongs to, so a notice can honestly say "6h since OTC
   // Ibuprofen" when a sibling's dose armed the clock.
   latestId: number | null;
@@ -128,7 +129,7 @@ export function redoseWindowState(
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id IN (${placeholders}) AND l.id = ?
-          AND l.status = 'taken' AND l.recorded_at IS NOT NULL
+          AND l.status = 'taken'
         LIMIT 1`
     )
     .get(profileId, ...ids, armingAdministrationId);
@@ -139,8 +140,8 @@ export function redoseWindowState(
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-          AND l.status = 'taken' AND l.recorded_at IS NOT NULL
-        ORDER BY l.recorded_at DESC, l.id DESC
+          AND l.status = 'taken'
+        ORDER BY COALESCE(l.occurred_at, l.recorded_at) DESC, l.id DESC
         LIMIT 1`
     )
     .get(profileId, ...ids) as { id: number } | undefined;
