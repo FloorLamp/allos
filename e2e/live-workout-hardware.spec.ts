@@ -85,11 +85,14 @@ async function pickActivity(page: Page, name: string) {
     .click();
 }
 
-// Open the live editor from the training log aside and wait for the control strip.
+// Open the live editor from the training log aside and wait for the control
+// strip — AND for the create-at-start navigation to the session's page (#2870
+// step 3) to settle, so typing into the fresh form can't race it.
 async function startLiveWorkout(page: Page) {
   await page.goto("/training?tab=log");
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await page.waitForURL(/\/training\/activity\/\d+$/);
 }
 
 // Drive a complete first set so "+ Add set" (the check-off gesture) unlocks. This
