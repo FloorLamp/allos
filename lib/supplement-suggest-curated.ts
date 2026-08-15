@@ -1,8 +1,9 @@
 // The DETERMINISTIC biomarker→supplement suggestion engine (issue #2378) — the twin of
 // the biomarker→food engine (lib/food-suggest.ts, #577), built to the same contract.
 //
-// When a profile's CURRENT reading for a covered biomarker family is flagged low, this
-// proposes the curated supplement that repletes it
+// When a profile's CURRENT reading for a covered biomarker family is flagged in the
+// direction the entry DECLARES (low for the repletion routes; high for the #2754
+// `lipids` soluble-fiber entry), this proposes the curated supplement that answers it
 // (lib/datasets/data/biomarker-supplement-map.json) — safety-screened against the
 // profile's allergies, medications, and conditions/situations BEFORE it renders.
 //
@@ -50,7 +51,7 @@ import {
 import { conditionOrSituationMatches } from "./condition-nutrient";
 import { stackFoodDrugHits } from "./food-drug-interactions";
 import type { ConditionInput } from "./condition-codes";
-import { isLowFlag, type FlaggedReading } from "./food-suggest";
+import { isLowFlag, isHighFlag, type FlaggedReading } from "./food-suggest";
 import type { FoodTiming } from "./types";
 
 const ENTRIES: BiomarkerSupplementEntry[] = BIOMARKER_SUPPLEMENT_ENTRIES;
@@ -123,6 +124,9 @@ export interface CuratedSupplementSuggestion {
   // WHERE THIS CAME FROM. Always "curated" here; it is on the record so a surface
   // cannot render a curated claim and a generated one identically by accident.
   origin: "curated";
+  // Which flag SIDE triggered it — the entry's declared direction (#2754). The lipids
+  // entry is high-triggered, so the "is LOW"/"is HIGH" copy reads this, never a default.
+  side: "low" | "high";
   // The flagged biomarker names that triggered it (the "Vitamin D is LOW" rationale).
   triggeredBy: string[];
   supplements: SuggestedSupplement[];
@@ -245,6 +249,7 @@ function buildSuggestion(
     key: entry.key,
     label: entry.label,
     origin: "curated",
+    side: entry.direction,
     triggeredBy,
     supplements: rendered.map((s) => toSuggested(s, isAlternative)),
     evidence: entry.evidence,
@@ -261,10 +266,13 @@ export function suggestCuratedSupplements(
   input: CuratedSupplementInput
 ): CuratedSupplementSuggestion[] {
   const flaggedLow = new Map<string, string>(); // lower(name) -> original name
+  const flaggedHigh = new Map<string, string>();
   for (const r of input.flagged) {
-    if (isLowFlag(r.flag)) flaggedLow.set(r.name.trim().toLowerCase(), r.name);
+    const lower = r.name.trim().toLowerCase();
+    if (isLowFlag(r.flag)) flaggedLow.set(lower, r.name);
+    else if (isHighFlag(r.flag)) flaggedHigh.set(lower, r.name);
   }
-  if (flaggedLow.size === 0) return [];
+  if (flaggedLow.size === 0 && flaggedHigh.size === 0) return [];
 
   // The belt's facts, in the shape screenSuggestionSafety consumes — assembled once.
   const safety: SafetyContext = {
@@ -277,9 +285,12 @@ export function suggestCuratedSupplements(
 
   const out: CuratedSupplementSuggestion[] = [];
   for (const entry of ENTRIES) {
+    // The entry's DECLARED trigger side (#2754): low for the repletion routes, high
+    // for the lipids soluble-fiber entry.
+    const flaggedOnSide = entry.direction === "high" ? flaggedHigh : flaggedLow;
     const triggeredBy: string[] = [];
     for (const bm of entry.biomarkers) {
-      const original = flaggedLow.get(bm.trim().toLowerCase());
+      const original = flaggedOnSide.get(bm.trim().toLowerCase());
       if (original) triggeredBy.push(original);
     }
     if (triggeredBy.length === 0) continue;

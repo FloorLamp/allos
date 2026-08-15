@@ -326,7 +326,7 @@ describe("suggestFoods — reduce direction (#775)", () => {
   it("high LDL → a limit-tier reduce suggestion (fried food, processed meat)", () => {
     const out = suggestFoods(
       baseInput({ flagged: [{ name: "LDL Cholesterol", flag: "high" }] })
-    );
+    ).filter((s) => s.direction === "reduce");
     expect(out).toHaveLength(1);
     const s = out[0];
     expect(s.key).toBe("ldl-apob");
@@ -361,7 +361,7 @@ describe("suggestFoods — reduce direction (#775)", () => {
           { name: "Apolipoprotein B (ApoB)", flag: "high" },
         ],
       })
-    );
+    ).filter((s) => s.direction === "reduce");
     expect(out).toHaveLength(1);
     expect(out[0].triggeredBy).toEqual([
       "LDL Cholesterol",
@@ -400,6 +400,76 @@ describe("suggestFoods — reduce direction (#775)", () => {
     expect(add.dedupeKey).not.toBe(reduce.dedupeKey);
     // Add suggestions come first, reduce appended after (curated order).
     expect(out.map((s) => s.direction)).toEqual(["add", "reduce"]);
+  });
+});
+
+// ── #2754: add-on-high — soluble fiber for the lipid family ───────────────────
+describe("suggestFoods — add-on-high soluble fiber (#2754)", () => {
+  it("high LDL → BOTH the soluble-fiber ADD and the ldl-apob REDUCE, independently keyed", () => {
+    const out = suggestFoods(
+      baseInput({ flagged: [{ name: "LDL Cholesterol", flag: "high" }] })
+    );
+    expect(out.map((s) => s.key)).toEqual(["soluble-fiber", "ldl-apob"]);
+    const add = out[0];
+    expect(add.direction).toBe("add");
+    expect(add.side).toBe("high");
+    expect(add.dedupeKey).toBe(foodSuggestSignalKey("soluble-fiber"));
+    expect(add.foods.map((f) => f.foodGroup)).toEqual([
+      "whole_grains",
+      "legumes",
+      "berries",
+    ]);
+    expect(add.foods[0].food.toLowerCase()).toContain("oats");
+    // Different asks, independent dismissal: the add note and the reduce note live
+    // under different keys in different namespaces.
+    expect(add.dedupeKey).not.toBe(out[1].dedupeKey);
+    expect(out[1].dedupeKey).toBe(foodReduceSignalKey("ldl-apob"));
+  });
+
+  it("a LOW LDL triggers neither the add-on-high entry nor the reduce entry", () => {
+    expect(
+      suggestFoods(
+        baseInput({ flagged: [{ name: "LDL Cholesterol", flag: "low" }] })
+      )
+    ).toEqual([]);
+  });
+
+  it("ApoB alone triggers the same suggestion under the same family key (#482)", () => {
+    const out = suggestFoods(
+      baseInput({
+        flagged: [
+          { name: "Apolipoprotein B (ApoB)", flag: "non-optimal-high" },
+        ],
+      })
+    );
+    const add = out.find((s) => s.direction === "add")!;
+    expect(add.key).toBe("soluble-fiber");
+    expect(add.triggeredBy).toEqual(["Apolipoprotein B (ApoB)"]);
+  });
+
+  it("classic add routes keep side 'low' and reduce routes side 'high'", () => {
+    const out = suggestFoods(
+      baseInput({
+        flagged: [
+          { name: "Ferritin", flag: "low" },
+          { name: "Glucose", flag: "high" },
+        ],
+      })
+    );
+    expect(out.find((s) => s.key === "iron")!.side).toBe("low");
+    expect(out.find((s) => s.key === "glucose")!.side).toBe("high");
+  });
+
+  it("IBS annotates (never drops) the suggestion — the same caution the fiber entry declares", () => {
+    const out = suggestFoods(
+      baseInput({
+        flagged: [{ name: "LDL Cholesterol", flag: "high" }],
+        conditions: ["Irritable bowel syndrome"],
+      })
+    );
+    const add = out.find((s) => s.key === "soluble-fiber")!;
+    expect(add.safetyNotes.some((n) => n.kind === "condition")).toBe(true);
+    expect(add.foods.length).toBeGreaterThan(0);
   });
 });
 

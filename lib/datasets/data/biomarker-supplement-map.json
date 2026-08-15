@@ -250,6 +250,54 @@
         }
       ],
       "caveat": "This is a claim about the marker, not about outcomes: supplemental omega-3 reliably raises the index, while its effect on cardiovascular events remains debated. Oily fish gets you there too. Higher intakes can add to the effect of a blood thinner — worth raising with whoever prescribes it."
+    },
+    {
+      "key": "lipids",
+      "label": "LDL cholesterol / ApoB",
+      "biomarkers": [
+        "LDL Cholesterol",
+        "Apolipoprotein B (ApoB)"
+      ],
+      "direction": "high",
+      "supplements": [
+        {
+          "name": "Psyllium husk",
+          "matchTokens": [
+            "psyllium",
+            "ispaghula",
+            "metamucil"
+          ],
+          "foodTiming": "with_food",
+          "note": "Take with plenty of water, and keep it a couple of hours apart from medications — bulk fibers can slow their absorption."
+        },
+        {
+          "name": "Oat beta-glucan",
+          "matchTokens": [
+            "beta-glucan",
+            "beta glucan",
+            "oat bran",
+            "oat fiber"
+          ],
+          "foodTiming": "with_food",
+          "note": "A bowl of oats or barley gets you the same beta-glucan as food."
+        }
+      ],
+      "allergyAlternative": null,
+      "evidence": "Soluble fiber binds bile acids in the gut and lowers the LDL cholesterol (and with it ApoB) the test measures; the effect for psyllium and oat beta-glucan is established enough to carry an FDA-authorized health claim and approved EFSA claims.",
+      "source": "FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims",
+      "contraindications": [
+        {
+          "match": "obstruction",
+          "caution": "With a bowel obstruction or narrowing, bulk-forming fiber is unsafe — this one is a clinician's call.",
+          "severity": "drop"
+        },
+        {
+          "match": "dysphagia",
+          "caution": "With swallowing difficulty, bulk fibers can swell in the throat — do not start one without your clinician.",
+          "severity": "drop"
+        }
+      ],
+      "caveat": "A high LDL or ApoB is a conversation with your clinician first — soluble fiber complements, never replaces, prescribed lipid treatment, and food sources (oats, barley, legumes) get you there too."
     }
   ]
 }

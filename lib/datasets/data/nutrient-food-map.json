@@ -719,6 +719,50 @@
       ],
       "allergyAlternative": null,
       "caveat": "Raise fiber gradually and drink more water alongside it — a sudden jump is what causes the bloating people blame on the fiber itself."
+    },
+    {
+      "key": "soluble-fiber",
+      "label": "Soluble fiber",
+      "biomarkers": [
+        "LDL Cholesterol",
+        "Apolipoprotein B (ApoB)"
+      ],
+      "direction": "high",
+      "foods": [
+        {
+          "food": "Oats and barley — whole grains rich in beta-glucan",
+          "foodGroup": "whole_grains",
+          "serving": "A daily bowl of oats or barley is the beta-glucan source the health claims are written for."
+        },
+        {
+          "food": "Legumes — beans, lentils, and chickpeas",
+          "foodGroup": "legumes",
+          "serving": "Half a cup of cooked legumes adds soluble fiber alongside plant protein."
+        },
+        {
+          "food": "Berries and other whole fruit",
+          "foodGroup": "berries",
+          "serving": "Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber."
+        }
+      ],
+      "evidence": "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims.",
+      "source": "FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims",
+      "contraindications": [
+        {
+          "match": "inflammatory bowel",
+          "caution": "With inflammatory bowel disease, fiber is helpful in remission and restricted during a flare — follow your clinician's current advice rather than a general target."
+        },
+        {
+          "match": "irritable bowel",
+          "caution": "With IBS, some fibers help and others worsen symptoms — increase slowly, and prefer soluble sources (oats, psyllium) over bran."
+        },
+        {
+          "match": "gastroparesis",
+          "caution": "With delayed gastric emptying, high-fiber foods can make symptoms worse — check with your clinician before increasing them."
+        }
+      ],
+      "allergyAlternative": null,
+      "caveat": "Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol."
     }
   ]
 }
