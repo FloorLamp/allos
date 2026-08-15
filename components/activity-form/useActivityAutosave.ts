@@ -28,10 +28,12 @@ import { useLatestRef } from "@/components/useLatestRef";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
-// Bounded self-retry for network-shaped save failures (#2866): enough spread to
-// outlast a container swap (5s/15s/45s ≈ a 65s window), capped so a genuinely
-// down server never turns the form into a retry storm. The stale-action path is
-// exempt by construction — it is never retriable, only reloadable.
+// Self-retry cadence for network-shaped save failures (#2866): quick enough to
+// land inside a container swap (5s/15s), then HELD at the final 45s step for as
+// long as the outage lasts — rate-bounded (one request per 45s can never storm)
+// rather than count-bounded, because an outage that outlives a count leaves the
+// save waiting on a keystroke, the very defect this fixes. The stale-action
+// path is exempt by construction — it is never retriable, only reloadable.
 export const SAVE_RETRY_BACKOFF_MS = [5_000, 15_000, 45_000] as const;
 
 export interface ActivityAutosave {
@@ -138,12 +140,15 @@ export function useActivityAutosave({
   }, []);
 
   // A retriable-failure EPISODE is live (#2866): saves are dying on the shapes a
-  // mid-deploy swap window produces (502 HTML → "unexpected response", or a
-  // connection TypeError), the bounded backoff below is re-attempting on its
-  // own, and the form owes the user the true sentence — "Not saving right now,
-  // your entries are kept on this device" — not a bare triangle. Cleared by the
-  // first success, by a stale verdict (the reload banner takes over), or by an
-  // ordinary rejection (whose honest error rendering stands).
+  // mid-deploy swap window produces (a 502 page → Next's non-RSC-response
+  // throw, or a connection TypeError), the backoff below is re-attempting on
+  // its own, and the form owes the user the true sentence — "Not saving right
+  // now, your entries are kept on this device" — not a bare triangle. Cleared
+  // by the first success, by a stale verdict (the reload banner takes over),
+  // by an ordinary rejection (whose honest error rendering stands), or by the
+  // form catching up to the saved state (nothing left to save). While the flag
+  // is up, a retry is ALWAYS armed — the banner never promises what no timer
+  // will do.
   const [retryingSave, setRetryingSave] = useState(false);
   const retryAttemptRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -172,8 +177,19 @@ export function useActivityAutosave({
   // onQueueOffline's doc above).
   const persist = useCallback(
     async (opts?: { queueOnOffline?: boolean }) => {
-      if (!canSave) return;
-      if (formSig === savedSigRef.current) return; // nothing changed
+      // The two settled-state bails END a live retry episode: with autosave off
+      // or the form matching the saved signature there is nothing a retry could
+      // do, and the banner must not keep claiming one is coming (e.g. the user
+      // reverted the very edit whose save died). The in-flight bail does NOT —
+      // that save's own completion settles the episode.
+      if (!canSave) {
+        endRetryEpisode();
+        return;
+      }
+      if (formSig === savedSigRef.current) {
+        endRetryEpisode();
+        return; // nothing changed
+      }
       if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
       inFlightRef.current = true;
       const sigAtSave = formSig;
@@ -186,6 +202,10 @@ export function useActivityAutosave({
         // stays dirty so the edit survives, the auto-saver can retry, and closing it
         // still prompts. Surface the failure instead of a false "Saved ✓" (#332).
         if (!res.ok) {
+          // A server that ANSWERS with a rejection is deterministic, not an
+          // outage: whatever retry episode was running is over, and the honest
+          // error rendering stands instead of the "retrying" line.
+          endRetryEpisode();
           if (mountedRef.current) setStatus("error");
           else toast(saveOutcomeMessage(res.reason));
           return;
@@ -247,13 +267,17 @@ export function useActivityAutosave({
         // signal is deliberately independent of.
         if (stale) reportStaleBuild();
         // A network-shaped failure is retriable IN PLACE (#2866) — the mid-deploy
-        // swap window answers 502 HTML ("unexpected response") or a connection
-        // TypeError, and before this, recovery waited on the next KEYSTROKE: each
-        // in-window retry failed the same unclassified way and the sticky error
-        // rendered a bare triangle through the rest of the workout. Bounded and
-        // backed off; the first attempt the new server answers either succeeds or
-        // returns the real stale signature, and the paths above take over. One
-        // structured event per episode names the leg for the next report.
+        // swap window answers a 502 page (Next's non-RSC-response throw) or a
+        // connection TypeError, and before this, recovery waited on the next
+        // KEYSTROKE: each in-window retry failed the same unclassified way and
+        // the sticky error rendered a bare triangle through the rest of the
+        // workout. Backed off 5s → 15s → 45s, then HELD at 45s for as long as
+        // the outage lasts: an outage that outlives the ladder must not strand
+        // the banner over a save nothing will re-attempt (recovery would be
+        // back to keystroke-only — the very defect this fixes). The first
+        // attempt the new server answers either succeeds or returns the real
+        // stale signature, and the paths above take over. One structured event
+        // per episode names the leg for the next report.
         const retriable = !stale && isRetriableSaveError(err);
         if (retriable) {
           if (!episodeLoggedRef.current) {
@@ -263,14 +287,17 @@ export function useActivityAutosave({
           if (mountedRef.current) {
             setRetryingSave(true);
             const attempt = retryAttemptRef.current;
-            if (attempt < SAVE_RETRY_BACKOFF_MS.length) {
-              retryAttemptRef.current = attempt + 1;
-              clearRetryTimer();
-              retryTimerRef.current = setTimeout(() => {
+            retryAttemptRef.current = attempt + 1;
+            clearRetryTimer();
+            retryTimerRef.current = setTimeout(
+              () => {
                 retryTimerRef.current = null;
                 void persistLatest();
-              }, SAVE_RETRY_BACKOFF_MS[attempt]);
-            }
+              },
+              SAVE_RETRY_BACKOFF_MS[
+                Math.min(attempt, SAVE_RETRY_BACKOFF_MS.length - 1)
+              ]
+            );
           }
         } else {
           // An ordinary rejection or the stale signature: whatever retry episode
