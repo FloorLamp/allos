@@ -703,8 +703,16 @@ export default function ActivityForm({
       return true;
     },
   });
-  const { status, savedAt, staleBuild, createdId, savableId, hasRow, dirty } =
-    autosave;
+  const {
+    status,
+    savedAt,
+    staleBuild,
+    retryingSave,
+    createdId,
+    savableId,
+    hasRow,
+    dirty,
+  } = autosave;
 
   // --- Local draft: the net under everything the server auto-save can't hold. ---
   //
@@ -1280,6 +1288,24 @@ export default function ActivityForm({
             >
               <IconAlertTriangle className="h-4 w-4 shrink-0" />
               <span>Not saved — {blocker}</span>
+            </p>
+          )}
+
+          {/* A retriable-failure episode (#2866): saves are dying on the shapes a
+              deploy's swap window produces and the bounded backoff is re-attempting
+              on its own. Say what is TRUE — the local draft (#1699) holds every
+              entry — instead of leaving a bare triangle to narrate the outage. The
+              stale-build banner outranks this (retrying cannot help a stale build). */}
+          {retryingSave && !staleBuild && !blocker && (
+            <p
+              className="-mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"
+              role="status"
+              data-testid="autosave-retrying"
+            >
+              <IconAlertTriangle className="h-4 w-4 shrink-0" />
+              <span>
+                Not saving right now — your entries are kept on this device.
+              </span>
             </p>
           )}
 

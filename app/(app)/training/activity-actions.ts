@@ -40,6 +40,7 @@ import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 function revalidateActivitySurfaces() {
   revalidateRoute("/training");
   revalidateRoute("/training/rides/[id]", "page");
+  revalidateRoute("/training/activity/[id]", "page");
   revalidateRoute("/trends");
   revalidateRoute("/");
 }
