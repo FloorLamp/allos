@@ -126,6 +126,7 @@ function revalidateActivitySurfaces() {
   revalidateRoute("/data");
   revalidateRoute("/training");
   revalidateRoute("/training/rides/[id]", "page");
+  revalidateRoute("/training/activity/[id]", "page");
   revalidateRoute("/trends");
   revalidateRoute("/");
 }
