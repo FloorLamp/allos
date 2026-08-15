@@ -198,6 +198,27 @@ describe("getReprocessSnapshot vs snapshotFromPersistInput", () => {
     expect(snap.immunizations).toEqual([]);
     expect(snap.bodyMetrics).toEqual([]);
   });
+
+  it("preserves an unresolved category as a reviewable reprocess change", () => {
+    const reviewProfile = newProfile("DIFF-REVIEW");
+    const reviewDoc = newDocument(reviewProfile, "review.ccd");
+    persistDocumentImport(reviewProfile, reviewDoc, makeInput());
+    db.prepare(
+      `UPDATE medical_records
+          SET category = NULL
+        WHERE profile_id = ? AND document_id = ? AND external_id LIKE '%obs:glucose'`
+    ).run(reviewProfile, reviewDoc);
+
+    const current = getReprocessSnapshot(reviewProfile, reviewDoc);
+    const next = snapshotFromPersistInput(makeInput());
+    const records = computeImportDiff(current, next).entities.find(
+      (entity) => entity.entity === "records"
+    )!;
+
+    expect(records.changed).toHaveLength(1);
+    expect(records.changed[0].before.fields).toContain("category=");
+    expect(records.changed[0].after.fields).toContain("category=lab");
+  });
 });
 
 describe("reprocess-diff preview then commit", () => {

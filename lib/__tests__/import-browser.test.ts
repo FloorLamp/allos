@@ -131,6 +131,25 @@ describe("buildImportTabs", () => {
       category: "weird",
     });
   });
+
+  it("keeps rows awaiting review in their own first tab", () => {
+    const strip = buildImportTabs(
+      counts({
+        recordsByCategory: [
+          { category: "lab", count: 2 },
+          { category: null, count: 1 },
+        ],
+      })
+    );
+
+    expect(strip.tabs.map((t) => t.key)).toEqual(["needs-category", "lab"]);
+    expect(strip.tabs[0]).toMatchObject({
+      label: "Needs category",
+      count: 1,
+      kind: "records",
+      category: null,
+    });
+  });
 });
 
 describe("resolveImportTab", () => {
@@ -158,6 +177,7 @@ describe("observationCategoryLabel", () => {
     expect(observationCategoryLabel("lab")).toBe("Labs");
     expect(observationCategoryLabel("prescription")).toBe("Prescriptions");
     expect(observationCategoryLabel("weird")).toBe("weird");
+    expect(observationCategoryLabel(null)).toBe("Needs category");
   });
 });
 

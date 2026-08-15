@@ -27,6 +27,7 @@ import {
   getDocumentBodyRows,
   getDocumentProviders,
   getDocumentTriageRows,
+  getObservationsForDocument,
 } from "@/lib/queries";
 import {
   persistDocumentImport,
@@ -352,6 +353,31 @@ describe("getDocumentProduced", () => {
     expect(p.waistCircSamples).toBe(1);
     // One distinct provider referenced by this document's rows.
     expect(p.providers).toBe(1);
+  });
+
+  it("counts and selects rows awaiting category review", () => {
+    const reviewProfile = newProfile("IMPORT-REVIEW");
+    const reviewDoc = newDocument(reviewProfile, "review.pdf");
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, document_id)
+       VALUES (?, ?, NULL, 'Unresolved result', 'present', ?),
+              (?, ?, 'lab', 'Resolved result', '42', ?)`
+    ).run(reviewProfile, DATE, reviewDoc, reviewProfile, DATE, reviewDoc);
+
+    expect(
+      getDocumentProduced(reviewProfile, reviewDoc).recordsByCategory
+    ).toEqual(
+      expect.arrayContaining([
+        { category: null, count: 1 },
+        { category: "lab", count: 1 },
+      ])
+    );
+    expect(
+      getObservationsForDocument(reviewProfile, reviewDoc, {
+        category: null,
+      }).map((row) => row.name)
+    ).toEqual(["Unresolved result"]);
   });
 
   it("agrees with extracted_count: the tab counts and the toast tally share one total (#271/#212)", () => {

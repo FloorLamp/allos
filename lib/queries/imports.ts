@@ -259,7 +259,7 @@ export function getDocumentProduced(
         GROUP BY category
         ORDER BY category`
     )
-    .all(profileId, docId) as { category: string; count: number }[];
+    .all(profileId, docId) as { category: string | null; count: number }[];
 
   const immunizations = scalar(
     db
@@ -953,7 +953,7 @@ export function getReprocessSnapshot(
     )
     .all(profileId, docId) as {
     date: string;
-    category: string;
+    category: string | null;
     name: string;
     value: string | null;
     value_num: number | null;

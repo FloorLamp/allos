@@ -104,8 +104,9 @@ export interface ImportTab {
   label: string;
   count: number;
   kind: ImportTabKind;
-  // The medical_records category a "records" tab scopes to.
-  category?: string;
+  // The medical_records category a "records" tab scopes to. NULL is the
+  // explicit review state for migrated rows that Allos could not classify.
+  category?: string | null;
 }
 
 export interface ImportTabStrip {
@@ -119,7 +120,8 @@ export interface ImportTabStrip {
 
 // Display label for a medical_records category (mirrors the category vocabulary
 // of the clinical-result filter; an unknown category falls back to its raw name).
-export function observationCategoryLabel(category: string): string {
+export function observationCategoryLabel(category: string | null): string {
+  if (category === null) return "Needs category";
   switch (category) {
     case "lab":
       return "Labs";
@@ -150,7 +152,8 @@ const CATEGORY_ORDER = ["vitals", "lab", "genomics", "scan", "prescription"];
 // to order rows the way the STRIP orders their tabs (the #2339 triage rows, whose
 // first match decides which tab an ambiguous label filters) reads the one order
 // instead of inventing a second.
-export function observationCategoryRank(category: string): number {
+export function observationCategoryRank(category: string | null): number {
+  if (category === null) return -1;
   const i = CATEGORY_ORDER.indexOf(category);
   return i === -1 ? CATEGORY_ORDER.length : i;
 }
@@ -180,7 +183,8 @@ const DOMAIN_TAB_KEYS = new Set<string>([
 // The tab key a medical_records category gets. Exported because the triage links
 // (#2339) have to name the tab a given row is rendered on WITHOUT rebuilding the
 // strip, and a second copy of the collision rule would be a second answer.
-export function observationsTabKey(category: string): string {
+export function observationsTabKey(category: string | null): string {
+  if (category === null) return "needs-category";
   return DOMAIN_TAB_KEYS.has(category) ? `records:${category}` : category;
 }
 
@@ -198,7 +202,7 @@ export function buildImportTabs(
       (a, b) =>
         observationCategoryRank(a.category) -
           observationCategoryRank(b.category) ||
-        a.category.localeCompare(b.category)
+        (a.category ?? "").localeCompare(b.category ?? "")
     );
   for (const r of cats) {
     tabs.push({

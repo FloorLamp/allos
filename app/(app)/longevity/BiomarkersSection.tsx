@@ -14,8 +14,7 @@ import PillarStat from "./PillarStat";
 // breakdown behind the "N of M optimal" pillar. The rows come from the SAME
 // gather + rangeBadge judgment as the pillar count (getOptimalShareRows /
 // optimalShareRows — reconciliation pinned by a pure test), non-optimal first.
-// Links point at the biomarker surfaces that exist TODAY (/biomarkers +
-// clinicalResultDetailHref); phase 5 (Results) repoints them later.
+// Links use the shared clinical-result detail route.
 //
 // A row shows the CANONICAL name and leads with the VALUE (#1501):
 //   • `canonicalName?.trim() || name` — the vocabulary's canonical_name already IS clean,

@@ -378,13 +378,14 @@ export function collectFhirExportInput(
     )
     .all(profileId) as FhirExportImmunization[];
 
-  // Labs/vitals/biomarkers as Observations — NOT prescriptions (medications come
-  // from the structured intake_items rows below, the passport's primary med source).
+  // Clinical observations — including rows awaiting category review — but NOT
+  // prescriptions (medications come from the structured intake_items rows below,
+  // the passport's primary med source).
   const observations = db
     .prepare(
       `SELECT name, value, value_num, unit, date
          FROM medical_records
-        WHERE profile_id = ? AND category != 'prescription'
+        WHERE profile_id = ? AND (category IS NULL OR category != 'prescription')
         ORDER BY date DESC, id DESC`
     )
     .all(profileId) as FhirExportObservation[];

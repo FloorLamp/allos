@@ -691,7 +691,8 @@ export function getMedicalDocumentsByIds(
 // sortable name/panel/date column set), so the shared UI controls thread the
 // same params through to this query.
 export interface DocumentObservationFilters {
-  category?: string;
+  // undefined = every category; null = only rows awaiting category review.
+  category?: string | null;
   // Flag-based filter: out-of-range only, or all non-optimal rows.
   range?: RangeFilter;
   // Free-text search matched against name and panel.
@@ -710,9 +711,13 @@ export function getObservationsForDocument(
 ): ClinicalObservation[] {
   const where = ["profile_id = ?", "document_id = ?"];
   const args: (string | number)[] = [profileId, documentId];
-  if (filters.category) {
-    where.push("category = ?");
-    args.push(filters.category);
+  if (filters.category !== undefined) {
+    if (filters.category === null) {
+      where.push("category IS NULL");
+    } else {
+      where.push("category = ?");
+      args.push(filters.category);
+    }
   }
   const rangeClause = rangeFilterClause(filters.range);
   if (rangeClause) where.push(rangeClause);
