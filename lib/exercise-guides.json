@@ -787,7 +787,7 @@
         "Bouncing the bar off the chest."
       ],
       "safetyNotes": ["Use a spotter or safety arms for heavy sets."],
-      "primaryMuscles": ["chest-upper"],
+      "primaryMuscles": ["chest"],
       "secondaryMuscles": ["front-delts", "triceps"]
     },
     {

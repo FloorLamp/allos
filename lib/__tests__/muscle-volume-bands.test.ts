@@ -173,6 +173,12 @@ describe("parseMuscleVolumeKey", () => {
     expect(
       parseMuscleVolumeKey("muscle-volume:above:chest:2026-07")
     ).toBeNull();
+    // A dismissal key stored before the upper-chest merge (#2891) names a
+    // retired muscle: it must parse to null (an ordinary row), never throw or
+    // resurrect a chest-upper row.
+    expect(
+      parseMuscleVolumeKey("muscle-volume:below:chest-upper:2026-08")
+    ).toBeNull();
     expect(
       parseMuscleVolumeKey("muscle-volume:below:elbows:2026-07")
     ).toBeNull();

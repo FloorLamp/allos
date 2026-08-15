@@ -47,6 +47,47 @@ describe("coverageFromSets — attribution", () => {
   });
 });
 
+describe("coverageFromSets — warm-up exclusion (#2891)", () => {
+  it("a warm-up set moves no coverage number", () => {
+    const cov = coverageFromSets(
+      [
+        { exercise: "Barbell Bench Press", date: TODAY },
+        { exercise: "Barbell Bench Press", date: TODAY, warmup: 1 },
+        { exercise: "Barbell Bench Press", date: TODAY, warmup: true },
+      ],
+      TODAY
+    );
+    expect(cov.get("chest")?.sets).toBe(1.0);
+    expect(cov.get("triceps")?.sets).toBe(SECONDARY_CREDIT);
+  });
+
+  it("a warm-up-only exercise contributes nothing at all", () => {
+    const cov = coverageFromSets(
+      [{ exercise: "Back Squat", date: TODAY, warmup: 1 }],
+      TODAY
+    );
+    expect(cov.size).toBe(0);
+  });
+});
+
+describe("coverageFromSets — the upper-chest merge (#2891)", () => {
+  it("incline work credits chest in full: one merged row, no chest-upper", () => {
+    const cov = coverageFromSets(
+      [
+        { exercise: "Barbell Bench Press", date: TODAY },
+        { exercise: "Incline Bench Press", date: TODAY },
+      ],
+      TODAY
+    );
+    // Flat + incline sum on the ONE pec row; the split is retired.
+    expect(cov.get("chest")?.sets).toBe(2.0);
+    expect([...cov.keys()]).not.toContain("chest-upper");
+    // Incline's secondaries are unchanged by the merge.
+    expect(cov.get("front-delts")?.sets).toBe(2 * SECONDARY_CREDIT);
+    expect(cov.get("triceps")?.sets).toBe(2 * SECONDARY_CREDIT);
+  });
+});
+
 describe("coverageFromSets — variant collapse via exerciseHistoryKey", () => {
   it("credits Barbell Curl and the bare Curl identically", () => {
     const a = coverageFromSets(

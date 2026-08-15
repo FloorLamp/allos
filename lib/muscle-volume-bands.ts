@@ -87,8 +87,6 @@ export const VOLUME_BANDS: Record<MuscleId, VolumeBand> = {
   "side-delts": { low: 8, high: 18 },
   "front-delts": { low: 6, high: 12 },
   "rear-delts": { low: 6, high: 14 },
-  // Upper-chest fraction: a portion of chest volume, lower absolute landmark.
-  "chest-upper": { low: 6, high: 12 },
   // Traps / lower back: accumulate large indirect loads (deadlifts, rows, carries),
   // so their DIRECT landmarks are modest.
   traps: { low: 6, high: 14 },

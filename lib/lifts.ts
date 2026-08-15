@@ -13,8 +13,7 @@ export type MuscleRegion =
  * everything keyed on regions keeps working unchanged.
  */
 export type MuscleId =
-  | "chest-upper" // clavicular (upper) pec head, split out from the main pecs
-  | "chest" // pecs (sternal/lower head)
+  | "chest" // pecs, all heads — incline work counts here in full (#2891)
   | "lats"
   | "traps"
   | "mid-back" // rhomboids / mid-trap / teres
@@ -46,7 +45,6 @@ export type MuscleId =
  * keep the rollup total.
  */
 const MUSCLE_REGION: Record<MuscleId, MuscleRegion> = {
-  "chest-upper": "Chest",
   chest: "Chest",
   lats: "Back",
   traps: "Back",
@@ -86,7 +84,6 @@ export function muscleRegion(m: MuscleId): MuscleRegion {
  * label, so a rename lands in one place.
  */
 const MUSCLE_LABEL: Record<MuscleId, string> = {
-  "chest-upper": "Upper chest",
   chest: "Chest",
   lats: "Lats",
   traps: "Traps",
@@ -286,10 +283,10 @@ const PLAIN_DEFS: LiftDef[] = [
   },
   {
     name: "Incline Bench Press",
-    muscle: "Upper chest",
+    muscle: "Chest",
     region: "Chest",
     pattern: "push",
-    primaryMuscles: ["chest-upper"],
+    primaryMuscles: ["chest"],
     secondaryMuscles: ["front-delts", "triceps"],
   },
   {
