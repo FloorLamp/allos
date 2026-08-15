@@ -357,7 +357,9 @@ test("a target-less goal row links to the goals surface (#1219)", async ({
       .getByTestId("goal-title-link")
       .filter({ hasText: "Feel better all around" });
     await expect(goalLink).toHaveAttribute("href", "/training?tab=goals");
-    await followLink(page, goalLink, /\/training\?tab=goals$/);
+    // The retired name redirects to its canonical Plan URL (#2892): the href
+    // keeps its historic value, the landing carries the goals anchor.
+    await followLink(page, goalLink, /\/training\?tab=plan#goals$/);
   } finally {
     await page.context().close();
   }

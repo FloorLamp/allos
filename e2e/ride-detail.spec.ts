@@ -398,12 +398,18 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     "Cadence",
     "Effort",
   ]) {
+    // The metric picker is a compact select since #2895 — the offered set is
+    // its options rather than a row of links.
     await expect(
-      progression.getByRole("link", { name: metric, exact: true })
-    ).toBeVisible();
+      progression
+        .getByRole("combobox", { name: "Metric" })
+        .locator("option", { hasText: metric })
+    ).toHaveCount(1);
   }
   await expect(
-    cyclingShell.getByRole("link", { name: "Distance", exact: true })
+    cyclingShell
+      .getByRole("combobox", { name: "Metric" })
+      .locator("option", { hasText: "Distance" })
   ).toHaveCount(0);
   await expect(page.getByTestId("cycling-totals")).toContainText(
     "Personal records"
