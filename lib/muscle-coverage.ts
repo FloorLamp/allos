@@ -28,10 +28,16 @@ import {
 export const SECONDARY_CREDIT = 0.5;
 const PRIMARY_CREDIT = 1.0;
 
-/** A logged set, reduced to what attribution needs: its exercise name and date. */
+/**
+ * A logged set, reduced to what attribution needs: its exercise name and date.
+ * A truthy `warmup` excludes the set from coverage credit (#2891) — coverage
+ * counts what the strength queries count (#338); callers without warm-up data
+ * simply omit the field.
+ */
 export interface CoverageSet {
   exercise: string;
   date: string; // YYYY-MM-DD
+  warmup?: number | boolean;
 }
 
 /** Per-muscle coverage: accumulated (possibly fractional) set credit + recency. */
@@ -96,6 +102,7 @@ export function coverageFromSets(
 ): Map<MuscleId, MuscleCoverage> {
   const out = new Map<MuscleId, MuscleCoverage>();
   for (const s of sets) {
+    if (s.warmup) continue;
     if (windowDays !== undefined) {
       const ago = daysBetweenDateStr(s.date, today);
       if (ago === null || ago < 0 || ago >= windowDays) continue;

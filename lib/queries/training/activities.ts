@@ -714,14 +714,19 @@ export function isPredictedWorkoutDay(
 }
 
 // (date, exercise) rows over the recent window — one scan that powers the workout
-// recommendation (yesterday's regions, the per-weekday pattern, exercise frequency).
+// recommendation (yesterday's regions, the per-weekday pattern, exercise frequency)
+// and the coverage attribution. Rows carry the set's warm-up flag: coverage drops
+// flagged rows (#2891 — coverage counts what the strength queries count, #338),
+// while the pattern/familiarity consumers ignore the flag (a warm-up is still an
+// exposure to the lift and a training day for the pattern).
 export function getRecentDatedExercises(
   profileId: number,
   days = 56
-): { date: string; exercise: string }[] {
+): { date: string; exercise: string; warmup: number }[] {
   return db
     .prepare(
-      `SELECT a.date AS date, s.exercise AS exercise
+      `SELECT a.date AS date, s.exercise AS exercise,
+              COALESCE(s.warmup, 0) AS warmup
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        WHERE a.profile_id = ? AND a.date >= ?
        ORDER BY a.date DESC`
@@ -729,6 +734,7 @@ export function getRecentDatedExercises(
     .all(profileId, shiftDateStr(today(profileId), -days)) as {
     date: string;
     exercise: string;
+    warmup: number;
   }[];
 }
 

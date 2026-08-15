@@ -559,9 +559,10 @@ export default async function OverviewSection() {
           Muscle coverage
         </h3>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          Sets per muscle over the last {coverageDays} days. Primary movers
-          count 1, assisting muscles count {SECONDARY_CREDIT}. The chip shows
-          each muscle against its weekly volume band.
+          Working sets per muscle over the last {coverageDays} days; warm-ups
+          are excluded. Primary movers count 1, assisting muscles count{" "}
+          {SECONDARY_CREDIT}. The chip shows each muscle against its weekly
+          volume band.
         </p>
         {coverage.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
