@@ -75,6 +75,9 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
 
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  // Settle on the session's page (#2870 step 3) before typing, so the
+  // create-at-start navigation can't race the combobox.
+  await page.waitForURL(/\/training\/activity\/\d+$/);
 
   // Pick a lift the seed trains repeatedly so a coached suggestion exists, then
   // TAP "Use" to seed set 1 from it (#1971 retired the focus-fill: arriving in a
@@ -146,14 +149,13 @@ test("mid-session, the workout entry point resumes and the session clock survive
   const startedAt = await dock.getAttribute("data-start-epoch");
   expect(startedAt).toMatch(/^\d+$/);
 
-  // Back on the Log — SOFT navigation (the pocketed form must stay mounted;
-  // a hard reload would re-derive the epoch from presence's minute-rounded
-  // reconstruction). The SAME entry control now offers the resume by name.
-  await page
-    .getByRole("complementary")
-    .getByRole("link", { name: "Training" })
-    .click();
-  await page.getByRole("main").getByRole("link", { name: "Log" }).click();
+  // Back on the Log — SOFT history navigation (the pocketed form must stay
+  // mounted; a hard reload would re-derive the epoch from presence's
+  // minute-rounded reconstruction). goBack pops the start's own push, landing
+  // exactly on the ?tab=log we came from. The SAME entry control now offers
+  // the resume by name.
+  await page.goBack();
+  await page.waitForURL(/tab=log/);
   await expect(entry).toHaveAttribute("data-workout-offer", "resume");
   await expect(entry).toHaveText("Resume workout");
 
@@ -174,6 +176,10 @@ test("mid-session, the workout entry point resumes and the session clock survive
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dock).toHaveCount(0);
+  // Wait out the abandonment redirect: ending here can tear the page down
+  // with the empty session's discard still in flight, leaking an active row
+  // into the next (repeat) iteration.
+  await page.waitForURL(/\/training(\?.*)?$/);
 });
 
 test("the command palette offers 'Start workout' (#340)", async ({ page }) => {
