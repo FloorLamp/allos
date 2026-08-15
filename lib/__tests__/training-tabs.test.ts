@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_TRAINING_TAB,
+  RETIRED_FITNESS_TAB,
   TRAINING_TABS,
   parseTrainingTab,
   trainingTabStrip,
@@ -23,8 +24,18 @@ describe("parseTrainingTab", () => {
     expect(parseTrainingTab("log")).toBe("log");
     expect(parseTrainingTab("overview")).toBe("overview");
     expect(parseTrainingTab("analyze")).toBe("analyze");
-    expect(parseTrainingTab("fitness")).toBe("fitness");
     expect(parseTrainingTab("plan")).toBe("plan");
+  });
+
+  it("no longer parses the retired fitness tab (#2894 — the PAGE redirects it)", () => {
+    // The parser can only pick a tab; ?tab=fitness means the battery's route
+    // now, so the training page matches RETIRED_FITNESS_TAB and redirects
+    // BEFORE parsing. Reaching the parser anyway falls back to the default.
+    expect(RETIRED_FITNESS_TAB).toBe("fitness");
+    expect(parseTrainingTab("fitness")).toBe(DEFAULT_TRAINING_TAB);
+    expect((TRAINING_TABS as readonly string[]).includes("fitness")).toBe(
+      false
+    );
   });
 
   it("resolves the retired routines/goals names to Plan, not the default (#2892)", () => {
@@ -54,7 +65,6 @@ describe("trainingTabStrip", () => {
       "Log",
       "Overview",
       "Analyze",
-      "Fitness check",
       "Plan",
     ]);
   });

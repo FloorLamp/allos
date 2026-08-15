@@ -19,13 +19,7 @@
 // PURE + unit-tested: the tab set, the parser and the strip are one decision here
 // instead of three inline literals on a Server Component the pure tier can't see.
 
-export const TRAINING_TABS = [
-  "log",
-  "overview",
-  "analyze",
-  "fitness",
-  "plan",
-] as const;
+export const TRAINING_TABS = ["log", "overview", "analyze", "plan"] as const;
 
 export type TrainingTab = (typeof TRAINING_TABS)[number];
 
@@ -37,9 +31,14 @@ const TAB_LABELS: Record<TrainingTab, string> = {
   log: "Log",
   overview: "Overview",
   analyze: "Analyze",
-  fitness: "Fitness check",
   plan: "Plan",
 };
+
+// The Fitness check left the tab bar for its own route (#2894): the battery is
+// quarterly work, and Overview's strip is its standing surface. The page (not
+// this parser — a parser can only pick a tab) redirects the retired
+// `?tab=fitness` links there; this name is what it matches on.
+export const RETIRED_FITNESS_TAB = "fitness";
 
 // Retired tab names → the tab that absorbed them (#2892). A parser-level mapping,
 // not an HTTP redirect: the links keep working with zero navigation cost.

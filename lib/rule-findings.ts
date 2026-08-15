@@ -270,7 +270,7 @@ export function buildFitnessCheckFindings(
       tone: "info",
       evidence:
         "Informational — you set the retest cadence in Profile settings.",
-      actionHref: "/training?tab=fitness" as AppRoute,
+      actionHref: "/training/fitness-check" as AppRoute,
       actionLabel: "Start a check",
     },
   ];

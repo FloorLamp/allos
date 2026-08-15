@@ -335,27 +335,27 @@ export const QUANTITY_KNOWLEDGE: Record<string, MetricKnowledge> = {
   "Max Push-Ups": {
     source: "fitness-norms",
     marker: "Max Push-Ups",
-    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+    renderedBy: "the Fitness check's outcome card (/training/fitness-check)",
   },
   "Sit-and-Reach": {
     source: "fitness-norms",
     marker: "Sit-and-Reach",
-    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+    renderedBy: "the Fitness check's outcome card (/training/fitness-check)",
   },
   "30-Second Arm Curl": {
     source: "fitness-norms",
     marker: "30-Second Arm Curl",
-    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+    renderedBy: "the Fitness check's outcome card (/training/fitness-check)",
   },
   "2-Minute Step": {
     source: "fitness-norms",
     marker: "2-Minute Step",
-    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+    renderedBy: "the Fitness check's outcome card (/training/fitness-check)",
   },
   "Timed Up-and-Go": {
     source: "fitness-norms",
     marker: "Timed Up-and-Go",
-    renderedBy: "the Fitness check's outcome card (/training?tab=fitness)",
+    renderedBy: "the Fitness check's outcome card (/training/fitness-check)",
   },
 };
 
