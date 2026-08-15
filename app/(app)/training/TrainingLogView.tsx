@@ -17,7 +17,10 @@ import type {
   SportStat,
 } from "@/lib/queries";
 import type { UnitPrefs } from "@/lib/settings";
-import { useActivityEditor } from "@/components/ActivityEditorProvider";
+import {
+  useActivityEditor,
+  useEditorDock,
+} from "@/components/ActivityEditorProvider";
 import { exerciseHistoryKey } from "@/lib/lifts";
 import { PageHeader, EmptyState } from "@/components/ui";
 import MobileDetailPage from "@/components/MobileDetailPage";
@@ -162,12 +165,10 @@ export default function TrainingLogView({
     openLive,
     openRepeat,
     close,
-    registerDock,
     registerTrainingLogView,
     canStartWorkout,
     workoutOffer,
   } = useActivityEditor();
-  const dockRef = useRef<HTMLDivElement | null>(null);
   const initialCreateHandled = useRef(false);
 
   // ---- Server-paged feed (issue #451) ----
@@ -251,27 +252,13 @@ export default function TrainingLogView({
   // feed in the two-column layout. Below xl there is no second column — the
   // provider falls back to ActivityOverlay, so the editor looks and behaves the
   // same as on every other page. The Training Log needs xl width for two usable
-  // columns. (Crossing the breakpoint mid-edit closes the
-  // editor; any pending auto-save is flushed on unmount.)
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(TRAINING_LOG_DESKTOP_QUERY);
-    const update = () => setIsDesktop(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
-  // Lend the editor this column so create/edit auto-saves inline here instead of
-  // popping the centered modal. Only ever register a real dock: passing null
-  // means "the dock went away" and closes the editor — running that on a mount
-  // where isDesktop hasn't settled yet (it starts false) would force-close an editor
-  // that survived navigation as the overlay.
-  useEffect(() => {
-    if (!isDesktop) return;
-    registerDock(dockRef.current);
-    return () => registerDock(null);
-  }, [registerDock, isDesktop]);
+  // columns. (Crossing the breakpoint mid-edit closes a docked
+  // editor; any pending auto-save is flushed on unmount.) Unscoped: this
+  // general column hosts any create/edit. The registration discipline lives in
+  // the hook.
+  const { dockRef, wide: isDesktop } = useEditorDock(
+    TRAINING_LOG_DESKTOP_QUERY
+  );
 
   // Announce the Log view for the provider's bar suppression (every width — the
   // dock above is desktop-only, but this view owns the session affordances). The
