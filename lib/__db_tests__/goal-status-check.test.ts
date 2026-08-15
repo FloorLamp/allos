@@ -8,8 +8,7 @@
 //      dropped),
 //   3. a pre-migration row carrying the legacy status='archived' is folded into
 //      (status='active', archived=1) so the tighter CHECK admits the copied row,
-//   4. the rebuild is a pure no-op on an already-converged DB (sentinel-guarded), so
-//      the non-version-gated migrate() replay is safe.
+//   4. the rebuild itself remains idempotent when invoked directly.
 //
 // Deterministic: :memory: only, no network.
 

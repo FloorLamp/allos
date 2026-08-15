@@ -206,7 +206,6 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `food_log_events` | `recorded_at` | record | instant | canonical | The TAP instant, `logged_at` until migration 183 (#2205 phase 2, the food wave). Migration 056 froze what it means — never backfilled, because the ranking predicts the next TAP — which is the `recorded_at` semantic under a name the table had coined for itself. The same migration normalized the millisecond-shaped values the offline replay had been writing (#2370) and bound every writer to lib/date.ts. |
 | `food_log_events` | `created_at` | bookkeeping | instant | bare |  |
 | `food_log_events` | `occurred_at` | event | instant | canonical | NULL means nobody stated an eating time, and that stays a real answer (#2019/#2053) rather than being filled in from the tap. `time_source` records whether a present value was a tap contract or a stated one. Named `eaten_at` until migration 183; nothing was backfilled into it then either, because food REFUSES to infer an eating instant where intake infers one, and that divergence is deliberate. |
-| `food_log_events` | `eaten_at` | bookkeeping | instant | bare | VESTIGIAL and always NULL — migration 183 renamed it to `occurred_at` and kept an inert shell only because the frozen migration 154 re-adds the column unless its PRAGMA guard finds it, and migrate() replays every migration. Declared `bookkeeping`, never `event`, so a dead column cannot join the chain lib/row-instants.ts walks; the convention is moot for a column that never holds a value. |
 | `frequency_targets` | `created_at` | bookkeeping | instant | bare |  |
 | `genomic_variants` | `report_date` | event | day | n/a |  |
 | `genomic_variants` | `created_at` | record | instant | bare |  |
@@ -216,8 +215,6 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `hr_minutes` | `ts` | event | instant | canonical | Minute-truncated (lib/date.ts utcMinute) and the row's primary key. Migration 164 converted it from a profile-local wall clock; the local day is now derived at read time. |
 | `illness_episodes` | `start_date` | window-start | day | n/a | The inclusive first active day, NULL when the episode predates the log. Renamed from `started_at` by migration 169 (#2232). |
 | `illness_episodes` | `end_date` | window-end | day | n/a | The INCLUSIVE last active day, NULL while ongoing — the house day-window convention. Migration 169 (#2232) renamed it from `ended_at` AND rewrote the stored value (the old column held the exclusive first inactive day). |
-| `illness_episodes` | `started_at` | window-start | day | n/a | VESTIGIAL, always NULL (#2232, the migration-124 pattern): survives only so the frozen 046/062 statements still prepare under migrate()'s replay. A compat trigger translates a legacy insert onto start_date; the illness-window-collapse-guard scan keeps it out of application code. |
-| `illness_episodes` | `ended_at` | window-end | day | n/a | VESTIGIAL, always NULL (#2232): the legacy EXCLUSIVE end's dead storage, kept for frozen-migration prepares only. The compat trigger converts a legacy insert's value onto the inclusive end_date. |
 | `imaging_studies` | `study_date` | event | day | n/a |  |
 | `imaging_studies` | `created_at` | record | instant | bare |  |
 | `immunization_overrides` | `created_at` | record | instant | bare |  |
@@ -246,7 +243,6 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `intake_item_logs` | `date` | day | day | n/a |  |
 | `intake_item_logs` | `occurred_at` | event | instant | canonical | The stored administration instant. Issue #2876 moved administration writers and corrections here and migrated the old overloaded recorded_at value into it. |
 | `intake_item_logs` | `recorded_at` | record | instant | canonical | The immutable capture/insert stamp. Issue #2876 renamed the old taken_at column to this vocabulary and converted it to canonical UTC+Z, matching food_log_events.recorded_at. |
-| `intake_item_logs` | `given_at` | bookkeeping | instant | bare | VESTIGIAL, always NULL (#2205 phase 2 wave 2, the migration-124/169 pattern): migration 173 renamed the live column to `recorded_at` and kept this empty shell so the frozen migrations still work under migrate()'s unconditional replay — 041 guards its whole rebuild on `given_at` being present, and 156 re-creates its index over it. Declared `bookkeeping` rather than `record` on purpose: a dead column must not join the record chain the row readers walk. No application code names it (the SQL orderings all moved to `recorded_at` in the same change). |
 | `intake_item_side_effects` | `noted_on` | event | day | n/a |  |
 | `intake_item_side_effects` | `created_at` | record | instant | bare |  |
 | `intake_item_suggestions` | `time_of_day` | planned | time-of-day | n/a |  |

@@ -8,11 +8,14 @@ import { frozenNow, workerDbPath } from "./worker-env";
 async function expectEmptyDayAddLink(
   section: Locator,
   unitMany: string,
-  href: RegExp
+  href: RegExp,
+  expectedDate?: string
 ) {
-  const emptyDay = section
-    .locator(`button[aria-label*=" — no ${unitMany}"]`)
-    .first(); // first-ok: any empty calendar day has the same close-the-loop contract
+  const emptyDay = expectedDate
+    ? section.locator(
+        `button[data-date="${expectedDate}"][aria-label*=" — no ${unitMany}"]`
+      )
+    : section.locator(`button[aria-label*=" — no ${unitMany}"]`).first(); // first-ok: any in-range empty calendar day has the same close-the-loop contract
   await expect(emptyDay).toBeVisible();
   const date = await emptyDay.getAttribute("data-date");
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -48,7 +51,8 @@ test("every day-history domain closes an empty-day gap with a dated log link (#2
   await expectEmptyDayAddLink(
     page.getByTestId("intake-history"),
     "servings",
-    /\/nutrition\?tab=food&date=/
+    /\/nutrition\?tab=food&date=/,
+    foodDate
   );
   await expectEmptyDayAddLink(
     page.getByTestId("dose-history"),

@@ -509,13 +509,6 @@ export const TIME_COLUMNS = {
       convention: "canonical",
       note: "NULL means nobody stated an eating time, and that stays a real answer (#2019/#2053) rather than being filled in from the tap. `time_source` records whether a present value was a tap contract or a stated one. Named `eaten_at` until migration 183; nothing was backfilled into it then either, because food REFUSES to infer an eating instant where intake infers one, and that divergence is deliberate.",
     },
-    {
-      column: "eaten_at",
-      semantic: "bookkeeping",
-      grain: "instant",
-      convention: "bare",
-      note: "VESTIGIAL and always NULL — migration 183 renamed it to `occurred_at` and kept an inert shell only because the frozen migration 154 re-adds the column unless its PRAGMA guard finds it, and migrate() replays every migration. Declared `bookkeeping`, never `event`, so a dead column cannot join the chain lib/row-instants.ts walks; the convention is moot for a column that never holds a value.",
-    },
   ],
   frequency_targets: [
     {
@@ -583,20 +576,6 @@ export const TIME_COLUMNS = {
       grain: "day",
       convention: "n/a",
       note: "The INCLUSIVE last active day, NULL while ongoing — the house day-window convention. Migration 169 (#2232) renamed it from `ended_at` AND rewrote the stored value (the old column held the exclusive first inactive day).",
-    },
-    {
-      column: "started_at",
-      semantic: "window-start",
-      grain: "day",
-      convention: "n/a",
-      note: "VESTIGIAL, always NULL (#2232, the migration-124 pattern): survives only so the frozen 046/062 statements still prepare under migrate()'s replay. A compat trigger translates a legacy insert onto start_date; the illness-window-collapse-guard scan keeps it out of application code.",
-    },
-    {
-      column: "ended_at",
-      semantic: "window-end",
-      grain: "day",
-      convention: "n/a",
-      note: "VESTIGIAL, always NULL (#2232): the legacy EXCLUSIVE end's dead storage, kept for frozen-migration prepares only. The compat trigger converts a legacy insert's value onto the inclusive end_date.",
     },
   ],
   imaging_studies: [
@@ -778,13 +757,6 @@ export const TIME_COLUMNS = {
       grain: "instant",
       convention: "canonical",
       note: "The immutable capture/insert stamp. Issue #2876 renamed the old taken_at column to this vocabulary and converted it to canonical UTC+Z, matching food_log_events.recorded_at.",
-    },
-    {
-      column: "given_at",
-      semantic: "bookkeeping",
-      grain: "instant",
-      convention: "bare",
-      note: "VESTIGIAL, always NULL (#2205 phase 2 wave 2, the migration-124/169 pattern): migration 173 renamed the live column to `recorded_at` and kept this empty shell so the frozen migrations still work under migrate()'s unconditional replay — 041 guards its whole rebuild on `given_at` being present, and 156 re-creates its index over it. Declared `bookkeeping` rather than `record` on purpose: a dead column must not join the record chain the row readers walk. No application code names it (the SQL orderings all moved to `recorded_at` in the same change).",
     },
   ],
   intake_item_side_effects: [

@@ -6,7 +6,10 @@ import { up } from "@/lib/migrations/versions/20260814-intake-log-time-vocabular
 function beforeRename(): Database.Database {
   const mem = new Database(":memory:");
   mem.pragma("foreign_keys = OFF");
-  for (const migration of MIGRATIONS.slice(0, -1)) migration.up(mem);
+  const target = MIGRATIONS.findIndex(
+    (migration) => migration.name === "20260814-intake-log-time-vocabulary"
+  );
+  for (const migration of MIGRATIONS.slice(0, target)) migration.up(mem);
   return mem;
 }
 

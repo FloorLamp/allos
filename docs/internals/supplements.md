@@ -705,12 +705,11 @@ gather), and the interaction / PGx / UL warnings fire identically for a `may`
 member. Adherence fractions re-scope to must+should for free — a `may` item has no
 occurrences, so it cannot drag an honest number down.
 
-**Two vestigial columns.** The rebuilt table keeps unread `priority` and
-`as_needed` columns because `migrate()` replays every migration unconditionally and
-migrations 092/101 hold prepared statements naming them (SQLite validates at
-prepare time). A compatibility TRIGGER translates a legacy insert's intent onto
-`obligation`, and `lib/__tests__/obligation-collapse-guard.test.ts` fails the build
-if any non-migration source names either — so the collapse cannot quietly un-collapse.
+**One stored obligation.** Migration `20260814-remove-legacy-schema-shells` removed
+the retired `priority` / `as_needed` columns and their replay-only trigger after the
+test harness moved to the production ledger-gated startup path. Current storage has
+only `obligation`; historical migrations remain immutable and run only while their
+historical schema is current.
 
 **Adherence-based demotion SUGGESTIONS (#1505 part 2).** A `must`/`should`
 SUPPLEMENT taken on ≤25% of its scheduled days over 30 days (≥10 occurrences)

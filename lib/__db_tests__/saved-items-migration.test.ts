@@ -12,7 +12,7 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up113 } from "@/lib/migrations/versions/113-saved-items";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
@@ -222,33 +222,6 @@ describe("migration 113 — folding both stores into saved_items", () => {
       "biomarker:Ferritin",
     ]);
     expect(junk[0].position).toBe(0);
-    db.close();
-  });
-
-  it("is a no-op on replay (the non-version-gated migrate() wrapper)", () => {
-    const db = preFoldDb();
-    const p = newProfile(db, "Replay Fixture");
-    star(db, p, "ApoB");
-    pins(db, p, ["metric:weight", "bio:ApoB"]);
-
-    up113(db);
-
-    // Bring the fixture to the CURRENT head first: 113's fold ran above, and the
-    // later migrations that also write saved_items get their one legitimate pass —
-    // 114 (#1487) seeds the standard metric tiles as saved rows here. The replay
-    // assertion is about what a SECOND pass does, so the baseline has to be the
-    // settled head rather than 113's output.
-    for (const m of MIGRATIONS) m.up(db);
-    const first = savedRows(db, p);
-
-    // Replay of the WHOLE list: baseline recreates an empty starred_biomarkers, the
-    // later migrations re-run, 113 folds nothing new before dropping it again, and
-    // 114's seeding is a fixed point (OR IGNORE against the UNIQUE, and a dense
-    // position rewrite that is already dense).
-    for (const m of MIGRATIONS) m.up(db);
-
-    expect(savedRows(db, p)).toEqual(first);
-    expect(tableExists(db, "starred_biomarkers")).toBe(false);
     db.close();
   });
 

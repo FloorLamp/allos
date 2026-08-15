@@ -72,7 +72,6 @@
 
 import type Database from "better-sqlite3";
 import { canonicalResultDefinitionTableForSchema } from "./canonical-result-definition-table";
-import { savedClinicalResultKindForSchema } from "./saved-clinical-result-kind";
 import { biomarkerCoverageKey } from "./coverage-gaps";
 import {
   biomarkerDismissalKey,
@@ -163,7 +162,10 @@ export function reclassifyNonAnalyteObservations(
   db: Database.Database
 ): AssessmentReclassReport {
   const definitionTable = canonicalResultDefinitionTableForSchema(db);
-  const savedResultKind = savedClinicalResultKindForSchema(db);
+  const savedResultKind =
+    definitionTable === "canonical_biomarkers"
+      ? "biomarker"
+      : "clinical-result";
   const report: AssessmentReclassReport = {
     records: 0,
     vocabulary: [],

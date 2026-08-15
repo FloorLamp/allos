@@ -128,20 +128,19 @@ export function supersededStoredNames(
 // clinical result outcome is stored as the literal `result:<canonical name>`
 // (lib/protocol-metrics parses it, lib/protocol-outcome-picker mints it, and
 // getProtocolWindowsForOutcome matches the whole string EXACTLY). Frozen migrations
-// 174, 177, and 178 call this current helper against their historical `biomarker:`
-// namespace, so the read side recognizes that replay-only spelling and preserves the
-// prefix it found. No current writer mints it.
+// 174 and 178 pass their historical prefix explicitly while applying against their
+// own historical schema. Runtime callers use the current prefix by default.
 //
 // Returns the rewritten JSON, or null when nothing in this row referenced `from`
 // (so the caller can skip the UPDATE). Order-preserving, and a rewrite that collides
 // with a key the row ALREADY carries collapses onto it rather than duplicating.
 const RESULT_OUTCOME_PREFIX = "result:";
-const REPLAY_RESULT_OUTCOME_PREFIX = "biomarker:";
 
 export function rewriteResultOutcomeKeys(
   outcomeKeysJson: string,
   from: string,
-  to: string
+  to: string,
+  prefix = RESULT_OUTCOME_PREFIX
 ): string | null {
   let parsed: unknown;
   try {
@@ -155,11 +154,8 @@ export function rewriteResultOutcomeKeys(
   const seen = new Set<string>();
   for (const raw of parsed) {
     if (typeof raw !== "string") continue;
-    const prefix = [RESULT_OUTCOME_PREFIX, REPLAY_RESULT_OUTCOME_PREFIX].find(
-      (candidate) => raw.startsWith(candidate)
-    );
     const isMatch =
-      prefix != null &&
+      raw.startsWith(prefix) &&
       raw.slice(prefix.length).trim().toLowerCase() ===
         from.trim().toLowerCase();
     const next = isMatch ? `${prefix}${to}` : raw;

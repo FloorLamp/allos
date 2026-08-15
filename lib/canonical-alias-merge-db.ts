@@ -28,7 +28,6 @@
 
 import type Database from "better-sqlite3";
 import { canonicalResultDefinitionTableForSchema } from "./canonical-result-definition-table";
-import { savedClinicalResultKindForSchema } from "./saved-clinical-result-kind";
 import { buildCanonicalIndex } from "./canonical-name";
 import {
   biomarkerDismissalKey,
@@ -135,7 +134,9 @@ export function applyCanonicalRename(
   profileId: number,
   { from, to }: CanonicalMerge
 ): number {
-  const savedResultKind = savedClinicalResultKindForSchema(db);
+  const definitionTable = canonicalResultDefinitionTableForSchema(db);
+  const historicalSchema = definitionTable === "canonical_biomarkers";
+  const savedResultKind = historicalSchema ? "biomarker" : "clinical-result";
   const records = db
     .prepare(
       `UPDATE medical_records SET canonical_name = ?
@@ -190,7 +191,12 @@ export function applyCanonicalRename(
     .prepare("SELECT id, outcome_keys FROM protocols WHERE profile_id = ?")
     .all(profileId) as { id: number; outcome_keys: string }[];
   for (const p of protocols) {
-    const next = rewriteResultOutcomeKeys(p.outcome_keys, from, to);
+    const next = rewriteResultOutcomeKeys(
+      p.outcome_keys,
+      from,
+      to,
+      historicalSchema ? "biomarker:" : "result:"
+    );
     if (next === null) continue;
     db.prepare(
       "UPDATE protocols SET outcome_keys = ? WHERE id = ? AND profile_id = ?"
