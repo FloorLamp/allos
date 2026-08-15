@@ -43,3 +43,20 @@ test("the ledger walk: older/newer links traverse adjacent activities", async ({
   // And from there, a newer link back.
   await expect(page.getByTestId("activity-newer-link")).toBeVisible();
 });
+
+test("Edit opens the form docked IN the page — the page is the editor's host (#2870 step 2)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
+  await followLink(
+    page,
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: any session reaches its page; the dock is what's under test
+    /\/training\/activity\/\d+$/
+  );
+
+  await page.getByTestId("activity-page-edit").click();
+  // The provider portals the full ActivityForm into the page's own dock — no
+  // separate surface, and the autosave/edit-lock machinery rides along.
+  const dock = page.getByTestId("activity-page-dock");
+  await expect(dock.getByTestId("activity-form")).toBeVisible();
+});
