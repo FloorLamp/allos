@@ -399,17 +399,18 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     "Effort",
   ]) {
     // The metric picker is a compact select since #2895 — the offered set is
-    // its options rather than a row of links.
+    // its options rather than a row of links. Exact text: "Power" must not
+    // count "Weighted power".
     await expect(
       progression
         .getByRole("combobox", { name: "Metric" })
-        .locator("option", { hasText: metric })
+        .getByRole("option", { name: metric, exact: true })
     ).toHaveCount(1);
   }
   await expect(
     cyclingShell
       .getByRole("combobox", { name: "Metric" })
-      .locator("option", { hasText: "Distance" })
+      .getByRole("option", { name: "Distance", exact: true })
   ).toHaveCount(0);
   await expect(page.getByTestId("cycling-totals")).toContainText(
     "Personal records"
