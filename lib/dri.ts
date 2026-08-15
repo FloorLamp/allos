@@ -150,6 +150,132 @@ export function toNutrientUnit(
   return nutrient.unit === "mcg" ? mg / MASS_MG.mcg : mg;
 }
 
+// ---- Compound mass vs elemental mass (issue #2798) ----
+//
+// The dataset's figures are ELEMENTAL — dri.json's magnesium note says so — and the
+// contract this module has always assumed is that a product states the elemental
+// amount, which is what a Supplement Facts panel declares. That is why the baseline
+// stack (Glycinate 400 mg + Citrate 200 mg) correctly sums to 600 mg of magnesium.
+//
+// The convention breaks for the FRONT-of-bottle number on a compound dosed by its
+// total mass. "Magnesium L-Threonate 2 g" is two grams of the compound — about 165 mg
+// of magnesium — and counting it as 2000 mg of magnesium raised an over-the-UL warning
+// at roughly fourteen times the real exposure, on the most safety-critical number this
+// app computes.
+//
+// THIS IS A UNIT QUESTION, NOT A DISCOUNT. Reading grams of a salt as grams of the
+// metal is not a cautious total, it is a wrong one, and converting between them is the
+// same kind of step as g → mg. The conservative-direction rule below governs
+// OBLIGATION — whether an item counts, and at what weight — not what its number means.
+//
+// The app cannot see which convention a given entry used, so the reinterpretation is
+// gated on the one thing it CAN see being decisive: an amount too large to be a
+// labeled elemental dose. The ceiling is ~3x the largest elemental amount any single
+// magnesium label states (about 500 mg), which makes the gate one-directional:
+//
+//   * every amount at or below the ceiling is counted exactly as entered — no total
+//     that exists today moves, and no warning that fires today can go quiet;
+//   * only a gram-scale amount, on an item the user named by its compound form, is
+//     re-read as that compound's mass.
+//
+// Erring high is deliberate. Leaving an over-warn in place is recoverable; silencing a
+// real exceedance is not. The fractions are stoichiometric (the metal's mass over the
+// compound's formula mass), which is also the CAUTIOUS choice where a form's hydration
+// varies — the threonate figure here (8.3%) is above the ~7.2% a Magtein label implies,
+// so the elemental estimate errs upward.
+//
+// The table is magnesium-only on purpose: magnesium is the nutrient whose compound-mass
+// labeling is documented here, and it carries a supplemental-basis UL, so its total is
+// the one the app claims exactly. Another nutrient earns an entry when a real label
+// shows the same failure, not on speculation.
+
+interface CompoundForm {
+  // Matched case-insensitively against the item name, AFTER the item has already
+  // resolved to `nutrientKey` — so "Zinc Citrate" can never pick up a magnesium factor.
+  pattern: RegExp;
+  nutrientKey: string;
+  label: string;
+  // Mass of the element per unit mass of the compound.
+  elementalFraction: number;
+}
+
+const COMPOUND_FORMS: CompoundForm[] = [
+  {
+    pattern: /l[\s-]?threonate|threonate|magtein/i,
+    nutrientKey: "magnesium",
+    label: "magnesium L-threonate",
+    elementalFraction: 0.083,
+  },
+  {
+    pattern: /bis[\s-]?glycinate|glycinate/i,
+    nutrientKey: "magnesium",
+    label: "magnesium glycinate",
+    elementalFraction: 0.141,
+  },
+  {
+    pattern: /citrate/i,
+    nutrientKey: "magnesium",
+    label: "magnesium citrate",
+    elementalFraction: 0.162,
+  },
+  {
+    pattern: /malate/i,
+    nutrientKey: "magnesium",
+    label: "magnesium malate",
+    elementalFraction: 0.155,
+  },
+  {
+    pattern: /taurate/i,
+    nutrientKey: "magnesium",
+    label: "magnesium taurate",
+    elementalFraction: 0.089,
+  },
+  {
+    pattern: /oxide/i,
+    nutrientKey: "magnesium",
+    label: "magnesium oxide",
+    elementalFraction: 0.603,
+  },
+];
+
+// The largest amount, in a nutrient's canonical unit, that a single label plausibly
+// states as the ELEMENT. Above it, an entry naming a compound form is that compound's
+// total mass. Keyed by nutrient so it can never be read as a general dose threshold.
+const STATED_ELEMENTAL_CEILING: Record<string, number> = {
+  magnesium: 1500,
+};
+
+export interface ElementalReading {
+  // In the nutrient's canonical unit.
+  amount: number;
+  // The recognized compound form, when the stated mass was re-read as compound mass;
+  // null when the amount was taken exactly as entered.
+  compound: string | null;
+}
+
+// Read one already-unit-converted dose amount as the nutrient's ELEMENTAL content.
+// Returns the amount unchanged (and `compound: null`) unless BOTH gates hold: the
+// amount is above the nutrient's stated-elemental ceiling, and the item's name carries
+// a recognized compound form for that same nutrient. Pure.
+export function elementalReading(
+  itemName: string,
+  nutrient: DriNutrient,
+  statedAmount: number
+): ElementalReading {
+  const ceiling = STATED_ELEMENTAL_CEILING[nutrient.key];
+  if (ceiling == null || statedAmount <= ceiling) {
+    return { amount: statedAmount, compound: null };
+  }
+  const form = COMPOUND_FORMS.find(
+    (f) => f.nutrientKey === nutrient.key && f.pattern.test(itemName)
+  );
+  if (!form) return { amount: statedAmount, compound: null };
+  return {
+    amount: statedAmount * form.elementalFraction,
+    compound: form.label,
+  };
+}
+
 // ---- Age/sex band selection (pure, tested) ----
 
 // The reference band for a nutrient at the given age/sex: the half-open
@@ -220,6 +346,11 @@ export interface NutrientContribution {
   name: string;
   amount: number;
   optional?: boolean;
+  // The compound form this item's stated mass was read as (issue #2798), when the
+  // amount was too large to be a labeled ELEMENTAL dose — e.g. "magnesium
+  // L-threonate" for a 2 g entry. Null/absent means the amount was counted exactly
+  // as entered, which is the case for every dose at or below the ceiling.
+  compound?: string;
 }
 
 // A nutrient's summed supplemental intake across the stack, with its UL/RDA for the
@@ -268,12 +399,18 @@ export function summarizeStack(
 
     let itemAmount = 0;
     let contributed = false;
+    // The compound form any of this item's amounts had to be re-read as (#2798). One
+    // per item: an item's doses are the same product, so the last recognized form is
+    // the item's form.
+    let compound: string | null = null;
     for (const amount of item.doseAmounts) {
       const q = parseQuantity(amount);
       if (!q) continue;
       const converted = toNutrientUnit(q, nutrient);
       if (converted == null) continue;
-      itemAmount += converted;
+      const reading = elementalReading(item.name, nutrient, converted);
+      itemAmount += reading.amount;
+      if (reading.compound) compound = reading.compound;
       contributed = true;
     }
     if (!contributed) continue;
@@ -289,6 +426,7 @@ export function summarizeStack(
       name: item.name,
       amount: itemAmount,
       optional: item.optional ? true : undefined,
+      compound: compound ?? undefined,
     });
     totals.set(key, bucket);
   }
@@ -417,16 +555,42 @@ export function ulWarningDetail(
   const inclusion = w.includesOptional
     ? " This total counts every item that supplements it, including as-needed items."
     : "";
-  const base = `${lead}${inclusion} Discuss with your clinician before changing anything.`;
+  const base = `${lead}${inclusion}${compoundNote(w.contributors, w.label)} Discuss with your clinician before changing anything.`;
   return conditionCaveat ? `${base} ${conditionCaveat}` : base;
+}
+
+// Say out loud when an amount was read as a compound's total mass rather than as the
+// element (#2798), naming the form, so the number is checkable against the bottle
+// instead of appearing from nowhere. Empty when every amount was counted as entered.
+function compoundNote(
+  contributors: readonly NutrientContribution[],
+  label: string
+): string {
+  const forms = [
+    ...new Set(
+      contributors
+        .map((c) => c.compound)
+        .filter((f): f is string => f != null)
+    ),
+  ];
+  if (forms.length === 0) return "";
+  const nutrient = label.toLowerCase();
+  return (
+    ` The amount you entered for ${forms.join(" and ")} is the compound's total` +
+    ` weight, so this counts the ${nutrient} in it.`
+  );
+}
+
+// One contributor's line: its per-item amount, marked "elemental" when the entered
+// amount was the compound's weight so the two numbers can't be confused.
+function contributorLine(c: NutrientContribution, unit: string): string {
+  return `${c.name} ${fmtAmount(c.amount)} ${unit}${c.compound ? " elemental" : ""}`;
 }
 
 // A short "what's contributing" evidence line: the items feeding the total, each
 // with its per-item amount, largest first.
 export function ulWarningEvidence(w: UlWarning): string {
-  return w.contributors
-    .map((c) => `${c.name} ${fmtAmount(c.amount)} ${w.unit}`)
-    .join(" + ");
+  return w.contributors.map((c) => contributorLine(c, w.unit)).join(" + ");
 }
 
 // ---- RDA adequacy (issue #578): the INVERSE of the UL check ----
@@ -529,7 +693,5 @@ export function rdaAdequacyDetail(a: RdaAdequacy): string {
 
 // The "what's contributing" evidence line, mirroring ulWarningEvidence.
 export function rdaAdequacyEvidence(a: RdaAdequacy): string {
-  return a.contributors
-    .map((c) => `${c.name} ${fmtAmount(c.amount)} ${a.unit}`)
-    .join(" + ");
+  return a.contributors.map((c) => contributorLine(c, a.unit)).join(" + ");
 }
