@@ -308,7 +308,7 @@ export default async function EpisodePage(props: {
         formatPrefs={formatPrefs}
         canEdit={canWrite}
         linkLatestMedication
-        linkConditions
+        linkConditions={!crossProfile}
         collapsePeakSymptoms
         eventProfileId={target}
         identity={
@@ -318,6 +318,7 @@ export default async function EpisodePage(props: {
           />
         }
         careEvents={inRangeEvents}
+        linkCareDocuments={!crossProfile}
         feverFree={
           schoolReturn
             ? {

@@ -195,6 +195,7 @@ export default function EpisodeTimeline({
   temperatureUnit = "F",
   profileId,
   careEvents,
+  linkCareDocuments = true,
   actions,
   tools,
   afterHistory,
@@ -205,6 +206,7 @@ export default function EpisodeTimeline({
   temperatureUnit?: TemperatureUnit;
   profileId?: number;
   careEvents?: EpisodeInRangeEvents;
+  linkCareDocuments?: boolean;
   actions?: ReactNode;
   tools?: ReactNode;
   afterHistory?: ReactNode;
@@ -217,7 +219,9 @@ export default function EpisodeTimeline({
   const tz = tzProp ?? contextTz;
   const formatPrefs = useFormatPrefs();
   const episodeEvents = illnessTimelineEvents(episode);
-  const groups = groupIllnessTimelineEvents(episodeEvents, careEvents);
+  const groups = groupIllnessTimelineEvents(episodeEvents, careEvents, {
+    linkDocuments: linkCareDocuments,
+  });
   const eventCount = groups.reduce(
     (sum, group) => sum + group.events.length,
     0

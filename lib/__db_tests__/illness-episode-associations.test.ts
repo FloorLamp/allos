@@ -12,9 +12,9 @@ import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
   episodesForAppointments,
+  episodesForConditions,
   episodesForDocument,
   episodesForMedication,
-  episodesForPromotedConditions,
 } from "@/lib/queries";
 
 function newProfile(name: string): number {
@@ -110,7 +110,7 @@ describe("getEpisodeInRangeEvents (#856 items 7-8)", () => {
 });
 
 describe("reverse episode associations (#856 items 7-8)", () => {
-  it("returns the same appointment, course, document, and promoted-condition links from their own surfaces", () => {
+  it("returns the same appointment, course, document, and condition links from their own surfaces", () => {
     const p = newProfile("assoc-reverse");
     const other = newProfile("assoc-reverse-other");
     const episodeId = Number(
@@ -161,6 +161,24 @@ describe("reverse episode associations (#856 items 7-8)", () => {
         )
         .run(p, `illness-episode:${episodeId}`).lastInsertRowid
     );
+    const ordinaryConditionId = Number(
+      db
+        .prepare(
+          `INSERT INTO conditions
+             (profile_id, name, status, source, onset_date)
+           VALUES (?, 'Post-viral cough', 'active', 'manual', '2026-06-03')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const outsideConditionId = Number(
+      db
+        .prepare(
+          `INSERT INTO conditions
+             (profile_id, name, status, source, onset_date)
+           VALUES (?, 'Old condition', 'active', 'manual', '2026-05-01')`
+        )
+        .run(p).lastInsertRowid
+    );
 
     // Same dates under another profile must never leak into these readers.
     db.prepare(
@@ -177,13 +195,17 @@ describe("reverse episode associations (#856 items 7-8)", () => {
     expect(episodesForDocument(p, documentId).map((e) => e.id)).toEqual([
       episodeId,
     ]);
+    expect(episodesForConditions(p)[conditionId]?.map((e) => e.id)).toEqual([
+      episodeId,
+    ]);
     expect(
-      episodesForPromotedConditions(p)[conditionId]?.map((e) => e.id)
+      episodesForConditions(p)[ordinaryConditionId]?.map((e) => e.id)
     ).toEqual([episodeId]);
+    expect(episodesForConditions(p)[outsideConditionId]).toBeUndefined();
     expect(episodesForAppointments(other)[appointmentId]).toBeUndefined();
     expect(episodesForMedication(other, itemId)).toEqual([]);
     expect(episodesForDocument(other, documentId)).toEqual([]);
-    expect(episodesForPromotedConditions(other)[conditionId]).toBeUndefined();
+    expect(episodesForConditions(other)[conditionId]).toBeUndefined();
   });
 
   it("matches the detail window for unknown starts and open episodes", () => {
@@ -218,10 +240,31 @@ describe("reverse episode associations (#856 items 7-8)", () => {
         )
         .run(p, tomorrow).lastInsertRowid
     );
+    const todayCondition = Number(
+      db
+        .prepare(
+          `INSERT INTO conditions
+             (profile_id, name, status, source, onset_date)
+           VALUES (?, 'Today condition', 'active', 'manual', ?)`
+        )
+        .run(p, asOf).lastInsertRowid
+    );
+    const futureCondition = Number(
+      db
+        .prepare(
+          `INSERT INTO conditions
+             (profile_id, name, status, source, onset_date)
+           VALUES (?, 'Future condition', 'active', 'manual', ?)`
+        )
+        .run(p, tomorrow).lastInsertRowid
+    );
 
     const links = episodesForAppointments(p);
     expect(links[todayAppointment]?.map((e) => e.id)).toEqual([openId]);
     expect(links[futureAppointment]).toBeUndefined();
+    const conditionLinks = episodesForConditions(p);
+    expect(conditionLinks[todayCondition]?.map((e) => e.id)).toEqual([openId]);
+    expect(conditionLinks[futureCondition]).toBeUndefined();
   });
 });
 

@@ -187,7 +187,8 @@ export function defaultIllnessTimelineFilter(
 }
 
 export function illnessCareTimelineEvents(
-  care: EpisodeInRangeEvents
+  care: EpisodeInRangeEvents,
+  { linkDocuments = true }: { linkDocuments?: boolean } = {}
 ): IllnessCareTimelineEvent[] {
   return [
     ...care.encounters.map((event) => ({
@@ -230,18 +231,19 @@ export function illnessCareTimelineEvents(
       time24: null,
       label: event.docType || "Document",
       detail: event.filename,
-      href: importHref(event.id),
+      ...(linkDocuments ? { href: importHref(event.id) } : {}),
     })),
   ];
 }
 
 export function groupIllnessTimelineEvents(
   episodeEvents: IllnessTimelineEvent[],
-  care?: EpisodeInRangeEvents
+  care?: EpisodeInRangeEvents,
+  options?: { linkDocuments?: boolean }
 ): IllnessTimelineDayGroup[] {
   const events: IllnessTimelineDisplayEvent[] = [
     ...episodeEvents,
-    ...(care ? illnessCareTimelineEvents(care) : []),
+    ...(care ? illnessCareTimelineEvents(care, options) : []),
   ].sort(
     (a, b) =>
       a.date.localeCompare(b.date) ||

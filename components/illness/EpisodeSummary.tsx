@@ -92,6 +92,7 @@ export default function EpisodeSummary({
   identity,
   feverFree,
   careEvents,
+  linkCareDocuments = true,
   timelineActions,
   timelineTools,
   timelineAfterHistory,
@@ -120,6 +121,7 @@ export default function EpisodeSummary({
   identity?: ReactNode;
   feverFree?: { label: string; met: boolean } | null;
   careEvents?: EpisodeInRangeEvents;
+  linkCareDocuments?: boolean;
   timelineActions?: ReactNode;
   timelineTools?: ReactNode;
   timelineAfterHistory?: ReactNode;
@@ -312,6 +314,7 @@ export default function EpisodeSummary({
         temperatureUnit={temperatureUnit}
         profileId={eventProfileId}
         careEvents={careEvents}
+        linkCareDocuments={linkCareDocuments}
         actions={timelineActions}
         tools={timelineTools}
         afterHistory={timelineAfterHistory}

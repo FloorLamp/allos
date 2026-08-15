@@ -1,8 +1,9 @@
 // Reverse links for the illness episode's derived clinical-event associations
 // (#856 items 7-8). The episode detail gathers appointments, medication courses,
 // and documents by its inclusive [start, end] window; these readers answer the
-// inverse question on each source surface from the SAME stored facts. Promoted
-// conditions use their stronger stable external-id link instead of date inference.
+// inverse question on each source surface from the SAME stored facts. Conditions
+// use their stable promoted link when present, otherwise the same onset-in-window
+// rule used by episode assembly.
 //
 // An open episode ends at the profile-local `asOf` day for this purpose. It does
 // not claim a future appointment merely because end_date is NULL. An unknown-start
@@ -101,22 +102,33 @@ export function episodesForDocument(
   ) as EpisodeLinkRef[];
 }
 
-const PROMOTED_CONDITION_EPISODES_STMT = hoistedStatement(
+const CONDITION_EPISODES_STMT = hoistedStatement(
   `SELECT c.id AS subjectId, ie.id, ie.situation, ie.start_date, ie.end_date
      FROM conditions c
      JOIN illness_episodes ie ON ie.profile_id = c.profile_id
-      AND c.external_id = 'illness-episode:' || ie.id
-    WHERE c.profile_id = ? AND c.source = 'episode'
-    ORDER BY c.id, ie.id`
+      AND (
+        (c.source = 'episode' AND c.external_id = 'illness-episode:' || ie.id)
+        OR (
+          c.onset_date IS NOT NULL
+          AND ie.start_date IS NOT NULL
+          AND ie.start_date <= c.onset_date
+          AND COALESCE(ie.end_date, ?) >= c.onset_date
+        )
+      )
+    WHERE c.profile_id = ?
+    ORDER BY c.id, ie.start_date, ie.id`
 );
 
-// The condition was explicitly promoted from this stable episode id. Dates may have
-// been hand-edited under the condition edit lock, so deriving this link by overlap
-// would be both weaker and wrong.
-export function episodesForPromotedConditions(
+// Promoted conditions retain their stable episode id even when dates are edited.
+// Ordinary conditions mirror episode assembly: onset must fall inside a known-start
+// episode, and an open episode ends at the profile-local current day.
+export function episodesForConditions(
   profileId: number
 ): Record<number, EpisodeLinkRef[]> {
   return groupBySubject(
-    PROMOTED_CONDITION_EPISODES_STMT.all(profileId) as KeyedEpisodeLink[]
+    CONDITION_EPISODES_STMT.all(
+      today(profileId),
+      profileId
+    ) as KeyedEpisodeLink[]
   );
 }

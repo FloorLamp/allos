@@ -2,7 +2,7 @@ import {
   getConditions,
   getMedicationsByIndication,
   encountersForRecords,
-  episodesForPromotedConditions,
+  episodesForConditions,
 } from "@/lib/queries";
 import FilterPills, { type FilterPillOption } from "@/components/FilterPills";
 import AddEntryPanel from "@/components/AddEntryPanel";
@@ -72,12 +72,10 @@ export default function ConditionsSection({
       Object.entries(encountersForRecords(pid, "condition"))
     )
   );
-  // Episode → promoted-condition inverse (#856 items 7-8): the stable external-id
-  // association comes back to the condition row instead of ending at the episode.
+  // Episode → condition inverse (#856 items 7-8): stable promoted links and the
+  // ordinary onset-in-window associations both come back to the condition row.
   const illnessEpisodes = Object.fromEntries(
-    scope.viewIds.flatMap((pid) =>
-      Object.entries(episodesForPromotedConditions(pid))
-    )
+    scope.viewIds.flatMap((pid) => Object.entries(episodesForConditions(pid)))
   );
   const active = cond ?? "all";
 
