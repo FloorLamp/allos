@@ -6,6 +6,8 @@ import { accessForProfile, requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import { getActivityDetailData } from "@/lib/training-activity-detail";
+import { getWorkoutPresence } from "@/lib/queries/presence";
+import DiscardDraftButton from "../DiscardDraftButton";
 import {
   rideDetailHref,
   rideHeartRateSeries,
@@ -52,6 +54,14 @@ export default async function TrainingActivityPage(props: {
 
   const canWrite =
     accessForProfile(login.id, login.role, profile.id) === "write";
+
+  // The session's live/draft state (#2870 step 3). While presence says THIS
+  // activity is the running session, the page is the record-in-progress; a
+  // zero-content row that is NOT running is a draft — this page is its only
+  // address (the feed hides it), so it says so and offers the discard.
+  const presence = getWorkoutPresence(profile.id);
+  const liveActive =
+    presence.state === "active" && presence.activityId === data.row.id;
   const heartRateSeries = rideHeartRateSeries(
     data.heartRate.window,
     data.heartRate.minutes
@@ -98,6 +108,26 @@ export default async function TrainingActivityPage(props: {
         </span>
       </div>
 
+      {liveActive ? (
+        <p
+          data-testid="session-in-progress"
+          className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+        >
+          Workout in progress — this page is the session&rsquo;s record and
+          fills in as you log.
+        </p>
+      ) : data.isDraft ? (
+        <div
+          data-testid="draft-banner"
+          className="mb-4 flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+        >
+          <span>
+            Draft — this workout was started but nothing was logged. It appears
+            only here and expires on its own.
+          </span>
+          {canWrite && <DiscardDraftButton activityId={data.row.id} />}
+        </div>
+      ) : null}
       {/* Keyed by activity: ‹older/newer› must REMOUNT the record, so a docked
           edit of the previous activity closes (flushing its auto-save) instead
           of staying portaled under the new record it doesn't belong to. */}
