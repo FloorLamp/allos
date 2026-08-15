@@ -51,7 +51,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 ## Tooling
 
 - `dispatch-brief.mjs`: create, list, resume, adopt, and close dispatches.
-- `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
+- `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format. A
+  format rewrite re-verifies the directive-reading gates, which it can invalidate.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.

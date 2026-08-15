@@ -407,3 +407,23 @@ transfer-ready artifact (inert, zero cost). A strict up-to-date
 required-checks ruleset was considered and rejected: it re-runs full CI per
 open PR per landing while buying nothing the hand-serialization protocol
 doesn't.
+
+## A gate PASS that its own last step invalidated (#2935, 2026-08-15)
+
+`agent-gates.sh` runs `format` LAST, on purpose: a late edit after formatting is
+the CI breaker the script exists to prevent. But it had also assumed formatting
+is semantically inert. It is not. An agent wrote a `@ts-expect-error` directly
+above its erroring call, typecheck passed on exactly that, and Prettier then
+rewrapped the call across three lines — sliding it out from under the directive.
+The push was red on `TS2578: Unused '@ts-expect-error' directive` plus the
+now-unsuppressed error, after a gate block that legitimately read PASS. Nobody
+edited anything, so the existing NOTE ("commit them NOW, do not edit") could not
+have helped; following it literally is what produced the red push.
+
+The exposed class is gates that read LINE-POSITIONED comment directives —
+`@ts-expect-error`, `eslint-disable-next-line`, and the `-ok` pragmas the
+e2e-hygiene scan pairs with the line beneath them. The test tiers are immune, a
+rewrap changing no runtime behavior, so the script now re-runs only those three
+after a rewrite and the cost stays seconds. The agent diagnosed this itself and
+declined to edit shared tooling outside its dispatch, which was the right call
+and is why the finding arrived intact.
