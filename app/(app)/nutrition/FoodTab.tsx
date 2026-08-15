@@ -19,7 +19,10 @@ import {
   getProteinDailyGrams,
   getProteinQuickAddPreset,
   getHabitualFoodGroups,
+  getFiberSymptomPanel,
 } from "@/lib/queries";
+import { fiberSymptomPanelHasSignal } from "@/lib/fiber-symptom-panel";
+import FiberSymptomPanel from "@/components/FiberSymptomPanel";
 import { formatWeekdayDate } from "@/lib/format-date";
 import {
   getProfileAge,
@@ -214,6 +217,9 @@ export default async function FoodTab({
   // The selected Today context needs an actual calendar-day value, not the weekly
   // coaching average. Previous picker days already use this same date-scoped gather.
   const fiberToday = getFiberOnDate(profile.id, date);
+  // Fiber × GI symptoms on one axis (#2788) — a read-together VIEW, never a
+  // correlation claim. The vocabulary and boundaries live in lib/fiber-symptom-panel.
+  const fiberSymptomPanel = getFiberSymptomPanel(profile.id);
   // Direct protein-grams quick-add (#824): today's manual total + the last-used amount
   // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
   const proteinLoggedGrams = getProteinDailyGrams(profile.id, date);
@@ -454,6 +460,15 @@ export default async function FoodTab({
               <FoodWeeklyRollup rollup={rollup} />
             </div>
             {fiberAdequacy && <WeeklyFiberSummary adequacy={fiberAdequacy} />}
+            {/* Fiber × GI symptoms read together (#2788): rendered only when BOTH
+                series have something in the window — with either empty there is
+                nothing to co-read, and silence beats an empty exhortation. */}
+            {fiberSymptomPanelHasSignal(fiberSymptomPanel) && (
+              <FiberSymptomPanel
+                panel={fiberSymptomPanel}
+                formatPrefs={formatPrefs}
+              />
+            )}
             <div className="border-t border-black/5 pt-5 dark:border-white/5">
               <WeeklyHabits
                 profileId={profile.id}
