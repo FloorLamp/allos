@@ -92,8 +92,10 @@ interface ActivityEditorApi {
   minimized: boolean;
   editData: ActivityEditData | null;
   // Register a DOM node for the editor to render into inline instead of the
-  // overlay. Pass null to unregister.
-  registerDock: (el: HTMLElement | null) => void;
+  // overlay. Pass null to unregister. `scope` marks a PAGE dock that only hosts
+  // edits of that one activity (the activity detail page); omit it for a
+  // general column that hosts any create/edit (the training log).
+  registerDock: (el: HTMLElement | null, scope?: number | null) => void;
   // TrainingLogView announces itself while mounted (every width — the dock is
   // desktop-only, but the Log view carries its own session affordances), so the
   // bar suppression tracks the view, not the route. Returns the cleanup.
@@ -198,6 +200,18 @@ export default function ActivityEditorProvider({
   // memoized api on every dock registration).
   const [docked, setDocked] = useState(false);
   const dockElRef = useRef<HTMLElement | null>(null);
+  // What the dock is FOR (#2870 step 2 review): null = a general dock (the
+  // training log's column hosts any create/edit), an activity id = a page dock
+  // that only hosts edits of that record — global openers (palette create,
+  // repeat-last, a live resume) must not portal an unrelated form under it.
+  const dockScopeRef = useRef<number | null>(null);
+  // Mirror of `docked` so registerDock's unregister can tell whether the dock
+  // is actually hosting the open editor without taking state as a dependency.
+  const dockedRef = useRef(false);
+  const updateDocked = useCallback((v: boolean) => {
+    dockedRef.current = v;
+    setDocked(v);
+  }, []);
 
   const [logViewCount, setLogViewCount] = useState(0);
   const registerTrainingLogView = useCallback(() => {
@@ -205,14 +219,24 @@ export default function ActivityEditorProvider({
     return () => setLogViewCount((n) => n - 1);
   }, []);
 
-  const registerDock = useCallback((el: HTMLElement | null) => {
-    dockElRef.current = el;
-    setDockEl(el);
-    // The dock is going away (e.g. navigating off the training log). Close the editor
-    // rather than letting it pop back as an overlay on the next page; the
-    // docked ActivityForm flushes any pending auto-save on unmount.
-    if (!el) setOpen(false);
-  }, []);
+  const registerDock = useCallback(
+    (el: HTMLElement | null, scope: number | null = null) => {
+      dockElRef.current = el;
+      dockScopeRef.current = el ? scope : null;
+      setDockEl(el);
+      // The dock is going away (navigating off its page, or a breakpoint
+      // crossing). Close the editor IT IS HOSTING rather than letting it pop
+      // back as an overlay on the next page; the docked ActivityForm flushes
+      // any pending auto-save on unmount. An editor the dock never hosted —
+      // the overlay, a minimized live session with its running clock — is none
+      // of the dock's business and survives the unregister.
+      if (!el && dockedRef.current) {
+        updateDocked(false);
+        setOpen(false);
+      }
+    },
+    [updateDocked]
+  );
 
   // Resume the acting profile's active session in the live editor from the dock —
   // hydrated from the persisted #451 draft (getActivityEditData). Docks into the
@@ -226,9 +250,12 @@ export default function ActivityEditorProvider({
     setLive(true);
     setLiveStartEpoch(liveStartEpochMs ?? Date.now());
     setMinimized(false);
-    setDocked(dockElRef.current != null);
+    // Only a GENERAL dock (the log column) may host the resumed session — a
+    // page dock is scoped to edits of its own record, and a live workout under
+    // an unrelated record would read as belonging to it.
+    updateDocked(dockElRef.current != null && dockScopeRef.current == null);
     setOpen(true);
-  }, [liveEditData, liveStartEpochMs]);
+  }, [liveEditData, liveStartEpochMs, updateDocked]);
 
   // REOPEN WHAT THE DEPLOY CLOSED (#2471). The tab reloaded ITSELF to take a new
   // build, so the editor that was on screen a second ago is gone with the document —
@@ -265,7 +292,7 @@ export default function ActivityEditorProvider({
         setLive(false);
         setLiveStartEpoch(null);
         setMinimized(false);
-        setDocked(dockElRef.current != null);
+        updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
         return;
       }
@@ -284,10 +311,10 @@ export default function ActivityEditorProvider({
       setLive(true);
       setLiveStartEpoch(Date.now());
       setMinimized(false);
-      setDocked(false);
+      updateDocked(false);
       setOpen(true);
     });
-  }, [liveEditData, resumeLive, restricted]);
+  }, [liveEditData, resumeLive, restricted, updateDocked]);
 
   // A fresh-load active session: nothing is mounted in this client, but the
   // server-hydrated #921 presence says one is running and its draft is reopenable.
@@ -336,7 +363,11 @@ export default function ActivityEditorProvider({
         setMinimized(false);
         if (createPrefill?.type || createPrefill?.date)
           setRepeatNonce((n) => n + 1);
-        setDocked(dockElRef.current != null);
+        // A create form docks only into a GENERAL dock — a page dock is scoped
+        // to its own record's edits (see registerDock), so a palette "New
+        // activity" on the activity page opens the overlay, visible where the
+        // tap happened, not portaled under an unrelated record.
+        updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
       },
       openLive: () => {
@@ -357,7 +388,7 @@ export default function ActivityEditorProvider({
         setMinimized(false);
         // Live mode is a focused, full-attention flow — never dock it into the
         // training log's side column; use the overlay so it reads as its own screen.
-        setDocked(false);
+        updateDocked(false);
         setOpen(true);
       },
       canStartWorkout: !restricted,
@@ -380,7 +411,7 @@ export default function ActivityEditorProvider({
         setMinimized(false);
         setRepeatNonce((n) => n + 1);
         // Live mode is its own focused screen — never dock it into a page column.
-        setDocked(false);
+        updateDocked(false);
         setOpen(true);
       },
       openEdit: (data) => {
@@ -390,7 +421,11 @@ export default function ActivityEditorProvider({
         setLive(false);
         setLiveStartEpoch(null);
         setMinimized(false);
-        setDocked(dockElRef.current != null);
+        // A general dock hosts any edit; a scoped page dock only its own record.
+        updateDocked(
+          dockElRef.current != null &&
+            (dockScopeRef.current == null || dockScopeRef.current === data.id)
+        );
         setOpen(true);
       },
       openRepeat: (data) => {
@@ -401,7 +436,7 @@ export default function ActivityEditorProvider({
         setLiveStartEpoch(null);
         setMinimized(false);
         setRepeatNonce((n) => n + 1);
-        setDocked(dockElRef.current != null);
+        updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
       },
       openRepeatLast: () => {
@@ -413,7 +448,7 @@ export default function ActivityEditorProvider({
         setLiveStartEpoch(null);
         setMinimized(false);
         setRepeatNonce((n) => n + 1);
-        setDocked(dockElRef.current != null);
+        updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
       },
       hasLastActivity: lastActivity != null,
@@ -440,6 +475,7 @@ export default function ActivityEditorProvider({
       subjectName,
       offer,
       resumeOffer,
+      updateDocked,
     ]
   );
 
@@ -558,4 +594,32 @@ export default function ActivityEditorProvider({
       )}
     </Ctx.Provider>
   );
+}
+
+// The dock-host discipline, owned here so every host obeys it once instead of
+// re-deriving it (#2870 step 2 review; #2897 plans a third host). Register only
+// a REAL dock: passing null means "the dock went away" and closes a docked
+// editor, so registering during first paint — where the media query hasn't
+// settled and `wide` still holds its false initial — would force-close an
+// editor that survived navigation as the overlay. `scope` marks a page dock
+// that only hosts edits of that one record; omit it for a general column (the
+// training log). Returns the ref the host renders as the dock element, plus the
+// settled match for the host's own layout decisions.
+export function useEditorDock(query: string, scope?: number) {
+  const { registerDock } = useActivityEditor();
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setWide(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [query]);
+  useEffect(() => {
+    if (!wide) return;
+    registerDock(dockRef.current, scope ?? null);
+    return () => registerDock(null);
+  }, [registerDock, wide, scope]);
+  return { dockRef, wide };
 }
