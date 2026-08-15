@@ -305,7 +305,12 @@ describe("the in-digest line (owner decision, 2026-08-06)", () => {
 describe("one finding, one episode key (constraint 5)", () => {
   it("declining from the MESSAGE clears the Settings row too", async () => {
     const p = seedProfile("Tapping Tao");
-    const chat = `2217${p}`;
+    // NOT `2217${p}`: fixture profile ids are pid-keyed blocks (#2670), so
+    // concatenating one produces a 17+-digit chat id that `cq()`'s Number() cannot
+    // round-trip above 2^53 — the tap then resolves no profile and every assertion
+    // below fails, on machines with large pids only. The trailing digits keep the
+    // chat unique per profile within this file's private database.
+    const chat = `2217${p % 1_000_000}`;
     seedLoginTelegram(p, chat);
     const td = today(p);
     expect(getDigestTimeSuggestion(p)).not.toBeNull();
@@ -329,7 +334,7 @@ describe("one finding, one episode key (constraint 5)", () => {
 
   it("a ±5-minute drift in the statistic does NOT re-raise a dismissed episode", async () => {
     const p = seedProfile("Steady Sloane");
-    const chat = `2218${p}`;
+    const chat = `2218${p % 1_000_000}`; // precision-safe — see the 2217 comment
     seedLoginTelegram(p, chat);
     await handleCallbackQuery(cq(chat, digestTimeDismissToken(p, today(p))));
     expect(getDigestTimeSuggestion(p)).toBeNull();
@@ -363,7 +368,7 @@ describe("one finding, one episode key (constraint 5)", () => {
 
   it("accepting from the message writes EXACTLY the time and nothing else", async () => {
     const p = seedProfile("Accepting Ari");
-    const chat = `2219${p}`;
+    const chat = `2219${p % 1_000_000}`; // precision-safe — see the 2217 comment
     seedLoginTelegram(p, chat);
     const before = getNotifySchedule(p);
 
