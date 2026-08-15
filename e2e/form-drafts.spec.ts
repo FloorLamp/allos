@@ -316,9 +316,11 @@ test("a live session's draft never outlives a successful save (#1699/#451)", asy
       .toBe(0);
 
     // …and a plain create form opened afterwards has nothing to offer, which is the
-    // observable form of "the live session left no draft behind".
+    // observable form of "the live session left no draft behind". The tab
+    // stands on the session's page (#2870 step 3), so return to the Log —
+    // where the New activity affordance lives — with a fresh document.
     await page.keyboard.press("Escape");
-    await page.reload();
+    await page.goto("/training?tab=log");
     await openNewActivity(page);
     await expect(page.getByTestId("draft-restore-banner")).toHaveCount(0);
   } finally {

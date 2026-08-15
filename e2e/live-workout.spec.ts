@@ -156,7 +156,14 @@ test("mid-session, the workout entry point resumes and the session clock survive
     .getByRole("complementary")
     .getByRole("link", { name: "Training" })
     .click();
-  await page.getByRole("main").getByRole("link", { name: "Log" }).click();
+  // Let the hub land before finding the Log tab — queried too early, a
+  // non-exact "Log" also matches the session page's "Training log" back link,
+  // which unmounts under the click.
+  await page.waitForURL(/\/training(\?.*)?$/);
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: "Log", exact: true })
+    .click();
   await expect(entry).toHaveAttribute("data-workout-offer", "resume");
   await expect(entry).toHaveText("Resume workout");
 
@@ -177,6 +184,10 @@ test("mid-session, the workout entry point resumes and the session clock survive
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dock).toHaveCount(0);
+  // Wait out the abandonment redirect: ending here can tear the page down
+  // with the empty session's discard still in flight, leaking an active row
+  // into the next (repeat) iteration.
+  await page.waitForURL(/\/training(\?.*)?$/);
 });
 
 test("the command palette offers 'Start workout' (#340)", async ({ page }) => {

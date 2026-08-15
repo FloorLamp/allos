@@ -56,19 +56,47 @@ test("'Log this session' pre-fills the activity form in live mode (#740)", async
   // The resolved day's lead exercise is present in the pre-filled form.
   await expect(page.getByText("Barbell Bench Press").first()).toBeVisible(); // first-ok: asserts the recommended lift renders — order-agnostic presence
 
-  // Clean up: discard the draft so the fixture profile is left untouched. Nothing
-  // was completed (no loads entered), so Escape closes without persisting a set;
-  // fall back to a delete if the auto-saver created a row.
+  // Clean up. SETTLE on the session's page first (#2870 step 3): a close that
+  // beats the create-at-start round-trip strands the row when the page dies
+  // before the late-create self-discard can run — the leak that made the next
+  // test see "resume". Then close: the blank-load slate can't save, so the
+  // blocked-close prompt appears; answering it abandons the empty row and
+  // returns to the hub.
+  await page.waitForURL(/\/training\/activity\/\d+$/);
   await page.keyboard.press("Escape");
-  const del = page.getByRole("button", { name: "Delete", exact: true });
-  if (await del.isVisible().catch(() => false)) {
-    await del.click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
-  }
+  const closeAnyway = page
+    .getByTestId("confirm-dialog")
+    .getByRole("button", { name: "Close anyway" });
+  await closeAnyway.waitFor({ state: "visible", timeout: 3000 }).catch(() => {
+    /* closed without a prompt — nothing unsaved */
+  });
+  if (await closeAnyway.isVisible().catch(() => false))
+    await closeAnyway.click();
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await cleanUpClosedSession(page);
 });
+
+// After closing a live session, the row's fate is bimodal: an EMPTY session
+// abandons itself and redirects to the hub; one whose slate managed to save is
+// KEPT and the tab stays on its page. Clean up whichever happened, so the
+// fixture profile is left untouched either way.
+async function cleanUpClosedSession(p: Page) {
+  const redirected = await p
+    .waitForURL(/\/training(\?.*)?$/, { timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  if (redirected) return; // empty session — the abandonment already cleaned up
+  await p.getByTestId("activity-page-edit").click();
+  await expect(
+    p.getByTestId("activity-page-dock").getByTestId("activity-form")
+  ).toBeVisible();
+  await p.getByRole("button", { name: "Delete", exact: true }).click();
+  await p
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await expect(p.getByTestId("activity-form")).toHaveCount(0);
+}
 
 test("mid-session, 'Log this session' resumes instead of restarting (#1893)", async () => {
   await page.goto("/training?tab=overview");
@@ -121,13 +149,6 @@ test("mid-session, 'Log this session' resumes instead of restarting (#1893)", as
   if (await closeAnyway.isVisible().catch(() => false))
     await closeAnyway.click();
   await expect(dock).toHaveCount(0);
-  await page.waitForURL(/\/training(\?.*)?$/);
-  const leftover = page.getByRole("button", { name: "Delete", exact: true });
-  if (await leftover.isVisible().catch(() => false)) {
-    await leftover.click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
-  }
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await cleanUpClosedSession(page);
 });
