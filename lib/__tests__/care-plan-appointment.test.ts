@@ -6,6 +6,7 @@ import {
   matchCarePlanItemsForAppointment,
   appointmentMatchNeedles,
   CARE_PLAN_MATCH_WINDOW_DAYS,
+  isCareGoalOpen,
   scheduledAppointmentsForCareItems,
   type CarePlanMatchItem,
 } from "../care-plan-appointment";
@@ -29,6 +30,21 @@ describe("scheduledAppointmentsForCareItems", () => {
         [{ ...scheduled, status: "completed" }],
         [open]
       )
+    ).toEqual({});
+  });
+
+  it("does not reflect a scheduled appointment onto an achieved goal", () => {
+    const scheduled = {
+      id: 11,
+      kind: null,
+      title: "Colonoscopy screening",
+      notes: null,
+      date: VISIT,
+      status: "scheduled",
+    } as const;
+    const achieved = item({ id: 8, status: "achieved" });
+    expect(
+      scheduledAppointmentsForCareItems([scheduled], [achieved], isCareGoalOpen)
     ).toEqual({});
   });
 });

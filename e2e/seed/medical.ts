@@ -836,8 +836,13 @@ export function seedRecordsEnrichment(): void {
       ).run(reId);
       db.prepare(
         `INSERT INTO care_goals
+           (profile_id, description, code, target_date, status, source)
+         VALUES (?, 'Preventive target (e2e)', 'colonoscopy', '2026-09-10', 'active', 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO care_goals
            (profile_id, description, target_date, status, source)
-         VALUES (?, 'Colonoscopy screening goal (e2e)', '2026-09-10', 'active', 'manual')`
+         VALUES (?, 'Colonoscopy completed goal (e2e)', '2026-09-10', 'achieved', 'manual')`
       ).run(reId);
       db.prepare(
         `INSERT INTO appointments

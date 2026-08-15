@@ -102,9 +102,14 @@ test.describe("records enrichment sweep (#1354/#1355)", () => {
       page.getByText("Colonoscopy screening (e2e)").locator("..")
     ).toContainText("Scheduled: Colonoscopy screening");
     await page.goto("/records/care/overview#health-goals");
-    await expect(
-      page.getByText("Colonoscopy screening goal (e2e)").locator("..")
-    ).toContainText("Scheduled: Colonoscopy screening");
+    const openGoal = page
+      .getByRole("row")
+      .filter({ hasText: "Preventive target (e2e)" });
+    await expect(openGoal).toContainText("Scheduled: Colonoscopy screening");
+    const achievedGoal = page
+      .getByRole("row")
+      .filter({ hasText: "Colonoscopy completed goal (e2e)" });
+    await expect(achievedGoal).not.toContainText("Scheduled:");
 
     await page.goto("/records/history/visits");
     const visit = page

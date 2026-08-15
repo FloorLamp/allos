@@ -3,7 +3,7 @@ import {
   getPickerProviders,
   getContrastSafetyWarnings,
   getFindingSuppressions,
-  getAppointments,
+  getScheduledAppointments,
 } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { contrastTitle, contrastDetail } from "@/lib/contrast-safety";
@@ -39,7 +39,7 @@ export default function CarePlanSection({ scope }: { scope: ProfileScope }) {
     scope.viewIds.flatMap((pid) =>
       Object.entries(
         scheduledAppointmentsForCareItems(
-          getAppointments(pid),
+          getScheduledAppointments(pid),
           rawItems.filter((item) => item.profileId === pid)
         )
       )

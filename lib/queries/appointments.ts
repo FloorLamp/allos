@@ -4,7 +4,7 @@
 // pattern getClinicalObservations / getImmunizations use) so the FK link stays on the
 // profile-owned appointments row while the provider row it points at is global.
 
-import { db } from "../db";
+import { db, hoistedStatement } from "../db";
 import type { Appointment } from "../types";
 import type { KindedAppointment } from "../preventive-appointment";
 
@@ -17,17 +17,25 @@ const SELECT_COLS = `
   title, location, notes, status, kind, encounter_id,
   document_id, source, created_at`;
 
+// Both list reads fan out across profile-aware surfaces. Cache the compiled SQL,
+// never the values, so writes remain visible within the same request.
+const APPOINTMENTS_STMT = hoistedStatement(
+  `SELECT ${SELECT_COLS} FROM appointments
+   WHERE profile_id = ?
+   ORDER BY date ASC, time_of_day ASC, id ASC`
+);
+
+const SCHEDULED_APPOINTMENTS_STMT = hoistedStatement(
+  `SELECT ${SELECT_COLS} FROM appointments
+   WHERE profile_id = ? AND status = 'scheduled'
+   ORDER BY date ASC, time_of_day ASC, id ASC`
+);
+
 // Every appointment for a profile, soonest first. Used by the management page.
 // A day-only row (NULL time_of_day) sorts before same-day timed rows ASC and
 // after them DESC — the exact order the pre-split lexical scheduled_at gave.
 export function getAppointments(profileId: number): Appointment[] {
-  return db
-    .prepare(
-      `SELECT ${SELECT_COLS} FROM appointments
-       WHERE profile_id = ?
-       ORDER BY date ASC, time_of_day ASC, id ASC`
-    )
-    .all(profileId) as Appointment[];
+  return APPOINTMENTS_STMT.all(profileId) as Appointment[];
 }
 
 // The appointment that was scheduled for THIS encounter (#288 completed→linked, or
@@ -54,13 +62,7 @@ export function appointmentForEncounter(
 // first — the forward-looking set the Upcoming aggregation bands. A past-and-
 // still-scheduled row is included on purpose so it can surface as Overdue.
 export function getScheduledAppointments(profileId: number): Appointment[] {
-  return db
-    .prepare(
-      `SELECT ${SELECT_COLS} FROM appointments
-       WHERE profile_id = ? AND status = 'scheduled'
-       ORDER BY date ASC, time_of_day ASC, id ASC`
-    )
-    .all(profileId) as Appointment[];
+  return SCHEDULED_APPOINTMENTS_STMT.all(profileId) as Appointment[];
 }
 
 // A profile's still-scheduled appointments reduced to the shape the pure
