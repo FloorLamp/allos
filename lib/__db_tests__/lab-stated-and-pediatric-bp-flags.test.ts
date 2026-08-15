@@ -17,15 +17,23 @@ import { db } from "@/lib/db";
 import {
   getCanonicalResultDefinition,
   getCurrentFlaggedBiomarkers,
+  getCurrentFlaggedVitals,
   reconcileFlags,
 } from "@/lib/queries";
 import { rangeFilterClause } from "@/lib/queries/medical";
 import {
+  flagInSql,
   flagLabel,
   flagTone,
+  isLabStated,
+  isNonOptimal,
   isNotableFlag,
   isOutOfRange,
+  LAB_STATED_FLAGS,
+  NON_OPTIMAL_FLAGS,
+  OUT_OF_RANGE_FLAGS,
 } from "@/lib/reference-range";
+import { getTimelineEvents } from "@/lib/timeline";
 import type { MedicalFlag } from "@/lib/types";
 
 const DRAW = "2026-02-17";
@@ -169,6 +177,56 @@ beforeAll(() => {
     printed: "6-18",
   });
 
+  // ── #2799 defect A — band-less HIGHER-BETTER vitals beating a printed range ───
+  // A PFT or CPET report always prints a predicted range, and a healthy person above
+  // predicted is the common case. All of these are `category: vitals`, so a flag here
+  // reaches getCurrentFlaggedVitals → recent-changes → the digest.
+  ids.fev1 = insert(adultId, {
+    canonical: "Forced Expiratory Volume in 1 Second (FEV1)",
+    category: "vitals",
+    value: 4.6,
+    unit: "L",
+    printed: "3.1-4.2",
+  });
+  ids.fvc = insert(adultId, {
+    canonical: "Forced Vital Capacity (FVC)",
+    category: "vitals",
+    value: 5.9,
+    unit: "L",
+    printed: "4.0-5.4",
+  });
+  ids.peakFlow = insert(adultId, {
+    canonical: "Peak Expiratory Flow",
+    category: "vitals",
+    value: 680,
+    unit: "L/min",
+    printed: "480-620",
+  });
+  ids.grip = insert(adultId, {
+    canonical: "Grip Strength",
+    category: "vitals",
+    value: 58,
+    unit: "kg",
+    printed: "35-50",
+  });
+  ids.chairStand = insert(adultId, {
+    canonical: "30-Second Chair Stand",
+    category: "vitals",
+    value: 24,
+    unit: "reps",
+    printed: "14-19",
+  });
+  // …and the same analyte BELOW its predicted range, which is the direction that means
+  // something and must still speak.
+  ids.fev1Low = insert(adultId, {
+    canonical: "Forced Expiratory Volume in 1 Second (FEV1)",
+    category: "vitals",
+    value: 2.0,
+    unit: "L",
+    printed: "3.1-4.2",
+    date: "2025-02-17",
+  });
+
   // ── #2794 — a toddler's blood pressure, already carrying the adult-band flags ──
   ids.childDiastolic = insert(childId, {
     canonical: "Blood Pressure Diastolic",
@@ -305,6 +363,52 @@ describe("the #2337 ruling still holds (unqualified Glucose stays silent)", () =
   });
 });
 
+describe("a good result never flags — the printed range is read through direction", () => {
+  it("leaves five band-less higher-better vitals unflagged for BEATING their printed range", () => {
+    // Asserted over the REAL curated entries, so the claim is about the catalog's own
+    // `direction` values rather than a fixture's. This is #544's "good result reads as
+    // needs-attention" rule, held at the door #2799 opened.
+    for (const key of ["fev1", "fvc", "peakFlow", "grip", "chairStand"]) {
+      expect(flagOf(ids[key]), key).toBeNull();
+    }
+  });
+
+  it("every one of those entries really is band-less and higher_better", () => {
+    // If a band were curated onto one, the row would never reach labStatedFlag and the
+    // assertion above would pass for the wrong reason.
+    for (const name of [
+      "Forced Expiratory Volume in 1 Second (FEV1)",
+      "Forced Vital Capacity (FVC)",
+      "Peak Expiratory Flow",
+      "Grip Strength",
+      "30-Second Chair Stand",
+    ]) {
+      const cb = getCanonicalResultDefinition(name);
+      expect(cb?.direction, name).toBe("higher_better");
+      expect(cb?.ref_low ?? null, name).toBeNull();
+      expect(cb?.ref_high ?? null, name).toBeNull();
+      expect(cb?.optimal_low ?? null, name).toBeNull();
+      expect(cb?.optimal_high ?? null, name).toBeNull();
+    }
+  });
+
+  it("still flags the direction that means something — FEV1 below predicted", () => {
+    expect(flagOf(ids.fev1Low)).toBe("reported-low");
+  });
+
+  it("keeps all five out of the flagged-VITALS read the digest builds from", () => {
+    const flagged = getCurrentFlaggedVitals(adultId).map((f) => f.name);
+    for (const name of [
+      "Forced Vital Capacity (FVC)",
+      "Peak Expiratory Flow",
+      "Grip Strength",
+      "30-Second Chair Stand",
+    ]) {
+      expect(flagged, name).not.toContain(name);
+    }
+  });
+});
+
 describe("pediatric blood pressure defers to the AAP percentile (#2794)", () => {
   it("clears the adult-band 'low' stored on a toddler's diastolic", () => {
     expect(flagOf(ids.childDiastolic)).toBeNull();
@@ -326,11 +430,15 @@ describe("pediatric blood pressure defers to the AAP percentile (#2794)", () => 
   });
 });
 
-// The SQL row filters and the TS predicates are two spellings of ONE partition, and a
-// flag value in only one of them is a row some surface colours while another hides it.
-// #2799 is exactly when that drifts: two new flag values, added to the predicates and to
-// the broad SQL tier but deliberately NOT to the "out of range" one.
-describe("rangeFilterClause parity with the flag predicates", () => {
+// EVERY SQL SPELLING OF THE TIERS, AGAINST THE PREDICATES.
+//
+// The tiers had three independent spellings — the TS predicates, `rangeFilterClause`,
+// and lib/timeline's grouped counts — and #2799's two new flag values reached only two
+// of them: the timeline kept counting `LIKE 'non-optimal%'`, so the reading the issue is
+// about drew no marker on the surface the issue names. The lists now live once in
+// lib/reference-range/flags and every spelling reads them, and this test is what holds
+// that: it compares the SQL each surface actually emits, not the constants.
+describe("SQL/predicate parity across every flag-tier spelling", () => {
   // The literals a `flag IN (...)` clause admits.
   function admitted(clause: string | null): Set<string> {
     if (!clause) return new Set();
@@ -376,5 +484,49 @@ describe("rangeFilterClause parity with the flag predicates", () => {
 
   it("'All' adds no clause", () => {
     expect(rangeFilterClause(undefined)).toBeNull();
+  });
+
+  it("the three per-tier SQL fragments admit exactly their predicates", () => {
+    expect([...admitted(flagInSql(OUT_OF_RANGE_FLAGS))].sort()).toEqual(
+      ALL_FLAGS.filter(isOutOfRange).sort()
+    );
+    expect([...admitted(flagInSql(NON_OPTIMAL_FLAGS))].sort()).toEqual(
+      ALL_FLAGS.filter(isNonOptimal).sort()
+    );
+    expect([...admitted(flagInSql(LAB_STATED_FLAGS))].sort()).toEqual(
+      ALL_FLAGS.filter(isLabStated).sort()
+    );
+  });
+
+  it("every notable flag is counted by exactly one of the timeline's three counts", () => {
+    // The timeline groups a draw into "N results, M out of range / non-optimal /
+    // outside reported range". A flag in none of the three counts renders no marker at
+    // all, which is #2799's complaint; a flag in two would be double-counted.
+    for (const f of ALL_FLAGS) {
+      const counts = [
+        OUT_OF_RANGE_FLAGS,
+        NON_OPTIMAL_FLAGS,
+        LAB_STATED_FLAGS,
+      ].filter((tier) => admitted(flagInSql(tier)).has(f));
+      expect(counts.length, `flag=${f}`).toBe(isNotableFlag(f) ? 1 : 0);
+    }
+  });
+});
+
+describe("the timeline draws a marker for a lab-stated flag (#2799 defect D)", () => {
+  it("counts it, tones the group amber, and says which range it was outside", () => {
+    const events = getTimelineEvents(adultId, { limit: 200 });
+    const group = events.find(
+      (e) =>
+        e.category === "medical" &&
+        e.date === DRAW &&
+        (e.detail ?? "").includes("Microalbumin")
+    );
+    expect(
+      group,
+      "the urinalysis draw should produce a timeline group"
+    ).toBeTruthy();
+    expect(group?.subtitle).toContain("outside reported range");
+    expect(group?.tone).toBe("warn");
   });
 });

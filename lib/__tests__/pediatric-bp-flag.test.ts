@@ -140,6 +140,66 @@ describe("pediatric BP defers to the AAP percentile (#2794)", () => {
     expect(bpComponentForViaDataset).toBe(bpComponentFor);
   });
 
+  // ORDERING: the carve-out sits BELOW convertToCanonical and below the #761 mislabel
+  // veto, and it has to. Clearing a flag is licensed by OWNERSHIP — the reconcile may
+  // retire a flag it would itself have written. Both gates above are the reconcile
+  // DECLINING to judge, so a flag that survives one of them came from the SOURCE, and
+  // the child path must decline exactly as the adult path does.
+  //
+  // Every other fixture in this file uses mmHg, which is why the suites could not see
+  // this: the two paths only diverge on a unit we cannot convert.
+  describe("a unit we cannot convert (kPa, torr) — the source's flag is not ours to delete", () => {
+    // kPa BP is used in parts of Europe and China; "torr" turns up in device exports.
+    // Neither is in the BP entry's conversions, so convertToCanonical declines.
+    for (const unit of ["kPa", "torr"]) {
+      it(`declines identically for a child and an adult (${unit})`, () => {
+        // A clinician-supplied low on a child's BP: neither path may erase it.
+        expect(
+          reconciledFlag("low", 7.2, unit, diastolic, null, 1),
+          `child, ${unit}`
+        ).toBeUndefined();
+        expect(
+          reconciledFlag("low", 7.2, unit, diastolic, null, 40),
+          `adult, ${unit}`
+        ).toBeUndefined();
+        // …and neither derives one either.
+        expect(
+          reconciledFlag(null, 7.2, unit, diastolic, null, 1)
+        ).toBeUndefined();
+        expect(
+          reconciledFlag(null, 7.2, unit, diastolic, null, 40)
+        ).toBeUndefined();
+      });
+    }
+
+    it("the two age paths agree for EVERY stored flag on an unconvertible unit", () => {
+      // Stated as an equivalence rather than a list of expectations, so a future edit
+      // that re-splits the paths fails here whatever the new verdict is.
+      for (const stored of [
+        null,
+        "normal",
+        "low",
+        "high",
+        "non-optimal-low",
+        "non-optimal-high",
+        "immune",
+      ]) {
+        expect(
+          reconciledFlag(stored, 7.2, "kPa", systolic, null, 2),
+          `stored=${stored}`
+        ).toBe(reconciledFlag(stored, 7.2, "kPa", systolic, null, 40));
+      }
+    });
+
+    it("but a convertible unit still clears, so the guard is not simply disabled", () => {
+      expect(reconciledFlag("low", 54, "mmHg", diastolic, null, 1)).toBeNull();
+      // The UCUM spelling a document ships (#1018) converts, so it clears too.
+      expect(
+        reconciledFlag("low", 54, "mm[Hg]", diastolic, null, 1)
+      ).toBeNull();
+    });
+  });
+
   it("still judges an adult's BP exactly as before", () => {
     expect(reconciledFlag(null, 54, "mmHg", diastolic, null, 40)).toBe("low");
     expect(reconciledFlag(null, 130, "mmHg", systolic, null, 40)).toBe("high");

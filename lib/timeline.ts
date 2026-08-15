@@ -15,6 +15,12 @@ import {
   ALLERGY_REPRESENTATIVE_IDS,
 } from "./queries/clinical";
 import { restrictedActivityTypeClause, isTrainingRestricted } from "./age-gate";
+import {
+  flagInSql,
+  LAB_STATED_FLAGS,
+  NON_OPTIMAL_FLAGS,
+  OUT_OF_RANGE_FLAGS,
+} from "./reference-range";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./training-log-format";
 import { getTimezone, type UnitPrefs } from "./settings";
@@ -413,8 +419,9 @@ function collectEvents(
               CASE WHEN panel_id <> 'other' THEN panel_id ELSE panel_fallback END
                 AS group_key,
               COUNT(*) AS count,
-              SUM(CASE WHEN flag IN ('high','low','abnormal') THEN 1 ELSE 0 END) AS abnormal_count,
-              SUM(CASE WHEN flag LIKE 'non-optimal%' THEN 1 ELSE 0 END) AS nonoptimal_count,
+              SUM(CASE WHEN ${flagInSql(OUT_OF_RANGE_FLAGS)} THEN 1 ELSE 0 END) AS abnormal_count,
+              SUM(CASE WHEN ${flagInSql(NON_OPTIMAL_FLAGS)} THEN 1 ELSE 0 END) AS nonoptimal_count,
+              SUM(CASE WHEN ${flagInSql(LAB_STATED_FLAGS)} THEN 1 ELSE 0 END) AS reported_count,
               GROUP_CONCAT(COALESCE(NULLIF(TRIM(canonical_name), ''), name), '||') AS names,
               GROUP_CONCAT(
                 COALESCE(NULLIF(TRIM(canonical_name), ''), name) || '::' ||
@@ -442,6 +449,7 @@ function collectEvents(
     abnormal_count: number;
     nonoptimal_count: number;
     names: string | null;
+    reported_count: number;
     result_details: string | null;
     first_name: string | null;
     document_id: number | null;
@@ -450,6 +458,11 @@ function collectEvents(
   for (const m of medicalGroups) {
     const abnormal = m.abnormal_count || 0;
     const nonoptimal = m.nonoptimal_count || 0;
+    // #2799: a value outside the range the SOURCE printed. Counted SEPARATELY from
+    // non-optimal rather than folded in, because the subtitle names what it counted and
+    // "non-optimal" would be the wrong word for it — it is the lab's own range, not our
+    // band. It shares non-optimal's amber tone, which is the tier flagTone puts it in.
+    const reported = m.reported_count || 0;
     const names = (m.names ?? "").split("||").filter(Boolean);
     pushLimited(
       events,
@@ -458,10 +471,18 @@ function collectEvents(
         date: m.date,
         category: "medical",
         title: `${medicalGroupLabel(m.panel_id, m.panel_fallback)} results`,
-        subtitle: `${m.count} result${m.count === 1 ? "" : "s"}${abnormal ? `, ${abnormal} out of range` : nonoptimal ? `, ${nonoptimal} non-optimal` : ""}`,
+        subtitle: `${m.count} result${m.count === 1 ? "" : "s"}${
+          abnormal
+            ? `, ${abnormal} out of range`
+            : nonoptimal
+              ? `, ${nonoptimal} non-optimal`
+              : reported
+                ? `, ${reported} outside reported range`
+                : ""
+        }`,
         detail: compactList(names, 5),
         href: clinicalObservationHref(m.document_id, names, m.first_name),
-        tone: countTone(abnormal, nonoptimal),
+        tone: countTone(abnormal, nonoptimal + reported),
         detailItems: parseDetailItems(m.result_details),
         meta: m.document_id
           ? [`Document #${m.document_id}`]

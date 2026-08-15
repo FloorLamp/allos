@@ -183,6 +183,14 @@ export function detectUnitMislabel(
 // report actually vouches for, and it stays correct even when the unit LABEL is wrong
 // (#761's case: both sides are mislabeled identically, so the verdict survives).
 //
+// AND THE PRINTED RANGE IS READ THROUGH THE ANALYTE'S DIRECTION. "Outside the printed
+// range" and "worse than the printed range" are the same thing only for an `in_range`
+// analyte. A band-less `higher_better` vital is measured against a PREDICTED range a
+// healthy person beats — FEV1 4.6 L against a printed 3.1–4.2, VO2 Max 58 against 35–45
+// — so reading the ceiling would flag six vitals on an excellent result, all of them
+// `category: vitals` and so all of them reaching the recent-changes digest. That is
+// #544's "good result reads as needs-attention" failure through a new door.
+//
 // WHAT IT WILL NOT JUDGE — the #2337 guard. An analyte whose band-lessness is a FRAME
 // question (`Glucose`, `Insulin`, `Cortisol` — see lib/patient-state-qualifiers'
 // frameUnstatedNames) gets no lab-stated flag either. The printed range on such a row is
@@ -198,27 +206,46 @@ export function detectUnitMislabel(
 // The lab-stated flags — a verdict the SOURCE's printed range implies, never one of
 // ours. Distinct tokens so no surface can mistake them for `high`/`low`.
 export function isLabStated(flag: string | null | undefined): boolean {
-  return flag === "reported-high" || flag === "reported-low";
+  return inTier(LAB_STATED_FLAGS, flag);
 }
 
 /**
  * The flag a reading's OWN printed reference range implies, or null when it implies
- * none: the range is unparseable, the value sits inside it, or the analyte's
- * band-lessness is a frame question (#2337).
+ * none: the range is unparseable, the value sits inside it, the direction says the
+ * side it fell on is the GOOD one, or the analyte's band-lessness is a frame
+ * question (#2337).
  *
  * `valueNum` and `reference` are both as the document printed them — no unit
  * conversion, deliberately (see above).
+ *
+ * DIRECTION IS NOT OPTIONAL HERE. The curated `direction` is what separates "outside
+ * the printed range" from "worse than the printed range", and the two are the same
+ * thing only for an `in_range` analyte. A band-less `higher_better` vital — FEV1, FVC,
+ * Peak Flow, Grip Strength, Chair Stand, VO2 Max — is measured against a PREDICTED
+ * range that a healthy person routinely beats: FEV1 4.6 L against a printed 3.1–4.2,
+ * VO2 Max 58 against 35–45. Flagging those is the "good result reads as
+ * needs-attention" failure #544 exists to prevent, arriving through a new door, and
+ * every one of those six is `category: vitals`, so it would reach the recent-changes
+ * digest. So the rule is the same one `optimalStatus` already applies to our own
+ * bands: higher_better reads only the printed FLOOR, lower_better only the printed
+ * CEILING, in_range both.
  */
 export function labStatedFlag(
   reference: string | null | undefined,
   valueNum: number | null | undefined,
+  direction: BiomarkerDirection | null | undefined,
   opts?: { frameUnstated?: boolean }
 ): "reported-high" | "reported-low" | null {
   if (valueNum == null || !Number.isFinite(valueNum)) return null;
   if (opts?.frameUnstated) return null;
   const parsed = parseReferenceRange(reference);
   if (!parsed) return null;
-  const status = referenceStatus(valueNum, parsed.low, parsed.high);
+  const dir: BiomarkerDirection = direction ?? "in_range";
+  // Drop the bound whose side is the GOOD one before judging, so the verdict cannot
+  // name a direction the analyte does not have.
+  const low = dir === "lower_better" ? null : parsed.low;
+  const high = dir === "higher_better" ? null : parsed.high;
+  const status = referenceStatus(valueNum, low, high);
   if (status === "above") return "reported-high";
   if (status === "below") return "reported-low";
   return null;
@@ -261,32 +288,6 @@ export function reconciledFlag(
   if (f === "abnormal") return undefined;
   if (valueNum == null || !cb) return undefined;
 
-  // PEDIATRIC BLOOD PRESSURE IS A PERCENTILE, NOT A BAND (issue #2794).
-  //
-  // AAP 2017 reads a child's BP against their own age/sex/HEIGHT percentile — the app
-  // already computes that (lib/bp-percentiles → the pediatric card on the biomarker
-  // page). The curated BP entries carry only the ADULT 90–120 / 60–80 interval and no
-  // `ranges_by_age`, so a toddler's entirely normal 54 mmHg diastolic fell below 60 and
-  // was stored `low`: a red chip on the passport, the readings table and the timeline's
-  // "1 out of range", three cards below a header saying "82nd percentile · Normal for
-  // age". Every real write path reconciles (document import, manual entry, Health
-  // Connect ingest, the demographics-change re-reconcile), so a CCD import of a
-  // pediatric visit produced it for real.
-  //
-  // The ruling belongs in the pure core, not in a seed exclusion: judging is DECLINED
-  // for a BP component under PEDIATRIC_BP_MAX_AGE, and the percentile card — which has
-  // the height the AAP table needs, and which this module does not — is the surface that
-  // answers. A stored high/low/non-optimal-* on such a row is our own adult-band claim,
-  // so it is CLEARED rather than left to outlive the judgement that made it; a
-  // qualitative verdict (`abnormal` above, `immune`) is never ours and is untouched.
-  //
-  // Unknown age keeps the adult regime (isAdultBpRegime), so nothing changes for a
-  // profile with no birthdate — and an age is always taken ON the record's collection
-  // date, so a childhood reading does not re-flag when the person turns 13.
-  if (bpComponentFor(cb.name) && !isAdultBpRegime(age)) {
-    return isOutOfRange(f) || isNonOptimal(f) ? null : undefined;
-  }
-
   const v = convertToCanonical(valueNum, unit, cb);
   if (v == null) return undefined; // can't convert to the canonical unit — can't judge
 
@@ -306,6 +307,49 @@ export function reconciledFlag(
     )
   )
     return undefined;
+
+  // PEDIATRIC BLOOD PRESSURE IS A PERCENTILE, NOT A BAND (issue #2794).
+  //
+  // AAP 2017 reads a child's BP against their own age/sex/HEIGHT percentile — the app
+  // already computes that (lib/bp-percentiles → the pediatric card on the biomarker
+  // page). The curated BP entries carry only the ADULT 90–120 / 60–80 interval and no
+  // `ranges_by_age`, so a toddler's entirely normal 54 mmHg diastolic fell below 60 and
+  // was stored `low`: a red chip on the passport, the readings table and the timeline's
+  // "1 out of range", three cards below a header saying "82nd percentile · Normal for
+  // age". Every real write path reconciles (document import, manual entry, Health
+  // Connect ingest, the demographics-change re-reconcile), so a CCD import of a
+  // pediatric visit produced it for real.
+  //
+  // The ruling belongs in the pure core, not in a seed exclusion: judging is DECLINED
+  // for a BP component under PEDIATRIC_BP_MAX_AGE, and the percentile card — which has
+  // the height the AAP table needs, and which this module does not — is the surface that
+  // answers. A stored high/low/non-optimal-* on such a row is our own adult-band claim,
+  // so it is CLEARED rather than left to outlive the judgement that made it; a
+  // qualitative verdict (`abnormal` above, `immune`) is never ours and is untouched.
+  //
+  // WHY IT SITS **HERE**, BELOW THE TWO DECLINE GATES, AND NOT AT THE TOP. Clearing the
+  // flag is licensed by OWNERSHIP — migration 176's argument: the reconcile may retire a
+  // flag it would itself have written, because it overrides the source's. Both gates
+  // above are the reconcile DECLINING to judge, and a flag surviving one of them is the
+  // SOURCE's, never ours:
+  //
+  //   • an unconvertible unit (a BP in kPa — used in parts of Europe and China — or a
+  //     device export spelling "torr") means we could not have derived the flag on that
+  //     row at any age, so a clinician-supplied `low` on a child's BP is not ours to
+  //     delete. Above the gate, the adult path returned `undefined` (the flag survives,
+  //     per the cda-lab-flags contract) while the child path returned `null` and erased
+  //     it — the two paths disagreeing about a flag neither of them wrote.
+  //   • a probable unit mislabel (#761) is the same stance for the same reason.
+  //
+  // Below them, `v` is a value we CAN judge, so the adult-band flag on the row really is
+  // the one this function would have written, and retiring it is the claim it was.
+  //
+  // Unknown age keeps the adult regime (isAdultBpRegime), so nothing changes for a
+  // profile with no birthdate — and an age is always taken ON the record's collection
+  // date, so a childhood reading does not re-flag when the person turns 13.
+  if (bpComponentFor(cb.name) && !isAdultBpRegime(age)) {
+    return isOutOfRange(f) || isNonOptimal(f) ? null : undefined;
+  }
 
   const rr = referenceRange(cb, sex, age, status, cyclePhase);
   const ref = referenceStatus(v, rr.low, rr.high);
@@ -334,7 +378,7 @@ export function reconciledFlag(
   // Nothing of OURS judges this value. Last resort (#2799): the row's own printed
   // range — the lab's band for this draw, in its own register. Ordered after the
   // optimal band on purpose: where we publish a band, ours is the one on screen.
-  const stated = labStatedFlag(reference, valueNum, opts);
+  const stated = labStatedFlag(reference, valueNum, cb.direction, opts);
   if (stated) return f === stated ? undefined : stated;
   // A lab-stated flag that nothing states any more (the value was corrected, or the
   // printed range changed on re-import) is ours to retire — this pass is the only
@@ -344,15 +388,66 @@ export function reconciledFlag(
   return undefined;
 }
 
+// ---------------------------------------------------------------------------
+// THE TIER MEMBERSHIP LISTS — one per tier, and the ONLY place the tokens are
+// enumerated. Every predicate below reads its own list, and every SQL `flag IN (…)`
+// spells its list through `flagInSql`, so a predicate and a query cannot disagree
+// about which flags are in a tier.
+//
+// They were three independent spellings before #2799 — the TS predicates,
+// `rangeFilterClause`, and lib/timeline's grouped counts — and adding two flag values
+// updated two of the three: the timeline kept counting `LIKE 'non-optimal%'`, so the
+// reading #2799 is about still drew no marker on the one surface the issue names by
+// name. One list per tier is what makes that class of miss impossible rather than
+// caught. `lib/__db_tests__/lab-stated-and-pediatric-bp-flags.test.ts` holds every
+// spelling against these.
+// ---------------------------------------------------------------------------
+
+// Out of range (clinical, red/"bad"): a lab put the value outside its standard
+// reference range in either direction, or called it qualitatively abnormal.
+export const OUT_OF_RANGE_FLAGS = ["high", "low", "abnormal"] as const;
+
+// Non-optimal (amber/"warn"): inside the reference range but outside our tighter
+// optimal band. "non-optimal" is the legacy directionless value older rows carry.
+export const NON_OPTIMAL_FLAGS = [
+  "non-optimal",
+  "non-optimal-high",
+  "non-optimal-low",
+] as const;
+
+// Lab-stated (amber/"warn", #2799): outside the range the SOURCE printed, for an
+// analyte we publish no band for. Never an allos band — see isOutOfRange.
+export const LAB_STATED_FLAGS = ["reported-high", "reported-low"] as const;
+
+// Everything carrying a concern marker. NOT a tier of its own — the union of the
+// three above, and the set isNotableFlag answers for.
+export const NOTABLE_FLAGS = [
+  ...OUT_OF_RANGE_FLAGS,
+  ...NON_OPTIMAL_FLAGS,
+  ...LAB_STATED_FLAGS,
+] as const;
+
+/**
+ * A SQL `flag IN ('a','b')` predicate over one of the lists above.
+ *
+ * Safe to inline: every member is a fixed app-controlled token, never user input, and
+ * the lists are `as const` so nothing else can reach them. Callers interpolate the
+ * result into a statement text; the profile-scoping source scan follows interpolated
+ * fragments, and this one contains no binding of its own.
+ */
+export function flagInSql(flags: readonly string[]): string {
+  return `flag IN (${flags.map((f) => `'${f}'`).join(",")})`;
+}
+
+function inTier(tier: readonly string[], flag: string | null | undefined) {
+  return flag != null && tier.includes(flag);
+}
+
 // Any of the non-optimal flag variants (directionless legacy + directional).
 // The stored flag drives both the amber color and the arrow, so display code
 // checks this rather than a bare string equality.
 export function isNonOptimal(flag: string | null | undefined): boolean {
-  return (
-    flag === "non-optimal" ||
-    flag === "non-optimal-high" ||
-    flag === "non-optimal-low"
-  );
+  return inTier(NON_OPTIMAL_FLAGS, flag);
 }
 
 // ---------------------------------------------------------------------------
@@ -370,7 +465,7 @@ export function isNonOptimal(flag: string | null | undefined): boolean {
 // is the red/"bad" tier — distinct from isNonOptimal, which is inside the
 // reference range but outside our tighter optimal band (amber/"warn").
 export function isOutOfRange(flag: string | null | undefined): boolean {
-  return flag === "high" || flag === "low" || flag === "abnormal";
+  return inTier(OUT_OF_RANGE_FLAGS, flag);
 }
 
 // Whether a flag reads as "Normal" — null/empty or any value the label/tone layer
@@ -395,7 +490,7 @@ export function isNormalFlag(flag: string | null | undefined): boolean {
 // and it is unchanged. Route notability decisions through here rather than re-deriving
 // the union, so a future flag value cannot be miscategorized by omission.
 export function isNotableFlag(flag: string | null | undefined): boolean {
-  return isOutOfRange(flag) || isNonOptimal(flag) || isLabStated(flag);
+  return inTier(NOTABLE_FLAGS, flag);
 }
 
 // The shared color tier for a flag. Out-of-range takes precedence over

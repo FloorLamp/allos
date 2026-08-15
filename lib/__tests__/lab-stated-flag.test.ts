@@ -63,25 +63,58 @@ const FRAME_UNSTATED = { frameUnstated: true };
 
 describe("labStatedFlag — the pure decision", () => {
   it("judges the value against the printed range, as printed", () => {
-    expect(labStatedFlag("<30", 44)).toBe("reported-high");
-    expect(labStatedFlag("<30", 29)).toBeNull();
-    expect(labStatedFlag("<30", 30)).toBeNull(); // the bound itself is inside
-    expect(labStatedFlag("0.5-13.8 ng/mL", 0.2)).toBe("reported-low");
-    expect(labStatedFlag("0.5-13.8 ng/mL", 14)).toBe("reported-high");
-    expect(labStatedFlag(">40", 12)).toBe("reported-low");
+    expect(labStatedFlag("<30", 44, "in_range")).toBe("reported-high");
+    expect(labStatedFlag("<30", 29, "in_range")).toBeNull();
+    expect(labStatedFlag("<30", 30, "in_range")).toBeNull(); // the bound is inside
+    expect(labStatedFlag("0.5-13.8 ng/mL", 0.2, "in_range")).toBe(
+      "reported-low"
+    );
+    expect(labStatedFlag("0.5-13.8 ng/mL", 14, "in_range")).toBe(
+      "reported-high"
+    );
+    expect(labStatedFlag(">40", 12, "in_range")).toBe("reported-low");
   });
 
   it("says nothing when there is nothing to say", () => {
-    expect(labStatedFlag(null, 44)).toBeNull();
-    expect(labStatedFlag("", 44)).toBeNull();
-    expect(labStatedFlag("NEGATIVE", 44)).toBeNull(); // unparseable
-    expect(labStatedFlag("<30", null)).toBeNull();
-    expect(labStatedFlag("<30", Number.NaN)).toBeNull();
+    expect(labStatedFlag(null, 44, "in_range")).toBeNull();
+    expect(labStatedFlag("", 44, "in_range")).toBeNull();
+    expect(labStatedFlag("NEGATIVE", 44, "in_range")).toBeNull(); // unparseable
+    expect(labStatedFlag("<30", null, "in_range")).toBeNull();
+    expect(labStatedFlag("<30", Number.NaN, "in_range")).toBeNull();
+  });
+
+  // A PRINTED RANGE READ THROUGH THE ANALYTE'S DIRECTION. The predicted range on a
+  // pulmonary-function or fitness report is a floor to clear, not a box to sit in, and
+  // a healthy person beats it routinely. Flagging that is #544's "good result reads as
+  // needs-attention" through a new door — and all six of these are `category: vitals`,
+  // so each would reach the recent-changes digest.
+  it("never flags a higher-better analyte for beating its printed range", () => {
+    expect(labStatedFlag("3.1-4.2", 4.6, "higher_better")).toBeNull(); // FEV1 L
+    expect(labStatedFlag("4.0-5.4", 5.9, "higher_better")).toBeNull(); // FVC L
+    expect(labStatedFlag("480-620", 680, "higher_better")).toBeNull(); // Peak flow
+    expect(labStatedFlag("35-50", 58, "higher_better")).toBeNull(); // Grip kg
+    expect(labStatedFlag("14-19", 24, "higher_better")).toBeNull(); // Chair stand
+    expect(labStatedFlag("35-45", 58, "higher_better")).toBeNull(); // VO2 Max
+    // …while the direction that IS the concern still speaks.
+    expect(labStatedFlag("3.1-4.2", 2.0, "higher_better")).toBe("reported-low");
+    expect(labStatedFlag(">40", 12, "higher_better")).toBe("reported-low");
+  });
+
+  it("never flags a lower-better analyte for coming in under its printed range", () => {
+    expect(labStatedFlag("10-40", 4, "lower_better")).toBeNull();
+    expect(labStatedFlag("10-40", 55, "lower_better")).toBe("reported-high");
+    expect(labStatedFlag("<30", 44, "lower_better")).toBe("reported-high");
+  });
+
+  it("treats an absent direction as in_range, like optimalStatus does", () => {
+    expect(labStatedFlag("10-40", 55, null)).toBe("reported-high");
+    expect(labStatedFlag("10-40", 4, undefined)).toBe("reported-low");
   });
 
   it("is silent for a frame-unstated analyte (#2337)", () => {
-    expect(labStatedFlag("65-99", 120, FRAME_UNSTATED)).toBeNull();
-    expect(labStatedFlag("65-99", 120)).toBe("reported-high"); // without the guard
+    expect(labStatedFlag("65-99", 120, "in_range", FRAME_UNSTATED)).toBeNull();
+    // …without the guard the very same row WOULD flag.
+    expect(labStatedFlag("65-99", 120, "in_range")).toBe("reported-high");
   });
 });
 
@@ -124,6 +157,20 @@ describe("reconciledFlag emits the lab-stated flag in the unknown branch", () =>
     expect(reconciledFlag(null, 120, "u", banded, null, 40, null, "<300")).toBe(
       "high"
     );
+  });
+
+  it("does not flag a band-less higher-better vital that beats its printed range", () => {
+    // The end-to-end shape of the direction rule: a PFT's predicted range on an entry
+    // the catalog publishes no band for. Reported through reconciledFlag rather than
+    // labStatedFlag alone, because the digest reads the STORED flag.
+    const fev1 = entry("FEV1", { direction: "higher_better", unit: "L" });
+    expect(
+      reconciledFlag(null, 4.6, "L", fev1, null, 40, null, "3.1-4.2")
+    ).toBeUndefined();
+    // Below predicted is the direction that means something, and still speaks.
+    expect(
+      reconciledFlag(null, 2.0, "L", fev1, null, 40, null, "3.1-4.2")
+    ).toBe("reported-low");
   });
 
   it("yields to our own optimal band when the entry has one", () => {
