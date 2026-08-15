@@ -8,6 +8,7 @@ import {
   getCarePlanItems,
   linkedRowCountsForEncounters,
   episodesForEncounters,
+  episodesForAppointments,
 } from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { isCarePlanItemOpen } from "@/lib/care-plan-upcoming";
@@ -61,6 +62,7 @@ export default function VisitsSection({
   const multi = scope.viewIds.length > 1;
   const now = today(profileId);
   const appointments = getAppointments(profileId);
+  const appointmentEpisodes = episodesForAppointments(profileId);
   const encounters = stampSubjects(
     scope,
     readForProfiles(scope.viewIds, (pid) => getEncounters(pid))
@@ -153,6 +155,7 @@ export default function VisitsSection({
                   items={upcomingScheduled}
                   defaultDate={now}
                   carePlanItems={openCarePlanItems}
+                  episodes={appointmentEpisodes}
                 />
               )}
             </section>
@@ -170,6 +173,7 @@ export default function VisitsSection({
                     items={overdueScheduled}
                     defaultDate={now}
                     carePlanItems={openCarePlanItems}
+                    episodes={appointmentEpisodes}
                   />
                 </div>
               </details>
@@ -188,6 +192,7 @@ export default function VisitsSection({
                     items={settled}
                     defaultDate={now}
                     carePlanItems={openCarePlanItems}
+                    episodes={appointmentEpisodes}
                   />
                 </div>
               </details>

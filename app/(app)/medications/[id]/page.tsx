@@ -9,6 +9,7 @@ import {
   resolveMedicationAcrossProfiles,
   encounterForRecord,
   getConditions,
+  episodesForMedication,
 } from "@/lib/queries";
 import { encounterHref } from "@/lib/hrefs";
 import { formatRecordDate } from "@/lib/record-format";
@@ -36,6 +37,7 @@ import {
 } from "../med-data";
 import MedicationCard from "../MedicationCard";
 import { isOnDemand } from "@/lib/intake-schedule";
+import EpisodeLinks from "@/components/EpisodeLinks";
 
 export const dynamic = "force-dynamic";
 
@@ -162,6 +164,7 @@ export default async function MedicationDetailPage(props: {
   // this med's encounter_id. Since #1178 the medication IS the single prescription
   // entity, so its own encounter link is the sole source (no source_record_id chain).
   const prescribedAt = encounterForRecord(profileId, "medication", m.med.id);
+  const illnessEpisodes = episodesForMedication(profileId, m.med.id);
   // Conditions for the "For condition…" indication picker (#1052) on the edit form.
   const medConditions = getConditions(profileId).map((c) => ({
     id: c.id,
@@ -227,6 +230,12 @@ export default async function MedicationDetailPage(props: {
                 </Link>
               </p>
             ) : null}
+            <EpisodeLinks
+              episodes={illnessEpisodes}
+              label="Started during illness episode"
+              testId="medication-illness-episodes"
+              className="mb-4"
+            />
             <MedicationCard
               medication={m.med}
               doses={m.doses}

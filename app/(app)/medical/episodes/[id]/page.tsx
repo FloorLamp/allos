@@ -308,6 +308,7 @@ export default async function EpisodePage(props: {
         formatPrefs={formatPrefs}
         canEdit={canWrite}
         linkLatestMedication
+        linkConditions
         collapsePeakSymptoms
         eventProfileId={target}
         identity={

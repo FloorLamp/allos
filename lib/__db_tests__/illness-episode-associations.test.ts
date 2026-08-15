@@ -10,6 +10,12 @@ import { illnessCareTimelineEvents } from "@/lib/illness-timeline-view";
 import { episodeComparisonFor } from "@/lib/illness-episode-compare";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
+import {
+  episodesForAppointments,
+  episodesForDocument,
+  episodesForMedication,
+  episodesForPromotedConditions,
+} from "@/lib/queries";
 
 function newProfile(name: string): number {
   return Number(
@@ -100,6 +106,122 @@ describe("getEpisodeInRangeEvents (#856 items 7-8)", () => {
   it("returns nothing for a null (unknown-start) window", () => {
     const p = newProfile("null-window");
     expect(getEpisodeInRangeEvents(p, null, "2026-06-05").total).toBe(0);
+  });
+});
+
+describe("reverse episode associations (#856 items 7-8)", () => {
+  it("returns the same appointment, course, document, and promoted-condition links from their own surfaces", () => {
+    const p = newProfile("assoc-reverse");
+    const other = newProfile("assoc-reverse-other");
+    const episodeId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+           VALUES (?, 'Flu', '2026-06-01', '2026-06-05')`
+        )
+        .run(p).lastInsertRowid
+    );
+
+    const appointmentId = Number(
+      db
+        .prepare(
+          `INSERT INTO appointments (profile_id, date, title)
+           VALUES (?, '2026-06-03', 'Same-day visit')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, 'Oseltamivir', 1, 'medication', 'daily', 'should')`
+        )
+        .run(p).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on)
+       VALUES (?, '2026-06-02')`
+    ).run(itemId);
+    const documentId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, document_date)
+           VALUES (?, 'flu-summary.pdf', '/x', '2026-06-04')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const conditionId = Number(
+      db
+        .prepare(
+          `INSERT INTO conditions
+             (profile_id, name, status, source, external_id)
+           VALUES (?, 'Flu', 'resolved', 'episode', ?)`
+        )
+        .run(p, `illness-episode:${episodeId}`).lastInsertRowid
+    );
+
+    // Same dates under another profile must never leak into these readers.
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+       VALUES (?, 'Other illness', '2026-06-01', '2026-06-05')`
+    ).run(other);
+
+    expect(episodesForAppointments(p)[appointmentId]?.map((e) => e.id)).toEqual(
+      [episodeId]
+    );
+    expect(episodesForMedication(p, itemId).map((e) => e.id)).toEqual([
+      episodeId,
+    ]);
+    expect(episodesForDocument(p, documentId).map((e) => e.id)).toEqual([
+      episodeId,
+    ]);
+    expect(
+      episodesForPromotedConditions(p)[conditionId]?.map((e) => e.id)
+    ).toEqual([episodeId]);
+    expect(episodesForAppointments(other)[appointmentId]).toBeUndefined();
+    expect(episodesForMedication(other, itemId)).toEqual([]);
+    expect(episodesForDocument(other, documentId)).toEqual([]);
+    expect(episodesForPromotedConditions(other)[conditionId]).toBeUndefined();
+  });
+
+  it("matches the detail window for unknown starts and open episodes", () => {
+    const p = newProfile("assoc-window-rules");
+    const asOf = today(p);
+    const tomorrow = shiftDateStr(asOf, 1);
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+       VALUES (?, 'Unknown start', NULL, ?)`
+    ).run(p, asOf);
+    const openId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+           VALUES (?, 'Current illness', ?, NULL)`
+        )
+        .run(p, asOf).lastInsertRowid
+    );
+    const todayAppointment = Number(
+      db
+        .prepare(
+          `INSERT INTO appointments (profile_id, date, title)
+           VALUES (?, ?, 'Today')`
+        )
+        .run(p, asOf).lastInsertRowid
+    );
+    const futureAppointment = Number(
+      db
+        .prepare(
+          `INSERT INTO appointments (profile_id, date, title)
+           VALUES (?, ?, 'Tomorrow')`
+        )
+        .run(p, tomorrow).lastInsertRowid
+    );
+
+    const links = episodesForAppointments(p);
+    expect(links[todayAppointment]?.map((e) => e.id)).toEqual([openId]);
+    expect(links[futureAppointment]).toBeUndefined();
   });
 });
 

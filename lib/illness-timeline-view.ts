@@ -4,7 +4,7 @@
 
 import type { AppointmentStatus } from "./types";
 import type { AppRoute } from "./hrefs";
-import { encounterHref, medicationHref } from "./hrefs";
+import { encounterHref, importHref, medicationHref } from "./hrefs";
 import type { IllnessTimelineEvent } from "./illness-episode-format";
 import type { EpisodeInRangeEvents } from "./illness-episode-events";
 
@@ -230,6 +230,7 @@ export function illnessCareTimelineEvents(
       time24: null,
       label: event.docType || "Document",
       detail: event.filename,
+      href: importHref(event.id),
     })),
   ];
 }

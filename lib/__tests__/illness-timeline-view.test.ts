@@ -104,6 +104,7 @@ describe("authenticated illness timeline composition", () => {
         kind: "document",
         date: "2026-07-17",
         label: "Lab results",
+        href: "/import/10",
       },
     ]);
   });

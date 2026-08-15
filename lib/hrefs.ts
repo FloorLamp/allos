@@ -73,6 +73,7 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 // The standalone Medications page (#746) — medications left the old combined
 // intake surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
+export const RECORDS_CONDITIONS_HREF: AppRoute = "/records/problems/conditions";
 
 // The annual retrospective (#2179). A QUERY-RULE helper: the year lives in `?year=`,
 // the newest year is the bare path (a link with no year means "the latest one"), and
