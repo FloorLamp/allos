@@ -639,14 +639,20 @@ const ENTRIES: NutrientFoodEntry[] = [
           "Sunflower and safflower oils and dark greens add alpha-tocopherol.",
         foodDrugKeys: ["vitamin-k-warfarin"],
       },
+      {
+        food: "Olive oil, olives, and avocado",
+        foodGroup: "olive_oil_avocado",
+        serving:
+          "Olive oil and avocado carry alpha-tocopherol along with their unsaturated fat.",
+      },
     ],
     evidence:
       "Vitamin E (alpha-tocopherol) is concentrated in nuts, seeds, and vegetable oils, with smaller amounts in leafy greens.",
     source: "NIH ODS Vitamin E fact sheet",
     contraindications: [],
     allergyAlternative: {
-      food: "Vegetable oils, leafy greens, avocado, and fortified cereals",
-      foodGroup: "leafy_greens",
+      food: "Olive oil, avocado, leafy greens, and fortified cereals",
+      foodGroup: "olive_oil_avocado",
       serving: "Covers vitamin E without nuts or seeds for a nut/seed allergy.",
     },
     caveat:
@@ -849,7 +855,7 @@ const REDUCE_ENTRIES: ReduceFoodEntry[] = [
         food: "Processed and fatty red meats",
         foodGroup: "processed_meat",
         serving:
-          "Swapping processed and fatty red meat for fish, poultry, or legumes reduces the saturated fat driving LDL up.",
+          "Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up.",
       },
     ],
     evidence:

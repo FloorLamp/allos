@@ -2599,6 +2599,7 @@ for (let d = 55; d >= 0; d--) {
   if (d % 7 === 1 || d % 7 === 4) logFood(date, "fatty_fish", 1, "12:45:00"); // midday
   if (d % 5 === 0) logFood(date, "red_meat", 1, "19:00:00"); // evening
   if (d % 4 === 0) logFood(date, "nuts_seeds", 1, "15:30:00"); // midday/afternoon
+  if (d % 3 === 1) logFood(date, "olive_oil_avocado", 1, "12:35:00"); // midday
   if (d % 6 === 2) logFood(date, "alcohol", 2, "20:30:00"); // evening
   if (d % 6 === 4) logFood(date, "added_sugar", 1, "21:00:00"); // evening
 }
