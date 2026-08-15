@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import PageContainer from "@/components/PageContainer";
 import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
@@ -53,8 +54,6 @@ export default async function TrainingPage(props: {
   // ?tab=goals from the dashboard widget, …) lands exactly where it always did.
   const activeSection: React.ReactNode = (() => {
     switch (activeTab) {
-      case "overview":
-        return <OverviewSection />;
       case "analyze":
         return (
           <AnalyzeSection
@@ -66,11 +65,13 @@ export default async function TrainingPage(props: {
             lane={one(searchParams?.lane)}
           />
         );
+      case "log":
+        return <HistorySection initialCreateDate={initialCreateDate} />;
       case "plan":
         return <PlanSection />;
-      case "log":
+      case "overview":
       default:
-        return <HistorySection initialCreateDate={initialCreateDate} />;
+        return <OverviewSection />;
     }
   })();
 
@@ -93,7 +94,13 @@ export default async function TrainingPage(props: {
         </Link>
       }
     >
-      {activeSection}
+      {/* Width cap (#2893): training content stopped only at the shell's 3xl
+          (~1760px) cap — Analyze and Log lines ran edge to edge on ordinary
+          monitors. PageContainer owns width policy; "wide" (72rem) fits every
+          tab's densest layout (Analyze's chart + 28rem aside). */}
+      <PageContainer width="wide" className="mx-auto">
+        {activeSection}
+      </PageContainer>
     </TabFirstPage>
   );
 }

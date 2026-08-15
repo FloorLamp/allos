@@ -43,12 +43,12 @@ describe("parseTrainingTab", () => {
     expect(parseTrainingTab("goals")).toBe("plan");
   });
 
-  it("falls back to Log for an unknown, empty, or missing value", () => {
-    expect(DEFAULT_TRAINING_TAB).toBe("log");
-    expect(parseTrainingTab(undefined)).toBe("log");
-    expect(parseTrainingTab("")).toBe("log");
-    expect(parseTrainingTab("   ")).toBe("log");
-    expect(parseTrainingTab("strength")).toBe("log");
+  it("falls back to Overview for an unknown, empty, or missing value (#2893)", () => {
+    expect(DEFAULT_TRAINING_TAB).toBe("overview");
+    expect(parseTrainingTab(undefined)).toBe("overview");
+    expect(parseTrainingTab("")).toBe("overview");
+    expect(parseTrainingTab("   ")).toBe("overview");
+    expect(parseTrainingTab("strength")).toBe("overview");
   });
 
   it("trims and takes the FIRST value of a repeated param", () => {
@@ -62,14 +62,14 @@ describe("trainingTabStrip", () => {
     const strip = trainingTabStrip();
     expect(strip.map((t) => t.id)).toEqual([...TRAINING_TABS]);
     expect(strip.map((t) => t.label)).toEqual([
-      "Log",
       "Overview",
+      "Log",
       "Analyze",
       "Plan",
     ]);
   });
 
-  it("leads with the default tab (Log is the Training Log)", () => {
+  it("leads with the default tab (Overview since #2893)", () => {
     expect(trainingTabStrip()[0]?.id).toBe(DEFAULT_TRAINING_TAB);
   });
 });
