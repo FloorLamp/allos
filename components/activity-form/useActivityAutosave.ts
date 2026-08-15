@@ -10,6 +10,7 @@ import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { isStaleActionError } from "@/lib/sw-update";
 import { reportStaleBuild } from "@/components/update-reload-channel";
+import { isRetriableSaveError, saveFailureEvent } from "@/lib/sw-update";
 import { useLatestRef } from "@/components/useLatestRef";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a
@@ -27,6 +28,12 @@ import { useLatestRef } from "@/components/useLatestRef";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+// Bounded self-retry for network-shaped save failures (#2866): enough spread to
+// outlast a container swap (5s/15s/45s ≈ a 65s window), capped so a genuinely
+// down server never turns the form into a retry storm. The stale-action path is
+// exempt by construction — it is never retriable, only reloadable.
+export const SAVE_RETRY_BACKOFF_MS = [5_000, 15_000, 45_000] as const;
+
 export interface ActivityAutosave {
   status: SaveStatus;
   savedAt: number;
@@ -35,6 +42,11 @@ export interface ActivityAutosave {
   // succeeded since. Retrying cannot help — only a reload can — so the form
   // renders an explicit banner off this instead of the bare error glyph.
   staleBuild: boolean;
+  // A retriable-failure episode is live (#2866): the bounded backoff is
+  // re-attempting network-shaped failures on its own, and the form should say
+  // "Not saving right now — your entries are kept on this device" instead of a
+  // bare triangle. The local draft (#1699) is what makes that sentence true.
+  retryingSave: boolean;
   createdId: number | null;
   // The row a save targets: the edited row, else the auto-created one (read
   // synchronously off the ref so a trailing save UPDATEs rather than re-inserts).
@@ -125,6 +137,33 @@ export function useActivityAutosave({
     };
   }, []);
 
+  // A retriable-failure EPISODE is live (#2866): saves are dying on the shapes a
+  // mid-deploy swap window produces (502 HTML → "unexpected response", or a
+  // connection TypeError), the bounded backoff below is re-attempting on its
+  // own, and the form owes the user the true sentence — "Not saving right now,
+  // your entries are kept on this device" — not a bare triangle. Cleared by the
+  // first success, by a stale verdict (the reload banner takes over), or by an
+  // ordinary rejection (whose honest error rendering stands).
+  const [retryingSave, setRetryingSave] = useState(false);
+  const retryAttemptRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const episodeLoggedRef = useRef(false);
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current != null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+  const endRetryEpisode = useCallback(() => {
+    clearRetryTimer();
+    retryAttemptRef.current = 0;
+    episodeLoggedRef.current = false;
+    if (mountedRef.current) setRetryingSave(false);
+  }, [clearRetryTimer]);
+
+  // A scheduled retry must not outlive the form.
+  useEffect(() => clearRetryTimer, [clearRetryTimer]);
+
   // `queueOnOffline` marks a CLOSE-path persist (flushBeforeClose / the unmount
   // flush): when that final save dies on a dead connection and the session never
   // got a server row, the whole form is captured into the offline queue instead of
@@ -158,6 +197,7 @@ export function useActivityAutosave({
         savedSigRef.current = sigAtSave;
         if (mountedRef.current) setSavedSig(sigAtSave);
         saved = true;
+        endRetryEpisode();
         if (mountedRef.current) {
           setStatus("saved");
           setSavedAt(Date.now());
@@ -206,6 +246,37 @@ export function useActivityAutosave({
         // anything — and without waiting for the `/api/version` detector, which this
         // signal is deliberately independent of.
         if (stale) reportStaleBuild();
+        // A network-shaped failure is retriable IN PLACE (#2866) — the mid-deploy
+        // swap window answers 502 HTML ("unexpected response") or a connection
+        // TypeError, and before this, recovery waited on the next KEYSTROKE: each
+        // in-window retry failed the same unclassified way and the sticky error
+        // rendered a bare triangle through the rest of the workout. Bounded and
+        // backed off; the first attempt the new server answers either succeeds or
+        // returns the real stale signature, and the paths above take over. One
+        // structured event per episode names the leg for the next report.
+        const retriable = !stale && isRetriableSaveError(err);
+        if (retriable) {
+          if (!episodeLoggedRef.current) {
+            episodeLoggedRef.current = true;
+            console.warn("activity-autosave-retriable", saveFailureEvent(err));
+          }
+          if (mountedRef.current) {
+            setRetryingSave(true);
+            const attempt = retryAttemptRef.current;
+            if (attempt < SAVE_RETRY_BACKOFF_MS.length) {
+              retryAttemptRef.current = attempt + 1;
+              clearRetryTimer();
+              retryTimerRef.current = setTimeout(() => {
+                retryTimerRef.current = null;
+                void persistLatest();
+              }, SAVE_RETRY_BACKOFF_MS[attempt]);
+            }
+          }
+        } else {
+          // An ordinary rejection or the stale signature: whatever retry episode
+          // was running is over — those states own their own rendering.
+          endRetryEpisode();
+        }
         if (mountedRef.current) {
           if (stale) setStaleBuild(true);
           setStatus("error");
@@ -231,6 +302,8 @@ export function useActivityAutosave({
     [
       buildFormDataRef,
       canSave,
+      clearRetryTimer,
+      endRetryEpisode,
       formSig,
       onQueueOfflineRef,
       persistLatest,
@@ -302,6 +375,7 @@ export function useActivityAutosave({
     status,
     savedAt,
     staleBuild,
+    retryingSave,
     createdId,
     savableId,
     hasRow,
