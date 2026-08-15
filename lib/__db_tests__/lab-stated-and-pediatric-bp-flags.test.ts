@@ -19,7 +19,14 @@ import {
   getCurrentFlaggedBiomarkers,
   reconcileFlags,
 } from "@/lib/queries";
-import { flagLabel, flagTone, isOutOfRange } from "@/lib/reference-range";
+import { rangeFilterClause } from "@/lib/queries/medical";
+import {
+  flagLabel,
+  flagTone,
+  isNotableFlag,
+  isOutOfRange,
+} from "@/lib/reference-range";
+import type { MedicalFlag } from "@/lib/types";
 
 const DRAW = "2026-02-17";
 // The adult subject was born far enough back that every DRAW-dated reading is judged in
@@ -316,5 +323,58 @@ describe("pediatric blood pressure defers to the AAP percentile (#2794)", () => 
 
   it("still judges an ADULT's blood pressure against the adult band", () => {
     expect(flagOf(ids.adultDiastolic)).toBe("low");
+  });
+});
+
+// The SQL row filters and the TS predicates are two spellings of ONE partition, and a
+// flag value in only one of them is a row some surface colours while another hides it.
+// #2799 is exactly when that drifts: two new flag values, added to the predicates and to
+// the broad SQL tier but deliberately NOT to the "out of range" one.
+describe("rangeFilterClause parity with the flag predicates", () => {
+  // The literals a `flag IN (...)` clause admits.
+  function admitted(clause: string | null): Set<string> {
+    if (!clause) return new Set();
+    return new Set([...clause.matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  }
+
+  const ALL_FLAGS: MedicalFlag[] = [
+    "normal",
+    "high",
+    "low",
+    "abnormal",
+    "immune",
+    "non-optimal",
+    "non-optimal-high",
+    "non-optimal-low",
+    "reported-high",
+    "reported-low",
+  ];
+
+  it("'oor' admits exactly the isOutOfRange flags", () => {
+    expect([...admitted(rangeFilterClause("oor"))].sort()).toEqual(
+      ALL_FLAGS.filter(isOutOfRange).sort()
+    );
+  });
+
+  it("'nonoptimal' admits exactly the isNotableFlag flags", () => {
+    expect([...admitted(rangeFilterClause("nonoptimal"))].sort()).toEqual(
+      ALL_FLAGS.filter(isNotableFlag).sort()
+    );
+  });
+
+  it("keeps the lab-stated flags OUT of 'out of range' and IN the broad tier", () => {
+    // "Out of range only" must keep meaning OUR clinical verdict. The broad filter is
+    // the one a person uses to see what needs a look — and it feeds the passport's
+    // flagged-vitals list — so the reading this issue is about has to be in it.
+    const oor = admitted(rangeFilterClause("oor"));
+    const notable = admitted(rangeFilterClause("nonoptimal"));
+    for (const f of ["reported-high", "reported-low"]) {
+      expect(oor.has(f)).toBe(false);
+      expect(notable.has(f)).toBe(true);
+    }
+  });
+
+  it("'All' adds no clause", () => {
+    expect(rangeFilterClause(undefined)).toBeNull();
   });
 });

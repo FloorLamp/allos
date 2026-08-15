@@ -50,15 +50,39 @@ export type ClinicalObservationSortColumn = "name" | "panel" | "date";
 export type SortDirection = "asc" | "desc";
 
 // Flag-based row filter: "oor" = out of the lab reference range (high/low/
-// abnormal); "nonoptimal" = that plus rows flagged non-optimal (a superset).
+// abnormal); "nonoptimal" = every flag carrying a concern marker (a superset).
 export type RangeFilter = "oor" | "nonoptimal";
+
+// The SQL spelling of the two flag tiers, kept beside each other so the pair reads as
+// one decision. `NOTABLE_FLAGS` is the SQL twin of isNotableFlag — the same union, in
+// the same order as the predicate's clauses — and the parity test in
+// lib/__tests__/flag-classification.test.ts holds the two in sync, because a flag value
+// that lands in one and not the other is a row a surface colours but the filter hides.
+//
+// #2799's `reported-*` join the BROAD tier, never the "out of range" one: the whole
+// point is that the lab's printed range is not our range, so "Out of range only" must
+// keep meaning our own clinical verdict. But a user filtering the readings table down to
+// what needs a look — the same read the passport's flagged-vitals list uses — must see
+// the microalbumin the app has just started marking, or the filter would hide exactly
+// the reading the issue is about.
+const OUT_OF_RANGE_FLAGS = ["high", "low", "abnormal"] as const;
+const NOTABLE_FLAGS = [
+  ...OUT_OF_RANGE_FLAGS,
+  "non-optimal",
+  "non-optimal-high",
+  "non-optimal-low",
+  "reported-high",
+  "reported-low",
+] as const;
+
+const inFlags = (flags: readonly string[]): string =>
+  `flag IN (${flags.map((f) => `'${f}'`).join(",")})`;
 
 // SQL predicate for a RangeFilter, or null for "All". Flag literals are fixed,
 // so this is safe to inline.
 export function rangeFilterClause(range?: RangeFilter): string | null {
-  if (range === "oor") return "flag IN ('high','low','abnormal')";
-  if (range === "nonoptimal")
-    return "flag IN ('high','low','abnormal','non-optimal','non-optimal-high','non-optimal-low')";
+  if (range === "oor") return inFlags(OUT_OF_RANGE_FLAGS);
+  if (range === "nonoptimal") return inFlags(NOTABLE_FLAGS);
   return null;
 }
 
