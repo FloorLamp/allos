@@ -70,6 +70,14 @@ authoritative over your own memory of the session.
 - `needs-human` items: apply the label + assign the owner the same day a
   question is flagged, then WORK ELSEWHERE. Never prompt the owner uninvited;
   the needs-human skill drains that queue when the owner shows up.
+- `design` issues split on one test: does the body RECORD the decision, or
+  still CONTAIN the question? A recorded owner decision (#2701's dated
+  Decision section + acceptance criteria) or a direction with falsifiers
+  (#2641's "what would show it working / wrong") dispatches like any P2; an
+  issue still carrying the design question is owner-gated, and an agent never
+  explores it — IA, navigation and tone judgments are owner territory
+  (`lifecycle.md` §Out of scope), and `docs/internals/design-doctrine.md` is
+  applied by agents, amended only by the owner.
 - Sweep the open queue about every four hours for new filings, label drift,
   and comment rulings (`docs/orchestration/lifecycle.md` owns the cadence).
 

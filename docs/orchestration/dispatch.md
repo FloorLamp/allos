@@ -26,6 +26,9 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   Agent-tool runs. Adopt any unrecorded live dispatch immediately.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced.
+- A `design` issue is dispatchable only when its body records the owner
+  decision (the #2701 shape) or a direction with stated falsifiers (#2641).
+  One still carrying the design question is owner-gated; agents never explore.
 - Older issues start with an audit table: resolved by what, or still open.
 - Cap E2E work at two agents and ordinary concurrent work near four agents.
 - Every brief uses the generated template and the gate order from
