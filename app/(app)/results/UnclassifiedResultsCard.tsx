@@ -38,7 +38,7 @@ export default function UnclassifiedResultsCard({
       <h2 className="text-lg font-semibold">Choose a category</h2>
       <p className="mt-1 text-sm text-muted">
         These older results used a category that no longer exists. Choose what
-        each result is; Allos won&apos;t guess.
+        each result is; Allos won’t guess.
       </p>
       <div className="mt-4 divide-y divide-black/5 dark:divide-white/10">
         {visible.map((row) => (
