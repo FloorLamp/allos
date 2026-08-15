@@ -63,8 +63,16 @@ test("'Log this session' pre-fills the activity form in live mode (#740)", async
   // blocked-close prompt appears; answering it abandons the empty row and
   // returns to the hub.
   await page.waitForURL(/\/training\/activity\/\d+$/);
-  await page.keyboard.press("Escape");
-  const closeAnyway = page
+  await closeLiveEditor(page);
+  await cleanUpClosedSession(page);
+});
+
+// Close the open live editor through its header button — Escape can be
+// swallowed by whichever input holds focus — and answer the blocked-close
+// prompt when the unsavable slate raises one.
+async function closeLiveEditor(p: Page) {
+  await p.getByRole("button", { name: "Close", exact: true }).click();
+  const closeAnyway = p
     .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Close anyway" });
   await closeAnyway.waitFor({ state: "visible", timeout: 3000 }).catch(() => {
@@ -72,9 +80,8 @@ test("'Log this session' pre-fills the activity form in live mode (#740)", async
   });
   if (await closeAnyway.isVisible().catch(() => false))
     await closeAnyway.click();
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
-  await cleanUpClosedSession(page);
-});
+  await expect(p.getByTestId("activity-form")).toHaveCount(0);
+}
 
 // After closing a live session, the row's fate is bimodal: an EMPTY session
 // abandons itself and redirects to the hub; one whose slate managed to save is
@@ -135,20 +142,7 @@ test("mid-session, 'Log this session' resumes instead of restarting (#1893)", as
 
   await page.getByTestId("workout-dock-open").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await page.keyboard.press("Escape");
-  // The routine slate's blank loads can't save, and the session owns a row
-  // (create-at-start), so closing prompts — answer it. Nothing persisted, so
-  // the close then ABANDONS the empty row (#2870 step 3) and returns to the
-  // hub: the fixture profile is left untouched with no manual delete.
-  const closeAnyway = page
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Close anyway" });
-  await closeAnyway.waitFor({ state: "visible", timeout: 3000 }).catch(() => {
-    /* already closed without a prompt — nothing unsaved */
-  });
-  if (await closeAnyway.isVisible().catch(() => false))
-    await closeAnyway.click();
+  await closeLiveEditor(page);
   await expect(dock).toHaveCount(0);
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
   await cleanUpClosedSession(page);
 });
