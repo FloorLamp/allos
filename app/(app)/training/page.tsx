@@ -1,12 +1,12 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { parseTrainingTab } from "@/lib/training-tabs";
+import { parseTrainingTab, RETIRED_FITNESS_TAB } from "@/lib/training-tabs";
 import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
-import FitnessCheckSection from "./FitnessCheckSection";
 import AnalyzeSection from "./AnalyzeSection";
 import PlanSection from "./PlanSection";
 import RestrictedActivityView from "./RestrictedActivityView";
@@ -16,7 +16,8 @@ import { today } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 // Combined training hub: the Training Log, the doing-first overview, per-activity
-// analysis, the fitness check, routines, and goals behind tabs.
+// analysis, and planning (routines + goals + targets) behind tabs. The fitness
+// check lives on its own route (#2894), reached from Overview's strip.
 export default async function TrainingPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
@@ -27,6 +28,13 @@ export default async function TrainingPage(props: {
   // stays gated — this branch swaps it for the sport/cardio log.
   const { profile } = await requireSession();
   if (isTrainingRestricted(profile.id)) return <RestrictedActivityView />;
+
+  // The retired fitness tab (#2894) redirects to the battery's route — an
+  // explicit mapping, not the unknown-tab fallback, because these links live on
+  // in longevity bookmarks and Telegram history and mean the battery, not
+  // whatever tab happens to be default.
+  const rawTab = one(searchParams?.tab)?.trim();
+  if (rawTab === RETIRED_FITNESS_TAB) redirect("/training/fitness-check");
 
   const activeTab = parseTrainingTab(searchParams?.tab);
   const requestedDate = one(searchParams?.date);
@@ -58,8 +66,6 @@ export default async function TrainingPage(props: {
             lane={one(searchParams?.lane)}
           />
         );
-      case "fitness":
-        return <FitnessCheckSection />;
       case "plan":
         return <PlanSection />;
       case "log":

@@ -125,7 +125,7 @@ export default async function LongevityPage({
                 Add sleep data
               </Link>
               <Link
-                href="/training?tab=fitness"
+                href="/training/fitness-check"
                 className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
               >
                 <IconRun

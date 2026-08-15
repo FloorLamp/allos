@@ -21,7 +21,13 @@ import { today } from "@/lib/db";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatMinutes } from "@/lib/duration";
 import { frequencyScopeLabel } from "@/lib/frequency-targets";
-import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getDisplayFormatPrefs,
+  getFitnessRetestCadenceDays,
+} from "@/lib/settings";
+import { fitnessRetestDue } from "@/lib/fitness-retest";
+import { getLatestFitnessAssessmentDate } from "@/lib/fitness-assessment";
 import {
   coverageFromSets,
   coverageList,
@@ -126,6 +132,11 @@ export default async function OverviewSection() {
     rows: weekDays.rows,
   });
   const targets = getFrequencyTargetProgress(profile.id);
+  const fitnessDue = fitnessRetestDue(
+    getLatestFitnessAssessmentDate(profile.id),
+    getFitnessRetestCadenceDays(profile.id),
+    todayStr
+  );
   const strength = getStrengthByExercise(profile.id);
   // PRs read the LOAD-CONTEXT grouping (#1610) so no record blends two machines;
   // the card labels each row with its implement (#1610 forbids unlabeled splits).
@@ -555,6 +566,38 @@ export default async function OverviewSection() {
             </>
           )}
         </div>
+      </div>
+
+      {/* FITNESS CHECK STRIP (#2894): the battery's standing surface now that
+          its tab retired — one line, current-or-due, the route one tap behind.
+          The dueness read is the SAME trio the retest finding uses
+          (fitnessRetestDue over last date + cadence), so the strip and the
+          finding can never disagree. The per-test dot treatment is #2566 Viz 4;
+          this is the door it decorates. `id` catches old #fitness deep links. */}
+      <div
+        className="card flex flex-wrap items-center gap-x-4 gap-y-1 py-3"
+        id="fitness"
+        data-testid="fitness-check-strip"
+      >
+        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+          Fitness check
+        </h3>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {fitnessDue.lastDate == null
+            ? "Never run — a 10-minute baseline across strength, endurance, and balance."
+            : fitnessDue.due
+              ? `Last check ${formatRelativeDate(fitnessDue.lastDate, todayStr)} — due for a retest.`
+              : `Last check ${formatRelativeDate(fitnessDue.lastDate, todayStr)}.`}
+        </p>
+        <Link
+          href="/training/fitness-check"
+          data-testid="fitness-check-strip-link"
+          className="ml-auto text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
+          {fitnessDue.due || fitnessDue.lastDate == null
+            ? "Start a check →"
+            : "View →"}
+        </Link>
       </div>
 
       {/* 3. TRAINING WATCH — the observational training-balance findings (issue #45,
