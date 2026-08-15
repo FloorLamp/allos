@@ -10,7 +10,7 @@ import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 test("a cardio session shows its gear chip and preloads the equipment picker (#342)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   const card = page
     .locator('[id^="activity-"]')
@@ -55,7 +55,7 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
 test("a run offers shoes (not the bike) in the equipment picker (#339)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const card = page
     .locator('[id^="activity-"]')
@@ -90,7 +90,7 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    await page.goto("/training"); // default "Log" tab
+    await page.goto("/training?tab=log"); // default "Log" tab
 
     // Open a fresh create form (the seeded activity makes the Training Log — and its
     // "New activity" button — render instead of the empty state).
@@ -144,7 +144,7 @@ test("the strength picker creates and selects a travel machine without losing th
   const title = `${GEAR_PREFIX} session ${stamp}`;
   const gearName = `${GEAR_PREFIX} ${stamp}`;
 
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
   await page
     .getByTestId("training-log-actions")
     .getByRole("button", { name: "New activity" })
@@ -269,7 +269,7 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
   });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await page
       .getByRole("main")
       .getByRole("button", { name: "New activity" })

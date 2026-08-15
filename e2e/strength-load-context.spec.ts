@@ -88,13 +88,12 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
     await expect(homeSessions.locator("tbody tr")).toHaveCount(4);
     await expect(homeSessions).toContainText("86");
 
-    // The chosen machine survives a metric change — a control link must not throw
-    // the reader back onto the other stack.
-    await followLink(
-      page,
-      page.getByRole("link", { name: "Est. 1RM", exact: true }),
-      /metric=e1rm/
-    );
+    // The chosen machine survives a metric change — a control must not throw
+    // the reader back onto the other stack (the picker is a select since #2895).
+    await page.getByRole("combobox", { name: "Metric" }).selectOption({
+      label: "Est. 1RM",
+    });
+    await page.waitForURL(/metric=e1rm/);
     await expect(page).toHaveURL(/lane=/);
     await expect(
       page.getByRole("heading", {

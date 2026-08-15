@@ -20,7 +20,7 @@ test("exercise detail shows the bodyweight-band strength standard line (#152)", 
   // gone from it; /training owns the "do" surfaces. Analyze renders the SAME panel
   // with showLevel=false, because there the standing is the Benchmarks card the
   // second test drives — one standing per surface, never both.)
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const main = page.getByRole("main");
   // A COVERED core lift (a dataset barbell lift). The seeded Leg day card carries

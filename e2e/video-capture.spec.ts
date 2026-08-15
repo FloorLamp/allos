@@ -139,7 +139,7 @@ test("upload → poster grid → open player → Range serve → location warnin
   });
   try {
     const aid = activityId();
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
 
     // #1457: with no clips, the card carries NO form-check section at all — no
     // heading, no empty text, no button. It used to render on every writable
@@ -200,7 +200,7 @@ test("upload → poster grid → open player → Range serve → location warnin
 
     // …and now that a clip EXISTS, the card's strip appears — the presence rule's
     // other half. A fresh load also drops the editor.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     const strip = page.getByTestId(`activity-video-strip-${aid}`);
     await expect(strip).toBeVisible();
     // Read surface: playback and per-clip controls, but no add affordance here.
@@ -269,7 +269,7 @@ test("Form check appears mid-CREATE, as soon as autosave has made the row (#1524
     // form's WHOLE LIFE — so while first-time logging (the moment you'd want to
     // attach a form-check clip) it never appeared, and the only way in was to save,
     // close and reopen the activity.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await page
       .getByRole("main")
       .getByRole("button", { name: "New activity" })

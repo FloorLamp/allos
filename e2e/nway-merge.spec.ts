@@ -94,7 +94,7 @@ test.describe("N-way activity merge (#1081)", () => {
 
       // Only the chosen keeper survives on the feed; the other two are actually gone
       // (rollups count the session once).
-      await page.goto("/training");
+      await page.goto("/training?tab=log");
       await expect(page.getByText("NW review manual").first()).toBeVisible(); // first-ok: the chosen keeper after the merge THIS test performed on its own fixture profile — deterministic
       await expect(page.getByText("NW review strava")).toHaveCount(0);
       await expect(page.getByText("NW review hc")).toHaveCount(0);
@@ -189,7 +189,7 @@ test.describe("N-way activity merge (#1081)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/training"); // default "Log" tab renders the Training Log feed
+      await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
       const cardEl = page
         .locator('[id^="activity-"]')

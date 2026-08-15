@@ -57,7 +57,7 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
   await expect(fitness.getByTestId("longevity-pillar-vo2max")).toBeVisible();
   await expect(main.getByTestId("longevity-run-check")).toHaveAttribute(
     "href",
-    "/training?tab=fitness"
+    "/training/fitness-check"
   );
   // #1921 — the strength pillar names the lift it judges you on, so this section
   // links onward to THAT lift's evidence. The vo2max pillar beside it is expanded

@@ -143,7 +143,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     });
     test.slow(); // local next dev compiles the training route on first hit
 
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
 
     const surface = page.getByTestId("fitness-check");
     await expect(surface).toBeVisible();
@@ -231,7 +231,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     });
     test.slow();
 
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     // Open the plank tile → its modal discloses "rough guide only — no validated norms".
@@ -255,7 +255,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     test.slow();
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-grid")).toBeVisible();
     // No horizontal overflow, measured per element (#1543): the app shell clips
     // the overflow away, so comparing the document's width to the viewport's is
@@ -281,7 +281,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     });
     test.slow();
 
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     // Open the plank tile → its modal carries the large-timer launcher.
@@ -328,7 +328,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     });
     test.slow();
 
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     // Chair stand is a 30-second fixed-window test → the timer counts DOWN.
@@ -374,7 +374,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     });
     test.slow();
 
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     // Senior-variant items are present; the maximal adult items (push-ups, dead hang)
@@ -401,7 +401,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     test.slow();
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     // First save (grip) clears the overdue retest finding → the refresh toast.
@@ -449,7 +449,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     test.slow();
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     // Not complete yet — the finale is absent before the last test lands.
@@ -483,7 +483,7 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
       { reducedMotion: "reduce" }
     );
     test.slow();
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     await page.getByTestId("fitness-tile-grip").click();
@@ -516,7 +516,7 @@ test.describe("Fitness check honesty: freshness + domain rollup (#2025)", () => 
       password: E2E_MEMBER_PASSWORD,
     });
     test.slow();
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     // "has a current value" — not "has any value", which is what the old copy called
@@ -540,7 +540,7 @@ test.describe("Fitness check honesty: freshness + domain rollup (#2025)", () => 
       password: E2E_MEMBER_PASSWORD,
     });
     test.slow();
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-check")).toBeVisible();
 
     // The seeded synced VO2 gives the endurance domain a norms-backed result.
@@ -554,5 +554,15 @@ test.describe("Fitness check honesty: freshness + domain rollup (#2025)", () => 
     await expect(caption).toContainText("not");
 
     await page.close();
+  });
+
+  test("the retired ?tab=fitness deep link redirects to the route (#2894)", async ({
+    page,
+  }) => {
+    // Telegram history and old bookmarks can never be rewritten: the training
+    // page matches the retired tab name and redirects to the battery's route.
+    await page.goto("/training?tab=fitness");
+    await expect(page).toHaveURL(/\/training\/fitness-check/);
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
   });
 });

@@ -7,7 +7,7 @@ import { test, expect } from "./fixtures";
 test("merge two same-day activities from the Training Log, then Undo (#64)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   const keeperCard = page
     .locator('[id^="activity-"]')

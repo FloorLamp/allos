@@ -36,23 +36,24 @@ test("Overview leads with today's session, then the week, then the findings roll
 
   // On phones the six-tab navigation IS the page identity: the visible
   // Training title/subtitle leave the content flow and the one-row strip joins
-  // the auto-hiding app shell. Unlike the compact equal-column pages, six tabs
-  // scroll horizontally instead of becoming two tall rows.
+  // the auto-hiding app shell. Four tabs since #2892/#2894 — the strip keeps its
+  // scroll layout but now fits a phone row without overflowing.
   await expect(page.getByTestId("training-page-title")).toBeHidden();
   const shell = page.getByTestId("shell-chrome");
   const shellTabs = shell.getByTestId("shell-tab-strip");
   const tabs = shellTabs.getByTestId("training-tabs");
   await expect(tabs).toBeVisible();
   await expect(tabs).toHaveCSS("overflow-y", "hidden");
-  await expect(tabs.getByRole("tab")).toHaveCount(6);
+  await expect(tabs.getByRole("tab")).toHaveCount(4);
   await expect(tabs.getByRole("tab", { name: "Overview" })).toHaveAttribute(
     "aria-selected",
     "true"
   );
+  // The four-tab bar's win (#2893): no horizontal scroll left to do.
   const stripOverflow = await tabs.evaluate(
     (el) => el.scrollWidth > el.clientWidth
   );
-  expect(stripOverflow).toBe(true);
+  expect(stripOverflow).toBe(false);
 
   const today = page.getByTestId("training-today");
   await expect(today).toBeVisible();
@@ -91,9 +92,11 @@ test("Overview leads with today's session, then the week, then the findings roll
 test("a later deep-linked Training tab is brought into the visible tab row", async ({
   page,
 }) => {
+  // The retired goals deep link resolves to Plan (#2892) — the LAST tab, which
+  // is exactly what this scroll-into-view assertion needs.
   await page.goto("/training?tab=goals");
   const tabs = page.getByTestId("training-tabs");
-  const goals = tabs.getByRole("tab", { name: "Goals" });
+  const goals = tabs.getByRole("tab", { name: "Plan" });
   await expect(goals).toHaveAttribute("aria-selected", "true");
 
   await expect
@@ -119,11 +122,11 @@ test("the Training tabs fill the strip at 640px instead of clustering left", asy
 
   const tabs = page.getByTestId("shell-tab-strip").getByTestId("training-tabs");
   const items = tabs.getByRole("tab");
-  await expect(items).toHaveCount(6);
+  await expect(items).toHaveCount(4);
 
   const [stripBox, firstBox, lastBox] = await Promise.all([
     tabs.boundingBox(),
-    items.first().boundingBox(), // first-ok: the six-tab strip's first edge is the assertion
+    items.first().boundingBox(), // first-ok: the strip's first edge is the assertion
     items.last().boundingBox(),
   ]);
   expect(stripBox).not.toBeNull();
@@ -146,11 +149,11 @@ test("the desktop Training tabs remain a compact left-aligned strip", async ({
 
   const tabs = page.getByTestId("training-page").getByTestId("training-tabs");
   const items = tabs.getByRole("tab");
-  await expect(items).toHaveCount(6);
+  await expect(items).toHaveCount(4);
 
   const [stripBox, firstBox, lastBox] = await Promise.all([
     tabs.boundingBox(),
-    items.first().boundingBox(), // first-ok: the six-tab strip's first edge is the assertion
+    items.first().boundingBox(), // first-ok: the strip's first edge is the assertion
     items.last().boundingBox(),
   ]);
   expect(stripBox).not.toBeNull();
@@ -270,7 +273,7 @@ test("a tab renders only its own section (#105)", async ({ page }) => {
   await expect(page.getByTestId("training-today")).toHaveCount(0);
 
   // The default (paramless) tab is still the Training Log.
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await expect(page.getByTestId("training-today")).toHaveCount(0);
   await expect(page.getByTestId("analyze-section")).toHaveCount(0);
 });

@@ -68,7 +68,7 @@ test("the workout dock hydrates for an in-progress session, suppressed on the tr
     await expect(dock).toContainText(/\d+ min/);
 
     // The training route hosts the inline docked editor, so the bar is suppressed.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 
     // Back on the dashboard, tapping the bar reopens the live editor (the minimize
@@ -89,7 +89,7 @@ test("a live workout raises the dock, and discarding it removes the dock", async
 }) => {
   test.slow();
   // Start a live session on the admin profile (create-and-clean, repeat-safe).
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 
@@ -241,7 +241,7 @@ test.afterAll(() => {
 
 // Open the plain (non-live) create form on /training and title it.
 async function openNewActivity(page: Page, title: string) {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page
     .getByRole("main")
     .getByRole("button", { name: "New activity" })

@@ -27,7 +27,7 @@ async function pickActivity(page: Page, name: string) {
 // Start a live session, log one complete working set, and give it a unique title
 // so the created row is findable/cleanable. Leaves the live editor open.
 async function startLiveSession(page: Page, title: string) {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   await pickActivity(page, "Barbell Bench Press");
@@ -52,7 +52,7 @@ async function deleteOpenDraft(page: Page) {
 // Open the PLAIN (non-live) create form via "New activity", log one complete set,
 // and title it, so the plain-form Finish (#1124) can be exercised.
 async function startPlainSession(page: Page, title: string) {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page
     .getByRole("main")
     .getByRole("button", { name: "New activity" })

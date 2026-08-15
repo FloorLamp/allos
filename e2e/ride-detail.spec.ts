@@ -10,7 +10,7 @@ import {
 test("a Training Log ride opens a read-first detail with the stored ride measurements", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const stravaCard = page.locator(".card", {
     hasText: "Strava morning ride",
@@ -470,17 +470,17 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   );
   await expect(analyze.getByTestId("analyze-sessions")).toContainText("Power");
 
-  await followLink(
-    page,
-    analyze.getByRole("link", { name: "Power", exact: true }),
-    /metric=power/
-  );
+  // The metric/range pickers are compact selects since #2895; choosing an
+  // option navigates exactly as the old segmented links did.
+  await progression.getByRole("combobox", { name: "Metric" }).selectOption({
+    label: "Power",
+  });
+  await page.waitForURL(/metric=power/);
   await expect(analyze).toContainText("Avg power across logged rides");
-  await followLink(
-    page,
-    progression.getByRole("link", { name: "6m", exact: true }),
-    /range=6m/
-  );
+  await progression.getByRole("combobox", { name: "Range" }).selectOption({
+    label: "6m",
+  });
+  await page.waitForURL(/range=6m/);
   await expect(
     analyze.getByTestId("analyze-sessions").locator("th").nth(1)
   ).toHaveText("Power");
@@ -733,7 +733,7 @@ test("cycling-family activities reuse rich analysis with indoor-aware surfaces",
 test("a ride detail scopes wearable HR minutes to that ride's clock window", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const zoneRide = page.locator(".card", {
     hasText: "Zone 2 base ride",
@@ -786,7 +786,7 @@ test("adjacent ride navigation stays compact in the mobile header", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const stravaCard = page.locator(".card", {
     hasText: "Strava morning ride",

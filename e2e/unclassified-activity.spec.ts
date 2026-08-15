@@ -83,7 +83,7 @@ test.afterAll(() => {
 test("an unspecified import renders with the generic glyph and is filterable (#2272)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const search = page.getByPlaceholder("Search activities or exercises…");
   await expect(search).toBeVisible();

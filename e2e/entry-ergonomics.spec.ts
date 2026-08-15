@@ -67,7 +67,7 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
 test("'Log again' pre-fills a create form that saves a new activity (#29)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The e2e seed plants a manual "Training Log merge keeper" activity; repeat it.
   const titleCards = page
@@ -111,7 +111,7 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   page,
 }) => {
   await page.setViewportSize({ width: 1800, height: 900 });
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The shared app shell uses the available desktop width instead of stopping at
   // the old 6xl/7xl caps. The 3xl ultra-wide cap remains separate.
@@ -135,14 +135,10 @@ test("Training Log actions share the search toolbar and stay outside the editor 
     "href",
     /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
   );
+  // The weekly-routine chips left this row for Overview/Plan (#2892): the row
+  // carries the cadence strip alone now.
   const routineRow = page.getByTestId("training-log-routine-row");
-  const routineLabelBox = await routineRow
-    .getByText("Weekly routine")
-    .boundingBox();
-  const cadenceBox = await cadence.boundingBox();
-  expect(routineLabelBox).not.toBeNull();
-  expect(cadenceBox).not.toBeNull();
-  expect(Math.abs(routineLabelBox!.y - cadenceBox!.y)).toBeLessThan(12);
+  await expect(routineRow.getByText("Weekly routine")).toHaveCount(0);
 
   // The longer window is reserved for the largest practical layout. At an
   // intermediate desktop width, the strip contracts to its newest 14 days.
@@ -150,15 +146,6 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
   await expect(cadence.getByTestId("active-days-label-expanded")).toBeHidden();
   await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
-  const intermediateRoutineBox = await routineRow
-    .getByText("Weekly routine")
-    .boundingBox();
-  const intermediateCadenceBox = await cadence.boundingBox();
-  expect(intermediateRoutineBox).not.toBeNull();
-  expect(intermediateCadenceBox).not.toBeNull();
-  expect(intermediateCadenceBox!.y).toBeGreaterThan(
-    intermediateRoutineBox!.y + intermediateRoutineBox!.height
-  );
   expect(
     await cadence
       .locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
@@ -246,7 +233,7 @@ test("Training Log actions share the search toolbar and stay outside the editor 
 test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The seed plants recurring "Push day" strength sessions across several weeks,
   // each repeating the same lifts (Barbell Bench Press, …). Opening the NEWEST
@@ -321,7 +308,7 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
 test("editing cardio duration updates the parent session total", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   // This seeded manual cardio row has no clock range and stores 28 minutes on
   // both its parent and visible Running component. Editing the visible field
@@ -351,7 +338,7 @@ test("editing cardio duration updates the parent session total", async ({
 test("logging a manual cardio activity auto-fills an editable estimated-calorie value (#151)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form. The "New activity" button lives in the Training Log
   // header inside <main>; the editor it opens mounts either in the docked pane
@@ -439,7 +426,7 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
 test("the activity form keeps workout entry primary and context visible across breakpoints", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const pushCard = page
     .getByRole("main")
@@ -644,7 +631,7 @@ test("the activity form keeps workout entry primary and context visible across b
 test("a fresh strength part OFFERS the coached suggestion; arriving in the field never writes it (#335/#1971)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form (fields addressed by testid/role — see the
   // est-calories spec's note on why the editor isn't main-scoped).
@@ -700,7 +687,7 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
 test("a cardio part derives avg speed AND pace from distance + duration (#336)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   await page
     .getByRole("main")
@@ -730,7 +717,7 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
 test("a lone sport logged with Start/End auto-fills its Duration and shows real minutes (#791)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form (fields addressed by testid/role — see the
   // est-calories spec's note on why the editor isn't main-scoped).
@@ -810,7 +797,7 @@ test("the command palette offers 'Repeat last activity' when history exists (#33
 test("weight steppers bump a set's load by the lift-appropriate increment (#337)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page
     .getByRole("main")
@@ -907,7 +894,7 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
 test("the reps stepper steps DOWN as well as up, clamped at 0 (#1524)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page
     .getByRole("main")
@@ -940,7 +927,7 @@ test("the reps stepper steps DOWN as well as up, clamped at 0 (#1524)", async ({
 test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page
     .getByRole("main")
@@ -970,7 +957,7 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
 test("a set row has a warmup toggle that flips its pressed state (#338)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page
     .getByRole("main")
@@ -993,7 +980,7 @@ test("a set row has a warmup toggle that flips its pressed state (#338)", async 
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Force every saveActivity call to fail at the network layer. saveActivity runs
   // as a Server Action — a POST to the page carrying a `next-action` header; the
@@ -1097,7 +1084,7 @@ test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async
 test("typing keeps the lifts you log ahead of a sport you never have (#2384)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
   await page.getByRole("button", { name: "New activity" }).click();
 
   const field = page.getByPlaceholder(/What did you do/);

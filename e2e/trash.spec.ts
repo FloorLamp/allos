@@ -43,7 +43,7 @@ async function confirmDelete(page: Page): Promise<void> {
 // equipment pick a bare strength variant needs (#342).
 async function createProbe(page: Page): Promise<string> {
   const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page
     .getByRole("main")
     .getByRole("button", { name: "New activity" })
@@ -98,7 +98,7 @@ test("a deleted row is restorable from Data → Trash after the toast is gone (#
   await expect(trashRow(page, title)).toHaveCount(0);
 
   // And the row is back on its own surface (under a NEW id, so match by title).
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(1);
 
   // Clean up: delete the restored probe and purge its capture, so this spec leaves
@@ -143,7 +143,7 @@ test("Delete permanently removes a capture ahead of its window (#2013)", async (
   // Reloading proves it was a write, not client state — and the activity stays gone.
   await page.reload();
   await expect(trashRow(page, title)).toHaveCount(0);
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(0);
 });
 
@@ -173,6 +173,6 @@ test("Empty trash clears the list and leaves the empty state (#2013)", async ({
   // The emptied state survives a reload, and the deleted probe stays deleted.
   await page.reload();
   await expect(page.getByTestId("trash-empty")).toBeVisible();
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(0);
 });

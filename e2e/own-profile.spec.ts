@@ -126,7 +126,7 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
 
     // Start a live workout — the fastest-tapping surface. Its Finish button names
     // whose session it is (both fixture profiles are adults → live mode available).
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await page.getByRole("main").getByTestId("start-workout").click();
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await expect(page.getByTestId("finish-workout")).toHaveText(

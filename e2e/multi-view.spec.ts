@@ -610,7 +610,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
 
     // Single view (acting = owner): the owner's two cards show; the shared member's
     // card is absent, no strip, no chips — the byte-identical regression bar.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await expect(
       page
         .locator('[id^="activity-"]')
@@ -632,7 +632,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
 
     // Multi view: the merged feed now carries the shared member's card WITH a subject
     // chip on ITS card; the acting (owner) cards never carry a chip.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     const sharedCard = page
       .locator('[id^="activity-"]')
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
@@ -684,11 +684,11 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     });
 
     // Enter multi-view, then open the Training Log.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
     await expectInView(page, 2);
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
 
     const sharedCard = page
       .locator('[id^="activity-"]')

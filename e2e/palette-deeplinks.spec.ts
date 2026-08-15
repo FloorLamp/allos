@@ -179,7 +179,7 @@ test("a ride hit picked FROM /training navigates to its ride detail", async ({
   test.slow();
   // Starting on /training is load-bearing: it is the one surface where the old
   // constant `/training` href made the bug invisible.
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const input = await openCommandPalette(page);
   await input.fill(ACTIVITY_MARKER);

@@ -216,7 +216,7 @@ test("a live workout edited through a deploy reloads itself and comes back with 
     // tab whose poll has latched off (#2447), and the failed save alone has to be
     // enough. That independence is the property, not an accident of the fixture.
     const stale = await installStaleActions(page);
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await page.getByRole("main").getByTestId("start-workout").click();
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     await settledFill(page, page.getByLabel("Activity name"), LIVE_TITLE);
@@ -300,7 +300,7 @@ test("a form that can never attempt a save still converges, and is restored with
     // and only the detector can ask for it.
     await countLoads(page);
     const deploy = await installVersionDeploy(page);
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await page
       .getByRole("main")
       .getByRole("button", { name: "New activity" })
@@ -369,7 +369,7 @@ test("a deploy that stays broken gets ONE automatic attempt and then the banner 
   try {
     await countLoads(page);
     const stale = await installStaleActions(page, { untilReload: false });
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     // Armed for good: reloading does not fix this one, which is the shape a reload
     // loop would come from.
     stale.arm();
@@ -418,7 +418,7 @@ test("a never-created session closed under a stale build queues its capture, and
     // enough to exercise it.
     await spendAutoReloadRation(page);
     const stale = await installStaleActions(page, { untilReload: false });
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     // The deploy lands BEFORE the first save, so the session never gets a
     // server row — the close-path capture's charter, now reachable via the
     // stale signature as well as a dead connection.

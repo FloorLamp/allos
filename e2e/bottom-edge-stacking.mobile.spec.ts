@@ -91,7 +91,7 @@ test("a toast raised during a live workout stacks above the dock, never over it 
   try {
     // Start a live session from the sheet's Train segment, then log enough of
     // a set that the draft auto-saves — that INSERT is the presence the dock reads.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     const sheet = await openLogSheet(page);
     await hydratedClick(page, await showLogRow(sheet, "live-workout"));
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
