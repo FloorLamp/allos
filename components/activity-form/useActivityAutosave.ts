@@ -10,6 +10,7 @@ import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { isStaleActionError } from "@/lib/sw-update";
 import { reportStaleBuild } from "@/components/update-reload-channel";
+import { isRetriableSaveError, saveFailureEvent } from "@/lib/sw-update";
 import { useLatestRef } from "@/components/useLatestRef";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a
@@ -27,6 +28,14 @@ import { useLatestRef } from "@/components/useLatestRef";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+// Self-retry cadence for network-shaped save failures (#2866): quick enough to
+// land inside a container swap (5s/15s), then HELD at the final 45s step for as
+// long as the outage lasts — rate-bounded (one request per 45s can never storm)
+// rather than count-bounded, because an outage that outlives a count leaves the
+// save waiting on a keystroke, the very defect this fixes. The stale-action
+// path is exempt by construction — it is never retriable, only reloadable.
+export const SAVE_RETRY_BACKOFF_MS = [5_000, 15_000, 45_000] as const;
+
 export interface ActivityAutosave {
   status: SaveStatus;
   savedAt: number;
@@ -35,6 +44,11 @@ export interface ActivityAutosave {
   // succeeded since. Retrying cannot help — only a reload can — so the form
   // renders an explicit banner off this instead of the bare error glyph.
   staleBuild: boolean;
+  // A retriable-failure episode is live (#2866): the bounded backoff is
+  // re-attempting network-shaped failures on its own, and the form should say
+  // "Not saving right now — your entries are kept on this device" instead of a
+  // bare triangle. The local draft (#1699) is what makes that sentence true.
+  retryingSave: boolean;
   createdId: number | null;
   // The row a save targets: the edited row, else the auto-created one (read
   // synchronously off the ref so a trailing save UPDATEs rather than re-inserts).
@@ -125,6 +139,36 @@ export function useActivityAutosave({
     };
   }, []);
 
+  // A retriable-failure EPISODE is live (#2866): saves are dying on the shapes a
+  // mid-deploy swap window produces (a 502 page → Next's non-RSC-response
+  // throw, or a connection TypeError), the backoff below is re-attempting on
+  // its own, and the form owes the user the true sentence — "Not saving right
+  // now, your entries are kept on this device" — not a bare triangle. Cleared
+  // by the first success, by a stale verdict (the reload banner takes over),
+  // by an ordinary rejection (whose honest error rendering stands), or by the
+  // form catching up to the saved state (nothing left to save). While the flag
+  // is up, a retry is ALWAYS armed — the banner never promises what no timer
+  // will do.
+  const [retryingSave, setRetryingSave] = useState(false);
+  const retryAttemptRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const episodeLoggedRef = useRef(false);
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current != null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+  const endRetryEpisode = useCallback(() => {
+    clearRetryTimer();
+    retryAttemptRef.current = 0;
+    episodeLoggedRef.current = false;
+    if (mountedRef.current) setRetryingSave(false);
+  }, [clearRetryTimer]);
+
+  // A scheduled retry must not outlive the form.
+  useEffect(() => clearRetryTimer, [clearRetryTimer]);
+
   // `queueOnOffline` marks a CLOSE-path persist (flushBeforeClose / the unmount
   // flush): when that final save dies on a dead connection and the session never
   // got a server row, the whole form is captured into the offline queue instead of
@@ -133,8 +177,19 @@ export function useActivityAutosave({
   // onQueueOffline's doc above).
   const persist = useCallback(
     async (opts?: { queueOnOffline?: boolean }) => {
-      if (!canSave) return;
-      if (formSig === savedSigRef.current) return; // nothing changed
+      // The two settled-state bails END a live retry episode: with autosave off
+      // or the form matching the saved signature there is nothing a retry could
+      // do, and the banner must not keep claiming one is coming (e.g. the user
+      // reverted the very edit whose save died). The in-flight bail does NOT —
+      // that save's own completion settles the episode.
+      if (!canSave) {
+        endRetryEpisode();
+        return;
+      }
+      if (formSig === savedSigRef.current) {
+        endRetryEpisode();
+        return; // nothing changed
+      }
       if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
       inFlightRef.current = true;
       const sigAtSave = formSig;
@@ -147,6 +202,10 @@ export function useActivityAutosave({
         // stays dirty so the edit survives, the auto-saver can retry, and closing it
         // still prompts. Surface the failure instead of a false "Saved ✓" (#332).
         if (!res.ok) {
+          // A server that ANSWERS with a rejection is deterministic, not an
+          // outage: whatever retry episode was running is over, and the honest
+          // error rendering stands instead of the "retrying" line.
+          endRetryEpisode();
           if (mountedRef.current) setStatus("error");
           else toast(saveOutcomeMessage(res.reason));
           return;
@@ -158,6 +217,7 @@ export function useActivityAutosave({
         savedSigRef.current = sigAtSave;
         if (mountedRef.current) setSavedSig(sigAtSave);
         saved = true;
+        endRetryEpisode();
         if (mountedRef.current) {
           setStatus("saved");
           setSavedAt(Date.now());
@@ -206,6 +266,44 @@ export function useActivityAutosave({
         // anything — and without waiting for the `/api/version` detector, which this
         // signal is deliberately independent of.
         if (stale) reportStaleBuild();
+        // A network-shaped failure is retriable IN PLACE (#2866) — the mid-deploy
+        // swap window answers a 502 page (Next's non-RSC-response throw) or a
+        // connection TypeError, and before this, recovery waited on the next
+        // KEYSTROKE: each in-window retry failed the same unclassified way and
+        // the sticky error rendered a bare triangle through the rest of the
+        // workout. Backed off 5s → 15s → 45s, then HELD at 45s for as long as
+        // the outage lasts: an outage that outlives the ladder must not strand
+        // the banner over a save nothing will re-attempt (recovery would be
+        // back to keystroke-only — the very defect this fixes). The first
+        // attempt the new server answers either succeeds or returns the real
+        // stale signature, and the paths above take over. One structured event
+        // per episode names the leg for the next report.
+        const retriable = !stale && isRetriableSaveError(err);
+        if (retriable) {
+          if (!episodeLoggedRef.current) {
+            episodeLoggedRef.current = true;
+            console.warn("activity-autosave-retriable", saveFailureEvent(err));
+          }
+          if (mountedRef.current) {
+            setRetryingSave(true);
+            const attempt = retryAttemptRef.current;
+            retryAttemptRef.current = attempt + 1;
+            clearRetryTimer();
+            retryTimerRef.current = setTimeout(
+              () => {
+                retryTimerRef.current = null;
+                void persistLatest();
+              },
+              SAVE_RETRY_BACKOFF_MS[
+                Math.min(attempt, SAVE_RETRY_BACKOFF_MS.length - 1)
+              ]
+            );
+          }
+        } else {
+          // An ordinary rejection or the stale signature: whatever retry episode
+          // was running is over — those states own their own rendering.
+          endRetryEpisode();
+        }
         if (mountedRef.current) {
           if (stale) setStaleBuild(true);
           setStatus("error");
@@ -231,6 +329,8 @@ export function useActivityAutosave({
     [
       buildFormDataRef,
       canSave,
+      clearRetryTimer,
+      endRetryEpisode,
       formSig,
       onQueueOfflineRef,
       persistLatest,
@@ -302,6 +402,7 @@ export function useActivityAutosave({
     status,
     savedAt,
     staleBuild,
+    retryingSave,
     createdId,
     savableId,
     hasRow,

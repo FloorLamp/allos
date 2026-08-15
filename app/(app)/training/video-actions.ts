@@ -23,6 +23,7 @@ import type { ActivityVideoView } from "@/components/activity/ActivityVideoStrip
 
 function revalidateActivitySurfaces() {
   revalidateRoute("/training");
+  revalidateRoute("/training/activity/[id]", "page");
   revalidateRoute("/trends");
   revalidateRoute("/");
 }
