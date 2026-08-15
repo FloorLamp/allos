@@ -3,6 +3,7 @@ import {
   getImagingStudyFollowUps,
   getPickerProviders,
   createVisitOffers,
+  encountersForRecords,
 } from "@/lib/queries";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
 import { getProfileAge } from "@/lib/settings";
@@ -51,6 +52,11 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
   // "Create a visit from this record?" (#1099): a study dated D with no encounter that
   // day.
   const createVisitOffersList = createVisitOffers(profileId, "imaging");
+  const encounters = Object.fromEntries(
+    scope.viewIds.flatMap((pid) =>
+      Object.entries(encountersForRecords(pid, "imaging"))
+    )
+  );
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
@@ -73,6 +79,7 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
         <ImagingStudyList
           items={studies}
           followUps={followUps}
+          encounters={encounters}
           multiView={
             multi ? { actingProfileId: scope.actingProfileId } : undefined
           }

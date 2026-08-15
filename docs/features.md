@@ -1466,6 +1466,12 @@ known minor, its instruments being adult-validated), and Skin/Mental health
 always rendered — the latter because their in-page forms are the only creation
 path, and Mental health's crisis line travels with its pane).
 
+Record rows reflect the relationships already stored elsewhere: procedures,
+conditions, imaging studies, and vaccine doses link back to their visit; visit rows
+show their illness episode and linked-record count; scheduled appointments appear on
+matching open care-plan items and health goals; and an early-onset family-history row
+states which screening cadence it changes. Rows without that context stay compact.
+
 ### Clinical results catalog
 
 The Clinical results tab (`/results/clinical-results`) is a collapsed **panel

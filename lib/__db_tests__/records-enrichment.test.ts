@@ -26,6 +26,8 @@ import {
   getDrugAllergyWarnings,
   getPgxWarnings,
   encountersForRecords,
+  linkedRowCountsForEncounters,
+  episodesForEncounters,
   dismissFinding,
 } from "@/lib/queries";
 import { pgxSignalKey } from "@/lib/pgx";
@@ -200,8 +202,30 @@ describe("encountersForRecords — record → linked visit (#1355)", () => {
     const condMap = encountersForRecords(profileId, "condition");
     expect(condMap[linkedCond]?.id).toBe(encId);
 
+    expect(linkedRowCountsForEncounters(profileId)[encId]).toBe(2);
+    const episodeId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, start_date)
+           VALUES (?, 'Appendicitis recovery', '2026-05-03')`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO episode_encounters (profile_id, episode_id, encounter_id)
+       VALUES (?, ?, ?)`
+    ).run(profileId, episodeId, encId);
+    expect(episodesForEncounters(profileId)[encId]).toEqual([
+      expect.objectContaining({
+        id: episodeId,
+        situation: "Appendicitis recovery",
+      }),
+    ]);
+
     // Profile isolation: another profile's map is empty.
     const other = makeProfile("enc-links-other");
     expect(encountersForRecords(other, "procedure")).toEqual({});
+    expect(linkedRowCountsForEncounters(other)).toEqual({});
+    expect(episodesForEncounters(other)).toEqual({});
   });
 });

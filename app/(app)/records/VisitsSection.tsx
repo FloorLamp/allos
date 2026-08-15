@@ -6,6 +6,8 @@ import {
   getEncounters,
   getPickerProviders,
   getCarePlanItems,
+  linkedRowCountsForEncounters,
+  episodesForEncounters,
 } from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { isCarePlanItemOpen } from "@/lib/care-plan-upcoming";
@@ -62,6 +64,14 @@ export default function VisitsSection({
   const encounters = stampSubjects(
     scope,
     readForProfiles(scope.viewIds, (pid) => getEncounters(pid))
+  );
+  const linkedRecordCounts = Object.fromEntries(
+    scope.viewIds.flatMap((pid) =>
+      Object.entries(linkedRowCountsForEncounters(pid))
+    )
+  );
+  const encounterEpisodes = Object.fromEntries(
+    scope.viewIds.flatMap((pid) => Object.entries(episodesForEncounters(pid)))
   );
   // Open care-plan items a completed appointment can offer to close (issue #658).
   // Pared to the fields the pure matcher needs; the client computes the per-
@@ -203,6 +213,8 @@ export default function VisitsSection({
           <EncounterList
             items={encounters}
             defaultDate={now}
+            linkedRecordCounts={linkedRecordCounts}
+            episodes={encounterEpisodes}
             multiView={
               multi ? { actingProfileId: scope.actingProfileId } : undefined
             }

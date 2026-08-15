@@ -76,4 +76,54 @@ test.describe("records enrichment sweep (#1354/#1355)", () => {
       performedAt.getByRole("link").filter({ hasText: "Orthopedic Surgery" })
     ).toBeVisible();
   });
+
+  test("#1355: the remaining record surfaces reflect their existing links and context", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_RECS_ENRICH,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    await page.goto("/records/problems/conditions");
+    await expect(
+      page
+        .getByRole("row")
+        .filter({ hasText: "Meniscus tear (e2e)" })
+        .getByText("Diagnosed at:")
+    ).toBeVisible();
+
+    await page.goto("/records/care/overview#family-history");
+    await expect(
+      page.getByText(/Tightens your breast screening cadence/)
+    ).toBeVisible();
+    await page.goto("/records/care/overview#care-plan");
+    await expect(
+      page.getByText("Colonoscopy screening (e2e)").locator("..")
+    ).toContainText("Scheduled: Colonoscopy screening");
+    await page.goto("/records/care/overview#health-goals");
+    await expect(
+      page.getByText("Colonoscopy screening goal (e2e)").locator("..")
+    ).toContainText("Scheduled: Colonoscopy screening");
+
+    await page.goto("/records/history/visits");
+    const visit = page
+      .getByRole("row")
+      .filter({ hasText: "Orthopedic Surgery" });
+    await expect(visit).toContainText("4 linked records");
+    await expect(
+      visit.getByRole("link", { name: "Knee recovery (e2e)" })
+    ).toBeVisible();
+
+    await page.goto("/results/imaging");
+    await expect(
+      page
+        .getByRole("row")
+        .filter({ hasText: "Knee (e2e)" })
+        .getByText("Performed at:")
+    ).toBeVisible();
+
+    await page.goto("/immunizations/influenza");
+    await expect(page.getByText("Administered at:")).toBeVisible();
+  });
 });

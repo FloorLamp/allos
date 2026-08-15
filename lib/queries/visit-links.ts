@@ -527,6 +527,30 @@ export function linkedRowsForEncounter(
   return out;
 }
 
+// Batch-shaped count for the visits index (#1355). It wraps the same registered
+// record-domain tables as linkedRowsForEncounter, but gathers every encounter for a
+// profile so a list never performs one read per row.
+export function linkedRowCountsForEncounters(
+  profileId: number
+): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const domain of RECORD_DOMAIN_LIST) {
+    const c = RECORD_DOMAINS[domain];
+    const rows = db
+      .prepare(
+        `SELECT t.encounter_id AS encounterId, COUNT(*) AS count
+           FROM ${c.table} t
+          WHERE t.profile_id = ? AND t.encounter_id IS NOT NULL
+                ${c.extra ? `AND ${c.extra}` : ""}
+          GROUP BY t.encounter_id`
+      )
+      .all(profileId) as { encounterId: number; count: number }[];
+    for (const row of rows)
+      out[row.encounterId] = (out[row.encounterId] ?? 0) + row.count;
+  }
+  return out;
+}
+
 // ── "Create a visit from this record?" (#1099) ───────────────────────────────────
 //
 // The inverse of the link flow: a visit-implying record (optical Rx / completed dental
@@ -878,6 +902,25 @@ export function episodesForEncounter(
         ORDER BY ie.start_date, ie.id`
     )
     .all(encounterId, profileId) as LinkedEpisodeRef[];
+}
+
+export function episodesForEncounters(
+  profileId: number
+): Record<number, LinkedEpisodeRef[]> {
+  const rows = db
+    .prepare(
+      `SELECT le.encounter_id AS encounterId,
+              ie.id, ie.situation, ie.start_date, ie.end_date
+         FROM episode_encounters le
+         JOIN illness_episodes ie ON ie.id = le.episode_id AND ie.profile_id = le.profile_id
+        WHERE le.profile_id = ?
+        ORDER BY le.encounter_id, ie.start_date, ie.id`
+    )
+    .all(profileId) as (LinkedEpisodeRef & { encounterId: number })[];
+  const out: Record<number, LinkedEpisodeRef[]> = {};
+  for (const { encounterId, ...episode } of rows)
+    (out[encounterId] ??= []).push(episode);
+  return out;
 }
 
 // The encounter-side "Link an illness episode…" suggestion (#1350): which episode(s)

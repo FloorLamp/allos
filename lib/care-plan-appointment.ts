@@ -158,3 +158,24 @@ export function matchCarePlanItemsForAppointment(
   const visitDate = appt.date;
   return items.filter((i) => itemMatches(needles, i, visitDate, windowDays));
 }
+
+export interface ScheduledAppointmentRef extends AppointmentMatchInput {
+  id: number;
+  status: string;
+}
+
+// Reflect scheduled appointments back onto the open care rows they match (#1355).
+// The matcher remains the one decision; this only reverses its output into a row map.
+export function scheduledAppointmentsForCareItems(
+  appointments: readonly ScheduledAppointmentRef[],
+  items: readonly CarePlanMatchItem[]
+): Record<number, ScheduledAppointmentRef> {
+  const out: Record<number, ScheduledAppointmentRef> = {};
+  for (const appointment of appointments) {
+    if (appointment.status !== "scheduled") continue;
+    for (const item of matchCarePlanItemsForAppointment(appointment, items)) {
+      if (!out[item.id]) out[item.id] = appointment;
+    }
+  }
+  return out;
+}
