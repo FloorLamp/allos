@@ -106,24 +106,24 @@ describe("canReopenLastPeriodOn (#1681 bug 3 — the recovery window)", () => {
 
 describe("cycleStateLine / cycleControlState (#1681 — the contextual state)", () => {
   it("is null before any recorded period", () => {
-    expect(cycleStateLine([], TODAY)).toBeNull();
+    expect(cycleStateLine([], TODAY, null)).toBeNull();
   });
 
   it("formats cycle day and phase for a mid-cycle day", () => {
     // Started 04-15 → day 6 on 04-20, ended 04-19 → follicular.
-    expect(cycleStateLine([period(1, "2026-04-15", "2026-04-19")], TODAY)).toBe(
+    expect(cycleStateLine([period(1, "2026-04-15", "2026-04-19")], TODAY, null)).toBe(
       "Day 6 · Follicular"
     );
   });
 
   it("reads menstrual while a period is open", () => {
-    expect(cycleStateLine([period(1, "2026-04-18", null)], TODAY)).toBe(
+    expect(cycleStateLine([period(1, "2026-04-18", null)], TODAY, null)).toBe(
       "Day 3 · Menstrual"
     );
   });
 
   it("open period: the end action is the only one offered", () => {
-    const s = cycleControlState([period(1, "2026-04-18", null)], TODAY);
+    const s = cycleControlState([period(1, "2026-04-18", null)], TODAY, null);
     expect(s.openPeriodId).toBe(1);
     expect(s.staleOpenPeriod).toBe(false);
     expect(s.canStart).toBe(false);
@@ -131,7 +131,7 @@ describe("cycleStateLine / cycleControlState (#1681 — the contextual state)", 
   });
 
   it("just ended: state line + reopen, and NO start CTA", () => {
-    const s = cycleControlState([period(1, "2026-04-16", TODAY)], TODAY);
+    const s = cycleControlState([period(1, "2026-04-16", TODAY)], TODAY, null);
     expect(s.openPeriodId).toBeNull();
     // The end is INCLUSIVE, so the day it ends is still a bleeding day.
     expect(s.stateLine).toBe("Day 5 · Menstrual");
@@ -140,16 +140,73 @@ describe("cycleStateLine / cycleControlState (#1681 — the contextual state)", 
   });
 
   it("mid-cycle: the start CTA returns and the reopen has expired", () => {
-    const s = cycleControlState([period(1, "2026-04-01", "2026-04-05")], TODAY);
+    const s = cycleControlState([period(1, "2026-04-01", "2026-04-05")], TODAY, null);
     expect(s.canStart).toBe(true);
     expect(s.canReopen).toBe(false);
     expect(s.stateLine).toBe("Day 20 · Follicular");
   });
 
   it("stale open period: flagged, and the phase has already stopped claiming menstrual", () => {
-    const s = cycleControlState([period(1, "2026-04-05", null)], TODAY);
+    const s = cycleControlState([period(1, "2026-04-05", null)], TODAY, null);
     expect(s.staleOpenPeriod).toBe(true);
     expect(s.stateLine).toBe("Day 16 · Follicular");
+  });
+});
+
+// Issue #2801. The derivations run forward from the last logged period start and know
+// nothing about WHY no next period arrived, so a profile whose last period was the LMP of
+// a recorded pregnancy read a normal cycle day off it — on a page whose forecast card was
+// already saying the projection was paused. The suspension the page had gathered now
+// reaches the state too.
+describe("cycleControlState under a suspension (#2801)", () => {
+  // ~20 weeks by this suite's TODAY (2026-04-20) — the walkthrough's repro shape.
+  const lmp = [period(1, "2025-12-01", "2025-12-05")];
+
+  it("without the suspension it still counts forward — the bug, pinned", () => {
+    const s = cycleControlState(lmp, TODAY, null);
+    expect(s.day).toBe(141);
+    expect(s.phase).toBe("follicular");
+    expect(s.stateLine).toBe("Day 141 · Follicular");
+    expect(s.canStart).toBe(true);
+  });
+
+  it("pregnancy: no day, no phase, no state line, and NO period offer", () => {
+    const s = cycleControlState(lmp, TODAY, "pregnancy");
+    expect(s.day).toBeNull();
+    expect(s.phase).toBeNull();
+    expect(s.stateLine).toBeNull();
+    expect(s.suspension).toBe("pregnancy");
+    // The absence is the fix: a full-width "Period started today" is precisely the
+    // claim the recorded pregnancy contradicts.
+    expect(s.canStart).toBe(false);
+    expect(s.canReopen).toBe(false);
+    expect(cycleOffer(s)).toBeNull();
+  });
+
+  it("pregnancy still lets an OPEN period be ended — closing a row is not a claim", () => {
+    const s = cycleControlState(
+      [period(1, "2026-04-18", null)],
+      TODAY,
+      "pregnancy"
+    );
+    expect(s.openPeriodId).toBe(1);
+    expect(cycleOffer(s)).toEqual({ write: "end", label: END_PERIOD_LABEL });
+  });
+
+  it("postmenopausal: the same silence, but the offer SURVIVES", () => {
+    // Bleeding after menopause is exactly the event a user should be able to record —
+    // and recording it is also how they would find out the status needs correcting.
+    const s = cycleControlState(lmp, TODAY, "postmenopausal");
+    expect(s.day).toBeNull();
+    expect(s.stateLine).toBeNull();
+    expect(s.canStart).toBe(true);
+    expect(cycleOffer(s)).toEqual({ write: "start", label: START_PERIOD_LABEL });
+  });
+
+  it("cycleStateLine is silenced at the source, not by its callers", () => {
+    expect(cycleStateLine(lmp, TODAY, null)).toBe("Day 141 · Follicular");
+    expect(cycleStateLine(lmp, TODAY, "pregnancy")).toBeNull();
+    expect(cycleStateLine(lmp, TODAY, "postmenopausal")).toBeNull();
   });
 });
 
@@ -159,7 +216,7 @@ describe("cycleStateLine / cycleControlState (#1681 — the contextual state)", 
 // here is which verb each state yields and that at most one is ever on offer.
 describe("cycleOffer (#1892 — the label names the write)", () => {
   const offerOn = (periods: CyclePeriod[], date = TODAY) =>
-    cycleOffer(cycleControlState(periods, date));
+    cycleOffer(cycleControlState(periods, date, null));
 
   it("no history at all: the offer is to start — the state the widget used to HIDE on", () => {
     expect(offerOn([])).toEqual({ write: "start", label: START_PERIOD_LABEL });
@@ -172,7 +229,7 @@ describe("cycleOffer (#1892 — the label names the write)", () => {
     });
     // Long-open is the OBSERVATION layer's business (cycle-observation.ts observes
     // prolonged bleeding); the end offer is never withdrawn by duration.
-    const stale = cycleControlState([period(1, "2026-04-05", null)], TODAY);
+    const stale = cycleControlState([period(1, "2026-04-05", null)], TODAY, null);
     expect(stale.staleOpenPeriod).toBe(true);
     expect(cycleOffer(stale)).toEqual({
       write: "end",
@@ -211,7 +268,7 @@ describe("cycleOffer (#1892 — the label names the write)", () => {
     const history = [period(1, "2026-04-01", "2026-04-05")];
     for (let day = 5; day <= 30; day++) {
       const date = `2026-04-${String(day).padStart(2, "0")}`;
-      const state = cycleControlState(history, date);
+      const state = cycleControlState(history, date, null);
       const offers = [
         state.openPeriodId != null,
         state.canReopen,

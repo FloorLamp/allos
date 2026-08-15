@@ -3,6 +3,7 @@
 import Link from "next/link";
 import PeriodOfferButton from "@/components/cycle/PeriodOfferButton";
 import type { CycleControlState } from "@/lib/cycle-plausibility";
+import { CYCLE_SUSPENSION_NOTES } from "@/lib/cycle";
 
 // The quick-log sheet's period panel (issue #1892) — the THIRD renderer of the one
 // cycle offer state, after the Cycle page control and the dashboard phase widget.
@@ -28,9 +29,15 @@ export default function QuickCyclePanel({
   const open = state.openPeriodId != null;
   return (
     <div className="space-y-3 py-2" data-testid="quick-cycle-panel">
+      {/* Three sentences, in order of what is true (#2801): the derived state line; the
+          pause, when a recorded pregnancy or postmenopausal status means no cycle day
+          applies; and only otherwise the "nothing logged yet" prompt, which would
+          otherwise read as an instruction to a pregnant user. */}
       <div className="text-sm text-slate-600 dark:text-slate-300">
         {state.stateLine ??
-          "No periods logged yet — recording day 1 is what the cycle day and phase are derived from."}
+          (state.suspension
+            ? CYCLE_SUSPENSION_NOTES[state.suspension]
+            : "No periods logged yet — recording day 1 is what the cycle day and phase are derived from.")}
       </div>
       {open && state.openPeriodStart && (
         <div
@@ -46,7 +53,7 @@ export default function QuickCyclePanel({
         variant="compact"
         onDone={onDone}
       />
-      {!open && !state.canStart && !state.canReopen && (
+      {!open && !state.canStart && !state.canReopen && !state.suspension && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Starting a period is a few weeks away. Add one with dates on the{" "}
           <Link

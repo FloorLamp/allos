@@ -110,13 +110,19 @@ export function cycleTrackingRelevant(input: CycleRelevanceInput): boolean {
 
 // ── The Records › Specialty pane set, under a MULTI-PROFILE view (#2557) ──────
 
-// The three bits that shape the Specialty sub-tab strip and its per-pane route
+// The four bits that shape the Specialty sub-tab strip and its per-pane route
 // gates. Structurally the `RecordsRelevance` of app/(app)/records/nav.ts; declared
 // here because the fold below is the pure decision and that module is the nav model.
 export interface SpecialtyRelevance {
   vision: boolean;
   dental: boolean;
   substanceUse: boolean;
+  // #2807: the SECOND life-stage bit, on the same argument #1174 made for substance
+  // use. PHQ-9/GAD-7 are validated from adolescence, not from birth, so the pane
+  // hides for a positive infant/child match only — a strictly lower line than
+  // substanceUse's `isMinor`, because the instruments differ, not because the rule
+  // is looser.
+  mentalHealth: boolean;
 }
 
 /**
@@ -135,12 +141,13 @@ export interface SpecialtyRelevance {
  *     had content, and the gate would have denied it existed. Only when NO member in
  *     view has a row is the pane genuinely empty, which is the state the gate is for.
  *
- *   • `substanceUse` is a LIFE-STAGE question about the CONTENT that pane serves for
- *     one data subject (#1174: AUDIT/DAST are adult-validated). It is deliberately
- *     NOT folded. That section still reads exactly one profile — the acting one — so
- *     the profile whose age governs the content is the acting profile, and ORing an
- *     adult's bit in would unhide adult-validated instruments for a view that a known
- *     minor is acting as. A gate whose subject is the content stays with the subject.
+ *   • `substanceUse` and `mentalHealth` are LIFE-STAGE questions about the CONTENT a
+ *     pane serves for one data subject (#1174: AUDIT/DAST are adult-validated; #2807:
+ *     PHQ-9/GAD-7 are adolescent-validated). Neither is folded. Those sections still
+ *     read exactly one profile — the acting one — so the profile whose age governs the
+ *     content is the acting profile, and ORing an adult's bit in would unhide
+ *     age-inappropriate instruments for a view that a young profile is acting as. A
+ *     gate whose subject is the content stays with the subject.
  *
  * Single view (`inView` = the acting profile alone) reproduces today's answer
  * exactly, which is the regression bar: an unconverted instance renders identically.
@@ -148,7 +155,7 @@ export interface SpecialtyRelevance {
  * safe answer to "nothing is in view".
  */
 export function specialtyRelevanceForView(input: {
-  /** The ACTING profile's own bitset — the only source of `substanceUse`. */
+  /** The ACTING profile's own bitset — the only source of the two life-stage bits. */
   acting: SpecialtyRelevance;
   /** One bitset per profile IN VIEW; the acting profile may not be among them. */
   inView: readonly Pick<SpecialtyRelevance, "vision" | "dental">[];
@@ -157,5 +164,6 @@ export function specialtyRelevanceForView(input: {
     vision: input.inView.some((r) => r.vision),
     dental: input.inView.some((r) => r.dental),
     substanceUse: input.acting.substanceUse,
+    mentalHealth: input.acting.mentalHealth,
   };
 }

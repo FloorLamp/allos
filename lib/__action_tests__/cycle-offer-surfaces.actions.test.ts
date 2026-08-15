@@ -20,7 +20,7 @@ import {
   endPeriodAction,
   reopenPeriodAction,
 } from "@/app/(app)/medical/cycles/actions";
-import { listCyclePeriods } from "@/lib/cycle-store";
+import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import {
   cycleControlState,
   cycleOffer,
@@ -53,7 +53,8 @@ function seedPeriod(
 function offeredLabel(profileId: number): string | null {
   const state = cycleControlState(
     listCyclePeriods(profileId),
-    today(profileId)
+    today(profileId),
+    getForecastSuspension(profileId)
   );
   return cycleOffer(state)?.label ?? null;
 }
@@ -83,7 +84,8 @@ describe("the quick-log sheet's period overlay (#1892/#1506)", () => {
     seedPeriod(profileId, 4, null); // a period open since 4 days ago
     const pageState = cycleControlState(
       listCyclePeriods(profileId),
-      today(profileId)
+      today(profileId),
+      getForecastSuspension(profileId)
     );
 
     const data = await loadQuickEntry("cycle");

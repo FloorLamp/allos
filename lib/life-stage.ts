@@ -149,6 +149,23 @@ export function meetsMinAge(
   return !known(age) || age >= minAge;
 }
 
+// Mental-health SCREENING content (issue #2807, extending #1174's ruling). PHQ-9 and
+// GAD-7 are the instruments the Records › Specialty › Mental health pane offers, and both
+// are validated from adolescence up — PHQ-9 from 12/13 (the PHQ-A is the adolescent form),
+// GAD-7 likewise. So this is NOT the `isMinor` line substance use uses: an adolescent
+// stays, and only a positive infant/child match hides the pane. A pediatric instrument
+// would be its own feature, not a relaxation of this gate.
+//
+// Unknown age → true (eligible), the module's documented presentation policy: hide only on
+// a positive under-age match, never on missing data. Expressed over meetsMinLifeStage so
+// the boundary is the model's named child→adolescent line rather than a fresh constant.
+// (lifeStage ∈ {adolescent, adult, older-adult}, or unknown)
+export function isMentalHealthScreeningRelevant(
+  age: number | null | undefined
+): boolean {
+  return meetsMinLifeStage(age, "adolescent");
+}
+
 // The body-census growth-led presentation: height-first chart order, body-fat
 // de-prioritized, growth-percentile card floated to the top, height/head-circ
 // quick-add offered. True when the profile is within WHO/CDC growth-chart range

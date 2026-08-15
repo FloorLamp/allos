@@ -8,9 +8,13 @@
 //
 // The two preventive kinds map 1:1 onto two Upcoming domains — a `visit` (well-
 // visit, satisfied by an appointment) and a `screening` (satisfied by a result) —
-// consistent with how the existing domains are cut by satisfaction semantics. Each
-// item is STATUS-driven (no calendar due date), so it carries an explicit band +
-// due-text exactly like immunizationItems.
+// consistent with how the existing domains are cut by satisfaction semantics.
+//
+// An actionable item carries the assessor's `nextDueDate` and is banded from it like any
+// other dated signal (#2805). The explicit band + due-text override survives only where
+// there is genuinely no date to band by: the `scheduled` and `setup` framings, whose
+// comments below explain why they must not band by date at all, and an assessment whose
+// status came from something other than an interval clock.
 
 import {
   PREVENTIVE_SETUP_SHORT,
@@ -213,8 +217,25 @@ export function preventiveAssessmentToUpcomingItem(
       bookHref: bookHrefForRule(a, ctx.today),
     };
   }
+  // THE DATE THE ASSESSOR ALREADY COMPUTED (#2805). This arm used to hard-code
+  // `dueDate: null` + a status-derived band, and the module header still called every
+  // preventive item "STATUS-driven (no calendar due date)" — true when it was written,
+  // and no longer true once the assessor grew `nextDueDate`. The date survived only as
+  // prose in `detail`, so a row reading "Due by 2026-07-25" sat in the TODAY band three
+  // weeks after that date, contradicting itself: the status stays "due" for the whole
+  // interval+grace window, and "due" mapped to Today unconditionally.
+  //
+  // With the date carried, `bandForItem` bands it and `upcomingDueText` counts down from
+  // it — a past due-by lands in Overdue, and one still ahead bands by how far ahead.
+  // The status band survives ONLY as the fallback for an assessment with no computed
+  // date (an age-triggered rule that has never been satisfied has nothing to count
+  // from), which is the one case where the status is genuinely all we know.
   const overdue = a.status === "overdue";
-  const band: UrgencyBand = overdue ? "overdue" : "today";
+  const dueDate = a.nextDueDate;
+  const statusFallback: Pick<UpcomingItem, "band" | "dueText"> =
+    dueDate == null
+      ? { band: overdue ? "overdue" : "today", dueText: overdue ? "Overdue" : "Due" }
+      : {};
   return {
     key: preventiveSignalKey(a.kind, a.key),
     domain: a.kind,
@@ -225,9 +246,8 @@ export function preventiveAssessmentToUpcomingItem(
     // screening → the prefilled form that records/administers what satisfies it, a
     // visit → the visits surface (its action is the "Book" CTA below).
     href: a.href ?? preventiveHref(a.kind, a.key),
-    dueDate: null,
-    band,
-    dueText: overdue ? "Overdue" : "Due",
+    dueDate,
+    ...statusFallback,
     // The named CTA for that concrete action (#1083/#221) — rendered as a deep-link
     // button on the row. Null for visits (the "Book" CTA names their action) and a
     // rule-override'd item (its href points elsewhere, so its default CTA is moot).
