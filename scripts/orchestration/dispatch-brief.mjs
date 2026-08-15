@@ -18,6 +18,7 @@
 //     [--worktree wt-<name>] [--issues 123,456] [--task "one line"] \
 //     [--e2e] [--port-base N]
 //   node scripts/orchestration/dispatch-brief.mjs list
+//   node scripts/orchestration/dispatch-brief.mjs brief <branch>
 //   node scripts/orchestration/dispatch-brief.mjs done <branch> [--keep]
 //   node scripts/orchestration/dispatch-brief.mjs resume <branch>
 //   node scripts/orchestration/dispatch-brief.mjs adopt <branch> \
@@ -26,6 +27,11 @@
 // `new` prints a complete brief block (stdout) and appends a ledger entry.
 // `list` shows active dispatches with ages, flagging anything past 3x the
 //   median completed-dispatch duration (the runbook's stall threshold).
+// `brief` REPRINTS a live dispatch's brief and writes nothing. The ledger keeps
+//   parameters, not brief text, and `new` prints the text exactly once; an
+//   orchestrator that lost it (restart, compaction, a truncated tail) used to
+//   re-run `new`, which forked the ledger AND the roster for one live agent
+//   (2026-08-15). `new` now refuses an active branch and points here.
 // `done` closes a dispatch, frees its port range, and CLEANS UP: removes the
 //   worktree (located by BRANCH via `git worktree list`, wherever it was
 //   built), prunes stale remote refs, and deletes the local branch once its
@@ -424,6 +430,20 @@ function cmdNew(argv) {
 
   const rows = readLedger();
   const active = activeDispatches(rows);
+  // An already-active branch must not be re-dispatched. Re-running `new` to get
+  // the brief text back (the transcript is gone, the ledger stores metadata) used
+  // to append a SECOND ledger row and a second roster cluster for one live agent
+  // — a roster that double-counts is a roster that lies about what to rescue, and
+  // it is read after a restart when nothing else survives. Reprinting is what the
+  // caller actually wanted, so `brief` does that and this refuses (2026-08-15).
+  if (active.some((d) => d.branch === opts.branch)) {
+    console.error(
+      `REFUSED: ${opts.branch} is already an active dispatch — re-running \`new\` would ` +
+        "duplicate its ledger row and its roster cluster. To reprint the brief for a live " +
+        `agent, use \`dispatch-brief.mjs brief ${opts.branch}\`; to retire it, \`done ${opts.branch}\`.`
+    );
+    process.exit(1);
+  }
   if (opts.e2e && active.filter((d) => d.e2e).length >= 2) {
     console.error(
       "REFUSED: two e2e-touching dispatches are already active (the runbook's cap). " +
@@ -691,6 +711,39 @@ to close the ledger entry and leave the tree alone.`
   }
 }
 
+// Reprint a live dispatch's brief, writing nothing.
+//
+// The ledger stores a dispatch's PARAMETERS, not its brief text, and the brief
+// is only ever printed once — at `new`. An orchestrator that loses the text
+// (restart, compaction, a tail that cut it off) has no way back to it, and the
+// obvious move, re-running `new`, silently forked the ledger and the roster.
+// Rebuilding from the recorded parameters is exact: `buildBrief` is a pure
+// function of them, so this prints the same bytes the agent was given.
+function cmdBrief(argv) {
+  const branch = argv[0];
+  if (!branch) {
+    console.error("usage: dispatch-brief.mjs brief <branch>");
+    process.exit(2);
+  }
+  const entry = activeDispatches(readLedger()).find((d) => d.branch === branch);
+  if (!entry) {
+    console.error(
+      `no ACTIVE dispatch for ${branch}. \`list\` shows what is live; a retired ` +
+        "dispatch has no brief to reprint."
+    );
+    process.exit(1);
+  }
+  const { brief } = buildBrief({
+    branch: entry.branch,
+    worktree: entry.worktree,
+    issues: entry.issues,
+    task: entry.task,
+    e2e: entry.e2e,
+    portBase: entry.portBase,
+  });
+  console.log(brief);
+}
+
 function cmdResume(argv) {
   const branch = argv[0];
   if (!branch) {
@@ -846,6 +899,7 @@ const [cmd = "new", ...rest] = process.argv.slice(2);
 try {
   if (cmd === "new") cmdNew(rest);
   else if (cmd === "list") cmdList();
+  else if (cmd === "brief") cmdBrief(rest);
   else if (cmd === "done") cmdDone(rest);
   else if (cmd === "resume") cmdResume(rest);
   else if (cmd === "adopt") cmdAdopt(rest);
