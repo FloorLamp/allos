@@ -820,6 +820,57 @@ export function seedRecordsEnrichment(): void {
         `INSERT INTO procedures (profile_id, name, date, encounter_id, source)
        VALUES (?, ?, '2026-04-12', ?, 'manual')`
       ).run(reId, RECS_ENRICH_PROCEDURE, encId);
+      db.prepare(
+        `INSERT INTO conditions (profile_id, name, status, encounter_id, source)
+         VALUES (?, 'Meniscus tear (e2e)', 'active', ?, 'manual')`
+      ).run(reId, encId);
+      db.prepare(
+        `INSERT INTO family_history
+           (profile_id, relation, condition, onset_age, source)
+         VALUES (?, 'mother', 'Breast cancer', 42, 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO care_plan_items
+           (profile_id, description, planned_date, status, source)
+         VALUES (?, 'Colonoscopy screening (e2e)', '2026-09-10', 'planned', 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO care_goals
+           (profile_id, description, code, target_date, status, source)
+         VALUES (?, 'Preventive target (e2e)', 'colonoscopy', '2026-09-10', 'active', 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO care_goals
+           (profile_id, description, target_date, status, source)
+         VALUES (?, 'Colonoscopy completed goal (e2e)', '2026-09-10', 'achieved', 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO appointments
+           (profile_id, date, title, status, kind)
+         VALUES (?, '2026-09-10', 'Colonoscopy screening', 'scheduled', 'screening')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO imaging_studies
+           (profile_id, modality, body_region, study_date, encounter_id, source)
+         VALUES (?, 'mri', 'Knee (e2e)', '2026-04-12', ?, 'manual')`
+      ).run(reId, encId);
+      db.prepare(
+        `INSERT INTO immunizations
+           (profile_id, vaccine, date, encounter_id, source)
+         VALUES (?, 'influenza', '2026-04-12', ?, 'manual')`
+      ).run(reId, encId);
+      const episodeId = Number(
+        db
+          .prepare(
+            `INSERT INTO illness_episodes (profile_id, situation, start_date)
+             VALUES (?, 'Knee recovery (e2e)', '2026-04-12')`
+          )
+          .run(reId).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO episode_encounters (profile_id, episode_id, encounter_id)
+         VALUES (?, ?, ?)`
+      ).run(reId, episodeId, encId);
     }
     seedMemberLogin(E2E_LOGIN_RECS_ENRICH, reId, "write");
     console.log(

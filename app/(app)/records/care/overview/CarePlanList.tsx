@@ -7,6 +7,8 @@ import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import ProviderName from "@/components/ProviderName";
 import NotesText from "@/components/NotesText";
+import ScheduledAppointmentLine from "@/components/ScheduledAppointmentLine";
+import type { ScheduledAppointmentRef } from "@/lib/care-plan-appointment";
 import { formatRecordDate, titleCase } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
@@ -15,7 +17,8 @@ import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
 
 const buildColumns = (
-  fmt: DisplayFormatPrefs
+  fmt: DisplayFormatPrefs,
+  appointments: Record<number, ScheduledAppointmentRef>
 ): RecordColumn<CarePlanItem>[] => [
   {
     header: "Item",
@@ -45,6 +48,9 @@ const buildColumns = (
             <NotesText notes={c.settled_reason} className="ml-1" />
           </span>
         )}
+        {appointments[c.id] ? (
+          <ScheduledAppointmentLine appointment={appointments[c.id]} />
+        ) : null}
       </>
     ),
   },
@@ -81,14 +87,16 @@ const buildColumns = (
 export default function CarePlanList({
   items,
   multiView,
+  appointments = {},
 }: {
   items: Stamped<CarePlanItem>[];
   multiView?: ListMultiView;
+  appointments?: Record<number, ScheduledAppointmentRef>;
 }) {
   return (
     <RecordTable
       items={items}
-      columns={buildColumns(useFormatPrefs())}
+      columns={buildColumns(useFormatPrefs(), appointments)}
       emptyMessage="No care-plan items yet. Add one, or import a MyChart / CCD health record to populate your planned care."
       multiView={
         multiView

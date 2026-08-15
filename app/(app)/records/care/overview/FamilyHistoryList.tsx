@@ -9,6 +9,7 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import NotesText from "@/components/NotesText";
 import { familyDeathLabel, familyRelativeLabel } from "@/lib/family-relation";
+import { familyHistoryScreeningImplication } from "@/lib/risk-stratification";
 import type { FamilyHistory } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
@@ -27,29 +28,41 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
   {
     header: "Condition",
     cellClassName: "text-slate-700 dark:text-slate-200",
-    cell: (f) => (
-      <>
-        {f.condition}
-        {f.code ? (
-          <span className="ml-1.5 text-xs text-slate-400">{f.code}</span>
-        ) : null}
-        {/* "Died at 52 — Myocardial infarction" (#1407), replacing the bare
+    cell: (f) => {
+      const implication = familyHistoryScreeningImplication(f);
+      return (
+        <>
+          {f.condition}
+          {f.code ? (
+            <span className="ml-1.5 text-xs text-slate-400">{f.code}</span>
+          ) : null}
+          {/* "Died at 52 — Myocardial infarction" (#1407), replacing the bare
             Deceased badge: the age and the cause are the screening-cadence inputs,
             so the surface that records them shows them. */}
-        {familyDeathLabel(f) ? (
-          <span
-            className="ml-2 badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
-            data-testid={`family-death-${f.id}`}
-          >
-            {familyDeathLabel(f)}
-          </span>
-        ) : null}
-        <NotesText
-          notes={f.notes}
-          className="ml-2 text-xs font-normal text-slate-400"
-        />
-      </>
-    ),
+          {familyDeathLabel(f) ? (
+            <span
+              className="ml-2 badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+              data-testid={`family-death-${f.id}`}
+            >
+              {familyDeathLabel(f)}
+            </span>
+          ) : null}
+          <NotesText
+            notes={f.notes}
+            className="ml-2 text-xs font-normal text-slate-400"
+          />
+          {implication ? (
+            <span
+              className="block text-xs font-normal text-slate-500 dark:text-slate-400"
+              data-testid={`family-screening-${f.id}`}
+            >
+              Early onset (age {implication.age}) · Tightens your{" "}
+              {implication.site} screening cadence
+            </span>
+          ) : null}
+        </>
+      );
+    },
   },
   {
     header: "Onset age",
@@ -57,7 +70,7 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
     cellClassName:
       "hidden whitespace-nowrap text-slate-600 sm:table-cell dark:text-slate-300",
     empty: (f) => f.onset_age == null,
-    cell: (f) => (f.onset_age != null ? `${f.onset_age} yrs` : "—"),
+    cell: (f) => (f.onset_age != null ? `${f.onset_age} yrs` : null),
   },
   {
     header: "Source",

@@ -1,9 +1,16 @@
-import { getCareGoalsForProfiles } from "@/lib/queries";
+import {
+  getCareGoalsForProfiles,
+  getScheduledAppointments,
+} from "@/lib/queries";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
 import CareGoalForm from "@/app/(app)/records/care/overview/CareGoalForm";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import CareGoalList from "@/app/(app)/records/care/overview/CareGoalList";
 import { addCareGoal } from "@/app/(app)/records/care/overview/care-goal-actions";
+import {
+  isCareGoalOpen,
+  scheduledAppointmentsForCareItems,
+} from "@/lib/care-plan-appointment";
 
 // Health goals (former /care-goals index, #1042 phase 6): clinical goals/targets
 // recorded in the profile's health records (Goals section, LOINC 61146-7, or a
@@ -19,6 +26,25 @@ import { addCareGoal } from "@/app/(app)/records/care/overview/care-goal-actions
 export default function HealthGoalsSection({ scope }: { scope: ProfileScope }) {
   const multi = scope.viewIds.length > 1;
   const goals = stampSubjects(scope, getCareGoalsForProfiles(scope.viewIds));
+  const appointments = Object.fromEntries(
+    scope.viewIds.flatMap((pid) =>
+      Object.entries(
+        scheduledAppointmentsForCareItems(
+          getScheduledAppointments(pid),
+          goals
+            .filter((goal) => goal.profileId === pid)
+            .map((goal) => ({
+              id: goal.id,
+              description: goal.description,
+              code: goal.code,
+              planned_date: goal.target_date,
+              status: goal.status,
+            })),
+          isCareGoalOpen
+        )
+      )
+    )
+  );
 
   return (
     <div className="space-y-6">
@@ -32,6 +58,7 @@ export default function HealthGoalsSection({ scope }: { scope: ProfileScope }) {
       </AddEntryPanel>
       <CareGoalList
         items={goals}
+        appointments={appointments}
         multiView={
           multi ? { actingProfileId: scope.actingProfileId } : undefined
         }

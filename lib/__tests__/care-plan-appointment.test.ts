@@ -6,8 +6,48 @@ import {
   matchCarePlanItemsForAppointment,
   appointmentMatchNeedles,
   CARE_PLAN_MATCH_WINDOW_DAYS,
+  isCareGoalOpen,
+  scheduledAppointmentsForCareItems,
   type CarePlanMatchItem,
 } from "../care-plan-appointment";
+
+describe("scheduledAppointmentsForCareItems", () => {
+  it("reverses the shared matcher onto open rows and ignores completed appointments", () => {
+    const open = item({ id: 7 });
+    const scheduled = {
+      id: 11,
+      kind: null,
+      title: "Colonoscopy screening",
+      notes: null,
+      date: VISIT,
+      status: "scheduled",
+    } as const;
+    expect(scheduledAppointmentsForCareItems([scheduled], [open])[7]?.id).toBe(
+      11
+    );
+    expect(
+      scheduledAppointmentsForCareItems(
+        [{ ...scheduled, status: "completed" }],
+        [open]
+      )
+    ).toEqual({});
+  });
+
+  it("does not reflect a scheduled appointment onto an achieved goal", () => {
+    const scheduled = {
+      id: 11,
+      kind: null,
+      title: "Colonoscopy screening",
+      notes: null,
+      date: VISIT,
+      status: "scheduled",
+    } as const;
+    const achieved = item({ id: 8, status: "achieved" });
+    expect(
+      scheduledAppointmentsForCareItems([scheduled], [achieved], isCareGoalOpen)
+    ).toEqual({});
+  });
+});
 
 const VISIT = "2026-03-15";
 

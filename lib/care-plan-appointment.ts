@@ -49,6 +49,20 @@ export interface CarePlanMatchItem {
   status?: string | null;
 }
 
+export type CareItemOpenPredicate = (
+  status: string | null | undefined
+) => boolean;
+
+// Clinical goals use the care-plan matcher but have one extra terminal spelling:
+// the manual goal form explicitly offers "achieved". Keep that vocabulary at the
+// adapter seam so an achieved goal cannot regain scheduled-looking UI merely because
+// the broader CarePlan status vocabulary does not use that word.
+export function isCareGoalOpen(status: string | null | undefined): boolean {
+  return (
+    status?.trim().toLowerCase() !== "achieved" && isCarePlanItemOpen(status)
+  );
+}
+
 // Curated keywords a kind contributes even when the appointment carries no title —
 // so a bare "Dental" appointment still needles a "Dental cleaning" item and a
 // "Vision" appointment reaches an "Eye exam" item (whose distinguishing word, "eye",
@@ -157,4 +171,30 @@ export function matchCarePlanItemsForAppointment(
   if (needles.length === 0) return [];
   const visitDate = appt.date;
   return items.filter((i) => itemMatches(needles, i, visitDate, windowDays));
+}
+
+export interface ScheduledAppointmentRef extends AppointmentMatchInput {
+  id: number;
+  status: string;
+}
+
+// Reflect scheduled appointments back onto the open care rows they match (#1355).
+// The matcher remains the one decision; this only reverses its output into a row map.
+export function scheduledAppointmentsForCareItems(
+  appointments: readonly ScheduledAppointmentRef[],
+  items: readonly CarePlanMatchItem[],
+  isOpen: CareItemOpenPredicate = isCarePlanItemOpen
+): Record<number, ScheduledAppointmentRef> {
+  const out: Record<number, ScheduledAppointmentRef> = {};
+  const openItems = items.filter((item) => isOpen(item.status));
+  for (const appointment of appointments) {
+    if (appointment.status !== "scheduled") continue;
+    for (const item of matchCarePlanItemsForAppointment(
+      appointment,
+      openItems
+    )) {
+      if (!out[item.id]) out[item.id] = appointment;
+    }
+  }
+  return out;
 }

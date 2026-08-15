@@ -495,6 +495,27 @@ export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
   return factors;
 }
 
+// The per-row reflection of the SAME early-onset factors that alter Upcoming's
+// screening cadence (#1355). Null is the absent pillar: rows that do not activate an
+// early-onset rule gain no explanatory line.
+export function familyHistoryScreeningImplication(
+  row: FamilyHistoryRiskRow
+): { site: "breast" | "colorectal"; age: number } | null {
+  for (const ref of familyConditionRefs([row])) {
+    const factors = deriveRiskFactors({
+      familyConditions: [ref],
+      activeConditions: [],
+      attributes: EMPTY_RISK_ATTRIBUTES,
+    });
+    if (ref.onsetAge == null) continue;
+    if (factors.has("family-breast-early-onset"))
+      return { site: "breast", age: ref.onsetAge };
+    if (factors.has("family-colorectal-early-onset"))
+      return { site: "colorectal", age: ref.onsetAge };
+  }
+  return null;
+}
+
 // A curated risk rule: a factor that modulates the cadence and/or ranks up a set
 // of analytes and/or screening rules. `names` matches an analyte's canonical name
 // exactly (lowercased); `nameContains` matches a substring (for uncurated analytes

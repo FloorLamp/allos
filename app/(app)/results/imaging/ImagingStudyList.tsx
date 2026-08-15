@@ -6,6 +6,7 @@ import TrackFollowUpControl from "./TrackFollowUpControl";
 import { updateImagingStudy, deleteImagingStudy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import RecordEncounterLink from "@/components/RecordEncounterLink";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -16,7 +17,7 @@ import {
   IMAGING_MODALITIES,
 } from "@/lib/imaging-study";
 import { formatMsv } from "@/lib/radiation-dose";
-import type { ImagingFollowUpSummary } from "@/lib/queries";
+import type { ImagingFollowUpSummary, LinkedEncounterRef } from "@/lib/queries";
 import type { ImagingStudy, ImagingModality } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
@@ -39,11 +40,12 @@ function tracksFollowUp(
 // (issue #700) without a module-level global.
 function buildColumns(
   followUps: Map<number, ImagingFollowUpSummary>,
+  encounters: Record<number, LinkedEncounterRef>,
   fmt: DisplayFormatPrefs,
   multiView?: ListMultiView
 ): RecordColumn<ImagingStudy>[] {
   return [
-    ...baseColumns(fmt),
+    ...baseColumns(fmt, encounters),
     {
       header: "Follow-up",
       // The non-acting placeholder is a "—" like any other (#2588): on a card it
@@ -59,7 +61,10 @@ function buildColumns(
   ];
 }
 
-const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
+const baseColumns = (
+  fmt: DisplayFormatPrefs,
+  encounters: Record<number, LinkedEncounterRef>
+): RecordColumn<ImagingStudy>[] => [
   {
     header: "Study",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -83,6 +88,13 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
           <span className="ml-2 line-clamp-1 text-xs font-normal text-slate-400">
             {s.impression}
           </span>
+        ) : null}
+        {encounters[s.id] ? (
+          <RecordEncounterLink
+            label="Performed at"
+            encounter={encounters[s.id]}
+            testid={`imaging-encounter-${s.id}`}
+          />
         ) : null}
       </>
     ),
@@ -156,10 +168,12 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
 export default function ImagingStudyList({
   items,
   followUps = [],
+  encounters = {},
   multiView,
 }: {
   items: Stamped<ImagingStudy>[];
   followUps?: ImagingFollowUpSummary[];
+  encounters?: Record<number, LinkedEncounterRef>;
   multiView?: ListMultiView;
 }) {
   const [modality, setModality] = useState<ImagingModality | "">("");
@@ -174,8 +188,8 @@ export default function ImagingStudyList({
   }, [followUps]);
   const fmt = useFormatPrefs();
   const columns = useMemo(
-    () => buildColumns(followUpByStudy, fmt, multiView),
-    [followUpByStudy, fmt, multiView]
+    () => buildColumns(followUpByStudy, encounters, fmt, multiView),
+    [followUpByStudy, encounters, fmt, multiView]
   );
 
   const filtered = useMemo(() => {

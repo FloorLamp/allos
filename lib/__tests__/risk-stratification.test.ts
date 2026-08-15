@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveRiskFactors,
+  familyHistoryScreeningImplication,
   familyConditionRefs,
   retestModulationFor,
   screeningPriorityFor,
@@ -16,6 +17,37 @@ import {
 // Risk-stratified retest & screening priority (issue #517) — pure threshold tests.
 
 describe("deriveRiskFactors", () => {
+  it("reflects only early-onset family rows back to their screening site (#1355)", () => {
+    expect(
+      familyHistoryScreeningImplication({
+        condition: "Breast cancer",
+        relation: "mother",
+        code: null,
+        code_system: null,
+        onset_age: 42,
+      })
+    ).toEqual({ site: "breast", age: 42 });
+    expect(
+      familyHistoryScreeningImplication({
+        condition: "Breast cancer",
+        relation: "mother",
+        code: null,
+        code_system: null,
+        onset_age: 62,
+      })
+    ).toBeNull();
+    expect(
+      familyHistoryScreeningImplication({
+        condition: "Unspecified condition",
+        relation: "mother",
+        code: null,
+        code_system: null,
+        onset_age: null,
+        cause_of_death: "Breast cancer",
+        age_at_death: 44,
+      })
+    ).toEqual({ site: "breast", age: 44 });
+  });
   it("returns an empty set for empty inputs", () => {
     expect(
       deriveRiskFactors({

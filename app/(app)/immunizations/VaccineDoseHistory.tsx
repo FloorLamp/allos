@@ -5,6 +5,7 @@ import { updateImmunization, deleteImmunization } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import NotesText from "@/components/NotesText";
+import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { vaccineDisplayName } from "@/lib/immunization-catalog";
 import {
   resolveDoseLabels,
@@ -12,6 +13,7 @@ import {
 } from "@/lib/immunization-status";
 import { immunizationAdministrationLine } from "@/lib/record-format";
 import type { Immunization } from "@/lib/types";
+import type { LinkedEncounterRef } from "@/lib/queries";
 
 // Editable dose list for the per-vaccine detail page. Lists every stored dose
 // that credits this vaccine (its own code plus any combination shot whose
@@ -29,6 +31,7 @@ export default function VaccineDoseHistory({
   code,
   doses,
   defaultDate,
+  encounters,
 }: {
   // The catalog code of the vaccine being viewed, used for the "of M" series
   // length and to decide which rows are combos ("via").
@@ -36,6 +39,7 @@ export default function VaccineDoseHistory({
   // Full stored immunization rows crediting this vaccine (so edit has every field).
   doses: Immunization[];
   defaultDate: string;
+  encounters: Record<number, LinkedEncounterRef>;
 }) {
   // Numbered within this vaccine's series (direct + combo doses together, by
   // date); a user's explicit dose_label wins. Pure helper shared with the history.
@@ -74,6 +78,13 @@ export default function VaccineDoseHistory({
             <span className="block text-xs text-amber-700 dark:text-amber-300">
               Reaction: {im.reaction}
             </span>
+          ) : null}
+          {encounters[im.id] ? (
+            <RecordEncounterLink
+              label="Administered at"
+              encounter={encounters[im.id]}
+              testid={`immunization-encounter-${im.id}`}
+            />
           ) : null}
         </>
       ),
