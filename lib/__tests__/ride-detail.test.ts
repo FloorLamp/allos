@@ -106,7 +106,7 @@ describe("isCyclingActivity", () => {
 });
 
 describe("activityDetailHref", () => {
-  it("routes rides to their detail and other activities to the Training Log record", () => {
+  it("routes rides to their detail and every other activity to its own page (#2870)", () => {
     expect(
       activityDetailHref({
         id: 42,
@@ -122,7 +122,7 @@ describe("activityDetailHref", () => {
         title: "Morning run",
         components: JSON.stringify([{ name: "Running", type: "cardio" }]),
       })
-    ).toBe("/training?tab=log#activity-43");
+    ).toBe("/training/activity/43");
   });
 });
 

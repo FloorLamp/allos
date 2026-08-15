@@ -1,5 +1,5 @@
 import { bodyweightAsOf } from "../../bodyweight";
-import { trainingLogActivityHref } from "../../timeline-format";
+import { trainingActivityPageHref } from "../../hrefs";
 import type { AppRoute } from "../../hrefs";
 import {
   sessionBestSet,
@@ -278,7 +278,7 @@ export function getRecentByExercise(
   )) {
     out[key] = h.sessions.map((s) => ({
       date: formatLongDate(s.date, prefs),
-      href: trainingLogActivityHref(s.activityId),
+      href: trainingActivityPageHref(s.activityId),
       equipment: s.equipment,
       text: summarizeExercise(s.sets, unit).text,
     }));
