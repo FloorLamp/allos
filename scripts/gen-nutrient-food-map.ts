@@ -180,6 +180,37 @@ export interface Contraindication {
   severity?: "caution" | "drop";
 }
 
+// The cautions every "eat more fiber" entry owes (the generic `fiber` entry and the
+// #2754 `soluble-fiber` twin ask for the same act, so they carry ONE list — a clinical
+// wording fix cannot apply to one and not the other). CAUTION, never drop: a
+// low-residue diet is prescribed during a FLARE, and the app cannot see a flare — so
+// the honest move is to annotate rather than withhold, and to keep the rule out of
+// CONDITION_NUTRIENT_RULES, which would otherwise block the psyllium supplement that
+// is standard care in exactly these conditions.
+export const FIBER_INCREASE_CAUTIONS: Contraindication[] = [
+  {
+    match: "inflammatory bowel",
+    caution:
+      "With inflammatory bowel disease, fiber is helpful in remission and restricted during a flare — follow your clinician's current advice rather than a general target.",
+  },
+  {
+    match: "irritable bowel",
+    caution:
+      "With IBS, some fibers help and others worsen symptoms — increase slowly, and prefer soluble sources (oats, psyllium) over bran.",
+  },
+  {
+    match: "gastroparesis",
+    caution:
+      "With delayed gastric emptying, high-fiber foods can make symptoms worse — check with your clinician before increasing them.",
+  },
+];
+
+// The shared citation for the #2754 soluble-fiber → LDL claim — the food entry here
+// and the biomarker-supplement-map's `lipids` entry cite the same authority, so the
+// string lives once and a correction reaches both datasets on regeneration.
+export const SOLUBLE_FIBER_LDL_SOURCE =
+  "FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims";
+
 // ── Curated nutrient → food table ─────────────────────────────────────────────
 // Diet-responsive nutrients only, each with a genuine food lever — reached either by a
 // flagged biomarker (#577) or, for the two macronutrients the app models end to end, by a
@@ -808,27 +839,7 @@ const ENTRIES: NutrientFoodEntry[] = [
       "Dietary fiber comes only from plants; legumes are the densest common source, with berries, whole fruit, and whole grains close behind.",
     source:
       "IOM 2005 Dietary Reference Intakes (total fiber Adequate Intake); Dietary Guidelines for Americans (fiber as a nutrient of public health concern)",
-    contraindications: [
-      // CAUTION, never drop. A low-residue diet is prescribed during a FLARE, and the app
-      // cannot see a flare — so the honest move is to annotate rather than to withhold, and
-      // to keep the rule out of CONDITION_NUTRIENT_RULES, which would otherwise block the
-      // psyllium supplement that is standard care in exactly these conditions.
-      {
-        match: "inflammatory bowel",
-        caution:
-          "With inflammatory bowel disease, fiber is helpful in remission and restricted during a flare — follow your clinician's current advice rather than a general target.",
-      },
-      {
-        match: "irritable bowel",
-        caution:
-          "With IBS, some fibers help and others worsen symptoms — increase slowly, and prefer soluble sources (oats, psyllium) over bran.",
-      },
-      {
-        match: "gastroparesis",
-        caution:
-          "With delayed gastric emptying, high-fiber foods can make symptoms worse — check with your clinician before increasing them.",
-      },
-    ],
+    contraindications: FIBER_INCREASE_CAUTIONS,
     allergyAlternative: null,
     caveat:
       "Raise fiber gradually and drink more water alongside it — a sudden jump is what causes the bloating people blame on the fiber itself.",
@@ -867,27 +878,11 @@ const ENTRIES: NutrientFoodEntry[] = [
     ],
     evidence:
       "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims.",
-    source:
-      "FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims",
-    contraindications: [
-      // The same increase-fiber cautions the `fiber` entry declares — this entry asks
-      // for the same act, so it owes the same annotations. CAUTION, never drop.
-      {
-        match: "inflammatory bowel",
-        caution:
-          "With inflammatory bowel disease, fiber is helpful in remission and restricted during a flare — follow your clinician's current advice rather than a general target.",
-      },
-      {
-        match: "irritable bowel",
-        caution:
-          "With IBS, some fibers help and others worsen symptoms — increase slowly, and prefer soluble sources (oats, psyllium) over bran.",
-      },
-      {
-        match: "gastroparesis",
-        caution:
-          "With delayed gastric emptying, high-fiber foods can make symptoms worse — check with your clinician before increasing them.",
-      },
-    ],
+    source: SOLUBLE_FIBER_LDL_SOURCE,
+    // The same increase-fiber cautions the `fiber` entry declares — this entry asks
+    // for the same act, so it owes the same annotations (ONE list, so a wording fix
+    // cannot apply to one twin and not the other).
+    contraindications: FIBER_INCREASE_CAUTIONS,
     allergyAlternative: null,
     caveat:
       "Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",

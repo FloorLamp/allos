@@ -924,12 +924,11 @@ export function buildFoodSuggestionFindings(profileId: number): Finding[] {
 
 function foodSuggestionToFinding(s: FoodSuggestion): Finding {
   const reduce = s.direction === "reduce";
-  // The trigger side rides on the suggestion (#2754): the soluble-fiber ADD is
-  // high-triggered, so the side may not be derived from the verb.
-  const side = s.side;
   const because =
     s.triggeredBy.length > 0
-      ? `Because your ${s.triggeredBy.join(", ")} ${s.triggeredBy.length > 1 ? "are" : "is"} ${side}`
+      ? // The trigger side rides on the suggestion (#2754): the soluble-fiber ADD is
+        // high-triggered, so the side may not be derived from the verb.
+        `Because your ${s.triggeredBy.join(", ")} ${s.triggeredBy.length > 1 ? "are" : "is"} ${s.side}`
       : reduce
         ? "Foods to reduce"
         : "Food sources";

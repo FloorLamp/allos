@@ -322,4 +322,33 @@ export function isCuratedSupplementBiomarker(name: string): boolean {
   return COVERED_NAMES.has(needle);
 }
 
+// name (lowercased) → the trigger SIDES its entries declare. Coverage became per-side
+// with #2754: the lipids entry answers LDL/ApoB only when they read HIGH, so "does the
+// curated map cover this name" and "does it answer THIS reading" are different
+// questions once direction is a per-entry axis.
+const COVERED_SIDES = new Map<string, Set<"low" | "high">>();
+for (const e of ENTRIES) {
+  for (const b of e.biomarkers) {
+    const key = b.trim().toLowerCase();
+    const sides = COVERED_SIDES.get(key) ?? new Set<"low" | "high">();
+    sides.add(e.direction);
+    COVERED_SIDES.set(key, sides);
+  }
+}
+
+// Whether the curated map answers THIS READING — name AND flag side. The AI route's
+// "already answered, do not duplicate" muzzle must ask this rather than the name-only
+// question above: muzzling a reading the curated engine will not answer (a LOW LDL,
+// a HIGH ferritin) would leave that family with no answer from either engine.
+export function curatedSupplementAnswersReading(
+  name: string,
+  flag: string | null | undefined
+): boolean {
+  const sides = COVERED_SIDES.get((name ?? "").trim().toLowerCase());
+  if (!sides) return false;
+  if (isLowFlag(flag)) return sides.has("low");
+  if (isHighFlag(flag)) return sides.has("high");
+  return false;
+}
+
 export { BIOMARKER_SUPPLEMENT_ENTRIES } from "./datasets/biomarker-supplement-map";

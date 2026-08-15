@@ -24,7 +24,7 @@
 //   helps. The honest local check is the symptom-day rate over the same window the
 //   fiber rise happened.
 
-import { shiftDateStr } from "./date";
+import { lastNDates } from "./date";
 
 // The panel's window: four whole weeks, so a weekday-shaped rhythm is sampled the
 // same number of times whichever day it renders on. The window lives HERE, not in
@@ -32,12 +32,10 @@ import { shiftDateStr } from "./date";
 // (the #1909 boundary), and this module owns every shape decision the panel makes.
 export const FIBER_SYMPTOM_PANEL_DAYS = 28;
 
-// The window's dates for a profile-local today, oldest → newest.
+// The window's dates for a profile-local today, oldest → newest — the shared
+// calendar walk, sized by this panel's declared span.
 export function fiberSymptomPanelDates(today: string): string[] {
-  const dates: string[] = [];
-  for (let i = FIBER_SYMPTOM_PANEL_DAYS - 1; i >= 0; i--)
-    dates.push(shiftDateStr(today, -i));
-  return dates;
+  return lastNDates(today, FIBER_SYMPTOM_PANEL_DAYS);
 }
 
 // The GI subset of the symptom vocabulary this panel marks. A DECLARED list, not a
@@ -65,6 +63,11 @@ export interface FiberSymptomDay {
   // fiber dose. Null renders as an honest empty slot (#2258: a missing day occupies
   // space), never as a zero-gram claim of a fast nobody recorded.
   grams: number | null;
+  // True when a CONFIRMED fiber supplement was taken that day but its grams couldn't
+  // be quantified (a capsule/unknown-unit dose, contributing 0 g to `grams`). The
+  // caveat every other fiber surface states — without it a psyllium-capsule day would
+  // render as a flat "0 g", the one claim it must not make.
+  unknownSupplement: boolean;
   // GI symptoms logged that day, worst-first. Empty for a symptom-free day.
   symptoms: PanelSymptom[];
 }
@@ -88,6 +91,9 @@ export interface FiberSymptomPanelInput {
   dates: string[];
   // date → the day's fiber grams, absent/null for a no-signal day.
   gramsByDate: ReadonlyMap<string, number | null>;
+  // Dates that carried a confirmed fiber dose of unknown grams (see
+  // FiberSymptomDay.unknownSupplement). Omitted = none.
+  unknownSupplementDates?: ReadonlySet<string>;
   // Raw symptom rows in the window, any order; non-GI rows are filtered here so the
   // gather can pass what its reader returns without owning the panel's vocabulary.
   symptoms: readonly { date: string; symptom: string; severity: number }[];
@@ -115,6 +121,7 @@ export function buildFiberSymptomPanel(
   const days: FiberSymptomDay[] = input.dates.map((date) => ({
     date,
     grams: input.gramsByDate.get(date) ?? null,
+    unknownSupplement: input.unknownSupplementDates?.has(date) ?? false,
     symptoms: byDate.get(date) ?? [],
   }));
 
