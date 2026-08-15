@@ -672,7 +672,7 @@ describe("label hygiene (dispatch.md §Queue labels)", () => {
       checkLabelHygiene([
         issue({ number: 5, labels: ["bug", "P1", "biomarkers"] }),
         issue({ number: 6, labels: ["P2", "design", "ui"] }),
-        // Closed issues keep their history — retired labels and all.
+        // Closed issues are out of scope for the check, whatever they carry.
         issue({ number: 7, labels: ["lib", "cleanup"], state: "closed" }),
       ])
     ).toEqual([]);

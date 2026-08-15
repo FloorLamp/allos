@@ -12,8 +12,8 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - `bug` is the only type label dispatch reads (P0/P1 bugs preempt features);
   `feat`/`refactor` are optional color, and `ui` optionally marks screen-heavy
   — therefore e2e-heavy — work (the two-agent cap).
-- `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15):
-  history on closed issues, a hygiene finding on open ones. `lib` routed
+- `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15)
+  and deleted repo-side; a hygiene finding flags any reappearance. `lib` routed
   nothing — business logic living in `lib/` is the repo's own rule.
 - `needs-human` means one specific owner answer is required. Apply it, assign
   the owner, and keep working elsewhere; never prompt the owner uninvited.
