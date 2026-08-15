@@ -271,11 +271,13 @@ test("a goal deadline item links to the Training → Goals tab, not the removed 
   const goalLink = page
     .getByRole("main")
     .getByRole("link", { name: "Reach 74 kg", exact: true });
-  await followLink(page, goalLink, /\/training\?tab=goals/);
+  // The retired goals name redirects to its canonical Plan URL (#2892), so the
+  // FINAL location carries tab=plan#goals — the goals section, anchor included.
+  await followLink(page, goalLink, /\/training\?tab=plan#goals/);
 
-  // Lands on the real Training hub with the Goals tab selected — a real page,
-  // not the pageless /goals directory that 404'd.
-  await expect(page).toHaveURL(/\/training\?tab=goals/);
+  // Lands on the real Training hub with the goals section anchored — a real
+  // page, not the pageless /goals directory that 404'd.
+  await expect(page).toHaveURL(/\/training\?tab=plan#goals/);
   await expect(
     page.getByRole("main").getByText("Reach 74 kg").first() // first-ok: asserts the seeded "Reach 74 kg" goal renders on the goals tab — order-agnostic
   ).toBeVisible();

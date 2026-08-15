@@ -56,7 +56,9 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
   // The panel itself still renders (the est-1RM stat proves it swapped); the
   // guide section is simply absent.
   const custom = page.getByRole("main");
-  await expect(custom.getByText("Est. 1RM").first()).toBeVisible(); // first-ok: asserts an Est. 1RM readout renders — order-agnostic presence
+  // Scoped to the stats <dl>: the metric picker is a select since #2895, so an
+  // unscoped text match would resolve first to its hidden <option>.
+  await expect(custom.locator("dl").getByText("Est. 1RM")).toBeVisible();
   await expect(custom.getByTestId("exercise-guide")).toHaveCount(0);
 });
 
