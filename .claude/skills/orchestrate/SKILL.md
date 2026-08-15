@@ -26,6 +26,15 @@ orchestrator's to use and nobody else's. Never submit `REQUEST_CHANGES` or
 below names its script because running the script IS following the procedure;
 prose is for the judgment the script cannot make.
 
+**Dry runs arm nothing.** A planning pass — "plan the session", "what would
+you dispatch", any run told to stop before dispatching — produces the plan and
+DEFERS every effect that outlives it: no agents, no worktrees or branches, no
+GitHub writes, and no scheduled wakes, triggers, or reminders. Name each
+deferred arming in the plan as a "first live action" instead of performing it.
+A LIVE session arms its durable wake at check-in (`lifecycle.md`); a dry one
+only says it would. This line was bought, not imagined: a dry run once armed a
+real wake trigger that would have fired into somebody's session hours later.
+
 ## 0. Check in — first action, every wake
 
 ```bash
