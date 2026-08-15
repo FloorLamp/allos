@@ -63,6 +63,7 @@ export default function TrainingLogCard({
   units,
   videos = [],
   canWrite = false,
+  withAnchor = true,
   subject,
   actingProfileId,
   onSelectExercise,
@@ -113,6 +114,10 @@ export default function TrainingLogCard({
   // Whether the acting login can write to this activity's profile — gates the
   // clip upload/delete affordances (the server actions re-gate regardless).
   canWrite?: boolean;
+  // Whether this card carries the #activity-N anchor id. True everywhere the
+  // card IS the activity's list presence; false when a host (the browse
+  // surface's slim row, #2897) already owns the anchor.
+  withAnchor?: boolean;
   // Subject identity for a merged multi-view card (issue #1330); absent in single
   // view. A NON-acting subject's card renders a subject chip; a read-only-granted
   // subject's card renders view-only (no edit/merge/clip affordances — the server
@@ -204,7 +209,11 @@ export default function TrainingLogCard({
     Boolean(routePolyline) && workedMuscles.length > 0;
   return (
     <div
-      id={`activity-${activity.id}`}
+      // The #activity-N anchor (Telegram history is immutable — old deep links
+      // must keep resolving). Suppressed when a HOST already carries the
+      // anchor: the browse surface's slim row owns it there (#2897), and two
+      // ids on one page would break the jump.
+      id={withAnchor ? `activity-${activity.id}` : undefined}
       className={`card scroll-mt-[calc(6rem+env(safe-area-inset-top))] transition ${
         selected ? "ring-2 ring-brand-500 dark:ring-brand-400" : ""
       }`}
