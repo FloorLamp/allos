@@ -569,11 +569,12 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     /\/training\?tab=analyze&kind=cardio&item=Cycling&metric=power&range=6m$/
   );
   await expect(page.getByTestId("cycling-overview")).toBeVisible();
+  // Selected state on the #2895 select is its VALUE, not a highlighted link.
   await expect(
     page
       .getByTestId("cycling-progression")
-      .getByRole("link", { name: "Power", exact: true })
-  ).toHaveClass(/bg-brand-600/);
+      .getByRole("combobox", { name: "Metric" })
+  ).toHaveValue("power");
 
   await page.goto("/timeline?category=activity");
   await expect(
