@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
-import { authorizedSingleProfile } from "@/lib/cross-profile";
 import { testAuthorizedIds as authorized } from "./authorized-ids";
 
 // Pure-tier coverage for stampSubjects (lib/scope.ts). resolveScope/requireScope need
@@ -68,8 +67,8 @@ describe("stampSubjects", () => {
           photo_version: 3,
         },
       ],
-      ids: authorizedSingleProfile(5),
-      viewIds: authorizedSingleProfile(5),
+      ids: authorized([5]),
+      viewIds: authorized([5]),
       access: new Map([[5, "write"]]),
     };
     const [stamped] = stampSubjects(s, [{ profileId: 5 }]);

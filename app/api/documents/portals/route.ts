@@ -83,7 +83,7 @@ export async function GET(req: Request): Promise<Response> {
   // here exactly as it would be at an upload. All three steps live in ONE derivation
   // since #2898 (writableProfileIdsForLogin), so this gate and the sync-report route's
   // copy of it cannot drift apart.
-  const canRead = writableProfileIdsForLogin(login.id, login.role).length > 0;
+  const canRead = writableProfileIdsForLogin(login.id).length > 0;
   if (!canRead) {
     return Response.json(
       { ok: false, error: "no write access to any profile" },

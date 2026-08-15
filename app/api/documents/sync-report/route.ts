@@ -1,10 +1,5 @@
 import { revalidateRoute } from "@/lib/revalidate";
-import {
-  accessForProfile,
-  accessibleProfilesForLogin,
-  writableProfileIdsForLogin,
-} from "@/lib/auth";
-import { isDemoMode, isDemoRestricted } from "@/lib/demo";
+import { writableProfileIdsForLogin } from "@/lib/auth";
 import { authenticateApiToken } from "@/lib/api-tokens";
 import { apiTokenRateLimitKey } from "@/lib/api-token-format";
 import {
@@ -209,7 +204,7 @@ export async function POST(req: Request): Promise<Response> {
   // Reach first, then access, then demo-restriction — one derivation, shared with the
   // registry endpoint's gate (#2898), which also mints the authorized-set capability
   // the account gate below demands.
-  const writableProfileIds = writableProfileIdsForLogin(login.id, login.role);
+  const writableProfileIds = writableProfileIdsForLogin(login.id);
 
   const counts = parseSyncReportCounts({
     inserted: body.inserted,
@@ -426,14 +421,12 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  const reachable = accessibleProfilesForLogin(login.id).some(
-    (p) => p.id === profileId
-  );
-  if (
-    isDemoRestricted(isDemoMode(), login.role) ||
-    !reachable ||
-    accessForProfile(login.id, login.role, profileId) !== "write"
-  ) {
+  // The SAME question the write set above already answers: reach, then access, then
+  // demo-restriction, for this one profile. It used to be spelled out a fourth time
+  // five lines below the value that answers it (#2935 review) — and a fourth copy is
+  // a fourth thing to keep in step, on a gate where drifting means writing another
+  // household's records.
+  if (!writableProfileIds.includes(profileId)) {
     return jsonError("no write access to that profile", 403);
   }
 

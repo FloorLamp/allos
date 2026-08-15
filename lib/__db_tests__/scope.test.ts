@@ -20,7 +20,7 @@ import type { CurrentSession } from "@/lib/auth";
 import { resolveScope, stampSubjects } from "@/lib/scope";
 import {
   authorizedProfileSubset,
-  authorizedSingleProfile,
+  isSealedAuthorizedProfileIds,
   profileIdsIn,
 } from "@/lib/cross-profile";
 
@@ -292,16 +292,44 @@ describe("authorized profile-id sets: what each boundary mints", () => {
     ]);
   });
 
-  it("the single-profile path names one profile and cannot compose into a wider set", () => {
-    const a = mkProfile("Alone");
-    expect([...authorizedSingleProfile(a)]).toEqual([a]);
-    // Two singletons concatenate to a plain number[] — the brand does not survive, so
-    // single-profile authority can never be assembled into a cross-profile set.
-    const joined = [
-      ...authorizedSingleProfile(a),
-      ...authorizedSingleProfile(a),
-    ];
-    expect(joined).toEqual([a, a]);
+  it("the DEFAULT view derives too — an unreachable acting profile is not authorized", () => {
+    // #2935 review, finding 3. The default (no persisted view set) branch used to mint
+    // a one-element capability over `actingProfileId` with no membership test, twelve
+    // lines below the block that re-validates ownProfileId against exactly this set.
+    // A session naming a profile the login cannot reach then produced ids [A,B],
+    // ownProfileId null — and viewIds [D] wearing the authorized label.
+    const member = mkLogin("member");
+    const a = mkProfile("Reachable A");
+    const b = mkProfile("Reachable B");
+    const unreachable = mkProfile("Unreachable D");
+    grant(member, a);
+    grant(member, b);
+
+    const scope = resolveScope(sessionFor(member, "member", unreachable));
+    expect([...scope.ids]).toEqual([a, b]);
+    expect(scope.ownProfileId).toBeNull();
+    // The view now derives from the accessible set like everything else, so it cannot
+    // name D. Empty is the honest answer, and resolveSessionToken already stops this
+    // session from existing — the guard is for when it somehow does.
+    expect([...scope.viewIds]).toEqual([]);
+    expect(scope.viewIds).not.toContain(unreachable);
+
+    // A reachable acting profile is unaffected: the default view is still exactly it.
+    const ok = resolveScope(sessionFor(member, "member", a));
+    expect([...ok.viewIds]).toEqual([a]);
+  });
+
+  it("every set a boundary hands out is sealed, so it survives the chokepoint", () => {
+    const member = mkLogin("member");
+    const a = mkProfile("Sealed A");
+    grant(member, a);
+    const scope = resolveScope(sessionFor(member, "member", a));
+    // Both sets a page reads off the scope, and a narrowing of one, reach a query
+    // without tripping the runtime guard #2935 added.
+    expect(isSealedAuthorizedProfileIds(scope.ids)).toBe(true);
+    expect(isSealedAuthorizedProfileIds(scope.viewIds)).toBe(true);
+    expect(profileIdsIn(scope.ids)).toBe("(?)");
+    expect(profileIdsIn(authorizedProfileSubset(scope.ids, [a]))).toBe("(?)");
   });
 });
 

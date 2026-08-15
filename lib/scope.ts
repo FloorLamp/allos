@@ -43,7 +43,6 @@ import {
 } from "./auth";
 import {
   authorizedProfileSubset,
-  authorizedSingleProfile,
   type AuthorizedProfileIds,
 } from "./cross-profile";
 import { disambiguateProfileNames } from "./profile-disambiguation";
@@ -133,13 +132,23 @@ export function resolveScope(
   // set does not contain and preserves accessible order (not the raw input's), which
   // is exactly what the hand-rolled intersection did — and it is the operation that
   // keeps the result authorized, so the view set carries the capability too.
+  //
+  // THE FALLBACK IS DERIVED TOO (#2935 review). It used to be a bare one-element
+  // capability over `actingProfileId`, minted with no membership test — twelve lines
+  // below the block that re-validates `ownProfileId` against exactly this set. A
+  // session naming a profile the login can no longer reach then produced `ids [A,B]`,
+  // `ownProfileId null`, and `viewIds [D]` carrying the authorized label. Narrowing
+  // the accessible set instead applies the SAME re-derive-against-current-grants rule
+  // the active profile and the own-profile link already get, and an acting profile
+  // outside the accessible set collapses to the empty view — the honest answer, and
+  // one resolveSessionToken already prevents from arising.
+  const actingOnly = authorizedProfileSubset(ids, [actingProfileId]);
   let viewIds: AuthorizedProfileIds;
   if (rawViewIds && rawViewIds.length > 0) {
     viewIds = authorizedProfileSubset(ids, rawViewIds);
-    if (viewIds.length === 0)
-      viewIds = authorizedSingleProfile(actingProfileId);
+    if (viewIds.length === 0) viewIds = actingOnly;
   } else {
-    viewIds = authorizedSingleProfile(actingProfileId);
+    viewIds = actingOnly;
   }
 
   return {

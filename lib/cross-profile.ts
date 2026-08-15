@@ -44,31 +44,59 @@
 // the question a cross-profile query asks. The question is "may this caller see
 // exactly these people, together?", and only a set can answer it.
 //
-// `AuthorizedProfileIds` is nominal: the brand is a `declare`d unique symbol, so no
-// value expression anywhere can produce one. That makes an unauthorized id
-// UNREPRESENTABLE at the set-based boundary rather than merely unlikely — a plain
-// `number[]` is a compile error at `profileIdsIn`, and the only ways to hold the
-// capability are:
+// The capability has TWO origins, and both DERIVE rather than assert:
 //
-//   • an authorization boundary that DERIVES the set from grants —
-//     `resolveScope()`'s `ids`/`viewIds`, and lib/auth's
-//     `accessibleProfileIdsForLogin` / `writableProfileIdsForLogin` for the
-//     token-authenticated routes that have no session to scope;
-//   • `authorizedProfileSubset(parent, wanted)` below, which can only NARROW;
-//   • `authorizedSingleProfile(id)` below, which can only ever name ONE profile.
+//   • a grant derivation — lib/auth's `accessibleProfileIdsForLogin` /
+//     `writableProfileIdsForLogin`, which recompute the set from `login_profiles`
+//     every call. `resolveScope()`'s `ids` and `viewIds` come from there.
+//   • `authorizedProfileSubset(parent, wanted)` below, which INTERSECTS with an
+//     already-authorized parent and so can only narrow.
 //
-// There is no minter that takes a list of arbitrary numbers, and the branded arrays
-// do not compose: concatenating or spreading two of them yields a plain `number[]`,
-// so a cross-profile set can never be assembled out of single-profile authority.
+// There is deliberately no minter that takes a list of arbitrary numbers, and no
+// single-profile minter either: an unchecked `authorizedSingleProfile(id)` was one,
+// so a profile-scoped caller that needs the pools of ONE profile now reads it through
+// single-profile `profile_id = ?` SQL (`poolIdsForProfile`) instead of manufacturing
+// a one-element capability.
 //
-// The casts this needs are the two in THIS module (both provably narrowing or
-// singular) plus one inside lib/auth.ts's grant derivation. Production CALL SITES
-// have none — a caller either holds a scope, narrows one, or names one profile.
+// ── WHAT THE TYPE DOES AND DOES NOT PROVE ────────────────────────────────────
+//
+// The brand is a `declare`d unique symbol, so no ORDINARY expression produces one:
+// a bare literal, `concat`, `map`, `filter`, `slice`, spread, `Array.from`,
+// `toSorted` and `with` all fail to compile at `profileIdsIn`. That is a real rail,
+// but it is NOT a proof, and the difference matters enough to write down: TypeScript
+// makes `A & B` assignable to `B`, so `Object.assign` launders the brand onto any
+// array in one line, with no cast and no `any` —
+//
+//     const forged: AuthorizedProfileIds = Object.assign([], mine, [4, 5, 6]);
+//
+// `tsc` and eslint both pass that. No brand design resists it, because intersection
+// assignability is a core language rule rather than a hole in this one.
+//
+// So the type is the FIRST rail and not the only one. The SECOND is a runtime mark: a
+// minted set is FROZEN and carries a NON-ENUMERABLE mark, and BOTH functions that
+// consume a capability — `profileIdsIn` and `authorizedProfileSubset` — refuse a set
+// that does not carry it. (The subset needs its own check because it seals its own
+// result: narrowing a forgery would otherwise hand back a freshly-sealed set.) That
+// closes every laundering shape, because `Object.assign` copies only own ENUMERABLE
+// properties:
+//
+//   • `Object.assign([], mine, [4,5,6])` builds a fresh array — the mark is not
+//     copied, so the forged set is refused;
+//   • `Object.assign(mine, [4,5,6])` tries to overwrite the minted array in place —
+//     frozen, so it throws before it can lie;
+//   • a bare `as unknown as AuthorizedProfileIds` cast produces an unmarked array,
+//     so casting one's way in no longer works either.
+//
+// WHAT REMAINS: importing `AUTHORIZED_PROFILE_IDS_MARK` below and defining the
+// property by hand. That is a deliberate, greppable act rather than an innocent-
+// looking one-liner, and it is the same trust level the whole app already runs on
+// (nothing stops a `WHERE profile_id = ?` from being handed a request value either).
+// The honest summary: accidental misuse is impossible, deliberate forgery is visible.
 //
 // The CROSS_PROFILE_SQL_MODULES scan below is untouched and stays in force: it is the
 // independent LOCATION backstop, answering a different question (where the shape may
-// appear) from the one the type answers (whose ids it may carry). Neither replaces
-// the other.
+// appear) from the one the capability answers (whose ids it may carry). Neither
+// replaces the other.
 declare const AUTHORIZED_PROFILE_IDS: unique symbol;
 
 // A set of profile ids an authorization boundary has already decided this caller may
@@ -78,37 +106,57 @@ export type AuthorizedProfileIds = readonly number[] & {
   readonly [AUTHORIZED_PROFILE_IDS]: true;
 };
 
+// The RUNTIME half of the capability. Exported ONLY because the grant derivation
+// lives in lib/auth.ts (which this module must not import — the cross-profile readers
+// that import this one would then pull lib/auth in behind them) and it needs to seal
+// its own results. A shared SYMBOL is not a minter: it hands out no ids and performs
+// no conversion, so exporting it does not reopen the "public minter that accepts
+// arbitrary numbers" door #2898 closed.
+export const AUTHORIZED_PROFILE_IDS_MARK: unique symbol = Symbol(
+  "allos.authorizedProfileIds"
+);
+
+// Seal a DERIVED set into the capability: mark it non-enumerably (so `Object.assign`
+// cannot copy the mark onto a forged array) and freeze it (so `Object.assign` cannot
+// overwrite this one in place). lib/auth.ts holds its own three-line copy of this
+// rather than importing it — exporting the sealer WOULD be the arbitrary-numbers
+// minter, and two short copies is the price of not shipping one.
+function seal(ids: readonly number[]): AuthorizedProfileIds {
+  Object.defineProperty(ids, AUTHORIZED_PROFILE_IDS_MARK, {
+    value: true,
+    enumerable: false,
+  });
+  return Object.freeze(ids) as unknown as AuthorizedProfileIds;
+}
+
 // Narrow an authorized set to the members a surface actually wants. The result is
 // authorized because it is a SUBSET of an already-authorized set: an id in `wanted`
 // that the parent does not contain is DROPPED, never carried through, so this cannot
 // widen no matter what it is handed. Parent order is preserved (the same rule
 // resolveScope applies to a stored view set) so a narrowed read stays deterministic.
+//
+// True when a value carries the runtime mark — i.e. it was sealed by a derivation
+// rather than laundered or cast into the type. Exported for the tests that pin the
+// laundering shapes; production asks this question through the two guards below.
+export function isSealedAuthorizedProfileIds(ids: readonly number[]): boolean {
+  return AUTHORIZED_PROFILE_IDS_MARK in ids;
+}
+
+// THE PARENT IS RE-CHECKED HERE, not only at `profileIdsIn`. This function seals its
+// own result, so without the check it would launder: narrow a forged parent to a
+// subset of itself and the output is a freshly-sealed set the chokepoint would then
+// accept. A subset is only as authorized as what it narrowed.
 export function authorizedProfileSubset(
   parent: AuthorizedProfileIds,
   wanted: readonly number[]
 ): AuthorizedProfileIds {
+  if (!isSealedAuthorizedProfileIds(parent)) {
+    throw new Error(
+      "authorizedProfileSubset: parent set did not come from an authorization boundary"
+    );
+  }
   const asked = new Set(wanted);
-  // Safe by construction: every surviving id was already in `parent`.
-  return parent.filter((id) =>
-    asked.has(id)
-  ) as unknown as AuthorizedProfileIds;
-}
-
-// The ONE already-authorized profile a profile-scoped caller is running as — the
-// single-active-profile model's own authority, expressed as a one-element set so a
-// profile-scoped path can reach a set-based reader without inventing a scope it does
-// not have (#2116's `poolIdsForProfiles([profileId])` is the case).
-//
-// This grants NOTHING the single-profile model does not already grant: the caller is
-// a profile-scoped reader whose every other statement reads the same id through
-// `WHERE profile_id = ?`, which the profile-scoping scan already governs. What it
-// cannot do is widen — it takes one id and returns one id, and two of its results do
-// not combine into a cross-profile set, so the multi-profile capability still comes
-// only from a resolved scope.
-export function authorizedSingleProfile(
-  profileId: number
-): AuthorizedProfileIds {
-  return [profileId] as unknown as AuthorizedProfileIds;
+  return seal(parent.filter((id) => asked.has(id)));
 }
 
 // The bound-parameter placeholder tuple for a cross-profile IN-list. The caller
@@ -116,14 +164,23 @@ export function authorizedSingleProfile(
 // `profile_id IN` shape and enforces the registered-module rule) and passes `...ids`
 // as the bound params. NEVER interpolate ids into SQL directly.
 //
-// Takes the CAPABILITY, not a list: a plain `number[]` here is a compile error, so
-// the provenance the comments above promise is the compiler's promise now.
+// THE CHOKEPOINT. Every set-based cross-profile read builds its IN-list here, before
+// it binds anything, so refusing an unsealed set here refuses it everywhere — and it
+// throws rather than returning `(NULL)`, because a set that reached this line without
+// a derivation behind it is a programming error, not an empty household. A caller
+// that legitimately has nobody passes a derived EMPTY set, which is sealed and
+// therefore fine.
 //
 // The empty set yields `(NULL)` — `IN (NULL)` binds nothing and matches NOTHING (a
 // cross-profile query over no profiles must return nothing, never everything), and
 // stays valid SQL (a bare `IN ()` is a syntax error). Callers that can pass an empty
 // set should still short-circuit to `[]` before querying.
 export function profileIdsIn(ids: AuthorizedProfileIds): string {
+  if (!isSealedAuthorizedProfileIds(ids)) {
+    throw new Error(
+      "profileIdsIn: profile-id set did not come from an authorization boundary"
+    );
+  }
   if (ids.length === 0) return "(NULL)";
   return `(${ids.map(() => "?").join(",")})`;
 }

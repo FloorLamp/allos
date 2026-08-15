@@ -12,7 +12,9 @@ These instructions apply to business logic and data access under `lib/`.
   module.
 - Mint that set at an authorization boundary (`scope.ids`, `scope.viewIds`,
   `accessibleProfileIdsForLogin`, `writableProfileIdsForLogin`), or narrow one
-  with `authorizedProfileSubset` / `authorizedSingleProfile`. Never cast in.
+  with `authorizedProfileSubset`. A cast is refused at runtime, not just typed.
+- Reading pools/rows for ONE profile stays single-profile `profile_id = ?` SQL.
+  Do not manufacture a one-element authorized set to reach a set-based reader.
 - Add new profile-owned tables to `lib/owned-tables.ts`.
 
 ## Shared models

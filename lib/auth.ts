@@ -12,7 +12,10 @@ import {
   sessionCookieOptions,
 } from "./session-cookie";
 import { isDemoMode, isDemoRestricted } from "./demo";
-import type { AuthorizedProfileIds } from "./cross-profile";
+import {
+  AUTHORIZED_PROFILE_IDS_MARK,
+  type AuthorizedProfileIds,
+} from "./cross-profile";
 import {
   parseViewProfileIds,
   serializeViewProfileIds,
@@ -412,12 +415,19 @@ export function accessibleProfilesForLogin(loginId: number): SessionProfile[] {
 // `accessibleProfiles` at call time, so a revoked grant drops out immediately and an
 // id nobody granted can never appear.
 //
-// The single `as` conversion the brand needs lives in this one helper, beside the
-// derivation that justifies it. It is deliberately NOT exported: an exported
-// `authorized(ids)` would be exactly the arbitrary-numbers minter the capability
-// exists to prevent.
+// The seal lives in this one helper, beside the derivation that justifies it, and is
+// deliberately NOT exported: an exported `authorized(ids)` would be exactly the
+// arbitrary-numbers minter the capability exists to prevent. It is a three-line copy
+// of lib/cross-profile's private `seal` — mark non-enumerably so `Object.assign`
+// cannot launder the mark onto a forged array, then freeze so `Object.assign` cannot
+// overwrite this one in place. Two short copies is the price of not exporting a
+// sealer; the shared SYMBOL is all the two modules have in common.
 function authorized(ids: readonly number[]): AuthorizedProfileIds {
-  return ids as unknown as AuthorizedProfileIds;
+  Object.defineProperty(ids, AUTHORIZED_PROFILE_IDS_MARK, {
+    value: true,
+    enumerable: false,
+  });
+  return Object.freeze(ids) as unknown as AuthorizedProfileIds;
 }
 
 // The login's accessible set as the capability — for the token-authenticated surfaces
@@ -433,16 +443,26 @@ export function accessibleProfileIdsForLogin(
 // account gate and the "can this viewer act at all?" checks ask about. Reach FIRST,
 // then access (accessForProfile assumes reachability), and demo-restriction refuses
 // every non-admin write, so a demo-restricted token resolves to the empty set exactly
-// as it would be refused at an upload. One derivation, so the routes that used to
-// spell this filter out by hand cannot drift apart.
+// as it would be refused at an upload.
+//
+// The ROLE IS READ HERE, not taken as an argument (#2935 review). A caller passing the
+// wrong role would silently promote every read-only grant to writable — `accessForProfile`
+// answers "write" unconditionally for an admin — and this function's result is one the
+// type system labels authorized, so it must not depend on the caller getting a second
+// argument right. It resolves the login's CURRENT role from the same row
+// `accessibleProfilesForLogin` reads, which is also what makes a demotion take effect
+// immediately instead of riding a stale value.
 export function writableProfileIdsForLogin(
-  loginId: number,
-  role: Role
+  loginId: number
 ): AuthorizedProfileIds {
-  if (isDemoRestricted(isDemoMode(), role)) return authorized([]);
+  const acct = db
+    .prepare("SELECT role FROM logins WHERE id = ?")
+    .get(loginId) as { role: Role } | undefined;
+  if (!acct) return authorized([]);
+  if (isDemoRestricted(isDemoMode(), acct.role)) return authorized([]);
   return authorized(
     accessibleProfilesForLogin(loginId)
-      .filter((p) => accessForProfile(loginId, role, p.id) === "write")
+      .filter((p) => accessForProfile(loginId, acct.role, p.id) === "write")
       .map((p) => p.id)
   );
 }

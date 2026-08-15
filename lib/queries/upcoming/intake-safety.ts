@@ -45,10 +45,9 @@ import {
 } from "../../refill-nudge";
 import {
   getPoolView,
-  poolIdsForProfiles,
+  poolIdsForProfile,
   poolPushes,
 } from "../intake/supply-pool";
-import { authorizedSingleProfile } from "../../cross-profile";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";
@@ -457,12 +456,11 @@ export function poolRefillItems(
   today: string
 ): UpcomingItem[] {
   const items: UpcomingItem[] = [];
-  // The single-profile authority (#2898): this generator runs AS `profileId` — every
-  // other read in it is `WHERE profile_id = ?` on the same id — so it names that one
-  // profile explicitly rather than inventing a scope it does not hold.
-  for (const supplyId of poolIdsForProfiles(
-    authorizedSingleProfile(profileId)
-  )) {
+  // Single-profile scoping (#2935 review): this generator runs AS `profileId` and every
+  // other read in it is `WHERE profile_id = ?` on the same id, so the pooled-bottle
+  // lookup is too. It used to mint a one-element cross-profile capability here, which
+  // was an unchecked minter dressed up as a narrow one.
+  for (const supplyId of poolIdsForProfile(profileId)) {
     const pool = getPoolView(supplyId);
     if (!pool || !pool.low || pool.daysLeft == null) continue;
     // Tracked, never pushed (#1505), pooled edition: a bottle whose every ACTIVE

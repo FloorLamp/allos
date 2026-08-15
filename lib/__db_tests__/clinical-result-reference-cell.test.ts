@@ -35,7 +35,7 @@ import {
   type ClinicalResultTableObservation,
 } from "@/app/(app)/results/clinical-result-index";
 import { medicalValueFlagText } from "@/lib/medical-value";
-import { authorizedSingleProfile } from "@/lib/cross-profile";
+import { testAuthorizedIds } from "../__tests__/authorized-ids";
 
 const DRAW_DATE = "2026-03-04";
 
@@ -56,8 +56,8 @@ function singleScope(profileId: number): ProfileScope {
         photo_version: 0,
       },
     ],
-    ids: authorizedSingleProfile(profileId),
-    viewIds: authorizedSingleProfile(profileId),
+    ids: testAuthorizedIds([profileId]),
+    viewIds: testAuthorizedIds([profileId]),
     access: new Map([[profileId, "write" as const]]),
   };
 }

@@ -105,6 +105,11 @@ vi.mock("@/lib/auth", async () => {
       photo_version: 0,
     }));
   };
+  // The #2898 seal, so the two minters below hand back a real capability rather than a
+  // bare array the runtime chokepoint would refuse.
+  const { testAuthorizedIds: seal } =
+    await import("../__tests__/authorized-ids");
+
   const accessibleProfilesForLogin = (loginId: number) => {
     const acct = dbMod.db
       .prepare("SELECT role FROM logins WHERE id = ?")
@@ -251,15 +256,28 @@ vi.mock("@/lib/auth", async () => {
     // The #2898 authorized-set MINTERS. Faithful because they are DERIVED from the
     // two faithful primitives above rather than fabricated: the accessible set comes
     // from the temp DB's real grants, and the writable subset re-applies the same
-    // reach-then-access-then-demo order prod uses. The brand is a type-only marker,
-    // so the mock returns a plain array exactly as the real derivation does.
+    // reach-then-access-then-demo order prod uses.
+    //
+    // They must SEAL their results (#2935): the capability is not only a type, it is a
+    // frozen array carrying a non-enumerable mark, and `profileIdsIn` throws without
+    // it. A mock that returned a bare array would make every set-based read fail here
+    // — which is the runtime guard doing its job, and the reason this stands in for
+    // the boundary properly rather than approximating it.
     accessibleProfileIdsForLogin: (loginId: number) =>
-      accessibleProfilesForLogin(loginId).map((p) => p.id),
-    writableProfileIdsForLogin: (loginId: number, role: string) => {
-      if (isDemoRestricted(isDemoMode(), role as "admin" | "member")) return [];
-      return accessibleProfilesForLogin(loginId)
-        .filter((p) => accessForProfile(loginId, role, p.id) === "write")
-        .map((p) => p.id);
+      seal(accessibleProfilesForLogin(loginId).map((p) => p.id)),
+    writableProfileIdsForLogin: (loginId: number) => {
+      const acct = dbMod.db
+        .prepare("SELECT role FROM logins WHERE id = ?")
+        .get(loginId) as { role: string } | undefined;
+      if (!acct) return seal([]);
+      if (isDemoRestricted(isDemoMode(), acct.role as "admin" | "member")) {
+        return seal([]);
+      }
+      return seal(
+        accessibleProfilesForLogin(loginId)
+          .filter((p) => accessForProfile(loginId, acct.role, p.id) === "write")
+          .map((p) => p.id)
+      );
     },
     // Faithful to prod canAccessProfile: admins reach every profile, members only
     // their granted ones. Used by login-scoped actions that take a profile id
