@@ -149,22 +149,12 @@ test("mid-session, the workout entry point resumes and the session clock survive
   const startedAt = await dock.getAttribute("data-start-epoch");
   expect(startedAt).toMatch(/^\d+$/);
 
-  // Back on the Log — SOFT navigation (the pocketed form must stay mounted;
-  // a hard reload would re-derive the epoch from presence's minute-rounded
-  // reconstruction). The SAME entry control now offers the resume by name.
-  await page
-    .getByRole("complementary")
-    .getByRole("link", { name: "Training" })
-    .click();
-  // Let the hub land before finding the Log tab, then follow the tab by HREF —
-  // role-name matching here is fragile both ways (a non-exact "Log" also
-  // matches the session page's "Training log" back link; exact can miss a
-  // decorated label).
-  await page.waitForURL(/\/training(\?.*)?$/);
-  await page
-    .locator('main a[href="/training?tab=log"]')
-    .first() // first-ok: any Log link on the hub reaches the same tab
-    .click();
+  // Back on the Log — SOFT history navigation (the pocketed form must stay
+  // mounted; a hard reload would re-derive the epoch from presence's
+  // minute-rounded reconstruction). goBack pops the start's own push, landing
+  // exactly on the ?tab=log we came from. The SAME entry control now offers
+  // the resume by name.
+  await page.goBack();
   await page.waitForURL(/tab=log/);
   await expect(entry).toHaveAttribute("data-workout-offer", "resume");
   await expect(entry).toHaveText("Resume workout");
