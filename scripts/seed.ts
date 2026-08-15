@@ -2788,6 +2788,11 @@ const seededSymptoms: [number, string, number, string | null][] = [
   // Past episode.
   [58, "headache", 2, null],
   [57, "nausea", 3, null],
+  // Standalone GI days (no episode), inside the fiber × GI panel's 4-week window
+  // (#2788) so /nutrition's read-together strip has both series to show.
+  [6, "bloating", 2, null],
+  [12, "diarrhea", 3, null],
+  [12, "abdominal_pain", 2, null],
 ];
 for (const [ago, symptom, severity, note] of seededSymptoms) {
   // The current episode's rows (ago ≤ 3) slide with the illnessNow dial

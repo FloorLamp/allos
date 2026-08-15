@@ -105,6 +105,12 @@ import {
   type FiberAdequacy,
 } from "../fiber";
 import {
+  buildFiberSymptomPanel,
+  fiberSymptomPanelDates,
+  type FiberSymptomPanel,
+} from "../fiber-symptom-panel";
+import { getSymptomDaysInRange } from "./symptoms";
+import {
   nutritionDayPosition,
   type NutrientPosition,
   type NutritionDayPosition,
@@ -1514,6 +1520,55 @@ export function getFiberOnDate(
     sex: getProfileSex(profileId),
   });
   return assessFiberAdequacy(intake, target);
+}
+
+// ---- Fiber × GI symptoms, read together (issue #2788) ----
+
+// The read-together gather: the daily fiber series (#976, via the same per-day gather
+// the Food picker reads) and the window's symptom days (the same rollup reader the
+// timeline reads), assembled by the pure panel module. A VIEW's input — no derivation
+// of its own, no finding, no send; the window, the GI filter, and every shape decision
+// live in lib/fiber-symptom-panel.ts (this gather holds no window arithmetic, #1909).
+export function getFiberSymptomPanel(profileId: number): FiberSymptomPanel {
+  const dates = fiberSymptomPanelDates(today(profileId));
+  const from = dates[0];
+  const to = dates[dates.length - 1];
+
+  // Days with ANY food log — what separates an honest zero-fiber day (only zero-fiber
+  // groups logged) from a day with no signal at all, which renders as an empty slot
+  // rather than a zero-gram claim (#2258).
+  const loggedDates = new Set(
+    (
+      db
+        .prepare(
+          `SELECT DISTINCT date FROM food_daily_totals
+            WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0`
+        )
+        .all(profileId, from, to) as { date: string }[]
+    ).map((r) => r.date)
+  );
+
+  const gramsByDate = new Map<string, number | null>();
+  for (const date of dates) {
+    // The same per-day computation the Food picker states. Its intake is null for a
+    // day with NO fiber signal — which still includes a day whose only logs are
+    // zero-fiber groups, so the logged-day fact upgrades that null to an honest 0.
+    const intake = getFiberOnDate(profileId, date)?.intake ?? null;
+    gramsByDate.set(
+      date,
+      intake ? intake.grams : loggedDates.has(date) ? 0 : null
+    );
+  }
+
+  const symptoms = getSymptomDaysInRange(profileId, from, to).flatMap((day) =>
+    day.symptoms.map((s) => ({
+      date: day.date,
+      symptom: s.symptom,
+      severity: s.severity,
+    }))
+  );
+
+  return buildFiberSymptomPanel({ dates, gramsByDate, symptoms });
 }
 
 // ---- One day, both nutrients (issue #2379) ----
