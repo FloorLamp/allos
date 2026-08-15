@@ -24,6 +24,7 @@ describe("buildAdherenceCalendar (#852 item 5)", () => {
       partial: 0,
       skipped: 1,
       missed: 1,
+      pending: 0,
       na: 0,
     });
   });
@@ -46,7 +47,14 @@ describe("buildAdherenceCalendar (#852 item 5)", () => {
   it("returns an empty grid for no data", () => {
     expect(buildAdherenceCalendar([])).toEqual({
       weeks: [],
-      counts: { taken: 0, partial: 0, skipped: 0, missed: 0, na: 0 },
+      counts: {
+        taken: 0,
+        partial: 0,
+        skipped: 0,
+        missed: 0,
+        pending: 0,
+        na: 0,
+      },
     });
   });
 
@@ -70,7 +78,68 @@ describe("buildAdherenceCalendar (#852 item 5)", () => {
       partial: 0,
       skipped: 1,
       missed: 0,
+      pending: 0,
       na: 0,
+    });
+  });
+
+  // Today, still pending (#2796). The strip scores an unlogged due day as "missed"
+  // because that is all it can say; the calendar was painting today's cell red and
+  // "Missed" while the block above it still offered "Mark taken", and counting it in
+  // the legend's missed total. Today is unsettled, not failed.
+  describe("the trailing pending day", () => {
+    const withTrailing = (last: AdherenceDot["state"]): AdherenceDot[] => [
+      { date: "2024-01-01", state: "taken" },
+      { date: "2024-01-02", state: "taken" },
+      { date: "2024-01-03", state: last },
+    ];
+
+    it("renders today's unresolved cell as pending, not missed", () => {
+      const { weeks, counts } = buildAdherenceCalendar(withTrailing("missed"));
+      const realDays = weeks.flat().filter((cell) => cell.date != null);
+
+      // The cell is still THERE — dropping it (what the percentage does) would put a
+      // hole in the month grid where today should be.
+      expect(realDays).toHaveLength(3);
+      expect(realDays[2]).toEqual({ date: "2024-01-03", state: "pending" });
+      expect(counts.missed).toBe(0);
+      expect(counts.pending).toBe(1);
+    });
+
+    it("leaves an EARLIER missed day alone", () => {
+      const dots: AdherenceDot[] = [
+        { date: "2024-01-01", state: "missed" },
+        { date: "2024-01-02", state: "missed" },
+        { date: "2024-01-03", state: "taken" },
+      ];
+      const { counts } = buildAdherenceCalendar(dots);
+      // A real lapse two days ago is settled and stays counted. Only the trailing day
+      // is unresolved — a guard that swallowed every miss would be worse than the bug.
+      expect(counts.missed).toBe(2);
+      expect(counts.pending).toBe(0);
+    });
+
+    for (const state of ["taken", "skipped", "partial", "na"] as const) {
+      it(`leaves a trailing "${state}" day alone`, () => {
+        const { counts } = buildAdherenceCalendar(withTrailing(state));
+        expect(counts.pending).toBe(0);
+        expect(counts[state]).toBe(state === "taken" ? 3 : 1);
+      });
+    }
+
+    it("reads the pending day off the VISIBLE window, after the course-start trim", () => {
+      // The startedOn filter trims from the front only, so the trailing day is the
+      // same day either way — pinned because a filter that ever trimmed the tail
+      // would silently move which day is called pending.
+      const dots: AdherenceDot[] = [
+        { date: "2024-01-01", state: "missed" },
+        { date: "2024-01-02", state: "taken" },
+        { date: "2024-01-03", state: "missed" },
+      ];
+      const { counts } = buildAdherenceCalendar(dots, "2024-01-02");
+      expect(counts.missed).toBe(0);
+      expect(counts.pending).toBe(1);
+      expect(counts.taken).toBe(1);
     });
   });
 });

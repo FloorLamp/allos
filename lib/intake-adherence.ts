@@ -316,10 +316,24 @@ export function intakeAdherenceStrip(
 export function stripWithoutTrailingPending(
   strip: AdherenceDot[]
 ): AdherenceDot[] {
+  const i = trailingPendingIndex(strip);
+  return i < 0 ? strip : strip.slice(0, i);
+}
+
+// The index of that still-pending trailing day, or -1 when the strip has none. The
+// EXTRACTED core of the guard above (#2796), for the consumer that must not drop the
+// day but must not score it either: a month calendar has a cell for today, and
+// removing it makes today vanish from the grid while the page beside it is still
+// offering "Mark taken". The calendar renders this index as its own neutral "pending"
+// state instead. Both readings come from this ONE rule, so the summary's denominator
+// and the calendar's legend cannot disagree about which day is unsettled.
+//
+// Positional, like the guard it came from: the caller's window must END at the
+// profile's today (`lastNDates(today(profileId), n)` builds exactly that), which is
+// the same contract adherenceSummary already relies on.
+export function trailingPendingIndex(strip: readonly AdherenceDot[]): number {
   const n = strip.length;
-  return n > 0 && strip[n - 1].state === "missed"
-    ? strip.slice(0, n - 1)
-    : strip;
+  return n > 0 && strip[n - 1].state === "missed" ? n - 1 : -1;
 }
 
 export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {
