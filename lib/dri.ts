@@ -568,9 +568,7 @@ function compoundNote(
 ): string {
   const forms = [
     ...new Set(
-      contributors
-        .map((c) => c.compound)
-        .filter((f): f is string => f != null)
+      contributors.map((c) => c.compound).filter((f): f is string => f != null)
     ),
   ];
   if (forms.length === 0) return "";

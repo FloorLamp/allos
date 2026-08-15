@@ -589,7 +589,11 @@ describe("compound vs elemental mass (#2798)", () => {
   it("leaves a large amount alone when no compound form is named", () => {
     // "Magnesium 2 g" states no form, so there is nothing to convert and the app
     // keeps warning on what it was told.
-    const [warning] = stackUlWarnings([active("Magnesium", ["2 g"])], 40, "male");
+    const [warning] = stackUlWarnings(
+      [active("Magnesium", ["2 g"])],
+      40,
+      "male"
+    );
     expect(warning.total).toBe(2000);
   });
 
@@ -633,7 +637,9 @@ describe("compound vs elemental mass (#2798)", () => {
     const detail = ulWarningDetail(warning);
     expect(detail).toContain("magnesium oxide");
     expect(detail).toContain("compound's total weight");
-    expect(ulWarningEvidence(warning)).toContain("Magnesium Oxide 2412 mg elemental");
+    expect(ulWarningEvidence(warning)).toContain(
+      "Magnesium Oxide 2412 mg elemental"
+    );
     // The untouched item's line stays a plain amount.
     expect(ulWarningEvidence(warning)).toMatch(
       /\+ Magnesium Glycinate 200 mg$/

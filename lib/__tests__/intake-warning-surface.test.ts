@@ -100,7 +100,11 @@ const allergy = {
 
 describe("intakeWarningsForItem (#2795)", () => {
   const all = {
-    interactionWarnings: [interaction(1, 2), interaction(1, 3), interaction(3, 4)],
+    interactionWarnings: [
+      interaction(1, 2),
+      interaction(1, 3),
+      interaction(3, 4),
+    ],
     pgxWarnings: [pgx],
     ototoxicWarnings: [ototoxic],
     allergyWarnings: [allergy],
@@ -125,7 +129,9 @@ describe("intakeWarningsForItem (#2795)", () => {
     // pair is there.
     for (const id of [1, 2]) {
       expect(
-        intakeWarningsForItem(id, all).interactionWarnings.map((h) => h.dedupeKey)
+        intakeWarningsForItem(id, all).interactionWarnings.map(
+          (h) => h.dedupeKey
+        )
       ).toContain("interaction:1-2");
     }
   });

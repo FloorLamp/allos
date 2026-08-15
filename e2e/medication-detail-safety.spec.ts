@@ -113,7 +113,7 @@ test("the adherence calendar never marks the still-pending today as missed", asy
 
   // And the legend names the state, so a neutral cell is explained rather than
   // mysterious.
-  await expect(
-    month.getByTestId("adherence-calendar-legend")
-  ).toContainText("Today, not yet taken");
+  await expect(month.getByTestId("adherence-calendar-legend")).toContainText(
+    "Today, not yet taken"
+  );
 });
