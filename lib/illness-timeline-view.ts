@@ -4,7 +4,7 @@
 
 import type { AppointmentStatus } from "./types";
 import type { AppRoute } from "./hrefs";
-import { encounterHref, medicationHref } from "./hrefs";
+import { encounterHref, importHref, medicationHref } from "./hrefs";
 import type { IllnessTimelineEvent } from "./illness-episode-format";
 import type { EpisodeInRangeEvents } from "./illness-episode-events";
 
@@ -187,7 +187,8 @@ export function defaultIllnessTimelineFilter(
 }
 
 export function illnessCareTimelineEvents(
-  care: EpisodeInRangeEvents
+  care: EpisodeInRangeEvents,
+  { linkDocuments = true }: { linkDocuments?: boolean } = {}
 ): IllnessCareTimelineEvent[] {
   return [
     ...care.encounters.map((event) => ({
@@ -230,17 +231,19 @@ export function illnessCareTimelineEvents(
       time24: null,
       label: event.docType || "Document",
       detail: event.filename,
+      ...(linkDocuments ? { href: importHref(event.id) } : {}),
     })),
   ];
 }
 
 export function groupIllnessTimelineEvents(
   episodeEvents: IllnessTimelineEvent[],
-  care?: EpisodeInRangeEvents
+  care?: EpisodeInRangeEvents,
+  options?: { linkDocuments?: boolean }
 ): IllnessTimelineDayGroup[] {
   const events: IllnessTimelineDisplayEvent[] = [
     ...episodeEvents,
-    ...(care ? illnessCareTimelineEvents(care) : []),
+    ...(care ? illnessCareTimelineEvents(care, options) : []),
   ].sort(
     (a, b) =>
       a.date.localeCompare(b.date) ||

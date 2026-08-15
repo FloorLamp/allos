@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
 import {
   getMedicalDocument,
@@ -25,6 +26,7 @@ import {
   getDocumentProviders,
   getDocumentTriageRows,
   createVisitOffers,
+  episodesForDocument,
 } from "@/lib/queries";
 import { today } from "@/lib/db";
 import { getProfileFullName, getUnitPrefs } from "@/lib/settings";
@@ -91,7 +93,11 @@ import {
   triageFocus,
   triageRowId,
 } from "@/lib/confidence-triage";
-import { importTabHref, clinicalResultDetailHref } from "@/lib/hrefs";
+import {
+  importTabHref,
+  clinicalResultDetailHref,
+  episodeHref,
+} from "@/lib/hrefs";
 import {
   parseImportReport,
   summarizeCoverage,
@@ -172,7 +178,7 @@ function ProvenanceRow({
   testId,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   testId?: string;
 }) {
   return (
@@ -235,6 +241,7 @@ export default async function ImportDetailPage(props: {
   const acquiredVia = doc.acquired_portal_id
     ? (portalById(doc.acquired_portal_id)?.name ?? null)
     : null;
+  const illnessEpisodes = episodesForDocument(profile.id, id);
   const raw = formatRawExtraction(doc.raw_extraction);
   // Import DEBUGGER report: what the parse DROPPED + why, and
   // which sections/resource types it did/didn't consume. Null for AI-extracted docs
@@ -455,6 +462,27 @@ export default async function ImportDetailPage(props: {
                   label="Acquired via"
                   value={acquiredVia}
                   testId="doc-acquired-via"
+                />
+              )}
+              {illnessEpisodes.length > 0 && (
+                <ProvenanceRow
+                  label={
+                    illnessEpisodes.length === 1
+                      ? "During illness episode"
+                      : "During illness episodes"
+                  }
+                  testId="document-illness-episodes"
+                  value={illnessEpisodes.map((episode, index) => (
+                    <span key={episode.id}>
+                      {index > 0 ? ", " : null}
+                      <Link
+                        href={episodeHref(episode.id)}
+                        className="text-brand-700 hover:underline dark:text-brand-300"
+                      >
+                        {episode.situation}
+                      </Link>
+                    </span>
+                  ))}
                 />
               )}
               {doc.patient_name && (

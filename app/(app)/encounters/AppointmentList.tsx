@@ -29,6 +29,7 @@ import OverflowMenu, {
 import OpenInMaps from "@/components/OpenInMaps";
 import NotesText from "@/components/NotesText";
 import SourceDocumentLink from "@/components/SourceDocumentLink";
+import EpisodeLinks from "@/components/EpisodeLinks";
 import { satisfiedRuleForCompletedKind } from "@/lib/preventive-appointment";
 import {
   matchCarePlanItemsForAppointment,
@@ -43,6 +44,7 @@ import {
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
+import type { EpisodeLinkRef } from "@/lib/queries";
 
 // The preventive rule name a completed appointment's kind would satisfy (issue
 // #85), or null when the kind is unset / ambiguous. Drives the close-the-loop
@@ -83,6 +85,7 @@ export default function AppointmentList({
   items,
   defaultDate,
   carePlanItems = [],
+  episodes = {},
 }: {
   items: Appointment[];
   defaultDate: string;
@@ -90,6 +93,7 @@ export default function AppointmentList({
   // computes, client-side, which of these a just-completed appointment plausibly
   // satisfied — mirroring how satisfiableRuleName derives the preventive offer.
   carePlanItems?: CarePlanMatchItem[];
+  episodes?: Record<number, EpisodeLinkRef[]>;
 }) {
   const fmt = useFormatPrefs();
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -371,6 +375,10 @@ export default function AppointmentList({
                   as="div"
                   notes={a.notes}
                   className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+                />
+                <EpisodeLinks
+                  episodes={episodes[a.id] ?? []}
+                  testId={`appointment-illness-episode-${a.id}`}
                 />
               </div>
               <div className="flex shrink-0 items-center gap-1">
