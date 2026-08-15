@@ -28,7 +28,6 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/173-intake-log-recorded-at";
-import { recordInstant } from "@/lib/row-instants";
 
 // The real schema at version `maxId`, built the way the runner builds it.
 function schemaAt(maxId: number): Database.Database {
@@ -353,35 +352,6 @@ describe("migration 173 — intake_item_logs.given_at → recorded_at", () => {
     expect(() => up(mem)).not.toThrow();
     expect(schemaText(mem)).toBe(schema);
     expect(logs(mem, `${OTHER_COLUMNS}, recorded_at, given_at`)).toEqual(rows);
-  });
-
-  it("still answers the record question through the chain, in order", () => {
-    const mem = schemaAt(172);
-    seed(mem);
-    up(mem);
-
-    const rows = mem
-      .prepare(
-        `SELECT recorded_at, taken_at, occurred_at, date
-           FROM intake_item_logs ORDER BY id`
-      )
-      .all() as Record<string, unknown>[];
-
-    // Link 1: the row that recorded a tap answers from `recorded_at`.
-    const first = recordInstant("intake_item_logs", rows[0]);
-    expect(first).toMatchObject({
-      known: true,
-      column: "recorded_at",
-      at: "2026-07-15T16:02:00Z",
-    });
-    // Link 2: the SKIP wrote no `recorded_at`, so the chain falls through to the
-    // insert stamp — a fallback WITHIN the record question, not a substitution.
-    const skip = recordInstant("intake_item_logs", rows[2]);
-    expect(skip).toMatchObject({
-      known: true,
-      column: "taken_at",
-      at: "2026-07-16T09:00:00Z",
-    });
   });
 
   it("SAFETY PIN: a migrated administration still arms the redose and phantom guards", () => {

@@ -119,14 +119,17 @@ Known gaps, stated rather than implied:
 
 `lib/date.ts` answers a question about a VALUE. The question a surface actually asks is
 about a ROW — "when did this dose happen", "which day does this serving count for" — and
-until phase 3 nothing owned it, so `COALESCE(recorded_at, taken_at)` was hand-rolled in six
-places and food paired `occurred_at ?? recorded_at` (then spelled
+until phase 3 nothing owned it, so dose readers hand-rolled a record chain and food paired `occurred_at ?? recorded_at` (then spelled
 `eaten_at ?? logged_at`) in four more.
 
 `lib/time-columns.ts` declares what every temporal column MEANS, and `lib/row-instants.ts`
 asks the row-level question over that declaration: `eventInstant`, `recordInstant`,
 `bestKnownInstant`, `rowLocalDay`. A surface names a quantity, never a column, so phase
 2's renames reach it through one registry entry.
+
+Issue #2876 completed the dose ledger's vocabulary: `recorded_at` is now its immutable
+capture instant and `occurred_at` its event instant, both canonical UTC+Z. Dose readers
+that need a best-known administration time fall from event to capture explicitly.
 
 Two rules are worth repeating here:
 

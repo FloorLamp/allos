@@ -110,7 +110,7 @@ import {
 } from "@/lib/notifications/reconcile-core";
 import { getProfileSetting, setProfileSetting } from "@/lib/settings";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
-import { sqlNow } from "@/lib/clock";
+import { instantNow } from "@/lib/clock";
 import { seedLoginTelegram } from "./fixtures";
 
 // A callback query shaped like the one Telegram delivers, carrying the keyboard the
@@ -2201,9 +2201,9 @@ describe("the pointer follows a callback edit, not just a send", () => {
     // Pin the audit stamp so the burst's hour is a fact rather than a race, then sweep
     // well inside it.
     db.prepare(
-      `UPDATE intake_item_logs SET taken_at = ?, recorded_at = ?
+      `UPDATE intake_item_logs SET recorded_at = ?, occurred_at = ?
         WHERE dose_id = ?`
-    ).run(sqlNow(), sqlNow(), doseId);
+    ).run(instantNow(), instantNow(), doseId);
     editText.mockClear();
     const swept = await reconcileProfileMessages(pid);
     expect(swept.closed).toBe(0);
@@ -2242,7 +2242,7 @@ describe("the pointer follows a callback edit, not just a send", () => {
     // taken, and the close must state that fact instead of falling back to the legacy
     // "handled in the app" sentence.
     db.prepare(
-      `UPDATE intake_item_logs SET taken_at = ?, recorded_at = ?
+      `UPDATE intake_item_logs SET recorded_at = ?, occurred_at = ?
         WHERE dose_id = ?`
     ).run("2000-01-01T00:00:00Z", "2000-01-01T00:00:00Z", doseId);
     editText.mockClear();

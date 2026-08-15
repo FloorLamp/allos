@@ -68,7 +68,7 @@ function seedDose(
       .run(itemId, amount).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, taken_at, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at, status)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     doseId,

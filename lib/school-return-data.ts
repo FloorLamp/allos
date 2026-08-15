@@ -75,21 +75,19 @@ export function schoolReturnStatusFor(
     .prepare(
       `SELECT ii.name AS name, ii.rxcui AS rxcui,
               ii.rxcui_ingredients AS rxcui_ingredients,
-              l.occurred_at AS occurred_at, l.recorded_at AS recorded_at,
-              l.taken_at AS taken_at
+              l.occurred_at AS occurred_at, l.recorded_at AS recorded_at
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
         WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.obligation = 'may'
           AND l.date >= ? AND l.date <= ?
-        ORDER BY COALESCE(l.recorded_at, l.taken_at) ASC, l.id ASC`
+        ORDER BY COALESCE(l.occurred_at, l.recorded_at) ASC, l.id ASC`
     )
     .all(profileId, from, to) as {
     name: string;
     rxcui: string | null;
     rxcui_ingredients: string | null;
     occurred_at: string | null;
-    recorded_at: string | null;
-    taken_at: string;
+    recorded_at: string;
   }[];
 
   let lastAntipyreticAtMs: number | null = null;
@@ -108,8 +106,8 @@ export function schoolReturnStatusFor(
     // The dose's own instant, asked as a question rather than paired by hand (#2205
     // phase 3). `bestKnownInstant` answers with the stated event instant
     // (`occurred_at`) when the row has one and with the record chain
-    // (recorded_at → taken_at) otherwise — and SAYS which, so this note can mark a
-    // record-chain clock instead of quoting it as an administration time.
+    // immutable capture (`recorded_at`) otherwise — and SAYS which, so this note can
+    // mark a captured clock instead of quoting it as an administration time.
     const when = bestKnownInstant("intake_item_logs", r);
     const d = instantDate(when);
     if (!d || !when.known) continue;

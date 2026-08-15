@@ -87,8 +87,8 @@ const CANONICAL_INSTANT_COLUMNS: Record<
     why: "migration 165 (#2235) — BORN canonical: the day's weigh-in instant. Same rule as medical_records, and the table's only instant column.",
   },
   intake_item_logs: {
-    columns: ["occurred_at"],
-    why: "migration 165 (#2229's owner ruling) — BORN canonical: this table's first event instant, filled only when a user states when a dose was actually taken. `recorded_at` and `taken_at` beside it are the bare-shaped RECORD chain and are NOT claimed here; the rename that settles their names is a later slot.",
+    columns: ["occurred_at", "recorded_at"],
+    why: "migration 165 made `occurred_at` canonical; #2876 completed the event/record split, moved administration time there, renamed the immutable capture to `recorded_at`, and converted both columns to canonical UTC+Z. Writers now bind utcInstant()/instantNow().",
   },
   integration_sync_events: {
     columns: ["at", "created_at"],
@@ -130,7 +130,7 @@ const CANONICAL_INSTANT_COLUMNS: Record<
 const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
     count: 4,
-    why: "the dose-burst reader and the restamp core each re-serialize ALREADY-STORED stamps (parseUtcSql → toISOString) into the in-memory `tapAt` / `statedAt` the pure burst grouping compares — `taken_at` for identity and freshness, `recorded_at` for the instant the row stands at (#2206). Nothing writes them: the values never reach a bind parameter, the write itself re-serializes through utcSqlString, and the burst's own output is ids plus a label.",
+    why: "the dose-burst reader and restamp core re-serialize already-stored stamps (parseUtcSql → toISOString) into the in-memory `tapAt` / `statedAt` values the pure burst grouping compares — immutable `recorded_at` for identity and freshness, mutable `occurred_at` for the administration instant (#2206, #2876). The write itself serializes through utcInstant.",
   },
   "lib/reading-writes.ts": {
     count: 1,

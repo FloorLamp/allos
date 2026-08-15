@@ -223,7 +223,8 @@ describe("updateHistoricalDose action — supplements", () => {
     await logHistoricalDose(
       fd({ id: itemId, dose_id: doseId, date, time: "08:00", amount: "15 mg" })
     );
-    const logId = getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0].id;
+    const initial = getIntakeDoseHistory(profile.id, itemId, "0001-01-01")[0];
+    const logId = initial.id;
 
     const result = await updateHistoricalDose(
       fd({ id: itemId, log_id: logId, date, time: "20:15", amount: "45 mg" })
@@ -234,7 +235,7 @@ describe("updateHistoricalDose action — supplements", () => {
     // The stated time lands in the event column (#2228 decision 1); recorded_at is
     // record history for the amend path and keeps the backfill's stamp.
     expect(row.occurred_at).toContain("20:15");
-    expect(row.recorded_at).toContain("08:00");
+    expect(row.recorded_at).toBe(initial.recorded_at);
 
     expect(auditRows(profile.id).map((r) => r.action)).toEqual([
       AUDIT_ACTIONS.doseLogBackfill,

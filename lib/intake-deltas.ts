@@ -174,15 +174,15 @@ function half(label: string, items: readonly IntakeDelta[]): string | null {
   if (items.length === 0) return null;
   const named = items.slice(0, INTAKE_DELTA_MAX_NAMED);
   const parts = named.map(
-    (d) => `${d.name} (${d.days} day${d.days === 1 ? "" : "s"})`
+    (d) => `${d.name} for ${d.days} day${d.days === 1 ? "" : "s"}`
   );
   const rest = items.length - named.length;
   if (rest > 0) parts.push(`+${rest} more`);
   return `${label}: ${parts.join(", ")}`;
 }
 
-// THE headline every digest channel renders — "Missed: Magnesium (3 days) ·
-// Resumed: Vitamin D (2 days)" — or null on a quiet window, which is the signal to
+// THE headline every digest channel renders — "Missed: Magnesium for 3 days ·
+// Resumed: Vitamin D for 2 days" — or null on a quiet window, which is the signal to
 // omit the line entirely. One formatter so Telegram, the weekly recap and the
 // household card can't drift into three phrasings of the same fact.
 export function intakeDeltaLine(deltas: IntakeDeltas): string | null {
@@ -215,5 +215,5 @@ export function intakeGapExplainedBy(
   if (deltas.resumed.length > 0) return null;
   if (deltas.missed.length !== 1) return null;
   const d = deltas.missed[0];
-  return `missed ${d.name} (${d.days} day${d.days === 1 ? "" : "s"})`;
+  return `missed ${d.name} for ${d.days} day${d.days === 1 ? "" : "s"}`;
 }

@@ -117,7 +117,7 @@ describe("medication cold-start adherence (#1442)", () => {
         .get(itemId) as { id: number }
     ).id;
     const ins = db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, taken_at, status)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
        VALUES (?, ?, ?, ?, 'taken')`
     );
     for (const d of [2, 1]) {
@@ -151,7 +151,7 @@ describe("medication cold-start adherence (#1442)", () => {
         .get(itemId) as { id: number }
     ).id;
     const ins = db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, taken_at, status)
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
        VALUES (?, ?, ?, ?, 'taken')`
     );
     for (let d = 1; d <= 5; d++) {

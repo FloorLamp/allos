@@ -418,7 +418,7 @@ describe("#1505 part 3 — the digest reports state changes", () => {
     // The gather carries the STRUCTURED deltas (#1819 item 6); the line is the same
     // shared formatter every digest channel renders them through.
     const line = intakeDeltaLine(input.intakeDeltas!);
-    expect(line).toBe("Missed: Magnesium (test) (3 days)");
+    expect(line).toBe("Missed: Magnesium (test) for 3 days");
     // The `may` item's identical log history is NOT news: it has no dueness, so it
     // has no misses, so there is no state change to report. Its administrations are
     // still in the ledger — this is a reporting boundary, not a data one.
@@ -437,7 +437,7 @@ describe("#1505 part 3 — the digest reports state changes", () => {
 
     const input = gatherDigestInput(p, "Deltas Resumed (test)");
     expect(intakeDeltaLine(input.intakeDeltas!)).toBe(
-      "Resumed: Vitamin D (test) (3 days)"
+      "Resumed: Vitamin D (test) for 3 days"
     );
   });
 

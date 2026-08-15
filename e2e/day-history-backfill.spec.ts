@@ -1,8 +1,9 @@
 import { expect, test } from "./fixtures";
 import type { Locator } from "@playwright/test";
+import Database from "better-sqlite3";
 import { shiftDateStr } from "@/lib/date";
 import { formatDateWithYear } from "@/lib/format-date";
-import { frozenNow } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 
 async function expectEmptyDayAddLink(
   section: Locator,
@@ -27,6 +28,22 @@ async function expectEmptyDayAddLink(
 test("every day-history domain closes an empty-day gap with a dated log link (#2420)", async ({
   page,
 }) => {
+  // The general seed may legitimately have food on every day in the default window.
+  // Make one actual gap so this test exercises the empty-day action deterministically.
+  const db = new Database(workerDbPath());
+  const foodDate = db
+    .prepare(
+      `SELECT date FROM food_daily_totals
+        WHERE profile_id = 1 AND servings > 0
+        ORDER BY date DESC LIMIT 1`
+    )
+    .pluck()
+    .get() as string;
+  db.prepare(
+    "DELETE FROM food_daily_totals WHERE profile_id = 1 AND date = ?"
+  ).run(foodDate);
+  db.close();
+
   await page.goto("/trends?tab=nutrition");
   await expectEmptyDayAddLink(
     page.getByTestId("intake-history"),

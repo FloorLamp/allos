@@ -117,16 +117,16 @@ answers from the typed `AdministrationOutcome`, never unconditionally). The
 Medications page surfaces a PRN med as a Today-panel administration row + the
 day's ledger on its detail page ("2 today · last 4:02pm") instead of a binary
 check-off pill; a SCHEDULED med keeps the tri-state `DoseStatusControl` (in the
-Today panel). Migration 041 backfills `recorded_at = taken_at` for every existing
-row, so scheduled adherence strips/percentages/escalation read bit-identically
-(pinned by the `administration-ledger` DB-tier regression fixture).
+Today panel). Migration #2876 gives the ledger the same vocabulary as food:
+`recorded_at` is the immutable tap/capture instant and `occurred_at` is the
+administration instant. Existing rows preserve both meanings through the rename.
 
 **A late Telegram confirm can be corrected in place (#2020).** A scheduled confirm
-stamps `recorded_at` = the tap moment, so a bedtime dose confirmed at 07:00 told the PRN
+stamps `recorded_at` = the tap moment and `occurred_at` = the administration moment, so a bedtime dose confirmed at 07:00 told the PRN
 redose window it was nine hours fresher than it was, and the chat had no way to say
 otherwise. The rebuilt reminder now carries burst-collapsed `dosetime` chips —
 `−1h · −2h · −3h` plus the 🕐 absolute-hour picker, the same model #2019 gave the food
-ledger, over the `recorded_at` this ledger has had since migration 041 (no schema). The
+ledger, over mutable `occurred_at`. The
 correction moves the administration INSTANT only: the row's `date` is schedule-owned
 (#614), so a bedtime dose corrected across midnight still counts for the day the
 reminder was asking about. It does not re-run the `ADMIN_DEDUP_WINDOW_SEC` proximity

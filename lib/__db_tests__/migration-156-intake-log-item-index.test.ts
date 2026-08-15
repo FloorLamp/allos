@@ -20,19 +20,21 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { getMedicationFamilyStates } from "@/lib/queries";
-import { utcSqlString } from "@/lib/date";
+import { utcInstant } from "@/lib/date";
 
 const INDEX = "idx_intake_log_item_given";
 
 // The latest-administration statement `getMedicationFamilyStates` prepares
 // (lib/queries/intake/prn-family.ts), verbatim for a single-member family. Kept as its
 // own constant so the plan assertion is about the real read, not a paraphrase.
-const LATEST_SQL = `SELECT l.id AS id, l.recorded_at AS recordedAt, l.item_id AS itemId
+const LATEST_SQL = `SELECT l.id AS id,
+                COALESCE(l.occurred_at, l.recorded_at) AS administeredAt,
+                l.item_id AS itemId
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (?)
-            AND l.status = 'taken' AND l.recorded_at IS NOT NULL
-          ORDER BY l.recorded_at DESC, l.id DESC
+            AND l.status = 'taken'
+          ORDER BY COALESCE(l.occurred_at, l.recorded_at) DESC, l.id DESC
           LIMIT 1`;
 
 let profileId: number;
@@ -72,14 +74,16 @@ beforeAll(() => {
   // A spread of administrations across days, so a whole-ledger scan plus sort would be
   // the visible alternative to an index-ordered seek.
   const ins = db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
-     VALUES (?, ?, ?, ?, 'taken', '200 mg')`
+    `INSERT INTO intake_item_logs
+       (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
+     VALUES (?, ?, ?, ?, ?, 'taken', '200 mg')`
   );
   const td = today(profileId);
   for (let d = 30; d >= 1; d--) {
     const at = new Date(Date.now() - d * 86_400_000);
     newestId = Number(
-      ins.run(doseId, itemId, td, utcSqlString(at)).lastInsertRowid
+      ins.run(doseId, itemId, td, utcInstant(at), utcInstant(at))
+        .lastInsertRowid
     );
   }
 });
@@ -94,11 +98,13 @@ describe("migration 156 — the (item_id, recorded_at) administration index", ()
     expect(row?.sql).toBeTruthy();
   });
 
-  it("indexes the two columns the read needs, in the order it needs them", () => {
-    const cols = (
-      db.prepare(`PRAGMA index_info(${INDEX})`).all() as { name: string }[]
-    ).map((c) => c.name);
-    expect(cols).toEqual(["item_id", "recorded_at"]);
+  it("indexes the event fallback expression and stable id ordering", () => {
+    const sql = (
+      db.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(INDEX) as {
+        sql: string;
+      }
+    ).sql;
+    expect(sql).toContain("item_id, COALESCE(occurred_at, recorded_at), id");
   });
 
   it("the arming-dose read SEARCHES the index instead of scanning the ledger", () => {
@@ -110,7 +116,7 @@ describe("migration 156 — the (item_id, recorded_at) administration index", ()
   });
 
   it("a single-member family needs no temp b-tree for the ordering either", () => {
-    // One item ⇒ the index already emits recorded_at order, so LIMIT 1 is a seek.
+    // One item ⇒ the index already emits best-known event order, so LIMIT 1 is a seek.
     expect(plan(LATEST_SQL, profileId, itemId)).not.toContain("TEMP B-TREE");
   });
 

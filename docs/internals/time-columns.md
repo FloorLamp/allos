@@ -122,11 +122,10 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
   "not stated" as NULL, one spells it as midnight; that is a real thing an eventual
   readings merge has to resolve, and naming it is worth more than a uniform-looking
   anchor that would change what a row's key means.
-- **`given_at` → `taken_at` is a record CHAIN, not an event/record pair.** The dozen
-  hand-rolled `COALESCE(given_at, taken_at)` readers were falling back within one
-  question all along — right value, wrong name. `recordInstant` walks the chain;
-  `bestKnownInstant` is for the fall that crosses questions, like
-  `eaten_at` → `logged_at`.
+- **The dose ledger now matches the food ledger (#2876).** `recorded_at` is immutable
+  capture and `occurred_at` is the administration event. `recordInstant` answers the
+  former; `eventInstant` answers the latter; `bestKnownInstant` makes any cross-question
+  fallback explicit.
 - **`food_log_events.eaten_at`** is NULL whenever nobody stated an eating time, and
   `time_source` records whether a present value was a tap contract or a stated one. The
   web bar never defaults it to now (#2019/#2053).
@@ -245,9 +244,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `intake_item_doses` | `start_date` | window-start | day | n/a |  |
 | `intake_item_doses` | `end_date` | window-end | day | n/a |  |
 | `intake_item_logs` | `date` | day | day | n/a |  |
-| `intake_item_logs` | `occurred_at` | event | instant | canonical | Migration 165 (#2229's owner ruling, #2205 phase 2 wave 1). This table's FIRST event instant: when the dose was actually taken, populated only when somebody states a time. NULL — every row today — means not-recorded, which is a different and more informative fact than the not-declared `eventInstant` answered before the column existed. It is deliberately NOT filled from `recorded_at`: that stamp is the tap, and copying it here would be the inferred-for-observed substitution #2205 exists to close. |
-| `intake_item_logs` | `recorded_at` | record | instant | bare | RECORD, by owner ruling — it is INFERRED. A scheduled confirm writes the tap moment here, standing in for an intake the app never observed. Named `given_at` until migration 173 (#2205 phase 2 wave 2), which is the whole of that wave: it was a record instant wearing an event's name. It is FIRST in the record chain because it is the more precise of the two: an offline replay carries the client's real tap instant into it, while taken_at is only when the row reached the database. Neither link is the event instant, and that is the whole point. |
-| `intake_item_logs` | `taken_at` | record | instant | bare | The row's insert stamp (a SQLite clock column DEFAULT, which is what puts it on the bare convention), and the SECOND link of the record chain: a row that wrote no `recorded_at` — a SKIP, or anything written before the column existed (pre-migration-041) — falls through to it. The `COALESCE(recorded_at, taken_at)` a dozen readers hand-roll is this chain — a fallback WITHIN the record question, not a substitution of a record instant for an event one. It kept its name through migration 173 deliberately; see the note above this table for why. |
+| `intake_item_logs` | `occurred_at` | event | instant | canonical | The stored administration instant. Issue #2876 moved administration writers and corrections here and migrated the old overloaded recorded_at value into it. |
+| `intake_item_logs` | `recorded_at` | record | instant | canonical | The immutable capture/insert stamp. Issue #2876 renamed the old taken_at column to this vocabulary and converted it to canonical UTC+Z, matching food_log_events.recorded_at. |
 | `intake_item_logs` | `given_at` | bookkeeping | instant | bare | VESTIGIAL, always NULL (#2205 phase 2 wave 2, the migration-124/169 pattern): migration 173 renamed the live column to `recorded_at` and kept this empty shell so the frozen migrations still work under migrate()'s unconditional replay — 041 guards its whole rebuild on `given_at` being present, and 156 re-creates its index over it. Declared `bookkeeping` rather than `record` on purpose: a dead column must not join the record chain the row readers walk. No application code names it (the SQL orderings all moved to `recorded_at` in the same change). |
 | `intake_item_side_effects` | `noted_on` | event | day | n/a |  |
 | `intake_item_side_effects` | `created_at` | record | instant | bare |  |

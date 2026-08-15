@@ -252,7 +252,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         intakeDeltas: missed(["Glycine (test)"]),
         adherence: { taken: 8, skipped: 0, due: 9 },
       })
-    ).toEqual(["💊 Supplements: 8/9 taken — missed Glycine (test) (1 day)"]);
+    ).toEqual(["💊 Supplements: 8/9 taken — missed Glycine (test) for 1 day"]);
   });
 
   it("keeps two lines when several misses cannot ride one fraction", () => {
@@ -263,7 +263,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         adherence: { taken: 7, skipped: 0, due: 9 },
       })
     ).toEqual([
-      "🔁 Missed: Glycine (test) (1 day), Magnesium (test) (1 day)",
+      "🔁 Missed: Glycine (test) for 1 day, Magnesium (test) for 1 day",
       "💊 Supplements: 7/9 taken",
     ]);
   });
@@ -281,7 +281,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         adherence: { taken: 8, skipped: 0, due: 9 },
       })
     ).toEqual([
-      "🔁 Resumed: Vitamin D (test) (2 days)",
+      "🔁 Resumed: Vitamin D (test) for 2 days",
       "💊 Supplements: 8/9 taken",
     ]);
   });
@@ -295,7 +295,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         adherence: { taken: 8, skipped: 1, due: 9 },
       })
     ).toEqual([
-      "🔁 Missed: Glycine (test) (1 day)",
+      "🔁 Missed: Glycine (test) for 1 day",
       // The em dash introduces the FIRST qualifier a line actually has (#2391): with
       // no merged clause to explain the gap, the skip count leads the tail instead of
       // arriving after a `·` with nothing in front of it.
@@ -306,7 +306,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
   it("still leads with the delta when there is no fraction beside it", () => {
     expect(
       yesterday({ ...empty, intakeDeltas: missed(["Glycine (test)"]) })
-    ).toEqual(["🔁 Missed: Glycine (test) (1 day)"]);
+    ).toEqual(["🔁 Missed: Glycine (test) for 1 day"]);
   });
 
   it("a quiet delta window leaves the fraction alone", () => {
