@@ -41,6 +41,21 @@ export const CYCLE_CTA_PROFILE = "Cycle Log CTA (e2e)";
 export const E2E_LOGIN_CYCLE_GAP = "e2e_cycle_gap";
 export const CYCLE_GAP_PROFILE = "Cycle Log Gap (e2e)";
 
+// The cycle SUSPENSION fixture (issue #2801). An adult FEMALE profile with
+// `risk_pregnant` set and a period history whose most recent period is the LMP, ~140
+// days back. Every cycle derivation still runs forward from that start, so before
+// #2801 the Cycle hero read "Day 141 · Follicular" with a full-width "Period started
+// today" beneath it — on the same page whose forecast card was already saying the
+// projection was paused.
+//
+// Its own profile because the assertions are ABSENCES: on a shared profile already in
+// some other state they would pass vacuously. None of the existing cycle fixtures can
+// take a pregnancy flag either — CTA/GAP/CYCLE each pin a different offer window that
+// the flag would silence. Read-only in its spec (the offers under test are the ones
+// that must not be there), so it survives --repeat-each untouched. Synthetic, no PHI.
+export const E2E_LOGIN_CYCLE_PREGNANT = "e2e_cycle_pregnant";
+export const CYCLE_PREGNANT_PROFILE = "Cycle Pregnant (e2e)";
+
 // Derived situations (issues #1292/#1298). A member granted a dedicated adult FEMALE
 // (premenopausal → cycle-relevant) profile carrying a Period-keyed iron supplement and a
 // Poor-sleep-keyed magnesium, and a rough last-night sleep session so the DERIVED
