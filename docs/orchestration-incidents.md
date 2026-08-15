@@ -408,6 +408,24 @@ required-checks ruleset was considered and rejected: it re-runs full CI per
 open PR per landing while buying nothing the hand-serialization protocol
 doesn't.
 
+## 2026-08-15 — the roster forked because a brief could not be reprinted
+
+A live session lost a dispatch brief's text (it is printed once, at `new`; the
+ledger keeps parameters, not prose) and re-ran `new` to get it back. That
+appended a second ledger row and a second roster cluster per branch, and the
+next check-in printed seven clusters for four live agents.
+
+The roster is the only coordination state that outlives the orchestrator, and
+it is read after a restart to decide which dirty worktrees hold unrescued work.
+A roster that double-counts is wrong exactly when nothing else can correct it —
+the same class as the canary that died with the house.
+
+Two of the four re-runs were REFUSED, by the e2e cap, which is the receipt that
+the guard shape works: the non-e2e path simply had no equivalent. Fixed in
+`dispatch-brief.mjs` (#2923): `brief <branch>` reprints from recorded
+parameters and writes nothing, and `new` refuses an already-active branch,
+naming both exits.
+
 ## A gate PASS that its own last step invalidated (#2935, 2026-08-15)
 
 `agent-gates.sh` runs `format` LAST, on purpose: a late edit after formatting is

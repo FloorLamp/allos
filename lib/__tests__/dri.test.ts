@@ -17,6 +17,7 @@ import {
   rdaAdequacyTitle,
   rdaAdequacyDetail,
   fmtAmount,
+  elementalReading,
   type StackItem,
 } from "../dri";
 
@@ -501,5 +502,304 @@ describe("warning copy + keys", () => {
     expect(fmtAmount(600)).toBe("600");
     expect(fmtAmount(349.5)).toBe("349.5");
     expect(fmtAmount(50.04)).toBe("50");
+  });
+});
+
+// Compound mass vs elemental mass (issue #2798). The reported defect: "Magnesium
+// L-Threonate 2 g" was summed as 2000 mg of magnesium and flagged against the 350 mg
+// UL — about fourteen times the magnesium actually in it.
+//
+// These tests are written around the ONE property that makes the fix safe to ship: the
+// reinterpretation is one-directional. It may only ever fire on an amount too large to
+// be a labeled elemental dose, so it can lower a total that was wrong and can never
+// silence a warning that fires today. The "unchanged" cases below are therefore not
+// filler — each one is a way the fix could have under-warned.
+describe("compound vs elemental mass (#2798)", () => {
+  const magnesium = nutrientByKey("magnesium")!;
+
+  it("reads a gram-scale compound entry as the compound's weight", () => {
+    const warnings = stackUlWarnings(
+      [active("Magnesium L-Threonate", ["2 g"])],
+      40,
+      "male"
+    );
+    // 2000 mg of the compound is ~166 mg of magnesium — under the 350 mg UL, so the
+    // over-limit warning that used to fire here is simply wrong and must be gone.
+    expect(warnings).toEqual([]);
+
+    const [total] = summarizeStack(
+      [active("Magnesium L-Threonate", ["2 g"])],
+      40,
+      "male"
+    );
+    expect(total.total).toBeCloseTo(166, 0);
+    expect(total.contributors[0].compound).toBe("magnesium L-threonate");
+  });
+
+  it("reads the same product labeled in milligrams the same way", () => {
+    // The front of a Magtein bottle says "2,000 mg". A fix keyed on the unit being
+    // grams would miss this and leave the identical product over-warning.
+    const [total] = summarizeStack(
+      [active("Magnesium L-Threonate", ["2000 mg"])],
+      40,
+      "male"
+    );
+    expect(total.total).toBeCloseTo(166, 0);
+  });
+
+  it("errs upward: the fraction is stoichiometric, above what the label implies", () => {
+    // A Magtein label puts 2 g at 144 mg of magnesium. The stoichiometric 8.3% puts it
+    // at ~166. On a risk number the higher estimate is the right one to carry.
+    const [total] = summarizeStack(
+      [active("Magnesium L-Threonate", ["2 g"])],
+      40,
+      "male"
+    );
+    expect(total.total).toBeGreaterThan(144);
+  });
+
+  it("leaves the baseline elemental stack untouched", () => {
+    // Glycinate/citrate labels state the elemental amount, and both of these sit far
+    // below the ceiling. If this ever stops reading 600 the fix has started
+    // double-discounting labels that were already elemental.
+    const [warning] = stackUlWarnings(
+      [
+        active("Magnesium Glycinate", ["400 mg"]),
+        active("Magnesium Citrate", ["200 mg"]),
+      ],
+      40,
+      "male"
+    );
+    expect(warning.total).toBe(600);
+    expect(warning.contributors.every((c) => c.compound == null)).toBe(true);
+  });
+
+  it("never converts an amount that could be a real elemental label", () => {
+    // A genuine 600 mg elemental entry on a compound-named item stays 600 and stays
+    // over the UL. This is the under-warn case the ceiling exists to prevent.
+    const [warning] = stackUlWarnings(
+      [active("Magnesium Glycinate", ["600 mg"])],
+      40,
+      "male"
+    );
+    expect(warning.total).toBe(600);
+    expect(warning.ul).toBe(350);
+  });
+
+  it("leaves a large amount alone when no compound form is named", () => {
+    // "Magnesium 2 g" states no form, so there is nothing to convert and the app
+    // keeps warning on what it was told.
+    const [warning] = stackUlWarnings(
+      [active("Magnesium", ["2 g"])],
+      40,
+      "male"
+    );
+    expect(warning.total).toBe(2000);
+  });
+
+  it("never applies one nutrient's form factor to another nutrient", () => {
+    // "Zinc Citrate" matches a citrate pattern, but citrate is registered against
+    // magnesium only — a cross-nutrient factor would be a silent dosing error.
+    const [total] = summarizeStack(
+      [active("Zinc Citrate", ["2000 mg"])],
+      40,
+      "male"
+    );
+    expect(total.key).toBe("zinc");
+    expect(total.total).toBe(2000);
+    expect(total.contributors[0].compound).toBeUndefined();
+  });
+
+  it("elementalReading is inert at and below the ceiling, active above it", () => {
+    expect(elementalReading("Magnesium Glycinate", magnesium, 1500)).toEqual({
+      amount: 1500,
+      compound: null,
+    });
+    const above = elementalReading("Magnesium Glycinate", magnesium, 1501);
+    expect(above.compound).toBe("magnesium glycinate");
+    expect(above.amount).toBeCloseTo(1501 * 0.141, 3);
+    // A nutrient with no ceiling entry is never reinterpreted.
+    const zinc = nutrientByKey("zinc")!;
+    expect(elementalReading("Zinc Citrate", zinc, 99999).compound).toBeNull();
+  });
+
+  it("says which entry was read as a compound, and marks the line elemental", () => {
+    const [warning] = stackUlWarnings(
+      [
+        active("Magnesium Oxide", ["4 g"]),
+        active("Magnesium Glycinate", ["200 mg"]),
+      ],
+      40,
+      "male"
+    );
+    // 4 g of the oxide is ~2412 mg of magnesium, plus 200 elemental — still over.
+    expect(warning.total).toBeCloseTo(2612, 0);
+    const detail = ulWarningDetail(warning);
+    expect(detail).toContain("magnesium oxide");
+    expect(detail).toContain("compound's total weight");
+    expect(ulWarningEvidence(warning)).toContain(
+      "Magnesium Oxide 2412 mg elemental"
+    );
+    // The untouched item's line stays a plain amount.
+    expect(ulWarningEvidence(warning)).toMatch(
+      /\+ Magnesium Glycinate 200 mg$/
+    );
+    // Nothing converted → nothing said.
+    const [plain] = stackUlWarnings(
+      [active("Magnesium Glycinate", ["400 mg"])],
+      40,
+      "male"
+    );
+    expect(ulWarningDetail(plain)).not.toContain("compound's total weight");
+  });
+});
+
+// The adversarial-review refutations (#2798, PR #2929 review). Each case below is a
+// reproduction that PASSED on main, FAILED on the first cut of this fix, and is pinned
+// here so it cannot come back. They are the attack, not the feature.
+describe("compound vs elemental mass — refutations (#2798)", () => {
+  const magnesium = nutrientByKey("magnesium")!;
+  const ul = (items: StackItem[]) => stackUlWarnings(items, 40, "male");
+
+  describe("a blend must be read at the MOST concentrated form it names", () => {
+    // The refutation: forms were matched with `find`, i.e. declaration order, and
+    // oxide is both the last declared and by far the largest fraction (60.3%). Any
+    // blend naming oxide plus an earlier form was read at the SMALLER fraction and
+    // went silent — the same 2 g read as the oxide the label also names is 1206 mg,
+    // 3.4x the UL. Oxide-heavy magnesium complexes at gram scale are ordinary
+    // products, so this was not a corner.
+    it("keeps warning on an oxide/citrate/malate complex", () => {
+      const [warning] = ul([
+        active("Magnesium Complex (Oxide, Citrate, Malate)", ["2 g"]),
+      ]);
+      expect(warning).toBeDefined();
+      expect(warning.total).toBeCloseTo(1206, 0);
+      expect(warning.total).toBeGreaterThan(warning.ul);
+      expect(warning.contributors[0].compound).toBe("magnesium oxide");
+    });
+
+    it("keeps warning on a glycinate + oxide blend", () => {
+      const [warning] = ul([
+        active("Magnesium Glycinate + Oxide blend", ["2 g"]),
+      ]);
+      expect(warning).toBeDefined();
+      // Read at oxide (60.3%), not at glycinate's 14.1% — 282 mg would be silent.
+      expect(warning.total).toBeCloseTo(1206, 0);
+    });
+
+    it("keeps warning on a 50/50 oxide/citrate blend at a total that is over either way", () => {
+      const [warning] = ul([active("Magnesium Oxide Citrate", ["2 g"])]);
+      expect(warning).toBeDefined();
+      expect(warning.total).toBeGreaterThan(350);
+    });
+
+    it("picks the maximum fraction whatever order the names appear in", () => {
+      // Declaration order must not leak into the answer from either direction.
+      for (const name of [
+        "Magnesium Oxide and Citrate",
+        "Magnesium Citrate and Oxide",
+      ]) {
+        expect(elementalReading(name, magnesium, 2000).amount).toBeCloseTo(
+          1206,
+          0
+        );
+      }
+    });
+
+    it("still reads a single-form entry at its own fraction", () => {
+      // The max rule must not inflate an item that names exactly one form.
+      const reading = elementalReading(
+        "Magnesium L-Threonate",
+        magnesium,
+        2000
+      );
+      expect(reading.amount).toBeCloseTo(166, 0);
+      expect(reading.compound).toBe("magnesium L-threonate");
+    });
+  });
+
+  describe("the ceiling protects a DAILY TOTAL, not one dose row", () => {
+    it("converts Magtein taken as the standard 1.5 g + 0.5 g split", () => {
+      // The refutation: the ceiling was tested inside the per-dose loop, so neither
+      // row cleared it and the item kept reading 2000 mg of magnesium. The P1 was
+      // fixed only for the single-row shape.
+      const [total] = summarizeStack(
+        [active("Magnesium L-Threonate", ["1.5 g", "0.5 g"])],
+        40,
+        "male"
+      );
+      expect(total.total).toBeCloseTo(166, 0);
+      expect(ul([active("Magnesium L-Threonate", ["1.5 g", "0.5 g"])])).toEqual(
+        []
+      );
+    });
+
+    it("converts a three-way split of the same product", () => {
+      const [total] = summarizeStack(
+        [active("Magnesium L-Threonate", ["667 mg", "667 mg", "666 mg"])],
+        40,
+        "male"
+      );
+      expect(total.total).toBeCloseTo(166, 0);
+    });
+
+    it("does not let split rows push an ELEMENTAL entry over the ceiling", () => {
+      // The mirror risk of summing first: two honest 400 mg elemental doses total
+      // 800 mg, still under the ceiling, and must stay counted as entered.
+      const [warning] = ul([
+        active("Magnesium Glycinate", ["400 mg", "400 mg"]),
+      ]);
+      expect(warning.total).toBe(800);
+      expect(warning.contributors[0].compound).toBeUndefined();
+    });
+
+    it("leaves the baseline two-product stack byte-identical", () => {
+      // Still the load-bearing regression: separate ITEMS sum into the nutrient
+      // total without either one being re-read.
+      const [warning] = ul([
+        active("Magnesium Glycinate", ["400 mg"]),
+        active("Magnesium Citrate", ["200 mg"]),
+      ]);
+      expect(warning.total).toBe(600);
+      expect(warning.contributors.every((c) => c.compound == null)).toBe(true);
+    });
+  });
+
+  describe("the #657 condition caveat survives a blend", () => {
+    it("still has a warning to attach the CKD caveat to", () => {
+      // The caveat only exists ON a UL warning, so silencing the warning silences
+      // the caveat — and silencing it for a CKD profile means going quiet on the
+      // strength of a population UL the app itself says may not apply to them.
+      const [warning] = ul([
+        active("Magnesium Complex (Oxide, Citrate)", ["2 g"]),
+      ]);
+      expect(warning).toBeDefined();
+      const caveat = ulConditionCaveat("magnesium", ["chronic kidney disease"]);
+      expect(caveat).not.toBeNull();
+      expect(ulWarningDetail(warning, caveat)).toContain(
+        "may not apply to you"
+      );
+    });
+  });
+
+  describe("incidental name matches", () => {
+    it("reads Magnesium Hydroxide as hydroxide, not as oxide", () => {
+      // "hydroxide" contains "oxide". Taking 60.3% was cautious in direction but the
+      // copy then named a product the user never entered.
+      const reading = elementalReading("Magnesium Hydroxide", magnesium, 2000);
+      expect(reading.compound).toBe("magnesium hydroxide");
+      expect(reading.amount).toBeCloseTo(834, 0);
+      // And it is still over the UL, so nothing went quiet in the correction.
+      const [warning] = ul([active("Magnesium Hydroxide", ["2 g"])]);
+      expect(warning.total).toBeGreaterThan(warning.ul);
+      expect(ulWarningDetail(warning)).toContain("magnesium hydroxide");
+      expect(ulWarningDetail(warning)).not.toContain("for magnesium oxide");
+    });
+
+    it("still reads a plain oxide entry as oxide", () => {
+      expect(
+        elementalReading("Magnesium Oxide", magnesium, 2000).compound
+      ).toBe("magnesium oxide");
+    });
   });
 });

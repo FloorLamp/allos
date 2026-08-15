@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { ALL_ROWS } from "../trends";
 import { cache } from "../request-cache";
 import { clampPage, pageCount, pageOffset } from "../pagination";
 import { tickCached } from "../tick-cache";
@@ -418,6 +419,30 @@ export function getLatestMetricValue(
   metric: string
 ): number | null {
   return getLatestMetricSample(profileId, metric)?.value ?? null;
+}
+
+// The three dated series a pediatric growth trajectory is built from, in canonical
+// cm / kg: height and head circumference from metric_samples, weight from
+// body_metrics. ONE reader, so every growth surface scores the same rows (#2802) —
+// the passport badge used to skip the series entirely and score two scalars.
+//
+// Unbounded (ALL_ROWS) on purpose: a growth chart plots the child's WHOLE
+// trajectory, and the default row cap silently started the percentile track a few
+// months ago on a daily-synced child (#399).
+export function getGrowthMeasurementSeries(profileId: number): {
+  heights: { date: string; value: number }[];
+  weights: { date: string; value: number }[];
+  headCircs: { date: string; value: number }[];
+} {
+  return {
+    heights: getMetricDailyTotals(profileId, "height_cm", ALL_ROWS),
+    weights: getBodyMetricDailySeries(profileId, "weight", ALL_ROWS),
+    headCircs: getMetricDailyTotals(
+      profileId,
+      "head_circumference_cm",
+      ALL_ROWS
+    ),
+  };
 }
 
 // Per-night MAIN-sleep stage totals (minutes), oldest→newest, pivoted from the four

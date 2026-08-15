@@ -66,6 +66,26 @@ const HIGH_STAKES = [
     glob: /^lib\/nudge-cadence\.ts$/,
     why: "the send/freeze decision every safety planner rides",
   },
+  // The safety signal is DECIDED before it is sent, and this list covered only
+  // the sending half until PR #2929 walked through the gap (2026-08-15): a change
+  // to the upper-limit arithmetic in `lib/dri.ts` — which by its author's own
+  // account could make a firing warning go quiet — was reported "not high-stakes"
+  // because no declared path matched, and the orchestrator had to override the
+  // tool by hand. A warning that is never computed is as silent as one that is
+  // never sent, so the modules that decide whether there is something to warn
+  // about belong at the same tier as the ones that deliver it.
+  {
+    glob: /^lib\/dri\.ts$/,
+    why: "DRI/upper-limit arithmetic — a bug here makes an over-limit stack stop warning",
+  },
+  {
+    glob: /^lib\/(drug-interactions|food-drug-interactions|supplement-safety)\.ts$/,
+    why: "interaction engines — a miss drops a contraindication the app already knew",
+  },
+  {
+    glob: /^lib\/(contrast-safety|dental-safety|weather-med-safety)\.ts$/,
+    why: "situational safety checks — each one is the only thing standing between a stored fact and a harmful action",
+  },
   // Writes replayed later with captured state.
   {
     glob: /^lib\/offline\//,

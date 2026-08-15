@@ -195,6 +195,15 @@ export function chartTooltipSurfaceStyle(c: ChartColors) {
  *  hover motion (Part 3c). */
 export function chartTooltipProps(c: ChartColors, motion: ChartMotion) {
   return {
+    // RENDER ORDER, not alphabetical (#2804). recharts 3 defaults `itemSorter` to
+    // `'name'` and LEXICALLY sorts the payload before any formatter runs, which is
+    // never what a chart means: percentile bands came out 10th, 25th, 3th, 5th, 50th,
+    // a stacked bar's rows stopped matching its stack, and StackedBarCardInner's
+    // "only the first entry speaks" formatter keyed on a post-sort index. The series
+    // are declared in the order the reader should read them, so that is the order.
+    // recharts sorts stably, so a constant key leaves the payload as it arrives; a
+    // chart wanting a different order passes its own itemSorter AFTER this spread.
+    itemSorter: () => 0,
     contentStyle: {
       fontSize: 12,
       borderRadius: 8,

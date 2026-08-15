@@ -47,6 +47,8 @@ export default function ActivityOverlay({
   prefill = null,
   initialDate,
   live = false,
+  adoptRowId = null,
+  onRowOwned,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
@@ -64,6 +66,10 @@ export default function ActivityOverlay({
   prefill?: ActivityEditData | null;
   initialDate?: string;
   live?: boolean;
+  // Create-at-start row + first-ownership callback for a live session (#2870
+  // step 3), forwarded whole.
+  adoptRowId?: number | null;
+  onRowOwned?: (id: number) => void;
   deloadContext: FormDeloadContext;
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
@@ -175,6 +181,8 @@ export default function ActivityOverlay({
           prefill={prefill}
           initialDate={initialDate}
           live={live}
+          adoptRowId={adoptRowId}
+          onRowOwned={onRowOwned}
           deloadContext={deloadContext}
           recoveringContext={recoveringContext}
           plateauHints={plateauHints}

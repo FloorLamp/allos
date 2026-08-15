@@ -79,6 +79,7 @@ import {
   runStaleWorkoutSuggest,
 } from "../lib/notifications/workout-presence";
 import { flushPostWorkoutDispatches } from "../lib/notifications/post-workout-queue";
+import { expireWorkoutDrafts } from "../lib/workout-finish";
 import { runRefills } from "../lib/notifications/refill";
 import { runPoolRefills } from "../lib/notifications/supply-pool";
 import { runPreventive } from "../lib/notifications/preventive";
@@ -790,6 +791,18 @@ async function tickProfile(
   // past STALE_MIN gets ONE gentle "Still working out? Finish or discard" nudge —
   // suggest-only, deep-links back to the session, NEVER auto-ends. One-shot per
   // activity id; waking-gated (a soft coaching suggest, not a safety signal).
+  // Draft expiry (#2870 step 3): abandoned zero-content session husks age out
+  // after DRAFT_EXPIRE_HOURS. Housekeeping, not a notification — every tick,
+  // not waking-gated; the core skips anything with content.
+  try {
+    expireWorkoutDrafts(profile.id, now);
+  } catch (e) {
+    log.error("draft expiry failed", {
+      profile: profile.id,
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
   if (waking) {
     try {
       const sw = await runStaleWorkoutSuggest(profile.id, profile.name, now);

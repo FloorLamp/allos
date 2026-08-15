@@ -35,7 +35,11 @@ import {
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import { medicationStartDate } from "@/lib/profile-summary";
 import { lastNDates, shiftDateStr } from "@/lib/date";
-import { indexTakenByDose, intakeAdherenceStrip } from "@/lib/intake-adherence";
+import {
+  indexTakenByDose,
+  intakeAdherenceStrip,
+  stripWithoutTrailingPending,
+} from "@/lib/intake-adherence";
 import { buildAdherenceCalendar } from "@/lib/adherence-calendar";
 
 // Statement counting (the #885 shape, as tick-scoped-gathers.test.ts uses it): the
@@ -236,5 +240,70 @@ describe("getMedicationAdherenceCalendar reads the board gather (#2114)", () => 
     // The ONE read that is genuinely the calendar's own: the board scores 14 days,
     // the month grid scores 35, so this window is not the board's to widen.
     expect(logs.calls()).toBe(1);
+  });
+
+  // Today, still pending (#2796). The fixture logs nothing for today, and the detail
+  // page still offers "Mark taken" for it — but the calendar was rendering that cell
+  // as a red "Missed" and counting it in the legend. This is the DB tier because the
+  // claim is about what the real gather produces for a real medication on the real
+  // profile-local today, not about a hand-built strip.
+  it("marks today's unconfirmed dose pending, not missed", () => {
+    const { profileId, itemId } = seedDetailFixture("Detail Gather Pending");
+    const data = loadMedicationsData(profileId);
+    const todayStr = today(profileId);
+
+    const calendar = getMedicationAdherenceCalendar(profileId, data, itemId);
+    const todayCell = calendar.weeks
+      .flat()
+      .find((cell) => cell.date === todayStr);
+
+    expect(todayCell).toEqual({ date: todayStr, state: "pending" });
+    expect(calendar.counts.pending).toBe(1);
+
+    // And it is exactly the day the percentage refuses to score, so the legend and
+    // the summary cannot disagree about which day is unsettled.
+    const strip = data.byId.get(itemId)!.strip;
+    const settled = stripWithoutTrailingPending(strip);
+    expect(settled).toHaveLength(strip.length - 1);
+    expect(strip[strip.length - 1].date).toBe(todayStr);
+  });
+
+  it("still counts a real earlier lapse as missed", () => {
+    // The guard is for TODAY only. A medication with a genuine unlogged day inside its
+    // course must keep showing it — a fix that quietly swallowed misses would be a
+    // worse defect than the one it replaced.
+    const { profileId, itemId } = seedDetailFixture("Detail Gather Lapse");
+    const data = loadMedicationsData(profileId);
+    const calendar = getMedicationAdherenceCalendar(profileId, data, itemId);
+
+    // The fixture logs 5 of the ~20 days since the course started; the rest are real
+    // misses, and only ONE day (today) is pending.
+    expect(calendar.counts.missed).toBeGreaterThan(0);
+    expect(calendar.counts.pending).toBe(1);
+  });
+
+  it("confirming today's dose settles the cell", () => {
+    const { profileId, itemId } = seedDetailFixture("Detail Gather Confirm");
+    const todayStr = today(profileId);
+    const doseId = (
+      db
+        .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
+        .get(itemId) as { id: number }
+    ).id;
+    db.prepare(
+      "INSERT INTO intake_item_logs (dose_id, date, status) VALUES (?, ?, 'taken')"
+    ).run(doseId, todayStr);
+
+    const calendar = getMedicationAdherenceCalendar(
+      profileId,
+      loadMedicationsData(profileId),
+      itemId
+    );
+    const todayCell = calendar.weeks
+      .flat()
+      .find((cell) => cell.date === todayStr);
+
+    expect(todayCell).toEqual({ date: todayStr, state: "taken" });
+    expect(calendar.counts.pending).toBe(0);
   });
 });
