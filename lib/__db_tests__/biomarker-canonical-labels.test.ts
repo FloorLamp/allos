@@ -88,7 +88,7 @@ describe("getSyncRowProvenance labels by the canonical analyte (#1501)", () => {
       db
         .prepare(
           `INSERT INTO integration_sync_events
-             (profile_id, provider, at, ok, inserted, updated, unchanged)
+             (profile_id, source_id, at, ok, inserted, updated, unchanged)
            VALUES (?, 'health-connect', '2024-02-02T09:00:00Z', 1, 1, 0, 0)`
         )
         .run(profileId).lastInsertRowid

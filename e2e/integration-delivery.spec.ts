@@ -50,18 +50,18 @@ const at = frozenSyncInstant;
 function seedFixture(): void {
   withDb((db) => {
     const conn = db.prepare(
-      `INSERT INTO integration_connections (profile_id, provider, status)
+      `INSERT INTO integration_connections (profile_id, source_id, status)
        VALUES (?, ?, 'connected')
-       ON CONFLICT (profile_id, provider) DO UPDATE SET status = 'connected'`
+       ON CONFLICT (profile_id, source_id) DO UPDATE SET status = 'connected'`
     );
     conn.run(PROFILE_ID, PORTALS);
     conn.run(PROFILE_ID, FEED);
     db.prepare(
-      `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = ?`
+      `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = ?`
     ).run(PROFILE_ID, PORTALS);
     const ins = db.prepare(
       `INSERT INTO integration_sync_events
-         (profile_id, provider, at, ok, inserted, updated, unchanged, error)
+         (profile_id, source_id, at, ok, inserted, updated, unchanged, error)
        VALUES (?, ?, ?, ?, ?, 0, ?, ?)`
     );
     const runs: { hoursAgo: number; ok: boolean }[] = [
@@ -89,11 +89,11 @@ function seedFixture(): void {
 function clearFixture(): void {
   withDb((db) => {
     db.prepare(
-      `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = ?`
+      `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = ?`
     ).run(PROFILE_ID, PORTALS);
     db.prepare(
       `DELETE FROM integration_connections
-        WHERE profile_id = ? AND provider IN (?, ?)`
+        WHERE profile_id = ? AND source_id IN (?, ?)`
     ).run(PROFILE_ID, PORTALS, FEED);
   });
 }

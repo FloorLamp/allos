@@ -197,11 +197,11 @@ describe("persona seeds against a live schema", () => {
     const profileId = seeded.get("marathon-runner")!;
     const connections = db
       .prepare(
-        `SELECT provider FROM integration_connections
-         WHERE profile_id = ? AND status = 'connected' ORDER BY provider`
+        `SELECT source_id FROM integration_connections
+         WHERE profile_id = ? AND status = 'connected' ORDER BY source_id`
       )
-      .all(profileId) as { provider: string }[];
-    expect(connections.map((c) => c.provider)).toEqual([
+      .all(profileId) as { source_id: string }[];
+    expect(connections.map((c) => c.source_id)).toEqual([
       "health-connect",
       "strava",
     ]);
@@ -270,11 +270,11 @@ describe("persona seeds against a live schema", () => {
     const profileId = seeded.get("biohacker")!;
     const providers = db
       .prepare(
-        `SELECT provider FROM integration_connections
-         WHERE profile_id = ? AND status = 'connected' ORDER BY provider`
+        `SELECT source_id FROM integration_connections
+         WHERE profile_id = ? AND status = 'connected' ORDER BY source_id`
       )
-      .all(profileId) as { provider: string }[];
-    expect(providers.map((p) => p.provider)).toEqual(["oura", "withings"]);
+      .all(profileId) as { source_id: string }[];
+    expect(providers.map((p) => p.source_id)).toEqual(["oura", "withings"]);
     const deep = db
       .prepare(
         `SELECT COUNT(*) c FROM metric_samples

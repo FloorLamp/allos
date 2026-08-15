@@ -29,8 +29,7 @@ import { reconcileProduced, feedProducedDetail } from "./produced-count";
 // fields, which structural typing accepts on assignment.
 export interface FeedSyncEvent {
   id: number;
-  // #2487 boundary: the persisted column is still named `provider`; the query layer
-  // selects `provider AS source_id`. See IntegrationConnection.source_id.
+  // The persisted and query models both expose the integration source id.
   source_id: string;
   at: string;
   ok: number; // 1 = success, 0 = failure

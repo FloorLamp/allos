@@ -1375,7 +1375,7 @@ export interface IdentitySyncStatus {
 // really been since the portal was last read.
 export function identitySyncStatuses(
   profileId: number,
-  provider: string
+  sourceId: string
 ): IdentitySyncStatus[] {
   return db
     .prepare(
@@ -1383,9 +1383,9 @@ export function identitySyncStatuses(
               MAX(CASE WHEN ok = 1 THEN at END) AS lastOkAt,
               MAX(CASE WHEN ok = 0 THEN at END) AS lastFailedAt
          FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ?
+        WHERE profile_id = ? AND source_id = ?
           AND account_id IS NOT NULL AND patient_label IS NOT NULL
         GROUP BY account_id, patient_label`
     )
-    .all(profileId, provider) as IdentitySyncStatus[];
+    .all(profileId, sourceId) as IdentitySyncStatus[];
 }

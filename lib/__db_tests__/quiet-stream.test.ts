@@ -63,7 +63,7 @@ function nowInstant(): Date {
 
 function connect(status = "connected"): void {
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status, config)
+    `INSERT INTO integration_connections (profile_id, source_id, status, config)
      VALUES (?, ?, ?, NULL)`
   ).run(profileId, PROVIDER, status);
 }
@@ -103,7 +103,7 @@ function stream(day: string, hhmm: string, minutes = 5): void {
 function sync(day: string, hhmm: string, ok = true): void {
   const at = utcMinute(zonedWallTimeToUtc(TZ, day, hhmm)!);
   db.prepare(
-    `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted, error)
+    `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted, error)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     profileId,
@@ -331,7 +331,7 @@ describe("quiet-stream detection (#2146)", () => {
     // it is not this one.
     db.prepare(
       `UPDATE integration_connections SET status = 'needs_reauth'
-        WHERE profile_id = ? AND provider = ?`
+        WHERE profile_id = ? AND source_id = ?`
     ).run(profileId, PROVIDER);
     sync(DAY, "07:20", false);
     expect(getQuietStreams(profileId)).toEqual([]);
@@ -353,7 +353,7 @@ describe("quiet-stream detection (#2146)", () => {
     );
     setTimezone(other, TZ);
     db.prepare(
-      `INSERT INTO integration_connections (profile_id, provider, status, config)
+      `INSERT INTO integration_connections (profile_id, source_id, status, config)
        VALUES (?, ?, 'connected', NULL)`
     ).run(other, PROVIDER);
     expect(getQuietStreams(other)).toEqual([]);

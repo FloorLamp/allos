@@ -383,11 +383,7 @@ export type IntegrationConnectionStatus =
 
 export interface IntegrationConnection {
   profile_id: number;
-  // THE #2487 BOUNDARY. In TypeScript an integration source is a `sourceId`; the
-  // persisted column is still named `provider`, and renaming it is deferred to its own
-  // forward migration. Every read of this table therefore selects
-  // `provider AS source_id` explicitly — the alias IS the mapping, so no shared domain
-  // type is left carrying two meanings for one word.
+  // The stored row uses the same source vocabulary as TypeScript.
   source_id: string;
   status: IntegrationConnectionStatus;
   config: string | null; // JSON: { token } for push; OAuth tokens for pull
@@ -404,8 +400,7 @@ export interface IntegrationConnection {
 export interface IntegrationSyncEvent {
   id: number;
   profile_id: number;
-  // The #2487 boundary again: the column is still `provider`, every read aliases it to
-  // `source_id`. See IntegrationConnection.source_id.
+  // The stored row uses the same source vocabulary as TypeScript.
   source_id: string;
   at: string;
   ok: number; // 1 = success, 0 = failure

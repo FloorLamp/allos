@@ -33,7 +33,7 @@ import { resumeDueIntegrationBackfills } from "./backfill-jobs";
 // THE LAST-RUN FACT IS NOT NEW STATE. Every pull already appends an
 // integration_sync_events row per run — success or failure — so "when did we last
 // call this source for this profile" was already recorded, indexed
-// (idx_sync_events_profile_provider_at) and retention-swept (#388). The guard reads
+// (idx_sync_events_profile_source_at) and retention-swept (#388). The guard reads
 // it. Minting a `notify_*` marker or a new settings key for a fact the database
 // already holds would have added a second source of truth to keep in step, and a
 // send-marker registry entry for something that is not a send.
@@ -48,10 +48,9 @@ export function lastPullAttemptAt(
   sourceId: string
 ): string | null {
   const row = db
-    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     .prepare(
       `SELECT at FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ?
+        WHERE profile_id = ? AND source_id = ?
         ORDER BY at DESC, id DESC
         LIMIT 1`
     )

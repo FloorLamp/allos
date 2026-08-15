@@ -47,7 +47,7 @@ function restoreWeatherFixture(): void {
     if (!profile) return;
     db.prepare(
       `DELETE FROM integration_sync_events
-        WHERE profile_id = ? AND provider = 'weather' AND at NOT IN (?, ?)`
+        WHERE profile_id = ? AND source_id = 'weather' AND at NOT IN (?, ?)`
     ).run(profile.id, ...SEEDED_SYNC_EVENTS);
   } finally {
     db.close();

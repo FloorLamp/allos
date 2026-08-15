@@ -78,7 +78,7 @@ import {
 } from "@/lib/import-review/candidate-sql";
 
 // Read side of the integration sync-event debug log. Every statement here is
-// PROFILE-SCOPED (WHERE profile_id = ? AND provider = ?): the setup-page panels and
+// PROFILE-SCOPED (WHERE profile_id = ? AND source_id = ?): the setup-page panels and
 // the grid cards resolve the profile from requireSession(), and the Health Connect
 // ingest writes its events under the token-resolved profile, so a profile sees
 // exactly its own device's sync history.
@@ -91,8 +91,8 @@ export function getIntegrationSyncEvents(
 ): IntegrationSyncEvent[] {
   return db
     .prepare(
-      `SELECT *, provider AS source_id FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ?
+      `SELECT * FROM integration_sync_events
+        WHERE profile_id = ? AND source_id = ?
         ORDER BY at DESC, id DESC
         LIMIT ?`
     )
@@ -109,8 +109,8 @@ export function getRetainedIntegrationSyncEvents(
 ): IntegrationSyncEvent[] {
   return db
     .prepare(
-      `SELECT *, provider AS source_id FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ?
+      `SELECT * FROM integration_sync_events
+        WHERE profile_id = ? AND source_id = ?
         ORDER BY at DESC, id DESC`
     )
     .all(profileId, sourceId) as IntegrationSyncEvent[];
@@ -166,8 +166,8 @@ export function getIntegrationSyncEventsByIds(
   const placeholders = ids.map(() => "?").join(",");
   return db
     .prepare(
-      `SELECT *, provider AS source_id FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ? AND id IN (${placeholders})
+      `SELECT * FROM integration_sync_events
+        WHERE profile_id = ? AND source_id = ? AND id IN (${placeholders})
         ORDER BY at DESC, id DESC`
     )
     .all(profileId, sourceId, ...ids) as IntegrationSyncEvent[];
@@ -182,7 +182,7 @@ export function getLastSuccessfulSyncAt(
   const row = db
     .prepare(
       `SELECT at FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ? AND ok = 1
+        WHERE profile_id = ? AND source_id = ? AND ok = 1
         ORDER BY at DESC, id DESC
         LIMIT 1`
     )
@@ -203,21 +203,20 @@ export function getLatestSyncEventPerSource(
 ): IntegrationSyncEvent[] {
   // Instead of scanning every event with a correlated `id = latest-for-source`
   // subquery per row (issue #388), enumerate the profile's DISTINCT providers and do
-  // ONE indexed seek per provider — idx_sync_events_profile_provider_at
-  // (profile_id, provider, at) satisfies both the DISTINCT skip-scan and each
+  // ONE indexed seek per source — idx_sync_events_profile_source_at
+  // (profile_id, source_id, at) satisfies both the DISTINCT skip-scan and each
   // `ORDER BY at DESC, id DESC LIMIT 1`, so this is O(sources × log N) rather than
   // O(N) with a per-row subquery. Output is byte-identical: the latest event per
   // source, ordered newest-first overall.
   const sourceIds = db
-    // #2487 boundary: the column is still named `provider`; TS calls it a source id.
     .prepare(
-      `SELECT DISTINCT provider AS source_id FROM integration_sync_events
+      `SELECT DISTINCT source_id FROM integration_sync_events
         WHERE profile_id = ?`
     )
     .all(profileId) as { source_id: string }[];
   const latest = db.prepare(
-    `SELECT *, provider AS source_id FROM integration_sync_events
-      WHERE profile_id = ? AND provider = ?
+    `SELECT * FROM integration_sync_events
+      WHERE profile_id = ? AND source_id = ?
       ORDER BY at DESC, id DESC
       LIMIT 1`
   );
@@ -715,7 +714,7 @@ export function getImportIssues(profileId: number): IntegrationSyncEvent[] {
 // badge/page/digest provably read the same list.
 //
 // MEMOIZED ON BOTH LIFETIMES (#2283). `getImportIssues` behind it walks EVERY source
-// with a recorded event — a DISTINCT-provider scan, an indexed seek per provider, then
+// with a recorded event — a distinct-source scan, an indexed seek per source, then
 // a `resolveSourceFacts` standing window plus a last-success seek for each — and one
 // digest tick asks it TWICE for the same profile: `logDigestTick` reports
 // `sourceHealthy` on the decision (#2192), and `gatherDigestInput` builds the banded
@@ -771,8 +770,8 @@ export function getLatestSyncEvent(
 ): IntegrationSyncEvent | null {
   const row = db
     .prepare(
-      `SELECT *, provider AS source_id FROM integration_sync_events
-        WHERE profile_id = ? AND provider = ?
+      `SELECT * FROM integration_sync_events
+        WHERE profile_id = ? AND source_id = ?
         ORDER BY at DESC, id DESC
         LIMIT 1`
     )
@@ -975,7 +974,7 @@ export function provenanceCountsByEvent(
       `SELECT r.event_id AS event_id, COUNT(*) AS n
          FROM integration_sync_rows r
          JOIN integration_sync_events e ON e.id = r.event_id
-        WHERE e.profile_id = ? AND e.provider = ? AND r.event_id >= ?
+        WHERE e.profile_id = ? AND e.source_id = ? AND r.event_id >= ?
         GROUP BY r.event_id`
     )
     .all(profileId, sourceId, minEventId) as {

@@ -617,17 +617,17 @@ function addDocument(
 // while /integrations and hasConnectedDataSource read "connected".
 function connectIntegration(
   ctx: PersonaContext,
-  provider: "strava" | "health-connect" | "oura" | "withings",
+  sourceId: "strava" | "health-connect" | "oura" | "withings",
   config: Record<string, unknown> = {}
 ): void {
   ctx.db
     .prepare(
-      `INSERT INTO integration_connections (profile_id, provider, status, config)
+      `INSERT INTO integration_connections (profile_id, source_id, status, config)
        VALUES (?, ?, 'connected', ?)
-       ON CONFLICT(profile_id, provider) DO UPDATE SET
+       ON CONFLICT(profile_id, source_id) DO UPDATE SET
          status = excluded.status, config = excluded.config`
     )
-    .run(ctx.profileId, provider, JSON.stringify(config));
+    .run(ctx.profileId, sourceId, JSON.stringify(config));
 }
 
 // A provider-imported cardio session carrying source + external_id (and the

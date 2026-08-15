@@ -57,7 +57,7 @@ function arrival(sampleId: number, atUtcSql: string, ok = true): void {
   const eventId = Number(
     db
       .prepare(
-        `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+        `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
          VALUES (?, ?, ?, ?, 1)`
       )
       .run(profileId, PROVIDER, atUtcSql, ok ? 1 : 0).lastInsertRowid
@@ -127,7 +127,7 @@ describe("the abandoned device — the case the connection signal cannot see", (
   // ever fires. Only the sleep rows stop.
   function stillSyncingSteps(): void {
     db.prepare(
-      `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+      `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
        VALUES (?, ?, ?, 1, 42)`
     ).run(profileId, PROVIDER, utcInstant());
   }
@@ -219,7 +219,7 @@ describe("getSleepArrivalLagMinutes", () => {
     const otherEvent = Number(
       db
         .prepare(
-          `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+          `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
            VALUES (?, ?, ?, 1, 1)`
         )
         .run(other, PROVIDER, utcInstant()).lastInsertRowid

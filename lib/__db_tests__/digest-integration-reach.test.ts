@@ -37,9 +37,9 @@ function newProfile(name: string): number {
 
 function connect(profileId: number, provider: string): void {
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status)
+    `INSERT INTO integration_connections (profile_id, source_id, status)
      VALUES (?, ?, 'connected')
-     ON CONFLICT (profile_id, provider) DO UPDATE SET status = 'connected'`
+     ON CONFLICT (profile_id, source_id) DO UPDATE SET status = 'connected'`
   ).run(profileId, provider);
 }
 
@@ -56,7 +56,7 @@ function syncEvent(
   // the fixture writes the shape the column actually holds.
   const at = utcInstant(new Date(clockNow().getTime() - hoursAgo * 3600_000));
   db.prepare(
-    `INSERT INTO integration_sync_events (profile_id, provider, at, ok, error)
+    `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, error)
      VALUES (?, ?, ?, ?, ?)`
   ).run(profileId, provider, at, ok, error);
 }

@@ -163,7 +163,7 @@ describe("weather ingest — idempotent daily cache (#1726)", () => {
     const ev = db
       .prepare(
         `SELECT ok, inserted, updated, unchanged FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'weather' ORDER BY id DESC LIMIT 1`
+          WHERE profile_id = ? AND source_id = 'weather' ORDER BY id DESC LIMIT 1`
       )
       .get(p) as {
       ok: number;

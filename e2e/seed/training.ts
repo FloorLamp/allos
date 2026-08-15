@@ -254,7 +254,7 @@ export function seedTrainingLogCard(): void {
   ).run(PROFILE_ID);
 
   db.prepare(
-    `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider IN ('strava','health-connect')`
+    `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id IN ('strava','health-connect')`
   ).run(PROFILE_ID);
 }
 

@@ -32,7 +32,7 @@ function failureEventCount(): number {
   return (
     db
       .prepare(
-        "SELECT COUNT(*) AS n FROM integration_sync_events WHERE profile_id = ? AND provider = 'health-connect' AND ok = 0"
+        "SELECT COUNT(*) AS n FROM integration_sync_events WHERE profile_id = ? AND source_id = 'health-connect' AND ok = 0"
       )
       .get(profileId) as { n: number }
   ).n;

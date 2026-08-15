@@ -28,9 +28,9 @@ function newProfile(name: string): number {
 
 function connect(profileId: number, sourceId: string): void {
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status)
+    `INSERT INTO integration_connections (profile_id, source_id, status)
      VALUES (?, ?, 'connected')
-     ON CONFLICT (profile_id, provider) DO UPDATE SET status = excluded.status`
+     ON CONFLICT (profile_id, source_id) DO UPDATE SET status = excluded.status`
   ).run(profileId, sourceId);
 }
 
@@ -47,7 +47,7 @@ function syncEvent(
   const at = utcInstant(new Date(clockNow().getTime() - hoursAgo * 3600_000));
   db.prepare(
     `INSERT INTO integration_sync_events
-       (profile_id, provider, at, ok, inserted, updated, unchanged, error)
+       (profile_id, source_id, at, ok, inserted, updated, unchanged, error)
      VALUES (?, ?, ?, ?, ?, 0, 0, ?)`
     // The ledger stores UTC with an explicit `Z` since migration 163 (#2205).
   ).run(profileId, sourceId, at, ok, ok ? 1 : null, error);

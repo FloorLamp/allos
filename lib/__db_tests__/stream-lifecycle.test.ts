@@ -50,7 +50,7 @@ function nowInstant(): Date {
 
 function connect(status = "connected"): void {
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status, config)
+    `INSERT INTO integration_connections (profile_id, source_id, status, config)
      VALUES (?, ?, ?, NULL)`
   ).run(profileId, PROVIDER, status);
 }
@@ -73,7 +73,7 @@ function stream(day: string, hhmm = "20:00", minutes = 5): void {
 /** A successful push, so the connection reads healthy throughout. */
 function sync(day: string, hhmm: string): void {
   db.prepare(
-    `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+    `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
      VALUES (?, ?, ?, 1, 0)`
   ).run(profileId, PROVIDER, utcMinute(zonedWallTimeToUtc(TZ, day, hhmm)!));
 }

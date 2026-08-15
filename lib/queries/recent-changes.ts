@@ -148,9 +148,8 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
   // that source) has ever arrived before — and asking twice would be two answers to
   // one question over a table that is only ever appended to.
   const rows = db
-    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     .prepare(
-      `SELECT e.provider AS source_id,
+      `SELECT e.source_id,
               r.target_table AS target_table,
               s.metric AS metric,
               SUM(CASE WHEN e.at > ? THEN 1 ELSE 0 END) AS n_new,
@@ -163,8 +162,8 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
                AND s.profile_id = e.profile_id
         WHERE e.profile_id = ? AND e.ok = 1
           AND r.disposition = 'inserted'
-        GROUP BY e.provider, r.target_table, s.metric
-        ORDER BY n_new DESC, e.provider, r.target_table`
+        GROUP BY e.source_id, r.target_table, s.metric
+        ORDER BY n_new DESC, e.source_id, r.target_table`
     )
     .all(sinceTs, sinceTs, profileId) as {
     source_id: string;
@@ -180,7 +179,7 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
     (
       db
         .prepare(
-          `SELECT DISTINCT provider AS source_id FROM integration_sync_events
+          `SELECT DISTINCT source_id FROM integration_sync_events
             WHERE profile_id = ? AND ok = 1 AND at <= ?`
         )
         .all(profileId, sinceTs) as { source_id: string }[]

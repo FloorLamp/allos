@@ -550,7 +550,7 @@ describe("the SQL extraction the scan relies on", () => {
   it("aligns INSERT columns with their value expressions", () => {
     const w = writesIn(
       `INSERT INTO integration_sync_events
-         (profile_id, provider, at, ok)
+         (profile_id, source_id, at, ok)
        VALUES (?, ?, datetime('now'), ?)`
     );
     expect(w).toContainEqual({

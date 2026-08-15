@@ -264,7 +264,7 @@ describe("the cross-domain join the wrong analyses came from (#2205)", () => {
     const eventId = Number(
       db
         .prepare(
-          `INSERT INTO integration_sync_events (profile_id, provider, at, ok)
+          `INSERT INTO integration_sync_events (profile_id, source_id, at, ok)
            VALUES (?, 'health-connect', ?, 1)`
         )
         .run(profileId, arrived).lastInsertRowid
@@ -303,7 +303,7 @@ describe("the cross-domain join the wrong analyses came from (#2205)", () => {
         .lastInsertRowid
     );
     const insert = db.prepare(
-      `INSERT INTO integration_sync_events (profile_id, provider, at, ok)
+      `INSERT INTO integration_sync_events (profile_id, source_id, at, ok)
        VALUES (?, 'health-connect', ?, 1)`
     );
     insert.run(profileId, "2026-05-20T02:00:00Z"); // before the cursor

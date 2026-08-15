@@ -176,7 +176,7 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     const ev = db
       .prepare(
         `SELECT ok, inserted, updated, unchanged FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'weather' ORDER BY id DESC LIMIT 1`
+          WHERE profile_id = ? AND source_id = 'weather' ORDER BY id DESC LIMIT 1`
       )
       .get(p) as {
       ok: number;
@@ -216,7 +216,7 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     const ev = db
       .prepare(
         `SELECT ok FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'weather' ORDER BY id DESC LIMIT 1`
+          WHERE profile_id = ? AND source_id = 'weather' ORDER BY id DESC LIMIT 1`
       )
       .get(p) as { ok: number };
     expect(ev.ok).toBe(0);
@@ -244,7 +244,7 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     const events = db
       .prepare(
         `SELECT ok, window_start, window_end FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'weather' ORDER BY id`
+          WHERE profile_id = ? AND source_id = 'weather' ORDER BY id`
       )
       .all(p) as {
       ok: number;
@@ -278,7 +278,7 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     const events = db
       .prepare(
         `SELECT ok, window_start, window_end FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'weather' ORDER BY id`
+          WHERE profile_id = ? AND source_id = 'weather' ORDER BY id`
       )
       .all(p) as {
       ok: number;
@@ -317,7 +317,7 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       return db
         .prepare(
           `SELECT * FROM integration_sync_events
-            WHERE profile_id = ? AND provider = 'weather' ORDER BY id DESC LIMIT 1`
+            WHERE profile_id = ? AND source_id = 'weather' ORDER BY id DESC LIMIT 1`
         )
         .get(profileId) as IntegrationSyncEvent;
     }

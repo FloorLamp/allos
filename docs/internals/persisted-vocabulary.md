@@ -24,6 +24,7 @@ remains.
 | dose timestamp `recorded_at`             | `occurred_at`                               | the stored administration event is distinct from immutable capture                              |
 | activity type `recovery`                 | `mobility`                                  | the activity is a mobility session; recovery remains an equipment kind                          |
 | `medical_records.category = 'biomarker'` | supported category or `NULL` pending review | the catchall hid unlike clinical observations and could not be resolved safely without evidence |
+| integration columns `provider`           | `source_id`                                 | registry ids name connected data sources, not healthcare providers                              |
 
 Migrations `20260814-persisted-vocabulary` and
 `20260814-intake-log-time-vocabulary` preserve row ids, timestamps, notes,

@@ -128,7 +128,7 @@ function night(
   const eventId = Number(
     db
       .prepare(
-        `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+        `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
          VALUES (?, ?, ?, 1, 1)`
       )
       .run(profileId, PROVIDER, utcInstant(arrivedAt)).lastInsertRowid

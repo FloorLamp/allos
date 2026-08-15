@@ -193,20 +193,17 @@ function getAttendedImportSyncEvents(
   limit: number
 ): FeedSyncEvent[] {
   if (ATTENDED_SOURCES.length === 0) return [];
-  return (
-    db
-      // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
-      .prepare(
-        `SELECT id, provider AS source_id, at, ok, window_start, window_end,
+  return db
+    .prepare(
+      `SELECT id, source_id, at, ok, window_start, window_end,
               inserted, updated, unchanged, written, suppressed, edited, skipped,
               error, raw_ref
          FROM integration_sync_events
-        WHERE profile_id = ? AND provider IN (${ATTENDED_SOURCE_PLACEHOLDERS})
+        WHERE profile_id = ? AND source_id IN (${ATTENDED_SOURCE_PLACEHOLDERS})
         ORDER BY at DESC, id DESC
         LIMIT ?`
-      )
-      .all(profileId, ...ATTENDED_SOURCES, limit) as FeedSyncEvent[]
-  );
+    )
+    .all(profileId, ...ATTENDED_SOURCES, limit) as FeedSyncEvent[];
 }
 
 // The "Imports" feed behind Data → Review: a profile's ONE-OFF imports — uploaded
