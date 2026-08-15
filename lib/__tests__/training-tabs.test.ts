@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_TRAINING_TAB,
-  RETIRED_FITNESS_TAB,
+  retiredTrainingTabTarget,
   TRAINING_TABS,
   parseTrainingTab,
   trainingTabStrip,
@@ -27,11 +27,25 @@ describe("parseTrainingTab", () => {
     expect(parseTrainingTab("plan")).toBe("plan");
   });
 
-  it("no longer parses the retired fitness tab (#2894 — the PAGE redirects it)", () => {
-    // The parser can only pick a tab; ?tab=fitness means the battery's route
-    // now, so the training page matches RETIRED_FITNESS_TAB and redirects
-    // BEFORE parsing. Reaching the parser anyway falls back to the default.
-    expect(RETIRED_FITNESS_TAB).toBe("fitness");
+  it("maps every retired name to its canonical redirect target (#2892/#2894)", () => {
+    // The page redirects BEFORE parsing, normalizing the URL — that is what
+    // keeps the client tab strip's highlight honest (it resolves ?tab= itself)
+    // and restores the section anchor historic hashless links relied on.
+    expect(retiredTrainingTabTarget("goals")).toBe("/training?tab=plan#goals");
+    expect(retiredTrainingTabTarget("routines")).toBe(
+      "/training?tab=plan#routines"
+    );
+    expect(retiredTrainingTabTarget("fitness")).toBe("/training/fitness-check");
+    // Same normalization as the parser: first value, trimmed.
+    expect(retiredTrainingTabTarget([" goals ", "log"])).toBe(
+      "/training?tab=plan#goals"
+    );
+    // Live names and unknowns are not redirects.
+    expect(retiredTrainingTabTarget("plan")).toBeNull();
+    expect(retiredTrainingTabTarget("nonsense")).toBeNull();
+    expect(retiredTrainingTabTarget(undefined)).toBeNull();
+    // Belt: a caller that parses without redirecting still lands on Plan, and
+    // the fitness name (a route, not a tab) falls to the default.
     expect(parseTrainingTab("fitness")).toBe(DEFAULT_TRAINING_TAB);
     expect((TRAINING_TABS as readonly string[]).includes("fitness")).toBe(
       false

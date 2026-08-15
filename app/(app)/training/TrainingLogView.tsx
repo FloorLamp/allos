@@ -10,7 +10,6 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import type { ActivityType, OutcomeGoal, Sex } from "@/lib/types";
-import type { FrequencyPace } from "@/lib/frequency-targets";
 import type {
   CardioStat,
   ExerciseStat,
@@ -61,19 +60,12 @@ export interface TrainingLogMultiView {
   actingProfileId: number;
 }
 
-export interface TargetChip {
-  label: string;
-  count: number;
-  perWeek: number;
-  met: boolean;
-  // Paced status (#748/#760/#780) so the training log week-summary chips colour by pace
-  // like every other chip surface, not the legacy Monday-rose met/count fallback.
-  pace?: FrequencyPace;
-}
+// The week-summary numbers the header line renders. The per-target chips left
+// this view with #2892 (one render home: Overview; edited in Plan), so the
+// summary carries no chip data.
 export interface WeekSummary {
   sessions: number;
   activeDays: number;
-  targets: TargetChip[];
 }
 
 // Shared with the strength page; re-exported here for existing importers.
@@ -122,7 +114,6 @@ export default function TrainingLogView({
   activeDaysStrip,
   recentByExercise,
   showHeader = true,
-  showWeeklyTargets = true,
   sex,
   canWriteVideos = false,
   multiView,
@@ -153,7 +144,6 @@ export default function TrainingLogView({
   activeDaysStrip: ActiveDaysStripData;
   recentByExercise: RecentByExercise;
   showHeader?: boolean;
-  showWeeklyTargets?: boolean;
   // Profile sex, so the exercise detail's strength standards use the right chart.
   sex?: Sex | null;
   // Whether the acting login can write to the feed's profile — gates the per-card
@@ -173,6 +163,7 @@ export default function TrainingLogView({
     openRepeat,
     close,
     registerDock,
+    registerTrainingLogView,
     canStartWorkout,
     workoutOffer,
   } = useActivityEditor();
@@ -281,6 +272,12 @@ export default function TrainingLogView({
     registerDock(dockRef.current);
     return () => registerDock(null);
   }, [registerDock, isDesktop]);
+
+  // Announce the Log view for the provider's bar suppression (every width — the
+  // dock above is desktop-only, but this view owns the session affordances). The
+  // bottom bar hides only while this view is mounted, so the Overview-default
+  // landing (#2893) still surfaces a fresh-loaded live session.
+  useEffect(() => registerTrainingLogView(), [registerTrainingLogView]);
 
   useEffect(() => {
     if (!initialCreateDate || initialCreateHandled.current) return;
@@ -809,7 +806,7 @@ export default function TrainingLogView({
           chips left this tab (#2892): they render on Overview and are edited in
           Plan — one home, not three. Hidden on first-run (issue #809): an empty
           cadence strip is noise above the "log your first activity" prompt. */}
-      {showWeeklyTargets && hasActivities && (
+      {hasActivities && (
         <div
           data-testid="training-log-routine-row"
           className="mb-5 space-y-3 xl:flex xl:items-center xl:gap-5 xl:space-y-0"

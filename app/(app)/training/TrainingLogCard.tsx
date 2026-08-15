@@ -188,7 +188,14 @@ export default function TrainingLogCard({
     if (sets.length === 0) return [];
     return [
       ...musclesWorked(
-        sets.map((s) => ({ exercise: s.exercise, date: activity.date }))
+        // Warm-up flags ride along so this figure and the Overview coverage
+        // card (warm-ups excluded, #2891) read the SAME attribution — a
+        // warm-up-only exercise paints nothing here, matching its zero credit.
+        sets.map((s) => ({
+          exercise: s.exercise,
+          date: activity.date,
+          warmup: s.warmup,
+        }))
       ),
     ];
   }, [activity.sets, activity.date]);

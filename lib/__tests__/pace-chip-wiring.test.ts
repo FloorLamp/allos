@@ -21,7 +21,6 @@ const CHIP_DATA_BUILDERS = [
   "components/dashboard/GoalsHabitsWidget.tsx", // dashboard Goals-and-habits
   "app/(app)/training/OverviewSection.tsx", // Training weekly routine
   "app/(app)/training/PlanSection.tsx", // Plan's FrequencyTargets items (#2892)
-  "app/(app)/training/HistorySection.tsx", // training log week-summary targets
 ];
 
 // Every file allowed to RENDER <WeeklyTargets> / <WeeklyTargetChip>: the builders

@@ -171,28 +171,21 @@ test("the desktop Training tabs remain a compact left-aligned strip", async ({
 // from Training to the equipment registry below `md`. The action is now its own
 // cell beside the heading band rather than inside it, so it survives the band's
 // disappearance — ONE node, right-aligned above the tab panel on a phone.
-test("Training's Equipment door is reachable on a phone (#1661)", async ({
+test("Training's Equipment door is reachable on a phone (#1661) — via Plan since #2892", async ({
   page,
 }) => {
+  // The header action is desktop-only now: on phones it rendered as a
+  // full-width row above every tab, so the Plan tab's Equipment card is the
+  // phone door. #1661's guarantee — gear reachable on a phone — holds; only
+  // the door moved.
   await page.goto("/training?tab=overview");
-
-  // The heading band itself is still gone below `md` — the action is not part of it.
   await expect(page.getByTestId("training-page-title")).toBeHidden();
+  await expect(page.getByTestId("training-equipment-link")).toBeHidden();
 
-  const action = page.getByTestId("training-page-action");
-  await expect(action).toBeVisible();
-  const door = action.getByTestId("training-equipment-link");
+  await page.goto("/training?tab=plan");
+  const door = page.getByTestId("plan-equipment-link");
   await expect(door).toBeVisible();
   await expect(door).toHaveAttribute("href", "/equipment");
-
-  // It sits above the tab panel's content rather than overlapping it, and is a
-  // real tap target rather than a bare line of text.
-  const [doorBox, todayBox] = await Promise.all([
-    door.boundingBox(),
-    page.getByTestId("training-today").boundingBox(),
-  ]);
-  expect(doorBox!.height).toBeGreaterThanOrEqual(24);
-  expect(doorBox!.y + doorBox!.height).toBeLessThanOrEqual(todayBox!.y);
 
   await followLink(page, door, /\/equipment$/);
   await expect(
@@ -272,9 +265,10 @@ test("a tab renders only its own section (#105)", async ({ page }) => {
   await expect(page.getByTestId("analyze-section")).toBeVisible();
   await expect(page.getByTestId("training-today")).toHaveCount(0);
 
-  // The default (paramless) tab is still the Training Log.
-  await page.goto("/training?tab=log");
-  await expect(page.getByTestId("training-today")).toHaveCount(0);
+  // The default (paramless) tab is OVERVIEW since #2893 — the headline shell
+  // change, pinned here so a quiet regression to log-as-default cannot pass.
+  await page.goto("/training");
+  await expect(page.getByTestId("training-today")).toBeVisible();
   await expect(page.getByTestId("analyze-section")).toHaveCount(0);
 });
 

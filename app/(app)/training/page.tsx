@@ -5,7 +5,10 @@ import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { parseTrainingTab, RETIRED_FITNESS_TAB } from "@/lib/training-tabs";
+import {
+  parseTrainingTab,
+  retiredTrainingTabTarget,
+} from "@/lib/training-tabs";
 import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
 import AnalyzeSection from "./AnalyzeSection";
@@ -30,12 +33,13 @@ export default async function TrainingPage(props: {
   const { profile } = await requireSession();
   if (isTrainingRestricted(profile.id)) return <RestrictedActivityView />;
 
-  // The retired fitness tab (#2894) redirects to the battery's route — an
+  // Retired tab names redirect to their canonical URLs (#2892/#2894) — an
   // explicit mapping, not the unknown-tab fallback, because these links live on
-  // in longevity bookmarks and Telegram history and mean the battery, not
-  // whatever tab happens to be default.
-  const rawTab = one(searchParams?.tab)?.trim();
-  if (rawTab === RETIRED_FITNESS_TAB) redirect("/training/fitness-check");
+  // in bookmarks and Telegram history and mean a specific surface, not whatever
+  // tab happens to be default. Normalizing the URL is also what keeps the
+  // client tab strip's highlight honest and restores the section anchors.
+  const retired = retiredTrainingTabTarget(searchParams?.tab);
+  if (retired) redirect(retired);
 
   const activeTab = parseTrainingTab(searchParams?.tab);
   const requestedDate = one(searchParams?.date);
