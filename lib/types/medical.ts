@@ -156,7 +156,13 @@ export type MedicalFlag =
   | "immune"
   | "non-optimal"
   | "non-optimal-high"
-  | "non-optimal-low";
+  | "non-optimal-low"
+  // LAB-STATED verdicts (issue #2799): the value fell outside the range the SOURCE
+  // printed on the row, for an analyte the catalog deliberately publishes no band for.
+  // Never an allos band and never "out of range" — their own register, labelled
+  // "Above / Below reported range" and tiered amber by flagTone.
+  | "reported-high"
+  | "reported-low";
 
 export interface ClinicalObservation {
   id: number;

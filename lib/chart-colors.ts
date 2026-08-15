@@ -201,6 +201,17 @@ export const chartAdherenceState = {
     light: "#e11d48", // rose-600
     dark: "#f43f5e", // rose-500
   },
+  // Today, still unresolved (#2796). Deliberately UNFILLED: a pending day has no
+  // outcome to color, and giving it a fill would put it back in the same visual class
+  // as the settled states it is precisely not one of. The ring keeps it legible as a
+  // real day of the month, which is what separates it from `na`'s off-cadence blank.
+  // No light/dark hex because there is no fill for the palette test to separate.
+  pending: {
+    class:
+      "bg-transparent text-slate-600 ring-1 ring-inset ring-slate-400 dark:text-slate-300 dark:ring-slate-600",
+    light: null,
+    dark: null,
+  },
   na: {
     class: "bg-transparent text-slate-500 dark:text-slate-400",
     light: null,

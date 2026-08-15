@@ -150,6 +150,55 @@ export function withoutPatientState(
   return tidyName(out);
 }
 
+// THE ANALYTES WHOSE BAND-LESSNESS IS A FRAME QUESTION (#2337 / #2371 / #2526).
+//
+// Three curated entries — `Glucose`, `Insulin`, `Cortisol` — publish no band, and all
+// three give the SAME reason in their note: the draw's patient state was never recorded,
+// the published band belongs to ONE point in a frame, so either frame would be a guess.
+// They are recognizable from the vocabulary alone, without reading a note or curating a
+// per-entry switch: the catalog also carries a QUALIFIED sibling of each (`Glucose,
+// Fasting`, `Insulin, Fasting`, `Cortisol, Morning`), and #2338's landing rule means a
+// reading only reaches the BARE entry when the document did not state the condition.
+//
+// That is a stronger claim than "this entry has no band", and it is the claim #2799's
+// lab-stated flag needs. A report that prints a range beside such a draw prints it in one
+// frame — a CMP's 65–99 glucose interval IS the fasting one — so judging the value
+// against that string re-asserts exactly the frame the document never claimed: the #2337
+// defect, arriving through the printed range instead of through the catalog.
+//
+// Deliberately NOT a general "band-less entry with a curated note" rule. Whether a
+// curation ruling should ALSO suppress lab-stated marking on the other ~95 band-less
+// analytes is a separate, still-unanswered question (#2799); this guard is about frames
+// and does not pre-empt it.
+//
+// Derived from the catalog it is asked about, so coining a fourth frame pair (or retiring
+// one) needs no edit here. Returns normalized keys — ask through `isFrameUnstated`.
+export function frameUnstatedNames(names: Iterable<string>): Set<string> {
+  const all = [...names];
+  const present = new Set(all.map((n) => normalizeCanonicalKey(n)));
+  const out = new Set<string>();
+  for (const n of all) {
+    const carried = patientStateQualifiersIn(n);
+    if (!carried.length) continue;
+    const base = withoutPatientState(n, carried);
+    if (!base) continue;
+    const key = normalizeCanonicalKey(base);
+    if (!key || key === normalizeCanonicalKey(n)) continue;
+    if (present.has(key)) out.add(key);
+  }
+  return out;
+}
+
+// Membership test for the set above, spelled once so no caller has to remember to
+// normalize the name it is asking about.
+export function isFrameUnstated(
+  frameUnstated: ReadonlySet<string> | null | undefined,
+  name: string | null | undefined
+): boolean {
+  if (!frameUnstated || !name) return false;
+  return frameUnstated.has(normalizeCanonicalKey(name));
+}
+
 // Demote `snapped` (the canonical name AFTER snapping and unit arbitration) to its
 // unqualified form when it asserts a patient-state condition the document's printed
 // text does not state. Returns a vocabulary-resolved name, or `snapped` unchanged
