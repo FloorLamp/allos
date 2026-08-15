@@ -25,6 +25,7 @@ const revalidatedPaths = () =>
 const ACTIVITY_SURFACES = new Set([
   "/training",
   "/training/rides/[id]",
+  "/training/activity/[id]",
   "/trends",
   "/",
 ]);
@@ -125,7 +126,14 @@ describe("activity writes revalidate /trends (#333)", () => {
     );
 
     expect(revalidatedPaths()).toEqual(
-      new Set(["/data", "/training", "/training/rides/[id]", "/trends", "/"])
+      new Set([
+        "/data",
+        "/training",
+        "/training/rides/[id]",
+        "/training/activity/[id]",
+        "/trends",
+        "/",
+      ])
     );
   });
 });

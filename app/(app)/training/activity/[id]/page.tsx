@@ -98,7 +98,11 @@ export default async function TrainingActivityPage(props: {
         </span>
       </div>
 
+      {/* Keyed by activity: ‹older/newer› must REMOUNT the record, so a docked
+          edit of the previous activity closes (flushing its auto-save) instead
+          of staying portaled under the new record it doesn't belong to. */}
       <ActivityRecord
+        key={data.card.activity.id}
         card={data.card}
         siblings={data.siblings}
         units={units}
