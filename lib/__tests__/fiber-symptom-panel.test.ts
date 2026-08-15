@@ -89,6 +89,17 @@ describe("assembly", () => {
     expect(panel.days[0].symptoms).toEqual([]);
   });
 
+  it("carries the unknown-gram supplement flag per day — a psyllium-capsule day is never a flat zero", () => {
+    const panel = buildFiberSymptomPanel(
+      input({
+        gramsByDate: new Map([["2026-08-02", 0]]),
+        unknownSupplementDates: new Set(["2026-08-02"]),
+      })
+    );
+    expect(panel.days[1].unknownSupplement).toBe(true);
+    expect(panel.days[0].unknownSupplement).toBe(false);
+  });
+
   it("scales bars to the window's peak, floored so a low week reads as low", () => {
     expect(buildFiberSymptomPanel(input()).maxGrams).toBe(20);
     expect(

@@ -245,3 +245,18 @@ export const chartActivityTypeBlock: Record<
   mobility: { blockClass: "bg-brand-600", hex: chartSeries.brand },
   unclassified: { blockClass: "bg-slate-500", hex: chartNeutral },
 };
+
+// ── Fiber × GI read-together strip (#2788) ───────────────────────────────────
+//
+// The strip's two marks, declared here so the classes the DOM renders and the hexes
+// the validation reads cannot drift (the chartActivityTypeBlock pattern — the class
+// scan cannot see a Tailwind class, which is exactly how hand-rolled emerald bars
+// would dodge every guard). The BAR takes `chartSeries.sky` — the same hue the
+// Macros & fiber chart plots its fiber series in, so the app's two fiber surfaces
+// speak one color — and the DOT takes `chartSeries.amber` (amber-600; the amber-500
+// step failed #1445's 3:1 contrast check, and emerald was folded out of the palette
+// entirely).
+export const chartFiberPanelMarks = {
+  bar: { class: "bg-sky-600", hex: chartSeries.sky },
+  symptomDot: { class: "bg-amber-600", hex: chartSeries.amber },
+} as const;

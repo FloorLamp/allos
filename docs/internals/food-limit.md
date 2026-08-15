@@ -4,7 +4,10 @@ Status: shipped
 
 "Which foods should I eat more of?" has been answered from a LOW-flagged biomarker
 since #577, and its high-side twin — which foods a HIGH flag says to limit — has
-existed since #775 as `meta.reduceEntries` in the curated nutrient-food map. Four
+existed since #775 as `meta.reduceEntries` in the curated nutrient-food map. (#2754
+later added the one declared exception to that pairing: the `soluble-fiber` ADD
+entry fires on a HIGH LDL/ApoB — the trigger direction is per-entry, declared, and
+honored by the resolver.) Four
 entries, each with a plain-language evidence line and a public source:
 
 | key        | families                | groups it names                                  |

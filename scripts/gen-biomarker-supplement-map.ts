@@ -76,6 +76,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 import type { Contraindication } from "./gen-nutrient-food-map";
+import { SOLUBLE_FIBER_LDL_SOURCE } from "./gen-nutrient-food-map";
 import type { FoodTiming } from "../lib/types";
 
 const OUT = path.join(
@@ -428,8 +429,9 @@ const ENTRIES: BiomarkerSupplementEntry[] = [
     allergyAlternative: null,
     evidence:
       "Soluble fiber binds bile acids in the gut and lowers the LDL cholesterol (and with it ApoB) the test measures; the effect for psyllium and oat beta-glucan is established enough to carry an FDA-authorized health claim and approved EFSA claims.",
-    source:
-      "FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims",
+    // The shared #2754 citation — one string with the food map's soluble-fiber entry,
+    // so a correction reaches both datasets on regeneration.
+    source: SOLUBLE_FIBER_LDL_SOURCE,
     contraindications: [
       {
         // Bulk-forming fiber with a narrowed or obstructed gut is the classic psyllium

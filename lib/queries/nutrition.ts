@@ -103,6 +103,7 @@ import {
   isFiberSupplement,
   fiberDoseGrams,
   type FiberAdequacy,
+  type FiberServing,
 } from "../fiber";
 import {
   buildFiberSymptomPanel,
@@ -1524,39 +1525,65 @@ export function getFiberOnDate(
 
 // ---- Fiber × GI symptoms, read together (issue #2788) ----
 
-// The read-together gather: the daily fiber series (#976, via the same per-day gather
-// the Food picker reads) and the window's symptom days (the same rollup reader the
-// timeline reads), assembled by the pure panel module. A VIEW's input — no derivation
-// of its own, no finding, no send; the window, the GI filter, and every shape decision
-// live in lib/fiber-symptom-panel.ts (this gather holds no window arithmetic, #1909).
+// The read-together gather: the daily fiber series (#976) and the window's symptom
+// days (the same rollup reader the timeline reads), assembled by the pure panel
+// module. A VIEW's input — no derivation of its own, no finding, no send; the window,
+// the GI filter, and every shape decision live in lib/fiber-symptom-panel.ts (this
+// gather holds no window arithmetic, #1909).
+//
+// THREE RANGED READS, not a per-day getFiberOnDate loop: each getFiberOnDate call
+// re-aggregates the profile's whole fiber_g history and runs an open-ended dose scan,
+// so 28 of them per render is an N+1 the page pays on every visit. The per-day figure
+// still comes from the SAME pure pieces the picker's gather composes
+// (estimatedFiberGrams / isFiberSupplement / fiberDoseGrams / fiberIntake), so the
+// two surfaces cannot disagree about a day — and the panel deliberately skips the
+// TARGET half (fiberTarget/assessFiberAdequacy): it draws intake, not adequacy.
 export function getFiberSymptomPanel(profileId: number): FiberSymptomPanel {
   const dates = fiberSymptomPanelDates(today(profileId));
   const from = dates[0];
   const to = dates[dates.length - 1];
 
-  // Days with ANY food log — what separates an honest zero-fiber day (only zero-fiber
-  // groups logged) from a day with no signal at all, which renders as an empty slot
-  // rather than a zero-gram claim (#2258).
-  const loggedDates = new Set(
-    (
-      db
-        .prepare(
-          `SELECT DISTINCT date FROM food_daily_totals
-            WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0`
-        )
-        .all(profileId, from, to) as { date: string }[]
-    ).map((r) => r.date)
+  // Servings per day, from the shared ranged reader. A day PRESENT here with only
+  // zero-fiber groups is an honest 0 g, distinct from an unlogged day's null (#2258).
+  const servingsByDate = new Map<string, FiberServing[]>();
+  for (const r of getFoodDailyServingTotalsInRange(profileId, from, to)) {
+    const list = servingsByDate.get(r.date) ?? [];
+    list.push({ slug: r.group_key, servings: r.servings });
+    servingsByDate.set(r.date, list);
+  }
+
+  // Confirmed fiber doses per day — known grams sum; an unknown-unit dose flags the
+  // day (the caveat the panel must carry rather than claiming "0 g").
+  const suppGramsByDate = new Map<string, number>();
+  const unknownSupplementDates = new Set<string>();
+  for (const r of getConfirmedIntakeDosesInRange(profileId, from)) {
+    if (r.date > to || !isFiberSupplement(r.name)) continue;
+    const { grams, known } = fiberDoseGrams(r.amount);
+    if (known && grams > 0)
+      suppGramsByDate.set(r.date, (suppGramsByDate.get(r.date) ?? 0) + grams);
+    else unknownSupplementDates.add(r.date);
+  }
+
+  // Tracked fiber_g daily totals, once, as a date → value map.
+  const trackedByDate = new Map(
+    getMetricDailyTotals(profileId, "fiber_g").map((r) => [r.date, r.value])
   );
 
   const gramsByDate = new Map<string, number | null>();
   for (const date of dates) {
-    // The same per-day computation the Food picker states. Its intake is null for a
-    // day with NO fiber signal — which still includes a day whose only logs are
-    // zero-fiber groups, so the logged-day fact upgrades that null to an honest 0.
-    const intake = getFiberOnDate(profileId, date)?.intake ?? null;
+    const servings = servingsByDate.get(date);
+    const supplemented = suppGramsByDate.get(date) ?? null;
+    const intake = fiberIntake({
+      dailyTracked: trackedByDate.get(date) ?? null,
+      dailyEstimated: servings ? estimatedFiberGrams(servings) : 0,
+      dailySupplemented: supplemented,
+      unknownSupplement: unknownSupplementDates.has(date),
+    });
+    // fiberIntake refuses a zero-signal day (null); a day that LOGGED only
+    // zero-fiber groups upgrades to an honest 0.
     gramsByDate.set(
       date,
-      intake ? intake.grams : loggedDates.has(date) ? 0 : null
+      intake ? intake.grams : servingsByDate.has(date) ? 0 : null
     );
   }
 
@@ -1568,7 +1595,12 @@ export function getFiberSymptomPanel(profileId: number): FiberSymptomPanel {
     }))
   );
 
-  return buildFiberSymptomPanel({ dates, gramsByDate, symptoms });
+  return buildFiberSymptomPanel({
+    dates,
+    gramsByDate,
+    unknownSupplementDates,
+    symptoms,
+  });
 }
 
 // ---- One day, both nutrients (issue #2379) ----
