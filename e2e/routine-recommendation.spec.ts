@@ -79,6 +79,8 @@ test("mid-session, 'Log this session' resumes instead of restarting (#1893)", as
   await expect(control).toHaveText("Log this session");
   await control.click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  // #2870 step 3: starting stands the tab on the session's canonical page.
+  await page.waitForURL(/\/training\/activity\/\d+$/);
 
   await page.getByTestId("minimize-workout").click();
   const dock = page.getByTestId("workout-dock");
@@ -86,8 +88,13 @@ test("mid-session, 'Log this session' resumes instead of restarting (#1893)", as
   const startedAt = await dock.getAttribute("data-start-epoch");
   expect(startedAt).toMatch(/^\d+$/);
 
-  // The control names the write it will now perform — the routine day is still one tap
-  // away once the running session is finished.
+  // Back on Overview — SOFT navigation, the pocketed form must stay mounted.
+  // The control names the write it will now perform — the routine day is still
+  // one tap away once the running session is finished.
+  await page
+    .getByRole("complementary")
+    .getByRole("link", { name: "Training" })
+    .click();
   await expect(control).toHaveAttribute("data-workout-offer", "resume");
   await expect(control).toHaveText("Resume workout");
 
@@ -101,7 +108,20 @@ test("mid-session, 'Log this session' resumes instead of restarting (#1893)", as
   await page.getByTestId("workout-dock-open").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   await page.keyboard.press("Escape");
+  // The routine slate's blank loads can't save, and the session owns a row
+  // (create-at-start), so closing prompts — answer it. Nothing persisted, so
+  // the close then ABANDONS the empty row (#2870 step 3) and returns to the
+  // hub: the fixture profile is left untouched with no manual delete.
+  const closeAnyway = page
+    .getByTestId("confirm-dialog")
+    .getByRole("button", { name: "Close anyway" });
+  await closeAnyway.waitFor({ state: "visible", timeout: 3000 }).catch(() => {
+    /* already closed without a prompt — nothing unsaved */
+  });
+  if (await closeAnyway.isVisible().catch(() => false))
+    await closeAnyway.click();
   await expect(dock).toHaveCount(0);
+  await page.waitForURL(/\/training(\?.*)?$/);
   const leftover = page.getByRole("button", { name: "Delete", exact: true });
   if (await leftover.isVisible().catch(() => false)) {
     await leftover.click();

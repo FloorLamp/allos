@@ -281,6 +281,9 @@ test("a live session's draft never outlives a successful save (#1699/#451)", asy
     await page.goto("/training?tab=log");
     await page.getByRole("main").getByTestId("start-workout").click();
     await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+    // #2870 step 3: settle on the session's page before typing, so the
+    // create-at-start navigation can't race the form interactions.
+    await page.waitForURL(/\/training\/activity\/\d+$/);
 
     await settledFill(page, page.getByLabel("Activity name"), LIVE_TITLE);
     await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");

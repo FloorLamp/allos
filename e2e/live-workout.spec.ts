@@ -75,6 +75,9 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
 
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  // Settle on the session's page (#2870 step 3) before typing, so the
+  // create-at-start navigation can't race the combobox.
+  await page.waitForURL(/\/training\/activity\/\d+$/);
 
   // Pick a lift the seed trains repeatedly so a coached suggestion exists, then
   // TAP "Use" to seed set 1 from it (#1971 retired the focus-fill: arriving in a
