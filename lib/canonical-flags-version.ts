@@ -50,7 +50,19 @@ import canonicalSeed from "./canonical-result-definitions.json";
 // per row today — no re-reconcile can reach it — so every stored qualitative row must
 // re-reconcile once for the guesses already on disk to clear. The pass MUTATES stored
 // clinical flags and reports what it touched (see reconcileNonOptimalFlags's audit line).
-export const FLAG_LOGIC_VERSION = 10;
+// v11: two derivation-LOGIC changes in one pass, with the dataset held still.
+// (a) Pediatric blood pressure (#2794) — reconciledFlag now DECLINES to judge a BP
+// component for a subject under PEDIATRIC_BP_MAX_AGE, deferring to the AAP 2017
+// age/sex/height percentile the biomarker page already renders, and CLEARS the
+// adult-band high/low/non-optimal-* it used to store. Every pediatric BP row already on
+// disk carries that wrong claim — a toddler's normal 54 mmHg diastolic reads "low" on
+// the passport, the readings table and the timeline's out-of-range count — and nothing
+// else would re-derive it, because no curated range moved. (b) The lab-stated flag
+// (#2799) — the "unknown" branch now emits `reported-high` / `reported-low` from the
+// row's OWN printed reference range, for an analyte the catalog publishes no band for,
+// so a microalbumin 44 mg/g beside a printed `<30` stops rendering unmarked everywhere.
+// One pass covers both; the signature's dataset half would not move for either.
+export const FLAG_LOGIC_VERSION = 11;
 
 // The canonical fields that can change a record's derived flag: the reference and
 // optimal ranges (incl. sex-specific and age-banded variants), the unit +

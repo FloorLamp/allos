@@ -18,6 +18,7 @@ import {
 import { getEquipment } from "./equipment";
 import { getActivityVideosForActivities } from "./activity-video-write";
 import { buildTrainingLogCards, type DayGroup } from "./training-log-card";
+import { isDraftActivityRow } from "./activity-draft";
 import { mergeTrainingLogDayGroups } from "./training-log-multi-view";
 import {
   EMPTY_TRAINING_LOG_FILTERS,
@@ -73,16 +74,31 @@ export function buildTrainingLogFeedPage(
     return { groups: [], nextBefore: page.nextBefore };
   }
 
-  const activityIds = page.activities.map((a) => a.id);
-  const sets = getSetsForActivities(profileId, activityIds);
+  const allIds = page.activities.map((a) => a.id);
+  const allSets = getSetsForActivities(profileId, allIds);
+  // DRAFTS RENDER NOWHERE BUT THEIR OWN PAGE (#2870 step 3): a create-at-start
+  // session that never logged anything is an address, not an entry — the feed
+  // must not show the husk (during the session OR after an abandonment the
+  // expiry sweep hasn't reached yet).
+  const setCountByActivity = new Map<number, number>();
+  for (const s of allSets)
+    setCountByActivity.set(
+      s.activity_id,
+      (setCountByActivity.get(s.activity_id) ?? 0) + 1
+    );
+  const activities = page.activities.filter(
+    (a) => !isDraftActivityRow(a, setCountByActivity.get(a.id) ?? 0)
+  );
+  if (activities.length === 0) {
+    return { groups: [], nextBefore: page.nextBefore };
+  }
+  const activityIds = activities.map((a) => a.id);
+  const sets = allSets.filter((s) => activityIds.includes(s.activity_id));
   // GPS route polylines for the tile-free route thumbnails (issue #569). Only
   // activities with a captured route appear in the map; consumed server-side to
   // build the card — only the (small) polyline for a rendered card crosses the wire.
   const routes = getRoutePolylinesForActivities(profileId, activityIds);
-  const activeCalories = getActiveCaloriesForActivities(
-    profileId,
-    page.activities
-  );
+  const activeCalories = getActiveCaloriesForActivities(profileId, activities);
   // Form-check video clips (#1224) for this page's activities — one query, then
   // bucketed per activity; only the small metadata rows cross to the card.
   const activityVideos = getActivityVideosForActivities(profileId, activityIds);
@@ -105,7 +121,7 @@ export function buildTrainingLogFeedPage(
   // activities fall on, read ONCE for the page's date span rather than per card. The
   // cache is global and location-keyed, so a profile with no home location simply gets
   // an empty map and no card is stamped.
-  const pageDates = page.activities.map((a) => a.date).sort();
+  const pageDates = activities.map((a) => a.date).sort();
   const weatherByDate = new Map<
     string,
     { tempMaxC: number | null; weatherCode: number | null }
@@ -124,7 +140,7 @@ export function buildTrainingLogFeedPage(
   }
 
   const groups = buildTrainingLogCards({
-    activities: page.activities,
+    activities,
     sets,
     equipmentNames,
     weights,

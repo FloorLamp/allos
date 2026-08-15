@@ -18,9 +18,12 @@ import {
   finishWorkoutSession,
   discardWorkoutSession,
   discardWorkoutSessionIfEmpty,
+  expireWorkoutDrafts,
+  DRAFT_EXPIRE_HOURS,
 } from "@/lib/workout-finish";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import { getActivityDetailData } from "@/lib/training-activity-detail";
+import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
 import type { UnitPrefs } from "@/lib/settings";
 import { seedProfile } from "./fixtures";
 
@@ -117,6 +120,71 @@ describe("startWorkoutSession (#2870 step 3)", () => {
     );
     // Quiet the profile for neighbors.
     expect(discardWorkoutSession(profileId, noted.id).kind).toBe("discarded");
+  });
+
+  it("a draft renders nowhere but its own page: the feed hides it, the detail resolves it", () => {
+    const res = startWorkoutSession(profileId, {
+      type: "strength",
+      title: "",
+    });
+    const feed = buildTrainingLogFeedPage(profileId, null, UNITS);
+    const feedIds = feed.groups.flatMap((g) =>
+      g.cards.map((c) => c.activity.id)
+    );
+    expect(feedIds).not.toContain(res.id);
+    // Its own page still resolves — the draft's one address.
+    expect(getActivityDetailData(profileId, res.id, UNITS)).not.toBeNull();
+    // One set makes it an entry: the feed shows it again.
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Back Squat', 1, 100, 5)`
+    ).run(res.id);
+    const after = buildTrainingLogFeedPage(profileId, null, UNITS);
+    expect(
+      after.groups.flatMap((g) => g.cards.map((c) => c.activity.id))
+    ).toContain(res.id);
+    expect(discardWorkoutSession(profileId, res.id).kind).toBe("discarded");
+  });
+
+  it("expiry sweeps an aged husk and spares young drafts and anything with content", () => {
+    const now = new Date();
+    const old = new Date(now.getTime() - (DRAFT_EXPIRE_HOURS + 1) * 3_600_000);
+    // An aged husk, an aged row WITH a set, and a fresh husk.
+    const husk = startWorkoutSession(
+      profileId,
+      { type: "strength", title: "" },
+      old
+    );
+    const worked = startWorkoutSession(
+      profileId,
+      { type: "strength", title: "" },
+      old
+    );
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Back Squat', 1, 100, 5)`
+    ).run(worked.id);
+    const fresh = startWorkoutSession(
+      profileId,
+      { type: "strength", title: "" },
+      now
+    );
+    // Age the two old rows' touch stamps (start writes updated_at = now).
+    const oldSql = old.toISOString().slice(0, 19).replace("T", " ");
+    db.prepare(
+      "UPDATE activities SET updated_at = ?, created_at = ? WHERE id IN (?, ?)"
+    ).run(oldSql, oldSql, husk.id, worked.id);
+
+    expect(expireWorkoutDrafts(profileId, now)).toBe(1);
+    const remaining = db
+      .prepare("SELECT id FROM activities WHERE id IN (?, ?, ?)")
+      .all(husk.id, worked.id, fresh.id) as { id: number }[];
+    expect(remaining.map((r) => r.id).sort()).toEqual(
+      [worked.id, fresh.id].sort()
+    );
+    // Quiet the profile for neighbors.
+    expect(discardWorkoutSession(profileId, fresh.id).kind).toBe("discarded");
+    expect(discardWorkoutSession(profileId, worked.id).kind).toBe("discarded");
   });
 
   it("one logged set flips the start from draft to finishable", () => {

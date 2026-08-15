@@ -766,7 +766,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   const rowsStmt = db.prepare(
     `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
        WHERE profile_id = ? AND canonical_name IS NOT NULL AND value_num IS NOT NULL
-         AND (flag IS NULL OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low'))`
+         AND (flag IS NULL OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low','reported-high','reported-low'))`
   );
   const setFlag = db.prepare(
     "UPDATE medical_records SET flag = ? WHERE id = ?"
