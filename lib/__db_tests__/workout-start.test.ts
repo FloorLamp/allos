@@ -21,6 +21,7 @@ import {
 } from "@/lib/workout-finish";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import { getActivityDetailData } from "@/lib/training-activity-detail";
+import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
 import type { UnitPrefs } from "@/lib/settings";
 import { seedProfile } from "./fixtures";
 
@@ -117,6 +118,30 @@ describe("startWorkoutSession (#2870 step 3)", () => {
     );
     // Quiet the profile for neighbors.
     expect(discardWorkoutSession(profileId, noted.id).kind).toBe("discarded");
+  });
+
+  it("a draft renders nowhere but its own page: the feed hides it, the detail resolves it", () => {
+    const res = startWorkoutSession(profileId, {
+      type: "strength",
+      title: "",
+    });
+    const feed = buildTrainingLogFeedPage(profileId, null, UNITS);
+    const feedIds = feed.groups.flatMap((g) =>
+      g.cards.map((c) => c.activity.id)
+    );
+    expect(feedIds).not.toContain(res.id);
+    // Its own page still resolves — the draft's one address.
+    expect(getActivityDetailData(profileId, res.id, UNITS)).not.toBeNull();
+    // One set makes it an entry: the feed shows it again.
+    db.prepare(
+      `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Back Squat', 1, 100, 5)`
+    ).run(res.id);
+    const after = buildTrainingLogFeedPage(profileId, null, UNITS);
+    expect(
+      after.groups.flatMap((g) => g.cards.map((c) => c.activity.id))
+    ).toContain(res.id);
+    expect(discardWorkoutSession(profileId, res.id).kind).toBe("discarded");
   });
 
   it("one logged set flips the start from draft to finishable", () => {
