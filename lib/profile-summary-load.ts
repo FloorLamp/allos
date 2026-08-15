@@ -16,7 +16,10 @@ import { familyDeathLabel, familyRelativeLabel } from "./family-relation";
 import {
   getLatestMetricSample,
   getLatestBodyMetricDated,
+  getGrowthMeasurementSeries,
 } from "./queries/metrics";
+import { buildGrowthProfile, growthBadge } from "./growth-series";
+import { MAX_AGE_MONTHS } from "./growth";
 import {
   getClinicalObservations,
   getSavedClinicalResults,
@@ -284,10 +287,32 @@ export function getProfileSummary(
   const bodyFat = getLatestBodyMetricDated(profileId, "body_fat");
   const restingHr = getLatestBodyMetricDated(profileId, "resting_hr");
 
+  // Pediatric growth percentiles — the SAME derivation /trends/growth charts
+  // (#2802): every measurement scored at the age on its own date, BMI date-paired.
+  // The passport once scored the latest scalars at the age TODAY and printed a
+  // different percentile for the same reading. The guard is buildGrowthProfile's
+  // own precondition, restated here only so an adult passport doesn't pay for three
+  // unbounded series reads that can produce nothing.
+  const inGrowthRange =
+    sex != null &&
+    birthdate != null &&
+    ageMonths != null &&
+    ageMonths >= 0 &&
+    ageMonths <= MAX_AGE_MONTHS;
+  const growth = inGrowthRange
+    ? growthBadge(
+        buildGrowthProfile({
+          sex,
+          birthdate,
+          today: now,
+          ...getGrowthMeasurementSeries(profileId),
+        })
+      )
+    : null;
+
   return buildProfileSummary({
     name: getProfileFullName(profileId) ?? fallbackName,
     age: getProfileAge(profileId),
-    ageMonths,
     sex,
     hasBirthdate: birthdate != null,
     birthdate,
@@ -302,6 +327,7 @@ export function getProfileSummary(
     weightDate: weight?.date ?? null,
     bodyFatDate: bodyFat?.date ?? null,
     restingHrDate: restingHr?.date ?? null,
+    growth,
     flagged,
     starred,
     allergies,

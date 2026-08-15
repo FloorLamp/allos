@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { ordinalPercentile } from "../growth-format";
+import {
+  growthTooltipLabel,
+  growthTooltipOrder,
+  ordinalPercentile,
+  TRAJECTORY_KEY,
+} from "../growth-format";
+import { BAND_PERCENTILES } from "../growth";
 
 describe("ordinalPercentile", () => {
   it("formats ordinals with the right suffix", () => {
@@ -22,5 +28,39 @@ describe("ordinalPercentile", () => {
   it("clamps the tails", () => {
     expect(ordinalPercentile(0.4)).toBe("<1st");
     expect(ordinalPercentile(99.7)).toBe(">99th");
+  });
+});
+
+describe("growth chart tooltip rows (#2804)", () => {
+  it("names a band by its ordinal, not a hardcoded 'th'", () => {
+    expect(growthTooltipLabel("p3")).toBe("3rd pct");
+    expect(growthTooltipLabel("p5")).toBe("5th pct");
+    expect(growthTooltipLabel("p50")).toBe("50th pct");
+    expect(growthTooltipLabel("p97")).toBe("97th pct");
+  });
+
+  it("names the profile's own trajectory", () => {
+    expect(growthTooltipLabel(TRAJECTORY_KEY)).toBe("This profile");
+  });
+
+  it("orders the rows numerically, the profile's reading first", () => {
+    // The lexical order recharts 3 defaults to is p10, p25, p3, p5, p50…; sorting
+    // by this key gives the reader 3rd → 97th with their own value at the top.
+    const keys = [TRAJECTORY_KEY, ...BAND_PERCENTILES.map((p) => `p${p}`)];
+    const sorted = [...keys].sort(
+      (a, b) => growthTooltipOrder(a) - growthTooltipOrder(b)
+    );
+    expect(sorted).toEqual([
+      TRAJECTORY_KEY,
+      "p3",
+      "p5",
+      "p10",
+      "p25",
+      "p50",
+      "p75",
+      "p90",
+      "p95",
+      "p97",
+    ]);
   });
 });

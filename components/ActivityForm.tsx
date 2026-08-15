@@ -109,6 +109,8 @@ export default function ActivityForm({
   prefill = null,
   initialDate,
   live = false,
+  adoptRowId = null,
+  onRowOwned,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
@@ -133,11 +135,18 @@ export default function ActivityForm({
   // Date-only create seed from a day-history link. Kept separate from a repeat
   // prefill so choosing a day never fabricates an activity type or title.
   initialDate?: string;
-  // Live workout mode (issue #340): opens the create form in the in-gym layout —
-  // a control strip with the rest timer + Finish above the normal form. Purely a
+  // Live workout mode (issue #340): opens the form in the in-gym layout — a
+  // control strip with the rest timer + Finish above the normal form. Purely a
   // presentation flag over the same form state (no second engine); "Finish"
-  // collapses it back to the plain editor. Ignored in edit mode.
+  // collapses it back to the plain editor. Since #2870 step 3 it also applies
+  // to a resumed session's edit, not just creates.
   live?: boolean;
+  // The provider-created session row for a create-at-start live workout (#2870
+  // step 3): adopted by the autosave without a re-key, so saves UPDATE it.
+  adoptRowId?: number | null;
+  // Fired once when a rowless form first owns a row (adoption or its own first
+  // create) — the provider's one-URL navigation trigger (#2870 step 3).
+  onRowOwned?: (id: number) => void;
   // Deload/plateau inputs for the strength editor (#923). `deloadContext` shaves the
   // next-set suggestion for a routine lift on a deload week (through the shared
   // deloadAdjust); `plateauHints` renders the calm inline plateau hint.
@@ -285,10 +294,12 @@ export default function ActivityForm({
   );
 
   const isEdit = !!editData;
-  // Live workout mode (issue #340) — a create-only presentation. Held as state so
-  // "Finish workout" can collapse it back to the plain form. `restStartKey` bumps
-  // on every set check-off to auto-start the rest timer.
-  const [liveMode, setLiveMode] = useState(live && !isEdit);
+  // Live workout mode (issue #340). No longer create-only (#2870 step 3):
+  // create-at-start hands the live session its row as editData, so live now
+  // rides the edit path (savableId targets the row from the first save). Held
+  // as state so "Finish workout" can collapse it back to the plain form.
+  // `restStartKey` bumps on every set check-off to auto-start the rest timer.
+  const [liveMode, setLiveMode] = useState(live);
   // The editor's root element, marked `data-draft-backed` by the draft hook (#2471).
   const formElRef = useRef<HTMLFormElement>(null);
   // Whether the automatic update reload has given up on this episode (#2471). The
@@ -400,8 +411,12 @@ export default function ActivityForm({
   // with the most-recent gear that's a valid candidate for THIS activity — narrowed
   // by equipmentForActivity, so a run picks up the last-used shoes and a ride the
   // last-used bike — but only while the user hasn't chosen (pickDefaultActivityEquipment).
+  // "Fresh entry" includes a live session on its created-at-start row (#2870
+  // step 3): the row is minutes old and empty, so create-time defaulting is
+  // right for it; a resumed session with stored choices keeps them (state
+  // seeds from editData, and estEdited pins a stored estimate).
   const defaultActivityEquipmentId =
-    !editData && sessionEquipmentType != null
+    (!editData || liveMode) && sessionEquipmentType != null
       ? pickDefaultActivityEquipment(
           equipmentForActivity(
             equipmentList,
@@ -576,13 +591,13 @@ export default function ActivityForm({
   // Auto-fill is create-only. Derive the value that is persisted until the user
   // edits it; existing rows keep their stored field untouched merely by opening.
   const persistedEstCalories =
-    !editData && !estEdited
+    (!editData || liveMode) && !estEdited
       ? autoEstimateKcal != null
         ? String(autoEstimateKcal)
         : ""
       : estCalories;
   const displayedEstCalories =
-    !editData && !estEdited
+    (!editData || liveMode) && !estEdited
       ? persistedEstCalories
       : !estEdited && !estCalories.trim() && autoEstimateKcal != null
         ? String(autoEstimateKcal)
@@ -676,6 +691,8 @@ export default function ActivityForm({
     formSig,
     canSave,
     editId: editData?.id ?? null,
+    adoptRowId,
+    onRowOwned,
     isPrefillCreate: !!prefill && !editData,
     buildFormData,
     toast,

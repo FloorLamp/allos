@@ -66,15 +66,23 @@ export function useActivityAutosave({
   formSig,
   canSave,
   editId,
+  adoptRowId = null,
   isPrefillCreate,
   buildFormData,
   toast,
   onQueueOffline,
+  onRowOwned,
 }: {
   formSig: string;
   canSave: boolean;
   // editData?.id ?? null — the stored row being edited (null in create mode).
   editId: number | null;
+  // CREATE-AT-START adoption (#2870 step 3): the row the provider created the
+  // moment the live session started. Handed in as a prop so the mounted form
+  // takes ownership WITHOUT a re-key (a remount would drop in-flight state) —
+  // it lands in the same created-row channel a create response uses, so every
+  // save from here on UPDATEs. Ignored once any row is owned.
+  adoptRowId?: number | null;
   // A "Log again"/"Repeat last" prefill create: starts the saved signature DIFFERENT
   // (an empty sentinel) so the seeded, already-complete activity auto-saves on open.
   isPrefillCreate: boolean;
@@ -89,6 +97,11 @@ export function useActivityAutosave({
   // once the intent is durably queued; the hook then treats the close like a save
   // (signature advanced, no dirty prompt) — the queue owns the data now.
   onQueueOffline?: (formData: FormData) => Promise<boolean>;
+  // Fired ONCE, when a rowless form first OWNS a row — by adopting the
+  // provider's create-at-start id, or by its own first create landing (#2870
+  // step 3). The provider keys the one-URL navigation off this, so the
+  // session's page appears whenever the row does, however it came to be.
+  onRowOwned?: (id: number) => void;
 }): ActivityAutosave {
   const [status, setStatus] = useState<SaveStatus>("idle");
   // Timestamp of the last successful save; drives the SaveStatus check + fade.
@@ -102,6 +115,23 @@ export function useActivityAutosave({
   const createdIdRef = useRef<number | null>(null);
   const savableId = useCallback(() => editId ?? createdIdRef.current, [editId]);
   const hasRow = editId != null || createdId != null;
+
+  const onRowOwnedRef = useRef(onRowOwned);
+  useEffect(() => {
+    onRowOwnedRef.current = onRowOwned;
+  });
+
+  // Adopt the provider-created row (#2870 step 3) — ref first, so a save
+  // already in flight when the prop lands still UPDATEs. Only while rowless:
+  // an edit owns its row, and a create that already minted one keeps it (the
+  // provider discards a create that arrived too late to be adopted).
+  useEffect(() => {
+    if (adoptRowId == null || editId != null) return;
+    if (createdIdRef.current != null) return;
+    createdIdRef.current = adoptRowId;
+    setCreatedId(adoptRowId);
+    onRowOwnedRef.current?.(adoptRowId);
+  }, [adoptRowId, editId]);
 
   // The state we last persisted (or loaded). Starts equal to the initial state so
   // loading existing data — or opening a blank create form — saves nothing. A prefill
@@ -213,6 +243,9 @@ export function useActivityAutosave({
         if (res.id != null && savableId() == null) {
           createdIdRef.current = res.id; // ref first, so a trailing save UPDATEs
           if (mountedRef.current) setCreatedId(res.id);
+          // First ownership (the rowless-fallback path minted its own row):
+          // the one-URL navigation keys off this (#2870 step 3).
+          if (mountedRef.current) onRowOwnedRef.current?.(res.id);
         }
         savedSigRef.current = sigAtSave;
         if (mountedRef.current) setSavedSig(sigAtSave);
