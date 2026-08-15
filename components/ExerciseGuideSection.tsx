@@ -19,8 +19,13 @@ import MuscleAnatomy from "@/components/MuscleAnatomy";
 export default function ExerciseGuideSection({
   name,
   equipment,
+  heading = true,
 }: {
   name: string;
+  // False when a host renders its own "How to" heading — the detail panel's
+  // collapsed disclosure (#2895) puts it on the <summary>, and a second one
+  // inside would read as a duplicate.
+  heading?: boolean;
   // The currently-selected implement, when the surface has one (the set editor
   // knows it). When omitted (the aggregate detail panel spans every variant), all
   // per-implement notes are shown, each labeled by its implement.
@@ -52,10 +57,12 @@ export default function ExerciseGuideSection({
       );
 
   return (
-    <section data-testid="exercise-guide" className="mt-5">
-      <h3 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
-        How to
-      </h3>
+    <section data-testid="exercise-guide" className={heading ? "mt-5" : "mt-2"}>
+      {heading && (
+        <h3 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          How to
+        </h3>
+      )}
       <p className="mb-3 text-xs italic text-slate-500 dark:text-slate-400">
         Form reference.
       </p>

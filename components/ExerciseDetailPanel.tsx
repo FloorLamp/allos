@@ -13,7 +13,7 @@ import {
   strengthStandingPhrase,
   bodyweightMultiple,
 } from "@/lib/strength-standards";
-import { goalsForExercise, goalTargetText } from "@/lib/outcome-goals";
+import { goalsForExercise, goalTargetValueText } from "@/lib/outcome-goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -32,6 +32,8 @@ import { StatBox } from "@/components/StatBox";
 import { trainingLogActivityHref } from "@/lib/timeline-format";
 import type { AppRoute } from "@/lib/hrefs";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
+import { hasExerciseGuide } from "@/lib/exercise-guides";
+import { isNewLift } from "@/lib/exercise-familiarity";
 
 const PR_CHIP = (
   <span
@@ -248,11 +250,13 @@ export default function ExerciseDetailPanel({
         />
         {matchedGoals.map((g) => {
           const pct = goalProgress?.[g.id]?.pct ?? 0;
+          // Scoped to this exercise already, so the value drops the name
+          // prefix the cross-exercise goal cards keep (#2895).
           return (
             <StatBox
               key={g.id}
               label="Goal"
-              value={goalTargetText(g, wu) ?? g.title}
+              value={goalTargetValueText(g, wu) ?? g.title}
               href="/training?tab=goals#goals"
               sub={`${pct}% complete`}
               progress={pct}
@@ -355,10 +359,27 @@ export default function ExerciseDetailPanel({
       )}
 
       {/* Static how-to guide for catalog lifts (#734). Renders nothing for a
-          custom (non-catalog) lift — getExerciseGuide returns undefined. The
-          aggregate panel spans every implement, so no single equipment is passed
-          (all per-implement notes are shown). */}
-      <ExerciseGuideSection name={stat.exercise} />
+          custom (non-catalog) lift — hasExerciseGuide gates the disclosure so an
+          empty <details> never renders. The aggregate panel spans every
+          implement, so no single equipment is passed (all per-implement notes
+          are shown).
+
+          Collapsed once the lift is familiar (#2895) — the same isNewLift gate
+          the Telegram nudge's "How to" button uses, so "familiar" is one
+          decision. The guide stays permanently reachable behind the disclosure,
+          preserving the 2026-08-06 ruling recorded in lib/exercise-familiarity;
+          a never-logged lift still renders it open. */}
+      {hasExerciseGuide(stat.exercise) &&
+        (isNewLift(stat.sessions) ? (
+          <ExerciseGuideSection name={stat.exercise} />
+        ) : (
+          <details className="mt-5" data-testid="exercise-guide-disclosure">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-700 select-none dark:text-slate-200">
+              How to
+            </summary>
+            <ExerciseGuideSection name={stat.exercise} heading={false} />
+          </details>
+        ))}
     </div>
   );
 }
