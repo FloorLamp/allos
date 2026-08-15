@@ -38,6 +38,8 @@ import {
 import MedicationCard from "../MedicationCard";
 import { isOnDemand } from "@/lib/intake-schedule";
 import EpisodeLinks from "@/components/EpisodeLinks";
+import IntakeWarnings from "@/components/IntakeWarnings";
+import { intakeWarningsForItem } from "@/lib/intake-warning-surface";
 
 export const dynamic = "force-dynamic";
 
@@ -174,6 +176,22 @@ export default async function MedicationDetailPage(props: {
     (o) => o.name
   );
 
+  // This med's own safety notices (#2795). The findings are already gathered
+  // whole-stack above; this narrows them to the ones this medication is party to, so
+  // the page a person reads before taking a specific drug carries that drug's
+  // interaction/PGx/hearing/allergy notes instead of leaving them on the list page.
+  // No second engine and no second dedupeKey — dismissing here dismisses there.
+  //
+  // `coverage` is deliberately not passed: "checked N of M items" is a statement about
+  // the whole stack, and repeating it under one medication would read as a claim about
+  // that medication's screening.
+  const medWarnings = intakeWarningsForItem(m.med.id, data);
+  const medWarningCount =
+    medWarnings.interactionWarnings.length +
+    medWarnings.pgxWarnings.length +
+    medWarnings.ototoxicWarnings.length +
+    medWarnings.allergyWarnings.length;
+
   return (
     <PageContainer
       width="reading"
@@ -236,6 +254,17 @@ export default async function MedicationDetailPage(props: {
               testId="medication-illness-episodes"
               className="mb-4"
             />
+            {medWarningCount > 0 ? (
+              <div className="mb-4">
+                <IntakeWarnings
+                  interactionWarnings={medWarnings.interactionWarnings}
+                  pgxWarnings={medWarnings.pgxWarnings}
+                  ototoxicWarnings={medWarnings.ototoxicWarnings}
+                  allergyWarnings={medWarnings.allergyWarnings}
+                  dismissable={canWrite}
+                />
+              </div>
+            ) : null}
             <MedicationCard
               medication={m.med}
               doses={m.doses}
