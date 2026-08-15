@@ -1,0 +1,92 @@
+import Link from "next/link";
+import { requireSession } from "@/lib/auth";
+import { getFrequencyTargetProgress } from "@/lib/queries";
+import { getWeekMode } from "@/lib/settings";
+import { frequencyScopeLabel } from "@/lib/frequency-targets";
+import FrequencyTargets from "./FrequencyTargets";
+import RoutinesSection from "./RoutinesSection";
+import GoalsSection from "./GoalsSection";
+
+// The Plan tab (#2892): Routines and Goals folded into one planning surface.
+// Order is the planning story — the weekly-routine targets first (this card is
+// their ONE editing home; the chips that render on Overview and the Log strip
+// link here), then structured routines, then outcome goals, then the equipment
+// registry's door. The retired `?tab=routines` / `?tab=goals` names resolve to
+// this tab at the parser (lib/training-tabs.ts), so every historic deep link —
+// including Telegram messages that can never be rewritten — lands on the
+// section it always meant, via the #routines / #goals anchors.
+export default async function PlanSection() {
+  const { profile } = await requireSession();
+  const targets = getFrequencyTargetProgress(profile.id);
+  const weekMode = getWeekMode(profile.id);
+
+  return (
+    <div className="space-y-6">
+      <section
+        id="targets"
+        className="card scroll-mt-[calc(5rem+env(safe-area-inset-top))]"
+      >
+        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+          Weekly routine
+        </h3>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          “Hit X at least N times per week.” Counts distinct training days{" "}
+          {weekMode === "rolling"
+            ? "over the last 7 days"
+            : "in the current week"}
+          . Click a routine to edit it.
+        </p>
+        <FrequencyTargets
+          items={targets
+            .filter((t) => t.target.scope_kind !== "practice")
+            .map((t) => ({
+              id: t.target.id,
+              scopeKind: t.target.scope_kind,
+              scopeValue: t.target.scope_value,
+              label: frequencyScopeLabel(
+                t.target.scope_kind,
+                t.target.scope_value
+              ),
+              count: t.count,
+              perWeek: t.per_week,
+              met: t.met,
+              pace: t.pace,
+            }))}
+        />
+      </section>
+
+      <section
+        id="routines"
+        className="scroll-mt-[calc(5rem+env(safe-area-inset-top))]"
+      >
+        <RoutinesSection />
+      </section>
+
+      <GoalsSection />
+
+      {/* The equipment registry's door on every screen size (#2892) — the
+          training header's Equipment link is desktop-only, so this card is the
+          phone's way in. */}
+      <section className="card">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+              Equipment
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Bikes, bars, and machines — the registry keeps usage history and
+              per-gear defaults.
+            </p>
+          </div>
+          <Link
+            href="/equipment"
+            data-testid="plan-equipment-link"
+            className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            Open registry →
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}

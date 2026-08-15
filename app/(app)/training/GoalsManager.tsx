@@ -102,8 +102,10 @@ export default function GoalsManager({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
+      {/* flex-wrap (#2892): the New-goal button takes its own line on narrow
+          screens instead of squeezing the heading. */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-3">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
             Goals
           </h2>

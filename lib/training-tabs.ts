@@ -6,11 +6,15 @@
 // `keepMounted` flag only gated DOM. Reading `?tab=` here and switching on the result
 // makes each visit compute one tab.
 //
-// The tab NAMES are unchanged and stay the deep-link vocabulary: `/training?tab=log`
-// (the coaching engine, the timeline's activity links, every integration page),
-// `?tab=overview`, `?tab=analyze` (the plateau finding), `?tab=fitness` (#158's
-// longevity link), `?tab=routines` (onboarding), `?tab=goals` (the dashboard widget).
-// An unknown value falls back to the default, exactly as `Tabs` did.
+// The tab NAMES stay the deep-link vocabulary: `/training?tab=log` (the coaching
+// engine, the timeline's activity links, every integration page), `?tab=overview`,
+// `?tab=analyze` (the plateau finding), `?tab=fitness` (#158's longevity link),
+// and `?tab=plan`. RETIRED NAMES KEEP RESOLVING (#2892): `routines` and `goals`
+// merged into Plan, and their historic links — timeline goal events, every
+// goal-pacing finding, onboarding, and Telegram messages that can never be
+// rewritten — map to `plan` here rather than falling to the default, which would
+// land a goal link on the wrong surface. An unknown value falls back to the
+// default, exactly as `Tabs` did.
 //
 // PURE + unit-tested: the tab set, the parser and the strip are one decision here
 // instead of three inline literals on a Server Component the pure tier can't see.
@@ -20,8 +24,7 @@ export const TRAINING_TABS = [
   "overview",
   "analyze",
   "fitness",
-  "routines",
-  "goals",
+  "plan",
 ] as const;
 
 export type TrainingTab = (typeof TRAINING_TABS)[number];
@@ -35,8 +38,14 @@ const TAB_LABELS: Record<TrainingTab, string> = {
   overview: "Overview",
   analyze: "Analyze",
   fitness: "Fitness check",
-  routines: "Routines",
-  goals: "Goals",
+  plan: "Plan",
+};
+
+// Retired tab names → the tab that absorbed them (#2892). A parser-level mapping,
+// not an HTTP redirect: the links keep working with zero navigation cost.
+const MERGED_TABS: Record<string, TrainingTab> = {
+  routines: "plan",
+  goals: "plan",
 };
 
 function isTrainingTab(v: string): v is TrainingTab {
@@ -49,12 +58,15 @@ function first(value: string | string[] | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-/** Resolve a raw `?tab=` value; anything unknown falls back to the default. */
+/** Resolve a raw `?tab=` value; merged names resolve to their absorbing tab,
+ *  anything unknown falls back to the default. */
 export function parseTrainingTab(
   value: string | string[] | undefined
 ): TrainingTab {
   const raw = first(value);
-  return raw && isTrainingTab(raw) ? raw : DEFAULT_TRAINING_TAB;
+  if (!raw) return DEFAULT_TRAINING_TAB;
+  if (isTrainingTab(raw)) return raw;
+  return MERGED_TABS[raw] ?? DEFAULT_TRAINING_TAB;
 }
 
 export interface TrainingTabEntry {

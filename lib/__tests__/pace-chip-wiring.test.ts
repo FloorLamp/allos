@@ -20,7 +20,7 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 const CHIP_DATA_BUILDERS = [
   "components/dashboard/GoalsHabitsWidget.tsx", // dashboard Goals-and-habits
   "app/(app)/training/OverviewSection.tsx", // Training weekly routine
-  "app/(app)/training/GoalsSection.tsx", // goals editor FrequencyTargets items
+  "app/(app)/training/PlanSection.tsx", // Plan's FrequencyTargets items (#2892)
   "app/(app)/training/HistorySection.tsx", // training log week-summary targets
 ];
 
@@ -31,8 +31,9 @@ const CHIP_DATA_BUILDERS = [
 const KNOWN_RENDER_SITES = [
   "components/dashboard/GoalsHabitsWidget.tsx",
   "app/(app)/training/OverviewSection.tsx",
-  "app/(app)/training/TrainingLogView.tsx", // renders weekSummary.targets (paced by HistorySection)
-  "app/(app)/training/FrequencyTargets.tsx", // forwards items (paced by GoalsSection)
+  // TrainingLogView left this list with #2892: the weekly-routine chips have
+  // ONE render home (Overview) and one editing home (Plan's FrequencyTargets).
+  "app/(app)/training/FrequencyTargets.tsx", // forwards items (paced by PlanSection)
 ];
 
 // The component's own module renders <WeeklyTargetChip> internally (the row maps
