@@ -19,13 +19,16 @@
 // PURE + unit-tested: the tab set, the parser and the strip are one decision here
 // instead of three inline literals on a Server Component the pure tier can't see.
 
-export const TRAINING_TABS = ["log", "overview", "analyze", "plan"] as const;
+export const TRAINING_TABS = ["overview", "log", "analyze", "plan"] as const;
 
 export type TrainingTab = (typeof TRAINING_TABS)[number];
 
-// Log leads: it IS the Training Log (TRAINING_LOG_ROUTE = "/training"), the surface a training
-// visit usually wants, and it was the first tab (hence the default) before #1496.
-export const DEFAULT_TRAINING_TAB: TrainingTab = "log";
+// Overview leads (#2893, owner-ruled 2026-08-15): Log-first made sense when the
+// Log tab WAS the workout form; with logging owned by the + and (per #2870) the
+// activity page, the landing answer is "how am I doing / what should I do" —
+// Overview's charter. Anything that wants the log says ?tab=log, as every
+// shipped link already does.
+export const DEFAULT_TRAINING_TAB: TrainingTab = "overview";
 
 const TAB_LABELS: Record<TrainingTab, string> = {
   log: "Log",
