@@ -134,9 +134,9 @@ describe("reconciledFlag emits the lab-stated flag in the unknown branch", () =>
       direction: "lower_better",
       unit: "u",
     });
-    expect(reconciledFlag(null, 20, "u", optimalOnly, null, 40, null, "<30")).toBe(
-      "non-optimal-high"
-    );
+    expect(
+      reconciledFlag(null, 20, "u", optimalOnly, null, 40, null, "<30")
+    ).toBe("non-optimal-high");
   });
 
   it("still declines to override a lab's own clinical high/low", () => {
@@ -223,7 +223,11 @@ describe("frameUnstatedNames — derived from the real catalog", () => {
   });
 
   it("does not catch the qualified siblings themselves", () => {
-    for (const n of ["Glucose, Fasting", "Insulin, Fasting", "Cortisol, Morning"])
+    for (const n of [
+      "Glucose, Fasting",
+      "Insulin, Fasting",
+      "Cortisol, Morning",
+    ])
       expect(isFrameUnstated(set, n)).toBe(false);
   });
 

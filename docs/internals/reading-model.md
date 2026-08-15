@@ -435,6 +435,85 @@ hashes `ref_*`/`optimal_*`, so the boot reconcile re-derives every record on its
 (the version constant exists for a change to the derivation LOGIC while the dataset
 holds still).
 
+### The lab's own printed range may judge what we decline to band (#2799)
+
+The clause above — "the row keeps the source's printed range, which the detail page
+renders attributed" — was true and still left a hole. `Microalbumin/Creatinine Ratio,
+Urine` is band-less for a different reason than glucose (KDIGO staging needs repeat
+samples over months, so no interval is publishable), a real report prints `<30` beside
+the value anyway, and a rising 31 → 44 mg/g rendered with **no marker on any surface**:
+`referenceStatus` returned `"unknown"`, and the only thing that had ever read
+`reference_range` in the flag path was #761's unit-mislabel veto. Every step was
+deliberate; the composition was the gap, and it read worst exactly where the catalog was
+being careful — across the ~95 band-less analytes.
+
+So `reconciledFlag`'s `"unknown"` branch now has a **last resort**: when nothing of ours
+judges the value, the row's own printed range may, and it says so in its own register.
+
+- **`reported-high` / `reported-low`** are never allos bands and never claim to be.
+  `isOutOfRange` stays false for them, so they are absent from the timeline's abnormal
+  count, from the `oor` row filter and from the attention priority bump; `flagTone`
+  tiers them amber, not red; and `flagLabel` names the source out loud — **"Above
+  reported range"**, sharing vocabulary with #2340's `REPORTED_RANGE_LABEL` ("Reference
+  range (as reported)"), which is the very string a surface showing one has on screen.
+  A coloured value can therefore still point at what coloured it, which is #2340's rule.
+- **The comparison is as-printed.** The lab printed the number and the range in the same
+  unit on the same line; that is the only comparison the report vouches for, and it
+  survives a mislabeled unit (#761's case: both sides are mislabeled identically).
+- **Ours wins where we have one.** The lab-stated flag is ordered after the reference
+  band and after the optimal band. Where we publish a band, ours is the band on screen
+  and ours is the verdict.
+- **It is retirable.** The numeric reconcile is the only thing that writes these flags,
+  so they join `RECONCILABLE_FLAGS` and clear when a corrected value lands back inside
+  the printed range — rather than freezing per-row the way #2687's guesses had.
+
+**And it does not re-flag an unqualified glucose.** That is the point where this ruling
+and #2337's could have collided: a CMP prints `65-99` beside a draw whose frame the
+document never stated, so judging by the printed string re-commits the exact fasting
+frame migration 176 unwound — a post-meal 120 reading red again, and a CGM stream
+lighting up wholesale. The guard is not "band-less entry with a curated note" (whether a
+curation ruling should also suppress lab-stated marking is a **separate, still-open owner
+question** on #2799, and its per-entry opt-out is deliberately unimplemented here). It is
+narrower and comes from the vocabulary itself: `frameUnstatedNames`
+(`lib/patient-state-qualifiers.ts`) picks out a bare entry the catalog carries a
+**patient-state-qualified sibling** of — `Glucose`/`Glucose, Fasting`,
+`Insulin`/`Insulin, Fasting` (#2371), `Cortisol`/`Cortisol, Morning` (#2526) — because
+#2338's landing rule means a reading only reaches the bare entry when the document stated
+no condition. A printed range on such a row is stated in a frame the draw never claimed,
+so it cannot judge it either. Three entries today, derived rather than curated, so a
+fourth frame pair needs no edit.
+
+### Pediatric blood pressure is a percentile, not a band (#2794)
+
+The BP entries carry only the adult 90–120 / 60–80 interval and no `ranges_by_age`, so
+`selectAgeBand` returned null and a 22-month-old's entirely normal 54 mmHg diastolic fell
+below 60 and was stored `low` — a red ▼ on the passport, a red chip in the readings
+table, and "1 out of range" on the timeline, three cards below a header saying **"82nd
+percentile · Normal for age"**. The AAP 2017 percentile path
+(`lib/bp-percentiles.ts` → `PediatricBpCard`) was display-only; nothing in the reconcile
+consulted it, and every real write path reconciles, so a CCD import of a pediatric visit
+produced the contradiction for real.
+
+`reconciledFlag` now **declines to judge** a BP component (`bpComponentFor`) for a
+subject under `PEDIATRIC_BP_MAX_AGE`, and **clears** the adult-band `high`/`low`/
+`non-optimal-*` already stored — that flag is our own claim, on rows the reconcile owns,
+and left alone it would outlive the judgement that made it (the same argument migration
+176 made about glucose, arriving at the same answer). A qualitative verdict is never
+ours and is untouched. Unknown age keeps the adult regime, and age is taken on the
+collection date, so a childhood reading does not re-flag when the person turns 13.
+
+Two consequences worth recording. The ruling is in the pure core, so it covers the
+import follow-up, manual entry, the Health Connect ingest, the reprocess **preview** and
+the boot reconcile at once — and `scripts/seed.ts` drops the `[alpId]` exclusion that
+used to hold the child's BP rows out of `reconcileFlags`, a workaround that documented
+the gap and covered only the seed. And the marker list moved to the leaf
+`lib/bp-markers.ts` (re-exported by `lib/bp-percentiles.ts`, so no import path changed):
+the flag core must ask "is this a BP component?" on every numeric row, and it is reached
+from client components, so it cannot pull the AAP normative dataset in to answer.
+
+Both are derivation-LOGIC changes with the dataset held still, which is what
+`FLAG_LOGIC_VERSION` exists for — one bump to **11** re-derives every stored row once.
+
 ## Phase 2 (shipped): one write core, one editability contract
 
 `lib/reading-placement.ts` is the pure policy; `lib/reading-writes.ts` executes

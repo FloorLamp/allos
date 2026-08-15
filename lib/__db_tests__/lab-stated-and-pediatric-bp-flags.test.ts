@@ -14,7 +14,12 @@
 import { describe, expect, it, beforeAll } from "vitest";
 
 import { db } from "@/lib/db";
-import { getCanonicalResultDefinition, reconcileFlags } from "@/lib/queries";
+import {
+  getCanonicalResultDefinition,
+  getCurrentFlaggedBiomarkers,
+  reconcileFlags,
+} from "@/lib/queries";
+import { flagLabel, flagTone, isOutOfRange } from "@/lib/reference-range";
 
 const DRAW = "2026-02-17";
 // The adult subject was born far enough back that every DRAW-dated reading is judged in
@@ -62,9 +67,11 @@ function insert(
 
 function flagOf(id: number): string | null {
   return (
-    (db.prepare("SELECT flag FROM medical_records WHERE id = ?").get(id) as {
-      flag: string | null;
-    }).flag ?? null
+    (
+      db.prepare("SELECT flag FROM medical_records WHERE id = ?").get(id) as {
+        flag: string | null;
+      }
+    ).flag ?? null
   );
 }
 
@@ -243,6 +250,30 @@ describe("a value outside the lab's printed range gets a lab-stated flag (#2799)
     ).run(ids.uacrRising);
     reconcileFlags(adultId, [ids.uacrRising]);
     expect(flagOf(ids.uacrRising)).toBe("reported-high");
+  });
+});
+
+describe("what the lab-stated flag reaches, and what it must not", () => {
+  it("reaches the flagged-biomarker read behind /upcoming and the care hero", () => {
+    // The issue's second symptom: "no follow-up ever reaches /upcoming for it". The
+    // shared read's denylist is `flag NOT IN ('normal','immune')`, so a lab-stated flag
+    // qualifies on the same footing as a non-optimal one — which is the intent, since
+    // the whole complaint is that the persona's key rising-risk lab raised nothing.
+    const flagged = getCurrentFlaggedBiomarkers(adultId);
+    const uacr = flagged.find(
+      (f) => f.name === "Microalbumin/Creatinine Ratio, Urine"
+    );
+    expect(uacr?.flag).toBe("reported-high");
+    // …and the unqualified glucose still raises nothing at all.
+    expect(flagged.some((f) => f.name === "Glucose")).toBe(false);
+  });
+
+  it("does NOT claim to be out of range on any surface that counts them", () => {
+    // isOutOfRange is what the timeline's abnormal count, the `oor` row filter and the
+    // attention priority bump all read. A lab's printed range is not our range.
+    expect(isOutOfRange("reported-high")).toBe(false);
+    expect(flagTone("reported-high")).toBe("warn");
+    expect(flagLabel("reported-high")).toBe("Above reported range");
   });
 });
 

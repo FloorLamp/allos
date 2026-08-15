@@ -68,7 +68,9 @@ describe("pediatric BP defers to the AAP percentile (#2794)", () => {
   it("derives NO flag for a toddler's normal-for-age diastolic", () => {
     // The reported case: 22 months, 54 mmHg. Below the adult floor of 60, and the
     // reason the passport showed a red ▼.
-    expect(reconciledFlag(null, 54, "mmHg", diastolic, null, 1)).toBeUndefined();
+    expect(
+      reconciledFlag(null, 54, "mmHg", diastolic, null, 1)
+    ).toBeUndefined();
     expect(reconciledFlag(null, 98, "mmHg", systolic, null, 1)).toBeUndefined();
   });
 
@@ -84,7 +86,9 @@ describe("pediatric BP defers to the AAP percentile (#2794)", () => {
   });
 
   it("leaves an absent or 'normal' flag alone rather than churning the row", () => {
-    expect(reconciledFlag(null, 54, "mmHg", diastolic, null, 3)).toBeUndefined();
+    expect(
+      reconciledFlag(null, 54, "mmHg", diastolic, null, 3)
+    ).toBeUndefined();
     expect(
       reconciledFlag("normal", 54, "mmHg", diastolic, null, 3)
     ).toBeUndefined();
@@ -104,7 +108,14 @@ describe("pediatric BP defers to the AAP percentile (#2794)", () => {
   it("switches to the adult band at PEDIATRIC_BP_MAX_AGE, and treats an unknown age as adult", () => {
     // AAP itself switches from percentiles to static adult-style thresholds at 13.
     expect(
-      reconciledFlag(null, 54, "mmHg", diastolic, null, PEDIATRIC_BP_MAX_AGE - 1)
+      reconciledFlag(
+        null,
+        54,
+        "mmHg",
+        diastolic,
+        null,
+        PEDIATRIC_BP_MAX_AGE - 1
+      )
     ).toBeUndefined();
     expect(
       reconciledFlag(null, 54, "mmHg", diastolic, null, PEDIATRIC_BP_MAX_AGE)
@@ -135,7 +146,9 @@ describe("pediatric BP defers to the AAP percentile (#2794)", () => {
     expect(reconciledFlag(null, 118, "mmHg", systolic, null, 40)).toBe(
       "non-optimal-high"
     );
-    expect(reconciledFlag(null, 110, "mmHg", systolic, null, 40)).toBeUndefined();
+    expect(
+      reconciledFlag(null, 110, "mmHg", systolic, null, 40)
+    ).toBeUndefined();
   });
 
   it("does not let a printed adult range flag a child through the #2799 path", () => {

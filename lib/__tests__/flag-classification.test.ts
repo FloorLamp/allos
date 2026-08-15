@@ -116,7 +116,8 @@ describe("flagTone", () => {
   it("agrees with the predicates for every flag", () => {
     for (const f of ALL_FLAGS) {
       if (isOutOfRange(f)) expect(flagTone(f)).toBe("bad");
-      else if (isNonOptimal(f) || isLabStated(f)) expect(flagTone(f)).toBe("warn");
+      else if (isNonOptimal(f) || isLabStated(f))
+        expect(flagTone(f)).toBe("warn");
       else expect(flagTone(f)).toBe("default");
     }
   });
