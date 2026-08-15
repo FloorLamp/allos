@@ -146,8 +146,11 @@ test("the live editor takes a screen wake lock, drops it on minimize, and re-tak
     .poll(async () => (await wakeLockCounts(page)).requests)
     .toBeGreaterThan(beforeRestore);
 
-  // No set was logged, so nothing auto-saved — close without a draft to clean up.
+  // Nothing was logged: closing abandons the create-at-start row (#2870 step 3)
+  // and returns to the hub — WAIT for that redirect, or the test ends with the
+  // discard in flight and the active row leaks into the next test's presence.
   await page.keyboard.press("Escape");
+  await page.waitForURL(/\/training(\?.*)?$/);
 });
 
 test("checking off a set fires the short haptic tick (#1422)", async ({
@@ -214,5 +217,8 @@ test("the live flow works with no wake-lock and no vibration API at all (#1422)"
     "Pause rest timer"
   );
 
+  // Same abandonment wait as above: the empty session's discard must land
+  // before the test ends, or its active row bleeds into the next test.
   await page.keyboard.press("Escape");
+  await page.waitForURL(/\/training(\?.*)?$/);
 });
