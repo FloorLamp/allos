@@ -450,7 +450,9 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
       unchanged: 0,
     });
 
-    expect(claimedDocuments(run)).toEqual([first, second].sort((a, b) => a - b));
+    expect(claimedDocuments(run)).toEqual(
+      [first, second].sort((a, b) => a - b)
+    );
 
     const entry = getImportDocumentsFeed(profileOne, 200).find(
       (e) => e.stream === "sync" && e.event.id === run

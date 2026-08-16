@@ -384,7 +384,10 @@ describe("dropQuietSyncs (#2999)", () => {
   it("keeps a run that actually wrote something", () => {
     const real = quiet({ id: 2, inserted: 5, unchanged: 0 });
     expect(
-      dropQuietSyncs([quiet({ id: 3 }), real, quiet({ id: 1 })], deliveredNothing)
+      dropQuietSyncs(
+        [quiet({ id: 3 }), real, quiet({ id: 1 })],
+        deliveredNothing
+      )
     ).toEqual([real]);
   });
 
@@ -433,7 +436,9 @@ describe("dropQuietSyncs (#2999)", () => {
     // landed. Dropping this row strands the documents it claimed — no later run can
     // re-claim them, and the event that owns them never renders.
     const delivery = quiet({ id: 13 });
-    expect(dropQuietSyncs([delivery], (ev) => ev.id === 13)).toEqual([delivery]);
+    expect(dropQuietSyncs([delivery], (ev) => ev.id === 13)).toEqual([
+      delivery,
+    ]);
   });
 
   it("returns an empty list for no events", () => {

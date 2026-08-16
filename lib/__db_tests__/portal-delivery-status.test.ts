@@ -35,7 +35,10 @@ import {
   listVisiblePortalRunReports,
 } from "@/lib/portal-visibility";
 import { portalLoginStatus } from "@/lib/portal-status";
-import { recordSyncEvent, recordSyncRows } from "@/lib/integrations/connections";
+import {
+  recordSyncEvent,
+  recordSyncRows,
+} from "@/lib/integrations/connections";
 import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 
 const SOURCE = "patient-portals";
