@@ -1,7 +1,13 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { IconPencil, IconArrowUpRight } from "@tabler/icons-react";
+import {
+  IconPencil,
+  IconArrowUpRight,
+  IconArrowsShuffle,
+} from "@tabler/icons-react";
 import PendingLink, { PendingIconSlot } from "@/components/PendingLink";
 import {
   useActivityEditor,
@@ -13,6 +19,7 @@ import type {
   TrainingLogCardSubject,
 } from "@/lib/training-log-card";
 import type { ActivityDetailSibling } from "@/lib/training-activity-detail";
+import type { ProgressDelta } from "@/lib/progress-delta";
 import type { UnitPrefs } from "@/lib/settings";
 import { trainingActivityPageHref } from "@/lib/hrefs";
 
@@ -58,6 +65,8 @@ export default function ActivityRecord({
   units,
   canWrite,
   host = "page",
+  partDeltas,
+  overlapping = [],
   subject,
   actingProfileId,
   onSelectExercise,
@@ -70,6 +79,13 @@ export default function ActivityRecord({
   units: UnitPrefs;
   canWrite: boolean;
   host?: "page" | "pane";
+  // "vs last" per part (#2870), supplied by the PAGE host only — the pane builds
+  // its card from feed data with no fetch (#2897), so it has none to give.
+  partDeltas?: (ProgressDelta | null)[];
+  // Same-day siblings that overlap this one on the clock (#2870). Supplied by the
+  // PAGE host: in the log the twin is the row above, and the pane has that list
+  // beside it — a page is where the adjacency, and with it the discovery, is lost.
+  overlapping?: ActivityDetailSibling[];
   subject?: TrainingLogCardSubject;
   actingProfileId?: number;
   onSelectExercise?: (name: string) => void;
@@ -79,6 +95,8 @@ export default function ActivityRecord({
 }) {
   const router = useRouter();
   const { openEdit } = useActivityEditor();
+  // Bumping this asks the card's own menu to open its merge picker.
+  const [mergeSignal, setMergeSignal] = useState(0);
 
   // The page host's default exercise door: the lift's Analyze page. Pane hosts
   // inject their own handlers (or none, for gated subjects) — never this.
@@ -93,7 +111,10 @@ export default function ActivityRecord({
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-end gap-3">
+      {/* h-9 matches the feed's first day-heading band, so in the reading pane
+          (whose host suppresses its spacer) this row occupies the heading's
+          slot and the card top aligns with the selected row's top. */}
+      <div className="mb-2 flex h-9 items-center justify-end gap-3">
         {host === "pane" && (
           // The pane's door to the record's own page (#2983). It carries an
           // icon, so the spinner takes the icon's box: nothing shifts, and the
@@ -127,6 +148,50 @@ export default function ActivityRecord({
           </button>
         )}
       </div>
+      {overlapping.length > 0 && canWrite && (
+        <div
+          data-testid="activity-overlap-banner"
+          className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+        >
+          <p>
+            {overlapping.length === 1 ? (
+              <>
+                <span className="font-medium">
+                  {overlapping[0].sourceLabel}
+                </span>{" "}
+                also logged{" "}
+                <span className="font-medium">{overlapping[0].title}</span> over
+                the same clock time. The same session twice?
+              </>
+            ) : (
+              <>
+                {overlapping.length} other sessions cover the same clock time.
+                One session logged more than once?
+              </>
+            )}
+          </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3">
+            {overlapping.map((sib) => (
+              <Link
+                key={sib.id}
+                href={trainingActivityPageHref(sib.id)}
+                data-testid={`activity-overlap-compare-${sib.id}`}
+                className="font-medium underline underline-offset-2"
+              >
+                Compare {sib.title}
+              </Link>
+            ))}
+            <button
+              type="button"
+              data-testid="activity-overlap-merge"
+              onClick={() => setMergeSignal((n) => n + 1)}
+              className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+            >
+              <IconArrowsShuffle className="h-4 w-4" aria-hidden /> Merge…
+            </button>
+          </div>
+        </div>
+      )}
       <TrainingLogCard
         activity={card.activity}
         timeText={card.timeText}
@@ -151,6 +216,8 @@ export default function ActivityRecord({
         canWrite={canWrite}
         // The pane's host row already owns the #activity-N anchor (#2897).
         withAnchor={host === "page"}
+        partDeltas={partDeltas}
+        openMergeSignal={mergeSignal}
         onSelectExercise={selectExercise}
         onSelectCardio={onSelectCardio}
         onSelectSport={onSelectSport}

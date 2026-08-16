@@ -4,7 +4,7 @@ import {
   getActivitySuggestions,
   getCardioByActivity,
   getDayLoadInputs,
-  getFrequencyTargetProgress,
+  getFrequencyTargetProgressForHome,
   getIllnessCoachingContext,
   getTrainingWeekDayTypes,
   getRecentDatedExercises,
@@ -132,7 +132,10 @@ export default async function OverviewSection() {
     today: todayStr,
     rows: weekDays.rows,
   });
-  const targets = getFrequencyTargetProgress(profile.id);
+  // The weekly routine, scoped to the targets whose home IS this page (#2888) —
+  // strength regions and groups, activity types, and mobility regions. A food habit or
+  // a wellness practice is a real target on a real page; that page is not this one.
+  const targets = getFrequencyTargetProgressForHome(profile.id, "training");
   const fitnessDue = fitnessRetestDue(
     getLatestFitnessAssessmentDate(profile.id),
     getFitnessRetestCadenceDays(profile.id),
@@ -532,8 +535,9 @@ export default async function OverviewSection() {
           Nothing here recomputes anything. The band's day cells and the caption's
           counts fold the SAME (day, type) rows (getTrainingWeekDayTypes → both
           buildWeekSpine and getTrainingLogWeekSummary, #221), and the chips are the
-          unchanged getFrequencyTargetProgress result. No score, no verdict: an empty
-          day is empty, a day after today is "ahead", and neither is a miss. */}
+          unchanged cadence rollup, narrowed to the scopes whose declared home is this
+          page (#2888) — same counts, same pace, fewer rows. No score, no verdict: an
+          empty day is empty, a day after today is "ahead", and neither is a miss. */}
       <div className="card" data-testid="training-week">
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
           This week

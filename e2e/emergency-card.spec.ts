@@ -123,23 +123,33 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   await page.getByTestId("offline-view-emergency").click();
   await expect(page.getByTestId("emergency-card")).toContainText("Peanuts");
 
-  // 4b. Genuine offline render. Offline, a failed navigation is served the precached
-  //     /offline shell, which reads the cached card from localStorage — no network,
-  //     still readable.
+  // 4b. Offline render, with the precondition stated rather than assumed. A failed
+  //     navigation is served the precached /offline shell, which reads the cached card
+  //     out of localStorage and shows it.
   //
-  //     This block used to sit behind `if (process.env.CI)`, on the premise that
-  //     "only the CI harness boots a production build with a live service worker
-  //     (local `next dev` unregisters it)". That premise died with #1538: every
-  //     worker's server is `next start` off one shared production build, with
-  //     NODE_ENV=production spawned unconditionally (e2e/fixtures.ts), and
-  //     ServiceWorkerRegister only unregisters when NODE_ENV !== "production". So
-  //     the local harness has the same live worker CI does, and the gate meant the
-  //     single most important assertion in this spec — the card is readable with no
-  //     network — ran nowhere but CI (#2645/#2648). The controller wait below is the
-  //     real precondition, and it states itself.
-  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
-    timeout: 15_000,
-  });
+  //     WHAT THIS BLOCK PROVES, EXACTLY. The localStorage read is genuinely offline —
+  //     there is no server involved in it and the bypass below cannot fake it. The
+  //     SHELL that renders it is a different claim: Playwright's offline emulation is
+  //     per-browser-context and does not cover the SERVICE WORKER's own fetches, so
+  //     `cacheFirst` in public/sw.js can still pull a missing chunk over the network
+  //     during a navigation the page believes is offline (#3002 — measured: chunks
+  //     absent from the cache before `setOffline(true)` were present after it). A real
+  //     device has no such escape hatch, and there a missing chunk is a blank card.
+  //
+  //     So this used to claim more than it delivered — it called itself the assertion
+  //     that "the card is readable with no network", which is not what a leaky offline
+  //     emulation can measure. `readyForOffline` closes the gap by asserting the thing
+  //     that CAN be checked faithfully: the shell's own chunks are in the worker's
+  //     cache BEFORE the network goes away. Delete a chunk from the cache and this
+  //     block now fails; before, it passed by fetching it.
+  //
+  //     (It also used to sit behind `if (process.env.CI)`, on the premise that only
+  //     the CI harness boots a production build with a live service worker. That
+  //     premise died with #1538 — every worker's server is `next start` with
+  //     NODE_ENV=production, spawned unconditionally by e2e/fixtures.ts — so the gate
+  //     only meant the block ran nowhere but CI (#2645/#2648). Removing it was right;
+  //     the claim it guarded is what this note corrects.)
+  await readyForOffline(page);
   await context.setOffline(true);
   try {
     await page.goto("/profile");

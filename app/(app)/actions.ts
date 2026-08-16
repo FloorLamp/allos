@@ -29,6 +29,8 @@ import type {
 } from "@/lib/dose-outcome-text";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logUsualRoutineCore } from "@/lib/usual-routine-write";
+import { getActiveFastCached } from "@/lib/queries/fasting";
+import { promptsEndOfFast } from "@/lib/fasting";
 import type { UsualFoodLogged } from "@/lib/food-usual-write";
 import type { UsualRoutineDoseResult } from "@/lib/usual-routine-write";
 
@@ -43,6 +45,16 @@ export type UsualRoutineResult =
       window: FoodSlot;
       groups: UsualFoodLogged[];
       doses: UsualRoutineDoseResult[];
+      // ONE "End your fast?" offer for the whole bundle (#2756) — a bundled write
+      // prompts ONCE, however many servings and doses it landed. The offer itself
+      // stands down while a fast is active (#2757), so this is reachable only from a
+      // page that went stale across a start; the log still lands either way, because
+      // #2419's line is that the OFFER stands down and the LOGGING never does.
+      //
+      // The DOSES in the bundle are untouched by any of this. Nothing here declines to
+      // confirm a dose, and no fast can suppress a dose reminder — that reach is a
+      // closed one-kind allowlist in lib/fasting-standdown.ts.
+      endFastOffer?: true;
     }
   | { ok: false; error: string };
 
@@ -289,6 +301,13 @@ export async function logUsualRoutine(
   const outcome = logUsualRoutineCore(profile.id, rawWindow, groups, doseIds);
   if (outcome.kind === "nothing-to-log")
     return { ok: false, error: "That's already logged." };
+  // The follow-up offer, resolved AFTER the write and only when the bundle actually
+  // landed FOOD: confirming a dose is not eating, and prompting "End your fast?" over a
+  // dose-only tap would be the app inferring a meal from a medication.
+  const day = today(profile.id);
+  const endFastOffer =
+    outcome.groups.length > 0 &&
+    promptsEndOfFast(getActiveFastCached(profile.id), day, day);
   revalidateRoute("/");
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");
@@ -299,5 +318,6 @@ export async function logUsualRoutine(
     window: outcome.window,
     groups: outcome.groups,
     doses: outcome.doses,
+    ...(endFastOffer ? { endFastOffer: true as const } : {}),
   };
 }

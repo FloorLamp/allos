@@ -80,32 +80,33 @@ export default async function TrainingPage(props: {
   })();
 
   return (
-    <TabFirstPage
-      config={TRAINING_TAB_FIRST_PAGE}
-      testId="training-page"
-      // A stable, ungated door to the equipment registry (#592) — gear lives
-      // conceptually under training, but /equipment has no top-level nav item.
-      // Desktop-only since #2892: on phones the header action rendered as a
-      // full-width row above every tab, and the Plan tab's Equipment card is
-      // the phone door now.
-      action={
-        <Link
-          href="/equipment"
-          data-testid="training-equipment-link"
-          className="hidden shrink-0 items-center py-1 text-sm font-medium text-brand-600 hover:underline md:inline-flex dark:text-brand-400"
-        >
-          Equipment
-        </Link>
-      }
-    >
-      {/* Width cap (#2893): training content stopped only at the shell's 3xl
-          (~1760px) cap — Analyze and Log lines ran edge to edge on ordinary
-          monitors. PageContainer owns width policy; "wide" (72rem) fits every
-          tab's densest layout (Analyze's chart + 28rem aside). */}
-      <PageContainer width="wide" className="mx-auto">
+    // Width cap (#2893): "wide" (72rem) fits every tab's densest layout
+    // (Analyze's chart + 28rem aside). The cap wraps the WHOLE tab-first shell
+    // — header, tab strip, and panel — the way records and nutrition cap
+    // theirs: capping only the panel left the tab strip running to the shell's
+    // 3xl (~1760px) edge, wider than the content beneath it.
+    <PageContainer width="wide" className="mx-auto">
+      <TabFirstPage
+        config={TRAINING_TAB_FIRST_PAGE}
+        testId="training-page"
+        // A stable, ungated door to the equipment registry (#592) — gear lives
+        // conceptually under training, but /equipment has no top-level nav item.
+        // Desktop-only since #2892: on phones the header action rendered as a
+        // full-width row above every tab, and the Plan tab's Equipment card is
+        // the phone door now.
+        action={
+          <Link
+            href="/equipment"
+            data-testid="training-equipment-link"
+            className="hidden shrink-0 items-center py-1 text-sm font-medium text-brand-600 hover:underline md:inline-flex dark:text-brand-400"
+          >
+            Equipment
+          </Link>
+        }
+      >
         {activeSection}
-      </PageContainer>
-    </TabFirstPage>
+      </TabFirstPage>
+    </PageContainer>
   );
 }
 

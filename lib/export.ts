@@ -1330,6 +1330,34 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM protein_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Fasting log (#2756): one row per claimed fast — the two instants and an optional
+    // note. IN the portable export because it is the one thing here that cannot be
+    // re-derived from anything else in the bundle: a fast is an EXPLICIT claim the user
+    // starts and ends, never inferred from the food log (inferring eating times from TAP
+    // times is the trap the table exists to avoid), so if these rows do not travel, the
+    // family's entire fasting record is simply gone — #465/#2129's disease. It is
+    // user-entered health data in exactly the sense practice_logs, symptom_logs and the
+    // substance ledger are, and it fits none of the allowlist's four excuses (UI state,
+    // AI-derived, operational/non-portable, media-file bundle).
+    //
+    // NOT exported: `end_written_at`. That column is the app's own clock at the moment an
+    // end was WRITTEN, carried solely to bound the Undo window (lib/fast-write.ts) — it
+    // is not a claim the user made and answers no question on another instance. The two
+    // instants that ARE the record travel; elapsed time, day attribution and staleness
+    // stay derived (lib/fasting.ts), so nothing here freezes one timezone's answer.
+    //
+    // Adult-only content is NOT a reason to withhold a dataset (the substance ledger
+    // above is the precedent, #1174): the life-stage gate refuses new WRITES, and
+    // RESTRICTED_DATASETS is the separate training age gate (#471).
+    key: "fasts",
+    label: "Fasting log",
+    table: "fasts",
+    columns: ["started_at", "ended_at", "note", "created_at"],
+    select: `SELECT id, started_at, ended_at, note, created_at
+       FROM fasts WHERE profile_id = ? ORDER BY started_at DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM fasts WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Day-by-day symptom log (#799): one row per (date, symptom) with a 1–4 severity.
     // User-entered health data, so it's in the portable export; id-keyed + owned, so
     // deletable like the other logged datasets.
@@ -1500,6 +1528,21 @@ export const DELETE_POLICY = {
     revalidate: ["/records/specialty/substance-use", "/"],
   },
   protein_daily_totals: { revalidate: ["/nutrition", "/"] },
+  // The fasting card and its history live on the nutrition tab. A plain id + profile_id
+  // delete: nothing FKs into `fasts`, no counter is decremented beside it, and no derived
+  // state is stored — elapsed/attribution/staleness are all recomputed on read — so
+  // removing rows here means exactly "these fasts are no longer on record". Not an undo
+  // root (no UNDO_KINDS entry), so DATASET_UNDO_KIND needs no decision.
+  //
+  // This does NOT re-open the ruling that `discardFast` must refuse a COMPLETED row.
+  // That refusal is about what Discard MEANS on the fasting card — "I never actually
+  // fasted" — which the app is not entitled to pick for someone whose fast has already
+  // ended. Removing a row from a table of rows on Data → Manage is the generic
+  // "delete this from my record" every logged dataset carries, chosen deliberately
+  // against the row itself; it makes no claim about whether the fast happened.
+  // (`equipment` is the precedent for a STATEFUL_WRITE_TABLES-registered table that is
+  // also bulk-deletable: a delete is not one of the table's state transitions.)
+  fasts: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
   cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
   mood_logs: { revalidate: ["/trends", "/"] },

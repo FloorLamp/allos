@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
-import { getFrequencyTargetProgress } from "@/lib/queries";
+import { getFrequencyTargetProgressForHome } from "@/lib/queries";
 import { getWeekMode } from "@/lib/settings";
 import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import FrequencyTargets from "./FrequencyTargets";
@@ -17,7 +17,13 @@ import GoalsSection from "./GoalsSection";
 // section it always meant, via the #routines / #goals anchors.
 export default async function PlanSection() {
   const { profile } = await requireSession();
-  const targets = getFrequencyTargetProgress(profile.id);
+  // The SAME scoped read Overview renders (#2888): the editing home and the rendering
+  // home must show one set. This card used to subtract `practice` and keep everything
+  // else, which is how food habits got an edit control here that could not save them —
+  // the Scope select below has no food option, so the submitted scope_kind was blank
+  // and the action returned without writing. Membership is declared per scope in
+  // CADENCE_SCOPES.home now, so no surface carries its own list.
+  const targets = getFrequencyTargetProgressForHome(profile.id, "training");
   const weekMode = getWeekMode(profile.id);
 
   return (
@@ -37,21 +43,19 @@ export default async function PlanSection() {
           . Click a routine to edit it.
         </p>
         <FrequencyTargets
-          items={targets
-            .filter((t) => t.target.scope_kind !== "practice")
-            .map((t) => ({
-              id: t.target.id,
-              scopeKind: t.target.scope_kind,
-              scopeValue: t.target.scope_value,
-              label: frequencyScopeLabel(
-                t.target.scope_kind,
-                t.target.scope_value
-              ),
-              count: t.count,
-              perWeek: t.per_week,
-              met: t.met,
-              pace: t.pace,
-            }))}
+          items={targets.map((t) => ({
+            id: t.target.id,
+            scopeKind: t.target.scope_kind,
+            scopeValue: t.target.scope_value,
+            label: frequencyScopeLabel(
+              t.target.scope_kind,
+              t.target.scope_value
+            ),
+            count: t.count,
+            perWeek: t.per_week,
+            met: t.met,
+            pace: t.pace,
+          }))}
         />
       </section>
 

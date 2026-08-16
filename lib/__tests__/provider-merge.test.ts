@@ -1,7 +1,4 @@
 import { describe, expect, it } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   PROVIDER_LINK_COLUMNS,
   providerLinkTables,
@@ -12,8 +9,13 @@ import {
   type ProviderMergeImpact,
 } from "@/lib/provider-merge";
 import type { Provider } from "@/lib/types";
-
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+import {
+  createdTables,
+  finalTableName,
+  migrationSources,
+  tableRenames,
+  tablesRetired,
+} from "./migration-schema-scan";
 
 function provider(
   p: Partial<Provider> & { id: number; name: string }
@@ -210,61 +212,45 @@ describe("formatProviderMergeAudit (issue #655 — absorb detail)", () => {
 // fails this test — so the merge can never silently strand rows on a deleted
 // duplicate (the exact drift the row-ops convention warns about).
 
-const MIGRATION_VERSIONS_DIR = "lib/migrations/versions";
+// A provider-link column is one whose name ends in `provider_id` — so `provider_id`,
+// `location_provider_id`, and the imaging study's `ordering_provider_id` /
+// `reading_provider_id` (#702) all match. Matched as `<name> INTEGER`, which catches both
+// the bare-INTEGER and the `INTEGER REFERENCES providers(id)` forms.
+const PROVIDER_LINK_COLUMN = /\b(\w*provider_id)\s+INTEGER\b/g;
 
-function migrationSources(): string {
-  const dir = path.join(REPO, MIGRATION_VERSIONS_DIR);
-  return fs
-    .readdirSync(dir)
-    .filter((f) => /^\d{3}-.*\.ts$/.test(f))
-    .sort()
-    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
-    .join("\n");
-}
-
-// Every (table, column) where a CREATE TABLE body declares a provider-link COLUMN
-// (matched as `<name> INTEGER`, which catches both the bare-INTEGER and the `INTEGER
-// REFERENCES providers(id)` forms). A provider-link column is one whose name ends in
-// `provider_id` — so `provider_id`, `location_provider_id`, and the imaging study's
-// `ordering_provider_id` / `reading_provider_id` (#702) all match. `_new` rebuild
-// scratch tables are ignored; the pair set is deduped across migrations. This is the
-// name-based twin of the FK-target reflection in provider-link-reflection.test.ts.
+// Every (table, column) the schema declares a provider link on, under the tables' FINAL
+// names, deduped across migrations. The corpus read is the shared one
+// (lib/__tests__/migration-schema-scan.ts): EVERY migration file in both naming eras,
+// with rebuild scratch and renames resolved before retirement.
+//
+// It used to be a private copy here, filtered to `/^\d{3}-/` — the CLOSED numbered era —
+// which is the same blind spot #2995 found in the OWNED_TABLES guard one file over: a
+// provider link added by a name-keyed migration was invisible, so the drift this test
+// exists to catch could land unseen. Widening needs the rename resolution to come with
+// it, or the #2877 rebuild's `medical_records__new_2877` — which the old
+// `endsWith("_new")` scratch rule does not match either — gets reported as a table in
+// its own right.
+//
+// This is the name-based twin of the FK-target reflection in
+// provider-link-reflection.test.ts.
 function schemaProviderLinks(dbSrc: string): Set<string> {
+  const renames = tableRenames(dbSrc);
+  const retired = tablesRetired(dbSrc, renames);
   const out = new Set<string>();
-  const re = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\(/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(dbSrc))) {
-    const name = m[1];
-    let i = re.lastIndex;
-    let depth = 1;
-    let body = "";
-    while (i < dbSrc.length && depth > 0) {
-      const c = dbSrc[i];
-      if (c === "(") depth++;
-      else if (c === ")") {
-        depth--;
-        if (depth === 0) break;
-      }
-      body += c;
-      i++;
-    }
-    re.lastIndex = i;
-    if (name.endsWith("_new")) continue;
-    const colRe = /\b(\w*provider_id)\s+INTEGER\b/g;
-    let c: RegExpExecArray | null;
-    while ((c = colRe.exec(body))) out.add(`${name}.${c[1]}`);
-  }
+  const add = (table: string, column: string) => {
+    const final = finalTableName(table, renames);
+    if (!retired.has(final)) out.add(`${final}.${column}`);
+  };
+  for (const { name, body } of createdTables(dbSrc))
+    for (const c of body.matchAll(PROVIDER_LINK_COLUMN)) add(name, c[1]);
   // A provider link can ALSO be ALTER-added to an existing table (e.g.
   // medication_courses.provider_id, the #1204 per-course prescriber link, added by
   // migration 091 to a baseline table). Scan `ALTER TABLE <t> ADD COLUMN <…provider_id>
   // INTEGER` too so those links are reflected the same as CREATE TABLE ones.
-  const alterRe =
-    /ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w*provider_id)\s+INTEGER\b/g;
-  let a: RegExpExecArray | null;
-  while ((a = alterRe.exec(dbSrc))) {
-    if (a[1].endsWith("_new")) continue;
-    out.add(`${a[1]}.${a[2]}`);
-  }
+  for (const a of dbSrc.matchAll(
+    /ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w*provider_id)\s+INTEGER\b/g
+  ))
+    add(a[1], a[2]);
   return out;
 }
 
@@ -277,5 +263,42 @@ describe("provider-link column set: single source of truth (no drift)", () => {
       PROVIDER_LINK_COLUMNS.map((l) => `${l.table}.${l.column}`)
     );
     expect([...listed].sort()).toEqual([...declared].sort());
+  });
+
+  // Both directions, on SYNTHETIC migration text in the name-keyed era's shape — the era
+  // the old `/^\d{3}-/` read could not see at all (#2995).
+  it("a provider link added by a name-keyed migration is seen", () => {
+    expect([
+      ...schemaProviderLinks(
+        `db.exec(\`CREATE TABLE referrals (
+           id INTEGER PRIMARY KEY,
+           provider_id INTEGER REFERENCES providers(id)
+         );\`);`
+      ),
+    ]).toEqual(["referrals.provider_id"]);
+    expect([
+      ...schemaProviderLinks(
+        "db.exec(`ALTER TABLE encounters ADD COLUMN referring_provider_id INTEGER;`);"
+      ),
+    ]).toEqual(["encounters.referring_provider_id"]);
+  });
+
+  it("a rebuild's scratch table is reported under the final name, once", () => {
+    // `medical_records__new_2877`'s real shape: the #2877 scratch matches no `_new`
+    // suffix rule, so it is recognised as scratch by BEING RENAMED AWAY.
+    expect([
+      ...schemaProviderLinks(`
+        CREATE TABLE medical_records (id INTEGER, provider_id INTEGER);
+        CREATE TABLE medical_records__new_2877 (
+          id INTEGER,
+          provider_id INTEGER,
+          ordering_provider_id INTEGER
+        );
+        DROP TABLE medical_records;
+        ALTER TABLE medical_records__new_2877 RENAME TO medical_records;`),
+    ]).toEqual([
+      "medical_records.provider_id",
+      "medical_records.ordering_provider_id",
+    ]);
   });
 });

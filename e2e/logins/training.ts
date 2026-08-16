@@ -105,3 +105,34 @@ export const LAB_GOAL_TARGET = 100;
 // relative, so the fixture never goes stale.
 export const E2E_LOGIN_WEEK_SPINE = "e2e_week_spine";
 export const WEEK_SPINE_PROFILE = "Week Spine (e2e)";
+
+// ── The worn NON-CYCLING session (#3008) ──────────────────────────────────────
+// Seeded beside the HR-zone ride, on the same day that fixture already owns: a
+// walk with per-minute HR inside its own window. Cycling always had a place to
+// draw a chart — its ride page — so every HR-carrying fixture here was a ride,
+// and the canonical activity page's heart-rate block had no subject at all. It
+// renders only when hr_minutes fall inside the activity's window, which is why
+// a crash in it survived CI until a real walk was opened.
+export const ZONE_WALK_TITLE = "Worn walk (e2e)";
+export const ZONE_WALK_EXTERNAL_ID = "e2e:zone-walk";
+
+// A session the source answered about with NOTHING (#3009): an empty telemetry
+// row and no wear minutes in its window. "Totals only" is a fact the page may
+// state only when the source has actually answered, so the fixture has to carry
+// the answer, not merely the absence.
+export const TOTALS_ONLY_TITLE = "Totals-only walk (e2e)";
+export const TOTALS_ONLY_EXTERNAL_ID = "e2e:totals-only";
+
+// The overlapping same-day pair (#2870): two sessions covering the same clock
+// time, which is what the record's discovery banner exists to point out once the
+// log's adjacency is gone.
+//
+// On its OWN profile, deliberately. The shared profile-1 feed is what the
+// Timeline's windowing spec measures against, and `getTimeline` takes the newest
+// 250 events across every source — so two more activities on profile 1 push its
+// 100-day-old fixture past that cut and fail a spec in another domain. A
+// dedicated profile cannot do that to anyone.
+export const E2E_LOGIN_OVERLAP = "e2e_overlap";
+export const OVERLAP_PROFILE = "Overlap Pair (e2e)";
+export const OVERLAP_KEEPER_TITLE = "Overlap keeper (e2e)";
+export const OVERLAP_TWIN_TITLE = "Overlap twin (e2e)";

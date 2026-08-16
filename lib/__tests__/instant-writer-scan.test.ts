@@ -114,6 +114,10 @@ const CANONICAL_INSTANT_COLUMNS: Record<
     columns: ["achieved_at"],
     why: "migration 182 (#2394) — BORN canonical: the instant a goal was marked achieved, the column the recap's reached-line windows on. The table is old but the column is new and carries no DEFAULT, so the claim cannot be false, and the entry is what binds its only writer (setStatus in app/(app)/training/goal-actions.ts) to instantNow() rather than to SQLite's own bare-shaped clock — a bare value in a column the recap compares against a canonical one would answer wrong while the query still looked right. `created_at` beside it stays bare and is NOT claimed here.",
   },
+  fasts: {
+    columns: ["started_at", "ended_at", "end_written_at"],
+    why: "migration 20260816-fasts (#2756) — BORN canonical: the fasting lifecycle's claimed start and end, plus the instant that end was WRITTEN. The table is new, so the claim cannot be false, and the entry is what binds its first writer (lib/fast-store.ts, reached only through lib/fast-write.ts) to utcInstant() instead of letting the call site pick a shape. The first two are compared in SQL — the active-fast lookup, the range read the history and the annotation ride, and the overlap scan — so a bare value beside a canonical one would sort wrong while the query still looked right. `end_written_at` is compared in TS rather than SQL (the Undo's age bound), which is the same hazard one tier over: parseUtcSql reads it beside `ended_at`, so a bare shape there would be judged against canonical ones. No DEFAULT on any of the three. `created_at` beside them stays bare and is NOT claimed here.",
+  },
   notify_lifecycle: {
     columns: ["at"],
     why: "migration 167 (#2233) — the delivery-health marker's failure instant, normalized off `new Date().toISOString()`'s millisecond shape (a THIRD serialization rule C could not see: the module that built the string, lib/notifications/index.ts, writes no SQL of its own — the #2205 phase 3 census caught it). The writer now binds instantNow(); nothing compares this column in SQL.",

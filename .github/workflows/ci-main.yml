@@ -25,6 +25,25 @@ name: CI (main)
 # is a separate check for exactly this reason: a green here means the cheap tiers
 # passed, and nothing more. e2e-full.yml remains the on-demand full-suite census.
 #
+# THE OBJECTION ABOVE IS SUPERSEDED FOR A DETECTOR, AND ONLY FOR A DETECTOR
+# (#2969, ruled 2026-08-16). This header used to argue against a per-merge
+# browser matrix while e2e-main.yml quietly ran one, which reads as a mistake to
+# anyone who finds the workflow before this paragraph. It is not one: it is
+# authorized.
+#
+# The reason is #2791's receipt, which is live and specific — two PRs, each green
+# on its own head, merged into a red main. That is what a per-merge detector
+# catches and what a per-PR gate cannot, however good the per-PR gate is. Four
+# shards give a ~3.6 min verdict at ~13 CI-min, and about a fifth of merges take
+# the runtime-surface skip at 1.4 CI-min, so the standing cost is modest.
+#
+# The SCOPE is narrow and stays narrow. The objection still stands against
+# anything that makes the browser matrix a per-merge GATE — that is the trade
+# this header was written about, and nothing has superseded it. What is
+# authorized is a detector at its current shape. Shard count is not ruled either
+# way: twelve (~4 min, ~39.6 CI-min) against four (~3.6 min, ~13 CI-min) stays
+# ordinary tuning.
+#
 # This is a detector, not a gate — deploy.yml runs independently on the same
 # push (gated by its own `next build`). A red here means: stop merging, fix
 # main first (a follow-up PR or a revert), then resume.

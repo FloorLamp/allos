@@ -19,7 +19,7 @@ import {
   disconnectStravaAction,
 } from "./actions";
 import StravaBackfillButton from "./StravaBackfillButton";
-import { countMissingStravaRideDetails } from "@/lib/integrations/strava-sync";
+import { countMissingStravaSessionDetails } from "@/lib/integrations/strava-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +47,7 @@ export default async function StravaPage(props: {
   const hasCreds = !!(cfg.clientId && cfg.clientSecret);
   const connected = conn?.status === "connected" && !!cfg.accessToken;
   const missingRideDetails = connected
-    ? countMissingStravaRideDetails(profile.id)
+    ? countMissingStravaSessionDetails(profile.id)
     : 0;
   // The refresh token died/was revoked (issue #326): show an actionable notice above
   // the reconnect form instead of leaving the user with a silent, forever-failing sync.

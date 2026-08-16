@@ -1,6 +1,19 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 import { openCommandPalette } from "./nav";
+// Fixture names come from the DB-free constants module, never from e2e/seed/*:
+// a seed module pulls in lib/db, whose migration logging lands on stdout and
+// corrupts the JSON that `scripts/e2e-shard-plan.ts --verify` parses from
+// `playwright --list`.
+import {
+  E2E_LOGIN_OVERLAP,
+  E2E_MEMBER_PASSWORD,
+  OVERLAP_KEEPER_TITLE,
+  OVERLAP_TWIN_TITLE,
+  TOTALS_ONLY_TITLE,
+  ZONE_WALK_TITLE,
+} from "./fixture-logins";
+import { loginAs } from "./nav";
 
 // #2870 step 1 — every non-cycling activity has a canonical page: the Training
 // Log's card rendered whole at its own URL, with ‹ older / newer › ledger
@@ -26,6 +39,124 @@ test("an Analyze sessions row opens the activity's canonical page", async ({
   // The page is part of the ledger, not a dead end: back to the log, and the
   // neighbor links walk (date, id) order when neighbors exist.
   await expect(page.getByRole("link", { name: /Training log/ })).toBeVisible();
+
+  // "vs last" (#2870): the seeded history progresses this lift week over week,
+  // so the record answers "am I progressing" in place rather than sending the
+  // reader to Analyze to compare two numbers by eye.
+  const delta = record.getByTestId("exercise-vs-last").first(); // first-ok: every lift on the session carries one; any proves the column
+  await expect(delta).toBeVisible();
+  await expect(delta).toHaveText(/(\+|−).+|same as last/);
+});
+
+test("an overlapping same-day session announces itself, and opens the merge picker (#2870)", async ({
+  browser,
+}) => {
+  // In the log a double-logged session was discovered by sitting NEXT TO its
+  // twin. A page shows one activity, so that adjacency — and the whole discovery
+  // — is gone unless the record says so.
+  //
+  // Its own profile: the pair would otherwise be two more activities on the
+  // shared feed the Timeline's windowing spec measures its 250-event page
+  // against (see the fixture's own note).
+  const member = await loginAs(browser, {
+    username: E2E_LOGIN_OVERLAP,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await member.goto("/training?tab=log");
+    await hydratedClick(
+      member,
+      member
+        .getByTestId("training-log-row")
+        .filter({ hasText: OVERLAP_KEEPER_TITLE })
+    );
+    await followLink(
+      member,
+      member.getByTestId("activity-pane-open"),
+      /\/training\/activity\/\d+$/
+    );
+
+    const banner = member.getByTestId("activity-overlap-banner");
+    await expect(banner).toBeVisible();
+    // It names WHO else logged it and WHAT — the two facts that make a reader
+    // recognise their own double-log.
+    await expect(banner).toContainText("Strava");
+    await expect(banner).toContainText(OVERLAP_TWIN_TITLE);
+
+    // And it opens the card menu's EXISTING picker rather than a second flow.
+    await member.getByTestId("activity-overlap-merge").click();
+    await expect(member.getByTestId("merge-picker")).toBeVisible();
+    await expect(member.getByTestId("merge-picker")).toContainText(
+      OVERLAP_TWIN_TITLE
+    );
+  } finally {
+    await member.close();
+  }
+});
+
+test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists for", async ({
+  page,
+}) => {
+  // The journey that found this broken: browse the Log, read the record in the
+  // pane, promote it to its page. The seeded walk carries per-minute HR inside
+  // its own window, which is the only condition under which the block renders —
+  // and rendering it used to take the whole page down through the error
+  // boundary, because the chart is shared with the ride page and demanded that
+  // page's chart-link provider (see RideChartLink's UNLINKED).
+  await page.goto("/training?tab=log");
+  const walkRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: ZONE_WALK_TITLE });
+  await hydratedClick(page, walkRow);
+  await followLink(
+    page,
+    page.getByTestId("activity-pane-open"),
+    /\/training\/activity\/\d+$/
+  );
+
+  const record = page.getByTestId("training-activity-page");
+  await expect(record).toBeVisible();
+  const hr = page.getByTestId("activity-hr-chart");
+  await expect(hr).toBeVisible();
+  // It says how much wear it is drawing, and the zone strip splits those same
+  // minutes — an empty chart frame would satisfy neither.
+  await expect(hr).toContainText(/\d+ recorded min/);
+  await expect(page.getByTestId("activity-heart-rate-zones")).toBeVisible();
+
+  // And what the DEVICE recorded second by second (#2870 step 4): the walk's
+  // streams are stored now that the fetch follows the recording rather than the
+  // sport, so the page draws them beside the wear minutes.
+  const traces = page.getByTestId("activity-traces");
+  await expect(traces).toBeVisible();
+  await expect(traces.locator("svg")).toBeVisible();
+  // A session that HAS detail never claims to be totals-only.
+  await expect(page.getByTestId("activity-totals-only")).toHaveCount(0);
+});
+
+test("a summary-only import says so, instead of leaving a silent short page", async ({
+  page,
+}) => {
+  // The failure this closes is not that the page is short — a hand-entered walk
+  // IS a total and a title. It is that a short page reads as something failing
+  // to load. Said only where the source actually answered: its empty telemetry
+  // row is the answer.
+  await page.goto("/training?tab=log");
+  await hydratedClick(
+    page,
+    page.getByTestId("training-log-row").filter({ hasText: TOTALS_ONLY_TITLE })
+  );
+  await followLink(
+    page,
+    page.getByTestId("activity-pane-open"),
+    /\/training\/activity\/\d+$/
+  );
+
+  await expect(page.getByTestId("training-activity-page")).toBeVisible();
+  await expect(page.getByTestId("activity-totals-only")).toContainText(
+    /recorded totals for this session/
+  );
+  await expect(page.getByTestId("activity-traces")).toHaveCount(0);
+  await expect(page.getByTestId("activity-hr-chart")).toHaveCount(0);
 });
 
 test("the ledger walk: older/newer links traverse adjacent activities", async ({

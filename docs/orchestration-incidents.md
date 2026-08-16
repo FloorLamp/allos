@@ -211,17 +211,22 @@ the first, one `git add -A` from being committed into itself. Nothing broke;
 
 ## gitleaks — what actually triggers it (#2409)
 
-**The blast radius is the whole repository, not one branch (#2949).** This
-section used to say the scan covered "its branch + main", so a finding on one
-feature branch left every other open PR green. That stopped being true when the
-job moved to `--log-opts="--all"` over a `fetch-depth: 0` checkout, which
-fetches every remote branch into `refs/remotes/origin/*`. Reproduced: a commit
-unreachable from the PR head is reported on a PR whose tree does not contain
-the file at all. One branch's credential-shaped fixture reds `gitleaks` on
-**every open PR**, naming a file none of them touched, until that branch is
-rebased or deleted. A follow-up commit that DELETES the literal does not clear
-it — the scan reads COMMITS, not tips. Believing the old sentence is what made
-the incident confusing, so the job now explains itself
+**What the check scans depends on the event (#2949, #2969).** A PR or
+merge-queue run scans **that branch's own range**; a `push` to a non-main branch
+scans `--log-opts="--all"`, every ref in the `fetch-depth: 0` checkout. Between
+#2949 and #2969 every PR scanned `--all`, and the blast radius was the whole
+repository: one branch's credential-shaped fixture redded `gitleaks` on **every
+open PR**, naming a file none of them touched, until that branch was rebased or
+deleted. It was paid for live on 2026-08-16 and the PR check was narrowed to the
+range; the accepted cost, recorded in #2969, is that the whole-repo re-audit now
+happens per push per branch rather than ~30 times a day.
+
+Two things survive the narrowing. A PR run that cannot resolve its base **falls
+back to `--all`** and says so in the step log — under-scanning silently is the
+worse failure — so a finding from another ref is still possible on a PR. And a
+follow-up commit that DELETES the literal still does not clear it: the scan
+reads COMMITS, not tips, so only an amend, a rebase, or deleting the branch
+does. The job explains which case it is
 (`scripts/gitleaks-explain.mjs`) instead of relying on this page being read.
 
 Once it merges the blob is in every checkout and only rewriting published main
@@ -552,3 +557,44 @@ So the cap number was not the defect and lowering it would have been the wrong
 correction: five agents SPREAD OUT cost nothing unusual. The evidence points at
 pacing, which is what #2973 already warns about — it just understated why. The
 warning's own rationale now names both queues it protects.
+
+## A deleted requirement, mistaken for dead code (2026-08-16)
+
+The fasting lifecycle (#2756) listed editability as an acceptance criterion:
+_"beyond it, a completed fast's instants stay editable."_ `editFast` shipped in
+the first commit, with a comment that shows the author understood the
+distinction — _"editing a completed fast's interval is recording fasting
+content, not closing out."_
+
+No `editFastAction` was ever written. `git log -S'editFastAction'` across every
+ref returns nothing. So from day one there was a write core with no Server
+Action and no surface, reachable only from tests.
+
+The first adversarial pass found exactly that and filed **D6: `editFast` is
+unreachable (tests only), yet cited as evidence the asymmetry is bounded.** That
+was a correct and useful finding — the PR really was citing an uncallable
+function as proof its life-stage gate was bounded. The orchestrator relayed it
+under _Lower severity_, the author deleted the function, and **nobody checked
+the dead code against the issue's acceptance criteria before removing it.**
+
+Five rounds later the fifth adversarial pass found that an implausibly long
+recorded fast has no recovery path: reopen refuses, discard refuses, and there
+is no edit core. The reason there was no edit core is that the review had
+deleted it. The owner then ruled (#2993) to rebuild it — a core plus a surface,
+earning its own adversarial pass.
+
+So the loop was: the issue asked for it → it was half-built → review classified
+the half as debris → the absence was rediscovered as a defect → it was ordered
+rebuilt. Each step was locally defensible. The cost was five rounds and a
+rebuild.
+
+**The rule this bought** (`review-merge.md` §Review): a removal is checked
+against the issue's acceptance criteria before it is accepted. An unreachable
+export can be debris or an unfinished requirement, and the code cannot tell you
+which — only the issue can.
+
+Worth separating from the sibling question in the same PR: **delete** was never
+fasting-specific. The app's generic delete is Data → Manage, per registered
+dataset, and fasting only reached it in #2981 as a side effect of the
+`OWNED_TABLES` right-to-delete fix. That was a registration gap. Editability was
+a scoped requirement — different failure, different fix.

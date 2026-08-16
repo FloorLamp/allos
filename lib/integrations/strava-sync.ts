@@ -19,7 +19,7 @@ import type {
   NormMetricSample,
 } from "./normalize";
 import {
-  hasCyclingStreamDetails,
+  hasTelemetryAnswer,
   replaceActivityLaps,
   replaceSegmentEfforts,
   STRAVA_STREAM_KEYS,
@@ -32,7 +32,6 @@ import {
   createStravaRequestBudget,
   type StravaRequestBudget,
 } from "./strava-rate-limit";
-import { isCyclingActivity } from "@/lib/cycling-activity";
 import { backfillFetchVerdict } from "./backfill-outcome";
 
 // Strava's half of the shared pull runner (#2040): the list+detail request pair, the
@@ -219,24 +218,25 @@ const stravaSpec: PullSpec<
 
       for (const summary of list) {
         const externalId = `${STRAVA_ID}:${summary.id}`;
-        const sportType = String(summary.sport_type ?? summary.type ?? "");
-        const cycling = [
-          "Ride",
-          "GravelRide",
-          "MountainBikeRide",
-          "EBikeRide",
-          "VirtualRide",
-        ].includes(sportType);
-        const imported = hasImportedStravaActivity(profileId, externalId);
-        const hasStreams =
-          cycling && hasCyclingStreamDetails(profileId, externalId, STRAVA_ID);
+        // Streams are asked for by RECORDING, not by sport (#2870 step 4).
+        // `activity_telemetry` was schema-generic from the start, but the fetch
+        // was gated to a five-entry cycling allowlist — so a run or a walk from
+        // the same watch, carrying the same heart-rate and pace series, stored
+        // nothing. What actually decides whether a stream exists is whether a
+        // device recorded the session: Strava's own `manual` flag marks the
+        // hand-entered ones, and asking about those costs a request to learn
+        // "nothing" every time.
+        const recorded = summary.manual !== true;
+        const answered =
+          recorded && hasTelemetryAnswer(profileId, externalId, STRAVA_ID);
         const startSec = Math.floor(
           new Date(String(summary.start_date)).getTime() / 1000
         );
+        const imported = hasImportedStravaActivity(profileId, externalId);
         // The trailing window exists to FIND late uploads, not to re-download the
         // same immutable detail and stream payloads every hour. A known row is done
-        // unless it is a cycling activity whose telemetry is still absent/empty.
-        if (imported && (!cycling || hasStreams)) {
+        // unless the source might still have streams we have never asked for.
+        if (imported && (!recorded || answered)) {
           raw.push(summary);
           // The trailing rescan must still carry late Strava edits through the
           // ordinary edit-lock-aware upsert. Only skip the expensive detail and
@@ -279,9 +279,16 @@ const stravaSpec: PullSpec<
           skipped++;
           continue;
         }
-        if (cycling && detailRes.ok) {
+        if (detailRes.ok) {
           let stream: unknown = null;
-          if (!hasStreams) {
+          // Whether the source has now SAID what it holds for this activity. A
+          // hand-entered one is answered without asking; a 200 (streams or an
+          // empty payload) and a 403/404/410 are both final. A transient
+          // failure is NOT — recording an empty row for it would settle the
+          // question against a server hiccup, and the automatic sync would
+          // never ask again.
+          let answeredNow = !recorded;
+          if (recorded && !answered) {
             if (!(await loadSnapshots())) {
               truncated = true;
               break;
@@ -296,22 +303,28 @@ const stravaSpec: PullSpec<
               truncated = true;
               break;
             }
+            answeredNow =
+              streamRes.ok ||
+              backfillFetchVerdict(streamRes.status) === "unavailable";
             stream = streamRes.ok ? streamRes.json : null;
           }
           const artifacts = mapStravaCyclingArtifacts(
             String(summary.id),
             detail,
             stream,
-            hasStreams ? null : athlete,
-            hasStreams ? null : zones,
+            answered ? null : athlete,
+            answered ? null : zones,
             snapshotAt
           );
-          cyclingTelemetry.push(artifacts.telemetry);
+          // Laps and efforts ride on the DETAIL, so they land whenever it does.
+          // Telemetry lands only on a settled answer, so "we have a row" keeps
+          // meaning "the source has told us", which is what stops the hourly
+          // re-ask without abandoning a row over a 500.
+          if (answeredNow || answered)
+            cyclingTelemetry.push(artifacts.telemetry);
           activityLaps.push(...artifacts.laps);
           segmentEfforts.push(...artifacts.segmentEfforts);
-          if (detailRes.ok) {
-            detailArtifactParents.push(mapped.activity.external_id);
-          }
+          detailArtifactParents.push(mapped.activity.external_id);
         }
         activities.push(mapped.activity);
         samples.push(...mapped.samples);
@@ -374,10 +387,16 @@ function stravaBackfillCandidates(
         ORDER BY a.date DESC, a.start_time DESC, a.id DESC`
     )
     .all(profileId) as StravaBackfillCandidate[];
-  return rows.filter(isCyclingActivity);
+  // Every Strava session, not just the rides (#2870 step 4). The candidate
+  // predicate above is unchanged and deliberately still matches an EMPTY
+  // telemetry row: unlike the automatic sync, this job runs only when a person
+  // asks for it, and re-asking is what picks up a ride made public again or an
+  // upload the source has since finished processing (see backfill-outcome.ts on
+  // why no give-up marker is stored).
+  return rows;
 }
 
-export function countMissingStravaRideDetails(profileId: number): number {
+export function countMissingStravaSessionDetails(profileId: number): number {
   return stravaBackfillCandidates(profileId).length;
 }
 
@@ -402,7 +421,9 @@ export interface StravaBackfillProgress {
   requests: number;
 }
 
-// Fill rich artifacts for Strava rides imported before cycling telemetry existed.
+// Fill rich artifacts for Strava sessions imported before their streams were
+// fetched — the rides that predate cycling telemetry, and (since #2870 step 4)
+// every run, walk, and worn session the old cycling allowlist never asked about.
 // Successful rows disappear from the candidate query, so every invocation resumes
 // naturally and is safe to repeat after a quota pause or transient source error.
 //
@@ -542,7 +563,7 @@ export async function runStravaDetailsBackfill(
     // in this count. Subtract what this run resolved: `remaining` means "still worth
     // asking about", which is the question `done` is asking.
     remaining: Math.max(
-      countMissingStravaRideDetails(profileId) - unavailable,
+      countMissingStravaSessionDetails(profileId) - unavailable,
       0
     ),
     requests: budget.requests,

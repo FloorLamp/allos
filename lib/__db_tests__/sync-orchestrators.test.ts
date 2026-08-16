@@ -37,7 +37,7 @@ import {
 } from "@/lib/integrations/connections";
 import { runWithingsSync } from "@/lib/integrations/withings-sync";
 import {
-  countMissingStravaRideDetails,
+  countMissingStravaSessionDetails,
   runStravaDetailsBackfill,
   runStravaSync,
 } from "@/lib/integrations/strava-sync";
@@ -432,11 +432,30 @@ const STRAVA_DETAIL: Record<number, Record<string, unknown>> = {
 const startSec = (a: { start_date: string }) =>
   Math.floor(Date.parse(a.start_date) / 1000);
 
+// Per-activity stream payloads. The RUN carries what a watch records for one:
+// heart rate and pace, no power — the series the old cycling allowlist refused
+// to ask for (#2870 step 4).
+const STRAVA_STREAMS: Record<number, Record<string, unknown>> = {
+  111: {
+    time: { data: [0, 1, 2], original_size: 3 },
+    watts: { data: [180, 200, 220], original_size: 3 },
+  },
+  222: {
+    time: { data: [0, 1, 2], original_size: 3 },
+    heartrate: { data: [141, 152, 149], original_size: 3 },
+    velocity_smooth: { data: [2.6, 2.8, 2.7], original_size: 3 },
+  },
+};
+
 interface StravaOpts {
   // Return 429 on the detail fetch for these activity ids (simulate a mid-run limit).
   detail429?: number[];
   detail500?: number[];
   stream500?: number[];
+  // Strava's FINAL "nothing here" answers: 404 for an activity with no recorded
+  // streams, and a 200 carrying an empty payload.
+  stream404?: number[];
+  streamless?: number[];
   athlete500?: boolean;
   zones500?: boolean;
   ftp?: number;
@@ -477,14 +496,15 @@ function stubStrava(opts: StravaOpts = {}): ReturnType<typeof vi.fn> {
       if (opts.athlete500) return new Response(null, { status: 500 });
       return jsonResponse({ ftp: opts.ftp ?? 250 });
     }
-    if (u.includes("/activities/111/streams")) {
-      if (opts.stream500?.includes(111)) {
+    const streamed = /\/activities\/(\d+)\/streams/.exec(u);
+    if (streamed) {
+      const id = Number(streamed[1]);
+      if (opts.stream500?.includes(id))
         return new Response(null, { status: 500 });
-      }
-      return jsonResponse({
-        time: { data: [0, 1, 2], original_size: 3 },
-        watts: { data: [180, 200, 220], original_size: 3 },
-      });
+      if (opts.stream404?.includes(id))
+        return new Response(null, { status: 404 });
+      if (opts.streamless?.includes(id)) return jsonResponse({});
+      return jsonResponse(STRAVA_STREAMS[id] ?? {});
     }
     if (u.includes("/activities/")) {
       const id = Number(u.split("/activities/")[1].split("?")[0]);
@@ -737,6 +757,103 @@ describe("runStravaSync orchestrator", () => {
     ).toEqual({ ftp_w: 250 });
   });
 
+  it("stores a RUN's streams — the fetch follows the recording, not the sport (#2870 step 4)", async () => {
+    stubStrava();
+    await runStravaSync(p);
+
+    const telemetry = db
+      .prepare(
+        `SELECT t.streams_json
+           FROM activity_telemetry t
+           JOIN activities a ON a.id = t.activity_id
+          WHERE t.profile_id = ? AND a.external_id = 'strava:222'`
+      )
+      .get(p) as { streams_json: string } | undefined;
+    // The run is not a ride, and that used to be the whole reason its watch's
+    // heart-rate and pace series were never asked for.
+    const streams = JSON.parse(telemetry!.streams_json);
+    expect(streams.heartrate.data).toEqual([141, 152, 149]);
+    expect(streams.velocity_smooth.data).toEqual([2.6, 2.8, 2.7]);
+  });
+
+  it("a hand-entered activity is answered without a request, and never asked again", async () => {
+    const fetchMock = stubStrava({
+      summaries: [{ ...STRAVA_ACT_1, manual: true }],
+    });
+    await runStravaSync(p);
+
+    // Strava says a person typed this one in: there is no device series to ask
+    // for, and asking would spend a request to learn nothing every hour.
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("/streams"))
+    ).toHaveLength(0);
+    const activity = db
+      .prepare(
+        "SELECT id FROM activities WHERE profile_id = ? AND external_id = 'strava:111'"
+      )
+      .get(p) as { id: number };
+    expect(activity).toBeTruthy();
+
+    const before = fetchMock.mock.calls.length;
+    await runStravaSync(p);
+    // The rescan re-reads the list and stops there — no detail, no streams.
+    expect(fetchMock.mock.calls.slice(before)).toHaveLength(1);
+  });
+
+  it("a stream failure that is not final leaves the question open; a 404 settles it", async () => {
+    // 500 is a server hiccup, not an answer. Recording an empty row for it would
+    // settle the question against the hiccup, and the automatic sync would never
+    // ask again — the one way "we have a row" could start meaning the wrong thing.
+    stubStrava({ stream500: [222] });
+    await runStravaSync(p);
+    const runTelemetry = () =>
+      db
+        .prepare(
+          `SELECT t.streams_json
+             FROM activity_telemetry t
+             JOIN activities a ON a.id = t.activity_id
+            WHERE t.profile_id = ? AND a.external_id = 'strava:222'`
+        )
+        .get(p) as { streams_json: string } | undefined;
+    expect(runTelemetry()).toBeUndefined();
+
+    // So the next run asks again, and gets the series.
+    stubStrava();
+    await runStravaSync(p);
+    expect(JSON.parse(runTelemetry()!.streams_json).heartrate.data).toEqual([
+      141, 152, 149,
+    ]);
+
+    // A 404 IS final (Strava answers it for an activity with no recorded
+    // streams at all): the empty row it writes is the answer, and the automatic
+    // sync stops asking. The user-triggered backfill still re-asks those.
+    const other = newProfile("S-ORCH-404");
+    setStravaCredentials(other, "s-client", "s-secret");
+    setStravaTokens(other, {
+      accessToken: "s-access",
+      refreshToken: "s-refresh",
+      expiresAt: FUTURE(),
+    });
+    const fetchMock = stubStrava({ stream404: [222] });
+    await runStravaSync(other);
+    const settled = db
+      .prepare(
+        `SELECT t.streams_json
+           FROM activity_telemetry t
+           JOIN activities a ON a.id = t.activity_id
+          WHERE t.profile_id = ? AND a.external_id = 'strava:222'`
+      )
+      .get(other) as { streams_json: string };
+    expect(JSON.parse(settled.streams_json)).toEqual({});
+    const before = fetchMock.mock.calls.length;
+    await runStravaSync(other);
+    expect(
+      fetchMock.mock.calls
+        .slice(before)
+        .filter(([url]) => String(url).includes("/streams"))
+    ).toHaveLength(0);
+  });
+
   it("backfills missing ride telemetry and is a no-op once the ride is complete", async () => {
     db.prepare(
       `INSERT INTO activities
@@ -750,7 +867,7 @@ describe("runStravaSync orchestrator", () => {
         { name: "Cycling", type: "cardio", duration_min: 60, distance_km: 24 },
       ])
     );
-    expect(countMissingStravaRideDetails(p)).toBe(1);
+    expect(countMissingStravaSessionDetails(p)).toBe(1);
     const fetchMock = stubStrava();
 
     const result = await runStravaDetailsBackfill(p);
@@ -761,7 +878,7 @@ describe("runStravaSync orchestrator", () => {
       requests: 4,
       paused: false,
     });
-    expect(countMissingStravaRideDetails(p)).toBe(0);
+    expect(countMissingStravaSessionDetails(p)).toBe(0);
     expect(
       db
         .prepare(
