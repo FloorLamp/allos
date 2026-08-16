@@ -507,7 +507,11 @@ export function redactSecrets(s: string): string {
 // a credential, and masking them anyway turns `{"sessionCount":14}` into
 // `"***"` — the count is why the line was logged. The text path draws the same
 // line off quoting, so both readers agree on what a number is.
-function redactingReplacer(key: string, value: unknown): unknown {
+//
+// Exported because `redactBag` in lib/log.ts serializes the SAME shape for the
+// console echo (#2966). One replacer, so the two readers cannot drift the way
+// escape-then-redact and redact-then-escape drifted before.
+export function redactingReplacer(key: string, value: unknown): unknown {
   const maskable =
     typeof value === "string" || (typeof value === "object" && value !== null);
   if (key !== "" && maskable && isSensitiveKey(key)) return "***";

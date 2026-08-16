@@ -15,7 +15,7 @@
 // The SAME redaction chokepoint the persisted copies use (lib/error-log.ts via
 // buildDetail, lib/ai-log.ts directly). error-log-format.ts is pure — no fs, no
 // node builtins — so importing it here keeps log.ts Edge-safe.
-import { redactSecrets } from "./error-log-format";
+import { redactSecrets, redactingReplacer } from "./error-log-format";
 
 export type Level = "debug" | "info" | "warn" | "error";
 
@@ -104,33 +104,60 @@ function redactValues(bag: Record<string, unknown>): Record<string, unknown> {
 // aggregation, anyone with container access — so it gets the SAME treatment from
 // the SAME chokepoint the persisted copy uses, not a second policy.
 //
-// The bag is masked WHOLE, the way buildDetail() feeds the persisted copy: the
-// redaction keys off `key: value` text, so serializing first is what lets
-// `{ authorization: "<bare token>" }` mask at all. The structure is then restored
-// so the JSON format stays parseable. Masking CAN turn an unquoted value
-// (`"session":42` → `"session":***`) into invalid JSON, and an aggregator reading
-// `docker logs` should not have to cope with that — so when the round trip fails
-// the masked text is emitted as one string field. That loses the field shape,
-// never the masking: redaction is the point of the exercise.
+// REDACTION HAPPENS DURING SERIALIZATION, not after it (#2966). This used to
+// stringify the whole bag and redact the resulting text, which is the ordering
+// #2938 condemned and #2955 fixed for buildDetail: `JSON.stringify` escapes the
+// quotes the key/value rules key off, so a field holding JSON came out as
+// `{\"access_token\":\"…\"}` and every extra level of nesting escaped again.
+// It survived only because #2955's key rule happens to match the SINGLE-escaped
+// `\"key\":` form — protection resting on a coincidence, with a real leak one
+// level further down (a field holding JSON that itself holds JSON matched
+// nothing). Sharing buildDetail's replacer fixes the ordering instead of adding
+// another pattern; escaping is what defeats patterns.
 //
-// Nothing changes when nothing matches: an untouched bag is returned as-is, and
+// Two consequences worth stating, because both were bugs before:
+//
+//   * The output is valid JSON BY CONSTRUCTION. The replacer substitutes whole
+//     values, so it can no longer emit an unquoted `***` mid-object. The old
+//     `{redacted: …}` collapse — where one over-masked field took the entire
+//     bag, `profileId` included, into a single opaque string — is gone, and with
+//     it the log line an operator could not act on.
+//   * The replacer is gated on TYPE, so a number, boolean or null under a
+//     sensitive key keeps its value. `{ sessionCount: 42 }` and
+//     `{ tokenValid: false }` are counters and flags; masking them is a defect
+//     the same way a leak is.
+//
+// Nothing changes when nothing matches: an untouched bag is returned as-is (so
+// the JSON round trip cannot reshape values it had no reason to touch), and
 // redactSecrets is idempotent, so text a caller already redacted (every
 // recordAiEvent detail/error, #1842) passes through unchanged rather than
 // double-masked.
+//
+// Error stacks need no final whole-string pass here, unlike buildDetail:
+// normalizeFields has already turned every Error into plain strings that go
+// through the replacer like any other leaf.
 function redactBag(bag: Record<string, unknown>): Record<string, unknown> {
+  let changed = false;
+  const replacer = (key: string, value: unknown): unknown => {
+    const next = redactingReplacer(key, value);
+    if (next !== value) changed = true;
+    return next;
+  };
   let json: string | undefined;
   try {
-    json = JSON.stringify(bag);
+    json = JSON.stringify(bag, replacer);
   } catch {
     return redactValues(bag);
   }
   if (json === undefined) return redactValues(bag);
-  const masked = redactSecrets(json);
-  if (masked === json) return bag;
+  if (!changed) return bag;
   try {
-    return JSON.parse(masked) as Record<string, unknown>;
+    return JSON.parse(json) as Record<string, unknown>;
   } catch {
-    return { redacted: masked };
+    // Unreachable via the replacer, which only ever substitutes whole values.
+    // Kept as a floor so a future replacer change degrades to less structure
+    // rather than to an unmasked line.
+    return redactValues(bag);
   }
 }
 
