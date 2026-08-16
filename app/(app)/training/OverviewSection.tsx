@@ -79,7 +79,10 @@ import PrCard from "@/components/PrCard";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import TrainingFindings from "./TrainingFindings";
 import WeekSpine from "./WeekSpine";
+import RecentSessions from "./RecentSessions";
 import { buildWeekSpine } from "@/lib/training-week-spine";
+import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
+import { recentSessionsView } from "@/lib/training-recent-sessions";
 
 const KIND_LABEL: Record<CardioPR["kind"], string> = {
   distance: "longest",
@@ -120,6 +123,7 @@ export default async function OverviewSection() {
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
   const du = units.distanceUnit;
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const todayStr = today(profile.id);
 
   // The week's (day, type) tallies — ONE row set, folded twice (#2566/#221): into the
@@ -132,6 +136,16 @@ export default async function OverviewSection() {
     today: todayStr,
     rows: weekDays.rows,
   });
+  // …and what those blocks actually WERE (#2566). The band says a session
+  // happened; it cannot say the run was 8 km. This reads the Training Log's own
+  // newest page and folds it — same cards, same numbers, same wording (#221) —
+  // so the week's sessions are legible here without opening the Log. Seven days
+  // of ACTIVE days is the widest a week can be, so nothing older is fetched
+  // except when the week is empty and the fallback needs the last session.
+  const recentSessions = recentSessionsView(
+    buildTrainingLogFeedPage(profile.id, null, units, formatPrefs, 7).groups,
+    { weekStart: weekDays.start, today: todayStr }
+  );
   // The weekly routine, scoped to the targets whose home IS this page (#2888) —
   // strength regions and groups, activity types, and mobility regions. A food habit or
   // a wellness practice is a real target on a real page; that page is not this one.
@@ -152,11 +166,7 @@ export default async function OverviewSection() {
     30
   );
 
-  const cardio = getCardioByActivity(
-    profile.id,
-    du,
-    getDisplayFormatPrefs(login.id)
-  );
+  const cardio = getCardioByActivity(profile.id, du, formatPrefs);
   const cardioPrs = recentCardioPRs(cardio, todayStr, 30);
 
   // (date, exercise) rows over the recent window — one scan reused for the
@@ -543,6 +553,12 @@ export default async function OverviewSection() {
           This week
         </h3>
         <WeekSpine spine={spine} />
+
+        {/* What those blocks were. The band is the shape, this is the content —
+            one card, so "which days / what I did / what the routine still wants"
+            is one read. Nothing here recomputes: the rows ARE the Training Log's
+            cards, capped and folded (#221). */}
+        <RecentSessions view={recentSessions} />
 
         <div className="mt-5 border-t border-black/10 pt-4 dark:border-white/10">
           <div className="flex items-baseline justify-between gap-2">
