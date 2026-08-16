@@ -13,12 +13,34 @@ import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 // keeps `gateAllows` (lib/__tests__/offline-write-gate.test.ts) and everything below is
 // here.
 //
-// Four leaks, all measured on this branch before the gate existed, all of the same
-// shape — a guard that was true of its own function and false of the system:
-//   R1  the OFF SWITCH re-materialised all five kinds from a server not yet told;
-//   R2  a SECOND TAB wrote everything back into the store logout had just cleared;
-//   R3d a queue flush in flight re-wrote its retry entries after the wipe;
-//   R3e a form draft's 600ms debounce landed a half-typed record after the wipe.
+// Leaks measured on this branch before the gate existed, all of the same shape — a guard
+// that was true of its own function and false of the system:
+//   R1   the OFF SWITCH re-materialised all five kinds from a server not yet told;
+//   R2   a SECOND TAB wrote everything back into the store logout had just cleared;
+//   R2b  the same, with the race removed: a tab that LOADS inside the logout window;
+//   R2c  and the other direction — the next login must get the feature back;
+//   R3d  a queue flush in flight re-wrote its retry entries after the wipe;
+//   R3e  a form draft's 600ms debounce landed a half-typed record after the wipe.
+//
+// MOVING A TEST TO THIS TIER IS NOT THE SAME AS MAKING IT MEASURE SOMETHING, and both
+// tests added here since have been caught not measuring. Mutation testing is the only
+// thing that found either, so it is the standard for anything added below:
+//
+//   • R2 passed 12/12 locally against an `openSessionAs` that re-opened the gate
+//     unconditionally — the exact shipped defect — and failed 2 of 3 on a loaded CI
+//     runner. It is a race, not a property. R2b is the same finding with the race taken
+//     out, and it fails 2/2 against that mutant.
+//   • R3d asserted an empty intents store after a logout that had already navigated to
+//     /login, taking the flush continuation with it. The store was empty because the
+//     writer had been destroyed. It passed against `gateAllows` mutated to `return true`.
+//     It now intercepts the replay before the network returns, answers `error` so there
+//     IS a write-back, keeps the page alive for it, and counts the replayed keys — and
+//     against that mutant it fails with `attempts: 1`, which is the review's own
+//     signature for a re-write rather than a wipe that missed.
+//
+// So: an absence proves nothing without a control showing the presence was possible.
+// Every test below that asserts "nothing was written" says how it knows something would
+// have been.
 //
 // It runs in its own unauthenticated context and logs in by hand, because it exercises
 // LOGOUT — which destroys the session row server-side and would invalidate the shared
@@ -319,30 +341,81 @@ test("R3d — a queue flush in flight does not re-write its intents after logout
     .filter({ hasText: "Sertraline" });
   await expect(row).toHaveCount(1);
   await context.setOffline(true);
-  try {
-    await row.getByRole("button", { name: "Mark taken" }).click();
-    await expect(page.getByTestId("offline-queue-badge")).toHaveText(
-      /1 queued offline/
-    );
-  } finally {
-    await context.setOffline(false);
-  }
+  await row.getByRole("button", { name: "Mark taken" }).click();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /1 queued offline/
+  );
   expect((await storedRows(page, "intents")).length).toBe(1);
 
-  // Hold the replay POST open so a flush is genuinely in flight, and the logout POST too.
-  // `putIntents(plan.retry)` and `saveRejected` both run after that round trip resolves,
-  // which is after the wipe — `attempts: 0 -> 1` in the store is what proved it a
-  // re-write rather than a wipe that missed.
+  // THE RE-WRITE HAS TO HAPPEN SOMEWHERE THE DOCUMENT IS STILL ALIVE, and getting that
+  // wrong is how the first version of this test came to assert nothing at all. It went
+  // back online first — so the browser's own `online` event flushed the queue against the
+  // real server, which replayed it successfully and deleted the row — then held both
+  // POSTs for the same 6s and waited for `/login`. By then there was no queue left to
+  // flush, no write-back to refuse, and the page had navigated away from the writer
+  // anyway. It passed with `gateAllows` mutated to `return true`, which is the definition
+  // of measuring nothing. The control at the bottom is what would have caught that, so it
+  // is now part of the test.
+  //
+  // Three things had to change. The replay is intercepted BEFORE the network comes back,
+  // so the first flush is the one under control. It answers `error`, which is the branch
+  // that calls `putIntents` — a successful replay DELETES the row and there is nothing to
+  // refuse. And the logout POST is held far longer than the replay, so the wipe lands
+  // first and the write-back then runs on a page still mounted, still authenticated and
+  // still on /medications.
+  const REPLAY_HOLD_MS = 8_000;
+  const LOGOUT_HOLD_MS = 30_000;
+
   await page.route("**/*", async (route) => {
     if (route.request().method() === "POST") {
-      await new Promise((r) => setTimeout(r, LOGOUT_POST_LATENCY_MS));
+      await new Promise((r) => setTimeout(r, LOGOUT_HOLD_MS));
     }
     await route.continue();
   });
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+
+  // Registered AFTER the catch-all so it wins — Playwright matches most-recent first.
+  let replayedKeys = 0;
+  await page.route("**/api/offline-replay*", async (route) => {
+    const body = route.request().postDataJSON() as {
+      intents?: { key: string }[];
+    };
+    const results = (body.intents ?? []).map((i) => ({
+      key: i.key,
+      status: "error",
+    }));
+    replayedKeys += results.length;
+    await new Promise((r) => setTimeout(r, REPLAY_HOLD_MS));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results }),
+    });
+  });
+
+  await context.setOffline(false);
+  // Log out only once the flush is genuinely in flight — the window the finding is about
+  // is the one between the request going out and its answer coming back.
+  await expect.poll(() => replayedKeys, { timeout: 20_000 }).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Log out" }).click();
-  await page.waitForURL(/\/login/, { timeout: 30_000 });
-  await page.waitForTimeout(3_000); // waitfortimeout-ok: absence — outlasts the held replay round trip, after which the re-write used to land
+
+  // The wipe landed, and the logout POST is still being held — so everything below runs
+  // inside the authenticated window.
+  await expect
+    .poll(() => storedRows(page, "intents"), { timeout: 15_000 })
+    .toEqual([]);
+
+  // Outlast the held replay, whose resolution is where `putIntents(plan.retry)` runs.
+  await page.waitForTimeout(REPLAY_HOLD_MS + 3_000); // waitfortimeout-ok: absence — the re-write lands here or not at all
+
+  // NON-VACUITY CONTROL. Everything below is an absence, and an absence is only evidence
+  // if the thing that would have caused a presence actually happened. A flush that never
+  // reached the server has no write-back to refuse, and the two assertions after this
+  // would then pass against any implementation — which is the exact failure mode this
+  // whole file was rewritten to escape.
+  expect(
+    replayedKeys,
+    "the flush never reached the server, so no write-back could have been refused"
+  ).toBeGreaterThan(0);
 
   expect(await storedRows(page, "intents")).toEqual([]);
   expect(await storedRows(page, "rejected")).toEqual([]);
