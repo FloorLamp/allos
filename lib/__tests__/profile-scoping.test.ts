@@ -15,6 +15,15 @@ import {
   relPath,
   sourceFiles,
 } from "./sql-scan";
+import {
+  DYNAMIC_TABLE_RENAMES,
+  MIGRATION_VERSIONS_DIR,
+  finalTablesDeclaring,
+  migrationFileNames,
+  migrationSources,
+  tableRenames,
+  tablesRetired,
+} from "./migration-schema-scan";
 
 // Static leak-detection for the multi-user conversion. This
 // reads the repo's own source as TEXT — no DB, no network, so it stays "pure" in
@@ -648,109 +657,22 @@ describe("cross-profile scoping: profile_id IN only in registered modules", () =
 // carries no ON DELETE CASCADE). This block fails the build if the shared const or
 // its consumers drift.
 
-const MIGRATION_VERSIONS_DIR = "lib/migrations/versions";
+// The corpus is read by lib/__tests__/migration-schema-scan.ts — EVERY migration file,
+// both naming eras, with rebuild scratch tables and renames resolved before retirement.
+// It used to be read here, filtered to `/^\d{3}-/`: the CLOSED numbered era only. That
+// filter was keyed to a naming convention rather than to the schema, so the moment
+// migrations became name-keyed at 185 this guard went blind to every table born after —
+// which is precisely the drift it exists to catch (#2995). #2981 bought back the
+// narrowest piece of it (a second, additive read of the name-keyed files, just so
+// registering `fasts` had schema evidence behind it) and deferred the rest here.
 
-function migrationFiles(match: (f: string) => boolean): string {
-  const dir = path.join(REPO, MIGRATION_VERSIONS_DIR);
-  return fs
-    .readdirSync(dir)
-    .filter(match)
-    .sort()
-    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
-    .join("\n");
-}
-
-// The CLOSED numbered era (001-… … 185-…). Immutable, so everything below that
-// reasons about renames, rebuilds and retirement is reasoning about a fixed corpus.
-function migrationSources(): string {
-  return migrationFiles((f) => /^\d{3}-.*\.ts$/.test(f));
-}
-
-// The name-keyed era that replaced it (`YYYYMMDD-slug.ts`). Read SEPARATELY and
-// used only to ADD newly-created owned tables, because the numbered era's
-// retirement/rename machinery below is calibrated to that corpus and re-running it
-// over both eras changes answers it already gives correctly (`substance_log` is
-// dropped by a name-keyed migration after being rebuilt into
-// `substance_daily_totals` through a `_new` scratch table, so a naive union retires
-// a live owned table).
-//
-// WHY THIS EXISTS AT ALL. The derivation above was keyed to a naming convention,
-// not to the schema, so every table born after the era changed was invisible to it
-// — and `fasts` (#2756) is the FIRST genuinely new profile-owned table since, which
-// is why a blind spot this old had never fired. Registering `fasts` in OWNED_TABLES
-// without this would have left the entry unbacked by any schema evidence, which is
-// the same "true of its own file, false of the system" shape the registration
-// itself was fixing. The BROADER audit of this scan (the rebuild scratch names it
-// also misses, and retirement across the era boundary) is #2995 and is deliberately
-// NOT done here.
-function postEraMigrationSources(): string {
-  return migrationFiles(
-    (f) => f.endsWith(".ts") && f !== "index.ts" && !/^\d{3}-/.test(f)
-  );
-}
-
-// Rebuild SCRATCH tables: `<final>_new` (the numbered era's convention) and
-// `<final>__new_<issue>` (the name-keyed era's). Both are created, copied into, and
-// RENAMEd onto the real name in the same migration — they are never a table in
-// their own right, so they are not owned-table declarations.
-function isRebuildScratchTable(name: string): boolean {
-  return name.endsWith("_new") || /__new_\d+$/.test(name);
-}
-
-// The tables whose CREATE TABLE block in any numbered migration declares a
-// `profile_id` column. Every profile-owned table should be born `profile_id NOT
-// NULL` in its CREATE block, so the migration source is the ground truth for
-// "directly profile-owned" — adding a profile_id table to the schema WITHOUT
-// adding it to OWNED_TABLES fails this test, which is the exact drift Fix 1 exists
-// to prevent. `_new` rebuild scratch tables are ignored. Uses a balanced-paren
-// scan of each CREATE body.
+// The tables whose CREATE TABLE block declares a `profile_id` column, under their
+// final-schema names. Every profile-owned table is born `profile_id NOT NULL` in its
+// CREATE block, so the migration source is the ground truth for "directly profile-owned"
+// — adding a profile_id table to the schema WITHOUT adding it to OWNED_TABLES fails this
+// test, which is the exact drift Fix 1 exists to prevent.
 function tablesDeclaringProfileId(dbSrc: string): Set<string> {
-  const out = new Set<string>();
-  const re = /CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\(/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(dbSrc))) {
-    const name = m[1];
-    let i = re.lastIndex;
-    let depth = 1;
-    let body = "";
-    while (i < dbSrc.length && depth > 0) {
-      const c = dbSrc[i];
-      if (c === "(") depth++;
-      else if (c === ")") {
-        depth--;
-        if (depth === 0) break;
-      }
-      body += c;
-      i++;
-    }
-    re.lastIndex = i;
-    if (isRebuildScratchTable(name)) continue;
-    if (/\bprofile_id\b/.test(body)) out.add(name);
-  }
-  return out;
-}
-
-// Tables a later migration DROPS and never recreates — they are no longer part of the
-// schema, so they must not be expected in OWNED_TABLES even though their (frozen,
-// un-editable) CREATE block still sits in an earlier migration's source. The first
-// case is `starred_biomarkers`, folded into `saved_items` by migration 113 (#1456).
-//
-// A table-REBUILD (create scratch → copy → DROP original → RENAME scratch into place)
-// also emits a DROP, so a dropped name that is later RENAMEd back into existence is
-// NOT retired — that subtraction is what keeps the ~20 rebuild migrations from
-// silently emptying the derived set.
-function tablesDroppedForGood(dbSrc: string): Set<string> {
-  // Comment lines are skipped: migration 006's PROSE discusses "a DROP TABLE
-  // intake_items", and a table must never be retired by a sentence about it.
-  const code = dbSrc
-    .split("\n")
-    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
-    .join("\n");
-  const dropped = new Set<string>();
-  for (const m of code.matchAll(/DROP TABLE (?:IF EXISTS )?(\w+)/g))
-    dropped.add(m[1]);
-  for (const m of code.matchAll(/RENAME TO (\w+)/g)) dropped.delete(m[1]);
-  return dropped;
+  return finalTablesDeclaring(dbSrc, (body) => /\bprofile_id\b/.test(body));
 }
 
 // profile_id-bearing tables that are intentionally NOT per-profile-OWNED data
@@ -764,16 +686,32 @@ const NON_OWNED_PROFILE_ID_TABLES = new Set([
   "profile_settings",
 ]);
 
-// The numbered migration era is immutable, so its CREATE blocks retain the three
-// aggregate names that #2740 later moves in place. Normalize those declarations to
-// their final-schema names before comparing them with the runtime registry.
-const FINAL_OWNED_TABLE_RENAMES = new Map([
-  ["food_log", "food_daily_totals"],
-  ["protein_log", "protein_daily_totals"],
-  ["substance_log", "substance_daily_totals"],
-]);
+// The one derivation: every profile_id table the schema has today, minus the two
+// documented non-owned ones. Pure in its input, so the unit block below can run it over
+// SYNTHETIC migration text and prove both directions — a new owned table fails the build,
+// a rebuild scratch or a documented non-owned table does not.
+function derivedOwnedTables(dbSrc: string): string[] {
+  return [...tablesDeclaringProfileId(dbSrc)]
+    .filter((t) => !NON_OWNED_PROFILE_ID_TABLES.has(t))
+    .sort();
+}
 
 describe("owned-table set: single source of truth (no drift)", () => {
+  it("reads every migration in the directory, in both naming eras", () => {
+    // The blind spot itself (#2995), pinned. `/^\d{3}-/` matched the CLOSED numbered
+    // era only, so 17 name-keyed migrations were invisible to the derivation below —
+    // and a guard that cannot see a migration cannot fail on what it declares. This
+    // asserts the enumeration by SUBTRACTION (every .ts but the registry), so a third
+    // naming era is covered the day it starts rather than the day someone notices.
+    const files = migrationFileNames();
+    const onDisk = fs
+      .readdirSync(path.join(REPO, MIGRATION_VERSIONS_DIR))
+      .filter((f) => f.endsWith(".ts"));
+    expect(files).toEqual(onDisk.filter((f) => f !== "index.ts").sort());
+    expect(files.some((f) => /^\d{3}-/.test(f))).toBe(true);
+    expect(files.some((f) => !/^\d{3}-/.test(f))).toBe(true);
+  });
+
   it("OWNED_TABLES equals the schema's profile_id tables (minus documented globals)", () => {
     const dbSrc = migrationSources();
     const declared = tablesDeclaringProfileId(dbSrc);
@@ -782,40 +720,34 @@ describe("owned-table set: single source of truth (no drift)", () => {
     // profile_id tables.
     expect(declared.size).toBeGreaterThan(20);
 
+    // Tables BORN in each era must both be present, or the corpus read has silently
+    // narrowed again: `metric_samples` from the numbered era, `fasts` (#2756) from the
+    // name-keyed one — the first genuinely new owned table after the era changed, and
+    // the one whose omission this guard failed to catch.
+    expect(declared.has("metric_samples")).toBe(true);
+    expect(declared.has("fasts")).toBe(true);
+
     // The allowlisted globals must genuinely declare profile_id (else the
     // allowlist is masking a typo rather than excluding a real global table).
     for (const t of NON_OWNED_PROFILE_ID_TABLES)
       expect(declared.has(t)).toBe(true);
 
-    const retired = tablesDroppedForGood(dbSrc);
-    // Sanity: the retirement rule must not be swallowing live tables (every rebuild
-    // migration also emits a DROP, and those names come back via RENAME TO).
-    expect([...retired].sort()).toEqual(["starred_biomarkers"]);
+    // Sanity: the retirement rule must not be swallowing live tables. Every rebuild
+    // migration also emits a DROP (those names come back via RENAME TO), and
+    // `substance_log`'s DROP is a RENAME in disguise — it is the case that makes the
+    // rename-before-retire ordering load-bearing, since resolving it the other way
+    // round retires the live `substance_daily_totals`.
+    const renames = tableRenames(dbSrc);
+    expect([...tablesRetired(dbSrc, renames)].sort()).toEqual([
+      "starred_biomarkers",
+    ]);
+    for (const from of DYNAMIC_TABLE_RENAMES.keys())
+      expect(renames.get(from)).toBe(DYNAMIC_TABLE_RENAMES.get(from));
 
-    // Tables BORN in the name-keyed era (`fasts`, #2756 — the first one). Nothing in
-    // that era drops a table for good, so no retirement/rename normalization applies
-    // to this half; the scratch-name filter inside tablesDeclaringProfileId is what
-    // keeps the rebuild `__new_<issue>` names out.
-    const postEraOwned = tablesDeclaringProfileId(postEraMigrationSources());
-    // Sanity that this half actually reads files and parses them, the same guard the
-    // numbered half gets from `declared.size > 20` above: a broken filter or path
-    // would otherwise silently contribute nothing and pass. `fasts` is the era's one
-    // owned table today; the next one joins by landing in `derivedOwned` below and
-    // failing until it is registered, which is the whole point.
-    expect(postEraOwned.has("fasts")).toBe(true);
-
-    const derivedOwned = [
-      ...new Set([
-        ...[...declared]
-          .filter((t) => !NON_OWNED_PROFILE_ID_TABLES.has(t) && !retired.has(t))
-          .map((t) => FINAL_OWNED_TABLE_RENAMES.get(t) ?? t),
-        ...postEraOwned,
-      ]),
-    ].sort();
     // The schema-derived owned set MUST equal OWNED_TABLES. A new profile_id table
     // added to a migration but forgotten in OWNED_TABLES lands in `derivedOwned`
     // only → this fails, catching the exact orphaned-PHI drift Fix 1 prevents.
-    expect(derivedOwned).toEqual([...OWNED_TABLES].sort());
+    expect(derivedOwnedTables(dbSrc)).toEqual([...OWNED_TABLES].sort());
     expect(new Set(OWNED_TABLES).size).toBe(OWNED_TABLES.length);
   });
 
@@ -827,6 +759,79 @@ describe("owned-table set: single source of truth (no drift)", () => {
   // string), so their presence flags a re-introduced literal.
   const read = (rel: string) => fs.readFileSync(path.join(REPO, rel), "utf8");
   const LIST_SENTINELS = ['"metric_samples"', '"upcoming_dismissals"'];
+
+  // BOTH DIRECTIONS, on SYNTHETIC migration text (#2995). The live corpus can only ever
+  // show that the derivation agrees with OWNED_TABLES today; these show what it DOES when
+  // the corpus changes, which is the property the guard is actually for. Each fixture is
+  // written in the name-keyed era's shape — the era the old `/^\d{3}-/` read could not
+  // see at all.
+  const NEW_OWNED = `
+    db.exec(\`CREATE TABLE sleep_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      started_at TEXT NOT NULL
+    );\`);`;
+
+  it("MUST fail the build: a new owned table born in the name-keyed era", () => {
+    // The whole point. An unregistered profile_id table is a table deleteProfile's
+    // per-OWNED_TABLES sweep skips — orphaned PHI, since the sweep runs with
+    // foreign_keys OFF and the CASCADE above never fires (#729).
+    expect(derivedOwnedTables(NEW_OWNED)).toEqual(["sleep_sessions"]);
+  });
+
+  it("MUST NOT fail the build: a rebuild scratch table", () => {
+    // create scratch → copy → drop original → rename scratch into place. The scratch is
+    // never a table in its own right; only `activities` is. Note the name matches NO
+    // `_new` suffix rule — `…__new_2878` and `…__new011` are both real scratch shapes in
+    // this corpus, which is why scratch is recognised by BEING RENAMED AWAY instead.
+    const rebuild = `
+      db.exec(\`CREATE TABLE activities__rebuild_2999 (
+        id INTEGER PRIMARY KEY,
+        profile_id INTEGER NOT NULL
+      );
+      INSERT INTO activities__rebuild_2999 SELECT id, profile_id FROM activities;
+      DROP TABLE activities;
+      ALTER TABLE activities__rebuild_2999 RENAME TO activities;\`);`;
+    expect(derivedOwnedTables(rebuild)).toEqual(["activities"]);
+  });
+
+  it("MUST NOT fail the build: a documented non-owned table re-declared by a rebuild", () => {
+    // The grant matrix and settings tier carry profile_id and are deleted explicitly,
+    // outside the OWNED_TABLES loop. #2981's additive post-era read unioned its half in
+    // RAW, so a name-keyed migration rebuilding `profile_settings` would have turned this
+    // suite red demanding a table the file documents as deliberately non-owned. One
+    // derivation with one filter is what closes that.
+    const rebuilt = `
+      db.exec(\`CREATE TABLE profile_settings__new_2999 (
+        profile_id INTEGER NOT NULL,
+        key TEXT NOT NULL
+      );
+      DROP TABLE profile_settings;
+      ALTER TABLE profile_settings__new_2999 RENAME TO profile_settings;\`);`;
+    expect(derivedOwnedTables(rebuilt)).toEqual([]);
+  });
+
+  it("MUST NOT fail the build: a table retired for good", () => {
+    const retired = `
+      db.exec(\`CREATE TABLE starred_things (id INTEGER, profile_id INTEGER);\`);
+      db.exec(\`DROP TABLE starred_things;\`);`;
+    expect(derivedOwnedTables(retired)).toEqual([]);
+  });
+
+  it("MUST NOT fail the build: an owned table rebuilt across eras into a NEW name", () => {
+    // `substance_log` → `substance_daily_totals`, the shape that makes the ordering
+    // load-bearing: the DROP lives in a name-keyed migration, the CREATE in a numbered
+    // one, and the successor arrives only through the scratch's RENAME TO. Retire before
+    // resolving the rename and the live table vanishes from the derived set — the guard
+    // lying in the direction nobody would notice.
+    const crossEra = `
+      db.exec(\`CREATE TABLE substance_log (id INTEGER, profile_id INTEGER);\`);
+      db.exec(\`CREATE TABLE substance_daily_totals_new (id INTEGER, profile_id INTEGER);
+      INSERT INTO substance_daily_totals_new SELECT id, profile_id FROM substance_log;
+      DROP TABLE substance_log;
+      ALTER TABLE substance_daily_totals_new RENAME TO substance_daily_totals;\`);`;
+    expect(derivedOwnedTables(crossEra)).toEqual(["substance_daily_totals"]);
+  });
 
   it("deleteProfile consumes the derived sweep, which consumes OWNED_TABLES (no private list)", () => {
     // The sweep itself moved to lib/profile-delete.ts (#2126): the child-table set
