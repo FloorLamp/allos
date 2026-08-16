@@ -262,10 +262,13 @@ describe("mis-reading age+sex shorthand would erase a true positive (#3020 R1)",
     reconcileFlags(p);
 
     // Nothing was adopted, so the adult band still applies and the true positive
-    // survives. With "45M" read as 45 months the same reconcile re-derives this against
-    // the pediatric band and the flag comes back null.
-    expect(getStoredAge(p)).toBeNull();
-    expect(alpOf(alp)).toBe("high");
+    // survives. Asserted as ONE object so a failure shows both halves at once: with a
+    // bare "m" in the table this reads `{ storedAge: 3, alp: null }` — the age the
+    // shorthand was mis-read as, and the flag that mis-reading erased.
+    expect({ storedAge: getStoredAge(p), alp: alpOf(alp) }).toEqual({
+      storedAge: null,
+      alp: "high",
+    });
   });
 
   it("still clears the claim when the document really does state a child's age", () => {
