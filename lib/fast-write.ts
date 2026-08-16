@@ -35,11 +35,7 @@
 import { now as clockNow } from "./clock";
 import { utcInstant, parseUtcSql } from "./date";
 import { writeTx } from "./db";
-import {
-  FAST_MAX_HOURS,
-  overlappingFasts,
-  type Fast,
-} from "./fasting";
+import { FAST_MAX_HOURS, overlappingFasts, type Fast } from "./fasting";
 import { isMinor } from "./life-stage";
 import {
   createFastRow,
@@ -182,18 +178,14 @@ export function reopenFast(profileId: number, id: number): ReopenFastOutcome {
 }
 
 export type DiscardFastOutcome =
-  | { kind: "discarded"; id: number }
-  | { kind: "not-found" };
+  { kind: "discarded"; id: number } | { kind: "not-found" };
 
 // DISCARD a fast — "I never actually fasted". The stale suggest's second resolution,
 // beside "end it at a backdated instant"; the two are different truths and the app is
 // not entitled to pick between them, which is why detection SUGGESTS and the tap writes.
 // Exempt from the life-stage gate on the same harm-reduction reasoning as `endFast`:
 // this removes fasting data, it never records any.
-export function discardFast(
-  profileId: number,
-  id: number
-): DiscardFastOutcome {
+export function discardFast(profileId: number, id: number): DiscardFastOutcome {
   return writeTx(() => {
     const row = getFast(profileId, id);
     if (!row) return { kind: "not-found" };

@@ -71,8 +71,11 @@ export default function FastingCard({
   );
 
   async function run(
-    fn: (fd: FormData) => Promise<
-      { ok: true; message: string; undoFastId?: number } | { ok: false; error: string }
+    fn: (
+      fd: FormData
+    ) => Promise<
+      | { ok: true; message: string; undoFastId?: number }
+      | { ok: false; error: string }
     >,
     fd: FormData
   ) {
@@ -156,8 +159,8 @@ export default function FastingCard({
           className="mt-3 rounded-md bg-slate-50 p-2 text-sm dark:bg-slate-800"
         >
           <p className="mb-2 text-slate-700 dark:text-slate-200">
-            This fast has been running for {formatFastDuration(state.elapsedMs)}.
-            End it at the time you actually stopped, or discard it if it never
+            This fast has been running for {formatFastDuration(state.elapsedMs)}
+            . End it at the time you actually stopped, or discard it if it never
             happened.
           </p>
           <button

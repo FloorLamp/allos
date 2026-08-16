@@ -42,8 +42,8 @@ export const getActiveFastCached = cache(
 );
 
 /** A profile's fasts, newest-started first — the Nutrition history list. */
-export const getFastHistory = cache(
-  (profileId: number, limit = 20): Fast[] => listFasts(profileId, limit)
+export const getFastHistory = cache((profileId: number, limit = 20): Fast[] =>
+  listFasts(profileId, limit)
 );
 
 // How many servings with a STATED eating instant fall inside a fast's interval — the

@@ -134,7 +134,9 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await expect(suggest).toBeVisible();
     // BOTH resolutions are offered and neither is taken for the user: end it at the
     // time you actually stopped, or discard it as never-happened.
-    await expect(suggest).toContainText("End it at the time you actually stopped");
+    await expect(suggest).toContainText(
+      "End it at the time you actually stopped"
+    );
     await expect(page.getByTestId("fasting-discard")).toBeVisible();
     // The fast is still RUNNING — detection suggests, the tap writes.
     await expect(page.getByTestId("fasting-control")).toContainText("End fast");
@@ -161,7 +163,9 @@ test.describe("the fasting lifecycle (#2756)", () => {
     // The CORE refuses, and the surface says which thing it could not do rather than
     // confirming a write that never landed.
     await expect(
-      page.getByTestId("toast").filter({ hasText: "A fast is already running." })
+      page
+        .getByTestId("toast")
+        .filter({ hasText: "A fast is already running." })
     ).toBeVisible();
 
     // Exactly one open fast, and it is still the one the other device started.
@@ -223,7 +227,9 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
     // a confirm-before-write — dueness gates nudging, never logging.
     await expect(count).toHaveText(String(before + 1));
 
-    const offer = page.getByTestId("toast").filter({ hasText: "End your fast?" });
+    const offer = page
+      .getByTestId("toast")
+      .filter({ hasText: "End your fast?" });
     await expect(offer).toBeVisible();
 
     // DECLINE by dismissing. Nothing happens: the app never auto-ends a fast, and the
@@ -241,7 +247,9 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     await settledClick(page, page.getByTestId("log-legumes"));
-    const offer = page.getByTestId("toast").filter({ hasText: "End your fast?" });
+    const offer = page
+      .getByTestId("toast")
+      .filter({ hasText: "End your fast?" });
     await expect(offer).toBeVisible();
     await settledClick(page, offer.getByRole("button", { name: "End fast" }));
 

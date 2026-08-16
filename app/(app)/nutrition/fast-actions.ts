@@ -94,7 +94,10 @@ function endMessage(outcome: EndFastOutcome): FastActionResult {
     case "none-active":
       return { ok: false, error: "No fast is running." };
     case "invalid":
-      return { ok: false, error: "That end time doesn't work — check the date." };
+      return {
+        ok: false,
+        error: "That end time doesn't work — check the date.",
+      };
   }
 }
 

@@ -214,9 +214,7 @@ export default async function FoodTab({
             return {
               fast: f,
               day,
-              label: day
-                ? formatWeekdayDate(day, formatPrefs)
-                : "In progress",
+              label: day ? formatWeekdayDate(day, formatPrefs) : "In progress",
               duration: formatFastDuration(fastElapsedMs(f, fastingNow) ?? 0),
               servingsDuring: getServingsDuringFast(profile.id, f),
             };

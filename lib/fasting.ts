@@ -148,12 +148,7 @@ export function overlappingFasts(
     const s = parseUtcSql(f.started_at);
     if (!s) return false;
     const e = f.ended_at ? parseUtcSql(f.ended_at) : null;
-    return fastsOverlap(
-      s.getTime(),
-      e ? e.getTime() : null,
-      startMs,
-      endMs
-    );
+    return fastsOverlap(s.getTime(), e ? e.getTime() : null, startMs, endMs);
   });
 }
 

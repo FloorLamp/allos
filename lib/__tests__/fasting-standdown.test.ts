@@ -143,7 +143,9 @@ describe("the stand-down is derived, not stored (#2757)", () => {
   });
 
   it("imports only TYPES — it can reach no runtime state at all", () => {
-    const imports = [...code.matchAll(/^import\s+([\s\S]*?)from\s+"([^"]+)"/gm)];
+    const imports = [
+      ...code.matchAll(/^import\s+([\s\S]*?)from\s+"([^"]+)"/gm),
+    ];
     expect(imports.length).toBeGreaterThan(0);
     for (const [, clause, from] of imports) {
       expect(
