@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { bandForItem } from "@/lib/upcoming";
+import { bandForItem, upcomingDueText } from "@/lib/upcoming";
 import { attentionCardItems } from "@/lib/attention";
 import { collectAttentionModel } from "@/lib/queries/attention";
 import { setProfileBirthdate, setProfileSex } from "@/lib/settings";
@@ -86,6 +86,11 @@ describe("preventive Upcoming integration", () => {
   });
 
   // The other half: evidence still produces the red row it should.
+  //
+  // Since #2805 the row gets there by DATE rather than by a hard-coded band: the
+  // assessor's `nextDueDate` rides on the item, so `bandForItem` puts it in Overdue and
+  // the row can say how far past it is. The old assertions read `item.band` directly,
+  // which is the override field — now correctly absent, because there is a real date.
   it("a RECORDED-then-lapsed rule still bands as overdue", () => {
     const lapsed = makeProfile("Lapsed History");
     recordPreventiveDone(lapsed, "dental_cleaning", "2013-04-09");
@@ -93,8 +98,11 @@ describe("preventive Upcoming integration", () => {
       (i) => i.key === "visit:dental_cleaning"
     );
     expect(item?.signalGroup).toBeUndefined();
-    expect(item?.band).toBe("overdue");
-    expect(item?.dueText).toBe("Overdue");
+    expect(item?.dueDate).not.toBeNull();
+    expect(item && bandForItem(item, today(lapsed))).toBe("overdue");
+    // The status band survives only as the no-date fallback, so it is absent here.
+    expect(item?.band).toBeUndefined();
+    expect(item && upcomingDueText(item, today(lapsed))).toMatch(/overdue/i);
     expect(
       attentionCardItems(
         collectAttentionModel(lapsed, today(lapsed)),

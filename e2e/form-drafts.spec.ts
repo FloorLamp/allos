@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledFill } from "./helpers";
+import { hydratedClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Local form drafts (issue #1699), driven end-to-end — because "survives a reload"
@@ -101,11 +101,23 @@ function deleteIntakeItem(name: string) {
   }
 }
 
+// `hydratedClick`, not a bare click, because this runs immediately after a
+// `goto("/training?tab=log")` and the button opens a form rather than following a
+// link. A click dispatched inside the hydration window is SWALLOWED — no handler
+// yet — and the swallow is invisible: the failure surfaces 5 s later as
+// `activity-form` "element(s) not found", which reads like the form is broken
+// rather than like the click never happened. `/training` widens that window by
+// writing its own URL at hydration (`/training#day-…`), which docs/internals/
+// e2e-hygiene.md already names as a live swallow race on this exact page.
+//
+// `hydratedClick` polls React's hydration markers and clicks ONCE outside the
+// loop, which is what this control needs: opening the form is not idempotent, so
+// a retrying click could toggle it back shut.
 async function openNewActivity(page: Page) {
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "New activity" })
-    .click();
+  await hydratedClick(
+    page,
+    page.getByRole("main").getByRole("button", { name: "New activity" })
+  );
   await expect(page.getByTestId("activity-form")).toBeVisible();
 }
 

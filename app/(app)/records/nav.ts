@@ -37,14 +37,17 @@ export type RecordsGroup = {
 };
 
 // Vision/Dental are DATA-GATED (getNavRelevance): a hidden section omits its sub-tab
-// AND its route re-gates server-side. Hearing/Skin/Mental health always render (their
-// in-page forms are the only creation path). Substance use is LIFE-STAGE gated
-// (#1174/#1175): shown for adults + unknown age, hidden for a KNOWN minor — its
-// AUDIT/DAST instruments are adult-validated. This shapes only the Specialty group.
+// AND its route re-gates server-side. Hearing/Skin always render (their in-page forms
+// are the only creation path). Substance use and Mental health are LIFE-STAGE gated,
+// each at the line its own instruments carry: substance use (#1174/#1175) hides for a
+// KNOWN minor because AUDIT/DAST are adult-validated; mental health (#2807) hides only
+// for a KNOWN infant/child because PHQ-9/GAD-7 are validated from adolescence. Both show
+// for unknown age. This shapes only the Specialty group.
 export type RecordsRelevance = {
   vision: boolean;
   dental: boolean;
   substanceUse: boolean;
+  mentalHealth: boolean;
 };
 
 const HISTORY_PANES: RecordsPane[] = [
@@ -101,14 +104,17 @@ const SPECIALTY_ALL: (RecordsPane & {
     gated: "dental",
   },
   { id: "skin", label: "Skin", href: "/records/specialty/skin", gated: null },
+  // Mental health (#1079) gates on LIFE STAGE since #2807 — the same argument #1174
+  // made next door, at the line its own instruments carry: PHQ-9/GAD-7 are validated
+  // from adolescence, so an infant/child gets neither the tab nor the route.
   {
     id: "mental-health",
     label: "Mental health",
     href: "/records/specialty/mental-health",
-    gated: null,
+    gated: "mentalHealth",
   },
-  // Substance use (#1175) sits beside Mental health but gates DIFFERENTLY (#1174):
-  // life-stage, not data — adult-validated instruments, so hidden for a known minor.
+  // Substance use (#1175) sits beside Mental health and gates on life stage too, but at
+  // a HIGHER line (#1174): AUDIT/DAST are adult-validated, so hidden for a known minor.
   {
     id: "substance-use",
     label: "Substance use",
@@ -117,8 +123,10 @@ const SPECIALTY_ALL: (RecordsPane & {
   },
 ];
 
-// The Specialty panes visible for a profile, in fixed order — Vision/Dental drop
-// when their relevance bit is false; Hearing/Skin/Mental health always stay.
+// The Specialty panes visible for a profile, in fixed order — Vision/Dental/Mental
+// health/Substance use drop when their relevance bit is false; Hearing and Skin always
+// stay, which is what keeps the set non-empty for every profile (the group tab and the
+// redirect target below both take the FIRST visible pane).
 export function visibleSpecialtyPanes(
   relevance: RecordsRelevance
 ): RecordsPane[] {
@@ -129,7 +137,7 @@ export function visibleSpecialtyPanes(
 
 // The full group model for the primary + secondary tab strips. Specialty's panes
 // and its group-tab href reflect the gated set (the group tab lands on the first
-// VISIBLE pane, which is always present — Skin/Mental health never gate).
+// VISIBLE pane, which is always present — Hearing/Skin never gate).
 export function recordsGroups(relevance: RecordsRelevance): RecordsGroup[] {
   const specialty = visibleSpecialtyPanes(relevance);
   return [
