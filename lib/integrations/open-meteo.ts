@@ -75,6 +75,11 @@ export interface DailyFetchResult {
   // A partial is NOT a sync failure — it degrades, it does not fail (the graceful-
   // degradation posture the whole weather feature is built on).
   partial?: string;
+  // The HTTP status behind `partial`, when there was one (0 = network error/timeout,
+  // absent = the partial came from somewhere other than a response). The sync reads it
+  // to tell a DETERMINISTIC failure from a transient one: a 4xx will fail identically
+  // on the next run, so promising a re-fetch would be false (#3007).
+  partialStatus?: number;
 }
 
 // The swappable source contract. `fetchHourly` returns the hourly UV + irradiance
@@ -108,6 +113,34 @@ const ARCHIVE_BASE = "https://archive-api.open-meteo.com/v1/archive";
 const AIR_QUALITY_BASE =
   "https://air-quality-api.open-meteo.com/v1/air-quality";
 const TIMEOUT_MS = 15_000;
+
+// How far ahead the AIR-QUALITY host publishes — NOT the same horizon as the weather
+// forecast host, which is what #3007 was. The weather endpoint publishes 16 days; air
+// quality publishes 7, and its "7 days" COUNTS TODAY, so the last `end_date` it
+// accepts is today + 6. The daily sync asks both endpoints for one window
+// (WEATHER_FORECAST_DAYS = today + 7, in ./weather-sync — the horizon the
+// outdoor-viability scan genuinely needs), so every air-quality request was exactly
+// one day out of range and came back 400:
+//
+//   Parameter 'end_date' is out of allowed range from 2013-01-01 to <today+6>
+//
+// deterministically, on every run since the daily half shipped. An air-quality failure
+// degrades rather than breaking (see openMeteoFetchDaily), so nothing ever said the
+// AQI/pollen half had not once succeeded.
+//
+// Kept here rather than beside WEATHER_FORECAST_DAYS because it is a property of THIS
+// host, not of what the app wants: a different source would have a different ceiling,
+// and weather-sync already imports this module (the reverse would be a cycle).
+export const AIR_QUALITY_FORECAST_DAYS = 7;
+
+// The air-quality request's end date: the caller's window end CLAMPED to this host's
+// ceiling. A clamp, never an assignment — a window that ends BEFORE the ceiling (an
+// archival backfill) keeps its own end and is never widened. Pure and exported so the
+// boundary is unit-testable without a network call.
+export function airQualityEndDate(endDate: string, today: string): string {
+  const ceiling = shiftDate(today, AIR_QUALITY_FORECAST_DAYS - 1);
+  return endDate < ceiling ? endDate : ceiling;
+}
 
 // The hourly variables we request. uv_index + uv_index_clear_sky (the headline + the
 // clear-sky degradation field), the three irradiance components (W/m²), and hourly
@@ -469,7 +502,8 @@ export async function openMeteoFetchDaily(
   endDate: string,
   timezone: string
 ): Promise<DailyFetchResult> {
-  const endpoint = chooseEndpoint(endDate, todayUtc());
+  const today = todayUtc();
+  const endpoint = chooseEndpoint(endDate, today);
   const base = endpoint === "archive" ? ARCHIVE_BASE : FORECAST_BASE;
   const weatherQs = new URLSearchParams({
     latitude: String(lat),
@@ -497,7 +531,10 @@ export async function openMeteoFetchDaily(
     hourly: AIR_QUALITY_VARS.join(","),
     timezone,
     start_date: startDate,
-    end_date: endDate,
+    // The two endpoints DO NOT share a horizon (#3007). The weather half keeps the
+    // caller's window; the air-quality half is clamped to its own shorter ceiling,
+    // which is the whole reason this request stopped being a guaranteed 400.
+    end_date: airQualityEndDate(endDate, today),
   });
   const air = await getJson(`${AIR_QUALITY_BASE}?${airQs.toString()}`);
   if (!air.ok) {
@@ -505,6 +542,7 @@ export async function openMeteoFetchDaily(
       ok: true,
       rows: weatherRows,
       partial: air.error ?? `air-quality fetch failed (${air.status})`,
+      partialStatus: air.status,
     };
   }
   return {

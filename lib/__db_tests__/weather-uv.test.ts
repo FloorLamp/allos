@@ -14,6 +14,7 @@ import {
   WEATHER_FORECAST_DAYS,
   type WeatherSyncResult,
 } from "@/lib/integrations/weather-sync";
+import { openMeteoSource } from "@/lib/integrations/open-meteo";
 import type {
   WeatherSource,
   HourlyUvRow,
@@ -401,6 +402,194 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       };
       await runWeatherSync(p, badDaily);
       expect(isTruncatedSyncEvent(latestEvent(p))).toBe(true);
+    });
+
+    // ── #3007: a deterministic half-failure stops promising a retry ─────────
+    //
+    // The air-quality request was one day past its host's ceiling, so it 400'd on
+    // every run since the daily half shipped — and the Review line said "the next run
+    // re-fetches it" every one of those times. That sentence was written for #2567's
+    // load-shedding window, where the next run genuinely does fix it.
+    it("a 4xx partial says it will KEEP failing; a 5xx keeps the retry promise", async () => {
+      const failWith = (status: number): WeatherSource => ({
+        id: "fixture",
+        async fetchHourly() {
+          return { ok: true, rows: [uvRow(`${DATE}T10:00`, 5)] };
+        },
+        async fetchDaily() {
+          // The shape openMeteoFetchDaily returns when its air-quality half alone
+          // failed: the weather rows stand, the partial carries its status.
+          return {
+            ok: true,
+            rows: [],
+            partial: `air-quality fetch failed (${status})`,
+            partialStatus: status,
+          };
+        },
+      });
+
+      const deterministic = newProfile("weather-partial-4xx");
+      await runWeatherSync(deterministic, failWith(400));
+      const badLine = parseSyncEventDetails(
+        latestEvent(deterministic).details ?? null
+      )!.warnings[0];
+      expect(badLine).toBe(
+        weatherPartialWarning("air-quality fetch failed (400)", {
+          deterministic: true,
+        })
+      );
+      expect(badLine).not.toMatch(/the next run re-fetches it/);
+
+      const transient = newProfile("weather-partial-5xx");
+      await runWeatherSync(transient, failWith(503));
+      const okLine = parseSyncEventDetails(
+        latestEvent(transient).details ?? null
+      )!.warnings[0];
+      // #2567's case is untouched: a load-shed IS fixed by the next run.
+      expect(okLine).toBe(
+        weatherPartialWarning("air-quality fetch failed (503)")
+      );
+      expect(okLine).toMatch(/the next run re-fetches it/);
+    });
+  });
+
+  // ── #3007: the columns that had never held a value ──────────────────────────
+  //
+  // In the 2026-08-15 production snapshot `weather_days` held 36 rows: 36 with
+  // temp_max_c, 0 with aqi, 0 with any pollen_*. Not because the write path drops
+  // them — because the air-quality REQUEST was rejected every single time, so the
+  // rows never arrived. Every predicate lib/weather-situations.ts derives from pollen
+  // and AQI has therefore been dataless since #1726 shipped, and read downstream as
+  // "no pollen problem today" rather than "no pollen data".
+  //
+  // So this goes through the REAL openMeteoSource with the network stubbed at
+  // `fetch`, and the stub enforces the ONE rule the live host enforces: end_date may
+  // not exceed today + 6. A fixture source cannot see this bug at all — it never
+  // builds a URL.
+  describe("the real source's daily run lands aqi + pollen in weather_days", () => {
+    const AIR_QUALITY_WINDOW_DAYS = 7; // counting today ⇒ ceiling is today + 6
+
+    function newestEvent(profileId: number) {
+      return db
+        .prepare(
+          `SELECT * FROM integration_sync_events
+            WHERE profile_id = ? AND source_id = 'weather' ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileId) as IntegrationSyncEvent;
+    }
+
+    function shift(day: string, n: number): string {
+      const d = new Date(`${day}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + n);
+      return d.toISOString().slice(0, 10);
+    }
+
+    function stubOpenMeteo(today: string): { airRejections: number } {
+      const ceiling = shift(today, AIR_QUALITY_WINDOW_DAYS - 1);
+      const state = { airRejections: 0 };
+      const day = shift(today, 1);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string) => {
+          const url = new URL(String(input));
+          const json = (body: unknown) =>
+            new Response(JSON.stringify(body), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+
+          if (url.host === "air-quality-api.open-meteo.com") {
+            // The live host's actual behaviour, and the whole of this regression.
+            if ((url.searchParams.get("end_date") ?? "") > ceiling) {
+              state.airRejections++;
+              return new Response(
+                JSON.stringify({
+                  error: true,
+                  reason: `Parameter 'end_date' is out of allowed range from 2013-01-01 to ${ceiling}`,
+                }),
+                { status: 400 }
+              );
+            }
+            return json({
+              hourly: {
+                time: [`${day}T08:00`, `${day}T15:00`],
+                us_aqi: [42, 118],
+                alder_pollen: [95, 20],
+                grass_pollen: [3, 8],
+                ragweed_pollen: [0, 0],
+              },
+            });
+          }
+          // The weather host: the hourly UV request and the daily request share it,
+          // and only the daily one carries `daily=`.
+          if (url.searchParams.get("daily")) {
+            return json({
+              daily: {
+                time: [day],
+                temperature_2m_max: [27],
+                temperature_2m_min: [16],
+                precipitation_sum: [0],
+                weather_code: [1],
+                uv_index_max: [7],
+              },
+              hourly: { time: [`${day}T00:00`], pressure_msl: [1011] },
+            });
+          }
+          return json({
+            hourly: { time: [`${day}T10:00`], uv_index: [5] },
+          });
+        })
+      );
+      return state;
+    }
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("asks inside the air-quality horizon, so aqi and all three pollen families are written", async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const day = shift(today, 1);
+      const state = stubOpenMeteo(today);
+      const p = newProfile("weather-aqi-lands");
+
+      const res = (await runWeatherSync(
+        p,
+        openMeteoSource
+      )) as WeatherSyncResult;
+
+      // Not one request was refused for asking past the ceiling…
+      expect(state.airRejections).toBe(0);
+      // …so the run is whole, not the permanent `partial` production has recorded.
+      expect(res.partial).toBeUndefined();
+      expect(isTruncatedSyncEvent(newestEvent(p))).toBe(false);
+
+      const row = db
+        .prepare(
+          `SELECT temp_max_c, aqi, pollen_tree, pollen_grass, pollen_weed
+             FROM weather_days WHERE date = ?`
+        )
+        .get(day) as Record<string, number | null> | undefined;
+      expect(row).toBeDefined();
+      expect(row!.temp_max_c).toBe(27);
+      // The four columns that have held nothing but NULL since #1726.
+      expect(row!.aqi).toBe(118);
+      expect(row!.pollen_tree).toBe(95);
+      expect(row!.pollen_grass).toBe(8);
+      // A real reading of zero, not absence — the column must hold 0, not null.
+      expect(row!.pollen_weed).toBe(0);
+    });
+
+    it("still stamps the run's INTENDED window, clamp or no clamp (#1771)", async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      stubOpenMeteo(today);
+      const p = newProfile("weather-aqi-window");
+      await runWeatherSync(p, openMeteoSource);
+      // The clamp changes what is REQUESTED of one endpoint, never what the run
+      // reports it set out to cover.
+      expect(newestEvent(p).window_end).toBe(
+        shift(today, WEATHER_FORECAST_DAYS)
+      );
     });
   });
 });

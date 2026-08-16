@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   parseOpenMeteoHourly,
   parseOpenMeteoDaily,
@@ -6,6 +6,9 @@ import {
   mergeDailyRows,
   chooseEndpoint,
   ARCHIVE_LAG_DAYS,
+  AIR_QUALITY_FORECAST_DAYS,
+  airQualityEndDate,
+  openMeteoFetchDaily,
 } from "../integrations/open-meteo";
 
 // A synthetic Open-Meteo hourly response (both forecast + archive share this shape).
@@ -237,5 +240,127 @@ describe("mergeDailyRows (#1726)", () => {
     ]);
     expect(merged[2].aqi).toBe(90);
     expect(merged[2].tempMaxC).toBeNull();
+  });
+});
+
+// ── The two endpoints do not share a horizon (#3007) ────────────────────────
+//
+// `runWeatherSync` computes ONE window end (today + WEATHER_FORECAST_DAYS = today + 7,
+// which the outdoor-viability scan needs) and the source sent it to BOTH endpoints. The
+// weather host publishes 16 days and answered; the air-quality host publishes 7
+// COUNTING TODAY — last valid end_date today + 6 — and answered 400, deterministically,
+// on every run since the daily half shipped. Nothing said so, because an air-quality
+// failure degrades rather than failing the run, so the AQI/pollen columns were empty
+// from the day they were added and every predicate over them was silently dataless.
+
+describe("airQualityEndDate (#3007)", () => {
+  it("clamps a window that reaches past the air-quality ceiling to today + 6", () => {
+    // The exact production shape: today + 7 asked, today + 6 is the ceiling.
+    expect(airQualityEndDate("2026-08-23", "2026-08-16")).toBe("2026-08-22");
+  });
+
+  it("is a CLAMP, not an assignment — a shorter window keeps its own end", () => {
+    // The acceptance criterion that stops this becoming a widening: an archival
+    // backfill whose window ends in the past must not be pushed forward to the ceiling.
+    expect(airQualityEndDate("2026-08-18", "2026-08-16")).toBe("2026-08-18");
+    expect(airQualityEndDate("2026-01-04", "2026-08-16")).toBe("2026-01-04");
+  });
+
+  it("leaves the ceiling day itself alone (the boundary is inclusive)", () => {
+    expect(airQualityEndDate("2026-08-22", "2026-08-16")).toBe("2026-08-22");
+  });
+
+  it("crosses a month end correctly", () => {
+    expect(airQualityEndDate("2026-09-07", "2026-08-31")).toBe("2026-09-06");
+  });
+
+  it("the ceiling is 7 days COUNTING TODAY", () => {
+    const today = "2026-08-16";
+    expect(airQualityEndDate("2030-01-01", today)).toBe("2026-08-22");
+    expect(AIR_QUALITY_FORECAST_DAYS).toBe(7);
+  });
+});
+
+describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () => {
+  const OK_BODY = { daily: { time: [] }, hourly: { time: [] } };
+
+  function stubJsonFetch(): string[] {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(String(url));
+        return new Response(JSON.stringify(OK_BODY), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      })
+    );
+    return urls;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("asks weather for today+7 and air quality for today+6 — the regression fixture", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
+    const urls = stubJsonFetch();
+
+    return openMeteoFetchDaily(
+      40.7,
+      -74,
+      "2026-08-03",
+      "2026-08-23",
+      "America/New_York"
+    ).then((res) => {
+      expect(res.ok).toBe(true);
+      expect(urls).toHaveLength(2);
+
+      const weather = new URL(urls[0]);
+      expect(weather.host).toBe("api.open-meteo.com");
+      // The weather half is UNCHANGED: the planning surfaces genuinely use +7.
+      expect(weather.searchParams.get("end_date")).toBe("2026-08-23");
+      expect(weather.searchParams.get("start_date")).toBe("2026-08-03");
+
+      const air = new URL(urls[1]);
+      expect(air.host).toBe("air-quality-api.open-meteo.com");
+      // …and this one is the day that was always out of range.
+      expect(air.searchParams.get("end_date")).toBe("2026-08-22");
+      // Same start: the air-quality archive reaches back to 2013, so only the
+      // forward edge was ever the problem.
+      expect(air.searchParams.get("start_date")).toBe("2026-08-03");
+    });
+  });
+
+  it("reports the air-quality half's HTTP status when it fails", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).includes("air-quality")
+          ? new Response("nope", { status: 400 })
+          : new Response(JSON.stringify(OK_BODY), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            })
+      )
+    );
+    const res = await openMeteoFetchDaily(
+      40.7,
+      -74,
+      "2026-08-03",
+      "2026-08-23",
+      "America/New_York"
+    );
+    // Still not a run failure — the degradation posture is unchanged.
+    expect(res.ok).toBe(true);
+    // The status is carried so the sync can tell a deterministic 4xx from a
+    // transient 5xx instead of promising a retry that cannot help.
+    expect(res.partialStatus).toBe(400);
+    expect(res.partial).toContain("400");
   });
 });

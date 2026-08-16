@@ -1,8 +1,8 @@
 import type { IntegrationKind, IntegrationSyncEvent } from "../types";
 import {
   drilldownCoverage,
-  failureRunReason,
   groupSyncDays,
+  repeatedRunReason,
   syncDayAttention,
   syncDayLabel,
   syncRangeLabel,
@@ -39,6 +39,16 @@ export type SyncDayEntryView =
   | { kind: "run"; reason: SyncRunReason; run: SyncRunView }
   | {
       kind: "failure-run";
+      count: number;
+      newestAt: string;
+      oldestAt: string;
+      reason: string | null;
+      runIds: number[];
+      isLatest: boolean;
+    }
+  | {
+      // Same shape, the partial rung (#3007).
+      kind: "partial-run";
       count: number;
       newestAt: string;
       oldestAt: string;
@@ -125,13 +135,15 @@ export function projectSyncHistoryDays(
       if (entry.kind === "run") {
         return { kind: "run", reason: entry.reason, run: toRun(entry.ev) };
       }
-      if (entry.kind === "failure-run") {
+      if (entry.kind === "failure-run" || entry.kind === "partial-run") {
+        const shared =
+          entry.kind === "failure-run" ? entry.error : entry.warning;
         return {
-          kind: "failure-run",
+          kind: entry.kind,
           count: entry.runs.length,
           newestAt: entry.runs[0].at,
           oldestAt: entry.runs[entry.runs.length - 1].at,
-          reason: failureRunReason(entry.runs.length, entry.error),
+          reason: repeatedRunReason(entry.runs.length, shared),
           runIds: entry.runs.map((run) => run.id),
           isLatest: entry.runs[0].id === options.latestEventId,
         };
