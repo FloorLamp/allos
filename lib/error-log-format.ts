@@ -215,6 +215,63 @@ function isOpaqueTokenExact(v: string): boolean {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Vendor-prefixed credentials (#2965, ruled 2026-08-16)
+//
+// Every other rule in this file needs CONTEXT — a key that names a credential,
+// a scheme word, a position in a URL. These need none: the vendor guarantees
+// the shape, so the value is a credential wherever it appears, including in
+// prose and in an Error stack where there is no key to gate on. It is also the
+// most likely remaining real leak, and since #2935 the string reaches a data
+// subject's browser as well as the admin log.
+//
+// This is a denylist, which is the design #2955 deliberately replaced with
+// shape-and-key matching, and a denylist accretes unless something states what
+// it may hold. So:
+//
+// THE RULE FOR WHAT EARNS A PLACE ON THIS LIST — a prefix belongs here only if
+// all three hold:
+//   1. The VENDOR PUBLISHES it as reserved for credentials, in its own
+//      documentation. Not inferred from a sample, not observed in the wild.
+//   2. It is UNAMBIGUOUS: no English word, clinical term, file path, hostname
+//      or identifier this app logs can begin with it.
+//   3. What follows it is the secret itself, so masking the tail costs an
+//      operator nothing they read the error for — the prefix stays, and still
+//      says which vendor's credential was involved.
+// A prefix failing any of the three is a guess, and a list of guesses is the
+// denylist #2955 removed. Shape-and-key matching remains the general rule; this
+// is the stated exception to it, not the start of a second one.
+const VENDOR_SECRET_PREFIXES = [
+  // Stripe secret and restricted API keys.
+  "sk_live_",
+  "sk_test_",
+  "rk_live_",
+  "rk_test_",
+  // GitHub personal-access (classic and fine-grained), OAuth, user-to-server,
+  // server-to-server and refresh tokens.
+  "ghp_",
+  "gho_",
+  "ghu_",
+  "ghs_",
+  "ghr_",
+  "github_pat_",
+  // Slack bot, user, app-level, refresh and legacy workspace tokens.
+  "xoxb-",
+  "xoxp-",
+  "xoxa-",
+  "xoxr-",
+  "xoxs-",
+  "xapp-",
+];
+
+// The body floor keeps a bare mention of a prefix in prose ("rotate the ghp_
+// token") from reading as a credential. It also means `<prefix>***` cannot
+// re-match, so redactSecrets stays idempotent.
+const VENDOR_SECRET_RE = new RegExp(
+  `\\b(${VENDOR_SECRET_PREFIXES.join("|")})[A-Za-z0-9_-]{8,}`,
+  "g"
+);
+
 // Credential-shaped enough to follow an auth SCHEME word. `Bearer` never
 // appears in prose so its argument is masked unconditionally; `Basic` does
 // ("Basic Metabolic Panel"), so its argument must look encoded rather than
@@ -473,9 +530,24 @@ function maskKeyedValues(s: string): string {
 // for why the two profile-facing and operator-facing readers share one rule.
 // Idempotent: `***` is never re-masked, so a caller that already redacted
 // (every recordAiEvent detail, the console echo in lib/log.ts) composes.
+//
+// THE ONE CHOKEPOINT (#2978, and the reason the vendor-prefix rule lands here).
+// `redactingReplacer` runs this over every string leaf, `buildDetail` runs it
+// once more over the joined text so Error stacks are covered, and the
+// profile-facing column calls it directly with no replacer at all
+// (lib/integrations/backfill-error.ts). A rule written into the replacer alone
+// would therefore hold for the admin log and not for the browser — two policies
+// again, which is the #2938 shape. Rules go in here.
 export function redactSecrets(s: string): string {
   if (!s) return s;
   let out = s;
+  // First, and with no key required: a vendor-guaranteed prefix is a credential
+  // wherever it stands. Masking it before the other passes only removes secret
+  // material they might otherwise have kept.
+  out = out.replace(
+    VENDOR_SECRET_RE,
+    (_whole, prefix: string) => `${prefix}***`
+  );
   out = out.replace(URL_RE, (url) => {
     // Prose punctuation that ended up glued to the URL is not part of it.
     const tail = /[.,;:!?)\]}]+$/.exec(url);
@@ -562,6 +634,23 @@ export function redactingReplacer(key: string, value: unknown): unknown {
 // bug in the first place; and the profile-facing reader is the data subject, so
 // their own address in "no account linked for …" is the sentence they need to
 // act on, not a disclosure.
+//
+// INFRASTRUCTURE DETAIL REACHING THE BROWSER IS A RULED, ACCEPTED COST
+// (#2965, ruled 2026-08-16). This survives, unmasked, in the profile-facing
+// column as well as the admin log:
+//
+//   ECONNREFUSED 10.0.7.31:8443 (allos-worker-02.internal) userid=41207755
+//
+// It is not a credential. For a self-hosting operator it is their own machine,
+// and seeing it is how they fix a broken integration. On a hosted deployment it
+// is internal topology in a data subject's browser, and that cost was weighed
+// and accepted: giving the profile column an infrastructure-scrubbing pass of
+// its own is the two-policy arrangement that produced #2938, and #2978 has
+// since collapsed the shape gate into one chokepoint precisely so the two
+// readers cannot drift.
+//
+// So this is not an oversight to tidy up. Do not add a profile-only pass
+// without reopening #2965.
 export function buildDetail(
   fields: Record<string, unknown> | undefined,
   cap = 4000

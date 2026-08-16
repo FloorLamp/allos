@@ -368,6 +368,75 @@ describe("redactSecrets: boundaries", () => {
   });
 });
 
+// #2965 question 3, ruled 2026-08-16: a vendor-published prefix is a credential
+// wherever it stands, so it masks with NO adjacent key — the one place a
+// denylist is well-founded, because the vendor guarantees the shape.
+//
+// Fixtures assembled at runtime for the reason the header gives: a committed
+// vendor-prefixed literal is exactly what the scanner exists to catch.
+describe("redactSecrets: vendor-prefixed credentials (#2965)", () => {
+  const STRIPE = ["sk", "live", "abc123DEADBEEF456xyz"].join("_");
+  const GITHUB = ["ghp", "AAAABBBBCCCCDDDDEEEE1111"].join("_");
+  const SLACK = ["xoxb", "111", "222", "abcdEFGH"].join("-");
+
+  it("masks all three with no key, no scheme word and no URL around them", () => {
+    const out = redactSecrets(`${STRIPE} ${GITHUB} ${SLACK}`);
+    expect(out).toBe("sk_live_*** ghp_*** xoxb-***");
+  });
+
+  it("masks one sitting in prose, where no other rule can see it", () => {
+    // The shape-and-key design cannot reach this: there is no key, the value is
+    // not opaque-token shaped, and it is not in a URL.
+    const out = redactSecrets(`upstream rejected ${GITHUB} while syncing`);
+    expect(out).not.toContain(GITHUB);
+    expect(out).toBe("upstream rejected ghp_*** while syncing");
+  });
+
+  it("masks one in an Error stack, which never goes through the replacer", () => {
+    const err = new Error(`push failed with ${GITHUB}`);
+    const out = buildDetail({ err })!;
+    expect(out).not.toContain(GITHUB);
+  });
+
+  it("masks on the profile-facing surface and the admin log alike", () => {
+    // One chokepoint (#2978): the profile column calls redactSecrets directly,
+    // the admin log goes through buildDetail's replacer. Neither may be the
+    // weaker of the two.
+    const message = `Stripe rejected the key ${STRIPE}`;
+    expect(redactSecrets(message)).not.toContain(STRIPE);
+    expect(buildDetail({ note: message })!).not.toContain(STRIPE);
+    expect(buildDetail({ err: new Error(message) })!).not.toContain(STRIPE);
+  });
+
+  it("keeps the prefix, so the error still says whose credential it was", () => {
+    expect(redactSecrets(`refresh failed for ${SLACK}`)).toContain("xoxb-***");
+  });
+
+  it("stays idempotent — a masked value is not re-masked into something else", () => {
+    for (const s of [STRIPE, GITHUB, SLACK, `token=${STRIPE}`]) {
+      const once = redactSecrets(s);
+      expect(redactSecrets(once)).toBe(once);
+    }
+  });
+
+  // The other direction, and the one that costs a data subject something: since
+  // #2935 this string is read in a browser, so a false positive destroys an
+  // error someone needs to act on.
+  it("LEAVES benign strings that a looser prefix rule would have eaten", () => {
+    const benign = [
+      "SQLITE_CONSTRAINT: UNIQUE constraint failed: body_metrics.profile_id",
+      "connect ECONNREFUSED 10.0.7.31:8443 (allos-worker-02.internal)",
+      "Basic Metabolic Panel import failed for 3 rows",
+      "/home/user/allos/lib/integrations/withings.ts:214:11",
+      "GET https://api.ouraring.com/v2/usercollection/daily_activity?start_date=2026-08-01",
+      "rotate the ghp_ token before Friday",
+      "skin_fold_measurement recorded",
+      "xoxb is not a token",
+    ];
+    for (const s of benign) expect(redactSecrets(s)).toBe(s);
+  });
+});
+
 describe("buildDetail", () => {
   it("returns undefined with no fields", () => {
     expect(buildDetail(undefined)).toBeUndefined();
