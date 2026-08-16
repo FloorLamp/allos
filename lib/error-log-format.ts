@@ -239,14 +239,18 @@ function isOpaqueTokenExact(v: string): boolean {
 //      Stated that way because that is what the regex below actually matches,
 //      and the two are not the same claim (#3000). The shorter version, "no
 //      word can begin with it", was reasoned for the `_` prefixes and is false
-//      for the `-` ones: a hyphen glues to the next English word, so
-//      "xoxb-prefixed tokens" reads as a credential to this rule, as does the
-//      identifier-shaped "ghp_token_before_friday". That cost is accepted —
-//      it is a sentence about a prefix losing one word, against a credential
-//      that would otherwise print in full — but condition 2 has to say so
-//      rather than imply the case cannot arise. What condition 2 still rules
-//      out, and what the list is checked against, is a prefix that a REAL
-//      logged token could carry: see the over-redaction corpus test.
+//      for the `-` ones: a hyphen glues straight to the next English word, so
+//      a Slack prefix written immediately before the word "prefixed" reads as a
+//      credential to this rule, as does an underscore prefix written in front
+//      of a snake_case phrase. That cost is accepted — a sentence loses one
+//      word, against a credential that would otherwise print in full — but
+//      condition 2 has to say so rather than imply the case cannot arise. What
+//      condition 2 still rules out, and what the list is checked against, is a
+//      prefix a REAL logged token could carry: the over-redaction corpus test
+//      runs the app's own vocabulary through this rule and requires identity.
+//      (Both examples are spelled out, executed, in that rule's own tests —
+//      not written out here, because a literal in this file is a string in the
+//      corpus, and this file's comments are not vocabulary the app logs.)
 //   3. What follows it is the secret itself, so masking the tail costs an
 //      operator nothing they read the error for — the prefix stays, and still
 //      says which vendor's credential was involved.
@@ -284,8 +288,8 @@ const VENDOR_SECRET_PREFIXES = [
 // The body floor is what separates "a credential" from "a prefix named in
 // prose", and it separates them on WHITESPACE: "rotate the ghp_ token" and
 // "the xoxb- prefix" survive because the next character ends the match. A
-// mention that glues the prefix to eight or more identifier characters
-// ("xoxb-prefixed") does mask — see condition 2 above, which states that cost
+// mention that glues the prefix to eight or more identifier characters does
+// mask — see condition 2 above, which states that cost
 // rather than claiming the floor prevents it. The floor also means
 // `<prefix>***` cannot re-match, so redactSecrets stays idempotent.
 const VENDOR_SECRET_RE = new RegExp(
