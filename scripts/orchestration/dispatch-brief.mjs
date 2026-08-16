@@ -117,7 +117,19 @@ function appendLedger(entry) {
 // The ledger is history and measurement; the roster is the live view — both
 // are written here so they cannot fork. Live entries are lines beginning
 // "Cluster" whose THIRD field is the branch (the check-in script's contract).
-const rosterPath = path.join(STATE_DIR, ".roster");
+//
+// THE ROSTER FOLLOWS THE LEDGER. `ALLOS_DISPATCH_LEDGER` redirects the ledger,
+// but the roster used to be pinned to STATE_DIR regardless — so anything that
+// redirected one wrote the other into LIVE coordination state. Testing the
+// arrival warning above did exactly that: three fake dispatches landed in the
+// real `.roster`, and the next check-in reported eight clusters for five agents.
+// That is the 2026-08-15 roster-fork incident again, arriving through the test
+// harness instead of through a re-run of `new`.
+//
+// The header above already says the two must not fork. An override that moves
+// one and not the other is a fork by construction, so the roster now derives
+// from wherever the ledger actually lives.
+const rosterPath = path.join(path.dirname(ledgerPath), ".roster");
 
 function rosterAdd(entry) {
   if (!fs.existsSync(path.dirname(rosterPath))) return false;
