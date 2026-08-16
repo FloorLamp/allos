@@ -11,7 +11,8 @@ import {
   disconnectWithings,
   getWithingsConfig,
 } from "@/lib/integrations/connections";
-import { withingsCallbackUrl, isLoopbackUrl } from "./url";
+import { withingsCallbackUrl } from "./url";
+import { isLoopbackUrl } from "@/lib/external-url";
 
 // Withings' user-facing OAuth authorize page. Scope covers measures (metrics) +
 // sleep/activity summaries.

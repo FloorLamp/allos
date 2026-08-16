@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { settledBoxes, settledClick, settledPickOption } from "./helpers";
+import {
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+  settledPickOption,
+} from "./helpers";
 
 // The unified save gesture (#1456) end-to-end: ONE star, membership everywhere.
 //
@@ -35,7 +40,7 @@ const DETAIL_URL = `/results/clinical-results/view?name=${encodeURIComponent(ANA
 // A tile's controls live in its corner ⋯ menu since #1485 B, and the panel is
 // PORTALED to <body> — so it is located on the page, never inside the card.
 async function tileMenu(page: Page, tile: Locator): Promise<Locator> {
-  await tile.getByTestId("overflow-menu-trigger").click();
+  await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;

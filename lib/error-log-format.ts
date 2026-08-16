@@ -507,10 +507,35 @@ export function redactSecrets(s: string): string {
 // a credential, and masking them anyway turns `{"sessionCount":14}` into
 // `"***"` — the count is why the line was logged. The text path draws the same
 // line off quoting, so both readers agree on what a number is.
-function redactingReplacer(key: string, value: unknown): unknown {
+//
+// Exported because `redactBag` in lib/log.ts serializes the SAME shape for the
+// console echo (#2966). One replacer, so the two readers cannot drift the way
+// escape-then-redact and redact-then-escape drifted before.
+//
+// BOTH key rules live here, not only the unambiguous one. The shape gate below
+// used to exist ONLY in the whole-string pass, so a reader that redacted
+// per-leaf and skipped that pass silently lost it: `{ code: "<credential>" }`
+// printed raw, because `code` is not sensitive by NAME. It is masked only when
+// the VALUE also reads as a credential — `code` is the OAuth exchange code AND
+// the name Node gives every errno, so `code: "ECONNREFUSED"` must survive. That
+// benign half is why the regression was easy to miss: testing it proves nothing
+// about the half that leaks.
+//
+// Strings only. `looksLikeCredential` reads a value's SHAPE, and an object has
+// no shape to read — an object under an ambiguous key is not evidence of a
+// credential the way it is under `credentials`.
+export function redactingReplacer(key: string, value: unknown): unknown {
   const maskable =
     typeof value === "string" || (typeof value === "object" && value !== null);
   if (key !== "" && maskable && isSensitiveKey(key)) return "***";
+  if (
+    key !== "" &&
+    typeof value === "string" &&
+    isShapeGatedKey(key, false) &&
+    looksLikeCredential(value)
+  ) {
+    return "***";
+  }
   return typeof value === "string" ? redactSecrets(value) : value;
 }
 

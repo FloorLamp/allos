@@ -32,9 +32,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - Older issues start with an audit table: resolved by what, or still open.
 - Cap E2E work at two agents and ordinary concurrent work at five agents (four
   until #2964 scoped the DB tier; raised on trial 2026-08-16).
-- Revert to four on evidence, not feel: contention shows up as a slow tier
-  misread as a regression, so watch the DB tier's duration and whether agents
-  start hitting the ten-minute tool cap mid-gate.
+- Revert on a DISCRIMINATING signal: a misread red actually shipped, or the
+  ledger's median dispatch duration degrades. "Agents hit the ten-minute tool
+  cap" is not one — it fired at four agents and at five, so it cannot tell them
+  apart. Measured at five: median 90 min against a 86-min cap-four baseline.
 - That cap counts agents RUNNING — a machine limit. The queue that jams first
   is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
   dispatch at roughly three unreviewed PRs however few agents are running.

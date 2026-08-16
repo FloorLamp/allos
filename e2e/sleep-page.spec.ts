@@ -12,6 +12,7 @@ import {
 } from "./fixture-logins";
 import {
   dismissToast,
+  chartsSettled,
   expectNoClippedContent,
   hydratedClick,
   settledBoxes,
@@ -141,18 +142,20 @@ function createSleepEditFixture(
 // element, and the hit test at its off-screen point reports `<html>`
 // intercepting pointer events until the test budget dies with a bare timeout.
 // So: any test that drives the log's row menus goes through here first, and
-// interacts with the same layout the menu will anchor to. The 20s budgets are
-// declared per hygiene pitfall 17 — chunk evaluation is exactly the kind of
-// loaded-shard latency the 5s default loses.
+// interacts with the same layout the menu will anchor to.
+//
+// The gate itself is now `chartsSettled` (e2e/helpers.ts) — this spec proved the
+// shape and #2862 promoted it, since eleven other routes draw the same lazy
+// wrappers. What stays HERE is only what is specific to /sleep: which two cards
+// this page draws above its log.
 async function gotoSleepLogSettled(page: Page): Promise<Locator> {
   await page.goto("/sleep");
   const main = page.getByRole("main");
-  await expect(
-    main.getByTestId("sleep-duration-trend").locator(".recharts-wrapper")
-  ).toBeVisible({ timeout: 20_000 });
-  await expect(
-    main.getByTestId("source-compare-sleep_min").locator(".recharts-wrapper")
-  ).toBeVisible({ timeout: 20_000 });
+  await chartsSettled(
+    main,
+    main.getByTestId("sleep-duration-trend"),
+    main.getByTestId("source-compare-sleep_min")
+  );
   return main;
 }
 

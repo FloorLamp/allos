@@ -11,7 +11,8 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
 import { TokenRow } from "@/components/TokenRow";
-import { baseUrl, stravaCallbackUrl } from "./url";
+import { stravaCallbackUrl } from "./url";
+import { externalBaseUrl } from "@/lib/external-url-server";
 import {
   saveStravaCredentials,
   connectStrava,
@@ -52,7 +53,7 @@ export default async function StravaPage(props: {
   // the reconnect form instead of leaving the user with a silent, forever-failing sync.
   const needsReauth = conn?.status === "needs_reauth";
   const callbackUrl = await stravaCallbackUrl();
-  const callbackDomain = new URL(await baseUrl()).host;
+  const callbackDomain = new URL(await externalBaseUrl()).host;
   const error = searchParams.error
     ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;

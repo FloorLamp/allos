@@ -8,60 +8,16 @@ import {
   IconUsersGroup,
 } from "@tabler/icons-react";
 import {
-  TOKEN_EXPIRY_CHOICES,
   type TokenExpiryChoice,
   type TokenLifecycleStatus,
 } from "@/lib/token-lifecycle";
-import { TokenLifecycleNote } from "@/components/TokenLifecycle";
+import { ExpirySelect, TokenLifecycleNote } from "@/components/TokenLifecycle";
+import { absoluteUrl } from "@/lib/external-url";
 import { TokenRow } from "@/components/TokenRow";
 import {
   enableConsolidatedCalendarFeedAction,
   disableConsolidatedCalendarFeedAction,
 } from "./actions";
-
-// Compose the absolute subscribe URL: prefer the server-provided base (the
-// configured public URL, reachable by an external calendar client), falling back
-// to the current origin for a plain localhost/dev setup.
-function absoluteUrl(base: string, path: string): string {
-  const b =
-    base || (typeof window !== "undefined" ? window.location.origin : "");
-  return `${b}${path}`;
-}
-
-const EXPIRY_LABEL: Record<TokenExpiryChoice, string> = {
-  never: "Never expires",
-  "90d": "Expires in 90 days",
-  "1y": "Expires in 1 year",
-};
-
-function ExpiryPicker({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: TokenExpiryChoice;
-  onChange: (v: TokenExpiryChoice) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="label">Expiry</span>
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value as TokenExpiryChoice)}
-        className="input"
-        data-testid="family-token-expiry-select"
-      >
-        {TOKEN_EXPIRY_CHOICES.map((c) => (
-          <option key={c} value={c}>
-            {EXPIRY_LABEL[c]}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 // Enable/rotate/disable UI for the CONSOLIDATED (per-login) "family" calendar feed.
 // Mirrors CalendarFeedConfig's token lifecycle, minus the detail toggle — the
@@ -133,7 +89,12 @@ export default function ConsolidatedFeedConfig({
           only “Medical appointment”.
         </p>
         <div className="max-w-xs">
-          <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
+          <ExpirySelect
+            value={expiry}
+            onChange={setExpiry}
+            disabled={busy}
+            testId="family-token-expiry-select"
+          />
         </div>
         {error && (
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
@@ -210,7 +171,12 @@ export default function ConsolidatedFeedConfig({
 
       <div className="flex flex-wrap items-end gap-3 border-t border-black/5 pt-4 dark:border-white/5">
         <div className="w-40">
-          <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
+          <ExpirySelect
+            value={expiry}
+            onChange={setExpiry}
+            disabled={busy}
+            testId="family-token-expiry-select"
+          />
         </div>
         <button
           type="button"

@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
@@ -7,7 +6,6 @@ import { getIntegration } from "@/lib/integrations/registry";
 import {
   getCalendarFeed,
   getConsolidatedCalendarFeed,
-  getPublicUrl,
   getTimezone,
   getMentalHealthShareFull,
 } from "@/lib/settings";
@@ -27,22 +25,11 @@ import CalendarFeedPreview from "./CalendarFeedPreview";
 import ConsolidatedFeedConfig from "./ConsolidatedFeedConfig";
 import ConsolidatedFeedPreview from "./ConsolidatedFeedPreview";
 import { requestNowMs } from "@/lib/request-now";
+// The base an external calendar client must be able to reach — one authority,
+// shared with Health Connect, Strava and Withings (#2959).
+import { externalBaseUrl } from "@/lib/external-url-server";
 
 export const dynamic = "force-dynamic";
-
-// Configured public URL (Settings → Public app URL) when set, else derived from
-// the request headers — same helper the Health Connect setup page uses. This is
-// the base an external calendar client must be able to reach.
-async function baseUrl(): Promise<string> {
-  const configured = getPublicUrl();
-  if (configured) return configured;
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto =
-    h.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 export default async function CalendarFeedPage() {
   const { profile, login } = await requireSession();
@@ -137,7 +124,7 @@ export default async function CalendarFeedPage() {
           reminders={feed.reminders}
           pastWindowDays={feed.pastWindowDays}
           futureWindowDays={feed.futureWindowDays}
-          baseUrl={await baseUrl()}
+          baseUrl={await externalBaseUrl()}
           status={tokenLifecycleStatus(
             {
               hasToken: feed.hasToken,
@@ -193,7 +180,7 @@ export default async function CalendarFeedPage() {
           <div className="grid gap-6">
             <ConsolidatedFeedConfig
               enabled={familyFeed.enabled}
-              baseUrl={await baseUrl()}
+              baseUrl={await externalBaseUrl()}
               status={tokenLifecycleStatus(
                 {
                   hasToken: familyFeed.hasToken,

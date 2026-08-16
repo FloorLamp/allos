@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { workerAuthPath } from "./worker-env";
+import { hydratedClick } from "./helpers";
 // #1427: a dose confirm tapped with no signal is queued and replayed through the
 // SAME write core every other confirm path uses (markDoseTaken), which answers with
 // a typed outcome. Two ends of that contract are driven here in the real app:
@@ -53,7 +54,10 @@ function morningRow(page: Page, name: string) {
 
 async function deleteIntakeItem(page: Page, name: string) {
   const row = morningRow(page, name);
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Supplement actions" })
+  );
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.locator("div.card").filter({ hasText: name })).toHaveCount(
