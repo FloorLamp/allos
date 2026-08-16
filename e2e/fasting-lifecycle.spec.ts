@@ -519,12 +519,22 @@ test.describe("the fasting lifecycle (#2756)", () => {
   test("a fast recorded with a mis-set date is CORRECTED from its history row", async ({
     page,
   }) => {
-    seedFast(agoInstant(FAST_MAX_HOURS + 48), agoInstant(24));
+    // The start carries real SECONDS, which the minute-grained form cannot express — so
+    // if a "Save times" that only changed the end were to post the untouched start back,
+    // the row would silently lose them. Asserted below, in the browser, on the real form.
+    const seededStart = new Date(
+      agoInstant(FAST_MAX_HOURS + 48).getTime() + 37_000
+    );
+    seedFast(seededStart, agoInstant(24));
     await page.goto("/nutrition");
 
     const row = page.getByTestId("fasting-history-row");
     await expect(row).toHaveCount(1);
-    await expect(row).toContainText("360 h");
+    // 359 h, not 360 — the seeded start sits 37 s INTO the first minute, and the rendered
+    // duration floors. That offset is the whole point: it is the precision the form
+    // cannot express, so it is the precision that shows up in the label if the untouched
+    // field ever gets posted back and re-resolved.
+    await expect(row).toContainText("359 h");
 
     // FIRST, THE DAMAGE — a start backdated into the span the bogus row covers is
     // refused, which is what "the user cannot record any real fast starting inside the
@@ -546,6 +556,18 @@ test.describe("the fasting lifecycle (#2756)", () => {
     const endField = page.getByTestId("fasting-edit-end");
     await expect(startField).toHaveValue(backdateValue(FAST_MAX_HOURS + 48));
     await expect(endField).toHaveValue(backdateValue(24));
+
+    // SAVING WITH NOTHING MOVED IS REFUSED, not confirmed. "Fast updated." over a row
+    // that did not move is the unconditional confirmation the write registry exists to
+    // end — and it is also what a truncating save would have looked like from here.
+    await settledClick(page, page.getByTestId("fasting-edit-save"));
+    await expect(
+      page
+        .getByTestId("toast")
+        .filter({ hasText: "Those are already the recorded times." })
+    ).toBeVisible();
+    await dismissToast(page, "Those are already the recorded times.");
+
     await endField.fill(backdateValue(FAST_MAX_HOURS + 32));
     await settledClick(page, page.getByTestId("fasting-edit-save"));
     await expect(
@@ -555,16 +577,30 @@ test.describe("the fasting lifecycle (#2756)", () => {
 
     // Still ONE recorded fast — corrected, not removed.
     await expect(row).toHaveCount(1);
-    await expect(row).toContainText("16 h 0 m");
+    // AND THE LABEL IS THE PROOF THE START SURVIVED. The end was moved to exactly 16 h
+    // after the start's MINUTE, so a start truncated to `:00` would render "16 h 0 m".
+    // It reads one second-carrying minute short of that, which is only possible if the
+    // untouched `:37` is still on the row.
+    await expect(row).toContainText("15 h 59 m");
 
     const db = openDb();
     try {
       const stored = db
         .prepare(
-          "SELECT ended_at, end_written_at FROM fasts WHERE profile_id = 1"
+          "SELECT started_at, ended_at, end_written_at FROM fasts WHERE profile_id = 1"
         )
-        .get() as { ended_at: string; end_written_at: string };
+        .get() as {
+        started_at: string;
+        ended_at: string;
+        end_written_at: string;
+      };
       expect(stored.ended_at).toBe(utcInstant(agoInstant(FAST_MAX_HOURS + 32)));
+      // THE UNTOUCHED START IS UNTOUCHED, seconds and all. The field the user never typed
+      // in was not posted, so the server never re-resolved it from a minute-grained wall
+      // time — which would have quietly rewritten `:37` to `:00` on a control whose label
+      // says it is saving the times on screen.
+      expect(stored.started_at).toBe(utcInstant(seededStart));
+      expect(stored.started_at).toMatch(/:37Z$/);
       // The Undo's clock is NOT restarted by a correction: `end_written_at` still names
       // the write that closed the fast, so an old row does not become reopenable by
       // having its date fixed.

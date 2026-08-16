@@ -399,8 +399,18 @@ export default function FastingCard({
                       onClick={() => {
                         const fd = new FormData();
                         fd.set("id", String(entry.fast.id));
-                        fd.set("started_at", editStart);
-                        fd.set("ended_at", editEnd);
+                        // ONLY THE FIELDS THE USER ACTUALLY MOVED. Each prefill is the
+                        // row's own instant rendered at MINUTE grain, so posting an
+                        // untouched field asks the server to re-resolve a wall time the
+                        // user never typed — which truncates the stored seconds on every
+                        // save, loses an hour across a DST fall-back, and loses a whole
+                        // offset if the profile's zone changed since this rendered. An
+                        // unsent field means "leave this instant alone" (./fast-actions),
+                        // the same discipline that keeps `note` out of the edit entirely.
+                        if (editStart !== entry.startedLocal)
+                          fd.set("started_at", editStart);
+                        if (editEnd !== entry.endedLocal)
+                          fd.set("ended_at", editEnd);
                         // The form closes only on a write that LANDED. A typed refusal
                         // leaves the times on screen for the same reason the backdate
                         // field keeps its value: the user is one character from the

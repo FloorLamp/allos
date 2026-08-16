@@ -432,16 +432,20 @@ describe("edit — correcting a fast recorded with a mis-set date", () => {
     const id = seedCompleted(adult, FAST_MAX_HOURS + 24, 0.5);
     expect(reopenFast(adult, id).kind).toBe("too-old");
     expect(discardFast(adult, id)).toEqual({ kind: "already-ended", id });
+    const before = listFasts(adult)[0];
 
-    const start = new Date(Date.now() - (FAST_MAX_HOURS + 24) * 3_600_000);
-    const corrected = new Date(start.getTime() + 16 * 3_600_000);
-    expect(editFast(adult, id, start, corrected)).toEqual({
+    // ONLY THE END IS NAMED — which is both what the surface posts for this correction
+    // and the reason the row is still correctable at all: its start is 360 h old, so
+    // re-judging it as a fresh claim would refuse the one fix #2993 asked for.
+    const corrected = new Date(Date.now() - (FAST_MAX_HOURS + 8) * 3_600_000);
+    expect(editFast(adult, id, undefined, corrected)).toEqual({
       kind: "saved",
       id,
     });
 
     const row = listFasts(adult)[0];
-    expect(row.started_at).toBe(utcInstant(start));
+    // The untouched start is BYTE-FOR-BYTE what it was, not a re-serialization of it.
+    expect(row.started_at).toBe(before.started_at);
     expect(row.ended_at).toBe(utcInstant(corrected));
     // Still exactly one row, and still closed: the correction records what happened
     // rather than asserting the fast never did.
@@ -456,10 +460,13 @@ describe("edit — correcting a fast recorded with a mis-set date", () => {
     const blocked = new Date(Date.now() - 120 * 3_600_000);
     expect(startFast(adult, blocked).kind).toBe("overlap");
 
-    const start = new Date(Date.now() - (FAST_MAX_HOURS + 24) * 3_600_000);
     expect(
-      editFast(adult, id, start, new Date(start.getTime() + 16 * 3_600_000))
-        .kind
+      editFast(
+        adult,
+        id,
+        undefined,
+        new Date(Date.now() - (FAST_MAX_HOURS + 8) * 3_600_000)
+      ).kind
     ).toBe("saved");
     expect(startFast(adult, blocked).kind).toBe("started");
   });
@@ -479,41 +486,97 @@ describe("edit — correcting a fast recorded with a mis-set date", () => {
     expect(listFasts(adult)[0].note).toBe("ok");
   });
 
-  // THE CLAIM CEILING. An edit is the one core where BOTH ends of the interval arrive
-  // from a form, so it is the purest claim there is — and without the ceiling it is also
-  // a laundry around `startFast`'s: start, end a minute later, edit to sixty days.
-  it("refuses an edited interval past FAST_MAX_HOURS", () => {
+  // THE LENGTH CEILING, on the one shape that can still reach it. With a NAMED start
+  // bounded to `startFast`'s window, start and end together can never span more than the
+  // ceiling — so what this refuses is the other direction: dragging an already-old row's
+  // END forward until the interval passes the ceiling, with the start left untouched.
+  it("refuses stretching an old row's end past FAST_MAX_HOURS", () => {
+    const id = seedCompleted(adult, FAST_MAX_HOURS + 24, 0.5);
+    const before = listFasts(adult);
+    expect(editFast(adult, id, undefined, new Date())).toEqual({
+      kind: "invalid",
+    });
+    // A refusal is a report, never a partial write.
+    expect(listFasts(adult)).toEqual(before);
+    // The shortening it exists to allow still lands.
+    expect(
+      editFast(
+        adult,
+        id,
+        undefined,
+        new Date(Date.now() - (FAST_MAX_HOURS + 8) * 3_600_000)
+      ).kind
+    ).toBe("saved");
+  });
+
+  // R1b — THE LAUNDRY THAT NEEDS NO UNDO AT ALL. `startFast` bounds how far BACK a start
+  // may be placed; a length-only ceiling on the edit bounded `end - start` and nothing
+  // else, so a legal 10-day interval could be planted three years ago — a row `startFast`
+  // refuses, produced by a core. Chaining three of them fabricated 42 days of history.
+  it("refuses a NAMED start further back than startFast would accept", () => {
+    const id = seedCompleted(adult, 20, 4);
+    const before = listFasts(adult);
+    const longAgo = new Date(Date.now() - 3 * 365 * 24 * 3_600_000);
+    const tenDaysLater = new Date(longAgo.getTime() + 10 * 24 * 3_600_000);
+
+    // The interval itself is legal — 10 days, well under the ceiling. Its POSITION is
+    // what `startFast` refuses, and now so does this.
+    expect(tenDaysLater.getTime() - longAgo.getTime()).toBeLessThan(
+      FAST_MAX_HOURS * 3_600_000
+    );
+    expect(startFast(adult, longAgo)).toEqual({ kind: "invalid" });
+    expect(editFast(adult, id, longAgo, tenDaysLater)).toEqual({
+      kind: "invalid",
+    });
+    expect(listFasts(adult)).toEqual(before);
+
+    // The far edge is the same one `startFast` draws, so no pair of cores disagrees.
+    const atTheEdge = new Date(Date.now() - (FAST_MAX_HOURS - 1) * 3_600_000);
+    expect(
+      editFast(adult, id, atTheEdge, new Date(Date.now() - 3_600_000)).kind
+    ).toBe("saved");
+  });
+
+  it("refuses a NAMED start in the future", () => {
+    const id = seedCompleted(adult, 20, 4);
+    expect(
+      editFast(
+        adult,
+        id,
+        new Date(Date.now() + 3_600_000),
+        new Date(Date.now() - 3_600_000)
+      )
+    ).toEqual({ kind: "invalid" });
+  });
+
+  // R1 — THE LAUNDRY THROUGH THE UNDO, which is the composition neither the ceiling nor
+  // the Undo's own bounds caught on their own. Start, end, edit to a legal interval three
+  // years back, tap Undo (the write stamp is untouched, so `too-old` still passes), end
+  // again — and `endFast` writes `now` against whatever start the row now carries. Every
+  // step returned a typed success and the row came out at 78× the ceiling.
+  //
+  // The fix is at the claim, not at the Undo: the edit refuses to plant that start, so
+  // the longest thing this composition can now record is what the clock produced.
+  it("cannot launder a long fast through edit-then-Undo", () => {
     const started = startFast(adult, new Date(Date.now() - 3_600_000));
     const id = started.kind === "started" ? started.id : -1;
     expect(endFast(adult).kind).toBe("ended");
-    const before = listFasts(adult)[0];
 
-    const end = new Date();
-    const tooFarBack = new Date(
-      end.getTime() - (FAST_MAX_HOURS + 1) * 3_600_000
-    );
-    expect(editFast(adult, id, tooFarBack, end)).toEqual({ kind: "invalid" });
-    // A refusal is a report, never a partial write.
-    expect(listFasts(adult)[0]).toEqual(before);
-    // …and it is the SAME ceiling `startFast` enforces, so no two cores disagree about
-    // which intervals are storable.
-    expect(startFast(adult, tooFarBack).kind).toBe("invalid");
-  });
+    const longAgo = new Date(Date.now() - 3 * 365 * 24 * 3_600_000);
+    expect(
+      editFast(adult, id, longAgo, new Date(longAgo.getTime() + 864_000_000))
+    ).toEqual({ kind: "invalid" });
 
-  // The only submission the ceiling refuses on the #2993 row is the one that changes
-  // nothing. Written down because it is the whole cost of carrying the ceiling here, and
-  // it is paid by a tap that asked for no correction at all.
-  it("refuses to save an over-long row back unchanged, and accepts the shortening", () => {
-    const id = seedCompleted(adult, FAST_MAX_HOURS + 24, 0.5);
+    // The Undo is still live — this is not a test of the age bound — so the reopen and
+    // the re-end both land, and the row they leave is bounded by the CLOCK.
+    expect(reopenFast(adult, id).kind).toBe("reopened");
+    expect(endFast(adult).kind).toBe("ended");
     const row = listFasts(adult)[0];
     const start = parseUtcSql(row.started_at);
     const end = parseUtcSql(row.ended_at);
-    expect(start).not.toBeNull();
-    expect(end).not.toBeNull();
-    expect(editFast(adult, id, start!, end!)).toEqual({ kind: "invalid" });
-    expect(
-      editFast(adult, id, start!, new Date(start!.getTime() + 3_600_000)).kind
-    ).toBe("saved");
+    expect(end!.getTime() - start!.getTime()).toBeLessThanOrEqual(
+      FAST_MAX_HOURS * 3_600_000
+    );
   });
 
   // D5's granularity rule, one core over: `utcInstant` truncates to the second, so a
@@ -624,6 +687,76 @@ describe("edit — correcting a fast recorded with a mis-set date", () => {
     expect(after.end_written_at).toBe(written);
     expect(after.ended_at).toBe(utcInstant(corrected));
     // The row is exactly as un-reopenable as it was before the correction.
+    expect(reopenFast(adult, id).kind).toBe("too-old");
+  });
+
+  // R5 — AN UNTOUCHED INSTANT IS NOT REWRITTEN, which is the `note` discipline applied to
+  // the columns the button is actually about. The form's prefill is MINUTE-grained, so a
+  // "Save times" that posted both fields truncated the stored seconds off the instant the
+  // user never touched — every save, silently, on a control whose label says it is saving
+  // what is on screen. The stored value has real seconds here precisely to catch that.
+  it("leaves an unnamed instant byte-for-byte, seconds included", () => {
+    // Stored with real, non-zero SECONDS — the precision a minute-grained form cannot
+    // express and therefore the precision an untouched field would quietly destroy.
+    const withSeconds = (hoursAgo: number, ss: string): string =>
+      utcInstant(new Date(Date.now() - hoursAgo * 3_600_000)).replace(
+        /:\d\dZ$/,
+        `:${ss}Z`
+      );
+    const startedAt = withSeconds(20, "37");
+    const endedAt = withSeconds(4, "49");
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO fasts (profile_id, started_at, ended_at, end_written_at)
+           VALUES (?, ?, ?, ?)`
+        )
+        .run(adult, startedAt, endedAt, endedAt).lastInsertRowid
+    );
+
+    const correctedEnd = new Date(Date.now() - 3 * 3_600_000);
+    expect(editFast(adult, id, undefined, correctedEnd).kind).toBe("saved");
+    expect(listFasts(adult)[0].started_at).toBe(startedAt);
+    expect(listFasts(adult)[0].ended_at).toBe(utcInstant(correctedEnd));
+
+    // The other direction: correcting the START leaves the end exactly as it stands.
+    const endNow = listFasts(adult)[0].ended_at;
+    const correctedStart = new Date(Date.now() - 19 * 3_600_000);
+    expect(editFast(adult, id, correctedStart, undefined).kind).toBe("saved");
+    expect(listFasts(adult)[0].started_at).toBe(utcInstant(correctedStart));
+    expect(listFasts(adult)[0].ended_at).toBe(endNow);
+  });
+
+  it("reports `unchanged` when neither instant was named, and writes nothing", () => {
+    const id = seedCompleted(adult, 20, 4);
+    const before = listFasts(adult);
+    expect(editFast(adult, id)).toEqual({ kind: "unchanged", id });
+    expect(listFasts(adult)).toEqual(before);
+  });
+
+  // R2 — THE PROPERTY, STATED UNCONDITIONALLY AND NOW TRUE. A closed row with a NULL
+  // write stamp is one this module cannot create, but the column is nullable and
+  // `reopenFast` reads NULL as `too-old`. An earlier revision supplied a stamp on edit
+  // (`?? row.ended_at`), which handed such a row the plain-end reading and made it
+  // REOPENABLE by being corrected. The store statement no longer names the column at all.
+  it("never makes a row more reopenable, including one with no write stamp", () => {
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO fasts (profile_id, started_at, ended_at, end_written_at)
+           VALUES (?, ?, ?, NULL)`
+        )
+        .run(
+          adult,
+          utcInstant(new Date(Date.now() - 3 * 3_600_000)),
+          utcInstant(new Date(Date.now() - 60_000))
+        ).lastInsertRowid
+    );
+    expect(reopenFast(adult, id).kind).toBe("too-old");
+    expect(
+      editFast(adult, id, undefined, new Date(Date.now() - 30_000)).kind
+    ).toBe("saved");
+    expect(storedEnd(id).end_written_at).toBeNull();
     expect(reopenFast(adult, id).kind).toBe("too-old");
   });
 
@@ -766,10 +899,49 @@ describe("adult-only at the core, with the end-side exemption", () => {
       editFast(profile, id, start, new Date(Date.now() - 3_600_000))
     ).toEqual({ kind: "refused" });
     expect(listFasts(profile)).toEqual(before);
-    // The gate costs this profile nothing it could otherwise reach: its surface draws no
-    // history at all, and the reducing path (a row delete) was never a life-stage
-    // question. The row it is not allowed to REWRITE is one it is still allowed to drop.
     expect(startFast(profile).kind).toBe("refused");
+  });
+
+  // R3 — WHAT THE EDIT'S GATE ACTUALLY COSTS, PINNED SO IT CANNOT BE CLAIMED AWAY. A
+  // revision of lib/fast-write.ts's header argued the gate was free because a restricted
+  // profile is drawn no history; the fixture two tests up refutes it. The MANDATED
+  // harm-reduction close-out on a fast the clock grew past FAST_MAX_HOURS mints exactly
+  // the #2993 artifact — a permanent over-long recorded row — on the population the gate
+  // protects, and then every correcting core refuses it.
+  //
+  // This is NOT asserting the outcome is right. It is recording, executably, that the
+  // residue exists and what its shape is, because the alternatives (ungate the edit, or
+  // draw history on the close-out surface) each undo a #2756 ruling and the choice is the
+  // owner's. If a later change closes it, this test is what will go red and name it.
+  it("leaves a restricted profile's over-long close-out row correctable by nobody", () => {
+    const profile = makeProfile("became-minor-residue");
+    db.prepare(
+      "INSERT INTO fasts (profile_id, started_at, ended_at) VALUES (?, ?, NULL)"
+    ).run(
+      profile,
+      utcInstant(new Date(Date.now() - (FAST_MAX_HOURS + 72) * 3_600_000))
+    );
+    setProfileSetting(profile, "age", "15");
+
+    // The exempt close-out lands, as the ruling requires — and records 408 h.
+    const ended = endFast(profile);
+    expect(ended.kind).toBe("ended");
+    const id = ended.kind === "ended" ? ended.id : -1;
+    const row = listFasts(profile)[0];
+    const start = parseUtcSql(row.started_at);
+    const end = parseUtcSql(row.ended_at);
+    expect(end!.getTime() - start!.getTime()).toBeGreaterThan(
+      FAST_MAX_HOURS * 3_600_000
+    );
+
+    // And nothing this module offers will correct it for that profile.
+    expect(
+      editFast(profile, id, undefined, new Date(Date.now() - 3_600_000))
+    ).toEqual({ kind: "refused" });
+    expect(reopenFast(profile, id)).toEqual({ kind: "refused" });
+    expect(discardFast(profile, id)).toEqual({ kind: "already-ended", id });
+    // The row survives every one of those refusals intact.
+    expect(listFasts(profile)).toHaveLength(1);
   });
 
   // The exemptions' whole purpose, walked end to end: no supported path leaves a

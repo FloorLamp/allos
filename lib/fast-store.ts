@@ -157,6 +157,42 @@ export function updateFastRow(
   });
 }
 
+// Correct a CLOSED fast's interval (#2993), scoped to the profile. Deliberately a SECOND
+// statement rather than a flag on `updateFastRow`, and the difference is the one column
+// it does not name.
+//
+// `end_written_at` IS ABSENT FROM THIS SQL, so a correction cannot touch it — not
+// "passes it back unchanged", but never names it at all. That is the honest expression of
+// what an edit is: `at` is the CLAIM the user is invited to correct, `writtenAt` is the
+// app's own clock at the write that CLOSED the fast, and correcting a claim does not
+// re-close anything. Routing the edit through `updateFastRow` instead forced it to supply
+// a stamp, and the `??` fallback that came with it made a NULL-stamped row — one
+// `reopenFast` reads as `too-old` — REOPENABLE by being edited, the exact opposite of
+// what preserving the stamp was for.
+//
+// The one-argument rule is intact where it applies: `FastEnd` still governs every write
+// that SETS or CLEARS an end, so a closed row with no write stamp remains something this
+// module cannot create. This statement only ever runs on a row that is ALREADY closed —
+// `ended_at IS NOT NULL` is in the WHERE, so it can neither open a row nor close one —
+// and it leaves the nullness of both end columns exactly as it found them.
+export function updateFastInterval(
+  profileId: number,
+  id: number,
+  startedAt: string,
+  endedAt: string,
+  note: string | null
+): number {
+  return writeTx(() => {
+    const info = db
+      .prepare(
+        `UPDATE fasts SET started_at = ?, ended_at = ?, note = ?
+          WHERE id = ? AND profile_id = ? AND ended_at IS NOT NULL`
+      )
+      .run(startedAt, endedAt, note, id, profileId);
+    return info.changes;
+  });
+}
+
 // Delete a fast. This is the DISCARD path's store half — "I never actually fasted",
 // which is a row removal rather than a lifecycle transition, and is deliberately
 // distinct from ending one at a backdated instant ("I stopped at some point"). The two

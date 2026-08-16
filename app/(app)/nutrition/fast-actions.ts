@@ -199,10 +199,15 @@ export async function undoEndFastAction(
 // mis-set date once the end's Undo has lapsed — editing says "it ended at this other
 // time", where deleting the row would say the fast never happened at all.
 //
-// BOTH INSTANTS ARE REQUIRED. `parseBackdated` answers null for an absent field, which
-// the start and end controls read as "now"; here an absent field is a broken form and is
-// refused, because an edit that silently defaulted half its interval to now would rewrite
-// history the user never named.
+// AN ABSENT FIELD MEANS "LEAVE THIS INSTANT ALONE", and that is the whole of how this
+// action differs from the start/end controls, where absent means "now". The form prefills
+// each field with the row's own value at MINUTE grain, so posting both fields
+// unconditionally rewrote whatever the user did not touch — the stored seconds truncated
+// away on every save, an hour lost across a DST fall-back, and a whole offset lost if the
+// profile's timezone changed between the render and the submit. The card sends a field
+// only when its value actually changed, and the core writes the row's own stored string
+// back for the other. A field that IS present but unparseable stays a refusal: that is a
+// broken form, not an untouched value.
 export async function editFastAction(
   formData: FormData
 ): Promise<FastActionResult> {
@@ -212,9 +217,14 @@ export async function editFastAction(
   const tz = getTimezone(profile.id);
   const startedAt = parseBackdated(formData.get("started_at"), tz);
   const endedAt = parseBackdated(formData.get("ended_at"), tz);
-  if (!startedAt) return fail("Enter a valid start time.");
-  if (!endedAt) return fail("Enter a valid end time.");
-  const outcome = editFast(profile.id, id, startedAt, endedAt);
+  if (startedAt === undefined) return fail("Enter a valid start time.");
+  if (endedAt === undefined) return fail("Enter a valid end time.");
+  const outcome = editFast(
+    profile.id,
+    id,
+    startedAt ?? undefined,
+    endedAt ?? undefined
+  );
   switch (outcome.kind) {
     case "saved":
       revalidateRoute("/nutrition");
@@ -224,6 +234,11 @@ export async function editFastAction(
       return fail("That overlaps a fast already on record.");
     case "invalid":
       return fail("Those times don't work — check the dates.");
+    // Neither field moved, so nothing was written. Reported rather than confirmed —
+    // "Fast updated." over a row that did not move is exactly the unconditional
+    // confirmation this module's header rules out.
+    case "unchanged":
+      return fail("Those are already the recorded times.");
     // The row was reopened elsewhere since this row was drawn, so the id now names the
     // RUNNING fast. Reported rather than obeyed: silently closing it again at a time the
     // user picked for a completed row is not the write this control was drawn for.
