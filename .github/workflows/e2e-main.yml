@@ -19,6 +19,12 @@ name: E2E (main)
 #
 # A DETECTOR, NOT A GATE — same standing as ci-main.yml. A red here means: stop
 # merging, attribute it, fix main first (a follow-up PR or a revert), resume.
+#
+# AUTHORIZED at this shape (#2969, ruled 2026-08-16), which is why ci-main.yml's
+# header now records its objection as superseded rather than reading as an
+# argument against this file. That ruling covers a DETECTOR only: promoting this
+# to a per-merge gate is a separate decision, and the objection recorded in
+# ci-main.yml still stands against it.
 on:
   push:
     branches: [main]
