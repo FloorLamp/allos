@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { zonedWallTimeToUtc, utcInstant } from "@/lib/date";
+import { FAST_MAX_HOURS } from "@/lib/fasting";
 
 // The fasting lifecycle in the real app (#2756) and the stand-down it feeds (#2757).
 //
@@ -13,7 +14,10 @@ import { zonedWallTimeToUtc, utcInstant } from "@/lib/date";
 //   • a second start is refused rather than confirmed, and the refusal writes nothing;
 //   • a backdated interval that overlaps an existing fast is refused;
 //   • past the plausibility bound the chip escalates to a SUGGEST with two resolutions
-//     — and nothing auto-ends;
+//     — and nothing auto-ends, and BOTH the resolutions its copy names actually land,
+//     including on a fast past FAST_MAX_HOURS;
+//   • a stale tab's Discard, carrying an id the app itself gave it, is refused once that
+//     fast was ended elsewhere rather than silently deleting finished history;
 //   • logging food mid-fast OFFERS "End your fast?" beside a serving that has already
 //     landed, declining changes nothing, and the count is unaffected either way;
 //
@@ -234,6 +238,42 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await expect(page.getByTestId("fasting-history-row")).toHaveCount(0);
   });
 
+  // R2 — THE SUGGEST'S COPY HAS TO NAME A WRITE THAT WORKS. "End it at the time you
+  // actually stopped" was false for a fast past FAST_MAX_HOURS: a length guard in
+  // `endFast` refused both the plain end and the honest backdated one, leaving only a
+  // time the user did not stop, or Discard — "I never actually fasted", which is a
+  // different claim and not one the app may steer anyone into.
+  test("an honest backdated end lands on a fast past the maximum length", async ({
+    page,
+  }) => {
+    seedFast(agoInstant(FAST_MAX_HOURS + 48), null);
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("fasting-stale-suggest")).toContainText(
+      "End it at the time you actually stopped"
+    );
+
+    // Do the thing the sentence says: set the time you actually stopped, then end.
+    await setBackdate(page, 3);
+    await settledClick(page, page.getByTestId("fasting-control"));
+    await expect(
+      page.getByTestId("toast").filter({ hasText: "Fast ended." })
+    ).toBeVisible();
+
+    const db = openDb();
+    try {
+      const open = db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(0);
+    } finally {
+      db.close();
+    }
+    // …and it is recorded as a completed fast rather than discarded.
+    await expect(page.getByTestId("fasting-history-row")).toHaveCount(1);
+  });
+
   test("a STALE tab's start is refused, not confirmed — the cross-device double-start", async ({
     page,
   }) => {
@@ -266,6 +306,55 @@ test.describe("the fasting lifecycle (#2756)", () => {
       expect(rows.n).toBe(1);
     } finally {
       db.close();
+    }
+  });
+
+  // R3 — THE SAME STALE TAB, HOLDING DISCARD. The button is drawn on the stale suggest
+  // and carries the ACTIVE fast's id; when that fast is ended somewhere else the id now
+  // names finished history. This is the app's own button with a now-wrong id, not a
+  // crafted one — and without a state re-derivation it deletes a completed fast with no
+  // confirmation and no undo, while answering "Discarded."
+  test("a STALE tab's discard is refused once the fast was ended elsewhere", async ({
+    page,
+  }) => {
+    seedFast(agoInstant(40), null);
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("fasting-discard")).toBeVisible();
+
+    // The fast is ended on the other device, and the next one begins.
+    const db = openDb();
+    try {
+      db.prepare(
+        "UPDATE fasts SET ended_at = ? WHERE profile_id = 1 AND ended_at IS NULL"
+      ).run(utcInstant(agoInstant(1)));
+    } finally {
+      db.close();
+    }
+    seedFast(agoInstant(0.5), null);
+
+    await settledClick(page, page.getByTestId("fasting-discard"));
+    await expect(
+      page
+        .getByTestId("toast")
+        .filter({ hasText: "That fast has already ended." })
+    ).toBeVisible();
+
+    // BOTH rows survive: the completed one was not destroyed and the running one was
+    // never touched.
+    const after = openDb();
+    try {
+      const rows = after
+        .prepare("SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1")
+        .get() as { n: number };
+      expect(rows.n).toBe(2);
+      const open = after
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(1);
+    } finally {
+      after.close();
     }
   });
 
@@ -367,10 +456,18 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     await expect(page.getByTestId("fasting-closeout-note")).toBeVisible();
     // …and it offers ONLY the way out. No start, no history, no elapsed framing: this is
     // harm-reduction, not tracking.
+    //
+    // THESE toHaveCount(0)s ARE A DEBT, NOT JUST AN ASSERTION. They say the close-out
+    // control is the entire surface, which makes any refusal `endFast` can return a dead
+    // end rather than a message — there is no second control to reach for. This test
+    // once pinned that minimal surface while the core had grown a `too-long` refusal, so
+    // the pair of them stranded every fast older than 14 days and neither half looked
+    // wrong on its own. The long case is now exercised directly, below.
     await expect(page.getByTestId("fasting-control")).toHaveText("End fast");
     await expect(page.getByTestId("fasting-history-row")).toHaveCount(0);
     await expect(page.getByTestId("fasting-backdate-toggle")).toHaveCount(0);
     await expect(page.getByTestId("fasting-stale-suggest")).toHaveCount(0);
+    await expect(page.getByTestId("fasting-discard")).toHaveCount(0);
 
     // And it WORKS — the exempt end path, reached from the rendered control.
     await settledClick(page, page.getByTestId("fasting-control"));
@@ -396,6 +493,46 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
 
     // With the fast closed, the surface goes away entirely — a restricted profile sees
     // no fasting content once there is nothing left to close.
+    await page.reload();
+    await expect(page.getByTestId("fasting-card")).toHaveCount(0);
+  });
+
+  // R1 — THE SAME SURFACE, PAST FAST_MAX_HOURS. The case the minimal-surface test above
+  // never reached, and the one where "one button and nothing else" stops being a design
+  // choice and starts being a trap: with a length refusal in `endFast`, the single
+  // control this profile can see was refused on every tap, forever. No backdating is
+  // needed to get here — a plain start and 14 days of clock does it.
+  test("closes out a fast that is PAST the maximum length", async ({
+    page,
+  }) => {
+    seedFast(agoInstant(FAST_MAX_HOURS + 72), null);
+    makeMinor();
+
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("fasting-card")).toBeVisible();
+    // Still one button, and still no other way out on screen — which is exactly why it
+    // has to work.
+    await expect(page.getByTestId("fasting-control")).toHaveText("End fast");
+    await expect(page.getByTestId("fasting-backdate-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("fasting-discard")).toHaveCount(0);
+
+    await settledClick(page, page.getByTestId("fasting-control"));
+    await expect(
+      page.getByTestId("toast").filter({ hasText: "Fast ended." })
+    ).toBeVisible();
+
+    const after = openDb();
+    try {
+      const open = after
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(0);
+    } finally {
+      after.close();
+    }
+
     await page.reload();
     await expect(page.getByTestId("fasting-card")).toHaveCount(0);
   });
