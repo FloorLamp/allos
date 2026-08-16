@@ -30,6 +30,8 @@ import {
   type UsualRoutineOffer,
 } from "../usual-routine";
 import { getUsualFoodOffer } from "./nutrition";
+import { getActiveFastCached } from "./fasting";
+import { standsDownUsualRoutine } from "../fasting-standdown";
 
 // The doses one tap would confirm for `window` on `date`: DECLARED in that window,
 // due that day, and not yet taken or skipped.
@@ -93,11 +95,26 @@ export function getPendingRoutineDoses(
 
 // WHAT ONE TAP WOULD WRITE right now, both halves, for one window on one day — or
 // `null` for no control at all. The food half gates; the dose half rides.
+//
+// THE FASTING STAND-DOWN (#2757). While a fast is ACTIVE this offer stands down — the
+// OFFER, never the LOGGING (#2419). Every food row on every surface stays exactly as
+// loggable, the dose controls elsewhere are untouched, and a log fired anyway meets
+// #2756's "End your fast?" follow-up; what goes away is the app proposing a meal to
+// someone who has just told it they are not eating. Checked FIRST, before the food
+// gather, so a standing-down profile pays for no reads at all.
+//
+// The dose half of the bundle goes with it, and that is a consequence of the bundle
+// rather than a second decision: the food half is this offer's GATE (no food offer, no
+// control), so there was never a dose-only shape of it. Nothing about a dose's own
+// dueness, its reminder, or its control anywhere else in the app changes — the
+// stand-down's reach over SENDS is a closed one-kind allowlist
+// (lib/fasting-standdown.ts) that cannot name a dose kind.
 export function getUsualRoutineOffer(
   profileId: number,
   window: FoodSlot,
   date: string
 ): UsualRoutineOffer | null {
+  if (standsDownUsualRoutine(getActiveFastCached(profileId))) return null;
   const groups = getUsualFoodOffer(profileId, window, date);
   if (groups.length === 0) return null;
   return usualRoutineOffer(

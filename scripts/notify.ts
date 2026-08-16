@@ -37,6 +37,8 @@ import { buildWorkoutTargetReminder } from "../lib/notifications/workouts";
 import { buildPracticeReminder } from "../lib/notifications/practices";
 import { buildFoodNudge } from "../lib/notifications/food";
 import { FOOD_NUDGE_WINDOWS } from "../lib/notifications/food-format";
+import { standsDownForFast } from "../lib/fasting-standdown";
+import { getActiveFastCached } from "../lib/queries/fasting";
 // Every per-day send marker this tick writes is minted by a DECLARED builder (#2036),
 // never composed from a free-form slot string — see lib/notifications/send-markers.ts.
 import {
@@ -400,9 +402,24 @@ async function tickProfile(
   // ALSO self-gates food-kind messages (isPushDeliverableKind, #692), which is what
   // stops the both-channels case — Telegram AND Web Push on — from fanning the nudge
   // out to a content-less "tap what you've eaten" push alongside the real Telegram one.
+  //
+  // AND STOOD DOWN WHILE A FAST IS ACTIVE (#2757). The system may REDUCE its contact
+  // unilaterally — never increase it — so this needs no consent and stores nothing: it
+  // is derived from the active-fast row, self-heals the moment the fast ends, and
+  // leaves no marker to sweep. The slot is simply never PUSHED, so the day's marker is
+  // never written either and the nudge resumes at the next slot after the fast ends
+  // rather than finding the day spent.
+  //
+  // `standsDownForFast` takes the KIND and consults a closed one-member allowlist
+  // (lib/fasting-standdown.ts), so this code path cannot reach a dose reminder, a
+  // missed-dose escalation, a PRN redose notice or any other safety-class send — that
+  // disjointness is proven over the whole `NotificationKind` union in
+  // lib/__tests__/fasting-standdown.test.ts rather than assumed here. The read is
+  // memoized for the profile's tick.
   if (
     getProfileFoodTelegram(profile.id) &&
-    telegramChannel.isConfigured(profile.id)
+    telegramChannel.isConfigured(profile.id) &&
+    !standsDownForFast(getActiveFastCached(profile.id), "food")
   ) {
     for (const w of FOOD_NUDGE_WINDOWS) {
       const slotMinute = sched.supplementMinutes[w];

@@ -461,6 +461,29 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  fasts: [
+    {
+      column: "started_at",
+      semantic: "window-start",
+      grain: "instant",
+      convention: "canonical",
+      note: "Migration 20260816-fasts (#2756). The instant the user CLAIMS the fast began — a claim, never a sensor reading, and never inferred from the food log (whose instants are tap times). BORN canonical, so the first writer is bound to utcInstant() by CANONICAL_INSTANT_COLUMNS rather than choosing a shape at the call site. An INSTANT and not a day on purpose: a fast spans a profile-local day boundary by nature, so a day column would be wrong on the majority of rows. Accepts a backdated value (forgot-to-tap is the common failure); the write core refuses a future one and one further back than FAST_MAX_HOURS. No column DEFAULT — SQLite's own datetime('now') writes the bare shape.",
+    },
+    {
+      column: "ended_at",
+      semantic: "window-end",
+      grain: "instant",
+      convention: "canonical",
+      note: "The claimed end, and NULL is load-bearing: `ended_at IS NULL` IS the active state (there is no status enum), which the partial unique index makes at-most-one-per-profile and every derivation downstream assumes. EXCLUSIVE as an interval end — ending one fast and starting the next at the same instant is a legitimate back-to-back pair, not an overlap. The profile-local DAY a completed fast counts for (#94) is derived from this column at read time (fastAttributedDay: a fast counts for the day it ENDS) and deliberately not stored, because storing it would freeze one timezone's answer.",
+    },
+    {
+      column: "created_at",
+      semantic: "record",
+      grain: "instant",
+      convention: "bare",
+      note: "The ordinary bookkeeping stamp, on the schema's bare convention like every other one — NOT claimed canonical, and never a substitute for `started_at`: when the row reached the app says nothing about when the fast began, which is the whole point of accepting a backdated start.",
+    },
+  ],
   fitness_assessment_entries: [
     {
       column: "created_at",
