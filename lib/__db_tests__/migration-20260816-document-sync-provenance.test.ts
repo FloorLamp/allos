@@ -121,18 +121,14 @@ describe("20260816-document-sync-provenance — the sync-rows rebuild", () => {
     mem.close();
   });
 
-  it("carries BOTH of the table's indexes across the rebuild", () => {
+  it("carries the table's index across the rebuild", () => {
     // The classic table-rebuild failure: create → copy → drop → rename takes the old
     // table's indexes with it, and nothing complains — the drill-in just gets slower
-    // every year. `idx_integration_sync_rows_event` is what resolves a run's provenance;
-    // `..._target` is what answers "has any run already claimed this document".
+    // every year. `idx_integration_sync_rows_event` is what resolves a run's provenance.
     const mem = seed();
     up(mem);
     expect(indexNames(mem, "integration_sync_rows")).toContain(
       "idx_integration_sync_rows_event"
-    );
-    expect(indexNames(mem, "integration_sync_rows")).toContain(
-      "idx_integration_sync_rows_target"
     );
     mem.close();
   });
@@ -181,12 +177,34 @@ describe("20260816-document-sync-provenance — the acquired-identity column", (
     mem.close();
   });
 
-  it("indexes the column it adds", () => {
+  it("adds the durable claim mark the guard reads", () => {
+    // `delivered_at` is what makes the claim survive the #388 retention sweep: the
+    // provenance rows cascade away with their event at 90 days, and a guard that asked
+    // them "is this already claimed" would forget and re-claim a year of archives.
     const mem = seed();
     up(mem);
-    expect(indexNames(mem, "medical_documents")).toContain(
-      "idx_medical_documents_acquired_identity"
-    );
+    expect(
+      (
+        mem.prepare("PRAGMA table_info(medical_documents)").all() as {
+          name: string;
+        }[]
+      ).map((c) => c.name)
+    ).toContain("delivered_at");
+    mem.close();
+  });
+
+  it("indexes both reads the feature makes, in one index", () => {
+    const mem = seed();
+    up(mem);
+    const idx = indexNames(mem, "medical_documents");
+    expect(idx).toContain("idx_medical_documents_acquired_identity");
+    expect(
+      (
+        mem
+          .prepare("PRAGMA index_info(idx_medical_documents_acquired_identity)")
+          .all() as { name: string }[]
+      ).map((c) => c.name)
+    ).toEqual(["acquired_identity_id", "delivered_at"]);
     mem.close();
   });
 });

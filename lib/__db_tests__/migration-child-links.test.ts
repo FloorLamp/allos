@@ -943,7 +943,7 @@ const FROZEN_UNGUARDED_DELETES: readonly {
   {
     file: "131-portal-accounts.ts",
     table: "portal_identities",
-    why: "#2680: the migration-159 shape, not an orphaning. 131 runs at position 131 and `portal_identities` had NO inbound delete link until 20260816-document-sync-provenance added `medical_documents.acquired_identity_id` (ON DELETE SET NULL) at position 203 — so at the moment 131 deletes, there is no child to clear. The scan reads the FINAL schema, which is why a link introduced later lands on an earlier file; migration 118 is here for exactly the same reason. Runtime deletes of a binding are unaffected: foreign_keys is ON outside the runner, and lib/portals.ts nulls the column explicitly beside every identity delete it makes.",
+    why: "#2680: the migration-159 shape, not an orphaning. 131 runs at position 131 and `portal_identities` had NO inbound delete link until 20260816-document-sync-provenance added `medical_documents.acquired_identity_id` (ON DELETE SET NULL) at position 203 — so at the moment 131 deletes, there is no child to clear. The scan reads the FINAL schema, which is why a link introduced later lands on an earlier file; migration 118 is here for exactly the same reason. Runtime deletes of a binding are unaffected: foreign_keys is ON outside the runner, so the link's own ON DELETE SET NULL fires — which is the only cleanup unbindPortalIdentity and unignorePortalIdentity rely on. deletePortal and deletePortalAccount additionally null the column explicitly, because those two run inside a writeTx that also deletes the identity rows and must not depend on statement order.",
   },
   {
     file: "118-imported-practice-logs.ts",

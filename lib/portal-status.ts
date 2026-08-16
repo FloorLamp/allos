@@ -93,12 +93,14 @@ export interface PortalRunLike {
   // Null means the portal has never actually been checked. Never advanced by a
   // delivery, which is the whole reason this can be stated beside one.
   checkedAt: string | null;
-  // Documents this login is credited with delivering on the report's day. See
-  // deliveredDocumentCountsByAccount (lib/portal-visibility.ts) for why the aggregate
-  // is day-grain — the same grain as the sentence that renders it. OPTIONAL so a
-  // PortalRunReport stays structurally assignable here: a caller with no count has no
-  // count to state, and the row says "Delivered no documents" rather than inventing one.
-  delivered?: number;
+  // What this login most recently delivered, and the day the archives landed. See
+  // deliveredDocumentCountsByAccount (lib/portal-visibility.ts) for why the count is the
+  // documents themselves and why the day is the DELIVERY's rather than the report's — a
+  // push that straddles UTC midnight files its last report on the far side of it, and the
+  // sentence should name the day the archives arrived. OPTIONAL so a PortalRunReport
+  // stays structurally assignable here: a caller with no count has no count to state, and
+  // the row says "Delivered no documents" rather than inventing one.
+  delivered?: { count: number; day: string } | null;
 }
 
 function day(stamp: string): string {
@@ -123,10 +125,10 @@ function joined(
 // What a delivery-only row says about the portal visit it did NOT make. Appended only
 // when the check clock actually LAGS the delivery: when a genuine check landed the same
 // day, the row would only be restating its own date.
-function checkClockSuffix(report: PortalRunLike): string {
+function checkClockSuffix(report: PortalRunLike, on: string): string {
   if (report.checkedAt === null) return " · portal never checked";
   const checked = day(report.checkedAt);
-  return checked < day(report.at) ? ` · portal last checked ${checked}` : "";
+  return checked < on ? ` · portal last checked ${checked}` : "";
 }
 
 // One login's last reported run, as its row states it. `null` means the login has never
@@ -150,22 +152,27 @@ export function portalLoginStatus(
   // opened no portal, so the row names the delivery — never "run", which on this page
   // means the portal was read.
   if (!report.contacted) {
-    const suffix = checkClockSuffix(report);
-    const delivered = report.delivered ?? 0;
-    if (delivered <= 0) {
+    const delivered = report.delivered ?? null;
+    // The day the ARCHIVES landed when there are any, and the report's own day when the
+    // delivery carried nothing — there is no delivery day to name in that case.
+    const on =
+      delivered && delivered.count > 0 ? delivered.day : day(report.at);
+    const suffix = checkClockSuffix(report, on);
+    if (!delivered || delivered.count <= 0) {
       // The run kind is still stated. A delivery that re-offered only documents allos
       // already holds genuinely delivered nothing new, and saying so is the honest
       // reading — there is nothing to link to.
-      return plain("ok", `Delivered no documents ${day(report.at)}${suffix}`);
+      return plain("ok", `Delivered no documents ${on}${suffix}`);
     }
+    const n = delivered.count;
     return joined("ok", [
       { kind: "text", text: "Delivered " },
       {
         kind: "link",
-        text: `${delivered} ${delivered === 1 ? "document" : "documents"}`,
+        text: `${n} ${n === 1 ? "document" : "documents"}`,
         href: dataSectionHref("review"),
       },
-      { kind: "text", text: ` ${day(report.at)}${suffix}` },
+      { kind: "text", text: ` ${on}${suffix}` },
     ]);
   }
   // A run that found nothing new still counts as a check — that is the point of the

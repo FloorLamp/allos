@@ -1,5 +1,6 @@
 import { db, hoistedStatement, writeTx } from "./db";
 import { log } from "./log";
+import { insertSyncRows } from "./integrations/connections";
 import { sqlNow } from "./clock";
 import {
   isAccountSlug,
@@ -1427,9 +1428,57 @@ export function stampAcquiredIdentity(
 }
 
 // The documents this identity has delivered and no run has claimed: acquired for that
-// (login, patient) pair, owned by this profile, and named by no existing provenance row.
-// Called by the sync-report handler on a SUCCESSFUL report only — a failed run delivered
-// nothing, and must not consume documents the next good run should claim.
+// (login, patient) pair, owned by this profile, and not yet stamped `delivered_at`.
+//
+// ── WHY THE GUARD IS A COLUMN ON THE DOCUMENT ────────────────────────────────
+//
+// It used to ask `integration_sync_rows` "is this document already a provenance target",
+// which reads as the natural question and is a TRAP: those rows are children of
+// integration_sync_events with ON DELETE CASCADE, and #388's retention sweep
+// (SYNC_EVENTS_RETENTION_DAYS = 90, on the hourly tick) deletes the parents. The rows go
+// with them, the guard forgets everything older than the window, and the archives become
+// claimable again — so an ordinary run that delivered nothing claims a year of history
+// and the login row renders it as today's delivery. Measured: twelve monthly pushes, one
+// sweep, then an empty `nothing-new` run claiming nine archives and reading "Delivered 9
+// documents". Worse, the drop rule then KEEPS that run — it has claims — so the sweep
+// manufactures a delivery row out of a run that was correctly suppressed the hour before.
+//
+// The cascade is right for the five RECORD tables, whose rows are claimed at write time
+// by the upsert that wrote them; the provenance row there is a record OF the claim. Here
+// the provenance row WAS the claim, so expiring it reset the state.
+//
+// `delivered_at` is a fact about the DOCUMENT — a portal run said it delivered this
+// archive — and a document outlives every run that ever reported it. The provenance row
+// stays what it always was: the run's own listing, expiring with the run, so a swept run
+// stops offering a drill-in rather than releasing its documents.
+export function documentsDeliveredBy(
+  profileId: number,
+  identityId: number
+): number[] {
+  const rows = db
+    .prepare(
+      `SELECT d.id AS id
+         FROM medical_documents d
+        WHERE d.profile_id = ? AND d.acquired_identity_id = ?
+          AND d.delivered_at IS NULL
+        ORDER BY d.id`
+    )
+    .all(profileId, identityId) as { id: number }[];
+  return rows.map((r) => r.id);
+}
+
+// Claim this run's delivery: select what it delivered, list it as the run's provenance,
+// and stamp the durable mark — ALL THREE IN ONE TRANSACTION, because the mark is what the
+// select above reads and the listing is what the reader sees. Split across two writes,
+// a failure between them either strands documents nothing can list (marked, unlisted, and
+// unclaimable forever) or double-claims them on the next run. Returns the ids it claimed.
+//
+// BEST-EFFORT at this boundary, like every other provenance write: it never throws into
+// the report handler. When it fails NOTHING is written, so the next successful run for
+// this identity claims the same archives — the self-healing the atomicity buys.
+//
+// Called on a SUCCESSFUL report only: a failed run delivered nothing, and must not
+// consume documents the next good run should claim.
 //
 // ── THE TRADE THIS MAKES, STATED SO NOBODY "FIXES" IT ────────────────────────
 //
@@ -1441,29 +1490,43 @@ export function stampAcquiredIdentity(
 // That is deliberate, and it is the better half of the only choice available. The
 // alternative is a boundary — "documents since the last report" — and a boundary that
 // moves on every report is what loses documents PERMANENTLY: the run that should have
-// claimed them has already been overtaken, and the unclaimed guard then keeps them
-// eligible forever without any run ever being able to reach them. A file attributed to a
-// slightly late run is legible and recoverable; a file no surface can list is neither.
+// claimed them has already been overtaken, and the guard then keeps them eligible forever
+// without any run ever being able to reach them. A file attributed to a slightly late run
+// is legible and recoverable; a file no surface can list is neither.
 //
-// Nothing here moves a boundary, so there is no state to get wrong: an unclaimed
-// document is claimable until some run claims it, exactly once.
-export function documentsDeliveredBy(
+// Nothing here moves a boundary, and the mark that records the claim outlives every run,
+// every retention sweep and every re-binding of the identity — so a document is claimed
+// exactly once for as long as it exists.
+export function claimDeliveredDocuments(
+  eventId: number | null,
   profileId: number,
   identityId: number
 ): number[] {
-  const rows = db
-    .prepare(
-      `SELECT d.id AS id
-         FROM medical_documents d
-        WHERE d.profile_id = ? AND d.acquired_identity_id = ?
-          AND NOT EXISTS (
-            SELECT 1 FROM integration_sync_rows r
-             WHERE r.target_table = 'medical_documents' AND r.target_id = d.id
-          )
-        ORDER BY d.id`
-    )
-    .all(profileId, identityId) as { id: number }[];
-  return rows.map((r) => r.id);
+  if (eventId === null) return [];
+  try {
+    return writeTx((): number[] => {
+      const ids = documentsDeliveredBy(profileId, identityId);
+      if (ids.length === 0) return [];
+      insertSyncRows(
+        eventId,
+        ids.map((id) => ({
+          target_table: "medical_documents" as const,
+          target_id: id,
+          disposition: "inserted" as const,
+        }))
+      );
+      const stamp = db.prepare(
+        `UPDATE medical_documents SET delivered_at = ?
+          WHERE id = ? AND profile_id = ?`
+      );
+      const at = sqlNow();
+      for (const id of ids) stamp.run(at, id, profileId);
+      return ids;
+    });
+  } catch (err) {
+    log.error("claimDeliveredDocuments failed", { eventId, err: String(err) });
+    return [];
+  }
 }
 
 const LIST_RUN_REPORTS_STMT = hoistedStatement(

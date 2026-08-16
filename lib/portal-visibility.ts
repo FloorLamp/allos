@@ -138,67 +138,78 @@ export function listVisiblePortalRunReports(
   }));
 }
 
-// ── HOW MANY DOCUMENTS A LOGIN DELIVERED (#2914) ─────────────────────────────
+// ── WHAT A LOGIN DELIVERED, AND WHEN (#2914) ─────────────────────────────────
 //
-// The login row now says "Delivered N documents <day>" for a delivery-only report, and
-// this is where N comes from.
+// The login row says "Delivered N documents <day>" for a delivery-only report, and this
+// is where both halves come from.
 //
-// ONE NUMBER, NOT TWO (#1991). N counts the DOCUMENTS THE RUNS CLAIMED — the same
-// `integration_sync_rows` this login's runs wrote and the same rows the Imports feed's
-// drill-in lists — never the tool's own `inserted + updated` split. Those are two
-// independent counts of one delivery, and they disagree the moment the tool's split
-// differs from what allos stored: three archives reported as `inserted 1, unchanged 2`
-// made this page say "1" while the drill-in listed 3. Deriving both surfaces from the
-// provenance rows is what stops one delivery having two numbers in front of the reader.
+// ONE NUMBER, NOT TWO (#1991). N counts DOCUMENTS THE RUNS CLAIMED — the same archives
+// the Imports feed's drill-in lists — never the tool's own `inserted + updated` split.
+// Those are two independent counts of one delivery and they disagree the moment the
+// tool's split differs from what allos stored: three archives reported as
+// `inserted 1, unchanged 2` made this page say "1" while the drill-in listed 3. It is
+// also the only derivation that survives the observed case #2914 was filed from — a push
+// that delivered documents under a report whose status was `nothing-new` and whose split
+// was all zeroes.
 //
-// It is also the only derivation that survives the observed case #2914 was filed from: a
-// push that delivered documents under a report whose status was `nothing-new` and whose
-// split was all zeroes. The split says nothing arrived; the claimed rows say two archives
-// did, and they are right.
+// READ FROM THE DOCUMENTS, NOT FROM THE RUNS, and that is not a stylistic choice. The
+// provenance rows expire with their event on the #388 retention sweep, so a count taken
+// from them silently falls to zero at 90 days while the archives are still on disk;
+// `medical_documents.delivered_at` is a fact about the document and outlives every run.
 //
-// THE AGGREGATE IS DAY-GRAIN, deliberately, and it is the one judgement call in the
-// derivation. `portal_run_reports` holds ONE ROW PER LOGIN (migration 132), so each
-// report OVERWRITES the previous one's stamp: after the fact there is no stored
-// boundary saying where the last run began, and the acquirer's contract carries no run
-// id (both #2914 and #2999 deliberately refuse to change it). A window guessed from the
-// gap between events would be a constant nobody could defend. So the count is taken at
-// the grain the SENTENCE already commits to — the report's calendar day — where it
-// cannot contradict itself: "Delivered 6 documents 2026-08-15" is true of that login on
-// that day whether one push or two produced them.
+// THE DAY IS THE DELIVERY'S OWN, not the report's — the fix for a push that straddles
+// UTC midnight. `portal_run_reports` holds ONE ROW PER LOGIN (migration 132), so joining
+// the claims to that row's day meant the day of whichever patient reported LAST: a push
+// filing reports at 23:59:52Z and 00:00:05Z excluded everything stamped on the earlier
+// day, and the page said "Delivered 2 documents" over five archives the feed listed as
+// 3 + 2. Grouping by the day the archives actually landed makes the two surfaces agree
+// per day, which is the most any day-grain sentence can honestly claim — there is no run
+// boundary to use instead, because the report table keeps no history and the acquirer
+// contract carries no run id (both #2914 and #2999 refuse to change it).
 //
-// SCOPED LIKE EVERYTHING ELSE ON THIS PAGE. The events are narrowed to the viewer's own
-// accessible profiles AND to accounts the same predicate above admits, so a login row
-// can never be given a number drawn from a household this viewer cannot reach. Only
-// `ok` events count — a failed run delivered nothing, and claims nothing.
+// So: the login's MOST RECENT delivery day, and how many archives it carried. "Delivered
+// 6 documents 2026-08-15" is true of that login on that day whether one push or two
+// produced them.
+//
+// SCOPED LIKE EVERYTHING ELSE ON THIS PAGE. Narrowed to the viewer's own accessible
+// profiles AND to accounts the same predicate above admits, so a login row can never be
+// given a number drawn from a household this viewer cannot reach.
+export interface DeliveredDocuments {
+  count: number;
+  day: string;
+}
+
 export function deliveredDocumentCountsByAccount(
   accessibleProfileIds: AuthorizedProfileIds,
   canSeeUnclaimed: boolean
-): Map<number, number> {
+): Map<number, DeliveredDocuments> {
   const ids = accessibleProfileIds;
-  // `substr(at, 1, 10)` on both sides rather than `date()`: the two columns sit on
-  // DIFFERENT stored conventions (#2205) — `integration_sync_events.at` is a canonical
-  // UTC instant, `portal_run_reports.at` is bare — and the leading ten characters are
-  // the calendar day in either form, which `date()` would not be for the `Z` form.
+  // `substr(delivered_at, 1, 10)` rather than `date()`: the column is stored bare
+  // (lib/time-columns.ts), and the leading ten characters are its calendar day.
   const rows = db
     .prepare(
-      `SELECT e.account_id AS accountId, COUNT(*) AS delivered
-         FROM integration_sync_rows sr
-         JOIN integration_sync_events e ON e.id = sr.event_id
-         JOIN portal_run_reports r ON r.account_id = e.account_id
-        WHERE sr.target_table = 'medical_documents'
-          AND e.profile_id IN ${profileIdsIn(ids)}
-          AND e.source_id = 'patient-portals'
-          AND e.ok = 1
-          AND e.account_id IS NOT NULL
-          AND substr(e.at, 1, 10) = substr(r.at, 1, 10)
-          AND ${reachableAccountSql(ids, "e.account_id")}
-        GROUP BY e.account_id`
+      `SELECT pi.account_id AS accountId,
+              substr(d.delivered_at, 1, 10) AS day,
+              COUNT(*) AS delivered
+         FROM medical_documents d
+         JOIN portal_identities pi ON pi.id = d.acquired_identity_id
+        WHERE d.delivered_at IS NOT NULL
+          AND d.profile_id IN ${profileIdsIn(ids)}
+          AND ${reachableAccountSql(ids, "pi.account_id")}
+        GROUP BY pi.account_id, day
+        ORDER BY pi.account_id, day`
     )
     .all(...ids, ...ids, canSeeUnclaimed ? 1 : 0) as {
     accountId: number;
-    delivered: number | null;
+    day: string;
+    delivered: number;
   }[];
-  return new Map(rows.map((r) => [r.accountId, r.delivered ?? 0]));
+  // Ordered by day ascending, so the last row per account is its most recent delivery.
+  const out = new Map<number, DeliveredDocuments>();
+  for (const r of rows) {
+    out.set(r.accountId, { count: r.delivered, day: r.day });
+  }
+  return out;
 }
 
 // ── The pending list a MEMBER may see (#1875) ────────────────────────────────

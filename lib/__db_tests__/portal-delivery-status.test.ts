@@ -84,6 +84,15 @@ function deliveredEvent(
     `UPDATE integration_sync_events SET at = ?
       WHERE id = (SELECT MAX(id) FROM integration_sync_events)`
   ).run(at);
+  // A delivered archive always carries the identity it was acquired for — that is what
+  // the upload route stamps, and what ties the count below to this login.
+  const identityId = (
+    db
+      .prepare(
+        "SELECT id FROM portal_identities WHERE account_id = ? AND patient_label = ?"
+      )
+      .get(account.id, patientLabel) as { id: number }
+  ).id;
   const docIds: number[] = [];
   for (let i = 0; i < documents; i++) {
     docIds.push(
@@ -92,11 +101,15 @@ function deliveredEvent(
           .prepare(
             `INSERT INTO medical_documents
                (filename, stored_path, mime_type, size_bytes, extraction_status,
-                uploaded_at, profile_id)
-             VALUES (?, '', 'application/xml', 20, 'done', ?, ?)`
+                uploaded_at, profile_id, acquired_identity_id)
+             VALUES (?, '', 'application/xml', 20, 'done', ?, ?, ?)`
           )
-          .run(`bundle-${at.slice(0, 10)}-${i}.xml`, at.slice(0, 19), profileId)
-          .lastInsertRowid
+          .run(
+            `bundle-${at.slice(0, 10)}-${i}.xml`,
+            at.slice(0, 19),
+            profileId,
+            identityId
+          ).lastInsertRowid
       )
     );
   }
@@ -108,6 +121,12 @@ function deliveredEvent(
       disposition: "inserted" as const,
     }))
   );
+  // The DURABLE half of the claim — what the login row's count is read from, and what
+  // outlives the retention sweep that takes the provenance rows above.
+  const stamp = db.prepare(
+    "UPDATE medical_documents SET delivered_at = ? WHERE id = ?"
+  );
+  for (const id of docIds) stamp.run(at.replace("T", " ").slice(0, 19), id);
 }
 
 // Force a report's stamps, the way the e2e fixture does — recordPortalRunReport reads
@@ -221,7 +240,7 @@ describe("the check clock reaches the page (#2914)", () => {
 });
 
 describe("deliveredDocumentCountsByAccount (#2914)", () => {
-  it("counts the documents a login delivered on its last report's day", () => {
+  it("counts the documents a login delivered on its most recent delivery day", () => {
     // Four archives landed on the 15th (3 + 1). The single document from the 10th is a
     // different day and is deliberately not folded in.
     //
@@ -232,7 +251,7 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
       deliveredDocumentCountsByAccount(authorized([profileOne]), false).get(
         accountOne.id
       )
-    ).toBe(4);
+    ).toEqual({ count: 4, day: "2026-08-15" });
   });
 
   it("never lends one household's documents to another's login row", () => {
@@ -247,7 +266,7 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
     );
     // Nine, over a report whose split was all zeroes: the run said `nothing-new` about
     // the portal visit it did not make, and nine archives arrived anyway.
-    expect(forTwo.get(accountTwo.id)).toBe(9);
+    expect(forTwo.get(accountTwo.id)).toEqual({ count: 9, day: "2026-08-15" });
     expect(forTwo.has(accountOne.id)).toBe(false);
   });
 
@@ -255,6 +274,73 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
     expect(deliveredDocumentCountsByAccount(authorized([]), false).size).toBe(
       0
     );
+  });
+});
+
+describe("a push that straddles UTC midnight (#2914)", () => {
+  it("names the day the archives landed, and counts all of that day's", async () => {
+    // One login, two patients, reports either side of midnight. Joining the claims to the
+    // report row's day meant the day of whichever patient reported LAST, so everything
+    // stamped on the earlier day vanished from the count: the page said 2 over five
+    // archives the feed listed as 3 + 2. The day the sentence names is now the day the
+    // documents arrived, so the two surfaces agree per day.
+    const profile = newProfile("DELIVERY-MIDNIGHT");
+    const portal = createPortal("Delivery Portal Midnight");
+    expect(portal.ok).toBe(true);
+    const account = accountsForPortal(portal.ok ? portal.id : 0)[0];
+    expect(bindPortalIdentity(account.id, "Midnight Patient", profile).ok).toBe(
+      true
+    );
+
+    deliveredEvent(
+      profile,
+      account,
+      "Midnight Patient",
+      3,
+      { inserted: 3 },
+      "2026-08-14T23:59:52Z"
+    );
+    deliveredEvent(
+      profile,
+      account,
+      "Midnight Patient",
+      2,
+      { inserted: 2 },
+      "2026-08-15T00:00:05Z"
+    );
+    recordPortalRunReport(account, {
+      ok: true,
+      status: "downloaded",
+      message: null,
+      discovered: 0,
+      contacted: false,
+    });
+    stampReport(account, "2026-08-15 00:00:06", null);
+
+    const delivered = deliveredDocumentCountsByAccount(
+      authorized([profile]),
+      false
+    ).get(account.id);
+    // The most recent delivery day, and everything that landed on it.
+    expect(delivered).toEqual({ count: 2, day: "2026-08-15" });
+
+    const report = listVisiblePortalRunReports(
+      authorized([profile]),
+      false
+    ).find((r) => r.accountId === account.id)!;
+    expect(portalLoginStatus({ ...report, delivered }).text).toBe(
+      "Delivered 2 documents 2026-08-15 · portal never checked"
+    );
+    // The other three are not lost — they are the previous day's delivery, which is
+    // exactly how the Imports feed lists them.
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM medical_documents
+            WHERE profile_id = ? AND substr(delivered_at, 1, 10) = '2026-08-14'`
+        )
+        .get(profile)
+    ).toEqual({ n: 3 });
   });
 });
 
@@ -270,7 +356,7 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
     );
     const line = portalLoginStatus({
       ...report,
-      delivered: delivered.get(accountOne.id) ?? 0,
+      delivered: delivered.get(accountOne.id) ?? null,
     });
     expect(line.tone).toBe("ok");
     expect(line.text).toBe(
@@ -295,7 +381,7 @@ describe("the sentence a delivery-only login row renders (#2914)", () => {
     expect(
       portalLoginStatus({
         ...report,
-        delivered: delivered.get(accountTwo.id) ?? 0,
+        delivered: delivered.get(accountTwo.id) ?? null,
       }).text
     ).toBe("Delivered 9 documents 2026-08-15 · portal never checked");
   });

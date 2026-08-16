@@ -49,11 +49,22 @@ import type { Migration } from "../runner";
 //    lib/portals.ts nulls the link explicitly too, so teardown holds with foreign_keys
 //    off. SQLite permits a REFERENCES clause on ADD COLUMN because the default is NULL.
 //
-// 3. One index for the claim's second half. A run claims only documents NO RUN HAS
-//    CLAIMED YET, which asks `integration_sync_rows` "is this document already a target",
-//    and that table is the largest child in the schema (every synced sample is a row in
-//    it). `(target_table, target_id)` turns a full scan per candidate document into a
-//    seek.
+// 3. `medical_documents.delivered_at` — WHEN a portal run claimed this archive, and the
+//    reason the claim is not asked of `integration_sync_rows`.
+//
+//    A run claims only documents NO RUN HAS CLAIMED YET, so the guard needs a durable
+//    memory of the attribution. The provenance row is not one: it is a CHILD of
+//    integration_sync_events with `ON DELETE CASCADE`, and #388's retention sweep
+//    (SYNC_EVENTS_RETENTION_DAYS = 90, run on the hourly tick) deletes those events. The
+//    rows go with them, the guard forgets, and every archive older than the window
+//    becomes claimable again — so an ordinary run that delivered nothing would claim a
+//    year of history and render it as today's delivery. That cascade is exactly right for
+//    the five RECORD tables, which are claimed at write time by the upsert that wrote
+//    them; it is wrong for a table whose claim state IS the guard.
+//
+//    So the attribution lives on the DOCUMENT, which is what it is a fact about, and
+//    outlives every run that ever reported it. The provenance row stays what it always
+//    was — the run's own listing of what it delivered, expiring with the run.
 //
 // Replay-safe on every half: the rebuild is gated on the converged CHECK already
 // containing the sentinel, the ADD COLUMN on the catalog, the indexes on IF NOT EXISTS.
@@ -114,25 +125,23 @@ export function up(db: Database.Database): void {
     rebuild.immediate();
   }
 
-  if (!columnNames(db, "medical_documents").has("acquired_identity_id")) {
+  const documents = columnNames(db, "medical_documents");
+  if (!documents.has("acquired_identity_id")) {
     db.exec(
       `ALTER TABLE medical_documents ADD COLUMN acquired_identity_id INTEGER
          REFERENCES portal_identities(id) ON DELETE SET NULL`
     );
   }
-  // The report handler reads "which documents did this identity just deliver" on every
-  // run, and the identity-delete cleanup reads the inverse. One index covers both, and it
-  // is sparse in practice (NULL for every hand-uploaded document).
+  if (!documents.has("delivered_at")) {
+    db.exec(`ALTER TABLE medical_documents ADD COLUMN delivered_at TEXT`);
+  }
+  // Both reads this feature makes, in one index. The claim asks "which of this identity's
+  // archives has no run claimed yet" (identity, then `delivered_at IS NULL`); the login
+  // row asks "what did this identity deliver, and when" (identity, then the delivered
+  // instants). Sparse in practice — NULL identity for every hand-uploaded document.
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_medical_documents_acquired_identity
-       ON medical_documents(acquired_identity_id)`
-  );
-  // The unclaimed guard's index (see 3 above). Created outside the rebuild block so a
-  // database that already has the widened CHECK — a replay, or a half-applied resume —
-  // still gets it.
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_integration_sync_rows_target
-       ON integration_sync_rows(target_table, target_id)`
+       ON medical_documents(acquired_identity_id, delivered_at)`
   );
 }
 

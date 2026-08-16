@@ -29,7 +29,12 @@ function report(over: Partial<PortalRunLike> = {}): PortalRunLike {
 // A delivery-only push: it opened no portal, so its check clock is whatever the last
 // real visit left standing.
 function delivery(over: Partial<PortalRunLike> = {}): PortalRunLike {
-  return report({ contacted: false, checkedAt: null, delivered: 4, ...over });
+  return report({
+    contacted: false,
+    checkedAt: null,
+    delivered: { count: 4, day: "2026-03-04" },
+    ...over,
+  });
 }
 
 describe("portalLoginStatus", () => {
@@ -78,7 +83,7 @@ describe("portalLoginStatus", () => {
       report(),
       report({ ok: false, message: "nope" }),
       delivery(),
-      delivery({ delivered: 0 }),
+      delivery({ delivered: { count: 0, day: "2026-03-04" } }),
       delivery({ checkedAt: "2026-03-01 09:00:00" }),
     ]) {
       const line = portalLoginStatus(r);
@@ -112,9 +117,11 @@ describe("portalLoginStatus — a delivery is not a run", () => {
   });
 
   it("says document, singular, for a one-document delivery", () => {
-    expect(portalLoginStatus(delivery({ delivered: 1 })).text).toBe(
-      "Delivered 1 document 2026-03-04 · portal never checked"
-    );
+    expect(
+      portalLoginStatus(
+        delivery({ delivered: { count: 1, day: "2026-03-04" } })
+      ).text
+    ).toBe("Delivered 1 document 2026-03-04 · portal never checked");
   });
 
   it("states that the portal has never been checked when it never has", () => {
@@ -133,7 +140,10 @@ describe("portalLoginStatus — a delivery is not a run", () => {
 
   it("still names the kind when the delivery brought nothing new, and links nothing", () => {
     const line = portalLoginStatus(
-      delivery({ delivered: 0, checkedAt: "2026-03-01 09:00:00" })
+      delivery({
+        delivered: { count: 0, day: "2026-03-04" },
+        checkedAt: "2026-03-01 09:00:00",
+      })
     );
     expect(line.text).toBe(
       "Delivered no documents 2026-03-04 · portal last checked 2026-03-01"

@@ -285,6 +285,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `medical_documents` | `uploaded_at` | record | instant | bare |  |
 | `medical_documents` | `processing_started_at` | lifecycle | instant | bare |  |
 | `medical_documents` | `extraction_completed_at` | lifecycle | instant | bare |  |
+| `medical_documents` | `delivered_at` | lifecycle | instant | bare |  |
 | `medical_record_revisions` | `date` | day | day | n/a |  |
 | `medical_record_revisions` | `superseded_at` | lifecycle | instant | bare |  |
 | `medical_records` | `date` | day | day | n/a |  |

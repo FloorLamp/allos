@@ -44,7 +44,10 @@ import { getSyncRowProvenance } from "@/lib/queries/integrations";
 import { getImportDocumentsFeed } from "@/lib/queries/imports";
 import { deliveredDocumentCountsByAccount } from "@/lib/portal-visibility";
 import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
-import { recordSyncEvent } from "@/lib/integrations/connections";
+import {
+  pruneSyncEvents,
+  recordSyncEvent,
+} from "@/lib/integrations/connections";
 import { feedItemView } from "@/lib/import-feed";
 
 let toolLogin: number;
@@ -420,6 +423,88 @@ describe("one login, two patients: nobody's documents go unclaimed (#2914)", () 
   });
 });
 
+describe("the #388 retention sweep does not release a claimed archive (#2999)", () => {
+  it("keeps every claim past the sweep, and an empty run after it claims nothing", async () => {
+    // THE TRAP THIS PINS. The claim's guard used to be "does a provenance row name this
+    // document" — and provenance rows are children of integration_sync_events with
+    // ON DELETE CASCADE, which the 90-day sweep deletes. The guard forgot, the archives
+    // became claimable again, and the next ordinary run — one that delivered NOTHING —
+    // claimed a year of history and rendered it as today's delivery. Worse, the drop rule
+    // then KEPT that run, because it now had claims: the sweep manufactured a delivery
+    // row out of a run it had correctly suppressed the hour before.
+    //
+    // A test that never invokes the sweep cannot see this class of bug, which is exactly
+    // why nothing caught it. This one runs it.
+    const delivered: number[] = [];
+    for (const n of [1, 2, 3]) {
+      const doc = await upload(accountOne, LABEL_ONE, `retained-a${n}.pdf`);
+      spaceUploads([doc], 10);
+      const run = await reportRun(accountOne, LABEL_ONE);
+      expect(claimedDocuments(run)).toEqual([doc]);
+      delivered.push(doc);
+      // Age this run's event past the retention window.
+      db.prepare(
+        `UPDATE integration_sync_events SET at = ?
+          WHERE id = ?`
+      ).run("2026-01-05T09:00:00Z", run);
+    }
+
+    // Every archive is claimed exactly once, before the sweep.
+    for (const doc of delivered) expect(claimedAnywhere(doc)).toBe(1);
+
+    // THE SWEEP ITSELF — the real one, on the real schema.
+    expect(pruneSyncEvents()).toBeGreaterThan(0);
+
+    // The provenance rows went with their events. That is correct: the run they belonged
+    // to no longer exists, so it has no drill-in to offer.
+    const survivingRows = delivered.filter((d) => claimedAnywhere(d) > 0);
+    expect(survivingRows.length).toBeLessThan(delivered.length);
+
+    // …and the CLAIM survived anyway, because it lives on the document.
+    for (const doc of delivered) {
+      expect(
+        db
+          .prepare(
+            "SELECT delivered_at AS at FROM medical_documents WHERE id = ?"
+          )
+          .get(doc)
+      ).not.toEqual({ at: null });
+    }
+
+    // The run that fabricated a delivery: `nothing-new`, all-zero split, nothing
+    // uploaded. It must claim nothing and it must not reach the feed.
+    const empty = await reportRun(accountOne, LABEL_ONE, {
+      status: "nothing-new",
+      inserted: 0,
+      unchanged: 0,
+    });
+    expect(claimedDocuments(empty)).toEqual([]);
+    const ids = getImportDocumentsFeed(profileOne, 200)
+      .filter((e) => e.stream === "sync")
+      .map((e) => (e.stream === "sync" ? e.event.id : 0));
+    expect(ids).not.toContain(empty);
+  });
+
+  it("still states a swept login's delivery on its login row", async () => {
+    // The count is read from the documents, so it outlives the runs. A login whose events
+    // have aged out still says what it delivered instead of falling to zero.
+    const doc = await upload(accountOne, LABEL_ONE, "swept-a8.pdf");
+    spaceUploads([doc], 10);
+    const run = await reportRun(accountOne, LABEL_ONE);
+    db.prepare("UPDATE integration_sync_events SET at = ? WHERE id = ?").run(
+      "2026-01-06T09:00:00Z",
+      run
+    );
+    pruneSyncEvents();
+
+    const delivered = deliveredDocumentCountsByAccount(
+      authorized([profileOne]),
+      false
+    ).get(accountOne.id);
+    expect(delivered?.count).toBeGreaterThan(0);
+  });
+});
+
 describe("re-pointing a binding never re-attributes an archive (#2999)", () => {
   it("leaves the previous person's documents where they are, claimed by nobody", async () => {
     // A binding is a mapping from a portal's patient LABEL to a person, and a household
@@ -529,26 +614,26 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
     const drilldown = entry.drilldown?.count ?? 0;
     expect(drilldown).toBe(3);
 
-    // The page's number is the sum of that login's claims on the report's day, which
-    // includes every run this file has driven — so the two surfaces are compared to each
-    // other, not to a literal.
-    const page =
-      deliveredDocumentCountsByAccount(authorized([profileOne]), false).get(
-        accountOne.id
-      ) ?? 0;
-    const claimedToday = (
+    // The page's number is everything this login delivered on that day — every run this
+    // file has driven — so the two surfaces are compared to EACH OTHER, not to a literal.
+    const page = deliveredDocumentCountsByAccount(
+      authorized([profileOne]),
+      false
+    ).get(accountOne.id)!;
+    const deliveredThatDay = (
       db
         .prepare(
           `SELECT COUNT(*) AS n
-             FROM integration_sync_rows sr
-             JOIN integration_sync_events e ON e.id = sr.event_id
-            WHERE sr.target_table = 'medical_documents'
-              AND e.account_id = ? AND e.profile_id = ? AND e.ok = 1`
+             FROM medical_documents d
+             JOIN portal_identities pi ON pi.id = d.acquired_identity_id
+            WHERE pi.account_id = ? AND d.profile_id = ?
+              AND substr(d.delivered_at, 1, 10) = ?`
         )
-        .get(accountOne.id, profileOne) as { n: number }
+        .get(accountOne.id, profileOne, page.day) as { n: number }
     ).n;
-    expect(page).toBe(claimedToday);
-    expect(page).toBeGreaterThanOrEqual(drilldown);
+    expect(page.count).toBe(deliveredThatDay);
+    // …and the run the reader can actually open is a subset of it, never more.
+    expect(page.count).toBeGreaterThanOrEqual(drilldown);
   });
 });
 

@@ -291,11 +291,22 @@ function plantDelivery(portalName: string, documents: number) {
           identity.label
         ).lastInsertRowid
     );
+    const identityId = (
+      handle
+        .prepare(
+          `SELECT id FROM portal_identities
+            WHERE account_id = ? AND patient_label = ?`
+        )
+        .get(account.id, identity.label) as { id: number }
+    ).id;
+    // A delivered archive carries the identity it was acquired for and the DURABLE mark
+    // that says a run claimed it — the two facts the login row's count is read from, and
+    // the ones that outlive the run's own provenance rows (#388's sweep takes those).
     const insertDoc = handle.prepare(
       `INSERT INTO medical_documents
          (filename, stored_path, mime_type, size_bytes, extraction_status,
-          uploaded_at, profile_id)
-       VALUES (?, '', 'text/xml', 400, 'done', ?, ?)`
+          uploaded_at, profile_id, acquired_identity_id, delivered_at)
+       VALUES (?, '', 'text/xml', 400, 'done', ?, ?, ?, ?)`
     );
     const claim = handle.prepare(
       `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
@@ -306,7 +317,9 @@ function plantDelivery(portalName: string, documents: number) {
         insertDoc.run(
           `${DELIVERED_PREFIX}${portalName} ${i}.xml`,
           bare,
-          identity.profileId
+          identity.profileId,
+          identityId,
+          bare
         ).lastInsertRowid
       );
       claim.run(eventId, docId);

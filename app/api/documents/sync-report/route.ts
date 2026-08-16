@@ -13,7 +13,7 @@ import {
 import {
   applyIdentityOutcomes,
   clearIdentityDeclined,
-  documentsDeliveredBy,
+  claimDeliveredDocuments,
   recordDiscoveredIdentities,
   recordPendingIdentity,
   recordPortalRunReport,
@@ -25,7 +25,6 @@ import { canReportOnAccount } from "@/lib/portal-visibility";
 import {
   recordSync,
   recordSyncEvent,
-  recordSyncRows,
   upsertConnection,
 } from "@/lib/integrations/connections";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -468,23 +467,17 @@ export async function POST(req: Request): Promise<Response> {
     // on each archive: the tool files one report per patient, so a claim keyed to the
     // login would credit one patient's run with another's archives — and, when a clock
     // was used to separate them, would leave the later patient's documents claimed by
-    // nobody at all. There is no clock here; see documentsDeliveredBy.
+    // nobody at all. There is no clock here; see claimDeliveredDocuments, which also owns
+    // why the guard it reads outlives the #388 retention sweep.
     //
     // ONLY A SUCCESSFUL RUN CLAIMS. A failed report delivered nothing, and claiming into
     // a failing event would consume the documents the next good run should have listed.
     // They stay unclaimed and wait — nothing here moves a boundary.
     //
-    // recordSyncRows is best-effort and never throws into ingest, and its rows inherit
-    // the #388 retention cascade from the event.
+    // Best-effort by contract: it never throws into ingest, and on failure it writes
+    // nothing at all, so the next successful run claims the same archives.
     if (ev.ok && identity) {
-      recordSyncRows(
-        eventId,
-        documentsDeliveredBy(profileId, identity.identityId).map((id) => ({
-          target_table: "medical_documents" as const,
-          target_id: id,
-          disposition: "inserted" as const,
-        }))
-      );
+      claimDeliveredDocuments(eventId, profileId, identity.identityId);
     }
     // "Last synced" on the card. Only a SUCCESSFUL run advances it — including a
     // nothing-new one, which is the whole point: a quiet check is still a check, and the

@@ -145,8 +145,9 @@ export default async function PatientPortalsPage() {
   // admin-only unclaimed clause as everything else on this page.
   const reports = listVisiblePortalRunReports(accessibleIds, isAdmin);
   const reportByAccount = new Map(reports.map((r) => [r.accountId, r]));
-  // What each login DELIVERED on its last report's day (#2914) — the count the status
-  // line names, and links to Data → Review. Same scoping as the reports themselves.
+  // What each login most recently DELIVERED, and the day it landed (#2914) — the count
+  // the status line names and links to Data → Review. Same scoping as the reports
+  // themselves, and read from the documents so it outlives the retention sweep.
   const deliveredByAccount = deliveredDocumentCountsByAccount(
     accessibleIds,
     isAdmin
@@ -264,7 +265,7 @@ export default async function PatientPortalsPage() {
       status: portalLoginStatus(
         report && {
           ...report,
-          delivered: deliveredByAccount.get(a.id) ?? 0,
+          delivered: deliveredByAccount.get(a.id) ?? null,
         }
       ),
       openRequestLine: requestLines.get(a.id) ?? null,

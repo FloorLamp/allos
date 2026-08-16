@@ -1030,6 +1030,17 @@ export const TIME_COLUMNS = {
       grain: "instant",
       convention: "bare",
     },
+    {
+      // When a portal run claimed this archive as part of the delivery it reported
+      // (#2999). LIFECYCLE, not a clinical fact: it says nothing about the document's
+      // contents, only that the run → documents attribution has been made. Durable by
+      // design — the provenance rows that list the delivery expire with their event on
+      // the #388 sweep, and this is what stops the claim being made a second time.
+      column: "delivered_at",
+      semantic: "lifecycle",
+      grain: "instant",
+      convention: "bare",
+    },
   ],
   medical_record_revisions: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
