@@ -64,10 +64,30 @@ export type CadenceSource =
   | "practice-logs"
   | "substance-ledger";
 
+// Which DOMAIN PAGE owns a scope (#2888). A target belongs on a surface only if that
+// surface can help you close it (#2017), so every scope names the ONE page that renders,
+// explains and edits it. `/upcoming`, the morning digest and the dashboard's
+// goals-habits widget are cross-domain BY CHARTER and keep reading every scope with a
+// per-scope identity (#2578) — this field is what a domain page filters on, not a
+// visibility flag on the target itself.
+export type CadenceHome =
+  | "training"
+  | "nutrition"
+  | "wellness"
+  | "substance-use";
+
 export interface CadenceScopeSpec {
   source: CadenceSource;
   grain: CadenceGrain;
   direction: CadenceDirection;
+  /**
+   * The domain page this scope lives on. Declared rather than subtracted: /training
+   * carried no scope rule at all and captioned food habits and wellness practices as
+   * "the training routine" (#2888), because `food_group` and `mobility_region` had
+   * opted themselves in by simply existing. A new scope kind must now name a home
+   * instead of defaulting onto someone else's page.
+   */
+  home: CadenceHome;
   /** Why this scope counts the way it does — the decision, not a restatement. */
   note: string;
 }
@@ -80,42 +100,62 @@ export const CADENCE_SCOPES: Record<FrequencyScopeKind, CadenceScopeSpec> = {
     source: "exercise-sets",
     grain: "distinct-days",
     direction: "floor",
+    // The training routine proper.
+    home: "training",
     note: "distinct TRAINING days whose logged sets map to the region (#482: trained, not mobilized)",
   },
   group: {
     source: "exercise-sets",
     grain: "distinct-days",
     direction: "floor",
+    // The training routine proper.
+    home: "training",
     note: "the union of its regions' training days — a day counts once for the group however many of its regions it hit",
   },
   type: {
     source: "activity-type",
     grain: "distinct-days",
     direction: "floor",
+    // The training routine proper.
+    home: "training",
     note: "distinct days an activity of that type was logged, multi-part components included",
   },
   food_group: {
     source: "food-servings",
     grain: "sum",
     direction: "floor",
+    // The Nutrition Food tab's weekly-habits card (#580) — where its progress, its
+    // trend strip and its untrack control are. /training holds nothing about it.
+    home: "nutrition",
     note: "the week's SERVINGS for the group (#579's rollup) — servings, not days, because two portions in a day are two servings",
   },
   mobility_region: {
     source: "mobility-moves",
     grain: "distinct-days",
     direction: "floor",
+    // The Training hub, not Nutrition or Wellness: the hub's own Mobility card MINTS
+    // this target from a deficit suggestion (#840), so a page that refused to show it
+    // would be creating a target it then hides.
+    home: "training",
     note: "distinct days a mobility session's moves MOBILIZED the region (#840) — a separate view from the strength `region` scope",
   },
   practice: {
     source: "practice-logs",
     grain: "distinct-days",
     direction: "floor",
+    // The Wellness page's practice cards (#1259) — their own pace-aware channel, with
+    // the range editor the training routine editor cannot represent.
+    home: "wellness",
     note: "distinct days a session was logged into practice_logs, day-distinct so a second same-day session never double-counts",
   },
   substance: {
     source: "substance-ledger",
     grain: "sum",
     direction: "cap",
+    // /medical/substance-use. Recorded for completeness only: a cap target is already
+    // absent from every floor reader by DIRECTION (#998), so no floor surface has to
+    // remember it.
+    home: "substance-use",
     note: "the week's units (standard drinks / uses) from the substance's own ledger, read as a CAP (#998) — under it is the success state",
   },
 };
@@ -200,6 +240,29 @@ export function cadenceDirection(kind: string): CadenceDirection | null {
 
 export function isCadenceScopeKind(kind: string): kind is FrequencyScopeKind {
   return (FREQUENCY_SCOPE_KINDS as readonly string[]).includes(kind);
+}
+
+// The domain page a scope lives on, or null for a kind that is not a registered cadence
+// scope — an unregistered kind belongs to NO page rather than defaulting onto one.
+export function cadenceHome(kind: string): CadenceHome | null {
+  return CADENCE_SCOPES[kind as FrequencyScopeKind]?.home ?? null;
+}
+
+// THE one predicate every domain page filters on (#2888/#221). Positive membership, not
+// a subtraction: `scope_kind !== "practice"` was the shape that let `food_group` stay on
+// /training for two rulings running, because a subtraction only excludes what its author
+// happened to remember.
+export function isCadenceHome(home: CadenceHome, kind: string): boolean {
+  return cadenceHome(kind) === home;
+}
+
+// The scope kinds that live on a page, derived from the registry. Used by the surfaces'
+// own guard tests, so a page's rendered set and its editor's options are checked against
+// the declaration rather than against a second hand-written list.
+export function cadenceScopesAtHome(
+  home: CadenceHome
+): readonly FrequencyScopeKind[] {
+  return FREQUENCY_SCOPE_KINDS.filter((k) => CADENCE_SCOPES[k].home === home);
 }
 
 // ---------------------------------------------------------------------------
