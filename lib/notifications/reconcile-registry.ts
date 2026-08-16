@@ -371,7 +371,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
   {
     kind: "wear-reminder",
     reissuable: false,
-    why: "It sends at most once a night by construction (one Bedtime slot, one per-day marker), so there is never a previous copy in the chat to supersede. It also carries no keyboard — its whole content is words — so it records no pointer and would have nothing to rotate even if a second send existed.",
+    why: 'It sends at most once a night by construction (one Bedtime slot, one per-day marker), so there is never a previous copy in the chat to supersede. Its second clause used to be "it carries no keyboard, so it records no pointer and would have nothing to rotate" — which stopped being true the moment it declared a prose reconciler (#3027): the send chokepoint records a pointer for a keyboardless message exactly when its kind declares one (`telegram.ts`\'s `keyboard.length === 0 && !prose` branch, the #1913 item 4 rule). It now DOES record a pointer, and re-issue is still refused on the first clause alone, which was always the load-bearing one.',
   },
   {
     kind: "temp",
@@ -511,7 +511,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
 // too: the next report-shaped message (a weekly recap) has to say whether its prose
 // reconciles rather than inheriting silence.
 
-export type ProseReconciler = "digest";
+export type ProseReconciler = "digest" | "wear-reminder";
 
 export interface KindProseEntry {
   kind: NotificationKind;
@@ -616,8 +616,8 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
   },
   {
     kind: "wear-reminder",
-    prose: null,
-    why: "A question about the data (\"your watch hasn't recorded since 21:05 — still on the charger?\"), not a claim an in-app write can resolve. Putting the watch back on is not an app action at all, and the stream healing is already answered by the next night's silence: the reminder is evaluated fresh at each Bedtime slot and simply does not send.",
+    prose: "wear-reminder",
+    why: "Its claims ARE its sentences, and the next ingest push can falsify them (#3027). It reads as a question, but it asserts two things: that the watch is off the wrist, and that tonight's sleep is not being recorded — and on 2026-08-15 both were false when sent and provably false five minutes later, when the push carrying 42 minutes of already-recorded wrist time landed. The earlier ruling here failed on both halves: \"no in-app write can resolve it\" is true and beside the point, because the resolving event is DATA ARRIVING, which is precisely what this sweep watches; and \"the next night's silence\" is not the healing, because the message goes on asserting tonight's night in the chat for another 24 hours. Reconciled by `rebuildWearReminder` (lib/notifications/wear-reminder.ts), whose whole decision is one comparison — the frontier now against the instant the message named, recorded on delivery — so an unfalsified message costs two reads and no Telegram call. At the day boundary the pointer is DROPPED, not closed (#2071): the reminder is about one night, and that night's message is honest as history.",
   },
   {
     kind: "prn-list",

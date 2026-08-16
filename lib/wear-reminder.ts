@@ -225,3 +225,77 @@ export function bedtimeWearBody(lastSeenLocalHhmm: string): string {
 }
 
 export const BEDTIME_WEAR_TITLE = `${GLYPH.wearable} Heading to bed?`;
+
+// ── WHEN THE NEXT PUSH FALSIFIES THE MESSAGE (issue #3027) ───────────────────
+//
+// On 2026-08-15 this fired at 22:00 on evidence that was correct when read and false
+// five minutes later: the watch had been back on the wrist for 42 minutes, and the push
+// carrying those minutes landed at 22:05. Both conditions held honestly — four
+// consecutive pushes had left the frontier frozen, and it was far past the floor. The
+// watch-to-phone-to-Health-Connect hop was simply running ~45 minutes behind.
+//
+// THE PREDICATE IS NOT WHAT IS WRONG, and this deliberately does not touch it. The
+// module's own comment above states the ceiling ("a backlog draining through a real wear
+// gap resets the counter, and raising N makes that strictly worse"), and this night is
+// that sentence's mirror image — a gap that ENDED before the slot, whose resumed data had
+// not been delivered yet. No threshold separates it either.
+//
+// What is wrong is that the message then STANDS FOREVER as a claim the next ingest push
+// falsifies. Its factual clause was true of what Allos held; its premise ("still on the
+// charger?") and its prediction ("tonight's sleep won't be recorded") were both false when
+// sent and provably false five minutes later. That is #1779's harm pattern in prose, and
+// the resolving event — data ARRIVING — is exactly the class the reconcile sweep watches.
+//
+// So the decision is ONE COMPARISON, stated here, pure: the instant the message NAMED
+// against the stream's frontier now.
+
+export interface WearReminderClaimVerdict {
+  /**
+   * Does the stream now hold minutes recorded AFTER the instant the message named? Then
+   * the watch was on the wrist and the message's premise is false. False is the genuine
+   * all-night charger case, and that message must never be edited.
+   */
+  falsified: boolean;
+}
+
+/**
+ * Does the stream's current frontier falsify a wear reminder that named `claimedAtMs`?
+ *
+ * STRICTLY LATER, and the strictness is the point: a frontier that has not moved, or has
+ * moved only up TO the claimed instant, says nothing new — the message named the newest
+ * minute Allos held, so re-reading that same minute is not evidence of a wrist. Only a
+ * minute recorded past it is.
+ *
+ * Both arguments are epoch ms and either may be missing (a stream that has never
+ * delivered, a claim this profile never recorded); a missing side answers "not
+ * falsified", because an edit has to be earned by evidence and absence is not evidence.
+ */
+export function wearReminderFalsified(
+  claimedAtMs: number | null,
+  frontierMs: number | null
+): WearReminderClaimVerdict {
+  if (claimedAtMs == null || frontierMs == null) return { falsified: false };
+  if (!Number.isFinite(claimedAtMs) || !Number.isFinite(frontierMs))
+    return { falsified: false };
+  return { falsified: frontierMs > claimedAtMs };
+}
+
+/**
+ * The corrected body, for a message the stream has since falsified.
+ *
+ * IT RESTATES, IT DOES NOT APOLOGISE. The reader does not need to be told the app was
+ * wrong; they need the message in their chat to stop saying their night is not being
+ * recorded. So it says what happened, in the same voice as the original — a statement
+ * about the data (#2097's copy rule), naming both the instant the message asked about and
+ * the one the stream has since reached.
+ *
+ * `throughLocalHhmm` is the FRONTIER's own wall clock, which is a durable fact: a frontier
+ * only ever moves forward, so this sentence cannot become false if the watch comes off
+ * again later that night. The next night's evaluation is what speaks about the next night.
+ */
+export function bedtimeWearCorrectedBody(
+  lastSeenLocalHhmm: string,
+  throughLocalHhmm: string
+): string {
+  return `Your watch picked up again after ${lastSeenLocalHhmm} — it has recorded through ${throughLocalHhmm}, so tonight's sleep is being recorded.`;
+}

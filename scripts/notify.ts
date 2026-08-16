@@ -48,7 +48,10 @@ import {
   intakeSlotMarkerKey,
 } from "../lib/notifications/send-markers";
 import { buildMoodCheckin } from "../lib/notifications/mood";
-import { buildWearReminder } from "../lib/notifications/wear-reminder";
+import {
+  recordWearReminderClaim,
+  wearReminderSend,
+} from "../lib/notifications/wear-reminder";
 import { dispatch, prefixForProfile } from "../lib/notifications";
 import {
   prefixMessage,
@@ -460,7 +463,7 @@ async function tickProfile(
   //
   // The gate here is only "is the slot due"; every other condition — the consent flag
   // itself, the expected-active gate, the source-health deference, and the quiet-
-  // stream predicate — lives in buildWearReminder, which returns null for all of them.
+  // stream predicate — lives in wearReminderSend, which returns null for all of them.
   // That is deliberate: null is what the dueSlots loop calls "nothing due", and a
   // "nothing due" night leaves the per-day marker UNSET, so a skipped evaluation never
   // spends the night's single send.
@@ -472,12 +475,25 @@ async function tickProfile(
   // signal does not have.
   {
     const slotMinute = sched.supplementMinutes.Bedtime;
-    if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes))
+    if (slotMinute != null && slotDue(slotMinute, minute, tickMinutes)) {
+      // The instant the message's factual clause names, captured by the build and written
+      // only ON DELIVERY (#3027). The sweep cannot re-derive it later: what falsifies the
+      // message is data ARRIVING with timestamps EARLIER than now, so re-reading the
+      // stream gives the frontier as it is, never as it was when the sentence was written.
+      let claimedAt: string | null = null;
       dueSlots.push({
         slot: "wear_reminder",
         markerKey: TICK_SLOT_MARKER_KEYS.wear_reminder,
-        build: () => buildWearReminder(profile.id),
+        build: () => {
+          const send = wearReminderSend(profile.id);
+          claimedAt = send?.claimedAt ?? null;
+          return send?.message ?? null;
+        },
+        onDelivered: () => {
+          if (claimedAt) recordWearReminderClaim(profile.id, date, claimedAt);
+        },
       });
+    }
   }
   if (sched.workoutEnabled) {
     const inf = inferWorkoutSchedule(profile.id);

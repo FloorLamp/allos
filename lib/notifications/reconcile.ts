@@ -110,6 +110,7 @@ import { getIntakeItemObligation } from "../queries/intake/adherence";
 import { buildDigest, renderDigestMessage } from "./digest";
 import { gatherDigestInput } from "./digest-data";
 import { digestDependencyStamp, DIGEST_REGATHER_FLOOR_MS } from "./digest-deps";
+import { rebuildWearReminder } from "./wear-reminder";
 import {
   closingTallyDetail,
   decideProseGather,
@@ -1147,7 +1148,11 @@ interface ProseClaim {
   // The profile_settings key holding the last gather's record. A LITERAL per kind, never
   // composed from a variable: the send-marker scan (#2036) can only resolve literals, and
   // an unresolvable `notify_…` key is exactly the hole that registry exists to close.
-  gatherKey: string;
+  //
+  // Required only for a kind that declares a `stamp` — the record exists to remember what
+  // the stamp said, so a kind whose pre-check IS its rebuild (#3027's wear reminder) has
+  // nothing to record and must not mint a key nobody reads.
+  gatherKey?: string;
 }
 
 const PROSE: Record<ProseReconciler, ProseClaim> = {
@@ -1165,6 +1170,18 @@ const PROSE: Record<ProseReconciler, ProseClaim> = {
     stamp: digestDependencyStamp,
     floorMs: DIGEST_REGATHER_FLOOR_MS,
     gatherKey: "notify_digest_recon",
+  },
+  // The bedtime wear reminder (#3027). Unlike the digest, THE PRE-CHECK IS THE REBUILD:
+  // the whole decision is one comparison — the stream's frontier now against the instant
+  // the delivered message named, recorded on delivery — and `rebuildWearReminder` answers
+  // null when the claim still stands, so an unfalsified message costs two reads and no
+  // Telegram call. There is nothing a stamp could make cheaper and nothing for a floor to
+  // bound, so it declares neither, and `decideProseGather` runs it every tick by its own
+  // "no pre-check declared ⇒ rebuild every tick" rule.
+  "wear-reminder": {
+    rebuild: (profileId, p) => rebuildWearReminder(profileId, p.date),
+    stamp: null,
+    floorMs: 0,
   },
 };
 
@@ -1471,7 +1488,9 @@ async function reconcileProse(
   const gate = decideProseGather({
     date: pointer.date,
     stamp,
-    last: parseProseGatherRecord(getProfileSetting(profileId, claim.gatherKey)),
+    last: claim.gatherKey
+      ? parseProseGatherRecord(getProfileSetting(profileId, claim.gatherKey))
+      : null,
     nowMs: clockNow().getTime(),
     floorMs: claim.floorMs,
   });
@@ -1482,7 +1501,7 @@ async function reconcileProse(
   // BEFORE it: a write that lands mid-rebuild is either already in this render or still
   // ahead of the recorded stamp, so it can never be skipped as "already seen". A rebuild
   // that throws records nothing and is retried next tick (#2070).
-  if (stamp != null)
+  if (stamp != null && claim.gatherKey)
     setProfileSetting(
       profileId,
       claim.gatherKey,

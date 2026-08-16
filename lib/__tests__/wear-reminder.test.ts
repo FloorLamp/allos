@@ -12,6 +12,8 @@
 import { describe, it, expect } from "vitest";
 import {
   bedtimeWearBody,
+  bedtimeWearCorrectedBody,
+  wearReminderFalsified,
   bedtimeWearVerdict,
   type BedtimeWearSignals,
 } from "@/lib/wear-reminder";
@@ -428,5 +430,66 @@ describe("bedtimeWearBody", () => {
     // reasons for.
     expect(body).not.toMatch(/\bput (it|your watch) on\b/i);
     expect(body).not.toMatch(/\byou should\b/i);
+  });
+});
+
+// ---- The claim the next push can falsify (issue #3027) ---------------------
+//
+// The message stood forever as a claim the next ingest push disproved. The predicate is
+// untouched; this is the comparison that decides whether what is already in the chat is
+// still true, and the copy that replaces it when it is not.
+
+// The observed night, in instants. The message named 19:53 local; the watch had actually
+// resumed at 21:18 and the push carrying those minutes landed at 22:05.
+const CLAIMED = new Date("2026-08-15T17:53:00Z").getTime(); // 19:53 local (UTC+2)
+const RESUMED = new Date("2026-08-15T19:59:00Z").getTime(); // 21:59 local
+
+describe("wearReminderFalsified (#3027)", () => {
+  it("a frontier past the claimed instant falsifies the message", () => {
+    expect(wearReminderFalsified(CLAIMED, RESUMED)).toEqual({
+      falsified: true,
+    });
+  });
+
+  it("a frontier that has NOT moved leaves the message alone — the real charger night", () => {
+    // The whole point of the strictness: on a genuine all-night charger the frontier is
+    // still exactly what the message named, and editing that message would be a lie in
+    // the other direction.
+    expect(wearReminderFalsified(CLAIMED, CLAIMED)).toEqual({
+      falsified: false,
+    });
+  });
+
+  it("a frontier that advanced only PARTWAY — still before the claimed instant — does not", () => {
+    const partway = new Date("2026-08-15T17:40:00Z").getTime(); // 19:40 local
+    expect(wearReminderFalsified(CLAIMED, partway)).toEqual({
+      falsified: false,
+    });
+  });
+
+  it("a missing claim or a missing frontier is not evidence", () => {
+    expect(wearReminderFalsified(null, RESUMED)).toEqual({ falsified: false });
+    expect(wearReminderFalsified(CLAIMED, null)).toEqual({ falsified: false });
+    expect(wearReminderFalsified(Number.NaN, RESUMED)).toEqual({
+      falsified: false,
+    });
+  });
+});
+
+describe("bedtimeWearCorrectedBody (#3027)", () => {
+  it("restates what happened, naming both instants, and takes back the prediction", () => {
+    const body = bedtimeWearCorrectedBody("19:53", "21:59");
+    expect(body).toContain("19:53");
+    expect(body).toContain("21:59");
+    // The two false clauses are gone: no charger premise, and no claim that the night
+    // is not being recorded.
+    expect(body).not.toMatch(/charger/i);
+    expect(body).not.toMatch(/won't be recorded/i);
+    // It states rather than apologises — the reader needs the fact, not a confession.
+    expect(body).not.toMatch(/\bsorry\b|\bapolog/i);
+    expect(body).toMatch(/being recorded/);
+    // And it is a different sentence from the original, or the reconciler would edit a
+    // message into itself.
+    expect(body).not.toBe(bedtimeWearBody("19:53"));
   });
 });
