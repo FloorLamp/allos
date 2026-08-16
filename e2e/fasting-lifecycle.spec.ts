@@ -503,6 +503,81 @@ test.describe("the fasting lifecycle (#2756)", () => {
       "End fast · 2 h"
     );
   });
+
+  // #2993 — THE RECORDED FAST WITH A MIS-SET DATE, CORRECTED IN PLACE.
+  //
+  // The state this whole issue is about: a fast recorded as 360 hours, the Undo long
+  // since gone, reopen answering `too-old` and discard refusing a completed row. The row
+  // was permanent, and it then answered `overlap` to every backdated start inside the
+  // fortnight it covers.
+  //
+  // The remedy is an EDIT and not a delete, on the owner's reasoning: removing the row
+  // asserts the fast never happened, while correcting its end asserts what actually did.
+  // This drives the whole of it in a browser, because a core with no reachable surface is
+  // precisely the failure this issue exists to correct — `editFast` shipped once with no
+  // Server Action, was filed as dead code, and was deleted.
+  test("a fast recorded with a mis-set date is CORRECTED from its history row", async ({
+    page,
+  }) => {
+    seedFast(agoInstant(FAST_MAX_HOURS + 48), agoInstant(24));
+    await page.goto("/nutrition");
+
+    const row = page.getByTestId("fasting-history-row");
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("360 h");
+
+    // FIRST, THE DAMAGE — a start backdated into the span the bogus row covers is
+    // refused, which is what "the user cannot record any real fast starting inside the
+    // fortnight" means from the outside.
+    await setBackdate(page, 120);
+    await settledClick(page, page.getByTestId("fasting-control"));
+    await expect(
+      page
+        .getByTestId("toast")
+        .filter({ hasText: "That overlaps a fast already on record." })
+    ).toBeVisible();
+    await dismissToast(page, "That overlaps a fast already on record.");
+
+    // NOW CORRECT IT. The form opens prefilled with the times the row actually carries —
+    // the ordinary correction moves one of the two — and the end is set to sixteen hours
+    // after the start, which is what the fast really was.
+    await hydratedClick(page, page.getByTestId("fasting-edit-toggle"));
+    const startField = page.getByTestId("fasting-edit-start");
+    const endField = page.getByTestId("fasting-edit-end");
+    await expect(startField).toHaveValue(backdateValue(FAST_MAX_HOURS + 48));
+    await expect(endField).toHaveValue(backdateValue(24));
+    await endField.fill(backdateValue(FAST_MAX_HOURS + 32));
+    await settledClick(page, page.getByTestId("fasting-edit-save"));
+    await expect(
+      page.getByTestId("toast").filter({ hasText: "Fast updated." })
+    ).toBeVisible();
+    await dismissToast(page, "Fast updated.");
+
+    // Still ONE recorded fast — corrected, not removed.
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("16 h 0 m");
+
+    const db = openDb();
+    try {
+      const stored = db
+        .prepare(
+          "SELECT ended_at, end_written_at FROM fasts WHERE profile_id = 1"
+        )
+        .get() as { ended_at: string; end_written_at: string };
+      expect(stored.ended_at).toBe(utcInstant(agoInstant(FAST_MAX_HOURS + 32)));
+      // The Undo's clock is NOT restarted by a correction: `end_written_at` still names
+      // the write that closed the fast, so an old row does not become reopenable by
+      // having its date fixed.
+      expect(stored.end_written_at).toBe(utcInstant(agoInstant(24)));
+    } finally {
+      db.close();
+    }
+
+    // AND THE DAMAGE IS UNDONE. The identical backdated start, refused above, now lands.
+    await setBackdate(page, 120);
+    await settledClick(page, page.getByTestId("fasting-control"));
+    await expect(page.getByTestId("fasting-control")).toContainText("End fast");
+  });
 });
 
 // D3 — THE EXEMPTION'S ESCAPE HATCH HAS TO BE ON SCREEN.
@@ -563,6 +638,10 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     await expect(page.getByTestId("fasting-backdate-toggle")).toHaveCount(0);
     await expect(page.getByTestId("fasting-stale-suggest")).toHaveCount(0);
     await expect(page.getByTestId("fasting-discard")).toHaveCount(0);
+    // …and no correction control either (#2993). Editing a recorded interval is
+    // recording fasting content, so `editFast` is GATED like the start is. Both halves
+    // are pinned — the core's refusal at the DB tier, the absent control here.
+    await expect(page.getByTestId("fasting-edit-toggle")).toHaveCount(0);
 
     // And it WORKS — the exempt end path, reached from the rendered control.
     await settledClick(page, page.getByTestId("fasting-control"));
