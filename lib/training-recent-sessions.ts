@@ -62,18 +62,15 @@ export interface RecentSessionsView {
   more: number;
 }
 
-export const EMPTY_RECENT_SESSIONS: RecentSessionsView = {
-  rows: [],
-  scope: "week",
-  more: 0,
-};
-
 export function recentSessionsView(
   groups: DayGroup[],
   window: { weekStart: string; today: string }
 ): RecentSessionsView {
-  // The feed is already newest-first (date DESC, id DESC within a day), so the
-  // flattened order IS "most recent session first" and nothing re-sorts.
+  // The feed is already newest-first — day groups by date DESC, cards within a
+  // day by id DESC — so the flattened order needs no re-sorting. Within one day
+  // that is LOGGED order, not clock order: two sessions on the same day read
+  // here in the order the Log reads them, which is the point (#221), even where
+  // the earlier-entered one happened later in the day.
   const dated = groups.flatMap((g) =>
     g.cards.map((card) => ({ date: g.date, label: g.label, card }))
   );

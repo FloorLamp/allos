@@ -139,9 +139,16 @@ export default async function OverviewSection() {
   // …and what those blocks actually WERE (#2566). The band says a session
   // happened; it cannot say the run was 8 km. This reads the Training Log's own
   // newest page and folds it — same cards, same numbers, same wording (#221) —
-  // so the week's sessions are legible here without opening the Log. Seven days
-  // of ACTIVE days is the widest a week can be, so nothing older is fetched
-  // except when the week is empty and the fallback needs the last session.
+  // so the week's sessions are legible here without opening the Log.
+  //
+  // Seven ACTIVE days is the widest a week can be, so the window is the smallest
+  // one that can still COUNT what it cut. The cheaper-looking option is to take
+  // the count from `spine.sessions`, which is already computed above — but the
+  // spine tallies activity rows and the feed drops create-at-start drafts
+  // (#2870 step 3), so a live draft would make the card offer "1 more in Log"
+  // over a Log that has none. An overview may show less than the whole; it may
+  // not miscount it. Nothing older is read except when the week is empty and the
+  // fallback needs the last session.
   const recentSessions = recentSessionsView(
     buildTrainingLogFeedPage(profile.id, null, units, formatPrefs, 7).groups,
     { weekStart: weekDays.start, today: todayStr }
