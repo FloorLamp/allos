@@ -247,9 +247,20 @@ test("a pager step shows pending in its own label, and absorbs repeat taps (#286
   // so its own label is the slot: it stays put and legible with the spinner over
   // it, which is why the assertion below is on the anchor rather than its text.
   const nav = heldNavigation();
-  await page.route("**/whats-new?*", nav.handler);
 
+  // Entered TWICE on purpose. A first visit to /whats-new mounts
+  // <MarkWhatsNewSeen>, whose action revalidates the layout (#1421) — and that
+  // revalidation evicts the router cache, so the pager's prefetch of page 2 is
+  // gone and the navigation has to read the route tree AND its segments: two
+  // RSC requests for one tap, which would read here as a repeat tap that was not
+  // absorbed. The marker only mounts when something is unseen, so the second
+  // entry fires nothing and the count means what it says. The dot clearing is
+  // the settle point for the first visit's write.
   await page.goto("/whats-new");
+  await expect(page.getByTestId("whats-new-dot")).toHaveCount(0);
+  await page.goto("/whats-new");
+
+  await page.route("**/whats-new?page=2*", nav.handler);
   const pager = page.getByTestId("whats-new-pagination");
   await expect(pager).toBeVisible();
   const next = pager.locator('a[href*="page=2"]');
