@@ -19,7 +19,10 @@
 // is still bound, never interpolated.
 //
 // The id list MUST originate from a resolved ProfileScope (`scope.viewIds` ⊆
-// `scope.ids`, already ∩ the caller's grants) — never a raw request value. Each row is
+// `scope.ids`, already ∩ the caller's grants) — never a raw request value. Since #2898
+// that is the TYPE and not just this sentence: these readers take
+// `AuthorizedProfileIds`, which only an authorization boundary or a checked narrowing
+// of one can produce, so a plain `number[]` will not compile here. Each row is
 // tagged with `profileId` (the SQL `profile_id AS profileId`) so stampSubjects can
 // attach subject identity, matching the shape readForProfiles produces for the
 // loop-composed lists. A single-profile view (`ids = [acting]`) yields exactly the
@@ -29,7 +32,7 @@
 // `profile_id IN` shape HERE and nowhere else — the reviewed-registry rule (#1095 §3).
 
 import { db } from "@/lib/db";
-import { profileIdsIn } from "@/lib/cross-profile";
+import { profileIdsIn, type AuthorizedProfileIds } from "@/lib/cross-profile";
 import {
   REPRESENTATIVE_SPECS,
   representativeIds,
@@ -42,7 +45,7 @@ type WithProfile<T> = T & { profileId: number };
 // set-based twin of getCareGoals. Matches its ORDER BY exactly so a single-view read
 // is byte-identical; in multi-view the members interleave by target date.
 export function getCareGoalsForProfiles(
-  ids: readonly number[]
+  ids: AuthorizedProfileIds
 ): WithProfile<CareGoal>[] {
   if (ids.length === 0) return [];
   return db
@@ -58,7 +61,7 @@ export function getCareGoalsForProfiles(
 // Genomic variants across the view-set (newest report first) — the set-based twin of
 // getGenomicVariants, same column set + ORDER BY.
 export function getGenomicVariantsForProfiles(
-  ids: readonly number[]
+  ids: AuthorizedProfileIds
 ): WithProfile<GenomicVariant>[] {
   if (ids.length === 0) return [];
   return db
@@ -80,7 +83,7 @@ export function getGenomicVariantsForProfiles(
 // reader does. The representative window's own view-set predicate is the SAME bound
 // tuple, so the ids are bound twice (once for the outer WHERE, once for the window).
 export function getImagingStudiesForProfiles(
-  ids: readonly number[]
+  ids: AuthorizedProfileIds
 ): WithProfile<ImagingStudy>[] {
   if (ids.length === 0) return [];
   const rows = db

@@ -13,6 +13,10 @@ import {
 } from "./session-cookie";
 import { isDemoMode, isDemoRestricted } from "./demo";
 import {
+  AUTHORIZED_PROFILE_IDS_MARK,
+  type AuthorizedProfileIds,
+} from "./cross-profile";
+import {
   parseViewProfileIds,
   serializeViewProfileIds,
   toggleViewId,
@@ -399,6 +403,68 @@ export function accessibleProfilesForLogin(loginId: number): SessionProfile[] {
     .get(loginId) as { role: Role } | undefined;
   if (!acct) return [];
   return accessibleProfiles(loginId, acct.role);
+}
+
+// ── Minting the authorized-set capability (#2898) ─────────────────────────────
+//
+// `AuthorizedProfileIds` (lib/cross-profile.ts) is the type a set-based cross-profile
+// query demands. It has no constructor that takes a list of numbers; it is DERIVED,
+// here, from the same grant resolution every other access decision in this module
+// uses. That is what makes these boundaries and not casts in disguise: whatever a
+// caller believes about a login, the set that comes back is recomputed from
+// `accessibleProfiles` at call time, so a revoked grant drops out immediately and an
+// id nobody granted can never appear.
+//
+// The seal lives in this one helper, beside the derivation that justifies it, and is
+// deliberately NOT exported: an exported `authorized(ids)` would be exactly the
+// arbitrary-numbers minter the capability exists to prevent. It is a three-line copy
+// of lib/cross-profile's private `seal` — mark non-enumerably so `Object.assign`
+// cannot launder the mark onto a forged array, then freeze so `Object.assign` cannot
+// overwrite this one in place. Two short copies is the price of not exporting a
+// sealer; the shared SYMBOL is all the two modules have in common.
+function authorized(ids: readonly number[]): AuthorizedProfileIds {
+  Object.defineProperty(ids, AUTHORIZED_PROFILE_IDS_MARK, {
+    value: true,
+    enumerable: false,
+  });
+  return Object.freeze(ids) as unknown as AuthorizedProfileIds;
+}
+
+// The login's accessible set as the capability — for the token-authenticated surfaces
+// that have no session to resolve a ProfileScope from (the portals registry endpoint,
+// the Patient portals page's reads). Session-backed pages take `scope.ids` instead.
+export function accessibleProfileIdsForLogin(
+  loginId: number
+): AuthorizedProfileIds {
+  return authorized(accessibleProfilesForLogin(loginId).map((p) => p.id));
+}
+
+// The subset of that set the login may WRITE — the authority a reporting token's
+// account gate and the "can this viewer act at all?" checks ask about. Reach FIRST,
+// then access (accessForProfile assumes reachability), and demo-restriction refuses
+// every non-admin write, so a demo-restricted token resolves to the empty set exactly
+// as it would be refused at an upload.
+//
+// The ROLE IS READ HERE, not taken as an argument (#2935 review). A caller passing the
+// wrong role would silently promote every read-only grant to writable — `accessForProfile`
+// answers "write" unconditionally for an admin — and this function's result is one the
+// type system labels authorized, so it must not depend on the caller getting a second
+// argument right. It resolves the login's CURRENT role from the same row
+// `accessibleProfilesForLogin` reads, which is also what makes a demotion take effect
+// immediately instead of riding a stale value.
+export function writableProfileIdsForLogin(
+  loginId: number
+): AuthorizedProfileIds {
+  const acct = db
+    .prepare("SELECT role FROM logins WHERE id = ?")
+    .get(loginId) as { role: Role } | undefined;
+  if (!acct) return authorized([]);
+  if (isDemoRestricted(isDemoMode(), acct.role)) return authorized([]);
+  return authorized(
+    accessibleProfilesForLogin(loginId)
+      .filter((p) => accessForProfile(loginId, acct.role, p.id) === "write")
+      .map((p) => p.id)
+  );
 }
 
 // ── Own-profile association (issue #1013) ─────────────────────────────────────

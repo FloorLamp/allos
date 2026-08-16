@@ -425,3 +425,45 @@ the guard shape works: the non-e2e path simply had no equivalent. Fixed in
 `dispatch-brief.mjs` (#2923): `brief <branch>` reprints from recorded
 parameters and writes nothing, and `new` refuses an already-active branch,
 naming both exits.
+
+## A gate PASS that its own last step invalidated (#2935, 2026-08-15)
+
+`agent-gates.sh` runs `format` LAST, on purpose: a late edit after formatting is
+the CI breaker the script exists to prevent. But it had also assumed formatting
+is semantically inert. It is not. An agent wrote a `@ts-expect-error` directly
+above its erroring call, typecheck passed on exactly that, and Prettier then
+rewrapped the call across three lines — sliding it out from under the directive.
+The push was red on `TS2578: Unused '@ts-expect-error' directive` plus the
+now-unsuppressed error, after a gate block that legitimately read PASS. Nobody
+edited anything, so the existing NOTE ("commit them NOW, do not edit") could not
+have helped; following it literally is what produced the red push.
+
+The exposed class is gates that read LINE-POSITIONED comment directives —
+`@ts-expect-error`, `eslint-disable-next-line`, and the `-ok` pragmas the
+e2e-hygiene scan pairs with the line beneath them. The test tiers are immune, a
+rewrap changing no runtime behavior, so the script now re-runs only those three
+after a rewrite and the cost stays seconds. The agent diagnosed this itself and
+declined to edit shared tooling outside its dispatch, which was the right call
+and is why the finding arrived intact.
+
+## The wake alarm that lied for a session (2026-08-16)
+
+`orchestrator-checkin.sh` §4 read the wake file with `awk '{print $1}'` and
+expected a bare `<ISO> <trigger id>`. The check-in PRINTS the armed wake as
+`next: <ISO> <id>`, so an orchestrator recording its own output wrote the label
+into the file. `date -d "next:"` refused it, `|| echo 0` turned that refusal into
+epoch 0, and 0 is always in the past — so a correctly-armed wake reported as
+lapsed at EVERY check-in for a whole session. Three redundant one-shot triggers
+were armed chasing it, and two had to be deleted.
+
+Two defects, one line apart. The parser was brittle about the one mistake its own
+output invites. And the fallback collapsed "cannot parse this" into "this is in
+the past" — two states whose advice sounds identical ("re-arm") but is not:
+re-arming cannot fix a format the reader cannot parse, so the alarm survives the
+fix and teaches its reader to skip it. That is the canary failure in its third
+costume — an alarm that fires when nothing is wrong.
+
+Now the label is accepted, and an unparseable file says so, prints what it found,
+and prints the shape it wanted. Verified against five controls before shipping,
+per the canary section's last lesson: absent, future bare, future labelled,
+genuinely past, and malformed.

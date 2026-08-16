@@ -45,7 +45,7 @@ export default function ProfileSwitcherPanel({
   profiles: SessionProfile[];
   actingProfileId: number;
   // The persisted, access-validated view-set (#1096).
-  viewIds: number[];
+  viewIds: readonly number[];
   // Profiles this login holds only READ access on (issue #33). Each carries the
   // read-only hint on its own row, so "why can't I edit here?" is answerable
   // before switching rather than after.

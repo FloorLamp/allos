@@ -38,7 +38,7 @@ import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
 import { crisisFindingLine } from "../../crisis-resources";
 import { getResolvedCrisisResources } from "../../settings";
 import { refillSignalKey, poolRefillSignalKey } from "../../refill-nudge";
-import { getPoolView, poolIdsForProfiles } from "../intake/supply-pool";
+import { getPoolView } from "../intake/supply-pool";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";

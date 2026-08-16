@@ -5,6 +5,7 @@ import { createLogger } from "@/lib/log";
 import type { IntegrationId } from "@/lib/types";
 import { getIntegration } from "./registry";
 import { getIntegrationBackfillRunner } from "./backfill-runners";
+import { backfillErrorMessage } from "./backfill-error";
 import {
   queuedBackfillCounters,
   runningBackfillCompleted,
@@ -247,7 +248,12 @@ export async function runIntegrationBackfillJob(
             WHERE profile_id = ? AND source_id = ? AND kind = ? AND status = 'running'`
         )
         .run(
-          err instanceof Error ? err.message : String(err),
+          // REDACTED AT THE WRITE, never at the render (#2820): this column is
+          // rendered verbatim onto the owning profile's page, and a third-party
+          // client's message can carry the failing request URL or a response body
+          // with a token in it. The RAW error still reaches the admin-only error log
+          // through the log.error above, which redacts it the same way.
+          backfillErrorMessage(err),
           now,
           now,
           profileId,
