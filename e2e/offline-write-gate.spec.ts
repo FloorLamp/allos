@@ -5,6 +5,7 @@ import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { practiceIdentity } from "@/lib/practice";
+import { hashPasswordSync } from "../lib/password";
 
 // THE DEVICE WRITE GATE, end to end, against a real IndexedDB (#2908).
 //
@@ -105,14 +106,22 @@ const DB = "allos-offline";
 // is where every one of these leaks lived.
 const LOGOUT_POST_LATENCY_MS = 6_000;
 
-async function login(page: Page) {
+async function loginAs(
+  page: Page,
+  username: string,
+  password: string
+): Promise<void> {
   await page.goto("/login");
-  await page.fill('input[name="username"]', "admin");
-  await page.fill('input[name="password"]', "e2e-admin-pass");
+  await page.fill('input[name="username"]', username);
+  await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
   await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
     timeout: 20_000,
   });
+}
+
+async function login(page: Page) {
+  await loginAs(page, "admin", "e2e-admin-pass");
 }
 
 // Read a store's keys straight out of IndexedDB. MUST NOT CREATE THE DATABASE:
@@ -1168,6 +1177,240 @@ test("R-5 — a practice card does not claim a session the device refused to kee
     db.prepare(
       "DELETE FROM frequency_targets WHERE profile_id = 1 AND scope_value = ?"
     ).run(practiceName);
+    db.close();
+  }
+});
+
+// ── THE SAME-DEVICE SIGN-OUTS THAT ARE NOT "LOG OUT" ────────────────────────────────
+//
+// Found by the fifth adversarial pass. Seven server-side paths destroy sessions and none
+// of them could reach this device's store or its write gate, because every wipe call site
+// is a client component — so a device whose session had just been destroyed still held all
+// five snapshot payloads, still read `sessionClosed:false`, and still rendered the
+// medication list on /offline with no session at all.
+//
+// Three of those seven run IN A DOCUMENT ON THE DEVICE THAT NEEDS WIPING: the family
+// screen's Delete, Sign out devices and Reset password, aimed at your own row. Those are
+// closed here and pinned below. The other four end a session on a device this code is not
+// running in; an unreachable device cannot be revoked, and a bare 401 must not wipe reads
+// because expiry and revocation are indistinguishable from the device — that fork is #3053
+// and is deliberately not attempted here.
+//
+//   R-A6  Delete, on your own row — the device is wiped and the gate closes.
+//   R-A7  Sign out devices, on your own row — the same.
+//   R-A8  and the undo: an action the server REFUSES leaves the device able to save again.
+//
+// EACH CARRIES ITS OWN NON-VACUITY CONTROL IN THE SAME TEST, aimed at ANOTHER login's row
+// first: same button, same action, same round trip, and the device must keep everything.
+// Without it these would pass against a wipe that fired on every press, which is a
+// different (and worse) bug — an admin managing someone else's login would silently erase
+// their own phone.
+//
+//   mutant                                             R-A6   R-A7   R-A8
+//   drop `await wipeDeviceForSignOut()` in selfSignOut  FAIL   FAIL   pass
+//   drop the `if (!isSelf) return run()` guard          FAIL   FAIL   pass
+//   drop the `survived(r)` re-open                      pass   pass   FAIL
+
+/** A password that clears lib/password-strength for every login seeded below. */
+const DEVICE_PASSWORD = "e2e-device-pass-9";
+
+/**
+ * A throwaway login, straight into the worker's database — the family screen can only
+ * ACT on logins, and every action under test destroys the acting login's own sessions, so
+ * none of them may be pointed at the shared `admin` the rest of this worker's specs
+ * authenticate as. `INSERT OR IGNORE` because R-A6 deletes its subject, so a `--repeat-each`
+ * run seeds it again from scratch while R-A7's survives.
+ */
+function seedLogin(
+  db: InstanceType<typeof Database>,
+  username: string,
+  role: "admin" | "member"
+): number {
+  db.prepare(
+    "INSERT OR IGNORE INTO logins (username, password_hash, role) VALUES (?, ?, ?)"
+  ).run(username, hashPasswordSync(DEVICE_PASSWORD), role);
+  return (
+    db.prepare("SELECT id FROM logins WHERE username = ?").get(username) as {
+      id: number;
+    }
+  ).id;
+}
+
+/** A live session row for a login nobody is signed in as — what makes "Sign out devices" pressable. */
+function seedSession(
+  db: InstanceType<typeof Database>,
+  loginId: number,
+  tokenHash: string
+): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO sessions (token_hash, login_id, expires_at)
+     VALUES (?, ?, datetime('now', '+30 days'))`
+  ).run(tokenHash, loginId);
+}
+
+function loginRow(page: Page, username: string) {
+  return page
+    .getByTestId("login-row")
+    .filter({ has: page.getByText(username, { exact: true }) });
+}
+
+/** Press a row's button and answer its confirm. */
+async function pressRowAction(
+  page: Page,
+  username: string,
+  button: string,
+  confirmLabel: string
+): Promise<void> {
+  const row = loginRow(page, username);
+  await expect(row).toHaveCount(1, { timeout: 20_000 });
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: button, exact: true })
+  );
+  await page
+    .getByTestId("confirm-dialog")
+    .getByRole("button", { name: confirmLabel, exact: true })
+    .click();
+}
+
+test("R-A6 — DELETING YOUR OWN LOGIN wipes the device it was pressed on", async ({
+  page,
+}: {
+  page: Page;
+}) => {
+  test.slow();
+
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  const self = "wipe-self-owner";
+  const other = "wipe-other-owner";
+  try {
+    seedLogin(db, self, "admin");
+    seedLogin(db, other, "member");
+
+    await loginAs(page, self, DEVICE_PASSWORD);
+    await page.goto("/");
+    await capturedAll(page, 60_000);
+    await page.goto("/settings/family");
+
+    // CONTROL — the same button, the same action, aimed at somebody else. This device is
+    // not being signed out, so it must keep everything it holds.
+    await pressRowAction(page, other, "Delete", "Delete login");
+    await expect(loginRow(page, other)).toHaveCount(0, { timeout: 20_000 });
+    expect(await storedKinds(page)).toEqual([...SNAPSHOT_KINDS].sort());
+    expect(await gateRow(page)).toMatchObject({ sessionClosed: false });
+
+    // And now the row that IS this device's session.
+    await pressRowAction(page, self, "Delete", "Delete login");
+    await page.waitForURL(/\/login/, { timeout: 30_000 });
+    await expect.poll(() => storedKinds(page), { timeout: 20_000 }).toEqual([]);
+    expect(await gateRow(page)).toMatchObject({ sessionClosed: true });
+  } finally {
+    db.prepare("DELETE FROM logins WHERE username IN (?, ?)").run(self, other);
+    db.close();
+  }
+});
+
+test("R-A7 — SIGNING YOUR OWN LOGIN OUT OF EVERY DEVICE wipes the device it was pressed on", async ({
+  page,
+}: {
+  page: Page;
+}) => {
+  test.slow();
+
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  const self = "revoke-self-owner";
+  const other = "revoke-other-owner";
+  try {
+    seedLogin(db, self, "admin");
+    seedSession(db, seedLogin(db, other, "member"), "revoke-other-token-1");
+
+    await loginAs(page, self, DEVICE_PASSWORD);
+    await page.goto("/");
+    await capturedAll(page, 60_000);
+    await page.goto("/settings/family");
+
+    // CONTROL — the other login has a live session, so the button is pressable, and
+    // ending THAT session must leave this device untouched.
+    await pressRowAction(
+      page,
+      other,
+      "Sign out devices",
+      "Sign out all devices"
+    );
+    await expect(page.getByText("Signed out of all devices.")).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(await storedKinds(page)).toEqual([...SNAPSHOT_KINDS].sort());
+    expect(await gateRow(page)).toMatchObject({ sessionClosed: false });
+
+    await pressRowAction(
+      page,
+      self,
+      "Sign out devices",
+      "Sign out all devices"
+    );
+    await expect.poll(() => storedKinds(page), { timeout: 20_000 }).toEqual([]);
+    await expect
+      .poll(() => gateRow(page), { timeout: 20_000 })
+      .toMatchObject({ sessionClosed: true });
+  } finally {
+    db.prepare("DELETE FROM logins WHERE username IN (?, ?)").run(self, other);
+    db.close();
+  }
+});
+
+test("R-A8 — a self-aimed action the server REFUSES leaves the device able to save again", async ({
+  page,
+}: {
+  page: Page;
+}) => {
+  test.slow();
+
+  // The same bet Log out makes, in a place where losing it is an EVERYDAY typo rather than
+  // a dead network: the wipe closes the gate before the request is sent, and a reset the
+  // strength rule rejects means the session it was closed against is still alive. Leaving
+  // it closed would be permanent for this login — `openSessionAs` refuses to re-open for
+  // the session that closed the gate — so the queue, the drafts and the snapshots would be
+  // silently dead until the next full logout.
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  const self = "refuse-self-owner";
+  try {
+    seedLogin(db, self, "admin");
+
+    await loginAs(page, self, DEVICE_PASSWORD);
+    await page.goto("/");
+    await capturedAll(page, 60_000);
+    await page.goto("/settings/family");
+
+    const row = loginRow(page, self);
+    await expect(row).toHaveCount(1, { timeout: 20_000 });
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Reset password", exact: true })
+    );
+    // Too short for MIN_PASSWORD_LENGTH, so the action refuses before it touches a session.
+    await row.getByPlaceholder("New password").fill("short1");
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Set", exact: true })
+    );
+
+    await expect(
+      page.getByText("Password must be at least 10 characters.")
+    ).toBeVisible({ timeout: 20_000 });
+
+    // THE CONSEQUENCE, not just the gate: the device can capture again. A gate left shut
+    // would never refill this store.
+    await expect
+      .poll(() => gateRow(page), { timeout: 20_000 })
+      .toMatchObject({ sessionClosed: false });
+    await page.goto("/");
+    await capturedAll(page, 60_000);
+  } finally {
+    db.prepare("DELETE FROM logins WHERE username = ?").run(self);
     db.close();
   }
 });

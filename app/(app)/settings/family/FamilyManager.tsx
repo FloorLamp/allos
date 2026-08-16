@@ -674,21 +674,53 @@ function LoginRow({
   // rather than a missing call: the far device learns nothing until it next reaches the
   // server, and what it gets then is a 401 indistinguishable from ordinary expiry.
   //
-  // TWO SHAPES, because the actions answer differently:
-  //   • `resetPassword` and `revokeLoginSessions` RETURN after the sessions are gone, so
-  //     their own `ok` is the proof, and the wipe follows it. Nothing to undo.
-  //   • `deleteLogin` on self ends in `redirect("/login")` and therefore never returns a
-  //     value at all, so its wipe has to go FIRST — see the block above `del`.
+  // THE WIPE GOES FIRST, before the request that justifies it has been sent — Log out's
+  // posture verbatim, and for Log out's reason. This document stays mounted and
+  // authenticated for the whole round trip, so wiping after would leave the window every
+  // one of those re-writes was found in. Worse here than at Log out, in fact: on success
+  // these actions revalidate a route the destroyed session can no longer read, so the
+  // answer arrives with a bounce to /login already riding on it, and a wipe scheduled
+  // after that is a wipe racing a navigation.
+  //
+  // AND THE CLOSE COMES BACK OFF WHEN THE SIGN-OUT DID NOT HAPPEN. `survived` is how each
+  // action says so, and they do not say it the same way:
+  //   • `resetPassword` / `revokeLoginSessions` return `{ ok: false }` — a mistyped weak
+  //     password is the everyday one. The device must not be left shut over a typo:
+  //     `openSessionAs` refuses to re-open for the session that closed the gate, so it
+  //     would stay shut for the rest of this login — queue, drafts and snapshots silently
+  //     dead, which is the #2908 R-A failure.
+  //   • `deleteLogin` RETURNING AT ALL means it refused, because success redirects.
+  // A THROW is ambiguous either way — the redirect arrives that way and so does a dead
+  // network — so `unstable_rethrow` lets framework control flow leave untouched and what
+  // is left is asked of the server, because unreachable must not brick the device.
+  async function selfSignOut<T extends FamilyResult>(
+    run: () => Promise<T>,
+    survived: (r: T) => boolean
+  ): Promise<T> {
+    if (!isSelf) return run();
+    await wipeDeviceForSignOut();
+    try {
+      const r = await run();
+      if (survived(r)) await reopenAfterRefusedSignOut();
+      return r;
+    } catch (err) {
+      unstable_rethrow(err);
+      await reopenUnlessSessionEnded();
+      throw err;
+    }
+  }
+
   function reset() {
     const fd = new FormData();
     fd.set("id", String(login.id));
     fd.set("password", password);
     start(async () => {
-      const r = await resetPassword(fd);
       // A reset destroys EVERY session for the login, this one included — the action's
-      // own message says "existing sessions signed out". `r.ok` is the server saying it
-      // ran, so the device is wiped on the strength of that and nothing is bet.
-      if (isSelf && r.ok) await wipeDeviceForSignOut();
+      // own message is "existing sessions signed out".
+      const r = await selfSignOut(
+        () => resetPassword(fd),
+        (r) => !r.ok
+      );
       setResult(r);
       if (r.ok) {
         setPassword("");
@@ -735,12 +767,14 @@ function LoginRow({
     const fd = new FormData();
     fd.set("id", String(login.id));
     start(async () => {
-      const r = await revokeLoginSessions(fd);
       // "Sign out all devices" aimed at your own login includes the device you pressed it
-      // on. Same proof, same wipe — and this is the action whose own description is "on
-      // suspicion of compromise", so leaving the record on the device that just ran it
-      // was the sharpest version of the gap.
-      if (isSelf && r.ok) await wipeDeviceForSignOut();
+      // on — and this is the action whose own description is "on suspicion of compromise",
+      // so leaving the record on the device that just ran it was the sharpest version of
+      // the gap.
+      const r = await selfSignOut(
+        () => revokeLoginSessions(fd),
+        (r) => !r.ok
+      );
       setResult(r);
     });
   }
@@ -762,36 +796,16 @@ function LoginRow({
     if (!ok) return;
     const fd = new FormData();
     fd.set("id", String(login.id));
-    // DELETING YOUR OWN LOGIN IS LOG OUT UNDER ANOTHER NAME — the action tears the session
-    // down and redirects to /login — so it takes Log out's posture verbatim, including the
-    // part that is a bet.
-    //
-    // The wipe goes FIRST because a successful self-delete never returns: it ends in
-    // `redirect("/login")`, which Next delivers as a REJECTED promise, so there is no
-    // "after" to wipe in. Wiping first also closes the device write gate before the request
-    // is sent, which is the point — this document stays mounted and authenticated for the
-    // whole round trip, and every other tab does too.
-    //
-    // AND THE CLOSE COMES BACK OFF IF THE DELETE DID NOT HAPPEN. Two ways to learn that,
-    // and they are not equally good:
-    //   • THE CALL RETURNED A VALUE. Success redirects, so a value is the server saying it
-    //     ran and refused (the last-admin guard, or a row already gone). Proof, not
-    //     inference — no probe.
-    //   • THE CALL THREW. Ambiguous, exactly as at Log out: the redirect arrives this way
-    //     and so does a dead network. `unstable_rethrow` lets the framework's control flow
-    //     leave untouched — a successful delete never reaches the line below it — and what
-    //     is left is asked of the server, because unreachable must not brick the device.
     start(async () => {
-      if (isSelf) await wipeDeviceForSignOut();
-      try {
-        const r = await deleteLogin(fd);
-        if (isSelf) await reopenAfterRefusedSignOut();
-        setResult(r);
-      } catch (err) {
-        unstable_rethrow(err);
-        if (isSelf) await reopenUnlessSessionEnded();
-        throw err;
-      }
+      // DELETING YOUR OWN LOGIN IS LOG OUT UNDER ANOTHER NAME: the action tears the session
+      // down and ends in `redirect("/login")`. So a RETURNED VALUE — any returned value —
+      // is the server saying it refused (the last-admin guard, or a row already gone), and
+      // that is proof rather than inference: no probe is needed to undo the close.
+      const r = await selfSignOut(
+        () => deleteLogin(fd),
+        () => true
+      );
+      setResult(r);
     });
   }
 
