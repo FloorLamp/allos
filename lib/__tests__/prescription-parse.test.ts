@@ -5,7 +5,15 @@ import {
   cleanMedicationName,
   strengthFromName,
   looksLikeDose,
+  looksLikeSig,
 } from "../prescription-parse";
+
+// The two REAL Epic strings observed on a live medications page (#2939): a
+// pediatric nebulizer sig and a product/formulation string. Both used to be stored
+// whole as the medication's strength.
+const EPIC_SIG =
+  "Take 1.5 mL (1.25 mg) by nebulization every 6 (six) hours if needed for wheezing.";
+const EPIC_PRODUCT = "Amoxicillin 400 MG/5ML Suspension Reconstituted";
 
 // Pure parsing of an extracted prescription into structured medication fields
 //. No DB — the DB routing/dedup is exercised separately.
@@ -46,6 +54,21 @@ describe("parseSig — sig/frequency → schedule", () => {
     expect(parseSig("every 12 hours").timesPerDay).toBe(2);
     expect(parseSig("every 6 hours").timesPerDay).toBe(4);
     expect(parseSig("q8h").timesPerDay).toBe(3);
+  });
+
+  it("'every 6 (six) hours' → 4x/day, the parenthetical ignored (#2939)", () => {
+    const r = parseSig("1.5 mL every 6 (six) hours");
+    expect(r.asNeeded).toBe(false);
+    expect(r.timesPerDay).toBe(4);
+    expect(r.amount).toBe("1.5 mL");
+  });
+
+  it("'if needed' is PRN, and the dose survives the instructions (#2939)", () => {
+    const r = parseSig(EPIC_SIG);
+    expect(r.asNeeded).toBe(true);
+    expect(r.timesPerDay).toBeNull();
+    // The sig tail never rides along into the amount.
+    expect(r.amount).toBe("1.5 mL (1.25 mg)");
   });
 
   it("'1 tablet three times daily' (tid) → 3x/day", () => {
@@ -97,6 +120,39 @@ describe("looksLikeDose", () => {
     expect(looksLikeDose("10")).toBe(false);
     expect(looksLikeDose(null)).toBe(false);
     expect(looksLikeDose("")).toBe(false);
+  });
+
+  it("accepts a concentration and a volume-with-mass-equivalent dose (#2939)", () => {
+    expect(looksLikeDose("400 MG/5ML")).toBe(true);
+    expect(looksLikeDose("2.5 mg/3 mL")).toBe(true);
+    expect(looksLikeDose("1.5 mL (1.25 mg)")).toBe(true);
+  });
+
+  it("rejects a SENTENCE that merely contains a dose (#2939)", () => {
+    // The old digit-anywhere + unit-anywhere test passed both of these, and the
+    // #417 guard then stored the whole string as the strength.
+    expect(looksLikeDose(EPIC_SIG)).toBe(false);
+    expect(looksLikeDose(EPIC_PRODUCT)).toBe(false);
+    expect(looksLikeDose("Take 1 tablet by mouth daily")).toBe(false);
+  });
+});
+
+describe("looksLikeSig — the #417 routing detector (#2939)", () => {
+  it("sees Epic's 'if needed' PRN phrasing", () => {
+    expect(looksLikeSig("if needed for wheezing")).toBe(true);
+    expect(looksLikeSig("Take 1 tab if needed for pain")).toBe(true);
+  });
+
+  it("sees an interval whose count is repeated in words", () => {
+    // Epic writes the spelled-out number between the digit and the unit.
+    expect(looksLikeSig("every 6 (six) hours")).toBe(true);
+    expect(looksLikeSig(EPIC_SIG)).toBe(true);
+  });
+
+  it("still ignores a bare strength and empty text", () => {
+    expect(looksLikeSig("500 mg")).toBe(false);
+    expect(looksLikeSig(EPIC_PRODUCT)).toBe(false);
+    expect(looksLikeSig(null)).toBe(false);
   });
 });
 
@@ -185,6 +241,19 @@ describe("cleanMedicationName — grouping name", () => {
     // The name is left intact by the balance guard, but the strength is still
     // pulled out separately so the dose field is populated.
     expect(strengthFromName("Drug (foo (2.5 mg))")).toBe("2.5 mg");
+  });
+
+  it("recovers an UNBRACKETED concentration whole, denominator included (#2939)", () => {
+    // The same product written with or without brackets yields the same strength.
+    expect(strengthFromName("Albuterol 2.5 mg/3 mL nebulizer solution")).toBe(
+      "2.5 mg/3 mL"
+    );
+    expect(strengthFromName("albuterol (2.5 mg/3 mL)")).toBe("2.5 mg/3 mL");
+    expect(strengthFromName("Insulin glargine 100 units/mL")).toBe(
+      "100 units/mL"
+    );
+    // A slash that starts prose is not a denominator, so the strength stops at it.
+    expect(strengthFromName("Lisinopril 10 mg / do not crush")).toBe("10 mg");
   });
 
   it("the unparenthesized trailing strength keeps stripping as before", () => {
@@ -319,6 +388,28 @@ describe("parsePrescription — full record → structured med", () => {
     expect(p.rxNumber).toBe("RX-555012");
     expect(p.timesPerDay).toBe(1);
     expect(p.timeBuckets).toEqual(["Before sleep"]);
+  });
+
+  // #2939 — the two strings observed in production, each stored whole as the
+  // medication's strength by the code these fixtures pin.
+  it("keeps only the DOSE out of a real Epic nebulizer sig (#2939)", () => {
+    const p = parsePrescription({ name: "albuterol", value: EPIC_SIG });
+    expect(p.strength).toBe("1.5 mL (1.25 mg)");
+    expect(p.strength).not.toContain("Take");
+    expect(p.strength).not.toContain("wheezing");
+    // "if needed" is the PRN signal, so the sentence is DIRECTIONS: it lands in the
+    // sig (the item's notes) and the med is as-needed rather than scheduled.
+    expect(p.sig).toBe(EPIC_SIG);
+    expect(p.asNeeded).toBe(true);
+    expect(p.timesPerDay).toBeNull();
+  });
+
+  it("keeps only the STRENGTH out of a product/formulation string (#2939)", () => {
+    const p = parsePrescription({ name: "amoxicillin", value: EPIC_PRODUCT });
+    expect(p.name).toBe("amoxicillin");
+    // The concentration, denominator included — never the product name.
+    expect(p.strength).toBe("400 MG/5ML");
+    expect(p.strength).not.toContain("Suspension");
   });
 
   it("falls back to scraping a note when no structured attribution is given", () => {
