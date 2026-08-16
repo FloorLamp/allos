@@ -54,6 +54,16 @@ import {
   type DistanceUnit,
 } from "@/lib/settings";
 import { ZONE_COLORS, zonePresentation } from "@/lib/training-zones";
+// The comparison's presentation is shared with every other session type since
+// #2566's convergence — including the rule that only speed has a direction.
+import {
+  comparisonDecimals,
+  comparisonDifference,
+  comparisonDisplayValue,
+  comparisonTone,
+  comparisonUnitSuffix,
+  formatComparisonValue,
+} from "@/lib/session-comparison-format";
 import { fmtDistance, fmtKmh, kmTo, round } from "@/lib/units";
 import RideDetailActions from "./RideDetailActions";
 import { RideChartLinkProvider } from "./RideChartLink";
@@ -90,82 +100,6 @@ const COMPARISON_SHORT_LABELS: Record<RideComparisonMetricKey, string> = {
   relative_effort: "Effort",
 };
 
-function comparisonChartUnit(
-  key: RideComparisonMetricKey,
-  distanceUnit: DistanceUnit
-): string {
-  if (key === "speed") return ` ${distanceUnit}/h`;
-  if (key === "heart_rate") return " bpm";
-  if (key === "power" || key === "weighted_power") return " W";
-  if (key === "cadence") return " rpm";
-  if (key === "elevation") return distanceUnit === "mi" ? " ft" : " m";
-  return "";
-}
-
-function comparisonChartValue(
-  key: RideComparisonMetricKey,
-  value: number,
-  distanceUnit: DistanceUnit
-): number {
-  if (key === "speed") return kmTo(value, distanceUnit);
-  if (key === "elevation" && distanceUnit === "mi") return value * 3.28084;
-  return value;
-}
-
-function formatComparisonValue(
-  metric: RideComparisonMetric,
-  value: number,
-  distanceUnit: DistanceUnit
-): string {
-  if (metric.key === "speed") return fmtKmh(value, distanceUnit);
-  if (metric.key === "heart_rate") return `${Math.round(value)} bpm`;
-  if (metric.key === "power" || metric.key === "weighted_power") {
-    return `${Math.round(value)} W`;
-  }
-  if (metric.key === "cadence") return `${Math.round(value)} rpm`;
-  if (metric.key === "elevation") {
-    return distanceUnit === "mi"
-      ? `${Math.round(value * 3.28084)} ft`
-      : `${Math.round(value)} m`;
-  }
-  return String(round(value, 1));
-}
-
-function comparisonDifferencePresentation(
-  metric: RideComparisonMetric,
-  distanceUnit: DistanceUnit
-): { value: string | null; relation: "above" | "below" | "same as" } {
-  const difference =
-    metric.key === "speed"
-      ? kmTo(metric.difference, distanceUnit)
-      : metric.key === "elevation" && distanceUnit === "mi"
-        ? metric.difference * 3.28084
-        : metric.difference;
-  const rounded =
-    metric.key === "speed" || metric.key === "relative_effort"
-      ? round(difference, 1)
-      : Math.round(difference);
-  const suffix =
-    metric.key === "speed"
-      ? ` ${distanceUnit}/h`
-      : metric.key === "heart_rate"
-        ? " bpm"
-        : metric.key === "power" || metric.key === "weighted_power"
-          ? " W"
-          : metric.key === "cadence"
-            ? " rpm"
-            : metric.key === "elevation"
-              ? distanceUnit === "mi"
-                ? " ft"
-                : " m"
-              : "";
-  if (rounded === 0) return { value: null, relation: "same as" };
-  return {
-    value: `${Math.abs(rounded)}${suffix}`,
-    relation: rounded > 0 ? "above" : "below",
-  };
-}
-
 function RideSummaryComparisonDelta({
   metric,
   distanceUnit,
@@ -175,23 +109,20 @@ function RideSummaryComparisonDelta({
   distanceUnit: DistanceUnit;
   prefix?: string;
 }) {
-  const difference = comparisonDifferencePresentation(metric, distanceUnit);
+  const difference = comparisonDifference(metric, distanceUnit);
   const medianValue = formatComparisonValue(
-    metric,
+    metric.key,
     metric.median,
     distanceUnit
   );
-  // Only speed has a clear performance direction among these like-for-like
-  // ride deltas. More HR, power, elevation, cadence, or effort is context, not
-  // automatically “better”, so those comparisons keep a neutral blue tone.
-  const tone =
-    metric.key !== "speed"
-      ? "text-sky-700 dark:text-sky-300"
-      : difference.relation === "above"
-        ? "text-emerald-700 dark:text-emerald-300"
-        : difference.relation === "below"
-          ? "text-amber-700 dark:text-amber-300"
-          : "text-slate-600 dark:text-slate-300";
+  // Only speed has a clear performance direction; more HR, power, elevation,
+  // cadence or effort is context, not automatically "better". That rule now
+  // lives in lib/session-comparison-format so every session type keeps it.
+  const tone = {
+    good: "text-emerald-700 dark:text-emerald-300",
+    watch: "text-amber-700 dark:text-amber-300",
+    neutral: "text-sky-700 dark:text-sky-300",
+  }[comparisonTone(metric, difference.relation)];
 
   return (
     <span
@@ -609,17 +540,16 @@ export default async function RideDetailPage(props: {
         key: metric.key,
         label: COMPARISON_LABELS[metric.key],
         shortLabel: COMPARISON_SHORT_LABELS[metric.key],
-        unit: comparisonChartUnit(metric.key, units.distanceUnit),
-        decimals:
-          metric.key === "speed" || metric.key === "relative_effort" ? 1 : 0,
-        median: comparisonChartValue(
+        unit: comparisonUnitSuffix(metric.key, units.distanceUnit),
+        decimals: comparisonDecimals(metric.key),
+        median: comparisonDisplayValue(
           metric.key,
           metric.median,
           units.distanceUnit
         ),
         points: metric.points.map((point) => ({
           ...point,
-          value: comparisonChartValue(
+          value: comparisonDisplayValue(
             metric.key,
             point.value,
             units.distanceUnit
