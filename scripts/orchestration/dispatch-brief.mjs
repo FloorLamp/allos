@@ -334,8 +334,10 @@ ${MIGRATION_LINES}
 - Immediately before opening the PR: git merge origin/main && npm run typecheck.
   A signature that widened while you worked is not a textual conflict.
 - Gates: run bash scripts/orchestration/agent-gates.sh from the worktree root — it
-  runs lint, typecheck, both test tiers, the e2e-hygiene scan when specs changed,
-  phi-scan, and format LAST, in the mandated order. Report its output verbatim.
+  runs lint, typecheck, the pure tests, the DB tier when your diff touches anything
+  it imports, the e2e-hygiene scan when specs changed, phi-scan, and format LAST, in
+  the mandated order. A gate that prints SKIPPED names its reason — that is the
+  script scoping itself to your diff, not a gate you missed. Report its output verbatim.
   Give that Bash call an explicit long timeout; if it cannot fit one tool call
   under contention, run the same gates individually in the same order.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
