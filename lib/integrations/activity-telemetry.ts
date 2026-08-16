@@ -1,3 +1,13 @@
+// A session's second-by-second record, whatever the session was. The table has
+// been `activity_telemetry` since migration 159, but everything ABOVE it was
+// named for bicycles because the fetch was gated to rides — and #2870 step 4
+// took that gate off, so a walk and a run store the same series through the same
+// path. The names now say what the storage always was. (The migration keeps its
+// own name: it is hash-pinned and recorded in every database that ran it.)
+//
+// What remains genuinely cycling lives next door in lib/cycling-stream-summary:
+// the precomputed power curve and power zones the Cycling overview reads.
+
 import { db } from "@/lib/db";
 import {
   serializeCyclingStreamSummary,
@@ -24,7 +34,7 @@ export const STRAVA_STREAM_KEYS = [
   "grade_smooth",
 ] as const;
 
-export type CyclingStreamKey = (typeof STRAVA_STREAM_KEYS)[number];
+export type ActivityStreamKey = (typeof STRAVA_STREAM_KEYS)[number];
 
 export interface TelemetryStream {
   data: unknown[];
@@ -33,11 +43,13 @@ export interface TelemetryStream {
   series_type?: string;
 }
 
-export type CyclingStreams = Partial<Record<CyclingStreamKey, TelemetryStream>>;
+export type ActivityStreams = Partial<
+  Record<ActivityStreamKey, TelemetryStream>
+>;
 
-export interface NormCyclingTelemetry {
+export interface NormActivityTelemetry {
   external_id: string;
-  streams: CyclingStreams;
+  streams: ActivityStreams;
   ftp_w: number | null;
   heart_rate_zones: unknown[] | null;
   power_zones: unknown[] | null;
@@ -119,9 +131,9 @@ export function hasTelemetryAnswer(
     .get(profileId, externalId, source);
 }
 
-export function upsertCyclingTelemetry(
+export function upsertActivityTelemetry(
   profileId: number,
-  rows: NormCyclingTelemetry[],
+  rows: NormActivityTelemetry[],
   source: string
 ): UpsertCounts {
   const find = db.prepare(
@@ -194,7 +206,7 @@ export function upsertCyclingTelemetry(
         post.heart_rate_zones_json,
         post.power_zones_json,
         post.snapshot_at,
-        // The cycling overview reads THIS instead of parsing every ride's streams
+        // The Cycling overview reads THIS instead of parsing every ride's streams
         // on every page load (#2292). It is a pure function of the two columns
         // written beside it, so it is derived from `post` — the values actually
         // stored — and never from `incoming`, which a partial pull may have left

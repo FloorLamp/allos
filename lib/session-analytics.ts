@@ -6,7 +6,7 @@
 
 import type { DistanceUnit } from "./settings";
 import { numeric, booleans } from "./cycling-analytics";
-import type { CyclingStreams } from "./integrations/cycling-telemetry";
+import type { ActivityStreams } from "./integrations/activity-telemetry";
 
 // The metres in one unit of the reader's distance — the natural split for anyone
 // who says "my kilometre splits" or "my mile splits".
@@ -111,7 +111,7 @@ const MIN_DRIFT_SAMPLES = 30;
 // whenever the recording cannot answer, which is most walks: the question needs
 // both series, moving for long enough, in both halves.
 export function paceHrDecouplingPercent(
-  streams: CyclingStreams
+  streams: ActivityStreams
 ): number | null {
   return outputHrDrift(
     numeric(streams.time),

@@ -39,7 +39,7 @@ import { equipmentLoadLane } from "./lifts";
 import { sessionProgressDelta, type ProgressDelta } from "./progress-delta";
 import {
   distanceSplits,
-  parseCyclingStreams,
+  parseActivityStreams,
   rideTraces,
   type RideDistanceSplit,
   type RideTrace,
@@ -226,7 +226,7 @@ export function getActivityDetailData(
         ORDER BY id DESC LIMIT 1`
     )
     .get(profileId, row.id) as { streams_json: string | null } | undefined;
-  const streams = parseCyclingStreams(telemetryRow?.streams_json ?? null);
+  const streams = parseActivityStreams(telemetryRow?.streams_json ?? null);
   const splitIntervalM = sessionSplitIntervalM(
     row.distance_km,
     units.distanceUnit

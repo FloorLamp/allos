@@ -4,12 +4,12 @@ import {
   stravaSportName,
   splitCamelCase,
   rpeToIntensity,
-  mapStravaCyclingArtifacts,
+  mapStravaActivityArtifacts,
 } from "@/lib/integrations/strava";
 
-describe("mapStravaCyclingArtifacts", () => {
+describe("mapStravaActivityArtifacts", () => {
   it("normalizes streams, FTP/zones, laps, and segment efforts", () => {
-    const result = mapStravaCyclingArtifacts(
+    const result = mapStravaActivityArtifacts(
       "12345",
       {
         laps: [

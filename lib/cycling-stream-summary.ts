@@ -39,7 +39,7 @@
 // inconsistency someone should tidy up.
 
 import {
-  parseCyclingStreams,
+  parseActivityStreams,
   powerCurve,
   powerZoneTimes,
   POWER_CURVE_DURATIONS,
@@ -102,7 +102,7 @@ export function summarizeCyclingStreams(
   streamsJson: string | null,
   powerZonesJson: string | null
 ): CyclingStreamSummary {
-  const streams = parseCyclingStreams(streamsJson);
+  const streams = parseActivityStreams(streamsJson);
   return {
     sig: streamSummarySignature(),
     powerCurve: powerCurve(streams).map(({ seconds, watts }) => ({
