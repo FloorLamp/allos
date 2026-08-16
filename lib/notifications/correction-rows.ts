@@ -1,10 +1,11 @@
 // The correction ride-along, rendered (issues #2019, #2020) — pure, DB-free.
 //
-// Turns the burst model in lib/correction-time.ts into keyboard rows, once, for both
-// domains. Food and doses differ ONLY in their two token prefixes and in the verb the
-// picker asks with ("when did you eat" / "when did you take these"); everything about
-// the shape — which chips, in what order, how a burst is named, how the drill-down
-// opens and comes back — is decided here so the two chats cannot drift apart.
+// Turns the burst model in lib/correction-time.ts into keyboard rows, once, for all
+// three domains. Food, doses and practices (#2875) differ ONLY in their two token
+// prefixes and in the verb the picker asks with ("when did you eat" / "when did you
+// take these" / "when was this"); everything about the shape — which chips, in what
+// order, how a burst is named, how the drill-down opens and comes back — is decided
+// here so the three chats cannot drift apart.
 //
 // ── WHY THE NAME IS ALSO THE PICKER BUTTON ───────────────────────────────────
 //
@@ -56,6 +57,19 @@ export const FOOD_TIME_PREFIXES: CorrectionPrefixes = {
 export const DOSE_TIME_PREFIXES: CorrectionPrefixes = {
   chip: "dosetime",
   at: "dosetimeat",
+};
+
+// The third domain (#2875). Practices were the third to gain one-tap logging and never
+// got the correction substrate, which is why a sauna at 19:00 acknowledged at 21:30 was
+// stored — and could only be stored — as a 21:30 session. That is worse than a wrong
+// display: `modalHour()` reads this column to pick each practice's typical hour and
+// #2188's retimed pace nudge fires at it, so a late acknowledgement teaches the
+// inference a later hour, which fires the next nudge later, which is acknowledged later
+// still. Two more prefixes is the whole extension — the chips, the picker, the burst
+// collapse and the statement of record above are already domain-blind.
+export const PRACTICE_TIME_PREFIXES: CorrectionPrefixes = {
+  chip: "practime",
+  at: "practimeat",
 };
 
 // One row per burst: the named picker button, then the chips. Rows are keyed by the

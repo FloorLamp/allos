@@ -3,6 +3,17 @@
 // lib/practice-log.ts and lib/practice-store.ts.
 
 import { db, today as profileToday } from "../db";
+import { now as clockNow } from "../clock";
+import { utcSqlString } from "../date";
+import { eventInstant, recordInstant } from "../row-instants";
+import { getTimezone } from "../settings";
+import {
+  CORRECTION_FRESH_MIN,
+  correctionBursts,
+  type CorrectionBurst,
+  type CorrectionMessageBinding,
+  type TapEvent,
+} from "../correction-time";
 import { cache } from "../request-cache";
 import { tickCached } from "../tick-cache";
 import { buildPracticeHeatmap } from "../practice-heatmap";
@@ -863,4 +874,114 @@ export function getPracticeDays(
     }
   }
   return [...byDayKey.values()];
+}
+
+// ---- Practice-time correction rows (issue #2875) ----------------------------
+
+// One already-written practice session, as a correction offer reads it. `date` rides
+// along because the restamp writes a profile-local "HH:MM" back onto THAT day, and the
+// day is what decides whether a chip would cross local midnight (out of scope — the
+// chips move a time within a day).
+export interface PracticeTapRow extends TapEvent {
+  practice: string;
+  date: string;
+  // Narrowed from the substrate's `string | null`: a row with no stated instant is
+  // never in this set at all (see 2 below), so every member has one.
+  statedAt: string;
+}
+
+// The profile's recent practice TAPS, as the correction offer reads them — the third
+// domain on the #2019/#2020 substrate, joining food servings and dose administrations.
+//
+// THREE THINGS DIFFER FROM ITS SIBLINGS, and each is visible right here.
+//
+// 1. THE STORED VALUE IS NOT AN INSTANT. Food stores `occurred_at` and dose stores
+//    `given_at`, both full instants; a practice stores `date` (a profile-local day)
+//    plus `time` (a profile-local "HH:MM"). The substrate works on ISO instants, so
+//    the two are COMPOSED in the profile's timezone — server-side (#450), never from
+//    a device clock — and the composition is `eventInstant`, the declared reader for
+//    exactly this shape (lib/row-instants.ts), not a second hand-rolled join. The tap
+//    stamp comes back through `recordInstant` for the same reason: `created_at` is on
+//    the BARE convention and the substrate parses ISO, so normalizing it by hand here
+//    would be the second spelling.
+//
+// 2. A NULL `time` IS A STATEMENT, AND IT IS LEFT ALONE. `lib/practice-log.ts`'s
+//    contract makes `time` three-valued: an "HH:MM" says the session happened then,
+//    `null` says it has NO instant AND THAT IS A DECISION (a backdated correction
+//    outside the profile's today deliberately stays null), and omitted means a tap
+//    with no opinion, which the write core stamps. A chip may only re-time a row that
+//    already carries a time — inventing one for a null row is precisely the
+//    fabrication the contract exists to prevent — so null-time rows are excluded HERE,
+//    at the source, rather than filtered downstream. They therefore never appear in a
+//    burst, and no chip can reach them.
+//
+// 3. AN IMPORTED SESSION IS NOT A TAP. `external_id` is how an import reaches this
+//    table (it has no `document_id` — see the #2364 note in the reading model), so an
+//    imported row is excluded: its `created_at` is when the SYNC ran, which would make
+//    a freshly-imported history look like a burst somebody just tapped.
+//
+// Bounded by the same freshness window the offer itself uses, so the read is a handful
+// of rows however busy the day was. THE ROW SET IS A QUERY, not a memory — whichever
+// practice keyboard is live renders the offers the LEDGER still justifies, which is why
+// they survive a rebuild, a pointer rotation and a restart. Profile-scoped.
+export function getRecentPracticeTaps(
+  profileId: number,
+  now: Date = clockNow()
+): PracticeTapRow[] {
+  const since = utcSqlString(
+    new Date(now.getTime() - CORRECTION_FRESH_MIN * 60_000)
+  );
+  const rows = db
+    .prepare(
+      `SELECT id, practice, date, time, created_at, notify_message_id
+         FROM practice_logs
+        WHERE profile_id = ?
+          AND created_at >= ?
+          AND time IS NOT NULL
+          AND external_id IS NULL
+        ORDER BY created_at, id
+        LIMIT 100`
+    )
+    .all(profileId, since) as {
+    id: number;
+    practice: string;
+    date: string;
+    time: string;
+    created_at: string;
+    notify_message_id: number | null;
+  }[];
+  const tz = getTimezone(profileId);
+  const out: PracticeTapRow[] = [];
+  for (const r of rows) {
+    // Both sides through the declared readers. A row whose stored values do not
+    // resolve is DROPPED rather than guessed at: a burst is a set of rows a chip is
+    // about to rewrite, and one it cannot read is one it must not touch.
+    const tapAt = recordInstant("practice_logs", r);
+    const statedAt = eventInstant("practice_logs", r, tz);
+    if (!tapAt.known || !statedAt.known) continue;
+    out.push({
+      id: r.id,
+      practice: r.practice,
+      date: r.date,
+      tapAt: tapAt.at,
+      statedAt: statedAt.at,
+      messageRef: r.notify_message_id,
+      label: r.practice,
+    });
+  }
+  return out;
+}
+
+// The correction rows one practice keyboard should carry right now — the fresh taps,
+// collapsed into bursts, bound to the rendering message (#2264), newest first, capped.
+// One computation for the send, every rebuild, and the hourly sweep (#221), so a chat
+// can never show a chip the handler would refuse. `binding` is the rendering message's
+// #2264 identity; omitting it returns the profile-wide set, which only a caller that is
+// not rendering a message may use.
+export function getPracticeCorrectionBursts(
+  profileId: number,
+  now: Date = clockNow(),
+  binding?: CorrectionMessageBinding
+): CorrectionBurst[] {
+  return correctionBursts(getRecentPracticeTaps(profileId, now), now, binding);
 }
