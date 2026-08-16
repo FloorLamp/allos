@@ -12,6 +12,10 @@ import {
   rideZoneRows,
 } from "@/lib/ride-detail";
 import { ZONE_COLORS } from "@/lib/training-zones";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
+import type { RideComparisonMetricKey } from "@/lib/ride-detail";
+import { fmtDistance, fmtKmh } from "@/lib/units";
+import { formatElapsed } from "@/lib/ride-detail";
 import ActivityLedgerNav from "./ActivityLedgerNav";
 import ActivityRecord from "../ActivityRecord";
 import RideHeartRateChart from "../../rides/[id]/RideHeartRateChart";
@@ -19,6 +23,16 @@ import RideTelemetryChart from "../../rides/[id]/RideTelemetryChart";
 import { RideChartLinkProvider } from "../../rides/[id]/RideChartLink";
 
 export const dynamic = "force-dynamic";
+
+// What each comparable metric is CALLED on a session that is not a ride. Power,
+// weighted power and cadence stay off this list: they are cycling vocabulary,
+// and a walk that somehow carries them is not helped by seeing them.
+const COMPARISON_LABELS: Partial<Record<RideComparisonMetricKey, string>> = {
+  speed: "Speed",
+  heart_rate: "Heart rate",
+  elevation: "Elevation",
+  relative_effort: "Relative effort",
+};
 
 // One activity's canonical page (#2870 step 1): the record, at its own URL.
 // The record IS the Training Log card — rendered whole (sets, statuses, notes,
@@ -71,6 +85,44 @@ export default async function TrainingActivityPage(props: {
     ? rideZoneRows(data.heartRate.zoneMinutes)
     : [];
   const zoneTotal = zoneRows.reduce((sum, zone) => sum + zone.minutes, 0);
+  // Name the interval the splits were actually cut at (#3009) — "1 km" for a
+  // walk, "5 km" once one-per-unit would overflow the table.
+  const splitUnits =
+    data.telemetry.splitIntervalM /
+    (units.distanceUnit === "mi" ? 1609.344 : 1000);
+  const splitLabel = `${Math.round(splitUnits)} ${units.distanceUnit}`;
+  // Peer comparison (#3009). Each metric renders its own value, the peers'
+  // median, and the gap — a personal baseline, which for endurance beats any
+  // published standard. Presentation is deliberately plain here; the ride page's
+  // charted treatment stays its own until #2566's convergence step gives both
+  // surfaces one.
+  const comparisonRows = (data.comparison?.metrics ?? []).flatMap((metric) => {
+    const label = COMPARISON_LABELS[metric.key];
+    if (!label) return [];
+    const render =
+      metric.key === "speed"
+        ? (value: number) => fmtKmh(value, units.distanceUnit)
+        : metric.key === "elevation"
+          ? (value: number) => `${Math.round(value)} m`
+          : (value: number) => String(Math.round(value));
+    return [
+      {
+        key: metric.key,
+        label,
+        current: render(metric.current),
+        median: render(metric.median),
+        // The sign is the story; the magnitude is rendered in the metric's own
+        // units so "+0.4 km/h" never reads as "+0.4 bpm".
+        difference: `${metric.difference > 0 ? "+" : metric.difference < 0 ? "−" : "±"}${render(Math.abs(metric.difference))}`,
+        direction:
+          metric.difference > 0
+            ? "up"
+            : metric.difference < 0
+              ? "down"
+              : "same",
+      },
+    ];
+  });
 
   return (
     <PageContainer
@@ -137,6 +189,85 @@ export default async function TrainingActivityPage(props: {
             <div className="mt-4">
               <RideTelemetryChart traces={data.telemetry.traces} />
             </div>
+          </div>
+        )}
+
+        {data.telemetry.splits.length > 0 && (
+          <div className="card mt-4" data-testid="activity-splits">
+            <div className="flex items-baseline justify-between gap-2">
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                {splitLabel} splits
+              </h3>
+              {data.telemetry.decouplingPercent != null && (
+                <span
+                  data-testid="activity-decoupling"
+                  title="Pace per heartbeat, second half against first"
+                  className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
+                >
+                  {data.telemetry.decouplingPercent > 0
+                    ? `${data.telemetry.decouplingPercent}% slower per beat late on`
+                    : data.telemetry.decouplingPercent < 0
+                      ? `${Math.abs(data.telemetry.decouplingPercent)}% faster per beat late on`
+                      : "Even pace per beat throughout"}
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Cut from the recorded distance, not from the totals.
+            </p>
+            <ResponsiveTable className="mt-4 w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-black/10 text-left text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400">
+                  <th className="th">Split</th>
+                  <th className="th text-right">Distance</th>
+                  <th className="th text-right">Time</th>
+                  <th className="th text-right">Speed</th>
+                  <th className="th text-right">Heart rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.telemetry.splits.map((split) => (
+                  <tr
+                    key={split.index}
+                    className="border-b border-black/5 last:border-0 dark:border-white/5"
+                  >
+                    <Td slot="title" className="py-2.5 pr-3 font-medium">
+                      {split.index}
+                    </Td>
+                    <Td
+                      slot="value"
+                      label="Distance"
+                      className="px-3 py-2.5 text-right tabular-nums"
+                    >
+                      {fmtDistance(split.distanceM / 1000, units.distanceUnit)}
+                    </Td>
+                    <Td
+                      slot="meta"
+                      label="Time"
+                      className="px-3 py-2.5 text-right tabular-nums"
+                    >
+                      {formatElapsed(split.timeSec)}
+                    </Td>
+                    <Td
+                      slot="meta"
+                      label="Speed"
+                      className="px-3 py-2.5 text-right tabular-nums"
+                    >
+                      {fmtKmh(split.averageSpeedKmh, units.distanceUnit)}
+                    </Td>
+                    <Td
+                      slot="meta"
+                      label="Heart rate"
+                      className="px-3 py-2.5 text-right tabular-nums"
+                    >
+                      {split.averageHeartrate == null
+                        ? "—"
+                        : `${Math.round(split.averageHeartrate)} bpm`}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </ResponsiveTable>
           </div>
         )}
 
@@ -217,6 +348,57 @@ export default async function TrainingActivityPage(props: {
           </div>
         )}
       </RideChartLinkProvider>
+
+      {comparisonRows.length > 0 && data.comparison && (
+        <div className="card mt-4" data-testid="activity-comparison">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+              How this compares
+            </h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {data.comparison.rideCount} similar{" "}
+              {data.comparison.rideCount === 1 ? "session" : "sessions"}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Against the median of your own sessions of this kind, within{" "}
+            {Math.round(data.comparison.tolerancePercent)}% of the same{" "}
+            {data.comparison.basis === "distance" ? "distance" : "duration"}.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {comparisonRows.map((row) => (
+              <li
+                key={row.key}
+                data-testid={`activity-comparison-${row.key.replace("_", "-")}`}
+                className="flex items-baseline justify-between gap-4 text-sm"
+              >
+                <span className="text-slate-700 dark:text-slate-200">
+                  {row.label}
+                </span>
+                <span className="flex items-baseline gap-2 tabular-nums">
+                  <span className="font-medium text-slate-800 dark:text-slate-100">
+                    {row.current}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    median {row.median}
+                  </span>
+                  <span
+                    className={`text-xs ${
+                      row.direction === "up"
+                        ? "text-brand-600 dark:text-brand-400"
+                        : row.direction === "down"
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-slate-500 dark:text-slate-400"
+                    }`}
+                  >
+                    {row.difference}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* A session whose source answered with nothing says so (#3009). The page
           is allowed to be short — a hand-entered walk IS a total and a title —

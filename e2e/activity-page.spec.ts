@@ -7,6 +7,8 @@ import { openCommandPalette } from "./nav";
 // `playwright --list`.
 import {
   E2E_LOGIN_OVERLAP,
+  E2E_LOGIN_SESSION_PEERS,
+  SESSION_PEERS_TITLE,
   E2E_MEMBER_PASSWORD,
   OVERLAP_KEEPER_TITLE,
   OVERLAP_TWIN_TITLE,
@@ -131,6 +133,14 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   await expect(traces.locator("svg")).toBeVisible();
   // A session that HAS detail never claims to be totals-only.
   await expect(page.getByTestId("activity-totals-only")).toHaveCount(0);
+
+  // And its splits (#3009), cut at the READER's unit — a walk of 1.4 km gets
+  // none at all from the ride page's 5 km interval, which is the whole reason
+  // the interval follows the unit rather than the sport.
+  const splits = page.getByTestId("activity-splits");
+  await expect(splits).toBeVisible();
+  await expect(splits.getByRole("heading")).toHaveText(/1 (km|mi) splits/);
+  await expect(splits.locator("tbody tr")).not.toHaveCount(0);
 });
 
 test("a summary-only import says so, instead of leaving a silent short page", async ({
@@ -242,4 +252,48 @@ test("a global 'Log activity' on the page opens the overlay, not this record's d
   await expect(
     page.getByTestId("activity-page-dock").getByTestId("activity-form")
   ).toHaveCount(0);
+});
+
+test("a session is measured against its own like-for-like peers (#3009)", async ({
+  browser,
+}) => {
+  // For endurance the personal baseline beats any published standard: the
+  // question is not "is this fast" but "is this fast FOR ME, on this kind of
+  // session, at this distance". Its own profile, so the median is the fixture's
+  // and not whatever else the shared seed happens to hold.
+  const member = await loginAs(browser, {
+    username: E2E_LOGIN_SESSION_PEERS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await member.goto("/training?tab=log");
+    await hydratedClick(
+      member,
+      member
+        .getByTestId("training-log-row")
+        .filter({ hasText: SESSION_PEERS_TITLE })
+        .first() // first-ok: the newest of four same-titled fixture sessions — the subject
+    );
+    await followLink(
+      member,
+      member.getByTestId("activity-pane-open"),
+      /\/training\/activity\/\d+$/
+    );
+
+    const comparison = member.getByTestId("activity-comparison");
+    await expect(comparison).toBeVisible();
+    // It says what it compared against — a median of one would be a comparison
+    // in name only.
+    await expect(comparison).toContainText(/3 similar sessions/);
+    await expect(comparison).toContainText(/within \d+% of the same distance/);
+    // Speed and heart rate both have peers carrying them, so both are measured.
+    await expect(member.getByTestId("activity-comparison-speed")).toContainText(
+      /median/
+    );
+    await expect(
+      member.getByTestId("activity-comparison-heart-rate")
+    ).toBeVisible();
+  } finally {
+    await member.close();
+  }
 });

@@ -186,6 +186,18 @@ export interface PediatricBpContext {
 // window). Height percentile is optional: when the child has no tracked height it
 // defaults to the 50th percentile (flagged via `heightAssumed`) so the category
 // still computes rather than silently falling back to the adult thresholds.
+//
+// AN INFANT (age 0) GETS NO BP JUDGMENT AT ALL, AND THAT IS DELIBERATE — read this
+// before "fixing" it. The AAP percentile tables start at 1 y and there is no
+// normative table beneath them, so this returns null below `DATA.minAge`; #2794's
+// carve-out then keeps the ADULT band off the row as well, because an adult 60–80
+// diastolic interval is not a defensible claim about a newborn either. The visible
+// effect since #2992 — which made a stored age of 0 resolve as 0 rather than as
+// "unknown" — is that an infant's BP reading now carries NO flag where it previously
+// carried an adult-band one. That is the correct answer absent infant normative
+// data: an absent judgment, not a lost one, and NOT a regression. Giving infants a
+// real answer means sourcing infant BP norms — a new dataset and its own issue, not
+// a relaxation of this guard.
 export function pediatricBpContext(
   component: BpComponent,
   value: number | null | undefined,

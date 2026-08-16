@@ -32,14 +32,22 @@ import { getProfileZoneModel } from "./queries/zones";
 import { getWeatherDaysForProfile } from "./queries/weather-situations";
 import { getHrMinutesInRange } from "./queries/metrics";
 import { activityWindow, windowsOverlap } from "./import-review/detect";
+import { sessionComparison, type RideComparison } from "./ride-detail";
+import { isSameActivityKind } from "./cycling-activity";
 import { getExerciseComparison } from "./queries/training/strength";
 import { equipmentLoadLane } from "./lifts";
 import { sessionProgressDelta, type ProgressDelta } from "./progress-delta";
 import {
-  parseCyclingStreams,
+  distanceSplits,
+  parseActivityStreams,
   rideTraces,
+  type RideDistanceSplit,
   type RideTrace,
 } from "./cycling-analytics";
+import {
+  paceHrDecouplingPercent,
+  sessionSplitIntervalM,
+} from "./session-analytics";
 import {
   activityWindows,
   scopeBucketsToWindows,
@@ -72,6 +80,16 @@ export interface ActivityDetailHeartRate {
 // with nothing ("totals only" — the honest line, #3009), or no answer yet.
 export interface ActivityDetailTelemetry {
   traces: RideTrace[];
+  // Per-unit splits from the recorded distance+time (#3009), cut at the reader's
+  // own unit rather than a ride's 5 km. Empty when the session recorded no
+  // distance stream, or covered less than a third of one interval.
+  splits: RideDistanceSplit[];
+  // The metres one split covers, so the surface can say which unit it cut at.
+  splitIntervalM: number;
+  // Aerobic decoupling: output-per-heartbeat lost between the halves, over PACE
+  // for a worn session (the ride page asks the same question over power). Null
+  // whenever the recording cannot answer it honestly.
+  decouplingPercent: number | null;
   // The source has told us what it holds: a telemetry row exists. Without one
   // the session simply has not been asked about (a manual entry, or an import
   // that predates the widening), which is not the same as "there is nothing".
@@ -91,6 +109,12 @@ export interface ActivityDetailData {
   // the same rows. Empty when this activity has no clock, which is not evidence
   // of anything either way.
   overlappingSiblings: ActivityDetailSibling[];
+  // How this session sits against its like-for-like peers (#3009): same kind of
+  // session, within a tolerance of the same distance, each metric against the
+  // median of the peers that carry it. Null when there are no comparable peers —
+  // for endurance, a personal baseline beats any published standard, and the
+  // absence of one is not a zero.
+  comparison: RideComparison | null;
   // "vs last" per rendered part, INDEX-ALIGNED with `card.parts` (#2870). Null
   // where the part is not a lift, or the lift has no comparable previous session
   // on the same implement. Computed for the canonical PAGE only: the reading
@@ -202,8 +226,16 @@ export function getActivityDetailData(
         ORDER BY id DESC LIMIT 1`
     )
     .get(profileId, row.id) as { streams_json: string | null } | undefined;
+  const streams = parseActivityStreams(telemetryRow?.streams_json ?? null);
+  const splitIntervalM = sessionSplitIntervalM(
+    row.distance_km,
+    units.distanceUnit
+  );
   const telemetry: ActivityDetailTelemetry = {
-    traces: rideTraces(parseCyclingStreams(telemetryRow?.streams_json ?? null)),
+    traces: rideTraces(streams),
+    splits: distanceSplits(streams, splitIntervalM),
+    splitIntervalM,
+    decouplingPercent: paceHrDecouplingPercent(streams),
     answered: !!telemetryRow,
   };
 
@@ -223,6 +255,21 @@ export function getActivityDetailData(
         return !!window && windowsOverlap(myWindow, window);
       })
     : [];
+
+  // Like-for-like peers (#3009 / #2566's `rideComparison` → `sessionComparison`).
+  // Bounded to the recent history of the same activity TYPE: the peer rule then
+  // narrows by kind and distance, so the scan never walks a whole ledger to find
+  // a handful of comparable walks.
+  const peerRows = db
+    .prepare(
+      `SELECT * FROM activities
+        WHERE profile_id = ? AND type = ? AND id != ?
+        ORDER BY date DESC, id DESC LIMIT 200`
+    )
+    .all(profileId, row.type, row.id) as Activity[];
+  const comparison = sessionComparison(row, peerRows, {
+    isPeer: isSameActivityKind,
+  });
 
   // "vs last" (#2870). One history scan per DISTINCT lift in this session, each
   // narrowed to the implement its sets were performed on — the same
@@ -290,6 +337,7 @@ export function getActivityDetailData(
     heartRate: { window: heartRateWindow, minutes, zoneMinutes, zoneModel },
     telemetry,
     overlappingSiblings,
+    comparison,
     partDeltas,
     olderId,
     newerId,

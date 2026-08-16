@@ -41,6 +41,7 @@ import {
   rideHeartRateSeries,
   rideHighlights,
   rideZoneRows,
+  formatElapsed,
   type RideHighlight,
   type RideComparisonMetric,
   type RideComparisonMetricKey,
@@ -466,17 +467,6 @@ function RideSectionHeading({
       />
     </div>
   );
-}
-
-function formatElapsed(seconds: number | null): string {
-  if (seconds == null) return "—";
-  const rounded = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(rounded / 3600);
-  const minutes = Math.floor((rounded % 3600) / 60);
-  const secs = rounded % 60;
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
-    : `${minutes}:${String(secs).padStart(2, "0")}`;
 }
 
 function cyclingLens(

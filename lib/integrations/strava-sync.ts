@@ -8,7 +8,7 @@ import {
   getStravaCursor,
   setStravaCursor,
 } from "./connections";
-import { mapStravaActivity, mapStravaCyclingArtifacts } from "./strava";
+import { mapStravaActivity, mapStravaActivityArtifacts } from "./strava";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 import { pullPaging } from "./registry";
 import { isPullRateLimited, DAY_SECONDS } from "./pull-window";
@@ -23,11 +23,11 @@ import {
   replaceActivityLaps,
   replaceSegmentEfforts,
   STRAVA_STREAM_KEYS,
-  upsertCyclingTelemetry,
+  upsertActivityTelemetry,
   type NormActivityLap,
-  type NormCyclingTelemetry,
+  type NormActivityTelemetry,
   type NormSegmentEffort,
-} from "./cycling-telemetry";
+} from "./activity-telemetry";
 import {
   createStravaRequestBudget,
   type StravaRequestBudget,
@@ -155,7 +155,7 @@ const stravaSpec: PullSpec<
     const activities: NormActivity[] = [];
     const samples: NormMetricSample[] = [];
     const routes: NormActivityRoute[] = [];
-    const cyclingTelemetry: NormCyclingTelemetry[] = [];
+    const activityTelemetry: NormActivityTelemetry[] = [];
     const activityLaps: NormActivityLap[] = [];
     const segmentEfforts: NormSegmentEffort[] = [];
     // Laps and segment efforts are full replacements only when DetailedActivity
@@ -308,7 +308,7 @@ const stravaSpec: PullSpec<
               backfillFetchVerdict(streamRes.status) === "unavailable";
             stream = streamRes.ok ? streamRes.json : null;
           }
-          const artifacts = mapStravaCyclingArtifacts(
+          const artifacts = mapStravaActivityArtifacts(
             String(summary.id),
             detail,
             stream,
@@ -321,7 +321,7 @@ const stravaSpec: PullSpec<
           // meaning "the source has told us", which is what stops the hourly
           // re-ask without abandoning a row over a 500.
           if (answeredNow || answered)
-            cyclingTelemetry.push(artifacts.telemetry);
+            activityTelemetry.push(artifacts.telemetry);
           activityLaps.push(...artifacts.laps);
           segmentEfforts.push(...artifacts.segmentEfforts);
           detailArtifactParents.push(mapped.activity.external_id);
@@ -341,10 +341,10 @@ const stravaSpec: PullSpec<
         activities,
         samples,
         routes,
-        cyclingTelemetry,
+        activityTelemetry,
         activityLaps,
         segmentEfforts,
-        cyclingArtifactParents: detailArtifactParents,
+        telemetryArtifactParents: detailArtifactParents,
       },
       raw,
       skipped,
@@ -528,7 +528,7 @@ export async function runStravaDetailsBackfill(
       reportProgress();
       continue;
     }
-    const artifacts = mapStravaCyclingArtifacts(
+    const artifacts = mapStravaActivityArtifacts(
       stravaActivityId,
       detailRes.json,
       streamRes.json,
@@ -538,7 +538,7 @@ export async function runStravaDetailsBackfill(
     );
     const hasStreams = Object.keys(artifacts.telemetry.streams).length > 0;
     writeTx(() => {
-      upsertCyclingTelemetry(profileId, [artifacts.telemetry], STRAVA_ID);
+      upsertActivityTelemetry(profileId, [artifacts.telemetry], STRAVA_ID);
       replaceActivityLaps(profileId, artifacts.laps, STRAVA_ID, [
         candidate.external_id,
       ]);

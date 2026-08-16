@@ -270,7 +270,9 @@ export default function ProfileForm({
             <label className="label">Age</label>
             <input
               type="number"
-              min={1}
+              // 0 is enterable (issue #2992): an infant's age in whole years is
+              // zero. "Unknown" is the blank field, not a floor on the number.
+              min={0}
               max={150}
               // Derived (read-only) when a birthdate is set; editable otherwise.
               value={birthdate ? (derivedAge ?? "") : ageFallback}

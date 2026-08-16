@@ -707,10 +707,26 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   };
   const readBirthdate = (profileId: number) =>
     readProfileOrLegacy(profileId, "birthdate") ?? null;
+  // MUST MATCH getStoredAge (lib/settings/profile-attrs.ts) EXACTLY. This is the
+  // boot-time twin of that read, and its value feeds the SAME pure
+  // computeFlagReconciliation the request path uses — so any disagreement between the
+  // two makes a row's stored `flag` a function of which pass ran last, which is the
+  // one thing the comment on that call promises cannot happen.
+  //
+  // Issue #2992 fixed the bound in one of the two and this copy was missed, which is
+  // worse than the original defect: while both readers were equally blind a newborn
+  // simply kept its adult-band flags, but a half-fixed pair has request-time CLEARING
+  // an adult ALP/BP claim off an infant's row and the next boot reconcile writing it
+  // straight back. Both halves are here for the same reason they are in getStoredAge:
+  //   • `n >= 0` — an infant's age in whole years IS 0, and 0 must not read as "unknown".
+  //   • the blank/trim guard BEFORE Number() — `Number("")` and `Number("   ")` are
+  //     both 0, so the bound alone would make an empty value read as an infant. The
+  //     old `n > 0` masked that by accident; porting only the bound reintroduces it.
   const readAge = (profileId: number) => {
-    const v = readProfileOrLegacy(profileId, "age");
-    const n = v != null ? Number(v) : NaN;
-    return Number.isInteger(n) && n > 0 && n < 150 ? n : null;
+    const v = readProfileOrLegacy(profileId, "age")?.trim();
+    if (!v) return null;
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 0 && n < 150 ? n : null;
   };
   // Reproductive (menopausal) status: female physiology only, overrides the age
   // proxy for the reproductive hormones. Per-profile; no legacy global fallback.

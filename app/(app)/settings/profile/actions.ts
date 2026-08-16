@@ -143,6 +143,8 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   // Manual age is editable only while no birthdate is set (a birthdate always
   // derives the age and clears this). Blank clears the fallback; an invalid
   // number is ignored so a fat-fingered entry can't wipe a good value.
+  // 0 is a valid entry, not a blank (issue #2992) — an infant's age in whole years
+  // is zero, and CLEARING is the empty string, which the branch above already owns.
   let ageChanged = false;
   if (!birthdate) {
     const ageRaw = String(formData.get("age") ?? "").trim();
@@ -155,7 +157,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
       const age = Number(ageRaw);
       if (
         Number.isInteger(age) &&
-        age > 0 &&
+        age >= 0 &&
         age < 150 &&
         age !== getStoredAge(profile.id)
       ) {

@@ -1,0 +1,104 @@
+import { describe, it, expect } from "vitest";
+import {
+  outputHrDrift,
+  paceHrDecouplingPercent,
+  sessionSplitIntervalM,
+} from "@/lib/session-analytics";
+
+describe("sessionSplitIntervalM (#3009)", () => {
+  it("cuts at the READER's own unit, so splits are the ones they'd name", () => {
+    expect(sessionSplitIntervalM(5, "km")).toBe(1000);
+    expect(sessionSplitIntervalM(5, "mi")).toBeCloseTo(1609.344, 3);
+  });
+
+  it("steps up once one-per-unit would overflow the table", () => {
+    // A 42 km marathon at 1 km is 42 rows nobody reads.
+    expect(sessionSplitIntervalM(42, "km")).toBe(5000);
+    // 20 is still fine; 21 is not.
+    expect(sessionSplitIntervalM(20, "km")).toBe(1000);
+    expect(sessionSplitIntervalM(21, "km")).toBe(5000);
+  });
+
+  it("gives a short walk an interval it can actually fill", () => {
+    // The ride page's 5 km would yield NO splits for 1.4 km — the core declines
+    // anything under a third of an interval — so this is the whole point.
+    expect(sessionSplitIntervalM(1.4, "km")).toBe(1000);
+    expect(sessionSplitIntervalM(null, "km")).toBe(1000);
+  });
+});
+
+describe("outputHrDrift (#2566 item 2 / #3009)", () => {
+  const times = Array.from({ length: 200 }, (_, i) => i);
+  const flat = (n: number) => times.map(() => n);
+  const moving = times.map(() => true);
+
+  it("reports a POSITIVE percent when the same heart rate buys less later", () => {
+    // Output halves in the back half at identical HR: efficiency falls by 50%.
+    const output = times.map((t) => (t <= 99.5 ? 4 : 2));
+    expect(
+      outputHrDrift(times, output, flat(150), moving, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBeCloseTo(50, 1);
+  });
+
+  it("is zero for a session that held its efficiency", () => {
+    expect(
+      outputHrDrift(times, flat(4), flat(150), moving, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBe(0);
+  });
+
+  it("declines rather than compare a full half against a fragment", () => {
+    // Only the first half carries usable samples.
+    const output = times.map((t) => (t <= 99.5 ? 4 : null));
+    expect(
+      outputHrDrift(times, output, flat(150), moving, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBeNull();
+  });
+
+  it("ignores stopped, resting, and below-floor samples", () => {
+    // The back half is all stopped: what remains is one half, so: null.
+    const stopped = times.map((t) => t <= 99.5);
+    expect(
+      outputHrDrift(times, flat(4), flat(150), stopped, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBeNull();
+    // Resting HR throughout: nothing to measure against.
+    expect(
+      outputHrDrift(times, flat(4), flat(50), moving, {
+        minOutput: 1,
+        minHr: 60,
+        minSamples: 30,
+      })
+    ).toBeNull();
+  });
+});
+
+describe("paceHrDecouplingPercent", () => {
+  it("answers only when the recording carries both series, moving, in both halves", () => {
+    const time = Array.from({ length: 200 }, (_, i) => i);
+    const streams = {
+      time: { data: time },
+      velocity_smooth: { data: time.map((t) => (t <= 99.5 ? 3 : 2.4)) },
+      heartrate: { data: time.map(() => 140) },
+    };
+    expect(paceHrDecouplingPercent(streams)).toBeCloseTo(20, 1);
+    // A walk with no heart rate recorded says nothing rather than guessing.
+    expect(
+      paceHrDecouplingPercent({ ...streams, heartrate: undefined })
+    ).toBeNull();
+  });
+});
