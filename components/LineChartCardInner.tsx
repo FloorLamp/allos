@@ -20,6 +20,7 @@ import {
   chartAnnotationLabel,
   chartAxisProps,
   chartDash,
+  chartFittedAnnotationLabel,
   chartFullMargin,
   chartGridProps,
   chartLineDot,
@@ -585,10 +586,14 @@ export default function LineChartCard({
               // class: "is a protocol shaded here?" must never be answered by a
               // gap.
               className="chart-unlogged-band"
+              // The count is stated only where the band is wide enough to hold
+              // it (#2871). A narrow hole still draws — the shading IS the
+              // absence made visible, and hovering it still answers "No data" —
+              // it just stops printing its label through its neighbours'.
               label={
                 hole.trailing
                   ? undefined
-                  : chartAnnotationLabel(
+                  : chartFittedAnnotationLabel(
                       unloggedGapLabel(hole.days),
                       c.tick,
                       "insideTop"

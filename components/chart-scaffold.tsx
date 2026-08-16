@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { LabelProps } from "recharts";
+import { Label, type LabelProps } from "recharts";
+import { textWidth } from "@/lib/chart-svg";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useHydrated } from "./useHydrated";
 import type { ChartColors } from "./useChartColors";
@@ -416,6 +417,84 @@ export function chartAnnotationLabel(
     fill: color,
     ...rest,
   };
+}
+
+// ── THE FIT RULE (issue #2871) ──────────────────────────────────────────────
+//
+// THE DEFECT. A `ReferenceArea` label is drawn whatever the area is worth in
+// pixels. On the Sun card an ordinary logging rhythm produced eleven unlogged-run
+// bands across a 77-day window, each one narrower than the "N days unlogged" it
+// carried, and every one of them centred on the same baseline: the labels printed
+// through each other into "10 days unlog3gday3 unlogge7 days unlogged…".
+//
+// THE RULE (owner decision). A band labels itself only when it can hold the text.
+// Below that width the band draws exactly as before and the label is simply
+// omitted — no abbreviation, no truncation, no second vocabulary. The fact is not
+// lost: the shading IS the absence made visible, and `filterNull={false}` on the
+// tooltip means hovering a gap day still answers "No data" (#2258). Only the run
+// LENGTH goes unstated, and only where stating it would have been illegible.
+//
+// WHY IT LIVES HERE and not in the funnel: every annotation that sits INSIDE a
+// bounded box has the same question, so the next one inherits the answer.
+//
+// WHY AN ESTIMATE. SVG text cannot be measured without a DOM, and the decision has
+// to be pure to be testable. `textWidth` (lib/chart-svg.ts) is the app's existing
+// answer — glyph count × a deliberately generous per-character advance — and it is
+// already the width model behind the hand-drawn panels' label placement. Reusing
+// it means one estimate app-wide rather than a second, subtly different one.
+//
+// WHY IT SELF-SCALES. The width compared against is the band's REAL pixel width,
+// read from the viewBox recharts computed for that reference area. The same chart
+// therefore labels a hole on a wide monitor and stays quiet on a phone, with no
+// breakpoint anywhere.
+
+/** Estimated painted width of annotation text, in px at `CHART_LABEL_FONT_SIZE`. */
+export function chartAnnotationLabelWidth(value: string): number {
+  return textWidth(value, CHART_LABEL_FONT_SIZE);
+}
+
+/**
+ * Whether a band `bandWidth` px wide can hold `value` as an annotation.
+ *
+ * An unknown width keeps today's render: a label is dropped because it provably
+ * does not fit, never because the geometry could not be read.
+ */
+export function chartAnnotationLabelFits(
+  value: string,
+  bandWidth: number | null | undefined
+): boolean {
+  if (bandWidth == null || !Number.isFinite(bandWidth)) return true;
+  return chartAnnotationLabelWidth(value) <= bandWidth;
+}
+
+/** The band width recharts computed for this label, when it has one. A polar
+ *  viewBox has no width, and neither has a label recharts could not place. */
+function labelBandWidth(viewBox: LabelProps["viewBox"]): number | null {
+  if (viewBox == null || !("width" in viewBox)) return null;
+  return typeof viewBox.width === "number" ? viewBox.width : null;
+}
+
+/**
+ * `chartAnnotationLabel`, drawn only when the box it sits in can hold it.
+ *
+ * The band is unaffected — this decides the TEXT alone. `content` is recharts'
+ * own hook for a label that needs to see its own geometry: it receives the
+ * computed viewBox, and returning null there paints nothing at all (rather than
+ * an empty `<text>`), while the fitting case hands straight back to the default
+ * label render so a fitted annotation is pixel-identical to an unfitted one.
+ */
+export function chartFittedAnnotationLabel(
+  value: string,
+  color: string,
+  position: ChartLabelPosition,
+  rest: LabelProps = {}
+): LabelProps {
+  const base = chartAnnotationLabel(value, color, position, rest);
+  const FittedAnnotation = (props: LabelProps) =>
+    chartAnnotationLabelFits(value, labelBandWidth(props.viewBox)) ? (
+      <Label {...props} content={undefined} />
+    ) : null;
+  return { ...base, content: FittedAnnotation };
 }
 
 /**

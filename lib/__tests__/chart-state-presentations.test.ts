@@ -123,6 +123,25 @@ describe("state 3 — an over-limit hole earns a hole", () => {
     expect(funnel).toContain("unloggedGapLabel(hole.days)");
   });
 
+  it("the count is stated through the fit rule, not unconditionally (#2871)", () => {
+    // The label a band cannot hold is the defect this state shipped with: eleven
+    // labels wider than the bands that owned them, every one centred on the same
+    // baseline, printing through each other. The DECISION lives in the scaffold
+    // beside `chartAnnotationLabel`, and the geometry it produces is asserted on
+    // computed extents in `chart-annotation-fit.test.ts`. What this line guards
+    // is only that the funnel still goes through it.
+    const band = funnel.slice(
+      funnel.indexOf("key={`hole-"),
+      funnel.indexOf("{snapped.map")
+    );
+    expect(band).toContain("chartFittedAnnotationLabel(");
+    expect(
+      /[^a-zA-Z]chartAnnotationLabel\(/.test(band),
+      "an unlogged band's label must go through the fit rule — a raw " +
+        "chartAnnotationLabel here is the overprinting render of #2871"
+    ).toBe(false);
+  });
+
   it("an unlogged band is distinguishable from a protocol window", () => {
     // Both are recharts reference areas. Without a class of its own, a silence
     // in the data answers "is a protocol shaded here?" — which is exactly how
