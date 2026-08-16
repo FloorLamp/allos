@@ -135,8 +135,21 @@ export default function SidebarContent({
   // BOUNDED, and it logs out either way. A wedged or blocked IndexedDB must never trap
   // someone in a session they asked to leave — the server-side logout is what actually
   // ends the session, and it is not optional. If the wipe cannot finish in time the
-  // logout still proceeds; the next authenticated visit's identity check wipes what is
-  // left, and /offline refuses to render a store it cannot attribute to one profile.
+  // logout still proceeds, and the next authenticated visit's identity check wipes what
+  // is left.
+  //
+  // WHAT DOES NOT COVER THE LEFTOVER, corrected here because the claim was made and was
+  // false: /offline does NOT refuse to render it. `resolveSnapshotProfile` refuses a
+  // MIXED store — two profiles' payloads at once, which one login's leftover is not.
+  // A store holding exactly one login's payloads is precisely what it CAN attribute, so
+  // the common case renders, session-free, for whoever picks the phone up next. The
+  // 2s bound is a liveness guarantee for the person logging out and nothing more.
+  //
+  // WHAT DOES COVER IT is the fence: `clearQueue` bumps the snapshot generation
+  // SYNCHRONOUSLY, before it awaits anything, so a snapshot refresh already in flight
+  // cannot re-write its payload into the store this just cleared — which is what
+  // happened, for the whole duration of the logout POST below, because this page stays
+  // mounted and alive until the navigation lands. See lib/offline/snapshot-db.ts.
   async function logoutAfterWipe(): Promise<void> {
     clearEmergencyPayload();
     try {

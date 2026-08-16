@@ -20,21 +20,75 @@ function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(STORE, mode).objectStore(STORE);
 }
 
-// Store (overwriting by kind) the freshly-captured snapshots. Best-effort: a full or
-// blocked quota throws and is swallowed — the online app is unaffected, only the
-// offline copy is skipped, exactly as writeEmergencyPayload treats the same failure.
+// ── THE WIPE FENCE ───────────────────────────────────────────────────────────
+//
+// A monotonic generation counter. Every wipe bumps it; every refresh captures it
+// before its first await and re-checks it immediately before its write lands. A
+// captured generation that no longer matches means A WIPE HAPPENED WHILE I WAS
+// AWAY, and the write is dropped.
+//
+// WHY A REACT FLAG CANNOT DO THIS JOB. The refresher's only guard used to be the
+// effect's `cancelled` flag, which is set on UNMOUNT — and on logout the component
+// unmounts only once the logout navigation completes. The sidebar wipes FIRST and
+// then keeps the page alive for the whole logout round trip, so the entire logout
+// POST was an open window in which an in-flight `putSnapshots(fresh)` re-wrote the
+// full payload — a med list and a dose schedule — into a store that had just been
+// cleared. Every snapshot then survived logout and rendered session-free at
+// /offline. A flag tied to unmount cannot see a wipe; a generation can.
+//
+// It is deliberately NOT a bound/timeout. A lane held the store with a six-second
+// transaction and the wipe still won; the leak was never the 2s race in
+// SidebarContent, it was the re-write after it.
+let epoch = 0;
+
+/** The current generation — captured by a refresh before it starts. */
+export function snapshotEpoch(): number {
+  return epoch;
+}
+
+/** Invalidate every generation captured so far. Called by the wipes, nothing else. */
+export function bumpSnapshotEpoch(): void {
+  epoch += 1;
+}
+
+/** Whether no wipe has happened since `fence` was captured. */
+export function snapshotFenceHolds(fence: number): boolean {
+  return fence === epoch;
+}
+
+// Store (overwriting by kind) the freshly-captured snapshots, unless a wipe has
+// landed since `fence` was captured. Answers whether it actually wrote.
+//
+// Best-effort otherwise: a full or blocked quota throws and is swallowed — the online
+// app is unaffected, only the offline copy is skipped, exactly as writeEmergencyPayload
+// treats the same failure.
 export async function putSnapshots(
-  snapshots: readonly AnySnapshot[]
-): Promise<void> {
-  if (!hasIndexedDB() || snapshots.length === 0) return;
+  snapshots: readonly AnySnapshot[],
+  // Required, not optional: a caller that does not say which generation its payload
+  // was fetched under cannot be fenced, and this is the one write that must be.
+  fence: number
+): Promise<boolean> {
+  if (!snapshotFenceHolds(fence)) return false;
+  if (!hasIndexedDB() || snapshots.length === 0) return false;
   try {
     const db = await openDb();
+    // Re-checked AFTER the open, because awaiting is exactly where a wipe gets in.
+    // Past this point the check holds to completion: IndexedDB runs overlapping
+    // readwrite transactions on one store in creation order, so a clear whose
+    // transaction was created before ours would already have bumped the generation
+    // above, and one created after ours runs after ours and wins.
+    if (!snapshotFenceHolds(fence)) {
+      db.close();
+      return false;
+    }
     const store = tx(db, "readwrite");
     for (const s of snapshots) store.put(s);
     await done(store.transaction);
     db.close();
+    return true;
   } catch {
     /* quota / disabled storage — the offline copy simply isn't kept */
+    return false;
   }
 }
 
@@ -70,6 +124,13 @@ export async function allSnapshots(): Promise<AnySnapshot[]> {
 // It is also folded into clearQueue's own transaction so a logout path that forgets to
 // call it still wipes — the #1699 "complete by construction" posture.
 export async function clearSnapshots(): Promise<void> {
+  // BEFORE the guard and before the first await, so `void clearSnapshots()` fences an
+  // in-flight refresh the instant it is CALLED rather than whenever its transaction
+  // happens to complete. That ordering is what makes the settings off switch honest:
+  // OfflineSnapshotsSettings fires and forgets and leaves the page mounted, so without
+  // a synchronous bump a refresh already in flight would re-materialize everything the
+  // toggle just erased.
+  bumpSnapshotEpoch();
   if (!hasIndexedDB()) return;
   try {
     const db = await openDb();

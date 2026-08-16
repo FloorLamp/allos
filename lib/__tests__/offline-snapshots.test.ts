@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  DAY_SNAPSHOT_REFRESH_INTERVAL_MS,
   MAX_SNAPSHOT_EXERCISES,
   MAX_SNAPSHOT_SESSIONS,
   SNAPSHOT_KINDS,
@@ -16,6 +17,8 @@ import {
   SNAPSHOT_REGISTRY,
   SNAPSHOT_VERSION,
   isSnapshotStale,
+  snapshotKindsForFlow,
+  snapshotRefreshIntervalMs,
   overlayDoseSchedule,
   overlayFoodTallies,
   overlayPracticeWeek,
@@ -176,9 +179,32 @@ describe("staleness", () => {
     expect(isSnapshotStale(meds, pastClock)).toBe(true);
   });
 
+  it("a WEEK-progress snapshot is a day fact too, and goes stale at the profile's midnight", () => {
+    // #2908 D3. The counts span a week; the day they were READ ON is the fact, and
+    // "Logged today" / "4 of 5 this week" are both claims about that day. Declared
+    // `rolling-window` with a one-day clock, this payload read the next morning was
+    // not marked stale at all — the card showed yesterday's day and last week's week
+    // with no not-current marker. Bounding and staleness are one property here.
+    const practice = envelope({
+      kind: "practice-week" as const,
+      data: { date: "2026-08-16", practices: [] },
+    }) as SnapshotEnvelope;
+    expect(SNAPSHOT_REGISTRY["practice-week"].scope).toBe("profile-day");
+    // 22:00 on the 16th in Denver — still the day it was read on.
+    expect(isSnapshotStale(practice, new Date("2026-08-17T04:00:00Z"))).toBe(
+      false
+    );
+    // 01:00 on the 17th in Denver — a new day, and possibly a new week.
+    expect(isSnapshotStale(practice, new Date("2026-08-17T07:00:00Z"))).toBe(
+      true
+    );
+  });
+
   it("asks to refresh what is absent or past its clock, and nothing else", () => {
-    // Inside the writer's interval AND inside the profile's day.
-    const fresh = new Date("2026-08-16T22:05:00Z");
+    // Inside BOTH writers' intervals and inside the profile's day. Day-scoped kinds
+    // have their own much shorter interval, so this is 30 seconds after capture
+    // rather than 5 minutes.
+    const fresh = new Date("2026-08-16T22:00:30Z");
     expect(snapshotsToRefresh([env], PROFILE, fresh)).toEqual(
       SNAPSHOT_KINDS.filter((k) => k !== "dose-schedule")
     );
@@ -199,6 +225,41 @@ describe("staleness", () => {
     expect(snapshotsToRefresh([env], PROFILE, later)).toContain(
       "dose-schedule"
     );
+  });
+
+  it("re-captures a DAY-scoped copy within the minute, because an online write moved it", () => {
+    // #2908 D4. Take a dose online at 08:00, reload, walk into a dead zone: the stored
+    // schedule still says "Not yet", because the ONLINE write went to the server and
+    // nothing on the device heard it. `isSnapshotStale` is correctly false all day, so
+    // the WRITER's interval is the only thing that can re-capture it — and a
+    // fifteen-minute one carried the 08:00 schedule into the evening.
+    for (const kind of SNAPSHOT_KINDS) {
+      const scope = SNAPSHOT_REGISTRY[kind].scope;
+      expect(snapshotRefreshIntervalMs(kind), kind).toBe(
+        scope === "profile-day"
+          ? DAY_SNAPSHOT_REFRESH_INTERVAL_MS
+          : SNAPSHOT_REFRESH_INTERVAL_MS
+      );
+    }
+    expect(DAY_SNAPSHOT_REFRESH_INTERVAL_MS).toBeLessThan(
+      SNAPSHOT_REFRESH_INTERVAL_MS
+    );
+    const shortlyAfter = new Date(
+      new Date(env.fetchedAt).getTime() + DAY_SNAPSHOT_REFRESH_INTERVAL_MS + 1
+    );
+    expect(isSnapshotStale(env, shortlyAfter)).toBe(false);
+    expect(snapshotsToRefresh([env], PROFILE, shortlyAfter)).toContain(
+      "dose-schedule"
+    );
+  });
+
+  it("maps a write flow to the kinds that declare an overlay for it", () => {
+    expect(snapshotKindsForFlow("dose")).toEqual(["dose-schedule"]);
+    expect(snapshotKindsForFlow("skip-dose")).toEqual(["dose-schedule"]);
+    expect(snapshotKindsForFlow("food")).toEqual(["food-tallies"]);
+    expect(snapshotKindsForFlow("practice")).toEqual(["practice-week"]);
+    // A flow no kind folds in changes no snapshot — a real answer, not a gap.
+    expect(snapshotKindsForFlow("mood")).toEqual([]);
   });
 });
 
@@ -382,6 +443,69 @@ describe("overlay — folding queued writes into a stored read", () => {
       countThisWeek: 2,
       queued: 2,
     });
+  });
+
+  it("ignores a practice tap captured on ANOTHER day", () => {
+    // #2908 D2, the guard `overlayDoseSchedule` and `overlayFoodTallies` already have
+    // and this one did not. A tap captured yesterday is not "logged today" — and
+    // OfflineSnapshotView renders `todayCount > 0` as exactly that string.
+    const out = overlayPracticeWeek(
+      {
+        date: "2026-08-16",
+        practices: [
+          {
+            identity: "sauna",
+            name: "Sauna",
+            perWeek: 3,
+            countThisWeek: 1,
+            todayCount: 0,
+          },
+        ],
+      },
+      [
+        buildIntent(
+          "practice",
+          "2026-08-15",
+          { practice: "Sauna", identity: "sauna", durationMin: null },
+          PROFILE
+        ),
+      ],
+      PROFILE
+    );
+    expect(out.practices[0].todayCount).toBe(0);
+    expect(out.practices[0].queued).toBeUndefined();
+  });
+
+  it("does not fold a tap from LAST WEEK into this week's count", () => {
+    // The week half of the same defect: the snapshot is one profile-local day's read
+    // of the week it fell in, and a tap captured before that week started belongs to
+    // the previous one. Replay is day-idempotent per (practice, day), so it lands on
+    // ITS day and moves neither number here.
+    const out = overlayPracticeWeek(
+      {
+        date: "2026-08-16",
+        practices: [
+          {
+            identity: "sauna",
+            name: "Sauna",
+            perWeek: 5,
+            countThisWeek: 2,
+            todayCount: 1,
+          },
+        ],
+      },
+      [
+        buildIntent(
+          "practice",
+          "2026-08-09",
+          { practice: "Sauna", identity: "sauna", durationMin: null },
+          PROFILE
+        ),
+      ],
+      PROFILE
+    );
+    expect(out.practices[0].countThisWeek).toBe(2);
+    expect(out.practices[0].todayCount).toBe(1);
   });
 
   it("leaves a day already logged alone", () => {

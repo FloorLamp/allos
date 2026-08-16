@@ -177,6 +177,97 @@ test("offline reads: one visit captures, /offline renders them with no network, 
   await expect(page.getByTestId("offline-snapshot-list")).toHaveCount(0);
 });
 
+// Drop ONE stored kind, so the next refresh has something to ask the server for. Uses
+// the same no-version open as `storedKinds` above, and for the same reason: the database
+// already exists at v4 here, and naming no version can never create it at v1 in the way
+// of the app's own upgrade.
+async function dropStoredKind(page: Page, kind: string): Promise<void> {
+  await page.evaluate(
+    ([dbName, storeName, doomed]) =>
+      new Promise<void>((resolve) => {
+        const req = indexedDB.open(dbName);
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+        req.onsuccess = () => {
+          const db = req.result;
+          const t = db.transaction(storeName, "readwrite");
+          t.objectStore(storeName).delete(doomed);
+          t.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          t.onerror = () => {
+            db.close();
+            resolve();
+          };
+        };
+      }),
+    [DB, STORE, kind] as const
+  );
+}
+
+// THE WIPE RACE, MADE DETERMINISTIC.
+//
+// The logout wipe lost, and every snapshot — the med list, the dose schedule — survived
+// it and rendered session-free at /offline. Not because the 2s bound expired: the wipe
+// itself always completed. The leak was the RE-WRITE after it. The sidebar wipes first
+// and then keeps the page alive for the whole logout round trip, and the refresher's
+// only guard was the effect's `cancelled` flag, which is set on UNMOUNT — which happens
+// only once the logout navigation lands. So the entire logout POST was a window in which
+// an in-flight `putSnapshots(fresh)` restored the full payload into a cleared store.
+//
+// It reproduced with no instrumentation at all, on a cold-build first run, which is
+// exactly why this test does not leave the timing to the box: latency on the snapshot
+// GET puts a refresh IN FLIGHT when the button is pressed, and latency on the logout
+// POST holds the page alive long enough for that refresh to land. A test that passes
+// because the machine was fast is not a test of a PHI wipe.
+const SNAPSHOT_GET_LATENCY_MS = 2_000;
+const LOGOUT_POST_LATENCY_MS = 6_000;
+
+test("logout wipes even with a snapshot refresh in flight (#2908)", async ({
+  page,
+}) => {
+  test.slow();
+  await login(page);
+
+  await page.goto("/");
+  await expect
+    .poll(() => storedKinds(page), { timeout: 30_000 })
+    .toEqual([...SNAPSHOT_KINDS].sort());
+
+  // Installed AFTER the initial capture, so only the racing refresh is slowed.
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (request.url().includes("/api/offline-snapshots")) {
+      await new Promise((r) => setTimeout(r, SNAPSHOT_GET_LATENCY_MS));
+    } else if (request.method() === "POST") {
+      // The only POST from here on is the logout Server Action.
+      await new Promise((r) => setTimeout(r, LOGOUT_POST_LATENCY_MS));
+    }
+    await route.continue();
+  });
+
+  // Give the refresher something to fetch, then wake it. `online` is one of its own
+  // triggers, so nothing here reaches past the component's public behaviour.
+  await dropStoredKind(page, "medication-list");
+  await expect
+    .poll(() => storedKinds(page), { timeout: 10_000 })
+    .not.toContain("medication-list");
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+
+  // …and log out while that GET is still in the air.
+  await page.getByRole("button", { name: "Log out" }).click();
+  await page.waitForURL(/\/login/, { timeout: 30_000 });
+
+  // Nothing survived, and nothing came back. The poll deliberately outlasts the GET's
+  // latency: an empty store read before the racing write would land is not an answer.
+  await expect.poll(() => storedKinds(page), { timeout: 20_000 }).toEqual([]);
+
+  await page.goto("/offline");
+  await settledOfflineRead(page);
+  await expect(page.getByTestId("offline-snapshot-list")).toHaveCount(0);
+});
+
 test("a dose tapped offline shows as queued-resolved in the offline schedule (#2908)", async ({
   page,
   context,

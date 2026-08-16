@@ -44,16 +44,30 @@ export function hasIndexedDB(): boolean {
  * built on, and it is what the doc comment above always claimed happened. Now it does:
  * a blocked open rejects, the caller falls back to its no-op, and the next visit (by
  * which time the old tab is usually gone) upgrades cleanly.
+ *
+ * REJECTING IS NOT ABORTING, and the difference leaks a connection. `IDBOpenDBRequest`
+ * has no abort: after `blocked` fires, the request is still live, and the moment the
+ * old connection closes the upgrade completes and `onsuccess` fires — into a promise
+ * that already settled. The resulting `IDBDatabase` would then be held open forever by
+ * nothing, blocking the NEXT upgrade in exactly the way this handler exists to survive.
+ * So the rejection is recorded, and a late success closes what it was handed.
+ *
+ * `onversionchange` is the other half, from the other side: it is how an OPEN
+ * connection yields to a newer tab's upgrade instead of blocking it. Every connection
+ * this opener hands out closes itself when a newer version asks.
  */
 export function openOfflineDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
-    req.onblocked = () =>
+    let settled = false;
+    req.onblocked = () => {
+      settled = true;
       reject(
         new Error(
           `${OFFLINE_DB_NAME}: upgrade to v${OFFLINE_DB_VERSION} blocked by an older open connection`
         )
       );
+    };
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(INTENTS_STORE)) {
@@ -78,8 +92,23 @@ export function openOfflineDb(): Promise<IDBDatabase> {
         db.createObjectStore(SNAPSHOTS_STORE, { keyPath: "kind" });
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      // Yield to a newer build's upgrade rather than blocking it. Callers close their
+      // connection after each transaction, so this is the long-lived-tab case only.
+      db.onversionchange = () => db.close();
+      if (settled) {
+        // The `blocked` rejection already answered the caller; the old connection has
+        // since closed and the upgrade finished. Close this one or it is an orphan.
+        db.close();
+        return;
+      }
+      resolve(db);
+    };
+    req.onerror = () => {
+      settled = true;
+      reject(req.error);
+    };
   });
 }
 

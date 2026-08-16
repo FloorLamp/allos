@@ -21,6 +21,7 @@ import {
   openOfflineDb as openDb,
   txDone as done,
 } from "@/lib/offline/idb";
+import { bumpSnapshotEpoch } from "@/lib/offline/snapshot-db";
 
 function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(STORE, mode).objectStore(STORE);
@@ -192,6 +193,12 @@ export async function countIntents(): Promise<number> {
 // clear the queue on logout; #475: the parked rejected entries hold the same PHI;
 // #1699: so do half-typed drafts; #2908: so do the read snapshots).
 export async function clearQueue(): Promise<void> {
+  // #2908: fence any snapshot refresh already in flight — synchronously, and before
+  // anything else. This call site clears the SNAPSHOTS store below, and the logout that
+  // calls it keeps the page (and the refresher) alive for the entire logout round trip,
+  // so without the bump an in-flight GET could re-write everything this just erased.
+  // See the fence comment in lib/offline/snapshot-db.ts.
+  bumpSnapshotEpoch();
   if (!hasIndexedDB()) return;
   try {
     const db = await openDb();

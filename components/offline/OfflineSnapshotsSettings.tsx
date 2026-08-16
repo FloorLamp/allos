@@ -29,6 +29,12 @@ export default function OfflineSnapshotsSettings({
     fd.set("offline_snapshots", next ? "1" : "0");
     // Wipe first, then persist: if the action fails the device is still clean, which is
     // the safe direction to fail in.
+    //
+    // Fire-and-forget is safe HERE only because `clearSnapshots` bumps the wipe
+    // generation SYNCHRONOUSLY, before it awaits anything (lib/offline/snapshot-db.ts).
+    // This page stays mounted across the toggle, so without that a snapshot refresh
+    // already in flight would land after the clear and re-materialize everything the
+    // switch just erased — breaking the acceptance criterion stated two comments up.
     if (!next) void clearSnapshots();
     runSave(async () => {
       await saveOfflineSnapshotsEnabled(fd);

@@ -1,16 +1,24 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import {
   allSnapshots,
   clearSnapshots,
   putSnapshots,
+  snapshotEpoch,
 } from "@/lib/offline/snapshot-db";
+import {
+  clearDirtySnapshots,
+  dirtySnapshotKinds,
+  SNAPSHOT_REFRESH_EVENT,
+} from "@/lib/offline/snapshot-refresh";
 import {
   parseSnapshot,
   resolveSnapshotProfile,
   snapshotsToRefresh,
   type AnySnapshot,
+  type SnapshotKind,
 } from "@/lib/offline/snapshots";
 
 // Refreshes the offline read snapshots (issue #2908) on an ONLINE, AUTHENTICATED visit.
@@ -33,6 +41,15 @@ import {
 //
 // It asks the server for nothing when everything it holds is current — `snapshotsToRefresh`
 // answers from the stored envelopes' own clocks, in the PROFILE'S timezone.
+//
+// WHEN IT RUNS. "An authenticated visit" is not the same thing as a hard page load, and
+// keying the effect on `[activeProfileId]` alone quietly made it one: this is an App
+// Router SPA, so someone who opens the app in the morning and then moves around inside
+// it all day got exactly ONE refresh. The triggers are therefore the pathname (every
+// in-app navigation, which is what a "visit" actually looks like here), the tab becoming
+// visible again, reconnecting, and a dirty mark from a tap this page just made — the
+// same belt-and-braces set OfflineQueueProvider uses for replay, and cheap for the same
+// reason: a run with nothing to fetch is one IndexedDB read and no request.
 export default function OfflineSnapshotRefresher({
   activeProfileId,
 }: {
@@ -45,15 +62,24 @@ export default function OfflineSnapshotRefresher({
   // One refresh in flight at a time. Not a correctness guard (the endpoint is a plain
   // read) — it just keeps a reconnect storm from firing five identical GETs.
   const running = useRef(false);
+  const pathname = usePathname();
 
   useEffect(() => {
-    let cancelled = false;
-
     async function refresh() {
       if (running.current) return;
       if (typeof navigator !== "undefined" && navigator.onLine === false)
         return;
       running.current = true;
+      // THE WIPE FENCE (lib/offline/snapshot-db.ts), captured BEFORE the first await.
+      //
+      // This is the guard that had to exist and did not. The effect's own `cancelled`
+      // flag cannot do this job: it is set on UNMOUNT, and on logout the sidebar wipes
+      // FIRST and then keeps this page alive for the whole logout round trip, so the
+      // component is still mounted — and `cancelled` still false — for the entire
+      // window in which a wipe has already happened. Every snapshot survived logout
+      // that way, and rendered session-free at /offline. A generation captured here and
+      // re-checked inside `putSnapshots` sees the wipe; a mount flag never can.
+      let fence = snapshotEpoch();
       try {
         const stored = await allSnapshots();
         // A store holding ANOTHER profile's payload is a broken invariant, not a state
@@ -62,22 +88,33 @@ export default function OfflineSnapshotRefresher({
         const held = resolveSnapshotProfile(stored);
         if (stored.length > 0 && held !== activeProfileId) {
           await clearSnapshots();
+          // Our OWN wipe bumped the generation. Re-arm against it: this fence exists to
+          // catch somebody else's wipe, and re-capturing after a deliberate identity
+          // wipe is the whole point of the branch we are in.
+          fence = snapshotEpoch();
         }
         const mine = held === activeProfileId ? stored : [];
-        const wanted = snapshotsToRefresh(mine, activeProfileId, new Date());
-        if (wanted.length === 0 || cancelled) return;
+        // What the stored clocks ask for, plus what a tap on this page has marked. The
+        // marks are the immediate half of read-your-writes for an ONLINE write: nothing
+        // else on the device hears a Server Action land.
+        const wanted = [
+          ...new Set<SnapshotKind>([
+            ...snapshotsToRefresh(mine, activeProfileId, new Date()),
+            ...dirtySnapshotKinds(),
+          ]),
+        ];
+        if (wanted.length === 0) return;
 
         const res = await fetch(
           `/api/offline-snapshots?kinds=${wanted.join(",")}`,
           { headers: { Accept: "application/json" } }
         );
-        if (!res.ok || cancelled) return;
+        if (!res.ok) return;
         const body = (await res.json()) as {
           enabled?: boolean;
           profileId?: number;
           snapshots?: unknown[];
         };
-        if (cancelled) return;
         // The off switch, honored from the SERVER's answer as well as from the toggle
         // itself: a profile turned off on another device stops having payloads here at
         // its next authenticated visit. Nothing re-materializes until it is turned back
@@ -95,7 +132,8 @@ export default function OfflineSnapshotRefresher({
             (s): s is AnySnapshot =>
               s !== null && s.profileId === activeProfileId
           );
-        await putSnapshots(fresh);
+        // Fenced. A wipe that landed anywhere in the round trip above drops this write.
+        if (await putSnapshots(fresh, fence)) clearDirtySnapshots(wanted);
       } catch {
         /* offline, a blip, a lapsed cookie — the device keeps whatever it already
            holds. A failed refresh is never a wipe: only an identity CHANGE is. */
@@ -108,13 +146,20 @@ export default function OfflineSnapshotRefresher({
     // this touches originates in an external callback rather than in render.
     const initial = window.setTimeout(() => void refresh(), 0);
     const onOnline = () => void refresh();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const onDirty = () => void refresh();
     window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener(SNAPSHOT_REFRESH_EVENT, onDirty);
     return () => {
-      cancelled = true;
       window.clearTimeout(initial);
       window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(SNAPSHOT_REFRESH_EVENT, onDirty);
     };
-  }, [activeProfileId]);
+  }, [activeProfileId, pathname]);
 
   return null;
 }

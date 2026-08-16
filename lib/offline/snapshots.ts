@@ -119,10 +119,18 @@ export const SNAPSHOT_REGISTRY = {
   "practice-week": {
     title: "Practices this week",
     answers: "Have I done my practice today, and where is the week at?",
-    scope: "rolling-window",
-    staleAfterDays: 1,
+    // DAY-SCOPED, though the counts it carries span a week — and the correction is
+    // worth stating, because the first declaration got it wrong in the way this type
+    // exists to prevent. `PracticeWeekData` carries `date` and `todayCount`: they are
+    // PROFILE-DAY facts, and "the week" they count is the week THAT DAY fell in. Read
+    // the next morning, a `rolling-window` declaration with a one-day clock left the
+    // card saying "Logged today" about yesterday and "4 of 5 this week" about last
+    // week, with no not-current marker — because bounding and staleness are ONE
+    // property here, and declaring the looser of the two silently loosened both.
+    scope: "profile-day",
+    staleAfterDays: 0,
     overlays: ["practice"],
-    why: "Tracked practices with their week progress — the cadence question, which is a week and therefore a rolling window rather than a day. Refreshed daily because the week's own counts move daily.",
+    why: "Tracked practices with their week progress, as read on ONE profile-local day: the week-to-date counts and today's own count are both facts about that day, so the day is the bound and the profile's midnight is the clock. Bounded by MAX_SNAPSHOT_PRACTICES.",
   },
 } as const satisfies Record<SnapshotKind, SnapshotDecl>;
 
@@ -361,6 +369,39 @@ export function snapshotAgeDays(
 // visit refreshes it.
 export const SNAPSHOT_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
+// And the same question for a DAY-SCOPED kind, which is a much shorter answer.
+//
+// A `profile-day` snapshot answers "have I already done this today", and that answer
+// moves every time the person does the thing — INCLUDING online, through a Server
+// Action on any of a dozen surfaces (and through the Telegram bot, which is not a
+// surface at all). Nothing on the device hears those writes. So someone who takes a
+// dose at 08:00, reloads, and walks into a dead zone was shown "Sertraline · Not yet"
+// from a snapshot the app was perfectly happy to call current all day.
+//
+// The honest refresh policy for a day-scoped payload is therefore "re-capture on
+// essentially any authenticated visit". Deliberately a SCOPE rule rather than a list of
+// write sites to invalidate from: a hand-mirrored list of call sites is what drifted in
+// #600, and it could never cover a write that did not come from this browser at all.
+// The in-session half — a tap this page just made, answered immediately rather than up
+// to a minute later — is lib/offline/snapshot-refresh.ts's dirty marks.
+export const DAY_SNAPSHOT_REFRESH_INTERVAL_MS = 60 * 1000;
+
+// How long a copy of this kind may sit before an authenticated visit re-captures it.
+export function snapshotRefreshIntervalMs(kind: SnapshotKind): number {
+  return SNAPSHOT_REGISTRY[kind].scope === "profile-day"
+    ? DAY_SNAPSHOT_REFRESH_INTERVAL_MS
+    : SNAPSHOT_REFRESH_INTERVAL_MS;
+}
+
+// The snapshot kinds a queued/online write of `flow` can change — read off the
+// registry's own `overlays` declaration rather than restated, so a kind that declares
+// an overlay is invalidated by that flow's writes by construction.
+export function snapshotKindsForFlow(flow: FlowKind): SnapshotKind[] {
+  return SNAPSHOT_KINDS.filter((kind) =>
+    (SNAPSHOT_REGISTRY[kind].overlays as readonly FlowKind[]).includes(flow)
+  );
+}
+
 // The kinds an authenticated visit should re-fetch: everything absent, everything past
 // its clock, and everything that has simply been sitting a while. Refresh RIDES
 // authenticated traffic — there is no background sync and no service-worker credential —
@@ -384,7 +425,7 @@ export function snapshotsToRefresh(
     // An unparseable or future stamp re-fetches: both mean the copy cannot be reasoned
     // about, and a fresh capture is the cheap answer.
     if (!Number.isFinite(fetched)) return true;
-    return now.getTime() - fetched >= SNAPSHOT_REFRESH_INTERVAL_MS;
+    return now.getTime() - fetched >= snapshotRefreshIntervalMs(kind);
   });
 }
 
@@ -517,6 +558,13 @@ export function overlayPracticeWeek(
 ): PracticeWeekData {
   const queued = new Map<string, number>();
   for (const intent of relevantIntents(intents, profileId, ["practice"])) {
+    // The day matters here for the same reason it does in the dose and food overlays,
+    // and for one more: a practice tapped on another day is not "logged today" (this
+    // card says exactly that in words), and if that day fell in another week it is not
+    // part of THIS week's count either. The replay is day-idempotent per
+    // (practice, day), so a tap captured on another day lands on that day and changes
+    // neither number here.
+    if (intent.date !== data.date) continue;
     const identity = (intent.payload as { identity?: string }).identity;
     if (!identity) continue;
     queued.set(identity, (queued.get(identity) ?? 0) + 1);
