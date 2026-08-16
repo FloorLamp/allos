@@ -7,15 +7,27 @@ import {
   combinedMsv,
   isCombinedEstimated,
   backgroundEquivalentMonths,
+  backgroundEquivalentLabel,
   windowStartDate,
   formatMsv,
   doseFramingNote,
+  doseContributions,
+  doseChipLabel,
+  doseSourceNote,
+  doseExclusionNote,
   type DoseStudyInput,
+  type DoseExclusionReason,
 } from "@/lib/radiation-dose";
 
 // Pure-tier tests for cumulative radiation-dose tracking (#703): the estimate-vs-
 // recorded resolution, the trailing-window boundary, and the SEPARATE-sums mixing
 // policy. No DB — the estimator/cumulative read plain study fixtures.
+//
+// #2970 adds the second half: the total can NAME the studies behind it and the ones it
+// left out, and the trailing window is a secondary lens instead of the headline's
+// arithmetic. The four cases below come from the 2026-08-15 snapshot audit that filed
+// the issue — a repeated mammogram, an undated X-ray, an unclassified study, and an
+// ultrasound — because each is a class of silence the breakdown exists to end.
 
 function study(over: Partial<DoseStudyInput>): DoseStudyInput {
   return {
@@ -295,5 +307,266 @@ describe("doseFramingNote — calm, and pediatric-aware", () => {
   it("carries pediatric framing for a child profile", () => {
     expect(doseFramingNote(true).toLowerCase()).toContain("children");
     expect(doseFramingNote(false).toLowerCase()).not.toContain("children");
+  });
+});
+
+// ── #2970: the number can be decomposed ────────────────────────────────────────────
+//
+// The breakdown is generic over the study row so a caller keeps its own type. These
+// fixtures carry an `id` the way the real ImagingStudy rows do, so the row identity a
+// surface keys on is part of what's tested.
+type IdStudy = DoseStudyInput & { id: number };
+
+function idStudy(id: number, over: Partial<DoseStudyInput>): IdStudy {
+  return { id, ...study(over) };
+}
+
+// The four real cases from the snapshot audit, in one record.
+const AUDIT_STUDIES: IdStudy[] = [
+  // Outside the 3-year lens, inside the record — the study the old headline dropped.
+  // Listed FIRST on purpose: the rows are sorted by date, not by input order.
+  idStudy(5, {
+    modality: "x-ray",
+    body_region: "Chest",
+    study_date: "2021-04-02",
+  }),
+  // The same 2023-11-15 mammogram three times, as the overlapping portal exports left
+  // it. Summed AS GIVEN — de-duplication belongs to the representative-id collapse
+  // (#2919/#2952), and this module must not grow a second one.
+  idStudy(11, {
+    modality: "x-ray",
+    body_region: "Breast",
+    study_date: "2023-11-15",
+  }),
+  idStudy(17, {
+    modality: "x-ray",
+    body_region: "Breast",
+    study_date: "2023-11-15",
+  }),
+  idStudy(23, {
+    modality: "x-ray",
+    body_region: "Breast",
+    study_date: "2023-11-15",
+  }),
+  // Real imaging with no date: 0.1 mSv that was invisible in every figure.
+  idStudy(3, { modality: "x-ray", body_region: "Chest", study_date: null }),
+  // The refusal gate: never estimated, and until now never disclosed either.
+  idStudy(7, { modality: "other", body_region: null, study_date: "2024-02-02" }),
+  // Non-ionizing: a true 0, and the reason a "studies in window" count implied more
+  // contributors than there were.
+  idStudy(9, {
+    modality: "ultrasound",
+    body_region: "Abdomen",
+    study_date: "2024-05-05",
+  }),
+];
+
+function reasonFor(
+  breakdown: ReturnType<typeof doseContributions<IdStudy>>,
+  id: number
+): DoseExclusionReason | undefined {
+  return breakdown.exclusions.find((x) => x.study.id === id)?.reason;
+}
+
+describe("doseContributions — the studies behind the number (#2970)", () => {
+  const now = "2026-08-15";
+
+  it("names every contributing study, newest first, with its recorded-vs-estimate source", () => {
+    const b = doseContributions(AUDIT_STUDIES, now);
+    expect(b.contributions.map((c) => c.study.id)).toEqual([11, 17, 23, 5]);
+    expect(b.contributions.map((c) => c.date)).toEqual([
+      "2023-11-15",
+      "2023-11-15",
+      "2023-11-15",
+      "2021-04-02",
+    ]);
+    for (const c of b.contributions) expect(c.dose.source).toBe("estimate");
+    expect(b.contributions[0].dose.label).toBe("Mammography");
+    expect(b.contributions[3].dose.label).toBe("Chest X-ray");
+  });
+
+  it("the all-records total equals the sum of the contributions it names", () => {
+    const b = doseContributions(AUDIT_STUDIES, now);
+    const summed = b.contributions.reduce((n, c) => n + c.dose.msv, 0);
+    expect(combinedMsv(b.allRecords)).toBeCloseTo(summed, 6);
+    // 0.4 × 3 mammograms + 0.1 chest X-ray.
+    expect(combinedMsv(b.allRecords)).toBeCloseTo(1.3, 6);
+    expect(b.allRecords.estimatedCount).toBe(b.contributions.length);
+  });
+
+  it("sums a repeated study AS GIVEN — no de-duplication in this module", () => {
+    const b = doseContributions(AUDIT_STUDIES, now);
+    const mammos = b.contributions.filter((c) => c.dose.label === "Mammography");
+    expect(mammos).toHaveLength(3);
+    expect(mammos.reduce((n, c) => n + c.dose.msv, 0)).toBeCloseTo(1.2, 6);
+  });
+
+  it("names the excluded studies with the reason each was left out", () => {
+    const b = doseContributions(AUDIT_STUDIES, now);
+    expect(reasonFor(b, 3)).toBe("no-date");
+    expect(reasonFor(b, 7)).toBe("no-entry");
+    expect(reasonFor(b, 9)).toBe("non-ionizing");
+    // Every study in the record is accounted for exactly once — the whole point: a
+    // study that reaches neither list is silence again.
+    expect(b.contributions.length + b.exclusions.length).toBe(
+      AUDIT_STUDIES.length
+    );
+    const named = [
+      ...b.contributions.map((c) => c.study.id),
+      ...b.exclusions.map((x) => x.study.id),
+    ].sort((a, z) => a - z);
+    expect(named).toEqual(AUDIT_STUDIES.map((s) => s.id).sort((a, z) => a - z));
+  });
+
+  it("sorts exclusions newest first and puts the undated ones last", () => {
+    const b = doseContributions(AUDIT_STUDIES, now);
+    expect(b.exclusions.map((x) => x.study.id)).toEqual([9, 7, 3]);
+    expect(b.exclusions.at(-1)?.date).toBeNull();
+  });
+
+  it("flags which contributions also fall inside the 3-year lens", () => {
+    const b = doseContributions(AUDIT_STUDIES, now);
+    const byId = new Map(b.contributions.map((c) => [c.study.id, c.inWindow]));
+    expect(byId.get(11)).toBe(true); // 2023-11-15, inside 2023-08-15…
+    expect(byId.get(5)).toBe(false); // 2021-04-02, outside it
+  });
+
+  it("a windowYears of null means all records — nothing falls outside", () => {
+    const b = doseContributions(AUDIT_STUDIES, now, null);
+    expect(b.contributions.every((c) => c.inWindow)).toBe(true);
+    expect(b.window.windowYears).toBeNull();
+    expect(combinedMsv(b.window)).toBe(combinedMsv(b.allRecords));
+  });
+
+  it("labels the headline with the oldest CONTRIBUTING study's date", () => {
+    const b = doseContributions(AUDIT_STUDIES, now);
+    // Not 2024-05-05 (the ultrasound contributed nothing) and not the undated X-ray.
+    expect(b.allRecords.earliest).toBe("2021-04-02");
+    expect(b.window.earliest).toBe("2023-11-15");
+  });
+
+  it("has no earliest date when nothing contributed", () => {
+    const b = doseContributions(
+      [idStudy(1, { modality: "ultrasound", study_date: "2025-01-01" })],
+      now
+    );
+    expect(b.allRecords.earliest).toBeNull();
+    expect(b.allRecords.hasAnyDose).toBe(false);
+  });
+});
+
+describe("the headline does not age downward (#2970)", () => {
+  // The case the issue exists to remove: the 2023-11-15 mammograms turn three years old
+  // and leave the trailing window. Under the OLD behaviour — a trailing window AS the
+  // headline — the cumulative figure fell with no event and no explanation. A
+  // cumulative-risk number must never go down, so the window became a secondary lens.
+  //
+  // The boundary is 2026-11-16, not the 2026-11-15 the issue names: windowStartDate is
+  // INCLUSIVE, so a study dated exactly on the window start still counts that day.
+  const before = "2026-08-15";
+  const after = "2026-11-16";
+
+  it("keeps the all-records total across the boundary while the 3-year lens drops", () => {
+    const allBefore = cumulativeDose(AUDIT_STUDIES, before, null);
+    const allAfter = cumulativeDose(AUDIT_STUDIES, after, null);
+    expect(combinedMsv(allBefore)).toBeCloseTo(1.3, 6);
+    expect(combinedMsv(allAfter)).toBeCloseTo(1.3, 6);
+
+    // The same fixture through the trailing window — the arithmetic that used to BE
+    // the headline — still drops, which is exactly why it is no longer the headline.
+    const lensBefore = cumulativeDose(AUDIT_STUDIES, before);
+    const lensAfter = cumulativeDose(AUDIT_STUDIES, after);
+    expect(combinedMsv(lensBefore)).toBeCloseTo(1.2, 6);
+    expect(combinedMsv(lensAfter)).toBe(0);
+    expect(combinedMsv(lensAfter)).toBeLessThan(combinedMsv(lensBefore));
+  });
+
+  it("still names the aged-out studies in the breakdown after the boundary", () => {
+    const b = doseContributions(AUDIT_STUDIES, after);
+    expect(b.contributions.map((c) => c.study.id)).toContain(11);
+    expect(b.contributions.every((c) => !c.inWindow)).toBe(true);
+    expect(b.allRecords.hasAnyDose).toBe(true);
+  });
+});
+
+describe("per-study labels the list and the breakdown share (#2970)", () => {
+  it("marks an estimate as one at the figure, and leaves a recorded dose bare", () => {
+    const recorded = estimateStudyDose(
+      study({ modality: "ct", dose_msv: 12.5 })
+    );
+    expect(doseChipLabel(recorded)).toBe("12.5 mSv");
+    expect(doseSourceNote(recorded)).toBe("Recorded in the report");
+
+    const est = estimateStudyDose(
+      study({ modality: "x-ray", body_region: "Breast" })
+    );
+    expect(doseChipLabel(est)).toBe("≈ 0.4 mSv est.");
+    expect(doseSourceNote(est)).toBe("Typical for Mammography");
+  });
+
+  it("prints no chip where there is no honest figure (non-ionizing, unclassified)", () => {
+    expect(doseChipLabel(estimateStudyDose(study({ modality: "mri" })))).toBeNull();
+    expect(
+      doseChipLabel(estimateStudyDose(study({ modality: "ultrasound" })))
+    ).toBeNull();
+    expect(
+      doseChipLabel(estimateStudyDose(study({ modality: "other" })))
+    ).toBeNull();
+  });
+
+  it("the chip on a study agrees with that study's breakdown row", () => {
+    const b = doseContributions(AUDIT_STUDIES, "2026-08-15");
+    for (const c of b.contributions) {
+      expect(doseChipLabel(c.dose)).toBe(
+        doseChipLabel(estimateStudyDose(c.study))
+      );
+    }
+    // …and a study the breakdown excluded shows no chip either.
+    for (const x of b.exclusions) {
+      if (x.reason === "no-date") continue; // undated, but still a real 0.1 mSv X-ray
+      expect(doseChipLabel(estimateStudyDose(x.study))).toBeNull();
+    }
+  });
+
+  it("states each exclusion as a fact about the record, never a reproach", () => {
+    const notes = (
+      ["no-date", "no-entry", "non-ionizing"] as DoseExclusionReason[]
+    ).map(doseExclusionNote);
+    expect(notes[0]).toContain("No date recorded");
+    expect(notes[1]).toContain("isn't estimated");
+    expect(notes[2]).toBe("No ionizing radiation.");
+    for (const n of notes) {
+      expect(n.toLowerCase()).not.toContain("you should");
+      expect(n.toLowerCase()).not.toContain("missing");
+      expect(n.toLowerCase()).not.toContain("too much");
+    }
+  });
+});
+
+describe("backgroundEquivalentLabel — a comparison, not arithmetic", () => {
+  const now = "2026-08-15";
+
+  it("reads in months under two years", () => {
+    const cum = cumulativeDose(
+      [study({ modality: "ct", dose_msv: 3, study_date: "2025-01-01" })],
+      now
+    );
+    expect(backgroundEquivalentMonths(cum)).toBe(12);
+    expect(backgroundEquivalentLabel(cum)).toBe("12 months");
+  });
+
+  it("switches to years once months stop being readable", () => {
+    // A lifetime total is exactly what the all-records headline makes possible, and
+    // "148 months of natural background" is not a comparison anyone can picture.
+    const cum = cumulativeDose(
+      [study({ modality: "ct", dose_msv: 37, study_date: "2025-01-01" })],
+      now
+    );
+    expect(backgroundEquivalentMonths(cum)).toBe(148);
+    expect(backgroundEquivalentLabel(cum)).toBe("12.3 years");
+  });
+
+  it("is null when there is nothing to compare", () => {
+    expect(backgroundEquivalentLabel(cumulativeDose([], now))).toBeNull();
   });
 });

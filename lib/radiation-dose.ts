@@ -17,7 +17,10 @@
 //     resolve to a 0-mSv entry and never count as "an estimated dose".
 //   • An unclassified 'other' study has NO dataset entry (the refusal gate) and is
 //     never estimated — a fabricated number would be worse than an honest gap.
-//   • A study with no `study_date` can't be placed in the window and is excluded.
+//   • A study with no `study_date` can't be placed on the timeline and is excluded.
+//   • EVERY exclusion is NAMED, not silent (#2970). A total a reader cannot decompose
+//     is the defect this module's breakdown exists to remove, so `doseContributions`
+//     returns the studies that counted AND the ones that did not, each with its reason.
 //   • The tone is INFORMATIONAL, never alarmist: this is a quantified-self signal, not
 //     a "you've had too much" verdict — dose is a provider conversation.
 
@@ -28,9 +31,21 @@ import {
   type RadiationDoseEntry,
 } from "./datasets/radiation-dose";
 
-// The trailing window for the cumulative total. A documented constant: three years is
-// a common quantified-self horizon for serial imaging and matches the issue's "~40 mSv
-// over 3 years" framing. Calendar-anchored (see windowStartDate), not 365-day.
+// The trailing window for the RECENT-INTENSITY lens — a SECONDARY framing, never the
+// headline (#2970). Three years is a recent-imaging horizon, nothing more: it came from
+// #703's "~40 mSv over 3 years" phrase, which was an illustration that serial imaging is
+// worth tracking, not a recommended window, and no dataset or guideline in this repo
+// justifies the number.
+//
+// It is deliberately NOT the cumulative total, because a trailing window makes a
+// cumulative figure GO DOWN — stochastic radiation risk accumulates over a lifetime and
+// nothing resets at 36 months, so a study aging past the boundary would drop the headline
+// with no event and no explanation. The headline is ALL RECORDS, carrying the honest
+// completeness caveat in its LABEL ("since <earliest contributing study>") rather than in
+// its arithmetic: Allos only knows what has been imported, which is a labelling problem,
+// not a reason to truncate the data.
+//
+// Calendar-anchored (see windowStartDate), not 365-day.
 export const DOSE_WINDOW_YEARS = 3;
 
 // Modalities that use IONIZING radiation (an effective dose worth tracking). MRI and
@@ -149,54 +164,161 @@ export function windowStartDate(now: string, years: number): string {
   return `${String(y).padStart(4, "0")}-${pad(mo)}-${pad(day)}`;
 }
 
-// The trailing-window cumulative dose. Recorded and estimated sums are kept SEPARATE
-// (see the header). Studies with no date, or dated before the window start, are
-// excluded. Pure — the page passes the profile's studies + its "today".
+// Why a study did NOT contribute to the total. Each one is a fact about the record that
+// the surface states plainly (#2970) — never a scolding, and never silence.
+//   • no-date       — no study date, so it can't be placed on the timeline. User-fixable.
+//   • no-entry      — the refusal gate: an unclassifiable study is never estimated.
+//   • non-ionizing  — MRI / ultrasound, a true 0 by physics. Reassuring, not apologetic.
+export type DoseExclusionReason = "no-date" | "no-entry" | "non-ionizing";
+
+// One study that DID contribute, with the resolved dose that explains its share. Generic
+// over the study row so a caller keeps its own type (an ImagingStudy row carries the id
+// and laterality a surface needs to label the row) without this module importing it.
+export interface DoseContribution<S extends DoseStudyInput = DoseStudyInput> {
+  study: S;
+  date: string; // never null — an undated study is an exclusion, not a contribution
+  dose: StudyDose;
+  inWindow: boolean; // also inside the trailing-window lens
+}
+
+// One study that did NOT contribute, and why.
+export interface DoseExclusion<S extends DoseStudyInput = DoseStudyInput> {
+  study: S;
+  date: string | null;
+  reason: DoseExclusionReason;
+}
+
+// A study counts toward a total when it resolved to a recorded dose (a fact from the
+// report, even a recorded 0) or to a NON-ZERO typical estimate. Everything else is an
+// exclusion with a named reason. The ONE predicate — the fold and the breakdown share it,
+// so a total and its rows cannot disagree about what is in it.
+function classifyStudy<S extends DoseStudyInput>(
+  study: S
+): { dose: StudyDose; counts: true } | { reason: DoseExclusionReason } {
+  const dose = estimateStudyDose(study);
+  if (dose.source === "recorded" || (dose.source === "estimate" && dose.msv > 0))
+    return { dose, counts: true };
+  // A zero-dose ESTIMATE means the dataset placed it: that is the non-ionizing case.
+  // Anything else (the 'other' refusal, or a hypothetical 0-valued ionizing entry) is
+  // reported as not estimated rather than claimed to carry no radiation.
+  if (dose.source === "estimate" && !IONIZING_MODALITIES.has(study.modality))
+    return { reason: "non-ionizing" };
+  return { reason: "no-entry" };
+}
+
+// The cumulative dose over a scope. Recorded and estimated sums are kept SEPARATE (see
+// the header). Studies with no date are always excluded; a `windowYears` of null means
+// ALL RECORDS (the headline framing), and a number means the trailing lens.
 export interface CumulativeDose {
-  windowYears: number;
-  since: string; // window start (inclusive)
+  windowYears: number | null; // null = all records, no trailing window
+  since: string | null; // window start (inclusive); null when all records
+  // The oldest CONTRIBUTING study's date — what the headline's completeness caveat
+  // names ("since Apr 2021"). Null when nothing contributed.
+  earliest: string | null;
   recordedMsv: number;
   recordedCount: number;
   estimatedMsv: number;
   estimatedCount: number; // studies contributing a NON-ZERO estimate
-  studiesInWindow: number;
-  hasAnyDose: boolean; // any recorded or non-zero estimated dose in the window
+  studiesInWindow: number; // dated studies in scope, contributing or not
+  hasAnyDose: boolean; // any recorded or non-zero estimated dose in scope
 }
 
 export function cumulativeDose(
   studies: DoseStudyInput[],
   now: string,
-  windowYears: number = DOSE_WINDOW_YEARS
+  windowYears: number | null = DOSE_WINDOW_YEARS
 ): CumulativeDose {
-  const since = windowStartDate(now, windowYears);
+  const since = windowYears == null ? null : windowStartDate(now, windowYears);
   let recordedMsv = 0;
   let recordedCount = 0;
   let estimatedMsv = 0;
   let estimatedCount = 0;
   let studiesInWindow = 0;
+  let earliest: string | null = null;
 
   for (const s of studies) {
-    if (!s.study_date || s.study_date < since) continue;
+    if (!s.study_date) continue;
+    if (since != null && s.study_date < since) continue;
     studiesInWindow++;
-    const dose = estimateStudyDose(s);
-    if (dose.source === "recorded") {
-      recordedMsv += dose.msv;
+    const verdict = classifyStudy(s);
+    if (!("counts" in verdict)) continue;
+    if (verdict.dose.source === "recorded") {
+      recordedMsv += verdict.dose.msv;
       recordedCount++;
-    } else if (dose.source === "estimate" && dose.msv > 0) {
-      estimatedMsv += dose.msv;
+    } else {
+      estimatedMsv += verdict.dose.msv;
       estimatedCount++;
     }
+    if (earliest == null || s.study_date < earliest) earliest = s.study_date;
   }
 
   return {
     windowYears,
     since,
+    earliest,
     recordedMsv: round(recordedMsv),
     recordedCount,
     estimatedMsv: round(estimatedMsv),
     estimatedCount,
     studiesInWindow,
     hasAnyDose: recordedCount > 0 || estimatedCount > 0,
+  };
+}
+
+// The whole answer to "where does this number come from" (#2970): the all-records
+// headline, the trailing-window lens beside it, the studies that made up the headline,
+// and the studies that did NOT with the reason each was left out. ONE pure computation
+// (#221) — the card, the study list and any later surface format this rather than
+// re-deriving a total or a per-study figure of their own.
+//
+// Rows are newest first; undated exclusions sort last, since they have no place on the
+// timeline at all. This function does no de-duplication: overlapping portal exports are
+// collapsed upstream by the representative-id read (#2919/#2952), and a second
+// de-duplication here would be a parallel concept for a question that already has one.
+export interface DoseBreakdown<S extends DoseStudyInput = DoseStudyInput> {
+  allRecords: CumulativeDose;
+  window: CumulativeDose;
+  contributions: DoseContribution<S>[];
+  exclusions: DoseExclusion<S>[];
+}
+
+export function doseContributions<S extends DoseStudyInput>(
+  studies: S[],
+  now: string,
+  windowYears: number | null = DOSE_WINDOW_YEARS
+): DoseBreakdown<S> {
+  const windowSince =
+    windowYears == null ? null : windowStartDate(now, windowYears);
+  const contributions: DoseContribution<S>[] = [];
+  const exclusions: DoseExclusion<S>[] = [];
+
+  for (const study of studies) {
+    const date = study.study_date;
+    if (!date) {
+      exclusions.push({ study, date: null, reason: "no-date" });
+      continue;
+    }
+    const verdict = classifyStudy(study);
+    if ("counts" in verdict) {
+      contributions.push({
+        study,
+        date,
+        dose: verdict.dose,
+        inWindow: windowSince == null || date >= windowSince,
+      });
+    } else {
+      exclusions.push({ study, date, reason: verdict.reason });
+    }
+  }
+
+  contributions.sort((a, b) => b.date.localeCompare(a.date));
+  exclusions.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+
+  return {
+    allRecords: cumulativeDose(studies, now, null),
+    window: cumulativeDose(studies, now, windowYears),
+    contributions,
+    exclusions,
   };
 }
 
@@ -221,6 +343,56 @@ export function backgroundEquivalentMonths(cum: CumulativeDose): number | null {
   const perMonth = RADIATION_DOSE_META.naturalBackgroundMsvPerYear / 12;
   if (perMonth <= 0) return null;
   return Math.round(total / perMonth);
+}
+
+// The same comparator as a readable span. Months stop being readable once a lifetime
+// total is in play — "roughly 148 months of natural background" is arithmetic, not a
+// comparison — so past two years it reads in years to one decimal. Null when there's
+// nothing to compare. Pure.
+export function backgroundEquivalentLabel(cum: CumulativeDose): string | null {
+  const months = backgroundEquivalentMonths(cum);
+  if (months == null || months <= 0) return null;
+  if (months < 24) return `${months} ${months === 1 ? "month" : "months"}`;
+  const years = Math.round((months / 12) * 10) / 10;
+  return `${years} ${years === 1 ? "year" : "years"}`;
+}
+
+// The dose chip for ONE study, as the study list and the breakdown rows both show it —
+// or null when there is nothing honest to print. A recorded dose is a bare figure (a
+// fact from the report); an estimate is marked as one, at the figure, every time. Named
+// here so the two surfaces cannot label the same study differently. Pure.
+export function doseChipLabel(dose: StudyDose): string | null {
+  if (dose.source === "recorded") return formatMsv(dose.msv);
+  if (dose.source === "estimate" && dose.msv > 0)
+    return `≈ ${formatMsv(dose.msv)} est.`;
+  return null;
+}
+
+// Where one contributing study's figure came from — the report, or the named dataset
+// entry behind the estimate. This is the per-study half of the recorded-vs-estimate
+// split (#703): the aggregate already says "includes estimates", and the breakdown says
+// WHICH. Pure.
+export function doseSourceNote(dose: StudyDose): string {
+  if (dose.source === "recorded") return "Recorded in the report";
+  // The dataset label stays verbatim — it is coded record vocabulary ("CT chest",
+  // "PET/CT (FDG, whole body)"), and lower-casing it would mangle the acronyms.
+  if (dose.label) return `Typical for ${dose.label}`;
+  return "Estimated";
+}
+
+// Why a study did not count, said plainly. Each is a fact about the record, in the same
+// informational register as the rest of the card — an exclusion line reports what the
+// record contains, it never scolds the reader for it. Pure so the copy can't drift
+// across surfaces.
+export function doseExclusionNote(reason: DoseExclusionReason): string {
+  switch (reason) {
+    case "no-date":
+      return "No date recorded, so it isn't counted. Add a date to include it.";
+    case "no-entry":
+      return "Type unclear, so it isn't estimated.";
+    case "non-ionizing":
+      return "No ionizing radiation.";
+  }
 }
 
 // Format an mSv figure for display: small doses keep more precision (a 0.1 mSv chest
