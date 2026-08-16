@@ -365,8 +365,16 @@ export async function handlePracticeDoneTap(
   // Closing here would take that row down in exactly the case the feature exists for:
   // the single-practice nudge, where logging the one behind practice clears the
   // shortfall that justified the message, and the tap that just happened is the tap
-  // whose time might be wrong. A null rebuild means nothing is left to show, and falls
-  // through to the close/strip path below unchanged.
+  // whose time might be wrong. A null rebuild means nothing is left to show AND nothing
+  // left to say, and falls through to the close/strip path below unchanged.
+  //
+  // "Nothing left to say" is load-bearing, and it is the builder that has to guarantee
+  // it. When the day bound first landed, the builder answered null as soon as no chip
+  // was OFFERABLE — so at 00:20 local, the single-practice nudge (this path's common
+  // case) fell straight through to the close: the message went, the pointer went, and
+  // the sentence explaining why the chips could not be shown had nowhere left to land.
+  // A confirmation carrying only that sentence is a message, so the builder returns one
+  // and this branch takes it.
   //
   // Scoped to the NUDGE (`pdone`). The `/practice` list keeps its existing lifecycle —
   // see the note on PRACTICE_TIME_PREFIXES in lib/notifications/reconcile-registry.ts

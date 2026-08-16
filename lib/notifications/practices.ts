@@ -430,7 +430,14 @@ function practiceCorrection(
           tz,
           offeredHours(open, now, tz, PRACTICE_TIME_PREFIXES.dayKeyed)
         )
-      : correctionBodyStatement(shown, tz),
+      : // THE WHOLE BURST SET, not the offerable half. A statement of record is a claim
+        // about what the LEDGER now holds, and the commonest way a burst goes off scope
+        // is that the correction SUCCEEDED — a sauna moved back to 00:15 no longer has a
+        // chip that stays on its day. Passing `shown` there dropped the one sentence
+        // stating the new value in exactly the interaction that produced it, leaving a
+        // toast saying "Session time updated" above a body saying only that moving it
+        // would change its day. What may be OFFERED is bounded; what is RECORDED is not.
+        correctionBodyStatement(bursts, tz),
     correctionOffScopeStatement(offScope, tz),
   ].filter((l): l is string => l != null);
   return { actions, statement: lines.length > 0 ? lines.join("\n") : null };
@@ -444,8 +451,21 @@ function practiceCorrection(
 // shortfall that justified the message. Closing there would take the correction row
 // down with it in exactly the case the feature exists for — the tap that just happened
 // is the tap whose time might be wrong. So a cleared nudge with a live burst becomes a
-// short confirmation carrying the chips, and NOTHING LEFT TO SHOW returns null, which is
-// the caller's signal to close the message exactly as it always did.
+// short confirmation carrying the chips.
+//
+// NULL MEANS ONE THING: THERE IS NOTHING TO SHOW AND NOTHING TO SAY, so close the
+// message. It is the callers' whole contract with this builder, and both of them act on
+// it — neither may leave a stale keyboard standing.
+//
+// It is stated that narrowly because the day bound made the other reading dangerous.
+// Once a burst can go OFF SCOPE, "no actions" stopped meaning "nothing to show": the
+// commonest way a practice burst loses its chips is that the correction SUCCEEDED, and
+// the message then has a statement of record to make and a reason to give for the chips
+// being gone. A builder that answered null there took the message down with it — the
+// chat kept a stale time and a live chip after a write in one caller, and the surviving
+// confirmation disappeared entirely in the other. So a STATEMENT alone is enough of a
+// message: a buttonless confirmation that says what the ledger holds is the right
+// answer, and it keeps the pointer alive for the sweep to close on its own clock.
 //
 // THE DEEP LINK IS DEFAULTED HERE, not left to the caller (#1718). `buildPracticeReminder`
 // renders "Open practices →" only when it is handed a base, the send hands it
@@ -476,19 +496,27 @@ export function buildPracticeCorrectionRebuild(
       return parsed == null || ctx.offered.has(parsed.targetId);
     });
     const merged = [...kept, ...actions];
-    // Every button is gone and no chip replaced it: there is no keyboard left, so say so
-    // rather than editing the chat down to a buttonless nudge nobody can act on.
-    if (merged.length === 0) return null;
-    return {
-      ...base,
-      body: statement ? `${base.body}\n${statement}` : base.body,
-      actions: merged,
-    };
+    // Every button is gone and no chip replaced it: a nudge is its buttons, so there is
+    // no nudge left to render. It falls through to the confirmation shape rather than
+    // returning here — if the correction has something to STATE, that sentence is the
+    // message; if it has not, the fall-through answers null and the caller closes.
+    if (merged.length > 0)
+      return {
+        ...base,
+        body: statement ? `${base.body}\n${statement}` : base.body,
+        actions: merged,
+      };
   }
-  if (actions.length === 0) return null;
+  if (actions.length === 0 && statement == null) return null;
   return {
     title: `${GLYPH.practice} Practice check-in`,
-    body: statement ?? `Logged ${GLYPH.done}`,
+    // THE CONFIRMATION STILL CONFIRMS. The correction's sentence JOINS "Logged ✅"
+    // rather than replacing it: this shape is what a ✓ tap leaves behind, and a message
+    // whose only line explains why the time cannot be changed here has stopped
+    // acknowledging the thing the user actually tapped.
+    body: statement
+      ? `Logged ${GLYPH.done}\n${statement}`
+      : `Logged ${GLYPH.done}`,
     actions,
     kind: "practice",
   };

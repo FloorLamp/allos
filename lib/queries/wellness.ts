@@ -878,15 +878,19 @@ export function getPracticeDays(
 
 // ---- Practice-time correction rows (issue #2875) ----------------------------
 
-// One already-written practice session, as a correction offer reads it. `date` rides
-// along because the restamp writes a profile-local "HH:MM" back onto THAT day, and the
-// day is what decides whether a chip would cross local midnight (out of scope — the
-// chips move a time within a day).
+// One already-written practice session, as a correction offer reads it.
 export interface PracticeTapRow extends TapEvent {
   practice: string;
-  date: string;
-  // Narrowed from the substrate's `string | null`: a row with no stated instant is
-  // never in this set at all (see 2 below), so every member has one.
+  // Both narrowed from the substrate's nullable shape, because this domain always has
+  // both: a row with no stated instant is never in this set at all (see 2 below), and
+  // `date` is NOT NULL on the table.
+  //
+  // `localDay` IS `practice_logs.date` — the substrate's name for it, not a second field
+  // beside it. The restamp writes a profile-local "HH:MM" back onto THAT day and refuses
+  // an answer landing on another one, so the day is what decides whether a chip would
+  // cross local midnight; carrying it under the substrate's own name is what lets the
+  // shared offer bound read the column the write core enforces (#2875).
+  localDay: string;
   statedAt: string;
 }
 
@@ -965,9 +969,12 @@ export function getRecentPracticeTaps(
     out.push({
       id: r.id,
       practice: r.practice,
-      date: r.date,
       tapAt: tapAt.at,
       statedAt: statedAt.at,
+      // The stored column, straight through — NOT the composed instant's day. This is
+      // the string `restampPracticeLogsCore` compares against, so it is the string the
+      // offer bound has to be computed from (#2875).
+      localDay: r.date,
       messageRef: r.notify_message_id,
       label: r.practice,
     });

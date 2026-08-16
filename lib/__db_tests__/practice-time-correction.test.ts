@@ -675,6 +675,128 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     );
     expect(closingText).toMatch(/back on pace|done for the week/);
   });
+
+  // ---- what a burst with NOTHING LEFT TO OFFER does to the message ----------
+  //
+  // The day bound made "no chip stays on this burst's day" reachable for a FRESH burst,
+  // which it had never been: before it, a live burst always rendered at least its label
+  // button. Both callers of the rebuild read a null as "close the message", so a builder
+  // that answered null for "nothing left to OFFER" took the whole message down — in one
+  // caller after a write it had just made, in the other in the single-practice case the
+  // feature exists for. The two cases below are those two callers, one each.
+
+  it("redraws after a chip write whose burst is now off scope, and states the new time", async () => {
+    // 00:45 local. ONE chip stays on the day (−30m → 00:15); −1h and every picker hour
+    // resolve to yesterday. Tapping that last chip is a successful write that leaves the
+    // burst with nothing further to offer — and the message must still be redrawn, or
+    // the chat keeps asserting 00:45 under a live chip whose tap is now refused.
+    const pid = makeProfile("offscope-after-write");
+    seedLoginTelegram(pid, "5552885");
+    const sauna = practiceTarget(pid, "Sauna");
+
+    const pointer = await sendNudge(pid);
+    setNow("2026-06-16T22:45:00Z"); // 00:45 on 2026-06-17, Berlin
+    await handleCallbackQuery(
+      tap(
+        "5552885",
+        `pdone:${pid}:${sauna}:n1`,
+        pointer.keyboard,
+        pointer.messageId
+      )
+    );
+
+    const withChips = livePointer(pid);
+    const chip = keyboardTokens(withChips.keyboard).find((t) =>
+      t.startsWith(`${PRACTICE_TIME_PREFIXES.chip}:`)
+    );
+    expect(chip, "00:45 must still be offered its −30m chip").toBeTruthy();
+
+    editText.mockClear();
+    setNow("2026-06-16T22:50:00Z");
+    await handleCallbackQuery(
+      tap("5552885", chip!, withChips.keyboard, withChips.messageId)
+    );
+
+    // The write landed.
+    expect(storedTime(lastLogId(pid))).toBe("00:15");
+    expect(storedDate(lastLogId(pid))).toBe("2026-06-17");
+    // R1: the chat was redrawn. A null rebuild that fell out of the handler left the
+    // stale keyboard standing — 0 edits, and "🕐 Sauna 00:45" still on screen.
+    expect(
+      editText,
+      "a write that changes the ledger must redraw the chat"
+    ).toHaveBeenCalled();
+    const after = livePointer(pid);
+    expect(
+      keyboardTokens(after.keyboard).filter((t) =>
+        t.startsWith(PRACTICE_TIME_PREFIXES.chip)
+      ),
+      "no chip may survive a write that put the burst off scope"
+    ).toEqual([]);
+
+    // R2: the statement of record survives the burst going off scope, because it is a
+    // claim about the LEDGER and not about what is still offerable. Fed the filtered
+    // set, this line vanished in exactly the interaction that produced it — leaving a
+    // toast reading "Session time updated back for 1 session" above a body whose only
+    // sentence said moving it would change its day.
+    const body = String(editText.mock.calls.at(-1)?.[2] ?? "");
+    expect(body).toContain("Sauna 00:15 (corrected)");
+    expect(body).toContain("moving this would change its day");
+    expect(String(answer.mock.calls.at(-1)?.[1] ?? "")).toContain(
+      "Session time updated"
+    );
+  });
+
+  it("keeps the single-practice confirmation alive when its burst is off scope", async () => {
+    // The common case the PR names: one behind practice, and the tap that just happened
+    // is the tap whose time might be wrong. At 00:20 local nothing can be offered — so
+    // the message carries the reason instead, and the pointer stays live for the sweep
+    // to close on its own clock.
+    const pid = makeProfile("offscope-single");
+    seedLoginTelegram(pid, "5552886");
+    const sauna = practiceTarget(pid, "Sauna");
+
+    const pointer = await sendNudge(pid);
+    editText.mockClear();
+    setNow("2026-06-16T22:20:00Z"); // 00:20 on 2026-06-17, Berlin
+    await handleCallbackQuery(
+      tap(
+        "5552886",
+        `pdone:${pid}:${sauna}:n1`,
+        pointer.keyboard,
+        pointer.messageId
+      )
+    );
+
+    // R3: the message survives. Closing here removed the surviving message rather than
+    // merely failing to explain it, and took `correctionOffScopeStatement` out of reach
+    // on the one path that most needs it.
+    expect(
+      liveMessagePointers(pid),
+      "the confirmation must survive a burst that has nothing left to offer"
+    ).toHaveLength(1);
+    const body = String(editText.mock.calls.at(-1)?.[2] ?? "");
+    expect(body).toContain("moving this would change its day");
+    // And it still acknowledges the tap. The correction's sentence joins the
+    // confirmation rather than replacing it.
+    expect(body).toContain("Logged");
+    expect(
+      keyboardTokens(livePointer(pid).keyboard).filter((t) =>
+        t.startsWith("practime")
+      ),
+      "and it draws no chip, because every one of them would be refused"
+    ).toEqual([]);
+
+    // The sweep then leaves it exactly as it is, and that is the SHARED rule rather
+    // than a practice exception: this message makes no claim — no ✓, no chip — so
+    // there is nothing that can go stale on it and nothing to reconcile. The one-hour
+    // close belongs to a keyboard that claims "you may still correct this here"; the
+    // pointer prune retires this one. Asserted so the difference is a decision.
+    setNow("2026-06-17T00:30:00Z");
+    const sweep = await reconcileProfileMessages(pid);
+    expect([sweep.closed, sweep.edited]).toEqual([0, 0]);
+    expect(sauna).toBeGreaterThan(0);
+  });
 });
 
 describe("the callback dispatcher routes the practice prefixes", () => {

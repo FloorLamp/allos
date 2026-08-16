@@ -343,6 +343,10 @@ export function restampPracticeLogsCore(
         id: r.id,
         tapAt: tapAt.at,
         statedAt: statedAt.at,
+        // The same stored column the refusal below compares against, so the burst this
+        // core builds and the burst the renderer bounded its offers with carry ONE day
+        // (#2875) — not the same day computed two ways.
+        localDay: r.date,
         label: r.practice,
       });
     }

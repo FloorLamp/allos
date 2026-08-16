@@ -63,6 +63,7 @@ import {
 } from "../queries";
 import {
   keyboardDoseFootprint,
+  replacementWithTitle,
   resolveTapProfile,
   OUTDATED_MESSAGE_TEXT,
   type InlineKeyboard,
@@ -82,7 +83,7 @@ import { countVisibleFoodButtons } from "./food-format";
 import { slotSessionForKeyboard } from "./intake";
 import { renderMergedIntakeMessage } from "./intake-format";
 import { answerCallbackQuery } from "./telegram-api";
-import { rebuildMessage } from "./telegram";
+import { closeMessage, rebuildMessage } from "./telegram";
 import type { TelegramCallbackQuery } from "./telegram-api";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { GLYPH } from "./glyphs";
@@ -98,6 +99,9 @@ interface Resolved {
   burst: CorrectionBurst;
   now: Date;
   tz: string;
+  // The live message's own text, so a CLOSE can keep its title (#2875). Only the practice
+  // path reads it — its rebuild is the one that can legitimately come back with nothing.
+  text?: string;
 }
 
 // Refusals, each naming what actually happened. "This burst is gone" is the common one
@@ -161,6 +165,7 @@ async function resolve(
     burst,
     now,
     tz: getTimezone(profileId),
+    ...(typeof cq.message?.text === "string" ? { text: cq.message.text } : {}),
   };
 }
 
@@ -534,12 +539,24 @@ export { FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES };
 const CROSSES_DAY_TEXT =
   "That would move the session to another day — change the date in the app.";
 
+// What a practice message is replaced with when the rebuild has nothing left: no practice
+// behind, no burst the ledger still justifies, and so nothing to state. The tap's own
+// answer was already spoken in the toast, so this only has to stop the message claiming
+// anything further.
+const NOTHING_LEFT_TEXT = "Nothing left to correct here.";
+
 // Rebuild the practice nudge this correction rides, so the chips re-render from the
 // LEDGER after every write (#221) rather than from whatever the last keyboard showed.
 //
 // The ✓ buttons are the one exception, and they come from the KEYBOARD: a chip tap must
 // not hand back a "✅ Sauna" the done-tap already consumed, and live pace alone cannot
 // tell the difference (a practice at 1 of 3 is still behind after its session lands).
+//
+// EVERY OUTCOME EDITS THE CHAT. A tap that changed the ledger and left the message alone
+// is the worst of the three answers: the chip that was just used stays live, and the
+// label above it goes on asserting the time the write replaced. So a null rebuild —
+// which now means only "nothing to show and nothing to say" — CLOSES the message rather
+// than falling out of the function. Doing nothing is not an option this path has.
 async function rebuildPractice(
   r: Resolved,
   picker?: CorrectionBurst
@@ -550,8 +567,16 @@ async function rebuildPractice(
     offered: offeredPracticeTargets(r.rows),
     ...(picker ? { picker } : {}),
   });
-  if (rebuilt)
+  if (rebuilt) {
     await rebuildMessage(r.profileId, r.chatId, r.messageId, rebuilt);
+    return;
+  }
+  await closeMessage(
+    r.profileId,
+    r.chatId,
+    r.messageId,
+    replacementWithTitle(r.text, NOTHING_LEFT_TEXT)
+  );
 }
 
 function practiceRestampOutcomeText(

@@ -736,6 +736,20 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
         2 * 60 * 60_000
     );
 
+  // A practice tap, which is a DAY-KEYED row: it carries the profile-local day the
+  // ledger files it under, exactly as `getRecentPracticeTaps` reads it off
+  // `practice_logs.date`. `day` defaults to the day the instant composes back to, which
+  // is what an ordinary zone gives; the DST-at-midnight case below passes its own,
+  // because that is precisely where the two stop agreeing.
+  function practiceTap(
+    id: number,
+    at: Date,
+    label = "Sauna",
+    day = zonedDateParts(TZ, at).date
+  ): TapEvent {
+    return { id, tapAt: at.toISOString(), localDay: day, label };
+  }
+
   // Resolve every offer a keyboard actually carries, exactly as the handler would.
   function resolvedDays(
     burst: ReturnType<typeof collapseBursts>[number],
@@ -763,9 +777,7 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
   it("offers nothing at all in the hour after local midnight", () => {
     // The reproduction from the review, to the minute: a sauna tapped at 00:20 local.
     const now = local("00:25");
-    const burst = collapseBursts([
-      tap(41, local("00:20").toISOString(), "Sauna"),
-    ])[0];
+    const burst = collapseBursts([practiceTap(41, local("00:20"))])[0];
 
     const { shown, offScope } = correctableBursts(
       PRACTICE_TIME_PREFIXES,
@@ -813,10 +825,8 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
       for (const ageMin of [0, 12, 41, 58]) {
         const now = local(`${String(h).padStart(2, "0")}:37`);
         const tapAt = new Date(now.getTime() - ageMin * 60_000);
-        const burst = collapseBursts([
-          tap(41, tapAt.toISOString(), "Sauna"),
-        ])[0];
-        const day = burstLocalDay(burst, TZ);
+        const burst = collapseBursts([practiceTap(41, tapAt)])[0];
+        const day = burstLocalDay(burst);
         expect(day, `burst at ${tapAt.toISOString()}`).not.toBeNull();
         for (const resolved of resolvedDays(
           burst,
@@ -835,10 +845,10 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
     // is on both days.
     const now = local("00:20");
     const straddle = collapseBursts([
-      tap(41, local("23:58", 5).toISOString(), "Sauna"),
-      tap(42, local("00:03").toISOString(), "Sauna"),
+      practiceTap(41, local("23:58", 5)),
+      practiceTap(42, local("00:03")),
     ])[0];
-    expect(burstLocalDay(straddle, TZ)).toBeNull();
+    expect(burstLocalDay(straddle)).toBeNull();
     expect(
       correctableBursts(PRACTICE_TIME_PREFIXES, [straddle], now, TZ).shown
     ).toEqual([]);
@@ -851,9 +861,7 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
     // reach starts two hours back and every hour it can name is yesterday's. The title
     // says so rather than presenting a grid of nothing.
     const now = local("01:40");
-    const burst = collapseBursts([
-      tap(41, local("01:35").toISOString(), "Sauna"),
-    ])[0];
+    const burst = collapseBursts([practiceTap(41, local("01:35"))])[0];
     expect(chipOffers(burst, now, TZ, true).map((o) => o.minutesBack)).toEqual([
       30, 60,
     ]);
@@ -873,5 +881,107 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
     expect(correctionPickerTitle("when did you eat", burst, TZ)).toBe(
       "🕐 Sauna — when did you eat?"
     );
+  });
+
+  // ---- the bound reads the day the WRITE CORE enforces ----------------------
+  //
+  // `restampPracticeLogsCore` refuses on `zonedDateParts(tz, resolved).date !== row.date`
+  // — the STORED COLUMN. Deriving the bound's day from the composed instant instead looks
+  // equivalent and is not: `zonedWallTimeToUtc` cannot round-trip the day in a zone whose
+  // DST starts at local midnight, because the first hour of that day never happens. Swept
+  // across every IANA zone × 2024–2027, five zones do this — America/Havana,
+  // America/Santiago, America/Asuncion, America/Coyhaique and Atlantic/Azores — and there
+  // the composed day is YESTERDAY's while the core still enforces the column. Bounding by
+  // the composed day therefore offers chips whose every tap answers "crosses-day": the
+  // defect the bound exists to prevent, one derivation over.
+
+  it("takes the burst's day from the stored column, not from the composed instant", () => {
+    // Havana, 2026-03-08: the clock jumps 00:00 → 01:00, so "00:30" is a wall time that
+    // date does not contain. The ledger still files the session under 2026-03-08 — the
+    // string the core compares against — while the composed instant reads back as
+    // 2026-03-07 23:30.
+    const HAV = "America/Havana";
+    const at = new Date("2026-03-08T04:30:00Z");
+    expect(zonedDateParts(HAV, at).date).toBe("2026-03-07");
+
+    const burst = collapseBursts([
+      {
+        id: 41,
+        tapAt: at.toISOString(),
+        localDay: "2026-03-08",
+        label: "Sauna",
+      },
+    ])[0];
+    expect(burstLocalDay(burst)).toBe("2026-03-08");
+
+    // So every offer is dropped before it is drawn, because every one of them resolves
+    // onto 2026-03-07 and the core would answer `crosses-day`.
+    const now = new Date("2026-03-08T05:00:00Z");
+    expect(chipOffers(burst, now, HAV, true)).toEqual([]);
+    expect(offeredHours(burst, now, HAV, true)).toEqual([]);
+    expect(
+      correctionActions(PRACTICE_TIME_PREFIXES, 3, [burst], HAV, now)
+    ).toEqual([]);
+    expect(
+      correctableBursts(PRACTICE_TIME_PREFIXES, [burst], now, HAV).offScope
+    ).toEqual([burst]);
+  });
+
+  it("gives a burst whose members are filed under different days no day at all", () => {
+    // Two stored days inside one BURST_GAP_MIN window — what `logPracticeSession`'s
+    // backdated write produces. One correction cannot be two answers.
+    const spread = collapseBursts([
+      practiceTap(41, local("12:00")),
+      practiceTap(42, local("12:05"), "Sauna", "2026-08-05"),
+    ])[0];
+    expect(spread.count).toBe(2);
+    expect(burstLocalDay(spread)).toBeNull();
+    expect(chipOffers(spread, local("12:10"), TZ, true)).toEqual([]);
+  });
+
+  it("refuses a burst that mixes an affected row with an ordinary one on the same filed day", () => {
+    // The case that keeps ONE test against the earliest row exact. Both sessions are
+    // filed under 2026-03-08; the first is filed at "00:45", an hour Havana skips, so it
+    // composes to 03-07 23:45 while the second composes cleanly to 03-08 01:00. The
+    // affected row is therefore the EARLIER instant, which is the row `chipStaysOnDay`
+    // already tests — and the core refuses the whole burst for it.
+    const HAV = "America/Havana";
+    const burst = collapseBursts([
+      {
+        id: 41,
+        tapAt: "2026-03-08T04:45:00Z",
+        localDay: "2026-03-08",
+        label: "",
+      },
+      {
+        id: 42,
+        tapAt: "2026-03-08T05:00:00Z",
+        localDay: "2026-03-08",
+        label: "",
+      },
+    ])[0];
+    expect(burst.count).toBe(2);
+    expect(burstLocalDay(burst)).toBe("2026-03-08");
+    expect(zonedDateParts(HAV, new Date(burst.atStartAt)).date).toBe(
+      "2026-03-07"
+    );
+    expect(
+      chipOffers(burst, new Date("2026-03-08T05:30:00Z"), HAV, true)
+    ).toEqual([]);
+  });
+
+  it("leaves an instant-keyed burst with no day, and offers it everything anyway", () => {
+    // Food and dose file under no day at all, so the bound has nothing to read — and is
+    // never consulted for them. `dayKeyed: false` is what guarantees that; a missing day
+    // fails CLOSED, which would be the wrong answer for these two.
+    const now = local("00:25");
+    const burst = collapseBursts([
+      tap(41, local("00:20").toISOString(), "Salmon"),
+    ])[0];
+    expect(burstLocalDay(burst)).toBeNull();
+    expect(chipOffers(burst, now, TZ).map((o) => o.minutesBack)).toEqual([
+      30, 60,
+    ]);
+    expect(chipOffers(burst, now, TZ, true)).toEqual([]);
   });
 });
