@@ -143,11 +143,12 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
   // The pills are in your hand and the network isn't there. The page is already
   // loaded and interactive, so the tap lands and the write queue catches it.
   await page.goto("/medications");
+  // The Today panel's own row for the seeded Sertraline — one dose, one row.
   const row = page
-    .locator("div.card")
-    .filter({ hasText: "Sertraline" })
-    .first(); // first-ok: the Today panel's own row for a uniquely-named seeded medication
-  await expect(row).toBeVisible();
+    .getByTestId("medications-today")
+    .locator("[data-today-row]")
+    .filter({ hasText: "Sertraline" });
+  await expect(row).toHaveCount(1);
   await context.setOffline(true);
   try {
     await row.getByRole("button", { name: "Mark taken" }).click();
@@ -158,7 +159,13 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
     // The gap the issue names: the device KNOWS the dose was tapped, and until now no
     // offline surface showed it. It does now — marked queued, not presented as a
     // server fact.
-    await page.goto("/medications");
+    //
+    // Straight to /offline rather than re-requesting the page we came from: that URL
+    // was fetched online moments ago, so the browser's own HTTP cache can satisfy the
+    // navigation without the service worker's offline fallback ever running. The
+    // deep-link-lands-here leg is covered by the first test, from a URL this context
+    // has not visited.
+    await page.goto("/offline");
     await page.getByTestId("offline-open-dose-schedule").click();
     const schedule = page.getByTestId("offline-snapshot-dose-schedule");
     await expect(schedule).toContainText("Sertraline");
