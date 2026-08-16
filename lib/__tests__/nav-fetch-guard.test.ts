@@ -81,7 +81,9 @@ describe("isNetworkFailure", () => {
   });
 
   it("is false for a deliberate abort or timeout", () => {
-    expect(isNetworkFailure(new DOMException("stop", "AbortError"))).toBe(false);
+    expect(isNetworkFailure(new DOMException("stop", "AbortError"))).toBe(
+      false
+    );
     expect(isNetworkFailure(new DOMException("slow", "TimeoutError"))).toBe(
       false
     );
@@ -137,8 +139,8 @@ describe("installNavFetchGuard", () => {
   });
 
   it("passes a non-navigation fetch straight through, arguments untouched", async () => {
-    const inner = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      ok()
+    const inner = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => ok()
     );
     const win = fakeWindow(inner);
     installNavFetchGuard(win);
@@ -188,7 +190,10 @@ describe("installNavFetchGuard", () => {
     startNavProgress();
 
     await expect(
-      win.fetch("/timeline", { headers: NAV_HEADERS, signal: controller.signal })
+      win.fetch("/timeline", {
+        headers: NAV_HEADERS,
+        signal: controller.signal,
+      })
     ).rejects.toThrow(DOMException);
     expect(inner).toHaveBeenCalledTimes(1);
   });

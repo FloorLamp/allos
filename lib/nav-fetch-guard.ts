@@ -173,7 +173,10 @@ export function installNavFetchGuard(win: Window = window): void {
   win.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     if (
       !init ||
-      !isNavigationRscFetch({ method: init.method ?? "GET", headers: init.headers })
+      !isNavigationRscFetch({
+        method: init.method ?? "GET",
+        headers: init.headers,
+      })
     ) {
       return original(input, init);
     }

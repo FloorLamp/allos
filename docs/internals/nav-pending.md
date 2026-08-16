@@ -132,17 +132,17 @@ caller, so a new surface cannot adopt half the doctrine.
 
 The button-shaped navigation controls in the app, and what each one does now:
 
-| Surface | Treatment |
-| --- | --- |
-| `components/Nav.tsx` sidebar/drawer rows | icon slot (#1956) |
-| `components/MobileDock.tsx` dock slots | icon slot (#2651) |
-| `components/SegmentedControl.tsx` tabs | icon slot (#1956) |
-| `components/TimelineDayNav.tsx` day arrows | icon slot (the chevron) |
-| `components/TimelineDayNav.tsx` day swipe | the same chevron, driven by the component's own `useTransition` |
-| `components/PaginationControls.tsx` link-mode Prev/Next | overlay |
-| `components/TimelineFilterLink.tsx` chips, range pills, #2657 month fold headers | overlay |
-| `app/(app)/settings/audit/page.tsx` pager | overlay |
-| `app/(app)/settings/notify-log/page.tsx` pager | overlay |
+| Surface                                                                          | Treatment                                                       |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `components/Nav.tsx` sidebar/drawer rows                                         | icon slot (#1956)                                               |
+| `components/MobileDock.tsx` dock slots                                           | icon slot (#2651)                                               |
+| `components/SegmentedControl.tsx` tabs                                           | icon slot (#1956)                                               |
+| `components/TimelineDayNav.tsx` day arrows                                       | icon slot (the chevron)                                         |
+| `components/TimelineDayNav.tsx` day swipe                                        | the same chevron, driven by the component's own `useTransition` |
+| `components/PaginationControls.tsx` link-mode Prev/Next                          | overlay                                                         |
+| `components/TimelineFilterLink.tsx` chips, range pills, #2657 month fold headers | overlay                                                         |
+| `app/(app)/settings/audit/page.tsx` pager                                        | overlay                                                         |
+| `app/(app)/settings/notify-log/page.tsx` pager                                   | overlay                                                         |
 
 Everything else — cards, table rows, drill-downs, links inside a sentence, the
 ~100 files that import `next/link` directly — is covered by the floor below, on
@@ -191,8 +191,8 @@ The guard wraps `window.fetch` from `instrumentation-client.ts` and matches only
 a navigation RSC read — a GET carrying `RSC: 1` and no `Next-Router-Prefetch`.
 It retries on a bounded budget (400 ms → 1.2 s → 3 s), and if that is spent while
 someone is actually waiting on the navigation it HOLDS the promise instead of
-rejecting, and turns the indicator into "Couldn't load — check your connection"
-with a Retry. Rejecting is what Next converts into the hard exit, so not
+rejecting, and turns the indicator into "Couldn't load — check your
+connection." with a Retry. Rejecting is what Next converts into the hard exit, so not
 rejecting is the whole fix. The navigation is paused, not abandoned: Retry — or
 the browser reporting the connection back — resumes the same fetch, so the tap
 they already made is the tap that lands.

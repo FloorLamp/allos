@@ -144,8 +144,15 @@ export function PendingTextLink({
   children: ReactNode;
 }) {
   return (
-    <PendingLink href={href} label={label} className={className} testId={testId}>
-      {(pending) => <PendingOverlay pending={pending}>{children}</PendingOverlay>}
+    <PendingLink
+      href={href}
+      label={label}
+      className={className}
+      testId={testId}
+    >
+      {(pending) => (
+        <PendingOverlay pending={pending}>{children}</PendingOverlay>
+      )}
     </PendingLink>
   );
 }

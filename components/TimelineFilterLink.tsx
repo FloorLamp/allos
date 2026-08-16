@@ -162,7 +162,9 @@ export default function TimelineFilterLink({
       }}
       className={className}
     >
-      {(pending) => <PendingOverlay pending={pending}>{children}</PendingOverlay>}
+      {(pending) => (
+        <PendingOverlay pending={pending}>{children}</PendingOverlay>
+      )}
     </PendingLink>
   );
 }

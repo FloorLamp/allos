@@ -154,8 +154,9 @@ async function watchIndicator(page: Page) {
  *  down and rebuilt at the same URL. */
 async function markDocument(page: Page) {
   await page.evaluate(() => {
-    (window as unknown as { __allosSameDocument?: boolean }).__allosSameDocument =
-      true;
+    (
+      window as unknown as { __allosSameDocument?: boolean }
+    ).__allosSameDocument = true;
   });
   return async () =>
     page.evaluate(
