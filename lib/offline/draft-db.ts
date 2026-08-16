@@ -130,9 +130,18 @@ export async function getDraft(
 // So this ordering is kept on its own merits (the block above `putDraft`), not on that
 // story, and the cost that plausibly drives the remaining instability is addressed where
 // it actually is: `putDraft` no longer takes a separate write token, which halves the
-// database work a gated autosave does. If the spec still fails at a rate main does not,
-// the next investigation should start from "the flush is too slow or is being refused",
-// not from write ordering.
+// database work a gated autosave does.
+//
+// MEASURED AFTER THAT CHANGE: 80 consecutive passes, one worker, box load 2.6–6.3. AND
+// THAT DOES NOT SETTLE IT EITHER, which is the whole reason this block exists. At the
+// 1-in-40 rate previously observed, 80 trials miss the failure about 13% of the time;
+// 0/80 bounds the true rate at roughly 3.7% with 95% confidence, and 2.5% is inside that.
+// Against the earlier 1/40 it is p≈0.33 — no evidence of a difference in either
+// direction. A sample large enough to separate these hypotheses is not affordable here,
+// so the claim being made is the narrow one: no failure has been reproduced since, the
+// ordering earns its place on the reasoning above rather than on a fix it may never have
+// been, and if the spec fails again the investigation should start from "the flush is too
+// slow or is being refused", not from write ordering.
 
 /** Drop one form's draft — on successful submit, or on explicit discard. */
 export function deleteDraft(key: string): Promise<void> {

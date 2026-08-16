@@ -69,11 +69,16 @@ interface OfflineQueueApi {
   pending: number;
   // Persist an intent for later replay. `date` is the captured local date the write
   // lands on; `payload` is the flow's raw fields.
+  //
+  // ANSWERS WHETHER THE DEVICE ACTUALLY KEPT IT. It can say no — the write gate is closed
+  // because this device was logged out (#2908), or there is no IndexedDB at all (private
+  // mode, an embedded webview) — and a caller that ignores the answer tells someone
+  // "saved offline, will sync when you reconnect" about a write that was never recorded.
   enqueue: (
     flow: FlowKind,
     date: string,
     payload: IntentPayload
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   // Attempt to replay the whole queue now (safe to call redundantly).
   flush: () => Promise<void>;
 }
@@ -309,9 +314,13 @@ export default function OfflineQueueProvider({
     async (flow: FlowKind, date: string, payload: IntentPayload) => {
       // Stamp the write with the profile it's captured under (issue #599) so replay
       // attributes it correctly no matter which profile is active on reconnect.
-      await enqueueIntent(buildIntent(flow, date, payload, activeProfileId));
+      const kept = await enqueueIntent(
+        buildIntent(flow, date, payload, activeProfileId)
+      );
+      if (!kept) return false;
       await refreshCount();
       void registerBackgroundSync();
+      return true;
     },
     [refreshCount, activeProfileId]
   );
