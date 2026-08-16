@@ -71,7 +71,10 @@ test("an #activity-N deep link opens that row's record in the pane", async ({
     ""
   );
 
-  // A fresh navigation with the hash — the immutable Telegram-era vocabulary.
+  // A fresh DOCUMENT with the hash — how a Telegram-era link actually arrives.
+  // (A same-document hash hop can land before the view's hashchange listener
+  // attaches; a real deep link never does.)
+  await page.goto("about:blank");
   await page.goto(`/training?tab=log#activity-${targetId}`);
   const pane = page.getByTestId("training-log-reading-pane");
   await expect(pane.getByTestId("activity-pane-open")).toHaveAttribute(

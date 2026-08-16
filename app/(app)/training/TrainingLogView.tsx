@@ -716,14 +716,18 @@ export default function TrainingLogView({
   // The reading pane's record: found in the loaded window by id (the feed
   // already ships the full card + the day's merge targets, so the swap is
   // instant — no fetch). Cleared implicitly when the row leaves the window.
-  const selectedEntry = useMemo(() => {
-    if (selectedId == null) return null;
+  // A plain derivation — the compiler memoizes it (a manual useMemo here
+  // trips preserve-manual-memoization).
+  let selectedEntry: { date: string; card: TrainingLogCardData } | null = null;
+  if (selectedId != null) {
     for (const g of groups) {
       const c = g.cards.find((x) => x.activity.id === selectedId);
-      if (c) return { date: g.date, card: c };
+      if (c) {
+        selectedEntry = { date: g.date, card: c };
+        break;
+      }
     }
-    return null;
-  }, [groups, selectedId]);
+  }
 
   // Desktop-only ✕ inside the panel header; the mobile detail page has its own.
   const closeDetailButton = (
