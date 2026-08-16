@@ -90,17 +90,21 @@ export function templateKeyPath(): string {
 // delete node_modules/.cache/allos-db-tests.
 //
 // WHY A NAMED LIST AND NOT A CLOSURE, measured rather than assumed — and the
-// measurement does NOT come out the same for all five entries. ONE FIGURE, not
-// two: this comment used to carry "989" here and "~1000" eleven lines down for
-// the same measurement, and both were stale. A closure size is a count of the
-// repo that changes with every merge, so what is stated is the SHAPE it has,
-// which is what the argument below actually rests on:
+// measurement does NOT come out the same for all five entries.
+//
+// ONE FIGURE, AND ITS METHOD. This comment used to carry "989" here and "~1000"
+// eleven lines down for the same measurement, and neither matched. A closure size
+// is not a single number: counting every reachable `.ts` puts `lib/db.ts` near a
+// thousand, while a value-only walk that erases `import type` puts it in the low
+// hundreds, and the count moves with every merge either way. The TYPE-INCLUSIVE
+// count is the one this argument rests on, because a source-hash key would have to
+// hash a type-only import like any other file. So what is stated is the shape:
 //
 //   • `lib/db.ts`, `lib/migrations/boot-tasks.ts` and `lib/onboarding.ts` each
-//     transitively reach essentially all of `lib/` — around a thousand files at
-//     the time of writing — because `lib/` is one big import cycle. Keying on
-//     any of those closures rebuilds the template on nearly every edit a
-//     developer running this tier just made.
+//     transitively reach essentially all of `lib/` — on the order of a thousand
+//     files, type-only imports counted — because `lib/` is one big import cycle.
+//     Keying on any of those closures rebuilds the template on nearly every edit
+//     a developer running this tier just made.
 //   • `lib/password.ts` and `lib/standard-metric-seeds.ts` are LEAVES: the first
 //     imports only `node:crypto`, the second only a TYPE from `better-sqlite3`.
 //     Their closures are empty, so for those two a closure key would be exact and
