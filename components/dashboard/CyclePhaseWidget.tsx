@@ -4,9 +4,9 @@ import PeriodOfferButton from "@/components/cycle/PeriodOfferButton";
 import type { CycleControlState } from "@/lib/cycle-plausibility";
 import {
   CYCLE_PHASE_LABELS,
+  CYCLE_SUSPENSION_NOTES,
   FORECAST_CONFIDENCE_LABELS,
   type CycleForecast,
-  type CyclePhase,
 } from "@/lib/cycle";
 
 // Dashboard "Cycle phase" tile (issue #1221): "Cycle day N · <phase>" — a thin FORMATTER
@@ -42,19 +42,20 @@ import {
 //
 // It still never forecasts on its own: the only projection shown is the one the shared
 // forecast core produced, and the CTA state projects nothing at all.
+// The DAY AND PHASE now ride on `control` too (#2801). They used to be their own props,
+// filled by a second pair of derivation calls on the dashboard — the pair nobody handed
+// the pregnancy suspension to, which is how this tile went on saying "Cycle day 141 ·
+// Follicular" while its own forecast line had already withdrawn. One state object in,
+// nothing derivable from anywhere else.
 export default function CyclePhaseWidget({
-  day,
-  phase,
   forecast,
   control,
 }: {
-  // Null together, before any recorded period — the card's CTA state.
-  day: number | null;
-  phase: CyclePhase | null;
   forecast?: CycleForecast | null;
-  // The ONE offer state, resolved once on the server. Never recomputed here.
+  // The ONE state, resolved once on the server. Never recomputed here.
   control: CycleControlState;
 }) {
+  const { day, phase, suspension } = control;
   const projected = forecast?.kind === "forecast" ? forecast : null;
   const derived = day != null && phase != null;
   return (
@@ -89,6 +90,16 @@ export default function CyclePhaseWidget({
                 </div>
               )}
             </>
+          ) : suspension ? (
+            // Not an empty state: the CTA copy below would tell someone with a recorded
+            // pregnancy to "log your period to start tracking". Say the pause instead —
+            // the same sentence the Cycle page's own hero says (#2801).
+            <div
+              className="text-sm text-slate-500 dark:text-slate-400"
+              data-testid="cycle-phase-suspended"
+            >
+              {CYCLE_SUSPENSION_NOTES[suspension]}
+            </div>
           ) : (
             <div
               className="text-sm text-slate-500 dark:text-slate-400"

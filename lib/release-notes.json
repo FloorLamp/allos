@@ -1,6 +1,111 @@
 {
   "days": [
     {
+      "date": "2026-08-16",
+      "entries": [
+        {
+          "pr": 2935,
+          "title": "Integration errors no longer store or show the credentials they were carrying",
+          "kind": "security",
+          "issues": [2820, 2898]
+        }
+      ]
+    },
+    {
+      "date": "2026-08-15",
+      "entries": [
+        {
+          "pr": 2754,
+          "title": "Suggestions can add soluble fiber when your LDL or ApoB is high",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2755,
+          "title": "Olive oil and avocado join the foods the app encourages",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2788,
+          "title": "Fiber and gut symptoms share one panel, so you can read them against each other",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2808,
+          "title": "Two layout problems on the nutrition page's Food tab are fixed",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2866,
+          "title": "An autosave that fails while the app is updating retries itself and says what it is doing",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2884,
+          "title": "The recovery activity type is now called mobility",
+          "issues": []
+        },
+        {
+          "pr": 2891,
+          "title": "Strength coverage counts the sets the strength charts do: warm-ups out, upper chest merged",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 2892,
+          "title": "Routines and Goals become one Plan tab, with a single home for the weekly routine",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2893,
+          "title": "Training opens on Overview, with its four tabs in a settled order and a readable width",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2894,
+          "title": "The fitness check battery moves to its own page instead of a tab",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2895,
+          "title": "Analyze: familiar lifts collapse the guide, scoped goals drop the name, phones get details first",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2907,
+          "title": "An illness episode links back to the records that belong to it",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 2925,
+          "title": "The growth percentile on the passport is computed the same way as the growth charts",
+          "kind": "fix",
+          "issues": [2802, 2803, 2804]
+        },
+        {
+          "pr": 2928,
+          "title": "Children's blood pressure flags use pediatric percentiles, and a lab's printed range can flag what we don't band",
+          "kind": "fix",
+          "issues": [2794, 2799]
+        },
+        {
+          "pr": 2929,
+          "title": "Medication pages carry their own safety notices, today reads as pending, and magnesium counts elemental mass",
+          "kind": "fix",
+          "issues": [2795, 2796, 2798]
+        }
+      ]
+    },
+    {
       "date": "2026-08-14",
       "entries": [
         {

@@ -12,7 +12,9 @@
 // Synthetic fixtures only (no PHI).
 
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
+import { setProfileBirthdate } from "@/lib/settings";
 import { readForProfiles } from "@/lib/scope";
 import { getDentalProcedures, getOpticalPrescriptions } from "@/lib/queries";
 import { getRecordsSpecialtyRelevanceForView } from "@/lib/queries/nav-relevance";
@@ -114,8 +116,38 @@ describe("Specialty pane gate follows the VIEW, not the actor (#2557)", () => {
     const relevance = getRecordsSpecialtyRelevanceForView(solo, [solo]);
     expect(relevance.dental).toBe(true);
     expect(relevance.vision).toBe(false);
-    // Unknown age → the life-stage bit is permissive (isMinor's positive-match-only
-    // policy), and it is read from the ACTING profile, never folded.
+    // Unknown age → BOTH life-stage bits are permissive (the positive-match-only
+    // policy), and both are read from the ACTING profile, never folded.
     expect(relevance.substanceUse).toBe(true);
+    expect(relevance.mentalHealth).toBe(true);
+  });
+
+  // #2807 — the second life-stage bit, through the real gather. The pure truth table is
+  // unit-tested (records-specialty-nav); what this pins is that it reads the ACTING
+  // profile's birthdate, at a line of its own.
+  it("gathers the mental-health bit from the acting profile's age, below the substance-use line", () => {
+    const toddler = newProfile("Gate Toddler");
+    setProfileBirthdate(toddler, shiftDateStr(today(toddler), -30 * 22));
+    const forToddler = getRecordsSpecialtyRelevanceForView(toddler, [toddler]);
+    expect(forToddler.mentalHealth).toBe(false);
+    expect(forToddler.substanceUse).toBe(false);
+
+    const teen = newProfile("Gate Teen");
+    setProfileBirthdate(teen, shiftDateStr(today(teen), -365 * 15));
+    const forTeen = getRecordsSpecialtyRelevanceForView(teen, [teen]);
+    // The whole point of a second line: PHQ-9 is adolescent-validated, AUDIT is not.
+    expect(forTeen.mentalHealth).toBe(true);
+    expect(forTeen.substanceUse).toBe(false);
+  });
+
+  it("does not let an adult IN VIEW unhide the mental-health pane for a toddler actor", () => {
+    const toddler = newProfile("Gate Toddler Caregiven");
+    setProfileBirthdate(toddler, shiftDateStr(today(toddler), -30 * 22));
+    const grownup = newProfile("Gate Grownup");
+    setProfileBirthdate(grownup, shiftDateStr(today(grownup), -365 * 40));
+    expect(
+      getRecordsSpecialtyRelevanceForView(toddler, [toddler, grownup])
+        .mentalHealth
+    ).toBe(false);
   });
 });

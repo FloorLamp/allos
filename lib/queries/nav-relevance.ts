@@ -18,7 +18,7 @@ import {
   type NavRelevance,
   type SpecialtyRelevance,
 } from "../nav-relevance";
-import { isMinor } from "../life-stage";
+import { isMentalHealthScreeningRelevant, isMinor } from "../life-stage";
 import { hasSleepData } from "./sleep";
 
 // The two Specialty DATA probes. Hoisted because #2557 made them a per-profile read
@@ -90,22 +90,25 @@ export function getNavRelevance(profileId: number): NavRelevance {
   };
 }
 
-// The Records › Specialty section-visibility bitset (#1079 + #1174/#1175). Vision
-// and Dental gate on data presence (from getNavRelevance); Substance use gates on
-// LIFE STAGE — its AUDIT/DAST instruments are adult-validated, so it hides for a
-// KNOWN minor (adult OR unknown age → shown, matching isMinor's positive-match-only
-// policy). Computed ONCE here so the shared records shell (tab strip), the bare
-// Specialty redirect, and the substance-use route re-gate all read the SAME predicate
-// (#221 — one question, one computation). Mental health/Skin carry no bit (always
-// shown); Mental health is deliberately NOT life-stage gated (adolescent-validated).
+// The Records › Specialty section-visibility bitset (#1079 + #1174/#1175 + #2807).
+// Vision and Dental gate on data presence (from getNavRelevance); Substance use and
+// Mental health gate on LIFE STAGE, each at the line its own instruments are validated
+// to — AUDIT/DAST are adult-validated so substance use hides for a KNOWN minor, PHQ-9/
+// GAD-7 are adolescent-validated so mental health hides only for a KNOWN infant/child.
+// Both follow the same positive-match-only policy (unknown age → shown). Computed ONCE
+// here so the shared records shell (tab strip), the bare Specialty redirect, and the two
+// route re-gates read the SAME predicates (#221 — one question, one computation). Skin
+// and Hearing carry no bit (always shown).
 export function getRecordsSpecialtyRelevance(
   profileId: number
 ): SpecialtyRelevance {
   const nav = getNavRelevance(profileId);
+  const age = getProfileAge(profileId);
   return {
     vision: nav.vision,
     dental: nav.dental,
-    substanceUse: !isMinor(getProfileAge(profileId)),
+    substanceUse: !isMinor(age),
+    mentalHealth: isMentalHealthScreeningRelevant(age),
   };
 }
 

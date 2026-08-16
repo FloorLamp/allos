@@ -211,7 +211,7 @@ describe("the cycle offer has ONE derivation and three renderers (#1892 / #221)"
     ];
     for (const [name, periods, expected] of cases) {
       // ONE server-resolved state; each surface is handed this exact object.
-      const state = cycleControlState(periods, "2026-04-20");
+      const state = cycleControlState(periods, "2026-04-20", null);
       expect(cycleOffer(state)?.label ?? null, name).toBe(expected);
     }
   });

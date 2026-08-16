@@ -26,7 +26,7 @@ import {
 } from "@/lib/growth-metrics";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
-import { listCyclePeriods } from "@/lib/cycle-store";
+import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import {
   cycleControlState,
   type CycleControlState,
@@ -303,7 +303,11 @@ export async function loadQuickEntry(
     }
     return {
       form: "cycle",
-      state: cycleControlState(listCyclePeriods(profile.id), date),
+      state: cycleControlState(
+        listCyclePeriods(profile.id),
+        date,
+        getForecastSuspension(profile.id)
+      ),
     };
   }
 

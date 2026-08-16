@@ -29,6 +29,7 @@ import {
 import { collectUpcoming } from "@/lib/queries/upcoming";
 import { poolRefillSignalKey } from "@/lib/refill-nudge";
 import { seedProfile, type SeededProfile } from "./fixtures";
+import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 
 let alice: SeededProfile;
 let bruno: SeededProfile;
@@ -198,8 +199,12 @@ describe("pooled decrement — every taker draws from ONE count", () => {
     expect(
       poolMembers(supplyId).find((m) => m.itemId === a.itemId)?.doseAmounts
     ).toEqual(["1 tablet"]);
-    expect(poolIdsForProfiles([alice.profileId])).toContain(supplyId);
-    expect(poolIdsForProfiles([bruno.profileId])).toContain(supplyId);
+    expect(poolIdsForProfiles(authorized([alice.profileId]))).toContain(
+      supplyId
+    );
+    expect(poolIdsForProfiles(authorized([bruno.profileId]))).toContain(
+      supplyId
+    );
   });
 
   it("refills the POOL from a linked item's one-tap refill, not the item", () => {
@@ -553,18 +558,18 @@ describe("what the cabinet shows a caller (#1522)", () => {
     const both = [alice.profileId, bruno.profileId];
     const union = [
       ...new Set([
-        ...poolIdsForProfiles([alice.profileId]),
-        ...poolIdsForProfiles([bruno.profileId]),
+        ...poolIdsForProfiles(authorized([alice.profileId])),
+        ...poolIdsForProfiles(authorized([bruno.profileId])),
       ]),
     ].sort((a, b) => a - b);
-    expect(poolIdsForProfiles(both)).toEqual(union);
+    expect(poolIdsForProfiles(authorized(both))).toEqual(union);
     expect(union.length).toBeGreaterThan(1);
     // An empty accessible set still short-circuits to nothing, with no read at all.
     const [distinctSupply] = countPrepareSet(
       /SELECT DISTINCT supply_id FROM intake_items/
     );
-    expect(poolIdsForProfiles([])).toEqual([]);
-    poolIdsForProfiles(both);
+    expect(poolIdsForProfiles(authorized([]))).toEqual([]);
+    poolIdsForProfiles(authorized(both));
     expect(distinctSupply.calls()).toBe(1);
   });
 });

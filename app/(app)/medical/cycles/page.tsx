@@ -13,16 +13,21 @@ import {
   getSymptomLogOrder,
 } from "@/lib/queries";
 import { getUnitPrefs } from "@/lib/settings";
-import { getCycleForecast, listCyclePeriods } from "@/lib/cycle-store";
+import {
+  getCycleForecast,
+  getForecastSuspension,
+  listCyclePeriods,
+} from "@/lib/cycle-store";
 import { getTtcState } from "@/lib/ttc-store";
 import { getProfileAge } from "@/lib/settings";
 import { isMinor } from "@/lib/life-stage";
+import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import {
-  cyclePhaseOnDate,
   cycleLengths,
   cycleStats,
   CYCLE_PHASE_LABELS,
   CYCLE_REGULARITY_VARIATION_DAYS,
+  CYCLE_SUSPENSION_NOTES,
 } from "@/lib/cycle";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import AddEntryPanel from "@/components/AddEntryPanel";
@@ -56,12 +61,39 @@ const REGULARITY_COPY: Record<string, string> = {
 export default async function CyclePage() {
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
+  // Life-stage / applicability gate (#2807, extending #1174's ruling past substance use).
+  // The nav has always computed `cycleTrackingRelevant` for this entry — a 22-month-old
+  // profile does not get the Cycle link — but every nav gate is COSMETIC by its own
+  // header, so a direct URL still served a toddler the full tracking UI with a
+  // "Period started today" button on it. Same predicate, now read by the page.
+  //
+  // An EMPTY STATE rather than the substance-use redirect, because the predicate's own
+  // `hasCycleRows` escape hatch means "irrelevant" here can be a profile whose sex or
+  // reproductive status simply isn't filled in yet. Bouncing them would leave no way to
+  // start tracking; this says what to change instead, and any profile with a single
+  // logged period keeps the whole page (data always wins).
+  if (!getNavRelevance(profile.id).cycle) {
+    return (
+      <PageContainer width="reading" className="mx-auto space-y-6">
+        <PageHeader
+          title="Cycle"
+          subtitle="Log your period, see the derived phase and cycle-length trends, and a confidence-framed projection of the next one."
+        />
+        <div data-testid="cycle-not-applicable">
+          <EmptyState message="Cycle tracking doesn't apply to this profile. It turns on once a period is logged, or when the profile's sex and reproductive status are set in Settings → Profile." />
+        </div>
+      </PageContainer>
+    );
+  }
   const periods = listCyclePeriods(profile.id);
+  // Whether a cycle applies AT ALL right now (#2801) — pregnancy or an explicit
+  // postmenopausal status. Already gathered for the forecast; now also the input that
+  // stops the hero contradicting the forecast card below it.
+  const suspension = getForecastSuspension(profile.id);
   // The ONE control-state computation (#1681): which quick action may be offered, the
-  // derived state line, and whether an open period has outrun the plausible maximum. The
-  // client component renders it and decides nothing.
-  const control = cycleControlState(periods, todayStr);
-  const currentPhase = cyclePhaseOnDate(periods, todayStr, todayStr);
+  // derived day/phase and state line, and whether an open period has outrun the plausible
+  // maximum. The client component renders it and decides nothing.
+  const control = cycleControlState(periods, todayStr, suspension);
   const stats = cycleStats(periods);
   const lengths = cycleLengths(periods); // oldest-first
   const trendData = lengths.map((l) => ({ date: l.start, value: l.days }));
@@ -89,7 +121,7 @@ export default async function CyclePage() {
               className="text-lg font-semibold text-slate-800 dark:text-slate-100"
               data-testid="cycle-current-phase"
             >
-              {currentPhase ? CYCLE_PHASE_LABELS[currentPhase] : "—"}
+              {control.phase ? CYCLE_PHASE_LABELS[control.phase] : "—"}
             </div>
           </div>
           <div className="text-right text-xs text-slate-500 dark:text-slate-400">
@@ -98,6 +130,20 @@ export default async function CyclePage() {
               : "No period currently open"}
           </div>
         </div>
+        {/* The pause, said where the phase would be (#2801). This card used to assert
+            "Follicular / Day 141" for a profile 20 weeks pregnant while the forecast
+            card directly below it said the projection was paused — the same page
+            disagreeing with itself, because only the forecast was ever handed the
+            suspension. The day and phase are now suppressed at the source and this
+            sentence takes their place. */}
+        {control.suspension && (
+          <p
+            className="text-sm text-slate-600 dark:text-slate-300"
+            data-testid="cycle-state-suspended"
+          >
+            {CYCLE_SUSPENSION_NOTES[control.suspension]}
+          </p>
+        )}
         {/* A period left open past the plausible maximum (#1682): the phase above has
             already stopped claiming menstrual, and we ASK rather than closing the record
             ourselves — the record is the user's, and only their tap writes to it.

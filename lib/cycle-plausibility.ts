@@ -30,6 +30,8 @@ import {
   cyclePhaseOnDate,
   isStaleOpenPeriod,
   type CyclePeriod,
+  type CyclePhase,
+  type ForecastSuspension,
 } from "./cycle";
 
 // How recently a period must have ENDED for the one-tap "Still bleeding" reopen to apply
@@ -112,10 +114,19 @@ export function canReopenLastPeriodOn(
 // while the parameter really is today, which is why it is NAMED today: passing
 // `cyclePhaseOnDate(periods, date, date)` under a parameter called `date` reads like a
 // horizon check and is none — it can never refuse whatever it is handed.
+//
+// `suspension` — the gathered "does a cycle apply at all" answer (#2801). Null under a
+// suspension: cycleDayOnDate counts elapsed days from the last logged start and knows
+// nothing about why no next period arrived, so a profile 20 weeks pregnant read
+// "Day 141 · Follicular" off a period that ended before conception. It is a REQUIRED
+// parameter rather than one defaulting to null because the bug was a caller that never
+// asked — a default would leave the next surface free to make the same omission silently.
 export function cycleStateLine(
   periods: CyclePeriod[],
-  today: string
+  today: string,
+  suspension: ForecastSuspension | null
 ): string | null {
+  if (suspension != null) return null;
   const day = cycleDayOnDate(periods, today, today);
   const phase = cyclePhaseOnDate(periods, today, today);
   if (day == null || phase == null) return null;
@@ -131,8 +142,19 @@ export interface CycleControlState {
   // The open period has outrun MAX_PLAUSIBLE_PERIOD_DAYS: prompt for the real end date
   // rather than claiming menstrual (#1682 fix a).
   staleOpenPeriod: boolean;
-  // "Day 6 · Follicular", or null before any history.
+  // The derived cycle day and phase for today — null together before any history, and
+  // null together under a suspension (#2801). Carried HERE so the Cycle hero and the
+  // dashboard tile read the suppressed pair rather than each calling the raw
+  // cycleDayOnDate/cyclePhaseOnDate, which is exactly how the hero ended up contradicting
+  // the forecast card beside it.
+  day: number | null;
+  phase: CyclePhase | null;
+  // "Day 6 · Follicular", or null before any history / under a suspension.
   stateLine: string | null;
+  // Why the cycle state is suspended, or null. A renderer says THIS instead of a day and
+  // phase — the pause is a fact about the profile, not an absence of data, so the empty
+  // "log your period to start tracking" copy would be a lie here.
+  suspension: ForecastSuspension | null;
   // Offer "Period started today".
   canStart: boolean;
   // Offer the one-tap "Still bleeding" reopen.
@@ -145,18 +167,40 @@ export interface CycleControlState {
 // the parameter `date` (as it was until #2613) invited a caller to hand it an arbitrary
 // day, at which point the phase inside `cycleStateLine` would be answering about a day
 // nobody has lived — the very thing #2613 closed on the Timeline.
+//
+// `suspension` (#2801) is the profile's gathered pregnancy/postmenopausal state
+// (lib/cycle-store.getForecastSuspension), and it governs BOTH halves of this object:
+//
+//   • the derived state — day, phase and the line formatted from them are null. They are
+//     retrospective derivations over a period log, so with no next period logged they run
+//     forward forever; the pregnancy is the reason no next period arrived, and the page
+//     already knew it (the forecast card on the same page said "Paused while a pregnancy
+//     is recorded" beside a hero asserting Day 141).
+//   • the OFFER — under a recorded pregnancy neither "Period started today" nor the
+//     "Still bleeding" reopen is offered: both record menstrual bleeding, which is the one
+//     thing this state says is not happening. `postmenopausal` deliberately keeps them:
+//     bleeding after menopause is exactly the event a user should be able to record, and
+//     recording it is also how they'd discover the status needs correcting.
+//
+// Ending an ALREADY-OPEN period stays offered under every suspension — that tap closes a
+// record rather than making a claim, and refusing it would strand the row open.
 export function cycleControlState(
   periods: CyclePeriod[],
-  today: string
+  today: string,
+  suspension: ForecastSuspension | null
 ): CycleControlState {
   const open = openPeriodIn(periods);
+  const offersPeriod = suspension !== "pregnancy";
   return {
     openPeriodId: open?.id ?? null,
     openPeriodStart: open?.period_start ?? null,
     staleOpenPeriod: open != null && isStaleOpenPeriod(open, today),
-    stateLine: cycleStateLine(periods, today),
-    canStart: canStartPeriodOn(periods, today),
-    canReopen: canReopenLastPeriodOn(periods, today),
+    day: suspension == null ? cycleDayOnDate(periods, today, today) : null,
+    phase: suspension == null ? cyclePhaseOnDate(periods, today, today) : null,
+    stateLine: cycleStateLine(periods, today, suspension),
+    suspension,
+    canStart: offersPeriod && canStartPeriodOn(periods, today),
+    canReopen: offersPeriod && canReopenLastPeriodOn(periods, today),
   };
 }
 

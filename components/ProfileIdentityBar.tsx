@@ -86,7 +86,7 @@ export default function ProfileIdentityBar({
   profiles: SessionProfile[];
   actingProfileId: number;
   // The persisted, access-validated view-set (#1096).
-  viewIds: number[];
+  viewIds: readonly number[];
   // Profiles held READ-only by this login (#33) — the per-row hint in the panel.
   readOnlyIds: number[];
   // The ACTING profile is read-only for this login (#33). The hint rides the bar

@@ -18,7 +18,11 @@ vi.mock("@/lib/auth", async () => vi.importActual("@/lib/auth"));
 import { db } from "@/lib/db";
 import type { CurrentSession } from "@/lib/auth";
 import { resolveScope, stampSubjects } from "@/lib/scope";
-import { profileIdsIn } from "@/lib/cross-profile";
+import {
+  authorizedProfileSubset,
+  isSealedAuthorizedProfileIds,
+  profileIdsIn,
+} from "@/lib/cross-profile";
 
 let seq = 0;
 function mkLogin(role: "admin" | "member" = "member"): number {
@@ -237,16 +241,95 @@ describe("set-based cross-profile SQL (profileIdsIn) confines to scope.ids", () 
   });
 
   it("an empty scope set matches nothing (IN (NULL)), never everything", () => {
+    const member = mkLogin("member");
     const a = mkProfile("Solo");
+    grant(member, a);
     db.prepare(
       "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, '2026-01-01', 70)"
     ).run(a);
+    // The empty capability comes from the boundary too — narrowing a real scope to
+    // nobody — because #2898 leaves no way to conjure one out of a bare `[]`.
+    const scope = resolveScope(sessionFor(member, "member", a));
+    const nobody = authorizedProfileSubset(scope.ids, []);
     const rows = db
       .prepare(
-        `SELECT profile_id AS pid FROM body_metrics WHERE profile_id IN ${profileIdsIn([])}`
+        `SELECT profile_id AS pid FROM body_metrics WHERE profile_id IN ${profileIdsIn(nobody)}`
       )
       .all() as { pid: number }[];
     expect(rows).toEqual([]);
+  });
+});
+
+// #2898 — the id list a set-based reader receives is a CAPABILITY, and these are the
+// ways to hold one. The compile-time half (a plain `number[]` is rejected) is pinned
+// with @ts-expect-error in lib/__tests__/cross-profile.test.ts; this half proves the
+// runtime sets the boundaries actually produce.
+describe("authorized profile-id sets: what each boundary mints", () => {
+  it("the full scope, the view scope, and a checked subset all confine to grants", () => {
+    const member = mkLogin("member");
+    const a = mkProfile("Set A");
+    const b = mkProfile("Set B");
+    const ungranted = mkProfile("Set X");
+    grant(member, a);
+    grant(member, b);
+
+    // FULL SCOPE — every granted profile, and nothing else.
+    const scope = resolveScope(sessionFor(member, "member", a));
+    expect([...scope.ids]).toEqual([a, b]);
+
+    // VIEW SCOPE — the persisted view set, already ∩ accessible in resolveScope.
+    const viewed = resolveScope(sessionFor(member, "member", a), [b]);
+    expect([...viewed.viewIds]).toEqual([b]);
+
+    // CHECKED SUBSET — narrowing an authorized parent keeps the capability.
+    expect([...authorizedProfileSubset(scope.ids, [b])]).toEqual([b]);
+
+    // AND REFUSES TO WIDEN: an id the parent does not hold is dropped, so a caller
+    // cannot smuggle an ungranted profile in through the subset operation.
+    expect([...authorizedProfileSubset(scope.ids, [ungranted])]).toEqual([]);
+    expect([...authorizedProfileSubset(scope.ids, [b, ungranted])]).toEqual([
+      b,
+    ]);
+  });
+
+  it("the DEFAULT view derives too — an unreachable acting profile is not authorized", () => {
+    // #2935 review, finding 3. The default (no persisted view set) branch used to mint
+    // a one-element capability over `actingProfileId` with no membership test, twelve
+    // lines below the block that re-validates ownProfileId against exactly this set.
+    // A session naming a profile the login cannot reach then produced ids [A,B],
+    // ownProfileId null — and viewIds [D] wearing the authorized label.
+    const member = mkLogin("member");
+    const a = mkProfile("Reachable A");
+    const b = mkProfile("Reachable B");
+    const unreachable = mkProfile("Unreachable D");
+    grant(member, a);
+    grant(member, b);
+
+    const scope = resolveScope(sessionFor(member, "member", unreachable));
+    expect([...scope.ids]).toEqual([a, b]);
+    expect(scope.ownProfileId).toBeNull();
+    // The view now derives from the accessible set like everything else, so it cannot
+    // name D. Empty is the honest answer, and resolveSessionToken already stops this
+    // session from existing — the guard is for when it somehow does.
+    expect([...scope.viewIds]).toEqual([]);
+    expect(scope.viewIds).not.toContain(unreachable);
+
+    // A reachable acting profile is unaffected: the default view is still exactly it.
+    const ok = resolveScope(sessionFor(member, "member", a));
+    expect([...ok.viewIds]).toEqual([a]);
+  });
+
+  it("every set a boundary hands out is sealed, so it survives the chokepoint", () => {
+    const member = mkLogin("member");
+    const a = mkProfile("Sealed A");
+    grant(member, a);
+    const scope = resolveScope(sessionFor(member, "member", a));
+    // Both sets a page reads off the scope, and a narrowing of one, reach a query
+    // without tripping the runtime guard #2935 added.
+    expect(isSealedAuthorizedProfileIds(scope.ids)).toBe(true);
+    expect(isSealedAuthorizedProfileIds(scope.viewIds)).toBe(true);
+    expect(profileIdsIn(scope.ids)).toBe("(?)");
+    expect(profileIdsIn(authorizedProfileSubset(scope.ids, [a]))).toBe("(?)");
   });
 });
 

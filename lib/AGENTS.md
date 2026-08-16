@@ -7,9 +7,14 @@ These instructions apply to business logic and data access under `lib/`.
 - Single-profile business functions take `profileId` as their first argument.
 - Every SQL statement touching a profile-owned table filters by `profile_id`;
   child tables scope through a join to their parent.
-- Cross-profile readers take already-authorized `ids: number[]` first and do not
+- Cross-profile readers take an `AuthorizedProfileIds` set first and do not
   import `lib/auth`. Use `profileIdsIn(ids)` in a registered cross-profile SQL
   module.
+- Mint that set at an authorization boundary (`scope.ids`, `scope.viewIds`,
+  `accessibleProfileIdsForLogin`, `writableProfileIdsForLogin`), or narrow one
+  with `authorizedProfileSubset`. A cast is refused at runtime, not just typed.
+- Reading pools/rows for ONE profile stays single-profile `profile_id = ?` SQL.
+  Do not manufacture a one-element authorized set to reach a set-based reader.
 - Add new profile-owned tables to `lib/owned-tables.ts`.
 
 ## Shared models
