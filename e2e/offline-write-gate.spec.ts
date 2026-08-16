@@ -62,6 +62,20 @@ import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 // Every test below that asserts "nothing was written" says how it knows something would
 // have been.
 //
+// AND THE FIXTURE CAN BE VACUOUS TOO — a level up from an assertion, and it cost a whole
+// round to learn. Every test here HOLDS THE LOGOUT POST OPEN, because the window they were
+// written for is the one where the page is still alive and authenticated. That made
+// sixteen green tests structurally unable to reach the case where the logout ANSWERS:
+// Next rejects the client promise of a redirecting Server Action on purpose, so the
+// `catch` added to undo a FAILED logout ran on every successful one too, re-opened the
+// gate behind a destroyed session, and left a surviving tab writing PHI. Not one
+// assertion was wrong; the SETUP could not reach the case. R-A2 runs past the POST, and
+// it fails against that defect on both of its assertions — the gate itself, and a draft
+// typed after the logout landed surviving into the next login.
+//
+// The rule that falls out: when a fixture freezes something to make a window observable,
+// something else has to observe that window CLOSING.
+//
 // NO TEST HERE MAY NAME THE MEDICATION IT TAPS. The worker's SQLite database is shared by
 // every test that runs on that worker, and `offline-snapshots.spec.ts`'s queued-dose test
 // taps the seeded Sertraline offline and then reconnects — so whether its replay lands
@@ -762,4 +776,77 @@ test("R-C — a STALE second tab does not erase the switched-to profile's snapsh
     kinds,
     "a document out of step with the server erased the store anyway"
   ).toContain("medication-list");
+});
+
+test("R-A2 — a logout that SUCCEEDS still ends every lane, past the POST", async ({
+  page,
+  context,
+}: {
+  page: Page;
+  context: BrowserContext;
+}) => {
+  test.slow();
+
+  // EVERY OTHER TEST IN THIS FILE HOLDS THE LOGOUT POST OPEN, and that is a fixture
+  // constraining the world to the interval in which a mistake was invisible. It is the
+  // vacuity class one level up from an assertion: not "this expect cannot fail" but "this
+  // SETUP cannot reach the case".
+  //
+  // The case it could not reach: `logoutAction` ends in `redirect("/login")`, and Next
+  // rejects the client promise of a redirecting Server Action ON PURPOSE — its own
+  // comment in `server-action-reducer.js` says the promise is rejected "so that it's
+  // handled by RedirectBoundary as we won't have a valid action result to resolve the
+  // promise with". So a `catch` around the logout runs on the SUCCESS path too, and the
+  // undo written for a failed logout undid every logout there was. Sixteen green tests of
+  // this window did not see it, because in all sixteen the POST had not answered yet.
+  //
+  // So this one lets the logout LAND, and then asks whether the gate is still shut.
+  await login(page);
+
+  // A second tab, mounted before the logout and still mounted after it — the surviving
+  // document that a re-opened gate hands the device back to.
+  const tabB = await context.newPage();
+  await tabB.goto("/training?tab=log");
+  await hydratedClick(
+    tabB,
+    tabB.getByRole("main").getByRole("button", { name: "New activity" })
+  );
+  await expect(tabB.getByTestId("activity-form")).toBeVisible();
+
+  // NON-VACUITY CONTROL, and it is doing real work: it proves the draft lane is live in
+  // this tab, that the 600ms autosave debounce lands, and that the selector below is the
+  // one that writes. Without it, "no draft afterwards" is satisfied by a form that never
+  // saved one in the first place.
+  await tabB
+    .getByPlaceholder(/What did you do/)
+    .fill("Gate probe control draft");
+  await expect
+    .poll(() => storedRows(tabB, "drafts"), { timeout: 15_000 })
+    .not.toEqual([]);
+
+  // The logout, at full speed, with nothing held.
+  await page.goto("/");
+  await page.getByRole("button", { name: "Log out" }).click();
+  await page.waitForURL(/\/login/, { timeout: 30_000 });
+
+  // The wipe landed, observed from the OTHER document — one database, two tabs.
+  await expect
+    .poll(() => storedRows(tabB, "drafts"), { timeout: 15_000 })
+    .toEqual([]);
+
+  // THE FINDING, READ STRAIGHT OFF THE GATE. A logout that worked must leave this shut.
+  expect(
+    await gateRow(tabB),
+    "the gate was re-opened by a logout that SUCCEEDED"
+  ).toMatchObject({ sessionClosed: true });
+
+  // And the consequence, which is what the contract in lib/offline/draft-db.ts is about:
+  // "the next login must never be offered the previous one's half-typed workout."
+  await tabB
+    .getByPlaceholder(/What did you do/)
+    .fill("Gate probe after the logout landed");
+  await tabB.waitForTimeout(4_000); // waitfortimeout-ok: absence — several times the 600ms autosave debounce that would land the draft
+
+  expect(await storedRows(tabB, "drafts")).toEqual([]);
+  await tabB.close();
 });

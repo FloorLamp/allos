@@ -23,7 +23,6 @@ import {
   closeSnapshots,
   defaultGate,
   gateAllows,
-  LOGOUT_SETTLE_MS,
   openSessionAs,
   openSessionForDocument,
   openSnapshots,
@@ -78,29 +77,18 @@ const LANES: readonly WriteLane[] = ["snapshots", "queue", "drafts"];
 const THIS_SESSION = "session key 1";
 const NEXT_SESSION = "session key 2";
 
-// A fixed device clock. Every close below happens AT it, and every re-open is measured
-// from it, so "inside the logout window" and "long after it" are stated rather than timed.
-const CLICKED_LOG_OUT = 1_700_000_000_000;
-
 function at(gate: WriteGate): number {
   return gate.generation;
 }
 
-/** A gate as logout leaves it, at the moment Log out was pressed. */
-function closeAt(
-  gate: WriteGate = defaultGate(),
-  now: number = CLICKED_LOG_OUT
-): WriteGate {
-  return closeSession(now)(gate);
+/** A gate as logout leaves it. */
+function closeAt(gate: WriteGate = defaultGate()): WriteGate {
+  return closeSession(gate);
 }
 
-/** A gate as a live document of `key` leaves it, `now` after that click. */
-function openFor(
-  key: string,
-  gate: WriteGate = defaultGate(),
-  now: number = CLICKED_LOG_OUT
-): WriteGate {
-  return openSessionAs(key, now)(gate);
+/** A gate as a live document of `key` leaves it. */
+function openFor(key: string, gate: WriteGate = defaultGate()): WriteGate {
+  return openSessionAs(key)(gate);
 }
 
 describe("gateAllows — the one decision every device-local PHI write asks", () => {
@@ -296,43 +284,24 @@ describe("a logout that never landed — the close is a bet, and it can be lost"
     expect(gateAllows(recovered, "queue", at(recovered))).toBe(true);
   });
 
-  it("a same-session document still refuses INSIDE the logout window", () => {
-    // The control for the test below, and the R2b property restated as a clock: while the
-    // POST could still land, a document of this session is racing its own logout and must
-    // be refused however plainly authenticated it is.
+  it("a same-session document is refused however long it has been", () => {
+    // NO CLOCK, and the reversal is the finding. A previous version admitted a same-key
+    // document once it had outlasted a 30-second bound, to recover a closer destroyed
+    // mid-POST. The bound was asked once per DOCUMENT LOAD (the re-open runs in a
+    // `[deviceSessionKey]` effect), so it usually did nothing in the very case it existed
+    // for; its stated justification — that no document waits half a minute without its
+    // failure path running — was false of a hung POST; and a clock that jumped FORWARD
+    // walked a tab loading inside a live logout straight past it.
+    //
+    // So the close now ends in exactly two ways: a different session, or the closer
+    // undoing it on a failure the SERVER confirmed. Elapsed time is not one of them.
     const closed = closeAt(openFor(THIS_SESSION));
-    const inside = openFor(
-      THIS_SESSION,
-      closed,
-      CLICKED_LOG_OUT + LOGOUT_SETTLE_MS - 1
-    );
-    expect(inside.sessionClosed).toBe(true);
-    expect(gateAllows(inside, "queue", at(inside))).toBe(false);
-  });
-
-  it("a same-session document re-opens once it has plainly OUTLASTED that window", () => {
-    // The case the closer cannot cover: its document was destroyed mid-POST, so no
-    // failure path ran. A form-action POST dies with its document, so that logout can
-    // never land — and a session still being served the authenticated app this long
-    // afterwards did not log out.
-    const closed = closeAt(openFor(THIS_SESSION));
-    const later = openFor(
-      THIS_SESSION,
-      closed,
-      CLICKED_LOG_OUT + LOGOUT_SETTLE_MS
-    );
-    expect(later.sessionClosed).toBe(false);
+    let gate = closed;
+    for (let i = 0; i < 20; i += 1) gate = openFor(THIS_SESSION, gate);
+    expect(gate.sessionClosed).toBe(true);
     for (const lane of LANES) {
-      expect(gateAllows(later, lane, at(later)), lane).toBe(true);
+      expect(gateAllows(gate, lane, at(gate)), lane).toBe(false);
     }
-  });
-
-  it("a clock that jumped BACKWARDS refuses rather than opens", () => {
-    // The bound is read as elapsed time, never as a stored deadline, so a device whose
-    // clock moved back lands OUTSIDE the window on the closed side.
-    const closed = closeAt(openFor(THIS_SESSION));
-    const skewed = openFor(THIS_SESSION, closed, CLICKED_LOG_OUT - 86_400_000);
-    expect(skewed.sessionClosed).toBe(true);
   });
 });
 

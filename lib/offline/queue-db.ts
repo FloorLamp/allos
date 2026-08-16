@@ -217,10 +217,11 @@ export async function clearQueue(): Promise<void> {
   //     against lib/offline/draft-db.ts's own stated contract.
   // None of them is stopped by anything a wipe can do to the DATA. All are stopped here.
   //
-  // AND THE CLOSE IS A BET, stamped with the moment it was made. The logout POST that
-  // justifies it has not happened yet, and when it never happens the close has to come
-  // back off — see `reopenAfterFailedLogout` and the `now` half of `openSessionAs`.
-  await updateGate(closeSession(Date.now()), [
+  // AND THE CLOSE IS A BET. The logout POST that justifies it has not been sent yet, and
+  // when it never lands the close has to come back off — see `reopenAfterFailedLogout`,
+  // and read the call site in components/SidebarContent for why "the call threw" is not
+  // the signal that tells those two apart.
+  await updateGate(closeSession, [
     STORE,
     REJECTED,
     // #1699: half-typed form drafts are PHI at rest too, and logout is the one moment

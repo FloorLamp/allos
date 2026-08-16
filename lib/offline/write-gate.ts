@@ -69,21 +69,11 @@ export interface WriteGate {
   // A mount cannot tell "there is a session" from "there is a NEW session", and only the
   // second may re-open. A session's own name can, so the gate remembers it.
   sessionKey: string | null;
-  // WHEN the session was closed, epoch ms. The close is a bet that the logout will land,
-  // and `closedAt` is how the bet is settled when the closer is not around to settle it —
-  // see LOGOUT_SETTLE_MS and `openSessionAs`. 0 on a gate that has never been closed.
-  closedAt: number;
   // The offline-reads off switch. Closes the snapshots lane for as long as the SERVER has
   // not been told, and no longer — see `closeSnapshots` for why that scope is the whole
   // of it. The server stays authoritative: its own `enabled: false` answer wipes.
   snapshotsClosed: boolean;
 }
-
-// How long after a logout close a document of the SAME session is still assumed to be
-// racing that logout rather than surviving it. See `openSessionAs`, which is the only
-// reader; the number is a bound on an ambiguity that has no clock-free resolution, and
-// the comment there is the argument for why a bound is what is left.
-export const LOGOUT_SETTLE_MS = 30_000;
 
 export function defaultGate(): WriteGate {
   return {
@@ -91,7 +81,6 @@ export function defaultGate(): WriteGate {
     generation: 0,
     sessionClosed: false,
     sessionKey: null,
-    closedAt: 0,
     snapshotsClosed: false,
   };
 }
@@ -104,8 +93,7 @@ function parseGate(value: unknown): WriteGate {
     generation: typeof o.generation === "number" ? o.generation : 0,
     sessionClosed: o.sessionClosed === true,
     // An absent key reads as null, which matches no session, so the next mount re-opens.
-    // Same for an absent `closedAt`: 0 reads as "closed long ago", which also re-opens.
-    // Both fail TOWARD a usable device, and that direction was attacked and ruled on
+    // That fails TOWARD a usable device, and the direction was attacked and ruled on
     // rather than assumed, so the reasoning is here for whoever makes this branch
     // reachable:
     //
@@ -124,7 +112,6 @@ function parseGate(value: unknown): WriteGate {
     // If a future change makes an old row readable — a downgrade path, an export/import,
     // a repair tool — this is the sentence that has to be re-decided, not silently kept.
     sessionKey: typeof o.sessionKey === "string" ? o.sessionKey : null,
-    closedAt: typeof o.closedAt === "number" ? o.closedAt : 0,
     snapshotsClosed: o.snapshotsClosed === true,
   };
 }
@@ -270,20 +257,14 @@ export function bumpGeneration(gate: WriteGate): WriteGate {
 }
 
 /**
- * Logout: every lane closed until a DIFFERENT session opens them — or until this one is
- * shown to have outlived the logout that closed it. `now` is stamped so the second half
- * is possible at all.
+ * Logout: every lane closed until a DIFFERENT session opens them.
  *
  * `sessionKey` is deliberately left as it stands rather than cleared — it is now the
  * record of WHICH session closed the gate, and that is the whole defence against the
  * session's own surviving tabs re-opening it.
  */
-export function closeSession(now: number): (gate: WriteGate) => WriteGate {
-  return (gate) => ({
-    ...bumpGeneration(gate),
-    sessionClosed: true,
-    closedAt: now,
-  });
+export function closeSession(gate: WriteGate): WriteGate {
+  return { ...bumpGeneration(gate), sessionClosed: true };
 }
 
 /**
@@ -300,56 +281,58 @@ export function closeSession(now: number): (gate: WriteGate) => WriteGate {
  * feature going silently dead on a path the error boundary explicitly invites ("Reload
  * the app").
  *
- * Only the CLOSER calls this, and only once its own logout has provably failed, so it
- * cannot be reached by the tab that R2/R2b are about: that tab never pressed anything and
- * has no failure to observe. It does not touch `sessionKey` — the session is unchanged,
- * and the close simply never should have been made.
+ * WHO MAY CALL THIS, and it is the whole of the safety argument, because the first
+ * version of it was wrong in a way worth recording. Only the CLOSER calls it, and only
+ * once its own logout has been shown to have failed — SHOWN, not inferred from an
+ * exception. A logout that SUCCEEDS also rejects the client promise, because Next
+ * rejects a redirecting Server Action's promise on purpose, so "the call threw" is true
+ * on both outcomes and catching it undid every successful logout there was. What
+ * distinguishes them is asked of the server; components/SidebarContent holds that
+ * reasoning at the call site.
+ *
+ * It does not touch `sessionKey`: the session is unchanged, and the close simply never
+ * should have been made.
  */
 export function reopenAfterFailedLogout(gate: WriteGate): WriteGate {
-  return { ...gate, sessionClosed: false, closedAt: 0 };
+  return { ...gate, sessionClosed: false };
 }
 
 /**
  * A live authenticated document says which session it belongs to, and the gate re-opens
- * only if that is not the session that closed it — or if that session has outlasted its
- * own logout by long enough that it plainly did not log out.
+ * only if that is not the session that closed it.
  *
- * The key half is the finding from three rounds ago, so read it as one: `key ===
- * gate.sessionKey` on a closed gate means "a document of the logged-out session is
- * asking", which is every tab that was open when someone pressed Log out and every tab
- * that loads while the logout POST is still in flight. Those must stay closed. Anything
- * else is a session that did not exist when the close happened — a fresh login, on this
- * device, by whoever is holding it now — and that is what re-opening is for.
+ * The predicate is the finding, so read it as one: `key === gate.sessionKey` on a closed
+ * gate means "a document of the logged-out session is asking", which is every tab that
+ * was open when someone pressed Log out and every tab that loads while the logout POST is
+ * still in flight. Those must stay closed. Anything else is a session that did not exist
+ * when the close happened — a fresh login, on this device, by whoever is holding it now —
+ * and that is precisely what re-opening is for.
  *
- * THE `now` HALF IS THE LIVENESS QUESTION, and it is a bound because the question has no
- * clock-free answer. At the instant a same-key document mounts, "the logout is in flight
- * and will succeed" (R2b — must refuse) and "the logout failed and this is the reload"
- * (R-A — must re-open) are the same observation: the session row still exists in both,
- * so the server cannot tell them apart either, and being served the authenticated app
- * proves only that the logout has not landed YET. The outcome is knowable only after the
- * POST settles, and only to the document that issued it — which is why
- * `reopenAfterFailedLogout` above is the primary path and handles every case where that
- * document is still alive to see the failure.
+ * NO CLOCK, AND THAT IS A REVERSAL WORTH THE PARAGRAPH. A previous version admitted a
+ * same-key document once it had outlasted a 30-second bound, to recover the one case the
+ * closer cannot see: its own document destroyed mid-POST, so no failure path ran. The
+ * bound did not pay for itself and was removed:
  *
- * What is left is the case where that document was DESTROYED mid-POST (the tab was
- * closed, the app was force-quit). A form-action POST dies with its document, so in that
- * case the logout was cancelled and can never land — re-opening is not merely safe, it is
- * the only correct answer. The bound is how a later document recognises that case: a
- * logout POST that is still outstanding is being awaited by a document that is still
- * alive, and no such document waits half a minute without its own failure path running.
+ *   • it bounded the wrong thing — this runs in a `[deviceSessionKey]` effect, and that
+ *     key is stable for a session, so the question is asked ONCE PER DOCUMENT LOAD. A
+ *     soft navigation does not re-ask it. In the scenario it existed for — force-quit
+ *     mid-logout, reopen in seconds — it therefore usually did nothing at all;
+ *   • its stated justification was false. "No document waits half a minute without its
+ *     own failure path running" — a Server Action POST has no client-side timeout, and a
+ *     hung request sits for minutes;
+ *   • and it was attackable from the other side: a device clock that jumped FORWARD put
+ *     a tab loading inside a live logout window past the bound, and it captured all five
+ *     snapshot kinds.
+ *
+ * What is left is honest: if the closing document is destroyed while its logout hangs,
+ * this device's write gate stays closed for that session, and the next LOGIN re-opens it
+ * because a new session carries a new key. That fails toward keeping nothing rather than
+ * toward writing something, which is the direction this whole file argues for.
  */
-export function openSessionAs(
-  key: string,
-  now: number
-): (gate: WriteGate) => WriteGate {
+export function openSessionAs(key: string): (gate: WriteGate) => WriteGate {
   return (gate) => {
-    // `now - closedAt` rather than a comparison against a stored deadline: a device clock
-    // that jumped BACKWARDS makes this negative, which is inside the window, so it
-    // refuses — the closed direction, which is the safe one to be wrong in.
-    const racingItsOwnLogout =
-      gate.sessionKey === key && now - gate.closedAt < LOGOUT_SETTLE_MS;
-    if (gate.sessionClosed && racingItsOwnLogout) return gate;
-    return { ...gate, sessionClosed: false, sessionKey: key, closedAt: 0 };
+    if (gate.sessionClosed && gate.sessionKey === key) return gate;
+    return { ...gate, sessionClosed: false, sessionKey: key };
   };
 }
 
@@ -373,7 +356,7 @@ let reopened: Promise<void> = Promise.resolve();
 
 /** The mount-scoped re-open. Records the attempt so a writer can wait for it. */
 export function openSessionForDocument(key: string): Promise<void> {
-  reopened = updateGate(openSessionAs(key, Date.now()));
+  reopened = updateGate(openSessionAs(key));
   return reopened;
 }
 

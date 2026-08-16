@@ -185,11 +185,24 @@ export default function LogPracticeButton({
   // there is no server to ask.
   async function queueOffline(): Promise<void> {
     const mins = stepperShown ? durationValue() : null;
-    await enqueue("practice", today, {
+    const kept = await enqueue("practice", today, {
       practice,
       identity: practiceIdentity(practice),
       durationMin: mins,
     });
+    // READ THE ANSWER. The queue can refuse — this device is logged out, or has no
+    // IndexedDB to queue into — and the toast below promises the tap will sync. Nothing
+    // contradicts that promise afterwards: no badge, no dead-letter entry, no replay. The
+    // count must not move either, since it is this card's claim that the practice landed.
+    //
+    // The eight other quick-log flows still ignore this boolean; that is #3038, and
+    // pre-existing. This call site is new in #2908 and had no business joining them.
+    if (!kept) {
+      toast("This tap wasn't saved. Try again once you're back online.", {
+        tone: "error",
+      });
+      return;
+    }
     setCount((n) => n + 1);
     toast("Saved offline — it'll sync when you're back online.");
   }

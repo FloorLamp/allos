@@ -8,8 +8,31 @@ import { openGlobalSearch } from "@/components/CommandPalette";
 import Wordmark from "@/components/Wordmark";
 import ProfileIdentityBar from "@/components/ProfileIdentityBar";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
+import { unstable_rethrow } from "next/navigation";
 import { clearQueue } from "@/lib/offline/queue-db";
 import { reopenForFailedLogout } from "@/lib/offline/write-gate";
+
+/**
+ * Has the server ENDED this session? The only answer that keeps the write gate closed
+ * after a logout attempt that did not obviously succeed.
+ *
+ * `?probe` on the snapshots route, which is the app's one cookie-authoritative GET —
+ * `getCurrentSession()` rather than the coarse middleware cookie check — and answers the
+ * auth question without building or returning a single payload. Only a positive 401/403
+ * counts: any other status, and any network failure at all, leaves the session's fate
+ * unknown, and unknown must not brick the device.
+ */
+async function sessionEndedOnServer(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/offline-snapshots?probe=1", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    return res.status === 401 || res.status === 403;
+  } catch {
+    return false;
+  }
+}
 import { logoutAction } from "@/app/(app)/session-actions";
 import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
@@ -186,14 +209,41 @@ export default function SidebarContent({
   // the path the error boundary invites the person onto — "Something went wrong … Reload
   // the app".
   //
-  // So the closer watches its own bet settle. This runs only here, only after a failure,
-  // and it re-throws so the error still reaches the boundary exactly as before — the
-  // second tab that R2/R2b are about pressed nothing and reaches none of this.
+  // ── "THE CALL THREW" IS NOT THE SIGNAL. IT IS TRUE ON BOTH OUTCOMES. ────────────────
+  //
+  // The first version of this undid the close in a bare `catch`, and that undid EVERY
+  // logout, including every one that worked. `logoutAction` ends in `redirect("/login")`,
+  // and Next rejects the client promise of a redirecting Server Action deliberately —
+  // `server-action-reducer.js` says so in its own comment: "the action promise will be
+  // rejected with a redirect so that it's handled by RedirectBoundary as we won't have a
+  // valid action result to resolve the promise with." So the happy path arrived here as
+  // an exception, the gate was re-opened behind a session that had just been destroyed,
+  // and a surviving tab went on capturing doses under "Dose saved offline".
+  //
+  // Nothing caught it because every test of this window HOLDS THE LOGOUT POST OPEN for
+  // the duration of its assertions — the fixture constrained the world to the interval in
+  // which the mistake is invisible. R-A2 in e2e/offline-write-gate.spec.ts is the test
+  // that runs PAST the POST instead.
+  //
+  // TWO BARRIERS, and neither is trusted on its own:
+  //
+  //   1. `unstable_rethrow` — the framework's own public API for "catch, but never
+  //      swallow the framework's control flow". A redirect leaves here immediately, so a
+  //      successful logout never reaches the undo and costs no extra request.
+  //   2. THE SERVER IS ASKED. A framework that stopped rejecting on redirect, or a new
+  //      error shape, must not be able to make barrier 1 the whole defence. The undo runs
+  //      only when the server has NOT said the session is gone, and a 401 is the only
+  //      thing that says so — it means `destroySession` ran.
+  //
+  // UNREACHABLE COUNTS AS "NOT GONE", deliberately. A probe that cannot reach the server
+  // is the case in which the logout cannot have landed either, and that case — pressing
+  // Log out with no signal — is the entire reason this recovery exists.
   async function submitLogout(): Promise<void> {
     try {
       await logoutAction();
     } catch (err) {
-      await reopenForFailedLogout();
+      unstable_rethrow(err);
+      if (!(await sessionEndedOnServer())) await reopenForFailedLogout();
       throw err;
     }
   }

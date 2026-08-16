@@ -48,6 +48,16 @@ export async function GET(req: Request) {
   if (!session) {
     return Response.json({ ok: false, error: "auth" }, { status: 401 });
   }
+  // `?probe` — THE AUTH ANSWER, AND NOTHING ELSE. components/SidebarContent asks it after
+  // a logout attempt that did not obviously succeed, because "has this session ended" is
+  // the one question separating a logout that landed from one that did not, and the
+  // client cannot answer it for itself: a redirecting Server Action rejects its promise
+  // on BOTH outcomes. It lives here rather than in a route of its own because this is
+  // already the app's cookie-authoritative GET, and it is answered ABOVE the builders so
+  // a probe costs one session lookup and returns no PHI at all.
+  if (new URL(req.url).searchParams.has("probe")) {
+    return Response.json({ ok: true });
+  }
   const { profile, login } = session;
   if (!getOfflineSnapshotsEnabled(profile.id)) {
     // The off switch is HONEST (the acceptance criterion): the server hands back
