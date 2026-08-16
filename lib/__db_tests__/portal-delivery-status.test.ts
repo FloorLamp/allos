@@ -12,6 +12,14 @@
 // asked through the scoped reads, because the count is household data like everything
 // else on that page — a login row must never be handed a number drawn from a household
 // the viewer cannot reach.
+//
+// ONE NUMBER FOR ONE DELIVERY (#1991). The count is the DOCUMENTS THE RUNS CLAIMED, the
+// same provenance rows the Imports feed's drill-in lists — not the tool's own
+// `inserted + updated` split. The fixtures below deliberately report splits that DISAGREE
+// with what allos stored, because that is the observed shape: a delivery of three
+// archives reported as `inserted 1, unchanged 2`, and a delivery reported as
+// `nothing-new` with an all-zero split. Deriving the page from the split made it state a
+// confidently wrong quantity over a real delivery.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
@@ -27,7 +35,7 @@ import {
   listVisiblePortalRunReports,
 } from "@/lib/portal-visibility";
 import { portalLoginStatus } from "@/lib/portal-status";
-import { recordSyncEvent } from "@/lib/integrations/connections";
+import { recordSyncEvent, recordSyncRows } from "@/lib/integrations/connections";
 import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 
 const SOURCE = "patient-portals";
@@ -44,22 +52,24 @@ function newProfile(name: string): number {
   );
 }
 
-// A portal run's product is DOCUMENTS, so the split columns on the event are documents
-// too — `inserted 2, unchanged 1` means two new archives and one already held.
+// One delivery: `documents` archives landed for this patient, and the run that reported
+// them claimed each one. `split` is what the TOOL said about its portal visit, which is a
+// different question and is allowed to disagree — see the header.
 function deliveredEvent(
   profileId: number,
   account: PortalAccount,
   patientLabel: string,
-  counts: { inserted: number; updated?: number; unchanged?: number },
+  documents: number,
+  split: { inserted: number; updated?: number; unchanged?: number },
   at: string
 ): void {
-  recordSyncEvent(profileId, SOURCE, {
+  const eventId = recordSyncEvent(profileId, SOURCE, {
     ok: true,
-    received: counts.inserted,
-    written: counts.inserted + (counts.updated ?? 0),
-    inserted: counts.inserted,
-    updated: counts.updated ?? 0,
-    unchanged: counts.unchanged ?? 0,
+    received: documents,
+    written: split.inserted + (split.updated ?? 0),
+    inserted: split.inserted,
+    updated: split.updated ?? 0,
+    unchanged: split.unchanged ?? 0,
     skipped: 0,
     identity: {
       portalId: account.portalId,
@@ -71,6 +81,30 @@ function deliveredEvent(
     `UPDATE integration_sync_events SET at = ?
       WHERE id = (SELECT MAX(id) FROM integration_sync_events)`
   ).run(at);
+  const docIds: number[] = [];
+  for (let i = 0; i < documents; i++) {
+    docIds.push(
+      Number(
+        db
+          .prepare(
+            `INSERT INTO medical_documents
+               (filename, stored_path, mime_type, size_bytes, extraction_status,
+                uploaded_at, profile_id)
+             VALUES (?, '', 'application/xml', 20, 'done', ?, ?)`
+          )
+          .run(`bundle-${at.slice(0, 10)}-${i}.xml`, at.slice(0, 19), profileId)
+          .lastInsertRowid
+      )
+    );
+  }
+  recordSyncRows(
+    eventId,
+    docIds.map((id) => ({
+      target_table: "medical_documents" as const,
+      target_id: id,
+      disposition: "inserted" as const,
+    }))
+  );
 }
 
 // Force a report's stamps, the way the e2e fixture does — recordPortalRunReport reads
@@ -103,13 +137,16 @@ beforeAll(() => {
     true
   );
 
-  // Login one: checked on the 10th, then a DELIVERY on the 15th that brought four
-  // documents — plus one document delivered days earlier, which the day-grain aggregate
-  // must not fold into the 15th's number.
+  // Login one: checked on the 10th, then a DELIVERY on the 15th. Three archives landed
+  // on the first run of that day and one on the second — and the first run REPORTED
+  // `inserted 1, unchanged 2`, which is the split shape that made this page and the
+  // drill-in state two different numbers for one delivery. Plus one document delivered
+  // days earlier, which the day-grain aggregate must not fold into the 15th's number.
   deliveredEvent(
     profileOne,
     accountOne,
     "One Patient",
+    1,
     { inserted: 1 },
     "2026-08-10T09:00:00Z"
   );
@@ -117,13 +154,15 @@ beforeAll(() => {
     profileOne,
     accountOne,
     "One Patient",
-    { inserted: 3, unchanged: 2 },
+    3,
+    { inserted: 1, unchanged: 2 },
     "2026-08-15T19:36:20Z"
   );
   deliveredEvent(
     profileOne,
     accountOne,
     "One Patient",
+    1,
     { inserted: 0, updated: 1 },
     "2026-08-15T19:36:24Z"
   );
@@ -137,12 +176,14 @@ beforeAll(() => {
   stampReport(accountOne, "2026-08-15 19:36:25", "2026-08-10 09:00:00");
 
   // Login two, another household entirely: its own delivery on the same day, so a
-  // scoping mistake would show up as login one's number moving.
+  // scoping mistake would show up as login one's number moving. Its split is ALL ZEROES
+  // — the observed `nothing-new` delivery — and nine archives still landed.
   deliveredEvent(
     profileTwo,
     accountTwo,
     "Two Patient",
-    { inserted: 9 },
+    9,
+    { inserted: 0 },
     "2026-08-15T20:00:00Z"
   );
   recordPortalRunReport(accountTwo, {
@@ -178,8 +219,12 @@ describe("the check clock reaches the page (#2914)", () => {
 
 describe("deliveredDocumentCountsByAccount (#2914)", () => {
   it("counts the documents a login delivered on its last report's day", () => {
-    // 3 inserted + 1 updated on the 15th. The single document from the 10th is a
+    // Four archives landed on the 15th (3 + 1). The single document from the 10th is a
     // different day and is deliberately not folded in.
+    //
+    // THE TOOL'S SPLIT FOR THAT DAY SUMS TO 2 (`inserted 1` then `updated 1`). Reading it
+    // is what made this page say "1" while the drill-in listed 3 — one delivery with two
+    // numbers, which is the thing #1991 exists to forbid.
     expect(
       deliveredDocumentCountsByAccount(authorized([profileOne]), false).get(
         accountOne.id
@@ -197,6 +242,8 @@ describe("deliveredDocumentCountsByAccount (#2914)", () => {
       authorized([profileTwo]),
       false
     );
+    // Nine, over a report whose split was all zeroes: the run said `nothing-new` about
+    // the portal visit it did not make, and nine archives arrived anyway.
     expect(forTwo.get(accountTwo.id)).toBe(9);
     expect(forTwo.has(accountOne.id)).toBe(false);
   });

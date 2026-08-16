@@ -9,10 +9,23 @@
 // front of the reader.
 //
 // The claim has to be EXACT, which is what these assertions are about: a run claims the
-// documents its own delivery pushed, never a previous run's, never another login's, and
-// never another person's. The window is the previous report's stamp — read before the
-// one-row-per-login upsert destroys it — and the unclaimed guard is what makes the
-// inclusive comparison safe when an upload and a report land in the same second.
+// documents its own delivery pushed, never a previous run's, never another patient's,
+// never another login's, and never another person's.
+//
+// ── WHY THE KEY IS THE IDENTITY, AND WHY THE SPACING IN THESE FIXTURES MATTERS ──
+//
+// The first cut keyed the claim to the LOGIN and windowed it on that login's last report
+// stamp. One push files ONE REPORT PER PATIENT, so the first patient's report moved the
+// window past everything the second patient's report was going to claim — and the
+// unclaimed guard then kept those documents eligible forever without ever making them
+// reachable. That is #2914's opening sentence: eight bundles across four profiles, three
+// of four showing nothing.
+//
+// It also only failed AT REALISTIC SPACING. When the uploads and the report land in the
+// same second, the inclusive comparison accidentally rescues the second patient's
+// archive, so the bug passed in a fast test and failed in production. The fixtures below
+// therefore force `uploaded_at` to the observed 5-second spacing before reporting, and
+// several of them would have to be rewritten to pass on the old mechanism.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
@@ -28,6 +41,8 @@ import {
 } from "@/lib/portals";
 import { getSyncRowProvenance } from "@/lib/queries/integrations";
 import { getImportDocumentsFeed } from "@/lib/queries/imports";
+import { deliveredDocumentCountsByAccount } from "@/lib/portal-visibility";
+import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 import { recordSyncEvent } from "@/lib/integrations/connections";
 import { feedItemView } from "@/lib/import-feed";
 
@@ -43,6 +58,10 @@ let bystanderProfile: number;
 
 const LABEL_ONE = "DELIVERY ONE";
 const LABEL_TWO = "DELIVERY TWO";
+// A second patient on LOGIN ONE, bound to a DIFFERENT profile — one push, two people.
+const LABEL_SIBLING = "DELIVERY SIBLING";
+// A third patient on LOGIN ONE, bound to the SAME profile as LABEL_ONE.
+const LABEL_ALIAS = "DELIVERY ALIAS";
 
 // A minimal but genuine PDF — the engine sniffs magic bytes, so a file claiming .pdf
 // must actually start with %PDF- or it is (correctly) refused.
@@ -89,9 +108,28 @@ async function upload(
   return id as number;
 }
 
+// The seconds a real push spans: the observed run uploaded documents at 19:36:17–19:36:24
+// and reported 1–5s later. Forcing `uploaded_at` back is what makes these fixtures spaced
+// rather than same-second, and same-second is what used to hide the loss.
+function spaceUploads(docIds: number[], startSecondsAgo: number): void {
+  docIds.forEach((id, i) => {
+    db.prepare(
+      `UPDATE medical_documents
+          SET uploaded_at = strftime('%Y-%m-%d %H:%M:%S','now', ?)
+        WHERE id = ?`
+    ).run(`-${startSecondsAgo - i * 5} seconds`, id);
+  });
+}
+
 async function reportRun(
   account: PortalAccount,
-  patient: string
+  patient: string,
+  over: {
+    status?: "downloaded" | "nothing-new" | "failed";
+    inserted?: number;
+    unchanged?: number;
+    message?: string;
+  } = {}
 ): Promise<number> {
   const portalSlug = (
     db.prepare("SELECT slug FROM portals WHERE id = ?").get(portalId) as {
@@ -106,12 +144,14 @@ async function reportRun(
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        status: "downloaded",
+        status: over.status ?? "downloaded",
         portal: portalSlug,
         account: account.slug,
         patient,
         contacted: false,
-        inserted: 1,
+        inserted: over.inserted ?? 1,
+        unchanged: over.unchanged ?? 0,
+        ...(over.message ? { message: over.message } : {}),
       }),
     })
   );
@@ -124,6 +164,19 @@ async function reportRun(
     )
     .get(account.id) as { id: number };
   return row.id;
+}
+
+// How many runs claimed this document — 1 for every delivered archive, and the number
+// the login-keyed window turned into 0 for everybody but the first-reported patient.
+function claimedAnywhere(documentId: number): number {
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM integration_sync_rows
+          WHERE target_table = 'medical_documents' AND target_id = ?`
+      )
+      .get(documentId) as { n: number }
+  ).n;
 }
 
 function claimedDocuments(eventId: number): number[] {
@@ -180,18 +233,66 @@ beforeAll(async () => {
   expect(bindPortalIdentity(accountTwo.id, LABEL_TWO, profileTwo).ok).toBe(
     true
   );
+  // TWO PATIENTS ON ONE LOGIN — the shape #2914 was filed from. A household's portal
+  // login covers the whole proxy list, and the tool files one report per patient.
+  expect(bindPortalIdentity(accountOne.id, LABEL_SIBLING, profileTwo).ok).toBe(
+    true
+  );
+  // And two patient LABELS on one login bound to the SAME person, which a portal
+  // rendering a name two ways produces.
+  expect(bindPortalIdentity(accountOne.id, LABEL_ALIAS, profileOne).ok).toBe(
+    true
+  );
 });
 
-describe("the upload route records which LOGIN a document was acquired for (#2999)", () => {
-  it("stamps the account beside the portal it already stamped", async () => {
+describe("the upload route records which IDENTITY a document was acquired for (#2999)", () => {
+  it("stamps the patient identity beside the portal it already stamped", async () => {
     const docId = await upload(accountOne, LABEL_ONE, "acquisition-a1.pdf");
     const row = db
       .prepare(
-        "SELECT acquired_portal_id AS portal, acquired_account_id AS account FROM medical_documents WHERE id = ?"
+        `SELECT d.acquired_portal_id AS portal, pi.account_id AS account,
+                pi.patient_label AS patient
+           FROM medical_documents d
+           LEFT JOIN portal_identities pi ON pi.id = d.acquired_identity_id
+          WHERE d.id = ?`
       )
-      .get(docId) as { portal: number | null; account: number | null };
+      .get(docId) as {
+      portal: number | null;
+      account: number | null;
+      patient: string | null;
+    };
     expect(row.portal).toBe(portalId);
     expect(row.account).toBe(accountOne.id);
+    expect(row.patient).toBe(LABEL_ONE);
+  });
+
+  it("does not fail the ingest when the provenance stamp cannot be written", async () => {
+    // The archive has already landed by the time this runs. A provenance write must never
+    // turn a successful ingest into a 500 the tool answers by pushing everything again —
+    // the same contract recordSyncRows honours.
+    db.exec("DROP INDEX IF EXISTS idx_medical_documents_acquired_identity");
+    db.exec(
+      `CREATE TRIGGER doc_prov_stamp_boom BEFORE UPDATE OF acquired_identity_id
+         ON medical_documents
+         BEGIN SELECT RAISE(ABORT, 'provenance is down'); END`
+    );
+    try {
+      const docId = await upload(accountOne, LABEL_ONE, "ingest-survives.pdf");
+      expect(docId).toBeGreaterThan(0);
+      expect(
+        db
+          .prepare(
+            "SELECT acquired_identity_id AS id FROM medical_documents WHERE id = ?"
+          )
+          .get(docId)
+      ).toEqual({ id: null });
+    } finally {
+      db.exec("DROP TRIGGER doc_prov_stamp_boom");
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_medical_documents_acquired_identity
+           ON medical_documents(acquired_identity_id)`
+      );
+    }
   });
 });
 
@@ -244,6 +345,162 @@ describe("a run claims exactly the documents it delivered (#2999)", () => {
     const run = await reportRun(accountOne, LABEL_ONE);
     expect(claimedDocuments(run)).toEqual([mine]);
     expect(claimedDocuments(run)).not.toContain(handUploaded);
+  });
+});
+
+describe("one login, two patients: nobody's documents go unclaimed (#2914)", () => {
+  it("credits each patient's run with its own archives, at production spacing", async () => {
+    // The reported case, reduced to two people: one push, two patients on one login,
+    // two profiles, reports filed one after the other. Uploads are spaced five seconds
+    // apart and land before either report — which is exactly the arrangement that made
+    // the login-keyed window claim patient one's archive and lose patient two's to
+    // nobody at all.
+    const forOne = await upload(accountOne, LABEL_ONE, "push-sibling-a1.pdf");
+    const forTwo = await upload(
+      accountOne,
+      LABEL_SIBLING,
+      "push-sibling-b1.pdf"
+    );
+    spaceUploads([forOne, forTwo], 12);
+
+    const runOne = await reportRun(accountOne, LABEL_ONE);
+    const runTwo = await reportRun(accountOne, LABEL_SIBLING);
+
+    expect(claimedDocuments(runOne)).toEqual([forOne]);
+    expect(claimedDocuments(runTwo)).toEqual([forTwo]);
+    // Neither archive is stranded: every one of them belongs to exactly one run.
+    expect(claimedAnywhere(forOne)).toBe(1);
+    expect(claimedAnywhere(forTwo)).toBe(1);
+  });
+
+  it("does not credit one patient's run with another patient's archive, same profile", async () => {
+    // Two labels on one login for the SAME person — no privacy question, and the
+    // drill-in's stated property (every document belongs to THAT run) still has to hold.
+    const asOne = await upload(accountOne, LABEL_ONE, "alias-a2.pdf");
+    const asAlias = await upload(accountOne, LABEL_ALIAS, "alias-a3.pdf");
+    spaceUploads([asOne, asAlias], 12);
+
+    const runOne = await reportRun(accountOne, LABEL_ONE);
+    const runAlias = await reportRun(accountOne, LABEL_ALIAS);
+
+    expect(claimedDocuments(runOne)).toEqual([asOne]);
+    expect(claimedDocuments(runAlias)).toEqual([asAlias]);
+  });
+
+  it("never claims a document belonging to another PERSON, whatever the identity says", async () => {
+    // The claim's profile filter, pinned by behaviour rather than by the source scanner.
+    // A row mis-stamped with this identity but owned by somebody else stays unclaimed:
+    // the identity is not authority over whose document this is.
+    const mine = await upload(accountOne, LABEL_ONE, "scoped-a4.pdf");
+    const identityId = (
+      db
+        .prepare(
+          "SELECT acquired_identity_id AS id FROM medical_documents WHERE id = ?"
+        )
+        .get(mine) as { id: number }
+    ).id;
+    const theirs = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (filename, stored_path, mime_type, size_bytes, extraction_status,
+              uploaded_at, profile_id, acquired_identity_id)
+           VALUES ('not-mine.pdf', '', 'application/pdf', 10, 'done',
+                   strftime('%Y-%m-%d %H:%M:%S','now'), ?, ?)`
+        )
+        .run(bystanderProfile, identityId).lastInsertRowid
+    );
+
+    const run = await reportRun(accountOne, LABEL_ONE);
+    expect(claimedDocuments(run)).toEqual([mine]);
+    expect(claimedAnywhere(theirs)).toBe(0);
+  });
+});
+
+describe("a failed run consumes nothing (#2999)", () => {
+  it("leaves the documents for the next successful report", async () => {
+    const doc = await upload(accountOne, LABEL_ONE, "after-failure-a5.pdf");
+    spaceUploads([doc], 10);
+
+    const failed = await reportRun(accountOne, LABEL_ONE, {
+      status: "failed",
+      inserted: 0,
+      message: "the download timed out",
+    });
+    expect(claimedDocuments(failed)).toEqual([]);
+
+    const recovered = await reportRun(accountOne, LABEL_ONE);
+    expect(claimedDocuments(recovered)).toEqual([doc]);
+  });
+});
+
+describe("a delivery reported as nothing-new is still a delivery (#2914)", () => {
+  it("keeps its feed row, lists its documents, and states the count on the login row", async () => {
+    // The observed input: a push that delivered archives under a report whose status was
+    // `nothing-new` and whose split was all zeroes. Reading the split made the feed drop
+    // the row that owned the documents — stranding them, because the unclaimed guard
+    // stops any later run re-claiming them — and made the login row say "Delivered no
+    // documents" over a real delivery.
+    const first = await upload(accountOne, LABEL_ONE, "quiet-a6.pdf");
+    const second = await upload(accountOne, LABEL_ONE, "quiet-a7.pdf");
+    spaceUploads([first, second], 12);
+    const run = await reportRun(accountOne, LABEL_ONE, {
+      status: "nothing-new",
+      inserted: 0,
+      unchanged: 0,
+    });
+
+    expect(claimedDocuments(run)).toEqual([first, second].sort((a, b) => a - b));
+
+    const entry = getImportDocumentsFeed(profileOne, 200).find(
+      (e) => e.stream === "sync" && e.event.id === run
+    );
+    if (entry?.stream !== "sync") throw new Error("the run was dropped");
+    expect(entry.drilldown?.count).toBe(2);
+    expect(entry.drilldown?.noun).toBe("document");
+  });
+
+  it("gives the page and the drill-in ONE number for one delivery (#1991)", async () => {
+    // Three archives, reported `inserted 1, unchanged 2`. Deriving the login row from
+    // that split said "1" while the drill-in listed 3.
+    const docs = [
+      await upload(accountOne, LABEL_ONE, "one-number-a8.pdf"),
+      await upload(accountOne, LABEL_ONE, "one-number-a9.pdf"),
+      await upload(accountOne, LABEL_ONE, "one-number-b1.pdf"),
+    ];
+    spaceUploads(docs, 20);
+    const run = await reportRun(accountOne, LABEL_ONE, {
+      inserted: 1,
+      unchanged: 2,
+    });
+
+    const entry = getImportDocumentsFeed(profileOne, 200).find(
+      (e) => e.stream === "sync" && e.event.id === run
+    );
+    if (entry?.stream !== "sync") throw new Error("unreachable");
+    const drilldown = entry.drilldown?.count ?? 0;
+    expect(drilldown).toBe(3);
+
+    // The page's number is the sum of that login's claims on the report's day, which
+    // includes every run this file has driven — so the two surfaces are compared to each
+    // other, not to a literal.
+    const page =
+      deliveredDocumentCountsByAccount(authorized([profileOne]), false).get(
+        accountOne.id
+      ) ?? 0;
+    const claimedToday = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n
+             FROM integration_sync_rows sr
+             JOIN integration_sync_events e ON e.id = sr.event_id
+            WHERE sr.target_table = 'medical_documents'
+              AND e.account_id = ? AND e.profile_id = ? AND e.ok = 1`
+        )
+        .get(accountOne.id, profileOne) as { n: number }
+    ).n;
+    expect(page).toBe(claimedToday);
+    expect(page).toBeGreaterThanOrEqual(drilldown);
   });
 });
 
@@ -312,8 +569,8 @@ describe("the Imports feed after a delivery (#2999)", () => {
     expect(entry.drilldown).toBeNull();
   });
 
-  it("drops a successful zero-write run, and never drops a failure", () => {
-    const quiet = recordSyncEvent(profileTwo, "patient-portals", {
+  it("drops a successful zero-write PORTAL run, and nothing else", () => {
+    const quiet = recordSyncEvent(bystanderProfile, "patient-portals", {
       ok: true,
       received: 1,
       written: 0,
@@ -322,15 +579,39 @@ describe("the Imports feed after a delivery (#2999)", () => {
       unchanged: 1,
       skipped: 0,
     });
-    const failed = recordSyncEvent(profileTwo, "patient-portals", {
+    const failed = recordSyncEvent(bystanderProfile, "patient-portals", {
       ok: false,
       error: "the login page changed",
     });
-    const ids = getImportDocumentsFeed(profileTwo, 200)
+    // A re-handed Google Takeout archive: `inserted 0 / unchanged 900`. Deliberate,
+    // user-initiated, and with no integration page of its own to fall back on — dropping
+    // it leaves the import with no trace anywhere in the app.
+    const takeout = recordSyncEvent(bystanderProfile, "fitbit-takeout", {
+      ok: true,
+      received: 900,
+      written: 0,
+      inserted: 0,
+      updated: 0,
+      unchanged: 900,
+      skipped: 0,
+    });
+    // A portal run whose entire content is three documents it could not push.
+    const skipped = recordSyncEvent(bystanderProfile, "patient-portals", {
+      ok: true,
+      received: 3,
+      written: 0,
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      skipped: 3,
+    });
+    const ids = getImportDocumentsFeed(bystanderProfile, 200)
       .filter((e) => e.stream === "sync")
       .map((e) => (e.stream === "sync" ? e.event.id : 0));
     expect(ids).not.toContain(quiet);
     expect(ids).toContain(failed);
+    expect(ids).toContain(takeout);
+    expect(ids).toContain(skipped);
   });
 
   it("renders no data window for a portal run, which structurally has none", async () => {
