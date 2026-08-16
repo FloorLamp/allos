@@ -534,7 +534,11 @@ async function getJson(
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok)
-      return { ok: false, status: res.status, reason: await failureReason(res) };
+      return {
+        ok: false,
+        status: res.status,
+        reason: await failureReason(res),
+      };
     return { ok: true, json: await res.json() };
   } catch (err) {
     return {

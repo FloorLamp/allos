@@ -597,7 +597,10 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       const state = stubOpenMeteo(today, 3);
       const p = newProfile("weather-aqi-drift");
 
-      const res = (await runWeatherSync(p, openMeteoSource)) as WeatherSyncResult;
+      const res = (await runWeatherSync(
+        p,
+        openMeteoSource
+      )) as WeatherSyncResult;
 
       expect(state.airRejections).toBe(1);
       const warning = parseSyncEventDetails(newestEvent(p).details ?? null)!

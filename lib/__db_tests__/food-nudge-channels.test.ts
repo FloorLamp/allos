@@ -111,4 +111,28 @@ describe("food nudge channel fan-out with Telegram + Web Push both configured (#
     expect(sendTelegram).toHaveBeenCalledTimes(1);
     expect(sendPush).toHaveBeenCalledTimes(1);
   });
+
+  // A push send that never answers is the whole dispatch's latency (dispatch() fans
+  // the channels under Promise.all), and web-push arms a socket timeout ONLY when one
+  // is passed — the send site passed none. Downstream, a post-workout dispatch sits on
+  // a serialized queue, so an unbounded send means the NEXT activity is never
+  // announced at all: silence, on the tier whose whole job is not being silent.
+  //
+  // Asserted here rather than in a file of its own because this is the tier's spec
+  // that already stubs web-push, and a second stubbing spec would cost the DB tier
+  // another isolated module registry for one assertion.
+  it("passes web-push a numeric socket timeout, so a silent endpoint can't hang the dispatch", async () => {
+    const doseMsg: NotificationMessage = {
+      title: "Evening supplements",
+      body: "Time for your evening supplements: Magnesium.",
+      kind: "dose",
+    };
+
+    await dispatch(profileId, doseMsg);
+
+    expect(sendPush).toHaveBeenCalledTimes(1);
+    const options = sendPush.mock.calls[0][2];
+    expect(typeof options?.timeout).toBe("number");
+    expect(options!.timeout).toBeGreaterThan(0);
+  });
 });
