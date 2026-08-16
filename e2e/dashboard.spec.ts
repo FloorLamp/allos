@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledBoxes, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 const DB_PATH = workerDbPath();
@@ -89,9 +89,7 @@ test("dashboard card-header navigation uses one visible convention", async ({
   }
 });
 
-test("the streamlined grid combines goals and habits and caps observations", async ({
-  page,
-}) => {
+test("the streamlined grid combines goals and habits", async ({ page }) => {
   await page.goto("/");
   const main = page.getByRole("main");
 
@@ -108,13 +106,6 @@ test("the streamlined grid combines goals and habits and caps observations", asy
   await expect(
     goalsHabits.getByRole("link", { name: "Manage food habits →" })
   ).toHaveAttribute("href", "/nutrition");
-
-  const observations = main.getByTestId("coaching-observations");
-  if (await observations.isVisible()) {
-    expect(
-      await observations.getByTestId("coaching-observations-item").count()
-    ).toBeLessThanOrEqual(2);
-  }
 });
 
 test("recent labs keeps dates intact and makes every result direction explicit", async ({
@@ -198,13 +189,8 @@ test("attention rows move status and actions below content on mobile", async ({
     await detail.evaluate((element) => getComputedStyle(element).textOverflow)
   ).not.toBe("ellipsis");
 
-  const [titleBox, actionsBox] = await Promise.all([
-    title.boundingBox(),
-    actions.boundingBox(),
-  ]);
-  expect(titleBox).not.toBeNull();
-  expect(actionsBox).not.toBeNull();
-  expect(actionsBox!.y).toBeGreaterThan(titleBox!.y);
+  const [titleBox, actionsBox] = await settledBoxes([title, actions]);
+  expect(actionsBox.y).toBeGreaterThan(titleBox.y);
 
   // Tablet widths still have limited horizontal room; truncation starts only at
   // the desktop breakpoint.

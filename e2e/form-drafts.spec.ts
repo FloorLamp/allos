@@ -5,25 +5,24 @@ import { hydratedClick, settledFill } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Local form drafts (issue #1699), driven end-to-end — because "survives a reload"
-// is a claim only a browser can settle. Three things are proved here:
+// is a claim only a browser can settle. Two things are proved here:
 //
 //   1. a half-entered WORKOUT (the motivating case: nothing savable yet, so the
 //      server auto-save has nothing to hold) survives a reload and comes back
 //      through an explicit Resume — never silently applied;
 //   2. a long record form (the supplement add form, with its state-only dose rows)
 //      round-trips the same way, submits, and leaves NO draft behind — a stale draft
-//      resurrecting a submitted record would be #1699 inverted;
-//   3. a LIVE session's draft is dropped the moment the server copy is current —
-//      the draft runs in live mode (it is the net when the server backing fails,
-//      see e2e/stale-build-save.spec.ts) but never OUTLIVES a successful save,
-//      which is what keeps #451's competing-source-of-truth concern answered.
+//      resurrecting a submitted record would be #1699 inverted.
+//
+// The live-session fallback belongs to e2e/stale-build-save.spec.ts. Its successful
+// save uses the same draft-clearing path proved by the two forms here, so repeating
+// that assertion through the live editor only adds another stateful workout teardown.
 //
 // Fixture discipline (#868): every row this spec creates is deleted by value in a
 // finally, keyed on names nothing else uses.
 
 const DB_PATH = workerDbPath();
 const WORKOUT_TITLE = "Draft net session";
-const LIVE_TITLE = "Draft net live";
 const SUPPLEMENT_NAME = "Draftnet Zinc";
 
 // The debounced draft write (600ms) has no UI of its own, so the honest wait is on
@@ -282,60 +281,5 @@ test("a long record form restores its state-only rows, then clears on submit (#1
     ).toHaveCount(0);
   } finally {
     deleteIntakeItem(SUPPLEMENT_NAME);
-  }
-});
-
-test("a live session's draft never outlives a successful save (#1699/#451)", async ({
-  page,
-}) => {
-  test.slow();
-  try {
-    await page.goto("/training?tab=log");
-    await page.getByRole("main").getByTestId("start-workout").click();
-    await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-    // #2870 step 3: settle on the session's page before typing, so the
-    // create-at-start navigation can't race the form interactions.
-    await page.waitForURL(/\/training\/activity\/\d+$/);
-
-    await settledFill(page, page.getByLabel("Activity name"), LIVE_TITLE);
-    await page.getByPlaceholder(/What did you do/).fill("Barbell Bench Press");
-    await page
-      .getByRole("listbox")
-      .getByRole("button")
-      .filter({ hasText: "Barbell Bench Press" })
-      .first() // first-ok: transient combobox list this spec just opened by typing
-      .click();
-    const weight = page.getByTestId("set1-weight");
-    await page
-      .getByTestId("next-set-card")
-      .getByRole("button", { name: "Use" })
-      .click();
-    await expect(weight).toHaveValue(/^\d/);
-
-    // The server row appearing is the positive signal that the live session is
-    // durable. The draft runs in live mode too (it is the only copy when the
-    // server backing fails — e2e/stale-build-save.spec.ts drives that), but the
-    // clear-on-success effect drops it the moment the server copy is current, so
-    // the store settles EMPTY while saves are landing.
-    await expect(
-      page.getByRole("button", { name: "Delete", exact: true })
-    ).toBeVisible({ timeout: DRAFT_SETTLE_MS });
-    await expect
-      .poll(async () => activityDrafts(await draftRows(page)).length, {
-        timeout: DRAFT_SETTLE_MS,
-        message: "the live draft to be dropped once the server copy is current",
-      })
-      .toBe(0);
-
-    // …and a plain create form opened afterwards has nothing to offer, which is the
-    // observable form of "the live session left no draft behind". The tab
-    // stands on the session's page (#2870 step 3), so return to the Log —
-    // where the New activity affordance lives — with a fresh document.
-    await page.keyboard.press("Escape");
-    await page.goto("/training?tab=log");
-    await openNewActivity(page);
-    await expect(page.getByTestId("draft-restore-banner")).toHaveCount(0);
-  } finally {
-    deleteActivitiesTitled(LIVE_TITLE);
   }
 });

@@ -4,6 +4,7 @@ import {
   dismissToast,
   followLink,
   hydratedClick,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
@@ -134,13 +135,11 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
   const prnRow = page
     .locator('[data-testid="quick-log-prn-item"][data-today-row="1"]')
     .first(); // first-ok: a today-PRN row — asserts the name/summary layout, order-agnostic
-  const [nameBox, summaryBox] = await Promise.all([
-    prnRow.getByRole("link").boundingBox(),
-    prnRow.getByTestId("prn-day-label").boundingBox(),
+  const [nameBox, summaryBox] = await settledBoxes([
+    prnRow.getByRole("link"),
+    prnRow.getByTestId("prn-day-label"),
   ]);
-  expect(nameBox).not.toBeNull();
-  expect(summaryBox).not.toBeNull();
-  expect(summaryBox!.y - (nameBox!.y + nameBox!.height)).toBeLessThanOrEqual(4);
+  expect(summaryBox.y - (nameBox.y + nameBox.height)).toBeLessThanOrEqual(4);
 
   const scheduledRow = page.getByTestId("today-scheduled-med").first(); // first-ok: asserts a scheduled-med row renders today — order-agnostic presence
   const actionButtons = [

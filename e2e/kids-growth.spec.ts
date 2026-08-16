@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledBoxes } from "./helpers";
 
 // Kids growth trends. For a CHILD profile the Trends → Overview → body census prioritizes
 // height (WHO/CDC growth percentiles + a height/head-circ chart), offers a manual
@@ -187,21 +187,17 @@ test.describe.serial("kids growth trends", () => {
       ).toBeVisible();
     }
     const headCircCard = page.getByTestId("growth-chart-head_circumference");
-    const [headCircPlotBox, headCircEmptyBox] = await Promise.all([
-      headCircCard.getByTestId("chart-card-plot").boundingBox(),
-      headCircCard
-        .getByText(
-          "No head circumference measurement is available in this date range."
-        )
-        .boundingBox(),
+    const [headCircPlotBox, headCircEmptyBox] = await settledBoxes([
+      headCircCard.getByTestId("chart-card-plot"),
+      headCircCard.getByText(
+        "No head circumference measurement is available in this date range."
+      ),
     ]);
-    expect(headCircPlotBox).not.toBeNull();
-    expect(headCircEmptyBox).not.toBeNull();
     expect(
       Math.abs(
-        headCircPlotBox!.x +
-          headCircPlotBox!.width / 2 -
-          (headCircEmptyBox!.x + headCircEmptyBox!.width / 2)
+        headCircPlotBox.x +
+          headCircPlotBox.width / 2 -
+          (headCircEmptyBox.x + headCircEmptyBox.width / 2)
       )
     ).toBeLessThanOrEqual(2);
     await expect(page.getByTestId("growth-chart-bmi")).toContainText(

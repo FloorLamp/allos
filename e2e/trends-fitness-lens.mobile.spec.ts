@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { expectNoClippedContent, followLink } from "./helpers";
+import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_FITNESS,
@@ -80,14 +80,11 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
       .getByRole("button", { name: /View occurrences for/ })
       .first(); // first-ok: every workout row shares the same phone stacking contract
     await rowButton.click();
-    const [calendarBox, rowBox] = await Promise.all([
-      history.getByTestId("day-history-calendar-panel").boundingBox(),
-      history.getByTestId("day-history-rowpanel").boundingBox(),
+    const [calendarBox, rowBox] = await settledBoxes([
+      history.getByTestId("day-history-calendar-panel"),
+      history.getByTestId("day-history-rowpanel"),
     ]);
-    expect(rowBox).not.toBeNull();
-    expect(rowBox!.y).toBeGreaterThanOrEqual(
-      calendarBox!.y + calendarBox!.height
-    );
+    expect(rowBox.y).toBeGreaterThanOrEqual(calendarBox.y + calendarBox.height);
     await expectNoClippedContent(page);
 
     // The nested Strength|Cardio|Sport strip is GONE. The section navigation is
