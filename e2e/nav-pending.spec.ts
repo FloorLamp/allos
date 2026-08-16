@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { hydratedClick } from "./helpers";
 import type { Page, Route } from "@playwright/test";
 
 // The sidebar answers the tap (issue #1956).
@@ -72,7 +73,18 @@ test("a sidebar tap shows the row is opening before the destination arrives (#19
   // exists to survive the pre-hydration window, and re-tapping is precisely the
   // behaviour this fix makes unnecessary — a retrying helper could not tell a
   // tap that was answered from one that was not.
-  await link.click();
+  //
+  // `hydratedClick` is not that, and is required here. It retries only the
+  // HYDRATION PROBE and then clicks exactly once, so the one-tap claim survives
+  // intact. Without it these specs are self-defeating: a click landing before
+  // React attaches the anchor's handler is not intercepted by `<Link>` at all,
+  // so the browser issues a full-document GET with no `?_rsc=` query — which
+  // means `page.route("**…?*")` never matches it, the navigation is never held,
+  // and the window this whole file exists to observe does not happen. It fails
+  // as "indicator never appeared", which reads like a product bug and is not
+  // one. Observed on CI at 1-in-4 on a loaded 2-core runner while passing 8/8
+  // on an idle box, which is the CPU-contention signature #500 describes.
+  await hydratedClick(page, link);
 
   // The row says it heard, while the destination is still being held.
   await expect(link.getByTestId("nav-link-pending")).toBeVisible();
@@ -95,7 +107,7 @@ test("tapping a pending sidebar row again does not restart its navigation (#1956
   const link = page.locator(`aside nav a[href="${DESTINATION}"]`);
   await expect(link).toBeVisible();
 
-  await link.click();
+  await hydratedClick(page, link);
   await expect(link.getByTestId("nav-link-pending")).toBeVisible();
 
   // The impatient taps that used to restart the navigation. Each one is a real
@@ -182,7 +194,7 @@ test("a card link with no slot of its own is answered by the top-edge indicator 
   await expect(card).toBeVisible();
   const indicatorSeen = await watchIndicator(page);
 
-  await card.click();
+  await hydratedClick(page, card);
 
   await expect(page.getByTestId("nav-progress")).toBeVisible();
   await expect(page.getByTestId("nav-progress-status")).toHaveText(
@@ -222,7 +234,7 @@ test("a day arrow shows the day opening, and five taps dispatch one navigation (
   const prev = page.getByTestId("timeline-day-prev");
   await expect(prev).toBeVisible();
 
-  await prev.click();
+  await hydratedClick(page, prev);
   await expect(prev.getByTestId("nav-link-pending")).toBeVisible();
   await expect(prev.getByRole("status")).toHaveText(/Opening /);
   expect(new URL(page.url()).searchParams.get("from")).toBe(DAY);
@@ -267,7 +279,7 @@ test("a pager step shows pending in its own label, and absorbs repeat taps (#286
   const next = pager.locator('a[href*="page=2"]');
   await expect(next).toBeVisible();
 
-  await next.click();
+  await hydratedClick(page, next);
   await expect(next.getByTestId("nav-link-pending")).toBeVisible();
   expect(new URL(page.url()).searchParams.get("page")).toBeNull();
 
@@ -291,7 +303,7 @@ test("a timeline range chip shows pending in place, and absorbs repeat taps (#28
   const chip = page.getByTestId("timeline-pill-30D");
   await expect(chip).toBeVisible();
 
-  await chip.click();
+  await hydratedClick(page, chip);
   await expect(chip.getByTestId("nav-link-pending")).toBeVisible();
   await expect(chip.getByRole("status")).toHaveText(/Opening 30D/);
 
@@ -347,7 +359,7 @@ test("a navigation whose fetch dies resolves in the app, and the page keeps work
   await expect(page.getByTestId("settings-group-account")).toBeVisible();
   const sameDocument = await markDocument(page);
 
-  await page.getByTestId("settings-group-account").click();
+  await hydratedClick(page, page.getByTestId("settings-group-account"));
 
   const failed = page.getByTestId("nav-load-failed");
   await expect(failed).toBeVisible({ timeout: CONCEDE_TIMEOUT });
@@ -377,7 +389,7 @@ test("retry lands the navigation once the connection is back (#2869)", async ({
   await expect(page.getByTestId("settings-group-account")).toBeVisible();
   const sameDocument = await markDocument(page);
 
-  await page.getByTestId("settings-group-account").click();
+  await hydratedClick(page, page.getByTestId("settings-group-account"));
   await expect(page.getByTestId("nav-load-failed")).toBeVisible({
     timeout: CONCEDE_TIMEOUT,
   });
