@@ -559,13 +559,21 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
   // deploy does the same. The person is then shown the error boundary, which invites them
   // to carry on in the very session that is now shut: "Something went wrong … Reload the
   // app".
-  await login(page);
-  await page.goto("/medications");
-  const row = page
+  // ANY UNTAKEN DOSE WILL DO, and naming one was a real bug in the first version. The
+  // worker's database is shared by every test on it, and `offline-snapshots.spec.ts`'s
+  // queued-dose test taps the seeded Sertraline offline and then RECONNECTS, so its replay
+  // lands and that dose is taken for whatever runs next on that worker. Asking for
+  // Sertraline by name failed 1 of 3 CI repeats with "element(s) not found", which reads
+  // exactly like the gate refusing the tap — the wrong alarm, and a loud one. Nothing here
+  // is about which medication it is.
+  const takeable = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
-    .filter({ hasText: "Sertraline" });
-  await expect(row).toHaveCount(1);
+    .filter({ has: page.getByRole("button", { name: "Mark taken" }) });
+
+  await login(page);
+  await page.goto("/medications");
+  await expect(takeable.first()).toBeVisible({ timeout: 20_000 }); // first-ok: any dose still offering "Mark taken" — this test is about the gate, not about a medication
 
   // Kill the logout POST outright. Not a contrivance — this is what a tap on Log out in a
   // dead zone does, and the failure the error boundary is for.
@@ -597,24 +605,29 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
   // And the shipped feature still works. Measured on the PR head before this fix: `[]`
   // intents and the "saved offline" toast anyway; on origin/main, one intent.
   //
-  // WAIT FOR THE CONTROL BEFORE CUTTING THE NETWORK. The first version went offline as
-  // soon as the sidebar appeared, which is a different page's chrome — on a loaded runner
-  // the today rows had not arrived yet, and cutting the network there means they never
-  // do. It failed 1 of 3 CI repeats that way, at 17s against 2s, which reads as the gate
-  // refusing the tap and is nothing of the kind.
-  const takenAfterReload = page
-    .getByTestId("medications-today")
-    .locator("[data-today-row]")
-    .filter({ hasText: "Sertraline" })
+  // WAIT FOR THE ROW BEFORE CUTTING THE NETWORK. The first version went offline as soon
+  // as the sidebar appeared, which is chrome every page has — on a loaded runner the today
+  // rows had not arrived yet, and cutting the network there means they never do.
+  const takeAfterReload = takeable
+    .first() // first-ok: same untaken dose, re-resolved after the reload
     .getByRole("button", { name: "Mark taken" });
-  await expect(takenAfterReload).toBeVisible({ timeout: 20_000 });
+  await expect(takeAfterReload).toBeVisible({ timeout: 20_000 });
 
   await context.setOffline(true);
-  await takenAfterReload.click();
+  await takeAfterReload.click();
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
     /1 queued offline/
   );
   expect((await storedRows(page, "intents")).length).toBe(1);
+
+  // THE REPLAY MUST NOT LAND. Reconnecting with the intent queued would replay it against
+  // the real server and take that dose for every test that runs after this one on the same
+  // worker database — which is the exact coupling that broke this test from the other
+  // direction, and it would be rude to answer it by creating it. The queue is left queued;
+  // the context is discarded at the end of the test and goes with it.
+  await page.route("**/api/offline-replay*", (route) =>
+    route.abort("internetdisconnected")
+  );
   await context.setOffline(false);
 });
 
