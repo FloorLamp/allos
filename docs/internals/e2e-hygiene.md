@@ -594,6 +594,82 @@ comes from the same settled layout and none is null. Use it for any assertion
 whose subject is the RELATIONSHIP between elements; a single element's own size
 can still be read directly.
 
+## Settling a READ is not gating a MOUNT (2026-08-16, #2862)
+
+`settledBoxes` and `chartsSettled` answer different questions, and #2862 exists
+because the two look alike. `settledBoxes` repeats a group of boxes until two
+consecutive reads agree — that makes every box come from one layout, which cures a
+torn _relative_ measurement. It says nothing about **which** layout. A lazy chart
+card sitting in its Suspense fallback is perfectly still: two reads 50 ms apart
+agree, the helper returns, and the caller measures a page that is still one card
+short. Quiescence is not the terminal state.
+
+That distinction is not new — `sleep-page` already spelled it out at its own call
+site, where the mount sat behind `gotoSleepLogSettled` and `settledBoxes` was
+credited only with keeping the measurement atomic. What was new is that migrating
+25 geometry reads onto `settledBoxes` (#2947) reads like it closed #2862 and did
+not: after it, 19 specs used `settledBoxes` with no chart-mount gate of any kind,
+including all four of #2862's named EXPOSED-MIXED tests.
+
+The gate is `chartsSettled(scope, …cards)` (`e2e/helpers.ts`). Every chart is
+`next/dynamic(ssr: false)`, which is three renders of one box — nothing at SSR, the
+fallback at hydration, the chart at chunk evaluation — and on a loaded worker the
+last step lands tens of seconds after first paint, growing the layout under a test
+that has already started measuring or driving it.
+
+Two rules the helper's shape encodes:
+
+- **A positive signal per card, never "no fallback on the page."** The fallback's
+  absence is true _before_ hydration too — an `ssr:false` box renders nothing at
+  SSR — so an absence-only gate settles on the pre-hydration paint. That is the
+  #1437 bystander false-settle wearing a chart costume.
+- **Name a card that DRAWS.** An empty chart card renders an empty state and never
+  mounts a `.recharts-wrapper`, so naming it gates on something that will not
+  happen and burns the full budget. Where the fixture decides which cards plot,
+  pass a Locator scope and no cards — the helper then gates on that element's
+  hydration instead. A `Page` scope with no card is refused outright: there would
+  be nothing to probe, and the call would return true against the first paint.
+
+## A bare `.click()` on a ⋯ menu trigger is a swallowed tap (2026-08-16, #2942)
+
+A tap dispatched before React attaches the handler is **discarded** — no error, no
+warning, and Playwright's actionability checks all pass because the element really
+is there. The failure surfaces seconds later as the thing the tap should have
+revealed being missing, which reads as "the menu is broken" rather than "the
+trigger was never pressed." `form-drafts.spec.ts` flaked two shards on that shape,
+and the 2026-07-26 weekly census red was another copy of it
+(`wellbeing-check.spec.ts:154`, on two shards at once).
+
+The scan now bans it: a bare `.click()` on an `OverflowMenu` trigger — located by
+its `overflow-menu-trigger` testid or by its "… actions" / "Actions for …"
+accessible name — must be `hydratedClick`.
+
+**Why the rule keys on the CONTROL and not on the position.** #2942 first proposed
+the positional form: a `.click()` whose nearest preceding statement is a
+`goto`/`reload`/`waitForURL`. That rule cannot see its own motivating case.
+`openNewActivity`'s click is the _first_ statement of a module-local helper, and
+the `goto` is in the caller, one function up. Following that needs the call graph,
+which a text scan does not have — and a helper called from five places is only
+sometimes preceded by a navigation anyway. The control's identity is stable and
+sits in the _same statement_ as the click, so the rule stays local.
+
+**A correction to the premise, worth keeping.** #2942 says the scan is "spec-only"
+and so cannot read module-local helpers. It has read every `e2e/*.ts` — helper
+bodies included, since they live in the same file — since #868 phase 2. What was
+missing was never reach; it was a rule phrased locally enough to _use_ that reach.
+
+**The menu ITEM is deliberately out of scope**, and that is a mechanism claim, not
+a concession. The panel is `{open && createPortal(…)}`, so a menu item exists only
+because a trigger click already landed — which is itself proof React had attached.
+Scanning items too would have flagged 51 more sites for a window that is already
+closed. The false-positive tail #2942 anticipated lived entirely in that half, and
+it is removed by an argument rather than papered over with a marker.
+
+Frozen at today's per-file counts (77 across 45 files) with a `hydrated-ok: <why>`
+escape, the same immutable-downward discipline as `FIRST_ALLOW`. The module-local
+HELPER sites were burned down first — the class the issue was filed about, and the
+half a call-site-only reading would never have found.
+
 ## A retry cannot converge on a control that covers itself (2026-08-13, #2662)
 
 `document-capture.mobile` and `progress-photos` both waited for the native file
@@ -1381,6 +1457,47 @@ pain they replace):
   `schedule` event `inputs.*` is empty, so the run step's `|| '0'` / `|| '2'`
   fallbacks pick the census form; the `event_name`-scoped concurrency group
   keeps a manual dispatch and the weekly run from cancelling each other.)
+
+### A census nobody reads, and the silence nobody hears (2026-08-16, #2968)
+
+The weekly census went red on 07-26, 08-02 and 08-09; none became a flake-ledger
+item, which the workflow's own comment requires. Two failures, and they need
+separating because they have different fixes.
+
+**The silence.** #2968 also reported the census as having stopped — "no run after
+08-09". It had not. The issue was filed at 02:02 UTC on Sunday 08-16 and the cron
+fires at 06:23 UTC, so the next run was four hours away and the history was
+indistinguishable from a dead schedule. That is worth recording as its own lesson:
+eyeballing a run list **cannot** tell "one period has elapsed" from "one period was
+skipped" — you need the schedule and the clock together. `scripts/scheduled-run-freshness.mjs`
+asks exactly that, in `orchestrator-checkin.sh`'s absent-or-past shape, and runs
+from `ci-main.yml` on every push to main rather than from a schedule of its own —
+a scheduled canary watching a schedule shares the failure mode it watches for. It
+also reads the workflow's `state`, because GitHub disabling a workflow after 60
+days of repository inactivity is the mechanism by which a cron actually goes quiet,
+and a fresh timestamp would otherwise report green on a workflow that will never
+fire again.
+
+**The reds.** Reading all seven failing shards: six distinct specs, no spec
+repeating across weeks — so this is drift, not one rotting test. But they fall into
+three mechanism families, and two of them are families this suite already has names
+and cures for:
+
+| date  | spec                                               | shape                                                                                                                |
+| ----- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 07-26 | `wellbeing-check.spec.ts:154` (shards 2 **and** 4) | bare `.click()` on `feeling-sick-activate`, then `symptom-log-bar` "element(s) not found" — the swallowed tap, #2942 |
+| 07-26 | `full-export.spec.ts:89`                           | `followLink` on a RELATIVE pager: `p_medical_records=11` where `=2` was wanted — #2437's compounding advance         |
+| 08-02 | `trends-card-rank.spec.ts:145`                     | expected six tile keys, got `[]` — the starred grid read before it rendered                                          |
+| 08-02 | `protein-adequacy.spec.ts:13`                      | `data-basis` "combined", not "estimated" — a neighbour's protein log on a shared-seed profile                        |
+| 08-09 | `patient-portals-setup.spec.ts:1052`               | reopen-if-closed `toPass` on a client confirm, timed out at 15 s — the swallowed tap again                           |
+| 08-09 | `trends-default-range.spec.ts:185`                 | `trend-mini-card` "No data in this range" not found — a Trends tile missing                                          |
+
+Three of the seven are pre-hydration swallows (#2942's class), two are Trends
+starred-grid tiles absent on a lazy-chart route (#2862's class), one is shared-seed
+contamination, one is the relative-navigation retry. **The census was re-finding
+these two classes once a week and nobody was reading it** — which is the strongest
+available argument that the instrument works and the reading loop was what failed.
+
 - **Pass-on-retry flake telemetry → the retries drop.** The telemetry ran the
   full suite at `retries: 1` and posted every `status: "flaky"` (pass-on-retry)
   test to the job summary via a `json` reporter

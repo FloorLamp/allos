@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { followLink } from "./nav";
-import { dismissToast, expectNoClippedContent, settledClick } from "./helpers";
+import {
+  dismissToast,
+  expectNoClippedContent,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import {
   ensureUnlogged,
   addFromPicker,
@@ -25,7 +30,10 @@ async function openEpisodeEditor(page: Page) {
   const controls = page
     .getByTestId("episode-illness-timeline")
     .getByTestId("episode-controls");
-  await controls.getByRole("button", { name: "More episode actions" }).click();
+  await hydratedClick(
+    page,
+    controls.getByRole("button", { name: "More episode actions" })
+  );
   await expect(
     page.getByRole("button", { name: /Promote to condition|Remove condition/ })
   ).toBeVisible();
@@ -37,7 +45,10 @@ async function openEpisodeActions(page: Page) {
   const controls = page
     .getByTestId("episode-illness-timeline")
     .getByTestId("episode-controls");
-  await controls.getByRole("button", { name: "More episode actions" }).click();
+  await hydratedClick(
+    page,
+    controls.getByRole("button", { name: "More episode actions" })
+  );
   return controls;
 }
 
@@ -331,7 +342,10 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .getByTestId("illness-event-symptom")
       .filter({ hasText: "Peaked in the evening" })
       .first(); // first-ok: filtered to the note THIS spec logged — one match
-    await historicalSymptom.getByTestId("overflow-menu-trigger").click();
+    await hydratedClick(
+      page,
+      historicalSymptom.getByTestId("overflow-menu-trigger")
+    );
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     let symptomEditor = page.getByTestId("illness-event-editor");
     await expect(symptomEditor.getByLabel("Severity")).toBeVisible();
@@ -346,7 +360,10 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // is long enough that the ⋯ trigger re-opened next sits in the same quadrant —
     // so the toast intercepts the re-open for its whole 6s window (#2861).
     await dismissToast(page, "Symptom updated.");
-    await historicalSymptom.getByTestId("overflow-menu-trigger").click();
+    await hydratedClick(
+      page,
+      historicalSymptom.getByTestId("overflow-menu-trigger")
+    );
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     symptomEditor = page.getByTestId("illness-event-editor");
     await symptomEditor.getByLabel("Note").fill("Peaked in the evening");
@@ -356,7 +373,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
 
     // Historical readings and doses have a real correction path from the ledger.
     const tempRow = page.getByTestId("illness-event-temperature").first(); // first-ok: a temperature event row (has a correction path) — order-agnostic
-    await tempRow.getByTestId("overflow-menu-trigger").click();
+    await hydratedClick(page, tempRow.getByTestId("overflow-menu-trigger"));
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     const eventEditor = page.getByTestId("illness-event-editor");
     await expect(eventEditor).toBeVisible();

@@ -30,7 +30,21 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
 - Older issues start with an audit table: resolved by what, or still open.
-- Cap E2E work at two agents and ordinary concurrent work near four agents.
+- Cap E2E work at two agents and ordinary concurrent work at five agents (four
+  until #2964 scoped the DB tier; raised on trial 2026-08-16).
+- Revert to four on evidence, not feel: contention shows up as a slow tier
+  misread as a regression, so watch the DB tier's duration and whether agents
+  start hitting the ten-minute tool cap mid-gate.
+- That cap counts agents RUNNING — a machine limit. The queue that jams first
+  is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
+  dispatch at roughly three unreviewed PRs however few agents are running.
+- STAGGER starts. Durations cluster tightly (seven of the first ten inside
+  85±5 min), so simultaneous starts are simultaneous arrivals — and
+  simultaneous GATES: five at once drove load to 17.7 on 4 cores.
+- `dispatch-brief.mjs new` warns when a sibling started within 25 minutes and
+  projects both arrivals; it never refuses, because a P0 preempts.
+- A refuted PR re-enters the review queue, so arrival is not one-shot. Count
+  rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
 - Agents push after every meaningful step. The remote branch is the durable

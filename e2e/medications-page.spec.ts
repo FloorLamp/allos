@@ -35,7 +35,7 @@ async function openRowMenuItemAndFollow(
   const item = page.getByRole("menuitem", { name: itemName });
   await expect(async () => {
     if (!(await item.isVisible().catch(() => false))) {
-      await row.getByRole("button", { name: "Medication actions" }).click();
+      await row.getByRole("button", { name: "Medication actions" }).click(); // hydrated-ok: inside the reviewed reopen-if-closed toPass below — the loop already tolerates a swallowed tap, and it re-opens ONLY when the item is not visible, so it can never toggle the menu shut
       await expect(item).toBeVisible({ timeout: 2_000 });
     }
     await item.click();
