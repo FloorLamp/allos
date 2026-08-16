@@ -116,6 +116,13 @@ export function toImmunizationRoute(
 //       leaked "encounter for…" Z-codes) — an event, not an ongoing condition.
 //   (c) a conservatively-curated self-limited/acute name past a ~90-day horizon
 //       (problem-list) or unconditionally (an episodic visit diagnosis).
+//   (d) PREGNANCY-STATE and ADMINISTRATIVE encounter codes (#2917) — #590's own
+//       slice (b) named this family and it was never picked up. Z34.* supervision of
+//       normal pregnancy, Z3A.* weeks of gestation, Z39.* postpartum care, Z23
+//       immunization, Z31.* procreative management, and their narrative twins. A
+//       trimester lasts thirteen weeks; these are time-boxed BY DEFINITION, yet three
+//       overlapping portal exports left one postpartum person with "Normal pregnancy
+//       in first trimester" AND "…third trimester" both permanently active.
 // This is INFORMATIONAL curation (same precedent as RETEST_WORTHY / RISK_RULES), and
 // import-path only — a manual/user-entered condition is never touched.
 
@@ -148,10 +155,53 @@ export function isBirthEventOrEpisodic(input: {
   const n = input.name.toLowerCase();
   if (/\blive\s?born\b/.test(n)) return true;
   if (/\bsingle liveborn\b/.test(n)) return true;
-  // Leaked "encounter for …" Z-codes (e.g. "Encounter for immunization",
-  // "Encounter for screening") — the encounter is the event, not a condition.
-  if (/^encounter for\b/.test(n.trim())) return true;
+  // Leaked "encounter for …" / "encounter of …" Z-codes (e.g. "Encounter for
+  // immunization", "Encounter of female for testing for genetic disease carrier
+  // status") — the encounter is the event, not a condition. Epic writes both
+  // prepositions; "of" was observed in the #2917 portal export.
+  if (/^encounter (?:for|of)\b/.test(n.trim())) return true;
   return false;
+}
+
+// ---- (d) pregnancy-state + administrative encounter codes (#2917) ----
+//
+// ICD-10 prefixes that are, by definition, a TIME-BOXED state or an administrative
+// encounter rather than a standing problem:
+//   Z34.* supervision of normal pregnancy   Z3A.* weeks of gestation
+//   Z39.* maternal postpartum care          Z23   encounter for immunization
+//   Z31.* procreative management
+// Deliberately NARROW. Pregnancy COMPLICATIONS live in chapter O (O24 gestational
+// diabetes, O13 gestational hypertension, …) and are real conditions — no O code is
+// listed here, and none is matched by the names below either.
+const PREGNANCY_ADMIN_ICD10 = /^(?:Z34|Z3A|Z39|Z31)(?:[.a-z0-9]*)?$/i;
+const IMMUNIZATION_NEED_ICD10 = /^Z23(?:[.a-z0-9]*)?$/i;
+
+// Narrative twins, for the rows that arrive SNOMED-coded or narrative-only (the
+// observed export coded its pregnancy findings in SNOMED, whose numeric identities
+// are deliberately NOT curated here — a wrong concept id would silently resolve an
+// unrelated condition, which is the exact harm this issue is about). Each pattern is
+// anchored or unambiguous enough that no chapter-O complication can match it:
+//   "Normal pregnancy in first trimester"        → ^normal pregnancy
+//   "Primigravida in second trimester"           → \bgravida\b
+//   "28 weeks gestation of pregnancy"            → \b<n> weeks gestation\b
+//   "Postpartum care and examination"            → \bpostpartum care\b
+//   "Need for Tdap vaccination"                  → ^need for
+// "Encounter for…"/"Encounter of…" is already handled by isBirthEventOrEpisodic.
+const PREGNANCY_ADMIN_NAME =
+  /^normal pregnancy\b|\bgravida\b|\b\d+\s*weeks?\s+gestation\b|\bsupervision of (?:normal |low risk |high risk )?pregnancy\b|\bpostpartum care\b|^need for\b/;
+
+// Whether a condition is a pregnancy-STATE or administrative encounter/need entry
+// that should never sit on the problem list as permanently active. Like every other
+// family here this only ever licenses a DOWNGRADE — a genuinely current pregnancy
+// keeps its own clinical-status observation, which the decision below never touches.
+export function isPregnancyStateOrAdministrative(input: {
+  name: string;
+  code?: string | null;
+}): boolean {
+  const code = (input.code ?? "").trim();
+  if (code && PREGNANCY_ADMIN_ICD10.test(code)) return true;
+  if (code && IMMUNIZATION_NEED_ICD10.test(code)) return true;
+  return PREGNANCY_ADMIN_NAME.test(input.name.toLowerCase().trim());
 }
 
 // Chronic-capable / recurrent condition families that must NEVER be treated as
@@ -237,10 +287,14 @@ export function decideImportedConditionStatus(input: {
   const now = input.now ?? new Date();
   const key = { name: input.name, code: input.code };
 
-  const isBirthEvent = isBirthEventOrEpisodic(key);
-  const selfLimited = !isBirthEvent && isSelfLimitedCondition(key);
+  // (b)/(d) fire unconditionally — both families are events or time-boxed states, so
+  // there is no horizon to wait out; (c) alone is horizon-gated for a problem-list
+  // entry. Checked before the acute list so a listed row never needs to also match it.
+  const eventOrTimeBoxed =
+    isBirthEventOrEpisodic(key) || isPregnancyStateOrAdministrative(key);
+  const selfLimited = !eventOrTimeBoxed && isSelfLimitedCondition(key);
   const downgrade =
-    isBirthEvent ||
+    eventOrTimeBoxed ||
     (selfLimited &&
       (input.episodic
         ? true

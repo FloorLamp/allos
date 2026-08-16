@@ -324,14 +324,17 @@ function mergeDedupe<T extends { external_id: string }>(
 // Active-Problems row of the same name.
 function visitDiagnosisToCondition(
   d: StandaloneVisitDiagnosis,
-  documentDate: string | null
+  onsetFallback: string | null
 ): ImportedCondition {
   // For a visit diagnosis the visit date IS the diagnosis date (#590): use the
-  // encounter/document date as onset when the narrative carried none — accurate,
-  // not fabricated. Then let the import intelligence downgrade an episodic
-  // self-limited / birth-event dx to resolved (a chronic-capable dx stays active).
-  // A visit dx never carries an explicit clinical-status observation.
-  const onset = d.onset_date ?? documentDate;
+  // document date as onset when the narrative carried none — accurate, not
+  // fabricated. That premise holds only where document ≈ visit, so the CALLER
+  // decides whether there IS a fallback (#2917): a multi-visit container passes
+  // null, because its effectiveTime is the export's date and belongs to no visit in
+  // it. Then let the import intelligence downgrade an episodic self-limited /
+  // birth-event dx to resolved (a chronic-capable dx stays active). A visit dx never
+  // carries an explicit clinical-status observation.
+  const onset = d.onset_date ?? onsetFallback;
   const decided = decideImportedConditionStatus({
     name: d.name,
     code: d.code,
@@ -556,8 +559,20 @@ export function extractFromCcda(
       target.diagnoses.push(d.name);
     }
   } else {
+    // No single encounter to correlate to. The document date is a HONEST onset only
+    // where the document IS one visit — a per-visit summary that shipped no
+    // Encounter Activity still has exactly one visit, and its effectiveTime is that
+    // visit's date. A MULTI-visit container (an "all visits" portal export) is the
+    // case #2917 found: its effectiveTime is the moment the portal generated the
+    // bundle, so stamping it on an uncorrelated dx fabricates an onset, rewrites it
+    // on every re-collection (the representative prefers the newest row), and — since
+    // the onset is baked into `ccda:visit-dx:…` and thence the #1780 clinical key —
+    // mints a fresh identity per collection, which is what defeats the duplicate
+    // refusal. Those import with NO onset instead ("known as of" is not onset, #590's
+    // own non-goal), which also makes the external_id stable across re-collections.
+    const onsetFallback = deduped.length > 1 ? null : documentDate;
     for (const d of visitDiagnoses) {
-      conditions.push(visitDiagnosisToCondition(d, documentDate));
+      conditions.push(visitDiagnosisToCondition(d, onsetFallback));
     }
   }
   // Progress Notes + per-clinician Notes: attach to the same-document encounter's
