@@ -955,6 +955,60 @@ describe("the keyboard never offers what the write core refuses (#2875)", () => 
     );
   });
 
+  it("offers nothing where the stored day cannot be composed back (America/Havana)", () => {
+    // THE BOUND READS THE COLUMN THE CORE ENFORCES. Havana starts DST at local midnight
+    // on 2026-03-08 — 00:00 becomes 01:00 — so "00:20" is an hour that date does not
+    // contain, and the instant the row composes to reads back as 2026-03-07 23:20. The
+    // core still compares against the stored `date`, so every offer bounded by the
+    // COMPOSED day is a button whose tap answers `crosses-day`: D6 again, inside the fix
+    // for D6. Five zones do this — Havana, Santiago, Asuncion, Coyhaique and the Azores.
+    //
+    // Reached the way it is really reached: an app write that STATES a date and time,
+    // which is the one path that can file a session under a wall time its own day skips.
+    // Its `created_at` is now, so it forms a burst like any other.
+    const HAV = "America/Havana";
+    const pid = makeProfile("havana", HAV);
+    const now = new Date("2026-03-08T05:30:00Z");
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, time, created_at)
+         VALUES (?, 'Sauna', '2026-03-08', '00:20', ?)`
+    ).run(pid, utcSqlString(new Date(now.getTime() - 5 * 60_000)));
+    const id = lastLogId(pid);
+
+    // The premise, pinned: the two days really are different strings here.
+    expect(
+      zonedDateParts(HAV, zonedWallTimeToUtc(HAV, "2026-03-08", "00:20")!).date
+    ).toBe("2026-03-07");
+
+    const bursts = getPracticeCorrectionBursts(pid, now);
+    expect(
+      bursts,
+      "the burst must be live, or this asserts nothing"
+    ).toHaveLength(1);
+    expect(
+      correctionActions(PRACTICE_TIME_PREFIXES, pid, bursts, HAV, now)
+    ).toEqual([]);
+    expect(offeredHours(bursts[0], now, HAV, true)).toEqual([]);
+    const { offScope } = correctableBursts(
+      PRACTICE_TIME_PREFIXES,
+      bursts,
+      now,
+      HAV
+    );
+    expect(offScope).toHaveLength(1);
+    expect(correctionOffScopeStatement(offScope, HAV)).toContain(
+      "correct it in the app"
+    );
+
+    // And the core agrees: the chip the old bound would have drawn is one it refuses.
+    expect(
+      restampPracticeLogsCore(pid, bursts[0].fromId, (row) =>
+        chipTarget(row, 30, now)
+      )
+    ).toEqual({ kind: "crosses-day" });
+    expect(storedTime(id)).toBe("00:20");
+  });
+
   it("keeps the ordinary morning's hours and drops exactly last night's four", () => {
     // The review's second reproduction: at 08:00 local the domain-blind picker offered
     // eleven hours and the core refused four of them — 23:00 back to 20:00, which THE

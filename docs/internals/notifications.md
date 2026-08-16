@@ -851,6 +851,15 @@ genuinely differ:
   body can say the correction belongs in the app instead of drawing a keyboard that
   cannot work.
 
+The day that bound is computed from is the **stored `date` column**, carried up from the
+tap row (`TapEvent.localDay`) rather than re-derived from the composed instant. The two
+are not the same string everywhere: `zonedWallTimeToUtc` cannot round-trip the day in the
+five zones whose DST starts at local midnight (Havana, Santiago, Asuncion, Coyhaique, the
+Azores), where a session filed under `2026-03-08` at `00:20` composes to an instant that
+reads back as `2026-03-07 23:20` — that hour never happens there. The core compares
+against the column, so a bound computed from the composed day offers chips the core is
+guaranteed to refuse: the same defect the bound exists to prevent, one derivation over.
+
 Migration `20260816-practice-tap-message-provenance` adds `practice_logs.notify_message_id`
 — migration 170's shape exactly — so a practice burst is attributed like the other two
 rather than riding as unattributed, and the pace nudge REBUILDS after a tap instead of
@@ -867,7 +876,7 @@ own; that is open.
 
 **A REDRAW OBEYS EVERY RULE THE SEND OBEYED.** The nudge rebuilding instead of closing
 turns one message into a thing that is rendered repeatedly, and each rule the send
-applied has to be applied again or the redraw quietly undoes it. Four of them, all
+applied has to be applied again or the redraw quietly undoes it. Five of them, all
 learned the hard way:
 
 - the tapped `✅` is CONSUMED, and "re-derive from live pace" does not achieve that — a
@@ -886,7 +895,19 @@ learned the hard way:
   the chips had no clock at all: nothing aged them out, and a tapped nudge stood until
   the pointer was pruned days later. The close reads its outcome off the DELIVERED
   keyboard, like the dose families, because by then the `pdone` tokens naming what the
-  message claimed are gone from the live one.
+  message claimed are gone from the live one;
+- and a `null` from `buildPracticeCorrectionRebuild` means **nothing to show AND nothing
+  to say**, which is the callers' whole contract with it: both close the message on one,
+  and neither may leave a stale keyboard standing. The day bound made the looser reading
+  dangerous — once a burst can go off scope, "no chip is offerable" stopped meaning
+  "nothing to render", because the commonest way a practice burst loses its chips is that
+  the correction SUCCEEDED. Answering null there took the message down: after a chip
+  write the chat kept the old time under a live chip whose tap is now refused, and in the
+  single-practice case at 00:20 local the confirmation was closed and the sentence
+  explaining why nothing is on offer had nowhere to land. A statement alone is enough of
+  a message. Its keyboard then makes no claim, so the hourly sweep leaves it exactly as
+  it is — the one-hour close belongs to a keyboard that claims "you may still correct
+  this here", and the pointer prune retires this one.
 
 **The offer is a QUERY over ledger state**, never a memory of what some earlier
 message rendered — which is why the rows survive a rebuild, a pointer rotation and a

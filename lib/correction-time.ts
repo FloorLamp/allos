@@ -252,7 +252,9 @@ export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
       // ONE day or none. A burst is one error, and a correction writes one answer onto
       // every member — so members filed under different days (or any member filed under
       // none) leave the burst with no day a day-keyed offer could be bounded by.
-      localDay: current.every((e) => e.localDay && e.localDay === first.localDay)
+      localDay: current.every(
+        (e) => e.localDay && e.localDay === first.localDay
+      )
         ? (first.localDay ?? null)
         : null,
       label: current.length === 1 ? first.label : "",
