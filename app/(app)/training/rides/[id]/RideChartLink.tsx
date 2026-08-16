@@ -49,12 +49,17 @@ export function RideChartLinkProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// Linking is a COORDINATION between sibling charts, so a chart with no siblings
+// needs none: hosts that render one of these charts alone (the canonical
+// activity page's heart-rate block, #2870) get an inert link rather than a
+// crash. Throwing here took down the whole page through the error boundary —
+// and it did it exactly where the feature was supposed to pay off, on every
+// non-cycling activity that HAS heart-rate minutes to draw.
+const UNLINKED: RideChartLinkValue = {
+  activeElapsedSec: null,
+  setActiveLabel: () => {},
+};
+
 export function useRideChartLink(): RideChartLinkValue {
-  const value = useContext(RideChartLinkContext);
-  if (!value) {
-    throw new Error(
-      "useRideChartLink must be used inside RideChartLinkProvider"
-    );
-  }
-  return value;
+  return useContext(RideChartLinkContext) ?? UNLINKED;
 }

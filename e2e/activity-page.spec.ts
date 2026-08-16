@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 import { openCommandPalette } from "./nav";
+import { ZONE_WALK_TITLE } from "./seed/training";
 
 // #2870 step 1 — every non-cycling activity has a canonical page: the Training
 // Log's card rendered whole at its own URL, with ‹ older / newer › ledger
@@ -26,6 +27,36 @@ test("an Analyze sessions row opens the activity's canonical page", async ({
   // The page is part of the ledger, not a dead end: back to the log, and the
   // neighbor links walk (date, id) order when neighbors exist.
   await expect(page.getByRole("link", { name: /Training log/ })).toBeVisible();
+});
+
+test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists for", async ({
+  page,
+}) => {
+  // The journey that found this broken: browse the Log, read the record in the
+  // pane, promote it to its page. The seeded walk carries per-minute HR inside
+  // its own window, which is the only condition under which the block renders —
+  // and rendering it used to take the whole page down through the error
+  // boundary, because the chart is shared with the ride page and demanded that
+  // page's chart-link provider (see RideChartLink's UNLINKED).
+  await page.goto("/training?tab=log");
+  const walkRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: ZONE_WALK_TITLE });
+  await hydratedClick(page, walkRow);
+  await followLink(
+    page,
+    page.getByTestId("activity-pane-open"),
+    /\/training\/activity\/\d+$/
+  );
+
+  const record = page.getByTestId("training-activity-page");
+  await expect(record).toBeVisible();
+  const hr = page.getByTestId("activity-hr-chart");
+  await expect(hr).toBeVisible();
+  // It says how much wear it is drawing, and the zone strip splits those same
+  // minutes — an empty chart frame would satisfy neither.
+  await expect(hr).toContainText(/\d+ recorded min/);
+  await expect(page.getByTestId("activity-heart-rate-zones")).toBeVisible();
 });
 
 test("the ledger walk: older/newer links traverse adjacent activities", async ({

@@ -112,7 +112,11 @@ export default async function TrainingActivityPage(props: {
       />
 
       {heartRateSeries.length > 0 && (
-        <div className="card mt-4" data-testid="activity-heart-rate">
+        // Not `activity-heart-rate`: the record card above already carries that
+        // id on its summary's ♥ chip, and two of them on one page is the
+        // hidden-twin trap (#2305) — a scoped read would get whichever came
+        // first in the DOM, which is the 16px chip, not this block.
+        <div className="card mt-4" data-testid="activity-hr-chart">
           <div className="flex items-baseline justify-between gap-2">
             <h3 className="font-semibold text-slate-800 dark:text-slate-100">
               Heart rate
