@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { settledClick, settledPickOption } from "./helpers";
+import {
+  chartsSettled,
+  hydratedClick,
+  settledClick,
+  settledPickOption,
+} from "./helpers";
 
 // The unified save gesture (#1456) end-to-end: ONE star, membership everywhere.
 //
@@ -35,7 +40,13 @@ const DETAIL_URL = `/results/clinical-results/view?name=${encodeURIComponent(ANA
 // A tile's controls live in its corner ⋯ menu since #1485 B, and the panel is
 // PORTALED to <body> — so it is located on the page, never inside the card.
 async function tileMenu(page: Page, tile: Locator): Promise<Locator> {
-  await tile.getByTestId("overflow-menu-trigger").click();
+  // The trigger is an OverflowMenu toggle (hydratedClick, never a retried click), and
+  // its panel is `position: fixed` against the trigger's rect — so the tile grid has
+  // to be done growing first, or the panel opens anchored to where the tile WAS
+  // (#2862). The seeded grid always plots at least the weight tile.
+  const grid = page.getByTestId("saved-tiles");
+  await chartsSettled(grid, grid);
+  await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;
@@ -62,6 +73,10 @@ test("starring a biomarker gives it a Trends chart tile with no second gesture",
   await page.goto("/trends");
   const savedRow = page.getByTestId("saved-tiles");
   await expect(savedRow).toBeVisible();
+  // Every height claim below is a claim about a tile grid whose sparklines are lazy:
+  // until their chunk evaluates, a tile is its pre-chart height and the peer-row
+  // comparison is between two different layouts (#2862).
+  await chartsSettled(savedRow, savedRow);
   await expect(savedRow.getByText(ANALYTE, { exact: true })).toBeVisible();
   const savedTile = savedRow
     .getByTestId("trend-mini-card")

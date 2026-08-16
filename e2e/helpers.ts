@@ -168,6 +168,25 @@ async function awaitAutosaveSettled(scope: Locator): Promise<void> {
   await expect(scope.getByLabel("Saving")).toHaveCount(0);
 }
 
+// Wait until React has ATTACHED to this node — the one hydration probe, shared.
+//
+// React tags every host node it owns with `__reactFiber$…`/`__reactProps$…`. Their
+// presence is the difference between server HTML that merely looks right and a live
+// tree with handlers on it, and it is the signal `hydratedClick`, `settledFill`,
+// `settledCheck` and `settledClick` all gate on. Kept in one place so a second caller
+// cannot invent a slightly different probe.
+async function awaitHydrated(el: Locator, timeout: number): Promise<void> {
+  await expect(el).toBeVisible();
+  await expect(async () => {
+    const hydrated = await el.evaluate((node) =>
+      Object.keys(node).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    expect(hydrated, "element not hydrated yet").toBe(true);
+  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; nothing is dispatched inside the loop
+}
+
 // Tap a <PhotoCapture> trigger and hand the native file chooser its bytes.
 //
 // ONE tap, no retry loop — and the reason is the whole of issue #2662.
@@ -279,22 +298,40 @@ async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
 // proves the chunk evaluated, and the sweep then covers every remaining tile — which
 // is what a grid whose populated members are fixture-dependent actually needs.
 //
+// WHEN NO CARD IS NAMEABLE — a route (the dashboard) whose only chart widget draws or
+// doesn't depending on the fixture's data — pass a LOCATOR scope and no cards. The
+// helper then establishes the same precondition directly, by waiting for React's
+// hydration markers on the scope element (the shared probe every settled interaction
+// uses) before believing an absent fallback. What it will NOT accept is a Page scope
+// with no card: there would be nothing to probe and nothing to wait for, and the call
+// would return true against the server's first paint.
+//
 // The 20s budget is declared per hygiene pitfall 17: chunk evaluation under
 // contention is exactly the latency the 5s default loses.
 const CHART_MOUNT_TIMEOUT = 20_000;
 
 export async function chartsSettled(
   scope: Page | Locator,
-  card: Locator,
-  ...moreCards: Locator[]
+  ...cards: Locator[]
 ): Promise<void> {
-  for (const c of [card, ...moreCards]) {
+  if (cards.length === 0) {
+    if (!("first" in scope)) {
+      throw new Error(
+        "chartsSettled: a Page scope needs at least one named chart card — the " +
+          "absence of a loading fallback is also true before hydration. Pass a " +
+          "Locator scope instead to gate on that element's hydration."
+      );
+    }
+    await awaitHydrated(scope, CHART_MOUNT_TIMEOUT);
+  }
+  for (const c of cards) {
     await expect(
       c.locator(".recharts-wrapper").first() // first-ok: proves THIS card mounted its chart at all; a card that draws two still takes one mount step
     ).toBeVisible({ timeout: CHART_MOUNT_TIMEOUT });
   }
-  // Now that at least one chunk has evaluated, an absent fallback is a real answer:
-  // any box still loading is still showing ChartLoading's text.
+  // The precondition above (a mounted chart, or a hydrated scope) is what makes this
+  // an answer rather than a pre-hydration coincidence: any box still loading is still
+  // showing ChartLoading's text.
   await expect(scope.getByText(/Loading chart/)).toHaveCount(0, {
     timeout: CHART_MOUNT_TIMEOUT,
   });
@@ -736,17 +773,9 @@ export async function hydratedClick(
   opts: { timeout?: number } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 10_000;
-  await expect(button).toBeVisible();
-  await expect(async () => {
-    const hydrated = await button.evaluate((el) =>
-      Object.keys(el).some(
-        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
-      )
-    );
-    // Not hydrated yet → toPass retries the PROBE only; the click below runs once,
-    // after the handler is attached, so the toggle can never be double-fired.
-    expect(hydrated, "button not hydrated yet").toBe(true);
-  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; the click stays outside the loop so a toggle is never fired twice
+  // The probe retries; the click below runs ONCE, after the handler is attached, so
+  // the toggle can never be double-fired.
+  await awaitHydrated(button, timeout);
   await button.click();
 }
 

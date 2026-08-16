@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { chartsSettled, hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 const DB_PATH = workerDbPath();
@@ -500,6 +500,13 @@ test("Customize still drags a widget to a new slot (the shared reorder core, #14
     "data-presentation",
     "cards"
   );
+
+  // The dashboard's weight widget is a lazy chart (`next/dynamic(ssr:false)`), so
+  // the grid is still growing until its chunk evaluates — and every coordinate this
+  // drag uses is read from that grid (#2862). No card is named because whether that
+  // widget DRAWS depends on the profile's weigh-ins; the hydrated `main` is the
+  // precondition that makes an absent loading fallback a real answer.
+  await chartsSettled(main);
 
   const widgets = main.locator("[data-testid^='dashboard-widget-']");
   await expect(widgets.first()).toBeVisible(); // first-ok: the editor's leading slot IS the subject — "does the top widget move?"

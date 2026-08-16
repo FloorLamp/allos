@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import { loginAs } from "./nav";
-import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
+import {
+  chartsSettled,
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+} from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { frozenNow } from "./worker-env";
 import {
@@ -255,6 +260,12 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     });
     await page.setViewportSize(DESKTOP);
     await openBodyTab(page);
+    // The starred grid above this census and the full chart stack below it are all
+    // lazy wrappers, and this test both MEASURES five rects on that layout and drives
+    // a portaled jump menu over it. Gate the growth before either (#2862) — the
+    // one-evaluate read below already stops a torn measurement, but a settled read of
+    // a layout that is still one card short is still the wrong layout.
+    await chartsSettled(page.getByRole("main"));
 
     const controls = page.getByTestId("body-view-controls");
     const jumpMenu = page.getByTestId("chart-jump-menu");

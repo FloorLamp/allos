@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page, type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import {
+  chartsSettled,
+  dismissToast,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_BULKFIX } from "./fixture-logins";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -139,6 +144,13 @@ test("corrects ONE measure of a body-metrics row and leaves the day's others alo
     // The history table renders at `md:` and up (the body-view stack container).
     await page.setViewportSize({ width: 1280, height: 1000 });
     await page.goto("/trends#body");
+    // This table sits BELOW the starred sparkline grid and the body census, all of
+    // them lazy charts — the purest sleep-page twin in #2839's sweep. Every ⋯ round
+    // trip below opens a `position: fixed` panel glued to a trigger those mounts are
+    // still pushing down, so gate the growth before the first one (#2862). No card
+    // is named: which tiles plot depends on this spec's own fresh fixture, and a
+    // hydrated `main` is the precondition an absent loading fallback needs.
+    await chartsSettled(page.getByRole("main"));
 
     const table = page.getByTestId("body-history-table");
     await expect(table).toBeVisible();
@@ -203,6 +215,10 @@ test("corrects ONE measure of a body-metrics row and leaves the day's others alo
       .getByTestId("body-history-row")
       .filter({ hasText: `${WEIGHT_KG} kg` });
     await expect(solo).toHaveCount(1);
+    // The save above toasted into the bottom-right, where this table's actions column
+    // and its portaled menu panel live — the DB read in between is far too fast to
+    // absorb the 6s auto-dismiss (#2861).
+    await dismissToast(page, "Weight updated.");
     await hydratedClick(page, solo.getByTestId("overflow-menu-trigger"));
     await expect(page.getByTestId("body-history-edit-weight_kg")).toBeVisible();
     await expect(
