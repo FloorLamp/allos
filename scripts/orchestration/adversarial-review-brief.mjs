@@ -101,6 +101,19 @@ const HIGH_STAKES = [
     glob: /^lib\/offline\//,
     why: "offline queue/replay — writes applied later, out of their original context",
   },
+  // The life-stage refusal is a SAFETY gate, not a preference (#2756), and the
+  // registry beside it decides which cores carry it. This entry was added after
+  // the same miss recorded above for `redactSecrets` and `lib/dri.ts` happened a
+  // third time: #3004 rewrote the exemption CRITERION — from "can this leave an
+  // active fast" to "can this leave fasting content" — and `--check` answered
+  // "not high-stakes" because no declared path matched. A core wrongly exempted
+  // here records eating-restriction data on a known-minor profile, which is the
+  // harm the gate exists to prevent, so the question this registry asks — what
+  // does a bug here disclose or decide — is answered by the gate itself.
+  {
+    glob: /^lib\/(adult-only-writes|life-stage)\.ts$/,
+    why: "the life-stage safety gate and the registry of which write cores carry it — a core wrongly exempted records restricted content on a minor",
+  },
 ];
 
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
