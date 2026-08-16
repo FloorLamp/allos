@@ -47,13 +47,23 @@ import {
   type FoodRestampOutcome,
 } from "../food-log-write";
 import {
+  restampPracticeLogsCore,
+  type PracticeRestampOutcome,
+} from "../practice-log";
+import {
+  buildPracticeCorrectionRebuild,
+  offeredPracticeTargets,
+} from "./practices";
+import {
   getRecentDoseTaps,
   getRecentFoodTaps,
+  getRecentPracticeTaps,
   restampDoseLogsCore,
   type DoseRestampOutcome,
 } from "../queries";
 import {
   keyboardDoseFootprint,
+  replacementWithTitle,
   resolveTapProfile,
   OUTDATED_MESSAGE_TEXT,
   type InlineKeyboard,
@@ -64,6 +74,7 @@ import {
   correctionPickerActions,
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
+  PRACTICE_TIME_PREFIXES,
 } from "./correction-rows";
 import { plainBody } from "./rich-text";
 import { buildFoodNudge } from "./food";
@@ -72,7 +83,7 @@ import { countVisibleFoodButtons } from "./food-format";
 import { slotSessionForKeyboard } from "./intake";
 import { renderMergedIntakeMessage } from "./intake-format";
 import { answerCallbackQuery } from "./telegram-api";
-import { rebuildMessage } from "./telegram";
+import { closeMessage, rebuildMessage } from "./telegram";
 import type { TelegramCallbackQuery } from "./telegram-api";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { GLYPH } from "./glyphs";
@@ -88,6 +99,9 @@ interface Resolved {
   burst: CorrectionBurst;
   now: Date;
   tz: string;
+  // The live message's own text, so a CLOSE can keep its title (#2875). Only the practice
+  // path reads it — its rebuild is the one that can legitimately come back with nothing.
+  text?: string;
 }
 
 // Refusals, each naming what actually happened. "This burst is gone" is the common one
@@ -134,7 +148,11 @@ async function resolve(
     return null;
   }
   // The SAME freshness predicate the renderer applied, so a chat can never show a chip
-  // the handler would refuse and can never refuse one it is still showing.
+  // the handler would refuse and can never refuse one it is still showing. Freshness is
+  // one of the two bounds on an offer; the other belongs to the DOMAIN — a day-keyed
+  // store refuses an answer that crosses local midnight, and the renderer drops exactly
+  // those offers through the same `chipOffers` / `offeredHours` computation each handler
+  // below admits with (#2875).
   if (!isBurstFresh(burst, now)) {
     await answerCallbackQuery(cq.id, LAPSED_TEXT, { alert });
     return null;
@@ -147,6 +165,7 @@ async function resolve(
     burst,
     now,
     tz: getTimezone(profileId),
+    ...(typeof cq.message?.text === "string" ? { text: cq.message.text } : {}),
   };
 }
 
@@ -253,10 +272,16 @@ export async function handleFoodTimeAt(
     return;
   }
   const hhmm = token.step.hhmm;
-  // WHICH hours are legal is a function of the current time, so it is decided here from
-  // the same computation that rendered the keyboard — a stale picker offering 06:00 five
-  // hours later must not stamp it.
-  const instant = isOfferedHour(hhmm, r.now, r.tz)
+  // WHICH hours are legal is a function of the current time and of the burst, so it is
+  // decided here from the same computation that rendered the keyboard — a stale picker
+  // offering 06:00 five hours later must not stamp it.
+  const instant = isOfferedHour(
+    hhmm,
+    r.burst,
+    r.now,
+    r.tz,
+    FOOD_TIME_PREFIXES.dayKeyed
+  )
     ? statedHourInstant(hhmm, r.now, r.tz)
     : null;
   if (!instant) {
@@ -457,7 +482,13 @@ export async function handleDoseTimeAt(
     return;
   }
   const hhmm = token.step.hhmm;
-  const instant = isOfferedHour(hhmm, r.now, r.tz)
+  const instant = isOfferedHour(
+    hhmm,
+    r.burst,
+    r.now,
+    r.tz,
+    DOSE_TIME_PREFIXES.dayKeyed
+  )
     ? statedHourInstant(hhmm, r.now, r.tz)
     : null;
   if (!instant) {
@@ -497,3 +528,127 @@ function doseRestampText(outcome: DoseRestampOutcome, hhmm?: string): string {
 }
 
 export { FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES };
+
+// ---- Practices (#2875) -----------------------------------------------------
+
+// The third domain, and the one whose stored value is not an instant: a practice row
+// carries a profile-local `date` plus an "HH:MM", so the write core composes and
+// decomposes through the profile's timezone (#450) and REFUSES an answer that would
+// land on another day — correcting a practice's DATE is the expanded form's job, and a
+// silently clamped time would teach `modalHour()` an hour the session never happened at.
+const CROSSES_DAY_TEXT =
+  "That would move the session to another day — change the date in the app.";
+
+// What a practice message is replaced with when the rebuild has nothing left: no practice
+// behind, no burst the ledger still justifies, and so nothing to state. The tap's own
+// answer was already spoken in the toast, so this only has to stop the message claiming
+// anything further.
+const NOTHING_LEFT_TEXT = "Nothing left to correct here.";
+
+// Rebuild the practice nudge this correction rides, so the chips re-render from the
+// LEDGER after every write (#221) rather than from whatever the last keyboard showed.
+//
+// The ✓ buttons are the one exception, and they come from the KEYBOARD: a chip tap must
+// not hand back a "✅ Sauna" the done-tap already consumed, and live pace alone cannot
+// tell the difference (a practice at 1 of 3 is still behind after its session lands).
+//
+// EVERY OUTCOME EDITS THE CHAT. A tap that changed the ledger and left the message alone
+// is the worst of the three answers: the chip that was just used stays live, and the
+// label above it goes on asserting the time the write replaced. So a null rebuild —
+// which now means only "nothing to show and nothing to say" — CLOSES the message rather
+// than falling out of the function. Doing nothing is not an option this path has.
+async function rebuildPractice(
+  r: Resolved,
+  picker?: CorrectionBurst
+): Promise<void> {
+  const rebuilt = buildPracticeCorrectionRebuild(r.profileId, {
+    now: r.now,
+    ref: { chatId: r.chatId, messageId: r.messageId },
+    offered: offeredPracticeTargets(r.rows),
+    ...(picker ? { picker } : {}),
+  });
+  if (rebuilt) {
+    await rebuildMessage(r.profileId, r.chatId, r.messageId, rebuilt);
+    return;
+  }
+  await closeMessage(
+    r.profileId,
+    r.chatId,
+    r.messageId,
+    replacementWithTitle(r.text, NOTHING_LEFT_TEXT)
+  );
+}
+
+function practiceRestampOutcomeText(
+  outcome: PracticeRestampOutcome,
+  hhmm?: string
+): string {
+  if (outcome.kind === "no-burst") return NO_BURST_TEXT;
+  if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
+  if (outcome.kind === "crosses-day") return CROSSES_DAY_TEXT;
+  const what = outcome.count === 1 ? "1 session" : `${outcome.count} sessions`;
+  const when = hhmm ? ` to ${hhmm}` : " back";
+  return `Session time updated${when} for ${what} ${GLYPH.eventTime}`;
+}
+
+// A chip on a practice burst. Re-stamps every row from the instant it CURRENTLY stands
+// at (#2206), so a second tap goes further rather than landing where the first one did.
+export async function handlePracticeTimeChip(
+  cq: TelegramCallbackQuery,
+  token: CorrectionChipToken
+): Promise<void> {
+  const r = await resolve(cq, token, getRecentPracticeTaps);
+  if (!r) return;
+  const outcome = restampPracticeLogsCore(r.profileId, token.fromId, (row) =>
+    chipTarget(row, token.minutesBack, r.now)
+  );
+  await answerCallbackQuery(cq.id, practiceRestampOutcomeText(outcome));
+  await rebuildPractice(r);
+}
+
+// The 🕐 drill-down on a practice burst: open the absolute-hour picker, apply a chosen
+// hour, or come back to the untouched nudge.
+export async function handlePracticeTimeAt(
+  cq: TelegramCallbackQuery,
+  token: CorrectionAtToken
+): Promise<void> {
+  const r = await resolve(cq, token, getRecentPracticeTaps);
+  if (!r) return;
+  // `open` and `back` WRITE NOTHING, so the ack precedes the edit (#2418's ordering).
+  if (token.step.kind === "open") {
+    await answerCallbackQuery(cq.id);
+    await rebuildPractice(r, r.burst);
+    return;
+  }
+  if (token.step.kind === "back") {
+    await answerCallbackQuery(cq.id);
+    await rebuildPractice(r);
+    return;
+  }
+  const hhmm = token.step.hhmm;
+  // WHICH hours are legal is a function of the current time AND of the burst's own local
+  // day, decided here from the same computation that rendered the keyboard — a stale
+  // picker must not stamp 06:00 five hours later, and an hour THE DAY RULE resolves onto
+  // yesterday is one this domain's write core would refuse, so the picker never offered
+  // it and the handler never admits it (#2875).
+  const instant = isOfferedHour(
+    hhmm,
+    r.burst,
+    r.now,
+    r.tz,
+    PRACTICE_TIME_PREFIXES.dayKeyed
+  )
+    ? statedHourInstant(hhmm, r.now, r.tz)
+    : null;
+  if (!instant) {
+    await answerCallbackQuery(cq.id, UNOFFERED_TEXT);
+    return;
+  }
+  const outcome = restampPracticeLogsCore(
+    r.profileId,
+    token.fromId,
+    () => instant
+  );
+  await answerCallbackQuery(cq.id, practiceRestampOutcomeText(outcome, hhmm));
+  await rebuildPractice(r);
+}

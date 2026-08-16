@@ -595,6 +595,19 @@ const KIND_SPECS = {
         entity: "sessions",
         table: "practice_logs",
         fks: [],
+        // Tap-message provenance (#2875, migration
+        // 20260816-practice-tap-message-provenance): the notify_messages row whose chat
+        // tap logged this session. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, which is exactly the "unattributed" degradation the live
+        // ON DELETE SET NULL performs, and the answer a web quick-sheet tap gets anyway.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
         childWhere:
           "profile_id = (SELECT profile_id FROM frequency_targets WHERE id = ?) AND practice = (SELECT scope_value FROM frequency_targets WHERE id = ?)",
         childBinds: 2,
@@ -624,11 +637,37 @@ const KIND_SPECS = {
         entity: "session",
         table: "practice_logs",
         fks: [],
+        // Tap-message provenance (#2875, migration
+        // 20260816-practice-tap-message-provenance): the notify_messages row whose chat
+        // tap logged this session. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, which is exactly the "unattributed" degradation the live
+        // ON DELETE SET NULL performs, and the answer a web quick-sheet tap gets anyway.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
       },
       {
         entity: "sessions",
         table: "practice_logs",
         fks: [],
+        // Tap-message provenance (#2875, migration
+        // 20260816-practice-tap-message-provenance): the notify_messages row whose chat
+        // tap logged this session. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, which is exactly the "unattributed" degradation the live
+        // ON DELETE SET NULL performs, and the answer a web quick-sheet tap gets anyway.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
         childWhere:
           "profile_id = (SELECT profile_id FROM practice_logs WHERE id = ?) AND id != ? AND practice = (SELECT practice FROM practice_logs WHERE id = ?)",
         childBinds: 3,
@@ -934,7 +973,26 @@ const KIND_SPECS = {
   "practice-session": {
     kind: "practice-session",
     ownedTable: "practice_logs",
-    entities: [{ entity: "session", table: "practice_logs", fks: [] }],
+    entities: [
+      {
+        entity: "session",
+        table: "practice_logs",
+        fks: [],
+        // Tap-message provenance (#2875, migration
+        // 20260816-practice-tap-message-provenance): the notify_messages row whose chat
+        // tap logged this session. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, which is exactly the "unattributed" degradation the live
+        // ON DELETE SET NULL performs, and the answer a web quick-sheet tap gets anyway.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
+      },
+    ],
   },
 
   // ONE logged food serving (#2038/#1963). The root is the LEDGER row the ⋯ row menu

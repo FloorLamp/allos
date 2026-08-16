@@ -334,13 +334,62 @@ export async function handlePracticeDoneTap(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
-  const outcome = logPracticeByTargetId(profileId, token.targetId);
+  const messageId = cq.message?.message_id;
+  // The originating message (#2264/#2875), stamped onto the session row so the burst it
+  // creates renders on THIS message and never on a sibling — a `/practice` list from
+  // this morning must not grow chips that restamp a sauna tapped from the pace nudge.
+  const notifyMessageId =
+    chatId != null && messageId != null
+      ? messagePointerIdAt(profileId, chatId, messageId)
+      : null;
+  const outcome = logPracticeByTargetId(
+    profileId,
+    token.targetId,
+    notifyMessageId
+  );
   await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
 
-  const messageId = cq.message?.message_id;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (chatId == null || messageId == null || rows.length === 0) return;
   const remaining = removeButton(rows, cq.data as string);
+
+  // THE PACE NUDGE REBUILDS RATHER THAN CLOSING (#2875), and the rebuild is handed
+  // `remaining` — the post-consume keyboard — as the set of ✓ buttons it may still show.
+  // Re-deriving from live pace alone does NOT consume the button this handler's own
+  // contract says it consumes: a practice at 1 of 3 is still behind after the session
+  // lands, so the ✓ came back with a fresh nonce and the tap looked like it did nothing.
+  // The keyboard the chat is holding is the record of what was consumed; the rebuild
+  // reads it rather than guessing.
+  //
+  // What the rebuild ADDS is the correction row for the burst this tap just created.
+  // Closing here would take that row down in exactly the case the feature exists for:
+  // the single-practice nudge, where logging the one behind practice clears the
+  // shortfall that justified the message, and the tap that just happened is the tap
+  // whose time might be wrong. A null rebuild means nothing is left to show AND nothing
+  // left to say, and falls through to the close/strip path below unchanged.
+  //
+  // "Nothing left to say" is load-bearing, and it is the builder that has to guarantee
+  // it. When the day bound first landed, the builder answered null as soon as no chip
+  // was OFFERABLE — so at 00:20 local, the single-practice nudge (this path's common
+  // case) fell straight through to the close: the message went, the pointer went, and
+  // the sentence explaining why the chips could not be shown had nowhere left to land.
+  // A confirmation carrying only that sentence is a message, so the builder returns one
+  // and this branch takes it.
+  //
+  // Scoped to the NUDGE (`pdone`). The `/practice` list keeps its existing lifecycle —
+  // see the note on PRACTICE_TIME_PREFIXES in lib/notifications/reconcile-registry.ts
+  // for why its chips need a family of their own first.
+  if (outcome.kind === "logged" && messageKindIsPracticeNudge(cq.data)) {
+    const rebuilt = buildPracticeCorrectionRebuild(profileId, {
+      ref: { chatId, messageId },
+      offered: offeredPracticeTargets(remaining),
+    });
+    if (rebuilt) {
+      await rebuildMessage(profileId, chatId, messageId, rebuilt);
+      return;
+    }
+  }
+
   if (remaining.length === 0) {
     await closeMessage(
       profileId,
@@ -356,6 +405,13 @@ export async function handlePracticeDoneTap(
   } else {
     await updateMessageKeyboard(profileId, chatId, messageId, remaining);
   }
+}
+
+// Did this tap come from the pace NUDGE (`pdone`) rather than the on-demand `/practice`
+// list (`plog`)? Both taps run through this one handler, and only the nudge carries the
+// correction ride-along.
+function messageKindIsPracticeNudge(data: unknown): boolean {
+  return typeof data === "string" && data.startsWith("pdone:");
 }
 
 // The profile's top symptoms for the quick-log grid: its recency-ranked logged
@@ -1267,7 +1323,11 @@ import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
 import { buildFoodNudge } from "./food";
 import { currentFoodSlot } from "../queries";
-import { buildPracticeList } from "./practices";
+import {
+  buildPracticeCorrectionRebuild,
+  buildPracticeList,
+  offeredPracticeTargets,
+} from "./practices";
 import { plainBody } from "./rich-text";
 import { parseWeightEntry } from "../palette-quick-log";
 import { insertBodyMetric } from "../offline/writes";
