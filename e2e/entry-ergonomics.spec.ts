@@ -1037,7 +1037,10 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   await expect(
     page.locator('[aria-label="Couldn’t save"]:visible')
   ).toBeVisible();
-  await expect(page.getByLabel("Saved")).toHaveCount(0);
+  // EXACT: getByLabel matches accessible names by case-insensitive substring,
+  // so a bare "Saved" also matches any unrelated control whose label happens to
+  // contain the word — this pinned the autosave indicator only by luck.
+  await expect(page.getByLabel("Saved", { exact: true })).toHaveCount(0);
 
   // Nothing persisted (the save was forced to fail), so there is no draft row to
   // clean up — the shared seed DB is left untouched.
