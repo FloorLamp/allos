@@ -83,6 +83,16 @@ function msvFigure(text: string): number {
   return Number(m![1]);
 }
 
+// Wait for the toast stack to drain. This spec's breakdown test adds FOUR studies in a
+// row, and `submitWithToast` matches the toast text strictly — a toast still on screen
+// from the previous add is a second match, which fails as a strict-mode violation
+// rather than as anything about the study being saved.
+async function toastsCleared(page: Page): Promise<void> {
+  await expect(page.getByText("Study saved")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+}
+
 async function submitWithToast(
   page: Page,
   button: Locator,
@@ -347,6 +357,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       "Study saved"
     );
 
+    await toastsCleared(page);
+
     // An ultrasound on the same day — a true 0 mSv, and one of the three classes of
     // study that contributed nothing without ever saying so.
     await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
@@ -361,6 +373,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       usForm.getByRole("button", { name: "Add", exact: true }),
       "Study saved"
     );
+
+    await toastsCleared(page);
 
     // A chest X-ray from FIVE years ago — inside the record, outside the 3-year lens.
     // It is what makes the headline and the lens two different numbers, and what makes
@@ -377,6 +391,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       oldForm.getByRole("button", { name: "Add", exact: true }),
       "Study saved"
     );
+
+    await toastsCleared(page);
 
     // An UNDATED ultrasound: it can never count, and no date would change that.
     await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
