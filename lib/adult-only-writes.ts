@@ -56,6 +56,28 @@ export const ADULT_ONLY_WRITE_CORES: readonly AdultOnlyWriteCore[] = [
     exempt: [],
     why: "#2107: recordInstrumentScore / updateInstrumentScore / deleteInstrumentScore serve BOTH the mental-health and substance-use catalogs, and the two row-resolving cores learn their instrument from the stored row — so the calling surface's family is no evidence at all about what is being written. Each core asks adultOnlyRefusal() about the instrument it resolved and answers a refused one exactly as it answers an unknown row (null / not-found), which is also what the substance surface's own minor path returns.",
   },
+  {
+    file: "lib/fast-write.ts",
+    gate: "fastAdultOnlyRefusal",
+    // THE REGISTRY'S FIRST EXEMPTIONS. The test they have to pass is not "does this
+    // function INSERT" — it is "can this function leave the profile with an ACTIVE fast
+    // it did not have". `ended_at IS NULL` IS the active state, so a core that clears
+    // that column causes an active fast to exist without inserting anything, and reading
+    // the gate as an insert-guard is exactly how a hole opens. Both entries below
+    // STRICTLY REDUCE fasting state and have no input that could make them enlarge it.
+    // `reopenFast` was on this list and is not any more, for precisely that reason.
+    exempt: [
+      {
+        fn: "endFast",
+        why: "#2756 owner ruling: starts refuse, ending an existing active fast ALWAYS succeeds. A birthdate edit that makes a profile restricted MID-FAST must not leave an active row nobody can close — that would strand the profile permanently mid-fast, with its food nudges stood down by #2757 and no affordance anywhere to fix it, which is a worse outcome for the same person the gate exists to protect. Closing out is harm-reduction, not tracking: it moves a fast from active to completed, so the count of active fasts strictly decreases and no input can make it do otherwise. STATED SO IT IS TRUE OF THE SYSTEM AND NOT ONLY OF THIS FUNCTION, because a revision of this branch broke it: a plain end — the only write the restricted surface draws, which has no backdate field and no discard beside it — is refused only while the stored start second is still the current one, i.e. for under a second after a start. It is NEVER refused for the interval having grown long. A FAST_MAX_HOURS guard here did exactly that for one revision and stranded this profile past 14 days, with the one control it can see answering `too-long` on every tap. The claim ceiling belongs to the GATED cores, which take an interval FROM a user; this one takes an end bounded above by now, so it can only ever shorten what already exists. The bounding evidence is `startFast` and `reopenFast` beside it, both GATED and both reachable from real surfaces — that is what makes this an asymmetry rather than a hole.",
+      },
+      {
+        fn: "discardFast",
+        why: "#2756: 'I never actually fasted' — the stale suggest's second resolution, a row DELETE. Same harm-reduction reasoning as endFast, and the strongest case of it: this is the path that removes fasting data entirely, so refusing it for a restricted profile would keep the very content the gate exists to withhold. A gate here would protect nothing and lock in a row. Its one refusal (`already-ended`, a row closed elsewhere since the button was drawn) is a STALENESS re-derivation and not a life-stage gate: it withholds nothing from a restricted profile, whose surface draws no discard at all, and the row it declines to delete is already inert.",
+      },
+    ],
+    why: "#2756: fasting is an eating-restriction tracker, and on a known-minor profile that is eating-disorder-adjacent — a safety question, not a preference. Gated on the #1174/#2107 pattern: hiding the /nutrition surface is theater because the Server Actions are independently POST-callable, so the refusal lives in the CORE and a refused start answers exactly as an unknown row does. The line is lib/life-stage's own `isMinor` (age < 18) rather than a fresh constant, and unknown age PASSES per that module's documented positive-match-only policy. The two exemptions above are the ruling's deliberate asymmetry, not gaps: the criterion is whether a core can leave the profile with an ACTIVE fast it did not have, and both of them strictly reduce fasting state instead. `reopenFast` fails that criterion — clearing `ended_at` IS how an active fast comes to exist — so it is gated alongside `startFast`.",
+  },
 ];
 
 // Markers that make an exported function a WRITE for the scan's purposes. A function

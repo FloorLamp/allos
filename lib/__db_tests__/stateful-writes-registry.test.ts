@@ -40,6 +40,11 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       // #2138: the retire flag that gates pickers/availability/suggestions —
       // equipment's state-named CAS core.
       "equipment",
+      // #2756: the fasting lifecycle. `ended_at IS NULL` IS the active state, and the
+      // one-active-per-profile invariant is what every derivation downstream assumes —
+      // the #2757 notification stand-down included. Not column-narrowed: the interval
+      // columns ARE the machine.
+      "fasts",
       "illness_episodes",
       // The dose SCHEDULE's retired flag, added by #2131 — the parent whose gating the
       // ledger below had and it lacked.

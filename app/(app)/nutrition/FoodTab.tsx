@@ -56,6 +56,18 @@ import NutrientsCard from "@/components/NutrientsCard";
 import ProteinAdequacyCard from "@/components/ProteinAdequacyCard";
 import FiberAdequacyCard from "@/components/FiberAdequacyCard";
 import NutritionSnapshot from "./NutritionSnapshot";
+import FastingCard from "./FastingCard";
+import {
+  getActiveFastCached,
+  getFastHistory,
+  getServingsDuringFast,
+} from "@/lib/queries/fasting";
+import { fastingAvailable } from "@/lib/fast-write";
+import {
+  fastAttributedDay,
+  fastElapsedMs,
+  formatFastDuration,
+} from "@/lib/fasting";
 import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
 
 // The Food tab of the Nutrition umbrella (#746): the food-group serving log (issue
@@ -171,8 +183,25 @@ export default async function FoodTab({
   // of the logger; the nav entry is hidden by the same predicate, and this server-side
   // gate covers a direct URL. Eligible on unknown age (hide only on a positive match).
   if (!isFoodLoggingRelevant(getProfileAge(profile.id))) {
+    // …but the CLOSE-OUT still renders, for the same reason the life-stage gate below
+    // does not simply hide the card: an age edit can land on a profile with a fast
+    // already running, and a gate whose escape hatch is never drawn leaves that row
+    // permanently open with #2757's food nudges stood down behind it
+    // (lib/fast-write.ts's end-side exemption). This gate sits one step EARLIER than the
+    // fasting one, so returning here without it re-opened the same trap through a second
+    // door. `canStart` is false and cannot be otherwise: a known age under one is a
+    // known minor, which is the very line `fastingAvailable` draws.
+    const infantFast = getActiveFastCached(profile.id);
     return (
       <div>
+        {infantFast && (
+          <FastingCard
+            active={infantFast}
+            canStart={false}
+            history={[]}
+            nowMs={clockNow().getTime()}
+          />
+        )}
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
           Food-group serving logging starts after the first year.
         </p>
@@ -184,6 +213,54 @@ export default async function FoodTab({
   }
 
   const date = today(profile.id);
+  // The fasting surface's whole gather (#2756). The duration and day attribution are
+  // formatted HERE, on the server, from the pure derivations: the day a completed fast
+  // counts for is the day it ENDED (#94), and deriving it needs the profile timezone,
+  // which the client does not have.
+  //
+  // WHO SEES WHAT, and why it is not simply `fastingAvailable`. A restricted profile
+  // sees no fasting surface — EXCEPT the close-out control for a fast that is already
+  // running. That exception is the whole point of the write core's end-side exemption
+  // (lib/fast-write.ts): a birthdate edit mid-fast leaves an active row with both #2757
+  // stand-downs on, and if the card is not rendered the user has an un-endable fast, a
+  // silenced food nudge, and nothing on screen to act on — the exact stranded state the
+  // exemption exists to prevent, reintroduced one layer up. So:
+  //
+  //   canStart true   — the full surface: start/end, the stale suggest, history.
+  //   canStart false + an active fast — the close-out ONLY. No start, no history: this
+  //                     is harm-reduction, not tracking, so it offers the way out and
+  //                     nothing else.
+  //   canStart false + no active fast — no card at all.
+  const fastingTz = getTimezone(profile.id);
+  const fastingNow = clockNow();
+  const canStartFast = fastingAvailable(profile.id);
+  const activeFastRow = getActiveFastCached(profile.id);
+  const fasting =
+    canStartFast || activeFastRow
+      ? {
+          active: activeFastRow,
+          canStart: canStartFast,
+          nowMs: fastingNow.getTime(),
+          history: canStartFast
+            ? getFastHistory(profile.id)
+                .filter((f) => f.ended_at !== null)
+                .map((f) => {
+                  const day = fastAttributedDay(f, fastingTz);
+                  return {
+                    fast: f,
+                    day,
+                    label: day
+                      ? formatWeekdayDate(day, formatPrefs)
+                      : "In progress",
+                    duration: formatFastDuration(
+                      fastElapsedMs(f, fastingNow) ?? 0
+                    ),
+                    servingsDuring: getServingsDuringFast(profile.id, f),
+                  };
+                })
+            : [],
+        }
+      : null;
   // A deliberately bounded recent-meal picker: today plus the previous six days.
   // This is enough to recover a missed meal without turning the one-tap habit log into
   // an unrestricted historical editor. Each day's daily counters and meal-slot ledger
@@ -368,6 +445,21 @@ export default async function FoodTab({
             data-testid="food-log-shell"
             className="min-w-0"
           >
+            {/* Fasting (#2756) sits ABOVE the log bar because it is the same kind of
+                thing — an act, in the "Act" column — and because the state chip has to
+                be visible before the bar's taps start meeting "End your fast?".
+                Rendered only for a profile the write core would accept a START from:
+                hiding a surface is NOT the gate (lib/fast-write.ts refuses
+                independently, which is what makes the gate real against a direct POST),
+                it is simply not offering a control whose every tap would be refused. */}
+            {fasting && (
+              <FastingCard
+                active={fasting.active}
+                canStart={fasting.canStart}
+                history={fasting.history}
+                nowMs={fasting.nowMs}
+              />
+            )}
             <FoodLogBar
               today={date}
               days={mealDays}
