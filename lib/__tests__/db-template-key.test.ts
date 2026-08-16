@@ -201,6 +201,52 @@ function resolveLibFile(spec: string): string | null {
   return null;
 }
 
+/**
+ * The repo-relative files `file` imports — its closure's FIRST HOP, and the only
+ * measurement of a closure this suite makes.
+ *
+ * Deliberately not a count and not a walk. `shared-template.ts` explains why the key
+ * is a named list rather than a closure, and that argument turns on a DISTINCTION:
+ * three of the five inputs sit inside `lib/`'s import cycle and reach on the order of a
+ * thousand files, while two are LEAVES that reach nothing. The thousand is a threshold
+ * — nothing a reader decides changes between 316, 974 and 1006, and the figure depends
+ * on whether a type-only import counts — so pinning one would launder a method choice
+ * into a fact and go red on any PR that adds a file to `lib/`. The ZERO is a different
+ * kind of claim: binary, method-free, and the concession the whole argument rests on.
+ * It also goes silently false the first time a seed module imports `./db`, at which
+ * point the comment is wrong and nothing says so. So the zero is asserted and the
+ * magnitude is left as prose — the same posture as this file's other cases, which
+ * assert relationships rather than counts.
+ *
+ * EVERY import, `import type` included: the emptiness claim is about the module's
+ * source dependencies, and a source-hash key would have to hash a type-only import
+ * like any other file. Non-relative specifiers (`node:crypto`, `better-sqlite3`) are
+ * not repo files and so are not in the closure at all.
+ */
+function repoImportsOf(file: string): string[] {
+  const src = fs.readFileSync(path.join(process.cwd(), file), "utf8");
+  const out = new Set<string>();
+  for (const m of withoutComments(src).matchAll(/from\s*["']([^"']+)["']/g)) {
+    const spec = m[1];
+    if (!spec.startsWith(".")) continue;
+    const base = path.posix.normalize(
+      path.posix.join(path.posix.dirname(file), spec)
+    );
+    for (const cand of [
+      base,
+      `${base}.ts`,
+      `${base}.json`,
+      `${base}/index.ts`,
+    ]) {
+      if (fs.existsSync(path.join(process.cwd(), cand))) {
+        out.add(cand);
+        break;
+      }
+    }
+  }
+  return [...out].sort();
+}
+
 /** Is this repo-relative file already an input to `templateKey()`? */
 function coveredByKey(file: string): boolean {
   return (
@@ -372,6 +418,30 @@ describe("the DB template cache key", () => {
     const oneHop =
       declaredFunctions(codeOnly(moved)).get("bootstrapAuth") ?? "";
     expect(oneHop).not.toContain("seedStandardMetricSaves");
+  });
+
+  it("keeps the two leaf inputs leaves", () => {
+    // THE CONCESSION THE NAMED-LIST ARGUMENT RESTS ON, asserted rather than described.
+    // `shared-template.ts` grants that for these two a closure key would be exact and
+    // cheap, and wins the argument anyway — because the rule has to hold for whatever
+    // the NEXT bake-once input is, and `onboarding.ts` already shows one sitting inside
+    // the cycle. That concession stops being a concession the moment either leaf grows
+    // a repo import, and nothing else in the suite would notice.
+    for (const leaf of ["lib/password.ts", "lib/standard-metric-seeds.ts"]) {
+      expect(
+        repoImportsOf(leaf),
+        `${leaf} is documented as a LEAF — a bake-once input whose closure is empty. ` +
+          `It now imports repo files, so the "one named list, not a closure" argument ` +
+          `in lib/__db_tests__/shared-template.ts describes a repo that no longer ` +
+          `exists. Re-read that comment before adding the import.`
+      ).toEqual([]);
+    }
+    // And the other side of the distinction, so the emptiness is a CONTRAST rather than
+    // an accident of how `repoImportsOf` reads a file. The magnitude stays prose; that
+    // these two reach nothing and the cycle's members reach something is the claim.
+    for (const inCycle of [BOOT_TASKS, "lib/db.ts", "lib/onboarding.ts"]) {
+      expect(repoImportsOf(inCycle).length).toBeGreaterThan(0);
+    }
   });
 
   it("restores every file it edits", () => {

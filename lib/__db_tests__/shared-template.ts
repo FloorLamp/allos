@@ -110,6 +110,15 @@ export function templateKeyPath(): string {
 //     Their closures are empty, so for those two a closure key would be exact and
 //     cheap — the argument above does not apply to them at all.
 //
+// THE ZERO IS ASSERTED, THE THOUSAND IS NOT, and the split is on purpose. A
+// threshold has no canonical method — nothing a reader decides changes between
+// 316, 974 and 1006 — so pinning one would launder a method choice into a fact
+// and go red on any PR that adds a file to `lib/`. The emptiness is binary,
+// method-free, and the concession this whole argument rests on, and it goes
+// silently false the first time a seed module imports `./db`. So
+// `lib/__tests__/db-template-key.test.ts`'s "keeps the two leaf inputs leaves"
+// holds these two to zero repo imports, and the magnitude above stays prose.
+//
 // The list wins anyway, for a reason that survives that split: the shape has to
 // hold for whatever the NEXT bake-once input turns out to be, and `onboarding.ts`
 // already shows that input can sit inside the cycle. A rule that keys on closures
