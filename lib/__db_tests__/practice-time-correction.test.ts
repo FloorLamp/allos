@@ -517,9 +517,9 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
       true
     );
     // The reason the message rebuilds at all: the chips for the burst just created.
-    expect(tokens.some((t) => t.startsWith(`${PRACTICE_TIME_PREFIXES.chip}:`))).toBe(
-      true
-    );
+    expect(
+      tokens.some((t) => t.startsWith(`${PRACTICE_TIME_PREFIXES.chip}:`))
+    ).toBe(true);
     // D2. #1718's "affordance that survives everywhere" survived exactly until the
     // first tap, because the rebuild passed no deep-link base.
     expect(
@@ -609,7 +609,9 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     // find those entries any more".
     setNow("2026-06-16T08:00:00Z");
     const first = await reconcileProfileMessages(pid);
-    expect(first.edited, "one trailing edit takes the lapsed chips off").toBe(1);
+    expect(first.edited, "one trailing edit takes the lapsed chips off").toBe(
+      1
+    );
     const swept = keyboardTokens(livePointer(pid).keyboard);
     expect(swept.some((t) => t.startsWith("practime"))).toBe(false);
     // The untapped ✓ is a live claim and survives — only the chips lapsed.

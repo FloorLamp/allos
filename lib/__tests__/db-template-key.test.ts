@@ -369,7 +369,8 @@ describe("the DB template cache key", () => {
 
     // And the same source read one hop only — what this guard used to do — does not
     // see it. Stated as an assertion so the falsification cannot rot into a comment.
-    const oneHop = declaredFunctions(codeOnly(moved)).get("bootstrapAuth") ?? "";
+    const oneHop =
+      declaredFunctions(codeOnly(moved)).get("bootstrapAuth") ?? "";
     expect(oneHop).not.toContain("seedStandardMetricSaves");
   });
 

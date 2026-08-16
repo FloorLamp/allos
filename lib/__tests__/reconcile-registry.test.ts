@@ -232,7 +232,9 @@ describe("every correction domain reaches the sweep's clock (#2875)", () => {
   function declaredDomains(): string[] {
     const src = stripComments(fs.readFileSync(CORRECTION_ROWS, "utf8"));
     return [
-      ...src.matchAll(/export\s+const\s+([A-Z0-9_]+)\s*:\s*CorrectionPrefixes/g),
+      ...src.matchAll(
+        /export\s+const\s+([A-Z0-9_]+)\s*:\s*CorrectionPrefixes/g
+      ),
     ].map((m) => m[1]);
   }
 
@@ -269,13 +271,16 @@ describe("every correction domain reaches the sweep's clock (#2875)", () => {
     // A chip declared INERT would be swept-proof in the other direction: `dead` would
     // never be consulted for it. The pair has to be a real claim on a real family.
     const src = stripComments(fs.readFileSync(CORRECTION_ROWS, "utf8"));
-    const prefixes = [...src.matchAll(/\b(?:chip|at):\s*"([a-z][a-z0-9]*)"/g)].map(
-      (m) => m[1]
-    );
+    const prefixes = [
+      ...src.matchAll(/\b(?:chip|at):\s*"([a-z][a-z0-9]*)"/g),
+    ].map((m) => m[1]);
     expect(prefixes.length).toBeGreaterThanOrEqual(6);
     for (const p of prefixes) {
       const entry = reconcileEntryFor(p);
-      expect(entry, `no registry entry for correction prefix "${p}"`).toBeTruthy();
+      expect(
+        entry,
+        `no registry entry for correction prefix "${p}"`
+      ).toBeTruthy();
       expect(
         entry && "family" in entry ? entry.family : null,
         `correction prefix "${p}" must be owned by a family, never inert`
