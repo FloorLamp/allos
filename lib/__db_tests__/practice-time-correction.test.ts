@@ -13,15 +13,40 @@
 // inference back. A test that only asserted the rendered label would pass on a fix that
 // changed nothing the nudge reads.
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
-import { setTelegramBotConfig, setTimezone } from "@/lib/settings";
+import {
+  getPublicUrl,
+  setPublicUrl,
+  setTelegramBotConfig,
+  setTimezone,
+} from "@/lib/settings";
+import { dispatch } from "@/lib/notifications";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
-import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
+import {
+  answerCallbackQuery,
+  editMessageTextRaw,
+} from "@/lib/notifications/telegram-api";
+import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
+import { keyboardTokens } from "@/lib/notifications/reconcile-core";
+import { liveMessagePointers } from "@/lib/notifications/message-pointers";
+import {
+  behindPractices,
+  buildPracticeReminder,
+  practiceNudgeTimingNow,
+} from "@/lib/notifications/practices";
 import { now as clockNow } from "@/lib/clock";
-import { zonedDateParts, zonedWallTimeToUtc } from "@/lib/date";
+import { shiftDateStr, zonedDateParts, zonedWallTimeToUtc } from "@/lib/date";
 import {
   getPracticeCorrectionBursts,
   getRecentPracticeTaps,
@@ -41,6 +66,7 @@ import { seedLoginTelegram } from "./fixtures";
 beforeAll(() => stubTelegramSends());
 
 const answer = vi.mocked(answerCallbackQuery);
+const editText = vi.mocked(editMessageTextRaw);
 
 function makeProfile(name: string, tz = "Europe/Berlin"): number {
   const id = Number(
@@ -360,6 +386,273 @@ describe("an imported session is not a tap", () => {
     // Its `created_at` is when the SYNC ran, which would otherwise make a freshly
     // imported history look like a burst somebody just tapped.
     expect(getRecentPracticeTaps(pid, clockNow())).toEqual([]);
+  });
+});
+
+// ---- The message lifecycle the chips ride ----------------------------------
+//
+// Everything above is about the WRITE. These are about the message: what the chat shows
+// after a tap, and what takes it down again. All four defects here shipped green because
+// no case followed a real nudge from send → tap → sweep.
+describe("the pace nudge's correction lifecycle, end to end", () => {
+  // A Tuesday, 08:00 in Berlin — inside the default waking window (08:00–21:00), and
+  // the same weekday the #2188 rhythm cases use, so a Wed/Fri habit is HELD here.
+  const NOW_ISO = "2026-06-16T06:00:00Z";
+  let priorNow: string | undefined;
+
+  beforeEach(() => {
+    priorNow = process.env.ALLOS_TEST_NOW;
+    process.env.ALLOS_TEST_NOW = NOW_ISO;
+    setTelegramBotConfig({
+      telegramBotToken: "bot for tests 12",
+      telegramMode: "poll",
+    });
+    editText.mockClear();
+  });
+
+  afterEach(() => {
+    if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+    else process.env.ALLOS_TEST_NOW = priorNow;
+    setPublicUrl("");
+  });
+
+  function setNow(iso: string): void {
+    process.env.ALLOS_TEST_NOW = iso;
+  }
+
+  // History for the rhythm inference, stamped as if it were WRITTEN back then. A bare
+  // insert takes SQLite's `created_at` default, i.e. the real clock, which would make
+  // an eight-week fixture read as a burst somebody just tapped.
+  function seedSessionOn(
+    profileId: number,
+    practice: string,
+    date: string,
+    time: string
+  ): void {
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, time, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(profileId, practice, date, time, `${date} 12:00:00`);
+  }
+
+  // The delivered message, as Telegram hands it back on a tap.
+  function tap(chatId: string, data: string, keyboard: unknown, messageId = 0) {
+    return {
+      id: `cb-${data}`,
+      data,
+      message: {
+        message_id: messageId,
+        chat: { id: Number(chatId) },
+        text: "🌿 Practice check-in",
+        reply_markup: { inline_keyboard: keyboard },
+      },
+    } as never;
+  }
+
+  function livePointer(profileId: number) {
+    const [p] = liveMessagePointers(profileId);
+    return p;
+  }
+
+  function urlButtons(keyboard: { url?: string }[][]): string[] {
+    return keyboard.flat().flatMap((b) => (b.url ? [b.url] : []));
+  }
+
+  async function sendNudge(profileId: number) {
+    const msg = buildPracticeReminder(
+      profileId,
+      "n1",
+      getPublicUrl(),
+      practiceNudgeTimingNow(profileId, clockNow())
+    )!;
+    expect(msg, "the fixture must actually produce a nudge").toBeTruthy();
+    await dispatch(profileId, msg);
+    return livePointer(profileId);
+  }
+
+  it("consumes the tapped ✓, keeps the sibling and the deep link, and grows the chips", async () => {
+    const pid = makeProfile("lifecycle-tap");
+    seedLoginTelegram(pid, "5552881");
+    setPublicUrl("https://allos.example");
+    // A DAILY floor, so one logged session leaves the practice still behind. That is
+    // the case the consume claim is actually about: when the tap clears the shortfall
+    // the button has no reason to exist and every implementation looks correct.
+    const sauna = practiceTarget(pid, "Sauna", 7);
+    const breath = practiceTarget(pid, "Breathwork");
+
+    const pointer = await sendNudge(pid);
+    const sent = keyboardTokens(pointer.keyboard);
+    expect(sent).toContain(`pdone:${pid}:${sauna}:n1`);
+    expect(sent).toContain(`pdone:${pid}:${breath}:n1`);
+    expect(urlButtons(pointer.keyboard)).toEqual([
+      "https://allos.example/wellness",
+    ]);
+
+    await handleCallbackQuery(
+      tap(
+        "5552881",
+        `pdone:${pid}:${sauna}:n1`,
+        pointer.keyboard,
+        pointer.messageId
+      )
+    );
+
+    // THE PREMISE, pinned: Sauna is at 1 of 7 and still behind, so live pace alone
+    // would put its ✓ back. Without this the next assertion could pass vacuously.
+    expect(behindPractices(pid).map((b) => b.targetId)).toContain(sauna);
+
+    const after = livePointer(pid);
+    const tokens = keyboardTokens(after.keyboard);
+    // D1. The handler's own contract is that it "CONSUMES the tapped button so a stale
+    // message can't double-log". Sauna is at 1 of 3 and therefore STILL BEHIND, so a
+    // rebuild that re-derives from live pace alone hands the button straight back with
+    // a fresh nonce — the tap looks like it did nothing.
+    expect(
+      tokens.filter((t) => t.startsWith(`pdone:${pid}:${sauna}:`)),
+      "the tapped ✓ must not come back on the rebuild"
+    ).toEqual([]);
+    // The sibling was never tapped and stays usable. Matched on the TARGET, not on
+    // the nonce: a rebuild re-mints per render, exactly as the food nudge's does.
+    expect(tokens.some((t) => t.startsWith(`pdone:${pid}:${breath}:`))).toBe(
+      true
+    );
+    // The reason the message rebuilds at all: the chips for the burst just created.
+    expect(tokens.some((t) => t.startsWith(`${PRACTICE_TIME_PREFIXES.chip}:`))).toBe(
+      true
+    );
+    // D2. #1718's "affordance that survives everywhere" survived exactly until the
+    // first tap, because the rebuild passed no deep-link base.
+    expect(
+      urlButtons(after.keyboard),
+      "the rebuild must keep Open practices →"
+    ).toEqual(["https://allos.example/wellness"]);
+  });
+
+  it("does not un-hold a rhythm-held practice on the rebuild (#2188)", async () => {
+    const pid = makeProfile("lifecycle-hold");
+    seedLoginTelegram(pid, "5552882");
+    const redLight = practiceTarget(pid, "Red light therapy");
+    const breath = practiceTarget(pid, "Breathwork");
+    // Eight weeks of Wednesday+Friday sessions → a rhythm that holds on Tuesday.
+    const t = today(pid);
+    const sunday = shiftDateStr(t, -new Date(`${t}T00:00:00Z`).getUTCDay());
+    for (let k = 1; k <= 8; k++)
+      for (const wd of [3, 5])
+        seedSessionOn(
+          pid,
+          "Red light therapy",
+          shiftDateStr(sunday, -k * 7 + wd),
+          "18:30"
+        );
+
+    // The SEND withholds it: Wednesday is still ahead this week.
+    const pointer = await sendNudge(pid);
+    const sent = keyboardTokens(pointer.keyboard);
+    expect(sent).toContain(`pdone:${pid}:${breath}:n1`);
+    expect(sent.some((x) => x.includes(`:${redLight}:`))).toBe(false);
+
+    await handleCallbackQuery(
+      tap(
+        "5552882",
+        `pdone:${pid}:${breath}:n1`,
+        pointer.keyboard,
+        pointer.messageId
+      )
+    );
+
+    // D4. The rebuild used to fall through to the UNTIMED gather, which holds nothing,
+    // so a redraw undid a suppression the send had applied.
+    const tokens = keyboardTokens(livePointer(pid).keyboard);
+    expect(
+      tokens.filter((x) => x.includes(`:${redLight}:`)),
+      "a redraw must apply the same #2188 hold the send applied"
+    ).toEqual([]);
+    // The BODY is where an un-held practice shows up first — it is listed there
+    // whether or not it made the button cap, so this is the assertion that sees the
+    // gather rather than the keyboard filter in front of it.
+    const rebuiltText = String(editText.mock.calls.at(-1)?.[2] ?? "");
+    expect(rebuiltText).not.toBe("");
+    expect(
+      rebuiltText,
+      "the held practice must not be named by a message the send withheld it from"
+    ).not.toContain("Red light therapy");
+  });
+
+  it("ages the chips out on the hour-long clock, then reconciles to zero (#2875)", async () => {
+    const pid = makeProfile("lifecycle-sweep");
+    seedLoginTelegram(pid, "5552883");
+    const sauna = practiceTarget(pid, "Sauna");
+    const breath = practiceTarget(pid, "Breathwork");
+
+    const pointer = await sendNudge(pid);
+    await handleCallbackQuery(
+      tap(
+        "5552883",
+        `pdone:${pid}:${sauna}:n1`,
+        pointer.keyboard,
+        pointer.messageId
+      )
+    );
+    expect(
+      keyboardTokens(livePointer(pid).keyboard).some((t) =>
+        t.startsWith(PRACTICE_TIME_PREFIXES.chip)
+      )
+    ).toBe(true);
+
+    // Still fresh: the sweep has nothing to do, and does nothing.
+    setNow("2026-06-16T06:30:00Z");
+    expect((await reconcileProfileMessages(pid)).edited).toBe(0);
+
+    // D3. `practice.dead()` never called `deadCorrectionTokens`, so the chips had NO
+    // clock: this sweep — and the one an hour after it — edited nothing at all, and the
+    // dead chips stood until the 3-day pointer prune, where a tap answers "Couldn't
+    // find those entries any more".
+    setNow("2026-06-16T08:00:00Z");
+    const first = await reconcileProfileMessages(pid);
+    expect(first.edited, "one trailing edit takes the lapsed chips off").toBe(1);
+    const swept = keyboardTokens(livePointer(pid).keyboard);
+    expect(swept.some((t) => t.startsWith("practime"))).toBe(false);
+    // The untapped ✓ is a live claim and survives — only the chips lapsed.
+    expect(swept.some((t) => t.startsWith(`pdone:${pid}:${breath}:`))).toBe(
+      true
+    );
+
+    // THE IDEMPOTENCE PIN: the steady state costs zero Telegram calls.
+    setNow("2026-06-16T10:00:00Z");
+    expect((await reconcileProfileMessages(pid)).edited).toBe(0);
+    expect(breath).toBeGreaterThan(0);
+  });
+
+  it("closes a nudge whose only remaining claims are lapsed chips", async () => {
+    // The confirmation shape: ONE behind practice, tapped. Main closed that message on
+    // the tap; the rebuild deliberately keeps it alive to carry the chips — so the
+    // sweep has to be what closes it, and without a clock nothing ever did.
+    const pid = makeProfile("lifecycle-close");
+    seedLoginTelegram(pid, "5552884");
+    const sauna = practiceTarget(pid, "Sauna");
+
+    const pointer = await sendNudge(pid);
+    await handleCallbackQuery(
+      tap(
+        "5552884",
+        `pdone:${pid}:${sauna}:n1`,
+        pointer.keyboard,
+        pointer.messageId
+      )
+    );
+    expect(liveMessagePointers(pid)).toHaveLength(1);
+
+    setNow("2026-06-16T08:00:00Z");
+    const result = await reconcileProfileMessages(pid);
+    expect(result.closed, "every claim is dead — the message closes").toBe(1);
+    expect(liveMessagePointers(pid)).toHaveLength(0);
+    // And the close still NAMES what happened (#2275). The `pdone` token is long gone
+    // from the LIVE keyboard by now, so a `detail` reading that keyboard would collapse
+    // this to the bare sentence.
+    const closingText = String(
+      vi.mocked(editMessageTextRaw).mock.calls.at(-1)?.[2] ?? ""
+    );
+    expect(closingText).toMatch(/back on pace|done for the week/);
   });
 });
 
