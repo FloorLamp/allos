@@ -48,7 +48,10 @@ import {
   correctionAtToken,
   correctionChipToken,
   offeredHours,
+  pickerHourLabel,
+  PICKER_PREV_DAY_LABEL,
   type CorrectionBurst,
+  type CorrectionDay,
 } from "../correction-time";
 import type { NotificationAction } from "./types";
 import { formatMessageLine } from "./message-line";
@@ -70,18 +73,32 @@ export interface CorrectionPrefixes {
   // THE DAY RULE re-dates is a button that cannot work. See the day-keyed block in
   // lib/correction-time.ts; `chipOffers` and `offeredHours` are where the bound lands.
   dayKeyed: boolean;
+  // WHERE THE APP'S OWN CORRECTION SURFACE FOR THIS DOMAIN IS (#3010).
+  //
+  // The chat is a TRAILING EDIT for a fresh burst — one hour, one or two days of hours —
+  // and that is deliberate (`CORRECTION_FRESH_MIN`, the hourly sweep's steady state).
+  // What was not deliberate is where the chat's edge left the user: an aged-out burst
+  // simply stopped being drawn, and an answer past the offered days refused without
+  // saying where the answer belongs. The app's own sheet edits a whole week, so the
+  // refusals name it — the same phrase every time, per domain, so a dead end always ends
+  // somewhere.
+  appSurface: string;
 }
 
 export const FOOD_TIME_PREFIXES: CorrectionPrefixes = {
   chip: "foodtime",
   at: "foodtimeat",
   dayKeyed: false,
+  // The food bar's correction sheet (#2227) edits any serving in the log's seven-day
+  // recent range, day + hour.
+  appSurface: "the food log on the Nutrition page",
 };
 
 export const DOSE_TIME_PREFIXES: CorrectionPrefixes = {
   chip: "dosetime",
   at: "dosetimeat",
   dayKeyed: false,
+  appSurface: "the dose history in the app",
 };
 
 // The third domain (#2875). Practices were the third to gain one-tap logging and never
@@ -98,6 +115,7 @@ export const PRACTICE_TIME_PREFIXES: CorrectionPrefixes = {
   chip: "practime",
   at: "practimeat",
   dayKeyed: true,
+  appSurface: "the practice log in the app",
 };
 
 // Which bursts a day-keyed domain can still correct FROM THE CHAT, and which it cannot
@@ -125,7 +143,11 @@ export function correctableBursts(
   for (const burst of bursts) {
     const hasOffer =
       chipOffers(burst, now, tz, true).length > 0 ||
-      offeredHours(burst, now, tz, true).length > 0;
+      offeredHours(burst, now, tz, true).length > 0 ||
+      // Level two counts as an offer (#3010): a session tapped at 23:50 and corrected at
+      // 00:30 is filed under YESTERDAY, so every level-one hour is off its day while
+      // yesterday's own hours are exactly what it needs.
+      offeredHours(burst, now, tz, true, "prev").length > 0;
     (hasOffer ? shown : offScope).push(burst);
   }
   return { shown, offScope };
@@ -188,17 +210,40 @@ export function correctionPickerActions(
   profileId: number,
   burst: CorrectionBurst,
   now: Date,
-  tz: string
+  tz: string,
+  level: CorrectionDay = "today"
 ): NotificationAction[] {
-  const hours = offeredHours(burst, now, tz, prefixes.dayKeyed);
+  const hours = offeredHours(burst, now, tz, prefixes.dayKeyed, level);
   const out: NotificationAction[] = hours.map((hhmm, i) => ({
-    label: hhmm,
+    // Each button states the DAY half of its result too (#3010/#2206) — the grid has
+    // always crossed midnight and never said so.
+    label: pickerHourLabel(hhmm, level, now, tz),
     data: correctionAtToken(prefixes.at, profileId, burst.fromId, {
       kind: "at",
       hhmm,
+      day: level,
     }),
     row: `pick${Math.floor(i / 3)}`,
   }));
+  // THE DAY LEVEL (#3010). Level one carries the step down to yesterday, and it is drawn
+  // only when yesterday actually has something to offer THIS burst — which is how a
+  // day-keyed domain gets the change for free: a practice filed under today can accept no
+  // instant on another day, so its level-two set is empty and the row simply does not
+  // appear. No `dayKeyed` special case here; the domain bound already answered.
+  if (
+    level === "today" &&
+    offeredHours(burst, now, tz, prefixes.dayKeyed, "prev").length > 0
+  ) {
+    out.push({
+      label: PICKER_PREV_DAY_LABEL,
+      data: correctionAtToken(prefixes.at, profileId, burst.fromId, {
+        kind: "prev",
+      }),
+      row: "pickday",
+    });
+  }
+  // `↩︎ Back` returns to the MESSAGE from either level, and it is also the tell
+  // `openPickerAnchor` reads to know a picker is open — so it must exist on both.
   out.push({
     label: `${GLYPH.back} Back`,
     data: correctionAtToken(prefixes.at, profileId, burst.fromId, {

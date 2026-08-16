@@ -937,3 +937,147 @@ function doseIdOf(itemId: number): number {
       .get(itemId) as { id: number }
   ).id;
 }
+
+// ---- #3010: last evening, reached the next morning -------------------------
+//
+// THE OWNER REPORT: "time correction chips only offer 11 options, based on the current
+// time. last evening 6pm dinner can't be corrected the next morning at 8am." The count
+// was arithmetic — `hourOptionsBack(now, tz, 2, 12)` — so at 08:00 the floor was 20:00
+// yesterday and an 18:00 dinner was two hours past the end of the picker.
+//
+// Every case here goes through the REAL dispatcher with the REAL token the keyboard
+// carries, so what is pinned is the whole path: the day step is on the keyboard, its
+// hours are minted with the day marker, the handler re-derives the day-qualified offer
+// set, and the write lands on yesterday.
+
+describe("the picker reaches last evening the next morning (#3010)", () => {
+  // 08:00 local on the 6th — the reported instant.
+  const MORNING = "2026-08-06T06:00:00Z";
+
+  function pickerTokens(keyboard: unknown): string[] {
+    return keyboardTokens(keyboard as never);
+  }
+
+  it("a dinner logged this morning is corrected to 18:00 YESTERDAY", async () => {
+    const pid = newProfile("Morning Mira");
+    seedLoginTelegram(pid, "5553010");
+    // The common "forgot to log it" shape: tapped at 08:00, so the burst is fresh and
+    // the correction row is there — it simply could not reach back far enough.
+    await tapFood(pid, "5553010", "leafy_greens", MORNING);
+    const anchor = foodEvents(pid)[0].id;
+    expect(foodEvents(pid)[0].date).toBe("2026-08-06");
+    expect(dayCount(pid, "2026-08-06", "leafy_greens")).toBe(1);
+
+    // Level one: eleven hours, floor 20:00 yesterday — 18:00 is not among them.
+    editText.mockClear();
+    const nudge = buildFoodNudge(pid, "Evening", today(pid))!;
+    await handleCallbackQuery(
+      cq("5553010", `foodtimeat:${pid}:${anchor}:open`, messageKeyboard(nudge))
+    );
+    const levelOneKb = lastEditedKeyboard();
+    const levelOne = pickerTokens(levelOneKb);
+    expect(levelOne).not.toContain(`foodtimeat:${pid}:${anchor}:18:00`);
+    // …and the step down to yesterday IS among them.
+    expect(levelOne).toContain(`foodtimeat:${pid}:${anchor}:prev`);
+
+    // Level two: yesterday's whole day, each hour day-qualified on the wire.
+    editText.mockClear();
+    await handleCallbackQuery(
+      cq("5553010", `foodtimeat:${pid}:${anchor}:prev`, levelOneKb)
+    );
+    const levelTwoKb = lastEditedKeyboard();
+    const levelTwo = pickerTokens(levelTwoKb);
+    expect(levelTwo).toContain(`foodtimeat:${pid}:${anchor}:p:18:00`);
+    expect(levelTwo.filter((t) => t.includes(":p:"))).toHaveLength(24);
+    // The buttons say which day they mean — the grid always crossed midnight and never
+    // said so (#2206 applied to the day half).
+    const label = (levelTwoKb as { text: string; callback_data?: string }[][])
+      .flat()
+      .find((b) => b.callback_data === `foodtimeat:${pid}:${anchor}:p:18:00`);
+    expect(label?.text).toBe("18:00 yest");
+
+    // The write: the serving moves to 18:00 local yesterday, and its day counter with it.
+    await handleCallbackQuery(
+      cq("5553010", `foodtimeat:${pid}:${anchor}:p:18:00`, levelTwoKb)
+    );
+    const [row] = foodEvents(pid);
+    expect(row.occurred_at).toBe("2026-08-05T16:00:00Z");
+    expect(row.date).toBe("2026-08-05");
+    expect(dayCount(pid, "2026-08-06", "leafy_greens")).toBe(0);
+    expect(dayCount(pid, "2026-08-05", "leafy_greens")).toBe(1);
+  });
+
+  it("a DOSE gets the same level, and the redose window re-arms off the corrected instant (#2020)", async () => {
+    const pid = newProfile("Morning Milo");
+    const { itemId, doseId } = seedDose(pid, "Morning Ibuprofen");
+    seedLoginTelegram(pid, "5553011");
+    setNow(MORNING);
+    markDoseTaken(pid, doseId, itemId, today(pid));
+    const anchor = doseLogs(pid)[0].id;
+    stampTap(anchor, "2026-08-06 06:00:00");
+
+    editText.mockClear();
+    await handleCallbackQuery(
+      cq("5553011", `dosetimeat:${pid}:${anchor}:open`, [])
+    );
+    const levelOneKb = lastEditedKeyboard();
+    expect(pickerTokens(levelOneKb)).toContain(
+      `dosetimeat:${pid}:${anchor}:prev`
+    );
+
+    editText.mockClear();
+    await handleCallbackQuery(
+      cq("5553011", `dosetimeat:${pid}:${anchor}:prev`, levelOneKb)
+    );
+    const levelTwoKb = lastEditedKeyboard();
+    expect(pickerTokens(levelTwoKb)).toContain(
+      `dosetimeat:${pid}:${anchor}:p:18:00`
+    );
+
+    await handleCallbackQuery(
+      cq("5553011", `dosetimeat:${pid}:${anchor}:p:18:00`, levelTwoKb)
+    );
+    // The administration instant is yesterday evening; the audit stamp never moves.
+    expect(doseLogs(pid)[0].occurredAt).toBe("2026-08-05T16:00:00Z");
+    expect(doseLogs(pid)[0].recordedAt).toBe("2026-08-06T06:00:00Z");
+    // …and the PRN redose window arms off the CORRECTED instant, which is the safe
+    // direction (#2020): a dose actually taken fourteen hours ago is not fresh, and the
+    // safety read now says so instead of believing the morning tap.
+    const armed = getMedicationFamilyStates(pid, today(pid)).get(
+      itemId
+    )!.latestGivenAt!;
+    expect(armed).toBe("2026-08-05T16:00:00Z");
+  });
+
+  it("a FORGED day marker is refused — the handler re-derives, it does not trust", async () => {
+    const pid = newProfile("Forger Fay");
+    seedLoginTelegram(pid, "5553012");
+    // 21:30 local: level one covers the evening, so a `p:` token naming an hour on
+    // yesterday's day IS parseable and IS offered — the forgery has to be an hour the
+    // keyboard could not have rendered on that level.
+    await tapFood(pid, "5553012", "berries", "2026-08-05T19:10:00Z");
+    setNow(NOW_ISO);
+    const anchor = foodEvents(pid)[0].id;
+    const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
+
+    answer.mockClear();
+    // 21:00 local TODAY is covered by the chips, so level one never offered it — and
+    // wearing a day marker does not make it offered on level two either, because level
+    // two's own set is yesterday's and this token claims today's grid.
+    await handleCallbackQuery(
+      cq("5553012", `foodtimeat:${pid}:${anchor}:21:00`, kb)
+    );
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T19:10:00Z");
+    expect(String(answer.mock.calls[0][1])).toContain("nothing was changed");
+    // The refusal now names where the answer belongs rather than ending the road.
+    expect(String(answer.mock.calls[0][1])).toContain("Nutrition");
+
+    // A malformed day marker parses to nothing at all, so no handler runs and no write
+    // happens — the shape guard in front of the offer guard.
+    answer.mockClear();
+    await handleCallbackQuery(
+      cq("5553012", `foodtimeat:${pid}:${anchor}:q:18:00`, kb)
+    );
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T19:10:00Z");
+  });
+});

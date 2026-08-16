@@ -12,6 +12,10 @@ import {
   chipLabel,
   chipOffers,
   chipTarget,
+  correctionAtToken,
+  offeredHourInstant,
+  pickerHourLabel,
+  pickerPrevDayHourOptions,
   CHIP_FLOOR_HOURS_BACK,
   CORRECTION_CHIP_MINUTES,
   isBurstFresh,
@@ -40,6 +44,7 @@ import {
 } from "@/lib/notifications/correction-rows";
 import { burstsForMessage, FRESH_SEND_BINDING } from "@/lib/correction-time";
 import { zonedDateParts } from "@/lib/date";
+import { statedHoursOnDate } from "@/lib/stated-time";
 
 // The pure model behind #2019's eating-time chips and #2020's dose-time twin. No DB, no
 // clock: every function takes its `now`, so the burst window, the cross-midnight day rule
@@ -407,7 +412,7 @@ describe("tokens — ids only, and the shapes both domains share", () => {
     expect(parseCorrectionChipToken(t, DOSE_TIME_PREFIXES.chip)).toBeNull();
   });
 
-  it("round-trips the picker's three steps, HH:MM colons included", () => {
+  it("round-trips the picker's steps, HH:MM colons and the day marker included", () => {
     const at = DOSE_TIME_PREFIXES.at;
     expect(parseCorrectionAtToken(`${at}:3:412:open`, at)).toEqual({
       profileId: 3,
@@ -423,9 +428,23 @@ describe("tokens — ids only, and the shapes both domains share", () => {
     expect(parseCorrectionAtToken(`${at}:3:412:19:00`, at)).toEqual({
       profileId: 3,
       fromId: 412,
-      step: { kind: "at", hhmm: "19:00" },
+      step: { kind: "at", hhmm: "19:00", day: "today" },
+    });
+    // The day level's own step, and an hour QUALIFIED by the previous day (#3010) — the
+    // marker rides the tail in front of the hour, which the rejoin already handles.
+    expect(parseCorrectionAtToken(`${at}:3:412:prev`, at)).toEqual({
+      profileId: 3,
+      fromId: 412,
+      step: { kind: "prev" },
+    });
+    expect(parseCorrectionAtToken(`${at}:3:412:p:19:00`, at)).toEqual({
+      profileId: 3,
+      fromId: 412,
+      step: { kind: "at", hhmm: "19:00", day: "prev" },
     });
     expect(parseCorrectionAtToken(`${at}:3:412:29:00`, at)).toBeNull();
+    expect(parseCorrectionAtToken(`${at}:3:412:p:29:00`, at)).toBeNull();
+    expect(parseCorrectionAtToken(`${at}:3:412:q:19:00`, at)).toBeNull();
     expect(parseCorrectionAtToken(`${at}:3:0:19:00`, at)).toBeNull();
   });
 
@@ -812,8 +831,9 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
       expect(
         correctionActions(prefixes, 3, [burst], TZ, now).map((a) => a.label)
       ).toEqual(["🕐 Salmon 00:20", "23:50 · −30m", "23:20 · −1h"]);
+      // The recent hours, the `Yesterday →` step (#3010) and `↩︎ Back`.
       expect(correctionPickerActions(prefixes, 3, burst, now, TZ)).toHaveLength(
-        pickerHourOptions(now, TZ).length + 1
+        pickerHourOptions(now, TZ).length + 2
       );
     }
   });
@@ -983,5 +1003,194 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
       30, 60,
     ]);
     expect(chipOffers(burst, now, TZ, true)).toEqual([]);
+  });
+});
+
+// ---- The DAY LEVEL (issue #3010) -------------------------------------------
+//
+// The picker was eleven hours measured from NOW, at every hour of the day, so at 08:00
+// its floor was 20:00 yesterday and an 18:00 dinner could not be corrected the next
+// morning at all. These are the pure half of the day + hour pair that fixes it.
+
+describe("the picker's day level (#3010)", () => {
+  // 08:00 local on 2026-08-06 — the owner's own instant: the morning after an 18:00
+  // dinner, with the picker's old floor two hours short of it.
+  const MORNING = new Date("2026-08-06T06:00:00Z");
+  const morningBurst = collapseBursts([
+    tap(41, "2026-08-06T05:55:00Z", "Salmon"),
+  ])[0];
+
+  it("THE REPORT: 18:00 yesterday is reachable at 08:00, and was not before", () => {
+    // Level one is where it always was — eleven hours, floor 20:00 yesterday.
+    expect(pickerHourOptions(MORNING, TZ)).toHaveLength(11);
+    expect(pickerHourOptions(MORNING, TZ)).not.toContain("18:00");
+    // Level two reaches it, and resolves it to the instant the dinner actually happened.
+    expect(offeredHours(morningBurst, MORNING, TZ, false, "prev")).toContain(
+      "18:00"
+    );
+    expect(
+      offeredHourInstant("18:00", "prev", MORNING, TZ)?.toISOString()
+    ).toBe("2026-08-05T16:00:00.000Z");
+  });
+
+  it("level one is unchanged and carries the step down to yesterday", () => {
+    const actions = correctionPickerActions(
+      FOOD_TIME_PREFIXES,
+      3,
+      morningBurst,
+      MORNING,
+      TZ
+    );
+    const hourTokens = actions
+      .map((a) => a.data)
+      .filter((d) => /:\d\d:00$/.test(String(d)) && !String(d).includes(":p:"));
+    // Exactly the hours it offered before, in the same order.
+    expect(
+      actions.slice(0, 11).map((a) => String(a.label).replace(" yest", ""))
+    ).toEqual(pickerHourOptions(MORNING, TZ));
+    expect(hourTokens).toHaveLength(11);
+    // Plus one Yesterday step, and Back last.
+    expect(actions.map((a) => a.data)).toContain(
+      `${FOOD_TIME_PREFIXES.at}:3:41:prev`
+    );
+    expect(actions[actions.length - 1].label).toContain("Back");
+  });
+
+  it("level two is `statedHoursOnDate` for yesterday — the web sheet's own enumeration", () => {
+    const yesterday = statedHoursOnDate("2026-08-05", TZ, MORNING).map(
+      (o) => o.hhmm
+    );
+    expect(yesterday).toHaveLength(24);
+    // Same set, newest first, which is the order every other picker offer uses.
+    expect(pickerPrevDayHourOptions(MORNING, TZ)).toEqual(
+      [...yesterday].reverse()
+    );
+    expect(offeredHours(morningBurst, MORNING, TZ, false, "prev")).toEqual(
+      [...yesterday].reverse()
+    );
+  });
+
+  it("labels the hours that fall on a previous day, and only those", () => {
+    const labelled = pickerHourOptions(MORNING, TZ).map((h) => ({
+      h,
+      label: pickerHourLabel(h, "today", MORNING, TZ),
+    }));
+    // At 08:00 the grid runs 06:00…02:00 (today) then 23:00…20:00 (YESTERDAY), and the
+    // two halves used to be formatted identically.
+    for (const { h, label } of labelled) {
+      const today = Number(h.slice(0, 2)) <= 6;
+      expect(label, h).toBe(today ? h : `${h} yest`);
+    }
+    // Level two's buttons say it too — each button states its own result (#2206).
+    expect(pickerHourLabel("18:00", "prev", MORNING, TZ)).toBe("18:00 yest");
+  });
+
+  it("a day-qualified hour round-trips through the encoder and the parser", () => {
+    const at = FOOD_TIME_PREFIXES.at;
+    const token = correctionAtToken(at, 3, 41, {
+      kind: "at",
+      hhmm: "18:00",
+      day: "prev",
+    });
+    expect(token).toBe(`${at}:3:41:p:18:00`);
+    expect(parseCorrectionAtToken(token, at)).toEqual({
+      profileId: 3,
+      fromId: 41,
+      step: { kind: "at", hhmm: "18:00", day: "prev" },
+    });
+    // Still inside Telegram's 64-byte callback budget at realistic ids.
+    expect(
+      Buffer.byteLength(`${at}:999999:99999999:p:18:00`, "utf8")
+    ).toBeLessThanOrEqual(64);
+  });
+
+  it("the handler admits exactly the day-qualified set the keyboard rendered", () => {
+    // Every rendered button, re-derived the way the handler re-derives it.
+    for (const level of ["today", "prev"] as const) {
+      for (const hhmm of offeredHours(
+        morningBurst,
+        MORNING,
+        TZ,
+        false,
+        level
+      )) {
+        expect(
+          isOfferedHour(hhmm, morningBurst, MORNING, TZ, false, level),
+          `${level} ${hhmm}`
+        ).toBe(true);
+      }
+    }
+    // A FORGED DAY on an hour that is legal on the other level is refused: 07:00 is in
+    // the future today (so level one never offered it) and legal yesterday.
+    expect(isOfferedHour("07:00", morningBurst, MORNING, TZ, false)).toBe(
+      false
+    );
+    expect(
+      isOfferedHour("07:00", morningBurst, MORNING, TZ, false, "prev")
+    ).toBe(true);
+    // And a day marker cannot smuggle an hour past the FUTURE bound: level two is a
+    // complete past day, so there is no hour it can reach that has not happened.
+    for (const hhmm of offeredHours(morningBurst, MORNING, TZ, false, "prev")) {
+      const at = offeredHourInstant(hhmm, "prev", MORNING, TZ);
+      expect(at, hhmm).not.toBeNull();
+      expect(at!.getTime(), hhmm).toBeLessThan(MORNING.getTime());
+    }
+  });
+
+  it("both instant-keyed prefix families get the level together (#2020)", () => {
+    for (const prefixes of [FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES]) {
+      const tokens = correctionPickerActions(
+        prefixes,
+        3,
+        morningBurst,
+        MORNING,
+        TZ
+      ).map((a) => String(a.data));
+      expect(tokens, prefixes.at).toContain(`${prefixes.at}:3:41:prev`);
+      expect(
+        correctionPickerActions(prefixes, 3, morningBurst, MORNING, TZ, "prev")
+          .map((a) => String(a.data))
+          .filter((d) => d.includes(":p:")),
+        prefixes.at
+      ).toHaveLength(24);
+    }
+  });
+
+  it("a DAY-KEYED domain is offered no yesterday step for a burst filed today (#2875)", () => {
+    // The practice write core refuses an answer on another day, so level two has nothing
+    // to give a session filed under today — and the step is simply not drawn. No special
+    // case: the domain bound already answered.
+    const practiceBurst = collapseBursts([
+      {
+        id: 41,
+        tapAt: "2026-08-06T05:55:00Z",
+        localDay: "2026-08-06",
+        label: "Sauna",
+      },
+    ])[0];
+    expect(offeredHours(practiceBurst, MORNING, TZ, true, "prev")).toHaveLength(
+      0
+    );
+    expect(
+      correctionPickerActions(
+        PRACTICE_TIME_PREFIXES,
+        3,
+        practiceBurst,
+        MORNING,
+        TZ
+      ).map((a) => String(a.data))
+    ).not.toContain(`${PRACTICE_TIME_PREFIXES.at}:3:41:prev`);
+
+    // The instant-keyed domains at the same instant, for contrast: they ABSORB the
+    // crossing, so the same burst does get the step.
+    expect(
+      correctionPickerActions(
+        FOOD_TIME_PREFIXES,
+        3,
+        practiceBurst,
+        MORNING,
+        TZ
+      ).map((a) => String(a.data))
+    ).toContain(`${FOOD_TIME_PREFIXES.at}:3:41:prev`);
   });
 });

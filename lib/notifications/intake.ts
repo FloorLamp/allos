@@ -54,6 +54,7 @@ import { collapsedOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { now as clockNow } from "../clock";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
+import type { CorrectionDay } from "../correction-time";
 import {
   correctionActions,
   correctionBodyStatement,
@@ -94,6 +95,8 @@ export function withDoseCorrections(
   opts: {
     now?: Date;
     pickerAnchor?: number | null;
+    // Which day level the open picker is showing (#3010).
+    pickerLevel?: CorrectionDay;
     ref?: CorrectionMessageRef | null;
   } = {}
 ): NotificationMessage {
@@ -112,7 +115,14 @@ export function withDoseCorrections(
     ? bursts.find((b) => b.fromId === opts.pickerAnchor)
     : undefined;
   const extra = open
-    ? correctionPickerActions(DOSE_TIME_PREFIXES, profileId, open, now, tz)
+    ? correctionPickerActions(
+        DOSE_TIME_PREFIXES,
+        profileId,
+        open,
+        now,
+        tz,
+        opts.pickerLevel ?? "today"
+      )
     : correctionActions(DOSE_TIME_PREFIXES, profileId, bursts, tz, now);
   // The statement of record (#2264 bug 1): a corrected burst's stored time is stated in
   // the BODY — the label button states it too, but Telegram truncates buttons. One

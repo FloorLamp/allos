@@ -21,7 +21,7 @@ import { now as clockNow } from "../clock";
 import { dateStrInTz, minuteOfDayInTz } from "../date";
 import { profileFoodSlotBoundaries } from "../profile-food-slot";
 import { foodWindowGap, foodWindowGapDates } from "../food-window-gap";
-import type { CorrectionBurst } from "../correction-time";
+import type { CorrectionBurst, CorrectionDay } from "../correction-time";
 import { proteinTodayNudgeParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
@@ -69,6 +69,8 @@ export function buildFoodNudge(
   opts: {
     now?: Date;
     picker?: CorrectionBurst;
+    // Which day level the open picker is showing (#3010).
+    pickerLevel?: CorrectionDay;
     ref?: CorrectionMessageRef | null;
   } = {}
 ): NotificationMessage | null {
@@ -143,7 +145,15 @@ export function buildFoodNudge(
     corrections: { bursts: corrections, now },
     gap,
     tz,
-    ...(opts.picker ? { picker: { burst: opts.picker, now } } : {}),
+    ...(opts.picker
+      ? {
+          picker: {
+            burst: opts.picker,
+            now,
+            level: opts.pickerLevel ?? "today",
+          },
+        }
+      : {}),
   });
 }
 
