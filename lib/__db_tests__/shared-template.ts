@@ -82,7 +82,7 @@ export function templateKeyPath(): string {
 // reapply-per-file argument does not cover.
 //
 // WHAT THIS KEY DOES NOT COVER, stated rather than implied. It hashes direct
-// inputs, not their import closures — `lib/db.ts` transitively reaches 989 files,
+// inputs, not their import closures — `lib/db.ts` transitively reaches
 // essentially all of `lib/`, and keying on that would rebuild on nearly every
 // edit a developer running this tier has just made, which is the whole saving.
 // So a dataset baked in through a module OTHER than the ones named here can still
@@ -90,12 +90,17 @@ export function templateKeyPath(): string {
 // delete node_modules/.cache/allos-db-tests.
 //
 // WHY A NAMED LIST AND NOT A CLOSURE, measured rather than assumed — and the
-// measurement does NOT come out the same for all five entries:
+// measurement does NOT come out the same for all five entries. ONE FIGURE, not
+// two: this comment used to carry "989" here and "~1000" eleven lines down for
+// the same measurement, and both were stale. A closure size is a count of the
+// repo that changes with every merge, so what is stated is the SHAPE it has,
+// which is what the argument below actually rests on:
 //
 //   • `lib/db.ts`, `lib/migrations/boot-tasks.ts` and `lib/onboarding.ts` each
-//     transitively reach ~1000 files, essentially all of `lib/`, because `lib/`
-//     is one big import cycle. Keying on any of those closures rebuilds the
-//     template on nearly every edit a developer running this tier just made.
+//     transitively reach essentially all of `lib/` — around a thousand files at
+//     the time of writing — because `lib/` is one big import cycle. Keying on
+//     any of those closures rebuilds the template on nearly every edit a
+//     developer running this tier just made.
 //   • `lib/password.ts` and `lib/standard-metric-seeds.ts` are LEAVES: the first
 //     imports only `node:crypto`, the second only a TYPE from `better-sqlite3`.
 //     Their closures are empty, so for those two a closure key would be exact and
