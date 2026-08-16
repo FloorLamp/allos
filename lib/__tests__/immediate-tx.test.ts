@@ -58,6 +58,11 @@ const ALLOWLIST = new Set<string>([
   // And again for the offline READ snapshots (#2908) — the third tenant of the same
   // browser database, same unrelated API.
   "lib/offline/snapshot-db.ts",
+  // And the device write GATE (#2908), which is the one place all four tenants' writes
+  // are decided. Same browser IndexedDB API, same non-relationship to SQLite write locks
+  // — and here the transaction is the POINT: the gate is read and the data written in
+  // one atomic IndexedDB transaction, so no wipe can interleave between them.
+  "lib/offline/write-gate.ts",
 ]);
 
 function isAllowlisted(rel: string): boolean {

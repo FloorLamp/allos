@@ -311,16 +311,27 @@ export default function OfflineQueueProvider({
     [refreshCount, activeProfileId]
   );
 
+  // A LIVE AUTHENTICATED DOCUMENT re-opens the device write gate (#2908). Logout closes
+  // every lane persistently — it has to, or a second tab writes everything back — so
+  // something must say "there is a session again", and this provider is it: mounted once
+  // in the (app) layout, which only renders for a logged-in session, and the owner of the
+  // largest device-local store.
+  //
+  // ITS OWN EFFECT, WITH `[]` AND NOTHING ELSE, and that is not tidiness. The first
+  // version of this rode the sync effect below, whose deps are four useCallbacks — so any
+  // one of them changing identity re-ran it, which meant re-OPENING the gate at arbitrary
+  // moments including inside the logout window. A second tab then wrote all five
+  // snapshots back, which is the exact defect the persisted close exists to prevent, and
+  // it is the mutant the review predicted: a re-open on anything but a genuine mount
+  // hands the close straight back.
+  //
+  // It deliberately does not touch the offline-reads OFF SWITCH, which is a separate
+  // promise with its own toggle.
   useEffect(() => {
-    // A LIVE AUTHENTICATED DOCUMENT re-opens the device write gate (#2908). Logout closes
-    // every lane persistently — it has to, or a second tab writes everything back — so
-    // something must say "there is a session again", and this provider is it: mounted
-    // once in the (app) layout, which only renders for a logged-in session, and the owner
-    // of the largest device-local store. Mount-scoped, never keyed on a navigation: the
-    // logout redirect IS a navigation, and re-opening there would hand the close straight
-    // back. It deliberately does not touch the offline-reads OFF SWITCH, which is a
-    // separate promise with its own toggle.
     void updateGate(openSession);
+  }, []);
+
+  useEffect(() => {
     // Start the initial IndexedDB reads and replay from a browser task. Their state
     // updates then originate in that external callback, just like every later
     // online/visibility/service-worker trigger below.
