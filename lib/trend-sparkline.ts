@@ -601,6 +601,23 @@ export function applyDayFillRows<
  *  two; a third consecutive silent day is the stream stopping. */
 const STREAM_GAP_LIMIT = 2;
 
+/**
+ * Accrues from SESSIONS the user logs, not from a device reporting. A day with
+ * no session is the ordinary texture of the series rather than a reporting
+ * failure, so the silence worth naming is a whole week of them.
+ *
+ * WHY IT IS NOT `STREAM_GAP_LIMIT` (#2871, owner amendment on #2830). The stream
+ * tier answers "the device went quiet", and three silent days there genuinely is
+ * three silent days. Asked of a hand-logged series the same integer answers a
+ * different question, and answers it wrongly: at 2, an ordinary outdoor-time
+ * rhythm shattered a 77-day window into eleven grey bands.
+ *
+ * WHY IT IS NOT `ACUTE_GAP_LIMIT`, which happens to hold the same integer today:
+ * the tiers are named for how the reading ARRIVES, and these two arrive for
+ * unrelated reasons. Retuning one must not silently move the other.
+ */
+const SESSION_GAP_LIMIT = 7;
+
 /** Taken because of a question being asked that day. A week without one is not a
  *  lapse — the question stopped being asked. */
 const ACUTE_GAP_LIMIT = 7;
@@ -654,10 +671,26 @@ export const METRIC_GAP_LIMIT_DAYS: Readonly<Record<string, number>> = {
   calm: STREAM_GAP_LIMIT,
 
   // ── per-day totals ────────────────────────────────────────────────────────
+  //
+  // The tier each of these sits on is decided by WHERE THE DAY'S TOTAL COMES
+  // FROM, and this block is the one place the two answers sit side by side
+  // (#2871 asked for the whole block to be checked rather than `sun` alone):
+  //
+  //   - `volume` — a workout's tonnage, but declared `slot-zero`: a rest day is
+  //     a real zero, so a densified day is never null and this series has no
+  //     holes to name at any limit. Its integer is inert either way.
+  //   - `steps` / `active-calories` — a worn device's daily total. Device-
+  //     reported, so STREAM stands (#2830's ruling, unamended for these).
+  //   - `sun` — daylight minutes from LOGGED outdoor sessions. The metric the
+  //     owner's amendment moves.
+  //   - `calories` — intake, which also accrues from what the user logs. Left on
+  //     STREAM deliberately: the amendment sanctions `sun` and nothing wider, and
+  //     whether food logging reads as a session is a calibration question for the
+  //     owner rather than one to answer in passing here.
   volume: STREAM_GAP_LIMIT,
   steps: STREAM_GAP_LIMIT,
   "active-calories": STREAM_GAP_LIMIT,
-  sun: STREAM_GAP_LIMIT,
+  sun: SESSION_GAP_LIMIT,
   calories: STREAM_GAP_LIMIT,
 
   // ── render-only series ────────────────────────────────────────────────────

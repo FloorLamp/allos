@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
 import { accessForProfile, requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -13,8 +11,8 @@ import {
   rideHeartRateSeries,
   rideZoneRows,
 } from "@/lib/ride-detail";
-import { trainingActivityPageHref } from "@/lib/hrefs";
 import { ZONE_COLORS } from "@/lib/training-zones";
+import ActivityLedgerNav from "./ActivityLedgerNav";
 import ActivityRecord from "../ActivityRecord";
 import RideHeartRateChart from "../../rides/[id]/RideHeartRateChart";
 
@@ -77,36 +75,10 @@ export default async function TrainingActivityPage(props: {
       className="mx-auto"
       data-testid="training-activity-page"
     >
-      <div className="mb-4 flex items-center gap-3 text-sm">
-        <Link
-          href="/training?tab=log"
-          className="inline-flex items-center gap-1 font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-        >
-          <IconChevronLeft className="h-4 w-4" aria-hidden /> Training log
-        </Link>
-        {/* ‹ older / newer › walk the ledger in (date, id) order so a review
-            session continues without bouncing back to a list (#2870). */}
-        <span className="ml-auto flex items-center gap-3">
-          {data.olderId != null && (
-            <Link
-              href={trainingActivityPageHref(data.olderId)}
-              data-testid="activity-older-link"
-              className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline dark:text-brand-400"
-            >
-              <IconChevronLeft className="h-4 w-4" aria-hidden /> Older
-            </Link>
-          )}
-          {data.newerId != null && (
-            <Link
-              href={trainingActivityPageHref(data.newerId)}
-              data-testid="activity-newer-link"
-              className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline dark:text-brand-400"
-            >
-              Newer <IconChevronRight className="h-4 w-4" aria-hidden />
-            </Link>
-          )}
-        </span>
-      </div>
+      {/* Back to the log, and ‹ older / newer › walking the ledger in
+          (date, id) order so a review session continues without bouncing back
+          to a list (#2870). All three answer their own tap (#2983). */}
+      <ActivityLedgerNav olderId={data.olderId} newerId={data.newerId} />
 
       {liveActive ? (
         <p

@@ -123,6 +123,44 @@ describe("state 3 — an over-limit hole earns a hole", () => {
     expect(funnel).toContain("unloggedGapLabel(hole.days)");
   });
 
+  it("the count is stated through the fit rule, not unconditionally (#2871)", () => {
+    // The label a band cannot hold is the defect this state shipped with: eleven
+    // labels wider than the bands that owned them, every one centred on the same
+    // baseline, printing through each other. The DECISION lives in the scaffold
+    // beside `chartAnnotationLabel`, and the geometry it produces is asserted on
+    // computed extents in `chart-annotation-fit.test.ts`. What this line guards
+    // is only that the funnel still goes through it.
+    const band = funnel.slice(
+      funnel.indexOf("key={`hole-"),
+      funnel.indexOf("{snapped.map")
+    );
+    expect(band).toContain("chartFittedAnnotationLabel(");
+    expect(
+      /[^a-zA-Z]chartAnnotationLabel\(/.test(band),
+      "an unlogged band's label must go through the fit rule — a raw " +
+        "chartAnnotationLabel here is the overprinting render of #2871"
+    ).toBe(false);
+  });
+
+  it("a gap day still answers 'No data' when hovered (#2871)", () => {
+    // THE CHANNEL THE DROPPED LABEL LEANS ON. Omitting the count on a narrow
+    // band is only honest because the run's length stays reachable: the shading
+    // says a silence is here, and hovering a day inside it says so in words. If
+    // `filterNull` went back to its recharts default, nulls would stop reaching
+    // the formatter and a narrow hole would become genuinely mute — turning
+    // #2871's fix from "stated in another channel" into "unstated". That is why
+    // this sits in state 3 and not only with #2258, where the line was written.
+    expect(
+      funnel,
+      "nulls must reach the tooltip formatter, or a hovered gap day is an " +
+        "unlabelled empty box (#2258) and the fit rule of #2871 loses the " +
+        "channel it drops the label in favour of"
+    ).toContain("filterNull={false}");
+    expect(funnel).toContain(
+      'return name === "band" ? null : ["No data", label];'
+    );
+  });
+
   it("an unlogged band is distinguishable from a protocol window", () => {
     // Both are recharts reference areas. Without a class of its own, a silence
     // in the data answers "is a protocol shaded here?" — which is exactly how

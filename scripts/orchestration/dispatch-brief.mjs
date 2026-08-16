@@ -318,6 +318,15 @@ ${nodeLine}
   a failure it did not have.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
+- A PR's REVIEWS AND ITS COMMENTS ARE TWO DIFFERENT ENDPOINTS, and a review you were
+  told to read may be in either. \`/pulls/<n>/reviews\` returns only what was
+  submitted through the review API; anything posted as ordinary prose on the PR is an
+  ISSUE COMMENT and appears solely in \`/issues/<n>/comments\`. Read BOTH, always, and
+  reconcile them by timestamp. This is not hypothetical: a fix round on #2981 was
+  briefed to read \`/pulls/2981/reviews\`, which returned ONE of its two blocking
+  reviews — the earlier one, carrying findings D1 through D8, was an issue comment and
+  would have been invisible. If the count you get back is smaller than the brief
+  implies, you are on the wrong endpoint; say so rather than working from half a spec.
 - PREMISE-AUDIT AGAINST main BEFORE WRITING ANYTHING. An issue describes the tree it
   was FILED against; the brief was written from the issue. Grep for the modules and
   symbols it says are missing and confirm they still are. If the work is already done
@@ -328,6 +337,18 @@ ${nodeLine}
 - $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
   this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
   from another cluster's worktree, and do not write to /tmp instead.
+- NAME EVERY LOG FILE AFTER YOUR BRANCH: \`$SCRATCH/gates-<branch>.log\`, never a bare
+  \`gates.log\`, \`e2e.log\` or \`db.log\`. Sibling agents share one scratchpad, and they
+  all reach for the same obvious names, so a generic filename is a COLLISION and the
+  collision is SILENT. Measured on this box: one \`e2e.log\` held output from two
+  different clusters, and a \`gates.log\` held a third's — one agent's run was
+  NUL-padded and carried another worktree's path and test counts.
+  This is the worst shape a wrong number can take, because the usual defence does not
+  work: you ran the gate, you redirected it yourself, and you grepped the file you
+  named — and the count you read belongs to somebody else's tree. Nothing inside the
+  agent can tell. If a log you wrote contains a worktree path that is not yours, or
+  NUL bytes, DISCARD IT and re-run into a branch-named file; do not reconcile it, and
+  do not quote gates out of it.
 - CI ARTIFACTS ARE UNREACHABLE from this container: \`*.blob.core.windows.net\` returns
   403 CONNECT through the agent proxy, so a playwright-report zip or an
   error-context.md from a real CI run CANNOT be downloaded. Job LOGS are fine via the

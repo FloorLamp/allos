@@ -8,6 +8,12 @@
           "title": "Integration errors no longer store or show the credentials they were carrying",
           "kind": "security",
           "issues": [2820, 2898]
+        },
+        {
+          "pr": 2982,
+          "title": "Tapping a link tells you it heard, and a navigation that loses the connection waits instead of dropping the page",
+          "kind": "fix",
+          "issues": [2869]
         }
       ]
     },
