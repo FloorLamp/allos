@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
 import {
+  chartsSettled,
   dismissToast,
   followLink,
   settledClick,
@@ -109,6 +110,12 @@ test.describe("chart tap-through (#1488)", () => {
     await page.setViewportSize(DESKTOP);
     await page.goto("/trends/metric/hrv");
 
+    // /trends/metric/[kind] draws its chart through the same lazy wrapper the rest
+    // of the suite does, ABOVE this table — so the row ⋯ menus below are driven on a
+    // layout that is still growing until the chunk evaluates. Gate before the first
+    // round trip, not after (#2862).
+    await chartsSettled(page, page.getByTestId("metric-detail-chart"));
+
     const table = page.getByTestId("metric-readings-table");
     await expect(table).toBeVisible();
     // Two seeded HRV readings, addressed by their DISTINCT values rather than by
@@ -189,6 +196,8 @@ test.describe("chart tap-through (#1488)", () => {
     // reading now, so the reading detail page sends it to the surface that charts it.
     await page.goto("/results/clinical-results/view?name=Resting+Heart+Rate");
     await expect(page).toHaveURL(/\/trends\/metric\/resting-hr$/);
+    // Same lazy chart above the same table, same gate (#2862).
+    await chartsSettled(page, page.getByTestId("metric-detail-chart"));
 
     const table = page.getByTestId("metric-readings-table");
     await expect(table).toBeVisible();
