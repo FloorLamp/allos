@@ -118,10 +118,18 @@ describe("stallVerdict", () => {
 
   it("holds fire exactly at the threshold, and fires past it", () => {
     expect(
-      stallVerdict({ ageMs: 9 * HOUR, idleMs: THRESHOLD, thresholdMs: THRESHOLD })
+      stallVerdict({
+        ageMs: 9 * HOUR,
+        idleMs: THRESHOLD,
+        thresholdMs: THRESHOLD,
+      })
     ).toEqual({ kind: "moving", alarm: false });
     expect(
-      stallVerdict({ ageMs: 9 * HOUR, idleMs: THRESHOLD + 1, thresholdMs: THRESHOLD })
+      stallVerdict({
+        ageMs: 9 * HOUR,
+        idleMs: THRESHOLD + 1,
+        thresholdMs: THRESHOLD,
+      })
     ).toEqual({ kind: "stalled", alarm: true });
   });
 
@@ -218,7 +226,10 @@ describe("worktreeIdleMs", () => {
   it("sees a file written in the tree", () => {
     const dir = tempDir();
     fs.mkdirSync(path.join(dir, "lib"));
-    fs.writeFileSync(path.join(dir, "lib", "edit.ts"), "export const one = 1;\n");
+    fs.writeFileSync(
+      path.join(dir, "lib", "edit.ts"),
+      "export const one = 1;\n"
+    );
     const idle = worktreeIdleMs(dir);
     expect(idle).not.toBeNull();
     expect(idle!).toBeLessThan(30_000);
