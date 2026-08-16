@@ -1,7 +1,11 @@
 import { test, expect } from "./fixtures";
 import { followLink, hydratedClick } from "./helpers";
 import { openCommandPalette } from "./nav";
-import { ZONE_WALK_TITLE } from "./seed/training";
+// Fixture names come from the DB-free constants module, never from e2e/seed/*:
+// a seed module pulls in lib/db, whose migration logging lands on stdout and
+// corrupts the JSON that `scripts/e2e-shard-plan.ts --verify` parses from
+// `playwright --list`.
+import { ZONE_WALK_TITLE } from "./fixture-logins";
 
 // #2870 step 1 — every non-cycling activity has a canonical page: the Training
 // Log's card rendered whole at its own URL, with ‹ older / newer › ledger

@@ -37,6 +37,8 @@ import {
   LAB_GOAL_TARGET,
   E2E_LOGIN_WEEK_SPINE,
   WEEK_SPINE_PROFILE,
+  ZONE_WALK_TITLE,
+  ZONE_WALK_EXTERNAL_ID,
 } from "../fixture-logins";
 import {
   getTimezone,
@@ -257,11 +259,6 @@ export function seedTrainingLogCard(): void {
     `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id IN ('strava','health-connect')`
   ).run(PROFILE_ID);
 }
-
-// The worn NON-CYCLING session seeded beside the zone ride below, named here so
-// the activity-page spec can find its row without knowing an id.
-export const ZONE_WALK_TITLE = "Worn walk (e2e)";
-const ZONE_WALK_EXTERNAL_ID = "e2e:zone-walk";
 
 // ── Training HR-zone fixture ──
 export function seedTrainingZones(): void {
