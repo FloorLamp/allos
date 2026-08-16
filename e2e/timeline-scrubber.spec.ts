@@ -333,7 +333,7 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
 test.describe("timeline jump rail under reduced motion (#2657 item 4)", () => {
   // The harness builds its own contexts (DB-per-worker), so the preference rides in
   // through `contextOptions` rather than the bare `reducedMotion` test option — the
-  // same shape e2e/micro-motion.spec.ts uses.
+  // same shape as the suite's other reduced-motion contexts.
   test.use({ contextOptions: { reducedMotion: "reduce" } });
   test.beforeAll(seed);
   test.afterAll(cleanup);

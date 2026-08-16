@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { expandTrendsContext } from "./trends-chrome";
-import { expectNoClippedContent } from "./helpers";
+import { expectNoClippedContent, settledBoxes } from "./helpers";
 
 // Mobile / touch-target polish (#640, #641, #644). Driven at a phone viewport so
 // the clipping and undersized-target defects are observable — the desktop layout
@@ -128,14 +128,9 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     });
     await expect(doseBrand).toContainText("500 mg");
     await expect(details.getByTestId("adherence-summary")).toBeVisible();
-    const [detailsBox, actionsBox] = await Promise.all([
-      details.boundingBox(),
-      actions.boundingBox(),
-    ]);
-    expect(detailsBox).not.toBeNull();
-    expect(actionsBox).not.toBeNull();
-    expect(detailsBox!.y).toBeGreaterThanOrEqual(
-      actionsBox!.y + actionsBox!.height
+    const [detailsBox, actionsBox] = await settledBoxes([details, actions]);
+    expect(detailsBox.y).toBeGreaterThanOrEqual(
+      actionsBox.y + actionsBox.height
     );
     expect(detailsBox!.x + detailsBox!.width).toBeGreaterThanOrEqual(
       actionsBox!.x + actionsBox!.width
@@ -196,23 +191,19 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     expect(addSupplementBox!.height).toBeGreaterThanOrEqual(40);
 
     const slots = page.getByTestId("supplement-slot-selector");
-    const [all, morning, midday, evening] = await Promise.all([
-      slots.getByTestId("supplement-slot-all").boundingBox(),
-      slots.getByTestId("supplement-slot-morning").boundingBox(),
-      slots.getByTestId("supplement-slot-midday").boundingBox(),
-      slots.getByTestId("supplement-slot-evening").boundingBox(),
+    const [all, morning, midday, evening] = await settledBoxes([
+      slots.getByTestId("supplement-slot-all"),
+      slots.getByTestId("supplement-slot-morning"),
+      slots.getByTestId("supplement-slot-midday"),
+      slots.getByTestId("supplement-slot-evening"),
     ]);
-    expect(all).not.toBeNull();
-    expect(morning).not.toBeNull();
-    expect(midday).not.toBeNull();
-    expect(evening).not.toBeNull();
-    expect(all!.x).toBeLessThan(morning!.x);
-    expect(morning!.x).toBeLessThan(midday!.x);
-    expect(midday!.x).toBeLessThan(evening!.x);
-    expect(all!.y).toBeCloseTo(morning!.y, 0);
-    expect(morning!.y).toBeCloseTo(midday!.y, 0);
-    expect(midday!.y).toBeCloseTo(evening!.y, 0);
-    expect(evening!.height).toBeGreaterThanOrEqual(48);
+    expect(all.x).toBeLessThan(morning.x);
+    expect(morning.x).toBeLessThan(midday.x);
+    expect(midday.x).toBeLessThan(evening.x);
+    expect(all.y).toBeCloseTo(morning.y, 0);
+    expect(morning.y).toBeCloseTo(midday.y, 0);
+    expect(midday.y).toBeCloseTo(evening.y, 0);
+    expect(evening.height).toBeGreaterThanOrEqual(48);
   });
 
   // The /nutrition two-column grid (lg:grid-cols-[1fr_320px]) collapses to a

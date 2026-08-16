@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { E2E_LOGIN_ROUTINE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_ROUTINE,
+  E2E_MEMBER_PASSWORD,
+  ROUTINE_PROFILE,
+} from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Issue #740 — the routine-aware "Today's session" card on the Training overview.
 // Driven as the dedicated routine fixture login (an ADULT profile with an ACTIVE
@@ -10,139 +15,76 @@ import { E2E_LOGIN_ROUTINE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 //
 //   1. The card renders the resolved day (Push) and its filled slate.
 //   2. "Log this session" pre-fills the activity form (live mode) with the slate.
-//   3. #1893: with a session already running the SAME control resumes it instead of
-//      restarting — handing over the routine slate used to reset the live clock.
+//
+// The mid-session resume contract belongs to e2e/live-workout.spec.ts and the shared
+// workoutOffer truth table. Repeating it through this card made these tests share a
+// live editor and coupled their result to the previous test's teardown.
 
-let page: Page;
+function clearRoutineActivities(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("foreign_keys = ON");
+    const profile = db
+      .prepare("SELECT id FROM profiles WHERE name = ?")
+      .get(ROUTINE_PROFILE) as { id: number } | undefined;
+    if (!profile) throw new Error("routine fixture profile missing");
+    db.prepare("DELETE FROM activities WHERE profile_id = ?").run(profile.id);
+  } finally {
+    db.close();
+  }
+}
 
-test.beforeAll(async ({ browser }) => {
-  page = await loginAs(browser, {
+test("Today's session card renders the resolved routine day (#740)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
     username: E2E_LOGIN_ROUTINE,
     password: E2E_MEMBER_PASSWORD,
   });
+  try {
+    await page.goto("/training?tab=overview");
+
+    const card = page.getByTestId("todays-session-card");
+    await expect(card).toBeVisible();
+    // Day 0 of the seeded PPL routine is Push.
+    await expect(card.getByTestId("todays-session-title")).toHaveText(
+      "Push day"
+    );
+    // The first slot fills with the first candidate the profile can do (owns no
+    // equipment → no gating → the barbell bench press leads).
+    await expect(
+      card
+        .getByTestId("todays-session-slot")
+        .filter({ hasText: "Barbell Bench Press" })
+    ).toBeVisible();
+    // Cold start (no history): the prescription shows sets × rep range, no load.
+    await expect(card.getByText("4 × 5–8").first()).toBeVisible(); // first-ok: several exercises in the scoped card share the 4×5–8 scheme — order-agnostic presence
+  } finally {
+    await page.context().close();
+  }
 });
 
-test.afterAll(async () => {
-  await page.close();
-});
-
-test("Today's session card renders the resolved routine day (#740)", async () => {
-  await page.goto("/training?tab=overview");
-
-  const card = page.getByTestId("todays-session-card");
-  await expect(card).toBeVisible();
-  // Day 0 of the seeded PPL routine is Push.
-  await expect(card.getByTestId("todays-session-title")).toHaveText("Push day");
-  // The first slot fills with the first candidate the profile can do (owns no
-  // equipment → no gating → the barbell bench press leads).
-  await expect(
-    card
-      .getByTestId("todays-session-slot")
-      .filter({ hasText: "Barbell Bench Press" })
-  ).toBeVisible();
-  // Cold start (no history): the prescription shows sets × rep range, no load.
-  await expect(card.getByText("4 × 5–8").first()).toBeVisible(); // first-ok: several exercises in the scoped card share the 4×5–8 scheme — order-agnostic presence
-});
-
-test("'Log this session' pre-fills the activity form in live mode (#740)", async () => {
-  await page.goto("/training?tab=overview");
-
-  const card = page.getByTestId("todays-session-card");
-  await expect(card).toBeVisible();
-  await card.getByTestId("log-this-session").click();
-
-  // The pre-filled slate opens in the live workout layout (#340: the same editor).
-  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  // The resolved day's lead exercise is present in the pre-filled form.
-  await expect(page.getByText("Barbell Bench Press").first()).toBeVisible(); // first-ok: asserts the recommended lift renders — order-agnostic presence
-
-  // Clean up. SETTLE on the session's page first (#2870 step 3): a close that
-  // beats the create-at-start round-trip strands the row when the page dies
-  // before the late-create self-discard can run — the leak that made the next
-  // test see "resume". Then close: the blank-load slate can't save, so the
-  // blocked-close prompt appears; answering it abandons the empty row and
-  // returns to the hub.
-  await page.waitForURL(/\/training\/activity\/\d+$/);
-  await closeLiveEditor(page);
-  await cleanUpClosedSession(page);
-});
-
-// Close the open live editor through its header button — Escape can be
-// swallowed by whichever input holds focus — and answer the blocked-close
-// prompt when the unsavable slate raises one.
-async function closeLiveEditor(p: Page) {
-  await p.getByRole("button", { name: "Close", exact: true }).click();
-  const closeAnyway = p
-    .getByTestId("confirm-dialog")
-    .getByRole("button", { name: "Close anyway" });
-  await closeAnyway.waitFor({ state: "visible", timeout: 3000 }).catch(() => {
-    /* closed without a prompt — nothing unsaved */
+test("'Log this session' pre-fills the activity form in live mode (#740)", async ({
+  browser,
+}) => {
+  clearRoutineActivities();
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_ROUTINE,
+    password: E2E_MEMBER_PASSWORD,
   });
-  if (await closeAnyway.isVisible().catch(() => false))
-    await closeAnyway.click();
-  await expect(p.getByTestId("activity-form")).toHaveCount(0);
-}
+  try {
+    await page.goto("/training?tab=overview");
 
-// After closing a live session, the row's fate is bimodal: an EMPTY session
-// abandons itself and redirects to the hub; one whose slate managed to save is
-// KEPT and the tab stays on its page. Clean up whichever happened, so the
-// fixture profile is left untouched either way.
-async function cleanUpClosedSession(p: Page) {
-  const redirected = await p
-    .waitForURL(/\/training(\?.*)?$/, { timeout: 5000 })
-    .then(() => true)
-    .catch(() => false);
-  if (redirected) return; // empty session — the abandonment already cleaned up
-  await p.getByTestId("activity-page-edit").click();
-  await expect(
-    p.getByTestId("activity-page-dock").getByTestId("activity-form")
-  ).toBeVisible();
-  await p.getByRole("button", { name: "Delete", exact: true }).click();
-  await p
-    .getByRole("dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
-  await expect(p.getByTestId("activity-form")).toHaveCount(0);
-}
+    const card = page.getByTestId("todays-session-card");
+    await expect(card).toBeVisible();
+    await card.getByTestId("log-this-session").click();
 
-test("mid-session, 'Log this session' resumes instead of restarting (#1893)", async () => {
-  await page.goto("/training?tab=overview");
-
-  const card = page.getByTestId("todays-session-card");
-  const control = card.getByTestId("log-this-session");
-  await expect(control).toHaveAttribute("data-workout-offer", "start");
-  await expect(control).toHaveText("Log this session");
-  await control.click();
-  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  // #2870 step 3: starting stands the tab on the session's canonical page.
-  await page.waitForURL(/\/training\/activity\/\d+$/);
-
-  await page.getByTestId("minimize-workout").click();
-  const dock = page.getByTestId("workout-dock");
-  await expect(dock).toBeVisible();
-  const startedAt = await dock.getAttribute("data-start-epoch");
-  expect(startedAt).toMatch(/^\d+$/);
-
-  // Back on Overview — SOFT navigation, the pocketed form must stay mounted.
-  // The control names the write it will now perform — the routine day is still
-  // one tap away once the running session is finished.
-  await page
-    .getByRole("complementary")
-    .getByRole("link", { name: "Training" })
-    .click();
-  await expect(control).toHaveAttribute("data-workout-offer", "resume");
-  await expect(control).toHaveText("Resume workout");
-
-  await control.click();
-  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await page.getByTestId("minimize-workout").click();
-  await expect(dock).toBeVisible();
-  // The epoch pin: openSession reopened the running session, it did not restart it.
-  await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
-
-  await page.getByTestId("workout-dock-open").click();
-  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await closeLiveEditor(page);
-  await expect(dock).toHaveCount(0);
-  await cleanUpClosedSession(page);
+    // Creation settles on the session's canonical page before the form is read.
+    await page.waitForURL(/\/training\/activity\/\d+$/);
+    await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+    await expect(page.getByText("Barbell Bench Press").first()).toBeVisible(); // first-ok: asserts the recommended lift renders — order-agnostic presence
+  } finally {
+    await page.context().close();
+    clearRoutineActivities();
+  }
 });

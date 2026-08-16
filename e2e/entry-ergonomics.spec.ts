@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
-import { openCombobox, settledFill } from "./helpers";
+import { openCombobox, settledBoxes, settledFill } from "./helpers";
 
 // Pick an activity in the editor's exercise combobox. The option button's text
 // varies with the input state: a partial filter lists options as the name plus a
@@ -528,16 +528,8 @@ test("the activity form keeps workout entry primary and context visible across b
   await editorScroll.evaluate((node) => {
     node.scrollTop = 100;
   });
-  await expect
-    .poll(async () => {
-      const [scroller, stickyHeader] = await Promise.all([
-        editorScroll.boundingBox(),
-        header.boundingBox(),
-      ]);
-      if (!scroller || !stickyHeader) return Number.POSITIVE_INFINITY;
-      return stickyHeader.y - scroller.y;
-    })
-    .toBeLessThanOrEqual(1);
+  const [scroller, stickyHeader] = await settledBoxes([editorScroll, header]);
+  expect(stickyHeader.y - scroller.y).toBeLessThanOrEqual(1);
   await expect(header).toHaveCSS("padding-top", "20px");
   await editorScroll.evaluate((node) => {
     node.scrollTop = 0;
