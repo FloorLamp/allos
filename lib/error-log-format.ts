@@ -233,8 +233,20 @@ function isOpaqueTokenExact(v: string): boolean {
 // all three hold:
 //   1. The VENDOR PUBLISHES it as reserved for credentials, in its own
 //      documentation. Not inferred from a sample, not observed in the wild.
-//   2. It is UNAMBIGUOUS: no English word, clinical term, file path, hostname
-//      or identifier this app logs can begin with it.
+//   2. It is UNAMBIGUOUS AS A PREFIX WITH A BODY ON IT: nothing this app logs —
+//      no English word, clinical term, file path, hostname or identifier — can
+//      begin with it AND continue for eight or more `[A-Za-z0-9_-]` characters.
+//      Stated that way because that is what the regex below actually matches,
+//      and the two are not the same claim (#3000). The shorter version, "no
+//      word can begin with it", was reasoned for the `_` prefixes and is false
+//      for the `-` ones: a hyphen glues to the next English word, so
+//      "xoxb-prefixed tokens" reads as a credential to this rule, as does the
+//      identifier-shaped "ghp_token_before_friday". That cost is accepted —
+//      it is a sentence about a prefix losing one word, against a credential
+//      that would otherwise print in full — but condition 2 has to say so
+//      rather than imply the case cannot arise. What condition 2 still rules
+//      out, and what the list is checked against, is a prefix that a REAL
+//      logged token could carry: see the over-redaction corpus test.
 //   3. What follows it is the secret itself, so masking the tail costs an
 //      operator nothing they read the error for — the prefix stays, and still
 //      says which vendor's credential was involved.
@@ -262,11 +274,20 @@ const VENDOR_SECRET_PREFIXES = [
   "xoxr-",
   "xoxs-",
   "xapp-",
+  // Anthropic API keys. `lib/ai.ts` and `lib/medical-extract/extract.ts` both
+  // construct an `@anthropic-ai/sdk` client from ANTHROPIC_API_KEY, so this is
+  // the one credential on this list the deployment actually holds — and a 401
+  // from that SDK is exactly the error text these two readers show (#3000).
+  "sk-ant-",
 ];
 
-// The body floor keeps a bare mention of a prefix in prose ("rotate the ghp_
-// token") from reading as a credential. It also means `<prefix>***` cannot
-// re-match, so redactSecrets stays idempotent.
+// The body floor is what separates "a credential" from "a prefix named in
+// prose", and it separates them on WHITESPACE: "rotate the ghp_ token" and
+// "the xoxb- prefix" survive because the next character ends the match. A
+// mention that glues the prefix to eight or more identifier characters
+// ("xoxb-prefixed") does mask — see condition 2 above, which states that cost
+// rather than claiming the floor prevents it. The floor also means
+// `<prefix>***` cannot re-match, so redactSecrets stays idempotent.
 const VENDOR_SECRET_RE = new RegExp(
   `\\b(${VENDOR_SECRET_PREFIXES.join("|")})[A-Za-z0-9_-]{8,}`,
   "g"
@@ -541,13 +562,6 @@ function maskKeyedValues(s: string): string {
 export function redactSecrets(s: string): string {
   if (!s) return s;
   let out = s;
-  // First, and with no key required: a vendor-guaranteed prefix is a credential
-  // wherever it stands. Masking it before the other passes only removes secret
-  // material they might otherwise have kept.
-  out = out.replace(
-    VENDOR_SECRET_RE,
-    (_whole, prefix: string) => `${prefix}***`
-  );
   out = out.replace(URL_RE, (url) => {
     // Prose punctuation that ended up glued to the URL is not part of it.
     const tail = /[.,;:!?)\]}]+$/.exec(url);
@@ -568,7 +582,23 @@ export function redactSecrets(s: string): string {
       return mask ? `${schemeWord}${gap}***` : whole;
     }
   );
-  return maskKeyedValues(out);
+  out = maskKeyedValues(out);
+  // LAST, and with no key required: a vendor-guaranteed prefix is a credential
+  // wherever it stands, so this pass is the one that runs when no other rule
+  // could see the value at all.
+  //
+  // The ORDER is load-bearing and it is this way round (#3000). This pass masks
+  // a SUFFIX of the match and leaves `<prefix>***` behind, and every rule above
+  // decides by CHARSET — `looksLikeCredential`, `looksLikeAuthCredential`,
+  // `isOpaqueToken` all reject a value containing `*`. Running it first
+  // therefore DISARMS them: `code=sk_live_<body>.<tail>` masked to
+  // `code=sk_live_***.<tail>` is a value `maskKeyedValues` will no longer mask
+  // whole, so the tail survives — the same string with a non-vendor prefix
+  // masks entirely. Adding a vendor prefix made the string redact LESS, in a
+  // function whose whole job is the opposite. Running last cannot do that: the
+  // passes above have already had the untouched string, and this one only ever
+  // masks more.
+  return out.replace(VENDOR_SECRET_RE, (_whole, prefix: string) => `${prefix}***`);
 }
 
 // Redact each leaf as it is serialized, BEFORE JSON.stringify escapes it.
