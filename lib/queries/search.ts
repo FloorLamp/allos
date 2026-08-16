@@ -712,15 +712,15 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
         LIMIT ?`
     )
     .all(
-    profileId,
-    profileId,
-    like,
-    like,
-    like,
-    like,
-    like,
-    CANDIDATE_LIMIT
-  ) as Pick<
+      profileId,
+      profileId,
+      like,
+      like,
+      like,
+      like,
+      like,
+      CANDIDATE_LIMIT
+    ) as Pick<
     ImagingStudy,
     | "id"
     | "modality"

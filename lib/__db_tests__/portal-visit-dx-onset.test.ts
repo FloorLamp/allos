@@ -259,11 +259,7 @@ describe("pregnancy-state and administrative codes (#2917)", () => {
   it("imports them resolved, and leaves real conditions active", () => {
     const profile = newProfile("Postpartum Person");
     const docId = newDocument(profile, "problems.xml");
-    importXml(
-      profile,
-      docId,
-      container("20190901", PREGNANCY_ADMIN_PROBLEMS)
-    );
+    importXml(profile, docId, container("20190901", PREGNANCY_ADMIN_PROBLEMS));
 
     const byName = new Map(conditionRows(profile).map((r) => [r.name, r]));
     expect(byName.get("Normal pregnancy in first trimester")!.status).toBe(
@@ -283,11 +279,7 @@ describe("pregnancy-state and administrative codes (#2917)", () => {
   it("leaves the conditions page with one active problem, not five", () => {
     const profile = newProfile("Conditions Page");
     const docId = newDocument(profile, "problems.xml");
-    importXml(
-      profile,
-      docId,
-      container("20190901", PREGNANCY_ADMIN_PROBLEMS)
-    );
+    importXml(profile, docId, container("20190901", PREGNANCY_ADMIN_PROBLEMS));
 
     const active = getConditions(profile, { status: "active" });
     expect(active.map((c) => c.name)).toEqual(["Type 2 diabetes mellitus"]);
@@ -296,11 +288,7 @@ describe("pregnancy-state and administrative codes (#2917)", () => {
   it("heals an already-imported document on reprocess", () => {
     const profile = newProfile("Reprocessed");
     const docId = newDocument(profile, "problems.xml");
-    importXml(
-      profile,
-      docId,
-      container("20190901", PREGNANCY_ADMIN_PROBLEMS)
-    );
+    importXml(profile, docId, container("20190901", PREGNANCY_ADMIN_PROBLEMS));
     // Simulate the pre-fix rows the prod export left behind: permanently active.
     db.prepare(
       `UPDATE conditions SET status = 'active'
@@ -310,11 +298,7 @@ describe("pregnancy-state and administrative codes (#2917)", () => {
 
     // The established reprocess path replaces the document's rows (#2917 decision 3:
     // existing rows heal by reprocess, no migration).
-    importXml(
-      profile,
-      docId,
-      container("20190901", PREGNANCY_ADMIN_PROBLEMS)
-    );
+    importXml(profile, docId, container("20190901", PREGNANCY_ADMIN_PROBLEMS));
     expect(
       getConditions(profile, { status: "active" }).map((c) => c.name)
     ).toEqual(["Type 2 diabetes mellitus"]);

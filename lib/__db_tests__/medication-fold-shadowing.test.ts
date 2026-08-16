@@ -110,9 +110,7 @@ function medRows(profileId: number) {
 function courseCount(itemId: number): number {
   return (
     db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?"
-      )
+      .prepare("SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?")
       .get(itemId) as { n: number }
   ).n;
 }

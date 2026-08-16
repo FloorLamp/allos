@@ -23,6 +23,7 @@ import {
 import { searchAll } from "@/lib/queries/search";
 import { getTimelineEvents } from "@/lib/timeline";
 import { carePlanItems } from "@/lib/queries/upcoming/plans";
+import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 
 function newProfile(name: string): number {
   return Number(
@@ -119,7 +120,7 @@ describe("imaging studies collapse across overlapping exports (#2919)", () => {
     const { profile } = seedOverlappingExports("Imaging Overlap");
 
     expect(getImagingStudies(profile)).toHaveLength(1);
-    expect(getImagingStudiesForProfiles([profile])).toHaveLength(1);
+    expect(getImagingStudiesForProfiles(authorized([profile]))).toHaveLength(1);
     expect(
       getTimelineEvents(profile, { limit: 200 }).filter(
         (e) => e.category === "imaging"
