@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
+import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 import {
@@ -7,14 +8,24 @@ import {
   summarizeCyclingStreams,
 } from "@/lib/cycling-stream-summary";
 
+// The Log feed renders slim rows (#2897): a ride's ROW is a button that opens
+// the reading pane (desktop) or expands in place (phones), and the ride's
+// title link — ride-detail-link — lives on the full record card there. Select
+// the titled ride's row (hydratedClick: a pure client toggle whose first
+// post-goto click can land pre-hydration) and return the record card that
+// mounted, so the detail link is read from where it now renders.
+async function openRideRecord(page: Page, title: string) {
+  const row = page.getByTestId("training-log-row").filter({ hasText: title });
+  await hydratedClick(page, row);
+  return page.locator(".card", { hasText: title });
+}
+
 test("a Training Log ride opens a read-first detail with the stored ride measurements", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
 
-  const stravaCard = page.locator(".card", {
-    hasText: "Strava morning ride",
-  });
+  const stravaCard = await openRideRecord(page, "Strava morning ride");
   const detailLink = stravaCard.getByTestId("ride-detail-link");
   await expect(detailLink).toHaveAttribute("href", /\/training\/rides\/\d+/);
   await followLink(page, detailLink, /\/training\/rides\/\d+$/);
@@ -743,9 +754,7 @@ test("a ride detail scopes wearable HR minutes to that ride's clock window", asy
 }) => {
   await page.goto("/training?tab=log");
 
-  const zoneRide = page.locator(".card", {
-    hasText: "Zone 2 base ride",
-  });
+  const zoneRide = await openRideRecord(page, "Zone 2 base ride");
   await followLink(
     page,
     zoneRide.getByTestId("ride-detail-link"),
@@ -796,9 +805,9 @@ test("adjacent ride navigation stays compact in the mobile header", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/training?tab=log");
 
-  const stravaCard = page.locator(".card", {
-    hasText: "Strava morning ride",
-  });
+  // On phones the row expands the record in place (#2897); the title link is
+  // on that expanded card.
+  const stravaCard = await openRideRecord(page, "Strava morning ride");
   await followLink(
     page,
     stravaCard.getByTestId("ride-detail-link"),
