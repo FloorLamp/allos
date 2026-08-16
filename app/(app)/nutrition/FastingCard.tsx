@@ -91,7 +91,16 @@ export default function FastingCard({
       | { ok: true; message: string; undoFastId?: number }
       | { ok: false; error: string }
     >,
-    fd: FormData
+    fd: FormData,
+    // Whether a successful end may offer UNDO. FALSE on the restricted close-out below,
+    // where reopening is exactly what the adult-only ruling withholds: `reopenFast` is
+    // GATED (lib/fast-write.ts), so the core refuses every tap of it for that profile.
+    // This surface's own rule is that it does not draw a control whose every tap would
+    // be refused — the reason there is no start control there either — and an Undo that
+    // can only answer "Fasting isn't available on this profile." is that same theater
+    // with a friendlier label. The core stays the real gate: a stale tab still holding
+    // the FULL surface's Undo is judged by it, which e2e pins separately.
+    { offerUndo = true }: { offerUndo?: boolean } = {}
   ) {
     if (pending) return;
     setPending(true);
@@ -117,7 +126,7 @@ export default function FastingCard({
       // than approximating it.
       toast(
         result.message,
-        result.undoFastId != null
+        result.undoFastId != null && offerUndo
           ? {
               action: {
                 label: "Undo",
@@ -145,8 +154,9 @@ export default function FastingCard({
   }
 
   // A restricted profile with a fast still running (#2756's end-side exemption). The
-  // ONLY thing offered is the way out. Deliberately no elapsed duration, no history and
-  // no stale suggest: this is closing an account, not tracking a practice.
+  // ONLY thing offered is the way out. Deliberately no elapsed duration, no history, no
+  // stale suggest and NO UNDO on the end: this is closing an account, not tracking a
+  // practice, and reopening is the one thing the gate withholds.
   if (!canStart) {
     return (
       <section
@@ -164,7 +174,9 @@ export default function FastingCard({
           type="button"
           data-testid="fasting-control"
           disabled={pending}
-          onClick={() => void run(endFastAction, new FormData())}
+          onClick={() =>
+            void run(endFastAction, new FormData(), { offerUndo: false })
+          }
           className="rounded-md border border-black/10 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-white/10"
         >
           End fast

@@ -180,6 +180,15 @@ export function overlappingFasts(
 // always lands and this is resolved afterwards, beside the successful log. Declining
 // changes nothing, and the app never auto-ends a fast: the TAP is the write.
 //
+// NO LIFE-STAGE GATE BELONGS HERE, and that is a decision rather than an omission. The
+// only write this offer can reach is `endFast` — the EXEMPT core — so for a profile that
+// became restricted mid-fast the toast is the escape hatch, not a leak: it appears only
+// when a fast is ALREADY active, and its tap only ever removes fasting state. Gating it
+// would withdraw a way out from the exact person the gate exists to protect, which is
+// the stranded-row trap lib/fast-write.ts's exemptions were written against. It also
+// cannot appear for a restricted profile that has no fast, because there is nothing to
+// end.
+//
 // ONLY A TODAY-ATTRIBUTED LOG PROMPTS. A backdated serving filed against yesterday says
 // nothing about whether the fast running right now should end, and prompting on it
 // would invite a tap that ends a fast the user never meant to touch. That is the whole

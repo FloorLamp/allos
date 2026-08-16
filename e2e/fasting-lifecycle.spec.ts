@@ -175,7 +175,16 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await settledClick(page, control);
     // The label now names the END, and carries the elapsed time it will record.
     await expect(control).toContainText("End fast · 16 h");
+    // THE FIELD BELONGS TO ONE WRITE. The instant has been CONSUMED, so the disclosure
+    // closes and the value is gone. Left in place it would be submitted as the next
+    // tap's END time — at or before the start it just created — and the user would meet
+    // a refusal about a value no longer on screen. The end below is that assertion's
+    // consequence; these two are the property itself.
+    await expect(page.getByTestId("fasting-backdate-input")).toHaveCount(0);
     await dismissToast(page, "Fast started.");
+    await hydratedClick(page, page.getByTestId("fasting-backdate-toggle"));
+    await expect(page.getByTestId("fasting-backdate-input")).toHaveValue("");
+    await hydratedClick(page, page.getByTestId("fasting-backdate-toggle"));
 
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(page.getByTestId("fasting-control")).toHaveText("Start fast");
@@ -365,9 +374,13 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
 
     // And it WORKS — the exempt end path, reached from the rendered control.
     await settledClick(page, page.getByTestId("fasting-control"));
-    await expect(
-      page.getByTestId("toast").filter({ hasText: "Fast ended." })
-    ).toBeVisible();
+    const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
+    await expect(ended).toBeVisible();
+    // …and it offers NO UNDO. Reopening is the one thing the gate withholds, so the core
+    // would refuse every tap of it — and this surface does not draw a control whose every
+    // tap is a refusal, which is the same reason it draws no start control. The core's
+    // refusal is still the real gate, pinned by the stale-tab case below.
+    await expect(ended.getByRole("button", { name: "Undo" })).toHaveCount(0);
 
     const after = openDb();
     try {

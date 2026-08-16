@@ -118,8 +118,16 @@ export function updateFastRow(
 // reason is the row-op completeness rule rather than an omission: a `fasts` row has no
 // children and no inbound foreign keys — nothing links to a fast — so removing it
 // leaves nothing unreconciled and there is no multi-entity snapshot for that machinery
-// to reassemble. Discard is reachable only from the stale suggest, where the user is
-// answering a question about a fast they have already been told is 36 h old.
+// to reassemble.
+//
+// WHAT BOUNDS THIS, STATED AS A FACT ABOUT THE CODE. The only SURFACE that offers
+// discard is the stale suggest, where the user is answering a question about a fast they
+// have already been told is 36 h old — but `discardFast` takes an id from a form and a
+// Server Action is independently POST-callable, so the surface is not a bound and this
+// comment does not claim it as one. The bound is that the statement is profile-scoped
+// and the row is the caller's OWN claim: the worst a crafted id can do is delete one of
+// your own fasts, which is the same authority the ordinary delete controls in this app
+// already carry. No other profile's data is reachable, and no fasting state is created.
 export function deleteFastRow(profileId: number, id: number): number {
   return writeTx(() => {
     const info = db
