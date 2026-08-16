@@ -247,7 +247,9 @@ export function collapseBursts(events: readonly TapEvent[]): CorrectionBurst[] {
 // Is this burst still correctable? Keyed on the NEWEST TAP in it, so a burst that is
 // still being added to stays live for the full hour after its last member. This is the
 // one predicate both the renderer (offer the row) and the reconciler (strip the row)
-// consult, so a chat can never show a chip whose tap the handler would refuse.
+// consult, so a chat can never show a chip whose tap the handler would refuse AS LAPSED.
+// Freshness is one of two bounds; a day-keyed domain has a second one, and it is applied
+// by the same shared computation on both sides — see "DAY-KEYED STORES" below.
 //
 // A CORRECTION IS NOT A TAP (#2206), and this is the decision made explicitly. Repeat
 // chip taps compose, so a correction session could in principle keep renewing its own

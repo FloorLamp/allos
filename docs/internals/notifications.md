@@ -817,8 +817,10 @@ the inference 21:00, which fired the next nudge later, which was acknowledged la
 still. The error compounded, and it degraded exactly the feature whose purpose is
 "today is usually a red-light day, at about this time".
 
-Two prefixes is the whole extension — `correctionActions`, `correctionPickerActions`,
-`correctionBodyStatement` and `collapseBursts` were already domain-blind. Three things
+Two prefixes is most of the extension — `correctionActions`, `correctionPickerActions`,
+`correctionBodyStatement` and `collapseBursts` are domain-blind about the SHAPE of the
+affordance, and stay that way. They were domain-blind about WHAT MAY BE OFFERED too, and
+that turned out to be wrong rather than general — see the fourth bullet. Four things
 genuinely differ:
 
 - **The stored value is not an instant.** Food stores `occurred_at` and dose stores
@@ -836,6 +838,18 @@ genuinely differ:
   form's job, so an answer landing on another day writes nothing and says so
   (`crosses-day`). Clamping would be worse than refusing: it would teach `modalHour()`
   an hour the session never happened at, which is the defect this feature exists to fix.
+- **So the OFFER SET is bounded by the domain, not only by the clock.** A refusal the
+  renderer does not know about is a dead button, and here it was most of them: THE DAY
+  RULE resolves an offered hour later than the current local time to YESTERDAY, which
+  food absorbs (`movedDays`) and dose absorbs (`crossedMidnight`) and a practice refuses.
+  At 00:20 local both chips and all eleven picker hours resolved to yesterday — 100% of
+  the affordance dead in the hour the stored time is most wrong — and on an ordinary
+  morning 4 of 11 picker buttons were dead. `dayKeyed` on `CorrectionPrefixes` is how a
+  domain declares which kind of store is behind its chips; `chipOffers` and
+  `offeredHours` apply the bound, each handler admits an hour through the same
+  computation, and `correctableBursts` drops a burst with nothing left to offer so the
+  body can say the correction belongs in the app instead of drawing a keyboard that
+  cannot work.
 
 Migration `20260816-practice-tap-message-provenance` adds `practice_logs.notify_message_id`
 — migration 170's shape exactly — so a practice burst is attributed like the other two

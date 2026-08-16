@@ -977,10 +977,12 @@ export function getRecentPracticeTaps(
 
 // The correction rows one practice keyboard should carry right now — the fresh taps,
 // collapsed into bursts, bound to the rendering message (#2264), newest first, capped.
-// One computation for the send, every rebuild, and the hourly sweep (#221), so a chat
-// can never show a chip the handler would refuse. `binding` is the rendering message's
-// #2264 identity; omitting it returns the profile-wide set, which only a caller that is
-// not rendering a message may use.
+// One computation for the send, every rebuild, and the hourly sweep (#221). It answers
+// WHICH BURSTS are still live; which offers each may carry is the renderer's second
+// question, and for this DAY-KEYED domain the burst's own local day bounds them
+// (`correctableBursts`). Between the two, a chat can never show a chip the handler
+// would refuse. `binding` is the rendering message's #2264 identity; omitting it returns
+// the profile-wide set, which only a caller that is not rendering a message may use.
 export function getPracticeCorrectionBursts(
   profileId: number,
   now: Date = clockNow(),
