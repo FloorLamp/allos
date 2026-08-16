@@ -54,7 +54,9 @@ describe("deleteProfile clears fasts (#2756)", () => {
     expect(endFast(victim.id, new Date(now - 14 * HOUR)).kind).toBe("ended");
     expect(startFast(victim.id, new Date(now - 5 * HOUR)).kind).toBe("started");
 
-    expect(startFast(bystander.id, new Date(now - 3 * HOUR)).kind).toBe("started");
+    expect(startFast(bystander.id, new Date(now - 3 * HOUR)).kind).toBe(
+      "started"
+    );
 
     expect(fastCount(victim.id)).toBe(2);
     expect(fkViolations().filter((v) => v.table === "fasts")).toEqual([]);
