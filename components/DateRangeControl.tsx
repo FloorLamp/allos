@@ -25,6 +25,11 @@ type LinkLike = ComponentType<{
   className: string;
   children: ReactNode;
   "aria-current"?: "page";
+  // A stable handle on the PILL ITSELF. Added with #2869: the pills are real
+  // navigations that now report pending in place, and asserting that needs the
+  // anchor rather than its text — the pending state appends an `sr-only`
+  // "Opening 30D" inside the link, which changes its accessible name.
+  testId?: string;
 }>;
 
 // next/link's Link has a broader (Url) href type than LinkLike; wrap it so the
@@ -34,8 +39,14 @@ const DefaultLink: LinkLike = ({
   className,
   children,
   "aria-current": ariaCurrent,
+  testId,
 }) => (
-  <Link href={href} className={className} aria-current={ariaCurrent}>
+  <Link
+    href={href}
+    className={className}
+    aria-current={ariaCurrent}
+    data-testid={testId}
+  >
     {children}
   </Link>
 );
@@ -171,6 +182,7 @@ export default function DateRangeControl({
                 <LinkComponent
                   key={qr.label}
                   href={buildHref({ from: qr.from, to: qr.to })}
+                  testId={`${idPrefix}-pill-${qr.label}`}
                   className={rangePillClass(isQuickRangeActive(range, qr))}
                   aria-current={
                     isQuickRangeActive(range, qr) ? "page" : undefined
@@ -181,6 +193,7 @@ export default function DateRangeControl({
               ))}
               <LinkComponent
                 href={buildHref({})}
+                testId={`${idPrefix}-pill-all-time`}
                 className={rangePillClass(isAllTimeRange(range))}
                 aria-current={isAllTimeRange(range) ? "page" : undefined}
               >

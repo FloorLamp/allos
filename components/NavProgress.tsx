@@ -97,7 +97,7 @@ export default function NavProgress() {
         data-testid="nav-progress"
         className="pointer-events-none fixed inset-x-0 top-0 z-100 h-0.5 bg-brand-500 dark:bg-brand-400"
       />
-      <span role="status" className="sr-only">
+      <span role="status" data-testid="nav-progress-status" className="sr-only">
         Still loading
       </span>
     </>
