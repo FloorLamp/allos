@@ -2,6 +2,9 @@ import { test, expect } from "./fixtures";
 import { type Page, type BrowserContext } from "@playwright/test";
 import { hydratedClick } from "./helpers";
 import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
+import Database from "better-sqlite3";
+import { frozenNow, workerDbPath } from "./worker-env";
+import { practiceIdentity } from "@/lib/practice";
 
 // THE DEVICE WRITE GATE, end to end, against a real IndexedDB (#2908).
 //
@@ -887,6 +890,10 @@ test("R-A2 — a logout that SUCCEEDS still ends every lane, past the POST", asy
 //   drop the `sessionEndedOnServer()` guard     pass   FAIL   pass   (sessionClosed false)
 //   drop `AbortSignal.timeout` from the probe   pass   pass   FAIL   (gate never re-opens)
 //
+// R-5 at the bottom is the same discipline on the visible half of the gate: against a
+// `!kept` branch put back to ignoring the boolean it reads, it fails on the toast the
+// person is owed.
+//
 // R-A4 was then re-run against its own mutant twice more, the way R-A/R-B/R-C were: with
 // its probe-count assertion removed it still fails on the GATE, and with the gate
 // assertion removed as well it still fails on the CONSEQUENCE — a draft typed after the
@@ -1069,4 +1076,98 @@ test("R-A5 — a probe that HANGS does not hold the undo behind it", async ({
     .toMatchObject({ sessionClosed: false });
 
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("R-5 — a practice card does not claim a session the device refused to keep", async ({
+  page,
+  context,
+}: {
+  page: Page;
+  context: BrowserContext;
+}) => {
+  test.slow();
+
+  // THE HALF OF THE GATE THE PERSON CAN SEE. Everything above measures what reaches the
+  // database; this measures what the app SAYS about it. `enqueueIntent` has always
+  // answered whether it kept the write, and the callers threw that answer away: a refused
+  // tap still produced "it'll sync when you're back online" and still moved the card's
+  // count, with nothing later to contradict either — no badge, no dead-letter entry, no
+  // replay. The boolean is read now, and this is the test of the `!kept` branch it grew.
+  //
+  // The refusing state is the one R-A2 leaves behind: a logout that LANDED, with a tab of
+  // that session still mounted. Reached in that order deliberately — going offline while
+  // the logout POST is still in flight kills the POST, and a failed logout is undone by
+  // the closer, which re-opens the very gate this test needs shut.
+  //
+  // SEEDED, because the surface cannot otherwise be reached (#868 spec-owned fixtures):
+  // an offline tap on a practice already logged today short-circuits into "already logged
+  // today" and never asks the queue at all, and the profile's only seeded practice has
+  // sessions on it. A target with no sessions is the smallest thing that renders a card
+  // with a live Log button.
+  const practiceName = `E2E Refused Tap ${frozenNow().getTime()}`;
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  try {
+    db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week)
+       VALUES (1, 'practice', ?, ?, 3)`
+    ).run(practiceName, practiceIdentity(practiceName));
+
+    await login(page);
+
+    const tabB = await context.newPage();
+    await tabB.goto("/wellness");
+    const card = tabB
+      .getByRole("main")
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: practiceName });
+    await expect(card.getByTestId("practice-log-button")).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(card.getByTestId("practice-today-count")).toHaveText(
+      "No sessions yet"
+    );
+
+    // The logout lands, at full speed, and closes every lane on this device.
+    await page.goto("/");
+    await page.getByRole("button", { name: "Log out" }).click();
+    await page.waitForURL(/\/login/, { timeout: 30_000 });
+    await expect
+      .poll(() => gateRow(tabB), { timeout: 20_000 })
+      .toMatchObject({ sessionClosed: true });
+
+    // Offline, so the tap takes the queue path rather than the server one.
+    await context.setOffline(true);
+    await card.getByTestId("practice-log-button").click();
+
+    // POSITIVE EVIDENCE, which is why this needs no separate non-vacuity control: the
+    // error toast can only come from the `!kept` branch, and that branch can only be
+    // reached by a tap that ran, took the offline path, and was refused.
+    await expect(
+      tabB.getByText(
+        "This tap wasn't saved. Try again once you're back online."
+      )
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      tabB.getByText("Saved offline — it'll sync when you're back online.")
+    ).toHaveCount(0);
+
+    // And the count is the card's own claim that the session landed, so it must not move.
+    await expect(card.getByTestId("practice-today-count")).toHaveText(
+      "No sessions yet"
+    );
+    expect(await storedRows(tabB, "intents")).toEqual([]);
+
+    await context.setOffline(false);
+    await tabB.close();
+  } finally {
+    db.prepare(
+      "DELETE FROM practice_logs WHERE profile_id = 1 AND practice = ?"
+    ).run(practiceName);
+    db.prepare(
+      "DELETE FROM frequency_targets WHERE profile_id = 1 AND scope_value = ?"
+    ).run(practiceName);
+    db.close();
+  }
 });
