@@ -97,6 +97,13 @@ import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 //    nothing to settle on; before #1952 it appeared to work only because it accepted
 //    a bystander's POST, which is the silent-green failure that issue is about.
 //
+// 3b. …but the write you just made TOASTED, and the next thing you click is in the
+//    viewport's BOTTOM-RIGHT (a row's ⋯ trigger, a right-aligned actions cell):
+//        → dismissToast(page, "…") first.
+//    The toast stack is `fixed` down there and intercepts that click for its whole
+//    auto-dismiss window — silently before #2859, as a named 15s timeout since
+//    (#2861). Waiting it out is not a fix and neither is a bigger budget.
+//
 // 4. toPass() is the LAST resort — only for a genuinely non-atomic condition that
 //    none of the above expresses (e.g. re-open a flaky palette until its input
 //    shows, `openCommandPalette` in nav.ts). Every toPass() MUST carry a comment
@@ -222,6 +229,42 @@ async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
     await locator.page().waitForTimeout(50);
   }
   throw new Error("element never settled into a stable position");
+}
+
+// Take a toast down before the next round trip, and prove it is gone (#2861).
+//
+// The toast stack is `fixed` at the viewport's bottom-right (components/Toast.tsx —
+// `w-72` cards, auto-dismiss at 6s for a success and 10s for an error). That quadrant
+// is where a table's right-aligned actions cell lives and where an OverflowMenu panel
+// opens, so the very next click after a write that toasted lands UNDER a card that is
+// still up. Playwright's actionability then blocks on it — before #2859 the unbounded
+// click simply absorbed the whole auto-dismiss window in silence (the sleep-page
+// delete test was losing ~10s of every run, green CI included), and with the run-wide
+// 15s actionTimeout the same collision fails NAMED:
+//
+//   locator.click: Timeout 15000ms exceeded … <p>…deleted.</p> from
+//   <div class="fixed bottom-…"> subtree intercepts pointer events
+//
+// Never wait it out and never widen the budget: a click blocked by
+// `<div class="fixed bottom-…">` is the toast, and the fix is to dismiss it.
+//
+// SCOPED BY TEXT, always. Toasts stack, so "the toast" is not a thing — dismissing by
+// testid alone would take down whichever card happened to be on top, which on an undo
+// path is the one the NEXT assertion is about. The filter also documents at the call
+// site which write the test just made.
+//
+// The Dismiss button is a pure client control: it posts nothing, so this is
+// `hydratedClick` and not `settledClick` (decision-tree case 3). The count assertion
+// afterwards is the actual guarantee — the card is out of the DOM, not merely on its
+// way out — and it is what makes this safe to call before a geometry read too.
+export async function dismissToast(
+  page: Page,
+  text: string | RegExp
+): Promise<void> {
+  const toast = page.getByTestId("toast").filter({ hasText: text });
+  await expect(toast).toBeVisible();
+  await hydratedClick(page, toast.getByRole("button", { name: "Dismiss" }));
+  await expect(toast).toHaveCount(0);
 }
 
 // Open the Upcoming page's display aggregates (issue #1504).

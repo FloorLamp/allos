@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { followLink, settledClick, hydratedClick } from "./helpers";
+import {
+  dismissToast,
+  followLink,
+  settledClick,
+  hydratedClick,
+} from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_BODY,
@@ -148,6 +153,9 @@ test.describe("chart tap-through (#1488)", () => {
     ).toHaveCount(1);
     // The chart above is server-rendered from the same rows, so it redrew with it.
     await expect(page.getByTestId("metric-detail-chart")).toBeVisible();
+    // MetricReadingsTable toasts the edit into the bottom-right stack, which is where
+    // this table's actions column and its portaled menu panel live (#2861).
+    await dismissToast(page, "Reading updated.");
 
     // ── Delete ────────────────────────────────────────────────────────────────
     await hydratedClick(

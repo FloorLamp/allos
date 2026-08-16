@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page, type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick } from "./helpers";
+import { dismissToast, hydratedClick, settledClick } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_BULKFIX } from "./fixture-logins";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -203,6 +203,10 @@ test("corrects ONE measure of a body-metrics row and leaves the day's others alo
       .getByTestId("body-history-row")
       .filter({ hasText: `${WEIGHT_KG} kg` });
     await expect(solo).toHaveCount(1);
+    // The save above toasted into the bottom-right, where this table's actions column
+    // and its portaled menu panel live — the DB read in between is far too fast to
+    // absorb the 6s auto-dismiss (#2861).
+    await dismissToast(page, "Weight updated.");
     await hydratedClick(page, solo.getByTestId("overflow-menu-trigger"));
     await expect(page.getByTestId("body-history-edit-weight_kg")).toBeVisible();
     await expect(

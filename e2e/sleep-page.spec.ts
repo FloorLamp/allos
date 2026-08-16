@@ -11,6 +11,7 @@ import {
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
 import {
+  dismissToast,
   expectNoClippedContent,
   hydratedClick,
   settledBoxes,
@@ -1093,15 +1094,9 @@ test.describe("Sleep and mood log historical editing", () => {
 
       // Dismiss the delete's Undo toast before the next round trip: it sits
       // fixed at the bottom-right — where this row's ⋯ menu opens — and it
-      // intercepts the next menu item's click until it auto-dismisses. The
-      // unbounded pre-#2839 click absorbed that window silently (most of this
-      // test's runtime); the run-wide action bound now names it instead of
-      // eating it. The Undo affordance itself is undo-delete.spec's subject.
-      const moodToast = page
-        .getByTestId("toast")
-        .filter({ hasText: "Mood check-in deleted" });
-      await moodToast.getByRole("button", { name: "Dismiss" }).click();
-      await expect(moodToast).toHaveCount(0);
+      // intercepts the next menu item's click until it auto-dismisses (#2861).
+      // The Undo affordance itself is undo-delete.spec's subject.
+      await dismissToast(page, "Mood check-in deleted");
 
       await hydratedClick(page, manualRow.getByTestId("overflow-menu-trigger"));
       await hydratedClick(page, page.getByTestId("sleep-history-delete-sleep"));
