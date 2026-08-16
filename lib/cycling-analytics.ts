@@ -1,3 +1,4 @@
+import { outputHrDrift } from "./session-analytics";
 import { decodePolyline, routeBounds, type LatLng } from "./polyline";
 import type {
   CyclingStreams,
@@ -152,7 +153,9 @@ export function parseCyclingStreams(value: string | null): CyclingStreams {
   }
 }
 
-function booleans(stream: TelemetryStream | undefined): (boolean | null)[] {
+export function booleans(
+  stream: TelemetryStream | undefined
+): (boolean | null)[] {
   return (stream?.data ?? []).map((value) =>
     typeof value === "boolean" ? value : null
   );
@@ -221,52 +224,19 @@ export function rideDynamics(streams: CyclingStreams): RideDynamics | null {
   const lastTime = [...times]
     .reverse()
     .find((value): value is number => value != null);
-  const midpoint =
-    firstTime != null && lastTime != null ? (firstTime + lastTime) / 2 : null;
-  let firstPower = 0;
-  let firstHr = 0;
-  let firstCount = 0;
-  let secondPower = 0;
-  let secondHr = 0;
-  let secondCount = 0;
-  if (midpoint != null && hasWatts) {
-    for (let index = 0; index < times.length; index++) {
-      const time = times[index];
-      const power = watts[index];
-      const hr = heartrate[index];
-      if (
-        time == null ||
-        power == null ||
-        power < 50 ||
-        hr == null ||
-        hr < 60 ||
-        moving[index] === false
-      ) {
-        continue;
-      }
-      if (time <= midpoint) {
-        firstPower += power;
-        firstHr += hr;
-        firstCount++;
-      } else {
-        secondPower += power;
-        secondHr += hr;
-        secondCount++;
-      }
-    }
-  }
-  let powerHrDriftPercent: number | null = null;
-  if (firstCount >= 30 && secondCount >= 30) {
-    const firstEfficiency = firstPower / firstCount / (firstHr / firstCount);
-    const secondEfficiency =
-      secondPower / secondCount / (secondHr / secondCount);
-    if (firstEfficiency > 0) {
-      powerHrDriftPercent =
-        Math.round(
-          ((firstEfficiency - secondEfficiency) / firstEfficiency) * 1000
-        ) / 10;
-    }
-  }
+  // Power-HR drift is aerobic decoupling with power as the output, so it runs
+  // through the shared core (lib/session-analytics) rather than its own copy of
+  // the halves math — the pace-HR version a run or a walk needs is the SAME
+  // question with a different series (#2566 item 2 / #3009). Thresholds are the
+  // ones this surface has always used: 50 W drops coasting, 60 bpm drops resting,
+  // 30 samples a half keeps a drift from being two noisy readings.
+  const powerHrDriftPercent = hasWatts
+    ? outputHrDrift(times, watts, heartrate, moving, {
+        minOutput: 50,
+        minHr: 60,
+        minSamples: 30,
+      })
+    : null;
 
   const effectiveMovingSeconds = hasMoving
     ? movingSeconds
@@ -406,7 +376,9 @@ export function distanceSplits(
   return splits;
 }
 
-function numeric(stream: TelemetryStream | undefined): (number | null)[] {
+export function numeric(
+  stream: TelemetryStream | undefined
+): (number | null)[] {
   return (stream?.data ?? []).map((value) =>
     typeof value === "number" && Number.isFinite(value) ? value : null
   );

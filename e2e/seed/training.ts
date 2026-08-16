@@ -372,12 +372,17 @@ export function seedTrainingZones(): void {
       walkId,
       JSON.stringify({
         time: { data: seconds },
+        // 1.4 km of it, so the per-unit splits (#3009) have a boundary to cut
+        // at — the ride page's 5 km interval would yield NONE for a walk this
+        // long, which is exactly why the interval follows the reader's unit.
+        distance: { data: seconds.map((_, i) => Math.round(i * 23.7)) },
         heartrate: {
           data: seconds.map((_, i) => 92 + ((i * 7) % 11)),
         },
         velocity_smooth: {
           data: seconds.map((_, i) => 1.2 + (i % 5) * 0.1),
         },
+        moving: { data: seconds.map(() => true) },
       })
     );
   }

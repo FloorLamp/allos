@@ -36,10 +36,16 @@ import { getExerciseComparison } from "./queries/training/strength";
 import { equipmentLoadLane } from "./lifts";
 import { sessionProgressDelta, type ProgressDelta } from "./progress-delta";
 import {
+  distanceSplits,
   parseCyclingStreams,
   rideTraces,
+  type RideDistanceSplit,
   type RideTrace,
 } from "./cycling-analytics";
+import {
+  paceHrDecouplingPercent,
+  sessionSplitIntervalM,
+} from "./session-analytics";
 import {
   activityWindows,
   scopeBucketsToWindows,
@@ -72,6 +78,16 @@ export interface ActivityDetailHeartRate {
 // with nothing ("totals only" — the honest line, #3009), or no answer yet.
 export interface ActivityDetailTelemetry {
   traces: RideTrace[];
+  // Per-unit splits from the recorded distance+time (#3009), cut at the reader's
+  // own unit rather than a ride's 5 km. Empty when the session recorded no
+  // distance stream, or covered less than a third of one interval.
+  splits: RideDistanceSplit[];
+  // The metres one split covers, so the surface can say which unit it cut at.
+  splitIntervalM: number;
+  // Aerobic decoupling: output-per-heartbeat lost between the halves, over PACE
+  // for a worn session (the ride page asks the same question over power). Null
+  // whenever the recording cannot answer it honestly.
+  decouplingPercent: number | null;
   // The source has told us what it holds: a telemetry row exists. Without one
   // the session simply has not been asked about (a manual entry, or an import
   // that predates the widening), which is not the same as "there is nothing".
@@ -202,8 +218,16 @@ export function getActivityDetailData(
         ORDER BY id DESC LIMIT 1`
     )
     .get(profileId, row.id) as { streams_json: string | null } | undefined;
+  const streams = parseCyclingStreams(telemetryRow?.streams_json ?? null);
+  const splitIntervalM = sessionSplitIntervalM(
+    row.distance_km,
+    units.distanceUnit
+  );
   const telemetry: ActivityDetailTelemetry = {
-    traces: rideTraces(parseCyclingStreams(telemetryRow?.streams_json ?? null)),
+    traces: rideTraces(streams),
+    splits: distanceSplits(streams, splitIntervalM),
+    splitIntervalM,
+    decouplingPercent: paceHrDecouplingPercent(streams),
     answered: !!telemetryRow,
   };
 

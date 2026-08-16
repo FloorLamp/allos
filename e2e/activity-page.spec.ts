@@ -131,6 +131,14 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   await expect(traces.locator("svg")).toBeVisible();
   // A session that HAS detail never claims to be totals-only.
   await expect(page.getByTestId("activity-totals-only")).toHaveCount(0);
+
+  // And its splits (#3009), cut at the READER's unit — a walk of 1.4 km gets
+  // none at all from the ride page's 5 km interval, which is the whole reason
+  // the interval follows the unit rather than the sport.
+  const splits = page.getByTestId("activity-splits");
+  await expect(splits).toBeVisible();
+  await expect(splits.getByRole("heading")).toHaveText(/1 (km|mi) splits/);
+  await expect(splits.locator("tbody tr")).not.toHaveCount(0);
 });
 
 test("a summary-only import says so, instead of leaving a silent short page", async ({
