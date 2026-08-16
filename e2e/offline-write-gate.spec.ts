@@ -333,6 +333,11 @@ test("R2b — a tab that LOADS inside the logout window does not re-open the gat
   // outlives the logout POST, so this document is served, authenticated, by a live
   // session — the one that is in the middle of ending. "A document mounted" is true of
   // it; "a new session began" is not, and only the second may re-open the gate.
+  // MUST STAY UNDER `LOGOUT_SETTLE_MS` (lib/offline/write-gate.ts, 30s). Past that bound
+  // a same-session document is no longer treated as racing its own logout, because a
+  // logout still outstanding that long is one whose document was destroyed — see R-A.
+  // Lengthening this hold past the bound would make this test fail for the reason the
+  // bound exists rather than for the property it measures.
   const LONG_HOLD_MS = 20_000;
 
   await login(page);
