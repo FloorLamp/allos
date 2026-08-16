@@ -16,9 +16,13 @@
 //     `bootstrapAuth` returns early once a login exists, which it does in every
 //     copied template, so what it bakes for profile 1 is written into the template
 //     bytes exactly once and never re-derived. Its inputs are hashed for that
-//     reason, and the last case below is what keeps that list true as the function
-//     changes: it reads bootstrapAuth's OWN imports out of the source and demands
-//     the key cover each one.
+//     reason, and the guard cases below are what keep that list true as the function
+//     changes: they read the imports named anywhere bootstrapAuth can reach INSIDE
+//     ITS OWN MODULE — its body plus every local helper it calls, transitively — and
+//     demand the key cover each one. The scope is stated exactly because the first
+//     version claimed more than it did: reading only bootstrapAuth's own body goes
+//     green on the same seeding call moved into a local helper, which reproduces
+//     #2817 unchanged. That escape is now a case of its own.
 //
 // These cases assert the KEY, not the cache's behaviour — the key is the cheap,
 // pure thing, and it is what decides everything downstream.
@@ -40,7 +44,7 @@ const BOOT_TASKS = "lib/migrations/boot-tasks.ts";
  * Comments are prose, and prose says names it does not call: bootstrapAuth's own
  * "the admin now exists" made the scan below charge `now` (lib/clock.ts) to the
  * key, an input the function never reads. Blanking rather than deleting keeps the
- * brace depth `functionBody` counts on intact.
+ * brace depth `declaredFunctions` counts on intact.
  */
 function withoutComments(src: string): string {
   return src
@@ -59,17 +63,102 @@ function codeOnly(src: string): string {
   );
 }
 
-/** The source text of one top-level `function <name>(...) { ... }` body. */
-function functionBody(src: string, name: string): string {
-  const start = src.indexOf(`export function ${name}(`);
-  if (start < 0) throw new Error(`${name} not found in ${BOOT_TASKS}`);
-  const open = src.indexOf("{", start);
+/** The brace-matched block starting at `open`, which must be a `{`. */
+function block(src: string, open: number): string {
   let depth = 0;
   for (let i = open; i < src.length; i++) {
     if (src[i] === "{") depth++;
     else if (src[i] === "}" && --depth === 0) return src.slice(open, i + 1);
   }
-  throw new Error(`unbalanced braces reading ${name}`);
+  throw new Error(`unbalanced braces at ${open}`);
+}
+
+/**
+ * Every function BODY the module declares, by name — `function f() {}` and
+ * `const f = (…) => {}` alike, exported or not.
+ *
+ * Local helpers are in here because the scan follows them; see `bakeOnceScope`.
+ */
+function declaredFunctions(code: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of code.matchAll(
+    /(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g
+  )) {
+    // Walk the parameter list to its closing paren, then take the body that follows —
+    // a return-type annotation can carry braces of its own.
+    let i = m.index + m[0].length;
+    let paren = 1;
+    while (i < code.length && paren > 0) {
+      if (code[i] === "(") paren++;
+      else if (code[i] === ")") paren--;
+      i++;
+    }
+    const open = code.indexOf("{", i);
+    if (open >= 0) out.set(m[1], block(code, open));
+  }
+  for (const m of code.matchAll(
+    /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=\s*(?:async\s*)?\([^)]*\)\s*(?::[^=\n]*)?=>\s*\{/g
+  )) {
+    out.set(m[1], block(code, m.index + m[0].length - 1));
+  }
+  return out;
+}
+
+/**
+ * The source text a bake-once entry point can reach INSIDE its own module: its own
+ * body, plus the bodies of every local function it names, transitively.
+ *
+ * ONE HOP WAS NOT ENOUGH, and the first version of this guard only had one. Reading
+ * bootstrapAuth's own body catches a direct `seedStandardMetricSaves(db, id)` — and
+ * goes green on the identical write moved into a local `bakeProfileDefaults(db)`
+ * helper three lines away, which reproduces #2817 exactly. The escape was not exotic;
+ * it is what anyone tidying a long function does.
+ *
+ * WHAT IT STILL CANNOT SEE, stated rather than implied: a call reached through a
+ * VALUE — a helper stored in a table and invoked by lookup, or a method on an
+ * imported object — and any hop into another module's functions. The migrations
+ * directory is hashed wholesale so an intra-`lib/migrations` hop is covered by
+ * accident rather than by this scan. So this is a strong net over the shape the
+ * defect actually took, not a proof; a bake-once write placed outside it still needs
+ * its input added to the list by hand.
+ */
+function bakeOnceScope(code: string, entry: string): string {
+  const fns = declaredFunctions(code);
+  const entryBody = fns.get(entry);
+  if (entryBody == null) throw new Error(`${entry} not found in ${BOOT_TASKS}`);
+  const seen = new Set<string>();
+  const queue = [entry];
+  let scope = "";
+  while (queue.length > 0) {
+    const name = queue.pop() as string;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const body = fns.get(name);
+    if (body == null) continue;
+    scope += `\n${body}`;
+    for (const other of fns.keys())
+      if (!seen.has(other) && new RegExp(`\\b${other}\\b`).test(body))
+        queue.push(other);
+  }
+  return scope;
+}
+
+/**
+ * The repo-relative files an entry point bakes state from: every VALUE import whose
+ * binding is named anywhere in that reachable scope.
+ *
+ * Over-approximating on purpose — a binding counts when its name appears, not when a
+ * call is proven. A false positive costs one entry in a list.
+ */
+function bakeOnceInputs(src: string, entry: string): string[] {
+  const scope = bakeOnceScope(codeOnly(src), entry);
+  const out: string[] = [];
+  for (const [binding, spec] of valueImports(withoutComments(src))) {
+    if (!new RegExp(`\\b${binding}\\b`).test(scope)) continue;
+    const file = resolveLibFile(spec);
+    if (file) out.push(file);
+  }
+  return out;
 }
 
 /**
@@ -213,17 +302,19 @@ describe("the DB template cache key", () => {
     // profile 1 is seeded with, without adding it to the key, reproduces #2817
     // exactly — and silently, because the stale row is a row that still exists.
     //
-    // Over-approximating is deliberate: a binding is charged to the key whenever
-    // its name appears anywhere in the function body. A false positive costs one
-    // entry in a list; a false negative is the bug.
+    // WHAT IT COVERS, precisely — the coverage claim is part of the guard, and an
+    // over-stated one is worse than a narrow one: bootstrapAuth's own body plus the
+    // bodies of every LOCAL function it names, transitively, and inside that scope
+    // every value import whose binding appears by name. Over-approximating on the
+    // last step is deliberate; a false positive costs one entry in a list.
+    //
+    // What it does NOT cover is written on `bakeOnceScope`: a call reached through a
+    // value rather than by name, and any hop into another module. Those still need
+    // the input added by hand.
     const src = fs.readFileSync(path.join(process.cwd(), BOOT_TASKS), "utf8");
-    const body = functionBody(codeOnly(src), "bootstrapAuth");
-    const uncovered: string[] = [];
-    for (const [binding, spec] of valueImports(withoutComments(src))) {
-      if (!new RegExp(`\\b${binding}\\b`).test(body)) continue;
-      const file = resolveLibFile(spec);
-      if (file && !coveredByKey(file)) uncovered.push(`${binding} (${file})`);
-    }
+    const uncovered = bakeOnceInputs(src, "bootstrapAuth").filter(
+      (f) => !coveredByKey(f)
+    );
     expect(
       uncovered,
       "bootstrapAuth is gated on `if (count > 0) return`, so it runs ONCE per " +
@@ -240,18 +331,46 @@ describe("the DB template cache key", () => {
     // scan's own inputs are asserted: the known bake-once dependencies must be
     // among what it charges to the key.
     const src = fs.readFileSync(path.join(process.cwd(), BOOT_TASKS), "utf8");
-    const body = functionBody(codeOnly(src), "bootstrapAuth");
-    const seen = [...valueImports(withoutComments(src))]
-      .filter(([binding]) => new RegExp(`\\b${binding}\\b`).test(body))
-      .map(([, spec]) => resolveLibFile(spec))
-      .filter((f): f is string => f != null);
-    expect(seen).toEqual(
+    expect(bakeOnceInputs(src, "bootstrapAuth")).toEqual(
       expect.arrayContaining([
         "lib/password.ts",
         "lib/standard-metric-seeds.ts",
         "lib/onboarding.ts",
       ])
     );
+  });
+
+  it("follows a bake-once write moved into a LOCAL helper", () => {
+    // THE FALSIFICATION, and the reason the scan is not one hop.
+    //
+    // A one-hop scan reads only bootstrapAuth's own body. Tidying the seeding call
+    // into a helper three lines down — the most ordinary refactor there is — moves
+    // the binding out of that body and the guard goes green while the seed output is
+    // exactly as frozen into the template as it ever was. The scan is asserted
+    // against that source rather than against prose about it.
+    const moved = [
+      `import { seedStandardMetricSaves } from "../standard-metric-seeds";`,
+      `import { runBootTx } from "./schema-utils";`,
+      `export function bootstrapAuth(db: Database.Database) {`,
+      `  const count = 0;`,
+      `  if (count > 0) return;`,
+      `  runBootTx(db.transaction(() => { bakeProfileDefaults(db, 1); }));`,
+      `}`,
+      `function bakeProfileDefaults(db: Database.Database, profId: number) {`,
+      `  seedStandardMetricSaves(db, profId);`,
+      `}`,
+    ].join("\n");
+
+    expect(
+      bakeOnceInputs(moved, "bootstrapAuth"),
+      "a bake-once write one call away from bootstrapAuth still freezes into the " +
+        "template, so the scan has to reach it"
+    ).toContain("lib/standard-metric-seeds.ts");
+
+    // And the same source read one hop only — what this guard used to do — does not
+    // see it. Stated as an assertion so the falsification cannot rot into a comment.
+    const oneHop = declaredFunctions(codeOnly(moved)).get("bootstrapAuth") ?? "";
+    expect(oneHop).not.toContain("seedStandardMetricSaves");
   });
 
   it("restores every file it edits", () => {

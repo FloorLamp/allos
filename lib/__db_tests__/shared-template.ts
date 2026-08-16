@@ -89,10 +89,24 @@ export function templateKeyPath(): string {
 // go stale. If you change what a boot task bakes, either add its input below or
 // delete node_modules/.cache/allos-db-tests.
 //
-// The closure was measured rather than assumed: `lib/db.ts`, `boot-tasks.ts` and
-// the three bootstrapAuth inputs below each transitively reach the SAME 1005
-// files, because `lib/` is one cycle. There is no smaller closure to key on, so a
-// named list is the only shape available and the guard test is what keeps it true.
+// WHY A NAMED LIST AND NOT A CLOSURE, measured rather than assumed — and the
+// measurement does NOT come out the same for all five entries:
+//
+//   • `lib/db.ts`, `lib/migrations/boot-tasks.ts` and `lib/onboarding.ts` each
+//     transitively reach ~1000 files, essentially all of `lib/`, because `lib/`
+//     is one big import cycle. Keying on any of those closures rebuilds the
+//     template on nearly every edit a developer running this tier just made.
+//   • `lib/password.ts` and `lib/standard-metric-seeds.ts` are LEAVES: the first
+//     imports only `node:crypto`, the second only a TYPE from `better-sqlite3`.
+//     Their closures are empty, so for those two a closure key would be exact and
+//     cheap — the argument above does not apply to them at all.
+//
+// The list wins anyway, for a reason that survives that split: the shape has to
+// hold for whatever the NEXT bake-once input turns out to be, and `onboarding.ts`
+// already shows that input can sit inside the cycle. A rule that keys on closures
+// where they happen to be small and on filenames where they are not is two rules.
+// So: one named list, and the guard test in `lib/__tests__/db-template-key.test.ts`
+// is what keeps it complete.
 //
 // A wrong key is USUALLY loud — a stale template missing a column fails the tests
 // that touch it, naming it — but do not read that as "cannot turn a red test
