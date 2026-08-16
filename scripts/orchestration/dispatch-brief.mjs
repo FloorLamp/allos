@@ -117,7 +117,19 @@ function appendLedger(entry) {
 // The ledger is history and measurement; the roster is the live view — both
 // are written here so they cannot fork. Live entries are lines beginning
 // "Cluster" whose THIRD field is the branch (the check-in script's contract).
-const rosterPath = path.join(STATE_DIR, ".roster");
+//
+// THE ROSTER FOLLOWS THE LEDGER. `ALLOS_DISPATCH_LEDGER` redirects the ledger,
+// but the roster used to be pinned to STATE_DIR regardless — so anything that
+// redirected one wrote the other into LIVE coordination state. Testing the
+// arrival warning above did exactly that: three fake dispatches landed in the
+// real `.roster`, and the next check-in reported eight clusters for five agents.
+// That is the 2026-08-15 roster-fork incident again, arriving through the test
+// harness instead of through a re-run of `new`.
+//
+// The header above already says the two must not fork. An override that moves
+// one and not the other is a fork by construction, so the roster now derives
+// from wherever the ledger actually lives.
+const rosterPath = path.join(path.dirname(ledgerPath), ".roster");
 
 function rosterAdd(entry) {
   if (!fs.existsSync(path.dirname(rosterPath))) return false;
@@ -458,6 +470,54 @@ function cmdNew(argv) {
         "Close one with `done <branch>` or drop --e2e if this work touches no spec."
     );
     process.exit(1);
+  }
+
+  // ARRIVAL CLUSTERING. The concurrency cap counts agents RUNNING, which is a
+  // machine-load limit. It says nothing about the other queue — PRs waiting on
+  // the orchestrator's review — and that one is where a session actually jams,
+  // because review is serial and cannot be parallelised the way dispatch can.
+  //
+  // Dispatching several at once reliably lands them together, and the ledger is
+  // what proves it rather than intuition: measured over the first ten completed
+  // dispatches, seven finished inside an 85±5 minute band (42/73/79/85/86/86/
+  // 88/89/106/122). Durations here are PREDICTABLE, so simultaneous starts are
+  // simultaneous arrivals, and three at once is three full diffs plus any
+  // mandatory falsifiers landing in one window.
+  //
+  // A warning, not a refusal: a P0 preempts everything and must not be argued
+  // with by a script. It fires only when a sibling actually started inside the
+  // window, so it stays rare enough to keep meaning something.
+  const STAGGER_MIN = 25;
+  const recent = active
+    .map((d) => ({
+      branch: d.branch,
+      ageMin: (Date.now() - Date.parse(d.at)) / 60000,
+    }))
+    .filter((d) => d.ageMin < STAGGER_MIN)
+    .sort((a, b) => a.ageMin - b.ageMin);
+  if (recent.length) {
+    const durations = completedDurationsMs(rows).sort((a, b) => a - b);
+    const median = durations.length
+      ? durations[Math.floor(durations.length / 2)] / 60000
+      : null;
+    console.error(
+      `\n*** ARRIVAL CLUSTERING: ${recent.length} dispatch(es) started within ${STAGGER_MIN}m ***`
+    );
+    for (const d of recent) {
+      console.error(
+        `      ${d.branch} started ${d.ageMin.toFixed(0)}m ago` +
+          (median ? ` — due in ~${(median - d.ageMin).toFixed(0)}m` : "")
+      );
+    }
+    console.error(
+      median
+        ? `      this one is due in ~${median.toFixed(0)}m, so expect ${recent.length + 1} PRs in one review window.`
+        : "      expect their PRs to land in one review window."
+    );
+    console.error(
+      "      Not a refusal — a P0 preempts. Otherwise consider waiting: the cap that\n" +
+        "      binds first is REVIEW depth, not agent count (docs/orchestration/dispatch.md).\n"
+    );
   }
 
   const { brief, portBase } = buildBrief(opts);

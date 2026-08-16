@@ -68,9 +68,11 @@ test("the workout dock hydrates for an in-progress session, suppressed on the tr
     await expect(dock).toBeVisible();
     await expect(dock).toContainText(/\d+ min/);
 
-    // The training route hosts the inline docked editor, so the bar is suppressed.
+    // The bar shows on the Log like everywhere else (#2897): the old
+    // suppression existed because live sessions docked inline in this page's
+    // column, and live never docks since #2870 step 3.
     await page.goto("/training?tab=log");
-    await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+    await expect(page.getByTestId("workout-dock")).toBeVisible();
 
     // Back on the dashboard, tapping the bar reopens the live editor (the minimize
     // affordance proves the live overlay is up), and minimizing collapses it back.

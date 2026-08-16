@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import {
   E2E_LOGIN_VIDEO,
   E2E_MEMBER_PASSWORD,
@@ -18,7 +18,8 @@ import { workerDbPath } from "./worker-env";
 // the location-metadata privacy warning → delete round trip.
 //
 // It also pins the #1457 PRESENCE RULES, which split the surface in two: the
-// Training Log card shows the strip ONLY when clips exist (read/playback + per-clip
+// Training Log record card (in the reading pane since #2897 — the feed itself is
+// slim rows) shows the strip ONLY when clips exist (read/playback + per-clip
 // edit/delete, no add), and the activity EDITOR's More-details block is where a
 // clip gets attached (always rendered, empty state included, wherever a SAVED
 // activity id exists — an upload needs one). So the walk is: no section → open
@@ -141,21 +142,29 @@ test("upload → poster grid → open player → Range serve → location warnin
     const aid = activityId();
     await page.goto("/training?tab=log");
 
-    // #1457: with no clips, the card carries NO form-check section at all — no
-    // heading, no empty text, no button. It used to render on every writable
-    // activity regardless of type or content.
-    await expect(page.getByTestId(`activity-video-strip-${aid}`)).toHaveCount(
-      0
-    );
-
-    // The add affordance now lives in the activity editor. Open it from the card
-    // title (openEdit → EDIT mode, which is where an activityId exists).
-    const card = page
+    // Select the seeded session's row into the reading pane (#2897): the full
+    // record card — the form-check strip's home — renders there, not on the
+    // slim feed. hydratedClick: a pure client toggle whose first post-goto
+    // click can land pre-hydration.
+    const row = page
       .getByRole("main")
       .locator('[id^="activity-"]')
       .filter({ hasText: "Squat session (e2e)" })
       .first(); // first-ok: the fixture profile's one seeded activity — order-agnostic
-    await card.getByRole("button", { name: "Squat session (e2e)" }).click();
+    await hydratedClick(page, row);
+    const pane = page.getByTestId("training-log-reading-pane");
+    await expect(pane.getByTestId("activity-card-body")).toBeVisible();
+
+    // #1457: with no clips, the record card carries NO form-check section at all —
+    // no heading, no empty text, no button. It used to render on every writable
+    // activity regardless of type or content.
+    await expect(pane.getByTestId(`activity-video-strip-${aid}`)).toHaveCount(
+      0
+    );
+
+    // The add affordance now lives in the activity editor. Open it from the
+    // pane's Edit (openEdit → EDIT mode, which is where an activityId exists).
+    await pane.getByTestId("activity-page-edit").click();
 
     // Form check sits inside the collapsible More details section. Drive the
     // disclosure to OPEN rather than blind-toggling it: it's a pure client toggle
@@ -198,10 +207,12 @@ test("upload → poster grid → open player → Range serve → location warnin
       editorStrip.locator('[data-testid^="video-clip-location-"]')
     ).toBeVisible();
 
-    // …and now that a clip EXISTS, the card's strip appears — the presence rule's
-    // other half. A fresh load also drops the editor.
+    // …and now that a clip EXISTS, the record card's strip appears — the presence
+    // rule's other half. A fresh load also drops the editor (and the pane
+    // selection), so re-select the row to read the card in the pane.
     await page.goto("/training?tab=log");
-    const strip = page.getByTestId(`activity-video-strip-${aid}`);
+    await hydratedClick(page, row);
+    const strip = pane.getByTestId(`activity-video-strip-${aid}`);
     await expect(strip).toBeVisible();
     // Read surface: playback and per-clip controls, but no add affordance here.
     await expect(strip.getByTestId("video-clip-add")).toHaveCount(0);
