@@ -27,10 +27,8 @@ import MobileDetailPage from "@/components/MobileDetailPage";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import SportDetailPanel from "@/components/SportDetailPanel";
-import TrainingLogCard from "./TrainingLogCard";
 import TrainingLogRow from "./TrainingLogRow";
 import ActivityRecord from "./activity/ActivityRecord";
-import type { MergeSibling } from "./ActivityCardMenu";
 import { loadTrainingLogPage } from "./activity-actions";
 import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import { useLatestRef } from "@/components/useLatestRef";
@@ -163,6 +161,8 @@ export default function TrainingLogView({
 }) {
   const {
     open,
+    minimized,
+    editData,
     openCreate,
     openLive,
     openRepeat,
@@ -170,6 +170,16 @@ export default function TrainingLogView({
     canStartWorkout,
     workoutOffer,
   } = useActivityEditor();
+  // The aside is FREE for reading whenever no editor is visibly docked: a
+  // minimized live session keeps `open` true while its overlay hides, and a
+  // read gesture must neither be blocked by it nor close it (closing a
+  // pocketed session kills its clock and can discard its row).
+  const asideFree = !open || minimized;
+  // Latest-refs for the hash handler's eviction (its effect must not re-key
+  // on every editor toggle).
+  const openRef = useLatestRef(open);
+  const minimizedRef = useLatestRef(minimized);
+  const closeRef = useLatestRef(close);
   const initialCreateHandled = useRef(false);
 
   // ---- Server-paged feed (issue #451) ----
@@ -593,12 +603,23 @@ export default function TrainingLogView({
       // +8 so a few days render past the target and it can scroll near the top
       // rather than sticking to the bottom as the last rendered day.
       setVisibleDays((v) => Math.max(v, idx + 9));
-      // A deep-linked ACTIVITY opens where its content now lives (#2897): the
-      // reading pane on desktop (selection) and the expanded row on phones.
-      // Setting both is harmless — each width renders only its own affordance.
+      // A deep-linked ACTIVITY opens where its content lives at THIS width
+      // (#2897) — cross-width writes would resurface as stale state after a
+      // resize — and it evicts the aside's other tenants exactly as openRow
+      // does (a docked editor would otherwise keep the pane gated shut and
+      // the promised record would never appear; a minimized session is
+      // spared).
       if (actId != null) {
-        setSelectedId(actId);
-        setExpandedIds((s) => new Set(s).add(actId));
+        setDetail(null);
+        if (openRef.current && !minimizedRef.current) closeRef.current();
+        if (
+          typeof window !== "undefined" &&
+          window.matchMedia(TRAINING_LOG_DESKTOP_QUERY).matches
+        ) {
+          setSelectedId(actId);
+        } else {
+          setExpandedIds((s) => new Set(s).add(actId));
+        }
       }
       setPendingScroll(elementId);
     };
@@ -606,7 +627,15 @@ export default function TrainingLogView({
     const onHashChange = () => void handleHash();
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, [groups, fetchNextPage, cursorRef, groupsRef]);
+  }, [
+    groups,
+    fetchNextPage,
+    cursorRef,
+    groupsRef,
+    openRef,
+    minimizedRef,
+    closeRef,
+  ]);
 
   useEffect(() => {
     if (!pendingScroll) return;
@@ -680,11 +709,13 @@ export default function TrainingLogView({
     setDetail(null);
     setDetailOpen(false);
   }
-  // Showing a detail closes any open (auto-saving) editor, which shares the
-  // desktop column — otherwise the form would sit on top of the detail. It
-  // also clears the reading pane's selection: the aside shows one tenant.
+  // Showing a detail closes a visibly DOCKED (auto-saving) editor, which
+  // shares the desktop column — otherwise the form would sit on top of the
+  // detail. A MINIMIZED live session is spared: it isn't in the column, and
+  // closing it would kill its clock. It also clears the reading pane's
+  // selection: the aside shows one tenant.
   function showDetail(kind: "exercise" | "cardio" | "sport", name: string) {
-    if (open) close();
+    if (open && !minimized) close();
     setSelectedId(null);
     setDetail({ kind, name });
     if (
@@ -695,38 +726,90 @@ export default function TrainingLogView({
   }
 
   // A row's one gesture (#2897). Desktop: swap the reading pane to this record
-  // (closing an open editor exactly as showDetail does — the edit flushes on
-  // unmount) and clear a stat panel. Phones: toggle the row's in-place
-  // expansion; the pane doesn't exist there.
-  function openRow(activityId: number) {
-    if (isDesktop) {
-      if (open) close();
-      setDetail(null);
-      setSelectedId((cur) => (cur === activityId ? null : activityId));
-      return;
-    }
-    setExpandedIds((s) => {
-      const next = new Set(s);
-      if (next.has(activityId)) next.delete(activityId);
-      else next.add(activityId);
-      return next;
-    });
-  }
+  // (evicting a docked editor exactly as showDetail does — the edit flushes on
+  // unmount; a minimized session is spared) and clear a stat panel. Phones:
+  // toggle the row's in-place expansion; the pane doesn't exist there.
+  // useCallback so the memoized rows share ONE stable handler.
+  const openRow = useCallback(
+    (activityId: number) => {
+      if (isDesktop) {
+        if (open && !minimized) close();
+        setDetail(null);
+        setSelectedId((cur) => (cur === activityId ? null : activityId));
+        return;
+      }
+      setExpandedIds((s) => {
+        const next = new Set(s);
+        if (next.has(activityId)) next.delete(activityId);
+        else next.add(activityId);
+        return next;
+      });
+    },
+    [isDesktop, open, minimized, close]
+  );
 
-  // The reading pane's record: found in the loaded window by id (the feed
-  // already ships the full card + the day's merge targets, so the swap is
-  // instant — no fetch). Cleared implicitly when the row leaves the window.
-  // A plain derivation — the compiler memoizes it (a manual useMemo here
-  // trips preserve-manual-memoization).
+  // The reading pane's record: found by id in the SAME chain the rows render
+  // from (baseGroups — the server-filtered feed when a filter is active, else
+  // the loaded window), so a row found by a deep search is selectable. The
+  // feed already ships the full card + the day's merge targets, so the swap is
+  // instant — no fetch. Cleared implicitly when the row leaves the window.
+  // A plain derivation, deliberately un-memoized (a manual useMemo here trips
+  // the preserve-manual-memoization lint; the scan is O(loaded cards)).
   let selectedEntry: { date: string; card: TrainingLogCardData } | null = null;
   if (selectedId != null) {
-    for (const g of groups) {
+    for (const g of baseGroups) {
       const c = g.cards.find((x) => x.activity.id === selectedId);
       if (c) {
         selectedEntry = { date: g.date, card: c };
         break;
       }
     }
+  }
+
+  // ONE render path for the record outside the full page (#2897's three-host
+  // rule, literally): the desktop pane and the phone expansion both mount
+  // ActivityRecord host="pane" — same gating, same doors, same siblings.
+  function recordFor(date: string, c: TrainingLogCardData) {
+    const isActing =
+      !multi ||
+      c.subject == null ||
+      (multiView != null && c.subject.profileId === multiView.actingProfileId);
+    const fitness = trainingLogFitnessSurfacesVisible({
+      isActing,
+      subjectRestricted: c.subject?.restricted ?? false,
+    });
+    return (
+      <ActivityRecord
+        key={c.activity.id}
+        host="pane"
+        card={c}
+        siblings={(mergeTargetsByDate.get(mergeGroupKey(date, c)) ?? [])
+          .filter((o) => o.id !== c.activity.id)
+          .map((o) => ({
+            id: o.id,
+            title: o.title,
+            sourceLabel: o.sourceLabel,
+            foldValues: o.foldValues,
+            setCount: o.setCount,
+          }))}
+        units={units}
+        canWrite={c.subject == null ? canWriteVideos : c.subject.canWrite}
+        subject={c.subject}
+        actingProfileId={multiView?.actingProfileId}
+        onSelectExercise={
+          fitness ? (name) => showDetail("exercise", name) : undefined
+        }
+        onSelectCardio={
+          fitness ? (name) => showDetail("cardio", name) : undefined
+        }
+        onSelectSport={
+          fitness ? (name) => showDetail("sport", name) : undefined
+        }
+        onFilterTag={(kind, value) =>
+          setFilters((f) => ({ ...f, tag: { kind, value } }))
+        }
+      />
+    );
   }
 
   // Desktop-only ✕ inside the panel header; the mobile detail page has its own.
@@ -1019,8 +1102,11 @@ export default function TrainingLogView({
       )}
 
       <div className="grid gap-6 xl:grid-cols-2">
-        {/* Day-grouped feed */}
-        <div>
+        {/* Day-grouped feed. min-w-0: a grid item's min-width defaults to its
+            min-content, and one nowrap run inside an expanded record would
+            otherwise push the whole column past the viewport (unreachable
+            under main's overflow-x-clip). */}
+        <div className="min-w-0">
           {!hasActivities ? (
             // First-run (issue #809): nothing logged yet. Distinct copy from the
             // filter-empty case below — there is nothing to filter, so this leads
@@ -1062,19 +1148,12 @@ export default function TrainingLogView({
                       // profile's own, un-restricted cards — the acting profile's
                       // detail panel is what's loaded, and a subject's own age gate
                       // governs its cards. Single view → isActing true, so byte-
-                      // identical (drill-ins on every card).
-                      const isActing =
-                        !multi ||
-                        c.subject == null ||
-                        (multiView != null &&
-                          c.subject.profileId === multiView.actingProfileId);
-                      const fitness = trainingLogFitnessSurfacesVisible({
-                        isActing,
-                        subjectRestricted: c.subject?.restricted ?? false,
-                      });
+                      // identical (drill-ins on every card). Per-card gating
+                      // lives in recordFor — ONE render path serves the desktop
+                      // pane and this phone expansion (#2897's three-host rule).
                       // The browse row (#2897): the anchor + the open gesture.
-                      // The FULL card renders only where reading happens — the
-                      // desktop pane (aside below) or the phone's in-place
+                      // The FULL record renders only where reading happens —
+                      // the desktop pane (aside below) or the phone's in-place
                       // expansion here.
                       const expanded =
                         !isDesktop && expandedIds.has(c.activity.id);
@@ -1082,76 +1161,23 @@ export default function TrainingLogView({
                         <div key={c.activity.id} className="space-y-2">
                           <TrainingLogRow
                             card={c}
-                            selected={isDesktop && selectedId === c.activity.id}
+                            active={
+                              expanded ||
+                              (isDesktop &&
+                                (selectedId === c.activity.id ||
+                                  (open && editData?.id === c.activity.id)))
+                            }
+                            expandable={!isDesktop}
                             expanded={expanded}
-                            showSubjectChip={c.subject != null && !isActing}
-                            onOpen={() => openRow(c.activity.id)}
+                            showSubjectChip={
+                              c.subject != null &&
+                              multi &&
+                              multiView != null &&
+                              c.subject.profileId !== multiView.actingProfileId
+                            }
+                            onOpen={openRow}
                           />
-                          {expanded && (
-                            <TrainingLogCard
-                              activity={c.activity}
-                              timeText={c.timeText}
-                              durationText={c.durationText}
-                              distanceText={c.distanceText}
-                              speedText={c.speedText}
-                              heartRateText={c.heartRateText}
-                              calorieText={c.calorieText}
-                              metrics={c.metrics}
-                              gear={c.gear}
-                              parts={c.parts}
-                              fault={c.fault}
-                              provenance={c.provenance}
-                              routePolyline={c.routePolyline}
-                              subject={c.subject}
-                              actingProfileId={multiView?.actingProfileId}
-                              // Manual-merge targets: the OTHER activities logged this
-                              // same day (issue #64) AND (multi-view) same subject, from
-                              // the unfiltered scope group, each carrying its fold
-                              // values so the shared conflict picker (#100/#1431) can
-                              // run over whatever member set the user assembles.
-                              mergeSiblings={(
-                                mergeTargetsByDate.get(
-                                  mergeGroupKey(g.date, c)
-                                ) ?? []
-                              )
-                                .filter((o) => o.id !== c.activity.id)
-                                .map((o): MergeSibling => ({
-                                  id: o.id,
-                                  title: o.title,
-                                  sourceLabel: o.sourceLabel,
-                                  foldValues: o.foldValues,
-                                  setCount: o.setCount,
-                                }))}
-                              keeperLabel={c.provenance.label}
-                              foldValues={c.foldValues}
-                              units={units}
-                              videos={c.videos}
-                              canWrite={canWriteVideos}
-                              // The row above owns the #activity-N anchor.
-                              withAnchor={false}
-                              onSelectExercise={
-                                fitness
-                                  ? (name) => showDetail("exercise", name)
-                                  : undefined
-                              }
-                              onSelectCardio={
-                                fitness
-                                  ? (name) => showDetail("cardio", name)
-                                  : undefined
-                              }
-                              onSelectSport={
-                                fitness
-                                  ? (name) => showDetail("sport", name)
-                                  : undefined
-                              }
-                              onFilterTag={(kind, value) =>
-                                setFilters((f) => ({
-                                  ...f,
-                                  tag: { kind, value },
-                                }))
-                              }
-                            />
-                          )}
+                          {expanded && recordFor(g.date, c)}
                         </div>
                       );
                     })}
@@ -1176,58 +1202,37 @@ export default function TrainingLogView({
             {/* Match the first feed row's h-9 date heading + mb-2 so the two
                 cards align. This spacer scrolls away; it is not sticky chrome. */}
             <div aria-hidden className="mb-2 h-9" />
-            {/* The provider portals the auto-saving editor here when open. */}
+            {/* The provider portals the auto-saving editor here when open
+                (a minimized session is elsewhere — the hidden overlay). */}
             <div
               ref={dockRef}
               data-testid="activity-editor-dock"
-              className={open ? "card pt-0" : ""}
+              className={open && !minimized ? "card pt-0" : ""}
             />
 
             {/* The READING PANE (#2897): the aside's third tenant, mutually
-                exclusive with the editor dock (open) and the stat panels
+                exclusive with a visibly docked editor and the stat panels
                 (detail). The record here is the SAME component the activity
                 page renders — one derivation, three hosts — built entirely
                 from data the feed already holds, so a row swap is instant and
                 the list keeps its scroll. */}
-            {!open && isDesktop && selectedEntry && (
+            {asideFree && isDesktop && selectedEntry && (
               <div data-testid="training-log-reading-pane">
-                <ActivityRecord
-                  host="pane"
-                  card={selectedEntry.card}
-                  siblings={(
-                    mergeTargetsByDate.get(
-                      mergeGroupKey(selectedEntry.date, selectedEntry.card)
-                    ) ?? []
-                  )
-                    .filter((o) => o.id !== selectedEntry.card.activity.id)
-                    .map((o) => ({
-                      id: o.id,
-                      title: o.title,
-                      sourceLabel: o.sourceLabel,
-                      foldValues: o.foldValues,
-                      setCount: o.setCount,
-                    }))}
-                  units={units}
-                  canWrite={
-                    selectedEntry.card.subject == null
-                      ? canWriteVideos
-                      : selectedEntry.card.subject.canWrite
-                  }
-                />
+                {recordFor(selectedEntry.date, selectedEntry.card)}
               </div>
             )}
             {/* isDesktop gate: below xl the aside is display:none but React would
                 still mount the panel (charts and all) — MobileDetailPage is
                 the only mobile surface, so don't build it twice. */}
-            {!open &&
+            {asideFree &&
               !selectedEntry &&
               (isDesktop && detailPanel ? (
                 <div className="card">{detailPanel}</div>
               ) : (
                 <div className="card">
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Select an activity to read it here, or an exercise for its
-                    details.
+                    Select an activity to read it here. Exercise, cardio, and
+                    sport names inside a record open their details.
                   </p>
                 </div>
               ))}

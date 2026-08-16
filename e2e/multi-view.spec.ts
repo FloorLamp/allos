@@ -6,6 +6,7 @@ import {
   followLink,
   expectNoClippedContent,
   expectInView,
+  hydratedClick,
 } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -638,7 +639,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
     await expect(
-      sharedCard.getByTestId(`subject-chip-${sharedId}`)
+      sharedCard.getByTestId(`subject-chip-${sharedId}-row`)
     ).toBeVisible();
     // The owner's own cards are still there, without a chip anywhere on the feed.
     await expect(
@@ -657,7 +658,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     const ownerRow = page
       .locator('[id^="activity-"]')
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
-    await ownerRow.click();
+    await hydratedClick(page, ownerRow);
     await page
       .getByTestId("training-log-reading-pane")
       .getByRole("button", { name: "Activity actions" })
@@ -704,7 +705,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     // "Log again" on the SHARED member's record: opens a create prefill that
     // auto-saves a NEW session — on the ACTING (owner) profile, never the
     // shared subject. Select the row into the reading pane for its menu (#2897).
-    await sharedCard.click();
+    await hydratedClick(page, sharedCard);
     await page
       .getByTestId("training-log-reading-pane")
       .getByRole("button", { name: "Activity actions" })

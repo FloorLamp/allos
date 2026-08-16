@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { hydratedClick } from "./helpers";
 // Issue #100: conflict-aware merge preview. The e2e seed (e2e/seed-events) plants two
 // same-day MANUAL cardio rows on 2026-07-06 that genuinely DISAGREE on duration
 // ("Conflict merge keeper" 42 min vs "Conflict merge dupe" 51 min) but agree on
@@ -11,15 +12,23 @@ test("merge preview lets you override a conflicting field to the discarded value
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  const keeperCard = page
+  const keeperRow = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "Conflict merge keeper" });
-  await expect(keeperCard).toHaveCount(1);
-  // Before the merge the keeper shows its own 42 min, and both rows are present.
-  await expect(keeperCard.getByText("42 min")).toBeVisible();
+  await expect(keeperRow).toHaveCount(1);
+  // Before the merge the keeper's row summary shows its own 42 min, and both
+  // rows are present.
+  await expect(keeperRow.getByText("42 min")).toBeVisible();
   await expect(page.getByText("Conflict merge dupe")).toBeVisible();
 
-  // Open the keeper card's overflow (⋯) menu → "Merge with…" → pick the dupe.
+  // Select the keeper's row into the reading pane (#2897 slim feed — a pure
+  // client toggle, so hydratedClick), then open the pane card's overflow (⋯)
+  // menu → "Merge with…" → pick the dupe.
+  await hydratedClick(page, keeperRow);
+  const keeperCard = page
+    .getByTestId("training-log-reading-pane")
+    .locator(".card", { hasText: "Conflict merge keeper" });
+  await expect(keeperCard).toBeVisible();
   await keeperCard.getByRole("button", { name: "Activity actions" }).click();
   await page.getByTestId("merge-with").click();
   await page

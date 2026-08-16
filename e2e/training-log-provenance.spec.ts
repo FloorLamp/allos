@@ -356,8 +356,9 @@ test("strength target status is named and muscle filters are quiet text", async 
   ).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 
-  // In the reading pane the muscle label is literally quiet text — the pane
-  // host passes no tag-filter handler, so no button wraps it (and no badge).
+  // Muscle labels are quiet text everywhere the record renders — filterable
+  // (the pane injects the tag handler like the old feed card did) but never
+  // badge-styled.
   const muscleFilter = push.getByText("Chest", { exact: true }).first(); // first-ok: the Chest muscle label within the scoped Push day card (Bench and Incline both tag Chest)
   await expect(muscleFilter).toBeVisible();
   await expect(muscleFilter).not.toHaveClass(/badge/);
@@ -493,8 +494,12 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   ).toBe(4);
   await page.setViewportSize({ width: 390, height: 844 });
   // Switching presentation modes closes the docked editor; reopen the same
-  // activity in the mobile overlay — on a phone the row expands the full card
-  // in place, whose overflow menu still carries Edit.
+  // activity — on a phone the row expands the full card in place, whose
+  // overflow menu still carries Edit. WAIT for the width mode to settle first:
+  // the row advertises aria-expanded only once expand-in-place is its live
+  // affordance, and a click landing before the settle would hit the desktop
+  // branch (deselect) instead.
+  await expect(stravaRow).toHaveAttribute("aria-expanded", "false");
   await stravaRow.click();
   const mobileCard = page.locator(".card", { hasText: "Strava morning ride" });
   await mobileCard.getByRole("button", { name: "Activity actions" }).click();
