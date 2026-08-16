@@ -218,29 +218,55 @@ while read -r d; do
   # its attacks wrote. Classified as an agent's branch it reads DIRTY AND NO AGENT
   # plus NEVER PUSHED, and the second of those is advice that cannot be followed:
   # a detached HEAD has no branch to push. An alarm you cannot act on is the
-  # canary again, so name the lane instead of alarming on it.
+  # canary again, so recognise the lane instead of alarming on it.
   #
-  # The exemption is the DECLARED lane only (`wt-refute*`, detached). A detached
-  # worktree that is NOT the lane still gets said out loud, because commits made
-  # there belong to no branch and are one `worktree remove` from gone — a
-  # different problem from an unpushed branch, and not one to silence.
+  # This exemption was keyed on the lane's NAME twice, and drifted twice. First
+  # `wt-refute-*`, which missed the hand-named `wt-refute2-2634` by one character
+  # and alarmed on the very lane it had just been taught to recognise; then
+  # `wt-refute*`, whose own comment predicted the next drift in as many words —
+  # "an exemption keyed on a name a human types will drift from the name that
+  # human types next time". It did. #2976 now tells every agent to build an
+  # origin/main CONTROL worktree before calling a contended failure a regression,
+  # so disposable checkouts arrive constantly and under whatever name the agent
+  # picked: `wt-base-2978`, `wt-ctrl-2979`, `wt-control-fasting` and
+  # `wt-navpend-base` all appeared within one session, and the two dirty ones
+  # each raised RESCUE NOW over untracked probe files. A recurring false alarm on
+  # the most common workflow in the session is the canary again.
   #
-  # The glob has no hyphen after `refute` because the first version did, and the
-  # second refuter — a re-run on the same PR — got hand-named `wt-refute2-2634`,
-  # which the pattern missed by one character. So the alarm fired on the very lane
-  # it had just been taught to recognise. An exemption keyed on a name a human
-  # types will drift from the name that human types next time; matching the prefix
-  # rather than one spelling of it is the cheap half of the fix, and briefing the
-  # lane to use `wt-refute-<pr>` is the other.
-  case "$(basename "$d")" in
-    wt-refute*)
-      if [ "$b" = "HEAD" ]; then
-        printf "  %-16s %-32s %-6s local=%s  (read-only refuter lane — nothing to rescue)\n" \
-          "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
-        continue
-      fi
-      ;;
-  esac
+  # So stop guessing spellings and ask the question the name was standing in for:
+  # WAS ANYTHING AUTHORED HERE? The rescuable thing in a detached worktree is a
+  # COMMIT, because a commit on no branch is one `worktree remove` from gone.
+  # Both lanes author none — they check out a ref that already exists on the
+  # remote (`origin/main` for a control, `refs/pull/N/merge` for a refuter) and
+  # write only probes on top. A worktree's HEAD reflog is worktree-local, so it
+  # answers this directly and needs no network.
+  #
+  # Reachability was the tempting test and it is WRONG, measured rather than
+  # assumed: a refuter at a fetched merge ref is not an ancestor of origin/main
+  # and `for-each-ref --contains` finds nothing, because the merge ref lands in
+  # FETCH_HEAD and never gets a named ref. Testing reachability would have
+  # re-broken the exact lane this exemption was written for.
+  #
+  # The deliberate silence is a DIRTY detached worktree with no commits: that is
+  # a lane's scratch. Real work arrives on a branch, because that is what the
+  # dispatch procedure hands every agent — so detached-and-uncommitted is probes.
+  #
+  # The reflog is CAPTURED FIRST and matched without a pipeline, and that is
+  # load-bearing under this script's `set -o pipefail` (line 39). Written as
+  # `git … | grep -q`, grep closes the pipe at the first match, git takes SIGPIPE
+  # and reports 141, pipefail promotes 141 to the pipeline's status, and the
+  # leading `!` turns a MATCH into "nothing authored". It is a race, not a
+  # constant: the first draft of this test printed the rescue alarm on runs 1 and
+  # 3 and swallowed it on run 2, same tree, same commit, nothing changed between
+  # them. A safety alarm that fires two times in three is worse than one that
+  # never fires, because the two successes teach you to trust the silence.
+  wt_reflog=$(git -C "$d" reflog show HEAD 2>/dev/null || true)
+  if [ "$b" = "HEAD" ] &&
+     ! grep -qE '\bcommit( \([a-z-]+\))?: ' <<<"$wt_reflog"; then
+    printf "  %-16s %-32s %-6s local=%s  (read-only lane, nothing authored here — nothing to rescue)\n" \
+      "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
+    continue
+  fi
   # "Was this branch ever pushed?" — read the tracking CONFIG, not @{upstream}.
   #
   # The two are not the same thing and the difference is a false alarm. The

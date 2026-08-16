@@ -8,7 +8,7 @@ import {
   takeStravaOAuthState,
   setStravaTokens,
 } from "@/lib/integrations/connections";
-import { appUrl } from "@/app/(app)/integrations/strava/url";
+import { appUrl } from "@/lib/external-url-server";
 
 // OAuth 2.0 authorization-code callback for Strava. The user is redirected here
 // from Strava after approving access; we validate the CSRF `state`, exchange the

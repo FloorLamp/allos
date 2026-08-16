@@ -497,6 +497,7 @@ function TimelineFoldCard({
       <TimelineFilterLink
         href={href}
         testId={`${testId}-toggle`}
+        label={fold.label}
         ariaExpanded={fold.open}
         className={`flex items-center gap-3 rounded-lg border px-4 py-3 shadow-xs transition hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`}
       >

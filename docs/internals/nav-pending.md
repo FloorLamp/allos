@@ -101,3 +101,129 @@ and five taps produce exactly one navigation.
 `followLink` is deliberately not used there. Its retry loop exists to survive
 the pre-hydration window, and a retrying helper cannot tell a tap that was
 answered from one that was not.
+
+## Beyond the nav rows (#2869)
+
+The doctrine above covered exactly three components — `Nav`, `MobileDock`,
+`SegmentedControl`, all through `PendingNavLink`. The live report that produced
+#2869 was that everything else is still silent on spotty internet, and that a
+navigation whose fetch dies takes the working page with it. Both halves are
+answered here; neither introduces a second mechanism.
+
+### One primitive, two slots
+
+`components/PendingLink.tsx` now owns the two guarantees, and `PendingNavLink`
+is one of its callers rather than the place they live. A surface adopts the
+doctrine by picking which of two pending TREATMENTS its shape has room for:
+
+- **`PendingIconSlot`** — the control already has an icon; the spinner replaces
+  it in place. This is #1956's original treatment (nav rows, the dock, the
+  timeline's day arrows).
+- **`PendingOverlay`** — the control is text; its own label is the slot. The
+  label stays exactly where it is, still legible at reduced opacity, with the
+  spinner over it. Nothing shifts, and nothing useful is erased.
+
+Both are the same rule — the spinner paints in the control's own slot — differing
+only in which slot the control has. The `sr-only` `role="status"` naming and the
+`isDuplicateNavClick` absorption come from the primitive, identically for every
+caller, so a new surface cannot adopt half the doctrine.
+
+### The census
+
+The button-shaped navigation controls in the app, and what each one does now:
+
+| Surface                                                                          | Treatment                                                       |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `components/Nav.tsx` sidebar/drawer rows                                         | icon slot (#1956)                                               |
+| `components/MobileDock.tsx` dock slots                                           | icon slot (#2651)                                               |
+| `components/SegmentedControl.tsx` tabs                                           | icon slot (#1956)                                               |
+| `components/TimelineDayNav.tsx` day arrows                                       | icon slot (the chevron)                                         |
+| `components/TimelineDayNav.tsx` day swipe                                        | the same chevron, driven by the component's own `useTransition` |
+| `components/PaginationControls.tsx` link-mode Prev/Next                          | overlay                                                         |
+| `components/TimelineFilterLink.tsx` chips, range pills, #2657 month fold headers | overlay                                                         |
+| `app/(app)/settings/audit/page.tsx` pager                                        | overlay                                                         |
+| `app/(app)/settings/notify-log/page.tsx` pager                                   | overlay                                                         |
+
+Everything else — cards, table rows, drill-downs, links inside a sentence, the
+~100 files that import `next/link` directly — is covered by the floor below, on
+purpose. A link inside a sentence has nowhere to put a spinner, and giving each
+of them one is how an app ends up with six pending styles.
+
+The two settings pagers are a SECOND pager shape beside `PaginationControls`.
+They adopted the primitive rather than being consolidated, because consolidating
+them changes their copy and layout, which is a separate question from this one.
+
+### The floor: one indicator, with a threshold
+
+`lib/nav-progress.ts` + `components/NavProgress.tsx`. A thin top-edge line
+appears when any navigation is still pending past 300 ms and clears at commit.
+
+- The START is `onRouterTransitionStart` in `instrumentation-client.ts` — Next
+  16's first-class hook, which fires for every push, replace and back/forward
+  traversal, whatever started it. There is no React-level equivalent:
+  `useLinkStatus` resolves for one link at a time by design.
+- The END is the commit, observed by `usePathname()`/`useSearchParams()` in the
+  component. Next ships no completion hook. The one case this leaves is a
+  navigation to the URL already on screen, which cannot move either — it clears
+  on the next navigation and paints nothing meanwhile.
+- It does NOT animate a fraction. There is no progress to report — no Suspense
+  boundaries to count (#530), no streamed percentage — so a bar creeping toward
+  90% would be an invented number. It is present or absent, and a `role="status"`
+  line says which. Nothing new was added to the micro-motion registry.
+- The threshold is what keeps it from being noise. A navigation that commits
+  under it paints nothing at all, so a fast connection never sees a flash. That
+  rule is pure and tested as one; it is deliberately NOT asserted in the browser,
+  where the claim would be about the shard's wall clock rather than the rule.
+
+This is client chrome, not a Suspense shell. #530 is untouched.
+
+### A failed navigation stays in the app
+
+`lib/nav-fetch-guard.ts`. During a soft navigation the old page never left the
+screen. If the destination's RSC read then dies, Next 16.3.0 logs "Failed to
+fetch RSC payload … Falling back to browser navigation." and hard-navigates to
+the same URL — and on a dead network the service worker answers that document
+load with the precached `/offline` page. Either branch throws away a page that
+was working. `app/(app)/error.tsx` never sees it: that boundary catches render
+throws, not failed navigation fetches.
+
+The guard wraps `window.fetch` from `instrumentation-client.ts` and matches only
+a navigation RSC read — a GET carrying `RSC: 1` and no `Next-Router-Prefetch`.
+It retries on a bounded budget (400 ms → 1.2 s → 3 s), and if that is spent while
+someone is actually waiting on the navigation it HOLDS the promise instead of
+rejecting, and turns the indicator into "Couldn't load — check your
+connection." with a Retry. Rejecting is what Next converts into the hard exit, so not
+rejecting is the whole fix. The navigation is paused, not abandoned: Retry — or
+the browser reporting the connection back — resumes the same fetch, so the tap
+they already made is the tap that lands.
+
+A read nobody is waiting on (a poll-driven `router.refresh()`, a prefetch) is
+retried but never held and never painted. Turning a polling miss into a banner
+would make the banner meaningless.
+
+`/offline` is unchanged and still right where it belongs: a cold start with no
+page to stay on.
+
+#### Why not `experimental.useOffline`
+
+#2869 named Next's own wait-and-retry as the first lever to evaluate, and for
+navigation it fits exactly. It was **not** adopted, because the flag is not
+scoped to navigation. The same build-time flag wraps the Server Action fetch
+(`router-reducer/reducers/server-action-reducer.js`): a rejected action would
+wait for connectivity and retry rather than throwing. This app's offline write
+queue (#28) is built on that throw — `shouldQueueOffline` in `lib/offline/queue.ts`
+reads the `TypeError` a dead connection produces as the signal to queue the
+write, and every quick-log surface enqueues from that catch. Under `useOffline`
+an offline dose tap would produce no queue entry, no queued badge and no toast;
+it would simply never finish. #2869's own invariant is that write-path feedback
+stays untouched, so the lever was taken at the one layer where a navigation read
+and a write are distinguishable: GET with `RSC: 1` versus POST.
+
+### Contract
+
+`e2e/nav-pending.spec.ts` and `e2e/nav-pending.mobile.spec.ts` hold the
+destination's navigation RSC response — distinguished from the prefetch of the
+same URL by the `next-router-prefetch` header — and, for the failure leg, abort
+it until the test restores the connection. The failure test asserts the three
+things that must NOT happen: the document was never torn down, the URL never
+moved, and `/offline` was never served while the tab still held a working page.
