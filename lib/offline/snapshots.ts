@@ -157,8 +157,6 @@ export interface DoseScheduleEntry {
   detail: string | null;
   // The time-of-day bucket label ("Morning"), or null for an anytime dose.
   slot: string | null;
-  // The dose's stored wall time ("08:00"), or null.
-  time: string | null;
   status: DoseStatus;
   // Set by the OVERLAY only (never by the server builder): this resolution is a tap
   // still sitting in the write queue, not something the server has confirmed.
@@ -171,8 +169,18 @@ export interface DoseScheduleData {
   entries: DoseScheduleEntry[];
 }
 
+// PROJECTED from `MedicationListRow` rather than reusing it whole (#2994 R4). The list
+// artifact also carries `prescriber` (a named third party), `startedOn` and `rx`, and
+// OfflineSnapshotView renders none of them. A field earns its place in a payload stored
+// at rest on an unlocked phone by being on the screen; every other builder here projects
+// deliberately, and this one was the outlier.
+export type SnapshotMedicationRow = Pick<
+  MedicationListRow,
+  "id" | "name" | "subtitle" | "dose" | "schedule"
+>;
+
 export interface MedicationListData {
-  rows: MedicationListRow[];
+  rows: SnapshotMedicationRow[];
 }
 
 export interface RecentSessionLine {

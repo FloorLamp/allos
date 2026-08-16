@@ -33,10 +33,19 @@
 // The public offline fallback, mirroring `OFFLINE_URL` in public/sw.js.
 export const OFFLINE_ROUTE = "/offline";
 
-// A bound on the work, so a build that one day emits a hundred chunks for this route
-// cannot turn a background warm-up into a burst. `/offline` is one small client page;
-// this is generous headroom, not a target.
+// A bound on the COUNT — which is not the same thing as a bound on the contention, and
+// conflating them is what made the first version of this hurt. `/offline` is one small
+// client page; this is generous headroom, not a target. The concurrency is bounded
+// separately, and much harder, below.
 export const MAX_WARMED_ASSETS = 60;
+
+// HOW LONG AFTER MOUNT THE WARM-UP STARTS.
+//
+// This is background work for a dead zone that has not happened yet, and it was firing at
+// `setTimeout(…, 0)` — in direct competition with the page the person is actually waiting
+// for. Deferring it costs the feature nothing: a warmed shell is worth something minutes
+// or hours later, when the network goes away.
+export const WARM_START_DELAY_MS = 4_000;
 
 // The immutable build assets a page's HTML declares — `<script src>`, `<link href>`, and
 // the flight payload's own module references alike, since all three are the same URL
@@ -96,10 +105,22 @@ export async function warmOfflineRoute(): Promise<void> {
       warmed = false;
       return;
     }
-    // Each of these is a cacheable asset, so the worker's `cacheFirst` stores it on the
-    // way past. Most are already cached (the current page loaded them), and a cache hit
-    // costs no network at all — the route-specific chunks are the real work.
-    await Promise.all(urls.map((u) => fetch(u).catch(() => undefined)));
+    // ONE AT A TIME, and this is a load-bearing line rather than a style choice.
+    //
+    // `Promise.all` over these is seventeen fetches at once in the measured case and up
+    // to sixty by the cap — against a browser that gives about six connections per
+    // origin. The burst therefore queues AHEAD of whatever the page that just loaded
+    // still needs, and the person waiting on that page pays for a dead zone they may
+    // never reach. Sequentially the warm-up occupies one connection and yields between
+    // every asset, so it fills the gaps instead of competing for them. It is slower in
+    // wall-clock, which for background work is not a cost at all.
+    //
+    // Each is a cacheable asset, so the worker's `cacheFirst` stores it on the way past.
+    // Most are already cached (the current page loaded them) and a cache hit costs no
+    // network — the route-specific chunks are the real work.
+    for (const url of urls) {
+      await fetch(url).catch(() => undefined);
+    }
   } catch {
     /* offline, a blip, a worker mid-update — the next page load tries again */
     warmed = false;

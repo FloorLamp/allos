@@ -32,6 +32,11 @@ import {
 } from "@/lib/offline/queue";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import {
+  captureWriteToken,
+  openSession,
+  updateGate,
+} from "@/lib/offline/write-gate";
+import {
   enqueueIntent,
   allIntents,
   removeIntents,
@@ -187,6 +192,12 @@ export default function OfflineQueueProvider({
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
     flushing.current = true;
     try {
+      // The generation this flush started at. Everything below writes back into the
+      // queue AFTER a network round trip, and logout can land inside it: a retry
+      // re-written afterwards is one login's PHI back on a logged-out device
+      // (`attempts: 0 -> 1` in the store is what proves it a re-write rather than a wipe
+      // that missed). The gate refuses it — see lib/offline/write-gate.ts.
+      const token = await captureWriteToken();
       const intents = await allIntents();
       if (intents.length === 0) {
         // The queue may have been drained by ANOTHER actor since the badge last
@@ -261,8 +272,8 @@ export default function OfflineQueueProvider({
         // confirming (only counting "done" made the toast vanish on that race).
         const plan = planFlushDisposition(chunk, results);
         await removeIntents(plan.deleteKeys);
-        await putIntents(plan.retry);
-        await saveRejected(plan.rejected);
+        await putIntents(plan.retry, token);
+        await saveRejected(plan.rejected, token);
         totalSynced += plan.syncedCount;
         totalRejected += plan.rejected.length;
         timeNotices.push(...plan.timeNotices);
@@ -301,6 +312,15 @@ export default function OfflineQueueProvider({
   );
 
   useEffect(() => {
+    // A LIVE AUTHENTICATED DOCUMENT re-opens the device write gate (#2908). Logout closes
+    // every lane persistently — it has to, or a second tab writes everything back — so
+    // something must say "there is a session again", and this provider is it: mounted
+    // once in the (app) layout, which only renders for a logged-in session, and the owner
+    // of the largest device-local store. Mount-scoped, never keyed on a navigation: the
+    // logout redirect IS a navigation, and re-opening there would hand the close straight
+    // back. It deliberately does not touch the offline-reads OFF SWITCH, which is a
+    // separate promise with its own toggle.
+    void updateGate(openSession);
     // Start the initial IndexedDB reads and replay from a browser task. Their state
     // updates then originate in that external callback, just like every later
     // online/visibility/service-worker trigger below.

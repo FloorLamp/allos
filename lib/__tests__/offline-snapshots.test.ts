@@ -64,7 +64,6 @@ const doseSnapshot = () =>
           name: "Metformin",
           detail: "500 mg",
           slot: "Morning",
-          time: "08:00",
           status: "pending" as const,
         },
         {
@@ -72,7 +71,6 @@ const doseSnapshot = () =>
           name: "Vitamin D",
           detail: null,
           slot: "Morning",
-          time: null,
           status: "taken" as const,
         },
       ],

@@ -4,11 +4,11 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import {
   allSnapshots,
+  captureSnapshotToken,
   clearSnapshots,
-  openSnapshotStore,
+  disableSnapshotWrites,
   putSnapshots,
-  snapshotEpoch,
-  snapshotStoreClosed,
+  snapshotWritesClosed,
 } from "@/lib/offline/snapshot-db";
 import {
   clearDirtySnapshots,
@@ -22,7 +22,16 @@ import {
   type AnySnapshot,
   type SnapshotKind,
 } from "@/lib/offline/snapshots";
-import { warmOfflineRoute } from "@/lib/offline/warm-offline-route";
+import {
+  warmOfflineRoute,
+  WARM_START_DELAY_MS,
+} from "@/lib/offline/warm-offline-route";
+
+// How long after a page load the first snapshot refresh runs. See the call site: the
+// endpoint does synchronous SQLite work in the same single-threaded server that is
+// answering the page, so "as soon as possible" is precisely the wrong schedule for work
+// nobody is waiting on.
+const INITIAL_REFRESH_DELAY_MS = 1_200;
 
 // Refreshes the offline read snapshots (issue #2908) on an ONLINE, AUTHENTICATED visit.
 // Mounted once inside the (app) layout beside OfflineQueueProvider, so it only ever runs
@@ -75,39 +84,46 @@ export default function OfflineSnapshotRefresher({
   const running = useRef(false);
   const pathname = usePathname();
 
-  // A NEW authenticated mount re-opens snapshot writing after a logout closed it (see
-  // lib/offline/snapshot-db.ts). Mount-scoped on purpose — `[]`, not the effect below:
-  // this layout is mounted only when there IS a session, whereas the effect below
-  // re-runs on every in-app navigation, including the one logout performs. Re-opening
-  // there would hand the close straight back.
+  // MOUNT-SCOPED — `[]`, deliberately not the effect below, which re-runs on every in-app
+  // navigation. (Re-opening the device write gate after a logout is the other
+  // mount-scoped job and it lives in OfflineQueueProvider: the gate is device-wide, not
+  // snapshot-specific, and that provider's mount means "there is a session" for every
+  // lane at once.)
+  //
+  // The shell warm-up runs ONCE per mount and well off the critical path. It used to ride
+  // the same `setTimeout(…, 0)` as the refresh, which put a burst of asset fetches in
+  // direct competition with the page the person had just asked for. Mount-scoped also
+  // means an in-app navigation cannot re-arm the timer and starve it: a user who clicks
+  // around faster than the delay would otherwise never get a warmed shell at all.
   useEffect(() => {
-    openSnapshotStore();
+    const warm = window.setTimeout(
+      () => void warmOfflineRoute(),
+      WARM_START_DELAY_MS
+    );
+    return () => window.clearTimeout(warm);
   }, []);
 
   useEffect(() => {
     async function refresh() {
       if (running.current) return;
-      // Logout has ended snapshot writing for this document. Return before the FETCH,
-      // not merely before the write: a page on its way to /login has no business asking
-      // the server for a fresh copy of the payload it just erased.
-      if (snapshotStoreClosed()) return;
       if (typeof navigator !== "undefined" && navigator.onLine === false)
         return;
       running.current = true;
-      // THE WIPE FENCE (lib/offline/snapshot-db.ts), captured BEFORE the first await.
+      // THE WRITE TOKEN (lib/offline/write-gate.ts), captured BEFORE the first await and
+      // spent inside `putSnapshots`'s own transaction.
       //
-      // The effect's own `cancelled` flag cannot do this job: it is set on UNMOUNT, and
-      // on logout the sidebar wipes FIRST and then keeps this page alive for the whole
-      // logout round trip, so the component is still mounted — and `cancelled` still
-      // false — for the entire window in which a wipe has already happened. A generation
-      // captured here and re-checked inside `putSnapshots` sees the wipe; a mount flag
-      // never can.
-      //
-      // The fence covers a refresh caught MID-FLIGHT by a wipe. It structurally cannot
-      // cover a refresh that STARTS after one — that generation is legitimately current
-      // — which is why logout CLOSES the store, checked above, rather than only bumping.
-      let fence = snapshotEpoch();
+      // Nothing in this component can be the guard, and three attempts to make it one are
+      // why: the effect's `cancelled` flag is set on UNMOUNT, which on logout happens only
+      // after the navigation lands; a module generation cannot see a refresh that STARTED
+      // after a wipe; a module `closed` flag cannot see another TAB. The gate is in the
+      // database the writes land in, so it sees all three.
+      let token = await captureSnapshotToken();
       try {
+        // Asked BEFORE the fetch, not merely before the write: a page whose device has
+        // been logged out — or whose owner just turned the off switch off, here or in
+        // another tab — has no business requesting a fresh copy of what was erased. The
+        // write would be refused either way; this stops the request too.
+        if (await snapshotWritesClosed()) return;
         const stored = await allSnapshots();
         // A store holding ANOTHER profile's payload is a broken invariant, not a state
         // to reconcile: wipe it whole and re-capture for whoever is active now. The
@@ -115,10 +131,10 @@ export default function OfflineSnapshotRefresher({
         const held = resolveSnapshotProfile(stored);
         if (stored.length > 0 && held !== activeProfileId) {
           await clearSnapshots();
-          // Our OWN wipe bumped the generation. Re-arm against it: this fence exists to
-          // catch somebody else's wipe, and re-capturing after a deliberate identity
-          // wipe is the whole point of the branch we are in.
-          fence = snapshotEpoch();
+          // Our OWN wipe moved the generation. Re-arm against it: the token exists to
+          // catch somebody else's wipe, and re-capturing after a deliberate identity wipe
+          // is the whole point of the branch we are in.
+          token = await captureSnapshotToken();
         }
         const mine = held === activeProfileId ? stored : [];
         // What the stored clocks ask for, plus what a tap on this page has marked. The
@@ -147,7 +163,10 @@ export default function OfflineSnapshotRefresher({
         // its next authenticated visit. Nothing re-materializes until it is turned back
         // on.
         if (body.enabled === false) {
-          await clearSnapshots();
+          // The server is authoritative and says this profile is off. Close the lane
+          // rather than only wiping, so a refresh starting a moment later cannot ask
+          // again and be answered differently by a racing toggle.
+          await disableSnapshotWrites();
           return;
         }
         // Never store a body that is not about the profile we asked as. A response that
@@ -159,8 +178,10 @@ export default function OfflineSnapshotRefresher({
             (s): s is AnySnapshot =>
               s !== null && s.profileId === activeProfileId
           );
-        // Fenced. A wipe that landed anywhere in the round trip above drops this write.
-        if (await putSnapshots(fresh, fence)) clearDirtySnapshots(wanted);
+        // Gated. A wipe, a logout or an off switch that landed anywhere in the round trip
+        // above — in this tab or any other — drops this write, decided inside the write's
+        // own transaction.
+        if (await putSnapshots(fresh, token)) clearDirtySnapshots(wanted);
       } catch {
         /* offline, a blip, a lapsed cookie — the device keeps whatever it already
            holds. A failed refresh is never a wipe: only an identity CHANGE is. */
@@ -170,13 +191,20 @@ export default function OfflineSnapshotRefresher({
     }
 
     // From a browser task, like OfflineQueueProvider's own initial sync, so the state
-    // this touches originates in an external callback rather than in render. The shell
-    // warm-up rides the same task and is independent of the refresh: it must run for a
-    // profile with snapshots switched off, because the emergency card needs it too.
-    const initial = window.setTimeout(() => {
-      void refresh();
-      void warmOfflineRoute();
-    }, 0);
+    // this touches originates in an external callback rather than in render.
+    //
+    // NOT AT ZERO, for the same reason the warm-up moved off this task:
+    // /api/offline-snapshots is `force-dynamic` and builds five payloads with SYNCHRONOUS
+    // better-sqlite3 reads, so while it runs the server answers nothing else — including
+    // the request the person is waiting on. Firing it the instant a page loads aims that
+    // squarely at the page's own traffic. A second costs the feature nothing: the copy is
+    // for a dead zone that has not happened yet. Only the INITIAL run is delayed; the
+    // event triggers stay immediate, because a tap's dirty mark is read-your-writes and a
+    // reconnect is the moment there is finally a network.
+    const initial = window.setTimeout(
+      () => void refresh(),
+      INITIAL_REFRESH_DELAY_MS
+    );
     const onOnline = () => void refresh();
     const onVisible = () => {
       if (document.visibilityState === "visible") void refresh();

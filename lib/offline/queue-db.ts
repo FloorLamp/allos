@@ -21,7 +21,12 @@ import {
   openOfflineDb as openDb,
   txDone as done,
 } from "@/lib/offline/idb";
-import { closeSnapshotStore } from "@/lib/offline/snapshot-db";
+import {
+  captureWriteToken,
+  closeSession,
+  guardedWrite,
+  updateGate,
+} from "@/lib/offline/write-gate";
 
 function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(STORE, mode).objectStore(STORE);
@@ -36,17 +41,14 @@ function rejectedTx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
 // at least has the intent in memory — but in practice IndexedDB is present wherever a
 // service worker is.
 export async function enqueueIntent(intent: QueuedIntent): Promise<boolean> {
-  if (!hasIndexedDB()) return false;
-  try {
-    const db = await openDb();
-    const store = tx(db, "readwrite");
-    store.put(intent);
-    await done(store.transaction);
-    db.close();
-    return true;
-  } catch {
-    return false;
-  }
+  // Gated like every other device-local PHI write (#2908's write gate). A capture is a
+  // foreground action, so the token is taken and spent immediately — the gate matters
+  // here only for the case it was built for: a logged-out device must not accept new PHI
+  // just because a stale tab still has a button.
+  const token = await captureWriteToken();
+  return guardedWrite([STORE], "queue", token, (tx) => {
+    tx.objectStore(STORE).put(intent);
+  });
 }
 
 // All queued intents, oldest first (insertion order — the store's default key
@@ -88,35 +90,33 @@ export async function removeIntents(keys: readonly string[]): Promise<void> {
 // flush so the retry cap can eventually reclassify a permanently-stuck one. `put`
 // overwrites by keyPath, so this is an in-place update of the live row.
 export async function putIntents(
-  intents: readonly QueuedIntent[]
+  intents: readonly QueuedIntent[],
+  // The generation the FLUSH started at. A flush in flight when logout wiped the queue
+  // used to re-write its retry entries afterwards — `attempts: 0 -> 1` in the store,
+  // which is a re-write and not a wipe that missed. Replay being idempotent answers a
+  // different question; this one is PHI at rest surviving logout, which is clearQueue's
+  // entire purpose (#28/#475).
+  token: number
 ): Promise<void> {
-  if (!hasIndexedDB() || intents.length === 0) return;
-  try {
-    const db = await openDb();
-    const store = tx(db, "readwrite");
+  if (intents.length === 0) return;
+  await guardedWrite([STORE], "queue", token, (tx) => {
+    const store = tx.objectStore(STORE);
     for (const i of intents) store.put(i);
-    await done(store.transaction);
-    db.close();
-  } catch {
-    /* ignore — the attempt count just doesn't advance this flush */
-  }
+  });
 }
 
 // Park rejected/undeliverable entries in the dead-letter store for review (issue
 // #475). Best-effort; keyed on intent.key so a re-park overwrites.
 export async function saveRejected(
-  entries: readonly RejectedEntry[]
+  entries: readonly RejectedEntry[],
+  // Same flush, same window, same PHI — and worse, because a parked entry is permanent.
+  token: number
 ): Promise<void> {
-  if (!hasIndexedDB() || entries.length === 0) return;
-  try {
-    const db = await openDb();
-    const store = rejectedTx(db, "readwrite");
+  if (entries.length === 0) return;
+  await guardedWrite([REJECTED], "queue", token, (tx) => {
+    const store = tx.objectStore(REJECTED);
     for (const e of entries) store.put(e);
-    await done(store.transaction);
-    db.close();
-  } catch {
-    /* ignore — a failed park is the pre-existing (invisible) behavior; no worse */
-  }
+  });
 }
 
 // All parked rejected entries, most-recently-rejected first.
@@ -193,42 +193,32 @@ export async function countIntents(): Promise<number> {
 // clear the queue on logout; #475: the parked rejected entries hold the same PHI;
 // #1699: so do half-typed drafts; #2908: so do the read snapshots).
 export async function clearQueue(): Promise<void> {
-  // #2908: END snapshot writing for this document — synchronously, and before anything
-  // else. This is the LOGOUT wipe (its only caller is the sidebar's logout button), and
-  // logout keeps the page, the session and the refresher alive for the entire round
-  // trip. Two different writes have to be stopped, which is why this closes rather than
-  // only bumping the generation:
-  //   • a refresh already IN FLIGHT — the generation bump drops its write;
-  //   • a refresh that STARTS AFTER the wipe — whose fence is legitimately current. It
-  //     reads an empty store, concludes every kind is missing, asks for all five and is
-  //     answered 200 by the still-live session. Only the close stops that one, and it is
-  //     the one that shipped red.
-  // Doing it HERE rather than at the button keeps the wipe complete by construction, the
-  // same reason the snapshot store is in this transaction at all. See the close comment
-  // in lib/offline/snapshot-db.ts.
-  closeSnapshotStore();
-  if (!hasIndexedDB()) return;
-  try {
-    const db = await openDb();
-    const t = db.transaction(
-      [STORE, REJECTED, DRAFTS_STORE, SNAPSHOTS_STORE],
-      "readwrite"
-    );
-    t.objectStore(STORE).clear();
-    t.objectStore(REJECTED).clear();
-    // #1699: half-typed form drafts are PHI at rest too, and logout is the one
-    // moment every device-local store must go. Clearing them HERE (rather than
-    // asking each logout button to remember a second call) keeps the wipe
-    // complete by construction.
-    t.objectStore(DRAFTS_STORE).clear();
-    // #2908: the read snapshots are the largest device-local PHI surface of the three
-    // — a med list and a dose schedule, readable with no session at /offline. Same
-    // reasoning, same transaction: a logout path that forgets clearSnapshots() still
-    // wipes them.
-    t.objectStore(SNAPSHOTS_STORE).clear();
-    await done(t);
-    db.close();
-  } catch {
-    /* ignore */
-  }
+  // LOGOUT. Every device-local store goes, and the write GATE closes, IN ONE
+  // TRANSACTION — which is the whole point, and the thing four rounds of review kept
+  // finding the gap in. Clearing and closing atomically means there is no instant in
+  // which the data is gone but a writer still believes it may write, and because the
+  // gate lives in the database rather than in a module variable, "a writer" includes one
+  // in ANOTHER TAB: tabs share a database and share no memory.
+  //
+  // The window this defends is long and fully authenticated. components/SidebarContent
+  // wipes and then submits the logout, and the page, the session and every mounted
+  // component stay alive for the entire POST. Three different writes were observed
+  // landing inside it:
+  //   • a snapshot refresh that STARTED after the wipe, holding a legitimately current
+  //     generation, answered 200 by the still-live session — all five kinds back;
+  //   • a queue flush already in flight re-writing its retry entries (`attempts: 0 -> 1`
+  //     is what proves it a re-write) and parking rejected entries permanently;
+  //   • a form draft's 600ms autosave debounce landing a half-typed record afterwards,
+  //     against lib/offline/draft-db.ts's own stated contract.
+  // None of them is stopped by anything a wipe can do to the DATA. All are stopped here.
+  await updateGate(closeSession, [
+    STORE,
+    REJECTED,
+    // #1699: half-typed form drafts are PHI at rest too, and logout is the one moment
+    // every device-local store must go.
+    DRAFTS_STORE,
+    // #2908: the read snapshots are the largest device-local PHI surface of the four —
+    // a med list and a dose schedule, readable with no session at /offline.
+    SNAPSHOTS_STORE,
+  ]);
 }

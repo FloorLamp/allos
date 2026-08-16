@@ -16,14 +16,17 @@
 export const OFFLINE_DB_NAME = "allos-offline";
 
 // v1 the intents store, v2 the REJECTED dead-letter store (#475), v3 the DRAFTS
-// store (#1699), v4 the SNAPSHOTS store (#2908). Append-only: a released version's
+// store (#1699), v4 the SNAPSHOTS store (#2908), v5 the META store holding the device
+// WRITE GATE (#2908 again — lib/offline/write-gate.ts states why the gate has to live
+// in the database rather than in a module variable). Append-only: a released version's
 // stores are never renamed.
-export const OFFLINE_DB_VERSION = 4;
+export const OFFLINE_DB_VERSION = 5;
 
 export const INTENTS_STORE = "intents";
 export const REJECTED_STORE = "rejected";
 export const DRAFTS_STORE = "drafts";
 export const SNAPSHOTS_STORE = "snapshots";
+export const META_STORE = "meta";
 
 export function hasIndexedDB(): boolean {
   return typeof indexedDB !== "undefined";
@@ -90,6 +93,14 @@ export function openOfflineDb(): Promise<IDBDatabase> {
       // precisely the leak this feature has to be designed against.
       if (!db.objectStoreNames.contains(SNAPSHOTS_STORE)) {
         db.createObjectStore(SNAPSHOTS_STORE, { keyPath: "kind" });
+      }
+      // One record, the device write GATE. It is in THIS database rather than in a
+      // module variable for the reason lib/offline/write-gate.ts opens with: a wipe and
+      // the writes it must stop have to be settled by the same transaction, and tabs
+      // share a database while they share no memory. Absent = the default open gate, so
+      // an upgraded device is writable exactly as it was.
+      if (!db.objectStoreNames.contains(META_STORE)) {
+        db.createObjectStore(META_STORE, { keyPath: "key" });
       }
     };
     req.onsuccess = () => {

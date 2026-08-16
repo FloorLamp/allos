@@ -127,7 +127,9 @@ function buildDoseSchedule(
         name: item.name,
         detail: dose.amount,
         slot: TIME_BUCKET_LABELS[bucket] ?? null,
-        time: dose.time_of_day,
+        // No `time`: the wall clock is what the rows are SORTED by (doseSortKey above,
+        // which reads it) and it is rendered nowhere, so it does not need to be at rest
+        // on the device. Same projection rule as the medication list below.
         status: taken.has(dose.id)
           ? "taken"
           : skipped.has(dose.id)
@@ -186,7 +188,23 @@ function buildMedicationListData(
         };
       })
   );
-  return { rows: rows.slice(0, MAX_SNAPSHOT_MEDICATIONS) };
+  // PROJECTED, like every sibling builder (#2994 R4). `buildMedicationList` answers a
+  // "bring your medication list" artifact and carries `prescriber`, `startedOn` and `rx`
+  // with it; the offline card renders none of the three. Storing them would put a named
+  // third party — someone's cardiologist — at rest on a device whose whole risk model is
+  // "anyone holding the unlocked phone can read this", to be rendered by nothing. A field
+  // earns its place in this payload by being on the screen.
+  return {
+    rows: rows
+      .slice(0, MAX_SNAPSHOT_MEDICATIONS)
+      .map(({ id, name, subtitle, dose, schedule }) => ({
+        id,
+        name,
+        subtitle,
+        dose,
+        schedule,
+      })),
+  };
 }
 
 // ── recent-training ──────────────────────────────────────────────────────────

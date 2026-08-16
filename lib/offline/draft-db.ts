@@ -15,23 +15,31 @@ import {
   txDone,
 } from "@/lib/offline/idb";
 import { DRAFT_TTL_MS, type FormDraft } from "@/lib/offline/drafts";
+import { captureWriteToken, guardedWrite } from "@/lib/offline/write-gate";
 
 function store(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(DRAFTS_STORE, mode).objectStore(DRAFTS_STORE);
 }
 
-/** Write (overwrite) one form's draft. */
+/**
+ * Write (overwrite) one form's draft.
+ *
+ * GATED (#2908's write gate). The autosave that calls this is debounced by 600ms, so a
+ * keystroke typed just before Log out lands AFTER the wipe — a half-typed record back on
+ * a logged-out device, which is exactly what the contract further down this file forbids.
+ *
+ * The token is captured here rather than by the caller, and that is honest about what
+ * does the work: by the time this runs the debounce has already elapsed, so the token is
+ * current and it is the gate's `sessionClosed` — set by logout, read inside this write's
+ * own transaction — that refuses it. The token still covers the ordering it cannot skip:
+ * a wipe landing between the capture and the transaction moves the generation, and the
+ * write is refused for that reason instead.
+ */
 export async function putDraft(draft: FormDraft): Promise<void> {
-  if (!hasIndexedDB()) return;
-  try {
-    const db = await openOfflineDb();
-    const s = store(db, "readwrite");
-    s.put(draft);
-    await txDone(s.transaction);
-    db.close();
-  } catch {
-    /* ignore — no draft net this keystroke; the form itself is unaffected */
-  }
+  const token = await captureWriteToken();
+  await guardedWrite([DRAFTS_STORE], "drafts", token, (tx) => {
+    tx.objectStore(DRAFTS_STORE).put(draft);
+  });
 }
 
 /**

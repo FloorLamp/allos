@@ -3,7 +3,10 @@
 import { useState } from "react";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
-import { clearSnapshots } from "@/lib/offline/snapshot-db";
+import {
+  disableSnapshotWrites,
+  enableSnapshotWrites,
+} from "@/lib/offline/snapshot-db";
 import { saveOfflineSnapshotsEnabled } from "@/app/(app)/settings/profile/actions";
 
 // The per-profile OFF switch for offline reads (#2908, owner decision 1).
@@ -30,12 +33,15 @@ export default function OfflineSnapshotsSettings({
     // Wipe first, then persist: if the action fails the device is still clean, which is
     // the safe direction to fail in.
     //
-    // Fire-and-forget is safe HERE only because `clearSnapshots` bumps the wipe
-    // generation SYNCHRONOUSLY, before it awaits anything (lib/offline/snapshot-db.ts).
-    // This page stays mounted across the toggle, so without that a snapshot refresh
-    // already in flight would land after the clear and re-materialize everything the
-    // switch just erased — breaking the acceptance criterion stated two comments up.
-    if (!next) void clearSnapshots();
+    // AND CLOSE THE LANE, which is the part a synchronous wipe cannot do. Turning the
+    // switch off starts a Server Action; until it lands, the server still answers
+    // `enabled: true`. A snapshot refresh starting anywhere in that window — a navigation
+    // is one of its own triggers — read the empty store, concluded every kind was
+    // missing, asked, and was told yes. Every payload came back. The close is persisted
+    // in the database beside the data (lib/offline/write-gate.ts), so it also holds
+    // across a reload and across a second tab, and it is what makes #2908's "nothing
+    // re-materializes until toggled back on" true rather than intended.
+    void (next ? enableSnapshotWrites() : disableSnapshotWrites());
     runSave(async () => {
       await saveOfflineSnapshotsEnabled(fd);
     });
