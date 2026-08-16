@@ -352,6 +352,13 @@ ${MIGRATION_LINES}
   script scoping itself to your diff, not a gate you missed. Report its output verbatim.
   Give that Bash call an explicit long timeout; if it cannot fit one tool call
   under contention, run the same gates individually in the same order.
+- A FAILURE IN CODE YOU DID NOT TOUCH IS CONTENTION UNTIL PROVEN OTHERWISE. Up to
+  five agents share four cores here, and measured load has reached 22 — a starved
+  tier fails in specs nobody edited and reads exactly like a regression. Before
+  reporting one, RE-RUN THAT FILE ALONE, and if it still fails build an
+  origin/main control worktree and show it failing there too. Report the
+  comparison, not the first red. Two agents were saved from a false regression
+  report this way on 2026-08-15 only because they thought of it themselves.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
