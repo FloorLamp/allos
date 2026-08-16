@@ -56,6 +56,18 @@ import NutrientsCard from "@/components/NutrientsCard";
 import ProteinAdequacyCard from "@/components/ProteinAdequacyCard";
 import FiberAdequacyCard from "@/components/FiberAdequacyCard";
 import NutritionSnapshot from "./NutritionSnapshot";
+import FastingCard from "./FastingCard";
+import {
+  getActiveFastCached,
+  getFastHistory,
+  getServingsDuringFast,
+} from "@/lib/queries/fasting";
+import { fastingAvailable } from "@/lib/fast-write";
+import {
+  fastAttributedDay,
+  fastElapsedMs,
+  formatFastDuration,
+} from "@/lib/fasting";
 import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
 
 // The Food tab of the Nutrition umbrella (#746): the food-group serving log (issue
@@ -184,6 +196,33 @@ export default async function FoodTab({
   }
 
   const date = today(profile.id);
+  // The fasting surface's whole gather (#2756), or null for a profile the adult-only
+  // ruling restricts — a restricted profile sees no fasting surface anywhere. The
+  // duration and day attribution are formatted HERE, on the server, from the pure
+  // derivations: the day a completed fast counts for is the day it ENDED (#94), and
+  // deriving it needs the profile timezone, which the client does not have.
+  const fastingTz = getTimezone(profile.id);
+  const fastingNow = clockNow();
+  const fasting = fastingAvailable(profile.id)
+    ? {
+        active: getActiveFastCached(profile.id),
+        nowMs: fastingNow.getTime(),
+        history: getFastHistory(profile.id)
+          .filter((f) => f.ended_at !== null)
+          .map((f) => {
+            const day = fastAttributedDay(f, fastingTz);
+            return {
+              fast: f,
+              day,
+              label: day
+                ? formatWeekdayDate(day, formatPrefs)
+                : "In progress",
+              duration: formatFastDuration(fastElapsedMs(f, fastingNow) ?? 0),
+              servingsDuring: getServingsDuringFast(profile.id, f),
+            };
+          }),
+      }
+    : null;
   // A deliberately bounded recent-meal picker: today plus the previous six days.
   // This is enough to recover a missed meal without turning the one-tap habit log into
   // an unrestricted historical editor. Each day's daily counters and meal-slot ledger
@@ -368,6 +407,20 @@ export default async function FoodTab({
             data-testid="food-log-shell"
             className="min-w-0"
           >
+            {/* Fasting (#2756) sits ABOVE the log bar because it is the same kind of
+                thing — an act, in the "Act" column — and because the state chip has to
+                be visible before the bar's taps start meeting "End your fast?".
+                Rendered only for a profile the write core would accept a START from:
+                hiding a surface is NOT the gate (lib/fast-write.ts refuses
+                independently, which is what makes the gate real against a direct POST),
+                it is simply not offering a control whose every tap would be refused. */}
+            {fasting && (
+              <FastingCard
+                active={fasting.active}
+                history={fasting.history}
+                nowMs={fasting.nowMs}
+              />
+            )}
             <FoodLogBar
               today={date}
               days={mealDays}

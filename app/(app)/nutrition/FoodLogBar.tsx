@@ -51,6 +51,7 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
+import { endFastAction } from "./fast-actions";
 import {
   deleteFoodLogEvent,
   logFoodServing,
@@ -294,6 +295,33 @@ export default function FoodLogBar({
   // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
+  // "End your fast?" (#2756). A FOLLOW-UP OFFER beside a log that has ALREADY landed —
+  // never a confirm-before-write, and the serving is on the counter whatever happens
+  // next. DECLINING IS DOING NOTHING: the toast times out on its own and the fast is
+  // untouched, because the app never auto-ends one. The TAP is the write, and it goes
+  // through the same end core the Nutrition control does — which re-derives the active
+  // fast under its own lock, so accepting after the fast was ended on another device
+  // reports "No fast is running" instead of confirming (#2756's prompt race).
+  //
+  // KEYED, so one landing produces one prompt: two quick taps replace the toast in
+  // place rather than stacking the same question twice.
+  const offerEndFast = (offered: true | undefined) => {
+    if (!offered) return;
+    toast("Serving logged. End your fast?", {
+      key: "end-fast-offer",
+      action: {
+        label: "End fast",
+        onClick: () => {
+          void endFastAction(new FormData()).then((r) => {
+            toast(r.ok ? r.message : r.error, {
+              key: "end-fast-offer",
+              ...(r.ok ? {} : { tone: "error" as const }),
+            });
+          });
+        },
+      },
+    });
+  };
   // The acting profile's timezone — the zone the correction sheet's day/time pair is
   // judged in, matching the server's own resolution of the submitted wall time.
   const tz = useTimezone();
@@ -859,6 +887,7 @@ export default function FoodLogBar({
               ...(outcome.limitNote.hold ? { duration: null } : {}),
             });
           }
+          offerEndFast(outcome.endFastOffer);
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.
           return {
@@ -992,6 +1021,9 @@ export default function FoodLogBar({
             )
           )}.`
         );
+        // ONE prompt for the whole bundle (#2756): the server answers a bundled write
+        // with a single flag, so a usual-tap that landed five servings asks once.
+        offerEndFast(result.endFastOffer);
         // Adopt the server's authoritative figures for every group it actually wrote —
         // which may be FEWER than the button named, if part of the offer expired.
         // Groups it did not write keep their pre-tap counts, so the display matches
