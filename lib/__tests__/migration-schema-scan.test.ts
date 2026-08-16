@@ -95,9 +95,15 @@ describe("migration corpus reader: name lifecycle", () => {
     ]);
     expect(finalTableName("a", renames)).toBe("c");
     expect(finalTableName("z", renames)).toBe("z");
-    expect(() => finalTableName("a", new Map([["a", "a2"], ["a2", "a"]]))).toThrow(
-      /cycle/
-    );
+    expect(() =>
+      finalTableName(
+        "a",
+        new Map([
+          ["a", "a2"],
+          ["a2", "a"],
+        ])
+      )
+    ).toThrow(/cycle/);
   });
 
   it("ignores an ALTER whose subject is a variable", () => {
