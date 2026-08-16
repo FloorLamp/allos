@@ -557,3 +557,44 @@ So the cap number was not the defect and lowering it would have been the wrong
 correction: five agents SPREAD OUT cost nothing unusual. The evidence points at
 pacing, which is what #2973 already warns about — it just understated why. The
 warning's own rationale now names both queues it protects.
+
+## A deleted requirement, mistaken for dead code (2026-08-16)
+
+The fasting lifecycle (#2756) listed editability as an acceptance criterion:
+_"beyond it, a completed fast's instants stay editable."_ `editFast` shipped in
+the first commit, with a comment that shows the author understood the
+distinction — _"editing a completed fast's interval is recording fasting
+content, not closing out."_
+
+No `editFastAction` was ever written. `git log -S'editFastAction'` across every
+ref returns nothing. So from day one there was a write core with no Server
+Action and no surface, reachable only from tests.
+
+The first adversarial pass found exactly that and filed **D6: `editFast` is
+unreachable (tests only), yet cited as evidence the asymmetry is bounded.** That
+was a correct and useful finding — the PR really was citing an uncallable
+function as proof its life-stage gate was bounded. The orchestrator relayed it
+under _Lower severity_, the author deleted the function, and **nobody checked
+the dead code against the issue's acceptance criteria before removing it.**
+
+Five rounds later the fifth adversarial pass found that an implausibly long
+recorded fast has no recovery path: reopen refuses, discard refuses, and there
+is no edit core. The reason there was no edit core is that the review had
+deleted it. The owner then ruled (#2993) to rebuild it — a core plus a surface,
+earning its own adversarial pass.
+
+So the loop was: the issue asked for it → it was half-built → review classified
+the half as debris → the absence was rediscovered as a defect → it was ordered
+rebuilt. Each step was locally defensible. The cost was five rounds and a
+rebuild.
+
+**The rule this bought** (`review-merge.md` §Review): a removal is checked
+against the issue's acceptance criteria before it is accepted. An unreachable
+export can be debris or an unfinished requirement, and the code cannot tell you
+which — only the issue can.
+
+Worth separating from the sibling question in the same PR: **delete** was never
+fasting-specific. The app's generic delete is Data → Manage, per registered
+dataset, and fasting only reached it in #2981 as a side effect of the
+`OWNED_TABLES` right-to-delete fix. That was a registration gap. Editability was
+a scoped requirement — different failure, different fix.

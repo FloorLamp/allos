@@ -93,7 +93,10 @@ export default function ActivityRecord({
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-end gap-3">
+      {/* h-9 matches the feed's first day-heading band, so in the reading pane
+          (whose host suppresses its spacer) this row occupies the heading's
+          slot and the card top aligns with the selected row's top. */}
+      <div className="mb-2 flex h-9 items-center justify-end gap-3">
         {host === "pane" && (
           // The pane's door to the record's own page (#2983). It carries an
           // icon, so the spinner takes the icon's box: nothing shifts, and the
