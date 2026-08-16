@@ -182,13 +182,13 @@ const IMMUNIZATION_NEED_ICD10 = /^Z23(?:[.a-z0-9]*)?$/i;
 // unrelated condition, which is the exact harm this issue is about). Each pattern is
 // anchored or unambiguous enough that no chapter-O complication can match it:
 //   "Normal pregnancy in first trimester"        → ^normal pregnancy
-//   "Primigravida in second trimester"           → \bgravida\b
+//   "Primigravida in second trimester"           → gravida\b (primi-/multi-/nulli-)
 //   "28 weeks gestation of pregnancy"            → \b<n> weeks gestation\b
 //   "Postpartum care and examination"            → \bpostpartum care\b
 //   "Need for Tdap vaccination"                  → ^need for
 // "Encounter for…"/"Encounter of…" is already handled by isBirthEventOrEpisodic.
 const PREGNANCY_ADMIN_NAME =
-  /^normal pregnancy\b|\bgravida\b|\b\d+\s*weeks?\s+gestation\b|\bsupervision of (?:normal |low risk |high risk )?pregnancy\b|\bpostpartum care\b|^need for\b/;
+  /^normal pregnancy\b|gravida\b|\b\d+\s*weeks?\s+gestation\b|\bsupervision of (?:normal |low risk |high risk )?pregnancy\b|\bpostpartum care\b|^need for\b/;
 
 // Whether a condition is a pregnancy-STATE or administrative encounter/need entry
 // that should never sit on the problem list as permanently active. Like every other

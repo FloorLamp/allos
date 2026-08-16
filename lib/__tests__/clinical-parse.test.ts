@@ -9,6 +9,7 @@ import {
   allergyExternalId,
   conditionExternalId,
   isBirthEventOrEpisodic,
+  isPregnancyStateOrAdministrative,
   isSelfLimitedCondition,
   decideImportedConditionStatus,
 } from "../clinical-parse";
@@ -324,5 +325,157 @@ describe("decideImportedConditionStatus", () => {
       now,
     });
     expect(out.status).toBe("active");
+  });
+});
+
+// ---- #2917: pregnancy-state + administrative encounter codes ----
+//
+// Three overlapping portal exports left one postpartum person with "Normal pregnancy
+// in first trimester", "…second trimester", "…third trimester" AND the matching
+// Primigravida findings all simultaneously active, plus "Postpartum care and
+// examination", "Need for Tdap vaccination", and an "Encounter of female for
+// testing…" row. #590's own slice (b) named this family; it was never picked up.
+
+describe("isPregnancyStateOrAdministrative", () => {
+  it("matches the pregnancy-supervision and gestation code families", () => {
+    for (const code of ["Z34.01", "Z34.93", "Z3A.28", "Z39.2", "Z31.5"]) {
+      expect(
+        isPregnancyStateOrAdministrative({ name: "Coded row", code }),
+        code
+      ).toBe(true);
+    }
+    expect(
+      isPregnancyStateOrAdministrative({ name: "Immunization", code: "Z23" })
+    ).toBe(true);
+  });
+
+  it("matches the narrative twins the SNOMED-coded rows arrive with", () => {
+    for (const name of [
+      "Normal pregnancy in first trimester",
+      "Primigravida in third trimester",
+      "Multigravida in second trimester",
+      "28 weeks gestation of pregnancy",
+      "Postpartum care and examination",
+      "Need for Tdap vaccination",
+      "Supervision of normal pregnancy",
+    ]) {
+      expect(isPregnancyStateOrAdministrative({ name, code: null }), name).toBe(
+        true
+      );
+    }
+  });
+
+  it("never matches a pregnancy COMPLICATION — those are real conditions", () => {
+    for (const [name, code] of [
+      ["Gestational diabetes mellitus", "O24.419"],
+      ["Gestational hypertension", "O13.1"],
+      ["Pre-eclampsia", "O14.90"],
+      ["Postpartum depression", "F53.0"],
+      ["Anemia complicating pregnancy", "O99.011"],
+    ] as const) {
+      expect(isPregnancyStateOrAdministrative({ name, code }), name).toBe(
+        false
+      );
+    }
+  });
+
+  it("never matches an ordinary standing problem", () => {
+    for (const [name, code] of [
+      ["Essential hypertension", "I10"],
+      ["Type 2 diabetes mellitus", "E11.9"],
+      ["Asthma", "J45.909"],
+    ] as const) {
+      expect(isPregnancyStateOrAdministrative({ name, code }), name).toBe(
+        false
+      );
+    }
+  });
+});
+
+describe("decideImportedConditionStatus — pregnancy/administrative family (#2917)", () => {
+  const now = new Date("2026-08-15T00:00:00Z");
+
+  it("imports a pregnancy-state row resolved, with no horizon to wait out", () => {
+    const out = decideImportedConditionStatus({
+      name: "Normal pregnancy in first trimester",
+      code: "Z34.01",
+      status: "active",
+      onsetDate: "2026-08-01",
+      resolvedDate: null,
+      explicitStatus: false,
+      now,
+    });
+    expect(out.status).toBe("resolved");
+    // Downgrade only — the onset the document stated is left exactly as it was.
+    expect(out.onset_date).toBe("2026-08-01");
+  });
+
+  it("imports the administrative encounter/need rows resolved", () => {
+    for (const [name, code] of [
+      ["Postpartum care and examination", "Z39.2"],
+      ["Need for Tdap vaccination", "Z23"],
+      [
+        "Encounter of female for testing for genetic disease carrier status",
+        "Z31.430",
+      ],
+    ] as const) {
+      const out = decideImportedConditionStatus({
+        name,
+        code,
+        status: "active",
+        onsetDate: null,
+        resolvedDate: null,
+        explicitStatus: false,
+        now,
+      });
+      expect(out.status, name).toBe("resolved");
+    }
+  });
+
+  it("leaves an EXPLICIT clinical-status observation authoritative", () => {
+    // A genuinely current pregnancy that the source took a position on is not this
+    // code path's news to break.
+    const out = decideImportedConditionStatus({
+      name: "Normal pregnancy in first trimester",
+      code: "Z34.01",
+      status: "active",
+      onsetDate: "2026-08-01",
+      resolvedDate: null,
+      explicitStatus: true,
+      now,
+    });
+    expect(out.status).toBe("active");
+  });
+
+  it("leaves essential hypertension and friends active", () => {
+    for (const [name, code] of [
+      ["Essential hypertension", "I10"],
+      ["Gestational diabetes mellitus", "O24.419"],
+    ] as const) {
+      const out = decideImportedConditionStatus({
+        name,
+        code,
+        status: "active",
+        onsetDate: "2026-08-01",
+        resolvedDate: null,
+        explicitStatus: false,
+        now,
+      });
+      expect(out.status, name).toBe("active");
+    }
+  });
+});
+
+describe("isBirthEventOrEpisodic — the 'Encounter of' preposition (#2917)", () => {
+  it("reads both prepositions Epic writes", () => {
+    expect(
+      isBirthEventOrEpisodic({ name: "Encounter for immunization", code: null })
+    ).toBe(true);
+    expect(
+      isBirthEventOrEpisodic({
+        name: "Encounter of female for testing for genetic disease carrier status",
+        code: null,
+      })
+    ).toBe(true);
   });
 });
