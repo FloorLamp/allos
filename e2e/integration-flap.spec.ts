@@ -269,11 +269,10 @@ test("the grid pitches what you don't own and reports on what you do, attention 
     );
   expect(states.length).toBeGreaterThanOrEqual(2);
   // Every attention card precedes every plain connected card.
+  expect(states).toEqual(expect.arrayContaining(["attention", "connected"]));
   const lastAttention = states.lastIndexOf("attention");
   const firstConnected = states.indexOf("connected");
-  if (lastAttention !== -1 && firstConnected !== -1) {
-    expect(lastAttention).toBeLessThan(firstConnected);
-  }
+  expect(lastAttention).toBeLessThan(firstConnected);
 
   // An unconnected source keeps the pitch: blurb, a few chips, Set up →. Health
   // Connect is never set up on profile 1.

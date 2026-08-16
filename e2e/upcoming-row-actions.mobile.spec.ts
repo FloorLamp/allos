@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { settledBoxes } from "./helpers";
 // Upcoming row composition at phone width (issue #1446, mobile project #1420).
 //
 // At 390px the per-item control row (status + CTA + "Book" + "Mark done" + "⋯")
@@ -52,25 +53,21 @@ test("each row keeps one overflow trigger, folds its secondary chips, and fits t
 
     // (5) The row never pushes past the viewport (the shell clips overflow-x,
     // which is how controls silently disappeared rather than wrapped).
-    const rowBox = await row.boundingBox();
-    if (rowBox) {
-      expect(
-        rowBox.x + rowBox.width,
-        `row ${testId} should not overflow the ${viewportWidth}px viewport`
-      ).toBeLessThanOrEqual(viewportWidth + 1);
-    }
+    const [rowBox] = await settledBoxes([row]);
+    expect(
+      rowBox.x + rowBox.width,
+      `row ${testId} should not overflow the ${viewportWidth}px viewport`
+    ).toBeLessThanOrEqual(viewportWidth + 1);
 
     // (4) The trailing control line stays a single line. An orphaned "⋯" means
     // the controls wrapped, which doubles this box's height.
     const actionLine = row.getByTestId("upcoming-row-actions");
     if ((await actionLine.count()) === 1) {
-      const box = await actionLine.boundingBox();
-      if (box) {
-        expect(
-          box.height,
-          `row ${testId} trailing controls should occupy one line`
-        ).toBeLessThanOrEqual(ONE_LINE_MAX_HEIGHT);
-      }
+      const [box] = await settledBoxes([actionLine]);
+      expect(
+        box.height,
+        `row ${testId} trailing controls should occupy one line`
+      ).toBeLessThanOrEqual(ONE_LINE_MAX_HEIGHT);
     }
   }
 

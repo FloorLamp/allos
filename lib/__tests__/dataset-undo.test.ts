@@ -12,7 +12,6 @@ describe("dataset table → undo kind mapping", () => {
   it("each mapped kind is rooted at exactly the table it is keyed by", () => {
     for (const [table, kind] of Object.entries(DATASET_UNDO_KIND)) {
       const spec = UNDO_KINDS[kind];
-      expect(spec, `kind for ${table}`).toBeDefined();
       expect(spec.ownedTable, `root of ${kind}`).toBe(table);
       // The root entity's table is the owned table the capture ownership-checks.
       expect(spec.entities[0].table).toBe(spec.ownedTable);

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { followLink } from "./nav";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import { dismissToast, expectNoClippedContent, settledClick } from "./helpers";
 import {
   ensureUnlogged,
   addFromPicker,
@@ -342,12 +342,17 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(historicalSymptom).toContainText(
       "Peaked in the evening — corrected"
     );
+    // EpisodeTimeline toasts each save into the bottom-right stack, and this ledger
+    // is long enough that the ⋯ trigger re-opened next sits in the same quadrant —
+    // so the toast intercepts the re-open for its whole 6s window (#2861).
+    await dismissToast(page, "Symptom updated.");
     await historicalSymptom.getByTestId("overflow-menu-trigger").click();
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     symptomEditor = page.getByTestId("illness-event-editor");
     await symptomEditor.getByLabel("Note").fill("Peaked in the evening");
     await symptomEditor.getByRole("button", { name: "Save" }).click();
     await expect(historicalSymptom).toContainText("Peaked in the evening");
+    await dismissToast(page, "Symptom updated.");
 
     // Historical readings and doses have a real correction path from the ledger.
     const tempRow = page.getByTestId("illness-event-temperature").first(); // first-ok: a temperature event row (has a correction path) — order-agnostic

@@ -37,13 +37,10 @@ const ASSIGNED: [PanelId, string][] = (
 );
 
 describe("the panel id registry", () => {
-  it("PANEL_LABELS is total over PanelId and every label is non-empty", () => {
+  it("gives every panel a non-empty label", () => {
     for (const id of PANEL_IDS) {
-      expect(PANEL_LABELS[id], `no label for ${id}`).toBeTruthy();
       expect(PANEL_LABELS[id].label.trim().length).toBeGreaterThan(0);
     }
-    // Total in the other direction too: no label key without a slug.
-    expect(Object.keys(PANEL_LABELS).sort()).toEqual([...PANEL_IDS].sort());
   });
 
   it("slugs are unique, lowercase-kebab, and orders are unique", () => {

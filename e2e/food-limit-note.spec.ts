@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { dismissToast, settledClick } from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { shiftDateStr } from "@/lib/date";
@@ -142,8 +142,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
 
     // The gate that makes this tolerable on a one-tap bar: at most one note per group
     // per day. The second tap logs and says nothing.
-    await toast.getByRole("button", { name: "Dismiss" }).click();
-    await expect(toast).toHaveCount(0);
+    await dismissToast(page, "foods to limit");
     // The reload is load-bearing twice over. It clears the #2007 post-success cooldown,
     // without which a second tap of the SAME write key is absorbed as an accidental
     // double and never reaches the server at all; and it proves the once-a-day gate is

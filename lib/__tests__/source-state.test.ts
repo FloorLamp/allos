@@ -11,7 +11,6 @@ import {
   isScheduledKind,
   type IntegrationDelivery,
 } from "@/lib/integrations/delivery";
-import { INTEGRATIONS } from "@/lib/integrations/registry";
 import {
   consecutiveLeadingFailures,
   escalationPolicyLabel,
@@ -87,12 +86,6 @@ const ALL_KINDS = Object.keys(KIND_DELIVERY) as IntegrationKind[];
 // The `Record<IntegrationKind, IntegrationDelivery>` makes coverage a COMPILE-time
 // fact; these are the behavioural half.
 describe("KIND_DELIVERY — who moves the data", () => {
-  it("resolves a delivery for every registered provider", () => {
-    for (const def of INTEGRATIONS) {
-      expect(KIND_DELIVERY[def.kind], def.id).toBeDefined();
-    }
-  });
-
   it("classifies the scheduled family exactly as the retired RECURRING_SOURCE_KINDS did", () => {
     // THE REGRESSION PIN for the refactor: `RECURRING_SOURCE_KINDS` was a hand-written
     // `Set<string>` of these four members, and it decided which sources reach Data →

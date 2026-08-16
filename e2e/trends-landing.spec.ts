@@ -47,15 +47,11 @@ test("the landing surface reads digest → starred grid → body census", async 
     parts,
     "the landing surface's anchored parts, in reading order"
   ).toEqual(["trends-section-starred", "trends-section-body"]);
-  expect(parts[parts.length - 1], "the census reads last").toBe(
-    "trends-section-body"
-  );
   // The digest renders only when something moved, so it is asserted positionally
   // rather than for presence: when it is there, it heads the surface.
   const digest = order.indexOf("trending-digest");
   if (digest !== -1) {
     expect(digest, "the digest heads the surface when it renders").toBe(0);
-    expect(digest).toBeLessThan(order.indexOf("trends-section-starred"));
   }
 
   // Both halves really render: the curated grid, and the census's own content.

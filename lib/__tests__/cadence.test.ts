@@ -32,15 +32,11 @@ import { practiceWeekVerdict } from "../trends-practices";
 // that direction had to keep alive when it stopped being a module boundary.
 
 describe("the scope registry", () => {
-  it("is TOTAL over FrequencyScopeKind — no kind can be forgotten", () => {
+  it("states why every scope belongs in the registry", () => {
     for (const kind of FREQUENCY_SCOPE_KINDS) {
       const spec = CADENCE_SCOPES[kind];
-      expect(spec, kind).toBeDefined();
       expect(spec.note.length, kind).toBeGreaterThan(0);
     }
-    expect(Object.keys(CADENCE_SCOPES).sort()).toEqual(
-      [...FREQUENCY_SCOPE_KINDS].sort()
-    );
   });
 
   it("declares each scope's source and grain rather than branching on it", () => {

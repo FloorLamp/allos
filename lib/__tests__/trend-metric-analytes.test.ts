@@ -60,10 +60,9 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
   // a calorimetry BMR on NO surface. Reachability is a different question from chart
   // existence, and this suite is what keeps the two from being confused again.
 
-  it("every slug declares, and every refusal states a reason", () => {
+  it("every refusal states a reason", () => {
     for (const slug of TREND_METRIC_SLUGS) {
       const reach = METRIC_DOCUMENT_REACH[slug];
-      expect(reach, `${slug} must declare document reachability`).toBeDefined();
       if (reach.reaches === false)
         expect(reach.reason.length, `${slug} must say WHY not`).toBeGreaterThan(
           30
