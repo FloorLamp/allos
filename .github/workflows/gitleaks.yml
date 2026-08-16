@@ -1,11 +1,30 @@
 name: gitleaks
 
-# Secret scanning for the repo's full git history. Runs on every PR, on pushes
-# to non-main branches (deploy.yml handles main), and on merge-queue validation
-# commits — a required check must report on the merge_group event or the queue
-# stalls forever waiting for it. Fails the job if any secret is detected.
-# Self-contained: it downloads the gitleaks binary and runs it directly, so it
-# needs no marketplace action and no license key.
+# Secret scanning. Runs on every PR, on pushes to non-main branches (deploy.yml
+# handles main), and on merge-queue validation commits — a required check must
+# report on the merge_group event or the queue stalls forever waiting for it.
+# Fails the job if any secret is detected. Self-contained: it downloads the
+# gitleaks binary and runs it directly, so it needs no marketplace action and no
+# license key.
+#
+# WHAT EACH TRIGGER SCANS, and it is not the same thing (#2969, ruled
+# 2026-08-16). The PR and merge-queue checks scan the PR RANGE — the commits
+# this branch adds on top of its base. The `push` trigger keeps `--all`, which
+# is every ref in the checkout, so a branch's own history is still fully audited
+# the moment it is pushed.
+#
+# Why: `--all` on the PR check made one branch's credential-shaped fixture red
+# `gitleaks` on EVERY open PR, naming a file those PRs never touched, and the
+# prescribed remedy was cross-cluster coordination in the middle of a merge
+# queue. That was paid for live on 2026-08-16. The marginal detection it bought
+# was a re-audit of history nobody had touched, because the push trigger already
+# catches a branch's own secrets.
+#
+# ACCEPTED COST, recorded so nobody re-derives it as a bug: the continuous
+# whole-repo re-audit (~30x/day) drops to per-push-per-branch. A secret
+# committed long ago and never re-pushed is caught only by whatever periodic
+# scan exists. If that gap matters the answer is a SCHEDULED `--all` scan —
+# a separate decision nobody has taken — not restoring `--all` here.
 on:
   pull_request:
   merge_group:
@@ -19,7 +38,10 @@ jobs:
   gitleaks:
     runs-on: ubuntu-latest
     steps:
-      # Full history so the scan covers every commit, not just the tip.
+      # Full history, still. The push scan reads every ref; the PR scan needs the
+      # base commit to resolve a range at all; and the explainer answers "is this
+      # already in base, and which ref carries it" with `merge-base` and
+      # `for-each-ref`, neither of which works on a shallow clone.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -85,28 +107,37 @@ jobs:
           sudo install /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
-      # `--all` means EVERY REF PUSHED TO THIS REPOSITORY, not "this branch"
-      # (#2949). Combined with `fetch-depth: 0` above — which fetches every remote
-      # branch into refs/remotes/origin/* — one branch that commits a
-      # credential-shaped test fixture fails this check on every open PR, naming a
-      # file those PRs never touched and whose contents they do not even contain.
-      # Measured, not assumed: an unreachable commit on `origin/other-branch` is
-      # reported here with that commit's SHA while HEAD's tree has no such file.
-      # (docs/orchestration-incidents.md said the blast radius was one branch. It
-      # is not, and has not been since the scan moved to `--all`.)
+      # THE RANGE IS THE POLICY (#2949, #2967, ruled in #2969).
       #
-      # The posture is right and stays: a secret committed anywhere in this
-      # repository's history should be found. What was wrong is the ERROR MESSAGE,
-      # which said a PR introduced a credential into a file it never opened.
+      # `--all` means EVERY REF IN THE CHECKOUT, not "this branch". Combined with
+      # `fetch-depth: 0` above — which fetches every remote branch into
+      # refs/remotes/origin/* — one branch that commits a credential-shaped test
+      # fixture failed this check on every open PR, naming a file those PRs never
+      # touched and whose contents they do not even contain. Measured, not
+      # assumed: an unreachable commit on `origin/other-branch` was reported with
+      # that commit's SHA while HEAD's tree had no such file.
       #
-      # So the scan now also writes its JSON report, and the explainer says where
-      # each finding actually came from: gitleaks records the COMMIT that
-      # introduced every finding, `git merge-base --is-ancestor` turns that into
-      # "on this branch / not on this branch", and `git for-each-ref --contains`
+      # So the range now depends on the event:
+      #   pull_request / merge_group → `<base>..HEAD`, this branch's own commits.
+      #   push (non-main branches)   → `--all`, unchanged.
+      # The push scan is what keeps a branch's own history audited; the PR scan
+      # stops one branch's fixture from redding everyone else's check.
+      #
+      # FAIL CLOSED, NEVER SILENTLY NARROW. If the base cannot be resolved — a
+      # missing base sha, a force-pushed base, a fetch that did not bring it — the
+      # scan falls back to `--all` and says so. A scanner that quietly scans less
+      # than it claims is the failure this whole family of fixes exists to
+      # prevent; a noisy over-scan is recoverable, an unnoticed under-scan is not.
+      #
+      # The explainer stays exactly as #2967 built it: gitleaks records the COMMIT
+      # that introduced every finding, `git merge-base --is-ancestor` turns that
+      # into "on this branch / already in base", and `git for-each-ref --contains`
       # names the ref that carries it. It also states the recovery step that is
       # not guessable — the scan reads COMMITS, not tips, so a follow-up deletion
       # commit does not clear it; only an amend, a rebase, or deleting the branch
-      # does.
+      # does. Narrowing the range makes the "from another ref" case rarer on a PR;
+      # it does not make it impossible, because the fallback and the push scan
+      # both still read every ref.
       #
       # `--redact` is what makes the report safe to read back: Secret and Match
       # come through as REDACTED, so nothing here can print secret material into a
@@ -114,14 +145,37 @@ jobs:
       #
       # The explainer cannot change the verdict in either direction: the job exits
       # with gitleaks' own status, and the explainer's own failure is swallowed.
-      - name: Scan full history
+      - name: Scan
         env:
           GITLEAKS_BASE_REF: origin/${{ github.event.pull_request.base.ref || 'main' }}
+          GITLEAKS_EVENT: ${{ github.event_name }}
+          GITLEAKS_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           set -uo pipefail
           report="$RUNNER_TEMP/gitleaks-report.json"
+
+          # `--all` for a push; the PR range for everything else, with the base
+          # sha preferred over the base ref because the ref moves under a
+          # long-lived PR and the sha is the base this PR was actually built on.
+          log_opts="--all"
+          if [ "$GITLEAKS_EVENT" != "push" ]; then
+            base=""
+            for cand in "$GITLEAKS_BASE_SHA" "$GITLEAKS_BASE_REF"; do
+              if [ -n "$cand" ] && git rev-parse --verify --quiet "${cand}^{commit}" >/dev/null; then
+                base="$cand"
+                break
+              fi
+            done
+            if [ -n "$base" ]; then
+              log_opts="${base}..HEAD"
+            else
+              echo "::warning title=gitleaks scanned every ref::Could not resolve the base commit for this ${GITLEAKS_EVENT}, so the scan fell back to --all. A finding may come from another branch; the explainer below says which."
+            fi
+          fi
+          echo "gitleaks range: --log-opts=\"${log_opts}\" (event: ${GITLEAKS_EVENT})"
+
           set +e
-          gitleaks git --log-opts="--all" --redact -v \
+          gitleaks git --log-opts="$log_opts" --redact -v \
             --report-format json --report-path "$report" .
           status=$?
           set -e

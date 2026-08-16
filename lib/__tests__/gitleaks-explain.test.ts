@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   annotationFor,
@@ -14,13 +16,17 @@ import {
 // Guard for the gitleaks failure explainer (#2949), in the repo's source-scan
 // idiom — filesystem only, no DB, no network.
 //
-// The defect it fixes is a MESSAGE, not a scan: `--log-opts="--all"` over a
-// full-history checkout reads every ref pushed to the repository, so one
-// branch's credential-shaped fixture reds `gitleaks` on every open PR and names
-// a file the PR never touched. The explainer's whole job is to say which ref the
-// finding came from and that a deletion commit will not clear it. If either
-// sentence goes missing the check is back to being unreadable, which is exactly
-// the state nothing else would notice.
+// The defect it fixes is a MESSAGE, not a scan: a full-history `--all` scan
+// reads every ref pushed to the repository, so one branch's credential-shaped
+// fixture reds `gitleaks` on every open PR and names a file the PR never
+// touched. The explainer's whole job is to say which ref the finding came from
+// and that a deletion commit will not clear it. If either sentence goes missing
+// the check is back to being unreadable, which is exactly the state nothing else
+// would notice.
+//
+// #2969 then narrowed the PR scan to the PR range and kept `--all` on push, so
+// the SCAN RANGE is now a policy with two halves — and the second describe below
+// executes the workflow's own range logic rather than reading its comments.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(here, "..", "..");
@@ -184,7 +190,7 @@ describe("the gitleaks workflow wires the explainer in", () => {
   it("keeps --redact on the scan, which is what makes the report safe to print", () => {
     // The explainer reads the report back and prints file/line/commit into a
     // PUBLIC log. --redact is the only reason no secret material rides along.
-    expect(workflow).toMatch(/gitleaks git --log-opts="--all" --redact/);
+    expect(workflow).toMatch(/gitleaks git --log-opts="\$log_opts" --redact/);
   });
 
   it("still exits with gitleaks' own status, so explaining cannot become passing", () => {
@@ -194,5 +200,124 @@ describe("the gitleaks workflow wires the explainer in", () => {
 
   it("gives the explainer a base ref, without which every merge-commit finding reads as new", () => {
     expect(workflow).toContain("GITLEAKS_BASE_REF:");
+  });
+});
+
+// The scan RANGE, executed rather than read (#2969, ruled 2026-08-16).
+//
+// The ruling has two halves and each is load-bearing on its own: the PR check
+// scans this branch's commits, so one branch's credential-shaped fixture cannot
+// red every open PR; and `push` keeps `--all`, which is the only thing still
+// auditing a branch's whole history. A change that quietly dropped either half
+// would leave a green check that scans less than the workflow says it does —
+// the failure mode nothing else here can see.
+//
+// So the workflow's own shell is lifted out and run against a throwaway git
+// repo. A restatement of the logic could not catch it drifting; this can.
+describe("the gitleaks scan range (#2969)", () => {
+  const workflow = fs.readFileSync(
+    path.join(repoRoot, ".github", "workflows", "gitleaks.yml"),
+    "utf8"
+  );
+
+  // The snippet between the two markers is the range decision and nothing else:
+  // no gitleaks binary, no network, no $RUNNER_TEMP.
+  const START = 'log_opts="--all"';
+  const END = 'echo "gitleaks range:';
+  const start = workflow.indexOf(START);
+  const end = workflow.indexOf(END);
+  const snippet = workflow
+    .slice(start, end)
+    .split("\n")
+    .map((l) => l.replace(/^ {10}/, ""))
+    .join("\n");
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gitleaks-range-"));
+  const sh = (args: string[]) =>
+    spawnSync("git", args, { cwd: tmp, encoding: "utf8" });
+  sh(["init", "-q", "-b", "main"]);
+  sh(["config", "user.email", "t@example.com"]);
+  sh(["config", "user.name", "Test"]);
+  fs.writeFileSync(path.join(tmp, "a.txt"), "base\n");
+  sh(["add", "-A"]);
+  sh(["commit", "-qm", "base"]);
+  const baseSha = sh(["rev-parse", "HEAD"]).stdout.trim();
+  fs.writeFileSync(path.join(tmp, "a.txt"), "head\n");
+  sh(["commit", "-qam", "head"]);
+
+  function rangeFor(env: Record<string, string>) {
+    const r = spawnSync(
+      "bash",
+      ["-c", `set -uo pipefail\n${snippet}\necho "RANGE=$log_opts"`],
+      {
+        cwd: tmp,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITLEAKS_EVENT: "",
+          GITLEAKS_BASE_SHA: "",
+          GITLEAKS_BASE_REF: "",
+          ...env,
+        },
+      }
+    );
+    return { range: /RANGE=(.*)/.exec(r.stdout)?.[1] ?? "", out: r.stdout };
+  }
+
+  it("lifted a range decision out of the workflow at all", () => {
+    // If the markers stop matching, every assertion below would pass vacuously.
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(snippet).toContain("GITLEAKS_EVENT");
+  });
+
+  it("scans the PR RANGE on a pull request, not every ref", () => {
+    const { range } = rangeFor({
+      GITLEAKS_EVENT: "pull_request",
+      GITLEAKS_BASE_SHA: baseSha,
+      GITLEAKS_BASE_REF: "origin/main",
+    });
+    expect(range).toBe(`${baseSha}..HEAD`);
+    expect(range).not.toContain("--all");
+  });
+
+  it("scans the range on a merge_group commit too — the queue validates a branch", () => {
+    const { range } = rangeFor({
+      GITLEAKS_EVENT: "merge_group",
+      GITLEAKS_BASE_SHA: baseSha,
+      GITLEAKS_BASE_REF: "origin/main",
+    });
+    expect(range).toBe(`${baseSha}..HEAD`);
+  });
+
+  it("KEEPS --all on push, which is what still audits a branch's own history", () => {
+    const { range } = rangeFor({
+      GITLEAKS_EVENT: "push",
+      GITLEAKS_BASE_SHA: baseSha,
+      GITLEAKS_BASE_REF: "origin/main",
+    });
+    expect(range).toBe("--all");
+  });
+
+  it("falls back to the base REF when the base sha is missing", () => {
+    const { range } = rangeFor({
+      GITLEAKS_EVENT: "pull_request",
+      GITLEAKS_BASE_SHA: "",
+      GITLEAKS_BASE_REF: baseSha, // stands in for a resolvable ref
+    });
+    expect(range).toBe(`${baseSha}..HEAD`);
+  });
+
+  it("fails CLOSED to --all when no base resolves, and says so out loud", () => {
+    // Under-scanning is the mistake nobody notices. An unresolvable base means
+    // scan everything and warn, never scan less than advertised.
+    const { range, out } = rangeFor({
+      GITLEAKS_EVENT: "pull_request",
+      GITLEAKS_BASE_SHA: "0000000000000000000000000000000000000000",
+      GITLEAKS_BASE_REF: "origin/no-such-branch",
+    });
+    expect(range).toBe("--all");
+    expect(out).toContain("::warning");
+    expect(out).toContain("fell back to --all");
   });
 });

@@ -55,9 +55,10 @@ describe("redactSecrets", () => {
 //
 // The credential-shaped ones are ASSEMBLED AT RUNTIME rather than written out.
 // A committed vendor-prefixed key or a literal three-segment JWT is what the
-// scan exists to catch, and it reads git history across every ref — so a
-// fixture that matches fails gitleaks on every other open PR too, and deleting
-// it later does not help. The value under test is byte-identical either way.
+// scan exists to catch, it reads COMMITS rather than tips — so deleting the
+// fixture later does not help — and the `push` scan still reads every ref, so
+// the red follows the branch around (#2969 narrowed only the PR check). The
+// value under test is byte-identical either way.
 const b64 = (s: string) => Buffer.from(s).toString("base64");
 const b64url = (s: string) => Buffer.from(s).toString("base64url");
 const B64_BASIC = b64("Abcd1234Abcd1234");
