@@ -13,6 +13,7 @@ import {
 import {
   CONDITION_REPRESENTATIVE_IDS,
   ALLERGY_REPRESENTATIVE_IDS,
+  IMAGING_REPRESENTATIVE_IDS,
 } from "./queries/clinical";
 import { restrictedActivityTypeClause, isTrainingRestricted } from "./age-gate";
 import {
@@ -859,6 +860,9 @@ function collectEvents(
   // Study rows carry a document_id but are a distinct entity from the uploaded
   // document event; the impression is the detail. Loose-bounded on study_date with a
   // created_at fallback so an undated study still lands somewhere sensible.
+  // De-duplicated across documents via IMAGING_REPRESENTATIVE_IDS (#2919) — the same
+  // collapse the imaging list and Search read, so three overlapping portal exports
+  // don't stack the same study three times (its profile_id bind comes second).
   const imagingBounds = loose(
     "COALESCE(study_date, substr(created_at, 1, 10))"
   );
@@ -867,11 +871,12 @@ function collectEvents(
       `SELECT id, modality, body_region, laterality, contrast, study_date,
               impression, indication, created_at
          FROM imaging_studies
-        WHERE profile_id = ?${imagingBounds.clause}
+        WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
+              ${imagingBounds.clause}
         ORDER BY COALESCE(study_date, substr(created_at, 1, 10)) DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, ...imagingBounds.params, perTableLimit) as {
+    .all(profileId, profileId, ...imagingBounds.params, perTableLimit) as {
     id: number;
     modality: ImagingModality;
     body_region: string | null;

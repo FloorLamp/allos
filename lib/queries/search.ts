@@ -25,6 +25,8 @@ import {
   PROCEDURE_REPRESENTATIVE_IDS,
   FAMILY_HISTORY_REPRESENTATIVE_IDS,
   ALLERGY_REPRESENTATIVE_IDS,
+  IMAGING_REPRESENTATIVE_IDS,
+  CARE_PLAN_REPRESENTATIVE_IDS,
 } from "./clinical";
 import {
   clinicalResultDetailHref,
@@ -567,12 +569,12 @@ function carePlanHits(profileId: number, like: string): SearchHit[] {
     .prepare(
       `SELECT id, description, category, status, planned_date
          FROM care_plan_items
-        WHERE profile_id = ?
+        WHERE profile_id = ? AND id IN (${CARE_PLAN_REPRESENTATIVE_IDS})
           AND (description LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
         ORDER BY COALESCE(planned_date, created_at) DESC
         LIMIT ?`
     )
-    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    .all(profileId, profileId, like, like, CANDIDATE_LIMIT) as {
     id: number;
     description: string;
     category: string | null;
@@ -700,7 +702,7 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
     .prepare(
       `SELECT id, modality, body_region, laterality, study_date, impression, indication
          FROM imaging_studies
-        WHERE profile_id = ?
+        WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
           AND (modality LIKE ? ESCAPE '\\'
                OR body_region LIKE ? ESCAPE '\\'
                OR impression LIKE ? ESCAPE '\\'
@@ -709,7 +711,16 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
         ORDER BY COALESCE(study_date, '') DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, like, like, like, like, like, CANDIDATE_LIMIT) as Pick<
+    .all(
+    profileId,
+    profileId,
+    like,
+    like,
+    like,
+    like,
+    like,
+    CANDIDATE_LIMIT
+  ) as Pick<
     ImagingStudy,
     | "id"
     | "modality"

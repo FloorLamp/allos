@@ -1,12 +1,22 @@
 // Set-based cross-profile flat-list readers (#1328 — the Tier-1 multi-view fan-out).
 //
 // The FIRST registered cross-profile SQL module (lib/cross-profile.ts): the Tier-1
-// lists whose per-profile reader is TRULY FLAT — no representative-id dedup CTE, no
-// per-profile `today()`/age derivation — read the whole view-set in ONE query with a
-// bound `profile_id IN (…)` tuple instead of looping the per-profile reader. Health
-// goals (care_goals), Genomics (genomic_variants), and Imaging (imaging_studies) are
-// each a durable dated fact read straight from the table, so a set-based read is exact
-// and cannot mis-collapse rows across members.
+// lists with no per-profile `today()`/age derivation read the whole view-set in ONE
+// query with a bound `profile_id IN (…)` tuple instead of looping the per-profile
+// reader. Health goals (care_goals) and Genomics (genomic_variants) are durable dated
+// facts read straight from the table.
+//
+// Imaging (imaging_studies) is NOT one of them, and the header used to say it was —
+// "a durable dated fact read straight from the table, so a set-based read is exact and
+// cannot mis-collapse rows across members" answered the wrong hazard. It argued a
+// set-based read can't OVER-collapse; the actual defect (#2919) was that nothing
+// collapsed cross-document duplicates at ALL, so three overlapping portal exports put
+// every study on the list three times. It now reads through the SAME
+// representative-id collapse as the per-profile getImagingStudies, and the original
+// worry is still answered by construction: the window PARTITIONs by profile_id first,
+// so each member's duplicates collapse within that member and two members' rows can
+// never merge. The builder takes the view-set predicate as its `scope`, so the tuple
+// is still bound, never interpolated.
 //
 // The id list MUST originate from a resolved ProfileScope (`scope.viewIds` ⊆
 // `scope.ids`, already ∩ the caller's grants) — never a raw request value. Each row is
@@ -20,6 +30,10 @@
 
 import { db } from "@/lib/db";
 import { profileIdsIn } from "@/lib/cross-profile";
+import {
+  REPRESENTATIVE_SPECS,
+  representativeIds,
+} from "@/lib/representative-ids";
 import type { CareGoal, GenomicVariant, ImagingStudy } from "@/lib/types";
 
 type WithProfile<T> = T & { profileId: number };
@@ -61,8 +75,10 @@ export function getGenomicVariantsForProfiles(
 }
 
 // Imaging studies across the view-set (newest study first) — the set-based twin of
-// getImagingStudies, same column set + ORDER BY. `contrast` is stored 0/1 and surfaced
-// as a boolean, exactly as the per-profile reader does.
+// getImagingStudies, same column set + ORDER BY + cross-document collapse (#2919).
+// `contrast` is stored 0/1 and surfaced as a boolean, exactly as the per-profile
+// reader does. The representative window's own view-set predicate is the SAME bound
+// tuple, so the ids are bound twice (once for the outer WHERE, once for the window).
 export function getImagingStudiesForProfiles(
   ids: readonly number[]
 ): WithProfile<ImagingStudy>[] {
@@ -80,9 +96,12 @@ export function getImagingStudiesForProfiles(
               profile_id AS profileId
          FROM imaging_studies
         WHERE profile_id IN ${profileIdsIn(ids)}
+          AND id IN (${representativeIds(REPRESENTATIVE_SPECS.imaging_studies, {
+            scope: `profile_id IN ${profileIdsIn(ids)}`,
+          })})
         ORDER BY COALESCE(study_date, '') DESC, id DESC`
     )
-    .all(...ids) as (Omit<WithProfile<ImagingStudy>, "contrast"> & {
+    .all(...ids, ...ids) as (Omit<WithProfile<ImagingStudy>, "contrast"> & {
     contrast: number;
   })[];
   return rows.map((r) => ({ ...r, contrast: r.contrast === 1 }));
