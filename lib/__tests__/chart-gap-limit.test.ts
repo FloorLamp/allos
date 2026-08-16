@@ -139,7 +139,10 @@ describe("the session-logged tier (#2871)", () => {
       ...Array.from({ length: 14 }, () => null),
       50,
     ]);
-    const holes = overLimitHoles(series, gapLimitDaysForSeriesKey("metric:sun"));
+    const holes = overLimitHoles(
+      series,
+      gapLimitDaysForSeriesKey("metric:sun")
+    );
     expect(holes.map((h) => h.days)).toEqual([14]);
   });
 });

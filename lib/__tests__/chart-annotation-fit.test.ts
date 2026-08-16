@@ -170,7 +170,8 @@ describe("the reported render — eleven holes in a 77-day window", () => {
     // twelve-day silence has room and keeps its full sentence.
     const kept = reportedHoles().filter(
       ({ hole, dayIndex }) =>
-        labelExtent(unloggedGapLabel(hole.days), bandBox(hole, dayIndex)) != null
+        labelExtent(unloggedGapLabel(hole.days), bandBox(hole, dayIndex)) !=
+        null
     );
     expect(kept.map(({ hole }) => unloggedGapLabel(hole.days))).toEqual([
       "12 days unlogged",
