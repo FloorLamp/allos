@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Label } from "recharts";
 import {
   CHART_LABEL_FONT_SIZE,
+  chartAnnotationLabel,
   chartAnnotationLabelFits,
   chartAnnotationLabelWidth,
+  chartFittedAnnotationLabel,
 } from "@/components/chart-scaffold";
 import { TEXT_ADVANCE_RATIO, textExtent } from "@/lib/chart-svg";
 import { overLimitHoles, unloggedGapLabel } from "@/lib/trend-sparkline";
@@ -194,6 +199,68 @@ describe("the reported render — eleven holes in a 77-day window", () => {
     expect(box.right - box.left).toBeLessThan(
       chartAnnotationLabelWidth(unloggedGapLabel(first.hole.days))
     );
+  });
+});
+
+// ── the rule as it actually PAINTS ──────────────────────────────────────────
+//
+// Everything above reasons about `chartAnnotationLabelFits`, the pure decision.
+// But the funnel does not call that — it calls `chartFittedAnnotationLabel`, which
+// carries the decision into recharts through the `content` hook, reading the band
+// width off the viewBox recharts computed. That wiring is the half a source scan
+// cannot see and arithmetic cannot reach: a correct decision routed through a
+// broken hook still ships the smear.
+//
+// So this block renders the label recharts' own way and reads the SVG. No DOM is
+// needed — `renderToStaticMarkup` is enough, which keeps it in the pure tier.
+
+/** The markup recharts paints for a fitted annotation in a `width`px band. */
+function paint(text: string, width: number): string {
+  return renderToStaticMarkup(
+    createElement(
+      "svg",
+      null,
+      createElement(Label, {
+        ...chartFittedAnnotationLabel(text, "#888888", "insideTop"),
+        viewBox: { x: 0, y: 0, width, height: 100 },
+      })
+    )
+  );
+}
+
+describe("the fitted label, rendered", () => {
+  it("paints the full sentence when the band can hold it", () => {
+    const svg = paint("12 days unlogged", 400);
+    expect(svg).toContain("12 days unlogged");
+    // Pixel-identical to an unfitted annotation: same size, same ink, and still
+    // centred on the band (`insideTop` → anchor `middle` at the box's midpoint).
+    expect(svg).toContain(`font-size="${CHART_LABEL_FONT_SIZE}"`);
+    expect(svg).toContain('fill="#888888"');
+    expect(svg).toContain('text-anchor="middle"');
+    expect(svg).toContain('x="200"');
+  });
+
+  it("paints NOTHING on a band too narrow — not an empty <text>", () => {
+    // The defect, at the render tier. An empty `<text>` would still be a node in
+    // the plot; the rule has to remove the label outright.
+    expect(paint("3 days unlogged", 40)).toBe("<svg></svg>");
+  });
+
+  it("hands a fitting label straight back to the default render", () => {
+    // The fitting case must not become a SECOND label implementation — that is
+    // how a "harmless" wrapper drifts from the annotation it wraps. Same text,
+    // same attributes, whether or not the fit rule is in the path.
+    const plain = renderToStaticMarkup(
+      createElement(
+        "svg",
+        null,
+        createElement(Label, {
+          ...chartAnnotationLabel("12 days unlogged", "#888888", "insideTop"),
+          viewBox: { x: 0, y: 0, width: 400, height: 100 },
+        })
+      )
+    );
+    expect(paint("12 days unlogged", 400)).toBe(plain);
   });
 });
 
