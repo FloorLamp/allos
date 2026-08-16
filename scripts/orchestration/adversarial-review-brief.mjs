@@ -114,6 +114,19 @@ const HIGH_STAKES = [
     glob: /^lib\/(adult-only-writes|life-stage)\.ts$/,
     why: "the life-stage safety gate and the registry of which write cores carry it — a core wrongly exempted records restricted content on a minor",
   },
+  // The gate is only as good as the age it is handed, and the age resolver is a
+  // DIFFERENT FILE from the gate. #3018 changed what every life-stage predicate
+  // SEES — `getStoredAge` had conflated "this profile is an infant" with "we do
+  // not know this profile's age" — and `--check` answered "not high-stakes"
+  // because the diff touched no declared path: the gates themselves needed no
+  // edit, which is exactly why the change was invisible to a subsystem-shaped
+  // reading. Fourth instance of the miss recorded twice above; the question is
+  // never "which subsystem" but "what does a bug here decide", and this file
+  // decides whether a profile is a minor.
+  {
+    glob: /^lib\/settings\/profile-attrs\.ts$/,
+    why: "the age resolver every life-stage gate reads — a wrong or absent age makes a minor pass an adult-only check",
+  },
 ];
 
 const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
