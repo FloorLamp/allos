@@ -24,7 +24,7 @@ import { servingsDuringFast } from "@/lib/fasting";
 // first. The only writers of `fasts` are the lifecycle cores in lib/fast-write.ts,
 // reached exclusively from Server Actions and (later) the Telegram webhook — i.e. the
 // request paths and the sidecar's separate `poll` mode, never from `tick()`. Nothing
-// inside a profile's tick starts, ends, discards or edits a fast, so this memo cannot
+// inside a profile's tick starts, ends, discards or reopens a fast, so this memo cannot
 // be seeded and then invalidated inside its own scope.
 //
 // AND THE DIRECTION OF A STALE READ IS THE SAFE ONE, which is the check #2674 asks for
