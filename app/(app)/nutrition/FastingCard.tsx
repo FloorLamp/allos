@@ -98,9 +98,20 @@ export default function FastingCard({
     try {
       const result = await fn(fd);
       if (!result.ok) {
+        // The typed refusal is reported and the backdated value is LEFT IN PLACE — the
+        // user may want to correct the time they just entered, and clearing the field
+        // under a refusal would make them retype it.
         toast(result.error, { tone: "error" });
         return;
       }
+      // The backdated instant has been CONSUMED, so the field is cleared and the
+      // disclosure closes. Leaving it set is a real hazard rather than a tidiness point:
+      // the control's next write is the opposite transition, so a start time the user
+      // typed would silently be submitted as an END time — which is at or before the
+      // start it just created, and the write is refused with a message about a value the
+      // user cannot see. The field belongs to ONE write.
+      setBackdate("");
+      setShowBackdate(false);
       // UNDO on an end (#2756). The inverse is complete and local — one column on one
       // named row — so this restores exactly the state that existed a second ago rather
       // than approximating it.
