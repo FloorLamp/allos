@@ -102,10 +102,6 @@ interface ActivityEditorApi {
   // edits of that one activity (the activity detail page); omit it for a
   // general column that hosts any create/edit (the training log).
   registerDock: (el: HTMLElement | null, scope?: number | null) => void;
-  // TrainingLogView announces itself while mounted (every width — the dock is
-  // desktop-only, but the Log view carries its own session affordances), so the
-  // bar suppression tracks the view, not the route. Returns the cleanup.
-  registerTrainingLogView: () => () => void;
 }
 
 const Ctx = createContext<ActivityEditorApi | null>(null);
@@ -219,12 +215,6 @@ export default function ActivityEditorProvider({
     setDocked(v);
   }, []);
   const router = useRouter();
-
-  const [logViewCount, setLogViewCount] = useState(0);
-  const registerTrainingLogView = useCallback(() => {
-    setLogViewCount((n) => n + 1);
-    return () => setLogViewCount((n) => n - 1);
-  }, []);
 
   const registerDock = useCallback(
     (el: HTMLElement | null, scope: number | null = null) => {
@@ -567,14 +557,12 @@ export default function ActivityEditorProvider({
       minimized,
       editData,
       registerDock,
-      registerTrainingLogView,
     }),
     [
       open,
       minimized,
       editData,
       registerDock,
-      registerTrainingLogView,
       tz,
       lastActivity,
       restricted,
@@ -594,13 +582,13 @@ export default function ActivityEditorProvider({
   // (see `docked`) and that dock is still mounted; otherwise it's the overlay.
   const showDock = docked && dockEl != null;
 
-  const onTrainingLog = logViewCount > 0;
-  // The bar shows for a client-minimized live session (mounted, hidden) anywhere,
-  // and for a fresh-load active session everywhere except while the training Log
-  // view is mounted (where the editor docks inline instead). A docked-open editor
-  // never shows the bar.
-  const showBar =
-    (minimized && !showDock) || (hydrationActive && !onTrainingLog);
+  // The bar shows for a client-minimized live session (mounted, hidden) and
+  // for a fresh-load active session — EVERYWHERE, the Log tab included
+  // (#2897): the old Log-view suppression existed because a live session used
+  // to dock inline in that page's column; live never docks now (#2870 step 3),
+  // so the bar is the one resume affordance every page shares. A docked-open
+  // editor never shows the bar.
+  const showBar = (minimized && !showDock) || hydrationActive;
   // Elapsed baseline + copy for the bar: the mounted session's own start when
   // minimized, else the server-hydrated start.
   const barStartEpoch = minimized

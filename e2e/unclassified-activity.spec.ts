@@ -90,25 +90,32 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
   await search.fill(OWN_TITLE);
 
   // The Server-Action round-trip ceiling used across the training log specs.
-  const card = page.locator(".card", { hasText: OWN_TITLE });
-  await expect(card).toBeVisible({ timeout: 20_000 });
+  // The feed renders slim rows (#2897); the row itself carries the type glyph.
+  const row = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: OWN_TITLE });
+  await expect(row).toBeVisible({ timeout: 20_000 });
 
   // The DECLARED glyph for "the source did not say" — generic, never a barbell or a
   // medal. `data-icon` is the icon KEY, so this reads the resolution, not a class name.
-  const glyph = card.getByTestId("activity-icon").first(); // first-ok: the card this spec planted, whose header icon is the row's own type glyph
+  const glyph = row.getByTestId("activity-icon");
   await expect(glyph).toHaveAttribute("data-icon", "activity");
 
   // The type chips can NAME this row. Without a chip it would be visible and
   // unfilterable at the same time — present in the feed, absent from the filter bar.
   const chips = page.getByRole("group", { name: "Activity type" });
   await chips.getByRole("button", { name: "Unspecified" }).click();
-  await expect(page.locator(".card", { hasText: OWN_TITLE })).toBeVisible({
+  await expect(
+    page.getByTestId("training-log-row").filter({ hasText: OWN_TITLE })
+  ).toBeVisible({
     timeout: 20_000,
   });
 
   // …and it is a real filter, not a no-op: switching to Cardio drops the row.
   await chips.getByRole("button", { name: "Cardio" }).click();
-  await expect(page.locator(".card", { hasText: OWN_TITLE })).toHaveCount(0, {
+  await expect(
+    page.getByTestId("training-log-row").filter({ hasText: OWN_TITLE })
+  ).toHaveCount(0, {
     timeout: 20_000,
   });
 });

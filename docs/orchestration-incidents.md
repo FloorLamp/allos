@@ -179,10 +179,21 @@ the first, one `git add -A` from being committed into itself. Nothing broke;
 
 ## gitleaks — what actually triggers it (#2409)
 
-CI's gitleaks runs over the refs in that job's checkout (its branch + main), so
-a finding on one feature branch left every other open PR green — blast radius
-is one branch _until it merges_, at which point the blob is in every checkout
-and only rewriting published main history removes it. The trigger is an
+**The blast radius is the whole repository, not one branch (#2949).** This
+section used to say the scan covered "its branch + main", so a finding on one
+feature branch left every other open PR green. That stopped being true when the
+job moved to `--log-opts="--all"` over a `fetch-depth: 0` checkout, which
+fetches every remote branch into `refs/remotes/origin/*`. Reproduced: a commit
+unreachable from the PR head is reported on a PR whose tree does not contain
+the file at all. One branch's credential-shaped fixture reds `gitleaks` on
+**every open PR**, naming a file none of them touched, until that branch is
+rebased or deleted. A follow-up commit that DELETES the literal does not clear
+it — the scan reads COMMITS, not tips. Believing the old sentence is what made
+the incident confusing, so the job now explains itself
+(`scripts/gitleaks-explain.mjs`) instead of relying on this page being read.
+
+Once it merges the blob is in every checkout and only rewriting published main
+history removes it. The trigger is an
 identifier `generic-api-key` recognizes + an entropy threshold + a word-shape
 filter, and **entropy alone does not predict it**: measured on three sibling
 values in one file, `omega3-anticoagulant` (3.522) FIRED while
@@ -486,3 +497,26 @@ Two overrides in one session is the signal that the next miss is likelier than a
 false positive, so `lib/error-log-format.ts` and `lib/log.ts` are now declared —
 and the entry says WHY in disclosure terms, so the next person extending the list
 has the right test to apply rather than a list of module names to pattern-match.
+
+## Clustering costs the BOX, not just the review queue (2026-08-16)
+
+The arrival warning (#2973) was written against review depth: dispatch several
+at once and their PRs land together, and review is serial. Measured an hour
+later, that framing was half the story.
+
+Five agents dispatched in two batches — two, then three within a minute — drove
+the load average to **17.70 on 4 cores**, 4.4x oversubscribed and half again the
+11.86 that produced two contention misdiagnoses the night before. `ps` said why,
+and it was not five agents idling: three vitest tiers, a `next build`, and two
+Playwright servers with their browsers, all inside the same minute.
+
+Simultaneous starts are simultaneous GATES, not merely simultaneous arrivals.
+Gate cost is the dominant per-agent cost (that is what #2964 scoped), so agents
+started together reach the expensive phase together and contend for the same
+four cores — which is the mechanism that makes a starved tier fail in code the
+agent never touched.
+
+So the cap number was not the defect and lowering it would have been the wrong
+correction: five agents SPREAD OUT cost nothing unusual. The evidence points at
+pacing, which is what #2973 already warns about — it just understated why. The
+warning's own rationale now names both queues it protects.

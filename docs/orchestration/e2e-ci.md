@@ -36,7 +36,10 @@
   start checks.
 - A green check describes the base used for that run. Re-merge current main and
   reverify branches that have sat or overlap recent shared changes.
-- Stop merges when `CI (main)` is red. Fix main first.
+- Stop merges when `CI (main)` or `E2E (main)` is red. Fix main first.
+- A green names its tier and nothing more. `CI (main)` covers `check`,
+  `test-unit`, `test-db` — it cannot see e2e. `E2E (main)` is the post-merge
+  browser run and the only main-side evidence about the browser tier.
 
 ## Diagnosing a red
 
@@ -49,6 +52,9 @@
   Passing alone suggests starvation; failing alone suggests a defect.
 - Compare with clean main under the same conditions to identify pre-existing
   failures.
+- Before calling a PR's e2e red unrelated, check `E2E (main)` on the PR's base.
+  Several PRs failing the same untouched specs is a base regression until that
+  run says otherwise — not a coincidence of flakes (#2791).
 - `next dev` and `next start` differ. Interaction fixes must work in both.
 
 ## Flake evidence
