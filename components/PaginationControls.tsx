@@ -1,6 +1,6 @@
 "use client";
 
-import PendingLink, { PendingOverlay } from "@/components/PendingLink";
+import { PendingTextLink } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 // The app's ONE pager footer: "Showing 1–10 of 812 · Prev · Page 1 of 82 · Next".
@@ -65,13 +65,13 @@ export default function PaginationControls({
       // stuck one, and until now it had neither half of the guarantee. There is
       // no icon here to swap, so the step's own label is its slot: it stays
       // where it is, legible, with the spinner over it.
-      <PendingLink
+      <PendingTextLink
         href={href}
         label={`page ${page + delta}`}
         className="btn-ghost text-sm"
       >
-        {(pending) => <PendingOverlay pending={pending}>{label}</PendingOverlay>}
-      </PendingLink>
+        {label}
+      </PendingTextLink>
     );
   };
 

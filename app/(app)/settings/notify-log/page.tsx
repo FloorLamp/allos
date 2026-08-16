@@ -1,5 +1,5 @@
 import Link from "next/link";
-import PendingLink, { PendingOverlay } from "@/components/PendingLink";
+import { PendingTextLink } from "@/components/PendingLink";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { readNotifyEvents } from "@/lib/notify-log";
@@ -185,15 +185,13 @@ export default async function NotifyLogPage(props: {
         <span data-testid="notify-log-total">{allRuns.length} runs</span>
         <div className="flex items-center gap-3">
           {page > 1 ? (
-            <PendingLink
+            <PendingTextLink
               href={pageHref(searchParams, page - 1)}
               label="previous page"
               className="btn-ghost"
             >
-              {(pending) => (
-                <PendingOverlay pending={pending}>Previous</PendingOverlay>
-              )}
-            </PendingLink>
+              Previous
+            </PendingTextLink>
           ) : (
             <span className="opacity-40">Previous</span>
           )}
@@ -201,15 +199,13 @@ export default async function NotifyLogPage(props: {
             Page {Math.min(page, pages)} of {pages}
           </span>
           {page < pages ? (
-            <PendingLink
+            <PendingTextLink
               href={pageHref(searchParams, page + 1)}
               label="next page"
               className="btn-ghost"
             >
-              {(pending) => (
-                <PendingOverlay pending={pending}>Next</PendingOverlay>
-              )}
-            </PendingLink>
+              Next
+            </PendingTextLink>
           ) : (
             <span className="opacity-40">Next</span>
           )}

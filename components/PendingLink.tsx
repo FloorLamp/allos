@@ -120,9 +120,44 @@ export function PendingOverlay({
 }
 
 /**
+ * The overlay treatment as ONE serializable component: `children` is ordinary
+ * `ReactNode`, not a render prop, so a Server Component can render it.
+ *
+ * That distinction is load-bearing, not stylistic. `PendingLink` below takes a
+ * function for `children` — which React cannot pass across the server/client
+ * boundary, so a server-rendered pager (`app/(app)/settings/audit`,
+ * `app/(app)/settings/notify-log`) throws at render if it reaches for it. Those
+ * are text-shaped controls that want the overlay and nothing else, so this is
+ * the shape they take.
+ */
+export function PendingTextLink({
+  href,
+  label,
+  className,
+  testId,
+  children,
+}: {
+  href: AppRoute;
+  label: string;
+  className?: string;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <PendingLink href={href} label={label} className={className} testId={testId}>
+      {(pending) => <PendingOverlay pending={pending}>{children}</PendingOverlay>}
+    </PendingLink>
+  );
+}
+
+/**
  * A `<Link>` that answers the tap. `children` is a render prop so the control
  * decides where its pending state paints; the repeat-tap guard and the named
  * `role="status"` announcement come from here, identically for every caller.
+ *
+ * A render prop cannot cross the server/client boundary — a Server Component
+ * reaching for this gets "Functions cannot be passed directly to Client
+ * Components" at render time. Use `PendingTextLink` above from a server page.
  */
 export default function PendingLink({
   href,
