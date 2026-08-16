@@ -49,7 +49,29 @@ export function templateKeyPath(): string {
 // reapplied per file regardless — they are in the key for the case where a task
 // changed what it bakes into the template, not for the ordinary path.
 //
-// EXCEPT WHERE THE TASK REMOVES SOMETHING, which is why the seed dataset is
+// EXCEPT WHERE THE TASK DOES NOT ACTUALLY RE-RUN, and there are two such cases.
+// Both are the same defect in different clothes: "reapplied per file" is a claim
+// about an EFFECT, and it holds only while every boot re-derives that effect from
+// current code.
+//
+// (1) A TASK GATED ON ALREADY-DONE (issue #2817). `bootstrapAuth` opens with
+// `if (count > 0) return;` — a login exists in every copied template — so on each
+// per-file reopen it early-returns and never runs again. Everything it writes for
+// the bootstrap admin (profile 1) is therefore baked into the template BYTES
+// exactly once, when globalSetup first builds it: the `onboarding_state` marker
+// (`lib/onboarding.ts`), the login's password hash (`lib/password.ts`), and the
+// default-saved standard metric tiles (`lib/standard-metric-seeds.ts`). Those
+// three files are in the list below for exactly that reason. Before cross-run
+// caching the staleness was bounded to one `npm run test:db` process, which
+// always rebuilt; now one template can be reused for days, so a change to what a
+// new profile is seeded with could keep serving profile 1 the old seed
+// indefinitely. The OTHER bake-once tasks (`seedTimezoneFromEnv`,
+// `seedAiTiersFromEnv`, `seedSmtpFromEnv`, the install marker) derive their state
+// from the ENVIRONMENT, not from a lib module, so they have no source input to
+// hash. `lib/__tests__/db-template-key.test.ts` holds the guard that fails when
+// bootstrapAuth grows an import this list does not cover.
+//
+// (2) A TASK THAT REMOVES SOMETHING, which is why the seed dataset is
 // hashed too. "Effects are reapplied per file" holds for an ADD and an UPDATE —
 // `seedCanonicalResultDefinitions` is an `ON CONFLICT … DO UPDATE` upsert, so a changed
 // row is corrected on every boot — and fails for a DELETE, because no boot task
@@ -63,9 +85,14 @@ export function templateKeyPath(): string {
 // inputs, not their import closures — `lib/db.ts` transitively reaches 989 files,
 // essentially all of `lib/`, and keying on that would rebuild on nearly every
 // edit a developer running this tier has just made, which is the whole saving.
-// So a dataset baked in through a module OTHER than the two named here can still
+// So a dataset baked in through a module OTHER than the ones named here can still
 // go stale. If you change what a boot task bakes, either add its input below or
 // delete node_modules/.cache/allos-db-tests.
+//
+// The closure was measured rather than assumed: `lib/db.ts`, `boot-tasks.ts` and
+// the three bootstrapAuth inputs below each transitively reach the SAME 1005
+// files, because `lib/` is one cycle. There is no smaller closure to key on, so a
+// named list is the only shape available and the guard test is what keeps it true.
 //
 // A wrong key is USUALLY loud — a stale template missing a column fails the tests
 // that touch it, naming it — but do not read that as "cannot turn a red test
@@ -73,10 +100,17 @@ export function templateKeyPath(): string {
 // longer produce, and code still depending on a row you just deleted goes green
 // locally and red on a cold CI checkout. Loud in the common direction, not in
 // every direction.
-const TEMPLATE_INPUT_DIRS = ["lib/migrations"];
-const TEMPLATE_INPUT_FILES = [
+// Exported so the guard test can assert the list against bootstrapAuth's own
+// imports rather than restating it — a second copy of this list would be the
+// thing that goes stale.
+export const TEMPLATE_INPUT_DIRS = ["lib/migrations"];
+export const TEMPLATE_INPUT_FILES = [
   "lib/db.ts",
   "lib/canonical-result-definitions.json",
+  // bootstrapAuth's bake-once inputs — see (1) in the header.
+  "lib/onboarding.ts",
+  "lib/password.ts",
+  "lib/standard-metric-seeds.ts",
 ];
 
 // The path is folded in REPO-RELATIVE, never absolute: a rename must change the
