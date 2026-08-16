@@ -17,6 +17,7 @@ import { getTimezone } from "@/lib/settings";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import {
   discardFast,
+  editFast,
   endFast,
   fastAdultOnlyRefusal,
   reopenFast,
@@ -189,6 +190,47 @@ export async function undoEndFastAction(
     // adult-only ruling withholds, so this cannot ride the end's exemption. Not drawn as
     // a button anywhere — `endFastAction` withholds the id for a restricted profile — so
     // this answers a stale tab, which is the case a surface-only rule cannot cover.
+    case "refused":
+      return fail("Fasting isn't available on this profile.");
+  }
+}
+
+// CORRECT a recorded fast's times (#2993). The way back from a fast recorded with a
+// mis-set date once the end's Undo has lapsed — editing says "it ended at this other
+// time", where deleting the row would say the fast never happened at all.
+//
+// BOTH INSTANTS ARE REQUIRED. `parseBackdated` answers null for an absent field, which
+// the start and end controls read as "now"; here an absent field is a broken form and is
+// refused, because an edit that silently defaulted half its interval to now would rewrite
+// history the user never named.
+export async function editFastAction(
+  formData: FormData
+): Promise<FastActionResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return fail("Unknown fast.");
+  const tz = getTimezone(profile.id);
+  const startedAt = parseBackdated(formData.get("started_at"), tz);
+  const endedAt = parseBackdated(formData.get("ended_at"), tz);
+  if (!startedAt) return fail("Enter a valid start time.");
+  if (!endedAt) return fail("Enter a valid end time.");
+  const outcome = editFast(profile.id, id, startedAt, endedAt);
+  switch (outcome.kind) {
+    case "saved":
+      revalidateRoute("/nutrition");
+      revalidateRoute("/");
+      return { ok: true, message: "Fast updated." };
+    case "overlap":
+      return fail("That overlaps a fast already on record.");
+    case "invalid":
+      return fail("Those times don't work — check the dates.");
+    // The row was reopened elsewhere since this row was drawn, so the id now names the
+    // RUNNING fast. Reported rather than obeyed: silently closing it again at a time the
+    // user picked for a completed row is not the write this control was drawn for.
+    case "still-active":
+      return fail("That fast is running again — end it before correcting it.");
+    case "not-found":
+      return fail("Unknown fast.");
     case "refused":
       return fail("Fasting isn't available on this profile.");
   }

@@ -60,12 +60,15 @@ export const ADULT_ONLY_WRITE_CORES: readonly AdultOnlyWriteCore[] = [
     file: "lib/fast-write.ts",
     gate: "fastAdultOnlyRefusal",
     // THE REGISTRY'S FIRST EXEMPTIONS. The test they have to pass is not "does this
-    // function INSERT" — it is "can this function leave the profile with an ACTIVE fast
+    // function INSERT" — it is "can this function leave the profile with fasting content
     // it did not have". `ended_at IS NULL` IS the active state, so a core that clears
     // that column causes an active fast to exist without inserting anything, and reading
     // the gate as an insert-guard is exactly how a hole opens. Both entries below
     // STRICTLY REDUCE fasting state and have no input that could make them enlarge it.
-    // `reopenFast` was on this list and is not any more, for precisely that reason.
+    // `reopenFast` was on this list and is not any more, for precisely that reason, and
+    // `editFast` was never a candidate for it: it opens and closes nothing, so an
+    // active-count reading would wave it through, but it takes BOTH instants of a
+    // recorded interval from a form and can lengthen a fast as easily as shorten one.
     exempt: [
       {
         fn: "endFast",
@@ -76,7 +79,7 @@ export const ADULT_ONLY_WRITE_CORES: readonly AdultOnlyWriteCore[] = [
         why: "#2756: 'I never actually fasted' — the stale suggest's second resolution, a row DELETE. Same harm-reduction reasoning as endFast, and the strongest case of it: this is the path that removes fasting data entirely, so refusing it for a restricted profile would keep the very content the gate exists to withhold. A gate here would protect nothing and lock in a row. Its one refusal (`already-ended`, a row closed elsewhere since the button was drawn) is a STALENESS re-derivation and not a life-stage gate: it withholds nothing from a restricted profile, whose surface draws no discard at all, and the row it declines to delete is already inert.",
       },
     ],
-    why: "#2756: fasting is an eating-restriction tracker, and on a known-minor profile that is eating-disorder-adjacent — a safety question, not a preference. Gated on the #1174/#2107 pattern: hiding the /nutrition surface is theater because the Server Actions are independently POST-callable, so the refusal lives in the CORE and a refused start answers exactly as an unknown row does. The line is lib/life-stage's own `isMinor` (age < 18) rather than a fresh constant, and unknown age PASSES per that module's documented positive-match-only policy. The two exemptions above are the ruling's deliberate asymmetry, not gaps: the criterion is whether a core can leave the profile with an ACTIVE fast it did not have, and both of them strictly reduce fasting state instead. `reopenFast` fails that criterion — clearing `ended_at` IS how an active fast comes to exist — so it is gated alongside `startFast`.",
+    why: "#2756: fasting is an eating-restriction tracker, and on a known-minor profile that is eating-disorder-adjacent — a safety question, not a preference. Gated on the #1174/#2107 pattern: hiding the /nutrition surface is theater because the Server Actions are independently POST-callable, so the refusal lives in the CORE and a refused start answers exactly as an unknown row does. The line is lib/life-stage's own `isMinor` (age < 18) rather than a fresh constant, and unknown age PASSES per that module's documented positive-match-only policy. The two exemptions above are the ruling's deliberate asymmetry, not gaps: the criterion is whether a core can leave the profile with fasting content it did not have, and both of them strictly reduce fasting state instead. `reopenFast` fails that criterion — clearing `ended_at` IS how an active fast comes to exist — so it is gated alongside `startFast`. So is `editFast` (#2993), and it is the case that shows why the criterion is stated as CONTENT rather than as a count of active rows: correcting a recorded interval leaves the active count untouched at zero, and is still the app recording what this profile is claimed to have fasted, with both instants arriving from a form. Its gate withholds nothing from the profile it restricts — a restricted surface draws no history to edit, and the reducing path (Data → Manage's row delete) stays open.",
   },
 ];
 

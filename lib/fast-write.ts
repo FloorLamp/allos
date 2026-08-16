@@ -25,19 +25,34 @@
 // match, never on missing data.
 //
 // THE LINE THE GATE ACTUALLY DRAWS. The property protected is not "no row is INSERTed";
-// it is "NO ACTIVE FAST COMES TO EXIST for a restricted profile". Those are different,
-// and reading the gate as the first one is how a hole opens: `ended_at IS NULL` is this
-// module's own definition of active, so CLEARING that column is a way of causing an
-// active fast to exist, with no INSERT anywhere in sight. The rule, stated so it can be
-// applied to a core that does not exist yet:
+// it is "NO FASTING CONTENT COMES TO EXIST for a restricted profile". Those are
+// different, and reading the gate as the first one is how a hole opens: `ended_at IS
+// NULL` is this module's own definition of active, so CLEARING that column is a way of
+// causing an active fast to exist, with no INSERT anywhere in sight. The rule, stated so
+// it can be applied to a core that does not exist yet:
 //
-//   GATED   — every core that can leave a profile with an active fast it did not have.
-//             `startFast` (creates one) and `reopenFast` (restores one by clearing
-//             `ended_at`) are both on this side.
+//   GATED   — every core that can leave a profile with fasting content it did not have.
+//             `startFast` (creates an active fast) and `reopenFast` (restores one by
+//             clearing `ended_at`) are on this side because of the ACTIVE fast they
+//             produce. `editFast` is on it for the other half of the same property: it
+//             takes BOTH instants of a recorded interval from a user, so it can lengthen
+//             a fast as easily as shorten one, and rewriting what a profile is recorded
+//             as having fasted IS recording fasting content. It closes no row and opens
+//             none — which is exactly why an insert-shaped or active-count-shaped reading
+//             of the gate would wave it through.
 //   EXEMPT  — cores that STRICTLY REDUCE fasting state and can never enlarge it.
 //             `endFast` (an active fast becomes a completed one) and `discardFast` (the
 //             row goes away) are both on this side, and neither has any input that could
 //             make it land on the other.
+//
+// THE EDIT'S GATE COSTS A RESTRICTED PROFILE NOTHING, which is the check the exemptions
+// above earn by passing and this one has to pass too. A restricted profile is drawn no
+// history at all (`FoodTab` gives it the close-out control and nothing else), so there is
+// no recorded row it is being kept from correcting, and the only write a stale completed
+// row could block is a backdated start — already refused by the gate itself. The path
+// that REMOVES such a row (Data → Manage's generic row delete, per the `fasts` dataset)
+// is on the reducing side and stays open. So the gate withholds a correction from nobody
+// who has anything to correct.
 //
 // THE EXEMPTIONS CLOSE A STRANDED-ROW TRAP. A birthdate edit that makes a profile
 // restricted MID-FAST must not leave an active row nobody can close, which would leave
@@ -58,6 +73,17 @@
 //
 //   `startFast` CARRIES the ceiling. A backdated start takes its interval FROM INPUT, so
 //   it can honestly answer "that's too far back — pick a shorter one".
+//   `editFast` CARRIES it too, and it is the purest case of the rule rather than an
+//   exception to the exemptions below: it is the ONE core where both ends of the interval
+//   arrive from a form, so it mints a claim outright. Without the ceiling it would also
+//   be a laundry: start a fast, end it a minute later, then edit the pair to sixty days —
+//   a core producing a row `startFast` refuses to accept, which is the exact shape this
+//   PR chain charged three times. And carrying it costs the correction nothing, because
+//   what the ceiling judges is the interval being SAVED, never the one on the row: the
+//   15-day row this core exists to fix is corrected by SHORTENING it, and every honest
+//   correction of a mis-set date is short. The one submission it refuses is the one that
+//   changes nothing — saving a 15-day row back as 15 days — and that refusal is the
+//   truthful answer to it.
 //   `endFast` carries NONE. The end it writes is at most `now`, so the interval it stores
 //   is at most the one the row ALREADY has. A duration refusal there prevents no long
 //   interval; it only prevents a long interval from being CLOSED, which is the stranded
@@ -378,6 +404,93 @@ export function discardFast(profileId: number, id: number): DiscardFastOutcome {
     return deleteFastRow(profileId, id) > 0
       ? { kind: "discarded", id }
       : { kind: "not-found" };
+  });
+}
+
+export type EditFastOutcome =
+  | { kind: "saved"; id: number }
+  | { kind: "not-found" }
+  // The named row is RUNNING, not recorded history — it was reopened elsewhere since the
+  // control was drawn. `discardFast`'s `already-ended` from the other direction: the id
+  // the form carries has to mean at commit what it meant at render.
+  | { kind: "still-active"; id: number }
+  // The corrected interval collides with another recorded fast. The row being edited is
+  // excluded from that scan — a fast always overlaps itself.
+  | { kind: "overlap"; id: number }
+  // End at or before start (AT THE STORED SECOND), an end in the future, or an interval
+  // past FAST_MAX_HOURS.
+  | { kind: "invalid" }
+  // The life-stage gate refused — this core is GATED, see the module header.
+  | { kind: "refused" };
+
+// CORRECT a recorded fast's instants (#2993, and #2756's "beyond it, a completed fast's
+// instants stay editable").
+//
+// WHY THIS EXISTS AT ALL, since it was deleted once as unreachable and the deletion cost
+// five review rounds: a fast recorded as 15 days long is almost always a mis-set date
+// rather than a fiction, and past the Undo window the app had nothing to say about it —
+// reopen answers `too-old`, discard refuses a completed row, and the permanent row then
+// answers `overlap` to every backdated start inside the fortnight it covers. EDITING is
+// the honest remedy and DELETING is not: removing the row asserts the fast never
+// happened, while correcting its end asserts what actually did. That is the same
+// distinction the stale suggest already refuses to pick for the user.
+//
+// THE INSTANTS ONLY. `note` is read off the row and written back unchanged rather than
+// taken as a parameter, so this core cannot erase one — the requirement is that a
+// completed fast's INSTANTS stay editable, and a note-shaped parameter with no field
+// behind it would blank the column on every save.
+//
+// IT CANNOT MINT AN ACTIVE FAST, which is the invariant the partial unique index and
+// every reader downstream assume. Both instants are required and the end is always
+// written, so there is no input that clears `ended_at`; and the row it accepts is a
+// CLOSED one, re-read under the write lock, so an id that has since been reopened gets
+// `still-active` rather than being silently closed again at a time the user never chose.
+//
+// AND IT DOES NOT RESTAMP `end_written_at`. The stamp bounds the UNDO OF AN END — "you
+// just closed this, take it back" — and an edit is not an end: it closes nothing, and
+// reopening after one would not restore what the edit changed, it would delete the end
+// outright. Restamping would therefore open a fifteen-minute reopen window on a row whose
+// write has no Undo anywhere, i.e. make an OLD fast resurrectable by correcting its date,
+// which is precisely what the age bound exists to refuse. Preserving it gives the rule
+// worth stating: an edit can never leave a row more reopenable than it found it. (A
+// closed row with no stamp is one this module did not write — nothing constructs one,
+// since the store takes the end as ONE argument — and it is given the plain-end reading,
+// the stamp equal to the end it named, because that is the most this core can honestly
+// say about a write it did not make.)
+export function editFast(
+  profileId: number,
+  id: number,
+  startedAt: Date,
+  endedAt: Date
+): EditFastOutcome {
+  if (fastAdultOnlyRefusal(profileId)) return { kind: "refused" };
+  return writeTx(() => {
+    const at = clockNow();
+    const row = getFast(profileId, id);
+    if (!row) return { kind: "not-found" };
+    if (row.ended_at === null) return { kind: "still-active", id };
+    // Compared at the STORED second, like `endFast`: `utcInstant` truncates, so a
+    // millisecond test would accept a pair that serializes to one zero-length row.
+    if (instantSeconds(endedAt) <= instantSeconds(startedAt))
+      return { kind: "invalid" };
+    if (instantSeconds(endedAt) > instantSeconds(at)) return { kind: "invalid" };
+    if (endedAt.getTime() - startedAt.getTime() > FAST_MAX_HOURS * 3_600_000)
+      return { kind: "invalid" };
+    const clash = overlappingFasts(
+      listFasts(profileId),
+      startedAt.getTime(),
+      endedAt.getTime(),
+      id
+    );
+    if (clash.length > 0) return { kind: "overlap", id: clash[0].id };
+    updateFastRow(
+      profileId,
+      id,
+      utcInstant(startedAt),
+      { at: utcInstant(endedAt), writtenAt: row.end_written_at ?? row.ended_at },
+      row.note
+    );
+    return { kind: "saved", id };
   });
 }
 

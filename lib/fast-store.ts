@@ -46,8 +46,10 @@ export interface StoredFast extends Fast {
   end_written_at: string | null;
 }
 
-// One fast by id, scoped to the profile — the WRITE tier's read (the only two callers
-// are `reopenFast` and `discardFast`), so it carries the end's write stamp.
+// One fast by id, scoped to the profile — the WRITE tier's read (its only callers are
+// `reopenFast`, `discardFast` and `editFast`), so it carries the end's write stamp.
+// `editFast` needs it to write the stamp back UNCHANGED: correcting an interval is not
+// an end, so it must not restart the Undo's clock (lib/fast-write.ts).
 export function getFast(profileId: number, id: number): StoredFast | null {
   return (
     (db
@@ -128,7 +130,8 @@ export function createFastRow(
 // Absolute update of a fast's own fields, scoped to the profile. The end is ONE
 // argument, so `ended_at` and `end_written_at` cannot be set apart: reopening passes
 // null and clears both, ending passes the claimed instant with the clock reading of the
-// write beside it.
+// write beside it, and a CORRECTION (`editFast`) passes the new claimed instant with the
+// row's EXISTING stamp — a closed row with no write stamp stays inexpressible either way.
 export function updateFastRow(
   profileId: number,
   id: number,
