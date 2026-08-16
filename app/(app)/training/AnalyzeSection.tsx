@@ -321,7 +321,9 @@ export default async function AnalyzeSection({
                   ? cyclingRideHref(view.latestActivityId, cyclingLens)
                   : view.latestHref
               }
-              label={isCyclingOverview ? `latest ${cyclingNoun}` : "latest session"}
+              label={
+                isCyclingOverview ? `latest ${cyclingNoun}` : "latest session"
+              }
               testId="analyze-latest-link"
               className="btn-ghost h-10 justify-center"
             >

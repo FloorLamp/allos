@@ -425,7 +425,8 @@ test("retry lands the navigation once the connection is back (#2869)", async ({
 // The second is the ordinary in-control half, on the shape training has most of:
 // a drill-down into one record, and a stepper that walks the ledger.
 
-const STRENGTH_ANALYZE = "/training?tab=analyze&kind=strength&item=Back%20Squat";
+const STRENGTH_ANALYZE =
+  "/training?tab=analyze&kind=strength&item=Back%20Squat";
 
 test("a training drill-down that was a raw anchor stays in the app, and answers its own tap (#2983)", async ({
   page,
