@@ -285,7 +285,7 @@ beforeAll(() => {
   // The telemetry above is inserted with raw SQL, so it carries no precomputed
   // stream summary — and since #2292 the cycling OVERVIEW reads that summary
   // instead of parsing streams. This is the same pass a real boot runs, and it is
-  // how any writer other than upsertCyclingTelemetry is expected to become
+  // how any writer other than upsertActivityTelemetry is expected to become
   // complete: write a summary, or leave it NULL for the reconcile to fill.
   reconcileCyclingStreamSummaries(db);
 });

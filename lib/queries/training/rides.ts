@@ -8,7 +8,7 @@ import { bodyweightAsOf } from "../../bodyweight";
 import {
   cyclingLoad,
   distanceSplits,
-  parseCyclingStreams,
+  parseActivityStreams,
   powerCurve,
   powerCurveLabel,
   powerZoneTimes,
@@ -251,7 +251,7 @@ export function getRideDetailData(
         power_zones_json: string | null;
       }
     | undefined;
-  const streams = parseCyclingStreams(telemetry?.streams_json ?? null);
+  const streams = parseActivityStreams(telemetry?.streams_json ?? null);
   const traces = rideTraces(streams);
   const curve = powerCurve(streams);
   const powerZones = parsePowerZones(telemetry?.power_zones_json ?? null);

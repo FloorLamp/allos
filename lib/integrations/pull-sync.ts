@@ -34,11 +34,11 @@ import {
 import {
   replaceActivityLaps,
   replaceSegmentEfforts,
-  upsertCyclingTelemetry,
+  upsertActivityTelemetry,
   type NormActivityLap,
-  type NormCyclingTelemetry,
+  type NormActivityTelemetry,
   type NormSegmentEffort,
-} from "./cycling-telemetry";
+} from "./activity-telemetry";
 import { shouldAdvanceCursor, type CursorPolicy } from "./pull-window";
 
 // THE pull-sync runner (#2040). One implementation of everything a scheduled pull
@@ -79,10 +79,10 @@ export interface PullBatch {
   // the SAME transaction, after the activity upsert. Replacement parents are
   // explicit: a source may successfully fetch an empty lap/segment list, while a
   // transient detail failure must preserve the prior children.
-  cyclingTelemetry?: NormCyclingTelemetry[];
+  activityTelemetry?: NormActivityTelemetry[];
   activityLaps?: NormActivityLap[];
   segmentEfforts?: NormSegmentEffort[];
-  cyclingArtifactParents?: string[];
+  telemetryArtifactParents?: string[];
 }
 
 // A successful gather.
@@ -266,21 +266,21 @@ export async function runPullSync<
       // Routes resolve their parent activity by external_id, so this must run after
       // upsertActivities (same tx). Idempotent; not folded into the tally.
       if (batch.routes) upsertActivityRoutes(profileId, routes, spec.id);
-      if (batch.cyclingTelemetry) {
-        upsertCyclingTelemetry(profileId, batch.cyclingTelemetry, spec.id);
+      if (batch.activityTelemetry) {
+        upsertActivityTelemetry(profileId, batch.activityTelemetry, spec.id);
       }
-      if (batch.cyclingArtifactParents) {
+      if (batch.telemetryArtifactParents) {
         replaceActivityLaps(
           profileId,
           batch.activityLaps ?? [],
           spec.id,
-          batch.cyclingArtifactParents
+          batch.telemetryArtifactParents
         );
         replaceSegmentEfforts(
           profileId,
           batch.segmentEfforts ?? [],
           spec.id,
-          batch.cyclingArtifactParents
+          batch.telemetryArtifactParents
         );
       }
     });
