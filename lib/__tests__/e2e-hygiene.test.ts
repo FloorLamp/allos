@@ -251,6 +251,38 @@ const WALL_CLOCK_ALLOW: Record<string, number> = {};
 const DOC_SCROLLWIDTH_RE = /(?:documentElement|document\.body)\.scrollWidth/g;
 const DOC_SCROLLWIDTH_ALLOW: Record<string, number> = {};
 
+// ── (xi) Navigating while "offline" (issue #3002) ───────────────────────────
+// Playwright's offline emulation is per-browser-CONTEXT and does not cover requests
+// the SERVICE WORKER initiates. `context.setOffline(true)` cuts the page's own
+// fetches; `cacheFirst` in public/sw.js still reaches the server from inside the
+// worker. So an "it renders offline" assertion can pass on assets pulled over the
+// network DURING the offline navigation — measured on the /offline shell: chunks
+// absent from the cache before `setOffline(true)` were present after it. A real
+// device has no such escape hatch, and there a missing chunk is a blank page.
+//
+// The rule is scoped to the case that can lie. Going offline on an ALREADY-LOADED
+// page — the offline write queue's tap → queued → reconnect → replayed flows — is
+// honest as written: nothing navigates, so no shell has to come from anywhere, and
+// the page's own POST is exactly what the emulation does block. Only a `goto` /
+// `reload` inside the offline window needs the shell, so only that shape is caught.
+//
+// The fix is never to delete the block: the coverage is wanted, the CLAIM is what
+// was wrong. `readyForOffline(page)` (e2e/helpers.ts) states the precondition the
+// harness cannot fake — a live controlling worker, and every chunk the /offline
+// document declares already in the worker's cache BEFORE the network goes away.
+// Call it before `setOffline(true)` and the block measures the app again.
+//
+// An offline navigation that asserts something the bypass genuinely cannot fake and
+// needs no shell of its own carries an `offline-nav-ok: <why>` marker anywhere in
+// its offline window (the `first-ok` escape shape).
+const SET_OFFLINE_TRUE_RE = /setOffline\(\s*true\s*\)/;
+const SET_OFFLINE_FALSE_RE = /setOffline\(\s*false\s*\)/;
+const OFFLINE_NAVIGATION_RE = /\.(?:goto|reload)\(/;
+const OFFLINE_READY_RE = /readyForOffline\(/;
+const OFFLINE_NAV_OK_MARKER = "offline-nav-ok";
+// The helper module that OWNS the precondition — it spells the markers out by design.
+const OFFLINE_HELPERS_FILE = "helpers.ts";
+
 const WORKER_HARNESS_FILES = new Set([
   "fixtures.ts",
   "worker-env.ts",
@@ -1054,6 +1086,90 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `comment for a use that is NOT a stored timestamp (a unique-name suffix, a ` +
         `TOTP probe); see docs/internals/e2e-hygiene.md.`,
     });
+  });
+
+  it("no offline NAVIGATION in an e2e/*.ts without a cache-warm precondition (use readyForOffline)", () => {
+    const violations: string[] = [];
+    for (const { name, text } of specFiles()) {
+      if (name === OFFLINE_HELPERS_FILE) continue;
+      const lines = text.split("\n");
+      // Strip line comments and block-comment continuations before looking for the
+      // window's boundaries and its navigation: this rule's own explanatory prose
+      // SPELLS OUT `setOffline(true)` and `page.goto`, and the CI-branch rule above
+      // learned the same lesson — read code, not the note beside it. The markers are
+      // matched against the RAW lines, since a marker lives in a comment by design.
+      const code = lines.map((l) =>
+        l.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "")
+      );
+      code.forEach((line, i) => {
+        if (!SET_OFFLINE_TRUE_RE.test(line)) return;
+        // The offline WINDOW: from here to the matching setOffline(false), or to the
+        // end of the file when the spec never comes back online.
+        let end = lines.length;
+        for (let j = i + 1; j < code.length; j += 1) {
+          if (SET_OFFLINE_FALSE_RE.test(code[j])) {
+            end = j;
+            break;
+          }
+        }
+        if (!code.slice(i, end).some((l) => OFFLINE_NAVIGATION_RE.test(l))) {
+          return;
+        }
+        if (
+          lines.slice(i, end).some((l) => l.includes(OFFLINE_NAV_OK_MARKER))
+        ) {
+          return;
+        }
+        // The precondition is asserted BEFORE the network goes away, so it may sit
+        // anywhere above this line — including inside a helper this file defines.
+        if (code.slice(0, i).some((l) => OFFLINE_READY_RE.test(l))) return;
+        violations.push(
+          `${name}:${i + 1}: navigates while offline with no cache-warm ` +
+            `precondition. Playwright's offline emulation is per-browser-context and ` +
+            `does not cover SERVICE-WORKER fetches, so cacheFirst (public/sw.js) can ` +
+            `pull the shell's chunks over the network DURING this navigation and the ` +
+            `assertion passes on assets a real device would not have (#3002). Do NOT ` +
+            `delete the block — call \`readyForOffline(page)\` from e2e/helpers.ts ` +
+            `before setOffline(true), which asserts a live controlling worker and the ` +
+            `/offline document's own chunks already cached. If this block asserts ` +
+            `something the bypass cannot fake and needs no shell, add an ` +
+            `\`offline-nav-ok: <why>\` comment inside the offline window; see ` +
+            `docs/internals/e2e-hygiene.md.`
+        );
+      });
+    }
+    expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  it("the offline-navigation rule sees a navigation and ignores a queue-only block", () => {
+    const navigates = [
+      "await context.setOffline(true);",
+      "await page.goto('/profile');",
+      "await context.setOffline(false);",
+    ];
+    const queueOnly = [
+      "await context.setOffline(true);",
+      "await page.getByTestId('log-x').click();",
+      "await context.setOffline(false);",
+    ];
+    const inWindow = (lines: string[]) => {
+      const start = lines.findIndex((l) => SET_OFFLINE_TRUE_RE.test(l));
+      const rest = lines.slice(start + 1);
+      const stop = rest.findIndex((l) => SET_OFFLINE_FALSE_RE.test(l));
+      return rest
+        .slice(0, stop === -1 ? rest.length : stop)
+        .some((l) => OFFLINE_NAVIGATION_RE.test(l));
+    };
+    expect(inWindow(navigates)).toBe(true);
+    expect(inWindow(queueOnly)).toBe(false);
+  });
+
+  it("the blessed offline precondition exists and asserts the cache, not a render", () => {
+    const helpers = fs.readFileSync(path.join(E2E_DIR, "helpers.ts"), "utf8");
+    expect(helpers).toContain("export async function offlineChunksWarm");
+    expect(helpers).toContain("export async function readyForOffline");
+    // It reads the cache — a render assertion is exactly what cannot see the bypass.
+    expect(helpers).toContain("caches.match(");
   });
 
   it("the per-worker harness exposes its addressing helpers", () => {
