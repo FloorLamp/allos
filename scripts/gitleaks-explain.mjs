@@ -76,9 +76,13 @@ export function explainCommit(info, findings, { baseLabel }) {
   lines.push(head, "");
   for (const f of findings) lines.push(findingLine(f));
   lines.push("");
-  lines.push(`  commit: ${short(info.commit)}${info.subject ? `  ${info.subject}` : ""}`);
+  lines.push(
+    `  commit: ${short(info.commit)}${info.subject ? `  ${info.subject}` : ""}`
+  );
   if (info.author || info.date) {
-    lines.push(`  by:     ${[info.author, info.date].filter(Boolean).join("  ")}`);
+    lines.push(
+      `  by:     ${[info.author, info.date].filter(Boolean).join("  ")}`
+    );
   }
   if (info.kind === "elsewhere" || info.refs?.length) {
     lines.push(
@@ -199,7 +203,9 @@ function git(args) {
 
 function commitInfo(commit, { head, baseRef }) {
   const onHead = git(["merge-base", "--is-ancestor", commit, head]).ok;
-  const onBase = baseRef ? git(["merge-base", "--is-ancestor", commit, baseRef]).ok : false;
+  const onBase = baseRef
+    ? git(["merge-base", "--is-ancestor", commit, baseRef]).ok
+    : false;
   const refs = git([
     "for-each-ref",
     `--contains=${commit}`,
@@ -207,8 +213,16 @@ function commitInfo(commit, { head, baseRef }) {
     "refs/remotes/origin",
     "refs/tags",
   ]);
-  const meta = git(["show", "-s", "--format=%s%n%an%n%ad", "--date=short", commit]);
-  const [subject = "", author = "", date = ""] = meta.ok ? meta.out.split("\n") : [];
+  const meta = git([
+    "show",
+    "-s",
+    "--format=%s%n%an%n%ad",
+    "--date=short",
+    commit,
+  ]);
+  const [subject = "", author = "", date = ""] = meta.ok
+    ? meta.out.split("\n")
+    : [];
   return {
     commit,
     kind: classifyCommit({ onHead, onBase, commit }),
@@ -222,7 +236,9 @@ function commitInfo(commit, { head, baseRef }) {
 function main(argv) {
   const path = argv[2];
   if (!path || !fs.existsSync(path)) {
-    console.log(`gitleaks-explain: no report at ${path ?? "(no path given)"}; nothing to explain.`);
+    console.log(
+      `gitleaks-explain: no report at ${path ?? "(no path given)"}; nothing to explain.`
+    );
     return;
   }
   let findings;
@@ -242,7 +258,12 @@ function main(argv) {
   // Degrade rather than mislead: without a resolvable base every finding on the
   // merge commit would read as "introduced by this branch", including ones that
   // have been in main for months.
-  const baseRef = git(["rev-parse", "--verify", "--quiet", `${wantedBase}^{commit}`]).ok
+  const baseRef = git([
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `${wantedBase}^{commit}`,
+  ]).ok
     ? wantedBase
     : null;
   const baseLabel = baseRef ?? "the base branch";
@@ -257,7 +278,14 @@ function main(argv) {
   const resolved = keys.slice(0, COMMIT_LIMIT).map((commit) => {
     const info = commit
       ? commitInfo(commit, { head, baseRef })
-      : { commit: "", kind: "unknown", refs: [], subject: "", author: "", date: "" };
+      : {
+          commit: "",
+          kind: "unknown",
+          refs: [],
+          subject: "",
+          author: "",
+          date: "",
+        };
     return [info, byCommit.get(commit)];
   });
 
@@ -280,12 +308,17 @@ function main(argv) {
 }
 
 // `node scripts/gitleaks-explain.mjs` runs; `import` from a test does not.
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href
+) {
   try {
     main(process.argv);
   } catch (e) {
     // This explains a failure; it must never BE one, and must never mask the
     // finding that brought it here. The workflow exits with gitleaks' status.
-    console.log(`gitleaks-explain: could not explain these findings (${e.message}).`);
+    console.log(
+      `gitleaks-explain: could not explain these findings (${e.message}).`
+    );
   }
 }

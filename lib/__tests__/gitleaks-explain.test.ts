@@ -9,7 +9,6 @@ import {
   escapeAnnotationProperty,
   explainCommit,
   explainReport,
-  // @ts-expect-error - plain .mjs, no types
 } from "../../scripts/gitleaks-explain.mjs";
 
 // Guard for the gitleaks failure explainer (#2949), in the repo's source-scan
@@ -52,19 +51,27 @@ describe("classifyCommit", () => {
     // A PR check runs on the MERGE commit, so everything in main is reachable
     // from HEAD. Without the base test every long-standing literal would read as
     // newly introduced by whichever PR happened to run.
-    expect(classifyCommit({ onHead: true, onBase: true, commit: "a" })).toBe("base");
+    expect(classifyCommit({ onHead: true, onBase: true, commit: "a" })).toBe(
+      "base"
+    );
   });
 
   it("calls a commit on the head but not the base this branch's", () => {
-    expect(classifyCommit({ onHead: true, onBase: false, commit: "a" })).toBe("branch");
+    expect(classifyCommit({ onHead: true, onBase: false, commit: "a" })).toBe(
+      "branch"
+    );
   });
 
   it("calls a commit unreachable from the head another ref's", () => {
-    expect(classifyCommit({ onHead: false, onBase: false, commit: "a" })).toBe("elsewhere");
+    expect(classifyCommit({ onHead: false, onBase: false, commit: "a" })).toBe(
+      "elsewhere"
+    );
   });
 
   it("does not attribute a finding that carries no commit", () => {
-    expect(classifyCommit({ onHead: false, onBase: false, commit: "" })).toBe("unknown");
+    expect(classifyCommit({ onHead: false, onBase: false, commit: "" })).toBe(
+      "unknown"
+    );
   });
 });
 
@@ -87,20 +94,28 @@ describe("explainCommit", () => {
   });
 
   it("tells a branch's own finding to rewrite history rather than delete", () => {
-    const text = explainCommit(info({ kind: "branch" }), [finding], { baseLabel });
+    const text = explainCommit(info({ kind: "branch" }), [finding], {
+      baseLabel,
+    });
     expect(text).toContain("Introduced by this branch");
     expect(text).toMatch(/DELETES the line does NOT clear it/);
     expect(text).toMatch(/amend|rebase/);
   });
 
   it("tells a base finding it was not introduced here and a rebase will not help", () => {
-    const text = explainCommit(info({ kind: "base" }), [finding], { baseLabel });
+    const text = explainCommit(info({ kind: "base" }), [finding], {
+      baseLabel,
+    });
     expect(text).toContain("already in origin/main");
     expect(text).toContain("rebasing will not remove it");
   });
 
   it("groups every finding of one commit under that commit's explanation", () => {
-    const second = { ...finding, File: "lib/__tests__/other.test.ts", StartLine: 7 };
+    const second = {
+      ...finding,
+      File: "lib/__tests__/other.test.ts",
+      StartLine: 7,
+    };
     const text = explainCommit(info(), [finding, second], { baseLabel });
     expect(text).toContain("lib/__tests__/error-log-format.test.ts:41");
     expect(text).toContain("lib/__tests__/other.test.ts:7");
@@ -128,7 +143,10 @@ describe("explainReport", () => {
   });
 
   it("says so when it stopped resolving commits rather than silently truncating", () => {
-    const text = explainReport([[info(), [finding]]], { baseLabel, truncated: 3 });
+    const text = explainReport([[info(), [finding]]], {
+      baseLabel,
+      truncated: 3,
+    });
     expect(text).toContain("3 further commits");
   });
 });
@@ -170,7 +188,7 @@ describe("the gitleaks workflow wires the explainer in", () => {
   });
 
   it("still exits with gitleaks' own status, so explaining cannot become passing", () => {
-    expect(workflow).toContain('status=$?');
+    expect(workflow).toContain("status=$?");
     expect(workflow).toContain('exit "$status"');
   });
 
