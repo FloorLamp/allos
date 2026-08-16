@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
-import { dismissToast, settledClick } from "./helpers";
+import type { Page } from "@playwright/test";
+import { dismissToast, settledClick, settledFill } from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
@@ -80,6 +81,32 @@ function agoInstant(hoursAgo: number): Date {
   return resolved;
 }
 
+// The `datetime-local` value (`YYYY-MM-DDTHH:MM`) for a wall time `hoursAgo` before the
+// frozen now, IN THE RUN'S PINNED ZONE — the same zone the server resolves the field in.
+// A host-UTC string here would be judging different hours than the app is (#1417).
+function backdateValue(hoursAgo: number): string {
+  const { zone } = pinnedTimezone(frozenNow().toISOString());
+  const at = new Date(frozenNow().getTime() - hoursAgo * 3_600_000);
+  const day = at.toLocaleDateString("en-CA", { timeZone: zone });
+  const hhmm = at.toLocaleTimeString("en-GB", {
+    timeZone: zone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return `${day}T${hhmm}`;
+}
+
+// Open the backdating disclosure and put a wall time in it.
+async function setBackdate(page: Page, hoursAgo: number): Promise<void> {
+  await settledClick(page, page.getByTestId("fasting-backdate-toggle"));
+  await settledFill(
+    page,
+    page.getByTestId("fasting-backdate-input"),
+    backdateValue(hoursAgo)
+  );
+}
+
 test.describe("the fasting lifecycle (#2756)", () => {
   test.beforeEach(clearFasts);
   test.afterAll(clearFasts);
@@ -94,9 +121,14 @@ test.describe("the fasting lifecycle (#2756)", () => {
       "No fast running."
     );
 
+    // BACKDATED by 16 h, through the control the stale suggest's copy points at. The
+    // e2e clock is FROZEN, so starting and ending at "now" would be a zero-length fast
+    // — which the core refuses at the stored second, and which is the honest answer
+    // rather than a test-only concession.
+    await setBackdate(page, 16);
     await settledClick(page, control);
-    // The label now names the END, which is the write the next tap performs.
-    await expect(control).toContainText("End fast");
+    // The label now names the END, and carries the elapsed time it will record.
+    await expect(control).toContainText("End fast · 16 h");
     await dismissToast(page, "Fast started.");
 
     await settledClick(page, page.getByTestId("fasting-control"));
@@ -182,26 +214,168 @@ test.describe("the fasting lifecycle (#2756)", () => {
     }
   });
 
-  test("a backdated start overlapping a recorded fast is refused", async ({
+  test("a backdated start overlapping a recorded fast is REFUSED", async ({
     page,
   }) => {
-    // A completed fast covering [-6 h, -3 h] and nothing open.
+    // A completed fast covering [-6 h, -3 h], and nothing open.
     seedFast(agoInstant(6), agoInstant(3));
     await page.goto("/nutrition");
     await expect(page.getByTestId("fasting-control")).toHaveText("Start fast");
-    // Starting NOW is fine — it does not reach back over the recorded one.
+
+    // Submit a start backdated to -8 h: an OPEN fast runs to +infinity, so this one
+    // would swallow the recorded fast entirely. Backdating can never manufacture an
+    // overlap, and this is the assertion that says so.
+    await setBackdate(page, 8);
     await settledClick(page, page.getByTestId("fasting-control"));
-    await expect(page.getByTestId("fasting-control")).toContainText("End fast");
+    await expect(
+      page
+        .getByTestId("toast")
+        .filter({ hasText: "That overlaps a fast already on record." })
+    ).toBeVisible();
 
     const db = openDb();
     try {
       const rows = db
         .prepare("SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1")
         .get() as { n: number };
-      // Two fasts, no overlap: the completed one and the new open one.
-      expect(rows.n).toBe(2);
+      // The refusal wrote nothing: still just the one recorded fast.
+      expect(rows.n).toBe(1);
+      const open = db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(0);
     } finally {
       db.close();
+    }
+  });
+
+  test("a backdated start that clears the recorded fast is accepted", async ({
+    page,
+  }) => {
+    // The same seeded history, backdated to -2 h — after the recorded fast ended, so
+    // there is no collision and the write lands with its elapsed time on the label.
+    seedFast(agoInstant(6), agoInstant(3));
+    await page.goto("/nutrition");
+    await setBackdate(page, 2);
+    await settledClick(page, page.getByTestId("fasting-control"));
+    await expect(page.getByTestId("fasting-control")).toContainText(
+      "End fast · 2 h"
+    );
+  });
+});
+
+// D3 — THE EXEMPTION'S ESCAPE HATCH HAS TO BE ON SCREEN.
+//
+// The write core lets a restricted profile END a fast it already has, so it cannot be
+// stranded mid-fast with its food nudges stood down. That promise is only kept if the
+// SURFACE renders the close-out: a gate whose escape hatch is never drawn is the same
+// stranded row with extra steps.
+//
+// This walks the real sequence — an adult starts a fast, the birthdate is corrected to a
+// minor's, and the page is reloaded — and asserts the way out is there and works.
+test.describe("a profile restricted MID-FAST can still close it out (#2756)", () => {
+  test.beforeEach(clearFasts);
+
+  test.afterEach(() => {
+    clearFasts();
+    const db = openDb();
+    try {
+      db.prepare(
+        "DELETE FROM profile_settings WHERE profile_id = 1 AND key = 'age'"
+      ).run();
+    } finally {
+      db.close();
+    }
+  });
+
+  test("renders the close-out control, and nothing else", async ({ page }) => {
+    seedFast(agoInstant(16), null);
+    const db = openDb();
+    try {
+      db.prepare(
+        "INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'age', '15')"
+      ).run();
+    } finally {
+      db.close();
+    }
+
+    await page.goto("/nutrition");
+    // The card IS rendered — this is the assertion that fails if the surface gates on
+    // `fastingAvailable` alone.
+    await expect(page.getByTestId("fasting-card")).toBeVisible();
+    await expect(page.getByTestId("fasting-closeout-note")).toBeVisible();
+    // …and it offers ONLY the way out. No start, no history, no elapsed framing: this is
+    // harm-reduction, not tracking.
+    await expect(page.getByTestId("fasting-control")).toHaveText("End fast");
+    await expect(page.getByTestId("fasting-history-row")).toHaveCount(0);
+    await expect(page.getByTestId("fasting-backdate-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("fasting-stale-suggest")).toHaveCount(0);
+
+    // And it WORKS — the exempt end path, reached from the rendered control.
+    await settledClick(page, page.getByTestId("fasting-control"));
+    await expect(
+      page.getByTestId("toast").filter({ hasText: "Fast ended." })
+    ).toBeVisible();
+
+    const after = openDb();
+    try {
+      const open = after
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(0);
+    } finally {
+      after.close();
+    }
+
+    // With the fast closed, the surface goes away entirely — a restricted profile sees
+    // no fasting content once there is nothing left to close.
+    await page.reload();
+    await expect(page.getByTestId("fasting-card")).toHaveCount(0);
+  });
+
+  test("the end's Undo is REFUSED — reopening would re-create an active fast", async ({
+    page,
+  }) => {
+    seedFast(agoInstant(16), null);
+    await page.goto("/nutrition");
+    // End it as an adult, so the Undo affordance is the one the app itself offered.
+    await settledClick(page, page.getByTestId("fasting-control"));
+    const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
+    await expect(ended).toBeVisible();
+
+    // The birthdate is corrected before the Undo is tapped.
+    const db = openDb();
+    try {
+      db.prepare(
+        "INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'age', '15')"
+      ).run();
+    } finally {
+      db.close();
+    }
+
+    await settledClick(page, ended.getByRole("button", { name: "Undo" }));
+    await expect(
+      page
+        .getByTestId("toast")
+        .filter({ hasText: "Fasting isn't available on this profile." })
+    ).toBeVisible();
+
+    // Nothing was reopened: clearing `ended_at` is how an ACTIVE fast comes to exist,
+    // and that is exactly what the gate withholds.
+    const after = openDb();
+    try {
+      const open = after
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(0);
+    } finally {
+      after.close();
     }
   });
 });

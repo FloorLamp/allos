@@ -12,13 +12,13 @@ import { setProfileSetting } from "@/lib/settings";
 import { utcInstant } from "@/lib/date";
 import {
   discardFast,
-  editFast,
   endFast,
   fastingAvailable,
   reopenFast,
   startFast,
 } from "@/lib/fast-write";
 import { getActiveFast, listFasts } from "@/lib/fast-store";
+import { FAST_MAX_HOURS } from "@/lib/fasting";
 import { getServingsDuringFast } from "@/lib/queries/fasting";
 import { standsDownForFast } from "@/lib/fasting-standdown";
 import { logFoodServingCore } from "@/lib/food-log-write";
@@ -33,6 +33,27 @@ function makeProfile(name: string, age?: number): number {
   return id;
 }
 
+// A COMPLETED fast seeded directly, `startedHoursAgo` → `endedHoursAgo` before now.
+// Inserted rather than driven through the cores because these fixtures are deliberately
+// older than the cores would now accept — which is the point of the tests using them.
+function seedCompleted(
+  profileId: number,
+  startedHoursAgo: number,
+  endedHoursAgo: number
+): number {
+  return Number(
+    db
+      .prepare(
+        "INSERT INTO fasts (profile_id, started_at, ended_at) VALUES (?, ?, ?)"
+      )
+      .run(
+        profileId,
+        utcInstant(new Date(Date.now() - startedHoursAgo * 3_600_000)),
+        utcInstant(new Date(Date.now() - endedHoursAgo * 3_600_000))
+      ).lastInsertRowid
+  );
+}
+
 let adult: number;
 let minor: number;
 
@@ -44,7 +65,10 @@ beforeEach(() => {
 
 describe("start / end lifecycle", () => {
   it("starts, reports the active row, and ends", () => {
-    const started = startFast(adult);
+    // Backdated an hour, because a fast that starts and ends inside the SAME STORED
+    // SECOND is zero-length and is refused (see the granularity test below). "Start and
+    // end with no time in between" is not a lifecycle, it is a mis-tap.
+    const started = startFast(adult, new Date(Date.now() - 3_600_000));
     expect(started.kind).toBe("started");
     expect(getActiveFast(adult)).not.toBeNull();
 
@@ -129,6 +153,62 @@ describe("Undo an end — the inverse is complete and local", () => {
     startFast(adult);
     expect(reopenFast(adult, id).kind).toBe("already-active");
   });
+
+  // D1. `id` arrives from a FORM. Naming an id rather than resolving by recency was
+  // never enough on its own — an id IS an arbitrary handle, so without an age bound this
+  // core resurrects last week's fast exactly as a recency-resolved one would have, which
+  // is the failure naming the id was supposed to avoid.
+  it("refuses to reopen a fast that ended long ago — an Undo is not a resurrection", () => {
+    // A fast recorded and closed ten days back.
+    const id = seedCompleted(adult, 10 * 24, 10 * 24 - 16);
+    expect(reopenFast(adult, id)).toEqual({ kind: "too-old" });
+    expect(getActiveFast(adult)).toBeNull();
+  });
+
+  // D1, the shape the resurrection actually corrupts: reopening makes the fast OPEN
+  // again, so it runs to +infinity and swallows everything recorded after it.
+  it("refuses a reopen that would swallow a later fast", () => {
+    const old = seedCompleted(adult, 10 * 24, 10 * 24 - 16);
+    seedCompleted(adult, 48, 32);
+    // Age is what stops this one first; prove the overlap guard independently by moving
+    // the old fast's end inside the undo window while the later fast still sits after it.
+    db.prepare("UPDATE fasts SET ended_at = ? WHERE id = ?").run(
+      utcInstant(new Date(Date.now() - 60_000)),
+      old
+    );
+    const outcome = reopenFast(adult, old);
+    expect(outcome.kind).toBe("overlap");
+    expect(getActiveFast(adult)).toBeNull();
+  });
+
+  // D1's downstream consequence, pinned directly: no core may mint a row another core
+  // would refuse. `endFast` now carries the SAME FAST_MAX_HOURS bound `startFast` does.
+  it("refuses to end a fast that has run past the maximum recordable length", () => {
+    const startedAt = new Date(Date.now() - (FAST_MAX_HOURS + 24) * 3_600_000);
+    db.prepare(
+      "INSERT INTO fasts (profile_id, started_at, ended_at) VALUES (?, ?, NULL)"
+    ).run(adult, utcInstant(startedAt));
+    expect(endFast(adult).kind).toBe("too-long");
+    // Still open and still reported honestly — a refusal writes nothing.
+    expect(getActiveFast(adult)).not.toBeNull();
+  });
+
+  // D5. `utcInstant` truncates to SECONDS, so a millisecond comparison judges a
+  // precision the column will not keep: two Dates 400 ms apart pass `end > start` in ms
+  // and then serialize to the same string, storing a zero-length fast.
+  it("refuses an end that would serialize to the same second as its start", () => {
+    // Aligned to an exact second so the +400 ms below cannot straddle a second boundary
+    // and accidentally become a real interval.
+    const start = new Date(Math.floor((Date.now() - 60_000) / 1000) * 1000);
+    startFast(adult, start);
+    const end = new Date(start.getTime() + 400);
+    expect(endFast(adult, end)).toEqual({ kind: "invalid" });
+    expect(getActiveFast(adult)).not.toBeNull();
+    // One second later is a real interval and lands.
+    expect(endFast(adult, new Date(start.getTime() + 1000)).kind).toBe("ended");
+    const row = listFasts(adult)[0];
+    expect(row.ended_at).not.toBe(row.started_at);
+  });
 });
 
 describe("discard — 'I never actually fasted'", () => {
@@ -169,7 +249,9 @@ describe("adult-only at the core, with the end-side exemption", () => {
     // birthdate edit later makes the profile restricted. Without the exemption this row
     // would be permanently un-closable — and its food nudges permanently stood down.
     const profile = makeProfile("became-minor");
-    expect(startFast(profile).kind).toBe("started");
+    expect(startFast(profile, new Date(Date.now() - 3_600_000)).kind).toBe(
+      "started"
+    );
     setProfileSetting(profile, "age", "15");
     expect(fastingAvailable(profile)).toBe(false);
 
@@ -180,28 +262,46 @@ describe("adult-only at the core, with the end-side exemption", () => {
     expect(startFast(profile).kind).toBe("refused");
   });
 
-  it("lets a restricted profile discard and undo, but never edit", () => {
+  // D2. THE GATE PROTECTS "no ACTIVE fast comes to exist", not "no row is INSERTed".
+  // `ended_at IS NULL` IS the active state, so clearing it is a way of causing an active
+  // fast to exist with no INSERT anywhere — and it is reachable through the Undo button
+  // the app renders on the exempt end's own confirmation. This walks that exact path.
+  it("refuses the Undo-after-end for a restricted profile — reopening CREATES an active fast", () => {
     const profile = makeProfile("became-minor-2");
-    const started = startFast(profile);
+    const started = startFast(profile, new Date(Date.now() - 3_600_000));
     const id = started.kind === "started" ? started.id : -1;
     const ended = endFast(profile);
     expect(ended.kind).toBe("ended");
+
+    // The birthdate is corrected. Starts are now refused …
+    setProfileSetting(profile, "age", "15");
+    expect(startFast(profile).kind).toBe("refused");
+
+    // … and so is the reopen, because it would leave this profile with an ACTIVE fast
+    // and the #2757 stand-downs back on.
+    expect(reopenFast(profile, id)).toEqual({ kind: "refused" });
+    expect(getActiveFast(profile)).toBeNull();
+
+    // Discard still works — it is the path that REMOVES fasting data, and refusing it
+    // would keep the very content the gate exists to withhold.
+    expect(discardFast(profile, id).kind).toBe("discarded");
+  });
+
+  // The exemptions' whole purpose, walked end to end: no supported path leaves a
+  // restricted profile with an active fast, and the one it already had can always be
+  // closed.
+  it("leaves no path that gives a restricted profile an active fast", () => {
+    const profile = makeProfile("became-minor-3");
+    const started = startFast(profile, new Date(Date.now() - 3_600_000));
+    const id = started.kind === "started" ? started.id : -1;
     setProfileSetting(profile, "age", "15");
 
-    // Undo works — it restores the state the exempt end path produced.
-    expect(reopenFast(profile, id).kind).toBe("reopened");
-    // Editing a completed fast's interval is recording fasting content, so it refuses.
-    endFast(profile);
-    expect(
-      editFast(
-        profile,
-        id,
-        new Date(Date.now() - 7_200_000),
-        new Date(Date.now() - 3_600_000)
-      )
-    ).toEqual({ kind: "refused" });
-    // Discard works — it is the path that REMOVES fasting data.
-    expect(discardFast(profile, id).kind).toBe("discarded");
+    // The active row it already has can be closed (the exemption).
+    expect(endFast(profile).kind).toBe("ended");
+    // And nothing puts one back.
+    expect(startFast(profile).kind).toBe("refused");
+    expect(reopenFast(profile, id).kind).toBe("refused");
+    expect(getActiveFast(profile)).toBeNull();
   });
 });
 
@@ -245,9 +345,13 @@ describe("the annotation reads real food rows and offers no verdict", () => {
 // the moment it ends, because nothing is stored.
 describe("the stand-down over real state (#2757)", () => {
   it("stands the food nudge down while active and resumes on the end", () => {
-    expect(standsDownForFast(getActiveFast(adult), "food")).toBe(false);
-    startFast(adult);
-    expect(standsDownForFast(getActiveFast(adult), "food")).toBe(true);
+    expect(standsDownForFast(getActiveFast(adult), "food", new Date())).toBe(
+      false
+    );
+    startFast(adult, new Date(Date.now() - 3_600_000));
+    expect(standsDownForFast(getActiveFast(adult), "food", new Date())).toBe(
+      true
+    );
     // Nothing was written anywhere to record the suppression …
     expect(
       db
@@ -258,15 +362,17 @@ describe("the stand-down over real state (#2757)", () => {
     ).toEqual({ n: 0 });
     endFast(adult);
     // … so it self-heals with no sweep.
-    expect(standsDownForFast(getActiveFast(adult), "food")).toBe(false);
+    expect(standsDownForFast(getActiveFast(adult), "food", new Date())).toBe(
+      false
+    );
   });
 
   it("never stands a dose reminder or an escalation down, fasting or not", () => {
-    startFast(adult);
+    startFast(adult, new Date(Date.now() - 3_600_000));
     const active = getActiveFast(adult);
-    expect(standsDownForFast(active, "dose")).toBe(false);
-    expect(standsDownForFast(active, "escalation")).toBe(false);
-    expect(standsDownForFast(active, "redose")).toBe(false);
+    expect(standsDownForFast(active, "dose", new Date())).toBe(false);
+    expect(standsDownForFast(active, "escalation", new Date())).toBe(false);
+    expect(standsDownForFast(active, "redose", new Date())).toBe(false);
   });
 
   // The OFFER half, at the gather that actually decides it. The dashboard control and
@@ -276,7 +382,7 @@ describe("the stand-down over real state (#2757)", () => {
   it("withdraws the usual-routine offer while a fast is active", () => {
     const day = today(adult);
     // Whatever the offer would be for this profile, an active fast makes it null …
-    startFast(adult);
+    startFast(adult, new Date(Date.now() - 3_600_000));
     for (const window of ["Morning", "Midday", "Evening"] as const) {
       expect(getUsualRoutineOffer(adult, window, day)).toBeNull();
     }
@@ -289,7 +395,7 @@ describe("the stand-down over real state (#2757)", () => {
 
   it("leaves food LOGGING untouched while the offer stands down (#2419)", () => {
     const day = today(adult);
-    startFast(adult);
+    startFast(adult, new Date(Date.now() - 3_600_000));
     // The offer is gone …
     expect(getUsualRoutineOffer(adult, "Morning", day)).toBeNull();
     // … and every food row is exactly as loggable. The stand-down withdraws the OFFER,

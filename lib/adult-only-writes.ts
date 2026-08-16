@@ -59,24 +59,24 @@ export const ADULT_ONLY_WRITE_CORES: readonly AdultOnlyWriteCore[] = [
   {
     file: "lib/fast-write.ts",
     gate: "fastAdultOnlyRefusal",
-    // THE REGISTRY'S FIRST EXEMPTIONS, and they are an asymmetry rather than a leak:
-    // every exempt function REMOVES fasting state, none records any. See the module
-    // header for the stranded-row trap they close.
+    // THE REGISTRY'S FIRST EXEMPTIONS. The test they have to pass is not "does this
+    // function INSERT" — it is "can this function leave the profile with an ACTIVE fast
+    // it did not have". `ended_at IS NULL` IS the active state, so a core that clears
+    // that column causes an active fast to exist without inserting anything, and reading
+    // the gate as an insert-guard is exactly how a hole opens. Both entries below
+    // STRICTLY REDUCE fasting state and have no input that could make them enlarge it.
+    // `reopenFast` was on this list and is not any more, for precisely that reason.
     exempt: [
       {
         fn: "endFast",
-        why: "#2756 owner ruling: starts refuse, ending an existing active fast ALWAYS succeeds. A birthdate edit that makes a profile restricted MID-FAST must not leave an active row nobody can close — that would strand the profile permanently mid-fast, with its food nudges stood down by #2757 and no affordance anywhere to fix it, which is a worse outcome for the same person the gate exists to protect. Closing out is harm-reduction, not tracking: this core writes an END onto a row that already exists and can never bring a fast into being. `startFast` and `editFast` beside it are gated, which is what makes this an asymmetry and not a hole.",
-      },
-      {
-        fn: "reopenFast",
-        why: "#2756: the inverse of endFast, offered as the end's Undo. It restores exactly the state the exempt end path produced, so gating it would strand a restricted profile ONE STEP FURTHER along than gating the end would have — the user taps Undo on a confirmation the app itself just offered and the app refuses. It cannot create a fast either: it only clears `ended_at` on a named row that already exists and is already the caller's own.",
+        why: "#2756 owner ruling: starts refuse, ending an existing active fast ALWAYS succeeds. A birthdate edit that makes a profile restricted MID-FAST must not leave an active row nobody can close — that would strand the profile permanently mid-fast, with its food nudges stood down by #2757 and no affordance anywhere to fix it, which is a worse outcome for the same person the gate exists to protect. Closing out is harm-reduction, not tracking: it moves a fast from active to completed, so the count of active fasts strictly decreases and no input can make it do otherwise. The bounding evidence is `startFast` and `reopenFast` beside it, both GATED and both reachable from real surfaces — that is what makes this an asymmetry rather than a hole.",
       },
       {
         fn: "discardFast",
         why: "#2756: 'I never actually fasted' — the stale suggest's second resolution, a row DELETE. Same harm-reduction reasoning as endFast, and the strongest case of it: this is the path that removes fasting data entirely, so refusing it for a restricted profile would keep the very content the gate exists to withhold. A gate here would protect nothing and lock in a row.",
       },
     ],
-    why: "#2756: fasting is an eating-restriction tracker, and on a known-minor profile that is eating-disorder-adjacent — a safety question, not a preference. Gated on the #1174/#2107 pattern: hiding the /nutrition surface is theater because the Server Actions are independently POST-callable, so the refusal lives in the CORE and a refused start answers exactly as an unknown row does. The line is lib/life-stage's own `isMinor` (age < 18) rather than a fresh constant, and unknown age PASSES per that module's documented positive-match-only policy. The three exemptions above are the ruling's deliberate asymmetry, not gaps.",
+    why: "#2756: fasting is an eating-restriction tracker, and on a known-minor profile that is eating-disorder-adjacent — a safety question, not a preference. Gated on the #1174/#2107 pattern: hiding the /nutrition surface is theater because the Server Actions are independently POST-callable, so the refusal lives in the CORE and a refused start answers exactly as an unknown row does. The line is lib/life-stage's own `isMinor` (age < 18) rather than a fresh constant, and unknown age PASSES per that module's documented positive-match-only policy. The two exemptions above are the ruling's deliberate asymmetry, not gaps: the criterion is whether a core can leave the profile with an ACTIVE fast it did not have, and both of them strictly reduce fasting state instead. `reopenFast` fails that criterion — clearing `ended_at` IS how an active fast comes to exist — so it is gated alongside `startFast`.",
   },
 ];
 

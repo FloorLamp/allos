@@ -98,6 +98,13 @@ function endMessage(outcome: EndFastOutcome): FastActionResult {
         ok: false,
         error: "That end time doesn't work — check the date.",
       };
+    // The SAME FAST_MAX_HOURS bound a backdated start is held to, so the two cores can
+    // never disagree about which intervals are storable.
+    case "too-long":
+      return {
+        ok: false,
+        error: "That fast would be too long to record — check the times.",
+      };
   }
 }
 
@@ -139,6 +146,18 @@ export async function undoEndFastAction(
       return fail("A fast is already running.");
     case "not-found":
       return fail("That fast is no longer there to reopen.");
+    // An Undo is the inverse of a write the user JUST made. Past the window it would be
+    // resurrecting finished history, which is a different act and not one this offers.
+    case "too-old":
+      return fail("That's too old to undo now.");
+    case "overlap":
+      return fail("Reopening that would overlap a later fast.");
+    case "too-long":
+      return fail("That fast would be too long to reopen.");
+    // GATED, unlike the end it undoes: restoring an active fast is exactly what the
+    // adult-only ruling withholds, so this cannot ride the end's exemption.
+    case "refused":
+      return fail("Fasting isn't available on this profile.");
   }
 }
 

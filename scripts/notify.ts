@@ -416,10 +416,15 @@ async function tickProfile(
   // disjointness is proven over the whole `NotificationKind` union in
   // lib/__tests__/fasting-standdown.test.ts rather than assumed here. The read is
   // memoized for the profile's tick.
+  //
+  // BOUNDED BY PLAUSIBILITY, not merely by the row existing: past FAST_STALE_HOURS an
+  // active fast reads as ABANDONED rather than as "not eating", and the nudge resumes.
+  // A suppression whose only exit is the user opening the app would be silencing the
+  // very channel that would have brought them there.
   if (
     getProfileFoodTelegram(profile.id) &&
     telegramChannel.isConfigured(profile.id) &&
-    !standsDownForFast(getActiveFastCached(profile.id), "food")
+    !standsDownForFast(getActiveFastCached(profile.id), "food", now)
   ) {
     for (const w of FOOD_NUDGE_WINDOWS) {
       const slotMinute = sched.supplementMinutes[w];

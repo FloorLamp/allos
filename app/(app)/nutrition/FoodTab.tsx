@@ -196,31 +196,54 @@ export default async function FoodTab({
   }
 
   const date = today(profile.id);
-  // The fasting surface's whole gather (#2756), or null for a profile the adult-only
-  // ruling restricts — a restricted profile sees no fasting surface anywhere. The
-  // duration and day attribution are formatted HERE, on the server, from the pure
-  // derivations: the day a completed fast counts for is the day it ENDED (#94), and
-  // deriving it needs the profile timezone, which the client does not have.
+  // The fasting surface's whole gather (#2756). The duration and day attribution are
+  // formatted HERE, on the server, from the pure derivations: the day a completed fast
+  // counts for is the day it ENDED (#94), and deriving it needs the profile timezone,
+  // which the client does not have.
+  //
+  // WHO SEES WHAT, and why it is not simply `fastingAvailable`. A restricted profile
+  // sees no fasting surface — EXCEPT the close-out control for a fast that is already
+  // running. That exception is the whole point of the write core's end-side exemption
+  // (lib/fast-write.ts): a birthdate edit mid-fast leaves an active row with both #2757
+  // stand-downs on, and if the card is not rendered the user has an un-endable fast, a
+  // silenced food nudge, and nothing on screen to act on — the exact stranded state the
+  // exemption exists to prevent, reintroduced one layer up. So:
+  //
+  //   canStart true   — the full surface: start/end, the stale suggest, history.
+  //   canStart false + an active fast — the close-out ONLY. No start, no history: this
+  //                     is harm-reduction, not tracking, so it offers the way out and
+  //                     nothing else.
+  //   canStart false + no active fast — no card at all.
   const fastingTz = getTimezone(profile.id);
   const fastingNow = clockNow();
-  const fasting = fastingAvailable(profile.id)
-    ? {
-        active: getActiveFastCached(profile.id),
-        nowMs: fastingNow.getTime(),
-        history: getFastHistory(profile.id)
-          .filter((f) => f.ended_at !== null)
-          .map((f) => {
-            const day = fastAttributedDay(f, fastingTz);
-            return {
-              fast: f,
-              day,
-              label: day ? formatWeekdayDate(day, formatPrefs) : "In progress",
-              duration: formatFastDuration(fastElapsedMs(f, fastingNow) ?? 0),
-              servingsDuring: getServingsDuringFast(profile.id, f),
-            };
-          }),
-      }
-    : null;
+  const canStartFast = fastingAvailable(profile.id);
+  const activeFastRow = getActiveFastCached(profile.id);
+  const fasting =
+    canStartFast || activeFastRow
+      ? {
+          active: activeFastRow,
+          canStart: canStartFast,
+          nowMs: fastingNow.getTime(),
+          history: canStartFast
+            ? getFastHistory(profile.id)
+                .filter((f) => f.ended_at !== null)
+                .map((f) => {
+                  const day = fastAttributedDay(f, fastingTz);
+                  return {
+                    fast: f,
+                    day,
+                    label: day
+                      ? formatWeekdayDate(day, formatPrefs)
+                      : "In progress",
+                    duration: formatFastDuration(
+                      fastElapsedMs(f, fastingNow) ?? 0
+                    ),
+                    servingsDuring: getServingsDuringFast(profile.id, f),
+                  };
+                })
+            : [],
+        }
+      : null;
   // A deliberately bounded recent-meal picker: today plus the previous six days.
   // This is enough to recover a missed meal without turning the one-tap habit log into
   // an unrestricted historical editor. Each day's daily counters and meal-slot ledger
@@ -415,6 +438,7 @@ export default async function FoodTab({
             {fasting && (
               <FastingCard
                 active={fasting.active}
+                canStart={fasting.canStart}
                 history={fasting.history}
                 nowMs={fasting.nowMs}
               />

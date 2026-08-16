@@ -32,6 +32,7 @@ import {
 import { getUsualFoodOffer } from "./nutrition";
 import { getActiveFastCached } from "./fasting";
 import { standsDownUsualRoutine } from "../fasting-standdown";
+import { now as clockNow } from "../clock";
 
 // The doses one tap would confirm for `window` on `date`: DECLARED in that window,
 // due that day, and not yet taken or skipped.
@@ -114,7 +115,8 @@ export function getUsualRoutineOffer(
   window: FoodSlot,
   date: string
 ): UsualRoutineOffer | null {
-  if (standsDownUsualRoutine(getActiveFastCached(profileId))) return null;
+  if (standsDownUsualRoutine(getActiveFastCached(profileId), clockNow()))
+    return null;
   const groups = getUsualFoodOffer(profileId, window, date);
   if (groups.length === 0) return null;
   return usualRoutineOffer(

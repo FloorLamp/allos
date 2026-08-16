@@ -7,12 +7,14 @@ import {
   fastElapsedHours,
   fastsOverlap,
   formatFastDuration,
+  instantSeconds,
   overlappingFasts,
   promptsEndOfFast,
   servingsDuringFast,
   servingsDuringFastNote,
   type Fast,
 } from "../fasting";
+import { utcInstant } from "../date";
 
 // The fasting lifecycle's PURE derivations (#2756). No DB, no clock: every case here
 // states the instants it judges, which is also what lets the day-boundary cases below
@@ -51,6 +53,26 @@ describe("elapsed + formatting", () => {
 
 // A fast spans a day boundary by nature, so this is the case a stored date string gets
 // wrong. The attribution rule (#94): a completed fast counts for the day it ENDS.
+// D5. The canonical convention carries SECONDS — `utcInstant` truncates — so an
+// ordering check in MILLISECONDS judges a precision the column will not keep.
+describe("stored-instant granularity", () => {
+  it("collapses two instants inside the same second", () => {
+    const base = new Date("2026-08-16T08:00:00.000Z");
+    const plus400 = new Date("2026-08-16T08:00:00.400Z");
+    expect(instantSeconds(plus400)).toBe(instantSeconds(base));
+    // …which is exactly why a millisecond comparison is not a safe ordering test: these
+    // two ARE ordered in ms and are the SAME instant once stored.
+    expect(plus400.getTime()).toBeGreaterThan(base.getTime());
+    expect(utcInstant(plus400)).toBe(utcInstant(base));
+  });
+
+  it("separates instants a full second apart", () => {
+    expect(instantSeconds(new Date("2026-08-16T08:00:01.000Z"))).toBe(
+      instantSeconds(new Date("2026-08-16T08:00:00.000Z")) + 1
+    );
+  });
+});
+
 describe("day attribution across a profile-local boundary", () => {
   it("counts a fast for the day it ENDED, in the profile's own zone", () => {
     // Started 20:00 Tuesday New York, ended 12:00 Wednesday New York.

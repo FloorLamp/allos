@@ -44,7 +44,27 @@ export const FAST_STALE_HOURS = 36;
 // it would put a bar on every duration chart that dwarfs the real ones. 14 days.
 export const FAST_MAX_HOURS = 14 * 24;
 
+// How long after an end its UNDO stays live. An Undo is the inverse of a write the user
+// just made — it is not a general reopen, and the distance between those two is the
+// whole of "resolving it by recency could resurrect last week's fast". Bounding it by
+// AGE is what makes that sentence true of the CODE rather than only of the intention:
+// past this window the completed fast is history, and reopening it would mint an active
+// fast out of a row the user finished with days ago.
+export const FAST_REOPEN_MAX_MINUTES = 15;
+
 const MS_PER_HOUR = 3_600_000;
+
+// STORED-INSTANT GRANULARITY. The canonical convention (`YYYY-MM-DDTHH:MM:SSZ`) carries
+// SECONDS — `utcInstant` truncates the milliseconds away — so an ordering check in
+// MILLISECONDS is judging a precision the column will not keep. Two Dates 400 ms apart
+// pass an `end > start` test in ms and then serialize to the SAME string, storing a
+// zero-length fast that every downstream duration reads as 0.
+//
+// Every ordering check in the write cores therefore compares what will actually be
+// STORED. The rule lives here so the cores cannot each pick their own precision.
+export function instantSeconds(d: Date): number {
+  return Math.floor(d.getTime() / 1000);
+}
 
 /** Elapsed milliseconds of a fast at `at` (for an active one) or over its full interval. */
 export function fastElapsedMs(fast: Fast, at: Date): number | null {

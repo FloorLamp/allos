@@ -43,10 +43,18 @@ export interface FastHistoryEntry {
 
 export default function FastingCard({
   active,
+  canStart,
   history,
   nowMs,
 }: {
   active: Fast | null;
+  // Whether this profile may START a fast. FALSE with an active fast is the
+  // harm-reduction case the write core's end-side exemption exists for: a profile that
+  // became restricted MID-FAST still gets the way out, and nothing else — no start
+  // control, no history, no elapsed-time framing that would read as tracking. Rendering
+  // nothing at all here would recreate the stranded row the exemption prevents at the
+  // core, one layer up (lib/fast-write.ts).
+  canStart: boolean;
   history: FastHistoryEntry[];
   // The SERVER's clock reading at render, so the first paint matches what the server
   // decided and hydration cannot disagree with it. The ticking counter below advances
@@ -56,6 +64,12 @@ export default function FastingCard({
   const toast = useToast();
   const [pending, setPending] = useState(false);
   const [elapsedNow, setElapsedNow] = useState(nowMs);
+  // The backdated wall time, as a `datetime-local` value (`YYYY-MM-DDTHH:MM`). The form
+  // carries the profile-local WALL TIME and the SERVER resolves it against the profile's
+  // timezone (`parseBackdated`, ./fast-actions) — never a client instant, so a tab open
+  // across a zone change or a browser with a skewed clock cannot stamp one.
+  const [backdate, setBackdate] = useState("");
+  const [showBackdate, setShowBackdate] = useState(false);
 
   // The chip ticks once a minute — the smallest unit the label renders, so a shorter
   // interval would repaint without changing a character.
@@ -110,6 +124,44 @@ export default function FastingCard({
     }
   }
 
+  // The backdated instant this card would submit, or absent for a plain "now" write.
+  // One helper so the start control and the stale suggest cannot diverge on the field
+  // name the action parses.
+  function withBackdate(field: "started_at" | "ended_at"): FormData {
+    const fd = new FormData();
+    if (backdate) fd.set(field, backdate);
+    return fd;
+  }
+
+  // A restricted profile with a fast still running (#2756's end-side exemption). The
+  // ONLY thing offered is the way out. Deliberately no elapsed duration, no history and
+  // no stale suggest: this is closing an account, not tracking a practice.
+  if (!canStart) {
+    return (
+      <section
+        data-testid="fasting-card"
+        className="mb-4 rounded-lg border border-black/10 p-3 dark:border-white/10"
+      >
+        <h2 className="mb-2 section-label">Fasting</h2>
+        <p
+          data-testid="fasting-closeout-note"
+          className="mb-2 text-sm text-slate-500 dark:text-slate-400"
+        >
+          You have a fast open. You can close it out here.
+        </p>
+        <button
+          type="button"
+          data-testid="fasting-control"
+          disabled={pending}
+          onClick={() => void run(endFastAction, new FormData())}
+          className="rounded-md border border-black/10 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-white/10"
+        >
+          End fast
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section
       data-testid="fasting-card"
@@ -140,7 +192,9 @@ export default function FastingCard({
         onClick={() =>
           void run(
             state.kind === "start" ? startFastAction : endFastAction,
-            new FormData()
+            state.kind === "start"
+              ? withBackdate("started_at")
+              : withBackdate("ended_at")
           )
         }
         className="rounded-md border border-black/10 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-white/10"
@@ -148,11 +202,39 @@ export default function FastingCard({
         {fastControlLabel(state)}
       </button>
 
+      {/* BACKDATING (#2756): forgot-to-tap is the common failure, so both writes accept
+          an explicit instant. Behind a disclosure because the overwhelmingly common tap
+          is "now" and a date field in the default path would make a one-tap control a
+          form. The field is the profile's own WALL time; the server resolves it. */}
+      <div className="mt-2">
+        <button
+          type="button"
+          data-testid="fasting-backdate-toggle"
+          onClick={() => setShowBackdate((v) => !v)}
+          className="text-xs text-slate-500 underline dark:text-slate-400"
+        >
+          {state.kind === "start" ? "Started earlier?" : "Stopped earlier?"}
+        </button>
+        {showBackdate && (
+          <input
+            type="datetime-local"
+            data-testid="fasting-backdate-input"
+            aria-label={state.kind === "start" ? "Start time" : "End time"}
+            value={backdate}
+            onChange={(e) => setBackdate(e.target.value)}
+            className="input mt-1 block text-sm"
+          />
+        )}
+      </div>
+
       {/* The stale SUGGEST (#921's shape, never a timeout). Past the plausibility bound
           the app says what it noticed and offers BOTH resolutions — end it at a time you
           choose, or discard it as never-happened. It never picks, and it never
           auto-ends: "I stopped at some point" and "I never actually fasted" are
-          different truths and only the user knows which one happened. */}
+          different truths and only the user knows which one happened. The copy points at
+          the backdating field above, which is why that control ships with it rather than
+          later: an instruction that names an affordance the page does not have is worse
+          than no instruction. */}
       {state.kind === "stale" && (
         <div
           data-testid="fasting-stale-suggest"
@@ -160,8 +242,8 @@ export default function FastingCard({
         >
           <p className="mb-2 text-slate-700 dark:text-slate-200">
             This fast has been running for {formatFastDuration(state.elapsedMs)}
-            . End it at the time you actually stopped, or discard it if it never
-            happened.
+            . End it at the time you actually stopped — set that time under
+            “Stopped earlier?” above — or discard it if it never happened.
           </p>
           <button
             type="button"

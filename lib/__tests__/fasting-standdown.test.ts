@@ -13,7 +13,7 @@ import {
   SAFETY_NOTIFICATION_KINDS,
 } from "../notifications/kinds";
 import type { NotificationKind } from "../notifications/types";
-import type { Fast } from "../fasting";
+import { FAST_STALE_HOURS, type Fast } from "../fasting";
 
 // The fasting stand-down's SAFETY PROOF (#2757).
 //
@@ -35,6 +35,17 @@ const ACTIVE: Fast = {
   ended_at: null,
   note: null,
 };
+
+// An instant at which ACTIVE is running and still PLAUSIBLE (4 h in). Every assertion
+// below that was written before the staleness term (#2757 D4) judges the fast at this
+// instant, so the term changed the signature and not one verdict.
+const AT = new Date("2026-08-16T12:00:00Z");
+
+// The same fast, judged past FAST_STALE_HOURS. A row this old is evidence that somebody
+// abandoned it, not evidence that they are not eating.
+const AT_STALE = new Date(
+  Date.parse(ACTIVE.started_at) + (FAST_STALE_HOURS + 1) * 3_600_000
+);
 
 describe("fasting stand-down — what a fast may silence (#2757)", () => {
   it("suppresses ONLY the food kind, across the entire notification union", () => {
@@ -73,12 +84,12 @@ describe("fasting stand-down — what a fast may silence (#2757)", () => {
     ["workout", "workout reminder"],
     ["practice", "practice pace nudge"],
   ] as const)("an active fast never stands down %s (%s)", (kind, _what) => {
-    expect(standsDownForFast(ACTIVE, kind as NotificationKind)).toBe(false);
+    expect(standsDownForFast(ACTIVE, kind as NotificationKind, AT)).toBe(false);
   });
 
   it("stands the food nudge down only while a fast is ACTIVE", () => {
-    expect(standsDownForFast(ACTIVE, "food")).toBe(true);
-    expect(standsDownForFast(null, "food")).toBe(false);
+    expect(standsDownForFast(ACTIVE, "food", AT)).toBe(true);
+    expect(standsDownForFast(null, "food", AT)).toBe(false);
   });
 
   it("requires BOTH halves — an active fast alone silences nothing", () => {
@@ -87,15 +98,61 @@ describe("fasting stand-down — what a fast may silence (#2757)", () => {
     for (const kind of ALL_NOTIFICATION_KINDS) {
       if (kind === "food") continue;
       expect(
-        standsDownForFast(ACTIVE, kind),
+        standsDownForFast(ACTIVE, kind, AT),
         `${kind} was suppressed by an active fast`
       ).toBe(false);
     }
   });
 
   it("stands the usual-routine OFFER down while a fast is active", () => {
-    expect(standsDownUsualRoutine(ACTIVE)).toBe(true);
-    expect(standsDownUsualRoutine(null)).toBe(false);
+    expect(standsDownUsualRoutine(ACTIVE, AT)).toBe(true);
+    expect(standsDownUsualRoutine(null, AT)).toBe(false);
+  });
+});
+
+// D4: A SUPPRESSION MUST BE ABLE TO END BY ITSELF.
+//
+// "Derived, so it self-heals when the fast ends" is only true if the fast ends. An
+// active row can sit there for days — a backdated start, a fast nobody closed — and
+// while it does, the food nudge is silent and the ONLY thing that would tell the user is
+// a card on the page the silenced nudge existed to bring them to. So the stand-down is
+// bounded by the same plausibility bound the surface uses: once a fast reads STALE it has
+// stopped being evidence of not-eating and the nudge comes back.
+describe("the stand-down expires with the claim's plausibility (#2757)", () => {
+  it("stops suppressing the food nudge once the fast reads STALE", () => {
+    expect(standsDownForFast(ACTIVE, "food", AT)).toBe(true);
+    expect(standsDownForFast(ACTIVE, "food", AT_STALE)).toBe(false);
+  });
+
+  it("restores the usual-routine offer once the fast reads STALE", () => {
+    expect(standsDownUsualRoutine(ACTIVE, AT)).toBe(true);
+    expect(standsDownUsualRoutine(ACTIVE, AT_STALE)).toBe(false);
+  });
+
+  it("holds right up to the bound and releases exactly at it", () => {
+    const started = Date.parse(ACTIVE.started_at);
+    const justUnder = new Date(started + (FAST_STALE_HOURS - 0.01) * 3_600_000);
+    const atBound = new Date(started + FAST_STALE_HOURS * 3_600_000);
+    expect(standsDownForFast(ACTIVE, "food", justUnder)).toBe(true);
+    expect(standsDownForFast(ACTIVE, "food", atBound)).toBe(false);
+  });
+
+  it("a 13-day backdated start suppresses NOTHING, at any kind", () => {
+    // The D4 scenario exactly: a start inside FAST_MAX_HOURS, so the row is storable and
+    // active, but far past the plausibility bound. It must silence nothing at all.
+    const backdated: Fast = {
+      id: 2,
+      started_at: "2026-08-03T08:00:00Z",
+      ended_at: null,
+      note: null,
+    };
+    for (const kind of ALL_NOTIFICATION_KINDS) {
+      expect(
+        standsDownForFast(backdated, kind, AT),
+        `${kind} was suppressed by a 13-day-old abandoned fast`
+      ).toBe(false);
+    }
+    expect(standsDownUsualRoutine(backdated, AT)).toBe(false);
   });
 });
 

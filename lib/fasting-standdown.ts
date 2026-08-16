@@ -39,7 +39,7 @@
 // safety ruling.
 
 import type { NotificationKind } from "./notifications/types";
-import type { Fast } from "./fasting";
+import { fastControlState, type Fast } from "./fasting";
 
 // The CLOSED set of notification kinds an active fast may stand down. One member, and
 // the reason it is a set at all is so the disjointness proof in the tests has something
@@ -55,19 +55,45 @@ export function isFastSuppressibleKind(kind: NotificationKind): boolean {
   return FAST_SUPPRESSIBLE_KINDS.has(kind);
 }
 
-// THE PREDICATE. A send of `kind` stands down when the profile has an active fast AND
-// the kind is on the allowlist. Both halves are required, and the kind check is not
-// short-circuitable from the call site: a caller with no kind in hand cannot ask this
-// question.
+// ── THE STALENESS TERM: A SUPPRESSION MUST BE ABLE TO END BY ITSELF ─────────────────
 //
-// `active` is the profile's active-fast row (null when none). It is passed IN rather
-// than read here so this module stays pure and so the tick can memoize the one read per
-// profile per tick (`tickCached`) instead of paying for it once per candidate send.
+// A suppression whose only exit is the user opening the app is not self-healing, it is
+// a trap — and it is a trap sprung on the exact channel that existed to prompt them.
+// An active fast can be days old: a backdated start, a fast someone forgot to end, a
+// row left open by any means at all. Without a bound, the food nudge is silenced for as
+// long as that row sits there, and the only signal that anything is wrong is a card on
+// a page the silenced nudge was supposed to bring them to.
+//
+// So the stand-down is bounded by the SAME plausibility bound the surface uses
+// (`fastControlState`, FAST_STALE_HOURS). Once a fast reads as STALE it has stopped
+// being evidence that the user is not eating and started being evidence that a row was
+// abandoned — and an abandoned row is not consent to silence. The nudge comes back
+// precisely when the claim stops being credible, which is also exactly when the user
+// most needs the prompt.
+//
+// The direction is deliberate: an error here re-sends a food nudge to someone who is
+// genuinely fasting, which costs one ignorable message. The opposite error is silence
+// with no exit.
+function fastSuppresses(active: Fast | null, at: Date): boolean {
+  if (!active) return false;
+  return fastControlState(active, at).kind === "active";
+}
+
+// THE PREDICATE. A send of `kind` stands down when the profile has an active fast that
+// is still PLAUSIBLE and the kind is on the allowlist. All three conditions are
+// required, and the kind check is not short-circuitable from the call site: a caller
+// with no kind in hand cannot ask this question.
+//
+// `active` is the profile's active-fast row (null when none) and `at` is the instant the
+// plausibility is judged against. Both are passed IN rather than read here so this module
+// stays pure — the tick memoizes the one row read per profile (`tickCached`) and supplies
+// its own clock reading.
 export function standsDownForFast(
   active: Fast | null,
-  kind: NotificationKind
+  kind: NotificationKind,
+  at: Date
 ): boolean {
-  return active !== null && isFastSuppressibleKind(kind);
+  return fastSuppresses(active, at) && isFastSuppressibleKind(kind);
 }
 
 // The OFFER half (#2419's line, held exactly): the usual-routine one-tap stands down
@@ -75,6 +101,8 @@ export function standsDownForFast(
 // loggable on every surface, and a log fired anyway meets #2756's "End your fast?"
 // follow-up. Withdrawing an offer is the app declining to campaign; withdrawing the
 // ability to log would be the app arguing with the user about what they just ate.
-export function standsDownUsualRoutine(active: Fast | null): boolean {
-  return active !== null;
+// Bounded by the same staleness term, for the same reason: an offer withdrawn by an
+// abandoned row is a surface that quietly stops working with nothing on screen saying so.
+export function standsDownUsualRoutine(active: Fast | null, at: Date): boolean {
+  return fastSuppresses(active, at);
 }

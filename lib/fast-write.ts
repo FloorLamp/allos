@@ -24,18 +24,45 @@
 // documented positive-match-only policy — we restrict only on a positive under-age
 // match, never on missing data.
 //
-// STARTS REFUSE; ENDING AN EXISTING ACTIVE FAST ALWAYS SUCCEEDS. This closes a
-// stranded-row trap rather than relaxing the gate: a birthdate edit that makes a profile
+// THE LINE THE GATE ACTUALLY DRAWS. The property protected is not "no row is INSERTed";
+// it is "NO ACTIVE FAST COMES TO EXIST for a restricted profile". Those are different,
+// and reading the gate as the first one is how a hole opens: `ended_at IS NULL` is this
+// module's own definition of active, so CLEARING that column is a way of causing an
+// active fast to exist, with no INSERT anywhere in sight. The rule, stated so it can be
+// applied to a core that does not exist yet:
+//
+//   GATED   — every core that can leave a profile with an active fast it did not have.
+//             `startFast` (creates one) and `reopenFast` (restores one by clearing
+//             `ended_at`) are both on this side.
+//   EXEMPT  — cores that STRICTLY REDUCE fasting state and can never enlarge it.
+//             `endFast` (an active fast becomes a completed one) and `discardFast` (the
+//             row goes away) are both on this side, and neither has any input that could
+//             make it land on the other.
+//
+// THE EXEMPTIONS CLOSE A STRANDED-ROW TRAP. A birthdate edit that makes a profile
 // restricted MID-FAST must not leave an active row nobody can close, which would leave
-// the profile permanently mid-fast with the food nudges stood down (#2757) and no
-// affordance anywhere to fix it. Closing out is harm-reduction, not tracking — it
-// removes the fast, it does not record one. `endFast` and `discardFast` carry that
-// exemption in the registry, in writing; `startFast` does not.
+// the profile permanently mid-fast with its food nudges stood down (#2757) and no
+// affordance anywhere to fix it. Closing out is harm-reduction, not tracking. That
+// promise is only kept if the SURFACE also renders the close-out control for a
+// restricted profile with an active fast — `FoodTab` does, and
+// e2e/fasting-lifecycle.spec.ts pins it; a gate whose escape hatch is never rendered is
+// the same stranded row with extra steps.
+//
+// `reopenFast` is NOT exempt, and that is a deliberate cost: a restricted profile's
+// Undo-after-end is refused. Restoring an active fast for that profile is exactly what
+// the gate forbids, and the user loses one undo of a write they had just chosen to make
+// — which is a far smaller harm than the app re-creating the restricted state on tap.
 
 import { now as clockNow } from "./clock";
 import { utcInstant, parseUtcSql } from "./date";
 import { writeTx } from "./db";
-import { FAST_MAX_HOURS, overlappingFasts, type Fast } from "./fasting";
+import {
+  FAST_MAX_HOURS,
+  FAST_REOPEN_MAX_MINUTES,
+  instantSeconds,
+  overlappingFasts,
+  type Fast,
+} from "./fasting";
 import { isMinor } from "./life-stage";
 import {
   createFastRow,
@@ -116,8 +143,14 @@ export type EndFastOutcome =
   // ended elsewhere re-derives, finds nothing active, and REPORTS that rather than
   // confirming unconditionally.
   | { kind: "none-active" }
-  // The proposed end is at or before the start, or in the future.
-  | { kind: "invalid" };
+  // The proposed end is at or before the start (AT THE STORED SECOND — see
+  // `instantSeconds`), or in the future.
+  | { kind: "invalid" }
+  // The resulting interval would exceed FAST_MAX_HOURS. The SAME bound `startFast`
+  // enforces on a backdated start, applied here so the two cores cannot disagree about
+  // which intervals are storable — one core minting a row a sibling would refuse is a
+  // split machine, not a lenient one.
+  | { kind: "too-long" };
 
 // End the active fast at `endedAt` (default now). NO life-stage gate, by the registered
 // exemption above: a profile that became restricted mid-fast must still be able to close
@@ -130,8 +163,14 @@ export function endFast(profileId: number, endedAt?: Date): EndFastOutcome {
     if (!active) return { kind: "none-active" };
     const start = parseUtcSql(active.started_at);
     if (!start) return { kind: "invalid" };
-    if (end.getTime() <= start.getTime()) return { kind: "invalid" };
-    if (end.getTime() > at.getTime()) return { kind: "invalid" };
+    // Compared at the STORED second, not in milliseconds: `utcInstant` truncates, so an
+    // end 400 ms after its start passes a millisecond test and then serializes to the
+    // same string, storing a zero-length fast.
+    if (instantSeconds(end) <= instantSeconds(start))
+      return { kind: "invalid" };
+    if (instantSeconds(end) > instantSeconds(at)) return { kind: "invalid" };
+    if (end.getTime() - start.getTime() > FAST_MAX_HOURS * 3_600_000)
+      return { kind: "too-long" };
     const endInstant = utcInstant(end);
     updateFastRow(
       profileId,
@@ -153,25 +192,62 @@ export type ReopenFastOutcome =
   | { kind: "reopened"; id: number }
   | { kind: "not-found" }
   // Something else was started in the meantime, so there is no room to reopen into.
-  | { kind: "already-active"; id: number };
+  | { kind: "already-active"; id: number }
+  // The end is older than FAST_REOPEN_MAX_MINUTES. Past that this is no longer an Undo
+  // of a write the user just made, it is the resurrection of finished history.
+  | { kind: "too-old" }
+  // Reopening would make this fast OPEN again — extending to +infinity — across a fast
+  // recorded after it. That is the state the one-active invariant and every reader rule
+  // out, and the id comes from a form, so it has to be checked rather than assumed.
+  | { kind: "overlap"; id: number }
+  // Reopening would put the fast past FAST_MAX_HOURS, i.e. produce a row `endFast` would
+  // then refuse to close.
+  | { kind: "too-long" }
+  // The life-stage gate refused — see below; this core is GATED, not exempt.
+  | { kind: "refused" };
 
 // UNDO an end (#2756): clear `ended_at` on a fast that was just closed, putting the
-// state back exactly where it was. The inverse of `endFast` is complete and local — one
-// column, one row, no side state — which is what makes an Undo affordance honest here
-// rather than an approximation of one.
+// state back exactly where it was.
 //
-// Deliberately targets a NAMED id (the one the end just returned) rather than "the most
-// recently ended fast": this is the inverse of a specific write, not a general reopen,
-// and resolving it by recency could resurrect last week's fast from a stale page. It
-// carries no life-stage gate for the same reason `endFast` carries none — it restores
-// the state the exempt path produced, and refusing it would strand the user one step
-// further along than refusing the end would have.
+// GATED, not exempt. Clearing `ended_at` is precisely how an ACTIVE fast comes to exist
+// under this module's own definition of active, so for a restricted profile this is the
+// thing the adult-only ruling forbids — reached, without the gate, through a button the
+// app itself renders on the exempt end's confirmation. "It only clears a column" is a
+// fact about the STATEMENT, not about the state it produces. See the module header.
+//
+// BOUNDED THREE WAYS, because `id` arrives from a form and every check below is the
+// difference between an Undo and an arbitrary reopen:
+//
+//   • AGE — only an end inside FAST_REOPEN_MAX_MINUTES. Naming an id rather than
+//     resolving by recency was never sufficient on its own: an id IS an arbitrary
+//     handle, so without an age bound this core resurrects last week's fast exactly as
+//     the recency version would have, which is the failure the id was chosen to avoid.
+//   • OVERLAP — a reopened fast is open, so it runs to +infinity and must clear
+//     everything recorded after it. Re-checked here against fresh rows.
+//   • DURATION — the reopened interval must still be closable, so it is held to the same
+//     FAST_MAX_HOURS bound `startFast` and `endFast` enforce.
 export function reopenFast(profileId: number, id: number): ReopenFastOutcome {
+  if (fastAdultOnlyRefusal(profileId)) return { kind: "refused" };
   return writeTx(() => {
+    const at = clockNow();
     const active = getActiveFast(profileId);
     if (active) return { kind: "already-active", id: active.id };
     const row = getFast(profileId, id);
     if (!row || row.ended_at === null) return { kind: "not-found" };
+    const ended = parseUtcSql(row.ended_at);
+    const started = parseUtcSql(row.started_at);
+    if (!ended || !started) return { kind: "not-found" };
+    if (at.getTime() - ended.getTime() > FAST_REOPEN_MAX_MINUTES * 60_000)
+      return { kind: "too-old" };
+    if (at.getTime() - started.getTime() > FAST_MAX_HOURS * 3_600_000)
+      return { kind: "too-long" };
+    const clash = overlappingFasts(
+      listFasts(profileId),
+      started.getTime(),
+      null,
+      id
+    );
+    if (clash.length > 0) return { kind: "overlap", id: clash[0].id };
     updateFastRow(profileId, id, row.started_at, null, row.note);
     return { kind: "reopened", id };
   });
@@ -192,51 +268,6 @@ export function discardFast(profileId: number, id: number): DiscardFastOutcome {
     return deleteFastRow(profileId, id) > 0
       ? { kind: "discarded", id }
       : { kind: "not-found" };
-  });
-}
-
-export type EditFastOutcome =
-  | { kind: "saved"; id: number }
-  | { kind: "not-found" }
-  | { kind: "overlap"; id: number }
-  | { kind: "invalid" }
-  | { kind: "refused" };
-
-// Correct a COMPLETED fast's instants — the "food log deleted after it triggered an
-// accepted end" recovery beyond the Undo window, and the ordinary typo fix. Gated:
-// editing a completed fast's interval is recording fasting content, not closing out,
-// so it is on the `startFast` side of the asymmetry rather than the `endFast` side.
-export function editFast(
-  profileId: number,
-  id: number,
-  startedAt: Date,
-  endedAt: Date,
-  note: string | null = null
-): EditFastOutcome {
-  if (fastAdultOnlyRefusal(profileId)) return { kind: "refused" };
-  return writeTx(() => {
-    const row = getFast(profileId, id);
-    if (!row) return { kind: "not-found" };
-    const at = clockNow();
-    if (endedAt.getTime() <= startedAt.getTime()) return { kind: "invalid" };
-    if (endedAt.getTime() > at.getTime()) return { kind: "invalid" };
-    if (endedAt.getTime() - startedAt.getTime() > FAST_MAX_HOURS * 3_600_000)
-      return { kind: "invalid" };
-    const clash = overlappingFasts(
-      listFasts(profileId),
-      startedAt.getTime(),
-      endedAt.getTime(),
-      id
-    );
-    if (clash.length > 0) return { kind: "overlap", id: clash[0].id };
-    updateFastRow(
-      profileId,
-      id,
-      utcInstant(startedAt),
-      utcInstant(endedAt),
-      note
-    );
-    return { kind: "saved", id };
   });
 }
 
