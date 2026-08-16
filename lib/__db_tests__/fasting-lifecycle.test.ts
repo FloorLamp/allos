@@ -533,9 +533,9 @@ describe("edit — correcting a fast recorded with a mis-set date", () => {
   it("refuses an end in the future", () => {
     const id = seedCompleted(adult, 20, 4);
     const start = new Date(Date.now() - 20 * 3_600_000);
-    expect(editFast(adult, id, start, new Date(Date.now() + 3_600_000))).toEqual(
-      { kind: "invalid" }
-    );
+    expect(
+      editFast(adult, id, start, new Date(Date.now() + 3_600_000))
+    ).toEqual({ kind: "invalid" });
   });
 
   it("refuses a correction that would overlap another recorded fast", () => {

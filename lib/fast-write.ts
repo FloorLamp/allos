@@ -473,7 +473,8 @@ export function editFast(
     // millisecond test would accept a pair that serializes to one zero-length row.
     if (instantSeconds(endedAt) <= instantSeconds(startedAt))
       return { kind: "invalid" };
-    if (instantSeconds(endedAt) > instantSeconds(at)) return { kind: "invalid" };
+    if (instantSeconds(endedAt) > instantSeconds(at))
+      return { kind: "invalid" };
     if (endedAt.getTime() - startedAt.getTime() > FAST_MAX_HOURS * 3_600_000)
       return { kind: "invalid" };
     const clash = overlappingFasts(
@@ -487,7 +488,10 @@ export function editFast(
       profileId,
       id,
       utcInstant(startedAt),
-      { at: utcInstant(endedAt), writtenAt: row.end_written_at ?? row.ended_at },
+      {
+        at: utcInstant(endedAt),
+        writtenAt: row.end_written_at ?? row.ended_at,
+      },
       row.note
     );
     return { kind: "saved", id };
