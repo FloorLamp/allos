@@ -258,6 +258,11 @@ export function seedTrainingLogCard(): void {
   ).run(PROFILE_ID);
 }
 
+// The worn NON-CYCLING session seeded beside the zone ride below, named here so
+// the activity-page spec can find its row without knowing an id.
+export const ZONE_WALK_TITLE = "Worn walk (e2e)";
+const ZONE_WALK_EXTERNAL_ID = "e2e:zone-walk";
+
 // ── Training HR-zone fixture ──
 export function seedTrainingZones(): void {
   // ── Training HR-zone fixture (issue #159) ─────────────────────────────────────
@@ -310,8 +315,42 @@ export function seedTrainingZones(): void {
   // scopes to workout windows (this all-day wear minute must not count as training).
   insHr.run(utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, "12:00")!), 62);
 
+  // A WORN NON-CYCLING session on the same owned day (#2870): a walk with its own
+  // per-minute HR. Cycling has always had somewhere to draw a chart — its ride
+  // page — so every HR-carrying fixture here was a ride, and the canonical
+  // activity page's heart-rate block (the whole point of #2870) had no subject in
+  // the suite at all. It renders only when hr_minutes fall inside the activity's
+  // window, so this is the fixture that exercises it.
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id = ?`
+  ).run(PROFILE_ID, ZONE_WALK_EXTERNAL_ID);
+  db.prepare(
+    `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, distance_km, intensity,
+      start_time, end_time, avg_hr, max_hr, components, source, external_id)
+   VALUES (1, ?, 'cardio', ?, 33, 1.4, 'easy', '16:31', '17:04', 96, 118, ?,
+           'health-connect', ?)`
+  ).run(
+    zoneDate,
+    ZONE_WALK_TITLE,
+    JSON.stringify([
+      { name: "Walking", type: "cardio", distance_km: 1.4, duration_min: 33 },
+    ]),
+    ZONE_WALK_EXTERNAL_ID
+  );
+  // 33 minutes of easy wear inside 16:31–17:04, all below the Zone 2 floor, so the
+  // ride's polarization story is unchanged in shape (the split assertion reads the
+  // ratio, not a pinned pair of numbers).
+  for (let m = 0; m < 33; m++) {
+    const minute = 16 * 60 + 31 + m;
+    const hhmm = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
+      minute % 60
+    ).padStart(2, "0")}`;
+    insHr.run(utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, hhmm)!), 96);
+  }
+
   console.log(
-    `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4)`
+    `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4) plus the worn walk "${ZONE_WALK_TITLE}"`
   );
 }
 
