@@ -72,7 +72,7 @@ describe("fasting stand-down — what a fast may silence (#2757)", () => {
     ["wear-reminder", "bedtime watch reminder"],
     ["workout", "workout reminder"],
     ["practice", "practice pace nudge"],
-  ] as const)("an active fast never stands down %s (%s)", (kind) => {
+  ] as const)("an active fast never stands down %s (%s)", (kind, _what) => {
     expect(standsDownForFast(ACTIVE, kind as NotificationKind)).toBe(false);
   });
 

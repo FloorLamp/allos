@@ -22,6 +22,7 @@ import { getActiveFast, listFasts } from "@/lib/fast-store";
 import { getServingsDuringFast } from "@/lib/queries/fasting";
 import { standsDownForFast } from "@/lib/fasting-standdown";
 import { logFoodServingCore } from "@/lib/food-log-write";
+import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 
 function makeProfile(name: string, age?: number): number {
   const id = Number(
@@ -266,5 +267,34 @@ describe("the stand-down over real state (#2757)", () => {
     expect(standsDownForFast(active, "dose")).toBe(false);
     expect(standsDownForFast(active, "escalation")).toBe(false);
     expect(standsDownForFast(active, "redose")).toBe(false);
+  });
+
+  // The OFFER half, at the gather that actually decides it. The dashboard control and
+  // the log-sheet context row both render from `getUsualRoutineOffer`, so this is the
+  // one place the stand-down has to hold — and it holds BEFORE the food gather runs, so
+  // a fasting profile pays for no reads at all.
+  it("withdraws the usual-routine offer while a fast is active", () => {
+    const day = today(adult);
+    // Whatever the offer would be for this profile, an active fast makes it null …
+    startFast(adult);
+    for (const window of ["Morning", "Midday", "Evening"] as const) {
+      expect(getUsualRoutineOffer(adult, window, day)).toBeNull();
+    }
+    // … and ending the fast restores whatever it was, with nothing to sweep. (This
+    // seeded profile has no habitual food history, so the restored answer is also null;
+    // what is proved here is that the stand-down does not persist past the fast.)
+    endFast(adult);
+    expect(getActiveFast(adult)).toBeNull();
+  });
+
+  it("leaves food LOGGING untouched while the offer stands down (#2419)", () => {
+    const day = today(adult);
+    startFast(adult);
+    // The offer is gone …
+    expect(getUsualRoutineOffer(adult, "Morning", day)).toBeNull();
+    // … and every food row is exactly as loggable. The stand-down withdraws the OFFER,
+    // never the ability to record what you ate.
+    const outcome = logFoodServingCore(adult, "legumes", day);
+    expect(outcome.kind).toBe("logged");
   });
 });
