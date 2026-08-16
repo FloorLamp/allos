@@ -1,12 +1,10 @@
 "use client";
 
-import Link, { useLinkStatus } from "next/link";
-import { IconLoader2 } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
-import { isDuplicateNavClick } from "@/lib/nav-click";
+import type { ReactNode } from "react";
+import PendingLink, { PendingIconSlot } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
-// A navigation row that ANSWERS THE TAP (issue #1956).
+// A navigation ROW that answers the tap (issue #1956).
 //
 // The measurement that produced this: enter at `/`, wait for a sidebar link to
 // be visible, then tap. The tap is intercepted (`defaultPrevented === true`),
@@ -16,50 +14,18 @@ import type { AppRoute } from "@/lib/hrefs";
 // `loading.tsx` (app/(app)/layout.tsx explains why — issue #530), so the router
 // transition has no Suspense boundary to reveal: React renders the whole
 // destination before swapping, and the old page stays visible and fully
-// interactive the entire time. Nothing about the app says "I heard you".
+// interactive the entire time. Nothing about the app said "I heard you", so
+// people tapped again — and every extra tap dispatched a SECOND navigation that
+// threw away the render already in flight. That is why the original report
+// measured 5–12 taps: the taps were the reason it never landed, not evidence
+// that it never would.
 //
-// The reading a person takes from that is "the app is frozen", so they tap
-// again — and a second tap dispatches a SECOND navigation that throws away the
-// render already in flight. At a tap-a-second cadence against a destination that
-// takes about a second to render, the navigation can be restarted indefinitely.
-// That is why the original report measured 5–12 taps: the taps were the reason
-// it never landed, not evidence that it never would.
-//
-// So this component owes two things, and one alone is not enough:
-//
-//   1. IMMEDIATE FEEDBACK. `useLinkStatus()` reports THIS link's transition, and
-//      it works with no `loading.tsx` anywhere — that is precisely what Next
-//      added it for. The status flips in the same commit that starts the
-//      navigation, so the row shows a spinner in the icon's own slot (no layout
-//      shift) from the first frame after the tap.
-//   2. NO RESTART. While pending, a further plain tap on the same row is
-//      suppressed instead of re-navigating. The pure rule (lib/nav-click.ts)
-//      keeps cmd/ctrl/shift/alt-click and middle-click working, because those
-//      mean "open it beside this page", not "go there again".
-//
-// Together those close the reported window rather than narrowing it: there is no
-// state in which tapping a nav row produces no feedback. Before the router
-// mounts, `<Link>` does not intercept at all (it returns early on a null router,
-// so no `preventDefault` runs) and the anchor's real `href` performs an ordinary
-// browser navigation; after it mounts, the tap flips this row to pending. What
-// this does NOT do is make the destination render faster — that cost is real and
-// is now visible instead of silent.
-//
-// `useLinkStatus` only resolves inside a `<Link>` subtree, so the pending state
-// is read by the child rendered below and handed back up through a ref for the
-// click guard. A ref, not state: the guard is read during the NEXT click, hundreds
-// of milliseconds later, and re-rendering the whole row to store a boolean the
-// row does not display would be a second render per navigation for nothing.
-//
-// The hand-back happens in an EFFECT, and that is load-bearing — writing the ref
-// during render looks tighter and does not work. `useLinkStatus` is backed by
-// `useOptimistic`, so React renders this subtree speculatively both with and
-// without the optimistic value; a render-phase write therefore records whichever
-// pass ran last rather than the one that committed, and the guard read `false`
-// while the spinner was on screen. Measured: with the render-phase write the
-// repeat taps still dispatched four navigations; with the effect they dispatch
-// one. An effect is not a delay worth worrying about here — it flushes in the
-// same frame, and the tap it has to absorb comes hundreds of milliseconds later.
+// Both remedies — a spinner in the row's own icon slot, and absorption of the
+// repeat tap — now live in `components/PendingLink.tsx`, because #2869 needed
+// them on controls that are not row-shaped (day arrows, pagers, filter chips)
+// and a second copy of the doctrine is how two surfaces drift. This file is what
+// is left once they moved down: the ROW shape. The icon slot is the pending
+// slot, and `children` rides after it (a nav row's label and its count badge).
 export default function PendingNavLink({
   href,
   label,
@@ -86,69 +52,20 @@ export default function PendingNavLink({
   testId?: string;
   children?: ReactNode;
 }) {
-  const pending = useRef(false);
-  const report = useCallback((p: boolean) => {
-    pending.current = p;
-  }, []);
   return (
-    <Link
+    <PendingLink
       href={href}
-      aria-current={current ? "page" : undefined}
-      data-testid={testId}
+      label={label}
       className={className}
-      onClick={(e) => {
-        if (
-          isDuplicateNavClick({
-            pending: pending.current,
-            metaKey: e.metaKey,
-            ctrlKey: e.ctrlKey,
-            shiftKey: e.shiftKey,
-            altKey: e.altKey,
-            button: e.button,
-            target: e.currentTarget.getAttribute("target"),
-          })
-        ) {
-          // `<Link>` runs this handler first and stands down on a prevented
-          // default, so this drops the repeat without touching the navigation
-          // already running.
-          e.preventDefault();
-        }
-      }}
+      current={current}
+      testId={testId}
     >
-      <NavLinkStatus icon={icon} label={label} report={report} />
-      {children}
-    </Link>
-  );
-}
-
-// Rendered INSIDE the <Link> — that is the only place useLinkStatus resolves to
-// a link's own transition.
-function NavLinkStatus({
-  icon,
-  label,
-  report,
-}: {
-  icon: ReactNode;
-  label: string;
-  report: (pending: boolean) => void;
-}) {
-  const { pending } = useLinkStatus();
-  useEffect(() => {
-    report(pending);
-  }, [pending, report]);
-  if (!pending) return <>{icon}</>;
-  return (
-    <>
-      <IconLoader2
-        data-testid="nav-link-pending"
-        aria-hidden
-        className="h-5 w-5 shrink-0 animate-spin motion-reduce:animate-none"
-        stroke={1.75}
-      />
-      {/* Named, not just spun: a screen reader hears which row is loading. */}
-      <span role="status" className="sr-only">
-        Opening {label}
-      </span>
-    </>
+      {(pending) => (
+        <>
+          <PendingIconSlot pending={pending} icon={icon} />
+          {children}
+        </>
+      )}
+    </PendingLink>
   );
 }

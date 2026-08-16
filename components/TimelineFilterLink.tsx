@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import Link from "next/link";
+import PendingLink, { PendingOverlay } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 declare global {
@@ -100,11 +100,26 @@ export function TimelineScrollRestorer({
   return null;
 }
 
+// A timeline filter chip, quick-range pill or month fold header (#2657) — every
+// one of them a real navigation that re-queries the feed on the server.
+//
+// Since #2869 they answer the tap the same way a nav row does. A chip has no
+// icon to swap, so its own label is the slot: it stays where it is at reduced
+// opacity with the spinner over it (components/PendingLink.tsx). And a repeat
+// tap while one is in flight is absorbed — these are chips people tap in quick
+// succession while narrowing a view, which is exactly the cadence #1956
+// measured turning a slow navigation into one that never lands.
+//
+// `aria-current`/`aria-expanded` and `scroll={false}` are unchanged, and the
+// scroll-target capture below still runs on the click that navigates — but NOT
+// on an absorbed repeat, so one navigation records one scroll target.
 export default function TimelineFilterLink({
   href,
   className,
   children,
   testId,
+  label,
+  "aria-current": ariaCurrent,
   // Disclosure state for the link-driven fold headers (#2657). `aria-expanded` IS
   // supported on `role="link"` — unlike `aria-pressed`, which the #2535 scan bans
   // outright — so a month card announces open/closed to assistive technology while
@@ -115,14 +130,26 @@ export default function TimelineFilterLink({
   className: string;
   children: ReactNode;
   testId?: string;
+  /**
+   * What the pending state announces. Optional because this component is also
+   * passed as `DateRangeControl`'s `LinkComponent`, whose contract is
+   * href/className/children only — a chip whose children ARE its label names
+   * itself, and anything richer says so explicitly.
+   */
+  label?: string;
+  "aria-current"?: "page";
   ariaExpanded?: boolean;
 }) {
+  const announced =
+    label ?? (typeof children === "string" ? children : "this view");
   return (
-    <Link
+    <PendingLink
       href={href}
+      label={announced}
       scroll={false}
-      data-testid={testId}
-      aria-expanded={ariaExpanded}
+      testId={testId}
+      current={ariaCurrent === "page"}
+      ariaExpanded={ariaExpanded}
       onClick={() => {
         if (typeof window === "undefined") return;
         const controls = document.getElementById("timeline-controls");
@@ -135,7 +162,7 @@ export default function TimelineFilterLink({
       }}
       className={className}
     >
-      {children}
-    </Link>
+      {(pending) => <PendingOverlay pending={pending}>{children}</PendingOverlay>}
+    </PendingLink>
   );
 }
