@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 // Says WHERE a gitleaks finding came from (#2949).
 //
-// `.github/workflows/gitleaks.yml` scans `--log-opts="--all"` over a
-// `fetch-depth: 0` checkout. That is the right security posture — a secret
-// committed anywhere in this repository's history should be found — but "--all"
-// means EVERY REF PUSHED TO THE REPOSITORY, not "this branch". So a concurrent
-// branch's credential-shaped test fixture fails the `gitleaks` check on every
-// open PR, naming a file the PR never touched and does not even contain. Read
-// without knowing that, the red says a PR introduced a credential into a file it
-// never opened.
+// `.github/workflows/gitleaks.yml` scans a `fetch-depth: 0` checkout, and what
+// it scans depends on the event (#2969): a PR or merge-queue run reads that
+// branch's own range, a `push` run reads `--all` — EVERY REF IN THE CHECKOUT,
+// not "this branch" — and a PR run whose base will not resolve falls back to
+// `--all` rather than scanning less than it claims.
+//
+// Under `--all`, a concurrent branch's credential-shaped test fixture fails the
+// check while naming a file the run never touched and does not even contain.
+// Read without knowing that, the red says a PR introduced a credential into a
+// file it never opened. Narrowing the PR range made that rarer; it did not make
+// it impossible, so the attribution below is still what makes a red legible.
 //
 // The information needed to say otherwise is already in gitleaks' own output:
 // every finding in the JSON report carries the COMMIT that introduced it. From
@@ -93,9 +96,11 @@ export function explainCommit(info, findings, { baseLabel }) {
 
   if (info.kind === "elsewhere") {
     lines.push(
-      "Nothing in this pull request introduced this. The scan covers every ref",
-      "pushed to this repository, not just this branch, so any branch that",
-      "commits a credential-shaped literal fails this check on EVERY open PR.",
+      "Nothing in this pull request introduced this: the commit is on the ref",
+      "above and is not reachable from the scanned head. A PR scans only its own",
+      "range (#2969), so this run is either the `push` scan of another branch, or",
+      "a PR run whose base would not resolve and fell back to scanning every ref.",
+      "The scan step's log says which range it used.",
       "",
       "It clears when the owner of the ref above removes the literal from",
       "HISTORY — `git commit --amend` or an interactive rebase, then force-push —",

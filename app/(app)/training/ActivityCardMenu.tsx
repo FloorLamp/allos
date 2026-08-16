@@ -71,6 +71,7 @@ export default function ActivityCardMenu({
   units,
   detailHref,
   canWrite = true,
+  openMergeSignal,
 }: {
   // The full card activity — the source for "Log again".
   activity: ActivityEditData;
@@ -92,9 +93,24 @@ export default function ActivityCardMenu({
   // "Log again" survives regardless — it CREATES on the acting profile, never the
   // subject, so repeating a read-only member's workout logs it as yours.
   canWrite?: boolean;
+  // Bumped by a host that wants the merge picker opened (the overlap banner).
+  openMergeSignal?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
+  // A host OUTSIDE this menu can ask for the picker (the same-day overlap banner,
+  // #2870): discovery and merging must not become two different merge flows, so
+  // the banner opens THIS one rather than growing a second. A counter, not a
+  // boolean — asking twice in a row has to reopen it. Adjusted DURING render
+  // (React's own "state derived from a prop change" pattern) rather than in an
+  // effect, so the picker is open in the same commit the ask arrives in and
+  // nothing renders a closed menu first.
+  const [seenMergeAsk, setSeenMergeAsk] = useState(openMergeSignal ?? 0);
+  if ((openMergeSignal ?? 0) !== seenMergeAsk) {
+    setSeenMergeAsk(openMergeSignal ?? 0);
+    setOpen(true);
+    setPicking(true);
+  }
   // Multi-select mode (#1081). The picker DEFAULTS to the quick single-pick list (this
   // card keeper, one sibling — the #64 flow); a toggle reveals the full keeper-radio
   // multi-select across all members. Kept as an opt-in mode so the quick path (and its

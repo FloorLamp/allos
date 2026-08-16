@@ -211,17 +211,22 @@ the first, one `git add -A` from being committed into itself. Nothing broke;
 
 ## gitleaks — what actually triggers it (#2409)
 
-**The blast radius is the whole repository, not one branch (#2949).** This
-section used to say the scan covered "its branch + main", so a finding on one
-feature branch left every other open PR green. That stopped being true when the
-job moved to `--log-opts="--all"` over a `fetch-depth: 0` checkout, which
-fetches every remote branch into `refs/remotes/origin/*`. Reproduced: a commit
-unreachable from the PR head is reported on a PR whose tree does not contain
-the file at all. One branch's credential-shaped fixture reds `gitleaks` on
-**every open PR**, naming a file none of them touched, until that branch is
-rebased or deleted. A follow-up commit that DELETES the literal does not clear
-it — the scan reads COMMITS, not tips. Believing the old sentence is what made
-the incident confusing, so the job now explains itself
+**What the check scans depends on the event (#2949, #2969).** A PR or
+merge-queue run scans **that branch's own range**; a `push` to a non-main branch
+scans `--log-opts="--all"`, every ref in the `fetch-depth: 0` checkout. Between
+#2949 and #2969 every PR scanned `--all`, and the blast radius was the whole
+repository: one branch's credential-shaped fixture redded `gitleaks` on **every
+open PR**, naming a file none of them touched, until that branch was rebased or
+deleted. It was paid for live on 2026-08-16 and the PR check was narrowed to the
+range; the accepted cost, recorded in #2969, is that the whole-repo re-audit now
+happens per push per branch rather than ~30 times a day.
+
+Two things survive the narrowing. A PR run that cannot resolve its base **falls
+back to `--all`** and says so in the step log — under-scanning silently is the
+worse failure — so a finding from another ref is still possible on a PR. And a
+follow-up commit that DELETES the literal still does not clear it: the scan
+reads COMMITS, not tips, so only an amend, a rebase, or deleting the branch
+does. The job explains which case it is
 (`scripts/gitleaks-explain.mjs`) instead of relying on this page being read.
 
 Once it merges the blob is in every checkout and only rewriting published main

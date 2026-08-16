@@ -670,6 +670,62 @@ escape, the same immutable-downward discipline as `FIRST_ALLOW`. The module-loca
 HELPER sites were burned down first — the class the issue was filed about, and the
 half a call-site-only reading would never have found.
 
+## "Offline" does not reach the service worker (2026-08-16, #3002)
+
+`context.setOffline(true)` is per browser **context**. It cuts the page's own
+fetches; it does not cut the ones the **service worker** makes. In Chromium the
+`cacheFirst` handler in `public/sw.js` calls `fetch()` itself, and that call still
+reaches the server while the page believes it is offline.
+
+So an "it renders offline" assertion can pass on assets that were pulled over the
+network **during** the offline navigation. Measured, by removing the one thing that
+warms the `/offline` shell (`emergency-card.spec.ts`'s own online visit to it) and
+reading the cache on either side of the offline navigation:
+
+| when                                            | cache contents |
+| ----------------------------------------------- | -------------- |
+| before `setOffline(true)` (30 s poll, no climb) | `13/15`        |
+| the offline render itself                       | **passes**     |
+| immediately after `setOffline(false)`           | `warm`         |
+
+Both missing chunks arrived while the page believed it was offline. That is the
+direct proof, not an inference from one. A real device has no such escape hatch, and
+there a missing chunk is a blank page.
+
+One trap inside the measurement itself: Next declares its legacy polyfill bundle as
+`<script src="…" noModule>`, which a module-supporting browser **never requests**. A
+scan matching raw `/_next/static` URLs counts it and reports a permanent shortfall no
+amount of warming can close (15/16 here, warm once skipped), so `offlineChunksWarm`
+parses tags and skips `noModule`. Count what the browser loads, not what the document
+mentions.
+
+Two consequences worth separating:
+
+- **What the block still proves.** A `localStorage` read is genuinely offline —
+  no server is involved and the bypass cannot fake it. That half is fine.
+- **What it never proved.** The **shell** that renders it. "Readable with no
+  network" is not something a leaky emulation can measure, and
+  `emergency-card.spec.ts` block 4b claimed exactly that for months.
+
+**The fix is never to delete the block.** The coverage is wanted; the claim
+attached to it is what was wrong. `readyForOffline(page)` (`e2e/helpers.ts`)
+states the precondition faithfully — a live controlling worker, and every chunk
+the `/offline` document declares already in the worker's cache before the network
+goes away. `offlineChunksWarm(page)` is the underlying read, and it is
+non-self-fulfilling: it reads the cache only (the HTML fetch is not a navigation
+and the worker never caches rendered HTML), so with the shell un-warmed it sits at
+its count and never climbs.
+
+The scan (rule xi) enumerates every `setOffline(true)` in `e2e/` and flags the ones
+whose offline window contains a `goto`/`reload`. That audit found exactly two of
+the twelve sites: `emergency-card.spec.ts` block 4b, now preceded by
+`readyForOffline`, and `offline-dose-confirm.spec.ts`, whose navigation belongs to a
+second context that was never taken offline (marked `offline-nav-ok`). The other
+ten are the offline **write-queue** flows — tap → queued → reconnect → replayed —
+which never navigate, so no shell has to come from anywhere and the page's own POST
+is exactly what the emulation does block. That distinction is the rule's scope: only
+navigating while offline needs the precondition.
+
 ## A retry cannot converge on a control that covers itself (2026-08-13, #2662)
 
 `document-capture.mobile` and `progress-photos` both waited for the native file
@@ -1671,15 +1727,48 @@ above — a spec owning its own rows is unaffected by a neighbour adding more. I
 is NOT fine when a spec's precondition is an **absence**, because a neighbour's
 perfectly ordinary write destroys it and neither spec is wrong on its own.
 
-Both instances so far had that exact shape:
+Every instance so far had that exact shape:
 
-| victim asserts                                              | neighbour does                                                   | result               |
-| ----------------------------------------------------------- | ---------------------------------------------------------------- | -------------------- |
-| profile 1 has NO tracked protein (`data-basis="estimated"`) | `offline-food-log` adds 30g and never removes it                 | `"combined"` (#2604) |
-| the seed's two never-measured stars keep their empty tiles  | `hearing.spec` deletes an audiogram, which runs the orphan sweep | stars gone (#2623)   |
+| victim asserts                                                         | neighbour does                                                   | result                   |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------ |
+| profile 1 has NO tracked protein (`data-basis="estimated"`)            | `offline-food-log` adds 30g and never removes it                 | `"combined"` (#2604)     |
+| the seed's two never-measured stars keep their empty tiles             | `hearing.spec` deletes an audiogram, which runs the orphan sweep | stars gone (#2623)       |
+| profile 1 has NO activity dated today (the rest nudge's `today` tense) | any spec that logs a workout as the admin                        | the `next` tense (#3006) |
 
-Neither was caused by the sharding. Duration-balanced buckets (#2590) put the
-pair on one database for the first time, and reshuffling the buckets — which a
+The third one is worth reading closely, because it spent time **misdiagnosed as a
+timezone flake**. `coaching-episode.spec.ts` asserted `"Rest or take it easy — 2nd
+day"`, intermittently got `"Make your next session an easy one — 2nd day"`, and the
+rotating pinned instance zone (#1417) was the obvious suspect — the wording turns on
+`trainingDates.includes(today)`, and `today` is profile-local. It was not the zone.
+Seeding the template at five different `ALLOS_TEST_NOW` hours (pinned `Etc/GMT-10`
+through `Etc/GMT+10`) put profile 1's newest activity on **yesterday every time**;
+the rotation is invariant here by construction, because the pinned zone always reads
+13:mm local and the local date therefore always equals the frozen instant's UTC date.
+
+What actually moved was the neighbour set. `autosave-retry.spec.ts coaching-episode.spec.ts --workers=1`
+reproduces the red on **every** run (3/3 with `--repeat-each=3`), and
+`coaching-episode.spec.ts` alone is green on every run — a two-command diagnosis that
+no amount of re-running the victim by itself would have reached. The fix is the
+fixture rule, not a date pin: an absence a neighbour can destroy is not something a
+seed can promise on a **shared** profile, so the fixture moved to its own profile and
+login (`REST_EPISODE_PROFILE`), which is what `REST_CARD_PROFILE` already did for the
+same reason. On the fixed tree the same neighbour pairing is green 3/3 at each of
+`ALLOS_TEST_NOW` hours 03, 13 and 23 — pinned `Etc/GMT-10`, `UTC`, `Etc/GMT+10`.
+
+**A re-run clearing a red is not evidence of a timing flake.** A re-run also reshuffles
+which specs share a worker, so it clears a co-residency failure just as readily — and
+that is the reading that costs an orchestrator a diagnosis. Before blaming the clock or
+the zone, run the victim alone, then run it behind a plausible neighbour.
+
+The rest of the suite was swept for the same latent dependency and is clean.
+`coaching-rest-card.spec.ts` also asserts a `restTitle` (`"Rest or take it easy
+today"`), but on its own dedicated profile whose only activity is ten days old, and
+its "Training anyway" control writes a `RestAck` in `profile_settings` — never an
+activity — so nothing it does can put today into `trainingDates`.
+`situation-coaching.spec.ts` asserts the held note, which is not a rest title at all.
+
+None of the three was caused by the sharding. Duration-balanced buckets (#2590) put
+a pair on one database for the first time, and reshuffling the buckets — which a
 manifest refresh does — can expose another one at any time. **Assume a bucket
 change is a co-residency change.**
 

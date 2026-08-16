@@ -17,6 +17,7 @@ import { getTimezone } from "@/lib/settings";
 import { zonedWallTimeToUtc } from "@/lib/date";
 import {
   discardFast,
+  editFast,
   endFast,
   fastAdultOnlyRefusal,
   reopenFast,
@@ -189,6 +190,62 @@ export async function undoEndFastAction(
     // adult-only ruling withholds, so this cannot ride the end's exemption. Not drawn as
     // a button anywhere — `endFastAction` withholds the id for a restricted profile — so
     // this answers a stale tab, which is the case a surface-only rule cannot cover.
+    case "refused":
+      return fail("Fasting isn't available on this profile.");
+  }
+}
+
+// CORRECT a recorded fast's times (#2993). The way back from a fast recorded with a
+// mis-set date once the end's Undo has lapsed — editing says "it ended at this other
+// time", where deleting the row would say the fast never happened at all.
+//
+// AN ABSENT FIELD MEANS "LEAVE THIS INSTANT ALONE", and that is the whole of how this
+// action differs from the start/end controls, where absent means "now". The form prefills
+// each field with the row's own value at MINUTE grain, so posting both fields
+// unconditionally rewrote whatever the user did not touch — the stored seconds truncated
+// away on every save, an hour lost across a DST fall-back, and a whole offset lost if the
+// profile's timezone changed between the render and the submit. The card sends a field
+// only when its value actually changed, and the core writes the row's own stored string
+// back for the other. A field that IS present but unparseable stays a refusal: that is a
+// broken form, not an untouched value.
+export async function editFastAction(
+  formData: FormData
+): Promise<FastActionResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return fail("Unknown fast.");
+  const tz = getTimezone(profile.id);
+  const startedAt = parseBackdated(formData.get("started_at"), tz);
+  const endedAt = parseBackdated(formData.get("ended_at"), tz);
+  if (startedAt === undefined) return fail("Enter a valid start time.");
+  if (endedAt === undefined) return fail("Enter a valid end time.");
+  const outcome = editFast(
+    profile.id,
+    id,
+    startedAt ?? undefined,
+    endedAt ?? undefined
+  );
+  switch (outcome.kind) {
+    case "saved":
+      revalidateRoute("/nutrition");
+      revalidateRoute("/");
+      return { ok: true, message: "Fast updated." };
+    case "overlap":
+      return fail("That overlaps a fast already on record.");
+    case "invalid":
+      return fail("Those times don't work — check the dates.");
+    // Neither field moved, so nothing was written. Reported rather than confirmed —
+    // "Fast updated." over a row that did not move is exactly the unconditional
+    // confirmation this module's header rules out.
+    case "unchanged":
+      return fail("Those are already the recorded times.");
+    // The row was reopened elsewhere since this row was drawn, so the id now names the
+    // RUNNING fast. Reported rather than obeyed: silently closing it again at a time the
+    // user picked for a completed row is not the write this control was drawn for.
+    case "still-active":
+      return fail("That fast is running again — end it before correcting it.");
+    case "not-found":
+      return fail("Unknown fast.");
     case "refused":
       return fail("Fasting isn't available on this profile.");
   }

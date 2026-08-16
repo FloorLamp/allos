@@ -31,6 +31,15 @@ import { shiftDateStr } from "./date";
 import { getProfileZoneModel } from "./queries/zones";
 import { getWeatherDaysForProfile } from "./queries/weather-situations";
 import { getHrMinutesInRange } from "./queries/metrics";
+import { activityWindow, windowsOverlap } from "./import-review/detect";
+import { getExerciseComparison } from "./queries/training/strength";
+import { equipmentLoadLane } from "./lifts";
+import { sessionProgressDelta, type ProgressDelta } from "./progress-delta";
+import {
+  parseCyclingStreams,
+  rideTraces,
+  type RideTrace,
+} from "./cycling-analytics";
 import {
   activityWindows,
   scopeBucketsToWindows,
@@ -57,6 +66,18 @@ export interface ActivityDetailHeartRate {
   zoneModel: ZoneModel | null;
 }
 
+// What the SOURCE holds second-by-second for this session (#2870 step 4 widened
+// the fetch past cycling, so a run or a walk has these too). The distinction the
+// page needs is three-way, not two: traces to draw, or a source that answered
+// with nothing ("totals only" — the honest line, #3009), or no answer yet.
+export interface ActivityDetailTelemetry {
+  traces: RideTrace[];
+  // The source has told us what it holds: a telemetry row exists. Without one
+  // the session simply has not been asked about (a manual entry, or an import
+  // that predates the widening), which is not the same as "there is nothing".
+  answered: boolean;
+}
+
 export interface ActivityDetailData {
   row: Activity;
   card: TrainingLogCardData;
@@ -64,6 +85,18 @@ export interface ActivityDetailData {
   // (issue #64), shaped exactly as TrainingLogView ships them.
   siblings: ActivityDetailSibling[];
   heartRate: ActivityDetailHeartRate;
+  telemetry: ActivityDetailTelemetry;
+  // The same-day siblings whose clock window OVERLAPS this activity's (#2870) —
+  // a subset of `siblings`, so the banner and the merge picker are talking about
+  // the same rows. Empty when this activity has no clock, which is not evidence
+  // of anything either way.
+  overlappingSiblings: ActivityDetailSibling[];
+  // "vs last" per rendered part, INDEX-ALIGNED with `card.parts` (#2870). Null
+  // where the part is not a lift, or the lift has no comparable previous session
+  // on the same implement. Computed for the canonical PAGE only: the reading
+  // pane renders from feed data with no fetch (#2897), and one history scan per
+  // exercise per card is not a price a browse surface should pay.
+  partDeltas: (ProgressDelta | null)[];
   // Adjacent activities in ledger order (date, then id) for ‹ older / newer ›.
   olderId: number | null;
   newerId: number | null;
@@ -160,6 +193,73 @@ export function getActivityDetailData(
       ? zoneMinuteTotals(minutes, zoneModel)
       : null;
 
+  // The source's second-by-second record, through the same pure derivation the
+  // ride page uses — nothing in `rideTraces` is about bicycles.
+  const telemetryRow = db
+    .prepare(
+      `SELECT streams_json FROM activity_telemetry
+        WHERE profile_id = ? AND activity_id = ?
+        ORDER BY id DESC LIMIT 1`
+    )
+    .get(profileId, row.id) as { streams_json: string | null } | undefined;
+  const telemetry: ActivityDetailTelemetry = {
+    traces: rideTraces(parseCyclingStreams(telemetryRow?.streams_json ?? null)),
+    answered: !!telemetryRow,
+  };
+
+  // The same-day sibling that OVERLAPS this one on the clock (#2870). In the log,
+  // a double-logged session announced itself by sitting next to its twin; a page
+  // shows one activity, so that adjacency — and with it the whole discovery of a
+  // duplicate — is gone unless the record says so. Overlap is the same evidence
+  // the duplicate detector treats as its strongest signal (you cannot do two
+  // sessions at once), read through the detector's own primitives so this can
+  // never drift into a second definition of "the same session twice".
+  const myWindow = activityWindow(row);
+  const overlappingSiblings: ActivityDetailSibling[] = myWindow
+    ? siblings.filter((sib) => {
+        const other = dayRows.find((a) => a.id === sib.id);
+        if (!other) return false;
+        const window = activityWindow(other);
+        return !!window && windowsOverlap(myWindow, window);
+      })
+    : [];
+
+  // "vs last" (#2870). One history scan per DISTINCT lift in this session, each
+  // narrowed to the implement its sets were performed on — the same
+  // `equipmentLoadLane` identity every load-sensitive builder keys on (#1610), so
+  // a hotel machine's 50 kg never reads as a collapse against the home machine's
+  // 80. `getExerciseComparison` already excludes warm-ups (#338) and returns
+  // sessions oldest-first, so "last" is simply the entry before this activity's.
+  const mySets = sets.filter((s) => s.activity_id === row.id);
+  const deltaByExercise = new Map<string, ProgressDelta | null>();
+  for (const part of card.parts) {
+    if (part.kind !== "strength") continue;
+    if (deltaByExercise.has(part.name)) continue;
+    const partSets = mySets.filter(
+      (s) => s.exercise.trim().toLowerCase() === part.name.trim().toLowerCase()
+    );
+    const lane = equipmentLoadLane(partSets[0]?.equipment_id ?? null);
+    const history = getExerciseComparison(
+      profileId,
+      part.name,
+      units.weightUnit,
+      {
+        equipmentLane: lane,
+      }
+    );
+    const index = history.findIndex((s) => s.activityId === row.id);
+    const previous = index > 0 ? history[index - 1] : null;
+    deltaByExercise.set(
+      part.name,
+      previous && index >= 0
+        ? sessionProgressDelta(history[index], previous, units.weightUnit)
+        : null
+    );
+  }
+  const partDeltas = card.parts.map((part) =>
+    part.kind === "strength" ? (deltaByExercise.get(part.name) ?? null) : null
+  );
+
   const olderId =
     (
       db
@@ -188,6 +288,9 @@ export function getActivityDetailData(
     card,
     siblings,
     heartRate: { window: heartRateWindow, minutes, zoneMinutes, zoneModel },
+    telemetry,
+    overlappingSiblings,
+    partDeltas,
     olderId,
     newerId,
     isDraft: isDraftActivityRow(

@@ -1996,3 +1996,92 @@ export async function spendAutoReloadRation(page: Page): Promise<void> {
     }
   );
 }
+
+// ── Going offline honestly ───────────────────────────────────────────────────
+//
+// PLAYWRIGHT'S OFFLINE EMULATION IS PER-BROWSER-CONTEXT AND DOES NOT COVER REQUESTS
+// THE SERVICE WORKER MAKES. In Chromium `context.setOffline(true)` cuts the page's
+// own fetches; the worker's `fetch()` inside `public/sw.js`'s `cacheFirst` handler
+// still reaches the server. So a spec can go offline, navigate, render and pass while
+// the assets it rendered from were pulled over the network during the "offline"
+// navigation. A real device has no such escape hatch (#3002).
+//
+// Measured on this tree, because the obvious test is a lie here. Take away the one
+// thing that warms the /offline shell (emergency-card's own online visit to it) and the
+// counter below reads 13/15 for a full 30s poll and never climbs — two chunks the
+// /offline document needs are simply not cached. The block that navigates offline PASSES
+// ANYWAY, and the counter reads `warm` immediately afterwards: both missing chunks were
+// fetched during the supposedly offline navigation. That is the direct proof of the
+// bypass, not an inference from it.
+//
+// So an "it renders offline" assertion cannot see a missing chunk at all: on a real
+// device that chunk is a blank page, and in the harness it is a green test. What CAN
+// be asserted faithfully is the precondition — the chunk is in the cache BEFORE the
+// network goes away. Assert that alongside the render, and the offline block measures
+// the app instead of the harness.
+//
+// Blocks that only go offline on an ALREADY-LOADED page (the offline write queue:
+// tap → queued → reconnect → replayed) are not exposed to this: they never navigate,
+// so no shell has to come from anywhere, and the page's own POST is exactly what
+// setOffline does block. The hazard is specific to navigating while offline.
+
+/**
+ * Whether every `/_next/static` asset the /offline document declares AND THIS BROWSER
+ * ACTUALLY LOADS is in the service worker's cache — "warm", or a `cached/total` count
+ * plus the missing URLs, to read on failure.
+ *
+ * Reads the cache only: the HTML fetch here populates nothing, because the worker never
+ * caches rendered HTML and this is not a navigation. So a poll on this cannot be
+ * self-fulfilling — with the shell un-warmed it sits at its count and never climbs.
+ *
+ * The `noModule` SKIP is load-bearing, not tidying. Next emits its legacy polyfill
+ * bundle as `<script src="…" noModule>`, which a module-supporting browser — every
+ * browser this suite runs — deliberately never requests. It is declared in the document
+ * and is not part of what the page needs, so a scan that matched raw `/_next/static`
+ * URLs counted an asset that can NEVER be cached however well the shell is warmed, and
+ * reported a permanent shortfall. Measured on this build: 15/16 with the polyfill
+ * counted, warm without it.
+ */
+export async function offlineChunksWarm(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const res = await fetch("/offline", { headers: { Accept: "text/html" } });
+    const html = await res.text();
+    const urls = [
+      ...new Set(
+        (html.match(/<(?:script|link)\b[^>]*>/g) ?? []).flatMap((tag) => {
+          if (/\bnomodule\b/i.test(tag)) return [];
+          const href = tag.match(
+            /(?:src|href)="([^"]*\/_next\/static\/[^"]+)"/
+          )?.[1];
+          return href && (href.endsWith(".js") || href.endsWith(".css"))
+            ? [href]
+            : [];
+        })
+      ),
+    ];
+    const missing: string[] = [];
+    for (const u of urls) {
+      if (!(await caches.match(new URL(u, location.origin).href))) {
+        missing.push(u);
+      }
+    }
+    return urls.length > 0 && missing.length === 0
+      ? "warm"
+      : `${urls.length - missing.length}/${urls.length} cached (missing: ${missing.join(", ") || "none — the document declared no assets"})`;
+  });
+}
+
+/**
+ * The precondition every offline block that NAVIGATES shares: a live controlling
+ * worker, and the offline shell's own code already in its cache. Call this before
+ * `context.setOffline(true)` — it is what makes the offline render an assertion about
+ * the app rather than about the harness's leaky emulation.
+ */
+export async function readyForOffline(page: Page): Promise<void> {
+  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
+    timeout: 15_000,
+  });
+  await expect
+    .poll(() => offlineChunksWarm(page), { timeout: 30_000 })
+    .toBe("warm");
+}

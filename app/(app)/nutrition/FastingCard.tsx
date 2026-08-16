@@ -2,7 +2,8 @@
 
 // The fasting surface on the Nutrition tab (#2756): a live state chip, one control
 // whose label NAMES the write it will perform, the stale suggest, and the history of
-// completed fasts.
+// completed fasts — each row of which can have its TIMES CORRECTED (#2993), which is
+// what a recorded fast with a mis-set date has instead of a six-second Undo.
 //
 // RENDERED FROM STATE (#1892). The control is not a button that hopes — it is
 // `fastControlState` made visible, the SAME pure derivation the write core re-checks
@@ -26,6 +27,7 @@ import {
 } from "@/lib/fasting";
 import {
   discardFastAction,
+  editFastAction,
   endFastAction,
   startFastAction,
   undoEndFastAction,
@@ -37,6 +39,10 @@ export interface FastHistoryEntry {
   day: string | null;
   label: string;
   duration: string;
+  // The correction form's prefill: this fast's own instants as profile-local WALL times
+  // (`YYYY-MM-DDTHH:MM`), resolved on the SERVER, which is the tier that knows the zone.
+  startedLocal: string;
+  endedLocal: string;
   /** Servings with a stated eating instant inside the interval. Annotation only. */
   servingsDuring: number;
 }
@@ -70,6 +76,12 @@ export default function FastingCard({
   // across a zone change or a browser with a skewed clock cannot stamp one.
   const [backdate, setBackdate] = useState("");
   const [showBackdate, setShowBackdate] = useState(false);
+  // The recorded fast being CORRECTED (#2993), and the two wall times its form holds.
+  // One row at a time: the form is the row, so opening a second one closes the first
+  // rather than leaving two sets of times on screen with no way to tell which will save.
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
 
   // The chip ticks once a minute — the smallest unit the label renders, so a shorter
   // interval would repaint without changing a character.
@@ -92,8 +104,8 @@ export default function FastingCard({
       | { ok: false; error: string }
     >,
     fd: FormData
-  ) {
-    if (pending) return;
+  ): Promise<boolean> {
+    if (pending) return false;
     setPending(true);
     try {
       const result = await fn(fd);
@@ -102,7 +114,7 @@ export default function FastingCard({
         // user may want to correct the time they just entered, and clearing the field
         // under a refusal would make them retype it.
         toast(result.error, { tone: "error" });
-        return;
+        return false;
       }
       // The backdated instant has been CONSUMED, so the field is cleared and the
       // disclosure closes. Leaving it set is a real hazard rather than a tidiness point:
@@ -146,9 +158,20 @@ export default function FastingCard({
             }
           : undefined
       );
+      return true;
     } finally {
       setPending(false);
     }
+  }
+
+  // Open the correction form on one recorded fast, prefilled with the times it actually
+  // carries. Prefilled rather than blank because the ordinary correction moves ONE of the
+  // two — the end of a fast someone forgot to tap — and a blank pair would make the user
+  // retype the half that was already right.
+  function openEdit(entry: FastHistoryEntry): void {
+    setEditingId(entry.fast.id);
+    setEditStart(entry.startedLocal);
+    setEditEnd(entry.endedLocal);
   }
 
   // The backdated instant this card would submit, or absent for a plain "now" write.
@@ -308,24 +331,100 @@ export default function FastingCard({
             // interval. BOTH FACTS STAND — the fast is the user's claim and the
             // servings are the user's record — so this reports and offers no verdict.
             const note = servingsDuringFastNote(entry.servingsDuring);
+            const editing = editingId === entry.fast.id;
             return (
               <li
                 key={entry.fast.id}
                 data-testid="fasting-history-row"
-                className="flex justify-between gap-2 text-slate-600 dark:text-slate-300"
+                className="text-slate-600 dark:text-slate-300"
               >
-                <span>{entry.label}</span>
-                <span className="shrink-0 tabular-nums">
-                  {entry.duration}
-                  {note ? (
-                    <span
-                      data-testid="fasting-during-note"
-                      className="ml-2 text-xs text-slate-500 dark:text-slate-400"
+                <div className="flex justify-between gap-2">
+                  <span>{entry.label}</span>
+                  <span className="shrink-0 tabular-nums">
+                    {entry.duration}
+                    {note ? (
+                      <span
+                        data-testid="fasting-during-note"
+                        className="ml-2 text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        {note}
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
+
+                {/* CORRECTING A RECORDED FAST (#2993). A fast recorded with a mis-set
+                    date — the 15-day one the app itself calls far likelier to be a typo
+                    than a fast — had no way out once the end's Undo lapsed. This is that
+                    way out, and it is an EDIT rather than a delete on purpose: removing
+                    the row would assert the fast never happened, while correcting its
+                    times asserts what actually did. Same disclosure shape as the backdate
+                    field above, and the same division of labour — the field carries the
+                    profile's WALL time and the server resolves it. */}
+                <button
+                  type="button"
+                  data-testid="fasting-edit-toggle"
+                  onClick={() =>
+                    editing ? setEditingId(null) : openEdit(entry)
+                  }
+                  className="text-xs text-slate-500 underline dark:text-slate-400"
+                >
+                  {editing ? "Cancel" : "Edit times"}
+                </button>
+                {editing && (
+                  <div
+                    data-testid="fasting-edit-form"
+                    className="mt-1 space-y-1"
+                  >
+                    <input
+                      type="datetime-local"
+                      data-testid="fasting-edit-start"
+                      aria-label="Start time"
+                      value={editStart}
+                      onChange={(e) => setEditStart(e.target.value)}
+                      className="input block text-sm"
+                    />
+                    <input
+                      type="datetime-local"
+                      data-testid="fasting-edit-end"
+                      aria-label="End time"
+                      value={editEnd}
+                      onChange={(e) => setEditEnd(e.target.value)}
+                      className="input block text-sm"
+                    />
+                    <button
+                      type="button"
+                      data-testid="fasting-edit-save"
+                      disabled={pending}
+                      onClick={() => {
+                        const fd = new FormData();
+                        fd.set("id", String(entry.fast.id));
+                        // ONLY THE FIELDS THE USER ACTUALLY MOVED. Each prefill is the
+                        // row's own instant rendered at MINUTE grain, so posting an
+                        // untouched field asks the server to re-resolve a wall time the
+                        // user never typed — which truncates the stored seconds on every
+                        // save, loses an hour across a DST fall-back, and loses a whole
+                        // offset if the profile's zone changed since this rendered. An
+                        // unsent field means "leave this instant alone" (./fast-actions),
+                        // the same discipline that keeps `note` out of the edit entirely.
+                        if (editStart !== entry.startedLocal)
+                          fd.set("started_at", editStart);
+                        if (editEnd !== entry.endedLocal)
+                          fd.set("ended_at", editEnd);
+                        // The form closes only on a write that LANDED. A typed refusal
+                        // leaves the times on screen for the same reason the backdate
+                        // field keeps its value: the user is one character from the
+                        // correction, and clearing it would make them start over.
+                        void run(editFastAction, fd).then((saved) => {
+                          if (saved) setEditingId(null);
+                        });
+                      }}
+                      className="rounded-md border border-black/10 px-2 py-1 text-xs disabled:opacity-50 dark:border-white/10"
                     >
-                      {note}
-                    </span>
-                  ) : null}
-                </span>
+                      Save times
+                    </button>
+                  </div>
+                )}
               </li>
             );
           })}
