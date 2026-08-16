@@ -62,6 +62,15 @@ import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 // Every test below that asserts "nothing was written" says how it knows something would
 // have been.
 //
+// NO TEST HERE MAY NAME THE MEDICATION IT TAPS. The worker's SQLite database is shared by
+// every test that runs on that worker, and `offline-snapshots.spec.ts`'s queued-dose test
+// taps the seeded Sertraline offline and then reconnects — so whether its replay lands
+// before the test ends is a race, and when it does, that dose is taken for whatever runs
+// next. Two tests below asked for Sertraline by name and failed on CI with "element(s) not
+// found", which reads exactly like the write gate refusing the tap. It cost two rounds
+// being read as one. Nothing in this file is about which medication it is, so they take
+// whichever row is still offering the button.
+//
 // It runs in its own unauthenticated context and logs in by hand, because it exercises
 // LOGOUT — which destroys the session row server-side and would invalidate the shared
 // cookie every other spec relies on.
@@ -418,13 +427,22 @@ test("R3d — a queue flush in flight does not re-write its intents after logout
   await page.goto("/medications");
 
   // Capture a dose offline, so there is a real intent with real PHI in the queue.
-  const row = page
+  //
+  // ANY UNTAKEN DOSE, and not a named one — see the note at the top of this file. This
+  // test named the seeded Sertraline and failed on CI with "element(s) not found" for its
+  // "Mark taken" button, which reads exactly like the write gate refusing the tap and is
+  // nothing of the kind: the worker's database is shared by every test on it, and that
+  // dose can already be taken by the time this runs. Nothing here is about which
+  // medication it is.
+  const take = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
-    .filter({ hasText: "Sertraline" });
-  await expect(row).toHaveCount(1);
+    .filter({ has: page.getByRole("button", { name: "Mark taken" }) })
+    .first() // first-ok: any dose still offering "Mark taken" — this test is about the gate
+    .getByRole("button", { name: "Mark taken" });
+  await expect(take).toBeVisible({ timeout: 20_000 });
   await context.setOffline(true);
-  await row.getByRole("button", { name: "Mark taken" }).click();
+  await take.click();
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
     /1 queued offline/
   );
