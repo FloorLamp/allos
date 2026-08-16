@@ -105,3 +105,13 @@ export const LAB_GOAL_TARGET = 100;
 // relative, so the fixture never goes stale.
 export const E2E_LOGIN_WEEK_SPINE = "e2e_week_spine";
 export const WEEK_SPINE_PROFILE = "Week Spine (e2e)";
+
+// ── The worn NON-CYCLING session (#3008) ──────────────────────────────────────
+// Seeded beside the HR-zone ride, on the same day that fixture already owns: a
+// walk with per-minute HR inside its own window. Cycling always had a place to
+// draw a chart — its ride page — so every HR-carrying fixture here was a ride,
+// and the canonical activity page's heart-rate block had no subject at all. It
+// renders only when hr_minutes fall inside the activity's window, which is why
+// a crash in it survived CI until a real walk was opened.
+export const ZONE_WALK_TITLE = "Worn walk (e2e)";
+export const ZONE_WALK_EXTERNAL_ID = "e2e:zone-walk";

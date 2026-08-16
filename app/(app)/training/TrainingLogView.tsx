@@ -1200,8 +1200,13 @@ export default function TrainingLogView({
             className="sticky top-0 max-h-screen overflow-y-auto pr-1"
           >
             {/* Match the first feed row's h-9 date heading + mb-2 so the two
-                cards align. This spacer scrolls away; it is not sticky chrome. */}
-            <div aria-hidden className="mb-2 h-9" />
+                cards align. This spacer scrolls away; it is not sticky chrome.
+                The reading pane brings its OWN h-9 band (the record's
+                Open/Edit row), so it renders without the spacer — with both,
+                the record card sat a full control-row below the selected row. */}
+            {!(asideFree && isDesktop && selectedEntry) && (
+              <div aria-hidden className="mb-2 h-9" />
+            )}
             {/* The provider portals the auto-saving editor here when open
                 (a minimized session is elsewhere — the hidden overlay). */}
             <div
