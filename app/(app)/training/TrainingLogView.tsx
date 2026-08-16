@@ -1192,7 +1192,13 @@ export default function TrainingLogView({
 
         {/* Detail / editor pane — desktop column only; on mobile the detail
             renders in MobileDetailPage below and the editor in the overlay. */}
-        <aside className="hidden xl:block">
+        {/* min-w-0 for the same reason the feed column carries it: a grid item's
+            min-width defaults to its min-content, and this column hosts BOTH the
+            record markup and the portalled editor, whose set rows are wider
+            still. Without it a long nowrap run pushes the track past the
+            viewport, where main's overflow-x-clip makes it unreachable rather
+            than scrollable. */}
+        <aside className="hidden min-w-0 xl:block">
           {/* Sticky so it follows the feed; capped to the viewport with its own
               scroll when the content (e.g. a long editor) overflows. */}
           <div

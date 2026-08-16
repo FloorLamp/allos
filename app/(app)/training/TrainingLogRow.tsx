@@ -79,7 +79,8 @@ function TrainingLogRow({
           </span>
           {card.fault && (
             <span
-              aria-hidden
+              role="img"
+              aria-label={`Can't be saved as-is: ${card.fault}`}
               title={card.fault}
               data-testid="row-fault-dot"
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
