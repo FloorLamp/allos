@@ -14,12 +14,12 @@ import type {
 } from "./normalize";
 import {
   STRAVA_STREAM_KEYS,
-  type CyclingStreams,
+  type ActivityStreams,
   type NormActivityLap,
-  type NormCyclingTelemetry,
+  type NormActivityTelemetry,
   type NormSegmentEffort,
   type TelemetryStream,
-} from "./cycling-telemetry";
+} from "./activity-telemetry";
 
 // Maps Strava activities (https://developers.strava.com/docs/reference/) into the
 // source-agnostic normalized records (see normalize.ts), so the shared upserts
@@ -466,10 +466,10 @@ function externalIdOf(value: unknown): string | null {
   return str(value);
 }
 
-function mapStreamSet(value: unknown): CyclingStreams {
+function mapStreamSet(value: unknown): ActivityStreams {
   if (!value || typeof value !== "object") return {};
   const input = value as Record<string, unknown>;
-  const out: CyclingStreams = {};
+  const out: ActivityStreams = {};
   for (const key of STRAVA_STREAM_KEYS) {
     const stream = input[key];
     if (!stream || typeof stream !== "object") continue;
@@ -491,7 +491,7 @@ function mapStreamSet(value: unknown): CyclingStreams {
 // only per-ride supplemental request. Athlete FTP/zones are snapshotted onto the
 // telemetry row so later changes cannot silently rewrite the load context shown
 // for an older sync.
-export function mapStravaCyclingArtifacts(
+export function mapStravaActivityArtifacts(
   activityId: string,
   detail: unknown,
   streams: unknown,
@@ -499,7 +499,7 @@ export function mapStravaCyclingArtifacts(
   zones: unknown,
   snapshotAt: string
 ): {
-  telemetry: NormCyclingTelemetry;
+  telemetry: NormActivityTelemetry;
   laps: NormActivityLap[];
   segmentEfforts: NormSegmentEffort[];
 } {
@@ -522,7 +522,7 @@ export function mapStravaCyclingArtifacts(
     return Array.isArray(list) ? list : null;
   };
   const parentExternalId = `${STRAVA_ID}:${activityId}`;
-  const telemetry: NormCyclingTelemetry = {
+  const telemetry: NormActivityTelemetry = {
     external_id: parentExternalId,
     streams: mapStreamSet(streams),
     ftp_w: int(athleteRec.ftp),
