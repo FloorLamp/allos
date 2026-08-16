@@ -244,6 +244,7 @@ describe("the gitleaks scan range (#2969)", () => {
   const baseSha = sh(["rev-parse", "HEAD"]).stdout.trim();
   fs.writeFileSync(path.join(tmp, "a.txt"), "head\n");
   sh(["commit", "-qam", "head"]);
+  const headSha = sh(["rev-parse", "HEAD"]).stdout.trim();
 
   function rangeFor(env: Record<string, string>) {
     const r = spawnSync(
@@ -319,5 +320,59 @@ describe("the gitleaks scan range (#2969)", () => {
     expect(range).toBe("--all");
     expect(out).toContain("::warning");
     expect(out).toContain("fell back to --all");
+  });
+
+  // ZERO COMMITS EXITS GREEN (#3000). Measured with the pinned binary: an empty
+  // range reports 0 findings and status 0 while the branch's secret is still
+  // there. Every other under-scan at least still scans something; this one is
+  // the narrowest possible and it is indistinguishable from a clean branch.
+  it("does not scan an EMPTY range — it warns and scans everything instead", () => {
+    const { range, out } = rangeFor({
+      GITLEAKS_EVENT: "pull_request",
+      // The base has advanced to HEAD: resolvable, and the range it names is
+      // empty. Reachable after the branch's commits land in the base.
+      GITLEAKS_BASE_SHA: headSha,
+      GITLEAKS_BASE_REF: "origin/main",
+    });
+    expect(range).toBe("--all");
+    expect(out).toContain("::warning");
+    expect(out).toContain("contains no commits");
+  });
+
+  it("still scans a range that has commits in it, rather than counting everything as empty", () => {
+    // The guard above must not swallow the normal path — a range with commits
+    // stays a range.
+    const { range, out } = rangeFor({
+      GITLEAKS_EVENT: "pull_request",
+      GITLEAKS_BASE_SHA: baseSha,
+      GITLEAKS_BASE_REF: "origin/main",
+    });
+    expect(range).toBe(`${baseSha}..HEAD`);
+    expect(out).not.toContain("::warning");
+  });
+
+  // The header lists a force-pushed base among the things that must not happen
+  // quietly. The code takes the base BRANCH in that case, which is a real base
+  // and a defensible one — but it is not the commit the PR was built on, so it
+  // is announced. Before #3000 the two documents disagreed and this case was
+  // the silent one.
+  it("announces when the base SHA is gone and the base BRANCH stood in", () => {
+    const { range, out } = rangeFor({
+      GITLEAKS_EVENT: "pull_request",
+      GITLEAKS_BASE_SHA: "0000000000000000000000000000000000000000",
+      GITLEAKS_BASE_REF: baseSha, // stands in for a resolvable base branch
+    });
+    expect(range).toBe(`${baseSha}..HEAD`);
+    expect(out).toContain("::warning");
+    expect(out).toContain("not the one this pull request was built on");
+  });
+
+  it("stays silent on the normal path, so a warning still means something", () => {
+    const { out } = rangeFor({
+      GITLEAKS_EVENT: "push",
+      GITLEAKS_BASE_SHA: baseSha,
+      GITLEAKS_BASE_REF: "origin/main",
+    });
+    expect(out).not.toContain("::warning");
   });
 });

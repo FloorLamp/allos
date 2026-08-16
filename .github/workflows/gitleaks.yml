@@ -123,11 +123,32 @@ jobs:
       # The push scan is what keeps a branch's own history audited; the PR scan
       # stops one branch's fixture from redding everyone else's check.
       #
-      # FAIL CLOSED, NEVER SILENTLY NARROW. If the base cannot be resolved — a
-      # missing base sha, a force-pushed base, a fetch that did not bring it — the
-      # scan falls back to `--all` and says so. A scanner that quietly scans less
-      # than it claims is the failure this whole family of fixes exists to
-      # prevent; a noisy over-scan is recoverable, an unnoticed under-scan is not.
+      # NEVER SILENTLY NARROW. A scanner that quietly scans less than it claims
+      # is the failure this whole family of fixes exists to prevent; a noisy
+      # over-scan is recoverable, an unnoticed under-scan is not. "Silently" is
+      # the operative word, and there are three rungs, not one (#3000):
+      #
+      #   1. Base SHA resolves          → `<sha>..HEAD`, silent. The normal path.
+      #   2. Base sha gone, base REF
+      #      resolves (a force-pushed or
+      #      garbage-collected base)    → `<ref>..HEAD` plus a `::warning`.
+      #   3. Neither resolves           → `--all` plus a `::warning`.
+      #
+      # Rung 2 exists rather than falling straight to `--all` because the base
+      # BRANCH is a real base — scanning `origin/main..HEAD` is the same policy
+      # against a slightly different commit, while `--all` reintroduces exactly
+      # the cross-branch false red #2969 was ruled to remove. What it is not is
+      # the base this pull request was built on, so it says so out loud. This
+      # header used to list "a force-pushed base" among the `--all` triggers
+      # while the code took rung 2 without a word; the two now agree.
+      #
+      # AND ZERO COMMITS IS THE NARROWEST SCAN OF ALL, and the only one that
+      # exits GREEN — measured with the pinned binary: an empty range reports 0
+      # findings and status 0 with a live secret on the branch. It is reachable
+      # from rung 2 (main advanced past HEAD, e.g. the branch already merged),
+      # so the resolved range is counted before it is used and a zero falls back
+      # to `--all` with a warning. #2592 already names "zero commits scanned" as
+      # an incident here, but only in the red direction.
       #
       # The explainer stays exactly as #2967 built it: gitleaks records the COMMIT
       # that introduced every finding, `git merge-base --is-ancestor` turns that
@@ -168,8 +189,25 @@ jobs:
             done
             if [ -n "$base" ]; then
               log_opts="${base}..HEAD"
+              # Rung 2: the sha this PR was built on is gone, so the base BRANCH
+              # stood in. Still a range scan, still the same policy — but not
+              # against the same commit, so it does not happen quietly.
+              if [ -n "$GITLEAKS_BASE_SHA" ] && [ "$base" != "$GITLEAKS_BASE_SHA" ]; then
+                echo "::warning title=gitleaks used the base BRANCH, not the base commit::The base commit ${GITLEAKS_BASE_SHA} is not in this checkout — a force-pushed or garbage-collected base — so the scan used ${base}..HEAD instead. That is a real base, but not the one this pull request was built on."
+              fi
             else
               echo "::warning title=gitleaks scanned every ref::Could not resolve the base commit for this ${GITLEAKS_EVENT}, so the scan fell back to --all. A finding may come from another branch; the explainer below says which."
+            fi
+          fi
+          # A range that contains NO COMMITS scans nothing and exits GREEN, which
+          # is the one failure a red cannot warn you about. Reachable whenever
+          # the base has advanced past HEAD.
+          if [ "$log_opts" != "--all" ]; then
+            commits=$(git rev-list --count "$log_opts" 2>/dev/null || echo 0)
+            case "$commits" in ''|*[!0-9]*) commits=0 ;; esac
+            if [ "$commits" -eq 0 ]; then
+              echo "::warning title=gitleaks scanned every ref::The range ${log_opts} contains no commits, so scanning it would have checked nothing and passed. Falling back to --all."
+              log_opts="--all"
             fi
           fi
           echo "gitleaks range: --log-opts=\"${log_opts}\" (event: ${GITLEAKS_EVENT})"
