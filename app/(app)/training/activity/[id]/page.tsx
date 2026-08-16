@@ -15,6 +15,8 @@ import { ZONE_COLORS } from "@/lib/training-zones";
 import ActivityLedgerNav from "./ActivityLedgerNav";
 import ActivityRecord from "../ActivityRecord";
 import RideHeartRateChart from "../../rides/[id]/RideHeartRateChart";
+import RideTelemetryChart from "../../rides/[id]/RideTelemetryChart";
+import { RideChartLinkProvider } from "../../rides/[id]/RideChartLink";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,7 @@ export default async function TrainingActivityPage(props: {
   const ride = rideDetailHref(data.row);
   if (ride) redirect(ride);
 
+  const card = data.card;
   const canWrite =
     accessForProfile(login.id, login.role, profile.id) === "write";
 
@@ -111,82 +114,125 @@ export default async function TrainingActivityPage(props: {
         canWrite={canWrite}
       />
 
-      {heartRateSeries.length > 0 && (
-        // Not `activity-heart-rate`: the record card above already carries that
-        // id on its summary's ♥ chip, and two of them on one page is the
-        // hidden-twin trap (#2305) — a scoped read would get whichever came
-        // first in the DOM, which is the 16px chip, not this block.
-        <div className="card mt-4" data-testid="activity-hr-chart">
-          <div className="flex items-baseline justify-between gap-2">
-            <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-              Heart rate
-            </h3>
-            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-              {data.heartRate.minutes.length} recorded min
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            One-minute readings recorded during this session. A break in the
-            line is a gap in wear.
-          </p>
-          <div className="mt-4">
-            <RideHeartRateChart
-              data={heartRateSeries}
-              rideDate={data.row.date}
-              zoneModel={data.heartRate.zoneModel}
-            />
-          </div>
-          {zoneTotal > 0 && (
-            <div className="mt-4" data-testid="activity-heart-rate-zones">
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                Time in zones
+      {/* Both charts share one crosshair, the way the ride page's do: the
+          provider is what links them, and the hook is inert without it, so a
+          page that grows a second chart opts in by mounting this. */}
+      <RideChartLinkProvider>
+        {data.telemetry.traces.length > 0 && (
+          <div className="card mt-4" data-testid="activity-traces">
+            <div className="flex items-baseline justify-between gap-2">
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                Session traces
               </h3>
-              <div
-                className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800"
-                aria-hidden
-              >
-                {zoneRows.map((zone, index) =>
-                  zone.minutes > 0 ? (
-                    <span
-                      key={zone.id}
-                      style={{
-                        width: `${(zone.minutes / zoneTotal) * 100}%`,
-                        backgroundColor: ZONE_COLORS[index],
-                      }}
-                    />
-                  ) : null
-                )}
-              </div>
-              <ul className="mt-3 space-y-2">
-                {zoneRows.map((zone, index) => (
-                  <li
-                    key={zone.id}
-                    data-testid={`activity-zone-${zone.id}`}
-                    className="flex items-center justify-between gap-4 text-sm"
-                  >
-                    <span className="inline-flex min-w-0 items-center gap-2">
-                      <span
-                        aria-hidden
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: ZONE_COLORS[index] }}
-                      />
-                      <span className="font-medium text-slate-700 dark:text-slate-200">
-                        {zone.name}
-                      </span>
-                      <span className="truncate text-slate-500 dark:text-slate-400">
-                        {zone.label}
-                      </span>
-                    </span>
-                    <span className="shrink-0 tabular-nums text-slate-600 dark:text-slate-300">
-                      {zone.minutes} min · {zone.percent}%
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {card.provenance.label}
+              </span>
             </div>
-          )}
-        </div>
-      )}
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              What the recording device measured second by second. Pick a
+              measure to see it across the session.
+            </p>
+            <div className="mt-4">
+              <RideTelemetryChart traces={data.telemetry.traces} />
+            </div>
+          </div>
+        )}
+
+        {heartRateSeries.length > 0 && (
+          // Not `activity-heart-rate`: the record card above already carries that
+          // id on its summary's ♥ chip, and two of them on one page is the
+          // hidden-twin trap (#2305) — a scoped read would get whichever came
+          // first in the DOM, which is the 16px chip, not this block.
+          <div className="card mt-4" data-testid="activity-hr-chart">
+            <div className="flex items-baseline justify-between gap-2">
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                Heart rate
+              </h3>
+              <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                {data.heartRate.minutes.length} recorded min
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              One-minute readings recorded during this session. A break in the
+              line is a gap in wear.
+            </p>
+            <div className="mt-4">
+              <RideHeartRateChart
+                data={heartRateSeries}
+                rideDate={data.row.date}
+                zoneModel={data.heartRate.zoneModel}
+              />
+            </div>
+            {zoneTotal > 0 && (
+              <div className="mt-4" data-testid="activity-heart-rate-zones">
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  Time in zones
+                </h3>
+                <div
+                  className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800"
+                  aria-hidden
+                >
+                  {zoneRows.map((zone, index) =>
+                    zone.minutes > 0 ? (
+                      <span
+                        key={zone.id}
+                        style={{
+                          width: `${(zone.minutes / zoneTotal) * 100}%`,
+                          backgroundColor: ZONE_COLORS[index],
+                        }}
+                      />
+                    ) : null
+                  )}
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {zoneRows.map((zone, index) => (
+                    <li
+                      key={zone.id}
+                      data-testid={`activity-zone-${zone.id}`}
+                      className="flex items-center justify-between gap-4 text-sm"
+                    >
+                      <span className="inline-flex min-w-0 items-center gap-2">
+                        <span
+                          aria-hidden
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: ZONE_COLORS[index] }}
+                        />
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                          {zone.name}
+                        </span>
+                        <span className="truncate text-slate-500 dark:text-slate-400">
+                          {zone.label}
+                        </span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-slate-600 dark:text-slate-300">
+                        {zone.minutes} min · {zone.percent}%
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </RideChartLinkProvider>
+
+      {/* A session whose source answered with nothing says so (#3009). The page
+          is allowed to be short — a hand-entered walk IS a total and a title —
+          but it is not allowed to be silent about being short, which reads as
+          something failing to load. Only stated when the source has actually
+          answered: never asked is a different fact, and claiming otherwise
+          would be a guess. */}
+      {data.telemetry.answered &&
+        data.telemetry.traces.length === 0 &&
+        heartRateSeries.length === 0 && (
+          <p
+            data-testid="activity-totals-only"
+            className="mt-4 text-sm text-slate-500 dark:text-slate-400"
+          >
+            {card.provenance.label} recorded totals for this session — no
+            second-by-second detail, and no heart rate during it.
+          </p>
+        )}
     </PageContainer>
   );
 }

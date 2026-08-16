@@ -115,3 +115,10 @@ export const WEEK_SPINE_PROFILE = "Week Spine (e2e)";
 // a crash in it survived CI until a real walk was opened.
 export const ZONE_WALK_TITLE = "Worn walk (e2e)";
 export const ZONE_WALK_EXTERNAL_ID = "e2e:zone-walk";
+
+// A session the source answered about with NOTHING (#3009): an empty telemetry
+// row and no wear minutes in its window. "Totals only" is a fact the page may
+// state only when the source has actually answered, so the fixture has to carry
+// the answer, not merely the absence.
+export const TOTALS_ONLY_TITLE = "Totals-only walk (e2e)";
+export const TOTALS_ONLY_EXTERNAL_ID = "e2e:totals-only";

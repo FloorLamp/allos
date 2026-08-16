@@ -4,7 +4,7 @@ import { today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { getTimezone } from "@/lib/settings";
 import { eatingTimeOptions as eatingTimeOptionsFor } from "@/lib/food-eating-time";
-import { shiftDateStr } from "@/lib/date";
+import { parseUtcSql, shiftDateStr, zonedMinuteStr } from "@/lib/date";
 import {
   getFoodMealDays,
   getWeeklyFoodRollup,
@@ -246,6 +246,15 @@ export default async function FoodTab({
                 .filter((f) => f.ended_at !== null)
                 .map((f) => {
                   const day = fastAttributedDay(f, fastingTz);
+                  // The correction form's prefill (#2993), as profile-local WALL times —
+                  // resolved here because the server is the tier that knows the zone, the
+                  // same discipline the backdate field already follows in the other
+                  // direction (`parseBackdated` resolves the wall time the client sends).
+                  // A client-side conversion would put a tab open across a zone change,
+                  // or a browser with a skewed clock, in charge of what the user is shown
+                  // their own history as.
+                  const startedAt = parseUtcSql(f.started_at);
+                  const endedAt = parseUtcSql(f.ended_at);
                   return {
                     fast: f,
                     day,
@@ -255,6 +264,12 @@ export default async function FoodTab({
                     duration: formatFastDuration(
                       fastElapsedMs(f, fastingNow) ?? 0
                     ),
+                    startedLocal: startedAt
+                      ? zonedMinuteStr(fastingTz, startedAt)
+                      : "",
+                    endedLocal: endedAt
+                      ? zonedMinuteStr(fastingTz, endedAt)
+                      : "",
                     servingsDuring: getServingsDuringFast(profile.id, f),
                   };
                 })

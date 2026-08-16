@@ -46,8 +46,10 @@ export interface StoredFast extends Fast {
   end_written_at: string | null;
 }
 
-// One fast by id, scoped to the profile — the WRITE tier's read (the only two callers
-// are `reopenFast` and `discardFast`), so it carries the end's write stamp.
+// One fast by id, scoped to the profile — the WRITE tier's read (its only callers are
+// `reopenFast`, `discardFast` and `editFast`), so it carries the end's write stamp.
+// `editFast` needs it to write the stamp back UNCHANGED: correcting an interval is not
+// an end, so it must not restart the Undo's clock (lib/fast-write.ts).
 export function getFast(profileId: number, id: number): StoredFast | null {
   return (
     (db
@@ -128,7 +130,8 @@ export function createFastRow(
 // Absolute update of a fast's own fields, scoped to the profile. The end is ONE
 // argument, so `ended_at` and `end_written_at` cannot be set apart: reopening passes
 // null and clears both, ending passes the claimed instant with the clock reading of the
-// write beside it.
+// write beside it, and a CORRECTION (`editFast`) passes the new claimed instant with the
+// row's EXISTING stamp — a closed row with no write stamp stays inexpressible either way.
 export function updateFastRow(
   profileId: number,
   id: number,
@@ -150,6 +153,42 @@ export function updateFastRow(
         id,
         profileId
       );
+    return info.changes;
+  });
+}
+
+// Correct a CLOSED fast's interval (#2993), scoped to the profile. Deliberately a SECOND
+// statement rather than a flag on `updateFastRow`, and the difference is the one column
+// it does not name.
+//
+// `end_written_at` IS ABSENT FROM THIS SQL, so a correction cannot touch it — not
+// "passes it back unchanged", but never names it at all. That is the honest expression of
+// what an edit is: `at` is the CLAIM the user is invited to correct, `writtenAt` is the
+// app's own clock at the write that CLOSED the fast, and correcting a claim does not
+// re-close anything. Routing the edit through `updateFastRow` instead forced it to supply
+// a stamp, and the `??` fallback that came with it made a NULL-stamped row — one
+// `reopenFast` reads as `too-old` — REOPENABLE by being edited, the exact opposite of
+// what preserving the stamp was for.
+//
+// The one-argument rule is intact where it applies: `FastEnd` still governs every write
+// that SETS or CLEARS an end, so a closed row with no write stamp remains something this
+// module cannot create. This statement only ever runs on a row that is ALREADY closed —
+// `ended_at IS NOT NULL` is in the WHERE, so it can neither open a row nor close one —
+// and it leaves the nullness of both end columns exactly as it found them.
+export function updateFastInterval(
+  profileId: number,
+  id: number,
+  startedAt: string,
+  endedAt: string,
+  note: string | null
+): number {
+  return writeTx(() => {
+    const info = db
+      .prepare(
+        `UPDATE fasts SET started_at = ?, ended_at = ?, note = ?
+          WHERE id = ? AND profile_id = ? AND ended_at IS NOT NULL`
+      )
+      .run(startedAt, endedAt, note, id, profileId);
     return info.changes;
   });
 }

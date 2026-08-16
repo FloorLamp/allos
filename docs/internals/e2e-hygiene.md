@@ -1746,20 +1746,29 @@ the rotation is invariant here by construction, because the pinned zone always r
 13:mm local and the local date therefore always equals the frozen instant's UTC date.
 
 What actually moved was the neighbour set. `autosave-retry.spec.ts coaching-episode.spec.ts --workers=1`
-reproduces the red on **every** run, and `coaching-episode.spec.ts` alone is green on
-every run — a two-command diagnosis that no amount of re-running the victim by itself
-would have reached. The fix is the fixture rule, not a date pin: an absence a
-neighbour can destroy is not something a seed can promise on a **shared** profile, so
-the fixture moved to its own profile and login (`REST_EPISODE_PROFILE`), which is what
-`REST_CARD_PROFILE` already did for the same reason.
+reproduces the red on **every** run (3/3 with `--repeat-each=3`), and
+`coaching-episode.spec.ts` alone is green on every run — a two-command diagnosis that
+no amount of re-running the victim by itself would have reached. The fix is the
+fixture rule, not a date pin: an absence a neighbour can destroy is not something a
+seed can promise on a **shared** profile, so the fixture moved to its own profile and
+login (`REST_EPISODE_PROFILE`), which is what `REST_CARD_PROFILE` already did for the
+same reason. On the fixed tree the same neighbour pairing is green 3/3 at each of
+`ALLOS_TEST_NOW` hours 03, 13 and 23 — pinned `Etc/GMT-10`, `UTC`, `Etc/GMT+10`.
 
 **A re-run clearing a red is not evidence of a timing flake.** A re-run also reshuffles
 which specs share a worker, so it clears a co-residency failure just as readily — and
 that is the reading that costs an orchestrator a diagnosis. Before blaming the clock or
 the zone, run the victim alone, then run it behind a plausible neighbour.
 
-Neither was caused by the sharding. Duration-balanced buckets (#2590) put the
-pair on one database for the first time, and reshuffling the buckets — which a
+The rest of the suite was swept for the same latent dependency and is clean.
+`coaching-rest-card.spec.ts` also asserts a `restTitle` (`"Rest or take it easy
+today"`), but on its own dedicated profile whose only activity is ten days old, and
+its "Training anyway" control writes a `RestAck` in `profile_settings` — never an
+activity — so nothing it does can put today into `trainingDates`.
+`situation-coaching.spec.ts` asserts the held note, which is not a rest title at all.
+
+None of the three was caused by the sharding. Duration-balanced buckets (#2590) put
+a pair on one database for the first time, and reshuffling the buckets — which a
 manifest refresh does — can expose another one at any time. **Assume a bucket
 change is a co-residency change.**
 

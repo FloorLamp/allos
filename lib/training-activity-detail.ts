@@ -32,6 +32,11 @@ import { getProfileZoneModel } from "./queries/zones";
 import { getWeatherDaysForProfile } from "./queries/weather-situations";
 import { getHrMinutesInRange } from "./queries/metrics";
 import {
+  parseCyclingStreams,
+  rideTraces,
+  type RideTrace,
+} from "./cycling-analytics";
+import {
   activityWindows,
   scopeBucketsToWindows,
   zoneMinuteTotals,
@@ -57,6 +62,18 @@ export interface ActivityDetailHeartRate {
   zoneModel: ZoneModel | null;
 }
 
+// What the SOURCE holds second-by-second for this session (#2870 step 4 widened
+// the fetch past cycling, so a run or a walk has these too). The distinction the
+// page needs is three-way, not two: traces to draw, or a source that answered
+// with nothing ("totals only" — the honest line, #3009), or no answer yet.
+export interface ActivityDetailTelemetry {
+  traces: RideTrace[];
+  // The source has told us what it holds: a telemetry row exists. Without one
+  // the session simply has not been asked about (a manual entry, or an import
+  // that predates the widening), which is not the same as "there is nothing".
+  answered: boolean;
+}
+
 export interface ActivityDetailData {
   row: Activity;
   card: TrainingLogCardData;
@@ -64,6 +81,7 @@ export interface ActivityDetailData {
   // (issue #64), shaped exactly as TrainingLogView ships them.
   siblings: ActivityDetailSibling[];
   heartRate: ActivityDetailHeartRate;
+  telemetry: ActivityDetailTelemetry;
   // Adjacent activities in ledger order (date, then id) for ‹ older / newer ›.
   olderId: number | null;
   newerId: number | null;
@@ -160,6 +178,20 @@ export function getActivityDetailData(
       ? zoneMinuteTotals(minutes, zoneModel)
       : null;
 
+  // The source's second-by-second record, through the same pure derivation the
+  // ride page uses — nothing in `rideTraces` is about bicycles.
+  const telemetryRow = db
+    .prepare(
+      `SELECT streams_json FROM activity_telemetry
+        WHERE profile_id = ? AND activity_id = ?
+        ORDER BY id DESC LIMIT 1`
+    )
+    .get(profileId, row.id) as { streams_json: string | null } | undefined;
+  const telemetry: ActivityDetailTelemetry = {
+    traces: rideTraces(parseCyclingStreams(telemetryRow?.streams_json ?? null)),
+    answered: !!telemetryRow,
+  };
+
   const olderId =
     (
       db
@@ -188,6 +220,7 @@ export function getActivityDetailData(
     card,
     siblings,
     heartRate: { window: heartRateWindow, minutes, zoneMinutes, zoneModel },
+    telemetry,
     olderId,
     newerId,
     isDraft: isDraftActivityRow(
