@@ -277,14 +277,6 @@ export default function TrainingLogCard({
                         title={item.title}
                         className="inline-flex items-center whitespace-nowrap"
                       >
-                        {i > 0 && (
-                          <span
-                            aria-hidden
-                            className="mx-1.5 text-slate-500 dark:text-slate-400"
-                          >
-                            ·
-                          </span>
-                        )}
                         {item.intensity && INTENSITY_DOT[item.intensity] && (
                           <span
                             aria-hidden
@@ -309,6 +301,18 @@ export default function TrainingLogCard({
                           </>
                         ) : (
                           item.value
+                        )}
+                        {/* The separator rides INSIDE the preceding item's
+                            no-wrap span: when the line wraps, it stays at the
+                            end of the line above instead of leading the next
+                            one as a stray bullet. */}
+                        {i < summary.length - 1 && (
+                          <span
+                            aria-hidden
+                            className="mx-1.5 text-slate-500 dark:text-slate-400"
+                          >
+                            ·
+                          </span>
                         )}
                       </span>
                     ))}
@@ -521,32 +525,42 @@ export default function TrainingLogCard({
                               />
                             </span>
                           )}
-                          {p.muscle &&
-                            (onFilterTag ? (
-                              <button
-                                type="button"
-                                onClick={() => onFilterTag("muscle", p.muscle!)}
-                                title={`Show ${p.muscle} activities`}
-                                className="text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-                              >
-                                {p.muscle}
-                              </button>
-                            ) : (
-                              <span className="text-xs text-slate-500 dark:text-slate-400">
-                                {p.muscle}
-                              </span>
-                            ))}
-                          {p.muscle && p.equipment && (
-                            <span
-                              aria-hidden
-                              className="text-xs text-slate-500 dark:text-slate-400"
-                            >
-                              ·
-                            </span>
-                          )}
-                          {p.equipment && (
-                            <span className="text-xs text-slate-500 dark:text-slate-400">
-                              {p.equipment}
+                          {(p.muscle || p.equipment) && (
+                            // One no-wrap group: when the row runs out of
+                            // room, "muscle · equipment" moves to the next
+                            // line whole instead of orphaning the gear name
+                            // flush-left under the exercise.
+                            <span className="inline-flex items-center gap-x-1 whitespace-nowrap">
+                              {p.muscle &&
+                                (onFilterTag ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onFilterTag("muscle", p.muscle!)
+                                    }
+                                    title={`Show ${p.muscle} activities`}
+                                    className="text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                                  >
+                                    {p.muscle}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    {p.muscle}
+                                  </span>
+                                ))}
+                              {p.muscle && p.equipment && (
+                                <span
+                                  aria-hidden
+                                  className="text-xs text-slate-500 dark:text-slate-400"
+                                >
+                                  ·
+                                </span>
+                              )}
+                              {p.equipment && (
+                                <span className="text-xs text-slate-500 dark:text-slate-400">
+                                  {p.equipment}
+                                </span>
+                              )}
                             </span>
                           )}
                         </div>
