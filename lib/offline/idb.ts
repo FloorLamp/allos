@@ -32,10 +32,28 @@ export function hasIndexedDB(): boolean {
 /**
  * Open (creating/upgrading on first use) the offline database. Rejections are
  * swallowed by callers so a blocked or failed open never breaks a submit.
+ *
+ * BLOCKED IS A REJECTION, NOT A WAIT (#2908). An upgrade — v3 → v4 is one, and it
+ * ships to devices that have open tabs on the old build — cannot proceed while another
+ * connection holds the database at the older version. IndexedDB reports that by firing
+ * `blocked` and then simply SITTING: `error` never fires, so a promise with no
+ * `onblocked` handler never settles at all. Every caller here awaits inside a
+ * `try/catch` that can only catch a throw, so the hang propagated as a queue write that
+ * never returned and an offline page that rendered nothing, forever, with no error
+ * anywhere. That is strictly worse than the degraded-no-op path the whole module is
+ * built on, and it is what the doc comment above always claimed happened. Now it does:
+ * a blocked open rejects, the caller falls back to its no-op, and the next visit (by
+ * which time the old tab is usually gone) upgrades cleanly.
  */
 export function openOfflineDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+    req.onblocked = () =>
+      reject(
+        new Error(
+          `${OFFLINE_DB_NAME}: upgrade to v${OFFLINE_DB_VERSION} blocked by an older open connection`
+        )
+      );
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(INTENTS_STORE)) {

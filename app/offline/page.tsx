@@ -56,6 +56,13 @@ export default function OfflinePage() {
   const [showCard, setShowCard] = useState(false);
   const [snapshots, setSnapshots] = useState<AnySnapshot[]>([]);
   const [open, setOpen] = useState<SnapshotKind | null>(null);
+  // Whether the device-local read has RESOLVED — distinct from "it found nothing",
+  // which is a real answer this page states in words. Nothing renders a spinner off
+  // this (the invariant forbids one, and there is no network to wait for); it exists
+  // so "still reading" and "nothing stored" are two states rather than one silent
+  // one, and it is stamped on the shell as `data-offline-read` so an observer can
+  // wait on the state instead of guessing from a control's absence.
+  const [read, setRead] = useState(false);
 
   // Read once on mount, from a browser task. There is nothing to subscribe to: no
   // network, no Server Actions, and both stores only change on a visit that has a
@@ -69,12 +76,17 @@ export default function OfflinePage() {
       ]);
       if (cancelled) return;
       const owner = resolveSnapshotProfile(stored);
-      if (owner == null) return;
-      setSnapshots(
-        stored
-          .filter((s) => s.profileId === owner)
-          .map((s) => overlaySnapshot(s, intents))
-      );
+      // A mixed store resolves to null and renders NOTHING — but the read is still
+      // finished, so it settles here too. Marking it unfinished would leave the page
+      // permanently claiming to be mid-read.
+      if (owner != null) {
+        setSnapshots(
+          stored
+            .filter((s) => s.profileId === owner)
+            .map((s) => overlaySnapshot(s, intents))
+        );
+      }
+      setRead(true);
     })();
     return () => {
       cancelled = true;
@@ -135,6 +147,7 @@ export default function OfflinePage() {
   return (
     <main
       data-offline-shell
+      data-offline-read={read ? "done" : "pending"}
       className="flex min-h-screen items-center justify-center px-4 py-12"
     >
       <div className="w-full max-w-sm text-center">

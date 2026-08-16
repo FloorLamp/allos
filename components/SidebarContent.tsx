@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRef } from "react";
 import { IconLogout, IconSearch, IconX } from "@tabler/icons-react";
 import Nav from "@/components/Nav";
 import { openGlobalSearch } from "@/components/CommandPalette";
@@ -121,6 +122,34 @@ export default function SidebarContent({
   onNavigate?: () => void;
   onClose?: () => void;
 }) {
+  const logoutFormRef = useRef<HTMLFormElement>(null);
+
+  // Wipe this device's PHI, THEN log out.
+  //
+  // Three stores go: the emergency card copy (#42, localStorage — synchronous, which
+  // is why this race never showed before), any queued offline writes plus their
+  // dead-letter entries and form drafts (#28/#475/#1699), and the offline read
+  // snapshots (#2908). clearQueue's own transaction covers the snapshot store too, so
+  // the wipe holds even if this call site drifts.
+  //
+  // BOUNDED, and it logs out either way. A wedged or blocked IndexedDB must never trap
+  // someone in a session they asked to leave — the server-side logout is what actually
+  // ends the session, and it is not optional. If the wipe cannot finish in time the
+  // logout still proceeds; the next authenticated visit's identity check wipes what is
+  // left, and /offline refuses to render a store it cannot attribute to one profile.
+  async function logoutAfterWipe(): Promise<void> {
+    clearEmergencyPayload();
+    try {
+      await Promise.race([
+        clearQueue(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch {
+      /* the logout below is not conditional on the wipe succeeding */
+    }
+    logoutFormRef.current?.requestSubmit();
+  }
+
   return (
     <>
       <div className="flex items-center justify-between gap-2">
@@ -216,18 +245,19 @@ export default function SidebarContent({
               Read-only
             </p>
           )}
-          <form action={logoutAction}>
+          <form action={logoutAction} ref={logoutFormRef}>
             <button
-              type="submit"
-              onClick={() => {
-                // Wipe offline PHI on logout: the emergency card copy (#42),
-                // any queued offline writes (#28), and the offline read
-                // snapshots (#2908) — never leave them for the next login.
-                // clearQueue's own transaction covers the snapshot store too,
-                // so the wipe holds even if this call site drifts.
-                clearEmergencyPayload();
-                void clearQueue();
-              }}
+              // NOT type="submit" (#2908). The wipe below is an ASYNC IndexedDB
+              // transaction and the submit is a NAVIGATION: as a submit button
+              // these raced, and the navigation won often enough to leave one
+              // login's device-local PHI — a med list and a dose schedule,
+              // readable session-free at /offline — sitting there for the next
+              // person. Reproduced at 1-in-10 under CPU contention; it had
+              // simply never been observed because localStorage (the emergency
+              // card) is synchronous and the queue's own leftovers are invisible.
+              // So: wipe first, await it, THEN submit.
+              type="button"
+              onClick={() => void logoutAfterWipe()}
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
             >
               <IconLogout className="h-4 w-4 shrink-0" stroke={1.75} />

@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { hydratedClick } from "./helpers";
+import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 
 // Offline read snapshots (#2908) — the render path, end to end, with a real service
 // worker and a real dead connection.
@@ -33,35 +35,63 @@ async function login(page: Page) {
 
 // The stored snapshot kinds, read straight out of IndexedDB. Returns [] when the
 // database or the store is absent, which is what "wiped" looks like from here.
+//
+// IT MUST NOT CREATE THE DATABASE, and that is not a tidiness point — it is what made
+// this spec red on CI and green here. `indexedDB.open(name)` with NO version CREATES
+// the database at version 1 when it does not exist, so a poll that raced the app's own
+// first open left a v1 connection in the way of the app's v4 upgrade. IndexedDB answers
+// that with `blocked`, which never fires `error`, so before the companion fix in
+// lib/offline/idb.ts the app's open never settled at all: no capture, no offline
+// render, and a 15s timeout on a control that was never going to appear. `databases()`
+// asks the question without opening anything.
 function storedKinds(page: Page): Promise<string[]> {
   return page.evaluate(
     ([dbName, storeName]) =>
-      new Promise<string[]>((resolve) => {
-        const req = indexedDB.open(dbName);
-        req.onerror = () => resolve([]);
-        req.onsuccess = () => {
-          const db = req.result;
-          if (!db.objectStoreNames.contains(storeName)) {
-            db.close();
-            resolve([]);
-            return;
-          }
-          const all = db
-            .transaction(storeName, "readonly")
-            .objectStore(storeName)
-            .getAll();
-          all.onerror = () => {
-            db.close();
-            resolve([]);
+      (async () => {
+        const known = await indexedDB.databases();
+        if (!known.some((d) => d.name === dbName)) return [];
+        return new Promise<string[]>((resolve) => {
+          const req = indexedDB.open(dbName);
+          req.onerror = () => resolve([]);
+          req.onblocked = () => resolve([]);
+          req.onsuccess = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(storeName)) {
+              db.close();
+              resolve([]);
+              return;
+            }
+            const all = db
+              .transaction(storeName, "readonly")
+              .objectStore(storeName)
+              .getAll();
+            all.onerror = () => {
+              db.close();
+              resolve([]);
+            };
+            all.onsuccess = () => {
+              const rows = all.result as { kind: string }[];
+              db.close();
+              resolve(rows.map((r) => r.kind).sort());
+            };
           };
-          all.onsuccess = () => {
-            const rows = all.result as { kind: string }[];
-            db.close();
-            resolve(rows.map((r) => r.kind).sort());
-          };
-        };
-      }),
+        });
+      })(),
     [DB, STORE] as const
+  );
+}
+
+// Wait until the offline shell's device-local read has RESOLVED.
+//
+// The shell hydrates and only then reads IndexedDB, so until this settles "no snapshot
+// list" and "still reading" look identical — which made every assertion below a race
+// that an idle box wins and a loaded 2-core CI runner loses. Waiting on the page's own
+// stated state is the fix; a bigger timeout on the locator would only have moved it.
+async function settledOfflineRead(page: Page): Promise<void> {
+  await expect(page.locator("main[data-offline-read]")).toHaveAttribute(
+    "data-offline-read",
+    "done",
+    { timeout: 30_000 }
   );
 }
 
@@ -74,26 +104,45 @@ test("offline reads: one visit captures, /offline renders them with no network, 
   await login(page);
 
   // 1. An ordinary authenticated visit is the whole refresh policy — no background
-  //    sync, no push. The capture is a client effect after hydration, so poll.
+  //    sync, no push. Wait on the CAPTURED STATE, never on the navigation: a loaded
+  //    page is not a captured snapshot, and the refresh is deliberately background
+  //    work nobody is waiting on (which is also why lib/nav-fetch-guard.ts never holds
+  //    it). Every kind, not just one — the store is written in a single transaction,
+  //    so a partial read means the write has not landed yet.
   await page.goto("/");
   await expect
-    .poll(() => storedKinds(page), { timeout: 20_000 })
-    .toContain("medication-list");
+    .poll(() => storedKinds(page), { timeout: 30_000 })
+    .toEqual([...SNAPSHOT_KINDS].sort());
 
   // 2. The service worker is live in this harness (a production build under
   //    `next start`), so a failed navigation genuinely lands on the precached shell.
   await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
     timeout: 15_000,
   });
+  // One ONLINE visit to /offline first, exactly as e2e/emergency-card.spec.ts does
+  // before its own offline block — and for a reason worth stating, because skipping it
+  // is what made this spec red on CI and green here.
+  //
+  // public/sw.js precaches the /offline HTML and the icon, and NOTHING else: build
+  // assets are `cacheFirst`, which caches them as a side effect of being fetched. So
+  // the route's own JS chunk is in the cache only if /offline has been loaded before.
+  // Without it the precached HTML is served offline and then never hydrates — the page
+  // renders, the effect never runs, and every testid below stays absent. It surfaces as
+  // "element(s) not found", which reads like a product bug and is not one; it is the
+  // #42-era shape of the precache, which this issue's invariants deliberately leave
+  // alone. Reproduced locally at 1-in-10 under `--repeat-each=5 --workers=2` with three
+  // CPU burners on a 4-core box, matching the CI signature exactly.
+  await page.goto("/offline");
+  await settledOfflineRead(page);
   await context.setOffline(true);
   try {
     // A deep-linked navigation that fails lands here, which is the right landing.
     await page.goto("/medications");
-    const list = page.getByTestId("offline-snapshot-list");
-    await expect(list).toBeVisible();
+    await settledOfflineRead(page);
+    await expect(page.getByTestId("offline-snapshot-list")).toBeVisible();
 
     // The safety case: the med list, readable with no network and no session.
-    await page.getByTestId("offline-open-medication-list").click();
+    await hydratedClick(page, page.getByTestId("offline-open-medication-list"));
     const meds = page.getByTestId("offline-snapshot-medication-list");
     await expect(meds).toContainText("Sertraline");
     // Every offline render carries its "as of" line — one vocabulary, not a banner
@@ -103,8 +152,8 @@ test("offline reads: one visit captures, /offline renders them with no network, 
     );
 
     // Today's doses, for the profile that was active at capture.
-    await page.getByTestId("offline-snapshot-back").click();
-    await page.getByTestId("offline-open-dose-schedule").click();
+    await hydratedClick(page, page.getByTestId("offline-snapshot-back"));
+    await hydratedClick(page, page.getByTestId("offline-open-dose-schedule"));
     await expect(
       page.getByTestId("offline-snapshot-dose-schedule")
     ).toContainText("Sertraline");
@@ -120,8 +169,11 @@ test("offline reads: one visit captures, /offline renders them with no network, 
   await expect.poll(() => storedKinds(page), { timeout: 20_000 }).toEqual([]);
 
   // And /offline offers nothing: no session, no stored payload, no leftovers for
-  // whoever picks the phone up next.
+  // whoever picks the phone up next. The settled marker is what makes this a real
+  // assertion — without it, "no list" is also what a page mid-read looks like, and
+  // the test would pass before it had read anything.
   await page.goto("/offline");
+  await settledOfflineRead(page);
   await expect(page.getByTestId("offline-snapshot-list")).toHaveCount(0);
 });
 
@@ -134,11 +186,15 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
 
   await page.goto("/");
   await expect
-    .poll(() => storedKinds(page), { timeout: 20_000 })
-    .toContain("dose-schedule");
+    .poll(() => storedKinds(page), { timeout: 30_000 })
+    .toEqual([...SNAPSHOT_KINDS].sort());
   await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
     timeout: 15_000,
   });
+  // Warm /offline's own chunk into the asset cache while there is still a network —
+  // see the first test for why the precached HTML alone cannot hydrate.
+  await page.goto("/offline");
+  await settledOfflineRead(page);
 
   // The pills are in your hand and the network isn't there. The page is already
   // loaded and interactive, so the tap lands and the write queue catches it.
@@ -166,7 +222,8 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
     // deep-link-lands-here leg is covered by the first test, from a URL this context
     // has not visited.
     await page.goto("/offline");
-    await page.getByTestId("offline-open-dose-schedule").click();
+    await settledOfflineRead(page);
+    await hydratedClick(page, page.getByTestId("offline-open-dose-schedule"));
     const schedule = page.getByTestId("offline-snapshot-dose-schedule");
     await expect(schedule).toContainText("Sertraline");
     await expect(schedule.getByTestId("offline-queued-mark")).toHaveCount(1);
