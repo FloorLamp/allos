@@ -15,6 +15,9 @@ import {
   doseChipLabel,
   doseSourceNote,
   doseExclusionNote,
+  describesAnyStudy,
+  NON_IONIZING_MODALITIES,
+  BACKGROUND_YEARS_CUTOVER_MONTHS,
   type DoseStudyInput,
   type DoseExclusionReason,
 } from "@/lib/radiation-dose";
@@ -161,7 +164,7 @@ describe("cumulativeDose — window boundary", () => {
       [study({ modality: "ct", body_region: "Chest", study_date: since })],
       now
     );
-    expect(cum.studiesInWindow).toBe(1);
+    expect(cum.estimatedCount).toBe(1);
     expect(cum.estimatedMsv).toBe(7);
   });
 
@@ -176,7 +179,7 @@ describe("cumulativeDose — window boundary", () => {
       ],
       now
     );
-    expect(cum.studiesInWindow).toBe(0);
+    expect(cum.estimatedCount).toBe(0);
     expect(cum.hasAnyDose).toBe(false);
   });
 
@@ -185,7 +188,8 @@ describe("cumulativeDose — window boundary", () => {
       [study({ modality: "ct", body_region: "Chest", study_date: null })],
       now
     );
-    expect(cum.studiesInWindow).toBe(0);
+    expect(cum.estimatedCount).toBe(0);
+    expect(cum.hasAnyDose).toBe(false);
   });
 });
 
@@ -214,7 +218,6 @@ describe("cumulativeDose — recorded and estimated sums stay SEPARATE", () => {
     expect(cum.recordedCount).toBe(1);
     expect(cum.estimatedMsv).toBe(10);
     expect(cum.estimatedCount).toBe(1);
-    expect(cum.studiesInWindow).toBe(4);
     // The combined figure is derived, labeled as an estimate because an estimate is present.
     expect(combinedMsv(cum)).toBe(19);
     expect(isCombinedEstimated(cum)).toBe(true);
@@ -266,7 +269,6 @@ describe("cumulativeDose — recorded and estimated sums stay SEPARATE", () => {
     );
     expect(cum.estimatedMsv).toBe(37); // 25 (PET) + 12 (cardiac SPECT)
     expect(cum.estimatedCount).toBe(2);
-    expect(cum.studiesInWindow).toBe(3);
   });
 });
 
@@ -321,7 +323,13 @@ function idStudy(id: number, over: Partial<DoseStudyInput>): IdStudy {
   return { id, ...study(over) };
 }
 
-// The four real cases from the snapshot audit, in one record.
+// The four real cases from the snapshot audit, in ONE COMPOSITE record. It is not any
+// one profile's card: the mammograms and the undated X-ray are profile 2's, the 2021
+// chest X-ray is profile 1's, and that X-ray's date does not appear in the issue at all
+// (the snapshot is gone from the build host, so it could not be re-derived — see the
+// premise-correction comment on #2970). Its 1.3 mSv headline is therefore a CONTRACT
+// figure, not a number any card ever showed. What each row is faithful to is its CLASS:
+// summed-as-given repeats, an undated study, a refusal, and a non-ionizing study.
 const AUDIT_STUDIES: IdStudy[] = [
   // Outside the 3-year lens, inside the record — the study the old headline dropped.
   // Listed FIRST on purpose: the rows are sorted by date, not by input order.
@@ -430,16 +438,17 @@ describe("doseContributions — the studies behind the number (#2970)", () => {
     expect(b.exclusions.at(-1)?.date).toBeNull();
   });
 
-  it("flags which contributions also fall inside the 3-year lens", () => {
+  it("keeps the lens to the studies inside it while the headline names them all", () => {
     const b = doseContributions(AUDIT_STUDIES, now);
-    const byId = new Map(b.contributions.map((c) => [c.study.id, c.inWindow]));
-    expect(byId.get(11)).toBe(true); // 2023-11-15, inside 2023-08-15…
-    expect(byId.get(5)).toBe(false); // 2021-04-02, outside it
+    // The 2021-04-02 chest X-ray is outside 2023-08-15…; the three mammograms are in.
+    expect(combinedMsv(b.window)).toBeCloseTo(1.2, 6);
+    expect(combinedMsv(b.allRecords)).toBeCloseTo(1.3, 6);
+    expect(b.window.estimatedCount).toBe(3);
+    expect(b.contributions).toHaveLength(4);
   });
 
-  it("a windowYears of null means all records — nothing falls outside", () => {
+  it("a windowYears of null means all records — the lens IS the headline", () => {
     const b = doseContributions(AUDIT_STUDIES, now, null);
-    expect(b.contributions.every((c) => c.inWindow)).toBe(true);
     expect(b.window.windowYears).toBeNull();
     expect(combinedMsv(b.window)).toBe(combinedMsv(b.allRecords));
   });
@@ -490,7 +499,7 @@ describe("the headline does not age downward (#2970)", () => {
   it("still names the aged-out studies in the breakdown after the boundary", () => {
     const b = doseContributions(AUDIT_STUDIES, after);
     expect(b.contributions.map((c) => c.study.id)).toContain(11);
-    expect(b.contributions.every((c) => !c.inWindow)).toBe(true);
+    expect(combinedMsv(b.window)).toBe(0);
     expect(b.allRecords.hasAnyDose).toBe(true);
   });
 });
@@ -576,5 +585,205 @@ describe("backgroundEquivalentLabel — a comparison, not arithmetic", () => {
 
   it("is null when there is nothing to compare", () => {
     expect(backgroundEquivalentLabel(cumulativeDose([], now))).toBeNull();
+  });
+});
+
+// ── #2970 review round: R1, R2, R5, R6, R7, R8 ─────────────────────────────────────
+
+describe("describesAnyStudy — what the card renders on (#2970 R1)", () => {
+  const now = "2026-08-15";
+
+  it("is true for a record whose imaging is entirely un-attributable", () => {
+    // Two undated chest X-rays, an unclassified study and an ultrasound: three named
+    // exclusions and no total. Gating the card on the TOTAL deleted the only surface
+    // that could explain them — while the list row still showed the undated X-ray's
+    // "≈ 0.1 mSv est." chip. Silent on one surface, speaking on the other.
+    const b = doseContributions(
+      [
+        idStudy(1, { modality: "x-ray", body_region: "Chest" }),
+        idStudy(2, { modality: "x-ray", body_region: "Chest" }),
+        idStudy(3, { modality: "other", study_date: "2025-01-01" }),
+        idStudy(4, { modality: "ultrasound", study_date: "2025-02-01" }),
+      ],
+      now
+    );
+    expect(b.allRecords.hasAnyDose).toBe(false);
+    expect(b.exclusions).toHaveLength(4);
+    expect(describesAnyStudy(b)).toBe(true);
+  });
+
+  it("is false only when there is no imaging study at all", () => {
+    expect(describesAnyStudy(doseContributions([], now))).toBe(false);
+  });
+});
+
+describe("an undated study names the reason a date would actually fix (#2970 R2)", () => {
+  const now = "2026-08-15";
+  const four = (date: string | null): IdStudy[] => [
+    idStudy(1, { modality: "x-ray", body_region: "Chest", study_date: date }),
+    idStudy(2, {
+      modality: "ultrasound",
+      body_region: "Abdomen",
+      study_date: date,
+    }),
+    idStudy(3, { modality: "other", study_date: date }),
+    idStudy(4, { modality: "mri", body_region: "Knee", study_date: date }),
+  ];
+
+  it("files an undated study under no-date ONLY when a date would let it count", () => {
+    const b = doseContributions(four(null), now);
+    expect(reasonFor(b, 1)).toBe("no-date");
+    expect(reasonFor(b, 2)).toBe("non-ionizing");
+    expect(reasonFor(b, 3)).toBe("no-entry");
+    expect(reasonFor(b, 4)).toBe("non-ionizing");
+    // Only that one row asks for a date, because only that one row would change.
+    const asksForADate = b.exclusions.filter((x) =>
+      doseExclusionNote(x.reason).includes("Add a date")
+    );
+    expect(asksForADate.map((x) => x.study.id)).toEqual([1]);
+  });
+
+  it("adding the date changes the verdict for that study and for no other", () => {
+    const undated = doseContributions(four(null), now);
+    const dated = doseContributions(four("2025-03-04"), now);
+    expect(dated.contributions.map((c) => c.study.id)).toEqual([1]);
+    for (const id of [2, 3, 4]) {
+      expect(reasonFor(dated, id)).toBe(reasonFor(undated, id));
+    }
+  });
+});
+
+// The figure printed on a row, read back as a number: "1.44 mSv" → 1.44.
+function msvFigure(formatted: string): number {
+  const m = /^([\d.]+) mSv$/.exec(formatted);
+  expect(m, `unparseable dose figure: ${formatted}`).not.toBeNull();
+  return Number(m![1]);
+}
+
+describe("the headline equals the rows it names (#2970 R5)", () => {
+  const now = "2026-08-15";
+
+  // Putting the decomposition BESIDE the total is what makes a rounding disagreement
+  // visible, so the card owes the reader an addition that works: what the rows print
+  // must add up to what the headline prints.
+  const cases: { label: string; doses: (number | null)[] }[] = [
+    { label: "three recorded 1.44 mSv studies", doses: [1.44, 1.44, 1.44] },
+    {
+      label: "five recorded 0.0005 mSv studies",
+      doses: [0.0005, 0.0005, 0.0005, 0.0005, 0.0005],
+    },
+    {
+      label: "three recorded 0.0004 mSv studies",
+      doses: [0.0004, 0.0004, 0.0004],
+    },
+    { label: "three estimated mammograms", doses: [null, null, null] },
+  ];
+
+  for (const c of cases) {
+    it(`adds up on the surface: ${c.label}`, () => {
+      const b = doseContributions(
+        c.doses.map((d, i) =>
+          idStudy(i + 1, {
+            modality: "x-ray",
+            body_region: "Breast",
+            dose_msv: d,
+            study_date: "2025-01-01",
+          })
+        ),
+        now
+      );
+      expect(b.contributions).toHaveLength(c.doses.length);
+      const rowSum = b.contributions.reduce(
+        (n, x) => n + msvFigure(formatMsv(x.dose.msv)),
+        0
+      );
+      expect(formatMsv(rowSum)).toBe(formatMsv(combinedMsv(b.allRecords)));
+    });
+  }
+});
+
+describe("the non-ionizing set is what carries the claim (#2970 R6)", () => {
+  const now = "2026-08-15";
+
+  it("names the two modalities that are non-ionizing by physics, and only those", () => {
+    expect([...NON_IONIZING_MODALITIES].sort()).toEqual(["mri", "ultrasound"]);
+  });
+
+  it("reports MRI and ultrasound as carrying no ionizing radiation", () => {
+    const b = doseContributions(
+      [
+        idStudy(1, { modality: "mri", study_date: "2025-01-01" }),
+        idStudy(2, { modality: "ultrasound", study_date: "2025-02-01" }),
+      ],
+      now
+    );
+    expect(reasonFor(b, 1)).toBe("non-ionizing");
+    expect(reasonFor(b, 2)).toBe("non-ionizing");
+  });
+});
+
+describe("backgroundEquivalentLabel — the cutover and the years figure (#2970 R7)", () => {
+  const now = "2026-08-15";
+  const labelFor = (msv: number) =>
+    backgroundEquivalentLabel(
+      cumulativeDose(
+        [study({ modality: "ct", dose_msv: msv, study_date: "2025-01-01" })],
+        now
+      )
+    );
+
+  it("reads months right up to the cutover and years from it on", () => {
+    // ~3 mSv/yr background is 0.25 mSv per month, so the boundary is exact: 5.75 mSv
+    // is 23 months and 6 mSv is 24. Both sides are asserted because a cutover pinned
+    // only from far away (the old tests sat at 12 and 148 months) is pinned by nothing.
+    expect(labelFor(5.75)).toBe("23 months");
+    expect(labelFor(6)).toBe("2 years");
+  });
+
+  it("keeps the cutover a named constant rather than a literal in the branch", () => {
+    expect(BACKGROUND_YEARS_CUTOVER_MONTHS).toBe(24);
+  });
+
+  it("derives the years figure from the dose, not from the rounded month count", () => {
+    // 48.625 mSv is 16.208 years of background. Rounding to 195 months first and
+    // dividing again reported 16.3 — a month and a bit of drift on a one-decimal figure.
+    expect(labelFor(48.625)).toBe("16.2 years");
+  });
+});
+
+describe("a recorded 0 and a NULL dose are different facts (#2970 R8)", () => {
+  const now = "2026-08-15";
+  const scan = (dose: number | null) =>
+    doseContributions(
+      [
+        idStudy(1, {
+          modality: "ultrasound",
+          body_region: "Abdomen",
+          dose_msv: dose,
+          study_date: "2025-01-01",
+        }),
+      ],
+      now
+    );
+
+  it("counts a recorded 0 — the report said 0, and that is a fact about the study", () => {
+    const b = scan(0);
+    expect(b.contributions).toHaveLength(1);
+    expect(b.contributions[0].dose.source).toBe("recorded");
+    expect(b.allRecords.hasAnyDose).toBe(true);
+    expect(formatMsv(combinedMsv(b.allRecords))).toBe("0 mSv");
+    expect(doseChipLabel(b.contributions[0].dose)).toBe("0 mSv");
+  });
+
+  it("names the same study as non-ionizing when no dose was recorded", () => {
+    const b = scan(null);
+    expect(b.contributions).toHaveLength(0);
+    expect(reasonFor(b, 1)).toBe("non-ionizing");
+    expect(b.allRecords.hasAnyDose).toBe(false);
+  });
+
+  it("speaks either way — the fork changes what the card says, not whether it speaks", () => {
+    expect(describesAnyStudy(scan(0))).toBe(true);
+    expect(describesAnyStudy(scan(null))).toBe(true);
   });
 });

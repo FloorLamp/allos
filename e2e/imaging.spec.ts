@@ -2,6 +2,8 @@ import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_RECS_ENRICH, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath, frozenNow } from "./worker-env";
 
 // Imaging-study CRUD on the #imaging section of /results (#702, #1042 phase 5): add a structured study through the real
@@ -19,15 +21,32 @@ const PET_REGION = "E2EPETREGION1";
 // "Chest X-ray" dataset entry, which is what the breakdown row cites.
 const BREAKDOWN_REGION = "Chest E2EBREAKREGION1";
 const EXCLUDED_REGION = "E2EEXCLREGION1";
+// A second chest X-ray, dated OUTSIDE the trailing-3-year lens. Without a study older
+// than the lens, every rendered figure on this card is the same number twice: the
+// headline and the "Last 3 years" line cannot be told apart, and neither can the
+// since-date and the lens start. Both swaps shipped green against a fixture where
+// every study was recent (#2970 R3/R4).
+const OLD_REGION = "Chest E2EOLDREGION1";
+// An UNDATED ultrasound: undated AND non-ionizing, so "Add a date to include it" would
+// be false for it however the date is fixed (#2970 R2).
+const UNDATED_REGION = "E2EUNDATEDREGION1";
 
 function cleanup() {
   const handle = new Database(DB_PATH);
   try {
     handle
       .prepare(
-        "DELETE FROM imaging_studies WHERE body_region IN (?, ?, ?, ?, ?)"
+        "DELETE FROM imaging_studies WHERE body_region IN (?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(REGION, DOSE_REGION, PET_REGION, BREAKDOWN_REGION, EXCLUDED_REGION);
+      .run(
+        REGION,
+        DOSE_REGION,
+        PET_REGION,
+        BREAKDOWN_REGION,
+        EXCLUDED_REGION,
+        OLD_REGION,
+        UNDATED_REGION
+      );
   } finally {
     handle.close();
   }
@@ -39,6 +58,29 @@ function recentDate(): string {
   const d = frozenNow();
   d.setDate(d.getDate() - 30);
   return d.toISOString().slice(0, 10);
+}
+
+// A date safely OUTSIDE the trailing-3-year lens, still inside the record — the study
+// the truncating headline used to drop, and the only thing that makes the headline and
+// the lens two DIFFERENT numbers on the surface.
+function oldDate(): string {
+  const d = frozenNow();
+  d.setFullYear(d.getFullYear() - 5);
+  return d.toISOString().slice(0, 10);
+}
+
+// The year the lens starts in — what the since-label must NOT be showing.
+function lensStartYear(): string {
+  const d = frozenNow();
+  d.setFullYear(d.getFullYear() - 3);
+  return String(d.getFullYear());
+}
+
+// The figure out of a rendered "… 1.2 mSv" fragment.
+function msvFigure(text: string): number {
+  const m = /([\d.]+)\s*mSv/.exec(text);
+  expect(m, `no mSv figure in: ${text}`).not.toBeNull();
+  return Number(m![1]);
 }
 
 async function submitWithToast(
@@ -278,8 +320,10 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       const handle = new Database(DB_PATH);
       try {
         handle
-          .prepare("DELETE FROM imaging_studies WHERE body_region IN (?, ?)")
-          .run(BREAKDOWN_REGION, EXCLUDED_REGION);
+          .prepare(
+            "DELETE FROM imaging_studies WHERE body_region IN (?, ?, ?, ?)"
+          )
+          .run(BREAKDOWN_REGION, EXCLUDED_REGION, OLD_REGION, UNDATED_REGION);
       } finally {
         handle.close();
       }
@@ -318,6 +362,34 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       "Study saved"
     );
 
+    // A chest X-ray from FIVE years ago — inside the record, outside the 3-year lens.
+    // It is what makes the headline and the lens two different numbers, and what makes
+    // the since-label a date the clock cannot produce on its own.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
+    const oldForm = page.getByTestId("imaging-study-form");
+    await expect(oldForm).toBeVisible();
+    await oldForm.getByLabel("Modality").selectOption("x-ray");
+    await oldForm.getByLabel("Body region").fill(OLD_REGION);
+    await oldForm.getByLabel("Study date").fill(oldDate());
+    await page.keyboard.press("Escape");
+    await submitWithToast(
+      page,
+      oldForm.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
+
+    // An UNDATED ultrasound: it can never count, and no date would change that.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
+    const undatedForm = page.getByTestId("imaging-study-form");
+    await expect(undatedForm).toBeVisible();
+    await undatedForm.getByLabel("Modality").selectOption("ultrasound");
+    await undatedForm.getByLabel("Body region").fill(UNDATED_REGION);
+    await submitWithToast(
+      page,
+      undatedForm.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
+
     // The list row now carries an ESTIMATED dose chip, marked as an estimate.
     const list = page.getByTestId("imaging-study-list");
     const xrayRow = list.getByRole("row").filter({ hasText: BREAKDOWN_REGION });
@@ -344,8 +416,46 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       .filter({ hasText: EXCLUDED_REGION });
     await expect(exclusion).toContainText("No ionizing radiation.");
 
-    // Clean up both studies we created.
-    for (const marker of [BREAKDOWN_REGION, EXCLUDED_REGION]) {
+    // The five-year-old X-ray is in the headline's rows…
+    await expect(
+      details
+        .getByTestId("radiation-dose-contribution")
+        .filter({ hasText: OLD_REGION })
+    ).toContainText("est.");
+
+    // …and NOT in the 3-year lens, so the two figures differ. Both surface swaps the
+    // review found — headline↔lens, and since-date↔lens-start — shipped green while
+    // every study in this fixture was recent, because nothing rendered could tell the
+    // two numbers apart (#2970 R3/R4).
+    const headline = msvFigure(
+      await card.getByTestId("radiation-dose-total").innerText()
+    );
+    const lens = msvFigure(
+      await card.getByTestId("radiation-dose-window").innerText()
+    );
+    expect(headline).toBeGreaterThan(lens);
+
+    // The since-label names the OLDEST CONTRIBUTING STUDY, not the window start the
+    // clock would produce.
+    const since = card.getByTestId("radiation-dose-since");
+    await expect(since).toContainText(oldDate().slice(0, 4));
+    await expect(since).not.toContainText(lensStartYear());
+
+    // The undated ULTRASOUND is named for what it is, and is not told that a date
+    // would include it — a date would change nothing about a non-ionizing study.
+    const undated = details
+      .getByTestId("radiation-dose-exclusion")
+      .filter({ hasText: UNDATED_REGION });
+    await expect(undated).toContainText("No ionizing radiation.");
+    await expect(undated).not.toContainText("Add a date");
+
+    // Clean up the studies we created.
+    for (const marker of [
+      BREAKDOWN_REGION,
+      EXCLUDED_REGION,
+      OLD_REGION,
+      UNDATED_REGION,
+    ]) {
       const row = list.getByRole("row").filter({ hasText: marker });
       await hydratedClick(page, row.getByLabel("Record actions"));
       await page.getByRole("menuitem", { name: "Delete" }).click();
@@ -357,5 +467,41 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
         list.getByRole("row").filter({ hasText: marker })
       ).toHaveCount(0);
     }
+  });
+
+  test("a record where nothing counted still says what it holds (#2970)", async ({
+    browser,
+  }) => {
+    // READ-ONLY, on the records-enrichment fixture's own profile, whose entire imaging
+    // record is one knee MRI. That record is the case the card used to delete itself
+    // on: no contributing study, so no total, so no card — while the study list went on
+    // showing dose chips for any undated X-ray in the same record. Named-not-silent
+    // fails hardest exactly where nothing can be attributed, so the card renders and
+    // says so.
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_RECS_ENRICH,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.goto("/results/imaging");
+
+    const card = page.getByTestId("radiation-dose-card");
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId("radiation-dose-none")).toContainText(
+      "Nothing in your records counts toward a dose."
+    );
+    // No headline figure, because there is no dose to state.
+    await expect(card.getByTestId("radiation-dose-total")).toHaveCount(0);
+
+    const details = card.getByTestId("radiation-dose-breakdown");
+    await expect(details.locator("summary")).toContainText(
+      "Why nothing counted"
+    );
+    if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await details.locator("summary").click();
+    }
+    await expect(details).toHaveJSProperty("open", true);
+    await expect(
+      details.getByTestId("radiation-dose-exclusion").filter({ hasText: "MRI" })
+    ).toContainText("No ionizing radiation.");
   });
 });

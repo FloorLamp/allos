@@ -246,7 +246,6 @@ describe("high-dose modalities reach the cumulative total end-to-end (#1034)", (
     // The gather feeds the ONE pure cumulative computation: 25 (PET/CT) +
     // 12 (cardiac SPECT) + 7 (coronary angiography) — all estimates, none 0.
     const cum = cumulativeDose(rows, "2026-07-01");
-    expect(cum.studiesInWindow).toBe(3);
     expect(cum.estimatedCount).toBe(3);
     expect(cum.estimatedMsv).toBe(44);
     expect(cum.recordedMsv).toBe(0);

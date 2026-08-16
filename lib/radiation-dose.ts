@@ -48,20 +48,17 @@ import {
 // Calendar-anchored (see windowStartDate), not 365-day.
 export const DOSE_WINDOW_YEARS = 3;
 
-// Modalities that use IONIZING radiation (an effective dose worth tracking). MRI and
-// ultrasound are non-ionizing (0); 'other' is unclassifiable and never estimated.
-// PET / nuclear medicine / fluoroscopy joined in #1034 — they are among the
-// HIGHEST-dose modalities, and before they existed on the enum they normalized to
-// 'other' and silently contributed 0 to the cumulative total.
-const IONIZING_MODALITIES: ReadonlySet<ImagingModality> =
-  new Set<ImagingModality>([
-    "x-ray",
-    "ct",
-    "dexa",
-    "pet",
-    "nuclear-medicine",
-    "fluoroscopy",
-  ]);
+// The modalities that are NON-ionizing by physics — the only ones about which the card
+// may say "No ionizing radiation."
+//
+// This list was an IONIZING list until #2970's review: every ionizing modality carries a
+// non-zero typical dose, so that set was never consulted for one, and its only real job
+// was what it did NOT contain. That fails in the dangerous direction — a modality with a
+// 0-valued entry that nobody remembered to add would have been reported as carrying no
+// radiation. Inverted, an unlisted modality reads as NOT ESTIMATED (an honest gap)
+// instead, and adding a modality to the enum can no longer make the card lie.
+export const NON_IONIZING_MODALITIES: ReadonlySet<ImagingModality> =
+  new Set<ImagingModality>(["mri", "ultrasound"]);
 
 export type DoseSource = "recorded" | "estimate" | "none";
 
@@ -178,7 +175,6 @@ export interface DoseContribution<S extends DoseStudyInput = DoseStudyInput> {
   study: S;
   date: string; // never null — an undated study is an exclusion, not a contribution
   dose: StudyDose;
-  inWindow: boolean; // also inside the trailing-window lens
 }
 
 // One study that did NOT contribute, and why.
@@ -188,10 +184,18 @@ export interface DoseExclusion<S extends DoseStudyInput = DoseStudyInput> {
   reason: DoseExclusionReason;
 }
 
-// A study counts toward a total when it resolved to a recorded dose (a fact from the
-// report, even a recorded 0) or to a NON-ZERO typical estimate. Everything else is an
-// exclusion with a named reason. The ONE predicate — the fold and the breakdown share it,
-// so a total and its rows cannot disagree about what is in it.
+// A study counts toward a total when it resolved to a recorded dose or to a NON-ZERO
+// typical estimate. Everything else is an exclusion with a named reason. The ONE
+// predicate — the fold and the breakdown share it, so a total and its rows cannot
+// disagree about what is in it.
+//
+// A RECORDED 0 COUNTS, and a NULL dose on the same study does not. That fork is
+// deliberate: a recorded 0 is a measurement the report printed, so it is attributable
+// and the card names it as a contributing study at 0 mSv; a NULL dose is the absence of
+// a measurement, and what the card can say then is about the modality ("No ionizing
+// radiation") rather than about the study. So an ultrasound with a recorded 0 gives a
+// "0 mSv" headline, and the same ultrasound with no recorded dose gives none — both
+// records render the card, and both name the study (#2970).
 function classifyStudy<S extends DoseStudyInput>(
   study: S
 ): { dose: StudyDose; counts: true } | { reason: DoseExclusionReason } {
@@ -201,10 +205,11 @@ function classifyStudy<S extends DoseStudyInput>(
     (dose.source === "estimate" && dose.msv > 0)
   )
     return { dose, counts: true };
-  // A zero-dose ESTIMATE means the dataset placed it: that is the non-ionizing case.
-  // Anything else (the 'other' refusal, or a hypothetical 0-valued ionizing entry) is
-  // reported as not estimated rather than claimed to carry no radiation.
-  if (dose.source === "estimate" && !IONIZING_MODALITIES.has(study.modality))
+  // "No ionizing radiation" is a claim about PHYSICS, so it comes from the modality
+  // being named non-ionizing — never from a 0 the dataset happened to carry. Everything
+  // else (the 'other' refusal, a 0-valued entry on any other modality) is reported as
+  // not estimated: an honest gap, never false reassurance.
+  if (NON_IONIZING_MODALITIES.has(study.modality))
     return { reason: "non-ionizing" };
   return { reason: "no-entry" };
 }
@@ -222,7 +227,6 @@ export interface CumulativeDose {
   recordedCount: number;
   estimatedMsv: number;
   estimatedCount: number; // studies contributing a NON-ZERO estimate
-  studiesInWindow: number; // dated studies in scope, contributing or not
   hasAnyDose: boolean; // any recorded or non-zero estimated dose in scope
 }
 
@@ -236,13 +240,11 @@ export function cumulativeDose(
   let recordedCount = 0;
   let estimatedMsv = 0;
   let estimatedCount = 0;
-  let studiesInWindow = 0;
   let earliest: string | null = null;
 
   for (const s of studies) {
     if (!s.study_date) continue;
     if (since != null && s.study_date < since) continue;
-    studiesInWindow++;
     const verdict = classifyStudy(s);
     if (!("counts" in verdict)) continue;
     if (verdict.dose.source === "recorded") {
@@ -263,7 +265,6 @@ export function cumulativeDose(
     recordedCount,
     estimatedMsv: round(estimatedMsv),
     estimatedCount,
-    studiesInWindow,
     hasAnyDose: recordedCount > 0 || estimatedCount > 0,
   };
 }
@@ -275,9 +276,14 @@ export function cumulativeDose(
 // re-deriving a total or a per-study figure of their own.
 //
 // Rows are newest first; undated exclusions sort last, since they have no place on the
-// timeline at all. This function does no de-duplication: overlapping portal exports are
-// collapsed upstream by the representative-id read (#2919/#2952), and a second
-// de-duplication here would be a parallel concept for a question that already has one.
+// timeline at all. This function does no de-duplication, and a repeated study is summed
+// AS GIVEN. The representative-id read (#2919/#2952) collapses overlapping portal
+// exports only when they agree on a study id or carry none — it partitions on
+// `external_id` WHEN PRESENT — so three exports that each mint their own accession still
+// arrive here as three studies and still triple the headline. That is the collapse's
+// question, not this module's: a second de-duplication here would be a parallel concept
+// for a question that already has an owner, and the breakdown is what lets a reader SEE
+// the repeat instead of only its sum.
 export interface DoseBreakdown<S extends DoseStudyInput = DoseStudyInput> {
   allRecords: CumulativeDose;
   window: CumulativeDose;
@@ -285,30 +291,43 @@ export interface DoseBreakdown<S extends DoseStudyInput = DoseStudyInput> {
   exclusions: DoseExclusion<S>[];
 }
 
+// Whether the card has anything to say about this record: a contribution to explain or
+// an exclusion to name. NOT `hasAnyDose` (#2970 R1) — a profile whose imaging is entirely
+// undated, unclassified or non-ionizing has named exclusions and no total, and gating the
+// card on the total deleted the one surface that could explain them while the study list
+// still showed the undated X-ray's estimate chip. Named, not silent, applies hardest to
+// the record where nothing counted.
+export function describesAnyStudy<S extends DoseStudyInput>(
+  breakdown: DoseBreakdown<S>
+): boolean {
+  return breakdown.contributions.length > 0 || breakdown.exclusions.length > 0;
+}
+
 export function doseContributions<S extends DoseStudyInput>(
   studies: S[],
   now: string,
   windowYears: number | null = DOSE_WINDOW_YEARS
 ): DoseBreakdown<S> {
-  const windowSince =
-    windowYears == null ? null : windowStartDate(now, windowYears);
   const contributions: DoseContribution<S>[] = [];
   const exclusions: DoseExclusion<S>[] = [];
 
   for (const study of studies) {
+    const verdict = classifyStudy(study);
     const date = study.study_date;
     if (!date) {
-      exclusions.push({ study, date: null, reason: "no-date" });
+      // R2 (#2970): "Add a date to include it" is only true for a study a date would
+      // actually let count. An undated ultrasound is non-ionizing whatever its date,
+      // and an undated 'other' is still unclassifiable — so an undated study reports
+      // the reason it would STILL not count, and only the rest read as no-date.
+      exclusions.push({
+        study,
+        date: null,
+        reason: "counts" in verdict ? "no-date" : verdict.reason,
+      });
       continue;
     }
-    const verdict = classifyStudy(study);
     if ("counts" in verdict) {
-      contributions.push({
-        study,
-        date,
-        dose: verdict.dose,
-        inWindow: windowSince == null || date >= windowSince,
-      });
+      contributions.push({ study, date, dose: verdict.dose });
     } else {
       exclusions.push({ study, date, reason: verdict.reason });
     }
@@ -348,16 +367,27 @@ export function backgroundEquivalentMonths(cum: CumulativeDose): number | null {
   return Math.round(total / perMonth);
 }
 
-// The same comparator as a readable span. Months stop being readable once a lifetime
-// total is in play — "roughly 148 months of natural background" is arithmetic, not a
-// comparison — so past two years it reads in years to one decimal. Null when there's
-// nothing to compare. Pure.
+// Where the comparator stops counting months and starts counting years. Months stop
+// being readable once a lifetime total is in play — "roughly 148 months of natural
+// background" is arithmetic, not a comparison. Two years is the judgement call; it is a
+// named constant so it is pinned by tests at 23 and 24 months rather than by nothing.
+export const BACKGROUND_YEARS_CUTOVER_MONTHS = 24;
+
+// The same comparator as a readable span: months below the cutover, years to one decimal
+// from it on. Null when there's nothing to compare. Pure.
+//
+// The years figure is derived from the DOSE, not from the rounded month count: rounding
+// to whole months and dividing again drifted up to 0.092 y (~34 days) on a one-decimal
+// figure — 48.625 mSv read "16.3 years" against a true 16.208. Above the cutover the span
+// is always ≥ 2 years, so there is no singular case to spell.
 export function backgroundEquivalentLabel(cum: CumulativeDose): string | null {
   const months = backgroundEquivalentMonths(cum);
   if (months == null || months <= 0) return null;
-  if (months < 24) return `${months} ${months === 1 ? "month" : "months"}`;
-  const years = Math.round((months / 12) * 10) / 10;
-  return `${years} ${years === 1 ? "year" : "years"}`;
+  if (months < BACKGROUND_YEARS_CUTOVER_MONTHS)
+    return `${months} ${months === 1 ? "month" : "months"}`;
+  const perYear = RADIATION_DOSE_META.naturalBackgroundMsvPerYear;
+  const years = Math.round((combinedMsv(cum) / perYear) * 10) / 10;
+  return `${years} years`;
 }
 
 // The dose chip for ONE study, as the study list and the breakdown rows both show it —
@@ -398,15 +428,23 @@ export function doseExclusionNote(reason: DoseExclusionReason): string {
   }
 }
 
-// Format an mSv figure for display: small doses keep more precision (a 0.1 mSv chest
-// X-ray shouldn't round to 0), larger ones round to one decimal. Pure.
+// Format an mSv figure for display, at THREE SIGNIFICANT FIGURES — so a 0.1 mSv chest
+// X-ray never rounds to 0, and a 1.44 mSv recorded dose is not flattened to 1.4. Pure.
+//
+// The precision is what lets the card add up (#2970 R5). The breakdown puts the rows
+// beside the total, so a reader can check the addition, and a fixed one-decimal display
+// broke it in the ordinary direction: three recorded 1.44 mSv studies printed rows of
+// 1.4 under a headline of 4.3. Rare while every recorded dose is NULL, and the common
+// case the moment structured dose capture lands. Three significant figures is more than
+// any curated entry or reported dose carries, so the rows and the headline agree.
 export function formatMsv(msv: number): string {
   if (msv <= 0) return "0 mSv";
-  if (msv < 0.1)
-    return `${msv.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")} mSv`;
-  if (msv < 1)
-    return `${msv.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} mSv`;
-  return `${msv.toFixed(1).replace(/\.0$/, "")} mSv`;
+  const decimals = Math.min(20, Math.max(0, 2 - Math.floor(Math.log10(msv))));
+  const fixed = msv.toFixed(decimals);
+  const trimmed = fixed.includes(".")
+    ? fixed.replace(/0+$/, "").replace(/\.$/, "")
+    : fixed;
+  return `${trimmed} mSv`;
 }
 
 // The INFORMATIONAL framing line under the cumulative total. Deliberately calm and
@@ -430,6 +468,9 @@ export function doseFramingNote(pediatric: boolean): string {
   );
 }
 
+// Float-noise trim on a summed total (0.1 + 0.2 must not surface as 0.30000000000000004).
+// Six decimals, three finer than the display's three significant figures, so the fold
+// never rounds away precision the rows are still printing (#2970 R5).
 function round(n: number): number {
-  return Math.round(n * 1000) / 1000;
+  return Math.round(n * 1e6) / 1e6;
 }

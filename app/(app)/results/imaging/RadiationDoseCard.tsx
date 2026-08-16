@@ -7,6 +7,7 @@ import {
   doseChipLabel,
   doseSourceNote,
   doseExclusionNote,
+  describesAnyStudy,
   type DoseBreakdown,
 } from "@/lib/radiation-dose";
 import { studyDisplayLabel } from "@/lib/imaging-study";
@@ -18,10 +19,13 @@ import type { ImagingStudy } from "@/lib/types";
 //
 // Pure presentational: it formats the ONE pure computation (lib/radiation-dose.ts) and
 // never derives numbers of its own, so the page and any future surface agree. It
-// renders NOTHING when there's no dose to show (an MRI/ultrasound-only record, or no
-// contributing study at all). Tone is deliberately non-alarmist — a running estimate
-// for context, never a "you've had too much" verdict; `pediatric` swaps in the
-// age-appropriate framing the app already uses on child surfaces (#150, #489).
+// renders whenever the record has an imaging study to speak about, and NOTHING when it
+// has none — a record whose studies are all undated, unclassified or non-ionizing has a
+// no-total card that names them, because that record is exactly the one whose studies
+// are otherwise invisible (its undated X-ray still carries an estimate chip on its list
+// row). Tone is deliberately non-alarmist — a running estimate for context, never a
+// "you've had too much" verdict; `pediatric` swaps in the age-appropriate framing the
+// app already uses on child surfaces (#150, #489).
 //
 // The headline is ALL RECORDS and never ages downward; the trailing-3-year figure is a
 // secondary recent-intensity lens beside it. The disclosure is a native <details>, so
@@ -36,8 +40,9 @@ export default function RadiationDoseCard({
   fmt: DisplayFormatPrefs;
 }) {
   const { allRecords, window: lens, contributions, exclusions } = breakdown;
-  if (!allRecords.hasAnyDose) return null;
+  if (!describesAnyStudy(breakdown)) return null;
 
+  const hasTotal = allRecords.hasAnyDose;
   const total = combinedMsv(allRecords);
   const estimated = isCombinedEstimated(allRecords);
   const background = backgroundEquivalentLabel(allRecords);
@@ -52,25 +57,34 @@ export default function RadiationDoseCard({
         Cumulative radiation dose
       </h2>
 
-      <div className="mt-2 flex flex-wrap items-baseline gap-2">
-        <span
-          data-testid="radiation-dose-total"
-          className="text-2xl font-bold text-brand-700 dark:text-brand-300"
-        >
-          {estimated ? "≈ " : ""}
-          {formatMsv(total)}
-        </span>
-        {estimated && (
-          <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            includes estimates
+      {hasTotal ? (
+        <div className="mt-2 flex flex-wrap items-baseline gap-2">
+          <span
+            data-testid="radiation-dose-total"
+            className="text-2xl font-bold text-brand-700 dark:text-brand-300"
+          >
+            {estimated ? "≈ " : ""}
+            {formatMsv(total)}
           </span>
-        )}
-      </div>
+          {estimated && (
+            <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              includes estimates
+            </span>
+          )}
+        </div>
+      ) : (
+        <p
+          data-testid="radiation-dose-none"
+          className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+        >
+          Nothing in your records counts toward a dose.
+        </p>
+      )}
 
       {/* The completeness caveat lives in the LABEL, not in the arithmetic: Allos only
           knows what has been imported, so the total says how far back it reaches
           instead of quietly dropping older studies (#2970). */}
-      {allRecords.earliest && (
+      {hasTotal && allRecords.earliest && (
         <p
           data-testid="radiation-dose-since"
           className="mt-1 text-sm text-slate-600 dark:text-slate-300"
@@ -80,47 +94,49 @@ export default function RadiationDoseCard({
         </p>
       )}
 
-      <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
-        {allRecords.recordedCount > 0 && (
-          <div>
-            <dt className="inline text-slate-500 dark:text-slate-400">
-              Recorded:{" "}
-            </dt>
-            <dd className="inline font-medium">
-              {formatMsv(allRecords.recordedMsv)}{" "}
-              <span className="font-normal text-slate-400">
-                ({allRecords.recordedCount}{" "}
-                {allRecords.recordedCount === 1 ? "study" : "studies"})
-              </span>
-            </dd>
-          </div>
-        )}
-        {allRecords.estimatedCount > 0 && (
-          <div>
-            <dt className="inline text-slate-500 dark:text-slate-400">
-              Estimated:{" "}
-            </dt>
-            <dd className="inline font-medium">
-              {formatMsv(allRecords.estimatedMsv)}{" "}
-              <span className="font-normal text-slate-400">
-                ({allRecords.estimatedCount}{" "}
-                {allRecords.estimatedCount === 1 ? "study" : "studies"})
-              </span>
-            </dd>
-          </div>
-        )}
-        {lens.windowYears != null && (
-          <div data-testid="radiation-dose-window">
-            <dt className="inline text-slate-500 dark:text-slate-400">
-              Last {lens.windowYears} years:{" "}
-            </dt>
-            <dd className="inline font-medium">
-              {isCombinedEstimated(lens) ? "≈ " : ""}
-              {formatMsv(lensTotal)}
-            </dd>
-          </div>
-        )}
-      </dl>
+      {hasTotal && (
+        <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
+          {allRecords.recordedCount > 0 && (
+            <div>
+              <dt className="inline text-slate-500 dark:text-slate-400">
+                Recorded:{" "}
+              </dt>
+              <dd className="inline font-medium">
+                {formatMsv(allRecords.recordedMsv)}{" "}
+                <span className="font-normal text-slate-400">
+                  ({allRecords.recordedCount}{" "}
+                  {allRecords.recordedCount === 1 ? "study" : "studies"})
+                </span>
+              </dd>
+            </div>
+          )}
+          {allRecords.estimatedCount > 0 && (
+            <div>
+              <dt className="inline text-slate-500 dark:text-slate-400">
+                Estimated:{" "}
+              </dt>
+              <dd className="inline font-medium">
+                {formatMsv(allRecords.estimatedMsv)}{" "}
+                <span className="font-normal text-slate-400">
+                  ({allRecords.estimatedCount}{" "}
+                  {allRecords.estimatedCount === 1 ? "study" : "studies"})
+                </span>
+              </dd>
+            </div>
+          )}
+          {lens.windowYears != null && (
+            <div data-testid="radiation-dose-window">
+              <dt className="inline text-slate-500 dark:text-slate-400">
+                Last {lens.windowYears} years:{" "}
+              </dt>
+              <dd className="inline font-medium">
+                {isCombinedEstimated(lens) ? "≈ " : ""}
+                {formatMsv(lensTotal)}
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
 
       {background && (
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
@@ -134,7 +150,11 @@ export default function RadiationDoseCard({
           data-testid="radiation-dose-breakdown-toggle"
           className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-brand-700 [&::-webkit-details-marker]:hidden dark:text-brand-400"
         >
-          <span className="group-open:hidden">What this adds up</span>
+          <span className="group-open:hidden">
+            {contributions.length > 0
+              ? "What this adds up"
+              : "Why nothing counted"}
+          </span>
           <span className="hidden group-open:inline">Hide the studies</span>
         </summary>
 
@@ -196,9 +216,11 @@ export default function RadiationDoseCard({
         )}
       </details>
 
-      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        {doseFramingNote(pediatric)}
-      </p>
+      {hasTotal && (
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          {doseFramingNote(pediatric)}
+        </p>
+      )}
     </div>
   );
 }
