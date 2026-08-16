@@ -13,6 +13,8 @@ import {
 import {
   applyIdentityOutcomes,
   clearIdentityDeclined,
+  documentsDeliveredSince,
+  lastRunReportAt,
   recordDiscoveredIdentities,
   recordPendingIdentity,
   recordPortalRunReport,
@@ -24,6 +26,7 @@ import { canReportOnAccount } from "@/lib/portal-visibility";
 import {
   recordSync,
   recordSyncEvent,
+  recordSyncRows,
   upsertConnection,
 } from "@/lib/integrations/connections";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -430,11 +433,19 @@ export async function POST(req: Request): Promise<Response> {
     return jsonError("no write access to that profile", 403);
   }
 
+  // THE RUN'S OWN WINDOW (#2999), read BEFORE anything writes. `portal_run_reports`
+  // holds one row per login, so recordPortalRunReport below OVERWRITES the only stored
+  // boundary a run has; the documents this run delivered are exactly the ones acquired
+  // for this login after the stamp captured here.
+  const previousReportAt = reportAccount
+    ? lastRunReportAt(reportAccount.id)
+    : null;
+
   try {
     // The append-only event history: this is what Data → Review reads and what the
     // failure badge keys off. recordSyncEvent is best-effort by contract (it never throws
     // into its caller), so a reporting hiccup can't fail an otherwise-good run.
-    recordSyncEvent(profileId, SOURCE_ID, {
+    const eventId = recordSyncEvent(profileId, SOURCE_ID, {
       ok: ev.ok,
       received: ev.received,
       written: ev.inserted + ev.updated,
@@ -452,6 +463,29 @@ export async function POST(req: Request): Promise<Response> {
       // shows a per-identity line only where there is an identity to show.
       identity,
     });
+    // WHAT THIS RUN DELIVERED (#2999). A portal run's product is DOCUMENTS, not records,
+    // so the run's provenance rows point at `medical_documents` — the drill-in in Data →
+    // Review then lists the archives this run actually pushed, each opening its own
+    // import page, instead of promising a count over a table that could hold nothing.
+    //
+    // Scoped three ways so the claim is exact: to this LOGIN (`acquired_account_id`,
+    // stamped by the upload route), to this PROFILE, and to the window after the
+    // login's previous report. recordSyncRows is best-effort and never throws into
+    // ingest, and its rows inherit the #388 retention cascade from the event.
+    if (reportAccount) {
+      recordSyncRows(
+        eventId,
+        documentsDeliveredSince(
+          profileId,
+          reportAccount.id,
+          previousReportAt
+        ).map((id) => ({
+          target_table: "medical_documents" as const,
+          target_id: id,
+          disposition: "inserted" as const,
+        }))
+      );
+    }
     // "Last synced" on the card. Only a SUCCESSFUL run advances it — including a
     // nothing-new one, which is the whole point: a quiet check is still a check, and the
     // connection is demonstrably alive. A failed run deliberately leaves the previous

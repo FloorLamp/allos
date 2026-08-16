@@ -30,11 +30,13 @@ import {
 import {
   mergeFeed,
   documentEntry,
+  dropQuietSyncs,
   jobEntry,
   syncEntry,
   type FeedSyncEvent,
   type FeedEntry,
 } from "../import-feed";
+import { drilldownCoverage } from "../integrations/sync-history-days";
 import {
   emptySnapshot,
   recordRow,
@@ -206,12 +208,52 @@ function getAttendedImportSyncEvents(
     .all(profileId, ...ATTENDED_SOURCES, limit) as FeedSyncEvent[];
 }
 
+// What each attended run can actually SHOW in its drill-in, per event (#1991/#1771).
+// Two facts in one indexed pass: how many provenance rows exist, and whether they are
+// DOCUMENTS. A portal delivery's rows are documents — its product is archives, not
+// records — and the drill-in must say so before the fetch as well as after, because the
+// promised label and the listed rows may never disagree in front of the reader (#1991).
+//
+// One seek over the id range being rendered rather than a per-event existence check:
+// sync-event ids are monotonic, so the events in the rendered set are exactly those at
+// or above the oldest id in it. PROFILE-SCOPED through the parent event (the child table
+// has no own profile_id).
+function feedProvenanceByEvent(
+  profileId: number,
+  minEventId: number
+): Map<number, { count: number; documents: number }> {
+  const rows = db
+    .prepare(
+      `SELECT r.event_id AS eventId, COUNT(*) AS n,
+              SUM(CASE WHEN r.target_table = 'medical_documents' THEN 1 ELSE 0 END)
+                AS documents
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+        WHERE e.profile_id = ? AND r.event_id >= ?
+        GROUP BY r.event_id`
+    )
+    .all(profileId, minEventId) as {
+    eventId: number;
+    n: number;
+    documents: number;
+  }[];
+  return new Map(
+    rows.map((r) => [r.eventId, { count: r.n, documents: r.documents }])
+  );
+}
+
 // The "Imports" feed behind Data → Review: a profile's ONE-OFF imports — uploaded
 // documents, paste/CSV jobs, and every ATTENDED source's runs — merged newest-first,
 // where chronology is the point. SCHEDULED integration syncs remain in their own
 // "Connected sources" section (getConnectedSources), collapsed to latest-state, so
 // hourly sync noise cannot drown the occasional import. Capped at `limit` after the
 // merge.
+//
+// TWO RULES THIS FEED NEVER ADOPTED, and now does (#2999). A successful run that wrote
+// nothing is DROPPED (dropQuietSyncs) rather than rendered as a "nothing new" dead end;
+// and each surviving run is handed the drill-in count it can actually LIST, resolved
+// from provenance, so the expander is offered only where there is something to open
+// (#1771) and the label never falls to zero in front of the reader (#1991).
 export function getImportDocumentsFeed(
   profileId: number,
   limit = 40
@@ -231,7 +273,33 @@ export function getImportDocumentsFeed(
     })
   );
   const jobs = getImportLogJobs(profileId).map(jobEntry);
-  const attended = getAttendedImportSyncEvents(profileId, limit).map(syncEntry);
+  const events = dropQuietSyncs(getAttendedImportSyncEvents(profileId, limit));
+  const provenance =
+    events.length > 0
+      ? feedProvenanceByEvent(profileId, Math.min(...events.map((e) => e.id)))
+      : new Map<number, { count: number; documents: number }>();
+  const attended = events.map((ev) => {
+    const found = provenance.get(ev.id);
+    // NO PROVENANCE → NO EXPANDER (#1771). Nothing to open is not an apologetic empty
+    // state, and it is certainly not a promised count over an empty list.
+    if (!found) return syncEntry(ev, null);
+    const { itemizable, remainder, offer } = drilldownCoverage(
+      (ev.inserted ?? 0) + (ev.updated ?? 0),
+      found.count
+    );
+    return syncEntry(
+      ev,
+      offer
+        ? {
+            count: itemizable,
+            remainder,
+            // A run whose provenance is entirely documents says "documents" — the word
+            // for what it delivered. Anything else stays on the record vocabulary.
+            noun: found.documents === found.count ? "document" : "record",
+          }
+        : null
+    );
+  });
   return mergeFeed([...documents, ...jobs, ...attended]).slice(0, limit);
 }
 

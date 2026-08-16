@@ -13,9 +13,9 @@ import type { SyncRowLink } from "@/lib/queries";
 // updated, each a typed deep link (#285) to the surface that owns it (a timeline day,
 // or Results for a lab). Mirrors RawPayloadViewer's lazy on-open fetch + hydration
 // catch-up. Rendered ONLY for an event that actually RECORDED provenance (#1771):
-// the caller resolves that with one indexed existence check (eventsWithProvenance)
-// and omits the expander entirely otherwise, so there is no apologetic empty state
-// left to reach. That covers both a legitimately provenance-less source — Weather
+// the caller resolves that with one indexed pass over the provenance rows of the events
+// it is rendering, and omits the expander entirely otherwise, so there is no apologetic
+// empty state left to reach. That covers both a legitimately provenance-less source — Weather
 // writes cells of a GLOBAL location-keyed forecast cache, which name no user record
 // (#1212's scoping decision) — and genuine pre-#1333 legacy events. A chunked import
 // that failed after earlier chunks committed still drills in: those chunks recorded
@@ -24,6 +24,7 @@ export default function SyncRowsDrilldown({
   eventId,
   count,
   remainder = 0,
+  noun = "record",
 }: {
   eventId: number;
   // Records this drill-in will actually LIST — never the run's split total (#1991).
@@ -33,6 +34,12 @@ export default function SyncRowsDrilldown({
   // rather than hidden: the count used to include them, so a partial list looked
   // complete and overstated by 10× on a Health Connect push.
   remainder?: number;
+  // WHAT the listed rows are (#2999). An attended portal run's product is DOCUMENTS —
+  // its split of `inserted 2, unchanged 1` counts archives, not extracted rows — and a
+  // drill-in that says "records" over a list of archives is the vocabulary confusion the
+  // two halves of that surface were already having. Defaults to the record vocabulary,
+  // which is what every pre-existing caller lists.
+  noun?: "record" | "document";
 }) {
   const [state, setState] = useState<"idle" | "loading" | "loaded" | "error">(
     "idle"
@@ -73,7 +80,7 @@ export default function SyncRowsDrilldown({
       }}
     >
       <summary className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
-        What this wrote — {shown} {shown === 1 ? "record" : "records"}
+        What this wrote — {shown} {shown === 1 ? noun : `${noun}s`}
       </summary>
       {state === "loading" && (
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

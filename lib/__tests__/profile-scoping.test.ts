@@ -197,6 +197,18 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
   {
     file: "lib/portals.ts",
     includes:
+      "UPDATE medical_documents SET acquired_account_id = NULL WHERE acquired_account_id IN (SELECT id FROM portal_accounts WHERE portal_id = ?)",
+    why: "deletePortal (#2999): the LOGIN half of the same acquired-by link the portal null above clears, for every login the removed portal owned. Same operation, same reasoning, same posture — it writes ONLY the provenance column, across profiles by definition, and the documents themselves are untouched",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
+      "UPDATE medical_documents SET acquired_account_id = NULL WHERE acquired_account_id = ?",
+    why: "deletePortalAccount (#2999): dropping a portal LOGIN clears the acquired-by login link on every document that names it, regardless of profile — the same operation one level down from deletePortal's, and the same FK-cascade-plus-explicit-update posture. Writes only the provenance column",
+  },
+  {
+    file: "lib/portals.ts",
+    includes:
       "UPDATE integration_sync_events SET portal_id = NULL, account_id = NULL WHERE portal_id = ?",
     why: "deletePortal (#1739): clears the identity stamp on every sync event that named the removed portal, across profiles — same operation and same reasoning as the document provenance null above. It writes only the two identity columns; the event history itself (counts, ok, timestamps) is untouched",
   },

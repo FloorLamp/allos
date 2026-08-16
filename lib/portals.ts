@@ -284,6 +284,13 @@ export function deletePortal(portalId: number): boolean {
     db.prepare(
       "UPDATE medical_documents SET acquired_portal_id = NULL WHERE acquired_portal_id = ?"
     ).run(portalId);
+    // The LOGIN half of the same acquisition fact (#2999). Its FK is ON DELETE SET NULL
+    // too, and it is cleared explicitly for the same reason as its portal sibling: the
+    // runner disables foreign keys during migrations.
+    db.prepare(
+      `UPDATE medical_documents SET acquired_account_id = NULL
+        WHERE acquired_account_id IN (SELECT id FROM portal_accounts WHERE portal_id = ?)`
+    ).run(portalId);
     db.prepare(
       "UPDATE integration_sync_events SET portal_id = NULL, account_id = NULL WHERE portal_id = ?"
     ).run(portalId);
@@ -432,6 +439,9 @@ export function deletePortalAccount(accountId: number): boolean {
     );
     db.prepare(
       "UPDATE integration_sync_events SET account_id = NULL WHERE account_id = ?"
+    ).run(accountId);
+    db.prepare(
+      "UPDATE medical_documents SET acquired_account_id = NULL WHERE acquired_account_id = ?"
     ).run(accountId);
     return (
       db.prepare("DELETE FROM portal_accounts WHERE id = ?").run(accountId)
@@ -1323,6 +1333,84 @@ export function recordPortalRunReport(
     unattendedFailAt,
     unattendedFailAt ? message : null
   );
+}
+
+// ── WHICH DOCUMENTS A RUN DELIVERED (#2999) ──────────────────────────────────
+//
+// A portal run's product is DOCUMENTS, and until now nothing associated the run with
+// them. The two arrive on DIFFERENT requests — `POST /api/documents` ingests each
+// archive, then `POST /api/documents/sync-report` reports the run — and the only stored
+// association was document → portal (#1748's `acquired_portal_id`), never run →
+// documents. So the Imports feed showed a portal run and the archives from that same run
+// as unrelated entries seconds apart, and its drill-in promised a count over a table
+// that could hold nothing.
+//
+// The owner's ruling (#2999 Fix 1, default branch): mark an uploaded document with the
+// LOGIN it was acquired for, and have the report handler claim that login's documents
+// uploaded SINCE ITS PREVIOUS REPORT. No tool-contract change, no correlation id, no new
+// endpoint — the ordering already holds in practice, because the tool uploads and then
+// reports.
+//
+// The window is what makes the claim exact: the previous report's stamp is read BEFORE
+// the new one overwrites it (the table holds one row per login), so a run can never
+// claim an earlier run's documents, and the account + profile filters keep it from
+// claiming another login's or another person's.
+
+// The stamp of the report this login last filed, or null when it has never reported.
+// Read BEFORE recordPortalRunReport overwrites it — that upsert is what destroys the
+// only boundary a run has.
+export function lastRunReportAt(accountId: number): string | null {
+  const row = db
+    .prepare("SELECT at FROM portal_run_reports WHERE account_id = ?")
+    .get(accountId) as { at: string } | undefined;
+  return row?.at ?? null;
+}
+
+// Record the LOGIN half of a document's acquisition (#2999). `acquired_portal_id`
+// (#1748) already names the portal; a portal with two logins has one portal id and two
+// run reports, so the login is the half that lets a run recognize its own delivery.
+// Profile-scoped: the upload route has already gated the write, and the filter keeps a
+// mis-plumbed call from stamping another person's row.
+export function stampAcquiredAccount(
+  profileId: number,
+  documentId: number,
+  accountId: number
+): void {
+  db.prepare(
+    "UPDATE medical_documents SET acquired_account_id = ? WHERE id = ? AND profile_id = ?"
+  ).run(accountId, documentId, profileId);
+}
+
+// The documents THIS run delivered for one login: acquired for that account, owned by
+// this profile, and uploaded after the login's previous report. `since` null means the
+// login has never reported, so everything it has ever delivered belongs to its first
+// report — there is no earlier run to attribute it to.
+//
+// `uploaded_at` and `portal_run_reports.at` are both stored bare (lib/time-columns.ts),
+// so the comparison is a plain lexical one between two values of the same convention.
+export function documentsDeliveredSince(
+  profileId: number,
+  accountId: number,
+  since: string | null
+): number[] {
+  const rows = (
+    since === null
+      ? db
+          .prepare(
+            `SELECT id FROM medical_documents
+              WHERE profile_id = ? AND acquired_account_id = ?
+              ORDER BY id`
+          )
+          .all(profileId, accountId)
+      : db
+          .prepare(
+            `SELECT id FROM medical_documents
+              WHERE profile_id = ? AND acquired_account_id = ? AND uploaded_at > ?
+              ORDER BY id`
+          )
+          .all(profileId, accountId, since)
+  ) as { id: number }[];
+  return rows.map((r) => r.id);
 }
 
 const LIST_RUN_REPORTS_STMT = hoistedStatement(

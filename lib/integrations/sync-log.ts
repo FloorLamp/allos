@@ -49,12 +49,21 @@ export function emptyCounts(): UpsertCounts {
 // data shape, so it lives here in the accounting module the upserts already import;
 // the impure writer is recordSyncRows (connections.ts) and the reader is
 // getSyncRowProvenance (lib/queries/integrations.ts).
+//
+// `medical_documents` is the one member that is not a RECORD (#2999). An attended
+// portal run's product is an archive: the tool delivers CCD bundles and the extraction
+// that turns them into records happens afterwards, on its own schedule. Without it a
+// portal run could record nothing at all, so the Imports feed promised a drill-in count
+// over an empty table and rewrote itself to zero in front of the reader. It is written
+// at sync-report time rather than by an upsert, because the documents and the run report
+// arrive on two different requests (see app/api/documents/sync-report/route.ts).
 export type ProvenanceTable =
   | "activities"
   | "body_metrics"
   | "metric_samples"
   | "medical_records"
-  | "practice_logs";
+  | "practice_logs"
+  | "medical_documents";
 
 export interface ProvenanceEntry {
   target_table: ProvenanceTable;
@@ -290,8 +299,9 @@ export function formatWindow(start: string | null, end: string | null): string {
 // A "no-op" sync (issue #137): a SUCCESSFUL sync that brought nothing meaningful in
 // — 0 inserted AND 0 updated (an all-unchanged re-scan of the rolling window, or an
 // empty incremental pull). A push-based integration that checks in hourly emits one
-// of these every hour, which floods the Review feed; the feed collapses consecutive
-// no-ops per source into a single summary line. A FAILURE is never a no-op (it's
+// of these every hour, which floods the Review feed; the Imports feed DROPS them
+// entirely (#2999 — it is for imports that produced something, and a portal login's full
+// run history lives on its own page). A FAILURE is never a no-op (it's
 // always signal that stays visible), and a LEGACY event whose split columns are all
 // null predates the accounting — we keep it visible with its flat `written` count
 // rather than guessing. Pure → unit-testable.
