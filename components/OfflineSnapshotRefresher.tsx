@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 import {
   allSnapshots,
   clearSnapshots,
+  openSnapshotStore,
   putSnapshots,
   snapshotEpoch,
+  snapshotStoreClosed,
 } from "@/lib/offline/snapshot-db";
 import {
   clearDirtySnapshots,
@@ -73,21 +75,37 @@ export default function OfflineSnapshotRefresher({
   const running = useRef(false);
   const pathname = usePathname();
 
+  // A NEW authenticated mount re-opens snapshot writing after a logout closed it (see
+  // lib/offline/snapshot-db.ts). Mount-scoped on purpose — `[]`, not the effect below:
+  // this layout is mounted only when there IS a session, whereas the effect below
+  // re-runs on every in-app navigation, including the one logout performs. Re-opening
+  // there would hand the close straight back.
+  useEffect(() => {
+    openSnapshotStore();
+  }, []);
+
   useEffect(() => {
     async function refresh() {
       if (running.current) return;
+      // Logout has ended snapshot writing for this document. Return before the FETCH,
+      // not merely before the write: a page on its way to /login has no business asking
+      // the server for a fresh copy of the payload it just erased.
+      if (snapshotStoreClosed()) return;
       if (typeof navigator !== "undefined" && navigator.onLine === false)
         return;
       running.current = true;
       // THE WIPE FENCE (lib/offline/snapshot-db.ts), captured BEFORE the first await.
       //
-      // This is the guard that had to exist and did not. The effect's own `cancelled`
-      // flag cannot do this job: it is set on UNMOUNT, and on logout the sidebar wipes
-      // FIRST and then keeps this page alive for the whole logout round trip, so the
-      // component is still mounted — and `cancelled` still false — for the entire
-      // window in which a wipe has already happened. Every snapshot survived logout
-      // that way, and rendered session-free at /offline. A generation captured here and
-      // re-checked inside `putSnapshots` sees the wipe; a mount flag never can.
+      // The effect's own `cancelled` flag cannot do this job: it is set on UNMOUNT, and
+      // on logout the sidebar wipes FIRST and then keeps this page alive for the whole
+      // logout round trip, so the component is still mounted — and `cancelled` still
+      // false — for the entire window in which a wipe has already happened. A generation
+      // captured here and re-checked inside `putSnapshots` sees the wipe; a mount flag
+      // never can.
+      //
+      // The fence covers a refresh caught MID-FLIGHT by a wipe. It structurally cannot
+      // cover a refresh that STARTS after one — that generation is legitimately current
+      // — which is why logout CLOSES the store, checked above, rather than only bumping.
       let fence = snapshotEpoch();
       try {
         const stored = await allSnapshots();

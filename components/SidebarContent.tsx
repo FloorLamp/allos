@@ -145,11 +145,16 @@ export default function SidebarContent({
   // the common case renders, session-free, for whoever picks the phone up next. The
   // 2s bound is a liveness guarantee for the person logging out and nothing more.
   //
-  // WHAT DOES COVER IT is the fence: `clearQueue` bumps the snapshot generation
-  // SYNCHRONOUSLY, before it awaits anything, so a snapshot refresh already in flight
-  // cannot re-write its payload into the store this just cleared — which is what
-  // happened, for the whole duration of the logout POST below, because this page stays
-  // mounted and alive until the navigation lands. See lib/offline/snapshot-db.ts.
+  // WHAT DOES COVER IT is `clearQueue` CLOSING the snapshot store, synchronously and
+  // before it awaits anything (lib/offline/snapshot-db.ts). This page stays mounted,
+  // authenticated and interactive for the whole duration of the logout POST below, and
+  // that window admits two different re-writes:
+  //   • a refresh already in flight, dropped by the generation bump; and
+  //   • a refresh that STARTS after the wipe — whose generation is legitimately current,
+  //     which finds an empty store, asks for all five kinds, and is answered 200 because
+  //     the session does not end until the POST lands.
+  // The second is the one that actually shipped red. After the close, this document
+  // never writes a snapshot again, whatever generation it holds.
   async function logoutAfterWipe(): Promise<void> {
     clearEmergencyPayload();
     try {

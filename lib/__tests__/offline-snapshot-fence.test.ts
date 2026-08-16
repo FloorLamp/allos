@@ -17,13 +17,16 @@
 // IndexedDB is pinned in e2e/offline-snapshots.spec.ts, with latency on both legs so
 // the race is deterministic rather than a fast box.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import {
   bumpSnapshotEpoch,
   clearSnapshots,
+  closeSnapshotStore,
+  openSnapshotStore,
   putSnapshots,
   snapshotEpoch,
   snapshotFenceHolds,
+  snapshotStoreClosed,
 } from "@/lib/offline/snapshot-db";
 import { clearQueue } from "@/lib/offline/queue-db";
 import {
@@ -75,6 +78,7 @@ describe("the wipe fence (#2908)", () => {
     const wiping = clearQueue();
     expect(snapshotFenceHolds(fence)).toBe(false);
     await wiping;
+    openSnapshotStore();
   });
 
   it("putSnapshots refuses a payload fetched before a wipe", async () => {
@@ -85,6 +89,52 @@ describe("the wipe fence (#2908)", () => {
 
   it("…and refuses an empty write regardless, so a no-op never reads as a write", async () => {
     expect(await putSnapshots([], snapshotEpoch())).toBe(false);
+  });
+});
+
+describe("the logout close — what the fence structurally cannot do (#2908)", () => {
+  afterEach(() => {
+    openSnapshotStore();
+  });
+
+  it("refuses a write whose generation is PERFECTLY CURRENT, once logout has closed", async () => {
+    // The hole the fence left, and the one that shipped red on CI. A refresh that STARTS
+    // after the logout wipe captures the POST-wipe generation, so its fence holds — by
+    // the fence's own rule, correctly. It then finds an empty store, concludes every
+    // kind is missing, asks for all five, and is answered 200 because the logout POST
+    // has not landed and the session is still alive. Observed: five payloads back in the
+    // store, readable session-free at /offline.
+    closeSnapshotStore();
+    const current = snapshotEpoch();
+    expect(snapshotStoreClosed()).toBe(true);
+    expect(snapshotFenceHolds(current)).toBe(false);
+    expect(await putSnapshots([snapshot], current)).toBe(false);
+  });
+
+  it("clearQueue closes SYNCHRONOUSLY — it is the logout wipe, and its only caller", async () => {
+    expect(snapshotStoreClosed()).toBe(false);
+    const wiping = clearQueue();
+    expect(snapshotStoreClosed()).toBe(true);
+    await wiping;
+  });
+
+  it("clearSnapshots does NOT close: the switch and the off switch must re-capture", async () => {
+    // The asymmetry is the point. A profile switch wipes so the NEXT profile's payloads
+    // can be captured, and the off switch wipes so the server's `enabled: false` answer
+    // is honoured on the next visit. Closing either would be a different feature.
+    await clearSnapshots();
+    expect(snapshotStoreClosed()).toBe(false);
+    expect(snapshotFenceHolds(snapshotEpoch())).toBe(true);
+  });
+
+  it("a new authenticated mount re-opens, so logging back in still caches", () => {
+    closeSnapshotStore();
+    expect(snapshotFenceHolds(snapshotEpoch())).toBe(false);
+    // The refresher calls this from a MOUNT-scoped effect: the (app) layout is mounted
+    // only when there is a session. The effect that re-runs on in-app navigation
+    // deliberately does not, or the logout navigation would hand the close straight back.
+    openSnapshotStore();
+    expect(snapshotFenceHolds(snapshotEpoch())).toBe(true);
   });
 });
 

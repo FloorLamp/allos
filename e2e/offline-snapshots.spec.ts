@@ -95,6 +95,14 @@ async function settledOfflineRead(page: Page): Promise<void> {
   );
 }
 
+// Latency on both legs of a logout, so the window the leaks live in is a real interval
+// rather than whatever a fast box happens to leave: enough on the snapshot GET to have
+// one genuinely in flight when the button is pressed, and enough on the logout POST to
+// keep the page alive, authenticated and interactive while it lands — which is not a
+// contrivance but exactly how long a real logout takes.
+const SNAPSHOT_GET_LATENCY_MS = 2_000;
+const LOGOUT_POST_LATENCY_MS = 6_000;
+
 test("offline reads: one visit captures, /offline renders them with no network, logout wipes (#2908)", async ({
   page,
   context,
@@ -165,6 +173,76 @@ test("offline reads: one visit captures, /offline renders them with no network, 
   await expect(page.getByTestId("offline-snapshot-list")).toHaveCount(0);
 });
 
+// THE OTHER HALF OF THE WINDOW, and the one that actually shipped red.
+//
+// The fence above stops a refresh caught MID-FLIGHT by the wipe. It structurally cannot
+// stop a refresh that STARTS after it: that refresh captures the post-wipe generation,
+// so its fence holds — correctly, by the fence's own rule. It then reads an EMPTY store,
+// concludes every kind is missing, asks the server for all five, and is answered 200,
+// because logout does not end the session until its POST lands. The complete payload
+// goes straight back into the store logout just cleared.
+//
+// On CI that surfaced as all five kinds surviving logout, from the ordinary test above,
+// with no instrumentation. The trigger there was incidental timing; here it is the
+// refresher's own `online` trigger, fired deliberately AFTER the store is observed
+// empty, so the ordering is a fact of the test rather than a hope. A reconnect during a
+// logout round trip is a real thing to do — this is the app's own public behaviour, not
+// a back door.
+test("logout ENDS snapshot writing: a refresh started after the wipe writes nothing (#2908)", async ({
+  page,
+}) => {
+  test.slow();
+  await login(page);
+
+  await page.goto("/");
+  await expect
+    .poll(() => storedKinds(page), { timeout: 30_000 })
+    .toEqual([...SNAPSHOT_KINDS].sort());
+
+  let snapshotGetsAfterClick = 0;
+  let clicked = false;
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    if (request.url().includes("/api/offline-snapshots")) {
+      if (clicked) snapshotGetsAfterClick += 1;
+    } else if (request.method() === "POST") {
+      // The only POST from here on is the logout Server Action. Holding it open is what
+      // keeps the page alive, authenticated and interactive — which is the real
+      // condition, not a contrivance: that is exactly how long a logout takes.
+      await new Promise((r) => setTimeout(r, LOGOUT_POST_LATENCY_MS));
+    }
+    await route.continue();
+  });
+
+  clicked = true;
+  await page.getByRole("button", { name: "Log out" }).click();
+
+  // Wait for the WIPE, not for the navigation: everything below has to happen in the
+  // window between the store being emptied and the session actually ending.
+  await expect.poll(() => storedKinds(page), { timeout: 15_000 }).toEqual([]);
+
+  // Now wake the refresher, on a page that is still mounted and still authenticated,
+  // with an empty store in front of it. Before the close this asked for all five kinds
+  // and got a 200.
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+
+  await page.waitForURL(/\/login/, { timeout: 30_000 });
+
+  // Nothing came back — and nothing was even ASKED for. The second assertion is the
+  // stronger one: a page on its way to /login has no business requesting a fresh copy
+  // of the payload it just erased, and "it asked but the write was refused" would leave
+  // the answer depending on a race the user cannot see.
+  await expect.poll(() => storedKinds(page), { timeout: 20_000 }).toEqual([]);
+  expect(
+    snapshotGetsAfterClick,
+    "the refresher asked the server for snapshots after logout began"
+  ).toBe(0);
+
+  await page.goto("/offline");
+  await settledOfflineRead(page);
+  await expect(page.getByTestId("offline-snapshot-list")).toHaveCount(0);
+});
+
 // Drop ONE stored kind, so the next refresh has something to ask the server for. Uses
 // the same no-version open as `storedKinds` above, and for the same reason: the database
 // already exists at v4 here, and naming no version can never create it at v1 in the way
@@ -209,9 +287,6 @@ async function dropStoredKind(page: Page, kind: string): Promise<void> {
 // GET puts a refresh IN FLIGHT when the button is pressed, and latency on the logout
 // POST holds the page alive long enough for that refresh to land. A test that passes
 // because the machine was fast is not a test of a PHI wipe.
-const SNAPSHOT_GET_LATENCY_MS = 2_000;
-const LOGOUT_POST_LATENCY_MS = 6_000;
-
 test("logout wipes even with a snapshot refresh in flight (#2908)", async ({
   page,
 }) => {

@@ -21,7 +21,7 @@ import {
   openOfflineDb as openDb,
   txDone as done,
 } from "@/lib/offline/idb";
-import { bumpSnapshotEpoch } from "@/lib/offline/snapshot-db";
+import { closeSnapshotStore } from "@/lib/offline/snapshot-db";
 
 function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(STORE, mode).objectStore(STORE);
@@ -193,12 +193,20 @@ export async function countIntents(): Promise<number> {
 // clear the queue on logout; #475: the parked rejected entries hold the same PHI;
 // #1699: so do half-typed drafts; #2908: so do the read snapshots).
 export async function clearQueue(): Promise<void> {
-  // #2908: fence any snapshot refresh already in flight — synchronously, and before
-  // anything else. This call site clears the SNAPSHOTS store below, and the logout that
-  // calls it keeps the page (and the refresher) alive for the entire logout round trip,
-  // so without the bump an in-flight GET could re-write everything this just erased.
-  // See the fence comment in lib/offline/snapshot-db.ts.
-  bumpSnapshotEpoch();
+  // #2908: END snapshot writing for this document — synchronously, and before anything
+  // else. This is the LOGOUT wipe (its only caller is the sidebar's logout button), and
+  // logout keeps the page, the session and the refresher alive for the entire round
+  // trip. Two different writes have to be stopped, which is why this closes rather than
+  // only bumping the generation:
+  //   • a refresh already IN FLIGHT — the generation bump drops its write;
+  //   • a refresh that STARTS AFTER the wipe — whose fence is legitimately current. It
+  //     reads an empty store, concludes every kind is missing, asks for all five and is
+  //     answered 200 by the still-live session. Only the close stops that one, and it is
+  //     the one that shipped red.
+  // Doing it HERE rather than at the button keeps the wipe complete by construction, the
+  // same reason the snapshot store is in this transaction at all. See the close comment
+  // in lib/offline/snapshot-db.ts.
+  closeSnapshotStore();
   if (!hasIndexedDB()) return;
   try {
     const db = await openDb();

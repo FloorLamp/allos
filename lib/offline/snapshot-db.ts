@@ -51,9 +51,63 @@ export function bumpSnapshotEpoch(): void {
   epoch += 1;
 }
 
-/** Whether no wipe has happened since `fence` was captured. */
+// ── AND THE CLOSE, WHICH THE FENCE CANNOT REPLACE ────────────────────────────
+//
+// The fence answers one question: "did a wipe land while I was away?" That is the
+// right question for a refresh already in flight, and it is the whole answer for a
+// profile switch or the off switch, where re-capturing afterwards is the POINT.
+//
+// It is not the whole answer for LOGOUT, and this is the hole the fence left. A
+// refresh that STARTS after the logout wipe captures the post-wipe generation, so
+// its fence holds — legitimately, by the fence's own rule. It then finds an empty
+// store, concludes that every kind is missing, asks the server for ALL FIVE, and
+// gets a 200, because the logout POST has not landed yet and the session is still
+// alive. It writes the complete payload back into the store logout just cleared.
+//
+// Observed, not theorised (the run that leaked, times relative to the click):
+//     NAV / @202 · POST-start / @356 · GET kinds=<all five> @356 · 200 @1886
+//     → stored = [dose-schedule, food-tallies, medication-list, practice-week,
+//                 recent-training]
+// The page stays mounted and authenticated for the entire logout round trip, so any
+// of the refresher's ordinary triggers — a navigation, a reconnect, the tab becoming
+// visible — can start that refresh in the window.
+//
+// So logout is not a wipe, it is a TERMINAL STATE for this document: after it, this
+// page never writes a snapshot again, whatever generation it holds. Closed is
+// checked inside the fence itself, so every writer inherits it and none can forget.
+let closed = false;
+
+/**
+ * End snapshot writing for this document. Called by the LOGOUT wipe only — the
+ * profile switch and the off switch must both be able to re-capture afterwards, and
+ * they bump the generation instead.
+ *
+ * A failed logout leaves it closed until the next mount. That is the safe direction:
+ * the device has already been stripped, and a session the user asked to end is not a
+ * session to re-cache for.
+ */
+export function closeSnapshotStore(): void {
+  closed = true;
+  bumpSnapshotEpoch();
+}
+
+/**
+ * Re-open for a NEW authenticated session. Called once per mount of the refresher, so
+ * logging back in re-opens — an (app) layout that is mounted IS a session — while the
+ * effect re-runs that happen during a logout navigation never can.
+ */
+export function openSnapshotStore(): void {
+  closed = false;
+}
+
+/** Whether logout has ended snapshot writing for this document. */
+export function snapshotStoreClosed(): boolean {
+  return closed;
+}
+
+/** Whether a write captured at `fence` may still land: no wipe since, and not closed. */
 export function snapshotFenceHolds(fence: number): boolean {
-  return fence === epoch;
+  return !closed && fence === epoch;
 }
 
 // Store (overwriting by kind) the freshly-captured snapshots, unless a wipe has
