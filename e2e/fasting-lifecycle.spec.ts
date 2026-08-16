@@ -436,6 +436,21 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
   });
 });
 
+// The quick set the log bar draws is RANKED PER WINDOW (#2369/#1980), and which window
+// is current depends on the run's frozen instant in the run's rotating pinned zone — so a
+// group that is on screen in one run's slot is folded into the "more groups" disclosure
+// in the next run's. Reveal the subject rather than assuming it, exactly as every other
+// food spec here does (e2e/food-log.spec.ts, e2e/food-limit-note.spec.ts). Without this
+// the assertion under test is only reached in the hours where the ranking happens to
+// cooperate, which is a spec that reports on the clock rather than on the code.
+async function revealFoodGroup(page: Page, slug: string): Promise<void> {
+  const row = page.getByTestId(`food-group-${slug}`);
+  if (!(await row.isVisible())) {
+    await page.getByTestId("food-more-groups-summary").click();
+    await expect(row).toBeVisible();
+  }
+}
+
 test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
   test.beforeEach(clearFasts);
   test.afterAll(clearFasts);
@@ -448,6 +463,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     const group = "legumes";
+    await revealFoodGroup(page, group);
     const count = page.getByTestId(`count-${group}`);
     const before = Number((await count.textContent())?.trim() || "0");
 
@@ -476,6 +492,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
     await page.goto("/nutrition");
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
+    await revealFoodGroup(page, "legumes");
     await settledClick(page, page.getByTestId("log-legumes"));
     const offer = page
       .getByTestId("toast")
@@ -504,6 +521,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
   }) => {
     await page.goto("/nutrition");
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
+    await revealFoodGroup(page, "legumes");
     await settledClick(page, page.getByTestId("log-legumes"));
     await expect(
       page.getByTestId("toast").filter({ hasText: "End your fast?" })
