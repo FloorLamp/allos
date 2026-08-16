@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { dismissToast, settledClick, settledFill } from "./helpers";
+import { dismissToast, hydratedClick, settledClick } from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
@@ -97,14 +97,60 @@ function backdateValue(hoursAgo: number): string {
   return `${day}T${hhmm}`;
 }
 
-// Open the backdating disclosure and put a wall time in it.
+// Open the backdating disclosure and put a wall time in it. Both steps are PURE CLIENT
+// state — the disclosure posts nothing and the field is a controlled input whose value
+// only travels when the start/end control is tapped — so this uses hydratedClick and a
+// plain fill rather than the settled* helpers, which wait for a Server Action POST that
+// correctly never comes.
 async function setBackdate(page: Page, hoursAgo: number): Promise<void> {
-  await settledClick(page, page.getByTestId("fasting-backdate-toggle"));
-  await settledFill(
-    page,
-    page.getByTestId("fasting-backdate-input"),
-    backdateValue(hoursAgo)
-  );
+  await hydratedClick(page, page.getByTestId("fasting-backdate-toggle"));
+  const field = page.getByTestId("fasting-backdate-input");
+  await expect(field).toBeVisible();
+  await field.fill(backdateValue(hoursAgo));
+  await expect(field).toHaveValue(backdateValue(hoursAgo));
+}
+
+// Make profile 1 a KNOWN MINOR by writing a birthdate 15 years back — the real shape of
+// #2756's scenario ("a birthdate edit that makes a profile restricted mid-fast"), and
+// the one that actually moves `getProfileAge`: birthdate takes precedence over the
+// stored `age` fallback, so setting `age` alone on a profile that has a birthdate
+// changes nothing at all.
+function restoreBirthdate(prior: string | null): void {
+  const db = openDb();
+  try {
+    if (prior === null) {
+      db.prepare(
+        "DELETE FROM profile_settings WHERE profile_id = 1 AND key = 'birthdate'"
+      ).run();
+    } else {
+      db.prepare(
+        `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'birthdate', ?)
+         ON CONFLICT (profile_id, key) DO UPDATE SET value = excluded.value`
+      ).run(prior);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+function makeMinor(): void {
+  const db = openDb();
+  try {
+    const bd = new Date(frozenNow().getTime() - 15 * 365.25 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'birthdate', ?)
+       ON CONFLICT (profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(bd);
+    // getProfileAge prefers the birthdate, but clear the fallback too so the fixture
+    // leaves exactly one answer in the database.
+    db.prepare(
+      "DELETE FROM profile_settings WHERE profile_id = 1 AND key = 'age'"
+    ).run();
+  } finally {
+    db.close();
+  }
 }
 
 test.describe("the fasting lifecycle (#2756)", () => {
@@ -278,28 +324,32 @@ test.describe("the fasting lifecycle (#2756)", () => {
 test.describe("a profile restricted MID-FAST can still close it out (#2756)", () => {
   test.beforeEach(clearFasts);
 
-  test.afterEach(() => {
-    clearFasts();
+  // The profile's own birthdate, saved and restored EXACTLY — profile 1 is the shared
+  // fixture and every other spec reads its age.
+  let priorBirthdate: string | null = null;
+
+  test.beforeEach(() => {
     const db = openDb();
     try {
-      db.prepare(
-        "DELETE FROM profile_settings WHERE profile_id = 1 AND key = 'age'"
-      ).run();
+      const row = db
+        .prepare(
+          "SELECT value FROM profile_settings WHERE profile_id = 1 AND key = 'birthdate'"
+        )
+        .get() as { value: string } | undefined;
+      priorBirthdate = row?.value ?? null;
     } finally {
       db.close();
     }
   });
 
+  test.afterEach(() => {
+    clearFasts();
+    restoreBirthdate(priorBirthdate);
+  });
+
   test("renders the close-out control, and nothing else", async ({ page }) => {
     seedFast(agoInstant(16), null);
-    const db = openDb();
-    try {
-      db.prepare(
-        "INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'age', '15')"
-      ).run();
-    } finally {
-      db.close();
-    }
+    makeMinor();
 
     await page.goto("/nutrition");
     // The card IS rendered — this is the assertion that fails if the surface gates on
@@ -348,14 +398,7 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     await expect(ended).toBeVisible();
 
     // The birthdate is corrected before the Undo is tapped.
-    const db = openDb();
-    try {
-      db.prepare(
-        "INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'age', '15')"
-      ).run();
-    } finally {
-      db.close();
-    }
+    makeMinor();
 
     await settledClick(page, ended.getByRole("button", { name: "Undo" }));
     await expect(
