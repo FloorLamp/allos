@@ -1036,6 +1036,23 @@ export const TIME_COLUMNS = {
       // contents, only that the run → documents attribution has been made. Durable by
       // design — the provenance rows that list the delivery expire with their event on
       // the #388 sweep, and this is what stops the claim being made a second time.
+      //
+      // BARE, like the three instants beside it, and that is a deliberate choice
+      // rather than the default one. The column was born empty, so canonical was free
+      // for the taking — the same freedom fasts.started_at used the same day. What made
+      // it not free HERE is the table: `medical_documents` is a BARE table, and
+      // CANONICAL_INSTANT_COLUMNS binds a whole table, so claiming one column makes
+      // rule B reject every SQL-clock statement on it — four files of extraction lease
+      // and reaper machinery (extraction-claim, extraction-reaper, medical-pipeline,
+      // migrations/boot-tasks) that this feature has no business re-timing. One
+      // convention per table is worth more here than matching a precedent set on a table
+      // whose instants are all canonical.
+      //
+      // Safe as bare because it is never compared against a canonical column: the only
+      // reads are `IS NULL` (the claim's guard) and `substr(…, 1, 10)` (the delivery
+      // day), and both are convention-blind. Its one writer is claimDeliveredDocuments,
+      // bound to sqlNow() beside the guard it feeds. No column DEFAULT, so SQLite's SQL
+      // clock can never write it behind that writer's back.
       column: "delivered_at",
       semantic: "lifecycle",
       grain: "instant",

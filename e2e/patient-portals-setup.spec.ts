@@ -319,6 +319,7 @@ function plantDelivery(portalName: string, documents: number) {
           bare,
           identity.profileId,
           identityId,
+          // `delivered_at` is BARE, like `uploaded_at` beside it (#2205).
           bare
         ).lastInsertRowid
       );

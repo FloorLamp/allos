@@ -126,6 +126,7 @@ function deliveredEvent(
   const stamp = db.prepare(
     "UPDATE medical_documents SET delivered_at = ? WHERE id = ?"
   );
+  // BARE, the convention this column shares with its neighbours (#2205).
   for (const id of docIds) stamp.run(at.replace("T", " ").slice(0, 19), id);
 }
 

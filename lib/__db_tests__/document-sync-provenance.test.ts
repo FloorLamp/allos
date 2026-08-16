@@ -114,6 +114,48 @@ async function upload(
   return id as number;
 }
 
+// A file allos REFUSES: an unsupported type that is not a health record. The engine
+// still lands a row — `insertFailedDoc`, `stored_path = ''`, zero bytes on disk — so
+// Review can show that the tool is pushing something allos will not take.
+async function uploadRefused(
+  account: PortalAccount,
+  patient: string,
+  filename: string
+): Promise<number> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([new TextEncoder().encode("not a health record at all")], {
+      type: "application/x-shockwave-flash",
+    }),
+    filename
+  );
+  const portalSlug = (
+    db.prepare("SELECT slug FROM portals WHERE id = ?").get(portalId) as {
+      slug: string;
+    }
+  ).slug;
+  const res = await UPLOAD(
+    new Request(
+      `http://x/api/documents?portal=${portalSlug}&account=${account.slug}&patient=${encodeURIComponent(patient)}`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${toolToken}` },
+        body: form,
+      }
+    )
+  );
+  const body = (await res.json()) as { documents: { id: number | null }[] };
+  const id = body.documents[0]?.id as number;
+  // It is a MARKER, not a document: a row with no bytes behind it.
+  expect(
+    db
+      .prepare("SELECT stored_path AS p FROM medical_documents WHERE id = ?")
+      .get(id)
+  ).toEqual({ p: "" });
+  return id;
+}
+
 // The seconds a real push spans: the observed run uploaded documents at 19:36:17–19:36:24
 // and reported 1–5s later. Forcing `uploaded_at` back is what makes these fixtures spaced
 // rather than same-second, and same-second is what used to hide the loss.
@@ -423,6 +465,104 @@ describe("one login, two patients: nobody's documents go unclaimed (#2914)", () 
   });
 });
 
+describe("a run delivers DOCUMENTS, not markers (#2999)", () => {
+  it("never claims a file allos refused, and does not render it as a delivery", async () => {
+    // `medical_documents` holds markers as well as archives. A refused file lands a
+    // `failed` row with `stored_path = ''` and no bytes anywhere, and it carries the
+    // acquiring identity exactly like a real archive — so a claim that filtered only on
+    // identity said the run had delivered the very documents it refused: two refused
+    // files and an honest `nothing-new` report rendered "Delivered 2 documents", with a
+    // drill-in resolving them by filename and linking /import/N. A fabricated delivery,
+    // out of a run the drop rule would otherwise have dropped.
+    //
+    // It is also the same fact `duplicate` and `blocked` already state by creating no row
+    // at all: a delivery that carried nothing allos would store delivered nothing.
+    const refusedOne = await uploadRefused(
+      accountOne,
+      LABEL_ONE,
+      "refused-one.swf"
+    );
+    const refusedTwo = await uploadRefused(
+      accountOne,
+      LABEL_ONE,
+      "refused-two.swf"
+    );
+    spaceUploads([refusedOne, refusedTwo], 12);
+
+    const run = await reportRun(accountOne, LABEL_ONE, {
+      status: "nothing-new",
+      inserted: 0,
+      unchanged: 0,
+    });
+
+    expect(claimedDocuments(run)).toEqual([]);
+    expect(claimedAnywhere(refusedOne)).toBe(0);
+    expect(claimedAnywhere(refusedTwo)).toBe(0);
+    // Not marked either — nothing about them is a delivery.
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM medical_documents
+            WHERE id IN (?, ?) AND delivered_at IS NOT NULL`
+        )
+        .get(refusedOne, refusedTwo)
+    ).toEqual({ n: 0 });
+    // …so the run is the empty run it honestly was, and the feed drops it.
+    const ids = getImportDocumentsFeed(profileOne, 200)
+      .filter((e) => e.stream === "sync")
+      .map((e) => (e.stream === "sync" ? e.event.id : 0));
+    expect(ids).not.toContain(run);
+  });
+
+  it("claims the real archives in a push that also carried a refused file", async () => {
+    const refused = await uploadRefused(accountOne, LABEL_ONE, "mixed.swf");
+    const real = await upload(accountOne, LABEL_ONE, "mixed-real.pdf");
+    spaceUploads([refused, real], 12);
+    const run = await reportRun(accountOne, LABEL_ONE);
+    expect(claimedDocuments(run)).toEqual([real]);
+  });
+});
+
+describe("the claim is written whole or not at all (#2999)", () => {
+  it("strands nothing when the provenance rows cannot be written", async () => {
+    // WHY THIS IS A TEST AND NOT A COMMENT. The claim selects, lists and stamps in ONE
+    // transaction, sharing `insertSyncRows` rather than calling `recordSyncRows` —
+    // because that wrapper swallows its own failures, so the mark would commit over rows
+    // that were never written and the archives would be stamped, unlistable and
+    // unre-claimable, permanently. "Unify the two provenance writers" is the most natural
+    // cleanup anyone will ever propose here, and it would reintroduce exactly that with
+    // the suite green.
+    const doc = await upload(accountOne, LABEL_ONE, "atomic-a1.pdf");
+    spaceUploads([doc], 10);
+
+    db.exec(
+      `CREATE TRIGGER doc_prov_rows_boom BEFORE INSERT ON integration_sync_rows
+         BEGIN SELECT RAISE(ABORT, 'provenance is down'); END`
+    );
+    let failedRun: number;
+    try {
+      failedRun = await reportRun(accountOne, LABEL_ONE);
+    } finally {
+      db.exec("DROP TRIGGER doc_prov_rows_boom");
+    }
+
+    // Nothing was written — not the rows, and CRUCIALLY not the mark.
+    expect(claimedDocuments(failedRun)).toEqual([]);
+    expect(
+      db
+        .prepare(
+          "SELECT delivered_at AS at FROM medical_documents WHERE id = ?"
+        )
+        .get(doc)
+    ).toEqual({ at: null });
+
+    // …so the next successful run for this identity claims it, exactly once.
+    const recovered = await reportRun(accountOne, LABEL_ONE);
+    expect(claimedDocuments(recovered)).toEqual([doc]);
+    expect(claimedAnywhere(doc)).toBe(1);
+  });
+});
+
 describe("the #388 retention sweep does not release a claimed archive (#2999)", () => {
   it("keeps every claim past the sweep, and an empty run after it claims nothing", async () => {
     // THE TRAP THIS PINS. The claim's guard used to be "does a provenance row name this
@@ -632,8 +772,52 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
         .get(accountOne.id, profileOne, page.day) as { n: number }
     ).n;
     expect(page.count).toBe(deliveredThatDay);
-    // …and the run the reader can actually open is a subset of it, never more.
-    expect(page.count).toBeGreaterThanOrEqual(drilldown);
+    expect(drilldown).toBeLessThanOrEqual(page.count);
+  });
+
+  it("lets a deleted archive part the two counts, and each stays true", () => {
+    // THE ONE PLACE THE TWO NUMBERS LEGITIMATELY DIVERGE, pinned so nobody reads the
+    // equality above as an invariant it is not. Deleting a document from Data → Review
+    // removes the row the page counts, while the run's provenance row survives — the run
+    // DID deliver three archives, and saying otherwise would rewrite history. The
+    // drill-in marks the missing one `deleted` rather than inventing a link, which is
+    // #1991's rule doing its job: what the label promises is still what the list shows.
+    const before = deliveredDocumentCountsByAccount(
+      authorized([profileOne]),
+      false
+    ).get(accountOne.id)!;
+    const victim = (
+      db
+        .prepare(
+          `SELECT id FROM medical_documents
+            WHERE profile_id = ? AND delivered_at IS NOT NULL
+            ORDER BY id DESC LIMIT 1`
+        )
+        .get(profileOne) as { id: number }
+    ).id;
+    const owningRun = (
+      db
+        .prepare(
+          `SELECT event_id AS id FROM integration_sync_rows
+            WHERE target_table = 'medical_documents' AND target_id = ?`
+        )
+        .get(victim) as { id: number }
+    ).id;
+
+    db.prepare("DELETE FROM medical_documents WHERE id = ?").run(victim);
+
+    const after = deliveredDocumentCountsByAccount(
+      authorized([profileOne]),
+      false
+    ).get(accountOne.id)!;
+    // The page counts the archives allos still holds…
+    expect(after.count).toBe(before.count - 1);
+    // …the run still lists everything it delivered, and names the gap honestly.
+    const rows = getSyncRowProvenance(profileOne, owningRun);
+    expect(rows.some((r) => r.targetId === victim && r.deleted)).toBe(true);
+    // And the deletion does not release the archive back to the claim: the row is gone,
+    // so there is nothing left to claim twice.
+    expect(claimedAnywhere(victim)).toBe(1);
   });
 });
 

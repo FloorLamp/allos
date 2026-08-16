@@ -1451,6 +1451,24 @@ export function stampAcquiredIdentity(
 // archive — and a document outlives every run that ever reported it. The provenance row
 // stays what it always was: the run's own listing, expiring with the run, so a swept run
 // stops offering a drill-in rather than releasing its documents.
+//
+// ── AND ONLY A ROW THAT IS ACTUALLY A DOCUMENT ───────────────────────────────
+//
+// `medical_documents` holds MARKERS as well as archives: a file allos refused for its
+// type or size lands a `failed` row with `stored_path = ''` and no bytes on disk
+// (insertFailedDoc), so Review can show that the tool is pushing something allos will not
+// take. Those rows carry `acquired_identity_id` exactly like a real archive — deliberately,
+// because the marker DID arrive from that identity — and claiming them said a run had
+// delivered documents it had refused: two refused files and an honest `nothing-new`
+// report rendered "Delivered 2 documents", with a drill-in resolving them by filename and
+// linking `/import/N`. A fabricated delivery again, and out of a run `dropQuietSyncs`
+// would otherwise have dropped.
+//
+// `stored_path IS NOT NULL AND stored_path != ''` is this repo's existing
+// marker-versus-document test (lib/export-full.ts, lib/medical-pipeline.ts,
+// lib/photo/metadata-backfill.ts) rather than a new predicate. It also puts `failed`
+// where `duplicate` and `blocked` already are: those create no row at all, and a delivery
+// that carried nothing allos would store genuinely delivered nothing.
 export function documentsDeliveredBy(
   profileId: number,
   identityId: number
@@ -1460,6 +1478,7 @@ export function documentsDeliveredBy(
       `SELECT d.id AS id
          FROM medical_documents d
         WHERE d.profile_id = ? AND d.acquired_identity_id = ?
+          AND d.stored_path IS NOT NULL AND d.stored_path != ''
           AND d.delivered_at IS NULL
         ORDER BY d.id`
     )
@@ -1519,6 +1538,8 @@ export function claimDeliveredDocuments(
         `UPDATE medical_documents SET delivered_at = ?
           WHERE id = ? AND profile_id = ?`
       );
+      // BARE, the convention this column and its three neighbours share (#2205) — see
+      // lib/time-columns.ts for why `medical_documents` keeps one convention throughout.
       const at = sqlNow();
       for (const id of ids) stamp.run(at, id, profileId);
       return ids;
