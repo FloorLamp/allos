@@ -53,7 +53,9 @@ describe("offlineRouteAssetUrls (#2997)", () => {
 
   it("dedupes, because a document names its shared chunks more than once", () => {
     const repeated = `${HTML}<script src="/_next/static/chunks/abc123.js"></script>`;
-    expect(offlineRouteAssetUrls(repeated)).toEqual(offlineRouteAssetUrls(HTML));
+    expect(offlineRouteAssetUrls(repeated)).toEqual(
+      offlineRouteAssetUrls(HTML)
+    );
   });
 
   it("is bounded — a warm-up is background work, never a burst", () => {

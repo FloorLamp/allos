@@ -2011,13 +2011,28 @@ export async function spendAutoReloadRation(page: Page): Promise<void> {
 // lib/offline/warm-offline-route.ts). These two say so, and NEITHER visits /offline —
 // which is the point. A spec that opens the page to make the page work proves nothing
 // about the person who never opens it.
+//
+// WHY THE ASSERTION IS THE CACHE'S CONTENTS AND NOT AN OFFLINE RENDER. Measured, because
+// the obvious test is a lie here: with the warm-up disabled, four of the /offline
+// document's own `<script src>` chunks are absent from the cache — and the page STILL
+// hydrates under `context.setOffline(true)`, because three of those four are IN the
+// cache afterwards. Playwright's offline emulation is per-browser-context and does not
+// cover SERVICE-WORKER-initiated requests in Chromium, so `cacheFirst`'s own `fetch()`
+// still reaches the server while the page believes it is offline. A real device has no
+// such escape hatch.
+//
+// So an "it renders offline" assertion cannot see this defect at all, and any spec that
+// leans on one is measuring the harness. What CAN be asserted faithfully is the thing
+// the ruling is actually about: the chunk is in the cache BEFORE the network goes away.
+// That is what this checks, and it reads 13/17 with the warm-up off.
 
 /**
  * Whether every `/_next/static` asset the /offline document declares is in the service
  * worker's cache — "warm", or a `cached/total` count to read on failure.
  *
  * Reads the cache only: the HTML fetch here populates nothing, because the worker never
- * caches rendered HTML and this is not a navigation.
+ * caches rendered HTML and this is not a navigation. Verified non-self-fulfilling — with
+ * the warm-up disabled it polls at 13/17 for the full 30s and never climbs.
  */
 export async function offlineChunksWarm(page: Page): Promise<string> {
   return page.evaluate(async () => {

@@ -286,14 +286,18 @@ test("the emergency card is readable offline for a first-time offline user (#42/
   // this test. `readyForOffline` deliberately does not visit /offline.
   await readyForOffline(page);
 
+  // `readyForOffline` is the LOAD-BEARING assertion, and its doc comment says why: an
+  // "it renders offline" check cannot see this defect, because Playwright's offline
+  // emulation does not cover the service worker's own fetches, so the worker keeps a
+  // network the real device would not have. The offline block below is still worth
+  // having — it pins the card end to end — but it is not what would go red.
   await context.setOffline(true);
   try {
     // A URL this context has NOT loaded, so the browser's own HTTP cache cannot satisfy
     // the navigation and the worker's offline fallback genuinely runs.
     await page.goto("/medications");
-    // The button exists only if the shell hydrated. That is the whole defect — and it
-    // is a pure client toggle, so hydratedClick rather than settledClick: there is no
-    // network here at all, let alone a Server Action to correlate against.
+    // A pure client toggle, so hydratedClick rather than settledClick: there is no
+    // Server Action here to correlate against.
     await hydratedClick(page, page.getByTestId("offline-view-emergency"));
     await expect(page.getByTestId("emergency-card")).toContainText("Peanuts");
   } finally {
