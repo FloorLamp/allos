@@ -47,8 +47,14 @@ import {
   type FoodRestampOutcome,
 } from "../food-log-write";
 import {
+  restampPracticeLogsCore,
+  type PracticeRestampOutcome,
+} from "../practice-log";
+import { buildPracticeCorrectionRebuild } from "./practices";
+import {
   getRecentDoseTaps,
   getRecentFoodTaps,
+  getRecentPracticeTaps,
   restampDoseLogsCore,
   type DoseRestampOutcome,
 } from "../queries";
@@ -497,3 +503,95 @@ function doseRestampText(outcome: DoseRestampOutcome, hhmm?: string): string {
 }
 
 export { FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES };
+
+
+// ---- Practices (#2875) -----------------------------------------------------
+
+// The third domain, and the one whose stored value is not an instant: a practice row
+// carries a profile-local `date` plus an "HH:MM", so the write core composes and
+// decomposes through the profile's timezone (#450) and REFUSES an answer that would
+// land on another day — correcting a practice's DATE is the expanded form's job, and a
+// silently clamped time would teach `modalHour()` an hour the session never happened at.
+const CROSSES_DAY_TEXT =
+  "That would move the session to another day — change the date in the app.";
+
+// Rebuild the practice nudge this correction rides, so the chips re-render from the
+// LEDGER after every write (#221) rather than from whatever the last keyboard showed.
+async function rebuildPractice(
+  r: Resolved,
+  picker?: CorrectionBurst
+): Promise<void> {
+  const rebuilt = buildPracticeCorrectionRebuild(r.profileId, {
+    now: r.now,
+    ref: { chatId: r.chatId, messageId: r.messageId },
+    ...(picker ? { picker } : {}),
+  });
+  if (rebuilt)
+    await rebuildMessage(r.profileId, r.chatId, r.messageId, rebuilt);
+}
+
+function practiceRestampOutcomeText(
+  outcome: PracticeRestampOutcome,
+  hhmm?: string
+): string {
+  if (outcome.kind === "no-burst") return NO_BURST_TEXT;
+  if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
+  if (outcome.kind === "crosses-day") return CROSSES_DAY_TEXT;
+  const what = outcome.count === 1 ? "1 session" : `${outcome.count} sessions`;
+  const when = hhmm ? ` to ${hhmm}` : " back";
+  return `Session time updated${when} for ${what} ${GLYPH.eventTime}`;
+}
+
+// A chip on a practice burst. Re-stamps every row from the instant it CURRENTLY stands
+// at (#2206), so a second tap goes further rather than landing where the first one did.
+export async function handlePracticeTimeChip(
+  cq: TelegramCallbackQuery,
+  token: CorrectionChipToken
+): Promise<void> {
+  const r = await resolve(cq, token, getRecentPracticeTaps);
+  if (!r) return;
+  const outcome = restampPracticeLogsCore(r.profileId, token.fromId, (row) =>
+    chipTarget(row, token.minutesBack, r.now)
+  );
+  await answerCallbackQuery(cq.id, practiceRestampOutcomeText(outcome));
+  await rebuildPractice(r);
+}
+
+// The 🕐 drill-down on a practice burst: open the absolute-hour picker, apply a chosen
+// hour, or come back to the untouched nudge.
+export async function handlePracticeTimeAt(
+  cq: TelegramCallbackQuery,
+  token: CorrectionAtToken
+): Promise<void> {
+  const r = await resolve(cq, token, getRecentPracticeTaps);
+  if (!r) return;
+  // `open` and `back` WRITE NOTHING, so the ack precedes the edit (#2418's ordering).
+  if (token.step.kind === "open") {
+    await answerCallbackQuery(cq.id);
+    await rebuildPractice(r, r.burst);
+    return;
+  }
+  if (token.step.kind === "back") {
+    await answerCallbackQuery(cq.id);
+    await rebuildPractice(r);
+    return;
+  }
+  const hhmm = token.step.hhmm;
+  // WHICH hours are legal is a function of the current time, decided here from the same
+  // computation that rendered the keyboard — a stale picker must not stamp 06:00 five
+  // hours later.
+  const instant = isOfferedHour(hhmm, r.now, r.tz)
+    ? statedHourInstant(hhmm, r.now, r.tz)
+    : null;
+  if (!instant) {
+    await answerCallbackQuery(cq.id, UNOFFERED_TEXT);
+    return;
+  }
+  const outcome = restampPracticeLogsCore(
+    r.profileId,
+    token.fromId,
+    () => instant
+  );
+  await answerCallbackQuery(cq.id, practiceRestampOutcomeText(outcome, hhmm));
+  await rebuildPractice(r);
+}

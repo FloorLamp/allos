@@ -34,7 +34,21 @@
 // behaves byte-for-byte like today under either call shape. The bus gate, the
 // per-day marker (owned by the tick) and the ceiling silence are untouched.
 
-import { getFrequencyTargetProgress, inferPracticeSchedule } from "../queries";
+import {
+  getFrequencyTargetProgress,
+  getPracticeCorrectionBursts,
+  inferPracticeSchedule,
+} from "../queries";
+import { now as clockNow } from "../clock";
+import { getTimezone } from "../settings";
+import { correctionMessageBinding } from "./message-pointers";
+import {
+  correctionActions,
+  correctionBodyStatement,
+  correctionPickerActions,
+  PRACTICE_TIME_PREFIXES,
+} from "./correction-rows";
+import type { CorrectionBurst } from "../correction-time";
 import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
 import {
@@ -278,6 +292,87 @@ export function buildPracticeReminder(
       behind.length === 1
         ? `${practiceShortfallLine(behind[0])}${overflowNote}`
         : `A few practices are behind this week:\n${lines.join("\n")}${overflowNote}`,
+    actions,
+    kind: "practice",
+  };
+}
+
+
+// ---- The time-correction ride-along (issue #2875) ---------------------------
+
+// How a practice message names the correction affordance, and where its rows are bound.
+// `ref` is the message being rendered (#2264) — a fresh send has none and is, by
+// construction, about to be the newest live practice message in the chat.
+export interface PracticeCorrectionContext {
+  now?: Date;
+  ref?: { chatId: string | number; messageId: number };
+  // The burst whose absolute-hour picker is currently OPEN, if any. The drill-down
+  // REPLACES the keyboard in place (the #859 `symp:` → `symsev:` shape) and `↩︎ Back`
+  // rebuilds the message unchanged, so no server-side pending state exists.
+  picker?: CorrectionBurst;
+}
+
+// The correction rows a practice message should carry right now, plus the body's
+// statement of record for a burst that has actually moved. Every piece here is the
+// SHARED helper (#221) — `correctionActions`, `correctionPickerActions` and
+// `correctionBodyStatement` are domain-blind, and this passes them the practice
+// prefixes and nothing else. There is no practice-shaped fork.
+function practiceCorrection(
+  profileId: number,
+  ctx: PracticeCorrectionContext | undefined
+): { actions: NotificationAction[]; statement: string | null } {
+  if (!ctx) return { actions: [], statement: null };
+  const now = ctx.now ?? clockNow();
+  const tz = getTimezone(profileId);
+  const bursts = getPracticeCorrectionBursts(
+    profileId,
+    now,
+    // Bound to the `practice` kind: the nudge is the only practice message these rows
+    // ride, so an UNATTRIBUTED burst (a web quick-sheet tap) may ride the newest live
+    // nudge and nothing else.
+    correctionMessageBinding(profileId, "practice", ctx.ref ?? null)
+  );
+  if (bursts.length === 0) return { actions: [], statement: null };
+  // An open picker replaces the chips rather than joining them, so the keyboard asks
+  // one question at a time.
+  const open = ctx.picker
+    ? (bursts.find((b) => b.fromId === ctx.picker?.fromId) ?? null)
+    : null;
+  const actions = open
+    ? correctionPickerActions(PRACTICE_TIME_PREFIXES, profileId, open, now, tz)
+    : correctionActions(PRACTICE_TIME_PREFIXES, profileId, bursts, tz, now);
+  return { actions, statement: correctionBodyStatement(bursts, tz) };
+}
+
+// The pace nudge WITH its correction ride-along — the shape a rebuild after a tap
+// renders, and the one the hourly sweep re-derives from.
+//
+// It answers even when NOTHING IS BEHIND ANY MORE, which `buildPracticeReminder` alone
+// cannot: the common case is a single behind practice, and logging it clears the very
+// shortfall that justified the message. Closing there would take the correction row
+// down with it in exactly the case the feature exists for — the tap that just happened
+// is the tap whose time might be wrong. So a cleared nudge with a live burst becomes a
+// short confirmation carrying the chips, and only a cleared nudge with NO live burst
+// returns null, which is the caller's signal to close the message as it always did.
+export function buildPracticeCorrectionRebuild(
+  profileId: number,
+  ctx: PracticeCorrectionContext,
+  nonce: string = Date.now().toString(36),
+  deepLinkBase = ""
+): NotificationMessage | null {
+  const { actions, statement } = practiceCorrection(profileId, ctx);
+  const base = buildPracticeReminder(profileId, nonce, deepLinkBase);
+  if (base) {
+    return {
+      ...base,
+      body: statement ? `${base.body}\n${statement}` : base.body,
+      actions: [...(base.actions ?? []), ...actions],
+    };
+  }
+  if (actions.length === 0) return null;
+  return {
+    title: `${GLYPH.practice} Practice check-in`,
+    body: statement ?? `Logged ${GLYPH.done}`,
     actions,
     kind: "practice",
   };

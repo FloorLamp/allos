@@ -20,12 +20,18 @@ import {
   parseCorrectionAtToken,
   parseCorrectionChipToken,
 } from "../correction-time";
-import { DOSE_TIME_PREFIXES, FOOD_TIME_PREFIXES } from "./correction-rows";
+import {
+  DOSE_TIME_PREFIXES,
+  FOOD_TIME_PREFIXES,
+  PRACTICE_TIME_PREFIXES,
+} from "./correction-rows";
 import {
   handleDoseTimeAt,
   handleDoseTimeChip,
   handleFoodTimeAt,
   handleFoodTimeChip,
+  handlePracticeTimeAt,
+  handlePracticeTimeChip,
 } from "./telegram-time-correction";
 import { shiftDateStr } from "../date";
 import {
@@ -326,6 +332,26 @@ export async function handleCallbackQuery(
   const doseTimeAt = parseCorrectionAtToken(cq.data, DOSE_TIME_PREFIXES.at);
   if (doseTimeAt) {
     await handleDoseTimeAt(cq, doseTimeAt);
+    return;
+  }
+  // The practice twin (#2875), over `practice_logs.time` — the one whose column feeds
+  // the scheduler that produced the tap: `modalHour()` reads it to pick each practice's
+  // typical hour, and #2188's retimed pace nudge fires at that hour, so an uncorrectable
+  // late acknowledgement compounds into a later and later nudge.
+  const practiceTimeChip = parseCorrectionChipToken(
+    cq.data,
+    PRACTICE_TIME_PREFIXES.chip
+  );
+  if (practiceTimeChip) {
+    await handlePracticeTimeChip(cq, practiceTimeChip);
+    return;
+  }
+  const practiceTimeAt = parseCorrectionAtToken(
+    cq.data,
+    PRACTICE_TIME_PREFIXES.at
+  );
+  if (practiceTimeAt) {
+    await handlePracticeTimeAt(cq, practiceTimeAt);
     return;
   }
 
