@@ -183,10 +183,21 @@ describe("normalizeAge", () => {
 
   it("rejects absent or implausible ages", () => {
     expect(normalizeAge(-3)).toBeNull();
+    expect(normalizeAge(-0.4)).toBeNull();
     expect(normalizeAge(200)).toBeNull();
     expect(normalizeAge("")).toBeNull();
     expect(normalizeAge("old")).toBeNull();
     expect(normalizeAge(null)).toBeNull();
+  });
+
+  // Issue #2992 R2: the range check must run on the ROUNDED value. It used to run
+  // first, so 149.6 passed `n < 150` and rounded up to a stored "150" — which
+  // getStoredAge rejects, leaving the writer and the reader disagreeing about what is
+  // recordable. Whatever normalizeAge returns must survive the round trip.
+  it("never emits a value the reader would reject", () => {
+    expect(normalizeAge(149.6)).toBeNull();
+    expect(normalizeAge(149.4)).toBe(149);
+    expect(normalizeAge(0.4)).toBe(0);
   });
 });
 

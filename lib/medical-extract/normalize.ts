@@ -151,6 +151,13 @@ export function normalizeBirthdate(raw: unknown): string | null {
 // `Math.round`ed to 0, so a "0" was written to the profile that the reader could not
 // read back, while a document stating a flat 0 was dropped here instead. Both now
 // resolve to the same recorded 0. Negatives, NaN and >= 150 are still rejected.
+//
+// THE RANGE CHECK RUNS ON THE ROUNDED VALUE, NOT THE RAW ONE. It used to run before
+// `Math.round`, which let 149.6 pass `n < 150` and then round UP to a stored "150" —
+// a value `getStoredAge` rejects, so the writer and the reader disagreed about what
+// was recordable. That is the same writer/reader split as the bug above, one bound
+// away, and it is why the fractional case mattered at both ends: whatever this
+// returns must be a value the reader will accept back.
 export function normalizeAge(raw: unknown): number | null {
   const n =
     typeof raw === "number"
@@ -158,7 +165,9 @@ export function normalizeAge(raw: unknown): number | null {
       : typeof raw === "string"
         ? parseInt(raw, 10)
         : NaN;
-  return Number.isFinite(n) && n >= 0 && n < 150 ? Math.round(n) : null;
+  if (!Number.isFinite(n) || n < 0) return null;
+  const years = Math.round(n);
+  return years < 150 ? years : null;
 }
 
 // Coerce the model's structured `prescription` object into a typed
