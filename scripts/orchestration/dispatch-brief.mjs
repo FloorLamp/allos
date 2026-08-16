@@ -377,6 +377,12 @@ ${MIGRATION_LINES}
     Claude-Session: <session URL>
 - No model identifiers in commits/PR/code
 - Open the PR READY (not draft) via REST, base main
+- NEVER run \`dispatch-brief.mjs done\` — retiring a dispatch is the ORCHESTRATOR's,
+  after the PR merges. Opening the PR is not the end of your dispatch: review
+  findings, CI reds and adversarial refutations all come back to you afterwards, and
+  a retired dispatch drops you off the roster that a restart reads to find unrescued
+  work. If you see a "Close with:" line anywhere near this brief, it is addressed to
+  the orchestrator, not to you.
 - Return: PR number/URL, per-issue fix summary, VERBATIM gate results (say plainly if
   something failed — never report a green you did not see), surprises, and OPEN
   QUESTIONS as their own labelled list — every decision you made provisionally and
@@ -474,7 +480,8 @@ function cmdNew(argv) {
   console.log(brief);
   console.error(
     `\n[ledger] recorded in ${ledgerPath} — port base ${portBase}` +
-      `. Close with: dispatch-brief.mjs done ${opts.branch}`
+      `\n[ledger] ORCHESTRATOR ONLY, after the PR merges — not part of the brief above:` +
+      `\n[ledger]   dispatch-brief.mjs done ${opts.branch}`
   );
 }
 
