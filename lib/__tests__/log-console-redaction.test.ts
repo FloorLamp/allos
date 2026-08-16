@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createLogger } from "../log";
-import { redactSecrets } from "../error-log-format";
+import { redactSecrets, buildDetail } from "../error-log-format";
 
 const log = createLogger("test");
 
@@ -18,6 +18,11 @@ const log = createLogger("test");
 // error-log-format.test.ts.)
 const FAKE_TOKEN = "xxxx-xxxx-xxxx";
 const FAKE_PASSWORD = "pw-xxxx-xxxx";
+// Low-entropy but credential-SHAPED: long enough, has a digit and a letter, not
+// screaming-case. That is what `looksLikeCredential` looks for under an ambiguous
+// key like `code` or `nonce`. Same `xxxx-` idiom as the fixtures above, so the
+// repo's secret scanner sees a placeholder rather than a synthetic token.
+const CREDENTIAL_SHAPED = "xxxx-1234-xxxx-5678";
 
 let lines: string[] = [];
 const spies: ReturnType<typeof vi.spyOn>[] = [];
@@ -281,6 +286,69 @@ describe("redactBag redacts before escaping (#2966)", () => {
     }
   });
 
+  it("masks a shape-gated key whose VALUE reads as a credential", () => {
+    // `code`, `sig`, `nonce`, `assertion`, `deviceCode` are not sensitive by
+    // NAME — they are masked only when the value also looks like a credential.
+    // That rule lived ONLY in the whole-string pass, so redacting per-leaf
+    // dropped it and these printed raw.
+    process.env.LOG_FORMAT = "json";
+    for (const key of ["code", "sig", "nonce", "assertion", "deviceCode"]) {
+      lines = [];
+      log.error("oauth exchange failed", {
+        [key]: CREDENTIAL_SHAPED,
+        profileId: 7,
+      });
+      const line = only();
+      expect(line, `${key} leaked`).not.toContain(CREDENTIAL_SHAPED);
+      expect(JSON.parse(line)[key]).toBe("***");
+    }
+  });
+
+  it("keeps the benign half of the shape gate readable", () => {
+    // The reason the gate is shape-gated at all: `code` is also the name Node
+    // gives every errno, and an operator reads the error FOR it. Testing only
+    // this half is what let the leaking half through.
+    process.env.LOG_FORMAT = "json";
+    log.error("upstream refused", { code: "ECONNREFUSED", status: 502 });
+    const parsed = JSON.parse(only());
+    expect(parsed.code).toBe("ECONNREFUSED");
+    expect(parsed.status).toBe(502);
+  });
+
+  it("masks a nested secret when the bag cannot be serialized", () => {
+    // The fallback walks the bag by hand, so it has to RECURSE the way
+    // JSON.stringify recurses for the replacer. Applying the rule to top-level
+    // entries only left everything under an ordinary key untouched, and `emit`
+    // then serialized it raw. The bag before this one CRASHED on this input
+    // instead of leaking, so a shallow walk trades an availability defect for a
+    // confidentiality one — strictly worse.
+    process.env.LOG_FORMAT = "json";
+    log.error("serialize failed", {
+      user: { password: FAKE_PASSWORD },
+      deep: { a: { b: { credentials: { token: FAKE_TOKEN } } } },
+      size: 10n,
+    });
+    const line = only();
+    expect(line).not.toContain(FAKE_PASSWORD);
+    expect(line).not.toContain(FAKE_TOKEN);
+  });
+
+  it("does not throw on a value String() cannot render", () => {
+    // `String(v)` is not total. A null-prototype object has no toString, so the
+    // fallback's own coercion raised "Cannot convert object to primitive value"
+    // — outside every try, straight into the caller.
+    const hostile = Object.create(null) as Record<string, unknown>;
+    hostile.toJSON = () => {
+      throw new Error("nope");
+    };
+    for (const format of ["json", "text"]) {
+      lines = [];
+      process.env.LOG_FORMAT = format;
+      expect(() => log.error("hostile value", { x: hostile })).not.toThrow();
+      expect(only()).toContain("hostile value");
+    }
+  });
+
   it("leaves an unmatched bag's values and types alone", () => {
     process.env.LOG_FORMAT = "json";
     log.info("sync ok", { inserted: 3, ratio: 0.5, ok: true, note: null });
@@ -289,5 +357,71 @@ describe("redactBag redacts before escaping (#2966)", () => {
     expect(parsed.ratio).toBe(0.5);
     expect(parsed.ok).toBe(true);
     expect(parsed.note).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE ASYMMETRY INVARIANT (#2938, #2966).
+//
+// `docker logs` is a BROADER audience than the admin-only errors.jsonl viewer,
+// so the console echo must never disclose something the persisted copy masks.
+// #2938 exists because that relationship was once inverted, and it inverted
+// again here the moment the two readers stopped sharing a rule: buildDetail
+// kept a final whole-string pass that redactBag dropped, and shape-gated keys
+// leaked to the wider audience only.
+//
+// Asserted as a PROPERTY over a corpus rather than case by case, because the
+// failure mode is drift — a rule that exists on one path and not the other —
+// and drift is invisible to any test that only ever exercises one path.
+
+describe("the console echo is never less redacted than errors.jsonl", () => {
+  const GATED = "xxxx-1234-xxxx-5678";
+  const corpus: Record<string, unknown>[] = [
+    { code: GATED, profileId: 7 },
+    { sig: GATED },
+    { nonce: GATED },
+    { assertion: GATED },
+    { deviceCode: GATED },
+    { authorizationCode: GATED },
+    { access_token: GATED },
+    { credentials: { token: GATED } },
+    { response: { data: { api_key: GATED } } },
+    { body: JSON.stringify({ access_token: GATED }) },
+    { note: `authorization: Bearer ${GATED}` },
+    { url: `https://api.example.com/v1?access_token=${GATED}` },
+    { headers: { cookie: `session=${GATED}` } },
+    { tokens: [GATED, GATED] },
+  ];
+
+  it("masks everything the persisted copy masks, for every shape", () => {
+    process.env.LOG_FORMAT = "json";
+    for (const bag of corpus) {
+      lines = [];
+      log.error("failed", structuredClone(bag));
+      const consoleEcho = only();
+      const persisted = buildDetail(structuredClone(bag)) ?? "";
+      const label = JSON.stringify(bag).slice(0, 60);
+      // The invariant: if the ADMIN copy hid it, the BROADER one must too.
+      if (!persisted.includes(GATED)) {
+        expect(
+          consoleEcho,
+          `console leaked where admin masked: ${label}`
+        ).not.toContain(GATED);
+      }
+    }
+  });
+
+  it("and in this corpus neither reader discloses the secret at all", () => {
+    process.env.LOG_FORMAT = "json";
+    for (const bag of corpus) {
+      lines = [];
+      log.error("failed", structuredClone(bag));
+      const label = JSON.stringify(bag).slice(0, 60);
+      expect(only(), `console: ${label}`).not.toContain(GATED);
+      expect(
+        buildDetail(structuredClone(bag)) ?? "",
+        `admin: ${label}`
+      ).not.toContain(GATED);
+    }
   });
 });

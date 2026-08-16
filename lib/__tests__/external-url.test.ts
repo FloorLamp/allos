@@ -31,6 +31,20 @@ describe("resolveExternalBaseUrl", () => {
     expect(base).toBe("https://allos.example");
   });
 
+  it("does not consult the headers at all when one is configured", () => {
+    // The server wrapper returns before awaiting `headers()` in this case, and
+    // that is BEHAVIOUR rather than speed: `headers()` throws outside a request
+    // scope, so a configured deployment can build a callback URL from a
+    // background tick or a CLI. All four helpers this replaced could.
+    let looked = 0;
+    const base = resolveExternalBaseUrl("https://allos.example", (name) => {
+      looked++;
+      return name === "host" ? "wrong.example" : null;
+    });
+    expect(base).toBe("https://allos.example");
+    expect(looked).toBe(0);
+  });
+
   it("treats an unset public URL as absent", () => {
     // getPublicUrl() returns "" rather than null when nothing is stored.
     const header = headersOf({ host: "allos.example" });

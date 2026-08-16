@@ -88,24 +88,27 @@ function useJson(): boolean {
 }
 
 // Last-resort pass for a bag that can't be serialized at all (a cycle, a BigInt,
-// a throwing toJSON). No serialization is possible, so this walks the top level
-// only — less reach than the replacer, which is why it is the fallback and not
-// the rule.
+// a throwing toJSON). `JSON.stringify` refused it, so the replacer never ran and
+// this has to do the replacer's job by hand.
 //
-// It applies the SAME per-entry rule the replacer does, rather than a weaker one
-// of its own (#2966). It used to redact string values and pass everything else
-// through untouched, so a sensitive key holding an OBJECT — `{ credentials: { … } }`,
-// the shape most likely to carry a cycle in the first place — survived this path
-// completely unmasked. A degraded path may lose structure; it must not lose the
-// masking, or the fallback becomes the way secrets get out.
+// IT RECURSES, and that is the whole point (#2966). An earlier cut applied the
+// replacer to TOP-LEVEL entries only. The replacer does not walk a tree on its
+// own — `JSON.stringify` is what walks it — so everything under an ordinary key
+// came back untouched and was then serialized raw by `emit`:
+// `{ user: { password: "…" }, n: 10n }` printed the password. The version before
+// that CRASHED on the same bag rather than leaking it, so a shallow walk here
+// trades an availability defect for a confidentiality one on the same input.
+// That is a worse bug than the one this file set out to fix.
 //
-// It also has to hand back a bag `emit` can actually RENDER. Both render paths
-// below serialize what they are given, so returning the offending value intact
-// only moved the throw a few lines down — out of redactBag's try and into the
-// caller's. A logger that throws is worse than a logger that says less: it is
-// called from error handlers, so the crash replaces the failure someone was
-// trying to record. Anything that will not serialize is therefore coerced to its
-// string form here, and redacted like any other string.
+// It must also hand back something `emit` can RENDER. Both render paths below
+// serialize what they are given, so returning the offending value intact merely
+// moved the throw out of redactBag's try and into the caller's — and the logger
+// is called from error handlers, where a crash replaces the failure someone was
+// trying to record. Every leaf that will not serialize is coerced to a string,
+// cycles become a marker, and the walk is depth-capped: this path exists because
+// the input was already pathological, so it assumes nothing about its shape.
+const FALLBACK_MAX_DEPTH = 6;
+
 function serializes(v: unknown): boolean {
   try {
     JSON.stringify(v);
@@ -115,13 +118,69 @@ function serializes(v: unknown): boolean {
   }
 }
 
+// `String(v)` is NOT total: an object with a null prototype, or one whose
+// toString/valueOf throw, raises "Cannot convert object to primitive value".
+// This is the fallback's fallback, so it cannot be the thing that throws.
+function safeString(v: unknown): string {
+  try {
+    return String(v);
+  } catch {
+    return "[unrenderable]";
+  }
+}
+
+function redactDeep(
+  key: string,
+  value: unknown,
+  path: Set<object>,
+  depth: number
+): unknown {
+  const masked = redactingReplacer(key, value);
+  if (typeof masked !== "object" || masked === null) {
+    return serializes(masked) ? masked : redactSecrets(safeString(masked));
+  }
+  // Cycles are tracked along the current PATH, not globally: the same object
+  // appearing twice as a sibling is a repeat, not a cycle, and rendering it
+  // twice is honest.
+  if (path.has(masked)) return "[circular]";
+  if (depth >= FALLBACK_MAX_DEPTH) return "[truncated]";
+  path.add(masked);
+  try {
+    if (Array.isArray(masked)) {
+      return masked.map((v, i) => redactDeep(String(i), v, path, depth + 1));
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(masked)) {
+      // Function-valued properties are dropped, which is what JSON.stringify
+      // does with them anyway — with ONE exception that matters here: it INVOKES
+      // `toJSON`. Copying a throwing `toJSON` onto the rebuilt object rebuilds
+      // the hazard we are escaping, and the throw then lands in `emit`, outside
+      // every try on this path.
+      if (typeof v === "function") continue;
+      out[k] = redactDeep(k, v, path, depth + 1);
+    }
+    return out;
+  } catch {
+    // A throwing getter or an exotic proxy: fall back to the string form rather
+    // than letting the walk escape into the caller.
+    return redactSecrets(safeString(masked));
+  } finally {
+    path.delete(masked);
+  }
+}
+
 function redactValues(bag: Record<string, unknown>): Record<string, unknown> {
+  const path = new Set<object>();
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(bag)) {
-    const masked = redactingReplacer(k, v);
-    out[k] = serializes(masked) ? masked : redactSecrets(String(masked));
+    out[k] = redactDeep(k, v, path, 0);
   }
-  return out;
+  // The one hard guarantee this path owes `emit`: what it returns SERIALIZES.
+  // Everything above is best-effort structure preservation; this is the floor,
+  // checked once on an already-degraded bag. Without it "the logger never
+  // throws" is a hope about having enumerated every hostile shape, and the
+  // null-prototype `toJSON` proved that enumeration wrong once already.
+  return serializes(out) ? out : { redacted: "[unrenderable field bag]" };
 }
 
 // Mask secret-looking values in the console echo (#1882). `docker logs` is a

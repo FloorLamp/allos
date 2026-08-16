@@ -14,9 +14,20 @@ import { joinUrl, resolveExternalBaseUrl } from "./external-url";
 // The app's externally visible base URL for THIS request. The single authority:
 // the calendar feed, Health Connect, Strava and Withings all resolve it here, so
 // a proxy-header change is one edit rather than four.
+//
+// The early return is BEHAVIOUR, not an optimization. All four helpers this
+// replaced returned before touching `headers()`, so with a public URL configured
+// they worked with NO request context at all — from a background tick, a
+// notification job, a CLI. `headers()` throws outside a request scope, so
+// awaiting it unconditionally would have quietly narrowed where
+// `stravaCallbackUrl()` and `withingsCallbackUrl()` can be called. The pure
+// resolver holds the same "configured wins" rule; this is about not REQUIRING a
+// request in order to reach it.
 export async function externalBaseUrl(): Promise<string> {
+  const configured = getPublicUrl();
+  if (configured) return configured;
   const h = await headers();
-  return resolveExternalBaseUrl(getPublicUrl(), (name) => h.get(name));
+  return resolveExternalBaseUrl(configured, (name) => h.get(name));
 }
 
 // An absolute URL to an in-app path, off the externally visible base.
