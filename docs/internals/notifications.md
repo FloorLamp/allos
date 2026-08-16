@@ -851,6 +851,29 @@ attaching these chips to that list would make an inert listing resolve as family
 `practice-list` entry argues against. Giving the list its chips needs a family of its
 own; that is open.
 
+**A REDRAW OBEYS EVERY RULE THE SEND OBEYED.** The nudge rebuilding instead of closing
+turns one message into a thing that is rendered repeatedly, and each rule the send
+applied has to be applied again or the redraw quietly undoes it. Four of them, all
+learned the hard way:
+
+- the tapped `✅` is CONSUMED, and "re-derive from live pace" does not achieve that — a
+  practice at 1 of 3 is still behind after its session lands. The rebuild reads the ids
+  the live keyboard still offers (`offeredPracticeTargets`) and renders only those, the
+  same rule that keeps the food nudge from collapsing a keyboard the user expanded;
+- `Open practices →` is re-rendered, so #1718's "affordance that survives everywhere"
+  survives past the first tap;
+- the #2188 rhythm hold is re-applied — the rebuild re-derives the moment from the
+  profile's own waking window (`practiceNudgeTimingNow`) rather than falling through to
+  the untimed gather, which holds nothing and would surface a practice the send withheld;
+- and the chips DIE on the hour-long clock, because the `practice` family's `dead` calls
+  `deadCorrectionTokens` exactly as `food` and `intake-dose` do. That is what produces
+  the single trailing edit per burst, and — once the `✅` buttons are consumed and the
+  chips are the message's only remaining claims — what CLOSES the message. Without it
+  the chips had no clock at all: nothing aged them out, and a tapped nudge stood until
+  the pointer was pruned days later. The close reads its outcome off the DELIVERED
+  keyboard, like the dose families, because by then the `pdone` tokens naming what the
+  message claimed are gone from the live one.
+
 **The offer is a QUERY over ledger state**, never a memory of what some earlier
 message rendered — which is why the rows survive a rebuild, a pointer rotation and a
 restart. `lib/correction-time.ts` holds the whole model, domain-blind, and
