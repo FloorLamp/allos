@@ -142,6 +142,15 @@ export function normalizeBirthdate(raw: unknown): string | null {
 
 // Normalize a stated age to a plausible whole number of years, from either a
 // number or a numeric string ("45", "45 years"). Null when absent/implausible.
+//
+// 0 IS PLAUSIBLE (issue #2992): an infant's age in whole years IS zero, and this is
+// the value that reaches setStoredAge on the document-adoption path. The old `n > 0`
+// bound rejected it — and did so INCONSISTENTLY, which is how #2992 was reachable in
+// shipped code rather than merely latent: a fractional age under half a year (a
+// document stating an infant's age as 0.4 years) passed `n > 0` and then
+// `Math.round`ed to 0, so a "0" was written to the profile that the reader could not
+// read back, while a document stating a flat 0 was dropped here instead. Both now
+// resolve to the same recorded 0. Negatives, NaN and >= 150 are still rejected.
 export function normalizeAge(raw: unknown): number | null {
   const n =
     typeof raw === "number"
@@ -149,7 +158,7 @@ export function normalizeAge(raw: unknown): number | null {
       : typeof raw === "string"
         ? parseInt(raw, 10)
         : NaN;
-  return Number.isFinite(n) && n > 0 && n < 150 ? Math.round(n) : null;
+  return Number.isFinite(n) && n >= 0 && n < 150 ? Math.round(n) : null;
 }
 
 // Coerce the model's structured `prescription` object into a typed

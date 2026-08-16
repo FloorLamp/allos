@@ -279,10 +279,35 @@ export function setProfileBirthdate(profileId: number, date: string | null) {
 // A stored age fallback (whole years) for the profile, used only when no birthdate
 // is known — e.g. a document states an age but no date of birth. A birthdate always
 // wins.
+//
+// ZERO IS A VALUE, NOT A SENTINEL (issue #2992). This used to require `n > 0`, so a
+// stored "0" read back as `null` — the SAME answer as "nothing recorded". Since this
+// is the fallback consulted when no birthdate is known, an infant with no DOB then
+// reached the UNKNOWN-age branch of every gate downstream (isMinor, food-logging
+// relevance, substance-use surfaces, mental-health screening), each of which defaults
+// unknown → eligible/adult per lib/life-stage's documented positive-match-only policy.
+// So the one profile the gates most need to recognise was the one they could not see.
+// 0 is an ordinary recorded age here — the app has an infant branch in FoodTab, WHO
+// growth curves from 0, and pediatric flag banding — and `lifeStage(0)` is already
+// "infant", so accepting it is all that was needed downstream.
+//
+// `null` now means exactly one thing: no usable age is recorded. The remaining guards
+// are sanity checks on the STORED STRING, and they are deliberately written so that
+// none of them can swallow a newborn:
+//   • blank/whitespace is rejected BEFORE Number() — `Number("")` and `Number(" ")`
+//     are both 0, so a bare `n >= 0` would newly read an empty value as an infant and
+//     hide the food logger on a profile whose age is simply unknown. The `n > 0` bound
+//     used to mask that by accident; the trim guard makes it explicit.
+//   • the upper bound (< 150) and the integer/negative checks stay — they reject values
+//     no real age can take, which a newborn's "0" is not.
+// Junk that is genuinely indistinguishable from 0 is rejected at the WRITE boundary
+// (normalizeAge, and the onboarding/settings validators) where the provenance is known,
+// rather than here where it is not.
 export function getStoredAge(profileId: number): number | null {
-  const v = getProfileSetting(profileId, "age");
-  const n = v != null ? Number(v) : NaN;
-  return Number.isInteger(n) && n > 0 && n < 150 ? n : null;
+  const v = getProfileSetting(profileId, "age")?.trim();
+  if (!v) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n < 150 ? n : null;
 }
 
 export function setStoredAge(profileId: number, age: number | null) {

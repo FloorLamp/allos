@@ -168,8 +168,20 @@ describe("normalizeAge", () => {
     expect(normalizeAge(45.6)).toBe(46);
   });
 
+  // Issue #2992. This assertion used to read `expect(normalizeAge(0)).toBeNull()`,
+  // pinning the defect: an infant's age in whole years IS zero, so dropping it here
+  // discarded the one demographic the life-stage gates most need. Kept as its own
+  // case so the intent is not mistaken for a relaxed sanity bound.
+  it("accepts 0 — an infant's age in whole years", () => {
+    expect(normalizeAge(0)).toBe(0);
+    expect(normalizeAge("0")).toBe(0);
+    // A stated fractional age under half a year rounds to 0 rather than being
+    // dropped. Under the old `n > 0` bound this already returned 0 while a flat 0
+    // returned null, which is what made #2992 reachable in shipped code.
+    expect(normalizeAge(0.4)).toBe(0);
+  });
+
   it("rejects absent or implausible ages", () => {
-    expect(normalizeAge(0)).toBeNull();
     expect(normalizeAge(-3)).toBeNull();
     expect(normalizeAge(200)).toBeNull();
     expect(normalizeAge("")).toBeNull();
