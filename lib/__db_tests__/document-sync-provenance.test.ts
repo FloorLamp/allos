@@ -37,6 +37,7 @@ import {
   bindPortalIdentity,
   createPortal,
   createPortalAccount,
+  remapPortalIdentity,
   type PortalAccount,
 } from "@/lib/portals";
 import { getSyncRowProvenance } from "@/lib/queries/integrations";
@@ -62,6 +63,8 @@ const LABEL_TWO = "DELIVERY TWO";
 const LABEL_SIBLING = "DELIVERY SIBLING";
 // A third patient on LOGIN ONE, bound to the SAME profile as LABEL_ONE.
 const LABEL_ALIAS = "DELIVERY ALIAS";
+// A patient on LOGIN TWO whose binding is later re-pointed at a different person.
+const LABEL_REMAP = "DELIVERY REMAP";
 
 // A minimal but genuine PDF — the engine sniffs magic bytes, so a file claiming .pdf
 // must actually start with %PDF- or it is (correctly) refused.
@@ -414,6 +417,49 @@ describe("one login, two patients: nobody's documents go unclaimed (#2914)", () 
     const run = await reportRun(accountOne, LABEL_ONE);
     expect(claimedDocuments(run)).toEqual([mine]);
     expect(claimedAnywhere(theirs)).toBe(0);
+  });
+});
+
+describe("re-pointing a binding never re-attributes an archive (#2999)", () => {
+  it("leaves the previous person's documents where they are, claimed by nobody", async () => {
+    // A binding is a mapping from a portal's patient LABEL to a person, and a household
+    // can move it (#1747/#2103's compare-and-swap) — the portal started rendering a name
+    // that turns out to be somebody else. `remapPortalIdentity` updates the row IN PLACE,
+    // so the identity id a document already carries now points at a DIFFERENT profile.
+    //
+    // The claim's own `profile_id` filter is what makes that safe, and this is the
+    // property to attack: the archive belongs to the person it landed for, and the
+    // re-pointed identity must not drag it into the new person's run. It becomes
+    // unclaimable rather than re-attributed, which is the honest outcome — nobody can
+    // truthfully say whose delivery it was any more.
+    expect(bindPortalIdentity(accountTwo.id, LABEL_REMAP, profileTwo).ok).toBe(
+      true
+    );
+    const theirs = await upload(accountTwo, LABEL_REMAP, "remapped-b3.pdf");
+    spaceUploads([theirs], 10);
+    const identityId = (
+      db
+        .prepare(
+          "SELECT acquired_identity_id AS id FROM medical_documents WHERE id = ?"
+        )
+        .get(theirs) as { id: number }
+    ).id;
+
+    expect(remapPortalIdentity(identityId, profileTwo, bystanderProfile)).toBe(
+      true
+    );
+
+    const run = await reportRun(accountTwo, LABEL_REMAP);
+    expect(claimedDocuments(run)).toEqual([]);
+    expect(claimedAnywhere(theirs)).toBe(0);
+    // The document did not move either — only the label's mapping did.
+    expect(
+      db
+        .prepare("SELECT profile_id AS p FROM medical_documents WHERE id = ?")
+        .get(theirs)
+    ).toEqual({ p: profileTwo });
+    // And the new person's run resolves nothing of theirs.
+    expect(getSyncRowProvenance(bystanderProfile, run)).toEqual([]);
   });
 });
 
