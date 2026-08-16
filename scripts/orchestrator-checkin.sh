@@ -341,14 +341,32 @@ if [ ! -s "$WAKE_FILE" ]; then
   echo "      echo '<fire_at ISO> <trigger_id>' > $WAKE_FILE"
   alarms=1
 else
-  wake_at=$(awk '{print $1}' "$WAKE_FILE")
-  wake_id=$(awk '{print $2}' "$WAKE_FILE")
+  # Tolerate a leading `next:` label, because the check-in PRINTS the armed wake
+  # as "next: <ISO> <id>" and an orchestrator copying its own output back into
+  # the file is the obvious mistake — one that made this alarm lie for a whole
+  # session (2026-08-16). `awk '{print $1}'` read "next:", `date -d` refused it,
+  # `|| echo 0` turned that refusal into epoch 0, and 0 is in the past — so a
+  # correctly-armed wake reported as lapsed at every check-in. Three redundant
+  # one-shot triggers were armed chasing it.
+  wake_at=$(awk '{ if ($1 == "next:") print $2; else print $1 }' "$WAKE_FILE")
+  wake_id=$(awk '{ if ($1 == "next:") print $3; else print $2 }' "$WAKE_FILE")
   now_s=$(date -u +%s)
-  wake_s=$(date -u -d "$wake_at" +%s 2>/dev/null || echo 0)
-  if [ "$wake_s" -gt "$now_s" ]; then
-    printf "  next: %s (in %dm) %s\n" "$wake_at" $(((wake_s - now_s) / 60)) "$wake_id"
+  # MALFORMED IS NOT PAST. Collapsing an unparseable timestamp into "past" is the
+  # ignorable-alarm failure this script exists to avoid: both answers say "re-arm",
+  # but re-arming cannot fix a format the reader cannot parse, so the alarm repeats
+  # after the fix and teaches its reader to skip it. Keep the two distinguishable.
+  if wake_s=$(date -u -d "$wake_at" +%s 2>/dev/null); then
+    if [ "$wake_s" -gt "$now_s" ]; then
+      printf "  next: %s (in %dm) %s\n" "$wake_at" $(((wake_s - now_s) / 60)) "$wake_id"
+    else
+      echo "  *** WAKE IS IN THE PAST ($wake_at) — nothing future is armed. Re-arm send_later NOW. ***"
+      alarms=1
+    fi
   else
-    echo "  *** WAKE IS IN THE PAST ($wake_at) — nothing future is armed. Re-arm send_later NOW. ***"
+    echo "  *** WAKE FILE IS MALFORMED — cannot tell whether anything is armed. ***"
+    echo "      unparseable as a date: '$wake_at'"
+    echo "      expected: <fire_at ISO> <trigger_id>   (a leading 'next:' is also accepted)"
+    echo "      found:    $(head -c 120 "$WAKE_FILE")"
     alarms=1
   fi
 fi

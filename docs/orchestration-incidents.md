@@ -445,3 +445,25 @@ rewrap changing no runtime behavior, so the script now re-runs only those three
 after a rewrite and the cost stays seconds. The agent diagnosed this itself and
 declined to edit shared tooling outside its dispatch, which was the right call
 and is why the finding arrived intact.
+
+## The wake alarm that lied for a session (2026-08-16)
+
+`orchestrator-checkin.sh` §4 read the wake file with `awk '{print $1}'` and
+expected a bare `<ISO> <trigger id>`. The check-in PRINTS the armed wake as
+`next: <ISO> <id>`, so an orchestrator recording its own output wrote the label
+into the file. `date -d "next:"` refused it, `|| echo 0` turned that refusal into
+epoch 0, and 0 is always in the past — so a correctly-armed wake reported as
+lapsed at EVERY check-in for a whole session. Three redundant one-shot triggers
+were armed chasing it, and two had to be deleted.
+
+Two defects, one line apart. The parser was brittle about the one mistake its own
+output invites. And the fallback collapsed "cannot parse this" into "this is in
+the past" — two states whose advice sounds identical ("re-arm") but is not:
+re-arming cannot fix a format the reader cannot parse, so the alarm survives the
+fix and teaches its reader to skip it. That is the canary failure in its third
+costume — an alarm that fires when nothing is wrong.
+
+Now the label is accepted, and an unparseable file says so, prints what it found,
+and prints the shape it wanted. Verified against five controls before shipping,
+per the canary section's last lesson: absent, future bare, future labelled,
+genuinely past, and malformed.
