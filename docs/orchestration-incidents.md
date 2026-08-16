@@ -179,10 +179,21 @@ the first, one `git add -A` from being committed into itself. Nothing broke;
 
 ## gitleaks — what actually triggers it (#2409)
 
-CI's gitleaks runs over the refs in that job's checkout (its branch + main), so
-a finding on one feature branch left every other open PR green — blast radius
-is one branch _until it merges_, at which point the blob is in every checkout
-and only rewriting published main history removes it. The trigger is an
+**The blast radius is the whole repository, not one branch (#2949).** This
+section used to say the scan covered "its branch + main", so a finding on one
+feature branch left every other open PR green. That stopped being true when the
+job moved to `--log-opts="--all"` over a `fetch-depth: 0` checkout, which
+fetches every remote branch into `refs/remotes/origin/*`. Reproduced: a commit
+unreachable from the PR head is reported on a PR whose tree does not contain
+the file at all. One branch's credential-shaped fixture reds `gitleaks` on
+**every open PR**, naming a file none of them touched, until that branch is
+rebased or deleted. A follow-up commit that DELETES the literal does not clear
+it — the scan reads COMMITS, not tips. Believing the old sentence is what made
+the incident confusing, so the job now explains itself
+(`scripts/gitleaks-explain.mjs`) instead of relying on this page being read.
+
+Once it merges the blob is in every checkout and only rewriting published main
+history removes it. The trigger is an
 identifier `generic-api-key` recognizes + an entropy threshold + a word-shape
 filter, and **entropy alone does not predict it**: measured on three sibling
 values in one file, `omega3-anticoagulant` (3.522) FIRED while
