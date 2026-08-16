@@ -80,6 +80,73 @@ describe("the registry is complete and consistent with its siblings", () => {
   });
 });
 
+describe("the session-logged tier (#2871)", () => {
+  // A metric that accrues from LOGGED SESSIONS is not a device going quiet.
+  // The stream tier's 2 days answers "the watch stopped reporting"; asked of
+  // outdoor time it answers a different question, and answers it wrongly — an
+  // ordinary logging rhythm shattered a 77-day window into eleven grey bands.
+  //
+  // Owner amendment on #2830 (2026-08-14): a session tier is sanctioned for
+  // exactly this, and for nothing wider.
+
+  it("sun sits above the stream, and still inside its continuity span", () => {
+    expect(METRIC_GAP_LIMIT_DAYS.sun).toBeGreaterThan(
+      METRIC_GAP_LIMIT_DAYS.steps
+    );
+    // The invariant, restated at the metric that moved: a hole longer than the
+    // span the stroke may fairly cross must always be named.
+    expect(METRIC_GAP_LIMIT_DAYS.sun).toBeLessThanOrEqual(
+      METRIC_CONTINUITY_DAYS.sun
+    );
+  });
+
+  it("every device-reported metric keeps the stream limit", () => {
+    // The half of #2830's ruling that still stands, pinned so the tier cannot
+    // widen by accident: a worn or connected device that goes quiet for three
+    // days is still three quiet days worth naming.
+    const stream = METRIC_GAP_LIMIT_DAYS.steps;
+    for (const id of [
+      "steps",
+      "hr",
+      "hrv",
+      "resting_hr",
+      "hydration",
+      "skin-temp",
+      "peak-flow",
+    ]) {
+      expect(METRIC_GAP_LIMIT_DAYS[id], id).toBe(stream);
+    }
+  });
+
+  it("stops minting a hole every third day on an ordinary rhythm", () => {
+    // Eleven weeks, sessions on two days of each — the shape behind the reported
+    // screenshot. On the stream limit every one of those ordinary weekday
+    // stretches was an outage; on sun's own limit none of them is.
+    const rhythm = Array.from({ length: 77 }, (_, i) =>
+      i % 7 < 2 ? 45 : null
+    );
+    const series = days("2026-05-31", rhythm);
+    const limit = gapLimitDaysForSeriesKey("metric:sun");
+    expect(overLimitHoles(series, 2).length).toBe(11);
+    expect(overLimitHoles(series, limit)).toEqual([]);
+  });
+
+  it("still names a silence that is long for a session-logged series", () => {
+    // Not "never speaks": a fortnight with no outdoor session at all is a real
+    // silence, and the band and its count still say so.
+    const series = days("2026-05-31", [
+      45,
+      ...Array.from({ length: 14 }, () => null),
+      50,
+    ]);
+    const holes = overLimitHoles(
+      series,
+      gapLimitDaysForSeriesKey("metric:sun")
+    );
+    expect(holes.map((h) => h.days)).toEqual([14]);
+  });
+});
+
 describe("bridge-with-limit is opt-in and changes nothing else", () => {
   it("only the daily check-ins opted in", () => {
     const optedIn = Object.entries(METRIC_GAP)
