@@ -221,8 +221,15 @@ export interface CumulativeDose {
   windowYears: number | null; // null = all records, no trailing window
   since: string | null; // window start (inclusive); null when all records
   // The oldest CONTRIBUTING study's date — what the headline's completeness caveat
-  // names ("since Apr 2021"). Null when nothing contributed.
+  // names ("since Apr 2021"). Null when nothing contributed, and null when the oldest
+  // contributing study is in the FUTURE: a record that starts next year has no "since"
+  // (#2970), and "From your records, since January 1, 2099." is not a sentence.
   earliest: string | null;
+  // Every mSv figure below is the exact sum of the figures its ROWS print, and this is
+  // the number of decimals they were rounded at — so a surface prints these totals with
+  // formatScopeMsv and the reader's addition comes out (#2970 R5). 0 when nothing
+  // contributed.
+  decimals: number;
   recordedMsv: number;
   recordedCount: number;
   estimatedMsv: number;
@@ -241,17 +248,22 @@ export function cumulativeDose(
   let estimatedMsv = 0;
   let estimatedCount = 0;
   let earliest: string | null = null;
+  let decimals = 0;
 
   for (const s of studies) {
     if (!s.study_date) continue;
     if (since != null && s.study_date < since) continue;
     const verdict = classifyStudy(s);
     if (!("counts" in verdict)) continue;
+    // ROUND ONCE, AT THE ROW. The fold adds the figure the row PRINTS, never the raw
+    // one, so the total is the sum of what the reader can see (#2970 R5).
+    const shown = displayMsv(verdict.dose.msv);
+    decimals = Math.max(decimals, msvDecimals(verdict.dose.msv));
     if (verdict.dose.source === "recorded") {
-      recordedMsv += verdict.dose.msv;
+      recordedMsv += shown;
       recordedCount++;
     } else {
-      estimatedMsv += verdict.dose.msv;
+      estimatedMsv += shown;
       estimatedCount++;
     }
     if (earliest == null || s.study_date < earliest) earliest = s.study_date;
@@ -260,10 +272,12 @@ export function cumulativeDose(
   return {
     windowYears,
     since,
-    earliest,
-    recordedMsv: round(recordedMsv),
+    earliest: earliest != null && earliest > now ? null : earliest,
+    decimals,
+    // Both sums are exact at `decimals` by construction; this only trims float noise.
+    recordedMsv: roundTo(recordedMsv, decimals),
     recordedCount,
-    estimatedMsv: round(estimatedMsv),
+    estimatedMsv: roundTo(estimatedMsv, decimals),
     estimatedCount,
     hasAnyDose: recordedCount > 0 || estimatedCount > 0,
   };
@@ -348,7 +362,7 @@ export function doseContributions<S extends DoseStudyInput>(
 // (the UI shows it as "≈" whenever estimatedCount > 0). Kept as a derived helper so no
 // surface sums the two by hand.
 export function combinedMsv(cum: CumulativeDose): number {
-  return round(cum.recordedMsv + cum.estimatedMsv);
+  return roundTo(cum.recordedMsv + cum.estimatedMsv, cum.decimals);
 }
 
 // Whether the combined figure must read as an estimate (any estimated component).
@@ -428,23 +442,47 @@ export function doseExclusionNote(reason: DoseExclusionReason): string {
   }
 }
 
-// Format an mSv figure for display, at THREE SIGNIFICANT FIGURES — so a 0.1 mSv chest
-// X-ray never rounds to 0, and a 1.44 mSv recorded dose is not flattened to 1.4. Pure.
-//
-// The precision is what lets the card add up (#2970 R5). The breakdown puts the rows
-// beside the total, so a reader can check the addition, and a fixed one-decimal display
-// broke it in the ordinary direction: three recorded 1.44 mSv studies printed rows of
-// 1.4 under a headline of 4.3. Rare while every recorded dose is NULL, and the common
-// case the moment structured dose capture lands. Three significant figures is more than
-// any curated entry or reported dose carries, so the rows and the headline agree.
-export function formatMsv(msv: number): string {
-  if (msv <= 0) return "0 mSv";
-  const decimals = Math.min(20, Math.max(0, 2 - Math.floor(Math.log10(msv))));
-  const fixed = msv.toFixed(decimals);
-  const trimmed = fixed.includes(".")
+// How many decimals ONE figure prints at: three significant figures, so a 0.1 mSv chest
+// X-ray never rounds to 0 and a 1.44 mSv recorded dose is not flattened to 1.4.
+function msvDecimals(msv: number): number {
+  if (msv <= 0) return 0;
+  return Math.min(20, Math.max(0, 2 - Math.floor(Math.log10(msv))));
+}
+
+// The VALUE a row prints — one dose rounded to its display precision. This is the whole
+// of the rounding: every total is a sum of these, so a figure is rounded exactly once,
+// where the reader can see it (#2970 R5).
+export function displayMsv(msv: number): number {
+  if (msv <= 0) return 0;
+  return Number(msv.toFixed(msvDecimals(msv)));
+}
+
+function trimZeros(fixed: string): string {
+  return fixed.includes(".")
     ? fixed.replace(/0+$/, "").replace(/\.$/, "")
     : fixed;
-  return `${trimmed} mSv`;
+}
+
+// Format ONE study's mSv figure — the chip on a list row and on a breakdown row, which
+// is why both surfaces print the same study identically. Pure.
+export function formatMsv(msv: number): string {
+  if (msv <= 0) return "0 mSv";
+  return `${trimZeros(msv.toFixed(msvDecimals(msv)))} mSv`;
+}
+
+// Format a SCOPE's figure — the headline, the recorded/estimated split, the 3-year lens.
+// Printed at the precision its rows were rounded at, and never re-rounded, because the
+// scope's total already IS the sum of those rows (#2970 R5).
+//
+// The card puts the decomposition beside the total, and rounding the rows independently
+// of the sum broke the addition in ordinary cases: two recorded 10.05 mSv CTs printed
+// rows of 10.1 under a headline of 20.1, and an estimate-only record of ten 10 mSv CTs
+// plus a 0.1 mSv chest X-ray printed rows summing to 100.1 under a headline of 100. A
+// re-rounded total is not an explanation of its parts, so the fold adds the printed
+// figures and this prints their sum — additive by construction, at every scope.
+export function formatScopeMsv(cum: CumulativeDose, msv: number): string {
+  if (msv <= 0) return "0 mSv";
+  return `${trimZeros(msv.toFixed(Math.min(20, cum.decimals)))} mSv`;
 }
 
 // The INFORMATIONAL framing line under the cumulative total. Deliberately calm and
@@ -468,9 +506,10 @@ export function doseFramingNote(pediatric: boolean): string {
   );
 }
 
-// Float-noise trim on a summed total (0.1 + 0.2 must not surface as 0.30000000000000004).
-// Six decimals, three finer than the display's three significant figures, so the fold
-// never rounds away precision the rows are still printing (#2970 R5).
-function round(n: number): number {
-  return Math.round(n * 1e6) / 1e6;
+// Float-noise trim on a sum of display-rounded rows (0.1 + 0.2 must not surface as
+// 0.30000000000000004). The rows are all multiples of 10^-decimals, so their exact sum
+// is too: this restores that value, it does not round anything away (#2970 R5).
+function roundTo(n: number, decimals: number): number {
+  const scale = 10 ** Math.min(20, decimals);
+  return Math.round(n * scale) / scale;
 }

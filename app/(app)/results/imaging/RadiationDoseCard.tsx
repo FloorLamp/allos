@@ -2,7 +2,7 @@ import {
   combinedMsv,
   isCombinedEstimated,
   backgroundEquivalentLabel,
-  formatMsv,
+  formatScopeMsv,
   doseFramingNote,
   doseChipLabel,
   doseSourceNote,
@@ -30,6 +30,12 @@ import type { ImagingStudy } from "@/lib/types";
 // The headline is ALL RECORDS and never ages downward; the trailing-3-year figure is a
 // secondary recent-intensity lens beside it. The disclosure is a native <details>, so
 // it opens with JS off and in-page find still reaches the rows.
+//
+// THE ADDITION HAS TO WORK. Every scope figure here — the headline, the recorded and
+// estimated split, the lens — goes through formatScopeMsv, which prints the sum of the
+// figures the rows print; the rows print formatMsv, the same chip the study list shows.
+// A total re-rounded independently of its rows disagreed with them in ordinary cases
+// (#2970 R5), and a decomposition whose parts do not add up is not an explanation.
 export default function RadiationDoseCard({
   breakdown,
   pediatric,
@@ -64,7 +70,7 @@ export default function RadiationDoseCard({
             className="text-2xl font-bold text-brand-700 dark:text-brand-300"
           >
             {estimated ? "≈ " : ""}
-            {formatMsv(total)}
+            {formatScopeMsv(allRecords, total)}
           </span>
           {estimated && (
             <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
@@ -102,7 +108,7 @@ export default function RadiationDoseCard({
                 Recorded:{" "}
               </dt>
               <dd className="inline font-medium">
-                {formatMsv(allRecords.recordedMsv)}{" "}
+                {formatScopeMsv(allRecords, allRecords.recordedMsv)}{" "}
                 <span className="font-normal text-slate-400">
                   ({allRecords.recordedCount}{" "}
                   {allRecords.recordedCount === 1 ? "study" : "studies"})
@@ -116,7 +122,7 @@ export default function RadiationDoseCard({
                 Estimated:{" "}
               </dt>
               <dd className="inline font-medium">
-                {formatMsv(allRecords.estimatedMsv)}{" "}
+                {formatScopeMsv(allRecords, allRecords.estimatedMsv)}{" "}
                 <span className="font-normal text-slate-400">
                   ({allRecords.estimatedCount}{" "}
                   {allRecords.estimatedCount === 1 ? "study" : "studies"})
@@ -131,7 +137,7 @@ export default function RadiationDoseCard({
               </dt>
               <dd className="inline font-medium">
                 {isCombinedEstimated(lens) ? "≈ " : ""}
-                {formatMsv(lensTotal)}
+                {formatScopeMsv(lens, lensTotal)}
               </dd>
             </div>
           )}
@@ -174,7 +180,10 @@ export default function RadiationDoseCard({
                   {studyDisplayLabel(c.study)}
                 </span>
                 {chip && (
-                  <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  <span
+                    data-testid="radiation-dose-contribution-figure"
+                    className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  >
                     {chip}
                   </span>
                 )}

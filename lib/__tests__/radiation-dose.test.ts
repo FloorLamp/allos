@@ -10,6 +10,7 @@ import {
   backgroundEquivalentLabel,
   windowStartDate,
   formatMsv,
+  formatScopeMsv,
   doseFramingNote,
   doseContributions,
   doseChipLabel,
@@ -653,20 +654,67 @@ describe("an undated study names the reason a date would actually fix (#2970 R2)
   });
 });
 
-// The figure printed on a row, read back as a number: "1.44 mSv" → 1.44.
-function msvFigure(formatted: string): number {
-  const m = /^([\d.]+) mSv$/.exec(formatted);
+// ── What a reader with a calculator does ───────────────────────────────────────────
+//
+// The figure PRINTED in a dose string, as text: "≈ 10.1 mSv est." → "10.1". Kept as a
+// string on purpose — the point of these assertions is the characters on the card.
+function printedFigure(formatted: string): string {
+  const m = /(\d[\d.]*) mSv/.exec(formatted);
   expect(m, `unparseable dose figure: ${formatted}`).not.toBeNull();
-  return Number(m![1]);
+  return m![1];
 }
+
+// Add printed figures the way a reader adds them: EXACT decimal arithmetic on the digits
+// shown, with no rounding of any kind, returning the canonical decimal string.
+//
+// The previous assertion re-formatted the row sum — `formatMsv(rowSum) === formatMsv(total)`
+// — and the final rounding erased the discrepancy the reader would see (#2970 R5): on an
+// estimate-only record of ten 10 mSv CTs plus a 0.1 mSv chest X-ray, rows summing to 100.1
+// under a headline of 100 mSv passed it. Nothing here may round.
+function addPrinted(figures: string[]): string {
+  const places = Math.max(
+    0,
+    ...figures.map((f) => (f.split(".")[1] ?? "").length)
+  );
+  let total = 0n;
+  for (const f of figures) {
+    const [whole, frac = ""] = f.split(".");
+    total += BigInt(whole + frac.padEnd(places, "0"));
+  }
+  const neg = total < 0n;
+  const digits = (neg ? -total : total).toString().padStart(places + 1, "0");
+  const whole = digits.slice(0, digits.length - places);
+  const frac = places > 0 ? digits.slice(digits.length - places) : "";
+  const trimmed = frac.replace(/0+$/, "");
+  return `${neg ? "-" : ""}${whole}${trimmed ? `.${trimmed}` : ""}`;
+}
+
+describe("addPrinted — the reader's arithmetic, which does not round", () => {
+  it("adds the digits as shown", () => {
+    expect(addPrinted(["10.1", "10.1"])).toBe("20.2");
+    expect(addPrinted(["10", "10", "0.1"])).toBe("20.1");
+    expect(addPrinted(["0.0005", "0.0005"])).toBe("0.001");
+    expect(addPrinted(["0"])).toBe("0");
+  });
+});
 
 describe("the headline equals the rows it names (#2970 R5)", () => {
   const now = "2026-08-15";
 
   // Putting the decomposition BESIDE the total is what makes a rounding disagreement
-  // visible, so the card owes the reader an addition that works: what the rows print
-  // must add up to what the headline prints.
+  // visible, so the card owes the reader an addition that works: the figures the rows
+  // print must add up, digit for digit, to the figure the headline prints.
+  //
+  // The three cases at the top are the ones the second adversarial pass reproduced
+  // against the shipped formatter — ordinary recorded CT doses (two decimals) and an
+  // estimate-only record with no recorded dose at all.
   const cases: { label: string; doses: (number | null)[] }[] = [
+    { label: "two recorded 10.05 mSv CTs", doses: [10.05, 10.05] },
+    { label: "two recorded 10.03 mSv CTs", doses: [10.03, 10.03] },
+    {
+      label: "nineteen recorded 16.45 mSv CTs",
+      doses: Array.from({ length: 19 }, () => 16.45),
+    },
     { label: "three recorded 1.44 mSv studies", doses: [1.44, 1.44, 1.44] },
     {
       label: "five recorded 0.0005 mSv studies",
@@ -676,6 +724,7 @@ describe("the headline equals the rows it names (#2970 R5)", () => {
       label: "three recorded 0.0004 mSv studies",
       doses: [0.0004, 0.0004, 0.0004],
     },
+    { label: "three recorded 1e-7 mSv studies", doses: [1e-7, 1e-7, 1e-7] },
     { label: "three estimated mammograms", doses: [null, null, null] },
   ];
 
@@ -693,13 +742,156 @@ describe("the headline equals the rows it names (#2970 R5)", () => {
         now
       );
       expect(b.contributions).toHaveLength(c.doses.length);
-      const rowSum = b.contributions.reduce(
-        (n, x) => n + msvFigure(formatMsv(x.dose.msv)),
-        0
+      const rows = b.contributions.map((x) =>
+        printedFigure(doseChipLabel(x.dose)!)
       );
-      expect(formatMsv(rowSum)).toBe(formatMsv(combinedMsv(b.allRecords)));
+      const headline = printedFigure(
+        formatScopeMsv(b.allRecords, combinedMsv(b.allRecords))
+      );
+      expect(addPrinted(rows)).toBe(headline);
     });
   }
+
+  it("adds up on a record with no recorded dose at all", () => {
+    // Ten CT abdomen/pelvis (10 mSv each) and one chest X-ray (0.1) — every figure an
+    // estimate, which is what shipped records look like today. The rows print 100.1;
+    // the headline printed 100.
+    const studies = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        idStudy(i + 1, {
+          modality: "ct",
+          body_region: "Abdomen and pelvis",
+          study_date: "2025-01-01",
+        })
+      ),
+      idStudy(11, {
+        modality: "x-ray",
+        body_region: "Chest",
+        study_date: "2025-02-01",
+      }),
+    ];
+    const b = doseContributions(studies, now);
+    expect(b.contributions).toHaveLength(11);
+    const rows = b.contributions.map((x) =>
+      printedFigure(doseChipLabel(x.dose)!)
+    );
+    expect(addPrinted(rows)).toBe("100.1");
+    expect(
+      printedFigure(formatScopeMsv(b.allRecords, combinedMsv(b.allRecords)))
+    ).toBe("100.1");
+  });
+
+  it("adds up across the card FACE: recorded + estimated is the headline", () => {
+    // The same break one line down: `Recorded: 100 mSv` + `Estimated: 0.4 mSv` under a
+    // headline of `≈ 100 mSv`. The split is printed at the same precision as the total.
+    const b = doseContributions(
+      [
+        ...Array.from({ length: 10 }, (_, i) =>
+          idStudy(i + 1, {
+            modality: "ct",
+            body_region: "Abdomen and pelvis",
+            dose_msv: 10.05,
+            study_date: "2025-01-01",
+          })
+        ),
+        idStudy(11, {
+          modality: "x-ray",
+          body_region: "Breast",
+          study_date: "2025-02-01",
+        }),
+      ],
+      now
+    );
+    const { allRecords } = b;
+    expect(allRecords.recordedCount).toBe(10);
+    expect(allRecords.estimatedCount).toBe(1);
+    const split = [
+      printedFigure(formatScopeMsv(allRecords, allRecords.recordedMsv)),
+      printedFigure(formatScopeMsv(allRecords, allRecords.estimatedMsv)),
+    ];
+    const headline = printedFigure(
+      formatScopeMsv(allRecords, combinedMsv(allRecords))
+    );
+    expect(addPrinted(split)).toBe(headline);
+    // …and the rows the reader can see add to the same figure.
+    expect(
+      addPrinted(b.contributions.map((x) => printedFigure(doseChipLabel(x.dose)!)))
+    ).toBe(headline);
+  });
+
+  it("adds up for the 3-year lens over the rows inside it", () => {
+    // The lens is a second total on the same card, over a subset of the same rows, so
+    // it owes the reader the same addition.
+    const b = doseContributions(
+      [
+        idStudy(1, {
+          modality: "ct",
+          body_region: "Chest",
+          dose_msv: 10.05,
+          study_date: "2025-01-01",
+        }),
+        idStudy(2, {
+          modality: "ct",
+          body_region: "Chest",
+          dose_msv: 10.05,
+          study_date: "2024-06-01",
+        }),
+        idStudy(3, {
+          modality: "ct",
+          body_region: "Chest",
+          dose_msv: 10.05,
+          study_date: "2019-01-01",
+        }),
+      ],
+      now
+    );
+    const inLens = b.contributions.filter((c) => c.date >= b.window.since!);
+    expect(inLens).toHaveLength(2);
+    expect(
+      addPrinted(inLens.map((x) => printedFigure(doseChipLabel(x.dose)!)))
+    ).toBe(printedFigure(formatScopeMsv(b.window, combinedMsv(b.window))));
+  });
+});
+
+describe("a future-dated study is not a date the record reaches back to (#2970)", () => {
+  const now = "2026-08-15";
+
+  it("says nothing about 'since' when the only contributing study is in the future", () => {
+    // A CT typed as 2099-01-01 made the card say "From your records, since January 1,
+    // 2099." The dose still counts — whether a future date should reach the fold at all
+    // is the form's question, and the form now caps the field at today.
+    const b = doseContributions(
+      [
+        idStudy(1, {
+          modality: "ct",
+          body_region: "Chest",
+          study_date: "2099-01-01",
+        }),
+      ],
+      now
+    );
+    expect(b.allRecords.hasAnyDose).toBe(true);
+    expect(b.allRecords.earliest).toBeNull();
+  });
+
+  it("still names the oldest study that has actually happened", () => {
+    const b = doseContributions(
+      [
+        idStudy(1, {
+          modality: "ct",
+          body_region: "Chest",
+          study_date: "2099-01-01",
+        }),
+        idStudy(2, {
+          modality: "x-ray",
+          body_region: "Chest",
+          study_date: "2021-04-02",
+        }),
+      ],
+      now
+    );
+    expect(b.allRecords.earliest).toBe("2021-04-02");
+  });
 });
 
 describe("the non-ionizing set is what carries the claim (#2970 R6)", () => {
