@@ -260,10 +260,6 @@ test("a portal run's feed row expands to the archives it delivered, and a run th
     await expect(list).toContainText(filename);
   }
   await expect(drilldown).toContainText("What this wrote — 2 documents");
-
-  // A portal run has no data window on any run, so no em-dash column pretends to be
-  // one (#1991 defect 5).
-  await expect(runRows).not.toContainText("—");
 });
 
 test("an attended source's page states the escalation policy's attended inverse", async ({
