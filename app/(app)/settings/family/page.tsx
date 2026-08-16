@@ -100,6 +100,12 @@ export default async function FamilySettingsPage() {
         summaries={summaries}
         sessionCounts={sessionCounts}
         canInvite={canInvite}
+        // Which row is YOU (#2908). Three of this screen's actions end THIS device's
+        // session when they are aimed at your own login, and the device-local wipe can
+        // only be performed by a document on the device — so the client has to be able
+        // to recognise itself. It is an id the caller already knows about themselves,
+        // not a capability: every one of these actions re-derives the actor server-side.
+        selfLoginId={login.id}
       />
     </SettingsGroupLayout>
   );

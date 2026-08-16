@@ -7,46 +7,11 @@ import Nav from "@/components/Nav";
 import { openGlobalSearch } from "@/components/CommandPalette";
 import Wordmark from "@/components/Wordmark";
 import ProfileIdentityBar from "@/components/ProfileIdentityBar";
-import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { unstable_rethrow } from "next/navigation";
-import { clearQueue } from "@/lib/offline/queue-db";
-import { reopenForFailedLogout } from "@/lib/offline/write-gate";
-
-// How long the probe may take before its answer stops being worth waiting for.
-//
-// A DEAD LINK AND A FLAKY ONE ARE DIFFERENT FAILURES, and only the first is fast. A
-// refused connection rejects immediately; a link that accepts the connection and then
-// stops carrying it sits for the browser's own connect/read timeout, which is minutes.
-// Everything downstream waits behind that: the undo does not run, and the rethrow that
-// puts the person on the error boundary does not happen either — so the gate is shut,
-// the screen is unchanged, and there is no feedback at all, in exactly the no-signal case
-// this recovery exists for. The bound fails in the right direction: abort → catch →
-// "not gone" → the undo runs (see R-A5 in e2e/offline-write-gate.spec.ts, which hangs the
-// probe and watches the gate re-open anyway).
-const PROBE_TIMEOUT_MS = 5_000;
-
-/**
- * Has the server ENDED this session? The only answer that keeps the write gate closed
- * after a logout attempt that did not obviously succeed.
- *
- * `?probe` on the snapshots route, which is the app's one cookie-authoritative GET —
- * `getCurrentSession()` rather than the coarse middleware cookie check — and answers the
- * auth question without building or returning a single payload. Only a positive 401/403
- * counts: any other status, any network failure, and the timeout above leave the
- * session's fate unknown, and unknown must not brick the device.
- */
-async function sessionEndedOnServer(): Promise<boolean> {
-  try {
-    const res = await fetch("/api/offline-snapshots?probe=1", {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
-    return res.status === 401 || res.status === 403;
-  } catch {
-    return false;
-  }
-}
+import {
+  reopenUnlessSessionEnded,
+  wipeDeviceForSignOut,
+} from "@/components/device-wipe";
 import { logoutAction } from "@/app/(app)/session-actions";
 import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
@@ -162,19 +127,9 @@ export default function SidebarContent({
 }) {
   const logoutFormRef = useRef<HTMLFormElement>(null);
 
-  // Wipe this device's PHI, THEN log out.
-  //
-  // Three stores go: the emergency card copy (#42, localStorage — synchronous, which
-  // is why this race never showed before), any queued offline writes plus their
-  // dead-letter entries and form drafts (#28/#475/#1699), and the offline read
-  // snapshots (#2908). clearQueue's own transaction covers the snapshot store too, so
-  // the wipe holds even if this call site drifts.
-  //
-  // BOUNDED, and it logs out either way. A wedged or blocked IndexedDB must never trap
-  // someone in a session they asked to leave — the server-side logout is what actually
-  // ends the session, and it is not optional. If the wipe cannot finish in time the
-  // logout still proceeds, and the next authenticated visit's identity check wipes what
-  // is left.
+  // Wipe this device's PHI, THEN log out. `wipeDeviceForSignOut` (components/device-wipe)
+  // is the shared one — the family screen's "delete your own login" and "sign my login out
+  // of every device" end this device's session too and call exactly the same thing.
   //
   // WHAT DOES NOT COVER THE LEFTOVER, corrected here because the claim was made and was
   // false: /offline does NOT refuse to render it. `resolveSnapshotProfile` refuses a
@@ -198,15 +153,7 @@ export default function SidebarContent({
   // and it stays closed until a DIFFERENT session opens it — not merely until some tab
   // mounts, because every tab open right now is about to do exactly that.
   async function logoutAfterWipe(): Promise<void> {
-    clearEmergencyPayload();
-    try {
-      await Promise.race([
-        clearQueue(),
-        new Promise((resolve) => setTimeout(resolve, 2000)),
-      ]);
-    } catch {
-      /* the logout below is not conditional on the wipe succeeding */
-    }
+    await wipeDeviceForSignOut();
     logoutFormRef.current?.requestSubmit();
   }
 
@@ -295,7 +242,7 @@ export default function SidebarContent({
       await logoutAction();
     } catch (err) {
       unstable_rethrow(err);
-      if (!(await sessionEndedOnServer())) await reopenForFailedLogout();
+      await reopenUnlessSessionEnded();
       throw err;
     }
   }

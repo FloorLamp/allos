@@ -41,8 +41,27 @@ const subscribeToEmergencyCard = () => () => {};
 // between profiles, so there is no picker: the page renders the profile that was active
 // at capture, and if the store somehow holds more than one profile's payloads it
 // renders NONE of them (resolveSnapshotProfile answers null, and a mixed store means a
-// wipe failed to run). Logout and profile switch wipe both stores, so a stale card or
-// schedule never lingers for the next person holding the phone.
+// wipe failed to run).
+//
+// WHAT CLEARS THESE STORES, STATED EXACTLY, because this page renders WITHOUT A SESSION
+// and an overstated claim here is worse than none. Both stores are device-local, so only
+// a document running ON THIS DEVICE can clear them:
+//
+//   • CLEARED ON THE SPOT — log out, switch profile, turn the offline reads off, and (as
+//     of the pass-5 fix) the family screen's three self-aimed actions: delete your own
+//     login, sign your own login out of every device, reset your own password. All of
+//     them run here, in a document, and call components/device-wipe.
+//   • NOT CLEARED — every session destroyed from SOMEWHERE ELSE. An admin revoking this
+//     phone, "Sign out everywhere else" pressed on a laptop, a password reset completed
+//     from another device. This device is not running any code at that moment, so the
+//     five snapshot payloads, the emergency card copy, the queue and its drafts all stay,
+//     and the write gate stays open — and this page keeps rendering them, session-free,
+//     for whoever is holding the phone.
+//
+// The residue lasts until this device next reaches the server, and a 401 alone is
+// deliberately NOT taken as the signal to wipe: an expired session and a revoked one are
+// identical from here, and wiping on expiry would evaporate the record for someone who
+// simply came back tomorrow. Closing that gap needs a mechanism, not a call — issue #3053.
 export default function OfflinePage() {
   const emergencyRaw = useSyncExternalStore(
     subscribeToEmergencyCard,

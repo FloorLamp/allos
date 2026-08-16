@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { unstable_rethrow } from "next/navigation";
 import Avatar from "@/components/Avatar";
+import {
+  reopenAfterRefusedSignOut,
+  reopenUnlessSessionEnded,
+  wipeDeviceForSignOut,
+} from "@/components/device-wipe";
 import NotifyScopeEditor from "@/components/NotifyScopeEditor";
 import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -78,6 +84,7 @@ export default function FamilyManager({
   summaries,
   sessionCounts,
   canInvite,
+  selfLoginId,
 }: {
   profiles: Profile[];
   logins: Login[];
@@ -88,6 +95,10 @@ export default function FamilyManager({
   // Whether the instance can send login-lifecycle mail (SMTP + public URL set).
   // Gates the invite affordances; false hides them (Settings → Server sets it up).
   canInvite: boolean;
+  // The caller's own login id — see the note at the call site in page.tsx. Only
+  // LoginsCard uses it, and only to decide whether an action aimed at a row is aimed at
+  // THIS DEVICE's session (#2908).
+  selfLoginId: number;
 }) {
   return (
     <div className="max-w-3xl space-y-6">
@@ -103,6 +114,7 @@ export default function FamilyManager({
         grants={grants}
         sessionCounts={sessionCounts}
         canInvite={canInvite}
+        selfLoginId={selfLoginId}
       />
       <GrantsCard
         logins={logins}
@@ -388,12 +400,14 @@ function LoginsCard({
   grants,
   sessionCounts,
   canInvite,
+  selfLoginId,
 }: {
   logins: Login[];
   profiles: Profile[];
   grants: Record<number, number[]>;
   sessionCounts: Record<number, number>;
   canInvite: boolean;
+  selfLoginId: number;
 }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
@@ -480,6 +494,7 @@ function LoginsCard({
             sessionCount={sessionCounts[a.id] ?? 0}
             grantCount={(grants[a.id] ?? []).length}
             canInvite={canInvite}
+            isSelf={a.id === selfLoginId}
           />
         ))}
       </div>
@@ -622,6 +637,7 @@ function LoginRow({
   sessionCount,
   grantCount,
   canInvite,
+  isSelf,
 }: {
   login: Login;
   isLastAdmin: boolean;
@@ -631,6 +647,9 @@ function LoginRow({
   // row says so instead of leaving the admin with no signal at all.
   grantCount: number;
   canInvite: boolean;
+  // This row is the CALLER'S OWN login, so the three actions below that destroy its
+  // sessions destroy the one THIS DEVICE is holding (#2908). See the block above `del`.
+  isSelf: boolean;
 }) {
   const confirm = useConfirm();
   const [pending, start] = useTransition();
@@ -640,12 +659,36 @@ function LoginRow({
   const [emailOpen, setEmailOpen] = useState(false);
   const [email, setEmail] = useState(login.email ?? "");
 
+  // ── WHEN THE ROW IS YOU, THIS SCREEN SIGNS THIS DEVICE OUT ──────────────────────────
+  //
+  // Three of the actions below destroy sessions for the login in the row, and when that
+  // login is the caller's own they destroy the session THIS DOCUMENT is holding. The wipe
+  // that Log out performs is device-local by construction — IndexedDB and localStorage —
+  // so a Server Action cannot do it from the other end; only a document on the device can,
+  // and these three are running in one. `wipeDeviceForSignOut` is the same helper the
+  // sidebar's Log out calls (components/device-wipe.ts).
+  //
+  // The same-device half is all that is closed here. Aimed at ANOTHER login — or at your
+  // own login's OTHER devices — these actions still leave the record and the open write
+  // gate on a device this code is not running in. That is #3053, and it is a design fork
+  // rather than a missing call: the far device learns nothing until it next reaches the
+  // server, and what it gets then is a 401 indistinguishable from ordinary expiry.
+  //
+  // TWO SHAPES, because the actions answer differently:
+  //   • `resetPassword` and `revokeLoginSessions` RETURN after the sessions are gone, so
+  //     their own `ok` is the proof, and the wipe follows it. Nothing to undo.
+  //   • `deleteLogin` on self ends in `redirect("/login")` and therefore never returns a
+  //     value at all, so its wipe has to go FIRST — see the block above `del`.
   function reset() {
     const fd = new FormData();
     fd.set("id", String(login.id));
     fd.set("password", password);
     start(async () => {
       const r = await resetPassword(fd);
+      // A reset destroys EVERY session for the login, this one included — the action's
+      // own message says "existing sessions signed out". `r.ok` is the server saying it
+      // ran, so the device is wiped on the strength of that and nothing is bet.
+      if (isSelf && r.ok) await wipeDeviceForSignOut();
       setResult(r);
       if (r.ok) {
         setPassword("");
@@ -693,6 +736,11 @@ function LoginRow({
     fd.set("id", String(login.id));
     start(async () => {
       const r = await revokeLoginSessions(fd);
+      // "Sign out all devices" aimed at your own login includes the device you pressed it
+      // on. Same proof, same wipe — and this is the action whose own description is "on
+      // suspicion of compromise", so leaving the record on the device that just ran it
+      // was the sharpest version of the gap.
+      if (isSelf && r.ok) await wipeDeviceForSignOut();
       setResult(r);
     });
   }
@@ -714,9 +762,36 @@ function LoginRow({
     if (!ok) return;
     const fd = new FormData();
     fd.set("id", String(login.id));
+    // DELETING YOUR OWN LOGIN IS LOG OUT UNDER ANOTHER NAME — the action tears the session
+    // down and redirects to /login — so it takes Log out's posture verbatim, including the
+    // part that is a bet.
+    //
+    // The wipe goes FIRST because a successful self-delete never returns: it ends in
+    // `redirect("/login")`, which Next delivers as a REJECTED promise, so there is no
+    // "after" to wipe in. Wiping first also closes the device write gate before the request
+    // is sent, which is the point — this document stays mounted and authenticated for the
+    // whole round trip, and every other tab does too.
+    //
+    // AND THE CLOSE COMES BACK OFF IF THE DELETE DID NOT HAPPEN. Two ways to learn that,
+    // and they are not equally good:
+    //   • THE CALL RETURNED A VALUE. Success redirects, so a value is the server saying it
+    //     ran and refused (the last-admin guard, or a row already gone). Proof, not
+    //     inference — no probe.
+    //   • THE CALL THREW. Ambiguous, exactly as at Log out: the redirect arrives this way
+    //     and so does a dead network. `unstable_rethrow` lets the framework's control flow
+    //     leave untouched — a successful delete never reaches the line below it — and what
+    //     is left is asked of the server, because unreachable must not brick the device.
     start(async () => {
-      const r = await deleteLogin(fd);
-      setResult(r);
+      if (isSelf) await wipeDeviceForSignOut();
+      try {
+        const r = await deleteLogin(fd);
+        if (isSelf) await reopenAfterRefusedSignOut();
+        setResult(r);
+      } catch (err) {
+        unstable_rethrow(err);
+        if (isSelf) await reopenUnlessSessionEnded();
+        throw err;
+      }
     });
   }
 
