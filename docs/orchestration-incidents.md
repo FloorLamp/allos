@@ -598,3 +598,39 @@ fasting-specific. The app's generic delete is Data → Manage, per registered
 dataset, and fasting only reached it in #2981 as a side effect of the
 `OWNED_TABLES` right-to-delete fix. That was a registration gap. Editability was
 a scoped requirement — different failure, different fix.
+
+## The redundancy nobody observed (#2994, 2026-08-16)
+
+Four adversarial passes over one PR, each finding a real defect in the previous
+fix's new surface. The fourth is the one worth keeping, because it is the first
+that could not have been found by reading.
+
+The logout undo shipped with a comment stating its own invariant: _"TWO
+BARRIERS, and neither is trusted on its own"_ — the framework's
+`unstable_rethrow` first, the server probe second, the second existing
+precisely so that a framework which stopped rejecting on redirect could not make
+the first one the whole defence. The mechanism was right. Every gate was green:
+927 pure files, 720 db files, the changed e2e specs 17/17.
+
+The refuter deleted each barrier **separately** and re-ran the shipped suite.
+Both mutants passed everything. Neither mutant was equivalent — removing the
+rethrow widens the failure window from "response lost" to any successful logout
+followed by a drop; making the probe unconditional re-admits the previous
+round's blocker for every non-redirect rejection. The suite stayed green because
+the one test covering that path could not tell **which** barrier had stopped the
+undo.
+
+So the redundancy existed in the code and nowhere else. A second guard that no
+assertion distinguishes from the first is one mechanism and a comment — and the
+comment is the part that survives a refactor.
+
+**The rule this bought** (encoded in `adversarial-review-brief.mjs`'s METHOD, so
+it is asked on every high-stakes diff rather than remembered): if a diff claims
+redundancy, delete each half separately and run the suite. Each half needs an
+assertion that goes RED when only that half is removed. Show the mutant red —
+the fixed head being green is not evidence about either barrier.
+
+This is the session's dominant defect class one level up. The first three passes
+were guards _true of their own function and false of the system_; this one is a
+guard true of the system whose **backup** was unobservable. Same test:
+could this control have come out the other way?

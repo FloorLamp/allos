@@ -617,6 +617,15 @@ METHOD
   against an in-memory database). "I read the code and it looks right" is not a
   verdict — either you executed an attack or you say the attack you could not
   build and why.
+- IF THE DIFF CLAIMS REDUNDANCY, DELETE EACH HALF SEPARATELY AND RUN THE SUITE.
+  "Two barriers, and neither is trusted on its own" is a claim about the tests,
+  not about the code, and it is the one claim a reading can never check. On the
+  fourth pass over #2994 both halves of a logout guard — the framework rethrow
+  and the server probe — turned out to be individually deletable with the whole
+  shipped suite green, because the one test that covered the path could not tell
+  which half had stopped it. A redundancy nothing observes is one mechanism and
+  a comment. Each half needs an assertion that goes RED when only that half is
+  removed; show the mutant red, not the fixed head green.
 - Attack the boundaries the diff's own tests skip: the state that exists on a
   REAL upgraded database but not in a fresh fixture; the second concurrent
   writer; the rolled-back build meeting the new schema; the row a sweep or
