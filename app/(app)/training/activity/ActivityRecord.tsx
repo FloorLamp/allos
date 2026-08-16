@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { IconPencil, IconArrowUpRight } from "@tabler/icons-react";
+import PendingLink, { PendingIconSlot } from "@/components/PendingLink";
 import {
   useActivityEditor,
   useEditorDock,
@@ -95,13 +95,26 @@ export default function ActivityRecord({
     <div>
       <div className="mb-2 flex items-center justify-end gap-3">
         {host === "pane" && (
-          <Link
+          // The pane's door to the record's own page (#2983). It carries an
+          // icon, so the spinner takes the icon's box: nothing shifts, and the
+          // label the reader is aiming at is untouched.
+          <PendingLink
             href={trainingActivityPageHref(card.activity.id)}
-            data-testid="activity-pane-open"
+            label="activity page"
+            testId="activity-pane-open"
             className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
           >
-            Open <IconArrowUpRight className="h-4 w-4" aria-hidden />
-          </Link>
+            {(pending) => (
+              <>
+                Open{" "}
+                <PendingIconSlot
+                  pending={pending}
+                  size="h-4 w-4"
+                  icon={<IconArrowUpRight className="h-4 w-4" aria-hidden />}
+                />
+              </>
+            )}
+          </PendingLink>
         )}
         {canWrite && (
           <button

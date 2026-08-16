@@ -1,5 +1,6 @@
 import Link from "next/link";
 import HrefSelect from "@/components/HrefSelect";
+import { PendingTextLink } from "@/components/PendingLink";
 import {
   getCardioByActivity,
   getCyclingOverviewData,
@@ -311,16 +312,23 @@ export default async function AnalyzeSection({
                 />
               </div>
             </div>
-            <Link
+            {/* The header's drill-down door into a ride or an activity page.
+                Button-shaped and text-only, so it answers its own tap with the
+                overlay treatment (#2983). */}
+            <PendingTextLink
               href={
                 cyclingLens && view.latestActivityId != null
                   ? cyclingRideHref(view.latestActivityId, cyclingLens)
                   : view.latestHref
               }
+              label={
+                isCyclingOverview ? `latest ${cyclingNoun}` : "latest session"
+              }
+              testId="analyze-latest-link"
               className="btn-ghost h-10 justify-center"
             >
               {isCyclingOverview ? `Latest ${cyclingNoun}` : "Latest session"}
-            </Link>
+            </PendingTextLink>
           </div>
 
           {quickLinks.length > 0 && (

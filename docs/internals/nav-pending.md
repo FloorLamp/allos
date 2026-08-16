@@ -132,26 +132,64 @@ caller, so a new surface cannot adopt half the doctrine.
 
 The button-shaped navigation controls in the app, and what each one does now:
 
-| Surface                                                                          | Treatment                                                       |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `components/Nav.tsx` sidebar/drawer rows                                         | icon slot (#1956)                                               |
-| `components/MobileDock.tsx` dock slots                                           | icon slot (#2651)                                               |
-| `components/SegmentedControl.tsx` tabs                                           | icon slot (#1956)                                               |
-| `components/TimelineDayNav.tsx` day arrows                                       | icon slot (the chevron)                                         |
-| `components/TimelineDayNav.tsx` day swipe                                        | the same chevron, driven by the component's own `useTransition` |
-| `components/PaginationControls.tsx` link-mode Prev/Next                          | overlay                                                         |
-| `components/TimelineFilterLink.tsx` chips, range pills, #2657 month fold headers | overlay                                                         |
-| `app/(app)/settings/audit/page.tsx` pager                                        | overlay                                                         |
-| `app/(app)/settings/notify-log/page.tsx` pager                                   | overlay                                                         |
+| Surface                                                                               | Treatment                                                       |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `components/Nav.tsx` sidebar/drawer rows                                              | icon slot (#1956)                                               |
+| `components/MobileDock.tsx` dock slots                                                | icon slot (#2651)                                               |
+| `components/SegmentedControl.tsx` tabs                                                | icon slot (#1956)                                               |
+| `components/TimelineDayNav.tsx` day arrows                                            | icon slot (the chevron)                                         |
+| `components/TimelineDayNav.tsx` day swipe                                             | the same chevron, driven by the component's own `useTransition` |
+| `components/PaginationControls.tsx` link-mode Prev/Next                               | overlay                                                         |
+| `components/TimelineFilterLink.tsx` chips, range pills, #2657 month fold headers      | overlay                                                         |
+| `app/(app)/settings/audit/page.tsx` pager                                             | overlay                                                         |
+| `app/(app)/settings/notify-log/page.tsx` pager                                        | overlay                                                         |
+| `components/ui.tsx` `EmptyState` next-action buttons (#2983)                          | overlay                                                         |
+| `components/StatBox.tsx` linked value (#2983)                                         | overlay                                                         |
+| `app/(app)/training/OverviewSection.tsx` next-workout CTA (#2983)                     | overlay                                                         |
+| `app/(app)/training/OverviewSection.tsx` fitness-check strip door (#2983)             | overlay                                                         |
+| `app/(app)/training/activity/[id]/ActivityLedgerNav.tsx` back / older / newer (#2983) | icon slot (the chevron)                                         |
+| `app/(app)/training/activity/ActivityRecord.tsx` pane "Open" (#2983)                  | icon slot (the arrow)                                           |
+
+`label` is a lower-case noun phrase naming the DESTINATION, not the control's
+visible text: "previous page", "workout details", "older activity". Two shared
+components cannot know their destination and name their own slot instead —
+`StatBox` announces the tile ("Opening last trained") and `EmptyState` announces
+the action it offers.
 
 Everything else — cards, table rows, drill-downs, links inside a sentence, the
 ~100 files that import `next/link` directly — is covered by the floor below, on
 purpose. A link inside a sentence has nowhere to put a spinner, and giving each
-of them one is how an app ends up with six pending styles.
+of them one is how an app ends up with six pending styles. The training rows the
+#2983 sweep looked at and LEFT on the floor are the shape of that line: the
+recent-sessions date cells in `ExerciseDetailPanel`/`SportDetailPanel` (a cell in
+a row), the Training Log card's title link into a ride (the card's own heading),
+`ActivityCardMenu`'s "View ride details" (a menu item that unmounts on the click
+that would make it pending), and `TrainingLogRow` — which navigates nowhere at
+all: it opens the reading pane or expands in place, so there is no transition for
+`useLinkStatus` to report.
+
+The shared `?tab=` STRIP (`components/NavTabs.tsx`) is also still floor-only.
+Every hub in the app renders through it, so adopting the doctrine there is an
+app-wide change to tab behaviour rather than a training one, and it is the
+owner's call rather than a sweep's.
 
 The two settings pagers are a SECOND pager shape beside `PaginationControls`.
 They adopted the primitive rather than being consolidated, because consolidating
 them changes their copy and layout, which is a separate question from this one.
+
+### The raw anchors (#2983)
+
+Four in-app destinations were still reached through a raw `<a href>` rather than
+`<Link>`: the training overview's "next workout" CTA, `StatBox`'s linked value
+(the door into a ride and into a session's activity page), and the recent-session
+date cells in `ExerciseDetailPanel` and `SportDetailPanel`. Each was a FULL
+DOCUMENT LOAD out of the app shell, which is a correctness defect rather than a
+polish one: the running client is thrown away, none of the machinery above
+applies — no in-control pending, no indicator, no fetch guard — and on a dead
+network the service worker answers that document load with `/offline`. That is
+exactly the outcome the invariant above forbids. All four are soft navigations
+now; the two that are button-shaped also took a pending treatment, and the two
+that are row cells stayed on the floor.
 
 ### The floor: one indicator, with a threshold
 
