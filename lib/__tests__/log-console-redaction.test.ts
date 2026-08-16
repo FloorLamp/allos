@@ -132,15 +132,20 @@ describe("console echo redaction (#1882)", () => {
   });
 
   it("keeps the JSON line parseable when masking would break the shape", () => {
-    // A sensitive key holding a NUMBER masks to an unquoted `***`, which is not
-    // valid JSON — the fallback emits the masked text as one string field rather
-    // than shipping a broken line to a log aggregator.
+    // The line has to stay parseable for a log aggregator. redactBag masks the
+    // SERIALIZED bag and re-parses it, so a mask that invalidates the JSON
+    // costs every field in the line, not just the masked one. That is why a
+    // sensitive key holding a NUMBER is left alone (#2938 — a count is not a
+    // credential) while the string beside it is still masked. lib/log.ts keeps
+    // its `{redacted: …}` fallback for bags that cannot survive the round trip.
     process.env.LOG_FORMAT = "json";
     log.error("session expired", { session: 42, token: FAKE_TOKEN });
     const line = only();
     expect(line).not.toContain(FAKE_TOKEN);
     const parsed = JSON.parse(line); // must not throw
     expect(JSON.stringify(parsed)).toContain("***");
+    // The sibling field survives intact rather than collapsing with the bag.
+    expect(parsed.session).toBe(42);
   });
 
   it("still honours the level threshold", () => {

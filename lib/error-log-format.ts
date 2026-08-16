@@ -50,7 +50,6 @@ const SENSITIVE_SUBSTRINGS = [
   "secret",
   "token",
   "cookie",
-  "session",
   "credential",
   "signature",
   "authorization",
@@ -60,8 +59,32 @@ const SENSITIVE_SUBSTRINGS = [
 ];
 
 // Matched only as a WHOLE part. `auth` as a substring masks every `author`,
-// `sig` masks `design` and `assign`, `pass` masks `bypass` and `passed`.
-const SENSITIVE_WHOLE_PARTS = new Set(["auth", "pass", "cred", "creds"]);
+// `sig` masks `design` and `assign`.
+//
+// `pass` is NOT here. It reads as a credential everywhere else and as a RESULT
+// in this app — `pass: 2 of 3 fitness norms met` is house copy, and masking the
+// count is a defect the same way a leak is. `password`/`passwd`/`passphrase`
+// carry the real cases.
+const SENSITIVE_WHOLE_PARTS = new Set(["auth", "cred", "creds"]);
+
+// `session` is a first-class DOMAIN noun here — `workoutSession`,
+// `sleepSession`, `practiceSession` — and also names the cookie that
+// authenticates a login. Position tells them apart: the credential leads
+// (`session`, `sessionId`, `X-Session-Token`), the domain noun trails
+// (`workoutSession`, `sleepSessionId`). Anything else matching `session`
+// anywhere would mask 300-odd identifiers in this codebase's own logs.
+const LEADING_ONLY_PARTS = ["session"];
+// Prefixes skipped when deciding what "leads": `X-Session-Id` is a header.
+const KEY_PREFIX_NOISE = new Set(["x", "http", "https"]);
+
+// Keys that CONTAIN a sensitive word and are still diagnostic, not secret.
+// `token_type=bearer` names the scheme, it is not the token.
+const NEVER_SENSITIVE_KEYS = new Set([
+  "tokentype",
+  "tokenurl",
+  "tokenendpoint",
+  "sessionstate",
+]);
 
 // `key` alone is a generic word (`sort_key`, `cache_key`), so it only counts
 // next to a qualifier. Adjacent parts are joined and looked up here.
@@ -104,9 +127,15 @@ function keyParts(key: string): string[] {
 
 function isSensitiveKey(key: string): boolean {
   const parts = keyParts(key);
-  for (const part of parts) {
+  if (NEVER_SENSITIVE_KEYS.has(parts.join(""))) return false;
+  const leadIndex = parts.findIndex((p) => !KEY_PREFIX_NOISE.has(p));
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
     if (SENSITIVE_WHOLE_PARTS.has(part)) return true;
     if (SENSITIVE_SUBSTRINGS.some((w) => part.includes(w))) return true;
+    if (i === leadIndex && LEADING_ONLY_PARTS.some((w) => part.includes(w))) {
+      return true;
+    }
   }
   for (let i = 0; i + 1 < parts.length; i++) {
     if (SENSITIVE_PART_PAIRS.has(parts[i] + parts[i + 1])) return true;
@@ -150,8 +179,25 @@ function looksLikeCredential(v: string): boolean {
 // must ALSO carry mixed case, which opaque tokens do and lowercase slugs do
 // not, and the unbroken form keeps the plain length floor.
 function isOpaqueToken(v: string): boolean {
-  const stem = /^(.+)\.[A-Za-z0-9]{1,5}$/.exec(v);
-  if (stem && isOpaqueToken(stem[1])) return true;
+  if (isOpaqueTokenExact(v)) return true;
+  // Strip at most two trailing extensions (`<token>.csv`, `<token>.tar.gz`).
+  // This used to RECURSE per extension-looking suffix, with no depth bound: a
+  // path of `x.a` repeated blew the stack outright, and `backfillErrorMessage`
+  // has no guard, so the throw would escape the catch that marks a backfill job
+  // `failed` and leave it stuck `running`. A bounded loop with lastIndexOf also
+  // drops the `^(.+)\.` backtracking the old form paid for on every call.
+  let stem = v;
+  for (let i = 0; i < 2; i++) {
+    const dot = stem.lastIndexOf(".");
+    const ext = dot < 0 ? "" : stem.slice(dot + 1);
+    if (dot <= 0 || ext.length > 5 || !/^[A-Za-z0-9]+$/.test(ext)) return false;
+    stem = stem.slice(0, dot);
+    if (isOpaqueTokenExact(stem)) return true;
+  }
+  return false;
+}
+
+function isOpaqueTokenExact(v: string): boolean {
   if (
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
   ) {
@@ -187,20 +233,9 @@ function looksLikeAuthCredential(v: string): boolean {
 // segment has no key at all, and a presigned signature's key has dashes in it.
 // The scheme, host and endpoint names survive — those are what the error is
 // read for.
-function redactUrl(url: string): string {
-  const m =
-    /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)([^/?#]*)([^?#]*)(\?[^#]*)?(#.*)?$/.exec(
-      url
-    );
-  if (!m) return url;
-  const [, scheme, rawAuthority, path, query = "", hash = ""] = m;
-  // `https://id:secret@host` — the whole userinfo goes, not just the password.
-  const authority = rawAuthority.replace(/^[^@]*@/, "***@");
-  const safePath = path.replace(/[^/]+/g, (seg) =>
-    isOpaqueToken(seg) ? "***" : seg
-  );
-  const safeQuery = query.replace(
-    /([?&])([^=&]+)=([^&]*)/g,
+function redactParams(s: string): string {
+  return s.replace(
+    /([?&#])([^=&#]+)=([^&#]*)/g,
     (whole, sep: string, key: string, value: string) => {
       if (!value || value === "***") return whole;
       const mask =
@@ -210,7 +245,43 @@ function redactUrl(url: string): string {
       return mask ? `${sep}${key}=***` : whole;
     }
   );
-  return scheme + authority + safePath + safeQuery + hash;
+}
+
+// Path, query and fragment — the part of a URL that exists whether or not the
+// client reported an absolute one.
+//
+// The FRAGMENT is redacted on the same terms as the query, not returned
+// verbatim. It is where the OAuth implicit flow puts `access_token=`, so
+// treating it as decoration let a token pass while a token one character
+// earlier in the path was masked.
+function redactPathQueryHash(rest: string): string {
+  const m = /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(rest);
+  if (!m) return rest;
+  const [, path, query = "", hash = ""] = m;
+  const safePath = path.replace(/[^/]+/g, (seg) =>
+    isOpaqueToken(seg) ? "***" : seg
+  );
+  // A fragment with no `=` in it is a bare value, so it is judged by shape.
+  const safeHash = hash.includes("=")
+    ? redactParams(hash)
+    : isOpaqueToken(hash.slice(1))
+      ? "#***"
+      : hash;
+  return safePath + redactParams(query) + safeHash;
+}
+
+// The failing request URL is the shape credentials actually travel in (#2820),
+// and it went through the old key/value pass untouched: a token in a path
+// segment has no key at all, and a presigned signature's key has dashes in it.
+// The scheme, host and endpoint names survive — those are what the error is
+// read for.
+function redactUrl(url: string): string {
+  const m = /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)([^/?#]*)(.*)$/.exec(url);
+  if (!m) return url;
+  const [, scheme, rawAuthority, rest] = m;
+  // `https://id:secret@host` — the whole userinfo goes, not just the password.
+  const authority = rawAuthority.replace(/^[^@]*@/, "***@");
+  return scheme + authority + redactPathQueryHash(rest);
 }
 
 // The scheme run is LENGTH-BOUNDED on purpose. Unbounded (`[A-Za-z0-9+.-]*`)
@@ -218,6 +289,18 @@ function redactUrl(url: string): string {
 // the missing `://`, which made redaction quadratic in the detail length — a
 // 32KB stack took 1.6s. Real schemes are under a dozen characters.
 const URL_RE = /\b[A-Za-z][A-Za-z0-9+.-]{0,15}:\/\/[^\s"'<>\\]+/g;
+
+// A request line that reports the PATH ONLY — many clients render
+// `GET /v2/measure/<token>/getactivity` and never the absolute form, so the
+// same token was masked or not depending on how the client phrased it.
+//
+// Deliberately anchored to an HTTP METHOD rather than matching any `/…` run.
+// Stack traces are mostly absolute paths, and `buildDetail` is mostly stack
+// traces: an unanchored rule would start masking build-artifact hashes in the
+// frames an operator reads the error for. A path-only URL that is not
+// method-prefixed is a known remaining gap, recorded rather than guessed at.
+const REQUEST_PATH_RE =
+  /\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)([ \t]+)(\/[^\s"'<>\\]*)/g;
 
 // `Bearer <token>` / `Basic <base64>` anywhere. The scheme word is KEPT and
 // the credential is masked — the old rule did the reverse for Basic, masking
@@ -238,6 +321,69 @@ const VALUE_QUOTED_RE =
 const VALUE_BARE_RE =
   /((?:Bearer|Basic|Digest|Negotiate)[ \t]+)?([^"'\s,;{}[\]&\\)]{1,512})/y;
 
+// A number is never a credential. `{"sessionCount":14}` and `session=42` are
+// counters, durations and ids, and masking them is not free: `redactBag` in
+// lib/log.ts stringifies, redacts and RE-PARSES, so a single unquoted `***`
+// makes the line invalid JSON and the whole field bag — `profileId` and every
+// other field — collapses into one string. Quoting is the type marker on the
+// text path, so `"42"` under a token key still masks; a bare 42 does not.
+const NUMERIC_VALUE_RE = /^-?\d+(?:\.\d+)?$/;
+
+// A bare colon-separated value that reads as a SENTENCE rather than a field.
+// `Invalid session: please reconnect the integration` is a literal upstream
+// Withings 401 that reaches a profile card, and it is indistinguishable from
+// `key: value` to a regex. What separates them is what FOLLOWS: a field value
+// ends its clause, prose keeps going in lowercase.
+//
+// The residual is deliberate and narrow — a secret written as two lowercase
+// words after `password: ` is not masked. Every realistic credential carries a
+// digit, a separator or a capital, none of which survive this test.
+function looksLikeProse(s: string, valueStart: number, value: string): boolean {
+  if (!/^(?:[a-z]{1,12}|[0-9]{1,4})$/.test(value)) return false;
+  return /^\s+[a-z]/.test(s.slice(valueStart + value.length));
+}
+
+// How far to look for the close of a structured value before giving up.
+const STRUCTURE_SCAN_LIMIT = 20000;
+
+// The end of a `{…}` / `[…]` value hanging off a sensitive key, so the WHOLE
+// structure can go rather than just its opening brace.
+//
+// Base replaced the brace alone — `{"session":***"id":"ada","v":"<secret>"}}` —
+// which left the secret in the string and produced mangled JSON that merely
+// looked redacted. That is the same failure mode as masking the word `Basic`
+// and leaving the base64.
+//
+// Two passes. String-aware first, so a brace inside a quoted value cannot close
+// the structure early. Then a plain brace count, which is what reads text whose
+// quotes are escaped (`\"a\"`) and where the string-aware pass cannot find the
+// delimiters at all.
+function structuredValueEnd(s: string, start: number): number | null {
+  const open = s[start];
+  if (open !== "{" && open !== "[") return null;
+  const close = open === "{" ? "}" : "]";
+  const limit = Math.min(s.length, start + STRUCTURE_SCAN_LIMIT);
+  for (const stringAware of [true, false]) {
+    let depth = 0;
+    let quote = "";
+    for (let i = start; i < limit; i++) {
+      const ch = s[i];
+      if (stringAware && quote) {
+        if (ch === "\\") i++;
+        else if (ch === quote) quote = "";
+        continue;
+      }
+      if (stringAware && (ch === '"' || ch === "'")) {
+        quote = ch;
+        continue;
+      }
+      if (ch === open) depth++;
+      else if (ch === close && --depth === 0) return i + 1;
+    }
+  }
+  return null;
+}
+
 // Walk every `key <sep> value` in the string and mask the ones whose KEY says
 // so. Driven by hand rather than String.replace for two reasons.
 //
@@ -257,7 +403,7 @@ function maskKeyedValues(s: string): string {
   let matched = false;
   let m: RegExpExecArray | null;
   while ((m = KEY_RE.exec(s)) !== null) {
-    const [whole, , key] = m;
+    const [whole, keyQuote, key, sep] = m;
     const valueStart = m.index + whole.length;
     KEY_RE.lastIndex = valueStart;
     const sensitive = isSensitiveKey(key);
@@ -276,9 +422,35 @@ function maskKeyedValues(s: string): string {
     } else {
       VALUE_BARE_RE.lastIndex = valueStart;
       const bare = VALUE_BARE_RE.exec(s);
-      if (!bare) continue;
-      [, scheme = "", value] = bare;
-      end = VALUE_BARE_RE.lastIndex;
+      if (bare) {
+        [, scheme = "", value] = bare;
+        end = VALUE_BARE_RE.lastIndex;
+        if (value === "***") continue;
+        if (NUMERIC_VALUE_RE.test(value)) continue;
+        if (sep.includes(":") && looksLikeProse(s, valueStart, value)) continue;
+      } else {
+        // No bare or quoted value: the delimiters a value cannot cross are
+        // exactly the brackets a STRUCTURE opens with, so this is where
+        // `{"session":{…}}` and `{"tokens":[…]}` used to fall through
+        // untouched. Take the whole structure.
+        const structureEnd = structuredValueEnd(s, valueStart);
+        if (
+          structureEnd === null &&
+          s[valueStart] !== "{" &&
+          s[valueStart] !== "["
+        ) {
+          continue;
+        }
+        // Unbalanced or past the scan limit: what follows a sensitive key is
+        // the structure's contents, so the rest of the string goes with it.
+        end = structureEnd ?? s.length;
+        scheme = "";
+        value = "";
+      }
+      // Re-emit an unquoted value as a QUOTED `***` when the key was quoted:
+      // that is a JSON context, and an unquoted mask there is what breaks the
+      // re-parse in redactBag.
+      if (!quoted) quote = keyQuote;
     }
     if (value === "***") continue;
     if (gated && !looksLikeCredential(value)) continue;
@@ -311,6 +483,11 @@ export function redactSecrets(s: string): string {
     return redactUrl(core) + (tail ? tail[0] : "");
   });
   out = out.replace(
+    REQUEST_PATH_RE,
+    (_whole, method: string, gap: string, path: string) =>
+      `${method}${gap}${redactPathQueryHash(path)}`
+  );
+  out = out.replace(
     AUTH_SCHEME_RE,
     (whole, schemeWord: string, gap: string, cred: string) => {
       if (cred === "***") return whole;
@@ -323,10 +500,17 @@ export function redactSecrets(s: string): string {
 }
 
 // Redact each leaf as it is serialized, BEFORE JSON.stringify escapes it.
-// Masking by key covers the values a text pass cannot reach at all: a number,
-// or a whole nested object hanging off `credentials`.
+// Masking by key covers the value a text pass cannot reach at all: a whole
+// nested object hanging off `credentials`.
+//
+// Gated on TYPE, not on the key alone. A number, boolean or null can never be
+// a credential, and masking them anyway turns `{"sessionCount":14}` into
+// `"***"` — the count is why the line was logged. The text path draws the same
+// line off quoting, so both readers agree on what a number is.
 function redactingReplacer(key: string, value: unknown): unknown {
-  if (key !== "" && isSensitiveKey(key)) return "***";
+  const maskable =
+    typeof value === "string" || (typeof value === "object" && value !== null);
+  if (key !== "" && maskable && isSensitiveKey(key)) return "***";
   return typeof value === "string" ? redactSecrets(value) : value;
 }
 

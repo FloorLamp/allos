@@ -213,6 +213,129 @@ describe("redactSecrets: boundaries", () => {
     );
   });
 
+  // Found by the adversarial lane on PR #2955. Each of these is asserted at the
+  // TEXT level, because that is the level `backfillErrorMessage` redacts at:
+  // it is `redactSecrets(err.message)` with no replacer, so anything only the
+  // replacer catches protects the admin log and leaves the profile card bare —
+  // #2938's asymmetry, inverted onto the more exposed surface.
+  describe("structured values under a sensitive key", () => {
+    it("masks a nested object, not just its opening brace", () => {
+      const out = redactSecrets('{"session":{"id":"ada","v":"demo1234demo"}}');
+      expect(out).not.toContain("demo1234demo");
+      // Base replaced the brace alone and left the secret in the string, which
+      // is the `Basic`-shaped failure: it reads as redacted and is not.
+      expect(out).toBe('{"session":"***"}');
+      expect(() => JSON.parse(out)).not.toThrow();
+    });
+
+    it("masks an array of secrets", () => {
+      const out = redactSecrets('{"tokens":["demo1234demo","other9876543"]}');
+      expect(out).not.toContain("demo1234demo");
+      expect(out).not.toContain("other9876543");
+      expect(JSON.parse(out)).toEqual({ tokens: "***" });
+    });
+
+    it("masks an unquoted structure in ordinary text", () => {
+      expect(redactSecrets('secret: {raw: "abc123def456"}')).toBe(
+        "secret: ***"
+      );
+    });
+
+    it("keeps text that follows the structure", () => {
+      const out = redactSecrets('{"secret":{"a":1},"status":401}');
+      expect(out).toBe('{"secret":"***","status":401}');
+    });
+
+    it("does not close early on a brace inside a quoted value", () => {
+      const out = redactSecrets('{"secret":{"note":"} demo1234demo"},"s":401}');
+      expect(out).not.toContain("demo1234demo");
+      expect(out).toBe('{"secret":"***","s":401}');
+    });
+  });
+
+  describe("prose that merely looks like a field", () => {
+    it("leaves a literal upstream 401 a profile has to act on", () => {
+      // Withings/Fitbit send this verbatim and it reaches the progress card.
+      const s = "Withings API 401: Invalid session: please reconnect account";
+      expect(redactSecrets(s)).toBe(s);
+    });
+
+    it("leaves house copy that opens with a credential-ish word", () => {
+      const s = "pass: 2 of 3 fitness norms met; retest in 4 weeks";
+      expect(redactSecrets(s)).toBe(s);
+    });
+
+    it("still masks a one-word secret that ends its clause", () => {
+      expect(redactSecrets("password: hunter2")).toBe("password: ***");
+      expect(redactSecrets("password: secret")).toBe("password: ***");
+    });
+
+    it("leaves session as a DOMAIN noun and masks it as a credential", () => {
+      const domain = '{"workoutSession":"morning","sleepSessionId":"deep"}';
+      expect(redactSecrets(domain)).toBe(domain);
+      expect(redactSecrets('{"sessionId":"demo1234demo"}')).toBe(
+        '{"sessionId":"***"}'
+      );
+      expect(redactSecrets("X-Session-Token: demo1234demo")).toBe(
+        "X-Session-Token: ***"
+      );
+    });
+
+    it("leaves token_type, which names the scheme rather than the token", () => {
+      const s = "grant ok: token_type=bearer, expires_in=21600";
+      expect(redactSecrets(s)).toBe(s);
+    });
+  });
+
+  describe("numbers are never credentials", () => {
+    it("leaves a bare number so the JSON stays re-parseable", () => {
+      // lib/log.ts masks the serialized bag and re-parses it; an unquoted ***
+      // there costs every field in the line, profileId included.
+      const bag = '{"profileId":7,"sessionCount":14,"provider":"oura"}';
+      const out = redactSecrets(bag);
+      expect(out).toBe(bag);
+      expect(JSON.parse(out).profileId).toBe(7);
+    });
+
+    it("masks the same key when the value is a quoted string", () => {
+      expect(redactSecrets('{"session":"demo1234demo"}')).toBe(
+        '{"session":"***"}'
+      );
+    });
+  });
+
+  it("does not blow the stack on a pathological extension chain", () => {
+    // isOpaqueToken recursed per extension-looking suffix. backfillErrorMessage
+    // has no try/catch, so a RangeError escaped the handler that marks a
+    // backfill job `failed` and left it stuck `running`.
+    // Sized well past any plausible stack depth so this is a real proof and not
+    // a bet on how much stack the runner happens to have left.
+    expect(() =>
+      redactSecrets("https://h.example.com/" + "x.a".repeat(60000))
+    ).not.toThrow();
+  });
+
+  it("redacts a token in a URL FRAGMENT, where implicit-flow tokens live", () => {
+    const out = redactSecrets(
+      `https://h.example.com/cb#access_token=demo1234demo&token_type=bearer`
+    );
+    expect(out).not.toContain("demo1234demo");
+    expect(out).toContain("token_type=bearer");
+    expect(redactSecrets(`https://h.example.com/cb#${HEX_ID}`)).toBe(
+      "https://h.example.com/cb#***"
+    );
+  });
+
+  it("redacts a path-only request line, not just the absolute form", () => {
+    expect(redactSecrets(`GET /v2/measure/${HEX_ID}/getactivity`)).toBe(
+      "GET /v2/measure/***/getactivity"
+    );
+    // Anchored to the method on purpose: stack frames are absolute paths and
+    // buildDetail is mostly stack frames.
+    const frame = `    at load (/home/user/allos/.next/static/${HEX_ID}.js:1:1)`;
+    expect(redactSecrets(frame)).toBe(frame);
+  });
+
   it("stays roughly linear on a big detail", () => {
     // A stack or a dumped response body is the input here, and redaction runs
     // BEFORE the cap. Two of the passes were quadratic in the input length
@@ -312,9 +435,20 @@ describe("buildDetail redacts after serialization (#2938)", () => {
     expect(JSON.parse(out)).toEqual({ creds: "***" });
   });
 
-  it("masks a sensitive key holding a non-string value", () => {
-    const out = buildDetail({ sessionId: 4210, retries: 2 })!;
-    expect(out).not.toContain("4210");
+  it("leaves a NUMBER under a sensitive key — a count is not a credential", () => {
+    // The count is usually why the line was logged. Masking it also broke the
+    // console echo outright: redactBag stringifies, redacts and RE-PARSES, so
+    // one unquoted *** invalidated the JSON and collapsed the whole bag.
+    const out = buildDetail({ sessionCount: 14, sessionDurationMin: 45 })!;
+    expect(JSON.parse(out)).toEqual({
+      sessionCount: 14,
+      sessionDurationMin: 45,
+    });
+  });
+
+  it("still masks a STRING under the same key", () => {
+    const out = buildDetail({ sessionId: "demo1234demo", retries: 2 })!;
+    expect(out).not.toContain("demo1234demo");
     expect(JSON.parse(out)).toEqual({ sessionId: "***", retries: 2 });
   });
 
