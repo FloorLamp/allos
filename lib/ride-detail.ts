@@ -1,3 +1,4 @@
+import { formatRideElapsed } from "./cycling-analytics";
 import { speedKmh } from "./coaching/cardio";
 import {
   cyclingActivityName,
@@ -426,4 +427,13 @@ export function rideHighlights({
     });
   }
   return highlights;
+}
+
+// Elapsed seconds as a clock reading, or an em dash when there are none. The
+// ride page carried a private copy of this and `formatRideElapsed` already
+// existed beside it in cycling-analytics; rather than move a third one here for
+// the activity page's splits (#3009), this is the null-tolerant wrapper both
+// surfaces call and the arithmetic stays in one place.
+export function formatElapsed(seconds: number | null): string {
+  return seconds == null ? "—" : formatRideElapsed(seconds);
 }
