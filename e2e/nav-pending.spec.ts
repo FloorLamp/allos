@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 import type { Page, Route } from "@playwright/test";
 
 // The sidebar answers the tap (issue #1956).
@@ -402,4 +402,94 @@ test("retry lands the navigation once the connection is back (#2869)", async ({
   await expect(page).toHaveURL(new RegExp(`${CARD_DESTINATION}$`));
   await expect(page.getByTestId("nav-load-failed")).toHaveCount(0);
   expect(await sameDocument()).toBe(true);
+});
+
+// ── Training's navigation surfaces (issue #2983) ─────────────────────────────
+//
+// Training was fenced for the owner while #2869's sweep ran, so its controls
+// kept the global indicator and never got the in-control half. Two classes are
+// asserted below.
+//
+// The first is a CORRECTNESS one and does not belong to the pending doctrine at
+// all: four in-app destinations were reached through a raw `<a href>`, which is
+// a full document load. That throws away the running client — the exact thing
+// #2869's invariant forbids — and no amount of pending treatment applies to a
+// navigation the router never sees. `markDocument` is what tells the two apart:
+// a soft navigation keeps the document it started in, a hard one does not.
+//
+// The second is the ordinary in-control half, on the shape training has most of:
+// a drill-down into one record, and a stepper that walks the ledger.
+
+const STRENGTH_ANALYZE = "/training?tab=analyze&kind=strength&item=Back%20Squat";
+
+test("a training drill-down that was a raw anchor stays in the app, and answers its own tap (#2983)", async ({
+  page,
+}) => {
+  // `StatBox`'s linked value — the Analyze panel's "Last trained" tile, and the
+  // door into a session's activity page and into a ride. It was a raw <a>, so
+  // this tap used to tear the document down and rebuild the whole app shell.
+  const nav = heldNavigation();
+
+  await page.goto(STRENGTH_ANALYZE);
+  const tile = page.getByTestId("exercise-last-trained");
+  await expect(tile).toBeVisible();
+  const link = tile.getByRole("link");
+  await expect(link).toBeVisible();
+  const sameDocument = await markDocument(page);
+
+  // Held only now: arriving above is itself an RSC navigation.
+  await page.route("**/training/activity/*", nav.handler);
+  await hydratedClick(page, link);
+
+  // The tile says it heard, in its own slot, while the page has not moved.
+  await expect(link.getByTestId("nav-link-pending")).toBeVisible();
+  await expect(link.getByRole("status")).toHaveText(/Opening last trained/);
+  expect(new URL(page.url()).pathname).toBe("/training");
+
+  nav.release();
+  await expect(page).toHaveURL(/\/training\/activity\/\d+$/);
+  // The whole point: a SOFT navigation. A raw anchor would have replaced this
+  // document, and the marker set before the tap would be gone.
+  expect(
+    await sameDocument(),
+    "an in-app destination must not be reached by a full document load"
+  ).toBe(true);
+});
+
+test("the activity ledger's ‹older› shows the step, and five taps dispatch one navigation (#2983)", async ({
+  page,
+}) => {
+  // The same shape as the timeline's day arrows, and the same cadence: a review
+  // session walks back through activities one tap at a time. The spinner takes
+  // the chevron's own box, and the repeat taps are absorbed.
+  await page.goto(STRENGTH_ANALYZE);
+  await followLink(
+    page,
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: the newest seeded session; the ledger step is what's under test
+    /\/training\/activity\/\d+$/
+  );
+  const older = page.getByTestId("activity-older-link");
+  await expect(older).toBeVisible();
+  const startedAt = new URL(page.url()).pathname;
+
+  const nav = heldNavigation();
+  await page.route("**/training/activity/*", nav.handler);
+
+  await hydratedClick(page, older);
+  await expect(older.getByTestId("nav-link-pending")).toBeVisible();
+  await expect(older.getByRole("status")).toHaveText(/Opening older activity/);
+  expect(new URL(page.url()).pathname).toBe(startedAt);
+
+  // The impatient taps. A real click on a real, enabled anchor each time — a
+  // disabled step would also refuse a cmd-click, which opens the neighbour
+  // beside this page and never touches this navigation.
+  for (let i = 0; i < 4; i += 1) await older.click();
+
+  nav.release();
+  await expect(page).not.toHaveURL(new RegExp(`${startedAt}$`));
+  await expect(page.getByTestId("training-activity-page")).toBeVisible();
+  expect(
+    nav.navRequests(),
+    "a repeat tap on a pending ledger step must be absorbed, not dispatched"
+  ).toBe(1);
 });

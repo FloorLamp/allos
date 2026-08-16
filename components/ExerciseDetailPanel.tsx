@@ -248,6 +248,10 @@ export default function ExerciseDetailPanel({
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
           href={trainingActivityPageHref(stat.lastActivityId)}
+          // A stable handle for the ONE linked tile on this panel: its value is
+          // a relative date, so the link is otherwise addressable only by text
+          // that changes with the clock (#2983's e2e pin).
+          data-testid="exercise-last-trained"
         />
         {matchedGoals.map((g) => {
           const pct = goalProgress?.[g.id]?.pct ?? 0;
