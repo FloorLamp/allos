@@ -131,6 +131,9 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
   // change racing the queued write, not a mocked response.
   const other = await browser.newContext({ storageState: AUTH_STATE });
   const otherPage = await other.newPage();
+  // offline-nav-ok: this navigation is the SECOND context's, which was never taken
+  // offline — the offline half of this test (the tap above) loads no shell at all, so
+  // the #3002 service-worker bypass has nothing to fake here.
   await otherPage.goto(`${origin}/nutrition?tab=supplements`);
   const otherRow = morningRow(otherPage, name);
   await otherRow.getByRole("button", { name: "Skip this dose" }).click();
