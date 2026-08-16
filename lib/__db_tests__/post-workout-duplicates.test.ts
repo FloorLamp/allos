@@ -28,6 +28,12 @@ import {
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 import { getActivityDuplicates } from "@/lib/queries/integrations";
 import { carryPostWorkoutMarker } from "@/lib/notifications/post-workout-marker";
+import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
+import {
+  flushPostWorkoutDispatches,
+  pendingPostWorkoutDispatchKeys,
+  POST_WORKOUT_DISPATCH_DELAY_MS,
+} from "@/lib/notifications/post-workout-queue";
 import { writeActivityFold } from "@/lib/merge-activity";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-dupes";
@@ -122,7 +128,10 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   db.prepare("DELETE FROM notify_lifecycle").run();
 });
-afterEach(() => {
+afterEach(async () => {
+  // The queue's module state is shared across this tier's registry — drain anything
+  // a case left armed so it can't fire inside a later file's fetch stub.
+  await flushPostWorkoutDispatches();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -289,6 +298,113 @@ describe("a same-source duplicate pair delivers ONE contact (#2570)", () => {
     await runPostWorkoutForActivity(p, a, { verifyCompletedToday: true });
     await runPostWorkoutForActivity(p, b, { verifyCompletedToday: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── The third failure mode: two rows from ONE push, racing (#3021) ───────────
+//
+// #2570's two sends were fifteen minutes apart, from two pushes, and that gap is the
+// only reason a read-then-act guard held there. On 2026-08-16 a single Health Connect
+// push landed both rows of one ride 17 seconds apart; `queuePostWorkoutForFreshImports`
+// armed a timer per row, both expired in the same tick, and both guards read the twin's
+// marker before either had delivered. Two recaps for one bike ride, a minute apart.
+//
+// The fixture makes the interleave EXPLICIT: the send does not resolve until this test
+// releases it. A sequential loop, or a fetch stub that resolves immediately, serializes
+// by accident and passes against the racing code — which is exactly why #2570's matrix
+// was green while production sent twice.
+
+describe("two rows from ONE ingest deliver ONE contact (#3021)", () => {
+  it("holds the second dispatch until the first has delivered and stamped", async () => {
+    const p = newProfile("PWD-one-push");
+    const a = seedRide(p, {
+      source: "health-connect",
+      externalId: "health-connect:fixture-push-a",
+      start: "09:04",
+      end: "10:01",
+    });
+    const b = seedRide(p, {
+      source: "health-connect",
+      externalId: "health-connect:fixture-push-b",
+      start: "09:03",
+      end: "10:01",
+      type: "unclassified",
+      title: "Workout",
+    });
+
+    // A send that hangs until released — the deferred delivery the acceptance
+    // criteria ask for, not a timing hope.
+    const releases: (() => void)[] = [];
+    const fetchMock = vi.fn(async () => {
+      await new Promise<void>((resolve) => releases.push(resolve));
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // ONE ingest's post-commit arming — the real web-process timer path, NOT the
+    // tick's flush, which has always serialized.
+    queuePostWorkoutForFreshImports(p);
+    const mine = () =>
+      pendingPostWorkoutDispatchKeys().filter((k) => k.startsWith(`${p}:`));
+    expect(mine().sort()).toEqual([`${p}:${a}`, `${p}:${b}`].sort());
+
+    // Both timers expire in the same tick, as they did in production.
+    await vi.advanceTimersByTimeAsync(POST_WORKOUT_DISPATCH_DELAY_MS);
+
+    // THE REGRESSION. The first dispatch is mid-send, so it has not stamped — and
+    // the second must not have looked yet. Racing, both have already sent here.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(marker(p, a)).toBeNull();
+    expect(marker(p, b)).toBeNull();
+
+    // Release the first: it stamps, and only then does the second run — finds the
+    // twin announced, and declines.
+    releases[0]();
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(1);
+    releases.slice(1).forEach((release) => release());
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(1);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Contact per DETECTED SESSION is one, and exactly one marker records it. The
+    // declined row's one-shot is NOT burned — a later merge may make it the keeper.
+    expect([marker(p, a), marker(p, b)].filter((v) => v != null)).toHaveLength(
+      1
+    );
+    // Both rows are still present: nothing was merged away, so no fold can be what
+    // saved this.
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")
+        .get(p)
+    ).toEqual({ n: 2 });
+    expect(mine()).toEqual([]);
+  });
+
+  it("two GENUINELY separate sessions in one ingest both still speak", async () => {
+    // The bound. Serializing must only ever reduce contact for ONE session — the
+    // person who trains twice a day is exactly who an over-broad guard would silence.
+    const fetchMock = stubFetch();
+    const p = newProfile("PWD-one-push-two-sessions");
+    const morning = seedRide(p, {
+      source: "health-connect",
+      externalId: "health-connect:fixture-push-morning",
+      start: "09:04",
+      end: "10:01",
+    });
+    const evening = seedRide(p, {
+      source: "health-connect",
+      externalId: "health-connect:fixture-push-evening",
+      start: "17:10",
+      end: "18:07",
+    });
+
+    queuePostWorkoutForFreshImports(p);
+    await vi.advanceTimersByTimeAsync(POST_WORKOUT_DISPATCH_DELAY_MS);
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(1);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(marker(p, morning)).not.toBeNull();
+    expect(marker(p, evening)).not.toBeNull();
   });
 });
 

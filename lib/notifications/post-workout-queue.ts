@@ -30,6 +30,38 @@
 // The runner is injected (tests) and defaults to a dynamic import of the heavy
 // dispatch core, so light write paths (Server Actions, sync runners) arming a
 // timer don't statically pull the whole notification stack.
+//
+// ── Why the runs are SERIALIZED per profile (#3021) ─────────────────────────
+//
+// The dispatch's duplicate awareness (#2570) is a read-then-act check: it asks
+// whether a row a high-confidence detection calls the same session has already
+// been announced, and the marker it reads is stamped only AFTER a successful
+// delivery — deliberately, so a failed send is re-delivered by the tick
+// backstop. Between that read and that stamp sit a message build and a network
+// round trip.
+//
+// One Health Connect push landing TWO rows of one bike ride armed two timers
+// microseconds apart. Both expired in the same tick, both guards read the twin's
+// marker before either had delivered, and one ride produced two recaps a minute
+// apart. #2570's own two sends were fifteen minutes apart, from two pushes, and
+// that gap is the only reason a read-then-act guard held there.
+//
+// So the runs for ONE PROFILE go through a promise chain and can never
+// interleave — the same serialization flushPostWorkoutDispatches() already gives
+// the tick path (`for … await e.run()`), now applied to the timer path an ingest
+// arms in the web process. Different profiles keep their own chains: they share
+// no marker and have no reason to wait on each other.
+//
+// This is in-process only, and that is the honest limit. A web-process timer and
+// the notify tick are two PROCESSES; nothing here spans them, so the documented
+// at-least-once posture stands — a rare duplicate is still possible across the
+// two, and closing that needs a DB-level claim, which is out of scope. What is
+// gone is the SAME-PUSH race, which was not rare: it was every multi-row ingest.
+//
+// The alternative — stamping the marker before sending — was rejected: it would
+// close the window and break the property the run() comment below depends on
+// (stamp only on successful delivery), trading a duplicate contact for a lost
+// one.
 
 import { createLogger } from "../log";
 import { clockOverride } from "../clock";
@@ -48,6 +80,32 @@ const pending = new Map<
 
 function key(profileId: number, activityId: number): string {
   return `${profileId}:${activityId}`;
+}
+
+// The tail of each profile's in-flight chain. Present only while that profile has a
+// run queued or running; the entry is dropped when the chain drains, so this never
+// grows with the number of profiles the instance has ever dispatched for.
+const chains = new Map<number, Promise<void>>();
+
+// Queue `task` behind everything already queued for this profile, and resolve when it
+// has finished. The task never rejects (the caller wraps it), but the chain is joined
+// with `then(t, t)` regardless so one broken link can never stall the rest.
+function serializeForProfile(
+  profileId: number,
+  task: () => Promise<void>
+): Promise<void> {
+  const previous = chains.get(profileId) ?? Promise.resolve();
+  const next = previous.then(task, task);
+  chains.set(profileId, next);
+  void next.then(() => {
+    if (chains.get(profileId) === next) chains.delete(profileId);
+  });
+  return next;
+}
+
+// Introspection for tests: profiles with a run queued or in flight.
+export function serializedPostWorkoutProfiles(): number[] {
+  return [...chains.keys()];
 }
 
 async function defaultRunner(
@@ -79,19 +137,27 @@ export function queuePostWorkoutDispatch(
   const k = key(profileId, activityId);
   const existing = pending.get(k);
   if (existing) clearTimeout(existing.timer);
-  const run = async () => {
+  const run = () => {
+    // Synchronous, before the chain is joined: the timer has fired, so this key is no
+    // longer re-armable, and `pendingPostWorkoutDispatchKeys()` must say so at once
+    // whether or not an earlier run for this profile is still in flight.
     pending.delete(k);
-    try {
-      await runner(profileId, activityId);
-    } catch (e) {
-      // Best-effort: the tick backstop re-delivers on its next run (the one-shot
-      // marker is stamped only on successful delivery, so nothing is lost).
-      log.error("delayed post-workout dispatch failed", {
-        profile: profileId,
-        activity: activityId,
-        err: e instanceof Error ? e : String(e),
-      });
-    }
+    // The serialization (#3021): two rows from ONE push arm two timers that expire in
+    // the same tick, and the twin guard inside `runner` is read-then-act. Queued, the
+    // second run reads a marker the first has already stamped and declines.
+    return serializeForProfile(profileId, async () => {
+      try {
+        await runner(profileId, activityId);
+      } catch (e) {
+        // Best-effort: the tick backstop re-delivers on its next run (the one-shot
+        // marker is stamped only on successful delivery, so nothing is lost).
+        log.error("delayed post-workout dispatch failed", {
+          profile: profileId,
+          activity: activityId,
+          err: e instanceof Error ? e : String(e),
+        });
+      }
+    });
   };
   const timer = setTimeout(() => void run(), delayMs);
   // Never hold the process open just for a pending nudge (the tick process
@@ -107,6 +173,12 @@ export async function flushPostWorkoutDispatches(): Promise<void> {
   const entries = [...pending.values()];
   for (const e of entries) clearTimeout(e.timer);
   for (const e of entries) await e.run();
+  // Each e.run() above resolves only when its own queued task has finished, so the
+  // loop already drains what this flush armed. A run armed EARLIER (a web-process
+  // timer that fired while the tick was working) can still be on a profile's chain,
+  // and awaiting the chain tails picks those up too — the tick must not exit with a
+  // half-delivered dispatch behind it.
+  await Promise.all([...chains.values()]);
 }
 
 // Introspection for tests: the pending (profileId:activityId) keys.
