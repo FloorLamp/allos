@@ -9,6 +9,7 @@ import {
   AIR_QUALITY_FORECAST_DAYS,
   airQualityEndDate,
   openMeteoFetchDaily,
+  openMeteoFetch,
 } from "../integrations/open-meteo";
 
 // A synthetic Open-Meteo hourly response (both forecast + archive share this shape).
@@ -362,5 +363,109 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
     // transient 5xx instead of promising a retry that cannot help.
     expect(res.partialStatus).toBe(400);
     expect(res.partial).toContain("400");
+  });
+
+  // ── The vendor's own sentence survives the rejection (#3007) ──────────────
+  //
+  // A 400 body reduced to `air-quality fetch failed (400)` is why eight production
+  // runs said nothing about WHY, and why the cause needed a hand-run curl. The
+  // sentence names the parameter, the rule and the CURRENT ceiling — so the next
+  // time that ceiling moves, the sync event diagnoses itself.
+  describe("a rejected request carries what the host said", () => {
+    function stubAirQualityFailure(status: number, body: string) {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          String(url).includes("air-quality")
+            ? new Response(body, { status })
+            : new Response(JSON.stringify(OK_BODY), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              })
+        )
+      );
+      return openMeteoFetchDaily(
+        40.7,
+        -74,
+        "2026-08-03",
+        "2026-08-23",
+        "America/New_York"
+      );
+    }
+
+    function stubTotalFailure(reason: string) {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ error: true, reason }), {
+              status: 400,
+            })
+        )
+      );
+    }
+
+    it("keeps Open-Meteo's `reason` in the partial — the exact sentence #3007 needed", async () => {
+      // The verbatim body shape the live host returns for an out-of-range window.
+      const res = await stubAirQualityFailure(
+        400,
+        JSON.stringify({
+          error: true,
+          reason:
+            "Parameter 'end_date' is out of allowed range from 2013-01-01 to 2026-08-22",
+        })
+      );
+      expect(res.ok).toBe(true); // still a partial, not a run failure
+      expect(res.partial).toBe(
+        "air-quality fetch failed (400): Parameter 'end_date' is out of allowed range from 2013-01-01 to 2026-08-22"
+      );
+    });
+
+    it("falls back to the raw body when it isn't Open-Meteo's JSON, capped", async () => {
+      // A gateway's HTML page is still more than a bare status code — but it must
+      // not be able to fill a sync event.
+      const res = await stubAirQualityFailure(502, "x".repeat(400));
+      expect(res.partial).toMatch(/^air-quality fetch failed \(502\): x+$/);
+      expect(res.partial!.length).toBeLessThan(260);
+    });
+
+    it("an empty body leaves the line exactly as it was", async () => {
+      const res = await stubAirQualityFailure(400, "");
+      expect(res.partial).toBe("air-quality fetch failed (400)");
+    });
+
+    it("the WEATHER half's rejection carries it too — that one fails the run", async () => {
+      stubTotalFailure("Parameter 'daily' has an invalid value");
+      const res = await openMeteoFetchDaily(
+        40.7,
+        -74,
+        "2026-08-03",
+        "2026-08-23",
+        "America/New_York"
+      );
+      expect(res.ok).toBe(false);
+      expect(res.error).toBe(
+        "daily fetch failed (400): Parameter 'daily' has an invalid value"
+      );
+    });
+
+    it("the HOURLY fetch reports it as well", async () => {
+      stubTotalFailure("Parameter 'hourly' has an invalid value");
+      const res = await openMeteoFetch(
+        40.7,
+        -74,
+        "2026-08-03",
+        "2026-08-23",
+        "America/New_York"
+      );
+      expect(res.ok).toBe(false);
+      expect(res.error).toBe(
+        "weather fetch failed (400): Parameter 'hourly' has an invalid value"
+      );
+    });
   });
 });

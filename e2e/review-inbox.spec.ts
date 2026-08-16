@@ -213,7 +213,12 @@ test.describe("Data → Review import inbox", () => {
 
     // The seeded truncated run reports what it DID land and is explicitly marked
     // partial, so a page cap / rate limit can't read as a fully green sync.
-    await expect(history.getByText("Partial", { exact: true })).toBeVisible();
+    // The verdict is asserted count-agnostically: consecutive identical partials
+    // collapse to one "Partial ×N" line (#3007), so pinning the bare word only held
+    // while the seed happened to contain exactly one of them.
+    await expect(
+      history.getByText(/^Partial( ×\d+)?$/).first()
+    ).toBeVisible();
     await expect(
       history.getByText(/page cap or rate limit stopped this run early/)
     ).toBeVisible();

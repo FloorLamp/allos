@@ -454,7 +454,18 @@ export async function openMeteoFetch(
     const res = await fetch(`${base}?${qs.toString()}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) return { ok: false, rows: [], status: res.status };
+    if (!res.ok)
+      return {
+        ok: false,
+        rows: [],
+        status: res.status,
+        // The host's own sentence, not just the number (#3007): the hourly half's
+        // failure is the run's failure, so it is the line Review shows.
+        error: fetchFailureLine("weather fetch", {
+          status: res.status,
+          reason: await failureReason(res),
+        }),
+      };
     const rows = parseOpenMeteoHourly(await res.json());
     return { ok: true, rows };
   } catch (err) {
@@ -467,16 +478,63 @@ export async function openMeteoFetch(
   }
 }
 
+// How much of a rejected response's body to keep. Long enough for the vendor's
+// sentence, short enough that a stray HTML error page can't fill a sync event.
+const REASON_MAX_CHARS = 200;
+
+// What the vendor SAID about a rejected request. Open-Meteo answers a bad request
+// with `{"error":true,"reason":"Parameter 'end_date' is out of allowed range from
+// 2013-01-01 to 2026-08-22"}` — one sentence that names the parameter, the rule and
+// the current ceiling. Discarding it (#3007) is why eight production runs recorded
+// only `air-quality fetch failed (400)` and the cause needed a hand-run curl. A
+// horizon that moves again should say so on its own.
+//
+// The URL is never included: it carries the profile's home coordinates.
+async function failureReason(res: Response): Promise<string | undefined> {
+  let body: string;
+  try {
+    body = (await res.text()).trim();
+  } catch {
+    return undefined; // a body that won't read is not worth failing over
+  }
+  if (!body) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    const reason =
+      parsed && typeof parsed === "object"
+        ? (parsed as { reason?: unknown }).reason
+        : undefined;
+    if (typeof reason === "string" && reason.trim())
+      return reason.trim().slice(0, REASON_MAX_CHARS);
+  } catch {
+    // Not JSON (a gateway's HTML page, say) — the raw body is still better than
+    // nothing, capped the same way.
+  }
+  return body.slice(0, REASON_MAX_CHARS);
+}
+
+// One spelling of "this request failed, and here is what the other end said".
+function fetchFailureLine(
+  label: string,
+  failure: { status: number; reason?: string }
+): string {
+  return `${label} failed (${failure.status})${
+    failure.reason ? `: ${failure.reason}` : ""
+  }`;
+}
+
 // A JSON GET with the shared timeout, returning the parsed body or a failure. Never
 // throws — every weather fetch degrades rather than breaking the sync.
 async function getJson(
   url: string
 ): Promise<
-  { ok: true; json: unknown } | { ok: false; status: number; error?: string }
+  | { ok: true; json: unknown }
+  | { ok: false; status: number; reason?: string; error?: string }
 > {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (!res.ok) return { ok: false, status: res.status };
+    if (!res.ok)
+      return { ok: false, status: res.status, reason: await failureReason(res) };
     return { ok: true, json: await res.json() };
   } catch (err) {
     return {
@@ -520,7 +578,9 @@ export async function openMeteoFetchDaily(
       ok: false,
       rows: [],
       status: weather.status,
-      error: weather.error,
+      // Same rule as the air half: whatever the host said about the rejection
+      // travels with the failure instead of being reduced to a status code.
+      error: weather.error ?? fetchFailureLine("daily fetch", weather),
     };
   }
   const weatherRows = parseOpenMeteoDaily(weather.json);
@@ -541,7 +601,7 @@ export async function openMeteoFetchDaily(
     return {
       ok: true,
       rows: weatherRows,
-      partial: air.error ?? `air-quality fetch failed (${air.status})`,
+      partial: air.error ?? fetchFailureLine("air-quality fetch", air),
       partialStatus: air.status,
     };
   }

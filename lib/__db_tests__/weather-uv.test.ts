@@ -484,8 +484,14 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       return d.toISOString().slice(0, 10);
     }
 
-    function stubOpenMeteo(today: string): { airRejections: number } {
-      const ceiling = shift(today, AIR_QUALITY_WINDOW_DAYS - 1);
+    // `windowDays` is the host's horizon COUNTING TODAY. A parameter rather than the
+    // constant, so a test can MOVE the vendor's ceiling — which is what this
+    // regression was, and what the next one will be.
+    function stubOpenMeteo(
+      today: string,
+      windowDays: number = AIR_QUALITY_WINDOW_DAYS
+    ): { airRejections: number } {
+      const ceiling = shift(today, windowDays - 1);
       const state = { airRejections: 0 };
       const day = shift(today, 1);
       vi.stubGlobal(
@@ -578,6 +584,31 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       expect(row!.pollen_grass).toBe(8);
       // A real reading of zero, not absence — the column must hold 0, not null.
       expect(row!.pollen_weed).toBe(0);
+    });
+
+    it("if the ceiling MOVES again, the sync event says so in the vendor's own words", async () => {
+      // The half of #3007 that cost the most: eight production runs recorded only
+      // `air-quality fetch failed (400)`, so the cause needed a hand-run curl. Here
+      // the host has pulled its horizon in to 3 days counting today, which the clamp
+      // does not know about — the request is refused, and the operator-visible
+      // Review line now carries the sentence that names the new ceiling.
+      const today = new Date().toISOString().slice(0, 10);
+      const ceiling = shift(today, 2);
+      const state = stubOpenMeteo(today, 3);
+      const p = newProfile("weather-aqi-drift");
+
+      const res = (await runWeatherSync(p, openMeteoSource)) as WeatherSyncResult;
+
+      expect(state.airRejections).toBe(1);
+      const warning = parseSyncEventDetails(newestEvent(p).details ?? null)!
+        .warnings[0];
+      expect(warning).toContain(
+        `Parameter 'end_date' is out of allowed range from 2013-01-01 to ${ceiling}`
+      );
+      // The status still decides the tail, and a 400 will not fix itself.
+      expect(warning).not.toMatch(/the next run re-fetches it/);
+      // Still a partial, never a failed run: the weather half landed.
+      expect(res.partial).toBeDefined();
     });
 
     it("still stamps the run's INTENDED window, clamp or no clamp (#1771)", async () => {
