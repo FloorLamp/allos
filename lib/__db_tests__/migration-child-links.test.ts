@@ -895,9 +895,36 @@ describe("migration 20260813-cascade-orphan-sweep clears what is already orphane
 
 // ---- the ratchet: a row-deleting migration must clear what CASCADE will not ----
 
-// Shipped migrations whose `DELETE FROM <parent>` predates lib/migrations/cascade-delete.ts.
-// Every file here is hash-locked by lib/migrations/manifest.json and cannot be
-// corrected in place. The list may only SHRINK, and only by a file leaving the repo.
+// Shipped migrations whose `DELETE FROM <parent>` the scan flags and which cannot be
+// corrected: every file here is hash-locked by lib/migrations/manifest.json.
+//
+// ── WHEN THIS LIST MAY GAIN AN ENTRY, AND WHEN IT MAY NOT ────────────────────
+//
+// It may NEVER grow to excuse a NEW unguarded delete. A migration being written today
+// routes through `deleteRowsWithCascade()`; adding it here instead is the failure this
+// ratchet exists to prevent, and there is no reading of "it was easier" that makes it
+// one of these.
+//
+// It MAY gain an entry when a NEWLY ADDED inbound link retroactively flags an OLD file.
+// The scan reads the FINAL schema, so a child link introduced at position 203 is visible
+// on a delete issued at position 118 — where, at its own position, that child did not
+// exist and could not be orphaned. The test a future editor applies is:
+//
+//   1. Does the flagged file predate the link that flags it? Compare positions in
+//      MIGRATIONS, not dates. If the link is older, this is a real orphaning and the
+//      entry is not allowed.
+//   2. At the flagged file's own position, did the child table (or column) exist? If it
+//      did, the delete orphaned rows and the entry belongs in the second category below,
+//      naming the sweep that repairs it — not in this one.
+//   3. Does the RUNTIME delete still clean up? Outside the runner foreign_keys is ON, so
+//      the link's own action fires; a module that also nulls or deletes explicitly says
+//      so in its `why`.
+//
+// Worked examples, both of exactly this shape: 118 (flagged by migration 159's telemetry
+// children) and 131 (flagged by 20260816-document-sync-provenance's identity link).
+// Everything else here is historical archaeology — a delete that genuinely orphaned rows,
+// with the sweep that repaired it named — and that half may only SHRINK, and only by a
+// file leaving the repo.
 const FROZEN_UNGUARDED_DELETES: readonly {
   file: string;
   table: string;

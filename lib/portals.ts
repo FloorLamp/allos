@@ -1430,6 +1430,23 @@ export function stampAcquiredIdentity(
 // (login, patient) pair, owned by this profile, and named by no existing provenance row.
 // Called by the sync-report handler on a SUCCESSFUL report only — a failed run delivered
 // nothing, and must not consume documents the next good run should claim.
+//
+// ── THE TRADE THIS MAKES, STATED SO NOBODY "FIXES" IT ────────────────────────
+//
+// Because there is no time bound, a run can claim an archive that arrived LONG before
+// it: if the tool uploads and then dies before reporting, that document waits, and this
+// identity's next successful report picks it up — so the Imports feed can show a run
+// delivering a file that landed days earlier.
+//
+// That is deliberate, and it is the better half of the only choice available. The
+// alternative is a boundary — "documents since the last report" — and a boundary that
+// moves on every report is what loses documents PERMANENTLY: the run that should have
+// claimed them has already been overtaken, and the unclaimed guard then keeps them
+// eligible forever without any run ever being able to reach them. A file attributed to a
+// slightly late run is legible and recoverable; a file no surface can list is neither.
+//
+// Nothing here moves a boundary, so there is no state to get wrong: an unclaimed
+// document is claimable until some run claims it, exactly once.
 export function documentsDeliveredBy(
   profileId: number,
   identityId: number
