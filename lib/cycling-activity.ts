@@ -52,6 +52,38 @@ export function isCyclingActivity(activity: CyclingActivityIdentity): boolean {
   return cyclingActivityName(activity) != null;
 }
 
+/**
+ * The canonical SUBTYPE name of any activity — the structured cardio/sport
+ * component when there is one ("Walking", "Running", "Tennis"), else the title,
+ * which is the same fallback the generic Analyze grouping uses.
+ *
+ * `cyclingActivityName` below is this question narrowed to bicycles; keeping the
+ * general one beside it is what lets a run compare against runs through the SAME
+ * peer rule a ride compares against rides (#3009), rather than a second notion
+ * of "the same kind of session".
+ */
+export function activityKindName(
+  activity: CyclingActivityIdentity
+): string | null {
+  const sportNames = activityComponentSportNames(activity.components);
+  return (sportNames[0] ?? activity.title.trim()) || null;
+}
+
+// Two activities are the same KIND when their subtype names resolve to one
+// history key — the identity every other surface groups on.
+export function isSameActivityKind(
+  current: CyclingActivityIdentity,
+  candidate: CyclingActivityIdentity
+): boolean {
+  const currentName = activityKindName(current);
+  const candidateName = activityKindName(candidate);
+  return (
+    currentName != null &&
+    candidateName != null &&
+    activityHistoryKey(currentName) === activityHistoryKey(candidateName)
+  );
+}
+
 export function isSameCyclingActivity(
   current: CyclingActivityIdentity,
   candidate: CyclingActivityIdentity

@@ -122,3 +122,25 @@ export const ZONE_WALK_EXTERNAL_ID = "e2e:zone-walk";
 // the answer, not merely the absence.
 export const TOTALS_ONLY_TITLE = "Totals-only walk (e2e)";
 export const TOTALS_ONLY_EXTERNAL_ID = "e2e:totals-only";
+
+// The overlapping same-day pair (#2870): two sessions covering the same clock
+// time, which is what the record's discovery banner exists to point out once the
+// log's adjacency is gone.
+//
+// On its OWN profile, deliberately. The shared profile-1 feed is what the
+// Timeline's windowing spec measures against, and `getTimeline` takes the newest
+// 250 events across every source — so two more activities on profile 1 push its
+// 100-day-old fixture past that cut and fail a spec in another domain. A
+// dedicated profile cannot do that to anyone.
+export const E2E_LOGIN_OVERLAP = "e2e_overlap";
+export const OVERLAP_PROFILE = "Overlap Pair (e2e)";
+export const OVERLAP_KEEPER_TITLE = "Overlap keeper (e2e)";
+export const OVERLAP_TWIN_TITLE = "Overlap twin (e2e)";
+
+// Like-for-like peers (#3009): several sessions of ONE kind at comparable
+// distances, so the record can render a median that means something. Its own
+// profile — see the overlap fixture's note on what adding rows to the shared
+// feed did to the Timeline's 250-event page.
+export const E2E_LOGIN_SESSION_PEERS = "e2e_session_peers";
+export const SESSION_PEERS_PROFILE = "Session Peers (e2e)";
+export const SESSION_PEERS_TITLE = "Riverside loop (e2e)";
