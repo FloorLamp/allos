@@ -31,8 +31,7 @@ settles, it never bounces back.
 2. **Nothing loops.** A looping animation is an attention claim that never stops
    making itself, and a health app must not campaign at anyone. The token test fails
    an iteration count, `infinite` or `alternate` anywhere in the stylesheet's
-   Micro-motion section, and `e2e/micro-motion.spec.ts` counts `animationiteration`
-   events at zero on the live page.
+   Micro-motion section, including every declared keyframe body.
 3. **Reduced motion is the designed state, not a degradation.** Every motion
    declares its `reducedEndState`: the same information, arriving instantly. A motion
    whose meaning is lost when it is switched off was decoration and does not belong
@@ -211,15 +210,14 @@ between scrubbing _through_ history and sliding around inside one month.
 - The beat is replayed by **remounting the bubble's label** (React `key` on a counter),
   because a one-shot CSS animation cannot re-run from a class that never left.
 
-## How the browser suite proves it
+## How the suite proves it
 
-`e2e/micro-motion.spec.ts` never measures a duration — the frozen-clock harness dislikes
-animation timing, and "the thing was mid-animation when I looked" is the flakiest
-assertion in the suite. It installs a document-level `animationstart` /
-`animationiteration` probe **before** the gesture, then asserts stable post-conditions:
-the keyframe ran exactly once, it never iterated, and the end state is correct. The
-reduced-motion half runs the same gestures under `reducedMotion: "reduce"` and asserts
-the same end states with the keyframe count at zero.
+`lib/__tests__/micro-motion.test.ts` owns the animation contract directly: registry ↔
+stylesheet completeness, duration, allowed properties, non-looping keyframes, motion
+plans, and reduced-motion suppression. The domain browser specs own the independent
+carriers and user outcomes (dose state, protein total, dismissal/restore). The suite
+deliberately does not count live `animationstart` events: that couples correctness to
+browser scheduling while duplicating those domain flows.
 
 ## What is not here
 

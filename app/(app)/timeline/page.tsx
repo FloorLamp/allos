@@ -312,13 +312,17 @@ function EventCard({
               ))}
             </div>
           )}
-          {/* Linked context (#662): non-causal deep-links to the OTHER records this
-              event's import document produced. Informational reference — labeled
-              "From this visit's document" so it never reads as a causal claim. */}
+          {/* Linked context (#662): non-causal deep-links to OTHER records. The
+              heading names the lineage the gather actually had (#2920) — the whole
+              import document only where that document stands for ONE visit, else the
+              rows genuinely linked to this visit. Informational reference either way,
+              never a causal claim. */}
           {event.linkedRefs && event.linkedRefs.length > 0 && (
             <div className="mt-2" data-testid="timeline-linked-refs">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                From this visit’s document
+                {event.linkedRefsScope === "visit"
+                  ? "From this visit"
+                  : "From this visit’s document"}
               </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {event.linkedRefs.map((ref, index) => (

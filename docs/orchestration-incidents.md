@@ -467,3 +467,22 @@ Now the label is accepted, and an unparseable file says so, prints what it found
 and prints the shape it wanted. Verified against five controls before shipping,
 per the canary section's last lesson: absent, future bare, future labelled,
 genuinely past, and malformed.
+
+## The high-stakes registry read "which subsystem", not "what does a bug disclose" (2026-08-16)
+
+`adversarial-review-brief.mjs --check` answered "not high-stakes" for #2955 — a
+rewrite of `redactSecrets`, the function that decides whether a credential
+reaches a user's screen. It had answered the same way for #2929's `lib/dri.ts`,
+the arithmetic behind an upper-limit safety warning (#2932). Both were overridden
+by hand, and both had real defects the falsifying lane then found.
+
+The registry was assembled by SUBSYSTEM — migrations, auth, backup, notifications
+— which is why it kept missing files that belong to no dangerous subsystem while
+deciding something dangerous. The question it has to answer is not "is this the
+auth module" but "what does a bug here disclose, decide, or destroy". Redaction
+discloses; DRI decides; a backup destroys. Same tier, three different subsystems.
+
+Two overrides in one session is the signal that the next miss is likelier than a
+false positive, so `lib/error-log-format.ts` and `lib/log.ts` are now declared —
+and the entry says WHY in disclosure terms, so the next person extending the list
+has the right test to apply rather than a list of module names to pattern-match.

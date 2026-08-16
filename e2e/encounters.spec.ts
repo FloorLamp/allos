@@ -74,14 +74,9 @@ test.describe("Visit detail page", () => {
 
     const reasonLabel = detail.getByText("Chief complaint", { exact: true });
     const reason = detail.getByTestId("encounter-reason");
-    const [labelBox, reasonBox] = await Promise.all([
-      reasonLabel.boundingBox(),
-      reason.boundingBox(),
-    ]);
-    expect(labelBox).not.toBeNull();
-    expect(reasonBox).not.toBeNull();
-    expect(reasonBox!.y).toBeGreaterThanOrEqual(labelBox!.y + labelBox!.height);
-    expect(Math.abs(reasonBox!.x - labelBox!.x)).toBeLessThan(2);
+    const [labelBox, reasonBox] = await settledBoxes([reasonLabel, reason]);
+    expect(reasonBox.y).toBeGreaterThanOrEqual(labelBox.y + labelBox.height);
+    expect(Math.abs(reasonBox.x - labelBox.x)).toBeLessThan(2);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expectNoClippedContent(page);

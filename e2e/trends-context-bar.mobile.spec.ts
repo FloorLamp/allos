@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { hydratedClick, followLink } from "./helpers";
+import { hydratedClick, followLink, settledBoxes } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 
 // The Trends phone chrome: primary tabs stay visible in one scrolling row while
@@ -72,28 +72,25 @@ test.describe("the tab-and-range context bar", () => {
     // The navigation row is full bleed like the other mobile tab-first pages:
     // no second 16px page gutter outside the tabs or range trigger. The expanded
     // range controls retain their own readable gutter below.
-    const [tabsBox, toggleBox, barBox, shellBox, viewportWidth] =
-      await Promise.all([
-        page.getByTestId("trends-tabs").boundingBox(),
-        page.getByTestId("trends-context-toggle").boundingBox(),
-        page.getByTestId(BAR).boundingBox(),
-        page.getByTestId("shell-chrome").boundingBox(),
-        page.evaluate(() => window.innerWidth),
-      ]);
-    expect(tabsBox).not.toBeNull();
-    expect(toggleBox).not.toBeNull();
-    expect(barBox).not.toBeNull();
-    expect(shellBox).not.toBeNull();
-    expect(tabsBox!.x).toBeCloseTo(0, 0);
-    expect(toggleBox!.x + toggleBox!.width).toBeCloseTo(viewportWidth, 0);
-    expect(barBox!.y).toBeCloseTo(shellBox!.y + shellBox!.height, 0);
+    const [tabsBox, toggleBox, barBox, shellBox] = await settledBoxes([
+      page.getByTestId("trends-tabs"),
+      page.getByTestId("trends-context-toggle"),
+      page.getByTestId(BAR),
+      page.getByTestId("shell-chrome"),
+    ]);
+    const viewportWidth = await page.evaluate(() => window.innerWidth);
+    expect(tabsBox.x).toBeCloseTo(0, 0);
+    expect(toggleBox.x + toggleBox.width).toBeCloseTo(viewportWidth, 0);
+    expect(barBox.y).toBeCloseTo(shellBox.y + shellBox.height, 0);
 
     // The label sits ABOVE the first chart — the invariant, stated positionally.
-    const label = await page.getByTestId("trends-context-label").boundingBox();
     const tile = page.getByTestId("trend-mini-card").first(); // first-ok: the grid's topmost tile is the subject — "is the window named above the FIRST chart?"
     await expect(tile).toBeVisible();
-    const tileBox = await tile.boundingBox();
-    expect(label!.y).toBeLessThan(tileBox!.y);
+    const [labelBox, tileBox] = await settledBoxes([
+      page.getByTestId("trends-context-label"),
+      tile,
+    ]);
+    expect(labelBox.y).toBeLessThan(tileBox.y);
   });
 
   test("the range trigger follows the window in force", async ({ page }) => {
