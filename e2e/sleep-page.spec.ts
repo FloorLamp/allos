@@ -11,6 +11,8 @@ import {
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
 import {
+  chartsSettled,
+  dismissToast,
   expectNoClippedContent,
   hydratedClick,
   settledBoxes,
@@ -140,18 +142,20 @@ function createSleepEditFixture(
 // element, and the hit test at its off-screen point reports `<html>`
 // intercepting pointer events until the test budget dies with a bare timeout.
 // So: any test that drives the log's row menus goes through here first, and
-// interacts with the same layout the menu will anchor to. The 20s budgets are
-// declared per hygiene pitfall 17 — chunk evaluation is exactly the kind of
-// loaded-shard latency the 5s default loses.
+// interacts with the same layout the menu will anchor to.
+//
+// The gate itself is now `chartsSettled` (e2e/helpers.ts) — this spec proved the
+// shape and #2862 promoted it, since eleven other routes draw the same lazy
+// wrappers. What stays HERE is only what is specific to /sleep: which two cards
+// this page draws above its log.
 async function gotoSleepLogSettled(page: Page): Promise<Locator> {
   await page.goto("/sleep");
   const main = page.getByRole("main");
-  await expect(
-    main.getByTestId("sleep-duration-trend").locator(".recharts-wrapper")
-  ).toBeVisible({ timeout: 20_000 });
-  await expect(
-    main.getByTestId("source-compare-sleep_min").locator(".recharts-wrapper")
-  ).toBeVisible({ timeout: 20_000 });
+  await chartsSettled(
+    main,
+    main.getByTestId("sleep-duration-trend"),
+    main.getByTestId("source-compare-sleep_min")
+  );
   return main;
 }
 
@@ -1093,15 +1097,9 @@ test.describe("Sleep and mood log historical editing", () => {
 
       // Dismiss the delete's Undo toast before the next round trip: it sits
       // fixed at the bottom-right — where this row's ⋯ menu opens — and it
-      // intercepts the next menu item's click until it auto-dismisses. The
-      // unbounded pre-#2839 click absorbed that window silently (most of this
-      // test's runtime); the run-wide action bound now names it instead of
-      // eating it. The Undo affordance itself is undo-delete.spec's subject.
-      const moodToast = page
-        .getByTestId("toast")
-        .filter({ hasText: "Mood check-in deleted" });
-      await moodToast.getByRole("button", { name: "Dismiss" }).click();
-      await expect(moodToast).toHaveCount(0);
+      // intercepts the next menu item's click until it auto-dismisses (#2861).
+      // The Undo affordance itself is undo-delete.spec's subject.
+      await dismissToast(page, "Mood check-in deleted");
 
       await hydratedClick(page, manualRow.getByTestId("overflow-menu-trigger"));
       await hydratedClick(page, page.getByTestId("sleep-history-delete-sleep"));

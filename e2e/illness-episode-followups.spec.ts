@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { followLink } from "./nav";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import {
+  dismissToast,
+  expectNoClippedContent,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import {
   ensureUnlogged,
   addFromPicker,
@@ -331,8 +336,14 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .getByTestId("illness-event-symptom")
       .filter({ hasText: "Peaked in the evening" })
       .first(); // first-ok: filtered to the note THIS spec logged — one match
-    await historicalSymptom.getByTestId("overflow-menu-trigger").click();
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await hydratedClick(
+      page,
+      historicalSymptom.getByTestId("overflow-menu-trigger")
+    );
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "Edit", exact: true })
+    );
     let symptomEditor = page.getByTestId("illness-event-editor");
     await expect(symptomEditor.getByLabel("Severity")).toBeVisible();
     await symptomEditor
@@ -342,17 +353,31 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(historicalSymptom).toContainText(
       "Peaked in the evening — corrected"
     );
-    await historicalSymptom.getByTestId("overflow-menu-trigger").click();
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    // EpisodeTimeline toasts each save into the bottom-right stack, and this ledger
+    // is long enough that the ⋯ trigger re-opened next sits in the same quadrant —
+    // so the toast intercepts the re-open for its whole 6s window (#2861).
+    await dismissToast(page, "Symptom updated.");
+    await hydratedClick(
+      page,
+      historicalSymptom.getByTestId("overflow-menu-trigger")
+    );
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "Edit", exact: true })
+    );
     symptomEditor = page.getByTestId("illness-event-editor");
     await symptomEditor.getByLabel("Note").fill("Peaked in the evening");
     await symptomEditor.getByRole("button", { name: "Save" }).click();
     await expect(historicalSymptom).toContainText("Peaked in the evening");
+    await dismissToast(page, "Symptom updated.");
 
     // Historical readings and doses have a real correction path from the ledger.
     const tempRow = page.getByTestId("illness-event-temperature").first(); // first-ok: a temperature event row (has a correction path) — order-agnostic
-    await tempRow.getByTestId("overflow-menu-trigger").click();
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await hydratedClick(page, tempRow.getByTestId("overflow-menu-trigger"));
+    await hydratedClick(
+      page,
+      page.getByRole("button", { name: "Edit", exact: true })
+    );
     const eventEditor = page.getByTestId("illness-event-editor");
     await expect(eventEditor).toBeVisible();
     const dateTime = eventEditor.getByTestId("illness-event-date-time");

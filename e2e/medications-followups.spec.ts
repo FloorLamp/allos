@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import {
+  dismissToast,
+  followLink,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
@@ -255,7 +260,10 @@ test("logs, edits, and deletes a historical medication dose", async ({
     .getByTestId("dose-history-row")
     .filter({ hasText: updatedAmount });
   await expect(updatedRow).toContainText(/(?:4:18am|04:18)/);
-  await updatedRow.getByRole("button", { name: "Dose actions" }).click();
+  await hydratedClick(
+    page,
+    updatedRow.getByRole("button", { name: "Dose actions" })
+  );
   // Removing one logged event confirms first and undoes after — the shared delete
   // path every EntryHistoryTable row now goes through. The menu item only OPENS the
   // dialog; the write happens when the dialog is answered.
@@ -273,11 +281,18 @@ test("logs, edits, and deletes a historical medication dose", async ({
     .getByTestId("dose-history-row")
     .filter({ hasText: updatedAmount });
   await expect(restoredRow).toBeVisible();
+  // The undo posts its own "Restored." toast into the bottom-right stack, and the
+  // dose table is the BOTTOM section of this page — so the row menu re-opened below
+  // is squarely under it for the full 6s auto-dismiss window (#2861).
+  await dismissToast(page, "Restored.");
 
   // Undo is part of the behavior under test; remove the restored fixture again
   // so --repeat-each starts from the same dose history instead of accumulating
   // duplicate rows with identical timestamps.
-  await restoredRow.getByRole("button", { name: "Dose actions" }).click();
+  await hydratedClick(
+    page,
+    restoredRow.getByRole("button", { name: "Dose actions" })
+  );
   await hydratedClick(page, page.getByRole("menuitem", { name: "Delete" }));
   await settledClick(
     page,
@@ -286,11 +301,17 @@ test("logs, edits, and deletes a historical medication dose", async ({
       .getByRole("button", { name: "Delete dose" })
   );
   await expect(restoredRow).toHaveCount(0);
+  // Second delete, second toast — and the Medication actions menu below opens into
+  // the same quadrant (#2861).
+  await dismissToast(page, "Dose deleted.");
 
   // The administration and course correction are one write: editing immediately
   // afterward must show the selected dose date as the new PRN start.
-  await page.getByRole("button", { name: "Medication actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await hydratedClick(
+    page,
+    page.getByRole("button", { name: "Medication actions" })
+  );
+  await hydratedClick(page, page.getByRole("menuitem", { name: "Edit" }));
   await expect(
     page.locator('input[type="hidden"][name="started_on"]')
   ).toHaveValue(beforeStart);

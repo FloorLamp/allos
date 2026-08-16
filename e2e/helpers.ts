@@ -97,6 +97,20 @@ import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 //    nothing to settle on; before #1952 it appeared to work only because it accepted
 //    a bystander's POST, which is the silent-green failure that issue is about.
 //
+// 3b. …but the write you just made TOASTED, and the next thing you click is in the
+//    viewport's BOTTOM-RIGHT (a row's ⋯ trigger, a right-aligned actions cell):
+//        → dismissToast(page, "…") first.
+//    The toast stack is `fixed` down there and intercepts that click for its whole
+//    auto-dismiss window — silently before #2859, as a named 15s timeout since (#2861).
+//
+// 3c. The route draws LAZY CHARTS (`next/dynamic(ssr:false)`) above what you are
+//    about to measure or drive:
+//        → chartsSettled(scope, card, …) after the goto, before the first
+//          boundingBox()/drag or the first portaled ⋯ menu round trip.
+//    Chunk evaluation grows the layout under a test that already started; that is
+//    #2839's hang (a fixed menu panel stranded off-viewport) and #2714's stale
+//    coordinates, from one cause (#2862).
+//
 // 4. toPass() is the LAST resort — only for a genuinely non-atomic condition that
 //    none of the above expresses (e.g. re-open a flaky palette until its input
 //    shows, `openCommandPalette` in nav.ts). Every toPass() MUST carry a comment
@@ -222,6 +236,104 @@ async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
     await locator.page().waitForTimeout(50);
   }
   throw new Error("element never settled into a stable position");
+}
+
+// The chart-mount GATE: return only once a lazy-chart route's layout is done growing.
+//
+// Every chart in the app is `next/dynamic(ssr: false)` behind a Suspense fallback
+// (components/ChartLoading.tsx, "Loading chart…"). That is THREE renders of the same
+// box, not one: nothing at SSR, the fallback at hydration, the chart itself at chunk
+// evaluation. Each step changes the height of everything below it, and on a loaded CI
+// worker the last step lands tens of seconds after first paint (#2839's trace shows a
+// duration card still collapsed while the test was already driving the log under it).
+//
+// Two different tests get hurt by that, and this is the one gate for both (#2862):
+//
+//   • A GEOMETRY read — a boundingBox() pair fed to a drag, an adjacency claim, a
+//     height comparison — measures a layout that is still one card short. #2714's
+//     class with a chart-mount trigger: the coordinates were true when they were read.
+//   • A portaled ⋯ MENU round trip. OverflowMenu's panel is `position: fixed` and
+//     glued to its trigger's rect; growth above the trigger slides it off-viewport,
+//     `scrollIntoViewIfNeeded` cannot move a fixed element, and the pending click on
+//     the menu item retries against `<html>` until the budget dies (#2839's hang; with
+//     #2859's 15s actionTimeout it now fails named instead, which is not the same as
+//     fixed).
+//
+// WHY A POSITIVE SIGNAL PER CARD, and not just "no fallback on the page". The
+// fallback's absence is true before hydration too — the server renders NOTHING in an
+// `ssr:false` box — so an absence-only gate settles on the pre-hydration paint, which
+// is the bystander false-settle (#1437) wearing a chart costume. So the caller NAMES
+// at least one card this route really does draw, and `.recharts-wrapper` (the element
+// recharts mounts around every chart it renders, and the signal sleep-page's own gate
+// used) is waited for INSIDE it. That one positive proof establishes that hydration
+// AND chunk evaluation happened; the scope-wide sweep for a remaining fallback
+// afterwards then covers the route's OTHER lazy boxes without making the caller
+// enumerate them.
+//
+// Name a card that DRAWS. A chart card with no data in the fixture renders an empty
+// state and never mounts a wrapper, so naming it gates on something that will not
+// happen; pick a populated one — which is also the card whose mount moves the layout.
+//
+// A GRID of sparklines is one card for this purpose: pass the grid as BOTH the scope
+// and the named card (`chartsSettled(grid, grid)`). One mounted wrapper anywhere in it
+// proves the chunk evaluated, and the sweep then covers every remaining tile — which
+// is what a grid whose populated members are fixture-dependent actually needs.
+//
+// The 20s budget is declared per hygiene pitfall 17: chunk evaluation under
+// contention is exactly the latency the 5s default loses.
+const CHART_MOUNT_TIMEOUT = 20_000;
+
+export async function chartsSettled(
+  scope: Page | Locator,
+  card: Locator,
+  ...moreCards: Locator[]
+): Promise<void> {
+  for (const c of [card, ...moreCards]) {
+    await expect(
+      c.locator(".recharts-wrapper").first() // first-ok: proves THIS card mounted its chart at all; a card that draws two still takes one mount step
+    ).toBeVisible({ timeout: CHART_MOUNT_TIMEOUT });
+  }
+  // Now that at least one chunk has evaluated, an absent fallback is a real answer:
+  // any box still loading is still showing ChartLoading's text.
+  await expect(scope.getByText(/Loading chart/)).toHaveCount(0, {
+    timeout: CHART_MOUNT_TIMEOUT,
+  });
+}
+
+// Take a toast down before the next round trip, and prove it is gone (#2861).
+//
+// The toast stack is `fixed` at the viewport's bottom-right (components/Toast.tsx —
+// `w-72` cards, auto-dismiss at 6s for a success and 10s for an error). That quadrant
+// is where a table's right-aligned actions cell lives and where an OverflowMenu panel
+// opens, so the very next click after a write that toasted lands UNDER a card that is
+// still up. Playwright's actionability then blocks on it — before #2859 the unbounded
+// click simply absorbed the whole auto-dismiss window in silence (the sleep-page
+// delete test was losing ~10s of every run, green CI included), and with the run-wide
+// 15s actionTimeout the same collision fails NAMED:
+//
+//   locator.click: Timeout 15000ms exceeded … <p>…deleted.</p> from
+//   <div class="fixed bottom-…"> subtree intercepts pointer events
+//
+// Never wait it out and never widen the budget: a click blocked by
+// `<div class="fixed bottom-…">` is the toast, and the fix is to dismiss it.
+//
+// SCOPED BY TEXT, always. Toasts stack, so "the toast" is not a thing — dismissing by
+// testid alone would take down whichever card happened to be on top, which on an undo
+// path is the one the NEXT assertion is about. The filter also documents at the call
+// site which write the test just made.
+//
+// The Dismiss button is a pure client control: it posts nothing, so this is
+// `hydratedClick` and not `settledClick` (decision-tree case 3). The count assertion
+// afterwards is the actual guarantee — the card is out of the DOM, not merely on its
+// way out — and it is what makes this safe to call before a geometry read too.
+export async function dismissToast(
+  page: Page,
+  text: string | RegExp
+): Promise<void> {
+  const toast = page.getByTestId("toast").filter({ hasText: text });
+  await expect(toast).toBeVisible();
+  await hydratedClick(page, toast.getByRole("button", { name: "Dismiss" }));
+  await expect(toast).toHaveCount(0);
 }
 
 // Open the Upcoming page's display aggregates (issue #1504).

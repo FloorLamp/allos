@@ -2,7 +2,13 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledClick, settledPickOption } from "./helpers";
+import {
+  chartsSettled,
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledPickOption,
+} from "./helpers";
 import { workerDbPath } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
@@ -47,18 +53,37 @@ function tile(page: Page, name: string) {
 
 // Open one tile's corner ⋯ menu and return the menu panel (portaled to <body>, so
 // it is NOT inside the tile's own subtree — scope to the panel, not the card).
+//
+// A tile's ⋯ trigger is an OverflowMenu toggle: its onClick exists only once React
+// has attached, and a retry loop would close what the first click opened — so
+// hydratedClick, never a bare click (decision-tree case 3). The menu PANEL is
+// `position: fixed` and glued to that trigger's rect, so the grid also has to be done
+// growing before the round trip starts — the fixture always has populated tiles, so
+// one mounted sparkline is a real signal here (#2862).
+async function savedTilesSettled(page: Page) {
+  const grid = page.getByTestId("saved-tiles");
+  await chartsSettled(grid, grid);
+}
+
 async function openTileMenu(page: Page, name: string) {
-  await tile(page, name).getByTestId("overflow-menu-trigger").click();
+  await savedTilesSettled(page);
+  await hydratedClick(
+    page,
+    tile(page, name).getByTestId("overflow-menu-trigger")
+  );
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;
 }
 
 async function openTileMenuByKey(page: Page, key: string) {
-  await page
-    .locator(`[data-testid="saved-tile"][data-tile-key="${key}"]`)
-    .getByTestId("overflow-menu-trigger")
-    .click();
+  await savedTilesSettled(page);
+  await hydratedClick(
+    page,
+    page
+      .locator(`[data-testid="saved-tile"][data-tile-key="${key}"]`)
+      .getByTestId("overflow-menu-trigger")
+  );
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;
@@ -355,6 +380,12 @@ async function tileOrder(page: Page): Promise<string[]> {
 // distance is the same DndContext the long-press TouchSensor feeds — so this
 // exercises the real reorder path without emulating a press-and-hold.
 async function dragTile(page: Page, fromKey: string, toKey: string) {
+  // The tiles are lazy sparklines, so the grid is still GROWING until their chunk
+  // evaluates — and a drag is aimed at coordinates read before that lands, which is
+  // #2714's stale-point class with a chart-mount trigger (#2862). Gate the layout
+  // before measuring it: one mounted wrapper anywhere in the grid proves the chunk
+  // evaluated, and the sweep covers the rest of the tiles.
+  await savedTilesSettled(page);
   const from = page.locator(`[data-tile-key="${fromKey}"]`);
   const to = page.locator(`[data-tile-key="${toKey}"]`);
   const a = await from.boundingBox();
