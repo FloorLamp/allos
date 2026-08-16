@@ -4,9 +4,9 @@
   background fallback. Record the next fire time for the check-in script.
 - Owner HOLDS live in `$SCRATCH/.holds`, never in the orchestrator's head: one
   per line as `<scope> :: <release condition> :: <what it gates>`. The check-in
-  prints them and says to test each condition. A hold is the only input no
-  script can derive, so it is the one whose loss to a restart is silent — every
-  other fact this recorder prints is recoverable from git, disk, or the API.
+  prints them; test every release condition on every wake.
+- A hold is the only input no script can derive, so its loss to a restart is the
+  silent one. Everything else the recorder prints is recoverable.
 - Post a status pulse every check-in: in flight, merged, queued, and parked or
   awaiting owner.
 - Sweep open issues about every four hours for filings, labels, and comment
