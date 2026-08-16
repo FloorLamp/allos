@@ -235,11 +235,20 @@ test("logout wipes even with a snapshot refresh in flight (#2908)", async ({
     .poll(() => storedKinds(page), { timeout: 30_000 })
     .toEqual([...SNAPSHOT_KINDS].sort());
 
-  // Installed AFTER the initial capture, so only the racing refresh is slowed.
+  // Installed AFTER the initial capture, so only the racing refresh is slowed. The two
+  // counters make the race a stated FACT of this test rather than an assumption: a run
+  // where the GET was never asked for, or was already answered before the button was
+  // pressed, proves nothing and says so below instead of passing.
+  let snapshotGets = 0;
+  let snapshotGetReleasedAt = 0;
   await page.route("**/*", async (route) => {
     const request = route.request();
     if (request.url().includes("/api/offline-snapshots")) {
+      snapshotGets += 1;
       await new Promise((r) => setTimeout(r, SNAPSHOT_GET_LATENCY_MS));
+      // Real elapsed time in the RUNNER, ordering two events in this test's own
+      // lifetime: nothing is stored, and nothing reaches the app's frozen clock.
+      snapshotGetReleasedAt = Date.now(); // clock-ok: runner-side ordering, never stored
     } else if (request.method() === "POST") {
       // The only POST from here on is the logout Server Action.
       await new Promise((r) => setTimeout(r, LOGOUT_POST_LATENCY_MS));
@@ -256,8 +265,19 @@ test("logout wipes even with a snapshot refresh in flight (#2908)", async ({
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
 
   // …and log out while that GET is still in the air.
+  const logoutClickedAt = Date.now(); // clock-ok: runner-side ordering, never stored
   await page.getByRole("button", { name: "Log out" }).click();
   await page.waitForURL(/\/login/, { timeout: 30_000 });
+
+  // The race was real, or this test is worthless.
+  expect(
+    snapshotGets,
+    "the refresher never asked — no refresh was in flight"
+  ).toBeGreaterThan(0);
+  expect(
+    snapshotGetReleasedAt,
+    "the snapshot GET was answered BEFORE logout was pressed — the window this test exists to cover never opened"
+  ).toBeGreaterThan(logoutClickedAt);
 
   // Nothing survived, and nothing came back. The poll deliberately outlasts the GET's
   // latency: an empty store read before the racing write would land is not an answer.

@@ -476,11 +476,16 @@ describe("overlay — folding queued writes into a stored read", () => {
     expect(out.practices[0].queued).toBeUndefined();
   });
 
-  it("does not fold a tap from LAST WEEK into this week's count", () => {
+  it("does not fold a practice tap from LAST WEEK into this week's count", () => {
     // The week half of the same defect: the snapshot is one profile-local day's read
     // of the week it fell in, and a tap captured before that week started belongs to
     // the previous one. Replay is day-idempotent per (practice, day), so it lands on
     // ITS day and moves neither number here.
+    //
+    // `todayCount: 0` is load-bearing. The day-idempotency clamp below the guard
+    // (`addsToday = todayCount > 0 ? 0 : 1`) silently absorbs a stray intent whenever
+    // the day is ALREADY logged, so a fixture with today logged passes with no guard at
+    // all and proves nothing. Nothing logged today is the case that shows the leak.
     const out = overlayPracticeWeek(
       {
         date: "2026-08-16",
@@ -490,7 +495,7 @@ describe("overlay — folding queued writes into a stored read", () => {
             name: "Sauna",
             perWeek: 5,
             countThisWeek: 2,
-            todayCount: 1,
+            todayCount: 0,
           },
         ],
       },
@@ -505,7 +510,7 @@ describe("overlay — folding queued writes into a stored read", () => {
       PROFILE
     );
     expect(out.practices[0].countThisWeek).toBe(2);
-    expect(out.practices[0].todayCount).toBe(1);
+    expect(out.practices[0].todayCount).toBe(0);
   });
 
   it("leaves a day already logged alone", () => {

@@ -23,10 +23,7 @@
 // would take the section off /offline exactly when it is the only copy there is. The
 // queued write is folded in by the overlay meanwhile.
 
-import {
-  OFFLINE_QUEUE_COVERAGE,
-  type FlowKind,
-} from "@/lib/offline/queue";
+import { OFFLINE_QUEUE_COVERAGE, type FlowKind } from "@/lib/offline/queue";
 import {
   isArguedExclusion,
   type ArguedExclusion,
@@ -82,9 +79,7 @@ export function resetDirtySnapshots(): void {
 export function snapshotKindsForAffordance(
   affordance: OneTapAffordance
 ): SnapshotKind[] {
-  const flow = OFFLINE_QUEUE_COVERAGE[affordance] as
-    | FlowKind
-    | ArguedExclusion;
+  const flow = OFFLINE_QUEUE_COVERAGE[affordance] as FlowKind | ArguedExclusion;
   // An argued exclusion means the tap is online-only, not that it changes nothing —
   // but every excluded affordance writes something no snapshot kind declares an
   // overlay for, so the lookup below would answer [] anyway. Returning early says so.
