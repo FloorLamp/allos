@@ -44,6 +44,7 @@ import {
   getProcedures,
   getOpticalPrescriptions,
 } from "../clinical";
+import { categorySatisfiesScreening } from "../../medical-categories";
 import { getRiskFactors } from "./risk";
 
 // ---- Preventive care (issue #82) ------------------------------------------
@@ -59,18 +60,6 @@ export function getPreventiveSatisfactions(
     )
     .all(profileId) as PreventiveSatisfaction[];
 }
-
-// Medical-record categories whose results can satisfy a screening: cholesterol/
-// A1c/glucose labs, blood-pressure vitals, and screening INSTRUMENT scores (#1076
-// — a PHQ-9 satisfies depression screening, an AUDIT-C alcohol screening). The
-// legacy `biomarker` bucket is retained for un-backfilled rows. Genomics/scans/
-// prescriptions/derived/reference are never screening RESULTS in this sense.
-const INFERENCE_RESULT_CATEGORIES = new Set([
-  "lab",
-  "biomarker",
-  "vitals",
-  "instrument",
-]);
 
 // INFERRED satisfactions (issue #86): preventive rules a profile's EXISTING
 // records already satisfy — a colonoscopy procedure, a lipid/A1c result, a
@@ -116,11 +105,19 @@ export function getInferredPreventiveSatisfactions(
     });
   }
 
-  // Lab / vitals results → lab screenings, by canonical biomarker name (or the
-  // raw result name as a fallback synonym match).
+  // Clinical observations → screenings, by canonical biomarker name (or the raw
+  // result name as a fallback synonym match).
+  //
+  // WHICH CATEGORIES MAY BE READ AS A SCREENING RESULT is not decided here (#3025). It
+  // was, as a four-entry ALLOWLIST, and a category nobody had listed — `report`, where a
+  // CCDA files its cytology and pathology reads — was dropped before any matching ran, so
+  // a filed Pap satisfied nothing and its profile got an overdue cervical-screening nudge.
+  // The ruling now lives beside the enum it is about (`SCREENING_RESULT_CATEGORIES`), is
+  // exhaustive over it by TYPE, and is a DENYLIST: a category is admitted unless it was
+  // ruled out with a reason, so the next category an importer introduces is included by
+  // default rather than dropped in silence.
   for (const r of getClinicalObservations(profileId)) {
-    if (r.category === null || !INFERENCE_RESULT_CATEGORIES.has(r.category))
-      continue;
+    if (!categorySatisfiesScreening(r.category)) continue;
     records.push({
       code: null,
       name: r.name,

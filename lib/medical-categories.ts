@@ -124,6 +124,105 @@ export function carriesResultIdentity(category: string): boolean {
   return !(NON_IDENTITY_CATEGORIES as readonly string[]).includes(category);
 }
 
+// ---- The SCREENING-RESULT axis (issue #3025) -------------------------------
+//
+// A FOURTH question, independent of the three above: may a record in this category be
+// read as EVIDENCE THAT A SCREENING HAPPENED — the record stream the preventive
+// assessor infers satisfactions from (#86, lib/queries/upcoming/preventive.ts)?
+//
+// It used to be an ALLOWLIST of four categories held in that query module, and an
+// allowlist fails silently in the dangerous direction. A cytology report imported from a
+// CCDA lands as `report`; its name matches the concept map's `pap test` needle exactly,
+// and it was dropped before any matching ran — so a profile whose Pap was 23 months old
+// got an "overdue cervical cancer screening" nudge. Nobody had ruled `report` out; nobody
+// had ruled it in either, and a category nobody considered produced a nudge for a
+// screening the record already proved, with no error anywhere.
+//
+// So the gate is a DENYLIST, and this table classifies EVERY member of the enum rather
+// than listing one side. A category is admitted unless it is ruled out here WITH ITS
+// REASON, which makes "we decided against it" and "nobody looked" stay distinguishable —
+// the #2786 discipline. The `Record<MedicalCategory, …>` is what gives it teeth: a new
+// enum member that never answered this question is a TYPE error, not a silent drop.
+//
+// WHICH DIRECTION THIS MOVES A SAFETY SIGNAL. Admitting a category can only ever ADD
+// satisfactions, i.e. make a screening nudge QUIETER. That is deliberate and it is the
+// cheaper failure: an admitted category still has to clear the concept map's whole-word
+// name/code needles before it satisfies anything, whereas an excluded one silently nags
+// about a screening that is on file. The categories ruled out below are ruled out for a
+// reason about what the row IS, never to keep the signal loud.
+export interface ScreeningResultRuling {
+  // May a row in this category satisfy a preventive screening rule?
+  admits: boolean;
+  // Why — required in BOTH directions.
+  why: string;
+}
+
+export const SCREENING_RESULT_CATEGORIES: Record<
+  MedicalCategory,
+  ScreeningResultRuling
+> = {
+  lab: {
+    admits: true,
+    why: "A measured reading with a name and a date — a cholesterol panel, an A1c, a glucose. The original case #86 was built for.",
+  },
+  vitals: {
+    admits: true,
+    why: "A dated physiologic reading; a blood pressure IS the hypertension screening's result.",
+  },
+  instrument: {
+    admits: true,
+    why: "A validated screening instrument's TOTAL SCORE (#1076) — a PHQ-9 satisfies depression screening, an AUDIT-C alcohol screening. Admitted the last time this list was extended.",
+  },
+  report: {
+    admits: true,
+    why: "The narrative body of a cytology / pathology / imaging read (#708) — precisely the document that PROVES a screening happened. It carries no value, so the qualitative-result bridge (#686) can never judge it, and its name is all the evidence there is: 'Cytology, Gyn-PAP Test (AP)' matches the cervical concept's `pap test` needle. This is the #3025 case.",
+  },
+  genomics: {
+    admits: false,
+    why: "A genotype is an immutable fact about the person, not an event on a screening clock. It has no recurrence interval to reset.",
+  },
+  scan: {
+    admits: false,
+    why: "A numeric imaging MEASUREMENT (a DEXA density). The study itself satisfies through the PROCEDURE stream, which carries the code and the indication; counting the measurement too would be a second, weaker derivation of the same event.",
+  },
+  prescription: {
+    admits: false,
+    why: "A medication, not a result. Being on a statin is not a lipid panel.",
+  },
+  derived: {
+    admits: false,
+    why: "A computed composite (Biological Age, PhenoAge). It is arithmetic over other rows, so it can prove no encounter took place — and it would inherit whatever dates its inputs had.",
+  },
+  reference: {
+    admits: false,
+    why: "An immutable identity fact (blood type). Never repeated, so never a screening on a clock.",
+  },
+  assessment: {
+    admits: false,
+    why: "The one exclusion that is NOT in the original comment, decided here (#3025): an assessment carries NO RESULT IDENTITY at all (NON_IDENTITY_CATEGORIES, #2318). A questionnaire ITEM answer or a temperature's body site is a FRAGMENT of another row's result, not a result in its own right, so it can prove nothing about whether a screening was performed — and the rows whose totals do prove it are `instrument`, which is admitted.",
+  },
+};
+
+// May a record in this category satisfy a preventive screening rule (#3025)?
+//
+// DENYLIST SEMANTICS, and the two edges are deliberate:
+//   • a category string this table does not know — the retired `biomarker` bucket that
+//     un-backfilled rows still carry (#2885) — is ADMITTED. That is the inversion: a
+//     category nobody has classified must be included and ruled out deliberately.
+//   • NULL is NOT a category. It is the legacy catch-all residue that still owes an
+//     explicit category decision (#2877, `getUncategorizedRecords`), and it is left
+//     excluded exactly as it was — widening the single largest uncurated population is
+//     not what this gate's inversion is for.
+export function categorySatisfiesScreening(
+  category: string | null | undefined
+): boolean {
+  if (category == null) return false;
+  const ruling: ScreeningResultRuling | undefined = (
+    SCREENING_RESULT_CATEGORIES as Record<string, ScreeningResultRuling>
+  )[category];
+  return ruling ? ruling.admits : true;
+}
+
 // The clinical flags a lab report can carry, and the only flags the AI extractor
 // is allowed to emit / the write action accepts. The derived "non-optimal*"
 // values in MedicalFlag (see lib/types.ts) are intentionally NOT here: they're
