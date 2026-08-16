@@ -71,10 +71,7 @@ export type CadenceSource =
 // per-scope identity (#2578) — this field is what a domain page filters on, not a
 // visibility flag on the target itself.
 export type CadenceHome =
-  | "training"
-  | "nutrition"
-  | "wellness"
-  | "substance-use";
+  "training" | "nutrition" | "wellness" | "substance-use";
 
 export interface CadenceScopeSpec {
   source: CadenceSource;

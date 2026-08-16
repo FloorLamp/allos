@@ -28,6 +28,7 @@ import {
 } from "@/lib/queries/cadence-ledger";
 import {
   getFrequencyTargetProgress,
+  getFrequencyTargetProgressForHome,
   getFrequencyTargetWeeklyHistory,
   getSubstanceWeekState,
   getSubstanceWeeklyTrend,
@@ -358,6 +359,68 @@ describe("the cadence ledger (#2034)", () => {
     expect(
       getFrequencyTargetWeeklyHistory(pid, 4).map((h) => h.target.scope_kind)
     ).toEqual(["practice"]);
+  });
+
+  // ---- home is declared too (#2888) ----------------------------------------
+
+  it("narrows the SAME rollup to one page's scopes without touching its numbers", () => {
+    // Four floor tenants, one per home-relevant scope, each with real events in the
+    // current window so none of the numbers is a trivial zero.
+    const pid = newProfile("cl-home");
+    makeTarget(pid, "region", "Chest", 2);
+    makeTarget(pid, "mobility_region", "Glutes", 2);
+    makeTarget(pid, "food_group", "fatty_fish", 3);
+    makeTarget(pid, "practice", "Sauna", 2);
+
+    logSet(pid, dayBack(pid, 1), "Barbell Bench Press");
+    logActivity(
+      pid,
+      dayBack(pid, 2),
+      "mobility",
+      JSON.stringify([{ type: "mobility", name: "pigeon_pose" }])
+    );
+    logFood(pid, dayBack(pid, 1), "fatty_fish", 2);
+    logPracticeSession(pid, "Sauna", dayBack(pid, 1));
+
+    const all = getFrequencyTargetProgress(pid);
+    expect(all.map((p) => p.target.scope_kind).sort()).toEqual([
+      "food_group",
+      "mobility_region",
+      "practice",
+      "region",
+    ]);
+
+    // Membership: the training page gets the training routine proper plus mobility.
+    const training = getFrequencyTargetProgressForHome(pid, "training");
+    expect(training.map((p) => p.target.scope_kind)).toEqual([
+      "region",
+      "mobility_region",
+    ]);
+    // And each other page still gets its own, unchanged — nothing is hidden from the
+    // user, it renders where it already lived.
+    expect(
+      getFrequencyTargetProgressForHome(pid, "nutrition").map(
+        (p) => p.target.scope_value
+      )
+    ).toEqual(["fatty_fish"]);
+    expect(
+      getFrequencyTargetProgressForHome(pid, "wellness").map(
+        (p) => p.target.scope_value
+      )
+    ).toEqual(["Sauna"]);
+
+    // COUNTING IS UNCHANGED: every surviving row is the identical object the generic
+    // rollup produced — count, pace, met, ceiling and all — so a chip that still
+    // renders draws the same squares it drew before.
+    expect(training).toEqual(
+      all.filter((p) =>
+        ["region", "mobility_region"].includes(p.target.scope_kind)
+      )
+    );
+    expect(training.map((p) => [p.count, p.per_week, p.met, p.pace])).toEqual([
+      [1, 2, false, "behind"],
+      [1, 2, false, "behind"],
+    ]);
   });
 
   // ---- the anchor clamp ----------------------------------------------------
