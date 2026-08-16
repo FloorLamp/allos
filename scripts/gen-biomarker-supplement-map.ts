@@ -76,6 +76,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
 import type { Contraindication } from "./gen-nutrient-food-map";
+import { SOLUBLE_FIBER_LDL_SOURCE } from "./gen-nutrient-food-map";
 import type { FoodTiming } from "../lib/types";
 
 const OUT = path.join(
@@ -124,9 +125,14 @@ export interface BiomarkerSupplementEntry {
   // spelling — "Ferritin", not "Ferritin, Serum". The dataset test resolves every name
   // against that file, so a wrong guess fails CI instead of silently never matching.
   biomarkers: string[];
-  // Which flag direction triggers it. Always "low": a supplement can answer a shortfall,
-  // and "stop taking something" is a different question this map does not answer.
-  direction: "low";
+  // Which flag direction triggers it — DECLARED per entry, honored by the engine
+  // (lib/supplement-suggest-curated.ts), never assumed. "low" is the ordinary case: a
+  // supplement answers a shortfall. "high" is the #2754 add-on-high route, and exactly
+  // one entry uses it (`lipids`): a HIGH LDL/ApoB answered by soluble-fiber supplements
+  // whose LDL-lowering effect is FDA-authorized-health-claim territory. Either way this
+  // map only ever says "consider STARTING something" — "stop taking something" remains a
+  // question it does not answer.
+  direction: "low" | "high";
   // The curated supplement(s), best-supported first.
   supplements: SupplementSource[];
   // What to surface INSTEAD when every primary is struck by a safety screen (a fish
@@ -149,8 +155,8 @@ export interface BiomarkerSupplementEntry {
 }
 
 // ── The curated biomarker → supplement table ─────────────────────────────────
-// Six entries. Each one is a claim about the MARKER, each carries its justification and
-// a public source, and none of them states a dose.
+// Seven entries. Each one is a claim about the MARKER, each carries its justification
+// and a public source, and none of them states a dose.
 const ENTRIES: BiomarkerSupplementEntry[] = [
   {
     key: "vitamin-d",
@@ -396,10 +402,60 @@ const ENTRIES: BiomarkerSupplementEntry[] = [
     caveat:
       "This is a claim about the marker, not about outcomes: supplemental omega-3 reliably raises the index, while its effect on cardiovascular events remains debated. Oily fish gets you there too. Higher intakes can add to the effect of a blood thinner — worth raising with whoever prescribes it.",
   },
+  {
+    key: "lipids",
+    label: "LDL cholesterol / ApoB",
+    // THE ONE ADD-ON-HIGH ENTRY (#2754). The curation standard holds: the claim is
+    // scoped to the marker (soluble fiber LOWERS the LDL-C the test measures), it is
+    // uncontested at that level — FDA-authorized health claim (21 CFR 101.81) and
+    // approved EFSA beta-glucan claims — and no dose is stated anywhere. The direction
+    // inversion is the deliberate, reviewed act the `direction` field exists to declare.
+    biomarkers: ["LDL Cholesterol", "Apolipoprotein B (ApoB)"],
+    direction: "high",
+    supplements: [
+      {
+        name: "Psyllium husk",
+        matchTokens: ["psyllium", "ispaghula", "metamucil"],
+        foodTiming: "with_food",
+        note: "Take with plenty of water, and keep it a couple of hours apart from medications — bulk fibers can slow their absorption.",
+      },
+      {
+        name: "Oat beta-glucan",
+        matchTokens: ["beta-glucan", "beta glucan", "oat bran", "oat fiber"],
+        foodTiming: "with_food",
+        note: "A bowl of oats or barley gets you the same beta-glucan as food.",
+      },
+    ],
+    allergyAlternative: null,
+    evidence:
+      "Soluble fiber binds bile acids in the gut and lowers the LDL cholesterol (and with it ApoB) the test measures; the effect for psyllium and oat beta-glucan is established enough to carry an FDA-authorized health claim and approved EFSA claims.",
+    // The shared #2754 citation — one string with the food map's soluble-fiber entry,
+    // so a correction reaches both datasets on regeneration.
+    source: SOLUBLE_FIBER_LDL_SOURCE,
+    contraindications: [
+      {
+        // Bulk-forming fiber with a narrowed or obstructed gut is the classic psyllium
+        // contraindication; "obstruction" also catches "bowel obstruction" spellings.
+        match: "obstruction",
+        caution:
+          "With a bowel obstruction or narrowing, bulk-forming fiber is unsafe — this one is a clinician's call.",
+        severity: "drop",
+      },
+      {
+        match: "dysphagia",
+        caution:
+          "With swallowing difficulty, bulk fibers can swell in the throat — do not start one without your clinician.",
+        severity: "drop",
+      },
+    ],
+    caveat:
+      "A high LDL or ApoB is a conversation with your clinician first — soluble fiber complements, never replaces, prescribed lipid treatment, and food sources (oats, barley, legumes) get you there too.",
+  },
 ];
 
 // Dataset-level metadata: none today. Declared for symmetry with the food map, whose
-// meta carries the reduce table — this map has no second direction (see `direction`).
+// meta carries the reduce table — this map has no reduce table ("stop taking X" is a
+// question it does not answer; the `lipids` entry's HIGH trigger is still an ADD).
 export type BiomarkerSupplementMapMeta = undefined;
 
 export type BiomarkerSupplementMap = DatasetEnvelope<

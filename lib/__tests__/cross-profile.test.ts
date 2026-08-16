@@ -1,37 +1,172 @@
 import { describe, it, expect } from "vitest";
 import {
+  authorizedProfileSubset,
+  isSealedAuthorizedProfileIds,
   profileIdsIn,
   usesProfileIdInList,
   isCrossProfileSqlModule,
   CROSS_PROFILE_SQL_MODULES,
 } from "@/lib/cross-profile";
+import { testAuthorizedIds as authorized } from "./authorized-ids";
 
 describe("profileIdsIn: bound-parameter placeholder construction", () => {
   it("builds one placeholder per id", () => {
-    expect(profileIdsIn([1])).toBe("(?)");
-    expect(profileIdsIn([1, 2, 3])).toBe("(?,?,?)");
-    expect(profileIdsIn([7, 7, 7, 7, 7])).toBe("(?,?,?,?,?)");
+    expect(profileIdsIn(authorized([1]))).toBe("(?)");
+    expect(profileIdsIn(authorized([1, 2, 3]))).toBe("(?,?,?)");
+    expect(profileIdsIn(authorized([7, 7, 7, 7, 7]))).toBe("(?,?,?,?,?)");
   });
 
   it("never interpolates the ids themselves (only ? placeholders)", () => {
-    const out = profileIdsIn([42, 99, 1000]);
+    const out = profileIdsIn(authorized([42, 99, 1000]));
     expect(out).not.toMatch(/\d/); // no digit leaks into the SQL text
     expect(out).toBe("(?,?,?)");
   });
 
   it("the empty set yields (NULL) — matches NOTHING, never everything, and stays valid SQL", () => {
-    expect(profileIdsIn([])).toBe("(NULL)");
+    expect(profileIdsIn(authorized([]))).toBe("(NULL)");
     // Composed into a clause it reads `profile_id IN (NULL)`, which binds no params
     // and can never match a row (NULL is never equal), so an empty scope returns [].
-    expect(`profile_id IN ${profileIdsIn([])}`).toBe("profile_id IN (NULL)");
+    expect(`profile_id IN ${profileIdsIn(authorized([]))}`).toBe(
+      "profile_id IN (NULL)"
+    );
   });
 
   it("composes into a scanner-visible `profile_id IN` literal", () => {
     // The caller writes the literal `profile_id IN ${profileIdsIn(ids)}`, so the SQL
     // string carries the `profile_id IN` shape the companion scanner rule keys on.
-    const clause = `SELECT id FROM activities WHERE profile_id IN ${profileIdsIn([1, 2])}`;
+    const clause = `SELECT id FROM activities WHERE profile_id IN ${profileIdsIn(authorized([1, 2]))}`;
     expect(clause).toContain("profile_id IN (?,?)");
     expect(usesProfileIdInList(clause)).toBe(true);
+  });
+});
+
+// #2898 — the capability. Two rails, tested as two rails, because the review of #2935
+// found the first one alone had been described as a proof when it is not.
+//
+// RAIL 1, the TYPE: refuses every ORDINARY way of producing a set. Only a type-level
+// test can pin a refusal, because a refused program never runs — so each case carries
+// its `@ts-expect-error` AND asserts the runtime guard rejects the same value, which
+// is what makes the two rails visibly independent.
+describe("AuthorizedProfileIds: the type refuses ordinary expressions", () => {
+  // EVERY directive below sits INSIDE the arrow, immediately above the call it
+  // covers, and never on the `expect(` line. `@ts-expect-error` suppresses exactly
+  // the next line, and Prettier is free to rewrap `expect(() => f(x)).toThrow()`
+  // onto three lines the moment the expression grows — which silently slides the
+  // call off the directive and turns a passing typecheck into an unused-directive
+  // error plus an unsuppressed one. That is what broke CI on 082ecb290. Keeping the
+  // comment adjacent to the call also PINS the layout, because Prettier will not
+  // collapse a line carrying a comment.
+  it("refuses a plain number[] at the set-based SQL boundary", () => {
+    // If a directive ever goes unused, the capability has decayed back into a
+    // comment and any module could hand `profileIdsIn` ids nobody authorized.
+    expect(() =>
+      // @ts-expect-error a bare number[] carries no authorization
+      profileIdsIn([1, 2, 3])
+    ).toThrow(/authorization boundary/);
+    // The empty list too — "no ids" is still a claim about which ids were checked.
+    expect(() =>
+      // @ts-expect-error an empty bare array is not an authorized set either
+      profileIdsIn([])
+    ).toThrow(/authorization boundary/);
+  });
+
+  it("refuses a hand-built object with an unrelated key", () => {
+    expect(() =>
+      // @ts-expect-error a plain object property is not the declared brand symbol
+      profileIdsIn(Object.assign([1], { ok: true }))
+    ).toThrow(/authorization boundary/);
+  });
+
+  it("refuses the array methods that would rebuild a set from a real one", () => {
+    const parent = authorized([1, 2, 3]);
+    expect(() =>
+      // @ts-expect-error filter returns a plain number[]
+      profileIdsIn(parent.filter((id) => id > 1))
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error map returns a plain number[]
+      profileIdsIn(parent.map((id) => id))
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error slice returns a plain number[]
+      profileIdsIn(parent.slice(0, 1))
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error spreading into a literal drops the brand
+      profileIdsIn([...parent])
+    ).toThrow();
+    expect(() =>
+      // @ts-expect-error concatenating two capabilities yields an unbranded number[]
+      profileIdsIn([...authorized([1]), ...authorized([2])])
+    ).toThrow();
+  });
+});
+
+// RAIL 2, the RUNTIME MARK. The type is NOT a proof: TypeScript makes `A & B`
+// assignable to `B`, so `Object.assign` launders the brand with no cast and no `any`,
+// and both tsc and eslint pass it. These cases are the ones the #2935 review found
+// missing — the earlier suite only tested an unrelated-key object, which fails for a
+// reason that has nothing to do with the real laundering path.
+describe("AuthorizedProfileIds: the runtime mark refuses laundering", () => {
+  it("COMPILES the Object.assign laundering the type cannot refuse", () => {
+    const mine = authorized([1]);
+    // No @ts-expect-error here ON PURPOSE. This assignment typechecks, and pretending
+    // otherwise is the false claim the review caught. If a future TypeScript refuses
+    // it, THIS test fails and the module header stops being true — which is exactly
+    // when someone should come back and re-read it.
+    const forged: typeof mine = Object.assign([], mine, [4, 5, 6]);
+    expect([...forged]).toEqual([4, 5, 6]);
+  });
+
+  it("refuses that forged set at the chokepoint", () => {
+    const mine = authorized([1]);
+    const forged: typeof mine = Object.assign([], mine, [4, 5, 6]);
+    // Object.assign copies own ENUMERABLE properties; the mark is non-enumerable, so
+    // the fresh array never carries it.
+    expect(isSealedAuthorizedProfileIds(forged)).toBe(false);
+    expect(() => profileIdsIn(forged)).toThrow(
+      /did not come from an authorization boundary/
+    );
+  });
+
+  it("refuses in-place laundering, because a minted set is frozen", () => {
+    const mine = authorized([1]);
+    // The other shape: assign ONTO the real capability so the mark rides along. The
+    // freeze stops it before it can lie about which ids it holds.
+    expect(() => Object.assign(mine, [4, 5, 6])).toThrow(TypeError);
+    expect([...mine]).toEqual([1]);
+  });
+
+  it("refuses a set that only CAST its way in", () => {
+    const cast = [7, 8] as unknown as ReturnType<typeof authorized>;
+    expect(isSealedAuthorizedProfileIds(cast)).toBe(false);
+    expect(() => profileIdsIn(cast)).toThrow(
+      /did not come from an authorization boundary/
+    );
+  });
+
+  it("carries the mark through a checked subset, including down to empty", () => {
+    const parent = authorized([1, 2, 3]);
+    const narrowed = authorizedProfileSubset(parent, [1, 3]);
+    expect(isSealedAuthorizedProfileIds(narrowed)).toBe(true);
+    expect(profileIdsIn(narrowed)).toBe("(?,?)");
+    // A derived EMPTY set is legitimate — a login with no reachable profile — and must
+    // still reach `(NULL)` rather than the refusal.
+    const nobody = authorizedProfileSubset(parent, []);
+    expect(isSealedAuthorizedProfileIds(nobody)).toBe(true);
+    expect(profileIdsIn(nobody)).toBe("(NULL)");
+  });
+
+  it("refuses to NARROW a forged parent — the subset would re-seal it", () => {
+    const mine = authorized([1]);
+    const forged: typeof mine = Object.assign([], mine, [4, 5, 6]);
+    // This is the laundering the review named: without the guard, narrowing a forged
+    // parent to a subset of itself returns a FRESHLY SEALED set that `profileIdsIn`
+    // would then accept, so the chokepoint alone is not enough. A subset is only as
+    // authorized as what it narrowed.
+    expect(() => authorizedProfileSubset(forged, [4])).toThrow(
+      /did not come from an authorization boundary/
+    );
   });
 });
 

@@ -124,17 +124,14 @@ test("the Training tabs fill the strip at 640px instead of clustering left", asy
   const items = tabs.getByRole("tab");
   await expect(items).toHaveCount(4);
 
-  const [stripBox, firstBox, lastBox] = await Promise.all([
-    tabs.boundingBox(),
-    items.first().boundingBox(), // first-ok: the strip's first edge is the assertion
-    items.last().boundingBox(),
+  const [stripBox, firstBox, lastBox] = await settledBoxes([
+    tabs,
+    items.first(), // first-ok: the strip's first edge is the assertion
+    items.last(),
   ]);
-  expect(stripBox).not.toBeNull();
-  expect(firstBox).not.toBeNull();
-  expect(lastBox).not.toBeNull();
-  expect(Math.abs(firstBox!.x - stripBox!.x)).toBeLessThan(2);
+  expect(Math.abs(firstBox.x - stripBox.x)).toBeLessThan(2);
   expect(
-    Math.abs(lastBox!.x + lastBox!.width - (stripBox!.x + stripBox!.width))
+    Math.abs(lastBox.x + lastBox.width - (stripBox.x + stripBox.width))
   ).toBeLessThan(2);
   expect(
     await tabs.evaluate((element) => element.scrollWidth <= element.clientWidth)
@@ -151,17 +148,14 @@ test("the desktop Training tabs remain a compact left-aligned strip", async ({
   const items = tabs.getByRole("tab");
   await expect(items).toHaveCount(4);
 
-  const [stripBox, firstBox, lastBox] = await Promise.all([
-    tabs.boundingBox(),
-    items.first().boundingBox(), // first-ok: the strip's first edge is the assertion
-    items.last().boundingBox(),
+  const [stripBox, firstBox, lastBox] = await settledBoxes([
+    tabs,
+    items.first(), // first-ok: the strip's first edge is the assertion
+    items.last(),
   ]);
-  expect(stripBox).not.toBeNull();
-  expect(firstBox).not.toBeNull();
-  expect(lastBox).not.toBeNull();
-  expect(Math.abs(firstBox!.x - stripBox!.x)).toBeLessThan(2);
-  expect(lastBox!.x + lastBox!.width).toBeLessThan(
-    stripBox!.x + stripBox!.width - 100
+  expect(Math.abs(firstBox.x - stripBox.x)).toBeLessThan(2);
+  expect(lastBox.x + lastBox.width).toBeLessThan(
+    stripBox.x + stripBox.width - 100
   );
 });
 
@@ -207,12 +201,9 @@ test("the desktop Training header keeps the Equipment door beside the title (#16
   await expect(door).toBeVisible();
 
   // Same row as the heading, to its right — where #1616 put it.
-  const [titleBox, doorBox] = await Promise.all([
-    title.boundingBox(),
-    door.boundingBox(),
-  ]);
-  expect(doorBox!.x).toBeGreaterThan(titleBox!.x);
-  expect(doorBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
+  const [titleBox, doorBox] = await settledBoxes([title, door]);
+  expect(doorBox.x).toBeGreaterThan(titleBox.x);
+  expect(doorBox.y).toBeLessThan(titleBox.y + titleBox.height);
 });
 
 test("no chart card renders on Overview — the volume/intensity block moved to Trends → Fitness", async ({

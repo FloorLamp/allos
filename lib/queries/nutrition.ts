@@ -103,7 +103,14 @@ import {
   isFiberSupplement,
   fiberDoseGrams,
   type FiberAdequacy,
+  type FiberServing,
 } from "../fiber";
+import {
+  buildFiberSymptomPanel,
+  fiberSymptomPanelDates,
+  type FiberSymptomPanel,
+} from "../fiber-symptom-panel";
+import { getSymptomDaysInRange } from "./symptoms";
 import {
   nutritionDayPosition,
   type NutrientPosition,
@@ -166,7 +173,8 @@ export function getFoodSuggestions(profileId: number): FoodSuggestion[] {
 // computation every surface that renders a curated supplement claim formats. No model
 // call, so the same profile state yields the same suggestions on every run; a family the
 // map doesn't cover simply isn't here and falls through to the AI route
-// (lib/supplement-suggest.ts). Empty when nothing covered is flagged low.
+// (lib/supplement-suggest.ts). Empty when nothing covered is flagged on its entry's
+// declared trigger side (#2754).
 export function getCuratedSupplementSuggestions(
   profileId: number
 ): CuratedSupplementSuggestion[] {
@@ -1513,6 +1521,86 @@ export function getFiberOnDate(
     sex: getProfileSex(profileId),
   });
   return assessFiberAdequacy(intake, target);
+}
+
+// ---- Fiber × GI symptoms, read together (issue #2788) ----
+
+// The read-together gather: the daily fiber series (#976) and the window's symptom
+// days (the same rollup reader the timeline reads), assembled by the pure panel
+// module. A VIEW's input — no derivation of its own, no finding, no send; the window,
+// the GI filter, and every shape decision live in lib/fiber-symptom-panel.ts (this
+// gather holds no window arithmetic, #1909).
+//
+// THREE RANGED READS, not a per-day getFiberOnDate loop: each getFiberOnDate call
+// re-aggregates the profile's whole fiber_g history and runs an open-ended dose scan,
+// so 28 of them per render is an N+1 the page pays on every visit. The per-day figure
+// still comes from the SAME pure pieces the picker's gather composes
+// (estimatedFiberGrams / isFiberSupplement / fiberDoseGrams / fiberIntake), so the
+// two surfaces cannot disagree about a day — and the panel deliberately skips the
+// TARGET half (fiberTarget/assessFiberAdequacy): it draws intake, not adequacy.
+export function getFiberSymptomPanel(profileId: number): FiberSymptomPanel {
+  const dates = fiberSymptomPanelDates(today(profileId));
+  const from = dates[0];
+  const to = dates[dates.length - 1];
+
+  // Servings per day, from the shared ranged reader. A day PRESENT here with only
+  // zero-fiber groups is an honest 0 g, distinct from an unlogged day's null (#2258).
+  const servingsByDate = new Map<string, FiberServing[]>();
+  for (const r of getFoodDailyServingTotalsInRange(profileId, from, to)) {
+    const list = servingsByDate.get(r.date) ?? [];
+    list.push({ slug: r.group_key, servings: r.servings });
+    servingsByDate.set(r.date, list);
+  }
+
+  // Confirmed fiber doses per day — known grams sum; an unknown-unit dose flags the
+  // day (the caveat the panel must carry rather than claiming "0 g").
+  const suppGramsByDate = new Map<string, number>();
+  const unknownSupplementDates = new Set<string>();
+  for (const r of getConfirmedIntakeDosesInRange(profileId, from)) {
+    if (r.date > to || !isFiberSupplement(r.name)) continue;
+    const { grams, known } = fiberDoseGrams(r.amount);
+    if (known && grams > 0)
+      suppGramsByDate.set(r.date, (suppGramsByDate.get(r.date) ?? 0) + grams);
+    else unknownSupplementDates.add(r.date);
+  }
+
+  // Tracked fiber_g daily totals, once, as a date → value map.
+  const trackedByDate = new Map(
+    getMetricDailyTotals(profileId, "fiber_g").map((r) => [r.date, r.value])
+  );
+
+  const gramsByDate = new Map<string, number | null>();
+  for (const date of dates) {
+    const servings = servingsByDate.get(date);
+    const supplemented = suppGramsByDate.get(date) ?? null;
+    const intake = fiberIntake({
+      dailyTracked: trackedByDate.get(date) ?? null,
+      dailyEstimated: servings ? estimatedFiberGrams(servings) : 0,
+      dailySupplemented: supplemented,
+      unknownSupplement: unknownSupplementDates.has(date),
+    });
+    // fiberIntake refuses a zero-signal day (null); a day that LOGGED only
+    // zero-fiber groups upgrades to an honest 0.
+    gramsByDate.set(
+      date,
+      intake ? intake.grams : servingsByDate.has(date) ? 0 : null
+    );
+  }
+
+  const symptoms = getSymptomDaysInRange(profileId, from, to).flatMap((day) =>
+    day.symptoms.map((s) => ({
+      date: day.date,
+      symptom: s.symptom,
+      severity: s.severity,
+    }))
+  );
+
+  return buildFiberSymptomPanel({
+    dates,
+    gramsByDate,
+    unknownSupplementDates,
+    symptoms,
+  });
 }
 
 // ---- One day, both nutrients (issue #2379) ----

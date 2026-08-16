@@ -39,6 +39,16 @@ const HIGH_STAKES = [
   },
   { glob: /^lib\/password\.ts$/, why: "credential hashing" },
   { glob: /^middleware\.ts$/, why: "the Edge cookie gate" },
+  // Redaction is a DISCLOSURE boundary, not log hygiene. #2935 gave
+  // `redactSecrets` its first profile-facing consumer, so a shape it fails to
+  // mask is a credential on a user's screen. Added after this registry answered
+  // "not high-stakes" for #2955 — a rewrite of that very function — which is the
+  // same miss as `lib/dri.ts` (#2932): the tier was read as "which subsystem"
+  // when the question is "what does a bug here disclose or decide".
+  {
+    glob: /^lib\/(error-log-format|log)\.ts$/,
+    why: "secret redaction — a shape it misses is a credential shown to a user, and over-redaction destroys an error they must act on",
+  },
   {
     glob: /^lib\/public-paths\.ts$/,
     why: "the session-free route list — one entry too many is an open door",
@@ -65,6 +75,26 @@ const HIGH_STAKES = [
   {
     glob: /^lib\/nudge-cadence\.ts$/,
     why: "the send/freeze decision every safety planner rides",
+  },
+  // The safety signal is DECIDED before it is sent, and this list covered only
+  // the sending half until PR #2929 walked through the gap (2026-08-15): a change
+  // to the upper-limit arithmetic in `lib/dri.ts` — which by its author's own
+  // account could make a firing warning go quiet — was reported "not high-stakes"
+  // because no declared path matched, and the orchestrator had to override the
+  // tool by hand. A warning that is never computed is as silent as one that is
+  // never sent, so the modules that decide whether there is something to warn
+  // about belong at the same tier as the ones that deliver it.
+  {
+    glob: /^lib\/dri\.ts$/,
+    why: "DRI/upper-limit arithmetic — a bug here makes an over-limit stack stop warning",
+  },
+  {
+    glob: /^lib\/(drug-interactions|food-drug-interactions|supplement-safety)\.ts$/,
+    why: "interaction engines — a miss drops a contraindication the app already knew",
+  },
+  {
+    glob: /^lib\/(contrast-safety|dental-safety|weather-med-safety)\.ts$/,
+    why: "situational safety checks — each one is the only thing standing between a stored fact and a harmful action",
   },
   // Writes replayed later with captured state.
   {

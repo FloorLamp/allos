@@ -1,8 +1,9 @@
 // Pre-generate the baked biomarker→nutrient→food map (lib/nutrient-food-map.json)
 // used by the DETERMINISTIC food-recommendation engine (issue #577): when a profile's
-// current reading for a diet-responsive biomarker family is flagged low, suggest the
-// food sources that address it — safety-screened against allergies, medications, and
-// conditions. This is the OUTPUT half of the nutrition umbrella (#576); it is the food
+// current reading for a diet-responsive biomarker family is flagged in the direction
+// the entry declares (low for the classic deficiency route; high for the #2754
+// add-on-high soluble-fiber route), suggest the food sources that address it —
+// safety-screened against allergies, medications, and conditions. This is the OUTPUT half of the nutrition umbrella (#576); it is the food
 // twin of the supplement-suggestion safety belt, but the suggestions themselves come
 // ONLY from this curated, human-reviewable table — never from free AI generation.
 //
@@ -97,10 +98,15 @@ export interface NutrientFoodEntry {
   // against a resolved target, not from an assay — the engine reaches them through a
   // declared `TargetTrigger` instead (lib/food-suggest.ts).
   biomarkers: string[];
-  // Which flag direction triggers the suggestion. "low" = below the reference/optimal
-  // range (the diet-addressable case); we never suggest eating MORE of something for a
-  // HIGH reading.
-  direction: "low";
+  // Which flag direction triggers the suggestion — DECLARED per entry, honored by the
+  // resolver (lib/food-suggest.ts), never assumed from the table. "low" = below the
+  // reference/optimal range (the classic deficiency→replete case, #577). "high" = the
+  // ADD-ON-HIGH route (#2754): a HIGH flag answered by eating MORE of a food. That
+  // inversion clears the bar only when the food→marker effect is itself the
+  // well-established claim (soluble fiber → LDL is FDA-authorized-health-claim
+  // territory) — it is a per-entry declaration precisely so it stays a deliberate,
+  // reviewed act rather than a default.
+  direction: "low" | "high";
   // Ranked food sources (best lever first).
   foods: FoodSource[];
   // A one-line, plain-language reason ("Fatty fish is the richest dietary source of
@@ -173,6 +179,37 @@ export interface Contraindication {
   // suggestion is never an all-clear (the engine never claims safety).
   severity?: "caution" | "drop";
 }
+
+// The cautions every "eat more fiber" entry owes (the generic `fiber` entry and the
+// #2754 `soluble-fiber` twin ask for the same act, so they carry ONE list — a clinical
+// wording fix cannot apply to one and not the other). CAUTION, never drop: a
+// low-residue diet is prescribed during a FLARE, and the app cannot see a flare — so
+// the honest move is to annotate rather than withhold, and to keep the rule out of
+// CONDITION_NUTRIENT_RULES, which would otherwise block the psyllium supplement that
+// is standard care in exactly these conditions.
+export const FIBER_INCREASE_CAUTIONS: Contraindication[] = [
+  {
+    match: "inflammatory bowel",
+    caution:
+      "With inflammatory bowel disease, fiber is helpful in remission and restricted during a flare — follow your clinician's current advice rather than a general target.",
+  },
+  {
+    match: "irritable bowel",
+    caution:
+      "With IBS, some fibers help and others worsen symptoms — increase slowly, and prefer soluble sources (oats, psyllium) over bran.",
+  },
+  {
+    match: "gastroparesis",
+    caution:
+      "With delayed gastric emptying, high-fiber foods can make symptoms worse — check with your clinician before increasing them.",
+  },
+];
+
+// The shared citation for the #2754 soluble-fiber → LDL claim — the food entry here
+// and the biomarker-supplement-map's `lipids` entry cite the same authority, so the
+// string lives once and a correction reaches both datasets on regeneration.
+export const SOLUBLE_FIBER_LDL_SOURCE =
+  "FDA 21 CFR 101.81 (soluble fiber from certain foods and risk of CHD); EFSA-approved beta-glucan health claims";
 
 // ── Curated nutrient → food table ─────────────────────────────────────────────
 // Diet-responsive nutrients only, each with a genuine food lever — reached either by a
@@ -639,14 +676,20 @@ const ENTRIES: NutrientFoodEntry[] = [
           "Sunflower and safflower oils and dark greens add alpha-tocopherol.",
         foodDrugKeys: ["vitamin-k-warfarin"],
       },
+      {
+        food: "Olive oil, olives, and avocado",
+        foodGroup: "olive_oil_avocado",
+        serving:
+          "Olive oil and avocado carry alpha-tocopherol along with their unsaturated fat.",
+      },
     ],
     evidence:
       "Vitamin E (alpha-tocopherol) is concentrated in nuts, seeds, and vegetable oils, with smaller amounts in leafy greens.",
     source: "NIH ODS Vitamin E fact sheet",
     contraindications: [],
     allergyAlternative: {
-      food: "Vegetable oils, leafy greens, avocado, and fortified cereals",
-      foodGroup: "leafy_greens",
+      food: "Olive oil, avocado, leafy greens, and fortified cereals",
+      foodGroup: "olive_oil_avocado",
       serving: "Covers vitamin E without nuts or seeds for a nut/seed allergy.",
     },
     caveat:
@@ -796,30 +839,53 @@ const ENTRIES: NutrientFoodEntry[] = [
       "Dietary fiber comes only from plants; legumes are the densest common source, with berries, whole fruit, and whole grains close behind.",
     source:
       "IOM 2005 Dietary Reference Intakes (total fiber Adequate Intake); Dietary Guidelines for Americans (fiber as a nutrient of public health concern)",
-    contraindications: [
-      // CAUTION, never drop. A low-residue diet is prescribed during a FLARE, and the app
-      // cannot see a flare — so the honest move is to annotate rather than to withhold, and
-      // to keep the rule out of CONDITION_NUTRIENT_RULES, which would otherwise block the
-      // psyllium supplement that is standard care in exactly these conditions.
-      {
-        match: "inflammatory bowel",
-        caution:
-          "With inflammatory bowel disease, fiber is helpful in remission and restricted during a flare — follow your clinician's current advice rather than a general target.",
-      },
-      {
-        match: "irritable bowel",
-        caution:
-          "With IBS, some fibers help and others worsen symptoms — increase slowly, and prefer soluble sources (oats, psyllium) over bran.",
-      },
-      {
-        match: "gastroparesis",
-        caution:
-          "With delayed gastric emptying, high-fiber foods can make symptoms worse — check with your clinician before increasing them.",
-      },
-    ],
+    contraindications: FIBER_INCREASE_CAUTIONS,
     allergyAlternative: null,
     caveat:
       "Raise fiber gradually and drink more water alongside it — a sudden jump is what causes the bloating people blame on the fiber itself.",
+  },
+  {
+    key: "soluble-fiber",
+    label: "Soluble fiber",
+    // THE ADD-ON-HIGH ENTRY (#2754): the one route where a HIGH flag earns an ADD
+    // suggestion. The evidence is the strongest of any route in this map — oat
+    // beta-glucan and psyllium lower LDL-C enough to carry an FDA-authorized health
+    // claim and approved EFSA claims — which is exactly why this is the entry that
+    // taught the engine the inversion. Its dedupeKey (`food-suggest:soluble-fiber`)
+    // is deliberately its OWN family: the `food-reduce:ldl-apob` note and this one
+    // are different asks and dismiss independently.
+    biomarkers: ["LDL Cholesterol", "Apolipoprotein B (ApoB)"],
+    direction: "high",
+    foods: [
+      {
+        food: "Oats and barley — whole grains rich in beta-glucan",
+        foodGroup: "whole_grains",
+        serving:
+          "A daily bowl of oats or barley is the beta-glucan source the health claims are written for.",
+      },
+      {
+        food: "Legumes — beans, lentils, and chickpeas",
+        foodGroup: "legumes",
+        serving:
+          "Half a cup of cooked legumes adds soluble fiber alongside plant protein.",
+      },
+      {
+        food: "Berries and other whole fruit",
+        foodGroup: "berries",
+        serving:
+          "Pectin-rich fruit — berries, apples, citrus — rounds out soluble fiber.",
+      },
+    ],
+    evidence:
+      "Soluble fiber lowers LDL cholesterol modestly and reliably: soluble fiber from oats and psyllium carries an FDA-authorized health claim for reduced coronary heart disease risk, and beta-glucan carries approved EFSA cholesterol claims.",
+    source: SOLUBLE_FIBER_LDL_SOURCE,
+    // The same increase-fiber cautions the `fiber` entry declares — this entry asks
+    // for the same act, so it owes the same annotations (ONE list, so a wording fix
+    // cannot apply to one twin and not the other).
+    contraindications: FIBER_INCREASE_CAUTIONS,
+    allergyAlternative: null,
+    caveat:
+      "Raise fiber gradually and drink more water alongside it. This complements — never replaces — whatever your clinician prescribes for cholesterol.",
   },
 ];
 
@@ -849,7 +915,7 @@ const REDUCE_ENTRIES: ReduceFoodEntry[] = [
         food: "Processed and fatty red meats",
         foodGroup: "processed_meat",
         serving:
-          "Swapping processed and fatty red meat for fish, poultry, or legumes reduces the saturated fat driving LDL up.",
+          "Swapping processed and fatty red meat for fish, poultry, or legumes — with olive oil as the main fat — reduces the saturated fat driving LDL up.",
       },
     ],
     evidence:

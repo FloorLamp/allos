@@ -401,12 +401,28 @@ export const FORECAST_MAX_HALF_WIDTH_DAYS = 10;
 //               to cover the overrun and the confidence degrades. Widen, never shift.
 export type ForecastConfidence = "narrow" | "wide" | "uncertain";
 
-// Why a profile gets no forecast at all even with plenty of history. Both are states in
-// which a projected period is meaningless, so silence is the only honest output.
+// Why a profile's cycle derivations are suspended. Both are states in which a projected
+// period is meaningless, so silence is the only honest output.
 //   pregnancy       — an ongoing pregnancy (#1402 will make this episode-derived; today
 //                     it is the shipped `risk_pregnant` profile attribute).
 //   postmenopausal  — an explicit reproductive status of postmenopausal.
+//
+// #2801 widened the scope from the FORECAST to the whole derived cycle state. The name
+// stayed: it was already the one gathered answer to "does a cycle apply right now", and
+// the argument the forecast makes ("a projected period is meaningless") applies verbatim
+// to the cycle DAY and PHASE — "Day 141 · Follicular" at 20 weeks pregnant is not a
+// weaker claim than a projected date, it is the same claim stated retrospectively.
 export type ForecastSuspension = "pregnancy" | "postmenopausal";
+
+// The one sentence a surface says instead of a cycle day/phase while suspended (#2801).
+// Exported so the Cycle hero and the dashboard tile can't phrase the same pause two ways
+// — the same reason the forecast card's own two sentences live beside its renderer.
+export const CYCLE_SUSPENSION_NOTES: Record<ForecastSuspension, string> = {
+  pregnancy:
+    "Paused while a pregnancy is recorded — a cycle day and phase don't apply.",
+  postmenopausal:
+    "Paused: your recorded reproductive status is postmenopausal.",
+};
 
 // The evidence the projection stands on, carried on the result so EVERY surface can
 // explain itself from the one computation instead of re-deriving a justification.

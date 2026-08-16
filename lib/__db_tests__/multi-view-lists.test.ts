@@ -19,6 +19,7 @@ import {
   getGenomicVariantsForProfiles,
   getImagingStudiesForProfiles,
 } from "@/lib/queries";
+import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 
 function newProfile(name: string): number {
   return Number(
@@ -76,7 +77,7 @@ describe("Tier-1 multi-view readers over a multi-profile view-set (#1328)", () =
     addCareGoal(b, "BP < 130/80");
     addCareGoal(c, "hidden goal");
 
-    const rows = getCareGoalsForProfiles([a, b]);
+    const rows = getCareGoalsForProfiles(authorized([a, b]));
     expect(rows.map((r) => r.description).sort()).toEqual([
       "A1c < 7",
       "BP < 130/80",
@@ -93,7 +94,7 @@ describe("Tier-1 multi-view readers over a multi-profile view-set (#1328)", () =
     addVariant(b, "CYP2D6");
     addVariant(c, "TPMT");
 
-    const rows = getGenomicVariantsForProfiles([a, b]);
+    const rows = getGenomicVariantsForProfiles(authorized([a, b]));
     expect(rows.map((r) => r.gene).sort()).toEqual(["CYP2C19", "CYP2D6"]);
     expect(rows.find((r) => r.gene === "CYP2C19")?.profileId).toBe(a);
     expect(rows.some((r) => r.gene === "TPMT")).toBe(false);
@@ -107,7 +108,7 @@ describe("Tier-1 multi-view readers over a multi-profile view-set (#1328)", () =
     addStudy(b, "abdomen", "2026-02-01");
     addStudy(c, "head", "2026-03-01");
 
-    const rows = getImagingStudiesForProfiles([a, b]);
+    const rows = getImagingStudiesForProfiles(authorized([a, b]));
     expect(rows.map((r) => r.body_region).sort()).toEqual(["abdomen", "chest"]);
     expect(rows.find((r) => r.body_region === "chest")?.profileId).toBe(a);
     expect(rows.some((r) => r.body_region === "head")).toBe(false);
@@ -118,8 +119,8 @@ describe("Tier-1 multi-view readers over a multi-profile view-set (#1328)", () =
   it("an empty view-set returns nothing (never everything)", () => {
     const a = newProfile("EA");
     addCareGoal(a, "orphan");
-    expect(getCareGoalsForProfiles([])).toEqual([]);
-    expect(getGenomicVariantsForProfiles([])).toEqual([]);
-    expect(getImagingStudiesForProfiles([])).toEqual([]);
+    expect(getCareGoalsForProfiles(authorized([]))).toEqual([]);
+    expect(getGenomicVariantsForProfiles(authorized([]))).toEqual([]);
+    expect(getImagingStudiesForProfiles(authorized([]))).toEqual([]);
   });
 });

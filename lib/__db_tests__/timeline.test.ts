@@ -97,7 +97,7 @@ describe("getTimelineEvents", () => {
     expect(body?.subtitle).not.toContain("80.0 kg");
   });
 
-  it("links cycling events to ride detail while other activities keep their Training Log record", () => {
+  it("links cycling events to ride detail while other activities open their own page (#2870)", () => {
     const rideId = Number(
       db
         .prepare(
@@ -120,7 +120,7 @@ describe("getTimelineEvents", () => {
       events.find(
         (event) => event.id === `activity:${imperial.cardioActivityId}`
       )?.href
-    ).toBe(`/training?tab=log#activity-${imperial.cardioActivityId}`);
+    ).toBe(`/training/activity/${imperial.cardioActivityId}`);
   });
 
   it("includes expandable strength exercise summaries on activity events", () => {

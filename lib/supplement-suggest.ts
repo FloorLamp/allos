@@ -55,7 +55,7 @@ import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { strOrNull } from "./parse";
 import { biomarkerSuggestionSource } from "./supplement-suggestion-source";
-import { isCuratedSupplementBiomarker } from "./supplement-suggest-curated";
+import { curatedSupplementAnswersReading } from "./supplement-suggest-curated";
 
 const log = createLogger("supplement-suggest");
 
@@ -267,12 +267,17 @@ function buildContext(
   // and the user is already looking at those answers. This route is the FALLBACK for
   // what the map does not cover, so name the covered labs and tell the model not to
   // restate them: a generated duplicate of a curated claim is exactly the output that
-  // would blur the distinction the two surfaces exist to keep.
+  // would blur the distinction the two surfaces exist to keep. The question is asked
+  // per READING (name + flag side, #2754), never per name: a reading the curated
+  // engine will not answer — a LOW LDL, a HIGH ferritin — must stay open to this
+  // route, or no engine answers it at all.
   const coveredLabs = [
     ...new Set(
       oorLabs
+        .filter((r) =>
+          curatedSupplementAnswersReading(r.canonical_name || r.name, r.flag)
+        )
         .map((r) => r.canonical_name || r.name)
-        .filter((n) => isCuratedSupplementBiomarker(n))
     ),
   ];
   if (coveredLabs.length > 0) {

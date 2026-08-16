@@ -50,8 +50,11 @@ import {
   nonIllnessSituationOptions,
   situationActivationLine,
 } from "@/lib/situations";
-import { getCycleForecast, listCyclePeriods } from "@/lib/cycle-store";
-import { cyclePhaseOnDate, cycleDayOnDate } from "@/lib/cycle";
+import {
+  getCycleForecast,
+  getForecastSuspension,
+  listCyclePeriods,
+} from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
@@ -787,10 +790,10 @@ export default async function Dashboard() {
     ? getVitalsLatestModel(profile.id, on)
     : null;
 
-  // cycle-phase (#1221): "Cycle day N · <phase>" over cycleDayOnDate + cyclePhaseOnDate
-  // (lib/cycle.ts, #221). Relevance-gated in the registry. Since #1679 the tile also
-  // carries the PROJECTED next-period window — the SAME getCycleForecast the Cycle
-  // surface reads, so the tile and the page can never show different windows.
+  // cycle-phase (#1221): "Cycle day N · <phase>". Relevance-gated in the registry. Since
+  // #1679 the tile also carries the PROJECTED next-period window — the SAME
+  // getCycleForecast the Cycle surface reads, so the tile and the page can never show
+  // different windows.
   //
   // Since #1892 the tile no longer self-hides when no phase is derivable: that was the
   // state of someone who has not logged day 1 yet, so it hid exactly when logging
@@ -798,19 +801,21 @@ export default async function Dashboard() {
   // carries the ONE cycle offer, resolved here ONCE (`cycleControlState`) and handed
   // down as data. The Cycle page control and the quick-log sheet render that same
   // state; none of the three re-derives it.
+  //
+  // Since #2801 the DAY AND PHASE arrive on that same control state rather than from a
+  // second pair of calls here. The tile syndicated "Cycle day 141 · Follicular" to a
+  // profile 20 weeks pregnant precisely because those calls were the ones nobody handed
+  // the suspension to — the tile's forecast line honoured it and silently vanished, so
+  // the tile went on making the stronger claim after the weaker one had withdrawn.
   const cyclePeriods = has("cycle-phase") ? listCyclePeriods(profile.id) : [];
-  const cyclePhase =
-    cyclePeriods.length > 0 ? cyclePhaseOnDate(cyclePeriods, on, on) : null;
-  const cycleDay =
-    cyclePeriods.length > 0 ? cycleDayOnDate(cyclePeriods, on, on) : null;
   const cycleForecast =
     cyclePeriods.length > 0 ? getCycleForecast(profile.id, on) : null;
   const cycleControl = has("cycle-phase")
-    ? cycleControlState(cyclePeriods, on)
+    ? cycleControlState(cyclePeriods, on, getForecastSuspension(profile.id))
     : null;
   const cycleModel =
-    cyclePhase != null && cycleDay != null
-      ? { day: cycleDay, phase: cyclePhase }
+    cycleControl?.day != null && cycleControl.phase != null
+      ? { day: cycleControl.day, phase: cycleControl.phase }
       : null;
 
   // symptom-log meds branch (#1221): the folded PRN quick-log. Shown ONLY on a WELL day
@@ -1077,12 +1082,7 @@ export default async function Dashboard() {
         // ONE cycle offer, so the person who has not logged day 1 has a one-tap path
         // on the surface they are already looking at.
         return cycleControl ? (
-          <CyclePhaseWidget
-            day={null}
-            phase={null}
-            forecast={null}
-            control={cycleControl}
-          />
+          <CyclePhaseWidget forecast={null} control={cycleControl} />
         ) : null;
       case "sleep-last-night":
         return (
@@ -1180,12 +1180,7 @@ export default async function Dashboard() {
         ) : null;
       case "cycle-phase":
         return cycleControl ? (
-          <CyclePhaseWidget
-            day={cycleModel?.day ?? null}
-            phase={cycleModel?.phase ?? null}
-            forecast={cycleForecast}
-            control={cycleControl}
-          />
+          <CyclePhaseWidget forecast={cycleForecast} control={cycleControl} />
         ) : null;
       case "active-protocols":
         return activeProtocols.length ? (

@@ -1189,8 +1189,11 @@ contested. So the curation standard is deliberately higher than the food map's,
 and it lives at the top of the generator:
 
 - an entry may only claim what is **uncontested at the level of the MARKER** —
-  that taking the substance repletes the quantity the biomarker measures. Not
-  that it improves an outcome.
+  that taking the substance moves the very quantity the biomarker measures, in
+  the direction the entry declares. For every repletion entry that is a LOW
+  reading answered by repleting it; the one add-on-high entry (`lipids`, #2754)
+  answers a HIGH LDL/ApoB with the soluble fiber whose LDL-lowering effect is
+  FDA-authorized-health-claim territory. Never that it improves an outcome.
 - every entry carries `evidence` (a one-line reason a reviewer can check) and
   `source` (a public citation). No one-liner, no entry.
 - **no entry states a dose**, anywhere in its text. The dataset test fails one

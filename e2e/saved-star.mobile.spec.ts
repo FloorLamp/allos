@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { settledClick, settledPickOption } from "./helpers";
+import { settledBoxes, settledClick, settledPickOption } from "./helpers";
 
 // The unified save gesture (#1456) end-to-end: ONE star, membership everywhere.
 //
@@ -110,22 +110,18 @@ test("starring a biomarker gives it a Trends chart tile with no second gesture",
     .getByTestId("trend-mini-card")
     .filter({ hasText: "Weight" });
   const [outsideBox, latestCaptionBox, plottedBox, rangeBox] =
-    await Promise.all([
-      outsideCard.boundingBox(),
-      outsideCard.getByText(/Latest recorded ·/).boundingBox(),
-      plottedCard.boundingBox(),
-      plottedCard.getByTestId("trend-mini-range").boundingBox(),
+    await settledBoxes([
+      outsideCard,
+      outsideCard.getByText(/Latest recorded ·/),
+      plottedCard,
+      plottedCard.getByTestId("trend-mini-range"),
     ]);
-  expect(outsideBox).not.toBeNull();
-  expect(latestCaptionBox).not.toBeNull();
-  expect(plottedBox).not.toBeNull();
-  expect(rangeBox).not.toBeNull();
   const latestBottomGap =
-    outsideBox!.y +
-    outsideBox!.height -
-    (latestCaptionBox!.y + latestCaptionBox!.height);
+    outsideBox.y +
+    outsideBox.height -
+    (latestCaptionBox.y + latestCaptionBox.height);
   const rangeBottomGap =
-    plottedBox!.y + plottedBox!.height - (rangeBox!.y + rangeBox!.height);
+    plottedBox.y + plottedBox.height - (rangeBox.y + rangeBox.height);
   expect(Math.abs(latestBottomGap - rangeBottomGap)).toBeLessThan(2);
   const [latestTypography, rangeTypography] = await Promise.all([
     outsideCard.getByText(/Latest recorded ·/).evaluate((element) => {

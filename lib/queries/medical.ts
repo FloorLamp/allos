@@ -5,6 +5,11 @@ import { BIOMARKER_FAMILY_FN, BIOMARKER_PANEL_FN } from "../sql-functions";
 import { panelOrderOfPanelExpr, type PanelId } from "../biomarker-panels";
 import { NON_IDENTITY_CATEGORIES } from "../medical-categories";
 import {
+  flagInSql,
+  NOTABLE_FLAGS,
+  OUT_OF_RANGE_FLAGS,
+} from "../reference-range";
+import {
   inRepresentativeCte,
   medicalDedupSpec,
   medicalLatestSpec,
@@ -50,15 +55,23 @@ export type ClinicalObservationSortColumn = "name" | "panel" | "date";
 export type SortDirection = "asc" | "desc";
 
 // Flag-based row filter: "oor" = out of the lab reference range (high/low/
-// abnormal); "nonoptimal" = that plus rows flagged non-optimal (a superset).
+// abnormal); "nonoptimal" = every flag carrying a concern marker (a superset).
 export type RangeFilter = "oor" | "nonoptimal";
 
-// SQL predicate for a RangeFilter, or null for "All". Flag literals are fixed,
-// so this is safe to inline.
+// #2799's `reported-*` join the BROAD tier, never the "out of range" one: the whole
+// point is that the lab's printed range is not our range, so "Out of range only" must
+// keep meaning our own clinical verdict. But a user filtering the readings table down to
+// what needs a look — the same read the passport's flagged-vitals list uses — must see
+// the microalbumin the app has just started marking, or the filter would hide exactly
+// the reading the issue is about.
+//
+// The two lists and their SQL spelling come from lib/reference-range/flags, which is
+// where every predicate reads them from too, so this filter and `isOutOfRange` /
+// `isNotableFlag` cannot disagree about a tier's membership.
+
 export function rangeFilterClause(range?: RangeFilter): string | null {
-  if (range === "oor") return "flag IN ('high','low','abnormal')";
-  if (range === "nonoptimal")
-    return "flag IN ('high','low','abnormal','non-optimal','non-optimal-high','non-optimal-low')";
+  if (range === "oor") return flagInSql(OUT_OF_RANGE_FLAGS);
+  if (range === "nonoptimal") return flagInSql(NOTABLE_FLAGS);
   return null;
 }
 

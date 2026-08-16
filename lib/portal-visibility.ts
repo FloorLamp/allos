@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { profileIdsIn } from "@/lib/cross-profile";
+import { profileIdsIn, type AuthorizedProfileIds } from "@/lib/cross-profile";
 import type {
   PendingIdentity,
   PendingOutcome,
@@ -68,7 +68,7 @@ import type { SyncReportStatus } from "@/lib/acquirer-identity";
 // BIND ORDER, for every embedding statement: `...ids` first (the profileIdsIn tuple),
 // then the 0/1 unclaimed flag. A query embedding this twice binds both twice.
 function reachableAccountSql(
-  ids: readonly number[],
+  ids: AuthorizedProfileIds,
   accountIdExpr: string
 ): string {
   return `(
@@ -93,13 +93,13 @@ function reachableAccountSql(
 // lib/auth — the cross-profile reader convention. The `profile_id IN (…)` list is built
 // with profileIdsIn(), and this module is registered in CROSS_PROFILE_SQL_MODULES.
 export function listVisiblePortalRunReports(
-  accessibleProfileIds: readonly number[],
+  accessibleProfileIds: AuthorizedProfileIds,
   // True when the viewer may also see UNCLAIMED accounts — the `canManagePending`
   // population (admin, or write access to at least one profile). Passed in rather than
   // derived so the page's one gate decides it once for both surfaces.
   canSeeUnclaimed: boolean
 ): PortalRunReport[] {
-  const ids = [...accessibleProfileIds];
+  const ids = accessibleProfileIds;
   // An empty accessible set makes clause (a) match nothing. `profileIdsIn([])` renders
   // `(NULL)`, which is the correct empty-set semantics for SQL `IN`, so this still runs
   // as one statement rather than needing a short-circuit — and a login with no
@@ -154,12 +154,12 @@ export function listVisiblePortalRunReports(
 // same reason as #1787's: a surface that filters what it was handed is one refactor away
 // from leaking again.
 export function listVisiblePendingIdentities(
-  accessibleProfileIds: readonly number[],
+  accessibleProfileIds: AuthorizedProfileIds,
   // True when the viewer may also see pendings on UNCLAIMED accounts. Per #1875 this is
   // the ADMIN population — first-contact portals are admin-only territory.
   canSeeUnclaimed: boolean
 ): PendingIdentity[] {
-  const ids = [...accessibleProfileIds];
+  const ids = accessibleProfileIds;
   const rows = db
     .prepare(
       `SELECT pp.id AS id, pp.portal_id AS portalId, p.slug AS portalSlug,
@@ -217,13 +217,13 @@ export function listVisiblePendingIdentities(
 // set at its auth boundary and hands in already-authorized ids; this module never
 // imports lib/auth.
 export function canReportOnAccount(
-  writableProfileIds: readonly number[],
+  writableProfileIds: AuthorizedProfileIds,
   // True when the token may also report on UNCLAIMED accounts — the any-writer
   // population, passed in rather than derived so the route's one boundary decides it.
   canReportUnclaimed: boolean,
   accountId: number
 ): boolean {
-  const ids = [...writableProfileIds];
+  const ids = writableProfileIds;
   const row = db
     .prepare(
       `SELECT 1 AS ok FROM portal_accounts a
@@ -278,13 +278,13 @@ export interface VisiblePortalRegistry {
 // ids first, no lib/auth import, `profile_id IN (…)` via profileIdsIn() inside this
 // registered CROSS_PROFILE_SQL_MODULES module.
 export function listVisiblePortalRegistry(
-  accessibleProfileIds: readonly number[],
+  accessibleProfileIds: AuthorizedProfileIds,
   // True when the caller may also see UNCLAIMED accounts — the `canManagePending`
   // population. Passed in rather than derived, so one gate at the auth boundary decides
   // it for every surface this module serves.
   canSeeUnclaimed: boolean
 ): VisiblePortalRegistry {
-  const ids = [...accessibleProfileIds];
+  const ids = accessibleProfileIds;
   // One statement over accounts joined to their portal, so a portal can only appear by
   // way of an account that survived the predicate. Portal order matches listPortals()
   // (name, NOCASE); account order is left to buildToolConfig, which sorts

@@ -27,16 +27,22 @@ import { flagLabel, isNormalFlag } from "./reference-range";
 export type MedicalValueCaret = "up" | "down" | null;
 
 /**
- * Clinical high / above-optimal point up; low / below-optimal point down. The
- * legacy directionless "non-optimal" gets no caret (it re-derives to a directional
- * flag on the next reconcile), and neither does a qualitative "abnormal" — there is
- * no direction to claim.
+ * Clinical high / above-optimal / above the lab's own reported range (#2799) point
+ * up; their low counterparts point down. The legacy directionless "non-optimal" gets
+ * no caret (it re-derives to a directional flag on the next reconcile), and neither
+ * does a qualitative "abnormal" — there is no direction to claim.
  */
 export function medicalValueCaret(
   flag: string | null | undefined
 ): MedicalValueCaret {
-  if (flag === "high" || flag === "non-optimal-high") return "up";
-  if (flag === "low" || flag === "non-optimal-low") return "down";
+  if (
+    flag === "high" ||
+    flag === "non-optimal-high" ||
+    flag === "reported-high"
+  )
+    return "up";
+  if (flag === "low" || flag === "non-optimal-low" || flag === "reported-low")
+    return "down";
   return null;
 }
 

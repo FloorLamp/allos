@@ -1294,7 +1294,7 @@ dismissible **Goal pacing** note; it never escalates and never notifies.
 Route: `/nutrition`.
 
 Nutrition is a food-group serving log at the **habit tier**, deliberately _not_
-a calorie counter. A curated ~24-group catalog (fatty fish, leafy greens,
+a calorie counter. A curated ~25-group catalog (fatty fish, leafy greens,
 legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 …; `lib/datasets/data/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
 as **servings, one tap each** (undo decrements), each row badged by whether the

@@ -14,7 +14,7 @@
 // Server Actions in app/(app)/supplies/actions.ts own the whole gate.
 
 import { db, writeTx } from "../../db";
-import { profileIdsIn } from "../../cross-profile";
+import { profileIdsIn, type AuthorizedProfileIds } from "../../cross-profile";
 import {
   daysOfSupplyForPool,
   isPoolVisibleTo,
@@ -351,7 +351,12 @@ function buildPoolView(supply: SharedSupply): PoolView {
 // window), which is exactly what the #1095 §3 convention reserves the `profile_id IN`
 // shape for. The ids arrive already ∩ the caller's accessible set, and this module is
 // registered in CROSS_PROFILE_SQL_MODULES.
-export function poolIdsForProfiles(profileIds: readonly number[]): number[] {
+//
+// #2898: "already ∩ the accessible set" is now the TYPE. A caller holding ONE profile
+// rather than a scope uses `poolIdsForProfile` below instead — manufacturing a
+// one-element capability for it needed an unchecked minter, and this module is not
+// worth one.
+export function poolIdsForProfiles(profileIds: AuthorizedProfileIds): number[] {
   if (profileIds.length === 0) return [];
   const rows = db
     .prepare(
@@ -359,6 +364,27 @@ export function poolIdsForProfiles(profileIds: readonly number[]): number[] {
         WHERE profile_id IN ${profileIdsIn(profileIds)} AND supply_id IS NOT NULL`
     )
     .all(...profileIds) as { supply_id: number }[];
+  return rows.map((r) => r.supply_id).sort((a, b) => a - b);
+}
+
+// The pools ONE profile draws from — the same question for a single subject, asked the
+// single-profile way (#2935 review). The Upcoming pooled-refill generator runs AS one
+// profile and holds no ProfileScope, and the only way it could reach the set-based
+// reader was a one-element capability minted from a bare number, which is an unchecked
+// minter however narrow it looks. `WHERE profile_id = ?` needs no capability at all:
+// it is an ordinary profile-scoped read, governed by the profile-scoping scan like
+// every other one in this file.
+//
+// Not a parallel concept — the same rows, the same DISTINCT, the same sort. The set
+// form exists because #2116 replaced a per-profile LOOP for the cabinet surfaces; a
+// single subject was never that loop.
+export function poolIdsForProfile(profileId: number): number[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT supply_id FROM intake_items
+        WHERE profile_id = ? AND supply_id IS NOT NULL`
+    )
+    .all(profileId) as { supply_id: number }[];
   return rows.map((r) => r.supply_id).sort((a, b) => a - b);
 }
 

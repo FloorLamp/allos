@@ -355,7 +355,10 @@ test("known-minor: the substance-use section + its jump-link are absent, and the
   });
   try {
     // On a sibling specialty pane, the sub-tab strip drops the Substance use
-    // jump-link (Mental health stays — it is NOT life-stage gated).
+    // jump-link. Since #2807 it drops Mental health too — Riley is an INFANT, below
+    // the adolescent line PHQ-9/GAD-7 are validated to. The two gates are separate
+    // lines, not one rule: an adolescent keeps Mental health while still losing this
+    // pane (pinned in lib/__tests__/records-specialty-nav.test.ts).
     await page.goto("/records/specialty/skin");
     const subTabs = page.getByTestId("records-sub-tabs");
     await expect(
@@ -363,7 +366,10 @@ test("known-minor: the substance-use section + its jump-link are absent, and the
     ).toHaveCount(0);
     await expect(
       subTabs.getByRole("link", { name: "Mental health" })
-    ).toBeVisible();
+    ).toHaveCount(0);
+    // Hearing and Skin never gate, so the strip is never empty — which is what makes
+    // the bounce target below well-defined.
+    await expect(subTabs.getByRole("link", { name: "Hearing" })).toBeVisible();
 
     // A direct URL re-gates server-side to the FIRST VISIBLE pane — the section never
     // renders for a minor. That pane is Hearing since #1600 (ungated, ahead of Skin);

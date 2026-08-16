@@ -22,6 +22,7 @@ export type FoodGroupIconKey =
   | "grain"
   | "apple"
   | "cherry"
+  | "avocado"
   | "bottle"
   | "meat"
   | "egg"
@@ -60,6 +61,7 @@ const SLUG_ICONS: Record<string, FoodGroupIconKey> = {
   fruit: "apple",
   berries: "cherry",
   fermented: "bottle",
+  olive_oil_avocado: "avocado",
   // neutral
   poultry: "meat",
   eggs: "egg",

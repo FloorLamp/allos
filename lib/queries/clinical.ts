@@ -160,6 +160,18 @@ export const ALLERGY_REPRESENTATIVE_IDS = representativeIds(
   REPRESENTATIVE_SPECS.allergies
 );
 
+// #2919: imaging_studies and care_plan_items joined the import footprint AFTER
+// #134's sweep and #2035's consolidation, so both read flat until three overlapping
+// portal exports showed every study and every plan item in triplicate. They collapse
+// like their siblings now — see the registry for each identity's rationale.
+export const IMAGING_REPRESENTATIVE_IDS = representativeIds(
+  REPRESENTATIVE_SPECS.imaging_studies
+);
+
+export const CARE_PLAN_REPRESENTATIVE_IDS = representativeIds(
+  REPRESENTATIVE_SPECS.care_plan_items
+);
+
 // ---- Hoisted clinical-list statements (#2110) -------------------------------
 //
 // These are the profile's DURABLE clinical facts — conditions, allergies, family
@@ -257,7 +269,7 @@ const IMAGING_STUDIES_STMT = hoistedStatement(
           notes,
           source, document_id, external_id, created_at
      FROM imaging_studies
-    WHERE profile_id = ?
+    WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
     ORDER BY COALESCE(study_date, '') DESC, id DESC`
 );
 
@@ -300,7 +312,7 @@ const CARE_PLAN_ITEMS_STMT = hoistedStatement(
           cp.settled_disposition, cp.settled_on, cp.settled_reason
      FROM care_plan_items cp
      LEFT JOIN providers p ON p.id = cp.provider_id
-    WHERE cp.profile_id = ?
+    WHERE cp.profile_id = ? AND cp.id IN (${CARE_PLAN_REPRESENTATIVE_IDS})
     ORDER BY (cp.planned_date IS NULL) ASC, cp.planned_date ASC,
              cp.description COLLATE NOCASE ASC, cp.id DESC`
 );
@@ -369,13 +381,15 @@ export function getGenomicVariants(profileId: number): GenomicVariant[] {
   return GENOMIC_VARIANTS_STMT.all(profileId) as GenomicVariant[];
 }
 
-// Structured imaging studies (#702), newest study first. Read straight from the
-// table — a study is a durable narrative fact (it never nags for retest or flags
-// abnormal), so there is no representative-id dedup here. `contrast` is stored 0/1
-// and surfaced as a boolean. The impression is the radiologist's report body; the
-// indication is captured but not gated on (screening-vs-diagnostic is deferred).
+// Structured imaging studies (#702), newest study first. De-duplicated across
+// documents via IMAGING_REPRESENTATIVE_IDS (#2919): three overlapping portal exports
+// each carry the whole radiology history, so the same study is stored once per
+// document and the list showed it three times. The subquery's profile_id bind comes
+// after the main WHERE's. `contrast` is stored 0/1 and surfaced as a boolean. The
+// impression is the radiologist's report body; the indication is captured but not
+// gated on (screening-vs-diagnostic is deferred).
 export function getImagingStudies(profileId: number): ImagingStudy[] {
-  const rows = IMAGING_STUDIES_STMT.all(profileId) as (Omit<
+  const rows = IMAGING_STUDIES_STMT.all(profileId, profileId) as (Omit<
     ImagingStudy,
     "contrast"
   > & {
@@ -619,9 +633,14 @@ export function getFamilyHistory(profileId: number): FamilyHistory[] {
 
 // Care plan items — planned / ordered future care, soonest planned date first
 // (undated last). The ordering clinician's name is joined from the shared providers
-// registry for display. NB: distinct from the user's own fitness `goals`.
+// registry for display. De-duplicated across documents via
+// CARE_PLAN_REPRESENTATIVE_IDS (#2919) — overlapping portal exports each re-carry the
+// whole plan, so the standing vaccine/screening reminders showed once per export
+// here, in Upcoming, and everywhere else that counts open plan items. Follow-up chain
+// nodes never collapse (see the registry). The subquery's profile_id bind comes after
+// the main WHERE's. NB: distinct from the user's own fitness `goals`.
 export function getCarePlanItems(profileId: number): CarePlanItem[] {
-  return CARE_PLAN_ITEMS_STMT.all(profileId) as CarePlanItem[];
+  return CARE_PLAN_ITEMS_STMT.all(profileId, profileId) as CarePlanItem[];
 }
 
 // Care goals — clinical targets from the record, soonest target date first

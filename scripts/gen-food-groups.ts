@@ -56,7 +56,8 @@ export interface FoodGroup {
   serving: string;
   tier: FoodGroupTier;
   // The #577 nutrient-food-map entry keys this group is a meaningful source of
-  // (`omega-3`, `iron`, `folate`, `magnesium`, `potassium`, `vitamin-d`, `vitamin-b12`).
+  // (`omega-3`, `iron`, `folate`, `magnesium`, `potassium`, `vitamin-d`,
+  // `vitamin-b12`, `vitamin-e`).
   // Empty for a group that isn't a notable source of a tracked nutrient.
   nutrients: string[];
   // Representative protein grams in ONE serving (USDA FoodData Central, whole grams) —
@@ -180,6 +181,17 @@ const GROUPS: FoodGroup[] = [
     protein_g: 6,
     fiber_g: 1,
   },
+  {
+    slug: "olive_oil_avocado",
+    name: "Olive oil & avocado",
+    serving:
+      "A tablespoon of olive oil, half an avocado, or a handful of olives",
+    tier: "encourage",
+    nutrients: ["vitamin-e"],
+    // No protein_g and no fiber_g: the group is oil-led (a tablespoon of olive
+    // oil carries neither), so a representative figure would overstate the
+    // common serving. Avocado's fiber is real — revisit if usage says otherwise.
+  },
   // ── Neutral / balance ──────────────────────────────────────────────────────
   {
     slug: "poultry",
@@ -290,7 +302,7 @@ export function buildFoodGroups(): FoodGroupsDataset {
     id: "food-groups",
     title: "Curated food-group catalog for the serving log",
     description:
-      "~24 food groups at the HABIT tier (one serving = one tap) for the serving log " +
+      "~25 food groups at the HABIT tier (one serving = one tap) for the serving log " +
       "(issue #579), each with a stable slug (food_daily_totals.group_key), a serving " +
       "description, a tier (encourage/limit/neutral), the #577 nutrient-food-map keys " +
       "it's a source of, an optional protein_g the #767 protein-adequacy estimate " +

@@ -56,8 +56,10 @@ export default function CuratedSupplementSuggestions({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold text-emerald-900 dark:text-emerald-100">
+                    {/* The side word follows the entry's declared trigger (#2754):
+                        the lipids soluble-fiber entry fires on a HIGH flag. */}
                     {reasons.join(", ")} {reasons.length > 1 ? "are" : "is"}{" "}
-                    LOW. Options to consider:
+                    {s.side === "high" ? "HIGH." : "LOW."} Options to consider:
                   </p>
                   <span
                     data-testid="suggestion-origin-badge"

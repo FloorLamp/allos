@@ -351,6 +351,93 @@ export function isStaleActionError(error: unknown): boolean {
   return STALE_ACTION_SIGNATURES.some((s) => haystack.includes(s));
 }
 
+// The mid-deploy swap window's failure shapes (#2866), which the stale signature
+// deliberately is NOT: behind a reverse proxy the tab gets a 502/503 error
+// page, which makes Next's action reducer throw its non-RSC-response error;
+// with the port exposed directly it gets a connection failure (TypeError).
+// Both mean "the server wasn't there for a moment" — retriable in place —
+// where the stale signature means "this build's action ids are gone" — never
+// retriable, only reloadable.
+//
+// The PRIMARY signal is the stable code Next stamps on that throw at runtime
+// (next/…/server-action-reducer). It survives minification and version
+// rewordings of the prose — and it is the ONLY signal when the proxy answers
+// >=400 as text/plain, where Next uses the raw response body ("Bad Gateway")
+// as the message and no signature can match. The message signature stays as a
+// fallback for shapes that carry the prose without the code.
+const NEXT_UNEXPECTED_RESPONSE_CODE = "E394";
+const RETRIABLE_SAVE_SIGNATURES = [
+  "an unexpected response was received from the server",
+];
+
+// A fetch that dies on the NETWORK rejects with a TypeError whose message is
+// one of a few engine-owned shapes. A deterministic client-side TypeError (a
+// programming bug in form assembly, which runs inside the same try) must NOT
+// match — retrying re-crashes it identically, and the retry banner would frame
+// a permanent bug as a passing outage instead of the honest error rendering.
+const NETWORK_TYPEERROR_SIGNATURES = [
+  "failed to fetch", // Chromium
+  "networkerror", // Firefox: "NetworkError when attempting to fetch resource."
+  "load failed", // WebKit
+  "fetch failed", // undici / Node
+];
+
+// Whether a failed Server Action save is worth an in-place retry (#2866).
+// Deliberately narrow: an ordinary server rejection (a real 500 with a plain
+// message, a validation error) keeps its honest error rendering — retrying a
+// deterministic failure would just repeat it.
+export function isRetriableSaveError(error: unknown): boolean {
+  if (isStaleActionError(error)) return false;
+  if (!error || typeof error !== "object") return false;
+  if (
+    (error as { __NEXT_ERROR_CODE?: unknown }).__NEXT_ERROR_CODE ===
+    NEXT_UNEXPECTED_RESPONSE_CODE
+  )
+    return true;
+  const { name, message } = error as { name?: unknown; message?: unknown };
+  const msg = typeof message === "string" ? message.toLowerCase() : "";
+  if (error instanceof TypeError || name === "TypeError") {
+    // Offline is certainty — whatever the engine's wording, this one is the
+    // connection, not the code.
+    if (typeof navigator !== "undefined" && navigator.onLine === false)
+      return true;
+    return NETWORK_TYPEERROR_SIGNATURES.some((s) => msg.includes(s));
+  }
+  return RETRIABLE_SAVE_SIGNATURES.some((s) => msg.includes(s));
+}
+
+// The once-per-episode structured failure log (#2866's observability criterion,
+// the themeReassertEvent pattern): the next mid-deploy episode names its leg —
+// error shape + both classifier verdicts — instead of being reconstructed from
+// memory. Pure so the shape is unit-testable.
+const SAVE_FAILURE_MAX_MESSAGE_CHARS = 160;
+
+export function saveFailureEvent(error: unknown): Record<string, unknown> {
+  const name =
+    error && typeof error === "object" && "name" in error
+      ? String((error as { name: unknown }).name)
+      : typeof error;
+  const message =
+    error && typeof error === "object" && "message" in error
+      ? String((error as { message: unknown }).message).slice(
+          0,
+          SAVE_FAILURE_MAX_MESSAGE_CHARS
+        )
+      : "";
+  const code =
+    error && typeof error === "object" && "__NEXT_ERROR_CODE" in error
+      ? String((error as { __NEXT_ERROR_CODE: unknown }).__NEXT_ERROR_CODE)
+      : null;
+  return {
+    name,
+    message,
+    code,
+    stale: isStaleActionError(error),
+    retriable: isRetriableSaveError(error),
+    online: typeof navigator === "undefined" ? null : navigator.onLine,
+  };
+}
+
 /**
  * THE LOOP GUARD, which is the load-bearing part of this fix.
  *

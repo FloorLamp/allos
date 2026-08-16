@@ -117,6 +117,9 @@ mechanically-detectable settle anti-patterns per file and fails a NEW one:
   frozen per-file, immutable-downward.
 - a branch on `process.env.CI` with no written reason — frozen at ZERO, no
   allowlist. See "The runner is not a property of the app" below.
+- `test.skip(...)` — frozen at ZERO. A committed skip makes the same revision run
+  different coverage depending on time or environment. Delete obsolete coverage,
+  or make the boundary deterministic in the fixture.
 
 ### The runner is not a property of the app (`process.env.CI`, #2645/#2648)
 

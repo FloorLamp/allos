@@ -19,6 +19,8 @@ import {
   CYCLE_CTA_PROFILE,
   E2E_LOGIN_CYCLE_GAP,
   CYCLE_GAP_PROFILE,
+  E2E_LOGIN_CYCLE_PREGNANT,
+  CYCLE_PREGNANT_PROFILE,
   E2E_LOGIN_DERIVED,
   DERIVED_SITU_PROFILE,
   DERIVED_SITU_PERIOD_ITEM,
@@ -145,6 +147,44 @@ export function seedCycleAndDerived(): void {
     seedMemberLogin(E2E_LOGIN_CYCLE_GAP, gapId, "write");
     console.log(
       `e2e: seeded cycle plausible-gap fixture — profile ${gapId} (${CYCLE_GAP_PROFILE}) (#1892)`
+    );
+  }
+
+  // ── The cycle-suspension fixture (#2801) ────────────────────────────────────
+  // A profile the Cycle surface must now say LESS to. Read-only in its spec — the
+  // assertions are absences — so it survives --repeat-each untouched. (#2807's
+  // toddler half needs no fixture of its own: the seeded ~18-month-old "Riley
+  // (child)", reached through E2E_LOGIN_CHILD, is already that life stage.)
+  {
+    // Cycles stop at the LMP and `risk_pregnant` is set. The
+    // derivations run forward from that start regardless, which is how the hero came
+    // to read "Day 141 · Follicular" beside a forecast card saying it was paused.
+    // Three periods so the history is ordinary — the fixture's oddity is the
+    // pregnancy, not a thin log.
+    const pregId = fixtureProfileId(CYCLE_PREGNANT_PROFILE);
+    const pregAnchor = today(pregId);
+    db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(pregId);
+    setProfileSetting(pregId, "sex", "female");
+    setProfileSetting(pregId, "reproductive_status", "premenopausal");
+    setProfileSetting(pregId, "birthdate", shiftDateStr(pregAnchor, -365 * 31));
+    setProfileSetting(pregId, "risk_pregnant", "1");
+    for (const [startAgo, endAgo] of [
+      [196, 192],
+      [168, 164],
+      [140, 136], // the LMP — ~20 weeks back
+    ] as const) {
+      db.prepare(
+        `INSERT INTO cycles (profile_id, period_start, period_end, flow)
+         VALUES (?, ?, ?, 'medium')`
+      ).run(
+        pregId,
+        shiftDateStr(pregAnchor, -startAgo),
+        shiftDateStr(pregAnchor, -endAgo)
+      );
+    }
+    seedMemberLogin(E2E_LOGIN_CYCLE_PREGNANT, pregId, "write");
+    console.log(
+      `e2e: seeded pregnant cycle fixture — profile ${pregId} (${CYCLE_PREGNANT_PROFILE}) (#2801)`
     );
   }
 

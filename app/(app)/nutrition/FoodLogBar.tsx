@@ -1522,7 +1522,7 @@ export default function FoodLogBar({
                           : "";
                       })()
                     }.`
-                  : "Servings you add record no eating time until you say one."}
+                  : "Servings you add are recorded with no eating time until you say one."}
               </span>
             </div>
           )}

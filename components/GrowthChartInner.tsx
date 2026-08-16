@@ -24,6 +24,11 @@ import {
   useChartMotion,
 } from "./chart-scaffold";
 import { chartSeries } from "@/lib/chart-colors";
+import {
+  growthTooltipLabel,
+  growthTooltipOrder,
+  TRAJECTORY_KEY,
+} from "@/lib/growth-format";
 
 // One reference percentile band curve, sampled across ages.
 export interface GrowthBand {
@@ -93,7 +98,7 @@ export default function GrowthChart({
       row[`p${bm.percentile}`] = v == null ? null : round(v);
     }
     const t = trajMap.get(age);
-    row.traj = t ? round(t.value) : null;
+    row[TRAJECTORY_KEY] = t ? round(t.value) : null;
     return row;
   });
 
@@ -169,10 +174,7 @@ export default function GrowthChart({
           />
           <YAxis {...chartAxisProps(c)} domain={["auto", "auto"]} />
           <Tooltip
-            formatter={(v, name) => {
-              if (name === "traj") return [`${v}${unit}`, "This profile"];
-              return [`${v}${unit}`, `${String(name).replace("p", "")}th pct`];
-            }}
+            formatter={(v, name) => [`${v}${unit}`, growthTooltipLabel(name)]}
             labelFormatter={(m) => {
               const mo = Number(m);
               return showYears
@@ -180,6 +182,9 @@ export default function GrowthChart({
                 : `Age ${Math.round(mo)} mo`;
             }}
             {...chartTooltipProps(c, motion)}
+            // AFTER the spread: this chart wants its own numeric order, not the
+            // render order the shared props default to.
+            itemSorter={(item) => growthTooltipOrder(item.dataKey)}
           />
 
           {/* Current-age marker. */}
@@ -208,7 +213,7 @@ export default function GrowthChart({
           {/* The profile's own trajectory, drawn on top. */}
           <Line
             type="monotone"
-            dataKey="traj"
+            dataKey={TRAJECTORY_KEY}
             stroke={chartSeries.brand}
             strokeWidth={2.5}
             // Solid: the fill channel means exactness alone (#2653, owner call

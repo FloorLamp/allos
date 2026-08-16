@@ -10,6 +10,7 @@ import { saveOutcomeMessage } from "@/lib/activity-save-outcome";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { isStaleActionError } from "@/lib/sw-update";
 import { reportStaleBuild } from "@/components/update-reload-channel";
+import { isRetriableSaveError, saveFailureEvent } from "@/lib/sw-update";
 import { useLatestRef } from "@/components/useLatestRef";
 
 // The ActivityForm auto-save state machine (#1189), extracted from the parent as a
@@ -27,6 +28,14 @@ import { useLatestRef } from "@/components/useLatestRef";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+// Self-retry cadence for network-shaped save failures (#2866): quick enough to
+// land inside a container swap (5s/15s), then HELD at the final 45s step for as
+// long as the outage lasts — rate-bounded (one request per 45s can never storm)
+// rather than count-bounded, because an outage that outlives a count leaves the
+// save waiting on a keystroke, the very defect this fixes. The stale-action
+// path is exempt by construction — it is never retriable, only reloadable.
+export const SAVE_RETRY_BACKOFF_MS = [5_000, 15_000, 45_000] as const;
+
 export interface ActivityAutosave {
   status: SaveStatus;
   savedAt: number;
@@ -35,6 +44,11 @@ export interface ActivityAutosave {
   // succeeded since. Retrying cannot help — only a reload can — so the form
   // renders an explicit banner off this instead of the bare error glyph.
   staleBuild: boolean;
+  // A retriable-failure episode is live (#2866): the bounded backoff is
+  // re-attempting network-shaped failures on its own, and the form should say
+  // "Not saving right now — your entries are kept on this device" instead of a
+  // bare triangle. The local draft (#1699) is what makes that sentence true.
+  retryingSave: boolean;
   createdId: number | null;
   // The row a save targets: the edited row, else the auto-created one (read
   // synchronously off the ref so a trailing save UPDATEs rather than re-inserts).
@@ -52,15 +66,23 @@ export function useActivityAutosave({
   formSig,
   canSave,
   editId,
+  adoptRowId = null,
   isPrefillCreate,
   buildFormData,
   toast,
   onQueueOffline,
+  onRowOwned,
 }: {
   formSig: string;
   canSave: boolean;
   // editData?.id ?? null — the stored row being edited (null in create mode).
   editId: number | null;
+  // CREATE-AT-START adoption (#2870 step 3): the row the provider created the
+  // moment the live session started. Handed in as a prop so the mounted form
+  // takes ownership WITHOUT a re-key (a remount would drop in-flight state) —
+  // it lands in the same created-row channel a create response uses, so every
+  // save from here on UPDATEs. Ignored once any row is owned.
+  adoptRowId?: number | null;
   // A "Log again"/"Repeat last" prefill create: starts the saved signature DIFFERENT
   // (an empty sentinel) so the seeded, already-complete activity auto-saves on open.
   isPrefillCreate: boolean;
@@ -75,6 +97,11 @@ export function useActivityAutosave({
   // once the intent is durably queued; the hook then treats the close like a save
   // (signature advanced, no dirty prompt) — the queue owns the data now.
   onQueueOffline?: (formData: FormData) => Promise<boolean>;
+  // Fired ONCE, when a rowless form first OWNS a row — by adopting the
+  // provider's create-at-start id, or by its own first create landing (#2870
+  // step 3). The provider keys the one-URL navigation off this, so the
+  // session's page appears whenever the row does, however it came to be.
+  onRowOwned?: (id: number) => void;
 }): ActivityAutosave {
   const [status, setStatus] = useState<SaveStatus>("idle");
   // Timestamp of the last successful save; drives the SaveStatus check + fade.
@@ -88,6 +115,23 @@ export function useActivityAutosave({
   const createdIdRef = useRef<number | null>(null);
   const savableId = useCallback(() => editId ?? createdIdRef.current, [editId]);
   const hasRow = editId != null || createdId != null;
+
+  const onRowOwnedRef = useRef(onRowOwned);
+  useEffect(() => {
+    onRowOwnedRef.current = onRowOwned;
+  });
+
+  // Adopt the provider-created row (#2870 step 3) — ref first, so a save
+  // already in flight when the prop lands still UPDATEs. Only while rowless:
+  // an edit owns its row, and a create that already minted one keeps it (the
+  // provider discards a create that arrived too late to be adopted).
+  useEffect(() => {
+    if (adoptRowId == null || editId != null) return;
+    if (createdIdRef.current != null) return;
+    createdIdRef.current = adoptRowId;
+    setCreatedId(adoptRowId);
+    onRowOwnedRef.current?.(adoptRowId);
+  }, [adoptRowId, editId]);
 
   // The state we last persisted (or loaded). Starts equal to the initial state so
   // loading existing data — or opening a blank create form — saves nothing. A prefill
@@ -125,6 +169,36 @@ export function useActivityAutosave({
     };
   }, []);
 
+  // A retriable-failure EPISODE is live (#2866): saves are dying on the shapes a
+  // mid-deploy swap window produces (a 502 page → Next's non-RSC-response
+  // throw, or a connection TypeError), the backoff below is re-attempting on
+  // its own, and the form owes the user the true sentence — "Not saving right
+  // now, your entries are kept on this device" — not a bare triangle. Cleared
+  // by the first success, by a stale verdict (the reload banner takes over),
+  // by an ordinary rejection (whose honest error rendering stands), or by the
+  // form catching up to the saved state (nothing left to save). While the flag
+  // is up, a retry is ALWAYS armed — the banner never promises what no timer
+  // will do.
+  const [retryingSave, setRetryingSave] = useState(false);
+  const retryAttemptRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const episodeLoggedRef = useRef(false);
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current != null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+  const endRetryEpisode = useCallback(() => {
+    clearRetryTimer();
+    retryAttemptRef.current = 0;
+    episodeLoggedRef.current = false;
+    if (mountedRef.current) setRetryingSave(false);
+  }, [clearRetryTimer]);
+
+  // A scheduled retry must not outlive the form.
+  useEffect(() => clearRetryTimer, [clearRetryTimer]);
+
   // `queueOnOffline` marks a CLOSE-path persist (flushBeforeClose / the unmount
   // flush): when that final save dies on a dead connection and the session never
   // got a server row, the whole form is captured into the offline queue instead of
@@ -133,8 +207,19 @@ export function useActivityAutosave({
   // onQueueOffline's doc above).
   const persist = useCallback(
     async (opts?: { queueOnOffline?: boolean }) => {
-      if (!canSave) return;
-      if (formSig === savedSigRef.current) return; // nothing changed
+      // The two settled-state bails END a live retry episode: with autosave off
+      // or the form matching the saved signature there is nothing a retry could
+      // do, and the banner must not keep claiming one is coming (e.g. the user
+      // reverted the very edit whose save died). The in-flight bail does NOT —
+      // that save's own completion settles the episode.
+      if (!canSave) {
+        endRetryEpisode();
+        return;
+      }
+      if (formSig === savedSigRef.current) {
+        endRetryEpisode();
+        return; // nothing changed
+      }
       if (inFlightRef.current) return; // a save is running; its trailing re-check catches new edits
       inFlightRef.current = true;
       const sigAtSave = formSig;
@@ -147,6 +232,10 @@ export function useActivityAutosave({
         // stays dirty so the edit survives, the auto-saver can retry, and closing it
         // still prompts. Surface the failure instead of a false "Saved ✓" (#332).
         if (!res.ok) {
+          // A server that ANSWERS with a rejection is deterministic, not an
+          // outage: whatever retry episode was running is over, and the honest
+          // error rendering stands instead of the "retrying" line.
+          endRetryEpisode();
           if (mountedRef.current) setStatus("error");
           else toast(saveOutcomeMessage(res.reason));
           return;
@@ -154,10 +243,14 @@ export function useActivityAutosave({
         if (res.id != null && savableId() == null) {
           createdIdRef.current = res.id; // ref first, so a trailing save UPDATEs
           if (mountedRef.current) setCreatedId(res.id);
+          // First ownership (the rowless-fallback path minted its own row):
+          // the one-URL navigation keys off this (#2870 step 3).
+          if (mountedRef.current) onRowOwnedRef.current?.(res.id);
         }
         savedSigRef.current = sigAtSave;
         if (mountedRef.current) setSavedSig(sigAtSave);
         saved = true;
+        endRetryEpisode();
         if (mountedRef.current) {
           setStatus("saved");
           setSavedAt(Date.now());
@@ -206,6 +299,44 @@ export function useActivityAutosave({
         // anything — and without waiting for the `/api/version` detector, which this
         // signal is deliberately independent of.
         if (stale) reportStaleBuild();
+        // A network-shaped failure is retriable IN PLACE (#2866) — the mid-deploy
+        // swap window answers a 502 page (Next's non-RSC-response throw) or a
+        // connection TypeError, and before this, recovery waited on the next
+        // KEYSTROKE: each in-window retry failed the same unclassified way and
+        // the sticky error rendered a bare triangle through the rest of the
+        // workout. Backed off 5s → 15s → 45s, then HELD at 45s for as long as
+        // the outage lasts: an outage that outlives the ladder must not strand
+        // the banner over a save nothing will re-attempt (recovery would be
+        // back to keystroke-only — the very defect this fixes). The first
+        // attempt the new server answers either succeeds or returns the real
+        // stale signature, and the paths above take over. One structured event
+        // per episode names the leg for the next report.
+        const retriable = !stale && isRetriableSaveError(err);
+        if (retriable) {
+          if (!episodeLoggedRef.current) {
+            episodeLoggedRef.current = true;
+            console.warn("activity-autosave-retriable", saveFailureEvent(err));
+          }
+          if (mountedRef.current) {
+            setRetryingSave(true);
+            const attempt = retryAttemptRef.current;
+            retryAttemptRef.current = attempt + 1;
+            clearRetryTimer();
+            retryTimerRef.current = setTimeout(
+              () => {
+                retryTimerRef.current = null;
+                void persistLatest();
+              },
+              SAVE_RETRY_BACKOFF_MS[
+                Math.min(attempt, SAVE_RETRY_BACKOFF_MS.length - 1)
+              ]
+            );
+          }
+        } else {
+          // An ordinary rejection or the stale signature: whatever retry episode
+          // was running is over — those states own their own rendering.
+          endRetryEpisode();
+        }
         if (mountedRef.current) {
           if (stale) setStaleBuild(true);
           setStatus("error");
@@ -231,6 +362,8 @@ export function useActivityAutosave({
     [
       buildFormDataRef,
       canSave,
+      clearRetryTimer,
+      endRetryEpisode,
       formSig,
       onQueueOfflineRef,
       persistLatest,
@@ -302,6 +435,7 @@ export function useActivityAutosave({
     status,
     savedAt,
     staleBuild,
+    retryingSave,
     createdId,
     savableId,
     hasRow,

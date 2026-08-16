@@ -72,4 +72,12 @@ test("high LDL detail page shows a REDUCE suggestion (cut back on limit-tier foo
   await expect(suggestion).not.toContainText(
     "Informational, not medical advice"
   );
+
+  // The #2754 add-on-high twin on the same page: the same high LDL also earns an ADD
+  // (soluble fiber), rendered as its own card whose copy names the flag's real side.
+  const add = page.getByTestId("food-suggestion-soluble-fiber");
+  await expect(add).toBeVisible();
+  await expect(add).toHaveAttribute("data-direction", "add");
+  await expect(add).toContainText(/is HIGH. Eat more:/);
+  await expect(add).toContainText(/oats/i);
 });

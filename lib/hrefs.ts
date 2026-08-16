@@ -279,6 +279,14 @@ export function medicationsFilterHref(filter: MedicationFilter): AppRoute {
   return `/medications?filter=${filter}`;
 }
 
+// One activity's canonical page (#2870): the record, reached from every
+// surface via activityDetailHref (lib/ride-detail.ts) — call this directly only
+// where the activity is known non-cycling (strength rows).
+export function trainingActivityPageHref(activityId: number): AppRoute {
+  const href: Route<`/training/activity/${number}`> = `/training/activity/${activityId}`;
+  return href as AppRoute;
+}
+
 // The Timeline "jump to this day" link: filter the feed to a single day AND
 // scroll to that day's anchor. One place for the `/timeline?from=X&to=X#…`
 // pattern the sidebar calendar and the workout heatmap (#186) both build.

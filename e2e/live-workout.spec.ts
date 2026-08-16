@@ -5,12 +5,18 @@ import { openCommandPalette } from "./nav";
 // Issue #340: live workout mode — the in-gym presentation of the SAME activity
 // editor (no second engine), driven end-to-end against the seeded DB.
 //
-//   1. "Start workout" (training log aside + command palette) opens a create form in
-//      the live layout: a control strip with the rest timer + Finish.
+//   1. "Start workout" (training log aside + command palette) opens the live
+//      layout: a control strip with the rest timer + Finish. Since #2870 step 3
+//      it also CREATES the session row up front and navigates to its canonical
+//      page — the overlay opens above that URL.
 //   2. The rest timer is a client-side countdown — a lift-appropriate default,
 //      preset chips, and a start/pause toggle.
 //   3. Checking off a set (adding the next set) auto-starts the rest timer.
 //   4. "Finish workout" stamps end=now and collapses back to the plain form.
+
+// Create-at-start means every started session gets a row up front — and
+// CLOSING an empty session abandons it (the provider's if-empty discard), so
+// these specs leave nothing behind by simply closing what they opened.
 
 // Pick an activity in the editor's exercise combobox (same shape-tolerant matcher
 // the entry-ergonomics spec documents).
@@ -55,8 +61,11 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-label", "Pause rest timer");
 
-  // No set was logged, so nothing auto-saved — close without a draft to clean up.
+  // No set was logged: closing ABANDONS the create-at-start row (#2870 step 3
+  // discards an empty session server-side) and, since the tab stood on the
+  // now-deleted row's page, returns to the training hub. Nothing to clean up.
   await page.keyboard.press("Escape");
+  await page.waitForURL(/\/training(\?.*)?$/);
 });
 
 test("checking off a set auto-starts rest, and Finish stamps the end time (#340)", async ({
@@ -66,6 +75,9 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
 
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  // Settle on the session's page (#2870 step 3) before typing, so the
+  // create-at-start navigation can't race the combobox.
+  await page.waitForURL(/\/training\/activity\/\d+$/);
 
   // Pick a lift the seed trains repeatedly so a coached suggestion exists, then
   // TAP "Use" to seed set 1 from it (#1971 retired the focus-fill: arriving in a
@@ -125,31 +137,49 @@ test("mid-session, the workout entry point resumes and the session clock survive
   await expect(entry).toHaveText("Start workout");
   await entry.click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  // #2870 step 3: the session got its row and the tab stands on its page.
+  await page.waitForURL(/\/training\/activity\/\d+$/);
+  const sessionUrl = page.url();
 
-  // Minimize to the dock — the form stays MOUNTED and the clock keeps running.
+  // Minimize — the form stays MOUNTED and the clock keeps running. Off the
+  // Log view, the app-wide bar carries the pocketed session.
   await page.getByTestId("minimize-workout").click();
   const dock = page.getByTestId("workout-dock");
   await expect(dock).toBeVisible();
   const startedAt = await dock.getAttribute("data-start-epoch");
   expect(startedAt).toMatch(/^\d+$/);
 
-  // The SAME control now offers the resume, and says so.
+  // Back on the Log — SOFT history navigation (the pocketed form must stay
+  // mounted; a hard reload would re-derive the epoch from presence's
+  // minute-rounded reconstruction). goBack pops the start's own push, landing
+  // exactly on the ?tab=log we came from. The SAME entry control now offers
+  // the resume by name.
+  await page.goBack();
+  await page.waitForURL(/tab=log/);
   await expect(entry).toHaveAttribute("data-workout-offer", "resume");
   await expect(entry).toHaveText("Resume workout");
 
-  // Tapping it reopens the running session instead of starting a new one.
+  // Tapping it reopens the running session instead of starting a new one —
+  // and returns to the session's canonical page (one URL).
   await entry.click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await page.waitForURL(sessionUrl);
   await page.getByTestId("minimize-workout").click();
   await expect(dock).toBeVisible();
   // The pin: the same start instant, so the same elapsed time continues.
   await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
 
-  // No set was logged, so nothing auto-saved — restore and close without a draft.
+  // Restore from the bar and close: nothing was logged, so the close ABANDONS
+  // the created-at-start row (server-side if-empty discard) — the bar must not
+  // come back offering a session with nothing in it.
   await page.getByTestId("workout-dock-open").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dock).toHaveCount(0);
+  // Wait out the abandonment redirect: ending here can tear the page down
+  // with the empty session's discard still in flight, leaking an active row
+  // into the next (repeat) iteration.
+  await page.waitForURL(/\/training(\?.*)?$/);
 });
 
 test("the command palette offers 'Start workout' (#340)", async ({ page }) => {

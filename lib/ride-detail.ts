@@ -6,22 +6,23 @@ import {
   isSameCyclingActivity,
   type CyclingActivityIdentity,
 } from "./cycling-activity";
-import { rideHref, type AppRoute } from "./hrefs";
+import { rideHref, trainingActivityPageHref, type AppRoute } from "./hrefs";
 import { median } from "./robust-stats";
-import { trainingLogActivityHref } from "./timeline-format";
 import { ZONES, type ActivityWindow } from "./training-zones";
 
 export { cyclingActivityName, isCyclingActivity } from "./cycling-activity";
 export type { CyclingActivityIdentity } from "./cycling-activity";
 
-// The best read-first destination for one activity. Cycling sessions have a
-// dedicated performance detail; every other activity keeps the Training Log entry as
-// its canonical record. Shared training, Timeline, and equipment surfaces call
-// this one resolver so the same ride never opens two different destinations.
+// The best read-first destination for one activity. Cycling sessions keep their
+// dedicated performance detail; every other activity's canonical record is its
+// OWN page since #2870 — flipping this one branch is what re-points the
+// timeline, equipment histories, and training surfaces at once. Shared
+// training, Timeline, and equipment surfaces call this one resolver so the
+// same activity never opens two different destinations.
 export function activityDetailHref(
   activity: CyclingActivityIdentity & { id: number }
 ): AppRoute {
-  return rideDetailHref(activity) ?? trainingLogActivityHref(activity.id);
+  return rideDetailHref(activity) ?? trainingActivityPageHref(activity.id);
 }
 
 // Some surfaces have a better non-cycling fallback than the Training Log (global

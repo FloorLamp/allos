@@ -2599,6 +2599,7 @@ for (let d = 55; d >= 0; d--) {
   if (d % 7 === 1 || d % 7 === 4) logFood(date, "fatty_fish", 1, "12:45:00"); // midday
   if (d % 5 === 0) logFood(date, "red_meat", 1, "19:00:00"); // evening
   if (d % 4 === 0) logFood(date, "nuts_seeds", 1, "15:30:00"); // midday/afternoon
+  if (d % 3 === 1) logFood(date, "olive_oil_avocado", 1, "12:35:00"); // midday
   if (d % 6 === 2) logFood(date, "alcohol", 2, "20:30:00"); // evening
   if (d % 6 === 4) logFood(date, "added_sugar", 1, "21:00:00"); // evening
 }
@@ -2787,6 +2788,11 @@ const seededSymptoms: [number, string, number, string | null][] = [
   // Past episode.
   [58, "headache", 2, null],
   [57, "nausea", 3, null],
+  // Standalone GI days (no episode), inside the fiber × GI panel's 4-week window
+  // (#2788) so /nutrition's read-together strip has both series to show.
+  [6, "bloating", 2, null],
+  [12, "diarrhea", 3, null],
+  [12, "abdominal_pain", 2, null],
 ];
 for (const [ago, symptom, severity, note] of seededSymptoms) {
   // The current episode's rows (ago ≤ 3) slide with the illnessNow dial
@@ -3188,21 +3194,17 @@ if (!existingChild) {
         panel
       ).lastInsertRowid
     );
-  const alpId = childLab(
-    "Alkaline Phosphatase",
-    300,
-    "U/L",
-    "40-129",
-    "lab",
-    "Metabolic"
-  );
+  childLab("Alkaline Phosphatase", 300, "U/L", "40-129", "lab", "Metabolic");
   childLab("Blood Pressure Systolic", 101, "mmHg", "90-120", "vitals", null);
   childLab("Blood Pressure Diastolic", 52, "mmHg", "60-80", "vitals", null);
-  // Derive the ALP flag against the child's age band (300 → normal-for-age),
-  // exactly like a real import would after boot's flag reconcile. BP is left
-  // unflagged: a child's blood pressure is judged by the AAP 2017 age/sex/height
-  // percentile (rendered on the biomarker page), NOT the adult reference flags.
-  reconcileFlags(childId, [alpId]);
+  // Reconcile ALL of the child's rows, exactly as a real import would. The ALP resolves
+  // against the age band (300 → normal-for-age, so no flag), and the BP rows resolve in
+  // the same shared decision: since #2794 reconciledFlag declines to judge a BP
+  // component under 13 and defers to the AAP 2017 age/sex/height percentile the
+  // biomarker page renders. This call used to pass `[alpId]` to hold the BP rows OUT,
+  // because reconciling them stamped a red "low" on a normal toddler — a workaround
+  // that documented the gap and covered only the seed. The ruling is in the core now.
+  reconcileFlags(childId);
 }
 
 // ── Sleep sessions → Sleep Regularity Index (#160) ────────────────────────────

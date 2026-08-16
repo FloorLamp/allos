@@ -12,6 +12,7 @@ import {
 } from "../preventive-status";
 import type { PreventiveAssessment } from "../preventive-status";
 import type { Citation } from "../preventive-catalog";
+import { bandForItem, upcomingDueText } from "../upcoming";
 
 const CITATION: Citation = {
   source: "USPSTF",
@@ -191,6 +192,73 @@ describe("preventiveNudgeAction — shared link+CTA for the nudge (#1083/#221)",
         TODAY
       )
     ).toBeNull();
+  });
+});
+
+// Issue #2805. The assessor computes `nextDueDate` and the row printed it as prose
+// ("Due by 2026-07-25") while the item itself carried `dueDate: null` and a band hard-set
+// from the status — so a due-by weeks in the past sat in TODAY, contradicting its own
+// sentence. The status stays "due" for the whole interval+grace window, which is what made
+// the two disagree.
+describe("preventiveAssessmentToUpcomingItem — the computed due date (#2805)", () => {
+  const dated = (status: "due" | "overdue", nextDueDate: string) =>
+    preventiveAssessmentToUpcomingItem(
+      mkAssessment({ kind: "visit", status, nextDueDate }),
+      { today: TODAY }
+    );
+
+  it("carries the date and drops the band override, so a past due-by bands Overdue", () => {
+    // The walkthrough repro: "Due by 2026-07-25", read three weeks later.
+    const item = dated("due", "2026-07-25");
+    expect(item.dueDate).toBe("2026-07-25");
+    expect(item.band).toBeUndefined();
+    expect(item.dueText).toBeUndefined();
+    expect(bandForItem(item, "2026-08-15")).toBe("overdue");
+    // …and the row can now say HOW far past, instead of a bare "Due".
+    expect(upcomingDueText(item, "2026-08-15")).toMatch(/overdue/i);
+  });
+
+  it("bands a still-future due-by by distance rather than parking it in Today", () => {
+    expect(bandForItem(dated("due", "2026-07-13"), TODAY)).toBe("week");
+    expect(bandForItem(dated("due", "2026-08-20"), TODAY)).toBe("later");
+    expect(bandForItem(dated("due", TODAY), TODAY)).toBe("today");
+  });
+
+  it("an overdue status with a date bands from the date, not the status", () => {
+    const item = dated("overdue", "2026-01-01");
+    expect(item.dueDate).toBe("2026-01-01");
+    expect(bandForItem(item, TODAY)).toBe("overdue");
+  });
+
+  it("keeps the status band as the fallback when the assessor computed no date", () => {
+    // An age-triggered rule that has never been satisfied has nothing to count from,
+    // and there the status genuinely is all we know.
+    const item = preventiveAssessmentToUpcomingItem(
+      mkAssessment({ kind: "visit", status: "overdue" }),
+      { today: TODAY }
+    );
+    expect(item.dueDate).toBeNull();
+    expect(item.band).toBe("overdue");
+    expect(item.dueText).toBe("Overdue");
+  });
+
+  it("leaves the scheduled and setup framings banding by status, as their comments require", () => {
+    const scheduled = preventiveAssessmentToUpcomingItem(
+      mkAssessment({ kind: "visit", status: "due", nextDueDate: "2026-01-01" }),
+      { today: TODAY, scheduledDate: "2026-09-01" }
+    );
+    expect(scheduled.band).toBe("later");
+    expect(scheduled.dueDate).toBeNull();
+    const setup = preventiveAssessmentToUpcomingItem(
+      mkAssessment({
+        kind: "visit",
+        status: "setup",
+        nextDueDate: "2026-01-01",
+      }),
+      { today: TODAY }
+    );
+    expect(setup.band).toBe("later");
+    expect(setup.dueDate).toBeNull();
   });
 });
 

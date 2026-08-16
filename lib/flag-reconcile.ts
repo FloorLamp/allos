@@ -2,6 +2,10 @@ import { ageFromBirthdate } from "./date";
 import { reconciledFlag, qualitativeFlagResolution } from "./reference-range";
 import { isEditLocked } from "./integrations/sync-log";
 import { cyclePhaseOnDate, type CyclePeriod } from "./cycle";
+import {
+  frameUnstatedNames,
+  isFrameUnstated,
+} from "./patient-state-qualifiers";
 import type { ReproductiveStatus, Sex } from "./types";
 
 // The canonical-ranges shape reconciledFlag needs to judge a value. Kept loose so
@@ -98,6 +102,12 @@ export function computeFlagReconciliation<T>(
   const context: FlagReconcileContext =
     ctx == null || typeof ctx === "string" ? { sex: ctx ?? null } : ctx;
   const periods = context.periods ?? null;
+  // The #2337 frame guard for the lab-stated flag (#2799), resolved ONCE per call. It is
+  // a property of the whole vocabulary — "does the catalog carry a patient-state-
+  // qualified sibling of this entry?" — which the per-row core cannot see, and this is
+  // the layer that holds the map. Derived from the caller's own map, so a caller judging
+  // against a partial vocabulary gets the guard its vocabulary supports.
+  const frameUnstated = frameUnstatedNames(cbByName.keys());
   const out: FlagChange[] = [];
   for (const r of rows) {
     const cb = cbByName.get(r.canonical_name.toLowerCase());
@@ -118,7 +128,8 @@ export function computeFlagReconciliation<T>(
       ageForRecord(context, r.date),
       context.reproductiveStatus ?? null,
       r.reference ?? null,
-      cyclePhase
+      cyclePhase,
+      { frameUnstated: isFrameUnstated(frameUnstated, r.canonical_name) }
     );
     if (next === undefined) continue;
     out.push({ id: r.id, flag: next });

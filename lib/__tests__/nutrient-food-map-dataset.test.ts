@@ -56,13 +56,27 @@ describe("nutrient-food-map.json dataset", () => {
     ).toEqual([]);
   });
 
-  it("every entry carries an evidence note, a source, and at least one food", () => {
+  it("every entry carries an evidence note, a source, at least one food, and a declared direction", () => {
     for (const e of buildNutrientFoodMap().entries) {
       expect(e.evidence.trim().length, e.key).toBeGreaterThan(0);
       expect(e.source.trim().length, e.key).toBeGreaterThan(0);
       expect(e.foods.length, e.key).toBeGreaterThan(0);
-      expect(e.direction, e.key).toBe("low");
+      expect(["low", "high"], e.key).toContain(e.direction);
     }
+  });
+
+  it("soluble-fiber is the ONLY add-on-high entry, keyed to the lipid family (#2754)", () => {
+    // The direction inversion is a per-entry declaration so it stays a deliberate,
+    // reviewed act: a new high-triggered ADD entry must be added here with its own
+    // defense, never ride in silently.
+    const high = buildNutrientFoodMap().entries.filter(
+      (e) => e.direction === "high"
+    );
+    expect(high.map((e) => e.key)).toEqual(["soluble-fiber"]);
+    expect(high[0].biomarkers).toEqual([
+      "LDL Cholesterol",
+      "Apolipoprotein B (ApoB)",
+    ]);
   });
 
   it("every reduce entry carries an evidence note, a source, at least one food, and direction high (#775)", () => {

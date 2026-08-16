@@ -87,8 +87,10 @@ else
   echo "=== GATE test:db: SKIPPED (nothing the DB tier imports changed vs ${base:0:12}) ==="
 fi
 
+ran_e2e_hygiene=0
 if paths_changed e2e/; then
   run_gate "e2e-hygiene (e2e/ changed)" npx vitest run lib/__tests__/e2e-hygiene.test.ts
+  ran_e2e_hygiene=1
 else
   echo
   echo "=== GATE e2e-hygiene: SKIPPED (nothing under e2e/ changed vs ${base:0:12}) ==="
@@ -123,11 +125,36 @@ else
 fi
 run_gate "format (LAST)" npm run format
 
+# FORMATTING IS NOT SEMANTICALLY INERT, so a rewrite INVALIDATES the gates above.
+#
+# The note here used to just say "commit them NOW", which assumed the only hazard
+# was an agent editing afterwards. A dispatch proved otherwise: the agent wrote a
+# `@ts-expect-error` on the line directly above its erroring call, typecheck
+# passed on exactly that, and then Prettier — running LAST, by design — rewrapped
+# the call across three lines and slid it out from under the directive. The push
+# was red on `TS2578: Unused '@ts-expect-error' directive` plus the now-unsuppressed
+# error, after a gate block that legitimately read PASS. Nobody edited anything.
+#
+# The gates that can break this way are the ones reading LINE-POSITIONED comment
+# directives: `@ts-expect-error` (typecheck), `eslint-disable-next-line` (lint),
+# and the `-ok` pragmas the e2e-hygiene scan pairs with the line beneath them. The
+# test tiers cannot — a rewrap changes no runtime behavior — which is why they are
+# not re-run here and the cost stays seconds rather than a second full suite.
 if [ "$prettier_would_rewrite" = "1" ]; then
   echo
-  echo "NOTE: Prettier rewrote files after the test gates. Commit them NOW and do not"
-  echo "edit anything afterwards — an edit after format is the known CI breaker this"
-  echo "script exists to prevent. If you must edit, re-run this script from the top."
+  echo "Prettier rewrote files AFTER the gates above ran, so the gates that read"
+  echo "line-positioned directives are now stale. Re-verifying them against the"
+  echo "formatted tree — this is the check, not a warning."
+  run_gate "lint (re-verify after format)" npm run lint
+  run_gate "typecheck (re-verify after format)" npm run typecheck
+  if [ "$ran_e2e_hygiene" = "1" ]; then
+    run_gate "e2e-hygiene (re-verify after format)" npx vitest run lib/__tests__/e2e-hygiene.test.ts
+  fi
+
+  echo
+  echo "NOTE: Prettier rewrote files. Commit them NOW and do not edit anything"
+  echo "afterwards — an edit after format is the known CI breaker this script exists"
+  echo "to prevent. If you must edit, re-run this script from the top."
 fi
 
 echo

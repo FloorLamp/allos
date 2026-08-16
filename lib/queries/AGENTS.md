@@ -2,8 +2,10 @@
 
 - Query modules do not own request authentication. They receive authorized
   profile IDs from their caller.
-- Single-profile readers take `profileId` first. Cross-profile readers take
-  authorized `ids: number[]` first and use `profileIdsIn(ids)`.
+- Single-profile readers take `profileId` first. Cross-profile readers take an
+  `AuthorizedProfileIds` set first and use `profileIdsIn(ids)`.
+- Only a grant derivation or a checked subset mints that set; an unsealed one is
+  refused at runtime — see `lib/cross-profile.ts`.
 - Every query touching profile-owned data scopes it by `profile_id`, directly or
   through the owning parent.
 - A hot read declares SQL with `hoistedStatement()` so the compiled statement is

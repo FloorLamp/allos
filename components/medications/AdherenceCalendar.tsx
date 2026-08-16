@@ -2,8 +2,8 @@ import { chartAdherenceState } from "@/lib/chart-colors";
 import type {
   AdherenceCalendarModel,
   AdherenceCalendarCell,
+  AdherenceCalendarState,
 } from "@/lib/adherence-calendar";
-import type { AdherenceState } from "@/lib/intake-adherence";
 
 // The month adherence calendar on a medication's detail page (issue #852 item 5): the
 // 14-day strip's own vocabulary (taken / partial / skipped / missed / not-due) at month
@@ -16,19 +16,23 @@ const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 // steps are validated in CI: `taken`/`partial` are two steps of the same brand
 // ramp, `skipped` the neutral, `missed` the rose. Each cell also carries a title,
 // a `data-state`, and a legend row below, so state is never color-alone.
-const STATE_STYLE: Record<AdherenceState, string> = {
+const STATE_STYLE: Record<AdherenceCalendarState, string> = {
   taken: chartAdherenceState.taken.class,
   partial: chartAdherenceState.partial.class,
   skipped: chartAdherenceState.skipped.class,
   missed: chartAdherenceState.missed.class,
+  pending: chartAdherenceState.pending.class,
   na: chartAdherenceState.na.class,
 };
 
-const STATE_LABEL: Record<AdherenceState, string> = {
+const STATE_LABEL: Record<AdherenceCalendarState, string> = {
   taken: "Taken",
   partial: "Partial",
   skipped: "Skipped",
   missed: "Missed",
+  // Today, not yet taken and not yet late enough to call anything (#2796). "Missed"
+  // here contradicted the "Mark taken" button sitting a few hundred pixels away.
+  pending: "Today, not yet taken",
   na: "Not due",
 };
 
@@ -58,11 +62,12 @@ export default function AdherenceCalendar({
   model: AdherenceCalendarModel;
 }) {
   if (model.weeks.length === 0) return null;
-  const legend: AdherenceState[] = [
+  const legend: AdherenceCalendarState[] = [
     "taken",
     "partial",
     "skipped",
     "missed",
+    "pending",
     "na",
   ];
   return (

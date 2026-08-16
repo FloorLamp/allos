@@ -666,6 +666,109 @@ export interface DocsFinding {
 
 export const SPEC_STATUS_LINE = /^Status:\s*\S/m;
 
+// ---- Label hygiene (docs/orchestration/dispatch.md §Queue labels) ----------
+//
+// Dispatch consumes exactly two label axes — one priority-slot label and at
+// least one domain label — and until 2026-08-15 nothing checked either (an
+// issue carried `P2` AND `parked` for days, and 21% of open issues had no
+// domain, both invisible until a hand census). Same posture as every check in
+// this module: FLAG, never fix — deciding which slot label is right is a
+// judgment call, which is precisely what this tool exists to route to a human.
+//
+// The vocabularies are stated here rather than fetched: the label set is a
+// repo convention, and a check that read it from the live repo would validate
+// the tracker against itself.
+
+/** Exactly ONE of these per issue — the priority slot. */
+export const PRIORITY_SLOT_LABELS = ["P0", "P1", "P2", "P3", "parked"] as const;
+
+/** At least ONE of these per issue — the clustering axis. */
+export const DOMAIN_LABELS = [
+  "biomarkers",
+  "body-metrics",
+  "ci",
+  "db",
+  "dependencies",
+  "design",
+  "docs",
+  "e2e",
+  "findings",
+  "goals",
+  "infra",
+  "insights",
+  "intake",
+  "integrations",
+  "medical-passport",
+  "mobile",
+  "notifications",
+  "nutrition",
+  "performance",
+  "reproductive-health",
+  "security",
+  "training",
+  "wearable",
+  "wellness",
+] as const;
+
+/** Retired 2026-08-15 and deleted repo-side; flagged wherever they reappear on an open issue. */
+export const RETIRED_LABELS = [
+  "enhancement",
+  "cleanup",
+  "javascript",
+  "lib",
+] as const;
+
+export interface LabelFinding {
+  issue: number;
+  kind: "priority-slot" | "no-domain" | "retired-label";
+  detail: string;
+}
+
+export function checkLabelHygiene(
+  issues: readonly TrackerIssue[]
+): LabelFinding[] {
+  const out: LabelFinding[] = [];
+  for (const issue of issues) {
+    if (issue.state !== "open") continue;
+    const slots = issue.labels.filter((l) =>
+      (PRIORITY_SLOT_LABELS as readonly string[]).includes(l)
+    );
+    if (slots.length !== 1) {
+      out.push({
+        issue: issue.number,
+        kind: "priority-slot",
+        detail:
+          slots.length === 0
+            ? "no priority-slot label (needs exactly one of P0–P3 or parked)"
+            : `${slots.length} priority-slot labels (${slots.join(", ")}) — the slot is exactly-one`,
+      });
+    }
+    if (
+      !issue.labels.some((l) =>
+        (DOMAIN_LABELS as readonly string[]).includes(l)
+      )
+    ) {
+      out.push({
+        issue: issue.number,
+        kind: "no-domain",
+        detail:
+          "no domain label — invisible to by-domain clustering (cross-cutting design work takes `design`)",
+      });
+    }
+    const retired = issue.labels.filter((l) =>
+      (RETIRED_LABELS as readonly string[]).includes(l)
+    );
+    for (const label of retired) {
+      out.push({
+        issue: issue.number,
+        kind: "retired-label",
+        detail: `carries retired label \`${label}\``,
+      });
+    }
+  }
+  return out;
+}
+
 export function checkDocsContracts(index: RepoIndex): DocsFinding[] {
   const out: DocsFinding[] = [];
   const dirs = topLevelDirs(index);
@@ -716,6 +819,8 @@ export interface ReconcileEvidence {
   totals: ReconcileTotals;
   findings: readonly ReconcileFinding[];
   docs: readonly DocsFinding[];
+  /** Open issues violating the two-axis label contract (flag, never fix). */
+  labelFindings: readonly LabelFinding[];
   /** Issues examined whose every checkable claim held. */
   verifiedClean: readonly number[];
 }
@@ -885,7 +990,9 @@ export function gatherEvidence(
     (f) => f.startsWith("docs/") && f.endsWith(".md")
   ).length;
 
-  return { watermark, totals, findings, docs, verifiedClean };
+  const labelFindings = checkLabelHygiene(snapshot.issues);
+
+  return { watermark, totals, findings, docs, labelFindings, verifiedClean };
 }
 
 const symbolCache = new WeakMap<RepoIndex, Map<string, boolean>>();
@@ -982,6 +1089,16 @@ export function renderReport(evidence: ReconcileEvidence): string {
   } else {
     for (const d of evidence.docs) {
       lines.push(`- \`${d.file}\` \`${d.anchor}\` — ${d.detail}`);
+    }
+    lines.push("");
+  }
+  lines.push(`## Label hygiene (${evidence.labelFindings.length})`);
+  lines.push("");
+  if (evidence.labelFindings.length === 0) {
+    lines.push("_none_", "");
+  } else {
+    for (const f of evidence.labelFindings) {
+      lines.push(`- #${f.issue} — ${f.detail}`);
     }
     lines.push("");
   }

@@ -168,9 +168,17 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // Note", "QNS"), where it used to leave the extractor's guess frozen forever. The
 // dataset rows are unchanged; the version bump is the whole change, and it is what
 // makes the boot reconcile revisit the guesses already stored.
+// Updated for #2794/#2799: FLAG_LOGIC_VERSION bumps to 11 — two derivation-LOGIC
+// changes with the dataset rows held still, so the version bump IS what makes the boot
+// reconcile revisit what is already stored. (a) reconciledFlag declines to judge a
+// blood-pressure component for a subject under 13, deferring to the AAP age/sex/height
+// percentile, and clears the adult-band flag it used to write. (b) Its "unknown" branch
+// derives `reported-high` / `reported-low` from the row's OWN printed reference range
+// for an analyte the catalog publishes no band for. No ref/optimal/unit/direction field
+// moved, so the dataset half of the signature would have forced neither pass.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "3ad36dc36807693c8e2761789c83e9d54f20658f790c33d629690ef7c6a242c0"; // phi-scan-ok
+  "19afef8d152349114185a722a0883d8a7c9d1f56719bfc7549e4ddbe0c1292a1"; // phi-scan-ok
 
 describe("canonical-result-definitions dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

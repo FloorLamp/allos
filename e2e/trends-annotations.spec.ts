@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledBoxes } from "./helpers";
 import { TREND_ANNOTATION_VISIBILITY_KEY } from "../lib/trend-annotation-visibility";
 
 test.describe("desktop Trends annotations", () => {
@@ -17,14 +17,9 @@ test.describe("desktop Trends annotations", () => {
     ).toBeVisible();
 
     const rangeRow = page.getByTestId("trends-chip-row");
-    const [rangeBox, eventBox] = await Promise.all([
-      rangeRow.boundingBox(),
-      controls.boundingBox(),
-    ]);
-    expect(rangeBox).not.toBeNull();
-    expect(eventBox).not.toBeNull();
-    const rangeCenter = rangeBox!.y + rangeBox!.height / 2;
-    const eventCenter = eventBox!.y + eventBox!.height / 2;
+    const [rangeBox, eventBox] = await settledBoxes([rangeRow, controls]);
+    const rangeCenter = rangeBox.y + rangeBox.height / 2;
+    const eventCenter = eventBox.y + eventBox.height / 2;
     expect(
       Math.abs(rangeCenter - eventCenter),
       "Events should share the desktop row with the range controls"
@@ -96,17 +91,10 @@ test.describe("desktop Trends annotations", () => {
       1
     );
 
-    const [rangeBox, eventBox] = await Promise.all([
-      rangeRow.boundingBox(),
-      controls.boundingBox(),
-    ]);
-    expect(rangeBox).not.toBeNull();
-    expect(eventBox).not.toBeNull();
+    const [rangeBox, eventBox] = await settledBoxes([rangeRow, controls]);
     expect(
       Math.abs(
-        rangeBox!.y +
-          rangeBox!.height / 2 -
-          (eventBox!.y + eventBox!.height / 2)
+        rangeBox.y + rangeBox.height / 2 - (eventBox.y + eventBox.height / 2)
       ),
       "Metric-detail Events should share the desktop range row"
     ).toBeLessThanOrEqual(2);

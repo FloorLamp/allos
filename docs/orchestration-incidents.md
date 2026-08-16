@@ -407,3 +407,82 @@ transfer-ready artifact (inert, zero cost). A strict up-to-date
 required-checks ruleset was considered and rejected: it re-runs full CI per
 open PR per landing while buying nothing the hand-serialization protocol
 doesn't.
+
+## 2026-08-15 — the roster forked because a brief could not be reprinted
+
+A live session lost a dispatch brief's text (it is printed once, at `new`; the
+ledger keeps parameters, not prose) and re-ran `new` to get it back. That
+appended a second ledger row and a second roster cluster per branch, and the
+next check-in printed seven clusters for four live agents.
+
+The roster is the only coordination state that outlives the orchestrator, and
+it is read after a restart to decide which dirty worktrees hold unrescued work.
+A roster that double-counts is wrong exactly when nothing else can correct it —
+the same class as the canary that died with the house.
+
+Two of the four re-runs were REFUSED, by the e2e cap, which is the receipt that
+the guard shape works: the non-e2e path simply had no equivalent. Fixed in
+`dispatch-brief.mjs` (#2923): `brief <branch>` reprints from recorded
+parameters and writes nothing, and `new` refuses an already-active branch,
+naming both exits.
+
+## A gate PASS that its own last step invalidated (#2935, 2026-08-15)
+
+`agent-gates.sh` runs `format` LAST, on purpose: a late edit after formatting is
+the CI breaker the script exists to prevent. But it had also assumed formatting
+is semantically inert. It is not. An agent wrote a `@ts-expect-error` directly
+above its erroring call, typecheck passed on exactly that, and Prettier then
+rewrapped the call across three lines — sliding it out from under the directive.
+The push was red on `TS2578: Unused '@ts-expect-error' directive` plus the
+now-unsuppressed error, after a gate block that legitimately read PASS. Nobody
+edited anything, so the existing NOTE ("commit them NOW, do not edit") could not
+have helped; following it literally is what produced the red push.
+
+The exposed class is gates that read LINE-POSITIONED comment directives —
+`@ts-expect-error`, `eslint-disable-next-line`, and the `-ok` pragmas the
+e2e-hygiene scan pairs with the line beneath them. The test tiers are immune, a
+rewrap changing no runtime behavior, so the script now re-runs only those three
+after a rewrite and the cost stays seconds. The agent diagnosed this itself and
+declined to edit shared tooling outside its dispatch, which was the right call
+and is why the finding arrived intact.
+
+## The wake alarm that lied for a session (2026-08-16)
+
+`orchestrator-checkin.sh` §4 read the wake file with `awk '{print $1}'` and
+expected a bare `<ISO> <trigger id>`. The check-in PRINTS the armed wake as
+`next: <ISO> <id>`, so an orchestrator recording its own output wrote the label
+into the file. `date -d "next:"` refused it, `|| echo 0` turned that refusal into
+epoch 0, and 0 is always in the past — so a correctly-armed wake reported as
+lapsed at EVERY check-in for a whole session. Three redundant one-shot triggers
+were armed chasing it, and two had to be deleted.
+
+Two defects, one line apart. The parser was brittle about the one mistake its own
+output invites. And the fallback collapsed "cannot parse this" into "this is in
+the past" — two states whose advice sounds identical ("re-arm") but is not:
+re-arming cannot fix a format the reader cannot parse, so the alarm survives the
+fix and teaches its reader to skip it. That is the canary failure in its third
+costume — an alarm that fires when nothing is wrong.
+
+Now the label is accepted, and an unparseable file says so, prints what it found,
+and prints the shape it wanted. Verified against five controls before shipping,
+per the canary section's last lesson: absent, future bare, future labelled,
+genuinely past, and malformed.
+
+## The high-stakes registry read "which subsystem", not "what does a bug disclose" (2026-08-16)
+
+`adversarial-review-brief.mjs --check` answered "not high-stakes" for #2955 — a
+rewrite of `redactSecrets`, the function that decides whether a credential
+reaches a user's screen. It had answered the same way for #2929's `lib/dri.ts`,
+the arithmetic behind an upper-limit safety warning (#2932). Both were overridden
+by hand, and both had real defects the falsifying lane then found.
+
+The registry was assembled by SUBSYSTEM — migrations, auth, backup, notifications
+— which is why it kept missing files that belong to no dangerous subsystem while
+deciding something dangerous. The question it has to answer is not "is this the
+auth module" but "what does a bug here disclose, decide, or destroy". Redaction
+discloses; DRI decides; a backup destroys. Same tier, three different subsystems.
+
+Two overrides in one session is the signal that the next miss is likelier than a
+false positive, so `lib/error-log-format.ts` and `lib/log.ts` are now declared —
+and the entry says WHY in disclosure terms, so the next person extending the list
+has the right test to apply rather than a list of module names to pattern-match.

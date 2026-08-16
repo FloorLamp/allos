@@ -5,6 +5,7 @@
 // the glyphs can't drift per surface — the components/ActivityIcon.tsx precedent.
 import {
   IconApple,
+  IconAvocado,
   IconBottle,
   IconBowl,
   IconBread,
@@ -48,6 +49,7 @@ const KEY_ICONS: Record<FoodGroupIconKey, IconCmp> = {
   grain: IconWheat,
   apple: IconApple,
   cherry: IconCherry,
+  avocado: IconAvocado,
   bottle: IconBottle,
   meat: IconMeat,
   egg: IconEgg,

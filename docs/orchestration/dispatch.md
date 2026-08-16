@@ -2,8 +2,19 @@
 
 ## Queue labels
 
-- Every issue has a domain label and P0–P3 priority, or `parked`. `lib` and
-  `ui` are secondary location labels.
+Two axes are load-bearing, and `reconcile-tracker` flags violations of both
+(`checkLabelHygiene`, 2026-08-15):
+
+- **Exactly one priority-slot label**: `P0`–`P3` or `parked`. Never two — a
+  `P2` + `parked` issue is in no queue and every queue at once.
+- **At least one domain label.** Cross-cutting design/UX work takes `design` —
+  it is a real domain, not a missing one.
+- `bug` is the only type label dispatch reads (P0/P1 bugs preempt features);
+  `feat`/`refactor` are optional color, and `ui` optionally marks screen-heavy
+  — therefore e2e-heavy — work (the two-agent cap).
+- `enhancement`, `cleanup`, `javascript`, and `lib` are retired (2026-08-15)
+  and deleted repo-side; a hygiene finding flags any reappearance. `lib` routed
+  nothing — business logic living in `lib/` is the repo's own rule.
 - `needs-human` means one specific owner answer is required. Apply it, assign
   the owner, and keep working elsewhere; never prompt the owner uninvited.
 - Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
@@ -15,6 +26,9 @@
   Agent-tool runs. Adopt any unrecorded live dispatch immediately.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced.
+- A `design` issue is dispatchable only when its body records the owner
+  decision (the #2701 shape) or a direction with stated falsifiers (#2641).
+  One still carrying the design question is owner-gated; agents never explore.
 - Older issues start with an audit table: resolved by what, or still open.
 - Cap E2E work at two agents and ordinary concurrent work near four agents.
 - Every brief uses the generated template and the gate order from
@@ -37,9 +51,10 @@
 ## Tooling
 
 - `dispatch-brief.mjs`: create, list, resume, adopt, and close dispatches.
-- `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format. The
-  DB and E2E-hygiene gates run only when the diff touches what they cover, and
-  print why when they skip.
+- `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format. A
+  format rewrite re-verifies the directive-reading gates, which it can invalidate.
+  The DB and E2E-hygiene gates run only when the diff touches what they cover,
+  and print why when they skip.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.

@@ -26,8 +26,13 @@ import { getUnitPrefs, type WeightUnit } from "@/lib/settings";
 import { toKg, submittedWeightUnit } from "@/lib/units";
 import { saveActivityCore } from "@/lib/activity-write";
 import {
+  discardWorkoutSession,
+  discardWorkoutSessionIfEmpty,
   finishWorkoutSession,
+  startWorkoutSession,
+  type DiscardEmptyOutcome,
   type FinishWorkoutOutcome,
+  type StartWorkoutResult,
 } from "@/lib/workout-finish";
 import { isRealIsoDate } from "@/lib/date";
 import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
@@ -40,6 +45,7 @@ import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 function revalidateActivitySurfaces() {
   revalidateRoute("/training");
   revalidateRoute("/training/rides/[id]", "page");
+  revalidateRoute("/training/activity/[id]", "page");
   revalidateRoute("/trends");
   revalidateRoute("/");
 }
@@ -73,6 +79,46 @@ export async function saveActivity(
   if (!outcome.ok) return outcome;
 
   revalidateActivitySurfaces();
+  return outcome;
+}
+
+// Create-at-start (#2870 step 3): starting a live session writes its row before
+// the first set, so the session has a canonical page URL from second one and
+// presence can see it from other devices. Always the ACTING profile (a workout
+// you start is yours), age-gated like every other training write (#489):
+// restricted profiles get cardio only — strength requests are refused, not
+// coerced. The row is the live-draft shape; an abandoned zero-content start is
+// a draft (#1205 §4), discardable and never a husk in the log.
+export async function startWorkout(
+  formData: FormData
+): Promise<({ ok: true } & StartWorkoutResult) | { ok: false }> {
+  const { profile } = await requireWriteAccess();
+  const type = formData.get("type") === "cardio" ? "cardio" : "strength";
+  if (!isActivityTypeAllowed(type, isTrainingRestricted(profile.id)))
+    return { ok: false };
+  const title = String(formData.get("title") ?? "").slice(0, 200);
+  const res = startWorkoutSession(profile.id, { type, title });
+  revalidateActivitySurfaces();
+  return { ok: true, ...res };
+}
+
+// Discard a live draft from the app (#1205 §4, #2870 step 3): delete the
+// started-but-abandoned session through the SAME core the Telegram "Discard"
+// button runs. `if_empty` gates the delete on the row having no logged content
+// — the close-path abandonment check, which must never take a row the user put
+// anything into. Auth + acting-profile gate here; the core refuses finished
+// rows and foreign ids on its own.
+export async function discardWorkout(
+  formData: FormData
+): Promise<DiscardEmptyOutcome> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("activity_id"));
+  if (!Number.isFinite(id) || id <= 0) return { kind: "not-found" };
+  const outcome =
+    formData.get("if_empty") === "1"
+      ? discardWorkoutSessionIfEmpty(profile.id, id)
+      : discardWorkoutSession(profile.id, id);
+  if (outcome.kind === "discarded") revalidateActivitySurfaces();
   return outcome;
 }
 

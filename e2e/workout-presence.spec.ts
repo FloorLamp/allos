@@ -12,6 +12,7 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { hydratedClick } from "./helpers";
+import { shiftDateStr } from "@/lib/date";
 
 // Derived workout presence (issue #921), driven end-to-end:
 //   • the household presence chip (grants-scoped, active-only),
@@ -303,20 +304,21 @@ test("a completed strength log lands in the finished window, not the live dock (
     ).toBeVisible();
 
     // Back-date Start by 40 minutes so start + a 30-minute duration ends in the
-    // PAST — the "I just finished my 13:30–14:00 session" entry. Read from the
-    // field's own pre-filled value so the arithmetic stays profile-timezone-free.
+    // PAST — the "I just finished my 13:30–14:00 session" entry. Read the form's
+    // own date and time so the arithmetic stays profile-timezone-free, including
+    // the first 40 minutes after midnight.
+    const dateField = page.locator("#activity-date");
     const startField = page.locator("#activity-start-time");
+    const currentDate = await dateField.inputValue();
     const nowValue = await startField.inputValue();
     const [h, m] = nowValue.split(":").map(Number);
     const mins = h * 60 + m;
-    // Below 00:40 local the back-date would wrap onto yesterday, which is a
-    // different `date` entirely — skip rather than assert against a wrapped clock
-    // (the date-boundary class, #1534).
-    test.skip(mins < 40, "start back-date would wrap past local midnight");
     const back = mins - 40;
+    if (back < 0) await dateField.fill(shiftDateStr(currentDate, -1));
+    const backInDay = (back + 24 * 60) % (24 * 60);
     await startField.fill(
-      `${String(Math.floor(back / 60)).padStart(2, "0")}:${String(
-        back % 60
+      `${String(Math.floor(backInDay / 60)).padStart(2, "0")}:${String(
+        backInDay % 60
       ).padStart(2, "0")}`
     );
     await page.getByTestId("activity-duration").fill("30");

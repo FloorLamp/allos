@@ -390,6 +390,49 @@ describe("integration backfill jobs", () => {
     }
   });
 
+  it("stores a REDACTED error when the runner throws (#2820)", async () => {
+    // The catch-all is for an UNEXPECTED exception escaping the runner. The token
+    // refresh is the one un-wrapped fetch on this path, so an expired token plus a
+    // throwing fetch reproduces it faithfully rather than by stubbing internals.
+    setStravaTokens(profileId, {
+      accessToken: "fake-access",
+      refreshToken: "fake-refresh",
+      expiresAt: Math.floor(Date.now() / 1000) - 60,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error(
+          "POST https://strava.test/oauth/token?access_token=word7digit3 failed"
+        );
+      })
+    );
+
+    const queued = queueIntegrationBackfill(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect("job" in queued && queued.job.status).toBe("queued");
+    const job = await runIntegrationBackfillJob(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+
+    expect(job).toMatchObject({ status: "failed" });
+    // The COLUMN is what a browser renders, so the redaction has to have happened on
+    // the way IN — reading the row back is the assertion, not the render.
+    const stored = db
+      .prepare(
+        `SELECT error FROM integration_backfill_jobs
+          WHERE profile_id = ? AND source_id = 'strava' AND kind = 'ride-details'`
+      )
+      .get(profileId) as { error: string | null };
+    expect(stored.error).not.toContain("word7digit3");
+    expect(stored.error).toContain("access_token=***");
+  });
+
   it("pauses only crash-stranded jobs for automatic recovery", () => {
     // The fixture ages `updated_at` through the SAME writer production uses
     // (utcInstant → 'YYYY-MM-DDTHH:MM:SSZ', #2205). It used to seed SQLite's bare

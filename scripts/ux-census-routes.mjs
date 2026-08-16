@@ -81,6 +81,16 @@ export const DYNAMIC_ROUTES = [
     match: /^\/training\/rides\/\d+(?:\?.*)?$/,
   },
   {
+    // The activity's canonical page (#2870): every non-cycling session's
+    // record. Analyze's sessions table and the exercise panel's last-trained
+    // stat link it; the seeded shapes carry strength history, so the follow
+    // resolves there (fresh logs a BLIND SPOT, like the ride entry).
+    pattern: "/training/activity/[id]",
+    strategy: "follow",
+    from: ["/training?tab=analyze", "/training?tab=log"],
+    match: /^\/training\/activity\/\d+$/,
+  },
+  {
     // The providers registry index lives under Records → Care, not /providers.
     pattern: "/providers/[id]",
     strategy: "follow",

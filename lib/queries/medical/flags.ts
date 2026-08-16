@@ -68,6 +68,13 @@ export function flagReconcileProfileContext(profileId: number) {
 // reason, and the gate it carries (lib/reference-range/qualitative.ts, #2712/#2715/
 // #2777) draws the same line this set draws: revisit what you can restate, leave alone
 // what you cannot. Nothing to change here.
+//
+// #2799 adds `reported-high` / `reported-low` for the same reason the rest are here: the
+// numeric pass is the only thing that writes them, so it must be able to revisit them —
+// a value corrected downward, or a re-import carrying a different printed range, has to
+// be able to clear one. Omitting them would freeze a lab-stated flag on its row forever,
+// which is exactly the "permanent per row, no re-reconcile can reach it" defect #2687
+// needed a FLAG_LOGIC_VERSION bump to undo.
 const RECONCILABLE_FLAGS = new Set([
   "normal",
   "non-optimal",
@@ -75,6 +82,8 @@ const RECONCILABLE_FLAGS = new Set([
   "non-optimal-low",
   "high",
   "low",
+  "reported-high",
+  "reported-low",
 ]);
 
 // Preview twin of reconcileFlags: derive the flags the post-commit reconcile WILL
