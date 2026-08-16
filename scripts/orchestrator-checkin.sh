@@ -334,6 +334,45 @@ echo
 #   future  -> silent.
 # If you armed but forgot to record it, this over-reports and you arm a second
 # one. An extra check-in is the safe direction; silence is not.
+# 3b. OWNER HOLDS — the one input no script can derive.
+#
+# Everything else this recorder prints is recoverable: worktrees from git, the
+# roster from disk, CI from the API. A HOLD is different — "do not dispatch
+# training until #2953 merges" exists only because the owner said so, and until
+# now it lived only in the orchestrator's context, which a restart or a
+# compaction erases. That is the canary failure aimed at the one fact whose loss
+# is unrecoverable: the others fail loudly, a forgotten hold fails by an agent
+# quietly doing fenced work.
+#
+# Conditional holds are the sharp case and the reason this is a file rather than
+# a habit: a release condition ("when PR #2953 merges") has to survive long
+# enough to be NOTICED, and the noticing happens here, at the next check-in.
+# Format is deliberately prose after the scope — a human writes it, this only
+# has to hand it back, and a parser would be a second thing to keep in step.
+echo "--- owner holds ---"
+HOLDS_FILE="$STATE_DIR/.holds"
+# Branch on REAL holds, not on file size. A file holding only its header comment
+# is non-empty, so `-s` sent it down the has-holds path: no hold lines printed
+# and the "check your conditions" footer fired anyway, telling the reader to
+# check nothing. Caught by running the control rather than by reading the code.
+holds=$(grep -vE '^[[:space:]]*(#|$)' "$HOLDS_FILE" 2>/dev/null)
+if [ -n "$holds" ]; then
+  # Per LINE, not per string: `printf '%s' "$holds"` passes a multi-line value as
+  # ONE argument, so a second hold printed without its own marker and read as
+  # continuation prose of the first. A hold that does not look like a hold is a
+  # hold that gets skimmed.
+  while IFS= read -r hold; do
+    echo "  *** HELD: ${hold}"
+  done <<EOF
+$holds
+EOF
+  echo "  Check each release condition NOW — a hold whose condition has fired is"
+  echo "  work you are wrongly refusing. Clear it by editing $HOLDS_FILE."
+else
+  echo "  none recorded"
+fi
+echo
+
 echo "--- wake ---"
 WAKE_FILE="$STATE_DIR/.wake"
 if [ ! -s "$WAKE_FILE" ]; then
