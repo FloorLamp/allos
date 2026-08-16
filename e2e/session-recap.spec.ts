@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
+import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_RECAP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -39,6 +40,18 @@ async function startLiveSession(page: Page, title: string) {
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();
   await page.getByLabel("Activity name").fill(title);
+}
+
+// Reopen a stored session for EDIT from the Log's slim feed (#2897): select the
+// row into the reading pane (a pure client toggle — hydratedClick closes the
+// pre-hydration window), then the pane header's Edit opens the editor. The old
+// click-the-card-title path is gone.
+async function openRowForEdit(page: Page, row: Locator) {
+  await hydratedClick(page, row);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
+    .click();
 }
 
 async function deleteOpenDraft(page: Page) {
@@ -99,15 +112,12 @@ test("plain-form Finish stamps end and opens the shared Session complete step; e
   // On edit the effort round-tripped to activities.intensity, proving the finish
   // persisted the just-finished session.
   await page.goto("/training?tab=log");
-  const card = page
+  const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: title })
-    .first(); // first-ok: the activity card THIS spec created (filtered by its unique title)
-  await expect(card).toBeVisible();
-  await card
-    .getByRole("button", { name: new RegExp(title) })
-    .first() // first-ok: the title button in the scoped card
-    .click();
+    .first(); // first-ok: the activity row THIS spec created (filtered by its unique title)
+  await expect(row).toBeVisible();
+  await openRowForEdit(page, row);
   await expect(page.getByRole("button", { name: "Hard" })).toHaveAttribute(
     "aria-pressed",
     "true"
@@ -169,18 +179,16 @@ test("the recap-step effort rating round-trips into activities.intensity (#924)"
   await expect(page.getByTestId("session-complete-step")).toHaveCount(0);
   await saved;
 
-  // On EDIT (reopen the saved card), the main Intensity picker shows Hard — proof
-  // the recap-step rating round-tripped through activities.intensity to the DB.
+  // On EDIT (reopen the saved session), the main Intensity picker shows Hard —
+  // proof the recap-step rating round-tripped through activities.intensity to
+  // the DB.
   await page.goto("/training?tab=log");
-  const card = page
+  const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: title })
-    .first(); // first-ok: the activity card THIS spec created (filtered by its unique title)
-  await expect(card).toBeVisible();
-  await card
-    .getByRole("button", { name: new RegExp(title) })
-    .first() // first-ok: the title button in the scoped card
-    .click();
+    .first(); // first-ok: the activity row THIS spec created (filtered by its unique title)
+  await expect(row).toBeVisible();
+  await openRowForEdit(page, row);
   await expect(page.getByRole("button", { name: "Hard" })).toHaveAttribute(
     "aria-pressed",
     "true"
@@ -193,13 +201,11 @@ test("editing an existing activity never shows the recap step (live-only, #924)"
   page,
 }) => {
   await page.goto("/training?tab=log");
-  // Open any seeded activity card for editing — a retro/edit surface.
-  await page
-    .locator('[id^="activity-"]')
-    .first() // first-ok: any seeded activity card (opening a retro/edit surface) — order-agnostic
-    .getByRole("button")
-    .first() // first-ok: that card's first action button
-    .click();
+  // Open any seeded activity for editing — a retro/edit surface.
+  await openRowForEdit(
+    page,
+    page.locator('[id^="activity-"]').first() // first-ok: any seeded activity row (opening a retro/edit surface) — order-agnostic
+  );
   await expect(page.getByTestId("activity-form")).toBeVisible();
   // No live control strip, no finish button, no recap step on an edit.
   await expect(page.getByTestId("finish-workout")).toHaveCount(0);

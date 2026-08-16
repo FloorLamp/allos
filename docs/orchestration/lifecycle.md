@@ -7,6 +7,12 @@
   prints them; test every release condition on every wake.
 - A hold is the only input no script can derive, so its loss to a restart is the
   silent one. Everything else the recorder prints is recoverable.
+- The wake prompt carries only DURABLE facts — holds, owner-gated items,
+  standing constraints — and points at the tooling for current state. A wake
+  that enumerates PR numbers and their status is stale before it fires: three
+  in a row named work already merged (2026-08-16).
+- The check-in script and `dispatch-brief.mjs list` are ground truth on wake.
+  Read them before acting on anything the prompt asserts, including your own.
 - Post a status pulse every check-in: in flight, merged, queued, and parked or
   awaiting owner.
 - Sweep open issues about every four hours for filings, labels, and comment

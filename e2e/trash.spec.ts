@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { type Locator, type Page } from "@playwright/test";
+import { hydratedClick, settledClick } from "./helpers";
 
 // Issue #2013: `deleted_rows` has held a fully restorable capture of every
 // destructive delete since #30, and the ONLY affordance over it was a toast that
@@ -27,6 +27,18 @@ function trashRow(page: Page, title: string) {
   return page.getByTestId("trash-row").filter({ hasText: title });
 }
 
+// Open the stored activity for EDIT: select its row into the reading pane
+// (a pure client toggle — hydratedClick closes the pre-hydration window), then
+// the pane header's Edit opens the editor with its Delete button. The old
+// click-the-card-title path is gone (#2897).
+async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
+  await hydratedClick(page, row);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
+    .click();
+}
+
 // Confirm the dialog-scoped Delete on the activity editor and await the capture POST.
 async function confirmDelete(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Delete", exact: true }).click();
@@ -39,7 +51,7 @@ async function confirmDelete(page: Page): Promise<void> {
 }
 
 // Create a uniquely-titled cardio probe that auto-saves, then close the editor so the
-// delete is driven from the CARD. Cardio + a duration auto-saves without the per-set
+// delete is driven from the FEED. Cardio + a duration auto-saves without the per-set
 // equipment pick a bare strength variant needs (#342).
 async function createProbe(page: Page): Promise<string> {
   const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
@@ -65,11 +77,11 @@ async function createProbe(page: Page): Promise<string> {
   return title;
 }
 
-// Create a probe, delete it from its card, and WALK AWAY from the Undo toast — the
-// state that used to be unreachable. Returns the probe's title.
+// Create a probe, delete it via its row → pane → Edit, and WALK AWAY from the
+// Undo toast — the state that used to be unreachable. Returns the probe's title.
 async function deleteProbeAndAbandonTheToast(page: Page): Promise<string> {
   const title = await createProbe(page);
-  await cardsByTitle(page, title).getByRole("button", { name: title }).click();
+  await openEditorFromRow(page, cardsByTitle(page, title));
   await confirmDelete(page);
   await expect(cardsByTitle(page, title)).toHaveCount(0);
   // Navigating away discards the toast without waiting out its 15 seconds, which is
@@ -103,7 +115,7 @@ test("a deleted row is restorable from Data → Trash after the toast is gone (#
 
   // Clean up: delete the restored probe and purge its capture, so this spec leaves
   // the shared DB exactly as it found it.
-  await cardsByTitle(page, title).getByRole("button", { name: title }).click();
+  await openEditorFromRow(page, cardsByTitle(page, title));
   await confirmDelete(page);
   await page.goto("/data?section=trash");
   const leftover = trashRow(page, title);

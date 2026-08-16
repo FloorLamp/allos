@@ -12,10 +12,17 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  const card = page
+  // The feed renders slim rows (#2897); the full record card — gear included —
+  // lives in the reading pane once the row is selected.
+  const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "Zone 2 bike" })
-    .first(); // first-ok: the seeded "Zone 2 bike" activity card (filtered by its unique title)
+    .first(); // first-ok: the seeded "Zone 2 bike" activity row (filtered by its unique title)
+  await expect(row).toBeVisible();
+  await hydratedClick(page, row);
+  const card = page
+    .getByTestId("training-log-reading-pane")
+    .locator(".card", { hasText: "Zone 2 bike" });
   await expect(card).toBeVisible();
 
   // Session gear is quiet metadata in the card's third row, not a standalone
@@ -57,13 +64,18 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
 }) => {
   await page.goto("/training?tab=log");
 
-  const card = page
+  // Select the run's slim row into the reading pane (#2897), then open the
+  // editor from the pane's Edit — the old click-the-card-title path is gone.
+  const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "5k run" })
-    .first(); // first-ok: the seeded "5k run" activity card (filtered by its unique title)
-  await expect(card).toBeVisible();
-
-  await card.getByRole("button", { name: "5k run" }).click();
+    .first(); // first-ok: the seeded "5k run" activity row (filtered by its unique title)
+  await expect(row).toBeVisible();
+  await hydratedClick(page, row);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
+    .click();
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   // Shoes present, bike absent — the run narrows to footwear.
