@@ -6,11 +6,14 @@ import { openCommandPalette } from "./nav";
 // corrupts the JSON that `scripts/e2e-shard-plan.ts --verify` parses from
 // `playwright --list`.
 import {
+  E2E_LOGIN_OVERLAP,
+  E2E_MEMBER_PASSWORD,
   OVERLAP_KEEPER_TITLE,
   OVERLAP_TWIN_TITLE,
   TOTALS_ONLY_TITLE,
   ZONE_WALK_TITLE,
 } from "./fixture-logins";
+import { loginAs } from "./nav";
 
 // #2870 step 1 — every non-cycling activity has a canonical page: the Training
 // Log's card rendered whole at its own URL, with ‹ older / newer › ledger
@@ -46,37 +49,49 @@ test("an Analyze sessions row opens the activity's canonical page", async ({
 });
 
 test("an overlapping same-day session announces itself, and opens the merge picker (#2870)", async ({
-  page,
+  browser,
 }) => {
   // In the log a double-logged session was discovered by sitting NEXT TO its
   // twin. A page shows one activity, so that adjacency — and the whole discovery
   // — is gone unless the record says so.
-  await page.goto("/training?tab=log");
-  await hydratedClick(
-    page,
-    page
-      .getByTestId("training-log-row")
-      .filter({ hasText: OVERLAP_KEEPER_TITLE })
-  );
-  await followLink(
-    page,
-    page.getByTestId("activity-pane-open"),
-    /\/training\/activity\/\d+$/
-  );
+  //
+  // Its own profile: the pair would otherwise be two more activities on the
+  // shared feed the Timeline's windowing spec measures its 250-event page
+  // against (see the fixture's own note).
+  const member = await loginAs(browser, {
+    username: E2E_LOGIN_OVERLAP,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await member.goto("/training?tab=log");
+    await hydratedClick(
+      member,
+      member
+        .getByTestId("training-log-row")
+        .filter({ hasText: OVERLAP_KEEPER_TITLE })
+    );
+    await followLink(
+      member,
+      member.getByTestId("activity-pane-open"),
+      /\/training\/activity\/\d+$/
+    );
 
-  const banner = page.getByTestId("activity-overlap-banner");
-  await expect(banner).toBeVisible();
-  // It names WHO else logged it and WHAT — the two facts that make a reader
-  // recognise their own double-log.
-  await expect(banner).toContainText("Strava");
-  await expect(banner).toContainText(OVERLAP_TWIN_TITLE);
+    const banner = member.getByTestId("activity-overlap-banner");
+    await expect(banner).toBeVisible();
+    // It names WHO else logged it and WHAT — the two facts that make a reader
+    // recognise their own double-log.
+    await expect(banner).toContainText("Strava");
+    await expect(banner).toContainText(OVERLAP_TWIN_TITLE);
 
-  // And it opens the card menu's EXISTING picker rather than a second merge flow.
-  await page.getByTestId("activity-overlap-merge").click();
-  await expect(page.getByTestId("merge-picker")).toBeVisible();
-  await expect(page.getByTestId("merge-picker")).toContainText(
-    OVERLAP_TWIN_TITLE
-  );
+    // And it opens the card menu's EXISTING picker rather than a second flow.
+    await member.getByTestId("activity-overlap-merge").click();
+    await expect(member.getByTestId("merge-picker")).toBeVisible();
+    await expect(member.getByTestId("merge-picker")).toContainText(
+      OVERLAP_TWIN_TITLE
+    );
+  } finally {
+    await member.close();
+  }
 });
 
 test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists for", async ({

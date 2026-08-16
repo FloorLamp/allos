@@ -34,6 +34,15 @@ function shiftedDay(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// FRAGILITY WORTH KNOWING (found 2026-08-16): these fixtures ride the SHARED
+// profile-1 history, and `getTimeline` returns the newest 250 events across every
+// source. Profile 1's seeded history sits close enough to that cut that adding a
+// couple of recent fixture rows in ANOTHER domain pushed OLD_DATE off the page and
+// failed the expand test here — a training change breaking a timeline spec. If
+// that happens again, the fix is the new fixture's (put it on its own profile),
+// not a bigger number below; but the honest end state is this spec owning a
+// profile too.
+//
 // +45 / −100 days: far enough from both boundaries that no profile timezone can move
 // either across the "after today" or the 14-day edge.
 const AHEAD_DATE = shiftedDay(45);

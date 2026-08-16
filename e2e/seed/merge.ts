@@ -8,7 +8,13 @@ import "../../scripts/load-env";
 import { db, today } from "../../lib/db";
 import { shiftDateStr } from "../../lib/date";
 import { seedDupReviewPair } from "../dup-review-fixture";
-import { PROFILE_ID } from "./common";
+import { PROFILE_ID, fixtureProfileId, seedMemberLogin } from "./common";
+import {
+  E2E_LOGIN_OVERLAP,
+  OVERLAP_PROFILE,
+  OVERLAP_KEEPER_TITLE,
+  OVERLAP_TWIN_TITLE,
+} from "../fixture-logins";
 
 // ── Duplicate / conflict / set-re-parenting merge fixtures ──
 export function seedMergeFixtures(): void {
@@ -63,24 +69,46 @@ export function seedMergeFixtures(): void {
   // exists precisely to say "these two windows are the same session". Cross-source
   // on purpose: the banner names WHO ELSE logged it, which is the fact that makes
   // a reader recognise the double-log.
-  const OVERLAP_DATE = shiftDateStr(today(PROFILE_ID), -11);
-  db.prepare(
-    `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Overlap keeper (e2e)', 'Overlap twin (e2e)')`
-  ).run(PROFILE_ID, OVERLAP_DATE);
-  db.prepare(
-    `INSERT INTO activities
-       (profile_id, date, type, title, duration_min, distance_km, start_time,
-        end_time, source, external_id, edited)
-     VALUES (?, ?, 'cardio', 'Overlap keeper (e2e)', 45, 8, '06:00', '06:45',
-             NULL, NULL, 0)`
-  ).run(PROFILE_ID, OVERLAP_DATE);
-  db.prepare(
-    `INSERT INTO activities
-       (profile_id, date, type, title, duration_min, distance_km, start_time,
-        end_time, source, external_id, edited)
-     VALUES (?, ?, 'cardio', 'Overlap twin (e2e)', 44, 8, '06:10', '06:54',
-             'strava', 'e2e:overlap-twin', 0)`
-  ).run(PROFILE_ID, OVERLAP_DATE);
+  //
+  // On its OWN profile (#868, and a lesson paid for): the Timeline's windowing
+  // spec pins a 100-day-old fixture, `getTimeline` returns the newest 250 events
+  // across all sources, and profile 1's seeded history sits close enough to that
+  // cut that two more activities pushed the old day off the page and turned a
+  // training change into a timeline failure.
+  {
+    const overlapId = fixtureProfileId(OVERLAP_PROFILE);
+    seedMemberLogin(E2E_LOGIN_OVERLAP, overlapId);
+    const overlapDate = shiftDateStr(today(overlapId), -11);
+    db.prepare(
+      `DELETE FROM activities WHERE profile_id = ? AND title IN (?, ?)`
+    ).run(overlapId, OVERLAP_KEEPER_TITLE, OVERLAP_TWIN_TITLE);
+    const insOverlap = db.prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, duration_min, distance_km, start_time,
+          end_time, source, external_id, edited)
+       VALUES (?, ?, 'cardio', ?, ?, 8, ?, ?, ?, ?, 0)`
+    );
+    insOverlap.run(
+      overlapId,
+      overlapDate,
+      OVERLAP_KEEPER_TITLE,
+      45,
+      "06:00",
+      "06:45",
+      null,
+      null
+    );
+    insOverlap.run(
+      overlapId,
+      overlapDate,
+      OVERLAP_TWIN_TITLE,
+      44,
+      "06:10",
+      "06:54",
+      "strava",
+      "e2e:overlap-twin"
+    );
+  }
 
   // ── Set-re-parenting merge fixture (issues #199/#200) ─────────────────────────
   // Two same-day MANUAL STRENGTH activities that conflict on duration (30 vs 45 min),
