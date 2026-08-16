@@ -39,6 +39,7 @@ import { syncEventDay } from "@/lib/integrations/sync-history-days";
 import {
   timelineDayHref,
   clinicalResultDetailHref,
+  importHref,
   type AppRoute,
 } from "@/lib/hrefs";
 import {
@@ -1064,6 +1065,13 @@ export function getSyncRowProvenance(
   const findPractice = db.prepare(
     "SELECT date, practice FROM practice_logs WHERE id = ? AND profile_id = ?"
   );
+  // A DELIVERED DOCUMENT (#2999) — the one target that is not a record. Its date is the
+  // document's own clinical date when it has one, falling back to when it arrived, and
+  // its link is the import page that already shows what the document produced. Same
+  // literal profile_id filter as its five siblings.
+  const findDocument = db.prepare(
+    "SELECT document_date, uploaded_at, filename FROM medical_documents WHERE id = ? AND profile_id = ?"
+  );
 
   const out: SyncRowLink[] = [];
   for (const r of rows) {
@@ -1109,6 +1117,18 @@ export function getSyncRowProvenance(
         rec?.canonical_name ?? null,
         rec?.name ?? null
       );
+    } else if (r.target_table === "medical_documents") {
+      const rec = findDocument.get(r.target_id, profileId) as
+        | {
+            document_date: string | null;
+            uploaded_at: string;
+            filename: string;
+          }
+        | undefined;
+      deleted = !rec;
+      date = rec ? (rec.document_date ?? rec.uploaded_at.slice(0, 10)) : null;
+      label = rec?.filename || "Document";
+      href = importHref(r.target_id);
     } else {
       const rec = findPractice.get(r.target_id, profileId) as
         { date: string; practice: string } | undefined;

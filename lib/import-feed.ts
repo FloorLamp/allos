@@ -23,6 +23,11 @@ import {
 import { dataSectionHref, importHref, type AppRoute } from "./hrefs";
 import { reconcileProduced, feedProducedDetail } from "./produced-count";
 
+// The one source the drop rule below applies to. Spelled here rather than imported from
+// the registry because this module is the DB-free pure tier; the id is the same closed
+// literal `lib/types/integrations.ts` and `lib/portal-visibility.ts` use.
+const PORTALS_SOURCE_ID = "patient-portals";
+
 // Structural shapes of the three source rows. Deliberately minimal (and mirrored
 // from lib/types IntegrationSyncEvent / lib/queries/imports.ts) so this module
 // doesn't import the DB-backed query types — the real query rows carry extra
@@ -95,76 +100,81 @@ export interface FeedJob {
 // carries the timestamp (`at`) and row id (`sortId`) the merge sorts on, plus the
 // original row so the renderer can reach stream-specific extras (a document's
 // patient-name provenance flag, a sync's admin raw payload).
+// What a sync row's drill-in may promise (#1991/#1771), resolved by the caller BEFORE
+// the expander renders. `count` is the number of provenance rows the drill-in will
+// actually LIST — never the run's split total, which is the mismatch #1991 fixed on the
+// two integration-page callers and this feed never adopted. `noun` is what those rows
+// ARE: an attended portal run delivers DOCUMENTS, so its drill-in must not go looking in
+// the record tables and must not say "records" while listing archives (#2999).
+export interface FeedDrilldown {
+  count: number;
+  // Rows the run wrote that carry no openable identity, named rather than hidden.
+  remainder: number;
+  noun: "record" | "document";
+}
+
 export type FeedEntry =
-  | { stream: "sync"; at: string; sortId: number; event: FeedSyncEvent }
-  // A collapsed run of consecutive no-op syncs for ONE source (issue #137):
-  // `count` such syncs found nothing new, the newest at `latest` (which is also the
-  // entry's sort time) and the oldest at `oldest`.
   | {
-      stream: "sync-quiet";
+      stream: "sync";
       at: string;
       sortId: number;
-      sourceId: string;
-      count: number;
-      oldest: string;
-      latest: string;
+      event: FeedSyncEvent;
+      // Null when this run recorded no provenance — then NO expander renders at all
+      // (#1771), instead of an apologetic empty state or a count that falls to zero.
+      drilldown: FeedDrilldown | null;
     }
   | { stream: "document"; at: string; sortId: number; doc: FeedDocument }
   | { stream: "job"; at: string; sortId: number; job: FeedJob };
 
-export function syncEntry(event: FeedSyncEvent): FeedEntry {
-  return { stream: "sync", at: event.at, sortId: event.id, event };
+export function syncEntry(
+  event: FeedSyncEvent,
+  drilldown: FeedDrilldown | null = null
+): FeedEntry {
+  return { stream: "sync", at: event.at, sortId: event.id, event, drilldown };
 }
 
-// Collapse a run of consecutive no-op syncs (newest-first, non-empty, all the same
-// source) into one summary entry pinned at the newest event's time/id. Pure.
-export function syncQuietEntry(runNewestFirst: FeedSyncEvent[]): FeedEntry {
-  const latest = runNewestFirst[0];
-  const oldest = runNewestFirst[runNewestFirst.length - 1];
-  return {
-    stream: "sync-quiet",
-    at: latest.at,
-    sortId: latest.id,
-    sourceId: latest.source_id,
-    count: runNewestFirst.length,
-    oldest: oldest.at,
-    latest: latest.at,
-  };
+// A SUCCESSFUL PORTAL RUN THAT DELIVERED NOTHING LEAVES THE FEED (#2999's owner ruling).
+//
+// #137 built `collapseQuietSyncs` to fold consecutive no-ops into one summary line, and
+// nothing ever called it: `getImportDocumentsFeed` mapped `syncEntry` directly, so an
+// all-zero portal run got a full row reading "nothing new" — a dead end sitting above
+// the very archives the run fetched. The ruling replaces the collapse rather than wiring
+// it up: this feed is for imports that PRODUCED something, and the latest run of every
+// kind is stated on the Patient portals page's login row.
+//
+// THREE THINGS THE RULE DELIBERATELY DOES NOT REACH, each of which it did in its first
+// cut and each of which cost a user-initiated import its only trace:
+//
+//  * ANOTHER SOURCE. The ruling is about a "successful zero-write PORTAL run". A
+//    `fitbit-takeout` archive re-handed to allos reports `inserted 0 / unchanged 900`,
+//    and Takeout has no portals page to fall back on — dropping it leaves a deliberate,
+//    user-initiated import with no trace anywhere in the app.
+//  * A RUN THAT DELIVERED DOCUMENTS. The tool's split is its claim about the portal
+//    visit, not about what allos stored: the observed case is a delivery reported as
+//    `nothing-new` with an all-zero split. Dropping that row strands the documents it
+//    claimed — the unclaimed guard sees them, so no later run re-claims them, and the
+//    event that owns them never renders.
+//  * A RUN WHOSE ONLY CONTENT IS SKIPPED ROWS. Three documents the tool could not push
+//    is exactly the kind of thing this feed exists to show; `isNoOpSyncEvent` counts it.
+//
+// A FAILURE IS NEVER DROPPED. `isNoOpSyncEvent` returns false for `!ok`, and a failure is
+// the signal this feed exists to carry. A LEGACY event whose split columns are all null
+// is not dropped either — it predates the accounting and is not a claim about zero.
+//
+// `delivered` answers "did this run claim any documents", which the caller resolves in
+// the same indexed pass that builds the drill-in counts.
+export function dropQuietSyncs(
+  eventsNewestFirst: FeedSyncEvent[],
+  delivered: (ev: FeedSyncEvent) => boolean
+): FeedSyncEvent[] {
+  return eventsNewestFirst.filter(
+    (ev) =>
+      ev.source_id !== PORTALS_SOURCE_ID ||
+      !isNoOpSyncEvent(ev) ||
+      delivered(ev)
+  );
 }
 
-// Fold a profile's raw sync events (newest-first, sources interleaved) into feed
-// entries, collapsing each maximal run of CONSECUTIVE no-op syncs PER SOURCE into
-// a single "no new data" summary. A meaningful sync (something inserted/updated) or
-// a failure renders as its own entry, so a currently-broken integration and its
-// recovery history stay fully visible; only the hourly "nothing new" noise (#137) is
-// summarized. Grouping is per-source so two devices both checking in hourly each
-// collapse their own run instead of breaking each other's. Pure → unit-testable.
-export function collapseQuietSyncs(
-  eventsNewestFirst: FeedSyncEvent[]
-): FeedEntry[] {
-  const bySource = new Map<string, FeedSyncEvent[]>();
-  for (const ev of eventsNewestFirst) {
-    const list = bySource.get(ev.source_id);
-    if (list) list.push(ev);
-    else bySource.set(ev.source_id, [ev]);
-  }
-  const out: FeedEntry[] = [];
-  for (const evs of bySource.values()) {
-    let i = 0;
-    while (i < evs.length) {
-      if (!isNoOpSyncEvent(evs[i])) {
-        out.push(syncEntry(evs[i]));
-        i++;
-        continue;
-      }
-      let j = i;
-      while (j < evs.length && isNoOpSyncEvent(evs[j])) j++;
-      out.push(syncQuietEntry(evs.slice(i, j)));
-      i = j;
-    }
-  }
-  return out;
-}
 export function documentEntry(doc: FeedDocument): FeedEntry {
   return { stream: "document", at: doc.uploaded_at, sortId: doc.id, doc };
 }
@@ -181,7 +191,6 @@ export function mergeFeed(entries: FeedEntry[]): FeedEntry[] {
     document: 0,
     job: 1,
     sync: 2,
-    "sync-quiet": 3,
   };
   return [...entries].sort((a, b) => {
     if (a.at !== b.at) return a.at < b.at ? 1 : -1;
@@ -336,25 +345,15 @@ export function feedItemView(
       detailMuted: ev.ok ? muted : false,
       skipped: ev.skipped ?? 0,
       scrutiny: 0,
-      meta: formatWindow(ev.window_start, ev.window_end),
-      patientName: null,
-      acquiredVia: null,
-    };
-  }
-  if (entry.stream === "sync-quiet") {
-    return {
-      key: `sync-quiet:${entry.sourceId}:${entry.sortId}`,
-      tone: "neutral",
-      title: sourceName(entry.sourceId),
-      href: null,
-      detail:
-        entry.count === 1
-          ? "No new data"
-          : `No new data · ${entry.count} checks`,
-      detailMuted: true,
-      skipped: 0,
-      scrutiny: 0,
-      meta: null,
+      // A STRUCTURALLY-EMPTY WINDOW RENDERS NOTHING (#1991 defect 5, #2999). An
+      // attended portal run has no data window on ANY run — the concept does not apply
+      // to a delivered archive — so `formatWindow`'s "—" was a column of em-dashes
+      // pretending to be information. The window still renders wherever a source
+      // actually reports one.
+      meta:
+        ev.window_start || ev.window_end
+          ? formatWindow(ev.window_start, ev.window_end)
+          : null,
       patientName: null,
       acquiredVia: null,
     };

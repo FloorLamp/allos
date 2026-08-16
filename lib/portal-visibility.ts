@@ -110,7 +110,8 @@ export function listVisiblePortalRunReports(
               r.account_id AS accountId, a.slug AS accountSlug, a.name AS accountName,
               a.implicit AS accountImplicit, r.at AS at, r.ok AS ok,
               r.status AS status, r.message AS message, r.discovered AS discovered,
-              r.contacted AS contacted, r.attended AS attended
+              r.contacted AS contacted, r.attended AS attended,
+              r.checked_at AS checkedAt
          FROM portal_run_reports r
          JOIN portals p ON p.id = r.portal_id
          JOIN portal_accounts a ON a.id = r.account_id
@@ -133,7 +134,82 @@ export function listVisiblePortalRunReports(
     discovered: row.discovered as number,
     contacted: (row.contacted as number) === 1,
     attended: (row.attended as number) === 1,
+    checkedAt: (row.checkedAt as string | null) ?? null,
   }));
+}
+
+// ── WHAT A LOGIN DELIVERED, AND WHEN (#2914) ─────────────────────────────────
+//
+// The login row says "Delivered N documents <day>" for a delivery-only report, and this
+// is where both halves come from.
+//
+// ONE NUMBER, NOT TWO (#1991). N counts DOCUMENTS THE RUNS CLAIMED — the same archives
+// the Imports feed's drill-in lists — never the tool's own `inserted + updated` split.
+// Those are two independent counts of one delivery and they disagree the moment the
+// tool's split differs from what allos stored: three archives reported as
+// `inserted 1, unchanged 2` made this page say "1" while the drill-in listed 3. It is
+// also the only derivation that survives the observed case #2914 was filed from — a push
+// that delivered documents under a report whose status was `nothing-new` and whose split
+// was all zeroes.
+//
+// READ FROM THE DOCUMENTS, NOT FROM THE RUNS, and that is not a stylistic choice. The
+// provenance rows expire with their event on the #388 retention sweep, so a count taken
+// from them silently falls to zero at 90 days while the archives are still on disk;
+// `medical_documents.delivered_at` is a fact about the document and outlives every run.
+//
+// THE DAY IS THE DELIVERY'S OWN, not the report's — the fix for a push that straddles
+// UTC midnight. `portal_run_reports` holds ONE ROW PER LOGIN (migration 132), so joining
+// the claims to that row's day meant the day of whichever patient reported LAST: a push
+// filing reports at 23:59:52Z and 00:00:05Z excluded everything stamped on the earlier
+// day, and the page said "Delivered 2 documents" over five archives the feed listed as
+// 3 + 2. Grouping by the day the archives actually landed makes the two surfaces agree
+// per day, which is the most any day-grain sentence can honestly claim — there is no run
+// boundary to use instead, because the report table keeps no history and the acquirer
+// contract carries no run id (both #2914 and #2999 refuse to change it).
+//
+// So: the login's MOST RECENT delivery day, and how many archives it carried. "Delivered
+// 6 documents 2026-08-15" is true of that login on that day whether one push or two
+// produced them.
+//
+// SCOPED LIKE EVERYTHING ELSE ON THIS PAGE. Narrowed to the viewer's own accessible
+// profiles AND to accounts the same predicate above admits, so a login row can never be
+// given a number drawn from a household this viewer cannot reach.
+export interface DeliveredDocuments {
+  count: number;
+  day: string;
+}
+
+export function deliveredDocumentCountsByAccount(
+  accessibleProfileIds: AuthorizedProfileIds,
+  canSeeUnclaimed: boolean
+): Map<number, DeliveredDocuments> {
+  const ids = accessibleProfileIds;
+  // `substr(delivered_at, 1, 10)` rather than `date()`: the column is stored bare
+  // (lib/time-columns.ts), and the leading ten characters are its calendar day.
+  const rows = db
+    .prepare(
+      `SELECT pi.account_id AS accountId,
+              substr(d.delivered_at, 1, 10) AS day,
+              COUNT(*) AS delivered
+         FROM medical_documents d
+         JOIN portal_identities pi ON pi.id = d.acquired_identity_id
+        WHERE d.delivered_at IS NOT NULL
+          AND d.profile_id IN ${profileIdsIn(ids)}
+          AND ${reachableAccountSql(ids, "pi.account_id")}
+        GROUP BY pi.account_id, day
+        ORDER BY pi.account_id, day`
+    )
+    .all(...ids, ...ids, canSeeUnclaimed ? 1 : 0) as {
+    accountId: number;
+    day: string;
+    delivered: number;
+  }[];
+  // Ordered by day ascending, so the last row per account is its most recent delivery.
+  const out = new Map<number, DeliveredDocuments>();
+  for (const r of rows) {
+    out.set(r.accountId, { count: r.delivered, day: r.day });
+  }
+  return out;
 }
 
 // ── The pending list a MEMBER may see (#1875) ────────────────────────────────

@@ -128,9 +128,12 @@ that makes it work:
   one-question-one-computation models. Require tests at the tier that can
   observe the defect.
 - Post it as a COMMENT review. Flag owner-visible judgment calls in it.
-- Run `adversarial-review-brief.mjs <pr> --check` for every PR; high-stakes
-  paths (data integrity, auth, safety signals) get a separate falsifying
-  agent, and the merge WAITS for that report.
+- Run `adversarial-review-brief.mjs <pr> --check` for every PR (exit 0
+  MANDATORY / 3 CONSULT — you decide, from the claims it quotes / 1 ordinary /
+  2 could not read the PR). High-stakes paths (data integrity, auth, safety
+  signals) get a separate falsifying agent, and the merge WAITS for that
+  report. A blocking finding fixed by changing the MECHANISM earns a fresh
+  pass — see review-merge.md §Adversarial lane.
 - E2E reds: diagnose locally, send code corrections back to the AUTHOR unless
   the fix is an orchestrator-owned E2E spec. `ci-watch.mjs` waits for settled
   CI (exit 0 green / 1 red / 2 unsettled / 3 conflict-blocked) — use it

@@ -159,7 +159,14 @@ export default function TrainingLogCard({
   const isActing =
     subject == null ||
     (actingProfileId != null && subject.profileId === actingProfileId);
-  const subjectCanWrite = subject == null ? true : subject.canWrite;
+  // In MULTI view the subject's own grant decides. In single view the HOST's
+  // decision decides — and it is already here, in `canWrite`, which every call
+  // site derives from `accessForProfile(...) === "write"`. This used to be a
+  // bare `true`, so a read-only viewer opening a household member's activity
+  // page got the title as an edit button and a menu offering Merge and Resume
+  // sync: writes the server correctly rejected AFTER they were attempted. A
+  // component must not re-derive authorization — it must not discard it either.
+  const subjectCanWrite = subject == null ? canWrite : subject.canWrite;
   const videoCanWrite = subject == null ? canWrite : subject.canWrite;
   const showChip = subject != null && !isActing;
   const rideDetailHref = isActing ? resolveRideDetailHref(activity) : null;

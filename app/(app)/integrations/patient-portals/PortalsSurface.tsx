@@ -6,7 +6,7 @@ import type {
   PortalChecklistItem,
   PortalSetupStage,
 } from "@/lib/portal-setup-stage";
-import type { PortalStatusTone } from "@/lib/portal-status";
+import type { PortalLoginStatus } from "@/lib/portal-status";
 import Avatar from "@/components/Avatar";
 import OverflowMenu, {
   MENU_ITEM,
@@ -75,8 +75,10 @@ export interface AccountView {
   implicit: boolean;
   hasReport: boolean;
   // The login row's last-run status, formatted server-side by the ONE pure formatter
-  // (lib/portal-status.ts) so a failure message renders the same everywhere.
-  status: { tone: PortalStatusTone; text: string };
+  // (lib/portal-status.ts) so a failure message renders the same everywhere. Its
+  // `segments` carry the sentence in pieces because a DELIVERY row links its document
+  // count into Data → Review (#2914) — the module still owns every word.
+  status: PortalLoginStatus;
   // The open sync request's line, formatted server-side by the shared formatter
   // (lib/sync-requests.ts) — the card, the Upcoming item and the digest quote one text.
   openRequestLine: string | null;
@@ -472,16 +474,19 @@ export default function PortalsSurface({
             </span>
           )}
           {!i.ignored && (
-            // Per-(login, patient) "Last checked" (#1874 point 4) — computed against
+            // Per-(login, patient) "Last synced" (#1874 point 4, reworded by #2914) — computed against
             // the profile this patient is BOUND to, never the active one. A quiet check
             // still counts; a failure never erases the last good one.
             <span
               className="text-xs text-slate-500 dark:text-slate-400"
               data-testid="portal-patient-status"
             >
-              {i.lastOkAt
-                ? `Last checked ${day(i.lastOkAt)}`
-                : "Not checked yet"}
+              {/* "Last SYNCED", never "checked" (#2914). This stamp aggregates every
+                  ok event on the identity, DELIVERY events included — #1888's explicit
+                  ruling, and untouched here — so the one word this page reserves for an
+                  actual portal visit must not ride on it. The login row's own check
+                  clock is where "checked" renders. */}
+              {i.lastOkAt ? `Last synced ${day(i.lastOkAt)}` : "Not synced yet"}
               {i.lastFailedAt ? ` · last failure ${day(i.lastFailedAt)}` : ""}
             </span>
           )}
@@ -878,7 +883,20 @@ export default function PortalsSurface({
           data-testid="login-status"
           data-tone={account.status.tone}
         >
-          {account.status.text}
+          {account.status.segments.map((seg, idx) =>
+            seg.kind === "link" ? (
+              <Link
+                key={idx}
+                href={seg.href}
+                className="underline decoration-dotted underline-offset-2 hover:text-brand-700 dark:hover:text-brand-300"
+                data-testid="login-status-delivered"
+              >
+                {seg.text}
+              </Link>
+            ) : (
+              <span key={idx}>{seg.text}</span>
+            )
+          )}
         </span>
         {account.openRequestLine ? (
           <span
@@ -1644,7 +1662,7 @@ export default function PortalsSurface({
   return (
     <div className="space-y-6">
       {/* Scope, stated ONCE (#1874 point 4). Nothing on this page follows the active
-          profile; per-patient "Last checked" lives on the patient rows. */}
+          profile; per-patient "Last synced" lives on the patient rows. */}
       {portals.length > 0 && (
         <p
           className="text-sm text-slate-500 dark:text-slate-400"

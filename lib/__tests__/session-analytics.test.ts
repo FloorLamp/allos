@@ -3,6 +3,7 @@ import {
   outputHrDrift,
   paceHrDecouplingPercent,
   sessionSplitIntervalM,
+  streamDistanceKm,
 } from "@/lib/session-analytics";
 
 describe("sessionSplitIntervalM (#3009)", () => {
@@ -17,6 +18,27 @@ describe("sessionSplitIntervalM (#3009)", () => {
     // 20 is still fine; 21 is not.
     expect(sessionSplitIntervalM(20, "km")).toBe(1000);
     expect(sessionSplitIntervalM(21, "km")).toBe(5000);
+  });
+
+  it("keeps stepping up until the table fits — not exactly once", () => {
+    // A single ×5 held the bound only to a hundred units: a 150 km ride would
+    // still have rendered thirty rows.
+    expect(sessionSplitIntervalM(150, "km")).toBe(25000);
+    expect(sessionSplitIntervalM(600, "km")).toBe(125000);
+  });
+
+  it("reads the distance the splits are actually cut from", () => {
+    // An import whose `distance_km` failed its ingest bounds stores null while
+    // the stream still carries the session: taking the interval from the column
+    // would pick 1 km and render sixty rows.
+    expect(
+      streamDistanceKm({ distance: { data: [0, 1000, 60000] } })
+    ).toBeCloseTo(60);
+    // Trailing gaps are skipped rather than read as a distance of nothing.
+    expect(
+      streamDistanceKm({ distance: { data: [0, 5000, null] } })
+    ).toBeCloseTo(5);
+    expect(streamDistanceKm({})).toBeNull();
   });
 
   it("gives a short walk an interval it can actually fill", () => {

@@ -4,8 +4,9 @@ import { sessionProgressDelta } from "@/lib/progress-delta";
 const session = (
   topWeightKg: number | null,
   topReps: number | null,
-  e1rmKg: number | null = null
-) => ({ topWeightKg, topReps, e1rmKg });
+  e1rmKg: number | null = null,
+  bodyweightBaseKg = 0
+) => ({ topWeightKg, topReps, e1rmKg, bodyweightBaseKg });
 
 describe("sessionProgressDelta (#2870 'vs last')", () => {
   it("reports the top-set move in the READER's unit, not the stored one", () => {
@@ -48,6 +49,27 @@ describe("sessionProgressDelta (#2870 'vs last')", () => {
     expect(
       sessionProgressDelta(session(100, 5, 112), session(100, 5, 999), "kg")
     ).toMatchObject({ direction: "same" });
+  });
+
+  it("does not report WEIGHT LOSS as a strength regression on a bodyweight lift", () => {
+    // Two identical pull-up sessions, three kilos of the athlete apart. The
+    // stored "top weight" for a bodyweight lift IS bodyweight + any added load,
+    // so comparing totals would say "−3 kg" about a session that was the same
+    // work — and would call losing weight a regression.
+    const lighter = session(78, 10, null, 78);
+    const heavier = session(81, 10, null, 81);
+    expect(sessionProgressDelta(lighter, heavier, "kg")).toMatchObject({
+      direction: "same",
+    });
+    // Added load still reads, and reads as ITSELF rather than as bodyweight plus
+    // itself: +5 kg on the belt after a 3 kg bodyweight drop is +5, not +2.
+    expect(
+      sessionProgressDelta(session(83, 8, null, 78), heavier, "kg")
+    ).toMatchObject({ direction: "up", label: "+5 kg" });
+    // And more reps at the same (zero) added load is still progress.
+    expect(
+      sessionProgressDelta(session(78, 12, null, 78), heavier, "kg")
+    ).toMatchObject({ direction: "up", label: "+2 reps" });
   });
 
   it("says nothing when there is nothing honest to compare", () => {

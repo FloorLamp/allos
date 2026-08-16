@@ -5,7 +5,7 @@ import {
   documentEntry,
   jobEntry,
   feedItemView,
-  collapseQuietSyncs,
+  dropQuietSyncs,
   type FeedSyncEvent,
   type FeedDocument,
   type FeedJob,
@@ -116,6 +116,36 @@ describe("feedItemView — sync", () => {
     expect(v.detailMuted).toBe(false);
     expect(v.skipped).toBe(2);
     expect(v.meta).toBe("2026-07-06 → 2026-07-08");
+  });
+
+  it("renders NO window when the run has none, instead of an em-dash (#2999)", () => {
+    // An attended portal run has no data window on ANY run — the concept does not
+    // apply to a delivered archive — so formatWindow's "—" was a structurally constant
+    // column pretending to be information (#1991 defect 5).
+    const v = feedItemView(
+      syncEntry(sync({ window_start: null, window_end: null })),
+      sourceName
+    );
+    expect(v.meta).toBeNull();
+  });
+
+  it("still renders a one-sided window, which IS information", () => {
+    const v = feedItemView(
+      syncEntry(sync({ window_start: "2026-07-06", window_end: null })),
+      sourceName
+    );
+    expect(v.meta).toBe("2026-07-06");
+  });
+
+  it("carries the caller-resolved drill-in promise, or none at all (#1991/#1771)", () => {
+    // The entry, not the row component, decides: no provenance → no expander, and the
+    // promised count is what the fetch will list rather than the run's split total.
+    expect(syncEntry(sync())).toMatchObject({ drilldown: null });
+    expect(
+      syncEntry(sync(), { count: 2, remainder: 0, noun: "document" })
+    ).toMatchObject({
+      drilldown: { count: 2, remainder: 0, noun: "document" },
+    });
   });
 
   it("collapses an all-unchanged re-scan to a muted 'nothing new'", () => {
@@ -314,9 +344,11 @@ describe("feedItemView — job", () => {
   });
 });
 
-// A no-op (all-unchanged) sync factory for the collapse tests (issue #137).
+// A no-op (all-unchanged) PORTAL run — the only shape the drop rule reaches (#137's
+// question, #2999's answer).
 function quiet(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
   return sync({
+    source_id: "patient-portals",
     inserted: 0,
     updated: 0,
     unchanged: 6,
@@ -326,91 +358,91 @@ function quiet(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
   });
 }
 
-describe("collapseQuietSyncs", () => {
-  it("folds a run of consecutive no-op syncs into ONE summary entry", () => {
-    const entries = collapseQuietSyncs([
-      quiet({ id: 4, at: "2026-07-08 11:00:00" }),
-      quiet({ id: 3, at: "2026-07-08 10:00:00" }),
-      quiet({ id: 2, at: "2026-07-08 09:00:00" }),
-      quiet({ id: 1, at: "2026-07-08 08:00:00" }),
-    ]);
-    expect(entries).toHaveLength(1);
-    const e = entries[0];
-    expect(e.stream).toBe("sync-quiet");
-    if (e.stream !== "sync-quiet") throw new Error("unreachable");
-    expect(e.count).toBe(4);
-    // Pinned at the newest event's time/id; spans down to the oldest.
-    expect(e.at).toBe("2026-07-08 11:00:00");
-    expect(e.sortId).toBe(4);
-    expect(e.latest).toBe("2026-07-08 11:00:00");
-    expect(e.oldest).toBe("2026-07-08 08:00:00");
+// Nothing this feed shows delivered documents unless a test says so.
+const deliveredNothing = () => false;
+
+// #137 built `collapseQuietSyncs` to fold consecutive no-ops into one summary line, and
+// nothing ever called it — `getImportDocumentsFeed` mapped `syncEntry` directly, so an
+// all-zero run got a full row reading "nothing new". #2999's owner ruling replaces the
+// collapse rather than wiring it up: this feed is for imports that PRODUCED something,
+// and the latest portal run of each kind is stated on the Patient portals page.
+describe("dropQuietSyncs (#2999)", () => {
+  it("drops a successful PORTAL run that wrote nothing", () => {
+    expect(dropQuietSyncs([quiet({ id: 1 })], deliveredNothing)).toEqual([]);
   });
 
-  it("keeps a meaningful sync and a failure as their own entries around a quiet run", () => {
-    const entries = collapseQuietSyncs([
-      sync({ id: 5, at: "2026-07-08 12:00:00", ok: 0, error: "boom" }), // failure (newest)
-      quiet({ id: 4, at: "2026-07-08 11:00:00" }),
-      quiet({ id: 3, at: "2026-07-08 10:00:00" }),
-      sync({ id: 2, at: "2026-07-08 09:00:00", inserted: 5 }), // real import (breaks the run)
-      quiet({ id: 1, at: "2026-07-08 08:00:00" }),
-    ]);
-    expect(entries.map((e) => e.stream)).toEqual([
-      "sync", // the failure
-      "sync-quiet", // ids 4,3 collapsed
-      "sync", // the real import
-      "sync-quiet", // id 1 alone
-    ]);
-    const firstQuiet = entries[1];
-    if (firstQuiet.stream !== "sync-quiet") throw new Error("unreachable");
-    expect(firstQuiet.count).toBe(2);
+  it("keeps a FAILURE, which is the signal the feed exists to carry", () => {
+    const failed = quiet({
+      id: 5,
+      ok: 0,
+      error: "boom",
+      unchanged: 0,
+    });
+    expect(dropQuietSyncs([failed], deliveredNothing)).toEqual([failed]);
   });
 
-  it("collapses each source's own run independently even when interleaved", () => {
-    const entries = collapseQuietSyncs([
-      quiet({ id: 4, source_id: "strava", at: "2026-07-08 11:00:00" }),
-      quiet({ id: 3, source_id: "health-connect", at: "2026-07-08 10:30:00" }),
-      quiet({ id: 2, source_id: "strava", at: "2026-07-08 10:00:00" }),
-      quiet({ id: 1, source_id: "health-connect", at: "2026-07-08 09:30:00" }),
+  it("keeps a run that actually wrote something", () => {
+    const real = quiet({ id: 2, inserted: 5, unchanged: 0 });
+    expect(
+      dropQuietSyncs(
+        [quiet({ id: 3 }), real, quiet({ id: 1 })],
+        deliveredNothing
+      )
+    ).toEqual([real]);
+  });
+
+  it("keeps a LEGACY event whose split predates the accounting", () => {
+    const legacy = quiet({
+      id: 7,
+      inserted: null,
+      updated: null,
+      unchanged: null,
+      written: 4,
+    });
+    expect(dropQuietSyncs([legacy], deliveredNothing)).toEqual([legacy]);
+  });
+
+  it("keeps a run that only suppressed or held back rows — it did something", () => {
+    const suppressed = quiet({ id: 8, unchanged: 0, suppressed: 2 });
+    const edited = quiet({ id: 9, unchanged: 0, edited: 1 });
+    expect(dropQuietSyncs([suppressed, edited], deliveredNothing)).toEqual([
+      suppressed,
+      edited,
     ]);
-    // One quiet summary per source (each run is that source's own two no-ops),
-    // not four rows and not one merged row.
-    const quiets = entries.filter((e) => e.stream === "sync-quiet");
-    expect(quiets).toHaveLength(2);
-    for (const q of quiets) {
-      if (q.stream !== "sync-quiet") throw new Error("unreachable");
-      expect(q.count).toBe(2);
-    }
+  });
+
+  // THREE EDGES THE RULE MUST NOT REACH. Each of these was dropped by the first cut, and
+  // each drop cost a real import its only trace in the app.
+
+  it("keeps a zero-write run from ANOTHER SOURCE — the ruling was about portal runs", () => {
+    // A re-handed Fitbit Takeout archive: `inserted 0 / unchanged 900`, deliberate and
+    // user-initiated, and with no portals page to fall back on.
+    const takeout = quiet({
+      id: 11,
+      source_id: "fitbit-takeout",
+      unchanged: 900,
+      written: 900,
+    });
+    expect(dropQuietSyncs([takeout], deliveredNothing)).toEqual([takeout]);
+  });
+
+  it("keeps a portal run whose only content is documents it could not push", () => {
+    const skipped = quiet({ id: 12, unchanged: 0, skipped: 3 });
+    expect(dropQuietSyncs([skipped], deliveredNothing)).toEqual([skipped]);
+  });
+
+  it("keeps a zero-split portal run that DELIVERED documents", () => {
+    // The observed case: a push whose report said `nothing-new` while two archives
+    // landed. Dropping this row strands the documents it claimed — no later run can
+    // re-claim them, and the event that owns them never renders.
+    const delivery = quiet({ id: 13 });
+    expect(dropQuietSyncs([delivery], (ev) => ev.id === 13)).toEqual([
+      delivery,
+    ]);
   });
 
   it("returns an empty list for no events", () => {
-    expect(collapseQuietSyncs([])).toEqual([]);
-  });
-});
-
-describe("feedItemView — sync-quiet", () => {
-  it("renders a single quiet sync as a muted 'No new data'", () => {
-    const [entry] = collapseQuietSyncs([quiet({ id: 1 })]);
-    const v = feedItemView(entry, sourceName);
-    expect(v.tone).toBe("neutral");
-    expect(v.title).toBe("Google Health Connect");
-    expect(v.href).toBeNull();
-    expect(v.detail).toBe("No new data");
-    expect(v.detailMuted).toBe(true);
-    expect(v.skipped).toBe(0);
-    expect(v.meta).toBeNull();
-  });
-
-  it("counts the collapsed checks when more than one", () => {
-    const [entry] = collapseQuietSyncs([
-      quiet({ id: 3, at: "2026-07-08 10:00:00" }),
-      quiet({ id: 2, at: "2026-07-08 09:00:00" }),
-      quiet({ id: 1, at: "2026-07-08 08:00:00" }),
-    ]);
-    const v = feedItemView(entry, sourceName);
-    expect(v.detail).toBe("No new data · 3 checks");
-    expect(v.detailMuted).toBe(true);
-    // Key is stable/unique per source + newest id.
-    expect(v.key).toBe("sync-quiet:health-connect:3");
+    expect(dropQuietSyncs([], deliveredNothing)).toEqual([]);
   });
 });
 

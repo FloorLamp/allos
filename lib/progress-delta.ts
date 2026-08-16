@@ -14,6 +14,9 @@ export interface ProgressDeltaInput {
   topWeightKg: number | null;
   topReps: number | null;
   e1rmKg: number | null;
+  // The athlete's own weight, when it is part of `topWeightKg` (a pull-up's load
+  // IS the athlete). Absent/0 for an ordinary barbell lift.
+  bodyweightBaseKg?: number;
 }
 
 export interface ProgressDelta {
@@ -26,6 +29,11 @@ export interface ProgressDelta {
   title: string;
 }
 
+function addedLoad(session: ProgressDeltaInput): number | null {
+  if (session.topWeightKg == null) return null;
+  return session.topWeightKg - (session.bodyweightBaseKg ?? 0);
+}
+
 // A weight comparison is only meaningful between two loads the same way up. Reps
 // break the tie when the load is identical, because the same bar for more reps is
 // the most common way a working set moves — and the most common way a top-weight
@@ -35,8 +43,13 @@ export function sessionProgressDelta(
   previous: ProgressDeltaInput,
   unit: WeightUnit
 ): ProgressDelta | null {
-  const cw = current.topWeightKg;
-  const pw = previous.topWeightKg;
+  // A BODYWEIGHT lift's "load" includes the athlete, so comparing the totals
+  // would report weight-loss as a strength regression: two identical pull-up
+  // sessions three kilos apart on the scale would read "−3 kg". What actually
+  // moved is the ADDED load, so that is what is compared, and reps break the tie
+  // when nothing was added on either day (the usual pull-up progression).
+  const cw = addedLoad(current);
+  const pw = addedLoad(previous);
   if (cw != null && pw != null) {
     // Compare in the DISPLAY unit: a 2.5 kg step is 5.5 lb, and a reader who logs
     // in pounds should not be told "+2.5" about plates they never touched. Rounding

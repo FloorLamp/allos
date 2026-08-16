@@ -201,6 +201,7 @@ import { migration as mSubstanceRecordedAt } from "./20260815-substance-recorded
 import { migration as mMetricSampleInstants } from "./20260815-metric-sample-instants";
 import { migration as mPracticeTapMessageProvenance } from "./20260816-practice-tap-message-provenance";
 import { migration as mFasts } from "./20260816-fasts";
+import { migration as mDocumentSyncProvenance } from "./20260816-document-sync-provenance";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -411,6 +412,7 @@ export const MIGRATIONS: Migration[] = [
   mMetricSampleInstants,
   mPracticeTapMessageProvenance,
   mFasts,
+  mDocumentSyncProvenance,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

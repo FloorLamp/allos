@@ -47,6 +47,7 @@ import {
 import {
   paceHrDecouplingPercent,
   sessionSplitIntervalM,
+  streamDistanceKm,
 } from "./session-analytics";
 import {
   activityWindows,
@@ -227,8 +228,13 @@ export function getActivityDetailData(
     )
     .get(profileId, row.id) as { streams_json: string | null } | undefined;
   const streams = parseActivityStreams(telemetryRow?.streams_json ?? null);
+  // Cut the splits from the SAME distance they are measured over — the stream's
+  // own final reading, not the activity row's summary column. An import whose
+  // `distance_km` failed its ingest bounds and stored null would otherwise pick
+  // the smallest interval and render sixty rows of "1 km splits", the exact
+  // overflow the interval exists to prevent.
   const splitIntervalM = sessionSplitIntervalM(
-    row.distance_km,
+    streamDistanceKm(streams) ?? row.distance_km,
     units.distanceUnit
   );
   const telemetry: ActivityDetailTelemetry = {
@@ -257,19 +263,28 @@ export function getActivityDetailData(
     : [];
 
   // Like-for-like peers (#3009 / #2566's `rideComparison` → `sessionComparison`).
-  // Bounded to the recent history of the same activity TYPE: the peer rule then
-  // narrows by kind and distance, so the scan never walks a whole ledger to find
-  // a handful of comparable walks.
-  const peerRows = db
-    .prepare(
-      `SELECT * FROM activities
-        WHERE profile_id = ? AND type = ? AND id != ?
-        ORDER BY date DESC, id DESC LIMIT 200`
-    )
-    .all(profileId, row.type, row.id) as Activity[];
-  const comparison = sessionComparison(row, peerRows, {
-    isPeer: isSameActivityKind,
-  });
+  // The candidate set is the WHOLE history, exactly as the ride page reads it —
+  // a bounded "most recent 200" window looked like a cost saving and was really
+  // a different answer: an old session would be measured against a peer group it
+  // never belonged to (this profile's current, fitter era), and the median it was
+  // told about would be one it could not have produced. Type union matches the
+  // ride page too, so a run logged as `sport` still peers with runs logged as
+  // `cardio`. Only endurance-shaped sessions ask: a strength session's
+  // progression question is answered by "vs last" per lift, above.
+  const comparison =
+    row.type === "cardio" || row.type === "sport"
+      ? sessionComparison(
+          row,
+          db
+            .prepare(
+              `SELECT * FROM activities
+                WHERE profile_id = ? AND type IN ('cardio', 'sport') AND id != ?
+                ORDER BY date, id`
+            )
+            .all(profileId, row.id) as Activity[],
+          { isPeer: isSameActivityKind }
+        )
+      : null;
 
   // "vs last" (#2870). One history scan per DISTINCT lift in this session, each
   // narrowed to the implement its sets were performed on — the same
@@ -285,7 +300,18 @@ export function getActivityDetailData(
     const partSets = mySets.filter(
       (s) => s.exercise.trim().toLowerCase() === part.name.trim().toLowerCase()
     );
-    const lane = equipmentLoadLane(partSets[0]?.equipment_id ?? null);
+    // The lane must describe the sets this delta is printed NEXT TO. A session
+    // that moved between implements mid-exercise has no single lane, and
+    // comparing its history on whichever one happened to come first would
+    // describe a subset of the rows on screen — so it says nothing instead.
+    const lanes = new Set(
+      partSets.map((s) => equipmentLoadLane(s.equipment_id ?? null))
+    );
+    if (lanes.size !== 1) {
+      deltaByExercise.set(part.name, null);
+      continue;
+    }
+    const lane = [...lanes][0];
     const history = getExerciseComparison(
       profileId,
       part.name,

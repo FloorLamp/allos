@@ -79,7 +79,13 @@ function TrainingLogRow({
           </span>
           {card.fault && (
             <span
-              aria-hidden
+              role="img"
+              // Deliberately avoids the word "saved": Playwright's getByLabel
+              // matches accessible names by case-insensitive SUBSTRING, and the
+              // autosave indicator's spec asserts `getByLabel("Saved")` has no
+              // matches after a failed save (#332). An accessible name is part
+              // of the page's contract with every reader, tests included.
+              aria-label={`Editor can’t re-save this as-is: ${card.fault}`}
               title={card.fault}
               data-testid="row-fault-dot"
               className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"

@@ -301,6 +301,12 @@ export interface ExerciseCompareSession {
   volumeKg: number;
   topWeightKg: number | null;
   topReps: number | null;
+  // The BODYWEIGHT included in `topWeightKg` for a catalog bodyweight lift, or 0.
+  // Kept beside the total because a pull-up's "load" is the athlete, so a reader
+  // asking "did I get stronger" must be able to subtract it: without this, two
+  // identical pull-up sessions three kilos of weight-loss apart look like a three
+  // kilo regression (#3009 review).
+  bodyweightBaseKg: number;
   e1rmKg: number | null;
   summary: string;
 }
@@ -574,6 +580,7 @@ export function getExerciseComparison(
       topWeightKg,
       topReps,
       e1rmKg,
+      bodyweightBaseKg: baseKg,
       summary: summarizeExercise(s.rows, unit).text,
     };
   });

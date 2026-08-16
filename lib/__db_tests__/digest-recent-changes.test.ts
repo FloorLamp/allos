@@ -742,6 +742,20 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
     expect(texts).toEqual(["📥 First data from Withings: sleep"]);
   });
 
+  it("says nothing at all about a delivered ARCHIVE (#2999/#2914)", () => {
+    // A portal delivery's provenance rows point at `medical_documents`, which this
+    // category has no kind for — so it fell back to the record dialect's default noun and
+    // produced "First data from Patient portals: records", a line that existed on no
+    // prior version of the digest and uses the exact noun #2914 ruled out for portal
+    // deliveries. A document has its own surfaces; what the bundle extracts arrives here
+    // later as real records with real kinds.
+    const pid = newProfile("Archive Arden");
+    seedSyncArrival(pid, "patient-portals", [{ table: "medical_documents" }]);
+
+    const out = collectRecentChanges(pid, { sinceDays: 1, today: today(pid) });
+    expect(out.changes.filter((c) => c.category === "data")).toEqual([]);
+  });
+
   it("the digest's activity line carries the source instead", () => {
     const pid = newProfile("Provenance Pat");
     const yd = shiftDateStr(today(pid), -1);

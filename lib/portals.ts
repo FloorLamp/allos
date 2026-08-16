@@ -1,4 +1,6 @@
 import { db, hoistedStatement, writeTx } from "./db";
+import { log } from "./log";
+import { insertSyncRows } from "./integrations/connections";
 import { sqlNow } from "./clock";
 import {
   isAccountSlug,
@@ -265,6 +267,14 @@ export function setPortalSoftware(
 // the sync events' identity stamps.
 export function deletePortal(portalId: number): boolean {
   return writeTx((): boolean => {
+    // The IDENTITY half of the same acquisition fact (#2999), cleared BEFORE the rows it
+    // names are deleted — after that delete there is nothing left to select. Its FK is
+    // ON DELETE SET NULL too; this runs explicitly for the same reason as its portal
+    // sibling below, because the runner disables foreign keys during migrations.
+    db.prepare(
+      `UPDATE medical_documents SET acquired_identity_id = NULL
+        WHERE acquired_identity_id IN (SELECT id FROM portal_identities WHERE portal_id = ?)`
+    ).run(portalId);
     db.prepare("DELETE FROM portal_identities WHERE portal_id = ?").run(
       portalId
     );
@@ -418,6 +428,12 @@ export function deletePortalAccount(accountId: number): boolean {
       .prepare("SELECT COUNT(*) AS n FROM portal_accounts WHERE portal_id = ?")
       .get(row.portalId) as { n: number };
     if (siblings.n <= 1) return false;
+    // Cleared BEFORE the identity rows it names go (#2999) — the same ordering, and the
+    // same reasoning, as deletePortal's copy one level up.
+    db.prepare(
+      `UPDATE medical_documents SET acquired_identity_id = NULL
+        WHERE acquired_identity_id IN (SELECT id FROM portal_identities WHERE account_id = ?)`
+    ).run(accountId);
     db.prepare("DELETE FROM portal_identities WHERE account_id = ?").run(
       accountId
     );
@@ -895,6 +911,10 @@ export interface ResolvedIdentity {
   portalId: number;
   accountId: number;
   patientLabel: string;
+  // The registry row for this (login, patient label) pair — the grain the tool REPORTS
+  // at, and the grain a delivered document is stamped with (#2999). See
+  // documentsDeliveredBy below for why nothing coarser will do.
+  identityId: number;
 }
 
 export type IdentityResolution =
@@ -927,14 +947,20 @@ export function resolvePortalIdentity(
   const label = normalizePatientLabel(patientLabel);
   const row = db
     .prepare(
-      `SELECT pi.profile_id AS profileId, pi.portal_id AS portalId,
-              pi.account_id AS accountId
+      `SELECT pi.id AS identityId, pi.profile_id AS profileId,
+              pi.portal_id AS portalId, pi.account_id AS accountId
          FROM portal_identities pi
         WHERE pi.account_id = ? AND pi.patient_label = ?
           AND pi.ignored = 0 AND pi.profile_id IS NOT NULL`
     )
     .get(account.account.id, label) as
-    { profileId: number; portalId: number; accountId: number } | undefined;
+    | {
+        identityId: number;
+        profileId: number;
+        portalId: number;
+        accountId: number;
+      }
+    | undefined;
   if (!row) return { ok: false, reason: "unmapped-identity" };
   return {
     ok: true,
@@ -942,6 +968,7 @@ export function resolvePortalIdentity(
     portalId: row.portalId,
     accountId: row.accountId,
     patientLabel: label,
+    identityId: row.identityId,
   };
 }
 
@@ -1211,6 +1238,12 @@ export interface PortalRunReport {
   // written by a client that has never heard of them reads exactly as it always did.
   contacted: boolean;
   attended: boolean;
+  // The login's sticky CHECK clock (#1888) — the last report that ANSWERED a sync
+  // request, which a delivery-only push deliberately never advances. Projected so a
+  // delivery row can state the real check clock beside itself (#2914), instead of
+  // leaving today's staleness ask looking absurd next to today's delivery. Null means
+  // the portal has genuinely never been checked.
+  checkedAt: string | null;
 }
 
 // Record the run one LOGIN just reported, replacing that login's previous report.
@@ -1319,12 +1352,211 @@ export function recordPortalRunReport(
   );
 }
 
+// ── WHICH DOCUMENTS A RUN DELIVERED (#2999) ──────────────────────────────────
+//
+// A portal run's product is DOCUMENTS, and until now nothing associated the run with
+// them. The two arrive on DIFFERENT requests — `POST /api/documents` ingests each
+// archive, then `POST /api/documents/sync-report` reports the run — and the only stored
+// association was document → portal (#1748's `acquired_portal_id`), never run →
+// documents. So the Imports feed showed a portal run and the archives from that same run
+// as unrelated entries seconds apart, and its drill-in promised a count over a table
+// that could hold nothing.
+//
+// The owner's ruling (#2999 Fix 1, default branch): mark an uploaded document with the
+// portal identity it was acquired for, and have the report handler claim that identity's
+// documents. No tool-contract change, no correlation id, no new endpoint — the ordering
+// already holds in practice, because the tool uploads and then reports.
+//
+// ── THE GRAIN IS THE IDENTITY, AND THERE IS NO CLOCK ─────────────────────────
+//
+// The first cut of this claimed per LOGIN, inside a window opened at the login's previous
+// report stamp. Both halves of that were wrong, and together they LOST DOCUMENTS —
+// which is the shape #2914 was filed from ("8 CCD bundles… across four profiles" on one
+// push, three of four profiles showing nothing).
+//
+// A push under one login files ONE REPORT PER PATIENT (`patient=` in the body names it),
+// while `portal_run_reports` holds one row per login. So the first patient's report moved
+// the window past everything the second patient's report was going to claim, the second
+// claimed nothing, and — because the unclaimed guard still saw those rows as claimable —
+// no later run could ever pick them up either. Measured at the observed production
+// spacing: runA claimed [1], runB claimed [], and the document was claimed by nobody,
+// ever. It only looked correct in a test where the uploads and the report landed in the
+// same second, which is the worst way for a bug to behave.
+//
+// So the claim is keyed to exactly what a report is ABOUT: the (login, patient) identity,
+// which is a `portal_identities` row and is what both endpoints already name. That
+// removes the wall clock entirely — no window, no seam, no ordering assumption between
+// two requests — and leaves a claim that is a plain equality plus a guard:
+//
+//   this identity's documents, in this profile, that no run has claimed yet.
+//
+// Every document therefore belongs to exactly one run, and to THAT run: the property the
+// drill-in's honesty rests on. Nothing is lost when a report is late or fails, because
+// nothing moves a boundary — an unclaimed document simply waits for this identity's next
+// successful report.
+//
+// Documents predating the column are NULL and can never be claimed, so the guard cannot
+// sweep up history on a first report after deploy.
+
+// Record the identity a document was acquired for (#2999). `acquired_portal_id` (#1748)
+// already names the portal, which is the right fact for "Acquired via optum" and much too
+// coarse for this: one portal has many logins, and one login has many patients.
+//
+// BEST-EFFORT, exactly like its sibling recordSyncRows: provenance must never throw into
+// the ingest it observes. This runs inside the upload route AFTER the archive has landed,
+// so letting a write failure here escape would turn a successful ingest into a 500 over a
+// drill-in convenience — the documents would be on disk and the caller would be told the
+// push failed, and would push them again.
+//
+// Profile-scoped: the upload route has already gated the write, and the filter keeps a
+// mis-plumbed call from stamping another person's row.
+export function stampAcquiredIdentity(
+  profileId: number,
+  documentId: number,
+  identityId: number
+): void {
+  try {
+    db.prepare(
+      "UPDATE medical_documents SET acquired_identity_id = ? WHERE id = ? AND profile_id = ?"
+    ).run(identityId, documentId, profileId);
+  } catch (err) {
+    log.error("stampAcquiredIdentity failed", {
+      documentId,
+      err: String(err),
+    });
+  }
+}
+
+// The documents this identity has delivered and no run has claimed: acquired for that
+// (login, patient) pair, owned by this profile, and not yet stamped `delivered_at`.
+//
+// ── WHY THE GUARD IS A COLUMN ON THE DOCUMENT ────────────────────────────────
+//
+// It used to ask `integration_sync_rows` "is this document already a provenance target",
+// which reads as the natural question and is a TRAP: those rows are children of
+// integration_sync_events with ON DELETE CASCADE, and #388's retention sweep
+// (SYNC_EVENTS_RETENTION_DAYS = 90, on the hourly tick) deletes the parents. The rows go
+// with them, the guard forgets everything older than the window, and the archives become
+// claimable again — so an ordinary run that delivered nothing claims a year of history
+// and the login row renders it as today's delivery. Measured: twelve monthly pushes, one
+// sweep, then an empty `nothing-new` run claiming nine archives and reading "Delivered 9
+// documents". Worse, the drop rule then KEEPS that run — it has claims — so the sweep
+// manufactures a delivery row out of a run that was correctly suppressed the hour before.
+//
+// The cascade is right for the five RECORD tables, whose rows are claimed at write time
+// by the upsert that wrote them; the provenance row there is a record OF the claim. Here
+// the provenance row WAS the claim, so expiring it reset the state.
+//
+// `delivered_at` is a fact about the DOCUMENT — a portal run said it delivered this
+// archive — and a document outlives every run that ever reported it. The provenance row
+// stays what it always was: the run's own listing, expiring with the run, so a swept run
+// stops offering a drill-in rather than releasing its documents.
+//
+// ── AND ONLY A ROW THAT IS ACTUALLY A DOCUMENT ───────────────────────────────
+//
+// `medical_documents` holds MARKERS as well as archives: a file allos refused for its
+// type or size lands a `failed` row with `stored_path = ''` and no bytes on disk
+// (insertFailedDoc), so Review can show that the tool is pushing something allos will not
+// take. Those rows carry `acquired_identity_id` exactly like a real archive — deliberately,
+// because the marker DID arrive from that identity — and claiming them said a run had
+// delivered documents it had refused: two refused files and an honest `nothing-new`
+// report rendered "Delivered 2 documents", with a drill-in resolving them by filename and
+// linking `/import/N`. A fabricated delivery again, and out of a run `dropQuietSyncs`
+// would otherwise have dropped.
+//
+// `stored_path IS NOT NULL AND stored_path != ''` is this repo's existing
+// marker-versus-document test (lib/export-full.ts, lib/medical-pipeline.ts,
+// lib/photo/metadata-backfill.ts) rather than a new predicate. It also puts `failed`
+// where `duplicate` and `blocked` already are: those create no row at all, and a delivery
+// that carried nothing allos would store genuinely delivered nothing.
+export function documentsDeliveredBy(
+  profileId: number,
+  identityId: number
+): number[] {
+  const rows = db
+    .prepare(
+      `SELECT d.id AS id
+         FROM medical_documents d
+        WHERE d.profile_id = ? AND d.acquired_identity_id = ?
+          AND d.stored_path IS NOT NULL AND d.stored_path != ''
+          AND d.delivered_at IS NULL
+        ORDER BY d.id`
+    )
+    .all(profileId, identityId) as { id: number }[];
+  return rows.map((r) => r.id);
+}
+
+// Claim this run's delivery: select what it delivered, list it as the run's provenance,
+// and stamp the durable mark — ALL THREE IN ONE TRANSACTION, because the mark is what the
+// select above reads and the listing is what the reader sees. Split across two writes,
+// a failure between them either strands documents nothing can list (marked, unlisted, and
+// unclaimable forever) or double-claims them on the next run. Returns the ids it claimed.
+//
+// BEST-EFFORT at this boundary, like every other provenance write: it never throws into
+// the report handler. When it fails NOTHING is written, so the next successful run for
+// this identity claims the same archives — the self-healing the atomicity buys.
+//
+// Called on a SUCCESSFUL report only: a failed run delivered nothing, and must not
+// consume documents the next good run should claim.
+//
+// ── THE TRADE THIS MAKES, STATED SO NOBODY "FIXES" IT ────────────────────────
+//
+// Because there is no time bound, a run can claim an archive that arrived LONG before
+// it: if the tool uploads and then dies before reporting, that document waits, and this
+// identity's next successful report picks it up — so the Imports feed can show a run
+// delivering a file that landed days earlier.
+//
+// That is deliberate, and it is the better half of the only choice available. The
+// alternative is a boundary — "documents since the last report" — and a boundary that
+// moves on every report is what loses documents PERMANENTLY: the run that should have
+// claimed them has already been overtaken, and the guard then keeps them eligible forever
+// without any run ever being able to reach them. A file attributed to a slightly late run
+// is legible and recoverable; a file no surface can list is neither.
+//
+// Nothing here moves a boundary, and the mark that records the claim outlives every run,
+// every retention sweep and every re-binding of the identity — so a document is claimed
+// exactly once for as long as it exists.
+export function claimDeliveredDocuments(
+  eventId: number | null,
+  profileId: number,
+  identityId: number
+): number[] {
+  if (eventId === null) return [];
+  try {
+    return writeTx((): number[] => {
+      const ids = documentsDeliveredBy(profileId, identityId);
+      if (ids.length === 0) return [];
+      insertSyncRows(
+        eventId,
+        ids.map((id) => ({
+          target_table: "medical_documents" as const,
+          target_id: id,
+          disposition: "inserted" as const,
+        }))
+      );
+      const stamp = db.prepare(
+        `UPDATE medical_documents SET delivered_at = ?
+          WHERE id = ? AND profile_id = ?`
+      );
+      // BARE, the convention this column and its three neighbours share (#2205) — see
+      // lib/time-columns.ts for why `medical_documents` keeps one convention throughout.
+      const at = sqlNow();
+      for (const id of ids) stamp.run(at, id, profileId);
+      return ids;
+    });
+  } catch (err) {
+    log.error("claimDeliveredDocuments failed", { eventId, err: String(err) });
+    return [];
+  }
+}
+
 const LIST_RUN_REPORTS_STMT = hoistedStatement(
   `SELECT r.portal_id AS portalId, p.slug AS portalSlug, p.name AS portalName,
           r.account_id AS accountId, a.slug AS accountSlug, a.name AS accountName,
           a.implicit AS accountImplicit, r.at AS at, r.ok AS ok,
           r.status AS status, r.message AS message, r.discovered AS discovered,
-          r.contacted AS contacted, r.attended AS attended
+          r.contacted AS contacted, r.attended AS attended,
+          r.checked_at AS checkedAt
      FROM portal_run_reports r
      JOIN portals p ON p.id = r.portal_id
      JOIN portal_accounts a ON a.id = r.account_id
@@ -1351,6 +1583,7 @@ export function listPortalRunReports(): PortalRunReport[] {
       discovered: row.discovered as number,
       contacted: (row.contacted as number) === 1,
       attended: (row.attended as number) === 1,
+      checkedAt: (row.checkedAt as string | null) ?? null,
     })
   );
 }
@@ -1366,8 +1599,10 @@ export interface IdentitySyncStatus {
 
 // "Last synced" for every (account, patient) this profile has events for — the card's
 // per-identity status line. A household with two portals and three patients has six
-// answers to "when was this last checked", and the single per-profile connection stamp
-// cannot hold them.
+// answers to "when was this last synced", and the single per-profile connection stamp
+// cannot hold them. SYNCED, not checked: a delivery-only push advances this (#1888's
+// ruling), so the word the page reserves for a real portal visit cannot ride on it
+// (#2914).
 //
 // Profile-scoped, like every read of this table. Only a SUCCESSFUL run advances
 // `lastOkAt` — including a nothing-new one, which is the point: a quiet check is still a
