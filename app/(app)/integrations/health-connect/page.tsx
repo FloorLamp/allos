@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { PageHeader } from "@/components/ui";
@@ -12,7 +11,6 @@ import {
   getConnection,
   getHealthConnectTokenInfo,
 } from "@/lib/integrations/connections";
-import { getPublicUrl } from "@/lib/settings";
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
 import { getIntegrationState, SETUP_HISTORY_LIMIT } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -20,23 +18,13 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import HealthConnectSetup from "./HealthConnectSetup";
 import { requestNowMs } from "@/lib/request-now";
+// The externally visible address of this deployment — one authority, shared with
+// the calendar feed, Strava and Withings (#2959).
+import { appUrl } from "@/lib/external-url-server";
 
 export const dynamic = "force-dynamic";
 
 const INGEST_PATH = "/api/integrations/health-connect/ingest";
-
-// Configured public URL (Settings → Public app URL) when set, else derived
-// from the request headers (same logic as the Strava url helper).
-async function baseUrl(): Promise<string> {
-  const configured = getPublicUrl();
-  if (configured) return configured;
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto =
-    h.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 export default async function HealthConnectPage() {
   const { login, profile } = await requireSession();
@@ -45,7 +33,7 @@ export default async function HealthConnectPage() {
   const conn = getConnection(profile.id, "health-connect");
   const tokenInfo = getHealthConnectTokenInfo(profile.id);
   const connected = conn?.status === "connected" && tokenInfo.hasToken;
-  const endpoint = `${await baseUrl()}${INGEST_PATH}`;
+  const endpoint = await appUrl(INGEST_PATH);
   // Lifecycle status for the DB-backed token (issue #24); the env fallback carries
   // no lifecycle, so it's always "active".
   const status = tokenLifecycleStatus(
