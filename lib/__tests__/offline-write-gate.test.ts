@@ -16,7 +16,7 @@
 // e2e/offline-write-gate.spec.ts and e2e/offline-snapshots.spec.ts, against a real
 // IndexedDB in a real browser, which is the only tier that can observe it.
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   bumpGeneration,
   closeSession,
@@ -33,19 +33,43 @@ import {
   type WriteLane,
 } from "@/lib/offline/write-gate";
 
-// The one database call `whenSessionOpened` sequences, held open on demand. Everything
-// else in this file is pure and never touches it; see the last describe for why it has to
-// be a real pending promise rather than an absent IndexedDB.
+// The one database call `whenSessionOpened` sequences, held open on demand — see the last
+// describe for why it has to be a genuinely pending promise rather than an absent
+// IndexedDB. Everything else in this file is pure and never touches it.
+//
+// A GLOBAL, NOT A MODULE MOCK. lib/offline/idb reads `indexedDB` off the global and
+// nothing else, so a global is all this needs — and a mock marker would buy this spec a
+// private module registry, which lib/__tests__/vitest-isolation-budget.test.ts exists to
+// stop happening by accident. Installed and removed per test, because the registry is
+// shared with every other spec in the tier.
 let answerTheDatabase: (() => void) | null = null;
-vi.mock("@/lib/offline/idb", () => ({
-  META_STORE: "meta",
-  hasIndexedDB: () => true,
-  openOfflineDb: () =>
-    new Promise((_resolve, reject) => {
-      answerTheDatabase = () => reject(new Error("no database in this tier"));
-    }),
-  txDone: () => Promise.resolve(),
-}));
+
+function holdTheDatabaseOpen(): void {
+  (globalThis as { indexedDB?: unknown }).indexedDB = {
+    open: () => {
+      const req: {
+        error: unknown;
+        onerror: null | (() => void);
+        onblocked: null | (() => void);
+        onupgradeneeded: null | (() => void);
+        onsuccess: null | (() => void);
+      } = {
+        error: new Error("no database in this tier"),
+        onerror: null,
+        onblocked: null,
+        onupgradeneeded: null,
+        onsuccess: null,
+      };
+      answerTheDatabase = () => req.onerror?.();
+      return req;
+    },
+  };
+}
+
+function releaseTheDatabase(): void {
+  answerTheDatabase = null;
+  delete (globalThis as { indexedDB?: unknown }).indexedDB;
+}
 
 const LANES: readonly WriteLane[] = ["snapshots", "queue", "drafts"];
 
@@ -350,28 +374,32 @@ describe("whenSessionOpened — the sequencing handle, which nothing used to obs
   // genuinely in flight while we look.
 
   it("does not resolve until this document's re-open has landed", async () => {
-    let landed = false;
-    const reopen = openSessionForDocument(THIS_SESSION);
-    void reopen.then(() => {
-      landed = true;
-    });
-    const waited = whenSessionOpened();
-    void waited.then(() => {
-      landed = true;
-    });
-    // Several microtask turns — enough for any promise that was already settled.
-    for (let i = 0; i < 5; i += 1) await Promise.resolve();
-    expect(landed).toBe(false);
+    holdTheDatabaseOpen();
+    try {
+      let landed = false;
+      const reopen = openSessionForDocument(THIS_SESSION);
+      void reopen.then(() => {
+        landed = true;
+      });
+      const waited = whenSessionOpened();
+      void waited.then(() => {
+        landed = true;
+      });
+      // Several microtask turns — enough for any promise that was already settled.
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+      expect(landed).toBe(false);
 
-    answerTheDatabase?.();
-    await waited;
-    expect(landed).toBe(true);
+      answerTheDatabase?.();
+      await waited;
+      expect(landed).toBe(true);
+    } finally {
+      releaseTheDatabase();
+    }
   });
 
   it("is the SAME handle the re-open returned, not a fresh resolved promise", async () => {
     const reopen = openSessionForDocument(NEXT_SESSION);
     expect(whenSessionOpened()).toBe(reopen);
-    answerTheDatabase?.();
     await reopen;
   });
 });
