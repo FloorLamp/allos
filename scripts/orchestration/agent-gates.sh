@@ -8,6 +8,10 @@
 #   - the e2e-hygiene scan runs whenever anything under e2e/ changed vs the
 #     merge-base with origin/main — the scan is 2 seconds; a CI round trip is
 #     ~25 minutes.
+#   - test:db runs whenever anything the DB+action tier can IMPORT changed
+#     (`db_tier_paths` below), for the same reason in the other direction: it is
+#     the expensive gate, and a diff confined to docs/, e2e/ or
+#     scripts/orchestration/ cannot change its outcome (#2954).
 #   - phi-scan runs here because the pre-commit hook does NOT fire in
 #     worktrees.
 #
@@ -31,13 +35,59 @@ run_gate() {
   fi
 }
 
+base="$(git merge-base origin/main HEAD 2>/dev/null || echo origin/main)"
+
+# Did the diff touch any of these paths? THREE questions, because an agent runs
+# gates mid-task: what is committed on the branch, what is in the tree (staged or
+# not), and what is NEW — an untracked file is invisible to `git diff` entirely,
+# which for a brand-new spec is exactly the case that most needs the gate. Any
+# git failure (no HEAD, no origin/main) leaves --quiet non-zero and runs the
+# gate: under-gating is the expensive mistake, so errors bias toward running.
+paths_changed() {
+  ! git diff --quiet "$base" HEAD -- "$@" 2>/dev/null ||
+    ! git diff --quiet HEAD -- "$@" 2>/dev/null ||
+    [ -n "$(git ls-files --others --exclude-standard -- "$@" 2>/dev/null)" ]
+}
+
+# The paths the DB+action tier's inputs live in — every file reachable from
+# `vitest.db.config.ts`'s include set. VERIFIED, NEVER HAND-MAINTAINED: the
+# import walk in lib/__tests__/db-gate-trigger-set.test.ts reads THIS array and
+# fails when the tier reaches a file no entry covers, the discipline #2786
+# established for CI's skip set one level up. A hand-list here would not fail
+# when it went stale; it would quietly stop running the gate.
+#
+# `scripts/` is in because ~30 `lib/datasets/` modules import their generator's
+# types from it; `scripts/orchestration/` is the one subtree the walk proves the
+# tier never reaches, and it is what the orchestration agents edit. Entries are
+# directories rather than files where the reach is broad, so the set over-runs
+# the gate in places (a `scripts/*.sh` edit runs it) — that is the safe
+# direction and the deliberate one.
+db_tier_paths=(
+  lib/
+  app/
+  components/
+  middleware.ts
+  scripts/
+  ":(exclude)scripts/orchestration/"
+  vitest.db.config.ts
+  vitest.isolation.ts
+  package.json
+  package-lock.json
+  tsconfig.json
+)
+
 run_gate "lint" npm run lint
 run_gate "typecheck" npm run typecheck
 run_gate "test (pure)" npm test
-run_gate "test:db" npm run test:db
 
-base="$(git merge-base origin/main HEAD 2>/dev/null || echo origin/main)"
-if ! git diff --quiet "$base" HEAD -- e2e/ 2>/dev/null || ! git diff --quiet -- e2e/ 2>/dev/null; then
+if paths_changed "${db_tier_paths[@]}"; then
+  run_gate "test:db" npm run test:db
+else
+  echo
+  echo "=== GATE test:db: SKIPPED (nothing the DB tier imports changed vs ${base:0:12}) ==="
+fi
+
+if paths_changed e2e/; then
   run_gate "e2e-hygiene (e2e/ changed)" npx vitest run lib/__tests__/e2e-hygiene.test.ts
 else
   echo
