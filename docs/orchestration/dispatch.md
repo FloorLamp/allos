@@ -66,11 +66,9 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 ## Tooling
 
 - `dispatch-brief.mjs`: create, list, resume, adopt, and close dispatches.
-  `list` flags a dispatch that has not MOVED — newest of its branch tip and its
-  worktree's writes — in 3x the median dispatch, not one that is merely old. A
-  branch changing hands across restarts and review rounds is normal. A dispatch
-  with no worktree and no branch at all is flagged separately: that is what a
-  denied first tool call looks like.
+  `list` flags a dispatch that has not MOVED — newest of branch tip and
+  worktree write — in 3x the median, not one that is merely old; a dispatch
+  with no worktree and no branch at all is flagged separately.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   The DB and E2E-hygiene gates run only when the diff touches what they cover.
   A format rewrite re-verifies the directive-reading gates it can invalidate.
