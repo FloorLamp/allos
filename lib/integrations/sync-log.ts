@@ -49,12 +49,21 @@ export function emptyCounts(): UpsertCounts {
 // data shape, so it lives here in the accounting module the upserts already import;
 // the impure writer is recordSyncRows (connections.ts) and the reader is
 // getSyncRowProvenance (lib/queries/integrations.ts).
+//
+// `medical_documents` is the one member that is not a RECORD (#2999). An attended
+// portal run's product is an archive: the tool delivers CCD bundles and the extraction
+// that turns them into records happens afterwards, on its own schedule. Without it a
+// portal run could record nothing at all, so the Imports feed promised a drill-in count
+// over an empty table and rewrote itself to zero in front of the reader. It is written
+// at sync-report time rather than by an upsert, because the documents and the run report
+// arrive on two different requests (see app/api/documents/sync-report/route.ts).
 export type ProvenanceTable =
   | "activities"
   | "body_metrics"
   | "metric_samples"
   | "medical_records"
-  | "practice_logs";
+  | "practice_logs"
+  | "medical_documents";
 
 export interface ProvenanceEntry {
   target_table: ProvenanceTable;
@@ -290,11 +299,11 @@ export function formatWindow(start: string | null, end: string | null): string {
 // A "no-op" sync (issue #137): a SUCCESSFUL sync that brought nothing meaningful in
 // — 0 inserted AND 0 updated (an all-unchanged re-scan of the rolling window, or an
 // empty incremental pull). A push-based integration that checks in hourly emits one
-// of these every hour, which floods the Review feed; the feed collapses consecutive
-// no-ops per source into a single summary line. A FAILURE is never a no-op (it's
-// always signal that stays visible), and a LEGACY event whose split columns are all
-// null predates the accounting — we keep it visible with its flat `written` count
-// rather than guessing. Pure → unit-testable.
+// of these every hour, which floods the Review feed; the Imports feed drops the PORTAL
+// ones (#2999 — see dropQuietSyncs, which owns the narrower rule and the reasons for its
+// edges). A FAILURE is never a no-op (it's always signal that stays visible), and a
+// LEGACY event whose split columns are all null predates the accounting — we keep it
+// visible with its flat `written` count rather than guessing. Pure → unit-testable.
 export function isNoOpSyncEvent(ev: {
   ok: number;
   inserted: number | null;
@@ -306,6 +315,10 @@ export function isNoOpSyncEvent(ev: {
   // An edit-locked skip is likewise NOT a no-op — the sync actively held off an
   // overwrite of a hand-edited row, which the user should be able to find.
   edited?: number | null;
+  // Nor is a SKIP, for the same reason: `inserted 0 / skipped 3` is a run telling the
+  // household about three things it could not bring in. Counting it here is what stops a
+  // portal run whose entire content is three failures-to-push from reading as silence.
+  skipped?: number | null;
 }): boolean {
   if (!ev.ok) return false;
   if (ev.inserted === null && ev.updated === null && ev.unchanged === null) {
@@ -315,7 +328,8 @@ export function isNoOpSyncEvent(ev: {
     (ev.inserted ?? 0) +
       (ev.updated ?? 0) +
       (ev.suppressed ?? 0) +
-      (ev.edited ?? 0) ===
+      (ev.edited ?? 0) +
+      (ev.skipped ?? 0) ===
     0
   );
 }

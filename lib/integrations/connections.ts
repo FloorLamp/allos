@@ -280,17 +280,29 @@ export function recordSyncRows(
 ): void {
   if (eventId == null || rows.length === 0) return;
   try {
-    const insert = db.prepare(
-      `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
-       VALUES (?, ?, ?, ?)`
-    );
-    writeTx(() => {
-      for (const r of rows) {
-        insert.run(eventId, r.target_table, r.target_id, r.disposition);
-      }
-    });
+    writeTx(() => insertSyncRows(eventId, rows));
   } catch (err) {
     log.error("recordSyncRows failed", { err: String(err) });
+  }
+}
+
+// The insert itself, WITHOUT the transaction or the swallow — for a caller that must
+// write provenance ATOMICALLY WITH SOMETHING ELSE and therefore owns both.
+//
+// The portal delivery claim (lib/portals.ts) is that caller: it selects the archives no
+// run has claimed, records them, and stamps the durable mark its own guard reads. If the
+// rows were written by `recordSyncRows`, a failure there would be swallowed and the mark
+// would still commit — the documents would be marked delivered with nothing listing them,
+// and no later run could pick them up. Sharing the statement rather than the wrapper is
+// what keeps that one implementation of "a provenance row" while letting the claim
+// succeed or fail as a whole.
+export function insertSyncRows(eventId: number, rows: ProvenanceEntry[]): void {
+  const insert = db.prepare(
+    `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+     VALUES (?, ?, ?, ?)`
+  );
+  for (const r of rows) {
+    insert.run(eventId, r.target_table, r.target_id, r.disposition);
   }
 }
 

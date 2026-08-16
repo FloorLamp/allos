@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenSyncInstant } from "./worker-env";
+import { hydratedClick } from "./helpers";
 
 // #2301 — the Import grid stops answering the CONNECTION question about sources allos
 // does not drive.
@@ -95,6 +96,78 @@ function clearFixture(): void {
       `DELETE FROM integration_connections
         WHERE profile_id = ? AND source_id IN (?, ?)`
     ).run(PROFILE_ID, PORTALS, FEED);
+    db.prepare(
+      `DELETE FROM medical_documents WHERE profile_id = ? AND filename LIKE ?`
+    ).run(PROFILE_ID, `${DELIVERED_PREFIX}%`);
+  });
+}
+
+// ── The delivery shape #2999 was reported from ───────────────────────────────
+//
+// One portal run that delivered two archives, and one that checked and found nothing.
+// The first must expand to the two files it delivered — labelled DOCUMENTS, because that
+// is what a portal run's `inserted 2` counts — and the second must not be in the feed at
+// all: this feed is for imports that produced something, and a login's full run history
+// lives on the Patient portals page.
+const DELIVERED_PREFIX = "delivery archive ";
+const DELIVERED = [`${DELIVERED_PREFIX}one.xml`, `${DELIVERED_PREFIX}two.xml`];
+
+function seedDelivery(): number {
+  return withDb((db) => {
+    db.prepare(
+      `INSERT INTO integration_connections (profile_id, source_id, status)
+       VALUES (?, ?, 'connected')
+       ON CONFLICT (profile_id, source_id) DO UPDATE SET status = 'connected'`
+    ).run(PROFILE_ID, PORTALS);
+    db.prepare(
+      `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = ?`
+    ).run(PROFILE_ID, PORTALS);
+    db.prepare(
+      `DELETE FROM medical_documents WHERE profile_id = ? AND filename LIKE ?`
+    ).run(PROFILE_ID, `${DELIVERED_PREFIX}%`);
+
+    const docIds = DELIVERED.map((filename, i) =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO medical_documents
+               (filename, stored_path, mime_type, size_bytes, extraction_status,
+                uploaded_at, profile_id)
+             VALUES (?, '', 'text/xml', 400, 'done', ?, ?)`
+          )
+          .run(
+            filename,
+            at(3 + i)
+              .replace("T", " ")
+              .slice(0, 19),
+            PROFILE_ID
+          ).lastInsertRowid
+      )
+    );
+
+    // The DELIVERY: two archives arrived, and the run recorded which ones.
+    const delivered = Number(
+      db
+        .prepare(
+          `INSERT INTO integration_sync_events
+             (profile_id, source_id, at, ok, inserted, updated, unchanged)
+           VALUES (?, ?, ?, 1, 2, 0, 1)`
+        )
+        .run(PROFILE_ID, PORTALS, at(2)).lastInsertRowid
+    );
+    const link = db.prepare(
+      `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+       VALUES (?, 'medical_documents', ?, 'inserted')`
+    );
+    for (const id of docIds) link.run(delivered, id);
+
+    // The QUIET CHECK: successful, and it produced nothing.
+    db.prepare(
+      `INSERT INTO integration_sync_events
+         (profile_id, source_id, at, ok, inserted, updated, unchanged)
+       VALUES (?, ?, ?, 1, 0, 0, 3)`
+    ).run(PROFILE_ID, PORTALS, at(1));
+    return delivered;
   });
 }
 
@@ -158,6 +231,35 @@ test("an attended source's runs — failures included — reach Review's Imports
   await expect(
     main.getByTestId("connected-sources").filter({ hasText: "Patient portals" })
   ).toHaveCount(0);
+});
+
+test("a portal run's feed row expands to the archives it delivered, and a run that produced nothing is not there (#2999)", async ({
+  page,
+}) => {
+  const eventId = seedDelivery();
+  await page.goto("/data?section=review");
+  const feed = page.getByRole("main").getByTestId("import-feed");
+  await expect(feed).toBeVisible();
+
+  const runRows = feed
+    .getByRole("listitem")
+    .filter({ hasText: "Patient portals" });
+  // ONE row, not two: the successful check that found nothing has left the feed.
+  await expect(runRows).toHaveCount(1);
+  await expect(feed).not.toContainText("nothing new");
+
+  // The drill-in promises DOCUMENTS — the word for what a portal run delivers — and
+  // promises the number it will actually LIST, before the fetch as well as after. The
+  // reported defect was watching that number fall from 2 to 0 on expand.
+  const drilldown = feed.getByTestId(`sync-rows-${eventId}`);
+  await expect(drilldown).toContainText("What this wrote — 2 documents");
+  await hydratedClick(page, drilldown.locator("summary"));
+  const list = feed.getByTestId(`sync-rows-list-${eventId}`);
+  await expect(list).toBeVisible();
+  for (const filename of DELIVERED) {
+    await expect(list).toContainText(filename);
+  }
+  await expect(drilldown).toContainText("What this wrote — 2 documents");
 });
 
 test("an attended source's page states the escalation policy's attended inverse", async ({

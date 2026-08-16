@@ -27,11 +27,6 @@ function sourceName(id: string): string {
   return getIntegration(id as IntegrationId)?.name ?? id;
 }
 
-function changedCount(entry: FeedEntry): number {
-  if (entry.stream !== "sync") return 0;
-  return (entry.event.inserted ?? 0) + (entry.event.updated ?? 0);
-}
-
 function ToneIcon({ tone }: { tone: FeedTone }) {
   switch (tone) {
     case "ok":
@@ -82,7 +77,11 @@ function FeedRow({
   const rawId = entry.stream === "sync" ? entry.event.id : null;
   const syncError =
     entry.stream === "sync" && !entry.event.ok ? entry.event.error : null;
-  const changed = changedCount(entry);
+  // The drill-in's promise, resolved by the QUERY from provenance (#1991/#1771) — never
+  // from the run's own split. This row used to pass `inserted + updated`, so every
+  // portal run promised "2 records" and rewrote itself to "0 records" the moment the
+  // fetch landed, because the run had recorded no provenance at all.
+  const drilldown = entry.stream === "sync" ? entry.drilldown : null;
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
@@ -164,9 +163,14 @@ function FeedRow({
           {syncError}
         </p>
       )}
-      {entry.stream === "sync" && changed > 0 && (
+      {entry.stream === "sync" && drilldown && (
         <div className="basis-full pl-7">
-          <SyncRowsDrilldown eventId={entry.event.id} count={changed} />
+          <SyncRowsDrilldown
+            eventId={entry.event.id}
+            count={drilldown.count}
+            remainder={drilldown.remainder}
+            noun={drilldown.noun}
+          />
         </div>
       )}
     </li>
