@@ -23,6 +23,7 @@ import { getServingsDuringFast } from "@/lib/queries/fasting";
 import { standsDownForFast } from "@/lib/fasting-standdown";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
+import { getDataset, toCsv } from "@/lib/export";
 
 function makeProfile(name: string, age?: number): number {
   const id = Number(
@@ -633,5 +634,47 @@ describe("the stand-down over real state (#2757)", () => {
     // never the ability to record what you ate.
     const outcome = logFoodServingCore(adult, "legumes", day);
     expect(outcome.kind).toBe("logged");
+  });
+});
+
+// ── The portable export (#465/#2129) ────────────────────────────────────────────
+//
+// Registering `fasts` in OWNED_TABLES makes the export-completeness binding ask the
+// question this PR had not answered, and the answer is that fasting rows travel. The
+// agreement test proves the DECISION was made; this proves the dataset's SQL actually
+// runs against the real schema and is profile-scoped, which nothing else executes.
+describe("the fasting log exports (#2756)", () => {
+  it("rows/page/count agree, are scoped, and the CSV carries the declared columns", () => {
+    const mine = makeProfile("Export Mine", 40);
+    const other = makeProfile("Export Other", 40);
+
+    const hour = 3_600_000;
+    const now = Date.now();
+    seedCompleted(mine, 30, 14);
+    startFast(mine, new Date(now - 2 * hour));
+    seedCompleted(other, 50, 40);
+
+    const ds = getDataset("fasts")!;
+    expect(ds.table).toBe("fasts");
+    expect(ds.deletable).not.toBe(false);
+
+    const rows = ds.rows(mine);
+    expect(rows).toHaveLength(2);
+    expect(ds.count(mine)).toBe(rows.length);
+    expect(ds.page(mine, 25, 0)).toEqual(rows);
+    // Newest-started first, and the ACTIVE fast (no end) exports with a null `ended_at`
+    // rather than being dropped — an unfinished fast is still on the record.
+    expect(rows[0].ended_at).toBeNull();
+    expect(rows[1].ended_at).not.toBeNull();
+
+    // Scoped: the other profile's fast is not in this profile's export, in either
+    // direction, and the write-stamp column stays out of the bundle.
+    expect(ds.rows(other)).toHaveLength(1);
+    for (const r of [...rows, ...ds.rows(other)])
+      expect(r).not.toHaveProperty("end_written_at");
+
+    const csv = toCsv(ds.columns, rows).trimEnd().split("\n");
+    expect(csv[0]).toBe("started_at,ended_at,note,created_at");
+    expect(csv).toHaveLength(rows.length + 1);
   });
 });

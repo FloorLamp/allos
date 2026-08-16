@@ -159,6 +159,18 @@ export const OWNED_TABLES = [
   // Directly owned; nothing FKs into it, so a delete is a plain row delete and
   // deleteProfile clears it by profile_id.
   "substance_daily_totals",
+  // The fasting log (#2756): one row per claimed fast — an interval the user STARTS and
+  // ENDS explicitly (never inferred), plus an optional note. Directly owned; nothing FKs
+  // into it, so a delete is a plain row delete and deleteProfile clears it by profile_id.
+  //
+  // Its `profile_id` FK does declare ON DELETE CASCADE, and that is NOT what clears it:
+  // deleteProfile sweeps with `PRAGMA foreign_keys = OFF` (#729), so the cascade never
+  // fires on the one path that deletes a profile. The cascade is a fact about the SCHEMA;
+  // membership in THIS list is the fact about the SYSTEM. Without the entry the fasting
+  // rows outlived their profile as orphans (`foreign_key_check` named them by rowid) —
+  // this module's header charge verbatim — and every `fasts` statement sat outside
+  // OWNED_RE, so the profile-scoping leak scan never asked them about profile_id.
+  "fasts",
   // Day-by-day symptom log (#799). Directly owned; UNIQUE(profile_id, date, symptom)
   // keeps one row per symptom-day (worst-severity semantics).
   "symptom_logs",
