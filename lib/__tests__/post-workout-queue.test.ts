@@ -11,6 +11,7 @@ import {
   pendingPostWorkoutDispatchKeys,
   serializedPostWorkoutProfiles,
   POST_WORKOUT_DISPATCH_DELAY_MS,
+  POST_WORKOUT_DISPATCH_TIMEOUT_MS,
 } from "../notifications/post-workout-queue";
 import { isCompletedSessionRow } from "../workout-presence";
 
@@ -104,8 +105,10 @@ describe("two dispatches armed together (#3021)", () => {
     expect(run).toHaveBeenCalledTimes(1);
 
     // Nothing about the delay was widened: the second run is waiting on the FIRST,
-    // not on the clock. Time passing does not start it.
-    await vi.advanceTimersByTimeAsync(600_000);
+    // not on the clock. Time passing does not start it — up to the deadline the
+    // wait is bounded by (see "a dispatch that never settles" below), which is two
+    // orders of magnitude past a healthy send.
+    await vi.advanceTimersByTimeAsync(POST_WORKOUT_DISPATCH_TIMEOUT_MS - 1);
     expect(started).toEqual([47]);
 
     // The first delivers and stamps; only now does the second run — and reads it.
@@ -162,6 +165,77 @@ describe("two dispatches armed together (#3021)", () => {
     releases[0]();
     await flush;
     expect(flushed).toBe(true);
+  });
+});
+
+// ── A run that never settles cannot hold the queue open ──────────────────────
+//
+// The serialization above makes one run's latency the next run's delay, and a
+// dispatch has no natural ceiling of its own: the channels fan out under
+// Promise.all, so one push endpoint that accepts the connection and never answers
+// is the whole run's latency. Unbounded, a genuinely SEPARATE session would never
+// be announced at all, and the tick's exit drain would never return — silence,
+// which is the harm this tier exists to prevent, traded for avoiding a duplicate.
+describe("a dispatch that never settles", () => {
+  function hangingRunner(hangOn: number) {
+    const started: number[] = [];
+    const run = vi.fn(async (_profileId: number, activityId: number) => {
+      started.push(activityId);
+      // No resolve, ever: the shape of a send that got a connection and no answer.
+      if (activityId === hangOn) await new Promise<void>(() => {});
+    });
+    return { run, started };
+  }
+
+  it("does not stop the NEXT activity from ever dispatching", async () => {
+    const { run, started } = hangingRunner(47);
+    // Two genuinely separate sessions — not two rows of one ride. The second one
+    // is owed its own message.
+    queuePostWorkoutDispatch(1, 47, 60_000, run);
+    queuePostWorkoutDispatch(1, 99, 60_000, run);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(started).toEqual([47]);
+
+    // Six hours of clock. Unbounded, row 99 is still waiting on a run that will
+    // never finish, and no amount of time releases it.
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+
+    // THE ASSERTION. The stuck run's hold was given up, and 99 spoke.
+    expect(started).toEqual([47, 99]);
+    expect(serializedPostWorkoutProfiles()).toEqual([]);
+  });
+
+  it("gives the stuck run its full deadline first — the window is not shortened", async () => {
+    // The bound is a deadline, not a shorter serialization window: a slow-but-
+    // working dispatch is never cut off early, and the twin behind it still waits.
+    const { run, started } = hangingRunner(47);
+    queuePostWorkoutDispatch(1, 47, 60_000, run);
+    queuePostWorkoutDispatch(1, 48, 60_000, run);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(POST_WORKOUT_DISPATCH_TIMEOUT_MS - 1);
+    expect(started).toEqual([47]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(started).toEqual([47, 48]);
+  });
+
+  it("the tick's exit drain still returns", async () => {
+    // flushPostWorkoutDispatches() runs before the notify process exits. If it can
+    // hang, the tick hangs — and the hourly backstop, the thing that makes a
+    // dropped dispatch survivable, stops running at all.
+    const { run } = hangingRunner(47);
+    queuePostWorkoutDispatch(1, 47, 60_000, run);
+
+    let flushed = false;
+    const flush = flushPostWorkoutDispatches().then(() => {
+      flushed = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flushed).toBe(false); // it is genuinely waiting on the hung run
+
+    // An hour of clock. Unbounded, this is still false and the tick never exits.
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    expect(flushed).toBe(true);
+    await flush;
   });
 });
 

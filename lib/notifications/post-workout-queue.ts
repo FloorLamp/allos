@@ -46,22 +46,56 @@
 // apart. #2570's own two sends were fifteen minutes apart, from two pushes, and
 // that gap is the only reason a read-then-act guard held there.
 //
-// So the runs for ONE PROFILE go through a promise chain and can never
-// interleave — the same serialization flushPostWorkoutDispatches() already gives
-// the tick path (`for … await e.run()`), now applied to the timer path an ingest
-// arms in the web process. Different profiles keep their own chains: they share
-// no marker and have no reason to wait on each other.
+// So the runs THIS QUEUE arms for one profile go through a promise chain and
+// cannot interleave with each other — the same serialization
+// flushPostWorkoutDispatches() already gives the tick path (`for … await
+// e.run()`), now applied to the timer path an ingest arms in the web process.
+// Different profiles keep their own chains: they share no marker and have no
+// reason to wait on each other.
 //
-// This is in-process only, and that is the honest limit. A web-process timer and
-// the notify tick are two PROCESSES; nothing here spans them, so the documented
-// at-least-once posture stands — a rare duplicate is still possible across the
-// two, and closing that needs a DB-level claim, which is out of scope. What is
-// gone is the SAME-PUSH race, which was not rare: it was every multi-row ingest.
+// THE RESIDUAL, stated rather than implied away (#3021 asked for this). The chain
+// serializes what goes THROUGH it, and two callers do not:
+//
+//   - Another process. A web-process timer and the notify tick are separate
+//     processes and nothing here spans them.
+//   - The dispatch core called DIRECTLY, in this same process.
+//     `runPostWorkoutForActivity` is the shared core, and the tick's flagship
+//     (`runPostWorkoutFinish` → scripts/notify.ts) calls it without the queue —
+//     inside the same tickProfile that ran `syncIntegrations`, which is what arms
+//     these timers. A dispatch held on a slow send while the flagship runs the
+//     twin row is two sends with both markers stamped, in one process. It is
+//     narrower than the same-push race (it needs the two paths to overlap, not
+//     just two rows in one push) and it is not new, but it is not closed.
+//
+// So the documented at-least-once posture stands: a rare duplicate is still
+// possible, and closing it needs a DB-level claim over the marker, which is out
+// of scope. What is gone is the SAME-PUSH race, which was not rare: it was every
+// multi-row ingest.
 //
 // The alternative — stamping the marker before sending — was rejected: it would
 // close the window and break the property the run() comment below depends on
 // (stamp only on successful delivery), trading a duplicate contact for a lost
 // one.
+//
+// ── Why a queued run is BOUNDED ────────────────────────────────────────────
+//
+// Serializing makes one run's latency the next run's delay, and a dispatch has no
+// natural ceiling: `dispatch()` fans the channels under Promise.all, so the
+// slowest channel is the whole run's latency, and a push endpoint that accepts
+// the connection and then never answers is unbounded (web-push only arms a socket
+// timeout when one is passed — see PUSH_SEND_TIMEOUT_MS in ./push, which is the
+// same bound one layer down, and a socket timeout is not a whole-response
+// timeout).
+//
+// Unbounded, one stuck send would mean the NEXT activity never dispatches at all
+// and flushPostWorkoutDispatches() never returns, hanging the notify tick's exit
+// drain. That trades a duplicate for silence, and silence is the harm this tier
+// exists to prevent. So the queued task races a timeout: the slot is released,
+// the chain moves on, and the abandoned run is left to finish or not. If it never
+// delivered it never stamped, so the hourly tick's backstop re-delivers; if it
+// delivers late it stamped, and the marker keeps the backstop quiet. Losing the
+// ordering guarantee for a run that has already hung this long is the right trade
+// — the alternative is that everything after it is lost.
 
 import { createLogger } from "../log";
 import { clockOverride } from "../clock";
@@ -69,6 +103,12 @@ import { clockOverride } from "../clock";
 const log = createLogger("notify");
 
 export const POST_WORKOUT_DISPATCH_DELAY_MS = 60_000;
+
+// How long ONE queued dispatch may hold the chain before the queue gives up on it
+// (see the header). Generous against a healthy send — a Telegram call is capped at
+// 30s, Home Assistant at 10s, a push send at PUSH_SEND_TIMEOUT_MS — so this only
+// ever fires on something genuinely stuck, never on a slow-but-working channel.
+export const POST_WORKOUT_DISPATCH_TIMEOUT_MS = 120_000;
 
 type DispatchRunner = (profileId: number, activityId: number) => Promise<void>;
 
@@ -101,6 +141,24 @@ function serializeForProfile(
     if (chains.get(profileId) === next) chains.delete(profileId);
   });
   return next;
+}
+
+// Give up waiting on `task` after `ms`, so a dispatch that never settles cannot hold
+// the profile's chain (or the tick's exit drain) forever. The task itself keeps
+// running — nothing here can cancel a send in flight — but it stops being anyone's
+// blocker. Promise.race attaches a handler to `task`, so a late rejection is still
+// handled and never surfaces as an unhandled rejection.
+function withDispatchTimeout(task: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const bound = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`post-workout dispatch exceeded ${ms}ms`)),
+      ms
+    );
+    // Never hold the process open just to enforce a deadline.
+    timer.unref?.();
+  });
+  return Promise.race([task, bound]).finally(() => clearTimeout(timer));
 }
 
 // Introspection for tests: profiles with a run queued or in flight.
@@ -147,7 +205,12 @@ export function queuePostWorkoutDispatch(
     // second run reads a marker the first has already stamped and declines.
     return serializeForProfile(profileId, async () => {
       try {
-        await runner(profileId, activityId);
+        // Bounded (see the header): a dispatch that never settles must not take the
+        // next activity's dispatch — or the tick's exit drain — down with it.
+        await withDispatchTimeout(
+          runner(profileId, activityId),
+          POST_WORKOUT_DISPATCH_TIMEOUT_MS
+        );
       } catch (e) {
         // Best-effort: the tick backstop re-delivers on its next run (the one-shot
         // marker is stamped only on successful delivery, so nothing is lost).
