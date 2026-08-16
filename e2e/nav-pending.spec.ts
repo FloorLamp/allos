@@ -487,7 +487,16 @@ test("the activity ledger's ‹older› shows the step, and five taps dispatch o
 
   nav.release();
   await expect(page).not.toHaveURL(new RegExp(`${startedAt}$`));
-  await expect(page.getByTestId("training-activity-page")).toBeVisible();
+  // The step landed on the neighbouring RECORD. Which shape that record has is
+  // not this test's business: the ledger walks every activity in (date, id)
+  // order, and `/training/activity/[id]` redirects a cycling one to its bespoke
+  // ride page — so the seeded neighbour may be either, and pinning one would be
+  // asserting the seed rather than the step.
+  await expect(
+    page
+      .getByTestId("training-activity-page")
+      .or(page.getByTestId("ride-detail"))
+  ).toBeVisible();
   expect(
     nav.navRequests(),
     "a repeat tap on a pending ledger step must be absorbed, not dispatched"
