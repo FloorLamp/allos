@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Browser, type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { expectNoClippedContent } from "./helpers";
+import { expectNoClippedContent, settledBoxes } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_NOWSTRIP,
@@ -114,11 +114,11 @@ test("the two-card band STACKS on a phone and goes two-up from `sm` (#1547)", as
     // Indexed rather than a leading-match shortcut: this strip is THIS fixture's
     // own surface and its count is pinned above, so both boxes are named explicitly.
     const [top, bottom] = [cards.nth(0), cards.nth(1)];
-    const topBox = await top.boundingBox();
-    const bottomBox = await bottom.boundingBox();
-    expect(topBox).not.toBeNull();
-    expect(bottomBox).not.toBeNull();
-    if (!topBox || !bottomBox) throw new Error("no bounding boxes");
+    const [topBox, bottomBox, stripBox] = await settledBoxes([
+      top,
+      bottom,
+      strip,
+    ]);
 
     // Stacked: the second card starts below the first's midpoint (a tolerant form of
     // "on its own row" that survives a few pixels of gap drift), and both share the
@@ -129,8 +129,6 @@ test("the two-card band STACKS on a phone and goes two-up from `sm` (#1547)", as
 
     // And that width is the FULL column, not half of it — the actual complaint. The
     // strip is a sibling of the grid below, so the card matches the section's width.
-    const stripBox = await strip.boundingBox();
-    if (!stripBox) throw new Error("no strip box");
     expect(topBox.width).toBeGreaterThan(stripBox.width * 0.9);
   } finally {
     await phone.context().close();
@@ -147,9 +145,10 @@ test("the two-card band STACKS on a phone and goes two-up from `sm` (#1547)", as
     const strip = desktop.getByTestId("now-strip");
     await expect(strip).toHaveAttribute("data-count", "2");
     const cards = strip.locator("[data-testid^='now-strip-card-']");
-    const leftBox = await cards.nth(0).boundingBox();
-    const rightBox = await cards.nth(1).boundingBox();
-    if (!leftBox || !rightBox) throw new Error("no bounding boxes");
+    const [leftBox, rightBox] = await settledBoxes([
+      cards.nth(0),
+      cards.nth(1),
+    ]);
     expect(rightBox.x).toBeGreaterThan(leftBox.x + leftBox.width / 2);
     expect(Math.abs(rightBox.y - leftBox.y)).toBeLessThan(2);
   } finally {

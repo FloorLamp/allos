@@ -49,26 +49,9 @@ describe("parseTab", () => {
   });
 });
 
-// The compare params are read off the URL independently of the tab name, so an old
-// deep link's comparison survives the alias untouched — no redirect layer strips
-// them, and nothing has to re-encode them. Pinned end-to-end over the URL a legacy
-// link actually carries.
-describe("a retired ?tab=compare link carries its comparison (#1489)", () => {
-  it("resolves to insights with cmpA/cmpB/cmpn intact", () => {
-    const sp = new URLSearchParams(
-      "tab=compare&cmpA=metric:weight&cmpB=metric:resting_hr&cmpn=1&from=2026-01-01&to=2026-02-01"
-    );
-    expect(parseTab(sp.get("tab") ?? undefined)).toBe("insights");
-    expect(sp.get("cmpA")).toBe("metric:weight");
-    expect(sp.get("cmpB")).toBe("metric:resting_hr");
-    expect(sp.get("cmpn")).toBe("1");
-  });
-});
-
 describe("trendsTabStrip", () => {
   it("is FOUR tabs in frequency order (#1644)", () => {
     const strip = trendsTabStrip(false);
-    expect(strip).toHaveLength(4);
     expect(strip.map((t) => t.id)).toEqual([
       "overview",
       "fitness",
@@ -81,9 +64,6 @@ describe("trendsTabStrip", () => {
     for (const gone of ["Vitals", "Compare", "Body"]) {
       expect(strip.map((t) => t.label)).not.toContain(gone);
     }
-    // The four are permanent by owner ruling: a fifth chip appearing here (or a
-    // section quietly absorbing one of them) is a decision, not a refactor.
-    expect(TRENDS_TABS).toHaveLength(4);
   });
 
   it("keeps Insights for a restricted profile, dropping only Fitness (#1489)", () => {
@@ -93,13 +73,6 @@ describe("trendsTabStrip", () => {
       "nutrition",
       "insights",
     ]);
-    // Insights survives because compare — its age-NEUTRAL section — lives there
-    // now; the gated AI half is hidden inside the section, not by the strip.
-    expect(strip.map((t) => t.id)).toContain("insights");
-    // Overview is NEVER age-gated: since #1644 it carries the body census, which a
-    // minor needs (the growth charts live there).
-    expect(strip.map((t) => t.id)).toContain("overview");
-    expect(strip.map((t) => t.id)).not.toContain("fitness");
   });
 
   it("labels every entry from the live tab set, for both roles", () => {

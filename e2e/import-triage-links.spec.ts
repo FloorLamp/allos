@@ -43,7 +43,6 @@ test.describe("Import triage: the confidence card links to the row it names", ()
     );
     // …and exactly one row is selected: the one the label named.
     const focused = page.locator('tr[data-focused="true"]');
-    await expect(focused).toHaveCount(1);
     await expect(focused).toBeVisible();
     await expect(focused).toContainText("E2E Faded Marker");
     // "Highlighted" has to mean something a person could see: on screen, and
@@ -91,7 +90,6 @@ test.describe("Import triage: the confidence card links to the row it names", ()
       "page"
     );
     const focused = page.locator('li[data-focused="true"]');
-    await expect(focused).toHaveCount(1);
     await expect(focused).toBeVisible();
     await expect(focused).toContainText("E2E Uncertain Condition");
     await expect(focused).toBeInViewport();

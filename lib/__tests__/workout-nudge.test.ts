@@ -645,7 +645,6 @@ describe("the workout behind list is an allowlist of scope kinds (#2017)", () =>
     // A new scope kind cannot join the workout message by omission: it has to be
     // written down here, with why, or the test fails.
     for (const kind of FREQUENCY_SCOPE_KINDS) {
-      expect(WORKOUT_TARGET_SCOPES[kind]).toBeDefined();
       expect(WORKOUT_TARGET_SCOPES[kind].reason.length).toBeGreaterThan(0);
     }
     expect(Object.keys(WORKOUT_TARGET_SCOPES).sort()).toEqual(

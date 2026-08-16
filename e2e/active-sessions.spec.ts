@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledBoxes } from "./helpers";
 
 // The Active sessions list on Settings → Account & security (#1451.A).
 //
@@ -50,11 +50,11 @@ test.describe("Active sessions list (#1451.A)", () => {
     const bulk = card.getByRole("button", { name: "Sign out everywhere else" });
     const rows = card.getByTestId("session-row");
     if ((await bulk.count()) > 0) {
-      const bulkBox = await bulk.boundingBox();
-      const firstRowBox = await rows.first().boundingBox(); // first-ok: comparing the bulk control against the topmost row is the assertion
-      expect(bulkBox).not.toBeNull();
-      expect(firstRowBox).not.toBeNull();
-      expect(bulkBox!.y).toBeLessThan(firstRowBox!.y);
+      const [bulkBox, firstRowBox] = await settledBoxes([
+        bulk,
+        rows.first(), // first-ok: comparing the bulk control against the topmost row is the assertion
+      ]);
+      expect(bulkBox.y).toBeLessThan(firstRowBox.y);
     }
 
     // Collapse rule: at most five rows are shown until "Show all N" is used. Asserted
