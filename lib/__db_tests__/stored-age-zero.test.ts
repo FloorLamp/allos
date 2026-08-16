@@ -16,7 +16,7 @@
 // two answers coinciding IS the defect, so the assertions are only meaningful together.
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import {
   adoptProfileFromExtraction,
   getProfileAge,
@@ -29,6 +29,8 @@ import { isFoodLoggingRelevant, isMinor, lifeStage } from "@/lib/life-stage";
 import { fastAdultOnlyRefusal, fastingAvailable } from "@/lib/fast-write";
 import { adultOnlyRefusal } from "@/lib/instrument-records";
 import { getRecordsSpecialtyRelevance } from "@/lib/queries/nav-relevance";
+import { reconcileFlags } from "@/lib/queries/medical/flags";
+import { reconcileFlagsIfCanonicalChanged } from "@/lib/migrations/boot-tasks";
 
 function newProfile(name: string): number {
   return Number(
@@ -187,5 +189,132 @@ describe("document adoption can record an age of 0 (#2992)", () => {
     const out = adoptProfileFromExtraction(p, meta(42));
     expect(out.age).toBeNull();
     expect(getStoredAge(p)).toBe(0);
+  });
+});
+
+// ── The boot reconcile must agree with the request-time one (#2992 R1) ──────────
+//
+// `profile_settings.age` has exactly TWO readers in the repo, and they are found by
+// grepping the KEY rather than any identifier — what makes something a reader is the
+// column it reads, not what it calls itself:
+//
+//   lib/settings/profile-attrs.ts   getStoredAge   (request path)
+//   lib/migrations/boot-tasks.ts    readAge        (boot path, an inline copy that
+//                                                   cannot import the first — bootTasks
+//                                                   runs version-agnostically and needs
+//                                                   the legacy global fallback)
+//
+// Both feed the SAME pure computeFlagReconciliation, under a comment promising "the
+// boot-time reconcile and the request-time one can't drift". Fixing the bound in only
+// one of them is WORSE than the original defect: while both readers were equally blind
+// a newborn simply kept its adult-band flags, but a half-fixed pair has request-time
+// clearing an adult ALP/BP claim off an infant's row and the next boot reconcile
+// writing it straight back — the stored `flag` column becomes a function of which pass
+// ran last. #2794's whole purpose is clearing adult-band BP claims off pediatric rows,
+// so it must be able to reach a newborn.
+describe("boot and request flag reconciles agree for a stored age of 0 (#2992 R1)", () => {
+  function flagOf(id: number): string | null {
+    return (
+      (
+        db.prepare("SELECT flag FROM medical_records WHERE id = ?").get(id) as
+          { flag: string | null } | undefined
+      )?.flag ?? null
+    );
+  }
+
+  // Force the once-per-signature-change gate to fire, the way a release that moves
+  // canonicalFlagsSignature() (or the first boot after a restored backup) does.
+  function runBootReconcile() {
+    db.prepare("DELETE FROM settings WHERE key = 'canonical_flags_sig'").run();
+    reconcileFlagsIfCanonicalChanged(db);
+  }
+
+  // A profile with a stored age and NO birthdate, carrying the two adult-band claims
+  // the boot pass exists to clear: an ALP of 300 U/L (normal in the pediatric band,
+  // "high" against the adult 40–129) and a diastolic of 54 mmHg ("low" against the
+  // adult 60–80, but a percentile question below 13 per #2794).
+  function agedProfileWithAdultBandFlags(name: string, age: number) {
+    const p = newProfile(name);
+    setStoredAge(p, age);
+    setProfileSetting(p, "sex", "female");
+    const date = today(p);
+    const insert = (
+      canonical: string,
+      value: number,
+      unit: string,
+      flag: string
+    ) =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO medical_records
+               (profile_id, date, category, name, value, unit, canonical_name, value_num, flag)
+             VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, ?)`
+          )
+          .run(p, date, canonical, String(value), unit, canonical, value, flag)
+          .lastInsertRowid
+      );
+    return {
+      p,
+      alp: insert("Alkaline Phosphatase", 300, "U/L", "high"),
+      bp: insert("Blood Pressure Diastolic", 54, "mmHg", "low"),
+    };
+  }
+
+  it("the boot pass does not re-write flags the request pass just cleared", () => {
+    const { p, alp, bp } = agedProfileWithAdultBandFlags(
+      "saz newborn flags",
+      0
+    );
+
+    reconcileFlags(p);
+    const afterRequest = { alp: flagOf(alp), bp: flagOf(bp) };
+
+    runBootReconcile();
+    const afterBoot = { alp: flagOf(alp), bp: flagOf(bp) };
+
+    // THE ASSERTION THAT MATTERS: agreement. Stated as a comparison rather than as two
+    // literals so it keeps holding if the clinically-correct answer for an infant is
+    // ever revised — what must never happen is the two passes disagreeing.
+    expect(afterBoot).toEqual(afterRequest);
+
+    // And concretely, for this newborn: neither adult-band claim survives either pass.
+    // `pediatricBpContext(0)` is null — the pediatric regime declines below 1 y and
+    // there is no normative table beneath it — so an infant's BP gets NO judgment
+    // rather than an adult-band one. That is the correct answer absent infant
+    // normative data, and it is deliberate, not a regression.
+    expect(afterRequest).toEqual({ alp: null, bp: null });
+  });
+
+  it("still agrees for a toddler, the case that already worked", () => {
+    // Age 2 cleared the old `n > 0` bound in BOTH readers, so this passed before
+    // #2992 and must keep passing — the fix must not disturb the non-zero path.
+    const { p, alp, bp } = agedProfileWithAdultBandFlags(
+      "saz toddler flags",
+      2
+    );
+
+    reconcileFlags(p);
+    const afterRequest = { alp: flagOf(alp), bp: flagOf(bp) };
+    runBootReconcile();
+    expect({ alp: flagOf(alp), bp: flagOf(bp) }).toEqual(afterRequest);
+  });
+
+  it("still agrees when the age is genuinely unknown", () => {
+    // The control for the whole file: with nothing recorded, both readers answer null
+    // and the adult bands legitimately apply. Proves the agreement assertion above is
+    // not vacuously true of every profile.
+    const { p, alp, bp } = agedProfileWithAdultBandFlags(
+      "saz unknown flags",
+      0
+    );
+    setProfileSetting(p, "age", "");
+
+    reconcileFlags(p);
+    const afterRequest = { alp: flagOf(alp), bp: flagOf(bp) };
+    runBootReconcile();
+    expect({ alp: flagOf(alp), bp: flagOf(bp) }).toEqual(afterRequest);
+    // Unknown age keeps the adult-band ALP claim — the positive-match-only policy.
+    expect(afterRequest.alp).toBe("high");
   });
 });

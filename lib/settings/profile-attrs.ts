@@ -303,6 +303,15 @@ export function setProfileBirthdate(profileId: number, date: string | null) {
 // Junk that is genuinely indistinguishable from 0 is rejected at the WRITE boundary
 // (normalizeAge, and the onboarding/settings validators) where the provenance is known,
 // rather than here where it is not.
+//
+// THIS READ HAS A TWIN: `readAge` in lib/migrations/boot-tasks.ts, which cannot import
+// this one (bootTasks runs version-agnostically against schemas that predate the
+// settings split, so it reads profile_settings with a legacy global fallback). The two
+// feed the SAME pure computeFlagReconciliation, so they must agree exactly — a
+// disagreement makes a row's stored `flag` depend on which pass ran last. #2992 changed
+// the bound here and missed the twin; both are now kept in sync deliberately, and
+// lib/__db_tests__/stored-age-zero.test.ts asserts the two passes agree for a stored 0.
+// Change one, change the other.
 export function getStoredAge(profileId: number): number | null {
   const v = getProfileSetting(profileId, "age")?.trim();
   if (!v) return null;
