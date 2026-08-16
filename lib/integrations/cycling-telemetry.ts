@@ -94,28 +94,29 @@ function resolveActivity(profileId: number, externalId: string): number | null {
   return row?.id ?? null;
 }
 
-export function hasCyclingStreamDetails(
+// Has the source ALREADY ANSWERED about this activity's streams? The row is the
+// answer, whether or not it carries any: an activity the source recorded totals
+// for ("200 OK, no streams" — an indoor session, a phone-logged walk) is a
+// settled question, and re-asking buys the same empty payload at two requests a
+// time. The automatic sync must ask each activity once; the USER-triggered
+// backfill deliberately re-asks the empty ones, which is where a ride made
+// public again or an upload Strava has since processed gets picked up
+// (lib/integrations/backfill-outcome.ts explains why no give-up marker is
+// stored there).
+export function hasTelemetryAnswer(
   profileId: number,
   externalId: string,
   source: string
 ): boolean {
-  const row = db
+  return !!db
     .prepare(
-      `SELECT t.streams_json
+      `SELECT 1
          FROM activity_telemetry t
          JOIN activities a
            ON a.id = t.activity_id AND a.profile_id = t.profile_id
         WHERE t.profile_id = ? AND a.external_id = ? AND t.source = ?`
     )
-    .get(profileId, externalId, source) as
-    { streams_json: string | null } | undefined;
-  if (!row?.streams_json) return false;
-  try {
-    const streams = JSON.parse(row.streams_json) as Record<string, unknown>;
-    return Object.keys(streams).length > 0;
-  } catch {
-    return false;
-  }
+    .get(profileId, externalId, source);
 }
 
 export function upsertCyclingTelemetry(

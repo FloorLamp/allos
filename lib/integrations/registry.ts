@@ -213,9 +213,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
     },
     backfills: [
       {
+        // The id is a PERSISTED job key (integration_backfill_jobs rows carry
+        // it), so it keeps the name it was born with even though the job now
+        // covers every session, not only rides (#2870 step 4). The copy below
+        // is what people read, and that says what it actually does.
         id: "ride-details",
-        label: "Ride detail backfill",
-        itemNoun: "ride",
+        label: "Session detail backfill",
+        itemNoun: "session",
       },
     ],
   },
