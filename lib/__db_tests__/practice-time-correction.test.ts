@@ -46,7 +46,12 @@ import {
   practiceNudgeTimingNow,
 } from "@/lib/notifications/practices";
 import { now as clockNow } from "@/lib/clock";
-import { shiftDateStr, zonedDateParts, zonedWallTimeToUtc } from "@/lib/date";
+import {
+  shiftDateStr,
+  utcSqlString,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
 import {
   getPracticeCorrectionBursts,
   getRecentPracticeTaps,
@@ -56,7 +61,21 @@ import {
 import { restampPracticeLogsCore } from "@/lib/practice-log";
 import { inferPracticeSchedule } from "@/lib/queries";
 import { practiceIdentity } from "@/lib/practice";
-import { PRACTICE_TIME_PREFIXES } from "@/lib/notifications/correction-rows";
+import {
+  correctableBursts,
+  correctionActions,
+  correctionOffScopeStatement,
+  correctionPickerActions,
+  PRACTICE_TIME_PREFIXES,
+} from "@/lib/notifications/correction-rows";
+import {
+  chipTarget,
+  offeredHours,
+  parseCorrectionAtToken,
+  parseCorrectionChipToken,
+  pickerHourOptions,
+  statedHourInstant,
+} from "@/lib/correction-time";
 import {
   messagePointerIdAt,
   recordMessagePointer,
@@ -681,5 +700,146 @@ describe("the callback dispatcher routes the practice prefixes", () => {
     expect(String(answer.mock.calls.at(-1)?.[1] ?? "")).toMatch(
       /Couldn't find/
     );
+  });
+});
+
+// ── THE RENDER HALF OF THE CROSS-MIDNIGHT REFUSAL (#2875) ────────────────────
+//
+// The refusal above is the WRITE half, and on its own it is a dead affordance: the
+// chips and the picker are the shared, domain-blind ones, and THE DAY RULE they are
+// built on (lib/correction-time.ts) resolves an offered hour LATER than the current
+// local time to YESTERDAY. So every offer that rule re-dated was a button this core is
+// guaranteed to refuse — at 00:20 local BOTH chips ("23:50 · −30m", "23:20 · −1h") and
+// all eleven picker hours, which is 100% of the affordance dead in the hour the stored
+// time is most wrong; on an ordinary morning still 4 dead picker buttons out of 11.
+//
+// This walks the OFFERED set through the REAL write core at every hour of the day. It
+// is the round trip the two halves have to agree on, and only a keyboard bounded by the
+// burst's own local day passes it.
+describe("the keyboard never offers what the write core refuses (#2875)", () => {
+  const TZ = "Europe/Berlin";
+  const DAY = "2026-06-17"; // CEST, UTC+2 — the review's own reproduction day
+
+  function atLocal(hhmm: string, date = DAY): Date {
+    return zonedWallTimeToUtc(TZ, date, hhmm)!;
+  }
+
+  // A tap already on the ledger: its `created_at` is the instant its own day + time
+  // compose to, which is what a real one-tap write produces.
+  function seedTap(pid: number, hhmm: string, date = DAY): number {
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, time, created_at)
+         VALUES (?, 'Sauna', ?, ?, ?)`
+    ).run(pid, date, hhmm, utcSqlString(atLocal(hhmm, date)));
+    return lastLogId(pid);
+  }
+
+  // Every offer the practice keyboard actually carries at `now`, paired with the
+  // `resolve` the matching handler would hand the write core.
+  function offeredWrites(pid: number, now: Date) {
+    const bursts = getPracticeCorrectionBursts(pid, now);
+    const out: { label: string; resolve: Parameters<typeof restampPracticeLogsCore>[2]; fromId: number }[] = [];
+    for (const a of correctionActions(PRACTICE_TIME_PREFIXES, pid, bursts, TZ, now)) {
+      const chip = parseCorrectionChipToken(a.data, PRACTICE_TIME_PREFIXES.chip);
+      if (chip)
+        out.push({
+          label: a.label,
+          fromId: chip.fromId,
+          resolve: (row) => chipTarget(row, chip.minutesBack, now),
+        });
+    }
+    for (const burst of bursts) {
+      for (const a of correctionPickerActions(
+        PRACTICE_TIME_PREFIXES,
+        pid,
+        burst,
+        now,
+        TZ
+      )) {
+        const parsed = parseCorrectionAtToken(a.data, PRACTICE_TIME_PREFIXES.at);
+        if (parsed?.step.kind !== "at") continue;
+        const instant = statedHourInstant(parsed.step.hhmm, now, TZ);
+        out.push({
+          label: parsed.step.hhmm,
+          fromId: burst.fromId,
+          resolve: () => instant,
+        });
+      }
+    }
+    return out;
+  }
+
+  it("every offered chip and hour is one the core accepts, at every hour of the day", () => {
+    const pid = makeProfile("render-half");
+    for (const h of Array.from({ length: 24 }, (_, i) => i)) {
+      const hhmm = `${String(h).padStart(2, "0")}:20`;
+      const id = seedTap(pid, hhmm);
+      const now = new Date(atLocal(hhmm).getTime() + 5 * 60_000);
+      for (const offer of offeredWrites(pid, now)) {
+        const outcome = restampPracticeLogsCore(pid, offer.fromId, offer.resolve);
+        expect(outcome.kind, `${hhmm} local → "${offer.label}"`).toBe("restamped");
+        expect(storedDate(id), `${hhmm} local → "${offer.label}"`).toBe(DAY);
+        // Put the row back so the next offer starts from the same keyboard.
+        db.prepare(
+          "UPDATE practice_logs SET time = ?, edited = 0 WHERE id = ?"
+        ).run(hhmm, id);
+      }
+      db.prepare("DELETE FROM practice_logs WHERE id = ?").run(id);
+    }
+  });
+
+  it("draws no keyboard at all in the hour after local midnight, and says why", () => {
+    const pid = makeProfile("after-midnight");
+    seedTap(pid, "00:20");
+    const now = new Date(atLocal("00:25").getTime());
+    const bursts = getPracticeCorrectionBursts(pid, now);
+    expect(bursts).toHaveLength(1);
+
+    const { shown, offScope } = correctableBursts(
+      PRACTICE_TIME_PREFIXES,
+      bursts,
+      now,
+      TZ
+    );
+    expect(shown).toEqual([]);
+    expect(offScope).toHaveLength(1);
+    expect(correctionActions(PRACTICE_TIME_PREFIXES, pid, bursts, TZ, now)).toEqual([]);
+    expect(correctionOffScopeStatement(offScope, TZ)).toBe(
+      "🕐 Sauna — moving this would change its day — correct it in the app"
+    );
+  });
+
+  it("keeps the ordinary morning's hours and drops exactly last night's four", () => {
+    // The review's second reproduction: at 08:00 local the domain-blind picker offered
+    // eleven hours and the core refused four of them — 23:00 back to 20:00, which THE
+    // DAY RULE resolves onto yesterday.
+    const pid = makeProfile("ordinary-morning");
+    seedTap(pid, "08:00");
+    const now = new Date(atLocal("08:25").getTime());
+    const [burst] = getPracticeCorrectionBursts(pid, now);
+    expect(pickerHourOptions(now, TZ)).toHaveLength(11);
+    // Read off the KEYBOARD the practice picker actually renders, not off the helper.
+    expect(
+      correctionPickerActions(PRACTICE_TIME_PREFIXES, pid, burst, now, TZ).map(
+        (a) => a.label
+      )
+    ).toEqual([
+      "06:00",
+      "05:00",
+      "04:00",
+      "03:00",
+      "02:00",
+      "01:00",
+      "00:00",
+      "↩︎ Back",
+    ]);
+    expect(offeredHours(burst, now, TZ, true)).toHaveLength(7);
+    // And the chips — which count back from the STORED 08:00, not from now — are
+    // untouched by the day bound.
+    expect(
+      correctionActions(PRACTICE_TIME_PREFIXES, pid, [burst], TZ, now).map(
+        (a) => a.label
+      )
+    ).toEqual(["🕐 Sauna 08:00", "07:30 · −30m", "07:00 · −1h"]);
   });
 });
