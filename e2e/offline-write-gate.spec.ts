@@ -51,6 +51,12 @@ import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 //     IS a write-back, keeps the page alive for it, and counts the replayed keys — and
 //     against that mutant it fails with `attempts: 1`, which is the review's own
 //     signature for a re-write rather than a wipe that missed.
+//   • R-A, R-B and R-C were each run against a restoration of the exact defect they
+//     describe, and each failed on the assertion that measures the CONSEQUENCE rather
+//     than only on the one that reads the gate — checked by removing the gate assertion
+//     and running the mutant again. R-A: no queue badge and no intent after a failed
+//     logout. R-B: `capturedAll` never resolves after the other device turns it back on.
+//     R-C: `SNAPSHOTS AFTER: []`.
 //
 // So: an absence proves nothing without a control showing the presence was possible.
 // Every test below that asserts "nothing was written" says how it knows something would
@@ -196,25 +202,35 @@ test("R1 — the OFF SWITCH stops the REQUEST, so nothing re-materialises before
   await page.goto("/");
   await capturedAll(page);
 
-  // Count snapshot GETs from the moment the toggle is flipped. The old failure asked
-  // once, was answered `enabled: true` by a server whose Server Action had not landed,
-  // and wrote all five kinds back.
-  let getsAfterToggle = 0;
-  let toggled = false;
-  await page.route("**/api/offline-snapshots*", async (route) => {
-    if (toggled) getsAfterToggle += 1;
-    await route.continue();
-  });
-
   await page.goto("/settings/privacy");
   const toggle = page.getByTestId("offline-snapshots-toggle");
   await expect(toggle).toBeVisible();
   await expect(toggle).toBeChecked();
 
+  // THE WINDOW THIS TEST IS ABOUT is the Server Action's flight, so hold it open and make
+  // it an interval rather than an instant. Until it lands the server still answers
+  // `enabled: true`, and the old failure asked once inside exactly here, was told yes, and
+  // wrote all five kinds back.
+  const ACTION_HOLD_MS = 8_000;
+  await page.route("**/*", async (route) => {
+    if (route.request().method() === "POST") {
+      await new Promise((r) => setTimeout(r, ACTION_HOLD_MS));
+    }
+    await route.continue();
+  });
+  // Registered AFTER the catch-all so it wins — Playwright matches most-recent first.
+  let getsDuringFlight = 0;
+  let toggled = false;
+  await page.route("**/api/offline-snapshots*", async (route) => {
+    if (toggled) getsDuringFlight += 1;
+    await route.continue();
+  });
+
   toggled = true;
   await toggle.uncheck();
 
-  // The wipe landed. Everything after this is the window the acceptance criterion covers.
+  // The wipe landed and the action is still in flight. Everything until it settles is the
+  // window the acceptance criterion covers.
   await expect.poll(() => storedKinds(page), { timeout: 15_000 }).toEqual([]);
 
   // Wake the refresher on a page that is still mounted and still authenticated, with an
@@ -225,13 +241,19 @@ test("R1 — the OFF SWITCH stops the REQUEST, so nothing re-materialises before
   // #2908: "nothing re-materializes until toggled back on".
   expect(await storedKinds(page)).toEqual([]);
   expect(
-    getsAfterToggle,
-    "the refresher asked the server for snapshots after the switch was turned off"
+    getsDuringFlight,
+    "the refresher asked a server that had not been told yet"
   ).toBe(0);
 
-  // And it survives a reload, because the close is in the database rather than in a
-  // module — the toggle is a promise about the device, not about one document.
+  // NOW LET THE SERVER BE TOLD, and the device-local close is done: it covered one window
+  // and must not outlive it (R-B — persisted with no path back, it became a one-way latch
+  // that no other device could ever undo). From here the SERVER is the off switch, and it
+  // is asked on every refresh, so the store staying empty is its answer rather than this
+  // device declining to ask.
+  await expect(page.getByLabel("Saved")).toBeVisible({ timeout: 20_000 });
+  await page.unroute("**/*");
   await page.reload();
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await page.waitForTimeout(3_000); // waitfortimeout-ok: absence again, across a fresh mount whose own refresh would be the writer
   expect(await storedKinds(page)).toEqual([]);
 
