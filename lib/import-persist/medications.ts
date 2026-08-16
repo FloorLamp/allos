@@ -113,24 +113,21 @@ export function persistExtractedMedications(
     if (r.courses && r.courses.length) g.courses.push(...r.courses);
   }
 
-  // Find an existing tracked med this parsed prescription matches — the SAME
+  // Every existing tracked med this parsed prescription matches — the SAME
   // cleaned/grouping-name identity the #1027 duplication family keys on (medNameKey),
   // RxCUI-first when both sides carry a code (#482/#1026).
-  const matchExisting = (
+  //
+  // ALL of them, not the first (#2919): this used to return the first same-key row and
+  // classify only against that one, so a legitimate different-strength med with an
+  // open course permanently SHADOWED an identical twin further down the id order that
+  // would have renewed. The RxCUI-first path stays open for a future import that
+  // captures a code on the prescription (observations carry none today), so the
+  // cleaned name is the working signal — the SAME grouping medNameKey the #1027
+  // duplication family + the observations bridge use, so the identity can't diverge
+  // across surfaces (#482).
+  const matchCandidates = (
     med: ReturnType<typeof parsePrescription>
-  ): MedMatchState | null => {
-    const key = medNameKey(med.name);
-    for (const ex of ctx.existing) {
-      const exKeys = new Set([medNameKey(ex.name)]);
-      if (ex.brand) exKeys.add(medNameKey(ex.brand));
-      if (key && exKeys.has(key)) return ex;
-    }
-    // The RxCUI-first path stays open for a future import that captures a code on the
-    // prescription (observations carry none today), so the cleaned name is the working
-    // signal — the SAME grouping medNameKey the #1027 duplication family + the observations
-    // bridge use, so the identity can't diverge across surfaces (#482).
-    return null;
-  };
+  ): MedMatchState[] => medFoldCandidates(ctx.existing, med.name);
 
   let newItems = 0;
   for (const key of order) {
@@ -149,43 +146,36 @@ export function persistExtractedMedications(
     // Cross-document / cross-provider re-prescription (#1204): does this drug match a
     // med the profile already tracks? If so, renew (course) unless the #1027
     // concurrent-different-strength case dictates a separate item.
-    const existing = matchExisting(med);
+    // The new side's strength passes through the SAME extraction the existing side's
+    // strengths did (#2919) — a raw sig sentence is not comparable evidence.
+    const newStrength = comparableNewStrength(med.strength ?? med.name);
+    // Renew onto the first candidate that classifies as a renewal; only when EVERY
+    // candidate is a genuinely separate concurrent product do we project a new item.
+    const existing = pickRenewalTarget(matchCandidates(med), newStrength);
     if (existing) {
-      const newStrength = med.strength ?? strengthFromName(med.name);
-      const relationship = classifyReprescription({
-        existingHasOpenCourse: existing.hasOpenCourse,
-        existingStrengths: new Set(
-          existing.strengths
-            .map((s) => normalizeStrength(s))
-            .filter((s): s is string => !!s)
-        ),
-        newStrength,
-      });
-      if (relationship === "renewal") {
-        // Attach the renewal's course(s) to the existing med. Explicit source
-        // period(s) win; otherwise a single course dated the prescribed date. The
-        // dose snapshot rides the attribution so a dose change is preserved in
-        // history (the live schedule is not overwritten — Model X, #1204).
-        if (courses.length > 0) {
-          for (const c of courses) {
-            addRenewalCourse(profileId, existing.id, {
-              startedOn: c.started_on,
-              stoppedOn: c.stopped_on,
-              stopReason: c.stop_reason,
-              notes: c.notes,
-              attribution,
-            });
-          }
-        } else {
+      // Attach the renewal's course(s) to the existing med. Explicit source period(s)
+      // win; otherwise a single course dated the prescribed date. The dose snapshot
+      // rides the attribution so a dose change is preserved in history (the live
+      // schedule is not overwritten — Model X, #1204).
+      if (courses.length > 0) {
+        for (const c of courses) {
           addRenewalCourse(profileId, existing.id, {
-            startedOn: presDate,
+            startedOn: c.started_on,
+            stoppedOn: c.stopped_on,
+            stopReason: c.stop_reason,
+            notes: c.notes,
             attribution,
           });
         }
-        continue; // no new item — the existing med carries this prescription
+      } else {
+        addRenewalCourse(profileId, existing.id, {
+          startedOn: presDate,
+          attribution,
+        });
       }
-      // "separate" falls through: project a distinct item (#1027 concurrent).
+      continue; // no new item — the existing med carries this prescription
     }
+    // No renewable candidate: project a distinct item (#1027 concurrent).
 
     const info = ctx.insMed.run(
       med.name,
@@ -254,12 +244,12 @@ import type Database from "better-sqlite3";
 import { db } from "../db";
 import { sqlNow } from "../clock";
 import type { ImportedMedicationCourse } from "../health-import";
-import { medNameKey } from "../medication-record-match";
 import {
-  classifyReprescription,
-  normalizeStrength,
+  comparableNewStrength,
+  medFoldCandidates,
+  pickRenewalTarget,
 } from "../medication-renewal";
-import { parsePrescription, strengthFromName } from "../prescription-parse";
+import { parsePrescription } from "../prescription-parse";
 import { resolveExactPrescriberId } from "../providers-db";
 import {
   addRenewalCourse,
