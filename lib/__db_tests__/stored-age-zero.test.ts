@@ -104,9 +104,9 @@ describe("life-stage gates reach the INFANT branch for a stored age of 0 (#2992)
   it("food logging is withheld from the infant and offered on unknown age", () => {
     // The paired assertion is the test: before #2992 both profiles answered `true`,
     // because the infant's age never survived the read.
-    expect(isFoodLoggingRelevant(getProfileAge(infantProfile("saz food")))).toBe(
-      false
-    );
+    expect(
+      isFoodLoggingRelevant(getProfileAge(infantProfile("saz food")))
+    ).toBe(false);
     expect(
       isFoodLoggingRelevant(getProfileAge(unknownAgeProfile("saz food ctl")))
     ).toBe(true);
