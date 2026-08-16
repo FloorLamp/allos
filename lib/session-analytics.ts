@@ -30,7 +30,25 @@ export function sessionSplitIntervalM(
 ): number {
   const base = BASE_M[unit];
   const total = (totalDistanceKm ?? 0) * 1000;
-  return total / base > MAX_SPLITS ? base * 5 : base;
+  // Step up until the table fits, rather than exactly once: a single ×5 held the
+  // bound only to a hundred units, and an ultra would still have rendered thirty
+  // rows. Each step is ×5 so the interval stays a number people say out loud
+  // (1, 5, 25 km).
+  let interval = base;
+  while (total / interval > MAX_SPLITS) interval *= 5;
+  return interval;
+}
+
+// The distance the RECORDING actually covers, in km — the same series the splits
+// are cut from. Null when the session stored no distance stream, which is when
+// the caller should fall back to the activity's own summary column.
+export function streamDistanceKm(streams: ActivityStreams): number | null {
+  const distance = numeric(streams.distance);
+  for (let index = distance.length - 1; index >= 0; index--) {
+    const metres = distance[index];
+    if (metres != null) return metres / 1000;
+  }
+  return null;
 }
 
 /**

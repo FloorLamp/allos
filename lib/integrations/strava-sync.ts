@@ -34,6 +34,26 @@ import {
 } from "./strava-rate-limit";
 import { backfillFetchVerdict } from "./backfill-outcome";
 
+// Whether a failed `/streams` response settles the question for THIS activity in
+// the AUTOMATIC sync, where the answer is persisted as an empty telemetry row and
+// never asked again.
+//
+// Deliberately narrower than `backfillFetchVerdict`, which the user-triggered
+// backfill uses: that one calls 403 unavailable, and 403 is documented there as
+// "a private activity, OR a token without activity:read_all" — the second of
+// which is a CONNECTION fact, not a fact about this activity. The backfill can
+// afford it because it recomputes on every run and a person chose to re-ask; a
+// persisted marker cannot. A profile connected without the read-all scope would
+// otherwise bank an empty row for every recorded session, and re-authorizing
+// would never fetch them — while their pages claimed the source "recorded totals
+// only", which would be false.
+//
+// So the sync settles ONLY on the two per-resource tombstones: 404 (Strava also
+// answers this for an activity with no recorded streams at all) and 410.
+function streamFinallyAbsent(status: number): boolean {
+  return status === 404 || status === 410;
+}
+
 // Strava's half of the shared pull runner (#2040): the list+detail request pair, the
 // `page`/`per_page` pagination, and row mapping. Everything either side of that —
 // timeout and call bounds, the rate-limit → truncate rule, the transaction, the
@@ -303,9 +323,7 @@ const stravaSpec: PullSpec<
               truncated = true;
               break;
             }
-            answeredNow =
-              streamRes.ok ||
-              backfillFetchVerdict(streamRes.status) === "unavailable";
+            answeredNow = streamRes.ok || streamFinallyAbsent(streamRes.status);
             stream = streamRes.ok ? streamRes.json : null;
           }
           const artifacts = mapStravaActivityArtifacts(
