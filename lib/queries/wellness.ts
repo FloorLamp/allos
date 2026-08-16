@@ -911,9 +911,12 @@ export interface PracticeTapRow extends TapEvent {
 //    outside the profile's today deliberately stays null), and omitted means a tap
 //    with no opinion, which the write core stamps. A chip may only re-time a row that
 //    already carries a time — inventing one for a null row is precisely the
-//    fabrication the contract exists to prevent — so null-time rows are excluded HERE,
-//    at the source, rather than filtered downstream. They therefore never appear in a
-//    burst, and no chip can reach them.
+//    fabrication the contract exists to prevent. `eventInstant` already refuses a null
+//    `time` (`not-recorded`), so the mapper below would drop such a row anyway; the SQL
+//    filter is not redundant with it but a BOUND — without it, a day of untimed rows
+//    could fill the `LIMIT` and push the timed taps a chip is actually about out of the
+//    window. Between them, a null-time row never reaches a burst and no chip can touch
+//    it. `lib/__db_tests__/practice-time-correction.test.ts` pins that from the outside.
 //
 // 3. AN IMPORTED SESSION IS NOT A TAP. `external_id` is how an import reaches this
 //    table (it has no `document_id` — see the #2364 note in the reading model), so an
