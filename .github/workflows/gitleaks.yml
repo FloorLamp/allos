@@ -85,5 +85,47 @@ jobs:
           sudo install /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
+      # `--all` means EVERY REF PUSHED TO THIS REPOSITORY, not "this branch"
+      # (#2949). Combined with `fetch-depth: 0` above — which fetches every remote
+      # branch into refs/remotes/origin/* — one branch that commits a
+      # credential-shaped test fixture fails this check on every open PR, naming a
+      # file those PRs never touched and whose contents they do not even contain.
+      # Measured, not assumed: an unreachable commit on `origin/other-branch` is
+      # reported here with that commit's SHA while HEAD's tree has no such file.
+      # (docs/orchestration-incidents.md said the blast radius was one branch. It
+      # is not, and has not been since the scan moved to `--all`.)
+      #
+      # The posture is right and stays: a secret committed anywhere in this
+      # repository's history should be found. What was wrong is the ERROR MESSAGE,
+      # which said a PR introduced a credential into a file it never opened.
+      #
+      # So the scan now also writes its JSON report, and the explainer says where
+      # each finding actually came from: gitleaks records the COMMIT that
+      # introduced every finding, `git merge-base --is-ancestor` turns that into
+      # "on this branch / not on this branch", and `git for-each-ref --contains`
+      # names the ref that carries it. It also states the recovery step that is
+      # not guessable — the scan reads COMMITS, not tips, so a follow-up deletion
+      # commit does not clear it; only an amend, a rebase, or deleting the branch
+      # does.
+      #
+      # `--redact` is what makes the report safe to read back: Secret and Match
+      # come through as REDACTED, so nothing here can print secret material into a
+      # public log. The report goes to RUNNER_TEMP and is never uploaded.
+      #
+      # The explainer cannot change the verdict in either direction: the job exits
+      # with gitleaks' own status, and the explainer's own failure is swallowed.
       - name: Scan full history
-        run: gitleaks git --log-opts="--all" --redact -v .
+        env:
+          GITLEAKS_BASE_REF: origin/${{ github.event.pull_request.base.ref || 'main' }}
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/gitleaks-report.json"
+          set +e
+          gitleaks git --log-opts="--all" --redact -v \
+            --report-format json --report-path "$report" .
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            node scripts/gitleaks-explain.mjs "$report" || true
+          fi
+          exit "$status"

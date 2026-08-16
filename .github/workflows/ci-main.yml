@@ -15,10 +15,15 @@ name: CI (main)
 # directly within minutes, instead of masquerading as a failure on whichever
 # branch pushed next.
 #
-# The browser matrix is deliberately NOT here: eight shards per merge at this
-# merge rate would dwarf the rest of CI combined, and the documented
-# two-green-PRs breakage class (type errors, unit failures) is exactly what the
-# three cheap tiers see. e2e-full.yml remains the on-demand full-suite census.
+# The browser matrix is NOT here, and that is still right for THIS workflow —
+# these three tiers return a verdict in ~3.5 min and a matrix would stretch that
+# to triple. But "not here" turned out to mean "nowhere": main had no e2e
+# coverage at all, so an e2e regression on main was unobservable from main's own
+# pipeline and surfaced instead as a red matrix on four innocent PRs, each
+# checking `CI (main)` and reading this workflow's green as covering it (#2791).
+# e2e-main.yml now carries that half — post-merge, debounced, four shards — and
+# is a separate check for exactly this reason: a green here means the cheap tiers
+# passed, and nothing more. e2e-full.yml remains the on-demand full-suite census.
 #
 # This is a detector, not a gate — deploy.yml runs independently on the same
 # push (gated by its own `next build`). A red here means: stop merging, fix

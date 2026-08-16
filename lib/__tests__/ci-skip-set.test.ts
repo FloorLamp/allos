@@ -83,6 +83,19 @@ function skipSetEntries(): string[] {
 }
 
 /**
+ * Every workflow carrying a no-runtime-surface detector. `ci.yml` skips the
+ * browser matrix for a PR; `e2e-main.yml` skips it for the merge (#2791). Two
+ * copies of one claim, so the second is held to the first rather than left to
+ * drift — a stale copy in the post-merge workflow would skip main's only browser
+ * coverage for a change that needed it, which is the silence that workflow
+ * exists to end.
+ */
+const DETECTOR_WORKFLOWS = [
+  ".github/workflows/ci.yml",
+  ".github/workflows/e2e-main.yml",
+];
+
+/**
  * The entries this scan VERIFIES: directories of importable code, where "nothing
  * reachable imports this" is an import-graph question with an answer.
  */
@@ -225,6 +238,30 @@ describe("the CI no-runtime-surface skip set", () => {
     const entries = skipSetEntries();
     expect(entries.length).toBeGreaterThan(3);
     expect(entries).toContain("docs/");
+  });
+
+  it("is the SAME set in every workflow that skips the browser suite", () => {
+    // The PR-side and merge-side detectors answer one question — "can the running
+    // app reach any of this?" — so they must answer it identically. Widening
+    // ci.yml alone would leave the post-merge run browsing changes the PR run
+    // skipped; narrowing it alone would leave main un-covered for a change ci.yml
+    // knows needs a browser. Either way the drift is silent, which is the whole
+    // failure class this file guards.
+    for (const file of DETECTOR_WORKFLOWS) {
+      const src = fs.readFileSync(path.join(REPO, file), "utf8");
+      const match = /grep -qvE '\^\((.+?)\)'/.exec(src);
+      expect(
+        match,
+        `${file} declares no \`grep -qvE '^(…)'\` no-runtime-surface detector. ` +
+          "If it no longer has one, drop it from DETECTOR_WORKFLOWS; if it reshaped " +
+          "the detector, reshape this guard with it."
+      ).not.toBeNull();
+      expect(
+        match![1].split("|").map((e) => e.replace(/\\/g, "")),
+        `${file}'s skip set has drifted from .github/workflows/ci.yml's. Both name ` +
+          "the same claim about what the app can reach — change them together."
+      ).toEqual(skipSetEntries());
+    }
   });
 
   it("classifies EVERY entry as verified or unverifiable-with-a-reason", () => {
