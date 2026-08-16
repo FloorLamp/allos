@@ -118,6 +118,36 @@ describe("feedItemView — sync", () => {
     expect(v.meta).toBe("2026-07-06 → 2026-07-08");
   });
 
+  it("renders NO window when the run has none, instead of an em-dash (#2999)", () => {
+    // An attended portal run has no data window on ANY run — the concept does not
+    // apply to a delivered archive — so formatWindow's "—" was a structurally constant
+    // column pretending to be information (#1991 defect 5).
+    const v = feedItemView(
+      syncEntry(sync({ window_start: null, window_end: null })),
+      sourceName
+    );
+    expect(v.meta).toBeNull();
+  });
+
+  it("still renders a one-sided window, which IS information", () => {
+    const v = feedItemView(
+      syncEntry(sync({ window_start: "2026-07-06", window_end: null })),
+      sourceName
+    );
+    expect(v.meta).toBe("2026-07-06");
+  });
+
+  it("carries the caller-resolved drill-in promise, or none at all (#1991/#1771)", () => {
+    // The entry, not the row component, decides: no provenance → no expander, and the
+    // promised count is what the fetch will list rather than the run's split total.
+    expect(syncEntry(sync())).toMatchObject({ drilldown: null });
+    expect(
+      syncEntry(sync(), { count: 2, remainder: 0, noun: "document" })
+    ).toMatchObject({
+      drilldown: { count: 2, remainder: 0, noun: "document" },
+    });
+  });
+
   it("collapses an all-unchanged re-scan to a muted 'nothing new'", () => {
     const v = feedItemView(
       syncEntry(sync({ inserted: 0, updated: 0, unchanged: 6, skipped: 0 })),

@@ -1382,9 +1382,17 @@ export function stampAcquiredAccount(
 }
 
 // The documents THIS run delivered for one login: acquired for that account, owned by
-// this profile, and uploaded after the login's previous report. `since` null means the
-// login has never reported, so everything it has ever delivered belongs to its first
-// report — there is no earlier run to attribute it to.
+// this profile, uploaded no earlier than the login's previous report, and NOT ALREADY
+// CLAIMED by an earlier run. `since` null means the login has never reported, so
+// everything it has ever delivered belongs to its first report — there is no earlier run
+// to attribute it to.
+//
+// TWO PREDICATES, because the window alone is not enough on either side. The report
+// stamp and `uploaded_at` both come from the same one-second clock seam, so a document
+// uploaded in the same second as the previous report is genuinely ambiguous — the
+// comparison is inclusive, and the unclaimed guard is what keeps that inclusiveness from
+// letting two runs both claim it. Every document therefore belongs to exactly one run,
+// which is the property the drill-in's honesty rests on.
 //
 // `uploaded_at` and `portal_run_reports.at` are both stored bare (lib/time-columns.ts),
 // so the comparison is a plain lexical one between two values of the same convention.
@@ -1393,23 +1401,19 @@ export function documentsDeliveredSince(
   accountId: number,
   since: string | null
 ): number[] {
-  const rows = (
-    since === null
-      ? db
-          .prepare(
-            `SELECT id FROM medical_documents
-              WHERE profile_id = ? AND acquired_account_id = ?
-              ORDER BY id`
+  const rows = db
+    .prepare(
+      `SELECT d.id AS id
+         FROM medical_documents d
+        WHERE d.profile_id = ? AND d.acquired_account_id = ?
+          AND d.uploaded_at >= COALESCE(?, d.uploaded_at)
+          AND NOT EXISTS (
+            SELECT 1 FROM integration_sync_rows r
+             WHERE r.target_table = 'medical_documents' AND r.target_id = d.id
           )
-          .all(profileId, accountId)
-      : db
-          .prepare(
-            `SELECT id FROM medical_documents
-              WHERE profile_id = ? AND acquired_account_id = ? AND uploaded_at > ?
-              ORDER BY id`
-          )
-          .all(profileId, accountId, since)
-  ) as { id: number }[];
+        ORDER BY d.id`
+    )
+    .all(profileId, accountId, since) as { id: number }[];
   return rows.map((r) => r.id);
 }
 

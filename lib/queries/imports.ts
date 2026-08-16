@@ -36,7 +36,6 @@ import {
   type FeedSyncEvent,
   type FeedEntry,
 } from "../import-feed";
-import { drilldownCoverage } from "../integrations/sync-history-days";
 import {
   emptySnapshot,
   recordRow,
@@ -282,23 +281,23 @@ export function getImportDocumentsFeed(
     const found = provenance.get(ev.id);
     // NO PROVENANCE → NO EXPANDER (#1771). Nothing to open is not an apologetic empty
     // state, and it is certainly not a promised count over an empty list.
-    if (!found) return syncEntry(ev, null);
-    const { itemizable, remainder, offer } = drilldownCoverage(
-      (ev.inserted ?? 0) + (ev.updated ?? 0),
-      found.count
-    );
-    return syncEntry(
-      ev,
-      offer
-        ? {
-            count: itemizable,
-            remainder,
-            // A run whose provenance is entirely documents says "documents" — the word
-            // for what it delivered. Anything else stays on the record vocabulary.
-            noun: found.documents === found.count ? "document" : "record",
-          }
-        : null
-    );
+    if (!found || found.count === 0) return syncEntry(ev, null);
+    // drilldownCoverage's arithmetic, WITHOUT its cap at the run's split — and the
+    // difference is deliberate. That cap is right for the record family, where
+    // recordSyncRows can only ever persist a SUBSET of what an upsert wrote, so it
+    // never actually fires. A DELIVERY's claim is time-bounded rather than
+    // count-bounded (the documents acquired for this login since its last report), so
+    // capping it at the tool's reported split would promise fewer rows than the list
+    // then shows — exactly the pre/post-load disagreement #1991 forbids.
+    const written = (ev.inserted ?? 0) + (ev.updated ?? 0);
+    return syncEntry(ev, {
+      count: found.count,
+      // What the run wrote that carries no openable identity, named rather than hidden.
+      remainder: Math.max(written - found.count, 0),
+      // A run whose provenance is entirely documents says "documents" — the word for
+      // what it delivered. Anything else stays on the record vocabulary.
+      noun: found.documents === found.count ? "document" : "record",
+    });
   });
   return mergeFeed([...documents, ...jobs, ...attended]).slice(0, limit);
 }
