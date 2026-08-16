@@ -88,9 +88,12 @@ async function storedKinds(page: Page): Promise<string[]> {
   return rows.map((r) => r.kind).sort();
 }
 
-async function capturedAll(page: Page): Promise<void> {
+async function capturedAll(
+  page: Page,
+  timeout: number = 30_000
+): Promise<void> {
   await expect
-    .poll(() => storedKinds(page), { timeout: 30_000 })
+    .poll(() => storedKinds(page), { timeout })
     .toEqual([...SNAPSHOT_KINDS].sort());
 }
 
@@ -281,9 +284,14 @@ test("R2c — the NEXT person to sign in on the device gets the feature back", a
   // death of offline reads on any device anyone had ever logged out of — a worse bug than
   // the one being fixed, and invisible until someone reached a dead zone and found
   // nothing there.
+  // Two full logins and two full captures in one test, so both polls get a wider budget
+  // than the file's default — a capture that is merely SLOW here would read as the
+  // stuck-closed gate this test exists to detect, which is the wrong alarm to make loud.
+  const CAPTURE_TIMEOUT_MS = 60_000;
+
   await login(page);
   await page.goto("/");
-  await capturedAll(page);
+  await capturedAll(page, CAPTURE_TIMEOUT_MS);
 
   await page.getByRole("button", { name: "Log out" }).click();
   await page.waitForURL(/\/login/, { timeout: 30_000 });
@@ -293,7 +301,7 @@ test("R2c — the NEXT person to sign in on the device gets the feature back", a
   // previous one.
   await login(page);
   await page.goto("/");
-  await capturedAll(page);
+  await capturedAll(page, CAPTURE_TIMEOUT_MS);
 });
 
 test("R3d — a queue flush in flight does not re-write its intents after logout", async ({

@@ -230,9 +230,7 @@ export function closeSession(gate: WriteGate): WriteGate {
  * Never touches the off switch's own state: two independent closes, two independent
  * re-opens.
  */
-export function openSessionAs(
-  key: string
-): (gate: WriteGate) => WriteGate {
+export function openSessionAs(key: string): (gate: WriteGate) => WriteGate {
   return (gate) => {
     if (gate.sessionClosed && gate.sessionKey === key) return gate;
     return { ...gate, sessionClosed: false, sessionKey: key };
