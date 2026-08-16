@@ -9,6 +9,10 @@
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
 - Require tests at the tier that can observe the defect.
+- A REMOVAL is checked against the issue's acceptance criteria before it is
+  accepted. An unreachable export can be debris or an unfinished requirement,
+  and the code cannot tell you which — only the issue can. Delete it once the
+  issue does not ask for it; wire it up when the issue does.
 - Inspect cross-PR conflicts, stale shared signatures, binary-looking diffs,
   measured-count claims, and unintended generated-data changes.
 - Flag owner-visible judgment calls in the COMMENT review.
