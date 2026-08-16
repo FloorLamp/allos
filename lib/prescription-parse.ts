@@ -153,7 +153,7 @@ function primaryDosingClause(text: string): string {
   return text.split(/(?<=[.!?])\s+/)[0] ?? text;
 }
 
-function isPrn(text: string): boolean {
+function statesAsNeeded(text: string): boolean {
   return PRN_RE.test(primaryDosingClause(text));
 }
 
@@ -300,7 +300,7 @@ export function parseSig(sig: string | null | undefined): ParsedSig {
     return { asNeeded: true, timesPerDay: null, amount: null, timeBuckets: [] };
   }
 
-  if (isPrn(text)) {
+  if (statesAsNeeded(text)) {
     return {
       asNeeded: true,
       timesPerDay: null,
