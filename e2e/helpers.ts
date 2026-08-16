@@ -1996,3 +1996,59 @@ export async function spendAutoReloadRation(page: Page): Promise<void> {
     }
   );
 }
+
+// ── The offline shell's own code ─────────────────────────────────────────────
+//
+// `public/sw.js` PRECACHES the /offline HTML and the icon and nothing else; build
+// assets are `cacheFirst`, cached as a side effect of being FETCHED. Nothing in the app
+// links to /offline, so its route chunk reached the cache only for someone who had
+// already opened that page while online — and without it the precached shell is served,
+// renders, and never hydrates. Every offline block in the suite used to paper over this
+// with a hand `page.goto("/offline")`, which quietly made the specs a test of the
+// harness rather than of the app.
+//
+// The app warms it itself now (owner ruling 2026-08-16, issue #2997:
+// lib/offline/warm-offline-route.ts). These two say so, and NEITHER visits /offline —
+// which is the point. A spec that opens the page to make the page work proves nothing
+// about the person who never opens it.
+
+/**
+ * Whether every `/_next/static` asset the /offline document declares is in the service
+ * worker's cache — "warm", or a `cached/total` count to read on failure.
+ *
+ * Reads the cache only: the HTML fetch here populates nothing, because the worker never
+ * caches rendered HTML and this is not a navigation.
+ */
+export async function offlineChunksWarm(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const res = await fetch("/offline", { headers: { Accept: "text/html" } });
+    const html = await res.text();
+    const urls = [
+      ...new Set(
+        (html.match(/\/_next\/static\/[A-Za-z0-9._~\-/]+/g) ?? []).filter(
+          (u) => u.endsWith(".js") || u.endsWith(".css")
+        )
+      ),
+    ];
+    let cached = 0;
+    for (const u of urls) {
+      if (await caches.match(new URL(u, location.origin).href)) cached += 1;
+    }
+    return urls.length > 0 && cached === urls.length
+      ? "warm"
+      : `${cached}/${urls.length} cached`;
+  });
+}
+
+/**
+ * The precondition every offline block shares: a live controlling worker, and the
+ * offline shell's own code in its cache. Call this instead of visiting /offline.
+ */
+export async function readyForOffline(page: Page): Promise<void> {
+  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
+    timeout: 15_000,
+  });
+  await expect
+    .poll(() => offlineChunksWarm(page), { timeout: 30_000 })
+    .toBe("warm");
+}

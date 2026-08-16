@@ -20,6 +20,7 @@ import {
   type AnySnapshot,
   type SnapshotKind,
 } from "@/lib/offline/snapshots";
+import { warmOfflineRoute } from "@/lib/offline/warm-offline-route";
 
 // Refreshes the offline read snapshots (issue #2908) on an ONLINE, AUTHENTICATED visit.
 // Mounted once inside the (app) layout beside OfflineQueueProvider, so it only ever runs
@@ -28,11 +29,19 @@ import {
 //   • No background sync. No service-worker credentials. No push. The device gets fresh
 //     snapshots because the person opened the app, and at no other time. That is what
 //     "the server stays authoritative" means here in practice.
-//   • public/sw.js is UNTOUCHED, and must stay so: rendered HTML is still never cached,
-//     the precache is still the shell + icon, and no service worker touches a data
-//     route. These snapshots are application-layer storage the app wrote deliberately,
-//     which is exactly the distinction components/emergency-offline.ts:11 draws for the
+//   • public/sw.js is UNTOUCHED: rendered HTML is still never cached, the PRECACHE is
+//     still the shell + icon, and no service worker touches a data route. These
+//     snapshots are application-layer storage the app wrote deliberately, which is
+//     exactly the distinction components/emergency-offline.ts:11 draws for the
 //     emergency card.
+//
+//     What DID change is when the shell's own code arrives (owner ruling, #2997): this
+//     component also warms /offline's route chunks through the worker's existing
+//     `cacheFirst` path, because a precached HTML shell that cannot hydrate renders
+//     nothing at all — no snapshot list, and no emergency-card button either. See
+//     lib/offline/warm-offline-route.ts. That warm-up is SHELL-level and deliberately
+//     NOT gated on the snapshots toggle: the shipped emergency card depends on the same
+//     chunks and is a separate feature with a separate opt-in.
 //   • lib/nav-fetch-guard.ts is untouched too. Its wrapper matches only navigation RSC
 //     GETs (`RSC: 1` without `Next-Router-Prefetch`); this is a plain data fetch, so it
 //     passes through by reference and can never be HELD by the navigation retry. Good:
@@ -143,8 +152,13 @@ export default function OfflineSnapshotRefresher({
     }
 
     // From a browser task, like OfflineQueueProvider's own initial sync, so the state
-    // this touches originates in an external callback rather than in render.
-    const initial = window.setTimeout(() => void refresh(), 0);
+    // this touches originates in an external callback rather than in render. The shell
+    // warm-up rides the same task and is independent of the refresh: it must run for a
+    // profile with snapshots switched off, because the emergency card needs it too.
+    const initial = window.setTimeout(() => {
+      void refresh();
+      void warmOfflineRoute();
+    }, 0);
     const onOnline = () => void refresh();
     const onVisible = () => {
       if (document.visibilityState === "visible") void refresh();

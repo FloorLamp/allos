@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, readyForOffline } from "./helpers";
 import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 
 // Offline read snapshots (#2908) — the render path, end to end, with a real service
@@ -115,29 +115,13 @@ test("offline reads: one visit captures, /offline renders them with no network, 
     .toEqual([...SNAPSHOT_KINDS].sort());
 
   // 2. The service worker is live in this harness (a production build under
-  //    `next start`), so a failed navigation genuinely lands on the precached shell.
-  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
-    timeout: 15_000,
-  });
-  // One ONLINE visit to /offline first, exactly as e2e/emergency-card.spec.ts does
-  // before its own offline block — and for a reason worth stating, because skipping it
-  // is what made this spec red on CI and green here.
-  //
-  // public/sw.js precaches the /offline HTML and the icon, and NOTHING else: build
-  // assets are `cacheFirst`, which caches them as a side effect of being fetched. So
-  // the route's own JS chunk is in the cache only if /offline has been loaded before.
-  // Without it the precached HTML is served offline and then never hydrates — the page
-  // renders, the effect never runs, and every testid below stays absent. It surfaces as
-  // "element(s) not found", which reads like a product bug and is not one; it is the
-  // #42-era shape of the precache, which this issue's invariants deliberately leave
-  // alone. Reproduced locally at 1-in-10 under `--repeat-each=5 --workers=2` with three
-  // CPU burners on a 4-core box, matching the CI signature exactly.
-  //
-  // The consequence for a REAL person — the feature is inert at their first dead zone
-  // unless they happened to visit /offline while online — is filed as #2997 and belongs
-  // to the owner. It is deliberately not fixed here, and this warm-up stays until it is.
-  await page.goto("/offline");
-  await settledOfflineRead(page);
+  //    `next start`), so a failed navigation genuinely lands on the precached shell —
+  //    and the shell's own code is in the cache because the app put it there, not
+  //    because this test opened /offline first (#2997). THIS PAGE HAS NEVER BEEN
+  //    VISITED in this context, which is the whole point: the precache is the HTML
+  //    alone, so without the warm-up the shell renders and never hydrates, and every
+  //    testid below stays absent in a way that reads like a product bug.
+  await readyForOffline(page);
   await context.setOffline(true);
   try {
     // A deep-linked navigation that fails lands here, which is the right landing.
@@ -303,13 +287,9 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
   await expect
     .poll(() => storedKinds(page), { timeout: 30_000 })
     .toEqual([...SNAPSHOT_KINDS].sort());
-  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
-    timeout: 15_000,
-  });
-  // Warm /offline's own chunk into the asset cache while there is still a network —
-  // see the first test for why the precached HTML alone cannot hydrate.
-  await page.goto("/offline");
-  await settledOfflineRead(page);
+  // No hand warm-up: the app puts /offline's own code in the cache (#2997), and this
+  // context has never opened that page.
+  await readyForOffline(page);
 
   // The pills are in your hand and the network isn't there. The page is already
   // loaded and interactive, so the tap lands and the write queue catches it.
