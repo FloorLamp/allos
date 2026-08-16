@@ -110,7 +110,8 @@ export function listVisiblePortalRunReports(
               r.account_id AS accountId, a.slug AS accountSlug, a.name AS accountName,
               a.implicit AS accountImplicit, r.at AS at, r.ok AS ok,
               r.status AS status, r.message AS message, r.discovered AS discovered,
-              r.contacted AS contacted, r.attended AS attended
+              r.contacted AS contacted, r.attended AS attended,
+              r.checked_at AS checkedAt
          FROM portal_run_reports r
          JOIN portals p ON p.id = r.portal_id
          JOIN portal_accounts a ON a.id = r.account_id
@@ -133,7 +134,60 @@ export function listVisiblePortalRunReports(
     discovered: row.discovered as number,
     contacted: (row.contacted as number) === 1,
     attended: (row.attended as number) === 1,
+    checkedAt: (row.checkedAt as string | null) ?? null,
   }));
+}
+
+// ── HOW MANY DOCUMENTS A LOGIN DELIVERED (#2914) ─────────────────────────────
+//
+// The login row now says "Delivered N documents <day>" for a delivery-only report, and
+// this is where N comes from. A portal run's product is DOCUMENTS — event 3050's
+// `inserted 2, unchanged 1` are two new archives and one already held — so the split
+// columns on `integration_sync_events` already count exactly the right things, and no
+// write path has to be grown to restate them.
+//
+// THE AGGREGATE IS DAY-GRAIN, deliberately, and it is the one judgement call in the
+// derivation. `portal_run_reports` holds ONE ROW PER LOGIN (migration 132), so each
+// report OVERWRITES the previous one's stamp: after the fact there is no stored
+// boundary saying where the last run began, and the acquirer's contract carries no run
+// id (both #2914 and #2999 deliberately refuse to change it). A window guessed from the
+// gap between events would be a constant nobody could defend. So the count is taken at
+// the grain the SENTENCE already commits to — the report's calendar day — where it
+// cannot contradict itself: "Delivered 6 documents 2026-08-15" is true of that login on
+// that day whether one push or two produced them.
+//
+// SCOPED LIKE EVERYTHING ELSE ON THIS PAGE. The events are narrowed to the viewer's own
+// accessible profiles AND to accounts the same predicate above admits, so a login row
+// can never be given a number drawn from a household this viewer cannot reach. Only
+// `ok` events count — a failed run delivered nothing.
+export function deliveredDocumentCountsByAccount(
+  accessibleProfileIds: AuthorizedProfileIds,
+  canSeeUnclaimed: boolean
+): Map<number, number> {
+  const ids = accessibleProfileIds;
+  // `substr(at, 1, 10)` on both sides rather than `date()`: the two columns sit on
+  // DIFFERENT stored conventions (#2205) — `integration_sync_events.at` is a canonical
+  // UTC instant, `portal_run_reports.at` is bare — and the leading ten characters are
+  // the calendar day in either form, which `date()` would not be for the `Z` form.
+  const rows = db
+    .prepare(
+      `SELECT e.account_id AS accountId,
+              SUM(COALESCE(e.inserted, 0) + COALESCE(e.updated, 0)) AS delivered
+         FROM integration_sync_events e
+         JOIN portal_run_reports r ON r.account_id = e.account_id
+        WHERE e.profile_id IN ${profileIdsIn(ids)}
+          AND e.source_id = 'patient-portals'
+          AND e.ok = 1
+          AND e.account_id IS NOT NULL
+          AND substr(e.at, 1, 10) = substr(r.at, 1, 10)
+          AND ${reachableAccountSql(ids, "e.account_id")}
+        GROUP BY e.account_id`
+    )
+    .all(...ids, ...ids, canSeeUnclaimed ? 1 : 0) as {
+    accountId: number;
+    delivered: number | null;
+  }[];
+  return new Map(rows.map((r) => [r.accountId, r.delivered ?? 0]));
 }
 
 // ── The pending list a MEMBER may see (#1875) ────────────────────────────────

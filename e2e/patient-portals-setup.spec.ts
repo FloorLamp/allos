@@ -231,6 +231,59 @@ function plantRunReport(portalName: string, at?: string) {
   });
 }
 
+// A DELIVERY-ONLY push on the caller's portal (#1888/#2914): a `contacted: false`
+// report plus the sync event that carries the documents it delivered. It deliberately
+// leaves `checked_at` where the previous real run left it — that is the whole point of
+// the sticky clock, and what lets the login row state a check it does not claim to be.
+function plantDelivery(portalName: string, documents: number) {
+  withDb((handle) => {
+    const portal = handle
+      .prepare("SELECT id FROM portals WHERE name = ?")
+      .get(portalName) as { id: number };
+    const account = handle
+      .prepare("SELECT id FROM portal_accounts WHERE portal_id = ?")
+      .get(portal.id) as { id: number };
+    const identity = handle
+      .prepare(
+        `SELECT profile_id AS profileId, patient_label AS label
+           FROM portal_identities
+          WHERE account_id = ? AND profile_id IS NOT NULL`
+      )
+      .get(account.id) as { profileId: number; label: string };
+    const instant = frozenNow().toISOString();
+    // `portal_run_reports.at` is stored bare, `integration_sync_events.at` canonical
+    // (#2205) — the same instant in the two conventions each column declares.
+    const bare = instant.replace("T", " ").slice(0, 19);
+    const canonical = `${instant.slice(0, 19)}Z`;
+    handle
+      .prepare(
+        `INSERT INTO portal_run_reports
+           (account_id, portal_id, at, ok, status, message, discovered, contacted)
+         VALUES (?, ?, ?, 1, 'nothing-new', NULL, 0, 0)
+         ON CONFLICT(account_id) DO UPDATE SET at = excluded.at, ok = 1,
+           status = excluded.status, contacted = 0`
+      )
+      .run(account.id, portal.id, bare);
+    handle
+      .prepare(
+        `INSERT INTO integration_sync_events
+           (profile_id, source_id, at, ok, received, written, inserted, updated,
+            unchanged, skipped, portal_id, account_id, patient_label)
+         VALUES (?, 'patient-portals', ?, 1, ?, ?, ?, 0, 0, 0, ?, ?, ?)`
+      )
+      .run(
+        identity.profileId,
+        canonical,
+        documents,
+        documents,
+        documents,
+        portal.id,
+        account.id,
+        identity.label
+      );
+  });
+}
+
 test.describe("Patient portals — the portal sections (#1874)", () => {
   test("adding a portal materializes its section in place, waiting for its first run", async ({
     page,
@@ -584,10 +637,10 @@ test.describe("Patient portals — checklist and mapping (#1874)", () => {
     await expect(mapped.getByTestId("patient-chip")).toContainText(chosen);
     // Steady again: the strip is gone — a finished checklist is clutter.
     await expect(page.getByTestId("portal-checklist")).toHaveCount(0);
-    // Per-patient "Last checked" lives on the row (the planted run belongs to the
+    // Per-patient "Last synced" lives on the row (the planted run belongs to the
     // login, not to this patient, so this row honestly says it was never checked).
     await expect(mapped.getByTestId("portal-patient-status")).toContainText(
-      "Not checked yet"
+      "Not synced yet"
     );
 
     await removePortal(page, portal);
@@ -834,6 +887,55 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     await expect(
       sectionFor(page, portal).getByTestId("sync-request-open")
     ).toHaveCount(0);
+
+    await removePortal(page, portal);
+  });
+
+  test("a delivery-only push says what it delivered, and leaves the sync ask standing (#2914)", async ({
+    page,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Delivery Portal ${stamp}`;
+    const label = `Delivery Patient ${stamp}`;
+
+    await addPortal(page, portal);
+    await prebind(page, portal, label);
+    // An OLD genuine run, so the request raised below stays open — and so the check
+    // clock has a real date to lag behind.
+    plantRunReport(portal, "2026-01-05 09:00:00");
+    await page.reload();
+
+    const section = sectionFor(page, portal);
+    await hydratedClick(page, section.getByTestId("sync-request-ask"));
+    await expect(section.getByTestId("sync-request-open")).toContainText(
+      "Sync requested"
+    );
+
+    // Now the push lands: two archives arrive, and the tool honestly reports that it
+    // visited no portal.
+    plantDelivery(portal, 2);
+    await page.reload();
+
+    const after = sectionFor(page, portal);
+    const status = after.getByTestId("login-status");
+    // The run KIND and the delivered COUNT — never the bare "Last run" that made a
+    // delivery indistinguishable from an empty check.
+    await expect(status).toContainText("Delivered 2 documents");
+    // …and the real check clock, which the delivery deliberately did not advance.
+    await expect(status).toContainText("portal last checked 2026-01-05");
+    // The count is one tap from what arrived.
+    await expect(status.getByTestId("login-status-delivered")).toHaveAttribute(
+      "href",
+      "/data?section=review"
+    );
+
+    // THE INVARIANT (#1888): a delivery answers nothing. The ask is still standing
+    // directly beneath the line that says documents arrived, and the page now explains
+    // why instead of merely looking self-contradictory.
+    await expect(after.getByTestId("sync-request-open")).toContainText(
+      "Sync requested"
+    );
 
     await removePortal(page, portal);
   });

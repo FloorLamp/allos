@@ -1211,6 +1211,12 @@ export interface PortalRunReport {
   // written by a client that has never heard of them reads exactly as it always did.
   contacted: boolean;
   attended: boolean;
+  // The login's sticky CHECK clock (#1888) — the last report that ANSWERED a sync
+  // request, which a delivery-only push deliberately never advances. Projected so a
+  // delivery row can state the real check clock beside itself (#2914), instead of
+  // leaving today's staleness ask looking absurd next to today's delivery. Null means
+  // the portal has genuinely never been checked.
+  checkedAt: string | null;
 }
 
 // Record the run one LOGIN just reported, replacing that login's previous report.
@@ -1324,7 +1330,8 @@ const LIST_RUN_REPORTS_STMT = hoistedStatement(
           r.account_id AS accountId, a.slug AS accountSlug, a.name AS accountName,
           a.implicit AS accountImplicit, r.at AS at, r.ok AS ok,
           r.status AS status, r.message AS message, r.discovered AS discovered,
-          r.contacted AS contacted, r.attended AS attended
+          r.contacted AS contacted, r.attended AS attended,
+          r.checked_at AS checkedAt
      FROM portal_run_reports r
      JOIN portals p ON p.id = r.portal_id
      JOIN portal_accounts a ON a.id = r.account_id
@@ -1351,6 +1358,7 @@ export function listPortalRunReports(): PortalRunReport[] {
       discovered: row.discovered as number,
       contacted: (row.contacted as number) === 1,
       attended: (row.attended as number) === 1,
+      checkedAt: (row.checkedAt as string | null) ?? null,
     })
   );
 }
@@ -1366,8 +1374,10 @@ export interface IdentitySyncStatus {
 
 // "Last synced" for every (account, patient) this profile has events for — the card's
 // per-identity status line. A household with two portals and three patients has six
-// answers to "when was this last checked", and the single per-profile connection stamp
-// cannot hold them.
+// answers to "when was this last synced", and the single per-profile connection stamp
+// cannot hold them. SYNCED, not checked: a delivery-only push advances this (#1888's
+// ruling), so the word the page reserves for a real portal visit cannot ride on it
+// (#2914).
 //
 // Profile-scoped, like every read of this table. Only a SUCCESSFUL run advances
 // `lastOkAt` — including a nothing-new one, which is the point: a quiet check is still a
