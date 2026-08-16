@@ -467,7 +467,7 @@ export const TIME_COLUMNS = {
       semantic: "window-start",
       grain: "instant",
       convention: "canonical",
-      note: "Migration 20260816-fasts (#2756). The instant the user CLAIMS the fast began — a claim, never a sensor reading, and never inferred from the food log (whose instants are tap times). BORN canonical, so the first writer is bound to utcInstant() by CANONICAL_INSTANT_COLUMNS rather than choosing a shape at the call site. An INSTANT and not a day on purpose: a fast spans a profile-local day boundary by nature, so a day column would be wrong on the majority of rows. Accepts a backdated value (forgot-to-tap is the common failure); the write core refuses a future one and one further back than FAST_MAX_HOURS. No column DEFAULT — SQLite's own datetime('now') writes the bare shape.",
+      note: "Migration 20260816-fasts (#2756). The instant the user CLAIMS the fast began — a claim, never a sensor reading, and never inferred from the food log (whose instants are tap times). BORN canonical, so the first writer is bound to utcInstant() by CANONICAL_INSTANT_COLUMNS rather than choosing a shape at the call site. An INSTANT and not a day on purpose: a fast spans a profile-local day boundary by nature, so a day column would be wrong on the majority of rows. Accepts a backdated value (forgot-to-tap is the common failure); the write core refuses a future one and one further back than FAST_MAX_HOURS. No column DEFAULT, deliberately: SQLite's own SQL clock writes the BARE shape, which is exactly how a canonical column ends up holding two serializations.",
     },
     {
       column: "ended_at",

@@ -73,6 +73,7 @@ import type * as M26 from "@/app/(app)/medical/substance-use/actions";
 import type * as M27 from "@/app/(app)/medications/actions";
 import type * as M28 from "@/app/(app)/mood-actions";
 import type * as M29 from "@/app/(app)/nutrition/actions";
+import type * as M96 from "@/app/(app)/nutrition/fast-actions";
 import type * as M30 from "@/app/(app)/nutrition/intake-actions";
 import type * as M31 from "@/app/(app)/onboarding/actions";
 import type * as M32 from "@/app/(app)/palette-actions";
@@ -223,6 +224,9 @@ type Census = {
   >;
   "app/(app)/mood-actions.ts": Expect<ActionsAreSerializable<typeof M28>>;
   "app/(app)/nutrition/actions.ts": Expect<ActionsAreSerializable<typeof M29>>;
+  "app/(app)/nutrition/fast-actions.ts": Expect<
+    ActionsAreSerializable<typeof M96>
+  >;
   "app/(app)/nutrition/intake-actions.ts": Expect<
     ActionsAreSerializable<typeof M30>
   >;
@@ -409,6 +413,7 @@ const CENSUSED_MODULES = [
   "app/(app)/medications/actions.ts",
   "app/(app)/mood-actions.ts",
   "app/(app)/nutrition/actions.ts",
+  "app/(app)/nutrition/fast-actions.ts",
   "app/(app)/nutrition/intake-actions.ts",
   "app/(app)/onboarding/actions.ts",
   "app/(app)/palette-actions.ts",

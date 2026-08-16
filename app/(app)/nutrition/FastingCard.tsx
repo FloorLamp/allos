@@ -110,7 +110,7 @@ export default function FastingCard({
   return (
     <section
       data-testid="fasting-card"
-      className="mb-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700"
+      className="mb-4 rounded-lg border border-black/10 p-3 dark:border-white/10"
     >
       <h2 className="mb-2 section-label">Fasting</h2>
 
@@ -140,7 +140,7 @@ export default function FastingCard({
             new FormData()
           )
         }
-        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-slate-600"
+        className="rounded-md border border-black/10 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-white/10"
       >
         {fastControlLabel(state)}
       </button>
@@ -169,7 +169,7 @@ export default function FastingCard({
               fd.set("id", String(state.fast.id));
               void run(discardFastAction, fd);
             }}
-            className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-slate-600"
+            className="rounded-md border border-black/10 px-2 py-1 text-xs disabled:opacity-50 dark:border-white/10"
           >
             Discard
           </button>
@@ -195,7 +195,7 @@ export default function FastingCard({
                   {note ? (
                     <span
                       data-testid="fasting-during-note"
-                      className="ml-2 text-xs text-slate-400"
+                      className="ml-2 text-xs text-slate-500 dark:text-slate-400"
                     >
                       {note}
                     </span>
@@ -207,7 +207,7 @@ export default function FastingCard({
         </ul>
       )}
       {history.length > 0 && (
-        <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           A fast counts for the day it ends.
         </p>
       )}

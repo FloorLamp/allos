@@ -37,14 +37,19 @@ export function getActiveFast(profileId: number): Fast | null {
   );
 }
 
-/** Every recorded fast for a profile, newest-started first. */
+// Every recorded fast for a profile, newest-started first. `limit` binds through a
+// LIMIT that is always PRESENT in the statement text — `-1` is SQLite's own "no limit"
+// — rather than being concatenated in, so this stays one literal prepared statement and
+// the profile-scoping scan can read its WHERE clause.
 export function listFasts(profileId: number, limit?: number): Fast[] {
-  const sql =
-    `SELECT ${COLS} FROM fasts
-      WHERE profile_id = ?
-      ORDER BY started_at DESC, id DESC` + (limit != null ? " LIMIT ?" : "");
-  const args: unknown[] = limit != null ? [profileId, limit] : [profileId];
-  return db.prepare(sql).all(...args) as Fast[];
+  return db
+    .prepare(
+      `SELECT ${COLS} FROM fasts
+        WHERE profile_id = ?
+        ORDER BY started_at DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, limit ?? -1) as Fast[];
 }
 
 /** Completed fasts whose interval intersects [fromInstant, toInstant). */
