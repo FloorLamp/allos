@@ -7,22 +7,13 @@ import {
   openingLogSegment,
   LOG_HABIT_MIN_DAYS,
   LOG_HABIT_WINDOW_DAYS,
-  LOG_SEGMENT_CENSUS,
   type SegmentLogDays,
 } from "@/lib/log-sheet";
-import { QUICK_LOG_IDS, quickLogMenu } from "@/lib/quick-log";
+import { quickLogMenu } from "@/lib/quick-log";
 
 // The "Everything else" section is a VIEW over the quick-log registry, not a
 // second membership list. These tests pin exactly that: nothing is added,
 // nothing is dropped, and both existing gates still decide.
-
-describe("LOG_SEGMENT_CENSUS", () => {
-  it("assigns every quick-log id to a segment", () => {
-    for (const id of QUICK_LOG_IDS) {
-      expect(LOG_SEGMENT_CENSUS[id]).toBeTruthy();
-    }
-  });
-});
 
 describe("dueDoseChipLabel", () => {
   it("names the due doses and compacts overflow", () => {

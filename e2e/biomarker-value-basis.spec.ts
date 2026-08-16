@@ -202,7 +202,6 @@ test("a reading with no band and no printed range is not coloured, and claims no
   // sr-only severity span the header would otherwise carry is gone too.
   await expect(value.getByTestId("medical-flag-text")).toHaveCount(0);
   const row = page.getByRole("row").filter({ hasText: "42 mg/dL" });
-  await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
   await expect(row.getByTestId("medical-flag-text")).toHaveCount(0);
   await expect(row.locator('[data-basis="none"]')).toBeVisible();

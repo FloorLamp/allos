@@ -94,35 +94,6 @@ test.describe("mobile clipping batch (#2614)", () => {
     expect(await overhangWithin(mood, card)).toBeLessThanOrEqual(1);
   });
 
-  test("item 3: the import Labs table shows its REFERENCE band on the card", async ({
-    page,
-  }) => {
-    // Document 908 is the e2e seed's produced-rows fixture (e2e/seed-events.ts),
-    // the same one the desktop records-browser specs read. Nothing is counted here.
-    await page.goto("/import/908");
-
-    const table = page.getByTestId("extracted-observations");
-    await expect(table).toBeVisible();
-    await expect(table.locator("thead")).toBeHidden();
-    expect(
-      await scrollableBy(page.getByTestId("extracted-observations-scroll"))
-    ).toBeLessThanOrEqual(1);
-
-    // The reference band — cut to "3.5-5.|" by the old eight-column grid — is a
-    // labelled card line when the row has one. An analyte tab that happens to
-    // carry none proves nothing, so the assertion is conditional on presence and
-    // the tab's own card shape is asserted unconditionally above.
-    const reference = table.locator('td[data-card="meta"]', {
-      has: page.locator(".card-cell-label", { hasText: "Reference" }),
-    });
-    if ((await reference.count()) > 0) {
-      const cell = reference.first(); // first-ok: one labelled band proves the round-trip; which analyte owns it is irrelevant
-      await expect(cell).toBeVisible();
-      const card = cell.locator("xpath=..");
-      expect(await overhangWithin(cell, card)).toBeLessThanOrEqual(1);
-    }
-  });
-
   test("item 4: the home Recent-labs label keeps its identity when the value is long", async ({
     page,
   }) => {

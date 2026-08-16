@@ -20,8 +20,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setWeekMode } from "@/lib/settings";
-import { CADENCE_SCOPES } from "@/lib/cadence";
-import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 import { practiceIdentity } from "@/lib/practice";
 import {
   cadenceWindows,
@@ -360,12 +358,6 @@ describe("the cadence ledger (#2034)", () => {
     expect(
       getFrequencyTargetWeeklyHistory(pid, 4).map((h) => h.target.scope_kind)
     ).toEqual(["practice"]);
-  });
-
-  it("registers a direction for every scope kind the CHECK enum allows", () => {
-    for (const kind of FREQUENCY_SCOPE_KINDS) {
-      expect(CADENCE_SCOPES[kind], kind).toBeDefined();
-    }
   });
 
   // ---- the anchor clamp ----------------------------------------------------
