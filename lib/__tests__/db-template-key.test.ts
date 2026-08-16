@@ -54,9 +54,8 @@ function withoutComments(src: string): string {
  * shape for reading a function BODY, never for reading the import list.
  */
 function codeOnly(src: string): string {
-  return withoutComments(src).replace(
-    /(["'`])(?:\\.|(?!\1)[^\\])*\1/g,
-    (m) => m.replace(/[^\n]/g, " ")
+  return withoutComments(src).replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, (m) =>
+    m.replace(/[^\n]/g, " ")
   );
 }
 
@@ -88,7 +87,11 @@ function valueImports(src: string): Map<string, string> {
     const clause = m[1];
     const spec = m[2];
     for (const raw of clause.replace(/[{}]/g, " ").split(",")) {
-      const name = raw.trim().split(/\s+as\s+/).pop()?.trim();
+      const name = raw
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim();
       // A `{ type Foo }` inline specifier erases too.
       if (!name || /^type\b/.test(raw.trim())) continue;
       if (/^[A-Za-z_$][\w$]*$/.test(name)) out.set(name, spec);
@@ -213,10 +216,7 @@ describe("the DB template cache key", () => {
     // Over-approximating is deliberate: a binding is charged to the key whenever
     // its name appears anywhere in the function body. A false positive costs one
     // entry in a list; a false negative is the bug.
-    const src = fs.readFileSync(
-      path.join(process.cwd(), BOOT_TASKS),
-      "utf8"
-    );
+    const src = fs.readFileSync(path.join(process.cwd(), BOOT_TASKS), "utf8");
     const body = functionBody(codeOnly(src), "bootstrapAuth");
     const uncovered: string[] = [];
     for (const [binding, spec] of valueImports(withoutComments(src))) {
@@ -239,10 +239,7 @@ describe("the DB template cache key", () => {
     // anything — a rename, a moved file, a regex that no longer matches. So the
     // scan's own inputs are asserted: the known bake-once dependencies must be
     // among what it charges to the key.
-    const src = fs.readFileSync(
-      path.join(process.cwd(), BOOT_TASKS),
-      "utf8"
-    );
+    const src = fs.readFileSync(path.join(process.cwd(), BOOT_TASKS), "utf8");
     const body = functionBody(codeOnly(src), "bootstrapAuth");
     const seen = [...valueImports(withoutComments(src))]
       .filter(([binding]) => new RegExp(`\\b${binding}\\b`).test(body))

@@ -297,7 +297,6 @@ export function buildPracticeReminder(
   };
 }
 
-
 // ---- The time-correction ride-along (issue #2875) ---------------------------
 
 // How a practice message names the correction affordance, and where its rows are bound.

@@ -722,7 +722,7 @@ belongs to whoever adds the dataset entry, not to the ingest.
 
 **Not started here.** This is the placement ruling only — no schema, no entry, no
 surface. The `SEED_PERSONA=diabetic-cgm` walkthrough remains the live data shape to
-develop against, and it is worth saying plainly that the persona seeds the *lab* shape
+develop against, and it is worth saying plainly that the persona seeds the _lab_ shape
 (4 timed `medical_records` vitals a day), so it exercises the observation half and not
 the trace half this ruling is mostly about.
 

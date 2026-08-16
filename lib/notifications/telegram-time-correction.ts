@@ -504,7 +504,6 @@ function doseRestampText(outcome: DoseRestampOutcome, hhmm?: string): string {
 
 export { FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES };
 
-
 // ---- Practices (#2875) -----------------------------------------------------
 
 // The third domain, and the one whose stored value is not an instant: a practice row

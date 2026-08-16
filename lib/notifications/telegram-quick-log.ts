@@ -1307,10 +1307,7 @@ import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
 import { buildFoodNudge } from "./food";
 import { currentFoodSlot } from "../queries";
-import {
-  buildPracticeCorrectionRebuild,
-  buildPracticeList,
-} from "./practices";
+import { buildPracticeCorrectionRebuild, buildPracticeList } from "./practices";
 import { plainBody } from "./rich-text";
 import { parseWeightEntry } from "../palette-quick-log";
 import { insertBodyMetric } from "../offline/writes";

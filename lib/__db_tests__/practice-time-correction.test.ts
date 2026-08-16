@@ -383,6 +383,8 @@ describe("the callback dispatcher routes the practice prefixes", () => {
     // The dispatcher reached the handler (a silent ack would mean the prefix fell
     // through to no route at all) and the handler spoke its refusal.
     expect(answer).toHaveBeenCalled();
-    expect(String(answer.mock.calls.at(-1)?.[1] ?? "")).toMatch(/Couldn't find/);
+    expect(String(answer.mock.calls.at(-1)?.[1] ?? "")).toMatch(
+      /Couldn't find/
+    );
   });
 });
