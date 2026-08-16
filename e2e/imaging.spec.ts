@@ -15,13 +15,19 @@ const DB_PATH = workerDbPath();
 const REGION = "E2EREGION1";
 const DOSE_REGION = "E2EDOSEREGION1";
 const PET_REGION = "E2EPETREGION1";
+// Carries the "chest" token on purpose: the estimate resolves to the named
+// "Chest X-ray" dataset entry, which is what the breakdown row cites.
+const BREAKDOWN_REGION = "Chest E2EBREAKREGION1";
+const EXCLUDED_REGION = "E2EEXCLREGION1";
 
 function cleanup() {
   const handle = new Database(DB_PATH);
   try {
     handle
-      .prepare("DELETE FROM imaging_studies WHERE body_region IN (?, ?, ?)")
-      .run(REGION, DOSE_REGION, PET_REGION);
+      .prepare(
+        "DELETE FROM imaging_studies WHERE body_region IN (?, ?, ?, ?, ?)"
+      )
+      .run(REGION, DOSE_REGION, PET_REGION, BREAKDOWN_REGION, EXCLUDED_REGION);
   } finally {
     handle.close();
   }
@@ -159,7 +165,10 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     // The calm cumulative card renders, with a recorded portion and no alarmist copy.
     const card = page.getByTestId("radiation-dose-card");
     await expect(card).toBeVisible();
-    await expect(card).toContainText("trailing 3 years");
+    // The trailing window is a SECONDARY lens now (#2970) — the headline is all
+    // records, labelled with how far back it reaches, and never ages downward.
+    await expect(card).toContainText("Last 3 years:");
+    await expect(card).toContainText("From your records, since");
     await expect(card).toContainText("Recorded:");
     await expect(card.getByTestId("radiation-dose-total")).toContainText("mSv");
     await expect(card).not.toContainText("Informational, not medical advice.");
@@ -255,5 +264,98 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await expect(
       list.getByRole("row").filter({ hasText: PET_REGION })
     ).toHaveCount(0);
+  });
+
+  test("the cumulative total names the studies behind it and the ones it left out (#2970)", async ({
+    page,
+  }) => {
+    test.slow();
+
+    // Self-clean this test's markers BEFORE running, like the PET sibling: under
+    // --repeat-each the file-scoped afterAll doesn't run between repeats, and a
+    // leftover row would collide with the single-row assertions below.
+    {
+      const handle = new Database(DB_PATH);
+      try {
+        handle
+          .prepare("DELETE FROM imaging_studies WHERE body_region IN (?, ?)")
+          .run(BREAKDOWN_REGION, EXCLUDED_REGION);
+      } finally {
+        handle.close();
+      }
+    }
+
+    await page.goto("/results/imaging");
+
+    // A chest X-ray with NO recorded dose — the estimate path, and the common case:
+    // in the audited record every study had a NULL dose, so the card showed figures
+    // no row could account for.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
+    const xrayForm = page.getByTestId("imaging-study-form");
+    await expect(xrayForm).toBeVisible();
+    await xrayForm.getByLabel("Modality").selectOption("x-ray");
+    await xrayForm.getByLabel("Body region").fill(BREAKDOWN_REGION);
+    await xrayForm.getByLabel("Study date").fill(recentDate());
+    await page.keyboard.press("Escape");
+    await submitWithToast(
+      page,
+      xrayForm.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
+
+    // An ultrasound on the same day — a true 0 mSv, and one of the three classes of
+    // study that contributed nothing without ever saying so.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
+    const usForm = page.getByTestId("imaging-study-form");
+    await expect(usForm).toBeVisible();
+    await usForm.getByLabel("Modality").selectOption("ultrasound");
+    await usForm.getByLabel("Body region").fill(EXCLUDED_REGION);
+    await usForm.getByLabel("Study date").fill(recentDate());
+    await page.keyboard.press("Escape");
+    await submitWithToast(
+      page,
+      usForm.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
+
+    // The list row now carries an ESTIMATED dose chip, marked as an estimate.
+    const list = page.getByTestId("imaging-study-list");
+    const xrayRow = list.getByRole("row").filter({ hasText: BREAKDOWN_REGION });
+    await expect(xrayRow).toContainText("est.", { timeout: 20_000 });
+
+    // Open the breakdown: the contributing study is named with its figure, and the
+    // ultrasound is named as excluded with the reason.
+    const card = page.getByTestId("radiation-dose-card");
+    await expect(card).toBeVisible();
+    const details = card.getByTestId("radiation-dose-breakdown");
+    if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await details.locator("summary").click();
+    }
+    await expect(details).toHaveJSProperty("open", true);
+
+    const contribution = details
+      .getByTestId("radiation-dose-contribution")
+      .filter({ hasText: BREAKDOWN_REGION });
+    await expect(contribution).toContainText("est.");
+    await expect(contribution).toContainText("Typical for Chest X-ray");
+
+    const exclusion = details
+      .getByTestId("radiation-dose-exclusion")
+      .filter({ hasText: EXCLUDED_REGION });
+    await expect(exclusion).toContainText("No ionizing radiation.");
+
+    // Clean up both studies we created.
+    for (const marker of [BREAKDOWN_REGION, EXCLUDED_REGION]) {
+      const row = list.getByRole("row").filter({ hasText: marker });
+      await hydratedClick(page, row.getByLabel("Record actions"));
+      await page.getByRole("menuitem", { name: "Delete" }).click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Delete", exact: true })
+        .click();
+      await expect(
+        list.getByRole("row").filter({ hasText: marker })
+      ).toHaveCount(0);
+    }
   });
 });
