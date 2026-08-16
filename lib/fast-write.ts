@@ -555,7 +555,8 @@ export function editFast(
     if (!start || !end) return { kind: "not-found" };
     // Compared at the STORED second, like `endFast`: `utcInstant` truncates, so a
     // millisecond test would accept a pair that serializes to one zero-length row.
-    if (instantSeconds(end) <= instantSeconds(start)) return { kind: "invalid" };
+    if (instantSeconds(end) <= instantSeconds(start))
+      return { kind: "invalid" };
     if (instantSeconds(end) > instantSeconds(at)) return { kind: "invalid" };
     if (end.getTime() - start.getTime() > FAST_MAX_HOURS * 3_600_000)
       return { kind: "invalid" };
