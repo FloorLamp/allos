@@ -9,6 +9,9 @@ import {
   unwrapExtractionInput,
   looksLikeExtractionInput,
 } from "@/lib/medical-extract";
+// Deep import: the unit vocabulary is exported for the table-driven walk below, not
+// re-exported through the barrel — nothing outside the parser has business reading it.
+import { AGE_UNITS_PER_YEAR } from "@/lib/medical-extract/normalize";
 import { SYSTEM, TOOL } from "@/lib/medical-extract/prompt";
 import { EXTRACTION_CONFIDENCES } from "@/lib/extraction-confidence";
 
@@ -217,7 +220,6 @@ describe("normalizeAge", () => {
     expect(normalizeAge("6 months")).toBe(0);
     expect(normalizeAge("6mo")).toBe(0);
     expect(normalizeAge("6 mos")).toBe(0);
-    expect(normalizeAge("6m")).toBe(0);
     expect(normalizeAge("6 MONTHS")).toBe(0);
     expect(normalizeAge("6-month-old")).toBe(0);
     expect(normalizeAge("6 months old")).toBe(0);
@@ -276,6 +278,83 @@ describe("normalizeAge", () => {
     expect(normalizeAge(17.6)).toBe(17); // minor, not adult
     expect(normalizeAge("17.6")).toBe(17);
     expect(normalizeAge(12.7)).toBe(12); // pediatric BP regime, not adult
+  });
+
+  // ── R1: "45M" is age+sex shorthand, not 45 months ────────────────────────────
+  //
+  // The first cut of this table read a bare "m" as months, which turned the ordinary
+  // shorthand of a triage note ("45M presenting with chest pain") into a THREE-year-old
+  // — worse than the bug being fixed, because it was a REGRESSION: parseInt stopped at
+  // the digits and got 45 by accident. And guessing "younger" is not conservative here.
+  // Below 13 the app applies a different clinical interpretation, so an adult's
+  // genuinely out-of-range ALP is re-derived against the pediatric band and its `high`
+  // flag is ERASED — a suppressed true positive, not a withheld surface. The DB tier
+  // asserts that consequence end to end.
+  it("refuses age+sex shorthand instead of reading the sex as a unit", () => {
+    for (const shorthand of ["45M", "45 M", "45m", "45 m", "32F", "32 f"]) {
+      expect(normalizeAge(shorthand)).toBeNull();
+    }
+    // The two halves of the shorthand must answer the SAME way — an asymmetry is how
+    // this was spotted (`M` converted, `F` refused).
+    expect(normalizeAge("45M")).toEqual(normalizeAge("45F"));
+    // The vocabulary itself is the guard: neither sex marker may be re-added as a unit.
+    expect(Object.keys(AGE_UNITS_PER_YEAR)).not.toContain("m");
+    expect(Object.keys(AGE_UNITS_PER_YEAR)).not.toContain("f");
+    // An infant loses nothing — the unambiguous month spellings still convert.
+    expect(normalizeAge("6mo")).toBe(0);
+    expect(normalizeAge("6 mos")).toBe(0);
+    expect(normalizeAge("6 months")).toBe(0);
+  });
+
+  // ── R2: every entry in the closed vocabulary is asserted, not a hand-picked sample ──
+  //
+  // The whole safety argument for converting is that the vocabulary is CLOSED, so each
+  // of its entries is an independent numeric literal that can be wrong on its own. A
+  // hand-written sample left a third of them unexercised, and a single mutated factor
+  // (`w` as 52 rather than 365.25/7) shipped green while making a 364-day-old infant a
+  // one-year-old with food logging on.
+  //
+  // The expectations below are written INDEPENDENTLY of the table — deriving the
+  // boundary from AGE_UNITS_PER_YEAR would make any mutated entry self-consistent and
+  // the test vacuous.
+  const UNIT_SPELLINGS = {
+    // "" is the no-unit case: a bare number has always meant years.
+    years: ["", "y", "yr", "yrs", "year", "years", "yo", "yos", "yoa"],
+    months: ["mo", "mos", "mon", "mons", "mth", "mths", "month", "months"],
+    weeks: ["w", "wk", "wks", "week", "weeks"],
+    days: ["d", "day", "days"],
+  };
+  // The most one can be and still be under a year, and the least one can be and be a
+  // year, in each unit. 52 weeks is 364 days; 365 days is short of the 365.25 mean year.
+  const UNDER_A_YEAR = { years: 0, months: 11, weeks: 52, days: 365 };
+  const EXACTLY_A_YEAR = { years: 1, months: 12, weeks: 53, days: 366 };
+
+  it("converts every spelling in the vocabulary, and holds nothing untested", () => {
+    // Fails if a spelling is added to the table without an expectation here, or removed
+    // from the table while an expectation remains.
+    expect(Object.keys(AGE_UNITS_PER_YEAR).sort()).toEqual(
+      Object.values(UNIT_SPELLINGS).flat().sort()
+    );
+
+    for (const [unit, spellings] of Object.entries(UNIT_SPELLINGS)) {
+      const under = UNDER_A_YEAR[unit as keyof typeof UNDER_A_YEAR];
+      const exactly = EXACTLY_A_YEAR[unit as keyof typeof EXACTLY_A_YEAR];
+      for (const spelling of spellings) {
+        expect([spelling, normalizeAge(`${under} ${spelling}`)]).toEqual([
+          spelling,
+          0,
+        ]);
+        expect([spelling, normalizeAge(`${exactly} ${spelling}`)]).toEqual([
+          spelling,
+          1,
+        ]);
+        // The spelling attached to the number, the way a document writes it.
+        expect([spelling, normalizeAge(`${under}${spelling}`)]).toEqual([
+          spelling,
+          0,
+        ]);
+      }
+    }
   });
 });
 

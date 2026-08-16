@@ -32,6 +32,9 @@ import {
 import { adultOnlyRefusal } from "@/lib/instrument-records";
 import { getRecordsSpecialtyRelevance } from "@/lib/queries/nav-relevance";
 import { fastingAvailable } from "@/lib/fast-write";
+import { setStoredAge } from "@/lib/settings";
+import { reconcileFlags } from "@/lib/queries/medical/flags";
+import { today } from "@/lib/db";
 
 function newProfile(name: string): number {
   return Number(
@@ -76,7 +79,13 @@ describe("a document stating an age in months records an infant (#3020)", () => 
   });
 
   it("handles the abbreviated spellings a paediatric document uses", () => {
-    for (const [i, stated] of ["6mo", "6 mos", "6m", "6-month-old"].entries()) {
+    // A bare "6m" is deliberately NOT here — see the age+sex shorthand describe below.
+    for (const [i, stated] of [
+      "6mo",
+      "6 mos",
+      "6 mths",
+      "6-month-old",
+    ].entries()) {
       const p = importDocumentStating(`aup abbrev ${i}`, stated);
       expect(getStoredAge(p)).toBe(0);
       expect(stageOf(p)).toBe("infant");
@@ -99,6 +108,27 @@ describe("a document stating an age in months records an infant (#3020)", () => 
       const p = importDocumentStating(`aup neonate ${i}`, stated);
       expect(getStoredAge(p)).toBe(0);
       expect(stageOf(p)).toBe("infant");
+    }
+  });
+
+  it("holds the just-under-a-year line in every sub-year unit", () => {
+    // The band, at the boundary each conversion factor actually decides. A factor that
+    // is off by a rounding — `w` as 52 rather than 365.25/7 — is invisible in the
+    // middle of the range and turns THIS profile, a 364-day-old, into a one-year-old
+    // with food logging on. The pure tier walks every spelling; this pins what the
+    // gates do at the line.
+    for (const [i, stated] of ["11 months", "52 w", "365 days"].entries()) {
+      const p = importDocumentStating(`aup under a year ${i}`, stated);
+      expect([stated, getStoredAge(p)]).toEqual([stated, 0]);
+      expect(stageOf(p)).toBe("infant");
+      expect(isFoodLoggingRelevant(getProfileAge(p))).toBe(false);
+    }
+    // And the first day of the next band, so the assertion above is a line rather than
+    // a floor everything falls under.
+    for (const [i, stated] of ["12 months", "53 w", "366 days"].entries()) {
+      const p = importDocumentStating(`aup a year ${i}`, stated);
+      expect([stated, getStoredAge(p)]).toEqual([stated, 1]);
+      expect(stageOf(p)).toBe("child");
     }
   });
 
@@ -152,5 +182,119 @@ describe("the life-stage gates see the infant, not a six-year-old (#3020)", () =
     expect(relevance.mentalHealth).toBe(false);
     expect(adultOnlyRefusal(infant, "AUDIT-C")).toBe(true);
     expect(fastingAvailable(infant)).toBe(false);
+  });
+});
+
+// ── R1: reading an age DOWNWARD is not the conservative direction ───────────────
+//
+// The first cut of the unit table read a bare "m" as months, so "45M" — the ordinary
+// age+sex shorthand of a triage note — stored a 45-year-old as 3. That was defended as
+// "conservative, because it withholds content". It is not.
+//
+// Below 13 the app applies a DIFFERENT CLINICAL INTERPRETATION rather than simply less
+// of the app. An adult's alkaline phosphatase of 300 U/L is genuinely out of range
+// (adult band 40–129) and gets a `high` flag; the pediatric band for a three-year-old
+// is 140–420, so the next reconcile finds the same value normal and ERASES the flag.
+// A suppressed true positive is worse than a withheld surface, which is why the fix is
+// to refuse the shorthand rather than to guess younger.
+describe("mis-reading age+sex shorthand would erase a true positive (#3020 R1)", () => {
+  function alpOf(recordId: number): string | null {
+    return (
+      (
+        db
+          .prepare("SELECT flag FROM medical_records WHERE id = ?")
+          .get(recordId) as { flag: string | null } | undefined
+      )?.flag ?? null
+    );
+  }
+
+  // An out-of-range adult ALP on a profile whose age is not yet known. Unknown age
+  // takes the adult band (lib/life-stage's positive-match-only policy), so the flag
+  // starts out — correctly — as "high".
+  function profileWithAdultAlpClaim(name: string): {
+    p: number;
+    alp: number;
+  } {
+    const p = newProfile(name);
+    const alp = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, unit, canonical_name, value_num, flag)
+           VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          p,
+          today(p),
+          "Alkaline Phosphatase",
+          "300",
+          "U/L",
+          "Alkaline Phosphatase",
+          300,
+          "high"
+        ).lastInsertRowid
+    );
+    return { p, alp };
+  }
+
+  it("refuses '45M' rather than recording a three-year-old", () => {
+    for (const [i, shorthand] of ["45M", "45 M", "45m", "32F"].entries()) {
+      const p = importDocumentStating(`aup shorthand ${i}`, shorthand);
+      expect([shorthand, getStoredAge(p)]).toEqual([shorthand, null]);
+      expect(stageOf(p)).toBeNull();
+    }
+  });
+
+  it("leaves the adult's out-of-range ALP flagged", () => {
+    const { p, alp } = profileWithAdultAlpClaim("aup alp shorthand");
+    // The document the model returned off-schema: "45M presenting with chest pain".
+    const result = resultFromExtractionInput(
+      { document_type: "clinic note", patient_age: "45M", results: [] },
+      [],
+      "test-model"
+    );
+    const persist = extractionToPersistInput(result, "2026-01-05");
+    applyImportFollowups(p, {
+      demographics: persist.demographics,
+      canonicalNames: [],
+      insertedObservationIds: [],
+    });
+    reconcileFlags(p);
+
+    // Nothing was adopted, so the adult band still applies and the true positive
+    // survives. With "45M" read as 45 months the same reconcile re-derives this against
+    // the pediatric band and the flag comes back null.
+    expect(getStoredAge(p)).toBeNull();
+    expect(alpOf(alp)).toBe("high");
+  });
+
+  it("still clears the claim when the document really does state a child's age", () => {
+    // The control that proves the assertion above is about the SHORTHAND and not about
+    // reconcile having stopped working: a document that genuinely states 3 years does
+    // re-band the same value, which is correct and must keep happening.
+    const { p, alp } = profileWithAdultAlpClaim("aup alp child ctl");
+    const child = importDocumentStating("aup alp child ctl doc", "3 years");
+    expect(getStoredAge(child)).toBe(3);
+
+    setStoredAge(p, 3);
+    reconcileFlags(p);
+    expect(alpOf(alp)).toBeNull();
+  });
+});
+
+// The write boundary itself. Every caller passes a whole number today, so this is the
+// trap the next one falls into rather than a live defect — and it was the only
+// surviving round-UP in the write path after the parser started flooring.
+describe("setStoredAge floors rather than rounding (#3020)", () => {
+  it("does not round a fractional age up into the next life stage", () => {
+    const infant = newProfile("aup set floor infant");
+    setStoredAge(infant, 0.9);
+    expect(getStoredAge(infant)).toBe(0);
+    expect(lifeStage(getProfileAge(infant))).toBe("infant");
+
+    const minor = newProfile("aup set floor minor");
+    setStoredAge(minor, 17.6);
+    expect(getStoredAge(minor)).toBe(17);
+    expect(isMinor(getProfileAge(minor))).toBe(true);
   });
 });

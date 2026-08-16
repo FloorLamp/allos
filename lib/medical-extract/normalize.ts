@@ -144,12 +144,27 @@ export function normalizeBirthdate(raw: unknown): string | null {
 // weeks or days far more often than in fractional years, so those are the units that
 // decide whether a newborn is recorded as a newborn (#3020).
 //
-// The vocabulary is deliberately closed: a unit that is NOT in this table makes the
-// whole value unrecordable rather than a bare number (see normalizeAge). Bare "m" is
-// read as MONTHS, which is what "6m" means on a paediatric chart — and where that
-// guess is wrong it resolves the age DOWNWARD ("45 m" → 3 y), which withholds content
-// rather than unlocking it. Every ambiguity here is settled in that direction.
-const YEAR_IN: Record<string, number> = {
+// The vocabulary is deliberately CLOSED: a unit that is not in this table makes the
+// whole value unrecordable rather than a bare number (see normalizeAge). That is what
+// makes converting the rest safe, so every entry has to earn its place — and one
+// plausible entry did not.
+//
+// A BARE "m" IS NOT IN HERE, AND MUST NOT BE ADDED. "45M" / "32F" is the ordinary
+// age+sex shorthand of a triage note or an HPI ("45M presenting with chest pain"), so
+// reading a lone "m" as months turns a 45-year-old into a THREE-year-old. Guessing
+// "younger" is not the conservative direction it looks like: below 13 the app switches
+// to a different clinical interpretation, so an adult's genuinely out-of-range ALP of
+// 300 U/L is re-derived against the pediatric band and its `high` flag is ERASED
+// (lib/reference-range/flags.ts does the same to a hypertensive BP). Suppressing a true
+// positive is worse than withholding a surface. "6mo" / "6 mos" / "6 month(s)" still
+// convert, and refusing a lone "6m" costs an infant nothing — refusal is null, the
+// "unknown age" every gate already has a policy for. `f` is absent for the same reason,
+// which is what keeps the two halves of that shorthand symmetric.
+//
+// EXPORTED so the test can walk every entry rather than a hand-picked sample: a wrong
+// factor on a spelling nobody thought to assert ships green otherwise, which is #3020's
+// own defect class one table row over.
+export const AGE_UNITS_PER_YEAR: Record<string, number> = {
   // No unit at all keeps the historical meaning: a bare number is years.
   "": 1,
   y: 1,
@@ -160,7 +175,6 @@ const YEAR_IN: Record<string, number> = {
   yo: 1,
   yos: 1,
   yoa: 1,
-  m: 12,
   mo: 12,
   mos: 12,
   mon: 12,
@@ -191,11 +205,13 @@ const YEAR_IN: Record<string, number> = {
 // from lifeStage(). Months is the ordinary way a paediatric document states an
 // infant's age, so it was the common case for exactly the population it hurts.
 //
-// AN UNRECOGNIZED UNIT IS NULL, NOT A GUESS. "7 hours", "6 1/2 years", "2 y 3 m" and
-// anything else this table cannot vouch for return null — "unknown age", which every
-// gate already has a documented policy for — rather than a confident wrong number.
-// Refusing is the safe half of the answer; converting the units above is the useful
-// half, and the two together are what the acceptance criteria asked for.
+// AN UNRECOGNIZED UNIT IS NULL, NOT A GUESS. "7 hours", "6 1/2 years", "2 y 3 m",
+// "45M", the locale spellings ("6 meses", "6 mois"), the UK paediatric conventions
+// ("18/12", "6/52") and anything else this table cannot vouch for return null —
+// "unknown age", which every gate already has a documented policy for — rather than a
+// confident wrong number. Refusing is the safe half of the answer; converting the units
+// above is the useful half, and the two together are what the acceptance criteria
+// asked for.
 //
 // COMPLETED YEARS, SO IT FLOORS. 18 months is a one-year-old, not a two-year-old, and
 // anything under a year is 0 — readable as an infant since #3018, which is what makes
@@ -205,7 +221,11 @@ const YEAR_IN: Record<string, number> = {
 // (0.5 → 1 turns an infant into a "child"; 17.6 → 18 turns a minor into an adult and
 // unlocks the adult-only surfaces). Nobody calls a 17-and-a-half-year-old 18. Rounding
 // down is also what makes the ">= 150" rejection stable: a floored value can never
-// climb past a bound it has already passed (the #2992 R2 concern).
+// climb past a bound it has already passed (the #2992 R2 concern). The floor is not
+// free at EVERY boundary — at 12.5–12.9 it also hides the mental-health screening pane
+// that rounding would show — but that is the same positive-match-only policy the rest
+// of lib/life-stage follows, and a fractional age within six months of 13 is a far
+// rarer input than the infant and minor cases above.
 //
 // 0 IS PLAUSIBLE (issue #2992): an infant's age in whole years IS zero, and this is
 // the value that reaches setStoredAge on the document-adoption path. Negatives, NaN
@@ -222,7 +242,7 @@ export function normalizeAge(raw: unknown): number | null {
   // "6 months old" / "6-month-old" / "y/o" — the unit is the letters, and the
   // trailing "old" of the ordinary English phrasing is not part of it.
   const unit = m[2].replace(/[^a-z]/g, "").replace(/old$/, "");
-  const perYear = YEAR_IN[unit];
+  const perYear = AGE_UNITS_PER_YEAR[unit];
   return perYear === undefined ? null : recordableAge(Number(m[1]) / perYear);
 }
 
