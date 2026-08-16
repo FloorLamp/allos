@@ -8,7 +8,10 @@ import {
   useEditorDock,
 } from "@/components/ActivityEditorProvider";
 import TrainingLogCard from "../TrainingLogCard";
-import type { TrainingLogCardData } from "@/lib/training-log-card";
+import type {
+  TrainingLogCardData,
+  TrainingLogCardSubject,
+} from "@/lib/training-log-card";
 import type { ActivityDetailSibling } from "@/lib/training-activity-detail";
 import type { UnitPrefs } from "@/lib/settings";
 import { trainingActivityPageHref } from "@/lib/hrefs";
@@ -38,25 +41,55 @@ function PageDock({ activityId }: { activityId: number }) {
 // hosts. host="page" (default): the canonical activity page; registers the
 // scoped editor dock so "Edit" opens the full ActivityForm in place, bringing
 // the autosave machinery and its edit-lock banner along. host="pane": the
-// Training Log's desktop reading pane — same record markup, no dock of its own
-// (edits dock into the log's general column, exactly as a card edit does), and
-// an "Open ↗" door promoting to the full page for everything the pane doesn't
-// carry (heart rate, the ledger walk).
+// Training Log's desktop reading pane AND the phone's expand-in-place row —
+// same record markup, no dock of its own (edits dock into the log's general
+// column or the overlay, exactly as a card edit does), and an "Open ↗" door
+// promoting to the full page for everything this host doesn't carry (heart
+// rate, the ledger walk).
+//
+// Multi-view (#1330): `subject`/`actingProfileId` pass through whole, so the
+// card's own gating (view-only titles, subject chips, per-subject menus) is
+// identical in every host. The drill-in handlers are HOST decisions: the log
+// injects its in-aside stat panels (gated by the fitness rules); the page
+// defaults exercise names to their Analyze deep link.
 export default function ActivityRecord({
   card,
   siblings,
   units,
   canWrite,
   host = "page",
+  subject,
+  actingProfileId,
+  onSelectExercise,
+  onSelectCardio,
+  onSelectSport,
+  onFilterTag,
 }: {
   card: TrainingLogCardData;
   siblings: ActivityDetailSibling[];
   units: UnitPrefs;
   canWrite: boolean;
   host?: "page" | "pane";
+  subject?: TrainingLogCardSubject;
+  actingProfileId?: number;
+  onSelectExercise?: (name: string) => void;
+  onSelectCardio?: (name: string) => void;
+  onSelectSport?: (name: string) => void;
+  onFilterTag?: (kind: "muscle" | "region", value: string) => void;
 }) {
   const router = useRouter();
   const { openEdit } = useActivityEditor();
+
+  // The page host's default exercise door: the lift's Analyze page. Pane hosts
+  // inject their own handlers (or none, for gated subjects) — never this.
+  const selectExercise =
+    onSelectExercise ??
+    (host === "page"
+      ? (name: string) =>
+          router.push(
+            `/training?tab=analyze&kind=strength&item=${encodeURIComponent(name)}`
+          )
+      : undefined);
 
   return (
     <div>
@@ -95,6 +128,8 @@ export default function ActivityRecord({
         fault={card.fault}
         provenance={card.provenance}
         routePolyline={card.routePolyline}
+        subject={subject}
+        actingProfileId={actingProfileId}
         mergeSiblings={siblings}
         keeperLabel={card.provenance.label}
         foldValues={card.foldValues}
@@ -103,11 +138,10 @@ export default function ActivityRecord({
         canWrite={canWrite}
         // The pane's host row already owns the #activity-N anchor (#2897).
         withAnchor={host === "page"}
-        onSelectExercise={(name) =>
-          router.push(
-            `/training?tab=analyze&kind=strength&item=${encodeURIComponent(name)}`
-          )
-        }
+        onSelectExercise={selectExercise}
+        onSelectCardio={onSelectCardio}
+        onSelectSport={onSelectSport}
+        onFilterTag={onFilterTag}
       />
       {host === "page" && <PageDock activityId={card.activity.id} />}
     </div>

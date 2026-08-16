@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
 
 // #2897 — the Log tab as the browse surface. Slim rows on the left; selecting
 // a row renders the record in the aside's READING PANE — the same component
@@ -25,8 +25,9 @@ test("selecting rows swaps the pane in place: no navigation, scroll holds", asyn
     ""
   );
 
-  // First selection: the pane renders THAT record (the Open door names it).
-  await rows.nth(0).click();
+  // First selection — hydratedClick: the row is a pure client toggle, and a
+  // click inside the hydration window is silently swallowed.
+  await hydratedClick(page, rows.nth(0));
   const pane = page.getByTestId("training-log-reading-pane");
   await expect(pane).toBeVisible();
   await expect(pane.getByTestId("activity-pane-open")).toHaveAttribute(
@@ -91,7 +92,7 @@ test("phone rows expand the record in place, and collapse again", async ({
   const row = page.getByTestId("training-log-row").first(); // first-ok: any row proves the expand gesture
   await expect(row).toBeVisible();
 
-  await row.click();
+  await hydratedClick(page, row);
   await expect(row).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByTestId("activity-card-body").first()).toBeVisible(); // first-ok: the one expanded card
 

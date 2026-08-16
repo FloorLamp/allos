@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
-import { openCombobox, settledBoxes, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  openCombobox,
+  settledBoxes,
+  settledFill,
+} from "./helpers";
 
 // Pick an activity in the editor's exercise combobox. The option button's text
 // varies with the input state: a partial filter lists options as the name plus a
@@ -78,9 +83,10 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
 
   // Select the record into the reading pane (#2897), then its overflow (⋯)
   // menu → "Log again".
-  await titleRows
-    .first() // first-ok: the "Training Log merge keeper" row (filtered) — one match
-    .click();
+  await hydratedClick(
+    page,
+    titleRows.first() // first-ok: the "Training Log merge keeper" row (filtered) — one match
+  );
   await page
     .getByTestId("training-log-reading-pane")
     .getByRole("button", { name: "Activity actions" })
@@ -252,7 +258,7 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
 
   // Select the record into the reading pane (#2897), then open the editor in
   // EDIT mode from there.
-  await pushRow.click();
+  await hydratedClick(page, pushRow);
   await page
     .getByTestId("training-log-reading-pane")
     .getByTestId("activity-page-edit")
@@ -330,7 +336,7 @@ test("editing cardio duration updates the parent session total", async ({
   // Select into the reading pane, then edit from there (#2897). The pane stays
   // on this record across editor open/close, so the RESTORE below re-enters
   // through the pane's Edit — a second row click would toggle the pane away.
-  await row.click();
+  await hydratedClick(page, row);
   const paneEdit = page
     .getByTestId("training-log-reading-pane")
     .getByTestId("activity-page-edit");
@@ -341,14 +347,14 @@ test("editing cardio duration updates the parent session total", async ({
   await duration.fill("35");
   await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.getByRole("button", { name: "Close" }).click();
-  await expect(row.getByTestId("activity-summary")).toContainText("35 min");
+  await expect(row.getByTestId("activity-summary-row")).toContainText("35 min");
 
   // Restore the shared seed row so other specs remain order-independent.
   await paneEdit.click();
   await page.getByTestId("cardio-duration").fill("28");
   await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.getByRole("button", { name: "Close" }).click();
-  await expect(row.getByTestId("activity-summary")).toContainText("28 min");
+  await expect(row.getByTestId("activity-summary-row")).toContainText("28 min");
 });
 
 test("logging a manual cardio activity auto-fills an editable estimated-calorie value (#151)", async ({
@@ -454,7 +460,7 @@ test("the activity form keeps workout entry primary and context visible across b
   // structurally gone with the reading pane (#2897): the pane renders only
   // after the SAME isDesktop settle that registers the dock, so by the time
   // its Edit button exists, an edit opened from it always docks.
-  await pushRow.click();
+  await hydratedClick(page, pushRow);
   await page
     .getByTestId("training-log-reading-pane")
     .getByTestId("activity-page-edit")
@@ -613,6 +619,9 @@ test("the activity form keeps workout entry primary and context visible across b
   // the overlay editor. exact: true so the card's title button matches, not
   // the row (whose accessible name carries the whole summary line).
   await page.setViewportSize({ width: 390, height: 844 });
+  // Wait for the width mode to settle (aria-expanded appears only when
+  // expand-in-place is live) — a click before the settle deselects instead.
+  await expect(pushRow).toHaveAttribute("aria-expanded", "false");
   await pushRow.click();
   await page.getByRole("button", { name: "Push day", exact: true }).click();
   const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
@@ -766,7 +775,7 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
     .filter({ hasText: "55 min" })
     .first(); // first-ok: the Tennis/55-min row THIS spec just logged (filtered) — one match
   await expect(newRow).toBeVisible();
-  await newRow.click();
+  await hydratedClick(page, newRow);
   await page
     .getByTestId("training-log-reading-pane")
     .getByTestId("activity-page-edit")
