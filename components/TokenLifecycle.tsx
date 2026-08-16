@@ -1,3 +1,4 @@
+import type { ChangeEvent } from "react";
 import { IconAlertTriangle, IconClock } from "@tabler/icons-react";
 import RelativeTime from "@/components/RelativeTime";
 import {
@@ -18,30 +19,55 @@ const EXPIRY_LABEL: Record<TokenExpiryChoice, string> = {
   "1y": "Expires in 1 year",
 };
 
-// A labeled expiry dropdown for mint/rotate. Uncontrolled `<select name="expiry">`
-// so it works both inside a plain server-action <form> and read via ref/DOM in a
-// client component. `defaultValue` seeds the safe "never" default.
+// THE labeled expiry dropdown for mint/rotate (#2959). Three byte-identical
+// copies of this lived in the calendar feed, the consolidated family feed and
+// Health Connect, differing only in their test id — three more places for the
+// expiry vocabulary to drift from the one that already owned it.
+//
+// Serves both call shapes, because both exist:
+//
+//   * CONTROLLED (`value` + `onChange`) — a client component holds the choice in
+//     state and passes it to a server action as an argument.
+//   * UNCONTROLLED (`name` + `defaultValue`) — a plain server-action <form> reads
+//     it from the submitted FormData. `defaultValue` seeds the safe "never".
+//
+// The presence of `value` picks the mode, so a <select> never receives both
+// `value` and `defaultValue` — the React warning this avoids by construction.
+// `name` is dropped when controlled, where the value never travels as form data.
 export function ExpirySelect({
   name = "expiry",
   id,
+  value,
+  onChange,
   defaultValue = "never",
   disabled,
+  testId = "token-expiry-select",
 }: {
   name?: string;
   id?: string;
+  value?: TokenExpiryChoice;
+  onChange?: (v: TokenExpiryChoice) => void;
   defaultValue?: TokenExpiryChoice;
   disabled?: boolean;
+  testId?: string;
 }) {
+  const controlled = value !== undefined;
   return (
     <label className="block">
       <span className="label">Expiry</span>
       <select
         id={id}
-        name={name}
-        defaultValue={defaultValue}
+        name={controlled ? undefined : name}
+        {...(controlled
+          ? {
+              value,
+              onChange: (e: ChangeEvent<HTMLSelectElement>) =>
+                onChange?.(e.target.value as TokenExpiryChoice),
+            }
+          : { defaultValue })}
         disabled={disabled}
         className="input"
-        data-testid="token-expiry-select"
+        data-testid={testId}
       >
         {TOKEN_EXPIRY_CHOICES.map((c) => (
           <option key={c} value={c}>

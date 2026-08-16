@@ -3,50 +3,12 @@
 import { useState } from "react";
 import { IconCheck, IconAlertTriangle } from "@tabler/icons-react";
 import {
-  TOKEN_EXPIRY_CHOICES,
   type TokenExpiryChoice,
   type TokenLifecycleStatus,
 } from "@/lib/token-lifecycle";
-import { TokenLifecycleNote } from "@/components/TokenLifecycle";
+import { ExpirySelect, TokenLifecycleNote } from "@/components/TokenLifecycle";
 import { TokenRow } from "@/components/TokenRow";
 import { connectHealthConnect, disconnect } from "./actions";
-
-const EXPIRY_LABEL: Record<TokenExpiryChoice, string> = {
-  never: "Never expires",
-  "90d": "Expires in 90 days",
-  "1y": "Expires in 1 year",
-};
-
-// A controlled expiry dropdown (client state feeds the server action call), mirroring
-// the calendar-feed config picker.
-function ExpiryPicker({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: TokenExpiryChoice;
-  onChange: (v: TokenExpiryChoice) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="label">Expiry</span>
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value as TokenExpiryChoice)}
-        className="input"
-        data-testid="token-expiry-select"
-      >
-        {TOKEN_EXPIRY_CHOICES.map((c) => (
-          <option key={c} value={c}>
-            {EXPIRY_LABEL[c]}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 // The Health Connect ingest-token panel (issue #1209). The token is HASHED at rest,
 // so the plaintext is shown EXACTLY ONCE — at generate/rotate, from the action's
@@ -110,7 +72,7 @@ export default function HealthConnectSetup({
           <strong>only once</strong> — copy it right away.
         </p>
         <div className="max-w-xs">
-          <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
+          <ExpirySelect value={expiry} onChange={setExpiry} disabled={busy} />
         </div>
         {error && (
           <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
@@ -204,7 +166,7 @@ export default function HealthConnectSetup({
 
       <div className="flex flex-wrap items-end gap-3 border-t border-black/5 pt-4 dark:border-white/5">
         <div className="w-40">
-          <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
+          <ExpirySelect value={expiry} onChange={setExpiry} disabled={busy} />
         </div>
         <button
           type="button"
