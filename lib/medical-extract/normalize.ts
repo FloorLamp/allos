@@ -140,34 +140,78 @@ export function normalizeBirthdate(raw: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
-// Normalize a stated age to a plausible whole number of years, from either a
-// number or a numeric string ("45", "45 years"). Null when absent/implausible.
+// How many of each unit make one year. A document states an infant's age in months,
+// weeks or days far more often than in fractional years, so those are the units that
+// decide whether a newborn is recorded as a newborn (#3020).
+//
+// The vocabulary is deliberately closed: a unit that is NOT in this table makes the
+// whole value unrecordable rather than a bare number (see normalizeAge). Bare "m" is
+// read as MONTHS, which is what "6m" means on a paediatric chart — and where that
+// guess is wrong it resolves the age DOWNWARD ("45 m" → 3 y), which withholds content
+// rather than unlocking it. Every ambiguity here is settled in that direction.
+const YEAR_IN: Record<string, number> = {
+  // No unit at all keeps the historical meaning: a bare number is years.
+  "": 1,
+  y: 1, yr: 1, yrs: 1, year: 1, years: 1, yo: 1, yos: 1, yoa: 1,
+  m: 12, mo: 12, mos: 12, mon: 12, mons: 12, mth: 12, mths: 12,
+  month: 12, months: 12,
+  w: 365.25 / 7, wk: 365.25 / 7, wks: 365.25 / 7,
+  week: 365.25 / 7, weeks: 365.25 / 7,
+  d: 365.25, day: 365.25, days: 365.25,
+};
+
+// A stated age, in any of the units above, as the whole number of COMPLETED years
+// the profile column stores — or null when it is not a recordable age.
+//
+// UNITS ARE READ, NOT DISCARDED (issue #3020). This used to be `parseInt`, which takes
+// the number and throws the unit away, so `normalizeAge("6 months")` was 6 and
+// `adoptProfileFromExtraction` wrote SIX YEARS onto an infant. That is the worst
+// direction for a life-stage gate: the stored age is the fallback every gate consults
+// when no birthdate is known, so the profile turned on food logging, moved to a
+// different pediatric flag band and a different growth chart, and answered "child"
+// from lifeStage(). Months is the ordinary way a paediatric document states an
+// infant's age, so it was the common case for exactly the population it hurts.
+//
+// AN UNRECOGNIZED UNIT IS NULL, NOT A GUESS. "7 hours", "6 1/2 years", "2 y 3 m" and
+// anything else this table cannot vouch for return null — "unknown age", which every
+// gate already has a documented policy for — rather than a confident wrong number.
+// Refusing is the safe half of the answer; converting the units above is the useful
+// half, and the two together are what the acceptance criteria asked for.
+//
+// COMPLETED YEARS, SO IT FLOORS. 18 months is a one-year-old, not a two-year-old, and
+// anything under a year is 0 — readable as an infant since #3018, which is what makes
+// converting a viable answer at all. The floor applies to the number path too, where
+// it replaced `Math.round`: rounding UP crosses life-stage boundaries in the unsafe
+// direction, and lib/life-stage's boundaries are exactly where a half-year matters
+// (0.5 → 1 turns an infant into a "child"; 17.6 → 18 turns a minor into an adult and
+// unlocks the adult-only surfaces). Nobody calls a 17-and-a-half-year-old 18. Rounding
+// down is also what makes the ">= 150" rejection stable: a floored value can never
+// climb past a bound it has already passed (the #2992 R2 concern).
 //
 // 0 IS PLAUSIBLE (issue #2992): an infant's age in whole years IS zero, and this is
-// the value that reaches setStoredAge on the document-adoption path. The old `n > 0`
-// bound rejected it — and did so INCONSISTENTLY, which is how #2992 was reachable in
-// shipped code rather than merely latent: a fractional age under half a year (a
-// document stating an infant's age as 0.4 years) passed `n > 0` and then
-// `Math.round`ed to 0, so a "0" was written to the profile that the reader could not
-// read back, while a document stating a flat 0 was dropped here instead. Both now
-// resolve to the same recorded 0. Negatives, NaN and >= 150 are still rejected.
-//
-// THE RANGE CHECK RUNS ON THE ROUNDED VALUE, NOT THE RAW ONE. It used to run before
-// `Math.round`, which let 149.6 pass `n < 150` and then round UP to a stored "150" —
-// a value `getStoredAge` rejects, so the writer and the reader disagreed about what
-// was recordable. That is the same writer/reader split as the bug above, one bound
-// away, and it is why the fractional case mattered at both ends: whatever this
-// returns must be a value the reader will accept back.
+// the value that reaches setStoredAge on the document-adoption path. Negatives, NaN
+// and >= 150 are still rejected — whatever this returns must be a value `getStoredAge`
+// will accept back.
 export function normalizeAge(raw: unknown): number | null {
-  const n =
-    typeof raw === "number"
-      ? raw
-      : typeof raw === "string"
-        ? parseInt(raw, 10)
-        : NaN;
-  if (!Number.isFinite(n) || n < 0) return null;
-  const years = Math.round(n);
-  return years < 150 ? years : null;
+  if (typeof raw === "number") return recordableAge(raw);
+  if (typeof raw !== "string") return null;
+  // A number, then whatever trails it. Digits may appear ONCE — "2 y 3 m" and
+  // "6 1/2 years" are compound ages this cannot represent, so they fall through to
+  // null rather than silently keeping the first number.
+  const m = /^(\d+(?:\.\d+)?)\s*([a-z\s./-]*)$/.exec(raw.trim().toLowerCase());
+  if (!m) return null;
+  // "6 months old" / "6-month-old" / "y/o" — the unit is the letters, and the
+  // trailing "old" of the ordinary English phrasing is not part of it.
+  const unit = m[2].replace(/[^a-z]/g, "").replace(/old$/, "");
+  const perYear = YEAR_IN[unit];
+  return perYear === undefined ? null : recordableAge(Number(m[1]) / perYear);
+}
+
+// Whole completed years, or null when the value is not an age this app can store.
+function recordableAge(years: number): number | null {
+  if (!Number.isFinite(years) || years < 0) return null;
+  const whole = Math.floor(years);
+  return whole < 150 ? whole : null;
 }
 
 // Coerce the model's structured `prescription` object into a typed
