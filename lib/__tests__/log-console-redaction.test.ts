@@ -243,6 +243,44 @@ describe("redactBag redacts before escaping (#2966)", () => {
     expect(parsed.sessionCount).toBe(42);
   });
 
+  it("still masks by key on the unserializable last-resort path", () => {
+    // A bag that JSON.stringify refuses (here a BigInt) skips the replacer
+    // entirely and falls back to a top-level walk. That path used to redact
+    // string values and pass everything else through, so a sensitive key
+    // holding an OBJECT — the shape most likely to carry the unserializable
+    // thing in the first place — came out untouched. Losing structure on a
+    // degraded path is acceptable; losing the masking is not.
+    process.env.LOG_FORMAT = "text";
+    log.error("serialize failed", {
+      credentials: { access_token: FAKE_TOKEN },
+      size: 10n,
+    });
+    const line = only();
+    expect(line).not.toContain(FAKE_TOKEN);
+    expect(line).toContain("credentials=***");
+  });
+
+  it("does not throw into its caller when the bag cannot be serialized", () => {
+    // The logger is called FROM error handlers, so a throw here replaces the
+    // failure someone was trying to record. Both render paths serialize what
+    // redactBag hands them, so the fallback has to return something emittable —
+    // and until it did, that fallback could never produce a line at all.
+    const cyclic: Record<string, unknown> = { profileId: 7 };
+    cyclic.self = cyclic;
+    cyclic.credentials = { access_token: FAKE_TOKEN };
+
+    for (const format of ["json", "text"]) {
+      lines = [];
+      process.env.LOG_FORMAT = format;
+      expect(() => log.error("cycle", cyclic)).not.toThrow();
+      const line = only();
+      expect(line).not.toContain(FAKE_TOKEN);
+      // Degraded, but still a log line an operator can read.
+      expect(line).toContain("cycle");
+      expect(line).toContain("7");
+    }
+  });
+
   it("leaves an unmatched bag's values and types alone", () => {
     process.env.LOG_FORMAT = "json";
     log.info("sync ok", { inserted: 3, ratio: 0.5, ok: true, note: null });

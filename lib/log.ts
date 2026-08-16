@@ -88,13 +88,38 @@ function useJson(): boolean {
 }
 
 // Last-resort pass for a bag that can't be serialized at all (a cycle, a BigInt,
-// a throwing toJSON): mask the string values one at a time so something is still
-// masked. Same chokepoint, less key context — which is why it is the fallback and
-// not the rule.
+// a throwing toJSON). No serialization is possible, so this walks the top level
+// only — less reach than the replacer, which is why it is the fallback and not
+// the rule.
+//
+// It applies the SAME per-entry rule the replacer does, rather than a weaker one
+// of its own (#2966). It used to redact string values and pass everything else
+// through untouched, so a sensitive key holding an OBJECT — `{ credentials: { … } }`,
+// the shape most likely to carry a cycle in the first place — survived this path
+// completely unmasked. A degraded path may lose structure; it must not lose the
+// masking, or the fallback becomes the way secrets get out.
+//
+// It also has to hand back a bag `emit` can actually RENDER. Both render paths
+// below serialize what they are given, so returning the offending value intact
+// only moved the throw a few lines down — out of redactBag's try and into the
+// caller's. A logger that throws is worse than a logger that says less: it is
+// called from error handlers, so the crash replaces the failure someone was
+// trying to record. Anything that will not serialize is therefore coerced to its
+// string form here, and redacted like any other string.
+function serializes(v: unknown): boolean {
+  try {
+    JSON.stringify(v);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function redactValues(bag: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(bag)) {
-    out[k] = typeof v === "string" ? redactSecrets(v) : v;
+    const masked = redactingReplacer(k, v);
+    out[k] = serializes(masked) ? masked : redactSecrets(String(masked));
   }
   return out;
 }
