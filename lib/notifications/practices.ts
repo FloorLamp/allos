@@ -44,12 +44,15 @@ import { getNotifySchedule, getPublicUrl, getTimezone } from "../settings";
 import { minuteOfDayInTz, weekdayInTz } from "../date";
 import { correctionMessageBinding } from "./message-pointers";
 import {
+  correctableBursts,
   correctionActions,
   correctionBodyStatement,
+  correctionOffScopeStatement,
   correctionPickerActions,
+  correctionPickerTitle,
   PRACTICE_TIME_PREFIXES,
 } from "./correction-rows";
-import type { CorrectionBurst } from "../correction-time";
+import { offeredHours, type CorrectionBurst } from "../correction-time";
 import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
 import {
@@ -372,11 +375,18 @@ export function offeredPracticeTargets(
   return out;
 }
 
-// The correction rows a practice message should carry right now, plus the body's
-// statement of record for a burst that has actually moved. Every piece here is the
-// SHARED helper (#221) — `correctionActions`, `correctionPickerActions` and
-// `correctionBodyStatement` are domain-blind, and this passes them the practice
+// The correction rows a practice message should carry right now, plus the body lines
+// that go with them. Every piece here is the SHARED helper (#221) — `correctableBursts`,
+// `correctionActions`, `correctionPickerActions`, `correctionBodyStatement` and
+// `correctionOffScopeStatement` are domain-blind, and this passes them the practice
 // prefixes and nothing else. There is no practice-shaped fork.
+//
+// THE DAY BOUND IS WHY THE SPLIT EXISTS (#2875). This domain's write core refuses an
+// answer that lands on another local day, and the shared offer computation now knows it
+// (`dayKeyed` on the prefixes), so a burst it can no longer answer for is NOT drawn as a
+// keyboard whose every button is refused — it is stated once in the body, naming the app
+// as where a session's date is changed. That is the render half of the same rule; before
+// it, at 00:20 local every chip and every picker hour on this keyboard was dead.
 function practiceCorrection(
   profileId: number,
   ctx: PracticeCorrectionContext | undefined
@@ -393,15 +403,37 @@ function practiceCorrection(
     correctionMessageBinding(profileId, "practice", ctx.ref ?? null)
   );
   if (bursts.length === 0) return { actions: [], statement: null };
+  const { shown, offScope } = correctableBursts(
+    PRACTICE_TIME_PREFIXES,
+    bursts,
+    now,
+    tz
+  );
   // An open picker replaces the chips rather than joining them, so the keyboard asks
-  // one question at a time.
+  // one question at a time. A picker whose burst has since gone off scope reverts to the
+  // chip rows, which is the same thing the sweep would render.
   const open = ctx.picker
-    ? (bursts.find((b) => b.fromId === ctx.picker?.fromId) ?? null)
+    ? (shown.find((b) => b.fromId === ctx.picker?.fromId) ?? null)
     : null;
   const actions = open
     ? correctionPickerActions(PRACTICE_TIME_PREFIXES, profileId, open, now, tz)
-    : correctionActions(PRACTICE_TIME_PREFIXES, profileId, bursts, tz, now);
-  return { actions, statement: correctionBodyStatement(bursts, tz) };
+    : correctionActions(PRACTICE_TIME_PREFIXES, profileId, shown, tz, now);
+  // The body says what the keyboard cannot: the picker's question while it is open (this
+  // domain's verb, finally asked — and it states the empty case rather than presenting a
+  // grid of nothing), the statement of record for a burst that moved, and one line for
+  // every burst the chat may no longer touch.
+  const lines = [
+    open
+      ? correctionPickerTitle(
+          "when was this",
+          open,
+          tz,
+          offeredHours(open, now, tz, PRACTICE_TIME_PREFIXES.dayKeyed)
+        )
+      : correctionBodyStatement(shown, tz),
+    correctionOffScopeStatement(offScope, tz),
+  ].filter((l): l is string => l != null);
+  return { actions, statement: lines.length > 0 ? lines.join("\n") : null };
 }
 
 // The pace nudge WITH its correction ride-along — the shape a rebuild after a tap

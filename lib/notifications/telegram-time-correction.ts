@@ -73,6 +73,7 @@ import {
   correctionPickerActions,
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
+  PRACTICE_TIME_PREFIXES,
 } from "./correction-rows";
 import { plainBody } from "./rich-text";
 import { buildFoodNudge } from "./food";
@@ -143,7 +144,11 @@ async function resolve(
     return null;
   }
   // The SAME freshness predicate the renderer applied, so a chat can never show a chip
-  // the handler would refuse and can never refuse one it is still showing.
+  // the handler would refuse and can never refuse one it is still showing. Freshness is
+  // one of the two bounds on an offer; the other belongs to the DOMAIN — a day-keyed
+  // store refuses an answer that crosses local midnight, and the renderer drops exactly
+  // those offers through the same `chipOffers` / `offeredHours` computation each handler
+  // below admits with (#2875).
   if (!isBurstFresh(burst, now)) {
     await answerCallbackQuery(cq.id, LAPSED_TEXT, { alert });
     return null;
@@ -262,10 +267,16 @@ export async function handleFoodTimeAt(
     return;
   }
   const hhmm = token.step.hhmm;
-  // WHICH hours are legal is a function of the current time, so it is decided here from
-  // the same computation that rendered the keyboard — a stale picker offering 06:00 five
-  // hours later must not stamp it.
-  const instant = isOfferedHour(hhmm, r.now, r.tz)
+  // WHICH hours are legal is a function of the current time and of the burst, so it is
+  // decided here from the same computation that rendered the keyboard — a stale picker
+  // offering 06:00 five hours later must not stamp it.
+  const instant = isOfferedHour(
+    hhmm,
+    r.burst,
+    r.now,
+    r.tz,
+    FOOD_TIME_PREFIXES.dayKeyed
+  )
     ? statedHourInstant(hhmm, r.now, r.tz)
     : null;
   if (!instant) {
@@ -466,7 +477,13 @@ export async function handleDoseTimeAt(
     return;
   }
   const hhmm = token.step.hhmm;
-  const instant = isOfferedHour(hhmm, r.now, r.tz)
+  const instant = isOfferedHour(
+    hhmm,
+    r.burst,
+    r.now,
+    r.tz,
+    DOSE_TIME_PREFIXES.dayKeyed
+  )
     ? statedHourInstant(hhmm, r.now, r.tz)
     : null;
   if (!instant) {
@@ -584,10 +601,18 @@ export async function handlePracticeTimeAt(
     return;
   }
   const hhmm = token.step.hhmm;
-  // WHICH hours are legal is a function of the current time, decided here from the same
-  // computation that rendered the keyboard — a stale picker must not stamp 06:00 five
-  // hours later.
-  const instant = isOfferedHour(hhmm, r.now, r.tz)
+  // WHICH hours are legal is a function of the current time AND of the burst's own local
+  // day, decided here from the same computation that rendered the keyboard — a stale
+  // picker must not stamp 06:00 five hours later, and an hour THE DAY RULE resolves onto
+  // yesterday is one this domain's write core would refuse, so the picker never offered
+  // it and the handler never admits it (#2875).
+  const instant = isOfferedHour(
+    hhmm,
+    r.burst,
+    r.now,
+    r.tz,
+    PRACTICE_TIME_PREFIXES.dayKeyed
+  )
     ? statedHourInstant(hhmm, r.now, r.tz)
     : null;
   if (!instant) {

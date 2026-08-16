@@ -260,8 +260,16 @@ function fields(token: string): string[] {
 //
 // A correction chip claims "these entries are still correctable here", and that stops
 // being true an hour after the burst was tapped. All three families ask the SAME question
-// of their own ledger, through the same freshness predicate the renderer used — so a chat
-// can never show a chip the handler would refuse, and never refuse one it is showing.
+// of their own ledger, through the same freshness predicate the renderer used.
+//
+// FRESHNESS IS ONLY ONE OF THE TWO BOUNDS, which is what #2875 cost to learn. An offer
+// can also be dead because of WHERE it lands rather than WHEN it was made: the practice
+// domain is DAY-KEYED, so its write core refuses an answer that crosses local midnight,
+// and THE DAY RULE re-dates most of what the picker offers in the hours after it. That
+// bound lives in the renderer (`chipOffers` and `offeredHours` read `dayKeyed` off the
+// prefixes) and each handler admits an hour through the same computation. Between the
+// two bounds a chat can never show a chip the handler would refuse, and never refuse one
+// it is showing.
 //
 // A FAMILY THAT DOES NOT CALL THIS HAS NO CLOCK. That is not a theoretical gap: the
 // practice chips shipped without it, and two sweeps at 2h and 4h after a burst edited

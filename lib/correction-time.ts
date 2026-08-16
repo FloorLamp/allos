@@ -369,16 +369,21 @@ export interface ChipOffer {
 // time the row will read after the tap, and a chip that would walk past the floor is
 // simply not on the keyboard. A burst with no offers left keeps its 🕐 label button: the
 // picker is exactly the path an answer that far back belongs on.
+//
+// `dayKeyed` is the second bound, and it belongs to the DOMAIN rather than to the clock —
+// see "DAY-KEYED STORES" below.
 export function chipOffers(
   burst: CorrectionBurst,
   now: Date,
-  tz: string
+  tz: string,
+  dayKeyed = false
 ): ChipOffer[] {
   const floor = chipFloor(now).getTime();
   const out: ChipOffer[] = [];
   for (const minutesBack of CORRECTION_CHIP_MINUTES) {
     const at = chipInstant(burst.atStartAt, minutesBack);
     if (at.getTime() < floor) continue;
+    if (dayKeyed && !chipStaysOnDay(burst, minutesBack, tz)) continue;
     out.push({ minutesBack, at, label: chipLabel(at, tz, minutesBack) });
   }
   return out;
@@ -448,11 +453,101 @@ export function statedHourInstant(
   return zonedWallTimeToUtc(tz, shiftDateStr(local.date, -1), hhmm);
 }
 
-// True when `hhmm` is one of the hours this picker would offer right now. The handler's
-// own guard: a forged or stale token naming an unoffered hour writes nothing rather than
-// stamping an arbitrary instant.
-export function isOfferedHour(hhmm: string, now: Date, tz: string): boolean {
-  return pickerHourOptions(now, tz).includes(hhmm);
+// ---- DAY-KEYED STORES: the render half of a refusal (#2875) ----------------
+//
+// THE DAY RULE above is a re-dating rule, and for two of the three domains that is the
+// whole answer: food stores an instant and reports the crossing (`movedDays`), dose
+// stores an instant and reports it too (`crossedMidnight`). Both ABSORB a correction that
+// walks past local midnight.
+//
+// A practice does not. It stores a profile-local DAY plus an "HH:MM", and its write core
+// (`restampPracticeLogsCore`) REFUSES an answer landing on another day — correcting a
+// session's date is the expanded form's job. So for that domain the day rule turns every
+// offer it re-dates into a button the core is guaranteed to refuse: at 00:20 local BOTH
+// chips resolve to yesterday and so does every picker hour, which is 100% of the
+// affordance dead in exactly the hour the stored time is most wrong.
+//
+// The offer set is therefore bounded by the domain as well as by the clock. `dayKeyed`
+// says which kind of store is being corrected, and these three predicates are the ONE
+// place the bound is computed — the renderer filters with them and the handler admits
+// with them, so "a chat can never show a chip the handler would refuse, and never refuse
+// one it is showing" is true for a day-keyed domain too.
+
+// The one local day a burst's rows all stand on, or null when they straddle midnight.
+//
+// Exact from the two extremes alone: every member's stored instant lies between
+// `atStartAt` and `atEndAt`, so if those two share a local day, so does every row. A
+// straddling burst is not hypothetical — BURST_GAP_MIN collapses a 23:58 tap and a 00:03
+// tap into one burst, and `logPracticeSession` accepts a backdated write that can land a
+// burst-mate on another day entirely. Neither can be corrected as ONE error, which is
+// what a burst is, so a day-keyed domain offers such a burst nothing.
+export function burstLocalDay(
+  burst: CorrectionBurst,
+  tz: string
+): string | null {
+  const start = zonedDateParts(tz, new Date(burst.atStartAt)).date;
+  const end = zonedDateParts(tz, new Date(burst.atEndAt)).date;
+  return start === end ? start : null;
+}
+
+// Would this chip keep EVERY row of the burst on the local day it is filed under?
+//
+// A chip moves each row back from its OWN instant by the same amount, so the earliest
+// row is the first to cross — and the earliest is `atStartAt` by construction. One test
+// against it therefore answers for the whole burst.
+export function chipStaysOnDay(
+  burst: CorrectionBurst,
+  minutesBack: number,
+  tz: string
+): boolean {
+  const day = burstLocalDay(burst, tz);
+  if (!day) return false;
+  return (
+    zonedDateParts(tz, chipInstant(burst.atStartAt, minutesBack)).date === day
+  );
+}
+
+// Would this absolute hour, resolved by THE DAY RULE, land on the burst's own local day?
+// The picker writes ONE instant onto every row of the burst, so a burst that straddles
+// midnight has no answer at all and a burst that does not needs the resolved instant to
+// fall on its day.
+export function hourStaysOnDay(
+  hhmm: string,
+  burst: CorrectionBurst,
+  now: Date,
+  tz: string
+): boolean {
+  const day = burstLocalDay(burst, tz);
+  if (!day) return false;
+  const at = statedHourInstant(hhmm, now, tz);
+  return at != null && zonedDateParts(tz, at).date === day;
+}
+
+// The picker hours this burst may actually be offered: the clock's set, then the domain's
+// bound. THE function behind both the keyboard and the handler's guard.
+export function offeredHours(
+  burst: CorrectionBurst,
+  now: Date,
+  tz: string,
+  dayKeyed = false
+): string[] {
+  const hours = pickerHourOptions(now, tz);
+  return dayKeyed ? hours.filter((h) => hourStaysOnDay(h, burst, now, tz)) : hours;
+}
+
+// True when `hhmm` is one of the hours this picker would offer for THIS burst right now.
+// The handler's own guard: a forged or stale token naming an unoffered hour writes nothing
+// rather than stamping an arbitrary instant. It takes the burst because what is on offer
+// is a question about the burst as well as about the clock — a signature that cannot be
+// answered without one is how a day-keyed domain stops shipping the render half late.
+export function isOfferedHour(
+  hhmm: string,
+  burst: CorrectionBurst,
+  now: Date,
+  tz: string,
+  dayKeyed = false
+): boolean {
+  return offeredHours(burst, now, tz, dayKeyed).includes(hhmm);
 }
 
 // ---- Labels ----------------------------------------------------------------
