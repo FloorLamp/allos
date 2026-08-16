@@ -520,7 +520,16 @@ describe("edit — correcting a fast recorded with a mis-set date", () => {
   // millisecond comparison would accept a pair that serializes to a zero-length fast.
   it("refuses a zero-length correction AT THE STORED SECOND", () => {
     const id = seedCompleted(adult, 20, 4);
-    const start = new Date(Date.now() - 20 * 3_600_000);
+    // ALIGNED TO AN EXACT SECOND, like the `endFast` twin above, so the +400 ms below
+    // cannot straddle a second boundary and become a real interval. A bare `Date.now()`
+    // carries whatever sub-second remainder the clock had, and past 600 ms the +400 lands
+    // in the NEXT second — the guard then correctly declines to refuse and the edit
+    // saves. That is not a weaker version of this assertion, it is a different one: the
+    // rule being pinned is that a pair which SERIALIZES to one second is refused, so the
+    // test has to construct a pair that provably does.
+    const start = new Date(
+      Math.floor((Date.now() - 20 * 3_600_000) / 1000) * 1000
+    );
     expect(editFast(adult, id, start, start)).toEqual({ kind: "invalid" });
     expect(editFast(adult, id, start, new Date(start.getTime() + 400))).toEqual(
       { kind: "invalid" }
