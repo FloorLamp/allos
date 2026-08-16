@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
+import { testAuthorizedIds as authorized } from "./authorized-ids";
 
 // Pure-tier coverage for stampSubjects (lib/scope.ts). resolveScope/requireScope need
 // a real DB (the accessible set + access map) and are exercised in the DB tier
@@ -21,8 +22,8 @@ function scope(
       photo_path: null,
       photo_version: 0,
     })),
-    ids: profiles.map((p) => p.id),
-    viewIds: profiles.map((p) => p.id),
+    ids: authorized(profiles.map((p) => p.id)),
+    viewIds: authorized(profiles.map((p) => p.id)),
     access: new Map(Object.entries(access).map(([k, v]) => [Number(k), v])),
   };
 }
@@ -66,8 +67,8 @@ describe("stampSubjects", () => {
           photo_version: 3,
         },
       ],
-      ids: [5],
-      viewIds: [5],
+      ids: authorized([5]),
+      viewIds: authorized([5]),
       access: new Map([[5, "write"]]),
     };
     const [stamped] = stampSubjects(s, [{ profileId: 5 }]);

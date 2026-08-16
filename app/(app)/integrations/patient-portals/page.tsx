@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import {
   accessForProfile,
+  accessibleProfileIdsForLogin,
   requireSession,
   getAccessibleProfiles,
 } from "@/lib/auth";
@@ -94,7 +95,11 @@ export default async function PatientPortalsPage() {
   const isAdmin = login.role === "admin";
 
   const accessible = await getAccessibleProfiles();
-  const accessibleIds = [...accessible.map((p) => p.id)];
+  // The same accessible set, in its AUTHORIZED-SET form (#2898) — minted at lib/auth's
+  // grant derivation, which is what the three scoped reads below take. This page has no
+  // ProfileScope to draw it from: it is deliberately household-wide and follows no
+  // active profile, so the login's accessible set IS its boundary.
+  const accessibleIds = accessibleProfileIdsForLogin(login.id);
   const accessibleSet = new Set(accessibleIds);
 
   // Bindings are shown for the profiles this LOGIN can reach. The stored table is

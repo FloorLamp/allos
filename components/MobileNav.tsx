@@ -86,7 +86,7 @@ export default function MobileNav({
   profiles: SessionProfile[];
   // The session's multi-profile VIEW-SET (issue #1096) — the stacked avatars on
   // the bar and the panel's view toggles read the same validated set.
-  viewIds?: number[];
+  viewIds?: readonly number[];
   // Accessible profiles held READ-only by this login (issue #33) — the per-row
   // hint in the switcher panel.
   readOnlyIds?: number[];

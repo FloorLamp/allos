@@ -39,6 +39,7 @@ import {
   clinicalResultIndexRows,
   parseClinicalResultFilters,
 } from "@/app/(app)/results/clinical-result-index";
+import { testAuthorizedIds } from "../__tests__/authorized-ids";
 
 function createProfile(name: string): number {
   return Number(
@@ -64,8 +65,8 @@ function singleScope(profileId: number): ProfileScope {
         photo_version: 0,
       },
     ],
-    ids: [profileId],
-    viewIds: [profileId],
+    ids: testAuthorizedIds([profileId]),
+    viewIds: testAuthorizedIds([profileId]),
     access: new Map([[profileId, "write" as const]]),
   };
 }
