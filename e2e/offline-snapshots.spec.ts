@@ -132,6 +132,10 @@ test("offline reads: one visit captures, /offline renders them with no network, 
   // #42-era shape of the precache, which this issue's invariants deliberately leave
   // alone. Reproduced locally at 1-in-10 under `--repeat-each=5 --workers=2` with three
   // CPU burners on a 4-core box, matching the CI signature exactly.
+  //
+  // The consequence for a REAL person — the feature is inert at their first dead zone
+  // unless they happened to visit /offline while online — is filed as #2997 and belongs
+  // to the owner. It is deliberately not fixed here, and this warm-up stays until it is.
   await page.goto("/offline");
   await settledOfflineRead(page);
   await context.setOffline(true);
