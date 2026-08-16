@@ -381,7 +381,18 @@ HOLDS_FILE="$STATE_DIR/.holds"
 # is non-empty, so `-s` sent it down the has-holds path: no hold lines printed
 # and the "check your conditions" footer fired anyway, telling the reader to
 # check nothing. Caught by running the control rather than by reading the code.
-holds=$(grep -vE '^[[:space:]]*(#|$)' "$HOLDS_FILE" 2>/dev/null)
+#
+# A `#` FOLLOWED BY A DIGIT IS A HOLD, NOT A COMMENT. Every hold is about issues,
+# so the natural way to write one starts `#2870 and #3009 are the owner's` — and
+# under a bare `^#` comment rule that line is stripped, silently, leaving the
+# check-in printing "none recorded" for a hold that was just written. Measured
+# here on 2026-08-16 with exactly that text. It is the worst possible failure for
+# this file specifically: the header above says a forgotten hold "fails by an
+# agent quietly doing fenced work", and a hold silently swallowed at write time
+# is indistinguishable from one never written. Prose comments still start `#`
+# plus a space or a letter, which is how every comment in this file is already
+# written, so nothing existing changes meaning.
+holds=$(grep -vE '^[[:space:]]*(#([^0-9]|$)|$)' "$HOLDS_FILE" 2>/dev/null)
 if [ -n "$holds" ]; then
   # Per LINE, not per string: `printf '%s' "$holds"` passes a multi-line value as
   # ONE argument, so a second hold printed without its own marker and read as
