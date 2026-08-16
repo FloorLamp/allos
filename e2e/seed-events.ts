@@ -19,6 +19,7 @@ import { seedWorkerSession } from "./seed/session";
 import {
   seedTrainingLogCard,
   seedTrainingZones,
+  seedSessionPeers,
   seedActivityFormPaths,
   seedEndurancePlans,
   seedTrainingRollup,
@@ -160,6 +161,7 @@ seedSleep();
 seedSleepWaiting();
 seedMultiSourceMetric();
 seedTrainingZones();
+seedSessionPeers();
 seedRuleDomains();
 seedGoalPacing();
 seedDropReport();

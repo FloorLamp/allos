@@ -229,9 +229,31 @@ function comparisonValue(
 // hilly, stopped, or sensor-glitched ride. Every metric independently requires a
 // current value and at least one peer value, so sparse imports degrade to the
 // honest overlap instead of fake zeroes.
-export function rideComparison(
+/**
+ * A session against its like-for-like peers: same KIND of session, within a
+ * tolerance of the same distance (or duration when it recorded no distance),
+ * each metric measured against the median of the peers that carry it.
+ *
+ * #2566 asked for this generalization by name, and nothing in the arithmetic was
+ * ever about bicycles — only two things were: which candidates count as peers,
+ * and that an indoor ride has no elevation worth comparing. Both are parameters
+ * now, `rideComparison` below is the cycling caller, and a run or a walk gets the
+ * same baseline through the same code (#3009).
+ *
+ * Every metric degrades on its own: a peer that recorded no heart rate simply
+ * does not vote on heart rate, and a metric no peer carries is absent rather
+ * than compared against a zero nobody measured.
+ */
+export function sessionComparison(
   current: RideComparisonInput,
-  candidates: RideComparisonInput[]
+  candidates: RideComparisonInput[],
+  opts: {
+    isPeer: (
+      current: RideComparisonInput,
+      candidate: RideComparisonInput
+    ) => boolean;
+    excludeKeys?: RideComparisonMetricKey[];
+  }
 ): RideComparison | null {
   const currentDistance = positive(current.distance_km);
   const currentDuration = positive(current.duration_min);
@@ -242,7 +264,7 @@ export function rideComparison(
   const rides = candidates
     .filter(
       (candidate) =>
-        candidate.id !== current.id && isSameCyclingActivity(current, candidate)
+        candidate.id !== current.id && opts.isPeer(current, candidate)
     )
     .filter((candidate) => {
       const candidateBasis = positive(
@@ -256,9 +278,6 @@ export function rideComparison(
     });
   if (rides.length === 0) return null;
 
-  const indoorOnly = cyclingActivityPresentation(
-    cyclingActivityName(current) ?? "Cycling"
-  ).indoorOnly;
   const availableKeys: RideComparisonMetricKey[] = [
     "speed",
     "heart_rate",
@@ -268,9 +287,7 @@ export function rideComparison(
     "elevation",
     "relative_effort",
   ];
-  const keys = availableKeys.filter(
-    (key) => !indoorOnly || key !== "elevation"
-  );
+  const keys = availableKeys.filter((key) => !opts.excludeKeys?.includes(key));
   const metrics = keys.flatMap((key): RideComparisonMetric[] => {
     const currentValue = comparisonValue(current, key);
     if (currentValue == null) return [];
@@ -319,6 +336,21 @@ export function rideComparison(
     rideCount: rides.length,
     metrics,
   };
+}
+
+// The cycling caller: peers are the same cycling subtype, and an indoor-only ride
+// has no elevation worth comparing.
+export function rideComparison(
+  current: RideComparisonInput,
+  candidates: RideComparisonInput[]
+): RideComparison | null {
+  const indoorOnly = cyclingActivityPresentation(
+    cyclingActivityName(current) ?? "Cycling"
+  ).indoorOnly;
+  return sessionComparison(current, candidates, {
+    isPeer: isSameCyclingActivity,
+    excludeKeys: indoorOnly ? ["elevation"] : [],
+  });
 }
 
 function localMinuteIndex(stamp: string): number | null {

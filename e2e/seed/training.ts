@@ -41,6 +41,9 @@ import {
   ZONE_WALK_EXTERNAL_ID,
   TOTALS_ONLY_TITLE,
   TOTALS_ONLY_EXTERNAL_ID,
+  E2E_LOGIN_SESSION_PEERS,
+  SESSION_PEERS_PROFILE,
+  SESSION_PEERS_TITLE,
 } from "../fixture-logins";
 import {
   getTimezone,
@@ -419,6 +422,54 @@ export function seedTrainingZones(): void {
 
   console.log(
     `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4) plus the worn walk "${ZONE_WALK_TITLE}" and the totals-only "${TOTALS_ONLY_TITLE}"`
+  );
+}
+
+// ── Like-for-like peer comparison (#3009) ──
+export function seedSessionPeers(): void {
+  // FOUR runs of the same kind at comparable distances, so "how this compares"
+  // has a median rather than a sample of one. The newest is the subject; the
+  // three before it are the peers, each carrying heart rate so the metric has
+  // something to vote with, and one deliberately slower so the median is not the
+  // subject's own number.
+  //
+  // Its own profile: adding sessions to the shared profile-1 feed moves the
+  // Timeline's 250-event page (see e2e/logins/training.ts).
+  const peersId = fixtureProfileId(SESSION_PEERS_PROFILE);
+  seedMemberLogin(E2E_LOGIN_SESSION_PEERS, peersId);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(peersId);
+  const insPeer = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, intensity,
+        start_time, end_time, avg_speed_kmh, avg_hr, components, source,
+        external_id, edited)
+     VALUES (?, ?, 'cardio', ?, ?, ?, 'moderate', '07:00', '07:40', ?, ?, ?,
+             NULL, NULL, 0)`
+  );
+  const components = JSON.stringify([
+    { name: "Running", type: "cardio", distance_km: 6, duration_min: 36 },
+  ]);
+  // [days back, duration, distance, speed, avg HR]
+  const peers: [number, number, number, number, number][] = [
+    [1, 36, 6.0, 10.0, 152], // the subject
+    [8, 38, 6.1, 9.6, 150],
+    [15, 40, 5.9, 8.9, 148],
+    [22, 37, 6.0, 9.7, 151],
+  ];
+  for (const [back, minutes, km, speed, hr] of peers) {
+    insPeer.run(
+      peersId,
+      shiftDateStr(today(peersId), -back),
+      SESSION_PEERS_TITLE,
+      minutes,
+      km,
+      speed,
+      hr,
+      components
+    );
+  }
+  console.log(
+    `e2e: seeded ${peers.length} like-for-like sessions for profile ${peersId} (#3009)`
   );
 }
 
