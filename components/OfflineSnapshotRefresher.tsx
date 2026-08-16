@@ -51,7 +51,8 @@ export default function OfflineSnapshotRefresher({
 
     async function refresh() {
       if (running.current) return;
-      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false)
+        return;
       running.current = true;
       try {
         const stored = await allSnapshots();

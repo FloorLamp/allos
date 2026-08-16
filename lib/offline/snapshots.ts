@@ -93,7 +93,8 @@ export const SNAPSHOT_REGISTRY = {
   },
   "medication-list": {
     title: "Medications & supplements",
-    answers: "What do you take? — asked by a stranger, in a room with no signal.",
+    answers:
+      "What do you take? — asked by a stranger, in a room with no signal.",
     scope: "rolling-window",
     staleAfterDays: 7,
     overlays: [],
@@ -280,7 +281,8 @@ export function parseSnapshot(value: unknown): AnySnapshot | null {
     return null;
   }
   if (typeof o.timeZone !== "string" || o.timeZone.length === 0) return null;
-  if (typeof o.capturedOn !== "string" || o.capturedOn.length === 0) return null;
+  if (typeof o.capturedOn !== "string" || o.capturedOn.length === 0)
+    return null;
   if (typeof o.fetchedAt !== "string" || o.fetchedAt.length === 0) return null;
   if (!o.data || typeof o.data !== "object") return null;
   return o as unknown as AnySnapshot;
@@ -347,10 +349,23 @@ export function snapshotAgeDays(
   return daysBetweenDateStr(env.capturedOn, snapshotNowDay(env, now));
 }
 
-// The kinds an authenticated visit should re-fetch: everything enabled that is absent
-// or past its clock. Refresh RIDES authenticated traffic — there is no background sync
-// and no service-worker credential — so this runs at a mount, answers cheaply, and
-// asks for nothing when everything is current.
+// How long a stored payload is left alone before an authenticated visit re-captures it,
+// regardless of whether it is past its READER-facing clock.
+//
+// Staleness and refresh are two questions, and conflating them is a real defect rather
+// than a tidiness point. `isSnapshotStale` answers the READER's question — "is what I am
+// showing still current?" — and a day-scoped payload captured this morning is still
+// today's schedule all day, so it never says yes. But a med added at lunchtime has to
+// reach the device before midnight, and if the only trigger were the reader's clock it
+// never would. This is the WRITER's question: how long a copy may sit before the next
+// visit refreshes it.
+export const SNAPSHOT_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+
+// The kinds an authenticated visit should re-fetch: everything absent, everything past
+// its clock, and everything that has simply been sitting a while. Refresh RIDES
+// authenticated traffic — there is no background sync and no service-worker credential —
+// so this runs at a mount, answers cheaply, and asks for nothing when everything is
+// current.
 export function snapshotsToRefresh(
   stored: readonly SnapshotEnvelope[],
   profileId: number,
@@ -363,7 +378,13 @@ export function snapshotsToRefresh(
   );
   return SNAPSHOT_KINDS.filter((kind) => {
     const env = held.get(kind);
-    return !env || isSnapshotStale(env, now);
+    if (!env) return true;
+    if (isSnapshotStale(env, now)) return true;
+    const fetched = new Date(env.fetchedAt).getTime();
+    // An unparseable or future stamp re-fetches: both mean the copy cannot be reasoned
+    // about, and a fresh capture is the cheap answer.
+    if (!Number.isFinite(fetched)) return true;
+    return now.getTime() - fetched >= SNAPSHOT_REFRESH_INTERVAL_MS;
   });
 }
 

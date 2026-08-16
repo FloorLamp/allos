@@ -67,7 +67,7 @@ function Row({
         {mark ? (
           <span
             data-testid="offline-queued-mark"
-            className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+            className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200"
           >
             queued
           </span>

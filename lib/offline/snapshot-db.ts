@@ -52,9 +52,7 @@ export async function allSnapshots(): Promise<AnySnapshot[]> {
       req.onerror = () => reject(req.error);
     });
     db.close();
-    return rows
-      .map(parseSnapshot)
-      .filter((s): s is AnySnapshot => s !== null);
+    return rows.map(parseSnapshot).filter((s): s is AnySnapshot => s !== null);
   } catch {
     return [];
   }

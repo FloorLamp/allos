@@ -1,14 +1,8 @@
 import { getCurrentSession } from "@/lib/auth";
 import { getOfflineSnapshotsEnabled } from "@/lib/settings";
 import { now } from "@/lib/clock";
-import {
-  buildSnapshots,
-  snapshotContext,
-} from "@/lib/offline/snapshot-build";
-import {
-  SNAPSHOT_KINDS,
-  type SnapshotKind,
-} from "@/lib/offline/snapshots";
+import { buildSnapshots, snapshotContext } from "@/lib/offline/snapshot-build";
+import { SNAPSHOT_KINDS, type SnapshotKind } from "@/lib/offline/snapshots";
 
 // The refresh endpoint for the offline read snapshots (issue #2908). The browser
 // (components/OfflineSnapshotRefresher) GETs it on an online, authenticated visit when

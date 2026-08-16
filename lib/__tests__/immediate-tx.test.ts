@@ -55,6 +55,9 @@ const ALLOWLIST = new Set<string>([
   // Same story as queue-db: the browser IndexedDB `db.transaction(store, mode)`,
   // nothing to do with SQLite write locks (#1699).
   "lib/offline/draft-db.ts",
+  // And again for the offline READ snapshots (#2908) — the third tenant of the same
+  // browser database, same unrelated API.
+  "lib/offline/snapshot-db.ts",
 ]);
 
 function isAllowlisted(rel: string): boolean {

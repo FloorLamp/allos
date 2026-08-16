@@ -213,9 +213,14 @@ describe("FLOW_KINDS", () => {
       "set",
       // Additive food quick-adds (#1596): a food-group serving or protein grams.
       "food",
-      // Mobility move tapped ON (#2130): set semantics per (profile, date, move),
-      // the coverage record's newest member — its ON tap is a pure capture.
+      // Mobility move tapped ON (#2130): set semantics per (profile, date, move) —
+      // its ON tap is a pure capture.
       "mobility",
+      // Practice session (#2908): the coverage record's newest member, and the one
+      // that arrived by AMENDING an argued exclusion rather than by being new. It is
+      // DAY-idempotent per (profile, practice-identity, date), which is what answers
+      // #2130's "a replay could double-log a day" objection.
+      "practice",
     ]);
   });
 });

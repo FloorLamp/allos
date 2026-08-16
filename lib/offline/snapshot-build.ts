@@ -155,7 +155,10 @@ function buildMedicationListData(
     if (list) list.push(d);
     else dosesByItem.set(d.item_id, [d]);
   }
-  const coursesByItem = new Map<number, ReturnType<typeof getMedicationCourses>>();
+  const coursesByItem = new Map<
+    number,
+    ReturnType<typeof getMedicationCourses>
+  >();
   for (const c of getMedicationCourses(ctx.profileId)) {
     const list = coursesByItem.get(c.item_id);
     if (list) list.push(c);
@@ -174,9 +177,7 @@ function buildMedicationListData(
           asNeeded: isOnDemand(item),
           rx: item.rx === 1,
           prescriber: item.prescriber,
-          doseAmounts: own
-            .map((d) => d.amount)
-            .filter((a): a is string => !!a),
+          doseAmounts: own.map((d) => d.amount).filter((a): a is string => !!a),
           timesOfDay: own.map((d) => d.time_of_day),
           startedOn: medicationStartDate(
             coursesByItem.get(item.id) ?? [],

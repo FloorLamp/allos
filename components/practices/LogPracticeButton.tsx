@@ -10,10 +10,10 @@ import DateField from "@/components/DateField";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
-import { practiceIdentity } from "@/lib/practice";
 import {
   PRACTICE_DURATION_STEP_MIN,
   PRACTICE_USUAL_DAY_TEXT,
+  practiceIdentity,
   stepPracticeDuration,
 } from "@/lib/practice";
 import {
@@ -250,7 +250,10 @@ export default function LogPracticeButton({
         // The connection dropped between the online check above and the submit (or the
         // tab's build went stale). Park it rather than losing the tap — same reading of
         // the failure the dose confirm takes.
-        if (shouldQueueOffline(navigator.onLine !== false, err) && count === 0) {
+        if (
+          shouldQueueOffline(navigator.onLine !== false, err) &&
+          count === 0
+        ) {
           void queueOffline();
           return { kind: "keep" };
         }

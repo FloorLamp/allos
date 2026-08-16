@@ -12,6 +12,7 @@ import {
   MAX_SNAPSHOT_EXERCISES,
   MAX_SNAPSHOT_SESSIONS,
   SNAPSHOT_KINDS,
+  SNAPSHOT_REFRESH_INTERVAL_MS,
   SNAPSHOT_REGISTRY,
   SNAPSHOT_VERSION,
   isSnapshotStale,
@@ -27,12 +28,18 @@ import {
   type AnySnapshot,
   type SnapshotEnvelope,
 } from "@/lib/offline/snapshots";
-import { FLOW_KINDS, buildIntent, type QueuedIntent } from "@/lib/offline/queue";
+import {
+  FLOW_KINDS,
+  buildIntent,
+  type QueuedIntent,
+} from "@/lib/offline/queue";
 
 const PROFILE = 7;
 const OTHER = 8;
 
-function envelope<T extends AnySnapshot>(over: Partial<T> & Pick<T, "kind" | "data">) {
+function envelope<T extends AnySnapshot>(
+  over: Partial<T> & Pick<T, "kind" | "data">
+) {
   return {
     version: SNAPSHOT_VERSION,
     profileId: PROFILE,
@@ -170,7 +177,8 @@ describe("staleness", () => {
   });
 
   it("asks to refresh what is absent or past its clock, and nothing else", () => {
-    const fresh = new Date("2026-08-16T18:00:00Z");
+    // Inside the writer's interval AND inside the profile's day.
+    const fresh = new Date("2026-08-16T22:05:00Z");
     expect(snapshotsToRefresh([env], PROFILE, fresh)).toEqual(
       SNAPSHOT_KINDS.filter((k) => k !== "dose-schedule")
     );
@@ -178,6 +186,19 @@ describe("staleness", () => {
     expect(
       snapshotsToRefresh([{ ...env, profileId: OTHER }], PROFILE, fresh)
     ).toEqual([...SNAPSHOT_KINDS]);
+  });
+
+  it("re-captures a copy that has been sitting, even while it is still today's", () => {
+    // The reader's clock and the writer's are different questions: this payload is
+    // still today's schedule (so the banner says nothing), and a med added since
+    // lunchtime still has to reach the device.
+    const later = new Date(
+      new Date(env.fetchedAt).getTime() + SNAPSHOT_REFRESH_INTERVAL_MS + 1000
+    );
+    expect(isSnapshotStale(env, later)).toBe(false);
+    expect(snapshotsToRefresh([env], PROFILE, later)).toContain(
+      "dose-schedule"
+    );
   });
 });
 
@@ -268,7 +289,12 @@ describe("overlay — folding queued writes into a stored read", () => {
         buildIntent(
           "food",
           "2026-08-16",
-          { entry: "serving", groupKey: "berries", mealSlot: null, grams: null },
+          {
+            entry: "serving",
+            groupKey: "berries",
+            mealSlot: null,
+            grams: null,
+          },
           PROFILE
         ),
         buildIntent(
@@ -303,7 +329,10 @@ describe("overlay — folding queued writes into a stored read", () => {
 
   it("prepends a queued workout to the recent spine", () => {
     const out = overlayRecentTraining(
-      { activities: [{ date: "2026-08-15", title: "Run", detail: null }], exercises: [] },
+      {
+        activities: [{ date: "2026-08-15", title: "Run", detail: null }],
+        exercises: [],
+      },
       [
         buildIntent(
           "set",
