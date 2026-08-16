@@ -497,3 +497,26 @@ Two overrides in one session is the signal that the next miss is likelier than a
 false positive, so `lib/error-log-format.ts` and `lib/log.ts` are now declared —
 and the entry says WHY in disclosure terms, so the next person extending the list
 has the right test to apply rather than a list of module names to pattern-match.
+
+## Clustering costs the BOX, not just the review queue (2026-08-16)
+
+The arrival warning (#2973) was written against review depth: dispatch several
+at once and their PRs land together, and review is serial. Measured an hour
+later, that framing was half the story.
+
+Five agents dispatched in two batches — two, then three within a minute — drove
+the load average to **17.70 on 4 cores**, 4.4x oversubscribed and half again the
+11.86 that produced two contention misdiagnoses the night before. `ps` said why,
+and it was not five agents idling: three vitest tiers, a `next build`, and two
+Playwright servers with their browsers, all inside the same minute.
+
+Simultaneous starts are simultaneous GATES, not merely simultaneous arrivals.
+Gate cost is the dominant per-agent cost (that is what #2964 scoped), so agents
+started together reach the expensive phase together and contend for the same
+four cores — which is the mechanism that makes a starved tier fail in code the
+agent never touched.
+
+So the cap number was not the defect and lowering it would have been the wrong
+correction: five agents SPREAD OUT cost nothing unusual. The evidence points at
+pacing, which is what #2973 already warns about — it just understated why. The
+warning's own rationale now names both queues it protects.

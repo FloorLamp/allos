@@ -38,9 +38,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - That cap counts agents RUNNING — a machine limit. The queue that jams first
   is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
   dispatch at roughly three unreviewed PRs however few agents are running.
-- STAGGER starts. Dispatch durations cluster tightly (seven of the first ten
-  inside 85±5 min), so simultaneous starts are simultaneous arrivals.
-  `dispatch-brief.mjs new` warns when a sibling started within 25 minutes and
+- STAGGER starts. Durations cluster tightly (seven of the first ten inside
+  85±5 min), so simultaneous starts are simultaneous arrivals — and
+  simultaneous GATES: five at once drove load to 17.7 on 4 cores.
+- `dispatch-brief.mjs new` warns when a sibling started within 25 minutes and
   projects both arrivals; it never refuses, because a P0 preempts.
 - A refuted PR re-enters the review queue, so arrival is not one-shot. Count
   rework when judging depth.
