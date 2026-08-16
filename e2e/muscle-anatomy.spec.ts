@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { settledBoxes } from "./helpers";
 // #737 — the hand-authored MuscleAnatomy SVG figure, in its two wired hosts:
 // per-exercise mode inside the ExerciseDetailPanel guide section, and weekly
 // coverage mode on Training → Overview beside the #736 list (which stays — the
@@ -67,31 +68,26 @@ test("per-session anatomy renders on a strength session's training log card, abs
   await expect(visualBox).toBeVisible();
   await expect(visualBox).toHaveClass(/rounded-lg/);
   await expect(visualBox).toHaveClass(/border/);
-  const visualBounds = await visualBox.boundingBox();
-  const detailBounds = await pushCard
-    .getByTestId("activity-parts")
-    .boundingBox();
-  expect(visualBounds).not.toBeNull();
-  expect(detailBounds).not.toBeNull();
-  expect(visualBounds!.x).toBeGreaterThan(detailBounds!.x);
-  expect(visualBounds!.width).toBeLessThan(detailBounds!.width);
-  expect(detailBounds!.y).toBeLessThan(visualBounds!.y + visualBounds!.height);
+  const [visualBounds, detailBounds] = await settledBoxes([
+    visualBox,
+    pushCard.getByTestId("activity-parts"),
+  ]);
+  expect(visualBounds.x).toBeGreaterThan(detailBounds.x);
+  expect(visualBounds.width).toBeLessThan(detailBounds.width);
+  expect(detailBounds.y).toBeLessThan(visualBounds.y + visualBounds.height);
 
   // The shared right-hand slot starts at the same card-top baseline for a
   // muscle figure and for a richer Strava card whose summary wraps differently.
   const stravaCard = page.locator(".card", {
     hasText: "Strava morning ride",
   });
-  const [pushBounds, stravaBounds, stravaVisualBounds] = await Promise.all([
-    pushCard.boundingBox(),
-    stravaCard.boundingBox(),
-    stravaCard.getByTestId("activity-visuals").boundingBox(),
+  const [pushBounds, stravaBounds, stravaVisualBounds] = await settledBoxes([
+    pushCard,
+    stravaCard,
+    stravaCard.getByTestId("activity-visuals"),
   ]);
-  expect(pushBounds).not.toBeNull();
-  expect(stravaBounds).not.toBeNull();
-  expect(stravaVisualBounds).not.toBeNull();
-  expect(visualBounds!.y - pushBounds!.y).toBeCloseTo(
-    stravaVisualBounds!.y - stravaBounds!.y,
+  expect(visualBounds.y - pushBounds.y).toBeCloseTo(
+    stravaVisualBounds.y - stravaBounds.y,
     0
   );
   const session = visualBox.getByTestId("session-muscles");

@@ -202,7 +202,6 @@
   "e2e/merge-conflict.spec.ts": 1.621,
   "e2e/merge-sets.spec.ts": 2.677,
   "e2e/metric-judgment.spec.ts": 2.694,
-  "e2e/micro-motion.spec.ts": 11.842,
   "e2e/mobile-clipping.mobile.spec.ts": 10.353,
   "e2e/mobile-dock.mobile.spec.ts": 11.396,
   "e2e/mobile-overflow.spec.ts": 6.721,

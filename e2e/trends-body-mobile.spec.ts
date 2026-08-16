@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import { loginAs } from "./nav";
-import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+  settledBoxes,
+} from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
 import { frozenNow } from "./worker-env";
 import {
@@ -215,18 +220,14 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await expect(empty).toContainText("No data in this range");
     await expect(populated.getByRole("application")).toBeVisible();
     const emptyHeader = empty.getByTestId("trend-mini-header-link");
-    const [emptyTitleBox, emptyMessageBox] = await Promise.all([
+    const [emptyTitleBox, emptyMessageBox] = await settledBoxes([
       // Responsive title spans intentionally contain the same text for Weight;
       // the desktop form is the second span.
-      emptyHeader.getByText("Weight", { exact: true }).last().boundingBox(),
-      emptyHeader
-        .getByText("No data in this range", { exact: true })
-        .boundingBox(),
+      emptyHeader.getByText("Weight", { exact: true }).last(),
+      emptyHeader.getByText("No data in this range", { exact: true }),
     ]);
-    expect(emptyTitleBox).not.toBeNull();
-    expect(emptyMessageBox).not.toBeNull();
-    expect(emptyMessageBox!.y).toBeGreaterThanOrEqual(
-      emptyTitleBox!.y + emptyTitleBox!.height
+    expect(emptyMessageBox.y).toBeGreaterThanOrEqual(
+      emptyTitleBox.y + emptyTitleBox.height
     );
     const desktopLabelSize = await emptyHeader
       .getByText("Weight", { exact: true })

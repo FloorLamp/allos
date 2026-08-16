@@ -117,6 +117,14 @@ const TOPASS_RE = /\.toPass\(/g;
 // is wherever `.toPass(` itself appears — usually the closing `}).toPass({...})`.
 const TOPASS_OK_MARKER = "topass-ok";
 
+// A committed skip is missing coverage disguised as a test. Runtime skips are worse:
+// the same revision tests different behavior by wall-clock or environment state, so a
+// green run cannot say which contract actually ran. Keep the committed count at zero;
+// a scenario that is no longer valuable is deleted, and a real boundary is made
+// deterministic in its fixture.
+const TEST_SKIP_RE = /\btest\.skip\s*\(/g;
+const TEST_SKIP_ALLOW: Record<string, number> = {};
+
 // A branch on `process.env.CI` (#2648). The runner is not a property of the app, and
 // three of the four sites this rule was written from were the SAME category error:
 // `process.env.CI` standing in for "is this a production build". It never was one —
@@ -319,12 +327,9 @@ const TOPASS_ALLOW: Record<string, number> = {};
 // `settledBoxes([...])` reads the whole group and repeats until two consecutive
 // passes agree, so every box comes from one settled layout and none is null.
 //
-// Frozen, not banned: the survivors below predate the helper and are a migration
-// list, not an exemption — `checkPattern` fails a file whose count goes UP and
-// equally fails one whose count drops without the entry shrinking, so this
-// ratchets to zero. There is no per-line escape marker on purpose: unlike
-// `.first()` there is no legitimate reason to read a RELATIVE geometry from two
-// unsynchronised snapshots.
+// EMPTY after the test-fragility sweep migrated the remaining 25 reads. There is
+// no per-line escape marker on purpose: unlike `.first()` there is no legitimate
+// reason to read RELATIVE geometry from two unsynchronised snapshots.
 // The `(?!Promise\.all)` lookahead is load-bearing twice over. Without it a lazy
 // `[\s\S]*?` walks out of one Promise.all and into the NEXT one to find its second
 // `.boundingBox(`, so a block holding a single box pairs up with a stranger's and
@@ -333,30 +338,7 @@ const TOPASS_ALLOW: Record<string, number> = {};
 // ends the match early, under-counting. Both mistakes were made writing this.
 const MULTI_BOX_RE =
   /await\s+Promise\.all\(\s*\[(?:(?!Promise\.all)[\s\S])*?\.boundingBox\((?:(?!Promise\.all)[\s\S])*?\.boundingBox\(/g;
-const MULTI_BOX_ALLOW: Record<string, number> = {
-  "dashboard.spec.ts": 1,
-  // 2 → 1: the mobile visit-row card spec moved onto settledBoxes when #2588 gave its
-  // geometry claim something deterministic to assert (the head line's end, rather than
-  // whichever meta happened to wrap).
-  "encounters.spec.ts": 1,
-  "entry-ergonomics.spec.ts": 1,
-  "kids-growth.spec.ts": 1,
-  "medications-followups.spec.ts": 1,
-  "medications-page.spec.ts": 4,
-  "mobile-ui-polish.spec.ts": 2,
-  "muscle-anatomy.spec.ts": 1,
-  "saved-star.mobile.spec.ts": 1,
-  // 1 → 0: the sparse-layout read in the historical-editing test moved onto
-  // settledBoxes (#2839/#2844) — it was the file's last raw two-read measure,
-  // and the cards it measures grow late (lazy chart mounts), the exact tear
-  // the helper exists for.
-  "training-overview-doing.mobile.spec.ts": 3,
-  "trends-annotations.spec.ts": 2,
-  "trends-body-mobile.spec.ts": 1,
-  "trends-context-bar.mobile.spec.ts": 1,
-  "trends-fitness-lens.mobile.spec.ts": 1,
-  "trends-metric-pages.spec.ts": 4,
-};
+const MULTI_BOX_ALLOW: Record<string, number> = {};
 
 // ── (v-b) A swipe aimed at a point it MEASURED (issue #2714) ─────────────────
 //
@@ -605,6 +587,15 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `(settledClick / followLink / a plain retrying expect on one locator), or ` +
         `add a same-line \`topass-ok: <why>\` comment for a reviewed last-resort ` +
         `use; see docs/internals/e2e-hygiene.md.`,
+    });
+  });
+
+  it("no committed test.skip in e2e/*.ts (delete it or make its fixture deterministic)", () => {
+    checkPattern("test.skip(", TEST_SKIP_RE, TEST_SKIP_ALLOW, {
+      hint:
+        `A committed skip makes a green run ambiguous about which contracts ran. ` +
+        `Delete obsolete coverage, or make the boundary deterministic in the fixture; ` +
+        `see docs/internals/e2e-hygiene.md.`,
     });
   });
 
