@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { SportStat } from "@/lib/queries";
 import { formatMinutes } from "@/lib/duration";
@@ -103,12 +104,16 @@ export default function SportDetailPanel({
                 key={i}
                 className="flex items-baseline justify-between gap-3 border-b border-black/5 pb-1 last:border-0 dark:border-white/5"
               >
-                <a
+                {/* A raw <a> to an internal route is a full document load out
+                    of the app shell (#2983). Soft navigation restored; the
+                    pending state stays on the global floor, because this is a
+                    row's date cell, not a button-shaped control. */}
+                <Link
                   href={r.href}
                   className="shrink-0 text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                 >
                   {r.date}
-                </a>
+                </Link>
                 <span className="tabular-nums text-slate-600 dark:text-slate-300">
                   {r.text}
                 </span>
