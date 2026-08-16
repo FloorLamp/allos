@@ -162,6 +162,15 @@ function arrivalChanges(profileId: number, sinceTs: string): RecentChange[] {
                AND s.profile_id = e.profile_id
         WHERE e.profile_id = ? AND e.ok = 1
           AND r.disposition = 'inserted'
+          -- A DELIVERED ARCHIVE IS NOT A RECORD ARRIVAL (#2999/#2914). This category
+          -- speaks the record dialect and falls back to the noun "records" for any
+          -- target it has no kind for — so admitting medical_documents to the provenance
+          -- vocabulary silently produced "First data from Patient portals: records",
+          -- a digest line that existed on no prior version and uses the exact noun #2914
+          -- ruled out for portal deliveries. A document has its own surfaces (the
+          -- Imports feed row, the login row, its import page); what the bundle
+          -- EXTRACTS arrives here later as real records with real kinds.
+          AND r.target_table <> 'medical_documents'
         GROUP BY e.source_id, r.target_table, s.metric
         ORDER BY n_new DESC, e.source_id, r.target_table`
     )

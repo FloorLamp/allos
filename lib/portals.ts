@@ -1,4 +1,5 @@
 import { db, hoistedStatement, writeTx } from "./db";
+import { log } from "./log";
 import { sqlNow } from "./clock";
 import {
   isAccountSlug,
@@ -265,6 +266,14 @@ export function setPortalSoftware(
 // the sync events' identity stamps.
 export function deletePortal(portalId: number): boolean {
   return writeTx((): boolean => {
+    // The IDENTITY half of the same acquisition fact (#2999), cleared BEFORE the rows it
+    // names are deleted — after that delete there is nothing left to select. Its FK is
+    // ON DELETE SET NULL too; this runs explicitly for the same reason as its portal
+    // sibling below, because the runner disables foreign keys during migrations.
+    db.prepare(
+      `UPDATE medical_documents SET acquired_identity_id = NULL
+        WHERE acquired_identity_id IN (SELECT id FROM portal_identities WHERE portal_id = ?)`
+    ).run(portalId);
     db.prepare("DELETE FROM portal_identities WHERE portal_id = ?").run(
       portalId
     );
@@ -283,13 +292,6 @@ export function deletePortal(portalId: number): boolean {
     db.prepare("DELETE FROM portal_accounts WHERE portal_id = ?").run(portalId);
     db.prepare(
       "UPDATE medical_documents SET acquired_portal_id = NULL WHERE acquired_portal_id = ?"
-    ).run(portalId);
-    // The LOGIN half of the same acquisition fact (#2999). Its FK is ON DELETE SET NULL
-    // too, and it is cleared explicitly for the same reason as its portal sibling: the
-    // runner disables foreign keys during migrations.
-    db.prepare(
-      `UPDATE medical_documents SET acquired_account_id = NULL
-        WHERE acquired_account_id IN (SELECT id FROM portal_accounts WHERE portal_id = ?)`
     ).run(portalId);
     db.prepare(
       "UPDATE integration_sync_events SET portal_id = NULL, account_id = NULL WHERE portal_id = ?"
@@ -425,6 +427,12 @@ export function deletePortalAccount(accountId: number): boolean {
       .prepare("SELECT COUNT(*) AS n FROM portal_accounts WHERE portal_id = ?")
       .get(row.portalId) as { n: number };
     if (siblings.n <= 1) return false;
+    // Cleared BEFORE the identity rows it names go (#2999) — the same ordering, and the
+    // same reasoning, as deletePortal's copy one level up.
+    db.prepare(
+      `UPDATE medical_documents SET acquired_identity_id = NULL
+        WHERE acquired_identity_id IN (SELECT id FROM portal_identities WHERE account_id = ?)`
+    ).run(accountId);
     db.prepare("DELETE FROM portal_identities WHERE account_id = ?").run(
       accountId
     );
@@ -439,9 +447,6 @@ export function deletePortalAccount(accountId: number): boolean {
     );
     db.prepare(
       "UPDATE integration_sync_events SET account_id = NULL WHERE account_id = ?"
-    ).run(accountId);
-    db.prepare(
-      "UPDATE medical_documents SET acquired_account_id = NULL WHERE acquired_account_id = ?"
     ).run(accountId);
     return (
       db.prepare("DELETE FROM portal_accounts WHERE id = ?").run(accountId)
@@ -905,6 +910,10 @@ export interface ResolvedIdentity {
   portalId: number;
   accountId: number;
   patientLabel: string;
+  // The registry row for this (login, patient label) pair — the grain the tool REPORTS
+  // at, and the grain a delivered document is stamped with (#2999). See
+  // documentsDeliveredBy below for why nothing coarser will do.
+  identityId: number;
 }
 
 export type IdentityResolution =
@@ -937,14 +946,20 @@ export function resolvePortalIdentity(
   const label = normalizePatientLabel(patientLabel);
   const row = db
     .prepare(
-      `SELECT pi.profile_id AS profileId, pi.portal_id AS portalId,
-              pi.account_id AS accountId
+      `SELECT pi.id AS identityId, pi.profile_id AS profileId,
+              pi.portal_id AS portalId, pi.account_id AS accountId
          FROM portal_identities pi
         WHERE pi.account_id = ? AND pi.patient_label = ?
           AND pi.ignored = 0 AND pi.profile_id IS NOT NULL`
     )
     .get(account.account.id, label) as
-    { profileId: number; portalId: number; accountId: number } | undefined;
+    | {
+        identityId: number;
+        profileId: number;
+        portalId: number;
+        accountId: number;
+      }
+    | undefined;
   if (!row) return { ok: false, reason: "unmapped-identity" };
   return {
     ok: true,
@@ -952,6 +967,7 @@ export function resolvePortalIdentity(
     portalId: row.portalId,
     accountId: row.accountId,
     patientLabel: label,
+    identityId: row.identityId,
   };
 }
 
@@ -1346,74 +1362,90 @@ export function recordPortalRunReport(
 // that could hold nothing.
 //
 // The owner's ruling (#2999 Fix 1, default branch): mark an uploaded document with the
-// LOGIN it was acquired for, and have the report handler claim that login's documents
-// uploaded SINCE ITS PREVIOUS REPORT. No tool-contract change, no correlation id, no new
-// endpoint — the ordering already holds in practice, because the tool uploads and then
-// reports.
+// portal identity it was acquired for, and have the report handler claim that identity's
+// documents. No tool-contract change, no correlation id, no new endpoint — the ordering
+// already holds in practice, because the tool uploads and then reports.
 //
-// The window is what makes the claim exact: the previous report's stamp is read BEFORE
-// the new one overwrites it (the table holds one row per login), so a run can never
-// claim an earlier run's documents, and the account + profile filters keep it from
-// claiming another login's or another person's.
+// ── THE GRAIN IS THE IDENTITY, AND THERE IS NO CLOCK ─────────────────────────
+//
+// The first cut of this claimed per LOGIN, inside a window opened at the login's previous
+// report stamp. Both halves of that were wrong, and together they LOST DOCUMENTS —
+// which is the shape #2914 was filed from ("8 CCD bundles… across four profiles" on one
+// push, three of four profiles showing nothing).
+//
+// A push under one login files ONE REPORT PER PATIENT (`patient=` in the body names it),
+// while `portal_run_reports` holds one row per login. So the first patient's report moved
+// the window past everything the second patient's report was going to claim, the second
+// claimed nothing, and — because the unclaimed guard still saw those rows as claimable —
+// no later run could ever pick them up either. Measured at the observed production
+// spacing: runA claimed [1], runB claimed [], and the document was claimed by nobody,
+// ever. It only looked correct in a test where the uploads and the report landed in the
+// same second, which is the worst way for a bug to behave.
+//
+// So the claim is keyed to exactly what a report is ABOUT: the (login, patient) identity,
+// which is a `portal_identities` row and is what both endpoints already name. That
+// removes the wall clock entirely — no window, no seam, no ordering assumption between
+// two requests — and leaves a claim that is a plain equality plus a guard:
+//
+//   this identity's documents, in this profile, that no run has claimed yet.
+//
+// Every document therefore belongs to exactly one run, and to THAT run: the property the
+// drill-in's honesty rests on. Nothing is lost when a report is late or fails, because
+// nothing moves a boundary — an unclaimed document simply waits for this identity's next
+// successful report.
+//
+// Documents predating the column are NULL and can never be claimed, so the guard cannot
+// sweep up history on a first report after deploy.
 
-// The stamp of the report this login last filed, or null when it has never reported.
-// Read BEFORE recordPortalRunReport overwrites it — that upsert is what destroys the
-// only boundary a run has.
-export function lastRunReportAt(accountId: number): string | null {
-  const row = db
-    .prepare("SELECT at FROM portal_run_reports WHERE account_id = ?")
-    .get(accountId) as { at: string } | undefined;
-  return row?.at ?? null;
-}
-
-// Record the LOGIN half of a document's acquisition (#2999). `acquired_portal_id`
-// (#1748) already names the portal; a portal with two logins has one portal id and two
-// run reports, so the login is the half that lets a run recognize its own delivery.
+// Record the identity a document was acquired for (#2999). `acquired_portal_id` (#1748)
+// already names the portal, which is the right fact for "Acquired via optum" and much too
+// coarse for this: one portal has many logins, and one login has many patients.
+//
+// BEST-EFFORT, exactly like its sibling recordSyncRows: provenance must never throw into
+// the ingest it observes. This runs inside the upload route AFTER the archive has landed,
+// so letting a write failure here escape would turn a successful ingest into a 500 over a
+// drill-in convenience — the documents would be on disk and the caller would be told the
+// push failed, and would push them again.
+//
 // Profile-scoped: the upload route has already gated the write, and the filter keeps a
 // mis-plumbed call from stamping another person's row.
-export function stampAcquiredAccount(
+export function stampAcquiredIdentity(
   profileId: number,
   documentId: number,
-  accountId: number
+  identityId: number
 ): void {
-  db.prepare(
-    "UPDATE medical_documents SET acquired_account_id = ? WHERE id = ? AND profile_id = ?"
-  ).run(accountId, documentId, profileId);
+  try {
+    db.prepare(
+      "UPDATE medical_documents SET acquired_identity_id = ? WHERE id = ? AND profile_id = ?"
+    ).run(identityId, documentId, profileId);
+  } catch (err) {
+    log.error("stampAcquiredIdentity failed", {
+      documentId,
+      err: String(err),
+    });
+  }
 }
 
-// The documents THIS run delivered for one login: acquired for that account, owned by
-// this profile, uploaded no earlier than the login's previous report, and NOT ALREADY
-// CLAIMED by an earlier run. `since` null means the login has never reported, so
-// everything it has ever delivered belongs to its first report — there is no earlier run
-// to attribute it to.
-//
-// TWO PREDICATES, because the window alone is not enough on either side. The report
-// stamp and `uploaded_at` both come from the same one-second clock seam, so a document
-// uploaded in the same second as the previous report is genuinely ambiguous — the
-// comparison is inclusive, and the unclaimed guard is what keeps that inclusiveness from
-// letting two runs both claim it. Every document therefore belongs to exactly one run,
-// which is the property the drill-in's honesty rests on.
-//
-// `uploaded_at` and `portal_run_reports.at` are both stored bare (lib/time-columns.ts),
-// so the comparison is a plain lexical one between two values of the same convention.
-export function documentsDeliveredSince(
+// The documents this identity has delivered and no run has claimed: acquired for that
+// (login, patient) pair, owned by this profile, and named by no existing provenance row.
+// Called by the sync-report handler on a SUCCESSFUL report only — a failed run delivered
+// nothing, and must not consume documents the next good run should claim.
+export function documentsDeliveredBy(
   profileId: number,
-  accountId: number,
-  since: string | null
+  identityId: number
 ): number[] {
   const rows = db
     .prepare(
       `SELECT d.id AS id
          FROM medical_documents d
-        WHERE d.profile_id = ? AND d.acquired_account_id = ?
-          AND d.uploaded_at >= COALESCE(?, d.uploaded_at)
+        WHERE d.profile_id = ? AND d.acquired_identity_id = ?
           AND NOT EXISTS (
             SELECT 1 FROM integration_sync_rows r
              WHERE r.target_table = 'medical_documents' AND r.target_id = d.id
           )
         ORDER BY d.id`
     )
-    .all(profileId, accountId, since) as { id: number }[];
+    .all(profileId, identityId) as { id: number }[];
   return rows.map((r) => r.id);
 }
 

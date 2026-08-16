@@ -23,6 +23,11 @@ import {
 import { dataSectionHref, importHref, type AppRoute } from "./hrefs";
 import { reconcileProduced, feedProducedDetail } from "./produced-count";
 
+// The one source the drop rule below applies to. Spelled here rather than imported from
+// the registry because this module is the DB-free pure tier; the id is the same closed
+// literal `lib/types/integrations.ts` and `lib/portal-visibility.ts` use.
+const PORTALS_SOURCE_ID = "patient-portals";
+
 // Structural shapes of the three source rows. Deliberately minimal (and mirrored
 // from lib/types IntegrationSyncEvent / lib/queries/imports.ts) so this module
 // doesn't import the DB-backed query types — the real query rows carry extra
@@ -128,23 +133,46 @@ export function syncEntry(
   return { stream: "sync", at: event.at, sortId: event.id, event, drilldown };
 }
 
-// A SUCCESSFUL RUN THAT WROTE NOTHING LEAVES THE FEED (#2999's owner ruling).
+// A SUCCESSFUL PORTAL RUN THAT DELIVERED NOTHING LEAVES THE FEED (#2999's owner ruling).
 //
 // #137 built `collapseQuietSyncs` to fold consecutive no-ops into one summary line, and
 // nothing ever called it: `getImportDocumentsFeed` mapped `syncEntry` directly, so an
 // all-zero portal run got a full row reading "nothing new" — a dead end sitting above
 // the very archives the run fetched. The ruling replaces the collapse rather than wiring
-// it up: this feed is for imports that PRODUCED something, and the full run history —
-// every run, including the checks that found nothing — belongs on the Patient portals
-// page, which already reads every report `listVisiblePortalRunReports` returns.
+// it up: this feed is for imports that PRODUCED something, and the latest run of every
+// kind is stated on the Patient portals page's login row.
+//
+// THREE THINGS THE RULE DELIBERATELY DOES NOT REACH, each of which it did in its first
+// cut and each of which cost a user-initiated import its only trace:
+//
+//  * ANOTHER SOURCE. The ruling is about a "successful zero-write PORTAL run". A
+//    `fitbit-takeout` archive re-handed to allos reports `inserted 0 / unchanged 900`,
+//    and Takeout has no portals page to fall back on — dropping it leaves a deliberate,
+//    user-initiated import with no trace anywhere in the app.
+//  * A RUN THAT DELIVERED DOCUMENTS. The tool's split is its claim about the portal
+//    visit, not about what allos stored: the observed case is a delivery reported as
+//    `nothing-new` with an all-zero split. Dropping that row strands the documents it
+//    claimed — the unclaimed guard sees them, so no later run re-claims them, and the
+//    event that owns them never renders.
+//  * A RUN WHOSE ONLY CONTENT IS SKIPPED ROWS. Three documents the tool could not push
+//    is exactly the kind of thing this feed exists to show; `isNoOpSyncEvent` counts it.
 //
 // A FAILURE IS NEVER DROPPED. `isNoOpSyncEvent` returns false for `!ok`, and a failure is
 // the signal this feed exists to carry. A LEGACY event whose split columns are all null
 // is not dropped either — it predates the accounting and is not a claim about zero.
+//
+// `delivered` answers "did this run claim any documents", which the caller resolves in
+// the same indexed pass that builds the drill-in counts.
 export function dropQuietSyncs(
-  eventsNewestFirst: FeedSyncEvent[]
+  eventsNewestFirst: FeedSyncEvent[],
+  delivered: (ev: FeedSyncEvent) => boolean
 ): FeedSyncEvent[] {
-  return eventsNewestFirst.filter((ev) => !isNoOpSyncEvent(ev));
+  return eventsNewestFirst.filter(
+    (ev) =>
+      ev.source_id !== PORTALS_SOURCE_ID ||
+      !isNoOpSyncEvent(ev) ||
+      delivered(ev)
+  );
 }
 
 export function documentEntry(doc: FeedDocument): FeedEntry {

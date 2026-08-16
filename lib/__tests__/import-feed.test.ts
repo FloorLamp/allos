@@ -344,10 +344,11 @@ describe("feedItemView — job", () => {
   });
 });
 
-// A no-op (all-unchanged) sync factory for the drop rule (#137's question, #2999's
-// answer).
+// A no-op (all-unchanged) PORTAL run — the only shape the drop rule reaches (#137's
+// question, #2999's answer).
 function quiet(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
   return sync({
+    source_id: "patient-portals",
     inserted: 0,
     updated: 0,
     unchanged: 6,
@@ -357,54 +358,86 @@ function quiet(over: Partial<FeedSyncEvent> = {}): FeedSyncEvent {
   });
 }
 
+// Nothing this feed shows delivered documents unless a test says so.
+const deliveredNothing = () => false;
+
 // #137 built `collapseQuietSyncs` to fold consecutive no-ops into one summary line, and
 // nothing ever called it — `getImportDocumentsFeed` mapped `syncEntry` directly, so an
 // all-zero run got a full row reading "nothing new". #2999's owner ruling replaces the
 // collapse rather than wiring it up: this feed is for imports that PRODUCED something,
-// and a portal login's full run history belongs on the Patient portals page.
+// and the latest portal run of each kind is stated on the Patient portals page.
 describe("dropQuietSyncs (#2999)", () => {
-  it("drops a successful run that wrote nothing", () => {
-    expect(dropQuietSyncs([quiet({ id: 1 })])).toEqual([]);
+  it("drops a successful PORTAL run that wrote nothing", () => {
+    expect(dropQuietSyncs([quiet({ id: 1 })], deliveredNothing)).toEqual([]);
   });
 
   it("keeps a FAILURE, which is the signal the feed exists to carry", () => {
-    const failed = sync({
+    const failed = quiet({
       id: 5,
       ok: 0,
       error: "boom",
-      inserted: 0,
-      updated: 0,
       unchanged: 0,
     });
-    expect(dropQuietSyncs([failed])).toEqual([failed]);
+    expect(dropQuietSyncs([failed], deliveredNothing)).toEqual([failed]);
   });
 
   it("keeps a run that actually wrote something", () => {
-    const real = sync({ id: 2, inserted: 5, updated: 0, unchanged: 0 });
-    expect(dropQuietSyncs([quiet({ id: 3 }), real, quiet({ id: 1 })])).toEqual([
-      real,
-    ]);
+    const real = quiet({ id: 2, inserted: 5, unchanged: 0 });
+    expect(
+      dropQuietSyncs([quiet({ id: 3 }), real, quiet({ id: 1 })], deliveredNothing)
+    ).toEqual([real]);
   });
 
   it("keeps a LEGACY event whose split predates the accounting", () => {
-    const legacy = sync({
+    const legacy = quiet({
       id: 7,
       inserted: null,
       updated: null,
       unchanged: null,
       written: 4,
     });
-    expect(dropQuietSyncs([legacy])).toEqual([legacy]);
+    expect(dropQuietSyncs([legacy], deliveredNothing)).toEqual([legacy]);
   });
 
   it("keeps a run that only suppressed or held back rows — it did something", () => {
     const suppressed = quiet({ id: 8, unchanged: 0, suppressed: 2 });
     const edited = quiet({ id: 9, unchanged: 0, edited: 1 });
-    expect(dropQuietSyncs([suppressed, edited])).toEqual([suppressed, edited]);
+    expect(dropQuietSyncs([suppressed, edited], deliveredNothing)).toEqual([
+      suppressed,
+      edited,
+    ]);
+  });
+
+  // THREE EDGES THE RULE MUST NOT REACH. Each of these was dropped by the first cut, and
+  // each drop cost a real import its only trace in the app.
+
+  it("keeps a zero-write run from ANOTHER SOURCE — the ruling was about portal runs", () => {
+    // A re-handed Fitbit Takeout archive: `inserted 0 / unchanged 900`, deliberate and
+    // user-initiated, and with no portals page to fall back on.
+    const takeout = quiet({
+      id: 11,
+      source_id: "fitbit-takeout",
+      unchanged: 900,
+      written: 900,
+    });
+    expect(dropQuietSyncs([takeout], deliveredNothing)).toEqual([takeout]);
+  });
+
+  it("keeps a portal run whose only content is documents it could not push", () => {
+    const skipped = quiet({ id: 12, unchanged: 0, skipped: 3 });
+    expect(dropQuietSyncs([skipped], deliveredNothing)).toEqual([skipped]);
+  });
+
+  it("keeps a zero-split portal run that DELIVERED documents", () => {
+    // The observed case: a push whose report said `nothing-new` while two archives
+    // landed. Dropping this row strands the documents it claimed — no later run can
+    // re-claim them, and the event that owns them never renders.
+    const delivery = quiet({ id: 13 });
+    expect(dropQuietSyncs([delivery], (ev) => ev.id === 13)).toEqual([delivery]);
   });
 
   it("returns an empty list for no events", () => {
-    expect(dropQuietSyncs([])).toEqual([]);
+    expect(dropQuietSyncs([], deliveredNothing)).toEqual([]);
   });
 });
 

@@ -272,11 +272,19 @@ export function getImportDocumentsFeed(
     })
   );
   const jobs = getImportLogJobs(profileId).map(jobEntry);
-  const events = dropQuietSyncs(getAttendedImportSyncEvents(profileId, limit));
+  // PROVENANCE FIRST, then the drop — the order is load-bearing. A delivery reported with
+  // an all-zero split still CLAIMED its documents, and dropping the row before asking
+  // would strand them: the unclaimed guard keeps them from being re-claimed, and the
+  // event that owns them would never render (#2999).
+  const all = getAttendedImportSyncEvents(profileId, limit);
   const provenance =
-    events.length > 0
-      ? feedProvenanceByEvent(profileId, Math.min(...events.map((e) => e.id)))
+    all.length > 0
+      ? feedProvenanceByEvent(profileId, Math.min(...all.map((e) => e.id)))
       : new Map<number, { count: number; documents: number }>();
+  const events = dropQuietSyncs(
+    all,
+    (ev) => (provenance.get(ev.id)?.documents ?? 0) > 0
+  );
   const attended = events.map((ev) => {
     const found = provenance.get(ev.id);
     // NO PROVENANCE → NO EXPANDER (#1771). Nothing to open is not an apologetic empty
@@ -285,10 +293,11 @@ export function getImportDocumentsFeed(
     // drilldownCoverage's arithmetic, WITHOUT its cap at the run's split — and the
     // difference is deliberate. That cap is right for the record family, where
     // recordSyncRows can only ever persist a SUBSET of what an upsert wrote, so it
-    // never actually fires. A DELIVERY's claim is time-bounded rather than
-    // count-bounded (the documents acquired for this login since its last report), so
-    // capping it at the tool's reported split would promise fewer rows than the list
-    // then shows — exactly the pre/post-load disagreement #1991 forbids.
+    // never actually fires. A DELIVERY's claim is over what allos actually STORED for
+    // this patient, while the split is the tool's claim about the portal visit — the
+    // observed case is a delivery of two archives reported as `nothing-new` with an
+    // all-zero split. Capping there would promise fewer rows than the list then shows,
+    // which is exactly the pre/post-load disagreement #1991 forbids.
     const written = (ev.inserted ?? 0) + (ev.updated ?? 0);
     return syncEntry(ev, {
       count: found.count,

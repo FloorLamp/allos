@@ -141,10 +141,20 @@ export function listVisiblePortalRunReports(
 // ── HOW MANY DOCUMENTS A LOGIN DELIVERED (#2914) ─────────────────────────────
 //
 // The login row now says "Delivered N documents <day>" for a delivery-only report, and
-// this is where N comes from. A portal run's product is DOCUMENTS — event 3050's
-// `inserted 2, unchanged 1` are two new archives and one already held — so the split
-// columns on `integration_sync_events` already count exactly the right things, and no
-// write path has to be grown to restate them.
+// this is where N comes from.
+//
+// ONE NUMBER, NOT TWO (#1991). N counts the DOCUMENTS THE RUNS CLAIMED — the same
+// `integration_sync_rows` this login's runs wrote and the same rows the Imports feed's
+// drill-in lists — never the tool's own `inserted + updated` split. Those are two
+// independent counts of one delivery, and they disagree the moment the tool's split
+// differs from what allos stored: three archives reported as `inserted 1, unchanged 2`
+// made this page say "1" while the drill-in listed 3. Deriving both surfaces from the
+// provenance rows is what stops one delivery having two numbers in front of the reader.
+//
+// It is also the only derivation that survives the observed case #2914 was filed from: a
+// push that delivered documents under a report whose status was `nothing-new` and whose
+// split was all zeroes. The split says nothing arrived; the claimed rows say two archives
+// did, and they are right.
 //
 // THE AGGREGATE IS DAY-GRAIN, deliberately, and it is the one judgement call in the
 // derivation. `portal_run_reports` holds ONE ROW PER LOGIN (migration 132), so each
@@ -159,7 +169,7 @@ export function listVisiblePortalRunReports(
 // SCOPED LIKE EVERYTHING ELSE ON THIS PAGE. The events are narrowed to the viewer's own
 // accessible profiles AND to accounts the same predicate above admits, so a login row
 // can never be given a number drawn from a household this viewer cannot reach. Only
-// `ok` events count — a failed run delivered nothing.
+// `ok` events count — a failed run delivered nothing, and claims nothing.
 export function deliveredDocumentCountsByAccount(
   accessibleProfileIds: AuthorizedProfileIds,
   canSeeUnclaimed: boolean
@@ -171,11 +181,12 @@ export function deliveredDocumentCountsByAccount(
   // the calendar day in either form, which `date()` would not be for the `Z` form.
   const rows = db
     .prepare(
-      `SELECT e.account_id AS accountId,
-              SUM(COALESCE(e.inserted, 0) + COALESCE(e.updated, 0)) AS delivered
-         FROM integration_sync_events e
+      `SELECT e.account_id AS accountId, COUNT(*) AS delivered
+         FROM integration_sync_rows sr
+         JOIN integration_sync_events e ON e.id = sr.event_id
          JOIN portal_run_reports r ON r.account_id = e.account_id
-        WHERE e.profile_id IN ${profileIdsIn(ids)}
+        WHERE sr.target_table = 'medical_documents'
+          AND e.profile_id IN ${profileIdsIn(ids)}
           AND e.source_id = 'patient-portals'
           AND e.ok = 1
           AND e.account_id IS NOT NULL

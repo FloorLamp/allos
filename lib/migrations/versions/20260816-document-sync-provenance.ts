@@ -22,29 +22,43 @@ import type { Migration } from "../runner";
 //    enforcement around rebuild migrations and restores it once the preserved event ids
 //    are back.
 //
-// 2. `medical_documents.acquired_account_id` — the missing half of the acquisition fact.
-//    #1748's `acquired_portal_id` names the PORTAL a document arrived from, which is the
-//    right fact for "Acquired via optum" but too coarse to correlate a delivery with the
-//    run that delivered it: a portal with two logins has two run reports and one portal
-//    id. The documents and the report arrive on two different requests
-//    (POST /api/documents, then POST /api/documents/sync-report) and nothing correlated
-//    them; the LOGIN is what both name, so recording it is what lets the report handler
-//    claim exactly the documents its own run pushed.
+// 2. `medical_documents.acquired_identity_id` — the missing half of the acquisition
+//    fact. #1748's `acquired_portal_id` names the PORTAL a document arrived from, which
+//    is the right fact for "Acquired via optum" but far too coarse to correlate a
+//    delivery with the run that delivered it. The documents and the report arrive on two
+//    different requests (POST /api/documents, then POST /api/documents/sync-report) and
+//    nothing correlated them.
+//
+//    THE GRAIN IS THE PATIENT IDENTITY, not the portal and not the login, because that
+//    is the grain the tool REPORTS at: one push under one login files a separate report
+//    per patient (`patient=` names it), and both endpoints name the same
+//    (login, patient label) pair. Recording anything coarser leaves a run claiming
+//    another patient's archives — and, when a wall clock is used to separate them, leaves
+//    the second patient's documents claimed by nobody at all. `portal_identities.id` is
+//    exactly that pair (migration 131: a patient label is unique per LOGIN), so the claim
+//    is a plain equality with no clock in it.
 //
 //    Nullable, populated only on the portal-resolved upload path, and NULL keeps meaning
 //    exactly what `acquired_portal_id`'s NULL means — "a human put this here". No
 //    backfill: a document uploaded before this column existed genuinely has no recorded
-//    login, and inventing one from its portal would be a guess in the one place this
+//    identity, and inventing one from its portal would be a guess in the one place this
 //    feature refuses to guess.
 //
 //    FK ON DELETE SET NULL, matching #1748's posture: provenance points AT the registry
-//    row, so a login that leaves the vocabulary takes with it the ability to name it.
+//    row, so an identity that leaves the vocabulary takes with it the ability to name it.
 //    lib/portals.ts nulls the link explicitly too, so teardown holds with foreign_keys
 //    off. SQLite permits a REFERENCES clause on ADD COLUMN because the default is NULL.
 //
-// Replay-safe on both halves: the rebuild is gated on the converged CHECK already
-// containing the sentinel, the ADD COLUMN on the catalog. Self-contained — imports
-// nothing from lib/ — so a replay is decided purely by the DB catalog.
+// 3. One index for the claim's second half. A run claims only documents NO RUN HAS
+//    CLAIMED YET, which asks `integration_sync_rows` "is this document already a target",
+//    and that table is the largest child in the schema (every synced sample is a row in
+//    it). `(target_table, target_id)` turns a full scan per candidate document into a
+//    seek.
+//
+// Replay-safe on every half: the rebuild is gated on the converged CHECK already
+// containing the sentinel, the ADD COLUMN on the catalog, the indexes on IF NOT EXISTS.
+// Self-contained — imports nothing from lib/ — so a replay is decided purely by the DB
+// catalog.
 const SENTINEL = "'medical_documents'";
 
 // The canonical stored-instant DEFAULT migration 163 moved this column onto (#2205).
@@ -100,18 +114,25 @@ export function up(db: Database.Database): void {
     rebuild.immediate();
   }
 
-  if (!columnNames(db, "medical_documents").has("acquired_account_id")) {
+  if (!columnNames(db, "medical_documents").has("acquired_identity_id")) {
     db.exec(
-      `ALTER TABLE medical_documents ADD COLUMN acquired_account_id INTEGER
-         REFERENCES portal_accounts(id) ON DELETE SET NULL`
+      `ALTER TABLE medical_documents ADD COLUMN acquired_identity_id INTEGER
+         REFERENCES portal_identities(id) ON DELETE SET NULL`
     );
   }
-  // The report handler reads "which documents did this login just deliver" on every run,
-  // and the login-delete cleanup reads the inverse. One index covers both, and it is
-  // sparse in practice (NULL for every hand-uploaded document).
+  // The report handler reads "which documents did this identity just deliver" on every
+  // run, and the identity-delete cleanup reads the inverse. One index covers both, and it
+  // is sparse in practice (NULL for every hand-uploaded document).
   db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_medical_documents_acquired_account
-       ON medical_documents(acquired_account_id)`
+    `CREATE INDEX IF NOT EXISTS idx_medical_documents_acquired_identity
+       ON medical_documents(acquired_identity_id)`
+  );
+  // The unclaimed guard's index (see 3 above). Created outside the rebuild block so a
+  // database that already has the widened CHECK — a replay, or a half-applied resume —
+  // still gets it.
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_integration_sync_rows_target
+       ON integration_sync_rows(target_table, target_id)`
   );
 }
 

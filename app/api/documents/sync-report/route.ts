@@ -13,8 +13,7 @@ import {
 import {
   applyIdentityOutcomes,
   clearIdentityDeclined,
-  documentsDeliveredSince,
-  lastRunReportAt,
+  documentsDeliveredBy,
   recordDiscoveredIdentities,
   recordPendingIdentity,
   recordPortalRunReport,
@@ -306,6 +305,10 @@ export async function POST(req: Request): Promise<Response> {
     portalId: number;
     accountId: number;
     patientLabel: string;
+    // The registry row for the pair above (#2999) — what a delivered document is stamped
+    // with, and therefore what this run claims by. Not part of the event's own identity
+    // columns, which store the three names.
+    identityId: number;
   } | null = null;
   // The LOGIN this run came from, once resolved — what the account-level run report is
   // keyed to. Null for a `profile=<id>` report from a human debugging with curl, which
@@ -402,6 +405,7 @@ export async function POST(req: Request): Promise<Response> {
       portalId: resolved.portalId,
       accountId: resolved.accountId,
       patientLabel: resolved.patientLabel,
+      identityId: resolved.identityId,
     };
     // A SUCCESSFUL DOWNLOAD IS ITSELF A COLLECTION (#1889), so it clears any standing
     // "the portal declines this person" without the client having to spell the outcome
@@ -433,14 +437,6 @@ export async function POST(req: Request): Promise<Response> {
     return jsonError("no write access to that profile", 403);
   }
 
-  // THE RUN'S OWN WINDOW (#2999), read BEFORE anything writes. `portal_run_reports`
-  // holds one row per login, so recordPortalRunReport below OVERWRITES the only stored
-  // boundary a run has; the documents this run delivered are exactly the ones acquired
-  // for this login after the stamp captured here.
-  const previousReportAt = reportAccount
-    ? lastRunReportAt(reportAccount.id)
-    : null;
-
   try {
     // The append-only event history: this is what Data → Review reads and what the
     // failure badge keys off. recordSyncEvent is best-effort by contract (it never throws
@@ -468,18 +464,22 @@ export async function POST(req: Request): Promise<Response> {
     // Review then lists the archives this run actually pushed, each opening its own
     // import page, instead of promising a count over a table that could hold nothing.
     //
-    // Scoped three ways so the claim is exact: to this LOGIN (`acquired_account_id`,
-    // stamped by the upload route), to this PROFILE, and to the window after the
-    // login's previous report. recordSyncRows is best-effort and never throws into
-    // ingest, and its rows inherit the #388 retention cascade from the event.
-    if (reportAccount) {
+    // Keyed to the IDENTITY this report is about, which is what the upload route stamped
+    // on each archive: the tool files one report per patient, so a claim keyed to the
+    // login would credit one patient's run with another's archives — and, when a clock
+    // was used to separate them, would leave the later patient's documents claimed by
+    // nobody at all. There is no clock here; see documentsDeliveredBy.
+    //
+    // ONLY A SUCCESSFUL RUN CLAIMS. A failed report delivered nothing, and claiming into
+    // a failing event would consume the documents the next good run should have listed.
+    // They stay unclaimed and wait — nothing here moves a boundary.
+    //
+    // recordSyncRows is best-effort and never throws into ingest, and its rows inherit
+    // the #388 retention cascade from the event.
+    if (ev.ok && identity) {
       recordSyncRows(
         eventId,
-        documentsDeliveredSince(
-          profileId,
-          reportAccount.id,
-          previousReportAt
-        ).map((id) => ({
+        documentsDeliveredBy(profileId, identity.identityId).map((id) => ({
           target_table: "medical_documents" as const,
           target_id: id,
           disposition: "inserted" as const,

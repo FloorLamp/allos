@@ -16,7 +16,7 @@ import { parseUploadTarget } from "@/lib/acquirer-identity";
 import {
   recordPendingIdentity,
   resolvePortalIdentity,
-  stampAcquiredAccount,
+  stampAcquiredIdentity,
 } from "@/lib/portals";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { createLogger } from "@/lib/log";
@@ -180,10 +180,12 @@ export async function POST(req: Request): Promise<Response> {
   // (#1748). Set only on the resolved-identity branch: a `profile=<id>` upload is a
   // person putting a file somewhere, and NULL says exactly that.
   let acquiredPortalId: number | null = null;
-  // The LOGIN half of the same fact (#2999). A portal with two logins has one portal id
-  // and two run reports, so this is what lets a run report recognize the documents its
-  // own delivery pushed. Null on the same paths acquiredPortalId is null on.
-  let acquiredAccountId: number | null = null;
+  // The IDENTITY half of the same fact (#2999) — the (login, patient) pair this archive
+  // was acquired for. That is the grain the tool REPORTS at (one report per patient), so
+  // it is the grain that lets a run report recognize its own delivery; anything coarser
+  // has one run claiming another patient's archives. Null on the same paths
+  // acquiredPortalId is null on.
+  let acquiredIdentityId: number | null = null;
   if (target.target.kind === "profile") {
     profileId = target.target.profileId;
   } else {
@@ -223,7 +225,7 @@ export async function POST(req: Request): Promise<Response> {
     }
     profileId = resolved.profileId;
     acquiredPortalId = resolved.portalId;
-    acquiredAccountId = resolved.accountId;
+    acquiredIdentityId = resolved.identityId;
   }
 
   // 4. Authorize: demo, then reachability, then write. A member who cannot reach the
@@ -305,11 +307,14 @@ export async function POST(req: Request): Promise<Response> {
       const docId = out.docId;
       // Stamped here rather than threaded through the ingest engine: the engine lands a
       // row on seven paths and already carries the portal id down all of them, while the
-      // login is known only to this route and is needed only for the correlation the
+      // identity is known only to this route and is needed only for the correlation the
       // sync-report handler performs. Every row this call can produce — stored, failed,
-      // or duplicate marker — gets it, matching acquired_portal_id's coverage.
-      if (acquiredAccountId !== null) {
-        stampAcquiredAccount(profileId, docId, acquiredAccountId);
+      // or duplicate marker — gets it, matching acquired_portal_id's coverage. The call
+      // is BEST-EFFORT and swallows its own errors: the archive has already landed, and a
+      // provenance write must never turn a successful ingest into a 500 the tool would
+      // answer by pushing everything again.
+      if (acquiredIdentityId !== null) {
+        stampAcquiredIdentity(profileId, docId, acquiredIdentityId);
       }
       const row = readLanded(docId, profileId);
       // The engine lands a row on every remaining path, so a missing one means the row
