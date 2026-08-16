@@ -319,12 +319,19 @@ export function getStoredAge(profileId: number): number | null {
   return Number.isInteger(n) && n >= 0 && n < 150 ? n : null;
 }
 
+// An age in years FLOORS on the way in, it does not round (#3020). Every caller passes
+// a whole number today — normalizeAge and the two form validators each reject a
+// fraction — so this changes nothing that ships; it is here because it was the only
+// surviving round-UP in the write path, which is the trap the whole of #3020 is about.
+// Rounding up is what crosses a life-stage boundary in the unlocking direction (0.5
+// stored as 1 makes an infant a "child"; 17.6 stored as 18 makes a minor an adult), and
+// an age in years is the number of years COMPLETED. Now agrees with normalizeAge.
 export function setStoredAge(profileId: number, age: number | null) {
   if (age === null) {
     deleteProfileSetting(profileId, "age");
     return;
   }
-  setProfileSetting(profileId, "age", String(Math.round(age)));
+  setProfileSetting(profileId, "age", String(Math.floor(age)));
 }
 
 // The profile's age in MONTHS for the schedule engines (issue #310): the

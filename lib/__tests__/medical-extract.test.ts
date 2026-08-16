@@ -9,6 +9,9 @@ import {
   unwrapExtractionInput,
   looksLikeExtractionInput,
 } from "@/lib/medical-extract";
+// Deep import: the unit vocabulary is exported for the table-driven walk below, not
+// re-exported through the barrel — nothing outside the parser has business reading it.
+import { AGE_UNITS_PER_YEAR } from "@/lib/medical-extract/normalize";
 import { SYSTEM, TOOL } from "@/lib/medical-extract/prompt";
 import { EXTRACTION_CONFIDENCES } from "@/lib/extraction-confidence";
 
@@ -165,7 +168,10 @@ describe("normalizeAge", () => {
     expect(normalizeAge(45)).toBe(45);
     expect(normalizeAge("45")).toBe(45);
     expect(normalizeAge("45 years")).toBe(45);
-    expect(normalizeAge(45.6)).toBe(46);
+    // Issue #3020: this used to be 46. An age in years is the number of COMPLETED
+    // years, so a fraction floors — see the "never rounds up" case below for why the
+    // difference is a safety one rather than an off-by-one preference.
+    expect(normalizeAge(45.6)).toBe(45);
   });
 
   // Issue #2992. This assertion used to read `expect(normalizeAge(0)).toBeNull()`,
@@ -190,14 +196,165 @@ describe("normalizeAge", () => {
     expect(normalizeAge(null)).toBeNull();
   });
 
-  // Issue #2992 R2: the range check must run on the ROUNDED value. It used to run
-  // first, so 149.6 passed `n < 150` and rounded up to a stored "150" — which
-  // getStoredAge rejects, leaving the writer and the reader disagreeing about what is
-  // recordable. Whatever normalizeAge returns must survive the round trip.
+  // Issue #2992 R2: the range check must run on the value that is actually returned,
+  // never on the raw one. It used to run first, so 149.6 passed `n < 150` and then
+  // rounded UP to a stored "150" — which getStoredAge rejects, leaving the writer and
+  // the reader disagreeing about what is recordable. Flooring (#3020) makes that
+  // impossible by construction: the returned value can only move away from the bound.
   it("never emits a value the reader would reject", () => {
-    expect(normalizeAge(149.6)).toBeNull();
+    expect(normalizeAge(149.6)).toBe(149);
     expect(normalizeAge(149.4)).toBe(149);
+    expect(normalizeAge(150)).toBeNull();
     expect(normalizeAge(0.4)).toBe(0);
+  });
+
+  // ── Issue #3020: the unit is read, not discarded ─────────────────────────────
+  //
+  // `parseInt` took the number and dropped the unit, so "6 months" was 6 — and
+  // adoptProfileFromExtraction wrote SIX YEARS onto an infant. Months is the ordinary
+  // way a paediatric document states an infant's age, so this was the common case for
+  // exactly the population it hurts. These assert the number; the BAND (what the gates
+  // actually read) is asserted through the real write/read path in
+  // lib/__db_tests__/age-unit-parse.test.ts.
+  it("converts months to completed years", () => {
+    expect(normalizeAge("6 months")).toBe(0);
+    expect(normalizeAge("6mo")).toBe(0);
+    expect(normalizeAge("6 mos")).toBe(0);
+    expect(normalizeAge("6 MONTHS")).toBe(0);
+    expect(normalizeAge("6-month-old")).toBe(0);
+    expect(normalizeAge("6 months old")).toBe(0);
+    expect(normalizeAge("0 months")).toBe(0);
+    // 18 months is a one-year-old, not a two-year-old.
+    expect(normalizeAge("18 months")).toBe(1);
+    expect(normalizeAge("23 mths")).toBe(1);
+    expect(normalizeAge("24 months")).toBe(2);
+  });
+
+  // A neonate's age is stated in weeks and days, and parseInt discarded those too.
+  it("converts weeks and days to completed years", () => {
+    expect(normalizeAge("3 weeks")).toBe(0);
+    expect(normalizeAge("2 wk")).toBe(0);
+    expect(normalizeAge("40 wks")).toBe(0);
+    // 52 weeks is 364 days — still not a full year.
+    expect(normalizeAge("52 weeks")).toBe(0);
+    expect(normalizeAge("53 weeks")).toBe(1);
+    expect(normalizeAge("10 days")).toBe(0);
+    expect(normalizeAge("2 d")).toBe(0);
+    expect(normalizeAge("400 days")).toBe(1);
+  });
+
+  it("still reads a year unit, however it is spelled", () => {
+    expect(normalizeAge("12 yrs")).toBe(12);
+    expect(normalizeAge("12 yr")).toBe(12);
+    expect(normalizeAge("12y")).toBe(12);
+    expect(normalizeAge("45 y/o")).toBe(45);
+    expect(normalizeAge("45 years old")).toBe(45);
+    expect(normalizeAge("  8  ")).toBe(8);
+  });
+
+  // The refusing half of the answer: a unit this cannot vouch for is "unknown age",
+  // which every gate has a documented policy for — never a bare number.
+  it("returns null for a unit it does not recognize", () => {
+    expect(normalizeAge("7 hours")).toBeNull();
+    expect(normalizeAge("30 min")).toBeNull();
+    expect(normalizeAge("6 sem")).toBeNull();
+    expect(normalizeAge("45abc")).toBeNull();
+    // Compound and fractional-with-a-slash ages cannot be represented, so the first
+    // number must not be kept on its own.
+    expect(normalizeAge("2 y 3 m")).toBeNull();
+    expect(normalizeAge("6 1/2 years")).toBeNull();
+    // A unit does not rescue an otherwise implausible age.
+    expect(normalizeAge("-3 months")).toBeNull();
+    expect(normalizeAge("1800 months")).toBeNull();
+  });
+
+  // Rounding UP crosses lib/life-stage's boundaries in the unsafe direction: it makes
+  // a profile OLDER than stated, which is what unlocks content rather than withholding
+  // it. These are the two boundaries where half a year changes what the app shows.
+  it("never rounds an age up across a life-stage boundary", () => {
+    expect(normalizeAge(0.5)).toBe(0); // infant, not "child"
+    expect(normalizeAge("0.5")).toBe(0);
+    expect(normalizeAge(0.9)).toBe(0);
+    expect(normalizeAge(17.6)).toBe(17); // minor, not adult
+    expect(normalizeAge("17.6")).toBe(17);
+    expect(normalizeAge(12.7)).toBe(12); // pediatric BP regime, not adult
+  });
+
+  // ── R1: "45M" is age+sex shorthand, not 45 months ────────────────────────────
+  //
+  // The first cut of this table read a bare "m" as months, which turned the ordinary
+  // shorthand of a triage note ("45M presenting with chest pain") into a THREE-year-old
+  // — worse than the bug being fixed, because it was a REGRESSION: parseInt stopped at
+  // the digits and got 45 by accident. And guessing "younger" is not conservative here.
+  // Below 13 the app applies a different clinical interpretation, so an adult's
+  // genuinely out-of-range ALP is re-derived against the pediatric band and its `high`
+  // flag is ERASED — a suppressed true positive, not a withheld surface. The DB tier
+  // asserts that consequence end to end.
+  it("refuses age+sex shorthand instead of reading the sex as a unit", () => {
+    for (const shorthand of ["45M", "45 M", "45m", "45 m", "32F", "32 f"]) {
+      expect(normalizeAge(shorthand)).toBeNull();
+    }
+    // The two halves of the shorthand must answer the SAME way — an asymmetry is how
+    // this was spotted (`M` converted, `F` refused).
+    expect(normalizeAge("45M")).toEqual(normalizeAge("45F"));
+    // The vocabulary itself is the guard: neither sex marker may be re-added as a unit.
+    expect(Object.keys(AGE_UNITS_PER_YEAR)).not.toContain("m");
+    expect(Object.keys(AGE_UNITS_PER_YEAR)).not.toContain("f");
+    // An infant loses nothing — the unambiguous month spellings still convert.
+    expect(normalizeAge("6mo")).toBe(0);
+    expect(normalizeAge("6 mos")).toBe(0);
+    expect(normalizeAge("6 months")).toBe(0);
+  });
+
+  // ── R2: every entry in the closed vocabulary is asserted, not a hand-picked sample ──
+  //
+  // The whole safety argument for converting is that the vocabulary is CLOSED, so each
+  // of its entries is an independent numeric literal that can be wrong on its own. A
+  // hand-written sample left a third of them unexercised, and a single mutated factor
+  // (`w` as 52 rather than 365.25/7) shipped green while making a 364-day-old infant a
+  // one-year-old with food logging on.
+  //
+  // The expectations below are written INDEPENDENTLY of the table — deriving the
+  // boundary from AGE_UNITS_PER_YEAR would make any mutated entry self-consistent and
+  // the test vacuous.
+  const UNIT_SPELLINGS = {
+    // "" is the no-unit case: a bare number has always meant years.
+    years: ["", "y", "yr", "yrs", "year", "years", "yo", "yos", "yoa"],
+    months: ["mo", "mos", "mon", "mons", "mth", "mths", "month", "months"],
+    weeks: ["w", "wk", "wks", "week", "weeks"],
+    days: ["d", "day", "days"],
+  };
+  // The most one can be and still be under a year, and the least one can be and be a
+  // year, in each unit. 52 weeks is 364 days; 365 days is short of the 365.25 mean year.
+  const UNDER_A_YEAR = { years: 0, months: 11, weeks: 52, days: 365 };
+  const EXACTLY_A_YEAR = { years: 1, months: 12, weeks: 53, days: 366 };
+
+  it("converts every spelling in the vocabulary, and holds nothing untested", () => {
+    // Fails if a spelling is added to the table without an expectation here, or removed
+    // from the table while an expectation remains.
+    expect(Object.keys(AGE_UNITS_PER_YEAR).sort()).toEqual(
+      Object.values(UNIT_SPELLINGS).flat().sort()
+    );
+
+    for (const [unit, spellings] of Object.entries(UNIT_SPELLINGS)) {
+      const under = UNDER_A_YEAR[unit as keyof typeof UNDER_A_YEAR];
+      const exactly = EXACTLY_A_YEAR[unit as keyof typeof EXACTLY_A_YEAR];
+      for (const spelling of spellings) {
+        expect([spelling, normalizeAge(`${under} ${spelling}`)]).toEqual([
+          spelling,
+          0,
+        ]);
+        expect([spelling, normalizeAge(`${exactly} ${spelling}`)]).toEqual([
+          spelling,
+          1,
+        ]);
+        // The spelling attached to the number, the way a document writes it.
+        expect([spelling, normalizeAge(`${under}${spelling}`)]).toEqual([
+          spelling,
+          0,
+        ]);
+      }
+    }
   });
 });
 
