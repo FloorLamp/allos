@@ -1,6 +1,6 @@
 import type { IntegrationId } from "@/lib/types";
 import {
-  countMissingStravaRideDetails,
+  countMissingStravaSessionDetails,
   runStravaDetailsBackfill,
   type StravaBackfillProgress,
   type StravaBackfillResult,
@@ -41,7 +41,7 @@ const RUNNERS: IntegrationBackfillRunner[] = [
   {
     sourceId: "strava",
     kind: "ride-details",
-    count: countMissingStravaRideDetails,
+    count: countMissingStravaSessionDetails,
     async run(profileId, onProgress) {
       const result = await runStravaDetailsBackfill(
         profileId,
