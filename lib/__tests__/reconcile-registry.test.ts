@@ -248,6 +248,12 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
 // any alias of it, or by its own prefix LITERALS — and the fixtures below pin each of
 // those, against synthetic sources, so the scan's reach is tested rather than asserted.
 //
+// The alias resolution is TEXTUAL and one hop — a rename at the import, or a
+// `const X = DOMAIN` in this file. A domain re-exported under a third name from a third
+// module would not be recognised, and the answer there is a false POSITIVE (a domain
+// reported as unswept when it is swept), which is the direction to fail in: it is read
+// and argued with, where a false negative is silence.
+//
 // IT DOES NOT COVER what `dead` does with the result. Reverting only the early return on
 // the empty-`wanted` path — half of the original defect, exactly as it shipped — leaves
 // this file green: the call is still there, its result is simply dropped. Source text is
