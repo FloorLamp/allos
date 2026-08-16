@@ -35,6 +35,15 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - Revert to four on evidence, not feel: contention shows up as a slow tier
   misread as a regression, so watch the DB tier's duration and whether agents
   start hitting the ten-minute tool cap mid-gate.
+- That cap counts agents RUNNING — a machine limit. The queue that jams first
+  is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
+  dispatch at roughly three unreviewed PRs however few agents are running.
+- STAGGER starts. Dispatch durations cluster tightly (seven of the first ten
+  inside 85±5 min), so simultaneous starts are simultaneous arrivals.
+  `dispatch-brief.mjs new` warns when a sibling started within 25 minutes and
+  projects both arrivals; it never refuses, because a P0 preempts.
+- A refuted PR re-enters the review queue, so arrival is not one-shot. Count
+  rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
 - Agents push after every meaningful step. The remote branch is the durable
