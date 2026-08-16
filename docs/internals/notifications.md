@@ -779,7 +779,7 @@ be a confident falsehood. `COALESCE(occurred_at, recorded_at)` is where #2019 sl
 transparently — a stated eating instant beats a tap stamp, with no branch and no second
 read.
 
-### Time correction: `foodtime` / `dosetime` (#2019, #2020)
+### Time correction: `foodtime` / `dosetime` / `practime` (#2019, #2020, #2875)
 
 A one-tap button in a chat carries a contract — "I'm eating NOW", "I'm taking this
 NOW" — so **the tap instant IS a measurement** of when the thing happened, with a
@@ -804,6 +804,52 @@ and the reconnect confirmation says the minute was lost and why
 (`docs/internals/time-model.md`). On the dose side there is no
 schema at all: `intake_item_logs.recorded_at` has carried the administration instant
 since migration 041, and the PRN redose window already arms off it.
+
+#### The third domain: `practime` (#2875)
+
+Practices were the third to gain one-tap logging and never got the correction substrate,
+and the gap had a worse consequence than its siblings'. `logPracticeSession` stamps
+`time` with the profile-local instant of the tap whenever a caller omits one — which
+every one-tap path does — and **that column feeds the scheduler that produced the tap**:
+`modalHour()` (`lib/weekly-rhythm.ts`) picks each practice's typical hour and #2188's
+retimed pace nudge fires at it. A sauna at 19:00 acknowledged at 21:30 therefore taught
+the inference 21:00, which fired the next nudge later, which was acknowledged later
+still. The error compounded, and it degraded exactly the feature whose purpose is
+"today is usually a red-light day, at about this time".
+
+Two prefixes is the whole extension — `correctionActions`, `correctionPickerActions`,
+`correctionBodyStatement` and `collapseBursts` were already domain-blind. Three things
+genuinely differ:
+
+- **The stored value is not an instant.** Food stores `occurred_at` and dose stores
+  `given_at`; a practice stores `date` (a profile-local day) plus `time` (a
+  profile-local `HH:MM`). The tap reader COMPOSES them through the profile's zone and
+  the write core DECOMPOSES the answer back — both through the declared readers
+  (`eventInstant` / `recordInstant`, `lib/row-instants.ts`) rather than a second
+  hand-rolled join, and server-side per #450.
+- **`time` is three-valued and the correction does not flatten it.** `null` means the
+  session has NO instant and that is a decision (a backdated correction outside the
+  profile's today deliberately stays null). A chip may only re-time a row that already
+  carries a time; null-time rows are excluded from the tap set, so they never reach a
+  burst and no chip can invent one for them.
+- **The chips never cross local midnight.** Correcting a practice's DATE is the expanded
+  form's job, so an answer landing on another day writes nothing and says so
+  (`crosses-day`). Clamping would be worse than refusing: it would teach `modalHour()`
+  an hour the session never happened at, which is the defect this feature exists to fix.
+
+Migration `20260816-practice-tap-message-provenance` adds `practice_logs.notify_message_id`
+— migration 170's shape exactly — so a practice burst is attributed like the other two
+rather than riding as unattributed, and the pace nudge REBUILDS after a tap instead of
+closing: the common case is a single behind practice, where logging it clears the very
+shortfall that justified the message, and closing there would take the correction row
+down in exactly the case the feature exists for.
+
+**Scoped to the pace nudge.** `/practice`'s own `plog` is declared inert, and
+`owningFamily` takes a message's family from the first token that CLAIMS state — so
+attaching these chips to that list would make an inert listing resolve as family
+`practice` and inherit the nudge's close-once-resolved reconciliation, which the
+`practice-list` entry argues against. Giving the list its chips needs a family of its
+own; that is open.
 
 **The offer is a QUERY over ledger state**, never a memory of what some earlier
 message rendered — which is why the rows survive a rebuild, a pointer rotation and a
