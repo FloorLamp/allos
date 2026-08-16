@@ -156,10 +156,15 @@ describe("redactSecrets over the app's own vocabulary (#2965 guardrail)", () => 
   });
 
   it("is idempotent over the whole corpus, not just over a fixture", () => {
+    // One assertion over a collected list, not one per string: 67k `expect`
+    // calls cost more than the 134k redactions they check, and this tier is
+    // shared. Same coverage, and the failure still names the string.
+    const notIdempotent: string[] = [];
     for (const s of corpus) {
       const once = redactSecrets(s);
-      expect(redactSecrets(once)).toBe(once);
+      if (redactSecrets(once) !== once) notIdempotent.push(s);
     }
+    expect(notIdempotent).toEqual([]);
   });
 
   it("still masks a vendor-prefixed credential planted in that vocabulary", () => {
