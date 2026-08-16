@@ -48,6 +48,30 @@
 // e2e/fasting-lifecycle.spec.ts pins it; a gate whose escape hatch is never rendered is
 // the same stranded row with extra steps.
 //
+// ── THE SAME LINE BOUNDS DURATION ───────────────────────────────────────────────────
+//
+// FAST_MAX_HOURS is a ceiling on what the app accepts as a CLAIM about an interval — a
+// backdated start, or a reopen that restores one — because past 14 days a claim is far
+// likelier to be a mis-set date than a fast. It is NOT a ceiling on how long a fast the
+// app WATCHED run may be, and it cannot be: an active row grows with the clock, on no
+// input at all, and refusing to close it does not shorten it.
+//
+//   GATED cores carry the ceiling. `startFast` refuses a backdated start further back
+//   than FAST_MAX_HOURS and `reopenFast` refuses to restore an interval already past it.
+//   Both take an interval FROM INPUT, so both can honestly answer "pick a shorter one".
+//   EXEMPT cores carry NO ceiling. `endFast` cannot lengthen anything: the end it writes
+//   is at most `now`, so the interval it stores is at most the one the row ALREADY has.
+//   A duration refusal there prevents no long interval — it only prevents a long
+//   interval from being CLOSED, which is the stranded row above wearing a new excuse.
+//
+// That refusal shipped here for one revision and did exactly that: a restricted profile
+// past FAST_MAX_HOURS had `too-long` answered on every tap of the ONE control its
+// surface draws, with no backdate field and no discard beside it. Recorded rather than
+// quietly reverted, because the mistake is not obvious — the guard was locally correct
+// ("`startFast` and `endFast` cannot disagree about which intervals are storable") and
+// wrong about the system, since only one of those two ever takes the interval from a
+// user.
+//
 // `reopenFast` is NOT exempt, and that is a deliberate cost: a restricted profile's
 // Undo-after-end is refused. Restoring an active fast for that profile is exactly what
 // the gate forbids, and the user loses one undo of a write they had just chosen to make
@@ -144,17 +168,27 @@ export type EndFastOutcome =
   // confirming unconditionally.
   | { kind: "none-active" }
   // The proposed end is at or before the start (AT THE STORED SECOND — see
-  // `instantSeconds`), or in the future.
-  | { kind: "invalid" }
-  // The resulting interval would exceed FAST_MAX_HOURS. The SAME bound `startFast`
-  // enforces on a backdated start, applied here so the two cores cannot disagree about
-  // which intervals are storable — one core minting a row a sibling would refuse is a
-  // split machine, not a lenient one.
-  | { kind: "too-long" };
+  // `instantSeconds`), or in the future. These are the ONLY two refusals a caller can
+  // provoke, and both are about the instant it supplied rather than about the interval
+  // that already exists — see below.
+  | { kind: "invalid" };
 
-// End the active fast at `endedAt` (default now). NO life-stage gate, by the registered
-// exemption above: a profile that became restricted mid-fast must still be able to close
-// the row out. See this module's header for the full reasoning.
+// End the active fast at `endedAt` (default now).
+//
+// NO life-stage gate, by the registered exemption above: a profile that became
+// restricted mid-fast must still be able to close the row out.
+//
+// AND NO DURATION CEILING, which is the other half of the same promise and was missing
+// for one revision. `end` is bounded above by `now` and the start is already stored, so
+// the longest interval this core can write is exactly the one the clock has already
+// produced — no input enlarges it. Refusing a 15-day interval here would therefore
+// refuse to close a fast the system itself allowed to grow, which is the stranded row
+// the exemption exists to prevent. The claim-side ceiling lives in `startFast` and
+// `reopenFast`, where an interval actually arrives from a user. See this module's header.
+//
+// A plain end (no `endedAt` — the only write the restricted surface draws) is therefore
+// refused only while the stored start second is still the current one, i.e. for under a
+// second after a start. Nothing else about an active row can refuse it.
 export function endFast(profileId: number, endedAt?: Date): EndFastOutcome {
   return writeTx(() => {
     const at = clockNow();
@@ -169,8 +203,6 @@ export function endFast(profileId: number, endedAt?: Date): EndFastOutcome {
     if (instantSeconds(end) <= instantSeconds(start))
       return { kind: "invalid" };
     if (instantSeconds(end) > instantSeconds(at)) return { kind: "invalid" };
-    if (end.getTime() - start.getTime() > FAST_MAX_HOURS * 3_600_000)
-      return { kind: "too-long" };
     const endInstant = utcInstant(end);
     updateFastRow(
       profileId,
@@ -200,8 +232,10 @@ export type ReopenFastOutcome =
   // recorded after it. That is the state the one-active invariant and every reader rule
   // out, and the id comes from a form, so it has to be checked rather than assumed.
   | { kind: "overlap"; id: number }
-  // Reopening would put the fast past FAST_MAX_HOURS, i.e. produce a row `endFast` would
-  // then refuse to close.
+  // Reopening would restore an interval already past FAST_MAX_HOURS. This core is on the
+  // CREATE side of the line, so it carries the claim ceiling a backdated start does: the
+  // app will not mint a 15-day interval as an active fast, whichever core is asked. NOT
+  // "because `endFast` would refuse to close it" — `endFast` has no ceiling, by design.
   | { kind: "too-long" }
   // The life-stage gate refused — see below; this core is GATED, not exempt.
   | { kind: "refused" };
@@ -224,8 +258,9 @@ export type ReopenFastOutcome =
 //     the recency version would have, which is the failure the id was chosen to avoid.
 //   • OVERLAP — a reopened fast is open, so it runs to +infinity and must clear
 //     everything recorded after it. Re-checked here against fresh rows.
-//   • DURATION — the reopened interval must still be closable, so it is held to the same
-//     FAST_MAX_HOURS bound `startFast` and `endFast` enforce.
+//   • DURATION — restoring an active fast MINTS an interval, so it is held to the same
+//     FAST_MAX_HOURS claim ceiling a backdated start is. `endFast` deliberately is not:
+//     closing a row the clock grew is the exempt direction and carries no ceiling.
 export function reopenFast(profileId: number, id: number): ReopenFastOutcome {
   if (fastAdultOnlyRefusal(profileId)) return { kind: "refused" };
   return writeTx(() => {
@@ -254,17 +289,34 @@ export function reopenFast(profileId: number, id: number): ReopenFastOutcome {
 }
 
 export type DiscardFastOutcome =
-  { kind: "discarded"; id: number } | { kind: "not-found" };
+  | { kind: "discarded"; id: number }
+  | { kind: "not-found" }
+  // The named row is no longer RUNNING — it was closed in the meantime, on another
+  // device or in another tab. The `none-active` of this core, and the reason it exists is
+  // not a crafted id: the Discard button is drawn on the stale suggest for the ACTIVE
+  // fast and carries that row's id, so a tab left open across an end elsewhere posts an
+  // id that now names finished history. Deleting it would destroy a COMPLETED fast with
+  // no confirmation and no undo while answering "Discarded." — the unconditional
+  // confirmation the stateful-write registry exists to end. Every sibling transition here
+  // re-derives under the write lock and answers with a typed refusal; this one now does
+  // too, which is what made `already-active` catch the same stale tab's start.
+  | { kind: "already-ended"; id: number };
 
 // DISCARD a fast — "I never actually fasted". The stale suggest's second resolution,
 // beside "end it at a backdated instant"; the two are different truths and the app is
 // not entitled to pick between them, which is why detection SUGGESTS and the tap writes.
 // Exempt from the life-stage gate on the same harm-reduction reasoning as `endFast`:
 // this removes fasting data, it never records any.
+//
+// It discards the RUNNING fast only. That is not a narrowing of what the surface offers
+// — discard is offered nowhere else, and no control anywhere deletes a completed fast —
+// it is the staleness re-derivation that makes the id the form carries mean now what it
+// meant at render.
 export function discardFast(profileId: number, id: number): DiscardFastOutcome {
   return writeTx(() => {
     const row = getFast(profileId, id);
     if (!row) return { kind: "not-found" };
+    if (row.ended_at !== null) return { kind: "already-ended", id };
     return deleteFastRow(profileId, id) > 0
       ? { kind: "discarded", id }
       : { kind: "not-found" };

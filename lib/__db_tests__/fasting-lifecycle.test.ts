@@ -181,16 +181,52 @@ describe("Undo an end — the inverse is complete and local", () => {
     expect(getActiveFast(adult)).toBeNull();
   });
 
-  // D1's downstream consequence, pinned directly: no core may mint a row another core
-  // would refuse. `endFast` now carries the SAME FAST_MAX_HOURS bound `startFast` does.
-  it("refuses to end a fast that has run past the maximum recordable length", () => {
+  // The claim ceiling on the CREATE side. Reopening mints an active interval, so it is
+  // held to FAST_MAX_HOURS exactly as a backdated start is — and this branch is reachable
+  // only inside the undo window, so `too-old` cannot be what answers.
+  it("refuses to reopen an interval already past the maximum", () => {
+    const id = seedCompleted(adult, FAST_MAX_HOURS + 24, 1 / 60);
+    expect(reopenFast(adult, id)).toEqual({ kind: "too-long" });
+    expect(getActiveFast(adult)).toBeNull();
+  });
+
+  // R1/R2. FAST_MAX_HOURS is a ceiling on a CLAIM, never on a fast the app watched run.
+  // A guard here refused nothing that was not already true of the row — `end` is bounded
+  // by now, so this core can only ever shorten — and it stranded every fast older than
+  // 14 days, restricted profiles worst of all (below), where the close-out control is the
+  // whole surface.
+  it("ends a fast that has run past the maximum recordable length — the clock is not a claim", () => {
     const startedAt = new Date(Date.now() - (FAST_MAX_HOURS + 24) * 3_600_000);
     db.prepare(
       "INSERT INTO fasts (profile_id, started_at, ended_at) VALUES (?, ?, NULL)"
     ).run(adult, utcInstant(startedAt));
-    expect(endFast(adult).kind).toBe("too-long");
-    // Still open and still reported honestly — a refusal writes nothing.
-    expect(getActiveFast(adult)).not.toBeNull();
+    expect(endFast(adult).kind).toBe("ended");
+    expect(getActiveFast(adult)).toBeNull();
+    expect(listFasts(adult)[0].ended_at).not.toBeNull();
+  });
+
+  // R2. The stale suggest tells the user to "End it at the time you actually stopped".
+  // With the length guard in place that sentence named a write the core rejected: a
+  // backdated end was refused for being long, while an end at start + 13 d — a time the
+  // user did NOT stop — was accepted. The honest answer has to be the one that lands.
+  it("accepts an honest backdated end on an over-long fast", () => {
+    const startedAt = new Date(Date.now() - (FAST_MAX_HOURS + 48) * 3_600_000);
+    db.prepare(
+      "INSERT INTO fasts (profile_id, started_at, ended_at) VALUES (?, ?, NULL)"
+    ).run(adult, utcInstant(startedAt));
+    // "I actually stopped an hour ago."
+    const stopped = new Date(Date.now() - 3_600_000);
+    expect(endFast(adult, stopped)).toMatchObject({ kind: "ended" });
+    expect(listFasts(adult)[0].ended_at).toBe(utcInstant(stopped));
+  });
+
+  // The ceiling stays where an interval really does arrive from a user: a backdated
+  // START past it is still refused, so nothing here loosens the claim side.
+  it("still refuses a backdated START past the maximum", () => {
+    expect(
+      startFast(adult, new Date(Date.now() - (FAST_MAX_HOURS + 1) * 3_600_000))
+    ).toEqual({ kind: "invalid" });
+    expect(listFasts(adult)).toHaveLength(0);
   });
 
   // D5. `utcInstant` truncates to SECONDS, so a millisecond comparison judges a
@@ -225,6 +261,35 @@ describe("discard — 'I never actually fasted'", () => {
     const id = started.kind === "started" ? started.id : -1;
     expect(discardFast(other, id).kind).toBe("not-found");
     expect(getActiveFast(adult)).not.toBeNull();
+  });
+
+  // R3. THE STALE TAB, which is the app's own button carrying a now-wrong id rather than
+  // a crafted one. Discard is drawn only on the stale suggest, for the ACTIVE fast; a tab
+  // open across an end on another device still holds that row's id. Without a state
+  // re-derivation this deletes a COMPLETED fast — no confirmation, no undo — and answers
+  // "Discarded.", while the very same tab's `startFast` is correctly refused.
+  it("refuses to discard a fast that was closed on another device", () => {
+    const started = startFast(adult, new Date(Date.now() - 3_600_000));
+    const id = started.kind === "started" ? started.id : -1;
+
+    // Device B ends it and starts the next one.
+    expect(endFast(adult).kind).toBe("ended");
+    const second = startFast(adult);
+    expect(second.kind).toBe("started");
+
+    // Device A's Discard still names the first row.
+    expect(discardFast(adult, id)).toEqual({ kind: "already-ended", id });
+    // The completed fast is still there, and so is the running one.
+    expect(listFasts(adult)).toHaveLength(2);
+    expect(getActiveFast(adult)).not.toBeNull();
+    // The refusal is the same shape the same stale tab's start already got.
+    expect(startFast(adult).kind).toBe("already-active");
+  });
+
+  it("refuses a discard of history generally — nothing offers one", () => {
+    const id = seedCompleted(adult, 48, 32);
+    expect(discardFast(adult, id)).toEqual({ kind: "already-ended", id });
+    expect(listFasts(adult)).toHaveLength(1);
   });
 });
 
@@ -282,9 +347,50 @@ describe("adult-only at the core, with the end-side exemption", () => {
     expect(reopenFast(profile, id)).toEqual({ kind: "refused" });
     expect(getActiveFast(profile)).toBeNull();
 
-    // Discard still works — it is the path that REMOVES fasting data, and refusing it
-    // would keep the very content the gate exists to withhold.
-    expect(discardFast(profile, id).kind).toBe("discarded");
+    // The reopen's refusal is the GATE. Discard's refusal here is not — it is the
+    // staleness check (R3): the row is closed, so there is no running fast to discard.
+    // The distinction matters because only one of the two is a life-stage decision.
+    expect(discardFast(profile, id)).toEqual({ kind: "already-ended", id });
+  });
+
+  // The discard exemption itself, on the row it actually applies to: a RUNNING fast on a
+  // profile that has since become restricted. This is the assertion the completed-row
+  // case above used to stand in for.
+  it("lets a restricted profile discard the fast it is still running", () => {
+    const profile = makeProfile("became-minor-discard");
+    const started = startFast(profile, new Date(Date.now() - 3_600_000));
+    const id = started.kind === "started" ? started.id : -1;
+    setProfileSetting(profile, "age", "15");
+    expect(fastingAvailable(profile)).toBe(false);
+    expect(discardFast(profile, id)).toEqual({ kind: "discarded", id });
+    expect(listFasts(profile)).toHaveLength(0);
+  });
+
+  // R1 — THE STRANDING, and the reason `endFast` carries no length ceiling.
+  //
+  // A restricted profile's whole surface is one End button (FastingCard's `!canStart`
+  // branch): no backdate field, no stale suggest, no Undo, no Discard. So a refusal from
+  // `endFast` is not a refusal, it is a dead end — the profile stays permanently mid-fast
+  // with nothing left to tap. No backdating is needed to reach it: a plain start and 14
+  // days of clock does it.
+  it("lets a restricted profile close out a fast that is PAST the maximum length", () => {
+    const profile = makeProfile("became-minor-long");
+    // Started as an ordinary fast; only time made it long.
+    db.prepare(
+      "INSERT INTO fasts (profile_id, started_at, ended_at) VALUES (?, ?, NULL)"
+    ).run(
+      profile,
+      utcInstant(new Date(Date.now() - (FAST_MAX_HOURS + 72) * 3_600_000))
+    );
+    setProfileSetting(profile, "age", "15");
+    expect(fastingAvailable(profile)).toBe(false);
+
+    // The ONE control this profile can see, with the exact FormData the surface posts —
+    // no end instant at all.
+    expect(endFast(profile).kind).toBe("ended");
+    expect(getActiveFast(profile)).toBeNull();
+    // And nothing puts one back.
+    expect(startFast(profile).kind).toBe("refused");
   });
 
   // The exemptions' whole purpose, walked end to end: no supported path leaves a

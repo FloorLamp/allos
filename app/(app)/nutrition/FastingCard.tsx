@@ -157,6 +157,16 @@ export default function FastingCard({
   // ONLY thing offered is the way out. Deliberately no elapsed duration, no history, no
   // stale suggest and NO UNDO on the end: this is closing an account, not tracking a
   // practice, and reopening is the one thing the gate withholds.
+  //
+  // ONE BUTTON IS ENOUGH ONLY BECAUSE THE CORE CANNOT REFUSE IT, and this branch is why
+  // `endFast` carries no duration ceiling. There is no backdate field and no Discard
+  // here, so a plain end that could be refused would leave this profile no move at all —
+  // which is what a FAST_MAX_HOURS guard inside `endFast` did for one revision to every
+  // fast older than 14 days. Carrying Discard here was the other available fix and was
+  // deliberately NOT taken: "I never actually fasted" is a claim about what happened, and
+  // making it the only exit steers someone into a false one. The fix belongs in the core,
+  // and the rule this branch leans on is one line: for a restricted profile with an
+  // active fast, this button lands.
   if (!canStart) {
     return (
       <section

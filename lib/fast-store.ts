@@ -124,10 +124,12 @@ export function updateFastRow(
 // discard is the stale suggest, where the user is answering a question about a fast they
 // have already been told is 36 h old — but `discardFast` takes an id from a form and a
 // Server Action is independently POST-callable, so the surface is not a bound and this
-// comment does not claim it as one. The bound is that the statement is profile-scoped
-// and the row is the caller's OWN claim: the worst a crafted id can do is delete one of
-// your own fasts, which is the same authority the ordinary delete controls in this app
-// already carry. No other profile's data is reachable, and no fasting state is created.
+// comment does not claim it as one. Two bounds are real. The statement is
+// profile-scoped, so no other profile's data is reachable and no fasting state is
+// created. And `discardFast` re-reads the row under the write lock and refuses one that
+// is already CLOSED, so this statement only ever removes the fast that is RUNNING — the
+// stale tab whose button still carries a since-ended row's id gets a typed refusal
+// rather than a silent delete of finished history.
 export function deleteFastRow(profileId: number, id: number): number {
   return writeTx(() => {
     const info = db

@@ -93,17 +93,14 @@ function endMessage(outcome: EndFastOutcome): FastActionResult {
     // on another device re-derives, finds nothing active, and REPORTS that.
     case "none-active":
       return { ok: false, error: "No fast is running." };
+    // The only refusal an end can provoke, and it is about the instant the form
+    // supplied. There is deliberately no length refusal here: an end cannot make an
+    // interval longer than the clock already made it, so refusing one would refuse to
+    // close a fast the app itself let grow (lib/fast-write.ts).
     case "invalid":
       return {
         ok: false,
         error: "That end time doesn't work — check the date.",
-      };
-    // The SAME FAST_MAX_HOURS bound a backdated start is held to, so the two cores can
-    // never disagree about which intervals are storable.
-    case "too-long":
-      return {
-        ok: false,
-        error: "That fast would be too long to record — check the times.",
       };
   }
 }
@@ -171,8 +168,18 @@ export async function discardFastAction(
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return fail("Unknown fast.");
   const outcome = discardFast(profile.id, id);
-  if (outcome.kind === "not-found") return fail("Unknown fast.");
-  revalidateRoute("/nutrition");
-  revalidateRoute("/");
-  return { ok: true, message: "Discarded." };
+  switch (outcome.kind) {
+    case "discarded":
+      revalidateRoute("/nutrition");
+      revalidateRoute("/");
+      return { ok: true, message: "Discarded." };
+    // The tab was open across an end elsewhere, so the id it carries now names a
+    // COMPLETED fast. Reported rather than obeyed — deleting finished history is not the
+    // write this button was drawn for, and "Discarded." over it would be a confirmation
+    // of something the user never asked for.
+    case "already-ended":
+      return fail("That fast has already ended.");
+    case "not-found":
+      return fail("Unknown fast.");
+  }
 }
