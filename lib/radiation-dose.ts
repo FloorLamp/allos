@@ -196,7 +196,10 @@ function classifyStudy<S extends DoseStudyInput>(
   study: S
 ): { dose: StudyDose; counts: true } | { reason: DoseExclusionReason } {
   const dose = estimateStudyDose(study);
-  if (dose.source === "recorded" || (dose.source === "estimate" && dose.msv > 0))
+  if (
+    dose.source === "recorded" ||
+    (dose.source === "estimate" && dose.msv > 0)
+  )
     return { dose, counts: true };
   // A zero-dose ESTIMATE means the dataset placed it: that is the non-ionizing case.
   // Anything else (the 'other' refusal, or a hypothetical 0-valued ionizing entry) is

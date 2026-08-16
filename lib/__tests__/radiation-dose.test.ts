@@ -351,7 +351,11 @@ const AUDIT_STUDIES: IdStudy[] = [
   // Real imaging with no date: 0.1 mSv that was invisible in every figure.
   idStudy(3, { modality: "x-ray", body_region: "Chest", study_date: null }),
   // The refusal gate: never estimated, and until now never disclosed either.
-  idStudy(7, { modality: "other", body_region: null, study_date: "2024-02-02" }),
+  idStudy(7, {
+    modality: "other",
+    body_region: null,
+    study_date: "2024-02-02",
+  }),
   // Non-ionizing: a true 0, and the reason a "studies in window" count implied more
   // contributors than there were.
   idStudy(9, {
@@ -396,7 +400,9 @@ describe("doseContributions — the studies behind the number (#2970)", () => {
 
   it("sums a repeated study AS GIVEN — no de-duplication in this module", () => {
     const b = doseContributions(AUDIT_STUDIES, now);
-    const mammos = b.contributions.filter((c) => c.dose.label === "Mammography");
+    const mammos = b.contributions.filter(
+      (c) => c.dose.label === "Mammography"
+    );
     expect(mammos).toHaveLength(3);
     expect(mammos.reduce((n, c) => n + c.dose.msv, 0)).toBeCloseTo(1.2, 6);
   });
@@ -505,7 +511,9 @@ describe("per-study labels the list and the breakdown share (#2970)", () => {
   });
 
   it("prints no chip where there is no honest figure (non-ionizing, unclassified)", () => {
-    expect(doseChipLabel(estimateStudyDose(study({ modality: "mri" })))).toBeNull();
+    expect(
+      doseChipLabel(estimateStudyDose(study({ modality: "mri" })))
+    ).toBeNull();
     expect(
       doseChipLabel(estimateStudyDose(study({ modality: "ultrasound" })))
     ).toBeNull();

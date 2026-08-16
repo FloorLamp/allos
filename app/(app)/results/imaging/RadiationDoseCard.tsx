@@ -10,10 +10,7 @@ import {
   type DoseBreakdown,
 } from "@/lib/radiation-dose";
 import { studyDisplayLabel } from "@/lib/imaging-study";
-import {
-  formatDateWithYear,
-  type DisplayFormatPrefs,
-} from "@/lib/format-date";
+import { formatDateWithYear, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { ImagingStudy } from "@/lib/types";
 
 // The calm, informational cumulative-radiation-dose card on the Imaging page (#703),
@@ -78,8 +75,8 @@ export default function RadiationDoseCard({
           data-testid="radiation-dose-since"
           className="mt-1 text-sm text-slate-600 dark:text-slate-300"
         >
-          From your records, since {formatDateWithYear(allRecords.earliest, fmt)}
-          .
+          From your records, since{" "}
+          {formatDateWithYear(allRecords.earliest, fmt)}.
         </p>
       )}
 
