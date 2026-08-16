@@ -337,6 +337,18 @@ ${nodeLine}
 - $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
   this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
   from another cluster's worktree, and do not write to /tmp instead.
+- NAME EVERY LOG FILE AFTER YOUR BRANCH: \`$SCRATCH/gates-<branch>.log\`, never a bare
+  \`gates.log\`, \`e2e.log\` or \`db.log\`. Sibling agents share one scratchpad, and they
+  all reach for the same obvious names, so a generic filename is a COLLISION and the
+  collision is SILENT. Measured on this box: one \`e2e.log\` held output from two
+  different clusters, and a \`gates.log\` held a third's — one agent's run was
+  NUL-padded and carried another worktree's path and test counts.
+  This is the worst shape a wrong number can take, because the usual defence does not
+  work: you ran the gate, you redirected it yourself, and you grepped the file you
+  named — and the count you read belongs to somebody else's tree. Nothing inside the
+  agent can tell. If a log you wrote contains a worktree path that is not yours, or
+  NUL bytes, DISCARD IT and re-run into a branch-named file; do not reconcile it, and
+  do not quote gates out of it.
 - CI ARTIFACTS ARE UNREACHABLE from this container: \`*.blob.core.windows.net\` returns
   403 CONNECT through the agent proxy, so a playwright-report zip or an
   error-context.md from a real CI run CANNOT be downloaded. Job LOGS are fine via the
