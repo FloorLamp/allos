@@ -152,6 +152,41 @@ describe("onboarding actions", () => {
     expect(getStoredAge(profile.id)).toBeNull();
   });
 
+  // Issue #2992: an infant's age in whole years is 0, and this validator used to
+  // reject anything below 1 — so the read-side fix alone would have been dead code
+  // for anyone setting up a newborn's profile by hand. "Unknown" is the BLANK field,
+  // which the second half keeps distinct from a recorded 0.
+  it("accepts an approximate age of 0 for an infant, and keeps blank meaning unknown", async () => {
+    const login = createLogin({ username: "onboarding-infant" });
+    const profile = createTestProfile("Newborn", login.id);
+    actAs(login, profile);
+    setOnboardingState(profile.id, {
+      ...initialOnboardingState(),
+      status: "in_progress",
+      profilePath: "caregiving",
+      focuses: ["metrics-labs"],
+    });
+
+    const basics = (age: string) =>
+      fd({
+        display_name: "Baby Example",
+        sex: "female",
+        birthdate: "",
+        age,
+        timezone: "America/New_York",
+        weight_unit: "kg",
+        distance_unit: "km",
+      });
+
+    await redirected(saveOnboardingBasics(basics("0")));
+    expect(getProfileBirthdate(profile.id)).toBeNull();
+    expect(getStoredAge(profile.id)).toBe(0);
+
+    // Blank still clears it back to genuinely unknown.
+    await redirected(saveOnboardingBasics(basics("")));
+    expect(getStoredAge(profile.id)).toBeNull();
+  });
+
   it("adopts and activates a starter routine in one tap on a fresh profile", async () => {
     const login = createLogin({ username: "onboarding-routine" });
     const profile = createTestProfile("Routine Starter", login.id);
