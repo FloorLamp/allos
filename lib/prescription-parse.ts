@@ -56,20 +56,32 @@ const NAME_FORM_TAIL_RE =
 // name-strength recovery, and the dose-shape guard) so the three can't drift.
 //
 //   NUM        a decimal number
+//   COUNT      the number(s) in front of a unit or a form. Real prescriptions write
+//              more than a bare decimal here, and each notation MEANS something the
+//              parser must not drop (all four were regressions caught in review):
+//                * a fraction — "1/2 tablet" is everyday warfarin/levothyroxine/
+//                  metoprolol dosing;
+//                * a combination — "5/325 mg" is US e-prescribing for hydrocodone/
+//                  APAP, and truncating it to "325 mg" renders a plausible
+//                  acetaminophen strength that HIDES the opioid component;
+//                * a range — "1-2 tablets", "1 to 2 tablets", "1 or 2 tablets".
 //   DOSE_UNIT  a mass/volume/activity unit; the `\b` guards only the LETTER units
 //              (so "g" can't eat a "g..." word prefix), while `%` sits outside it
 //              — `%` is a non-word char, so `%\b` would only match when a letter
 //              follows immediately ("2.5%cream"), never in "Hydrocortisone 2.5%".
-//   RATIO_TAIL a concentration/combination denominator ("/5ML", "/3 mL", "/mL").
-//              The denominator must END in a unit, so a stray slash in prose
+//   RATIO_TAIL a concentration or per-body-weight denominator ("/5ML", "/3 mL",
+//              "/mL", "/kg" — "1 mg/kg" is weight-based enoxaparin, and reading it
+//              as a flat "1 mg" turns a scaled dose into a fixed one). The
+//              denominator must END in a unit, so a stray slash in prose
 //              ("10 mg / do not crush") can never extend the match.
-//   QUANTITY   a number with a unit, denominator included.
+//   QUANTITY   a count with a unit, denominator included.
 //   DOSE_FORM  a countable dosage form — "1 tab" is a dose with no mass unit.
 const NUM = String.raw`\d+(?:\.\d+)?`;
+const COUNT = String.raw`${NUM}(?:\s*/\s*${NUM})*(?:\s*(?:-|–|to|or)\s*${NUM}(?:\s*/\s*${NUM})*)?`;
 const DOSE_UNIT = String.raw`(?:(?:mg|mcg|µg|ug|g|ml|iu|units?|meq)\b|%)`;
-const DENOM_UNIT = String.raw`(?:(?:mg|mcg|µg|ug|g|ml|l|iu|units?|meq)\b|%)`;
+const DENOM_UNIT = String.raw`(?:(?:mg|mcg|µg|ug|g|ml|l|kg|lb|m2|iu|units?|meq)\b|%|m²)`;
 const RATIO_TAIL = String.raw`(?:\s*/\s*(?:${NUM}\s*)?${DENOM_UNIT})*`;
-const QUANTITY = String.raw`${NUM}\s*${DOSE_UNIT}${RATIO_TAIL}`;
+const QUANTITY = String.raw`${COUNT}\s*${DOSE_UNIT}${RATIO_TAIL}`;
 const DOSE_FORM = String.raw`(?:tab(?:let)?s?|caps?(?:ule)?s?|pills?|softgels?|lozenges?|puffs?|drops?|patch(?:es)?|sprays?|units?|sachets?|ampoules?|vials?|suppositor(?:y|ies)|applications?)`;
 const STRENGTH_CONTENT = QUANTITY;
 
@@ -101,11 +113,48 @@ const PAREN_STRENGTH_CAPTURE_RE = new RegExp(
 // of these (e.g. a CCD/FHIR sig "Take 1 tablet by mouth daily") is DIRECTIONS,
 // not a bare strength, so it must be routed to the sig (where the schedule is
 // inferred) rather than swallowed whole as the strength (#417).
+// Deliberately tests the WHOLE text, unlike the scheduling decision below: this only
+// asks "is this directions rather than a strength?", and answering yes routes the text
+// to the sig field. A PRN marker anywhere is evidence of prose either way, and routing
+// prose to the sig is the harmless direction.
 export function looksLikeSig(text: string | null | undefined): boolean {
   if (!text) return false;
   return (
     PRN_RE.test(text) || EVERY_HOURS_RE.test(text) || hasFrequencyToken(text)
   );
+}
+
+// WHICH PRN MARKER GOVERNS THE MEDICATION?
+//
+// A PRN marker turns a med as-needed, which SUPPRESSES its reminders and its
+// missed-dose escalation. That makes it a safety-signal suppression path, and such a
+// path may only fire where it is meant to. "as needed" / "if needed" also appear in
+// trailing ADVISORY clauses that say nothing about the dosing schedule:
+//
+//   "Take 1 tablet by mouth twice daily. Call your provider if needed."
+//   "Take 1 tablet daily. May repeat if needed."
+//   "Take 2 tablets twice daily. Adjust dose if needed."
+//
+// Reading those as PRN turned a twice-daily beta blocker into an unscheduled med with
+// no reminders at all. So the marker governs only when it sits in the PRIMARY DOSING
+// SENTENCE — the first one, which is where a sig states its dose and frequency. A
+// marker that appears ONLY in a later sentence is advice about something else.
+//
+// The split is on SENTENCE boundaries only (a period/!/? followed by space), never on
+// the ";" that parsePrescription uses to join notes to a value — otherwise a med whose
+// frequency and PRN marker arrived in different source fields ("1 tab daily; as needed
+// for pain") would lose its PRN reading, which is the unsafe direction.
+//
+// This can only make a med SCHEDULED when the first sentence itself states a definite
+// frequency; with no frequency there, parseSig still returns unscheduled/as-needed by
+// its existing conservative default. So nothing that was genuinely PRN becomes a
+// reminder. (Main had the same defect for "as needed"; scoping fixes both.)
+function primaryDosingClause(text: string): string {
+  return text.split(/(?<=[.!?])\s+/)[0] ?? text;
+}
+
+function isPrn(text: string): boolean {
+  return PRN_RE.test(primaryDosingClause(text));
 }
 
 // A frequency/timing token that makes a sig schedulable. Its ABSENCE (together
@@ -127,10 +176,14 @@ function hasFrequencyToken(text: string): boolean {
   );
 }
 
-// One dose expression: a quantity or a counted form, optionally followed by a
-// parenthesized equivalent ("1.5 mL (1.25 mg)" — Epic states the volume, then the
-// mass it delivers) and optionally by a form word ("1 tablet").
-const DOSE_EXPR = String.raw`(?:${QUANTITY}|${NUM}\s*${DOSE_FORM})(?:\s*\(\s*(?:${QUANTITY}|${NUM}\s*${DOSE_FORM})\s*\))?(?:\s+${DOSE_FORM})?`;
+// One dose expression: a quantity or a counted form ("1/2 tablet"), optionally as a
+// range whose two halves each carry a unit ("12.5 mg-25 mg" — a titration range, which
+// COUNT's own range cannot express because the unit repeats), optionally followed by a
+// parenthesized equivalent ("1.5 mL (1.25 mg)" — Epic states the volume, then the mass
+// it delivers) and optionally by a form word ("1 tablet").
+const DOSE_ATOM = String.raw`(?:${QUANTITY}|${COUNT}\s*${DOSE_FORM})`;
+const DOSE_RANGE = String.raw`${DOSE_ATOM}(?:\s*(?:-|–|to|or)\s*${DOSE_ATOM})?`;
+const DOSE_EXPR = String.raw`${DOSE_RANGE}(?:\s*\(\s*${DOSE_RANGE}\s*\))?(?:\s+${DOSE_FORM})?`;
 const DOSE_WHOLE_RE = new RegExp(String.raw`^\s*${DOSE_EXPR}\s*$`, "i");
 const DOSE_LEAD_RE = new RegExp(String.raw`^\s*(${DOSE_EXPR})`, "i");
 
@@ -247,7 +300,7 @@ export function parseSig(sig: string | null | undefined): ParsedSig {
     return { asNeeded: true, timesPerDay: null, amount: null, timeBuckets: [] };
   }
 
-  if (PRN_RE.test(text)) {
+  if (isPrn(text)) {
     return {
       asNeeded: true,
       timesPerDay: null,

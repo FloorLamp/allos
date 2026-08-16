@@ -76,6 +76,76 @@ describe("parseSig — sig/frequency → schedule", () => {
     expect(parseSig("1 cap tid").timesPerDay).toBe(3);
   });
 
+  // A PRN marker SUPPRESSES reminders and missed-dose escalation, so it may only fire
+  // where it is meant to. These sigs schedule a real medication and mention "if
+  // needed" in a trailing advisory clause about something else; reading them as PRN
+  // left a twice-daily beta blocker with no reminders at all.
+  describe("a PRN marker in a trailing advisory clause never suppresses a schedule", () => {
+    const ADVISORY = [
+      "Take 1 tablet by mouth twice daily. Call your provider if needed.",
+      "Take 1 tablet by mouth twice daily. Take one extra if needed for breakthrough pain.",
+      "Take 1 tablet by mouth twice daily. Contact the clinic as needed.",
+    ];
+    for (const sig of ADVISORY) {
+      it(sig, () => {
+        const r = parseSig(sig);
+        expect(r.asNeeded).toBe(false);
+        expect(r.timesPerDay).toBe(2);
+        expect(r.timeBuckets).toEqual(["Morning", "Evening"]);
+      });
+    }
+
+    it("also holds for a once-daily sig", () => {
+      const r = parseSig("Take 1 tablet by mouth daily. May repeat if needed.");
+      expect(r.asNeeded).toBe(false);
+      expect(r.timesPerDay).toBe(1);
+    });
+  });
+
+  describe("a PRN marker in the primary dosing sentence still governs", () => {
+    it("keeps an interval sig as-needed", () => {
+      // The observed Epic sig is ONE sentence, so "if needed" is the dosing rule.
+      expect(parseSig(EPIC_SIG).asNeeded).toBe(true);
+      expect(
+        parseSig("Take 1 tab every 6 hours as needed for pain")
+      ).toMatchObject({ asNeeded: true, timesPerDay: null });
+    });
+
+    it("is not defeated by a semicolon joining two source fields", () => {
+      // parsePrescription joins notes to value with "; ", so the split is on SENTENCE
+      // boundaries only — a frequency and a PRN marker that arrived in different
+      // source fields are still one dosing instruction.
+      const r = parseSig("1 tab daily; as needed for pain");
+      expect(r.asNeeded).toBe(true);
+      expect(r.timesPerDay).toBeNull();
+    });
+
+    it("a sig with no frequency stays unscheduled either way", () => {
+      // The conservative default still holds: with the advisory clause disregarded,
+      // nothing here states a schedule, so no schedule is fabricated.
+      const r = parseSig(
+        "Take 2 tablets by mouth. Call your provider if needed."
+      );
+      expect(r.asNeeded).toBe(true);
+      expect(r.timesPerDay).toBeNull();
+    });
+  });
+
+  // Everyday notations an amount field must not drop.
+  describe("real prescription dose notations survive", () => {
+    const CASES: [string, string][] = [
+      ["Take 1/2 tablet by mouth daily", "1/2 tablet"],
+      ["Take 1-2 tablets by mouth daily", "1-2 tablets"],
+      ["Take 1 to 2 tablets by mouth daily", "1 to 2 tablets"],
+      ["Take 1 or 2 tablets by mouth daily", "1 or 2 tablets"],
+    ];
+    for (const [sig, amount] of CASES) {
+      it(`${sig} → ${amount}`, () => {
+        expect(parseSig(sig).amount).toBe(amount);
+      });
+    }
+  });
+
   it("keeps a strength but no schedule for a dose-only, frequency-less sig", () => {
     // "10 mg" states a dose but NO frequency — don't invent daily; go unscheduled.
     const r = parseSig("10 mg");
@@ -410,6 +480,47 @@ describe("parsePrescription — full record → structured med", () => {
     // The concentration, denominator included — never the product name.
     expect(p.strength).toBe("400 MG/5ML");
     expect(p.strength).not.toContain("Suspension");
+  });
+
+  // A truncated strength is worse than an absent one: it looks right. Each of these
+  // notations means something the strength field must carry whole.
+  describe("combination, weight-based and range strengths are never truncated", () => {
+    const CASES: [string, string, string][] = [
+      [
+        "Hydrocodone-Acetaminophen",
+        "5/325 mg",
+        "truncating hides the opioid component behind a plausible APAP strength",
+      ],
+      [
+        "Enoxaparin",
+        "1 mg/kg",
+        "truncating turns a weight-based dose into a fixed one",
+      ],
+      [
+        "Metoprolol",
+        "12.5 mg-25 mg",
+        "a titration range is not its lower bound",
+      ],
+    ];
+    for (const [name, value, why] of CASES) {
+      it(`${value} — ${why}`, () => {
+        expect(parsePrescription({ name, value }).strength).toBe(value);
+      });
+    }
+  });
+
+  it("keeps a scheduled med scheduled when a note adds an advisory clause", () => {
+    // The end-to-end shape of the PRN-scoping rule: obligation stays `must` because
+    // asNeeded is false, so the dose rows keep their time buckets.
+    const p = parsePrescription({
+      name: "Metoprolol 25 mg",
+      value:
+        "Take 1 tablet by mouth twice daily. Call your provider if needed.",
+    });
+    expect(p.strength).toBe("25 mg");
+    expect(p.asNeeded).toBe(false);
+    expect(p.timesPerDay).toBe(2);
+    expect(p.timeBuckets).toEqual(["Morning", "Evening"]);
   });
 
   it("falls back to scraping a note when no structured attribution is given", () => {

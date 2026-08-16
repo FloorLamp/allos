@@ -316,6 +316,51 @@ describe("persist derived medication courses", () => {
     expect(doseOf("amoxicillin")).toEqual([{ amount: "400 MG/5ML" }]);
   });
 
+  // The UPGRADED-INSTALL case. A med tracked by an older build stored its strength
+  // numerator-only ("2.5 mg"), because the parser of the day stopped at the numerator.
+  // getMedMatchStates re-derives existing strengths from those STORED dose amounts
+  // while the incoming prescription is parsed with the current grammar
+  // ("2.5 mg/3 mL"), so the two could never intersect and every concentration-dosed
+  // med forked a duplicate item at its next refill. A fresh fixture cannot show this —
+  // it needs a row written the old way, which this sets up by hand.
+  it("renews against a strength stored numerator-only by an older build", () => {
+    const p = newProfile("MED-UPGRADED-INSTALL");
+    const item = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, active, kind)
+           VALUES (?, 'albuterol', 1, 'medication')`
+        )
+        .run(p).lastInsertRowid
+    );
+    // Written by the previous build: the denominator is simply not on disk.
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, sort)
+       VALUES (?, '2.5 mg', NULL, 0)`
+    ).run(item);
+    // Open course, started before this document's date so the renewal attaches as a
+    // SECOND course rather than deduping onto the same (item_id, started_on).
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on) VALUES (?, '2023-06-01')`
+    ).run(item);
+
+    persistDocumentImport(
+      p,
+      newDocument(p),
+      inputWith([rx("albuterol (2.5 mg/3 mL) nebulizer solution", null)])
+    );
+
+    // ONE albuterol, carrying a second course — not a forked duplicate item.
+    const items = db
+      .prepare(
+        "SELECT id FROM intake_items WHERE profile_id = ? AND kind = 'medication'"
+      )
+      .all(p) as { id: number }[];
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe(item);
+    expect(coursesOf(item).length).toBeGreaterThan(1);
+  });
+
   it("dedups courses sharing a start (item_id, started_on)", () => {
     const p2 = newProfile("MED-DEDUP");
     const d2 = newDocument(p2);

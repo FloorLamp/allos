@@ -135,6 +135,13 @@ describe("resolveNutrientKey", () => {
 // evidence: a real dose that contributed zero, and an excipient that contributed as
 // if it were a dose. The corpus is a list of names whose answer is known, so a later
 // change that fixes one direction by loosening into the other fails here.
+//
+// THE CORPUS IS THE LOAD-BEARING PART, not the parity test below it. A parity check
+// cannot catch a name that is wrong in BOTH directions at once — both readers go
+// silent together and agree perfectly — which is exactly how `Magnesium Trisilicate`
+// got excused as talc and took a 2000 mg/day antacid stack quiet with it. Only a
+// stated expected answer per name can see that, so every name added to the excipient
+// list belongs here with its near-misses.
 const RECOGNITION_CORPUS: {
   name: string;
   key: string | null;
@@ -157,6 +164,17 @@ const RECOGNITION_CORPUS: {
     why: "the same excipient, other mineral",
   },
   { name: "Magnesium Silicate", key: null, why: "an anticaking agent (talc)" },
+  {
+    name: "Magnesium Stearates",
+    key: null,
+    why: "the same excipient, pluralized on a label",
+  },
+  // The excipient list's own near-miss: three letters from talc, and not an excipient.
+  {
+    name: "Magnesium Trisilicate",
+    key: "magnesium",
+    why: "a licensed antacid active ingredient, not talc",
+  },
   // Under-count: shelf spellings that genuinely mean the mineral.
   {
     name: "Mag Threonate",
@@ -215,6 +233,40 @@ describe("nutrient recognition, in both directions (#2934)", () => {
       const notes = stackRdaAdequacy([active(name, ["1 mcg"])], 30, null);
       expect(notes.map((a) => a.key)).toEqual(key ? [key] : []);
     }
+  });
+
+  it("an antacid dose of magnesium trisilicate still warns", () => {
+    // 500 mg x 4/day of a licensed antacid: 2000 mg against a 350 mg supplemental UL.
+    // Excusing it as talc took this stack silent, which is the one direction this
+    // module may never move.
+    const warnings = stackUlWarnings(
+      [
+        active("Magnesium Trisilicate", [
+          "500 mg",
+          "500 mg",
+          "500 mg",
+          "500 mg",
+        ]),
+      ],
+      40,
+      "male"
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].key).toBe("magnesium");
+    expect(warnings[0].total).toBe(2000);
+    expect(warnings[0].ul).toBe(350);
+  });
+
+  it("Milk of Magnesia reads like the hydroxide it is", () => {
+    // Two names for one product must not diverge: without the `magnesia` form this
+    // read 2400 mg where "Magnesium Hydroxide" read 1000.8 mg, 2.4x apart.
+    const magnesium = nutrientByKey("magnesium")!;
+    const asMilk = elementalReading("Milk of Magnesia", magnesium, 2400);
+    const asChemical = elementalReading("Magnesium Hydroxide", magnesium, 2400);
+    expect(asMilk).toEqual(asChemical);
+    expect(asMilk.compound).toBe("magnesium hydroxide");
+    // And the copy names the compound the reader can check against the bottle.
+    expect(asMilk.amount).toBeCloseTo(1000.8, 1);
   });
 
   it("an excipient no longer inflates a real magnesium total", () => {

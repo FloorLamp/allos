@@ -115,9 +115,18 @@ export const MATCHER_KEYS: string[] = [
 // This is deliberately a list of NAMED COMPOUNDS, not of the bare words `stearate`
 // or `silicate`: the mineral has to be the one being excused, so the excuse cannot
 // spread to a form the catalog might legitimately dose.
+//
+// AND NAMING A COMPOUND IS NOT ENOUGH — it has to be one that is never the dose.
+// Magnesium SILICATE is talc, an anticaking agent. Magnesium TRISILICATE differs by
+// three letters and by everything else: it is a licensed antacid active ingredient
+// (BP/USP monograph, 250–500 mg tablets), and excusing it silenced a 2000 mg/day
+// stack this module had correctly warned on — a stack going quiet is the one
+// direction it may never move, and antacid-driven hypermagnesemia in renal
+// impairment is precisely the CKD case `ulConditionCaveat` exists for. So
+// `silicate` is matched exactly, and `trisilicate` resolves like the dose it is.
 const EXCIPIENT_MENTIONS: RegExp[] = [
-  /\b(?:magnesium|calcium|zinc|sodium|potassium)[\s-]+stearate\b/gi,
-  /\b(?:magnesium|calcium)[\s-]+(?:tri)?silicate\b/gi,
+  /\b(?:magnesium|calcium|zinc|sodium|potassium)[\s-]+stearates?\b/gi,
+  /\b(?:magnesium|calcium)[\s-]+silicate\b/gi,
 ];
 
 // Resolve a supplement/medication name to a nutrient key, or null when it maps to
@@ -293,7 +302,15 @@ const COMPOUND_FORMS: CompoundForm[] = [
     elementalFraction: 0.603,
   },
   {
-    pattern: /hydroxide/i,
+    // `magnesia` rides here rather than on the oxide entry above. Strictly the word
+    // means the oxide, but the product the catalog actually meets is Milk of
+    // Magnesia — a defined USP magnesium HYDROXIDE suspension — and reading it at
+    // the oxide's 60.3% would name a compound the user never entered, the same copy
+    // failure the anchored `oxide` pattern was written to stop. Without an entry at
+    // all, "Milk of Magnesia" read 2400 mg where "Magnesium Hydroxide" — the
+    // identical product — read 1000.8 mg: a 2.4x divergence between two names for
+    // one thing (#2934 review).
+    pattern: /hydroxide|\bmagnesia\b/i,
     nutrientKey: "magnesium",
     label: "magnesium hydroxide",
     elementalFraction: 0.417,
