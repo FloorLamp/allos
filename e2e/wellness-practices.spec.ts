@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import {
+  dismissToast,
   expectNoClippedContent,
   followLink,
   hydratedClick,
@@ -408,20 +409,13 @@ test("wellness practices own identity, detailed history, corrections, and Traini
   // history row makes. The session comes back with its facts, and the weekly progress
   // recomputes from the restored row.
   await settledClick(page, page.getByRole("button", { name: "Undo" }));
-  const restoredToast = page
-    .getByTestId("toast")
-    .filter({ hasText: "Restored." });
-  await expect(restoredToast).toBeVisible();
   await expect(finalCard.getByTestId("practice-session-history")).toContainText(
     "Corrected session"
   );
   // Toasts stack, so this one is cleared before the family delete below asserts its
-  // own "Restored." — a pure client dismissal that posts nothing.
-  await hydratedClick(
-    page,
-    restoredToast.getByRole("button", { name: "Dismiss" })
-  );
-  await expect(restoredToast).toHaveCount(0);
+  // own "Restored." — and before the session delete below reaches a row control in
+  // the same bottom-right quadrant the stack occupies (#2861).
+  await dismissToast(page, "Restored.");
 
   // Then take it away again, so the family delete below still sees exactly one session.
   const restoredRow = finalCard
@@ -436,15 +430,8 @@ test("wellness practices own identity, detailed history, corrections, and Traini
   );
   await expect(finalCard.getByTestId("practice-session-empty")).toBeVisible();
   // Dismiss that delete's own Undo toast: toasts stack, and the family delete below
-  // reaches for "Undo" by role. A pure client dismissal — it posts nothing.
-  const secondToast = page
-    .getByTestId("toast")
-    .filter({ hasText: "Session deleted" });
-  await hydratedClick(
-    page,
-    secondToast.getByRole("button", { name: "Dismiss" })
-  );
-  await expect(secondToast).toHaveCount(0);
+  // reaches for "Undo" by role.
+  await dismissToast(page, "Session deleted");
 
   // Re-add one session, then exercise the explicitly destructive family delete:
   // target + history disappear under one Undo token, and Undo restores both.

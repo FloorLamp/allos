@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import {
+  dismissToast,
+  followLink,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
@@ -273,6 +278,10 @@ test("logs, edits, and deletes a historical medication dose", async ({
     .getByTestId("dose-history-row")
     .filter({ hasText: updatedAmount });
   await expect(restoredRow).toBeVisible();
+  // The undo posts its own "Restored." toast into the bottom-right stack, and the
+  // dose table is the BOTTOM section of this page — so the row menu re-opened below
+  // sits under it for the full 6s auto-dismiss window (#2861).
+  await dismissToast(page, "Restored.");
 
   // Undo is part of the behavior under test; remove the restored fixture again
   // so --repeat-each starts from the same dose history instead of accumulating
@@ -286,6 +295,9 @@ test("logs, edits, and deletes a historical medication dose", async ({
       .getByRole("button", { name: "Delete dose" })
   );
   await expect(restoredRow).toHaveCount(0);
+  // Second delete, second toast — and the Medication actions menu opened next is in
+  // the same quadrant (#2861).
+  await dismissToast(page, "Dose deleted.");
 
   // The administration and course correction are one write: editing immediately
   // afterward must show the selected dose date as the new PRN start.

@@ -2260,6 +2260,21 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
     `settledClick` is the WRONG tool (its any-POST wait resolves on a
     bystander) — widen the server-truth window. Watch for BUDGET ASYMMETRY
     inside one spec. Every new one-off goes on the #1556 census.
+18. **A named click timeout whose call log says
+    `<div class="fixed bottom-…"> subtree intercepts pointer events`** (#2861).
+    That element is the TOAST STACK — `components/Toast.tsx` renders it fixed at
+    the viewport's bottom-right, `w-72`, auto-dismissing after 6 s (success) or
+    10 s (error). Any click that lands in that quadrant — a row's ⋯ trigger, a
+    right-aligned actions cell, an OverflowMenu panel — is blocked for the whole
+    of that window by the toast the PREVIOUS write posted. Before #2859's
+    run-wide 15 s `actionTimeout` it was not a failure at all, just a silent tax:
+    the unbounded click absorbed the window and the test still passed, ~10 s
+    slower per occurrence, everywhere including green CI. **Dismiss it — never
+    wait it out and never widen the budget**, which only buys back the silence.
+    The fix is `dismissToast(page, text)` (`e2e/helpers.ts`): scope the card by
+    its TEXT (toasts stack, so "the toast" is not a thing, and on an undo path
+    the top card is the one the next assertion is about), click its `Dismiss`,
+    then assert `toHaveCount(0)` before the next round trip.
 
 **Two spec-authoring hazards worth their own note.**
 
