@@ -122,3 +122,9 @@ export const ZONE_WALK_EXTERNAL_ID = "e2e:zone-walk";
 // the answer, not merely the absence.
 export const TOTALS_ONLY_TITLE = "Totals-only walk (e2e)";
 export const TOTALS_ONLY_EXTERNAL_ID = "e2e:totals-only";
+
+// The overlapping same-day pair (#2870): two sessions covering the same clock
+// time, which is what the record's discovery banner exists to point out once the
+// log's adjacency is gone.
+export const OVERLAP_KEEPER_TITLE = "Overlap keeper (e2e)";
+export const OVERLAP_TWIN_TITLE = "Overlap twin (e2e)";

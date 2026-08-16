@@ -112,6 +112,8 @@ export default async function TrainingActivityPage(props: {
         siblings={data.siblings}
         units={units}
         canWrite={canWrite}
+        partDeltas={data.partDeltas}
+        overlapping={data.overlappingSiblings}
       />
 
       {/* Both charts share one crosshair, the way the ride page's do: the

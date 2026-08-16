@@ -19,6 +19,7 @@ import { zonePresentation } from "@/lib/training-zones";
 // DisplayPart moved to lib/training-log-card.ts (issue #334); re-exported here so the
 // existing `./TrainingLogCard` import path keeps working.
 import type { DisplayPart } from "@/lib/training-log-card";
+import type { ProgressDelta } from "@/lib/progress-delta";
 import ActivityVideoStrip from "@/components/activity/ActivityVideoStrip";
 import Avatar from "@/components/Avatar";
 import type {
@@ -64,6 +65,8 @@ export default function TrainingLogCard({
   videos = [],
   canWrite = false,
   withAnchor = true,
+  partDeltas = [],
+  openMergeSignal,
   subject,
   actingProfileId,
   onSelectExercise,
@@ -118,6 +121,15 @@ export default function TrainingLogCard({
   // card IS the activity's list presence; false when a host (the browse
   // surface's slim row, #2897) already owns the anchor.
   withAnchor?: boolean;
+  // "vs last" per part, INDEX-ALIGNED with `parts` (#2870). Only the canonical
+  // activity page supplies these: the feed and the reading pane build cards from
+  // one bulk query (#2897), and a per-exercise history scan per card is not a
+  // price a browse surface should pay. Empty everywhere else, so those hosts
+  // render byte-identically.
+  partDeltas?: (ProgressDelta | null)[];
+  // Passed straight to the card menu: the overlap banner (#2870) opens the
+  // menu's existing picker rather than forking a second merge flow.
+  openMergeSignal?: number;
   // Subject identity for a merged multi-view card (issue #1330); absent in single
   // view. A NON-acting subject's card renders a subject chip; a read-only-granted
   // subject's card renders view-only (no edit/merge/clip affordances — the server
@@ -355,6 +367,7 @@ export default function TrainingLogCard({
                 units={units}
                 detailHref={rideDetailHref}
                 canWrite={subjectCanWrite}
+                openMergeSignal={openMergeSignal}
               />
             </div>
           </div>
@@ -502,6 +515,29 @@ export default function TrainingLogCard({
                           >
                             {p.text}
                           </span>
+                          {partDeltas[i] && (
+                            // "vs last" (#2870): the same lift's previous session
+                            // on the same implement. Tone carries direction, and
+                            // the arrow repeats it so it is never colour-alone.
+                            <span
+                              data-testid="exercise-vs-last"
+                              title={partDeltas[i]!.title}
+                              className={`whitespace-nowrap text-xs tabular-nums ${
+                                partDeltas[i]!.direction === "up"
+                                  ? "text-brand-600 dark:text-brand-400"
+                                  : partDeltas[i]!.direction === "down"
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-slate-500 dark:text-slate-400"
+                              }`}
+                            >
+                              {partDeltas[i]!.direction === "up"
+                                ? "▲ "
+                                : partDeltas[i]!.direction === "down"
+                                  ? "▼ "
+                                  : ""}
+                              {partDeltas[i]!.label}
+                            </span>
+                          )}
                           {p.status === "met" && (
                             <span
                               role="img"
