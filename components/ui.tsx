@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
+import { PendingTextLink } from "@/components/PendingLink";
 import { flagTone } from "@/lib/reference-range";
 import { medicalValueCaret, medicalValueFlagText } from "@/lib/medical-value";
 import type { AppRoute } from "@/lib/hrefs";
@@ -152,10 +153,23 @@ export function EmptyState({
       {message}
       {links.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          {/* These are BUTTON-shaped navigation controls, not links inside a
+              sentence: an empty state's next action is the one thing on the
+              panel worth tapping, and it lands on a hub that renders its whole
+              section server-side before it commits (the training log via
+              `?tab=log`, reached from four training sections and from the
+              timeline's ingest doors). So they answer their own tap (#2983),
+              with the overlay treatment — a text control's own label is its
+              pending slot, and the label stays legible and in place. */}
           {links.map((link) => (
-            <Link key={link.href} href={link.href} className="btn btn-sm">
+            <PendingTextLink
+              key={link.href}
+              href={link.href}
+              label={link.label.toLowerCase()}
+              className="btn btn-sm"
+            >
               {link.label} →
-            </Link>
+            </PendingTextLink>
           ))}
         </div>
       )}

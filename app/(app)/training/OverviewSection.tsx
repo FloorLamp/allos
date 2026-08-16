@@ -72,6 +72,7 @@ import TodaysSessionCard from "./TodaysSessionCard";
 import InjuryBar from "./InjuryBar";
 import EndurancePlanBar, { type EndurancePlanView } from "./EndurancePlanBar";
 import MuscleAnatomy from "@/components/MuscleAnatomy";
+import { PendingTextLink } from "@/components/PendingLink";
 import { fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import LogActivityButton from "@/components/LogActivityButton";
 import PrCard from "@/components/PrCard";
@@ -495,9 +496,20 @@ export default async function OverviewSection() {
               {nextActionable && (
                 <div className="flex flex-wrap gap-2">
                   {nextWorkout.actionHref && (
-                    <a href={nextWorkout.actionHref} className="btn-ghost">
+                    // A raw <a> here was a FULL DOCUMENT LOAD out of the app
+                    // shell (#2983): the tap threw away the running client, and
+                    // #2869's invariant is that a navigation must not take a
+                    // working page with it. `PendingTextLink` is the soft
+                    // navigation AND the answered tap — this is a text control,
+                    // so its own label is the pending slot.
+                    <PendingTextLink
+                      href={nextWorkout.actionHref}
+                      label="workout details"
+                      testId="next-workout-details"
+                      className="btn-ghost"
+                    >
                       View details
-                    </a>
+                    </PendingTextLink>
                   )}
                   <LogActivityButton className="btn">
                     Log activity
@@ -589,15 +601,19 @@ export default async function OverviewSection() {
               ? `Last check ${formatRelativeDate(fitnessDue.lastDate, todayStr)} — due for a retest.`
               : `Last check ${formatRelativeDate(fitnessDue.lastDate, todayStr)}.`}
         </p>
-        <Link
+        {/* The one door to the fitness-check route, and a CTA rather than a
+            link inside a sentence — so it answers its own tap (#2983). Text
+            control, so the overlay treatment: the label holds its place. */}
+        <PendingTextLink
           href="/training/fitness-check"
-          data-testid="fitness-check-strip-link"
+          label="fitness check"
+          testId="fitness-check-strip-link"
           className="ml-auto text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
           {fitnessDue.due || fitnessDue.lastDate == null
             ? "Start a check →"
             : "View →"}
-        </Link>
+        </PendingTextLink>
       </div>
 
       {/* 3. TRAINING WATCH — the observational training-balance findings (issue #45,

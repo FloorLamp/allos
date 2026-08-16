@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseStat, GoalProgress } from "@/lib/queries";
@@ -333,12 +334,16 @@ export default function ExerciseDetailPanel({
                 key={i}
                 className="flex items-baseline justify-between gap-3 border-b border-black/5 pb-1 last:border-0 dark:border-white/5"
               >
-                <a
+                {/* A raw <a> to an internal route is a full document load out
+                    of the app shell (#2983). Soft navigation restored; the
+                    pending state stays on the global floor, because this is a
+                    row's date cell, not a button-shaped control. */}
+                <Link
                   href={r.href}
                   className="shrink-0 text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                 >
                   {r.date}
-                </a>
+                </Link>
                 <span className="flex items-baseline justify-end gap-2 text-right">
                   {r.equipment && (
                     <span
