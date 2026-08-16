@@ -86,8 +86,15 @@ authoritative over your own memory of the session.
 Two to six related issues per agent, clustered by domain label and by FILES.
 File overlap between concurrent clusters is the thing to avoid — sequence
 work that cannot be fenced. Caps, which are load limits rather than
-preferences: at most TWO agents in the E2E lane, ordinary concurrent work
-near four. Only the orchestrator runs full E2E suites.
+preferences: at most TWO agents in the E2E lane, ordinary concurrent work at
+FIVE (`dispatch.md` §Dispatch carries the current number and what reverts it).
+Only the orchestrator runs full E2E suites.
+
+The cap is a proxy for gate cost, not for cleverness. Every agent pays the same
+lint + typecheck + pure + DB bill regardless of domain, so raising it without
+first scoping those tiers buys contention rather than throughput — and
+contention here is not merely slow, it is MISLEADING: a starved tier fails in
+code the agent never touched and reads as a regression.
 
 ## 3. Dispatch
 
