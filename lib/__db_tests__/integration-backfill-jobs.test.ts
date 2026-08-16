@@ -162,7 +162,7 @@ describe("integration backfill jobs", () => {
       failed_items: 1,
       retry_after_at: null,
     });
-    expect(failed?.error).toContain("1 ride could not be completed");
+    expect(failed?.error).toContain("1 session could not be completed");
 
     const requests = fetchMock.mock.calls.length;
     await resumeDueIntegrationBackfills(
