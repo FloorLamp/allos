@@ -92,10 +92,14 @@ import { correctionTokenAnchor } from "../correction-time";
 import {
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
+  PRACTICE_TIME_PREFIXES,
   openPickerAnchor,
   type CorrectionPrefixes,
 } from "./correction-rows";
-import { getFoodCorrectionBursts } from "../queries";
+import {
+  getFoodCorrectionBursts,
+  getPracticeCorrectionBursts,
+} from "../queries";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
 import {
   countVisibleFoodButtons,
@@ -252,12 +256,19 @@ function fields(token: string): string[] {
   return token.split(":");
 }
 
-// ── The time-correction ride-along, for BOTH families (#2019/#2020) ──────────
+// ── The time-correction ride-along, for ALL THREE families (#2019/#2020/#2875) ──
 //
 // A correction chip claims "these entries are still correctable here", and that stops
-// being true an hour after the burst was tapped. Both families ask the SAME question of
-// their own ledger, through the same freshness predicate the renderer used — so a chat
+// being true an hour after the burst was tapped. All three families ask the SAME question
+// of their own ledger, through the same freshness predicate the renderer used — so a chat
 // can never show a chip the handler would refuse, and never refuse one it is showing.
+//
+// A FAMILY THAT DOES NOT CALL THIS HAS NO CLOCK. That is not a theoretical gap: the
+// practice chips shipped without it, and two sweeps at 2h and 4h after a burst edited
+// nothing — the chips stood until the 3-day pointer prune and then answered "Couldn't
+// find those entries any more", and a nudge whose only remaining claims were chips was
+// never closed at all. Every family carrying a `CorrectionPrefixes` pair must reach this
+// function; `lib/__tests__/reconcile-registry.test.ts` is what says so.
 //
 // A dead correction token is what produces the ONE trailing edit per logging burst: the
 // tick after the hour, the rows come off, and the next tick is back to zero calls.
@@ -1025,15 +1036,35 @@ const workoutDraft: FamilyReconciler = {
 // nudge is composed from. Deliberately NOT `behindPractices`, which also applies the
 // suppression bus: a DISMISSAL must never close a message, only real progress may.
 const practice: FamilyReconciler = {
-  dead(profileId, tokens) {
+  dead(profileId, tokens, p) {
+    // The correction chips riding beside the ✓ buttons (#2875), on the same hour-long
+    // clock and the same message binding (#2264) as their food and dose siblings. This
+    // half was missing when the third domain shipped, which left the chips with NO
+    // clock: nothing aged them out, so the sweep edited nothing and the message they
+    // rode was never closed once the ✓ buttons were consumed.
+    const dead = deadCorrectionTokens(
+      tokens,
+      PRACTICE_TIME_PREFIXES,
+      new Set(
+        getPracticeCorrectionBursts(
+          profileId,
+          clockNow(),
+          correctionMessageBinding(profileId, "practice", {
+            chatId: p.chatId,
+            messageId: p.messageId,
+          })
+        ).map((b) => b.fromId)
+      )
+    );
     const wanted = tokens.filter((t) => fields(t)[0] === "pdone");
-    if (wanted.length === 0) return new Set<string>();
+    if (wanted.length === 0) return dead;
     const behind = new Set(
       getFrequencyTargetProgress(profileId)
-        .filter((p) => !p.met && !p.atCeiling && p.pace === "behind")
-        .map((p) => p.target.id)
+        .filter((row) => !row.met && !row.atCeiling && row.pace === "behind")
+        .map((row) => row.target.id)
     );
-    return new Set(wanted.filter((t) => !behind.has(Number(fields(t)[2]))));
+    for (const t of wanted) if (!behind.has(Number(fields(t)[2]))) dead.add(t);
+    return dead;
   },
   // WHICH PRACTICE CAUGHT UP (#2275), from the SAME progress read `dead` just made. The
   // nudge carries one `✓ <name>` button per behind practice, so which of them the
@@ -1043,24 +1074,31 @@ const practice: FamilyReconciler = {
   // (or its ceiling reached, the calm "that's plenty" state), versus merely back on pace
   // with the week still running. Never "logged": the shortfall can also end because the
   // window moved, and the close states the STATE, not a write it did not witness.
+  //
+  // READ OFF THE DELIVERED KEYBOARD, not the live one — the dose family's rule (#2875
+  // made it matter here too). Since the correction ride-along shipped, a tapped nudge is
+  // REBUILT rather than closed, so by the time the chips lapse and this close fires the
+  // live keyboard holds only chips and the `pdone` tokens naming what the message claimed
+  // are gone. Reading the live keyboard would collapse every such close to the bare
+  // sentence, which is exactly the #2275 loss this `detail` exists to prevent.
   closeStates: "outcome-detail",
-  detail(profileId, tokens) {
+  detail(profileId, _tokens, p) {
     const byId = new Map(
-      getFrequencyTargetProgress(profileId).map((p) => [p.target.id, p])
+      getFrequencyTargetProgress(profileId).map((row) => [row.target.id, row])
     );
     const done: string[] = [];
     const onPace: string[] = [];
     const seen = new Set<number>();
-    for (const t of tokens) {
+    for (const t of keyboardTokens(p.receiptKeyboard)) {
       const f = fields(t);
       if (f[0] !== "pdone") continue;
       const targetId = Number(f[2]);
       if (!targetId || seen.has(targetId)) continue;
       seen.add(targetId);
-      const p = byId.get(targetId);
-      if (!p) continue;
-      if (p.met || p.atCeiling) done.push(p.target.scope_value);
-      else if (p.pace !== "behind") onPace.push(p.target.scope_value);
+      const row = byId.get(targetId);
+      if (!row) continue;
+      if (row.met || row.atCeiling) done.push(row.target.scope_value);
+      else if (row.pace !== "behind") onPace.push(row.target.scope_value);
     }
     const total = done.length + onPace.length;
     if (total === 0) return null;

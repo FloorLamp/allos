@@ -40,7 +40,8 @@ import {
   inferPracticeSchedule,
 } from "../queries";
 import { now as clockNow } from "../clock";
-import { getTimezone } from "../settings";
+import { getNotifySchedule, getPublicUrl, getTimezone } from "../settings";
+import { minuteOfDayInTz, weekdayInTz } from "../date";
 import { correctionMessageBinding } from "./message-pointers";
 import {
   correctionActions,
@@ -60,9 +61,12 @@ import {
 import { today as todayFor } from "../db";
 import { collectRightSizeCandidates } from "../rule-findings";
 import {
+  parsePracticeDoneCallback,
+  parsePracticeLogCallback,
   practiceDoneCallback,
   practiceLogCallback,
   rightSizeLowerCallback,
+  type InlineKeyboard,
 } from "./callback-data";
 import { PRACTICES_HREF } from "../hrefs";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -309,6 +313,63 @@ export interface PracticeCorrectionContext {
   // REPLACES the keyboard in place (the #859 `symp:` → `symsev:` shape) and `↩︎ Back`
   // rebuilds the message unchanged, so no server-side pending state exists.
   picker?: CorrectionBurst;
+  // WHICH ✓ BUTTONS THE MESSAGE MAY STILL SHOW, as target ids read off the LIVE
+  // keyboard — the food nudge's rule for its expansion count (#1807), one domain over:
+  // the keyboard the chat is holding is the only record of what the user can still see,
+  // and a redraw may not put back an affordance a tap consumed.
+  //
+  // Without it a rebuild silently UNDID the consume. `handlePracticeDoneTap` documents
+  // that it "CONSUMES the tapped button so a stale message can't double-log", and
+  // re-deriving from live pace does not achieve that: a practice at 1 of 3 is still
+  // behind after the session lands, so the ✓ came straight back with a fresh nonce.
+  // (The handler was never replay-idempotent — three replayed callbacks log three
+  // sessions on main too — so what this restores is the affordance, not replay safety.)
+  //
+  // Omitted means "there is no keyboard to read", which is what a fresh send is.
+  offered?: ReadonlySet<number>;
+  // The tick's moment, for the #2188 rhythm hold. Omitted means "re-derive it from the
+  // profile's own waking window and `now`" — see `practiceNudgeTimingNow`.
+  timing?: PracticeNudgeTiming;
+}
+
+// The #2188 moment for a REDRAW. The send gets the tick's own moment threaded in; a tap
+// rebuild and a sweep have no tick, so they read the same three inputs the tick read —
+// the profile's zone, its waking window, and now.
+//
+// A redraw that passed NO timing fell through to the untimed gather, which holds
+// nothing — so a practice the timed send deliberately withheld for its predicted day
+// reappeared, with a live ✅ button, the moment any other button on the message was
+// tapped. A suppression the write path applied and the redraw did not is the same defect
+// in both directions; this is the redraw learning the rule.
+export function practiceNudgeTimingNow(
+  profileId: number,
+  now: Date
+): PracticeNudgeTiming {
+  const tz = getTimezone(profileId);
+  const sched = getNotifySchedule(profileId);
+  return {
+    weekday: weekdayInTz(tz, now),
+    minuteOfDay: minuteOfDayInTz(tz, now),
+    wakingStartHour: sched.wakingStartHour,
+    wakingEndHour: sched.wakingEndHour,
+  };
+}
+
+// The target ids a live practice keyboard still offers a ✓ for. Both `pdone` (the nudge)
+// and `plog` (the `/practice` list) shapes carry the target in the same field, so this
+// reads whichever the message actually has.
+export function offeredPracticeTargets(
+  rows: InlineKeyboard
+): ReadonlySet<number> {
+  const out = new Set<number>();
+  for (const row of rows)
+    for (const btn of row) {
+      const parsed =
+        parsePracticeDoneCallback(btn.callback_data) ??
+        parsePracticeLogCallback(btn.callback_data);
+      if (parsed) out.add(parsed.targetId);
+    }
+  return out;
 }
 
 // The correction rows a practice message should carry right now, plus the body's
@@ -351,21 +412,45 @@ function practiceCorrection(
 // shortfall that justified the message. Closing there would take the correction row
 // down with it in exactly the case the feature exists for — the tap that just happened
 // is the tap whose time might be wrong. So a cleared nudge with a live burst becomes a
-// short confirmation carrying the chips, and only a cleared nudge with NO live burst
-// returns null, which is the caller's signal to close the message as it always did.
+// short confirmation carrying the chips, and NOTHING LEFT TO SHOW returns null, which is
+// the caller's signal to close the message exactly as it always did.
+//
+// THE DEEP LINK IS DEFAULTED HERE, not left to the caller (#1718). `buildPracticeReminder`
+// renders "Open practices →" only when it is handed a base, the send hands it
+// `getPublicUrl()`, and every rebuild site handed it nothing — so the affordance that is
+// meant to "survive everywhere" survived exactly until the first tap. The default is the
+// same read every other builder in this directory makes for itself.
 export function buildPracticeCorrectionRebuild(
   profileId: number,
   ctx: PracticeCorrectionContext,
   nonce: string = Date.now().toString(36),
-  deepLinkBase = ""
+  deepLinkBase: string = getPublicUrl()
 ): NotificationMessage | null {
-  const { actions, statement } = practiceCorrection(profileId, ctx);
-  const base = buildPracticeReminder(profileId, nonce, deepLinkBase);
+  const now = ctx.now ?? clockNow();
+  const { actions, statement } = practiceCorrection(profileId, { ...ctx, now });
+  const base = buildPracticeReminder(
+    profileId,
+    nonce,
+    deepLinkBase,
+    ctx.timing ?? practiceNudgeTimingNow(profileId, now)
+  );
   if (base) {
+    // A ✓ the live keyboard no longer offers is one a tap consumed. Only the `pdone`
+    // buttons are filtered: the ⤓ right-size offer and the deep link were never
+    // consumed by a practice tap and are left exactly where the strip path left them.
+    const kept = (base.actions ?? []).filter((a) => {
+      if (!ctx.offered) return true;
+      const parsed = parsePracticeDoneCallback(a.data);
+      return parsed == null || ctx.offered.has(parsed.targetId);
+    });
+    const merged = [...kept, ...actions];
+    // Every button is gone and no chip replaced it: there is no keyboard left, so say so
+    // rather than editing the chat down to a buttonless nudge nobody can act on.
+    if (merged.length === 0) return null;
     return {
       ...base,
       body: statement ? `${base.body}\n${statement}` : base.body,
-      actions: [...(base.actions ?? []), ...actions],
+      actions: merged,
     };
   }
   if (actions.length === 0) return null;

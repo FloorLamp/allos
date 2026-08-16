@@ -353,13 +353,20 @@ export async function handlePracticeDoneTap(
   if (chatId == null || messageId == null || rows.length === 0) return;
   const remaining = removeButton(rows, cq.data as string);
 
-  // THE PACE NUDGE REBUILDS RATHER THAN CLOSING (#2875). The button is still consumed —
-  // `buildPracticeReminder` re-derives from live pace, so a practice no longer behind
-  // simply has no button — but the message now also carries the correction row for the
-  // burst this tap just created. Closing here would take that row down in exactly the
-  // case the feature exists for: the single-practice nudge, where logging the one
-  // behind practice clears the shortfall that justified the message, and the tap that
-  // just happened is the tap whose time might be wrong.
+  // THE PACE NUDGE REBUILDS RATHER THAN CLOSING (#2875), and the rebuild is handed
+  // `remaining` — the post-consume keyboard — as the set of ✓ buttons it may still show.
+  // Re-deriving from live pace alone does NOT consume the button this handler's own
+  // contract says it consumes: a practice at 1 of 3 is still behind after the session
+  // lands, so the ✓ came back with a fresh nonce and the tap looked like it did nothing.
+  // The keyboard the chat is holding is the record of what was consumed; the rebuild
+  // reads it rather than guessing.
+  //
+  // What the rebuild ADDS is the correction row for the burst this tap just created.
+  // Closing here would take that row down in exactly the case the feature exists for:
+  // the single-practice nudge, where logging the one behind practice clears the
+  // shortfall that justified the message, and the tap that just happened is the tap
+  // whose time might be wrong. A null rebuild means nothing is left to show, and falls
+  // through to the close/strip path below unchanged.
   //
   // Scoped to the NUDGE (`pdone`). The `/practice` list keeps its existing lifecycle —
   // see the note on PRACTICE_TIME_PREFIXES in lib/notifications/reconcile-registry.ts
@@ -367,6 +374,7 @@ export async function handlePracticeDoneTap(
   if (outcome.kind === "logged" && messageKindIsPracticeNudge(cq.data)) {
     const rebuilt = buildPracticeCorrectionRebuild(profileId, {
       ref: { chatId, messageId },
+      offered: offeredPracticeTargets(remaining),
     });
     if (rebuilt) {
       await rebuildMessage(profileId, chatId, messageId, rebuilt);
@@ -1307,7 +1315,11 @@ import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
 import { buildFoodNudge } from "./food";
 import { currentFoodSlot } from "../queries";
-import { buildPracticeCorrectionRebuild, buildPracticeList } from "./practices";
+import {
+  buildPracticeCorrectionRebuild,
+  buildPracticeList,
+  offeredPracticeTargets,
+} from "./practices";
 import { plainBody } from "./rich-text";
 import { parseWeightEntry } from "../palette-quick-log";
 import { insertBodyMetric } from "../offline/writes";

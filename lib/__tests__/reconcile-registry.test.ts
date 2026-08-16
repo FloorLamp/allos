@@ -210,6 +210,80 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
   });
 });
 
+// THE CORRECTION CHIPS' CLOCK (#2019/#2020/#2875).
+//
+// A registry entry answers "who owns this token", and the guard above makes sure every
+// minted prefix has an owner. It cannot see the OTHER half: whether that owner's `dead`
+// predicate actually ages the token out. A correction chip claims "these entries are
+// still correctable here", which stops being true an hour after the burst — and the
+// family is the only thing that says so.
+//
+// The practice domain shipped with the registry entries and no `dead` call, and the
+// registry guard was green throughout. Two sweeps after the burst edited nothing, the
+// chips stood until the 3-day pointer prune and then answered "Couldn't find those
+// entries any more", and a nudge whose remaining claims were all chips never closed.
+// So the pairing is asserted directly, as source text — the same posture as the
+// vocabulary scan above, in the same tier, for the same reason.
+describe("every correction domain reaches the sweep's clock (#2875)", () => {
+  const CORRECTION_ROWS = path.join(NOTIFY_DIR, "correction-rows.ts");
+  const RECONCILE = path.join(NOTIFY_DIR, "reconcile.ts");
+
+  // The declared domains: `export const X: CorrectionPrefixes = { chip, at }`.
+  function declaredDomains(): string[] {
+    const src = stripComments(fs.readFileSync(CORRECTION_ROWS, "utf8"));
+    return [
+      ...src.matchAll(/export\s+const\s+([A-Z0-9_]+)\s*:\s*CorrectionPrefixes/g),
+    ].map((m) => m[1]);
+  }
+
+  // The domains the sweep actually ages out: the second argument of each
+  // `deadCorrectionTokens(tokens, X, …)` call in reconcile.ts.
+  function sweptDomains(): string[] {
+    const src = stripComments(fs.readFileSync(RECONCILE, "utf8"));
+    return [
+      ...src.matchAll(/deadCorrectionTokens\(\s*[^,()]+,\s*([A-Z0-9_]+)\s*,/g),
+    ].map((m) => m[1]);
+  }
+
+  it("the scan finds both sides (it would pass vacuously otherwise)", () => {
+    // Anchored on the ORIGINAL domain rather than on a count: a count assertion would
+    // fail again for the very defect the next case reports, which reads as two bugs.
+    expect(declaredDomains()).toContain("FOOD_TIME_PREFIXES");
+    expect(sweptDomains()).toContain("FOOD_TIME_PREFIXES");
+  });
+
+  it("every declared domain's chips die on the hour-long clock", () => {
+    const swept = new Set(sweptDomains());
+    const unswept = declaredDomains().filter((d) => !swept.has(d));
+    expect(
+      unswept,
+      `these correction domains have no clock: ${unswept.join(", ")}. A family ` +
+        `whose \`dead\` never calls deadCorrectionTokens leaves its chips on the ` +
+        `keyboard until the pointer is pruned days later, where they answer ` +
+        `"Couldn't find those entries any more" — and a message whose only ` +
+        `remaining claims are chips is never closed at all.`
+    ).toEqual([]);
+  });
+
+  it("every declared domain's prefixes are owned by a family, not inert", () => {
+    // A chip declared INERT would be swept-proof in the other direction: `dead` would
+    // never be consulted for it. The pair has to be a real claim on a real family.
+    const src = stripComments(fs.readFileSync(CORRECTION_ROWS, "utf8"));
+    const prefixes = [...src.matchAll(/\b(?:chip|at):\s*"([a-z][a-z0-9]*)"/g)].map(
+      (m) => m[1]
+    );
+    expect(prefixes.length).toBeGreaterThanOrEqual(6);
+    for (const p of prefixes) {
+      const entry = reconcileEntryFor(p);
+      expect(entry, `no registry entry for correction prefix "${p}"`).toBeTruthy();
+      expect(
+        entry && "family" in entry ? entry.family : null,
+        `correction prefix "${p}" must be owned by a family, never inert`
+      ).toBeTruthy();
+    }
+  });
+});
+
 // THE SECOND COMPLETENESS GUARD (issue #1898). The prefix table above asks "what
 // happens when this BUTTON is still in the chat tomorrow?". This one asks, per KIND,
 // "does sending this again replace the last one, or add to it?" — the question nobody

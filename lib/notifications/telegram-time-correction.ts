@@ -50,7 +50,10 @@ import {
   restampPracticeLogsCore,
   type PracticeRestampOutcome,
 } from "../practice-log";
-import { buildPracticeCorrectionRebuild } from "./practices";
+import {
+  buildPracticeCorrectionRebuild,
+  offeredPracticeTargets,
+} from "./practices";
 import {
   getRecentDoseTaps,
   getRecentFoodTaps,
@@ -516,6 +519,10 @@ const CROSSES_DAY_TEXT =
 
 // Rebuild the practice nudge this correction rides, so the chips re-render from the
 // LEDGER after every write (#221) rather than from whatever the last keyboard showed.
+//
+// The ✓ buttons are the one exception, and they come from the KEYBOARD: a chip tap must
+// not hand back a "✅ Sauna" the done-tap already consumed, and live pace alone cannot
+// tell the difference (a practice at 1 of 3 is still behind after its session lands).
 async function rebuildPractice(
   r: Resolved,
   picker?: CorrectionBurst
@@ -523,6 +530,7 @@ async function rebuildPractice(
   const rebuilt = buildPracticeCorrectionRebuild(r.profileId, {
     now: r.now,
     ref: { chatId: r.chatId, messageId: r.messageId },
+    offered: offeredPracticeTargets(r.rows),
     ...(picker ? { picker } : {}),
   });
   if (rebuilt)
