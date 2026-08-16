@@ -16,6 +16,7 @@ import {
   INTENTS_STORE as STORE,
   REJECTED_STORE as REJECTED,
   DRAFTS_STORE,
+  SNAPSHOTS_STORE,
   hasIndexedDB,
   openOfflineDb as openDb,
   txDone as done,
@@ -185,15 +186,19 @@ export async function countIntents(): Promise<number> {
   }
 }
 
-// Drop the entire queue, the rejected dead-letter store AND the form drafts. Called
+// Drop the entire queue, the rejected dead-letter store, the form drafts AND the
+// offline read snapshots. Called
 // on logout so one login's device-local PHI never lingers for the next (issue #28:
 // clear the queue on logout; #475: the parked rejected entries hold the same PHI;
-// #1699: so do half-typed drafts).
+// #1699: so do half-typed drafts; #2908: so do the read snapshots).
 export async function clearQueue(): Promise<void> {
   if (!hasIndexedDB()) return;
   try {
     const db = await openDb();
-    const t = db.transaction([STORE, REJECTED, DRAFTS_STORE], "readwrite");
+    const t = db.transaction(
+      [STORE, REJECTED, DRAFTS_STORE, SNAPSHOTS_STORE],
+      "readwrite"
+    );
     t.objectStore(STORE).clear();
     t.objectStore(REJECTED).clear();
     // #1699: half-typed form drafts are PHI at rest too, and logout is the one
@@ -201,6 +206,11 @@ export async function clearQueue(): Promise<void> {
     // asking each logout button to remember a second call) keeps the wipe
     // complete by construction.
     t.objectStore(DRAFTS_STORE).clear();
+    // #2908: the read snapshots are the largest device-local PHI surface of the three
+    // — a med list and a dose schedule, readable with no session at /offline. Same
+    // reasoning, same transaction: a logout path that forgets clearSnapshots() still
+    // wipes them.
+    t.objectStore(SNAPSHOTS_STORE).clear();
     await done(t);
     db.close();
   } catch {

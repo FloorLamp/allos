@@ -220,9 +220,11 @@ export default function SidebarContent({
             <button
               type="submit"
               onClick={() => {
-                // Wipe offline PHI on logout: the emergency card copy (#42) and
-                // any queued offline writes (#28) — never leave them for the
-                // next login.
+                // Wipe offline PHI on logout: the emergency card copy (#42),
+                // any queued offline writes (#28), and the offline read
+                // snapshots (#2908) — never leave them for the next login.
+                // clearQueue's own transaction covers the snapshot store too,
+                // so the wipe holds even if this call site drifts.
                 clearEmergencyPayload();
                 void clearQueue();
               }}

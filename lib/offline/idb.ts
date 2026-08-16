@@ -1,7 +1,8 @@
 // The ONE opener for the browser-local `allos-offline` database.
 //
-// Two features store PHI on the device — the offline write queue (#28/#475) and the
-// form drafts (#1699) — and they deliberately share one database: one PHI
+// Three features store PHI on the device — the offline write queue (#28/#475), the
+// form drafts (#1699) and the offline read snapshots (#2908) — and they deliberately
+// share one database: one PHI
 // perimeter, one logout wipe, one quota story, one place to look. That only works if
 // there is a single version number and a single upgrade path: two modules opening
 // the same database at different versions is a `VersionError` waiting for whichever
@@ -15,12 +16,14 @@
 export const OFFLINE_DB_NAME = "allos-offline";
 
 // v1 the intents store, v2 the REJECTED dead-letter store (#475), v3 the DRAFTS
-// store (#1699). Append-only: a released version's stores are never renamed.
-export const OFFLINE_DB_VERSION = 3;
+// store (#1699), v4 the SNAPSHOTS store (#2908). Append-only: a released version's
+// stores are never renamed.
+export const OFFLINE_DB_VERSION = 4;
 
 export const INTENTS_STORE = "intents";
 export const REJECTED_STORE = "rejected";
 export const DRAFTS_STORE = "drafts";
+export const SNAPSHOTS_STORE = "snapshots";
 
 export function hasIndexedDB(): boolean {
   return typeof indexedDB !== "undefined";
@@ -47,6 +50,14 @@ export function openOfflineDb(): Promise<IDBDatabase> {
       // overwrite of its own draft and nothing else.
       if (!db.objectStoreNames.contains(DRAFTS_STORE)) {
         db.createObjectStore(DRAFTS_STORE, { keyPath: "key" });
+      }
+      // Keyed by snapshot KIND, not by (profile, kind): the device holds the snapshots
+      // of exactly ONE profile at a time — the one active at capture — because logout
+      // and profile switch wipe the store outright (#2908, the #42 wipe shape). A
+      // composite key would be a place for a second profile's payload to sit, which is
+      // precisely the leak this feature has to be designed against.
+      if (!db.objectStoreNames.contains(SNAPSHOTS_STORE)) {
+        db.createObjectStore(SNAPSHOTS_STORE, { keyPath: "kind" });
       }
     };
     req.onsuccess = () => resolve(req.result);

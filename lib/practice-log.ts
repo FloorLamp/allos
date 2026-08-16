@@ -125,6 +125,54 @@ export function logPracticeSession(
   });
 }
 
+// DAY-IDEMPOTENT practice logging — the offline queue's replay path (#2908, owner
+// decision 3), and nothing else.
+//
+// #2130 excluded `practice-session` from the queue with a real argument, recorded on its
+// coverage row: a practice is CADENCED, not idempotent, so the #2007 layer-3 same-day
+// re-log confirm asks a question from the server-known session count that an offline
+// capture cannot answer — and a blind replay could double-log a day already logged from
+// another device with no confirm ever shown.
+//
+// This ANSWERS that argument rather than discarding it. The queued intent means
+// "practice X happened on day D", with the dose flow's SET-TO semantics: insert only if
+// that (practice-identity, day) holds no session, otherwise no-op. The confirm question
+// never arises, because the second-session capture is exactly what this declines.
+//
+// The narrowing this buys and costs, stated plainly: offline logs a practice day ONCE.
+// A genuine second same-day session still needs signal. That trade is the whole reason
+// the flow can exist at all, and #2188's rhythm inference is why it must — a spuriously
+// replayed session is a fabricated data point in a cadence model.
+//
+// The identity fold is `getPracticeDayCount`'s own (every stored spelling of the
+// practice), so "already logged today" means the same thing here as on the card.
+export type PracticeDayLogOutcome =
+  | { kind: "logged"; count: number; date: string }
+  | { kind: "already-logged"; count: number; date: string }
+  | { kind: "invalid-date" };
+
+export function logPracticeSessionForDay(
+  profileId: number,
+  practice: string,
+  date: string,
+  opts: { time?: string | null; durationMin?: number | null } = {}
+): PracticeDayLogOutcome {
+  const name = normalizePracticeName(practice);
+  if (!name || !isPracticeDateAccepted(profileId, date)) {
+    return { kind: "invalid-date" };
+  }
+  return writeTx((): PracticeDayLogOutcome => {
+    const existing = getPracticeDayCount(profileId, name, date);
+    if (existing > 0) return { kind: "already-logged", count: existing, date };
+    const logged = logPracticeSession(profileId, name, date, opts);
+    return logged.kind === "logged"
+      ? logged
+      : // Unreachable — the name and the date window are both checked above — but the
+        // mapping stays total so a future refusal cannot fall through as a success.
+        { kind: "invalid-date" };
+  });
+}
+
 export function updatePracticeSession(
   profileId: number,
   id: number,
