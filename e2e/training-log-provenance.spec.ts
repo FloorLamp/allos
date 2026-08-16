@@ -1,5 +1,21 @@
 import { test, expect } from "./fixtures";
-import { type Locator } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
+import { hydratedClick } from "./helpers";
+
+// #2897 turned the Log feed into slim rows: the full record card renders in the
+// desktop reading pane once its row is selected. Select by title (rows carry the
+// title plus a compact summary line) and return the pane's card, so every
+// card-internal assertion scopes to where the content now lives. Rows are pure
+// client toggles with no POST to await, so selection goes through hydratedClick.
+function readingPane(page: Page) {
+  return page.getByTestId("training-log-reading-pane");
+}
+async function openInPane(page: Page, row: Locator, title: string) {
+  await hydratedClick(page, row);
+  const card = readingPane(page).locator(".card", { hasText: title });
+  await expect(card).toBeVisible();
+  return card;
+}
 
 // Tailwind 4 emits palette colors through CSS Color 4 variables, whose computed
 // serialization is lab() rather than the rgb() string Tailwind 3 produced.
@@ -27,13 +43,14 @@ async function expectUtilityColor(locator: Locator, utility: string) {
 test("training log cards show a source provenance chip and 'added' timestamp (#11)", async ({
   page,
 }) => {
-  // /training defaults to the Log tab, which renders the training log feed.
+  // /training defaults to the Log tab, which renders the training log feed —
+  // slim rows since #2897; provenance lives on the full record in the pane.
   await page.goto("/training?tab=log");
 
-  const stravaCard = page.locator(".card", {
-    hasText: "Strava morning ride",
-  });
-  await expect(stravaCard).toBeVisible();
+  const stravaRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Strava morning ride" });
+  const stravaCard = await openInPane(page, stravaRow, "Strava morning ride");
   await expect(stravaCard.getByTestId("activity-provenance-source")).toHaveText(
     "Strava"
   );
@@ -66,19 +83,20 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await page.keyboard.press("Escape");
 
   // A hand-logged session reads "Manual" — provenance distinguishes the two.
-  const manualCard = page
-    .locator(".card", { hasText: "Basketball pickup" })
+  const manualRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Basketball pickup" })
     .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
-  await expect(manualCard).toBeVisible();
+  const manualCard = await openInPane(page, manualRow, "Basketball pickup");
   await expect(manualCard.getByTestId("activity-provenance-source")).toHaveText(
     "Manual"
   );
   await expect(manualCard.getByTestId("activity-provenance")).not.toContainText(
     "edited"
   );
-  await manualCard
-    .getByRole("button", { name: "Basketball pickup", exact: true })
-    .click();
+  // Title-click editing left with the feed cards (#2897): the pane header's
+  // Edit button opens the same docked editor.
+  await readingPane(page).getByTestId("activity-page-edit").click();
   const moreDetails = page.getByRole("button", { name: /^More details/ });
   if ((await moreDetails.getAttribute("aria-expanded")) === "false")
     await moreDetails.click();
@@ -95,8 +113,10 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
 
   // The seeded 5K mirrors a complete Health Connect exercise-session row,
   // including its clock window and provider provenance.
-  const healthConnectCard = page.locator(".card", { hasText: "5k run" });
-  await expect(healthConnectCard).toBeVisible();
+  const healthRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "5k run" });
+  const healthConnectCard = await openInPane(page, healthRow, "5k run");
   await expect(
     healthConnectCard.getByTestId("activity-provenance-source")
   ).toHaveText("Google Health Connect");
@@ -107,9 +127,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await expect(healthSummary).toContainText("12.5 km/h");
   await expect(healthSummary).toContainText("372 kcal");
   await expect(healthSummary).not.toContainText("≈ 372 kcal");
-  await healthConnectCard
-    .getByRole("button", { name: "5k run", exact: true })
-    .click();
+  await readingPane(page).getByTestId("activity-page-edit").click();
   const healthDetails = page.getByTestId("imported-activity-details");
   await expect(healthDetails).toContainText("Recorded measurements");
   await expect(
@@ -127,18 +145,19 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await expect(healthConnectCard.getByTestId("edit-lock-icon")).toHaveCount(0);
 });
 
-// #569: the seeded Strava ride carries a captured GPS route, so its training log card
-// renders a tile-free SVG route thumbnail (decoded from the encoded polyline, no
-// basemap, no external request). Manual rows carry no route → no thumbnail.
+// #569: the seeded Strava ride carries a captured GPS route, so its record card
+// (in the reading pane since #2897) renders a tile-free SVG route thumbnail
+// (decoded from the encoded polyline, no basemap, no external request). Manual
+// rows carry no route → no thumbnail.
 test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
 
-  const stravaCard = page.locator(".card", {
-    hasText: "Strava morning ride",
-  });
-  await expect(stravaCard).toBeVisible();
+  const stravaRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Strava morning ride" });
+  const stravaCard = await openInPane(page, stravaRow, "Strava morning ride");
   const routeMap = stravaCard.getByTestId("route-map");
   await expect(routeMap).toBeVisible();
   const visualBox = stravaCard.getByTestId("activity-visuals");
@@ -148,11 +167,12 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   await expect(routeMap).toHaveJSProperty("tagName", "svg");
   await expect(routeMap.locator("path")).toHaveCount(1);
 
-  // A hand-logged session has no route → no thumbnail.
-  const manualCard = page
-    .locator(".card", { hasText: "Basketball pickup" })
+  // A hand-logged session has no route → no thumbnail (swap the pane to it).
+  const manualRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Basketball pickup" })
     .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
-  await expect(manualCard).toBeVisible();
+  const manualCard = await openInPane(page, manualRow, "Basketball pickup");
   await expect(manualCard.getByTestId("route-map")).toHaveCount(0);
 });
 
@@ -161,8 +181,11 @@ test("training log cards prioritize a summary and progressively disclose details
 }) => {
   await page.goto("/training?tab=log");
 
-  const ride = page.locator(".card", { hasText: "Strava morning ride" });
-  await expect(ride).toBeVisible();
+  // The full card renders in the reading pane; its row carries the compact line.
+  const rideRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Strava morning ride" });
+  const ride = await openInPane(page, rideRow, "Strava morning ride");
 
   // Primary measurements and intensity read as one quiet, scan-friendly line.
   const summary = ride.getByTestId("activity-summary");
@@ -182,15 +205,20 @@ test("training log cards prioritize a summary and progressively disclose details
   await expect(summary).toHaveClass(/text-slate-600/);
   await expect(summary).toHaveClass(/dark:text-slate-300/);
 
-  const hardActivity = page
-    .locator('[id^="activity-"]')
+  // Intensity renders on the full record: swap the pane to the hard session.
+  const hardRow = page
+    .getByTestId("training-log-row")
     .filter({ hasText: "Intervals" })
     .first(); // first-ok: the "Intervals" activity THIS spec created (filtered by its name)
+  const hardActivity = await openInPane(page, hardRow, "Intervals");
   const intensity = hardActivity.getByTestId("activity-intensity");
   await expect(intensity).toContainText("Hard");
   await expect(intensity.getByTestId("activity-intensity-dot")).toHaveClass(
     /bg-rose-500/
   );
+
+  // Swap the pane back to the ride for its structured measurements.
+  await openInPane(page, rideRow, "Strava morning ride");
 
   // Rich measurements are structured list values, not a collection of badges.
   const metrics = ride.getByTestId("activity-metrics");
@@ -282,11 +310,19 @@ test("training log cards prioritize a summary and progressively disclose details
   expect(largestVisuals).not.toBeNull();
   expect(largestVisuals!.width).toBeGreaterThan(175);
 
-  // On a phone the same box follows the details as a shallow, full-width strip.
+  // On a phone there is no pane — tapping the row expands the full card in
+  // place, where the same box follows the details as a shallow, full-width strip.
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobileVisuals = await visuals.boundingBox();
-  const mobileRoute = await ride.getByTestId("route-map").boundingBox();
-  const mobileParts = await ride.getByTestId("activity-parts").boundingBox();
+  await rideRow.click();
+  const mobileRide = page.locator(".card", { hasText: "Strava morning ride" });
+  await expect(mobileRide).toBeVisible();
+  const mobileVisuals = await mobileRide
+    .getByTestId("activity-visuals")
+    .boundingBox();
+  const mobileRoute = await mobileRide.getByTestId("route-map").boundingBox();
+  const mobileParts = await mobileRide
+    .getByTestId("activity-parts")
+    .boundingBox();
   expect(mobileVisuals).not.toBeNull();
   expect(mobileRoute).not.toBeNull();
   expect(mobileParts).not.toBeNull();
@@ -302,22 +338,27 @@ test("strength target status is named and muscle filters are quiet text", async 
 }) => {
   await page.goto("/training?tab=log");
 
-  const push = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the seeded Push day routine card — order-agnostic
-  await expect(push).toBeVisible();
+  const pushRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Push day" })
+    .first(); // first-ok: the newest seeded Push day session — order-agnostic
+  const push = await openInPane(page, pushRow, "Push day");
   await expect(push.getByTestId("activity-summary")).toContainText("kcal");
   await expect(push.getByTestId("activity-metrics")).toHaveCount(0);
   await expect(
     push.getByRole("img", { name: "All sets hit their target reps" })
   ).toBeVisible();
-  await push.getByRole("button", { name: "Push day", exact: true }).click();
+  // Edit flows through the pane header since #2897 (title-click left with the
+  // feed cards).
+  await readingPane(page).getByTestId("activity-page-edit").click();
   await expect(
     page.getByTestId("activity-target-status").filter({ hasText: "Target met" })
   ).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 
-  const muscleFilter = push
-    .getByRole("button", { name: "Chest", exact: true })
-    .first(); // first-ok: the Chest muscle filter within the scoped Push day card
+  // In the reading pane the muscle label is literally quiet text — the pane
+  // host passes no tag-filter handler, so no button wraps it (and no badge).
+  const muscleFilter = push.getByText("Chest", { exact: true }).first(); // first-ok: the Chest muscle label within the scoped Push day card (Bench and Incline both tag Chest)
   await expect(muscleFilter).toBeVisible();
   await expect(muscleFilter).not.toHaveClass(/badge/);
 
@@ -344,19 +385,19 @@ test("strength target status is named and muscle filters are quiet text", async 
 });
 
 // The imported Strava ride is stored with the athlete's free-text title ("Strava
-// morning ride") but a canonical "Cycling" component. The training log must icon it
-// off the structured sport (a bike), matching the activity form — not fall back
-// to the generic cardio (run) icon from the title alone.
+// morning ride") but a canonical "Cycling" component. The training log's slim
+// row must icon it off the structured sport (a bike), matching the activity
+// form — not fall back to the generic cardio (run) icon from the title alone.
 test("an imported cycling ride shows the bike icon in the training log", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
 
-  const stravaCard = page.locator(".card", {
-    hasText: "Strava morning ride",
-  });
-  await expect(stravaCard).toBeVisible();
-  await expect(stravaCard.getByTestId("activity-icon")).toHaveAttribute(
+  const stravaRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Strava morning ride" });
+  await expect(stravaRow).toBeVisible();
+  await expect(stravaRow.getByTestId("activity-icon")).toHaveAttribute(
     "data-icon",
     "bike"
   );
@@ -367,11 +408,12 @@ test("the activity editor shows all stored Strava measurements as read-only", as
 }) => {
   await page.goto("/training?tab=log");
 
-  const stravaCard = page.locator(".card", {
-    hasText: "Strava morning ride",
-  });
-  await stravaCard.getByRole("button", { name: "Activity actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+  // Row → pane → Edit: the docked editor opens in the log's aside (#2897).
+  const stravaRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Strava morning ride" });
+  await openInPane(page, stravaRow, "Strava morning ride");
+  await readingPane(page).getByTestId("activity-page-edit").click();
 
   const details = page.getByTestId("imported-activity-details");
   await expect(details).toBeVisible();
@@ -451,8 +493,11 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   ).toBe(4);
   await page.setViewportSize({ width: 390, height: 844 });
   // Switching presentation modes closes the docked editor; reopen the same
-  // activity in the mobile overlay, then measure the shared content component.
-  await stravaCard.getByRole("button", { name: "Activity actions" }).click();
+  // activity in the mobile overlay — on a phone the row expands the full card
+  // in place, whose overflow menu still carries Edit.
+  await stravaRow.click();
+  const mobileCard = page.locator(".card", { hasText: "Strava morning ride" });
+  await mobileCard.getByRole("button", { name: "Activity actions" }).click();
   await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
   const mobilePrimary = page.getByTestId("strava-primary-stats");
   await expect(mobilePrimary).toBeVisible();
