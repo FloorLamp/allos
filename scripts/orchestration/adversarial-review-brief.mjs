@@ -39,6 +39,16 @@ const HIGH_STAKES = [
   },
   { glob: /^lib\/password\.ts$/, why: "credential hashing" },
   { glob: /^middleware\.ts$/, why: "the Edge cookie gate" },
+  // Redaction is a DISCLOSURE boundary, not log hygiene. #2935 gave
+  // `redactSecrets` its first profile-facing consumer, so a shape it fails to
+  // mask is a credential on a user's screen. Added after this registry answered
+  // "not high-stakes" for #2955 — a rewrite of that very function — which is the
+  // same miss as `lib/dri.ts` (#2932): the tier was read as "which subsystem"
+  // when the question is "what does a bug here disclose or decide".
+  {
+    glob: /^lib\/(error-log-format|log)\.ts$/,
+    why: "secret redaction — a shape it misses is a credential shown to a user, and over-redaction destroys an error they must act on",
+  },
   {
     glob: /^lib\/public-paths\.ts$/,
     why: "the session-free route list — one entry too many is an open door",
