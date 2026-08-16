@@ -241,16 +241,24 @@ export function correctionBodyStatement(
 // at all. Named with the same `burstSubject` the picker asks with, and it names the ONE
 // place the answer belongs: a day-keyed session's date is the expanded form's job, which
 // is the same sentence the write core's refusal speaks.
+//
+// ONE LINE PER BURST rather than one line naming several: the statement of record above
+// joins its subjects because it states a single value, and this states a REASON, which
+// reads as a claim about each burst separately. (MAX_CORRECTION_ROWS caps it at two.)
 export function correctionOffScopeStatement(
   bursts: readonly CorrectionBurst[],
   tz: string
 ): string | null {
   if (bursts.length === 0) return null;
-  return formatMessageLine({
-    glyph: GLYPH.eventTime,
-    head: bursts.map((b) => burstSubject(b, tz)).join(" · "),
-    notes: ["moving this would change its day — correct it in the app"],
-  });
+  return bursts
+    .map((b) =>
+      formatMessageLine({
+        glyph: GLYPH.eventTime,
+        head: burstSubject(b, tz),
+        notes: ["moving this would change its day — correct it in the app"],
+      })
+    )
+    .join("\n");
 }
 
 // The picker's question. The subject is the burst as the user knows it; the verb is the

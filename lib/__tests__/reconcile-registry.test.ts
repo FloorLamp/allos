@@ -286,9 +286,9 @@ describe("every correction domain reaches the sweep's clock (#2875)", () => {
       const body = block(src, src.indexOf("{", m.index + m[0].length));
       out.push({
         name: m[1],
-        prefixes: [...body.matchAll(/\b(?:chip|at):\s*"([a-z][a-z0-9]*)"/g)].map(
-          (p) => p[1]
-        ),
+        prefixes: [
+          ...body.matchAll(/\b(?:chip|at):\s*"([a-z][a-z0-9]*)"/g),
+        ].map((p) => p[1]),
       });
     }
     return out;
@@ -372,9 +372,10 @@ describe("every correction domain reaches the sweep's clock (#2875)", () => {
       const impl = family ? impls.get(family) : null;
       const body = impl ? deadScope(impl) : "";
       if (
-        !new RegExp(`deadCorrectionTokens\\([^)]*\\b${domain.name}\\b`, "s").test(
-          body
-        )
+        !new RegExp(
+          `deadCorrectionTokens\\([^)]*\\b${domain.name}\\b`,
+          "s"
+        ).test(body)
       )
         unswept.push(`${domain.name} (family: ${family ?? "none"})`);
     }

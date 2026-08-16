@@ -738,9 +738,22 @@ describe("the keyboard never offers what the write core refuses (#2875)", () => 
   // `resolve` the matching handler would hand the write core.
   function offeredWrites(pid: number, now: Date) {
     const bursts = getPracticeCorrectionBursts(pid, now);
-    const out: { label: string; resolve: Parameters<typeof restampPracticeLogsCore>[2]; fromId: number }[] = [];
-    for (const a of correctionActions(PRACTICE_TIME_PREFIXES, pid, bursts, TZ, now)) {
-      const chip = parseCorrectionChipToken(a.data, PRACTICE_TIME_PREFIXES.chip);
+    const out: {
+      label: string;
+      resolve: Parameters<typeof restampPracticeLogsCore>[2];
+      fromId: number;
+    }[] = [];
+    for (const a of correctionActions(
+      PRACTICE_TIME_PREFIXES,
+      pid,
+      bursts,
+      TZ,
+      now
+    )) {
+      const chip = parseCorrectionChipToken(
+        a.data,
+        PRACTICE_TIME_PREFIXES.chip
+      );
       if (chip)
         out.push({
           label: a.label,
@@ -756,7 +769,10 @@ describe("the keyboard never offers what the write core refuses (#2875)", () => 
         now,
         TZ
       )) {
-        const parsed = parseCorrectionAtToken(a.data, PRACTICE_TIME_PREFIXES.at);
+        const parsed = parseCorrectionAtToken(
+          a.data,
+          PRACTICE_TIME_PREFIXES.at
+        );
         if (parsed?.step.kind !== "at") continue;
         const instant = statedHourInstant(parsed.step.hhmm, now, TZ);
         out.push({
@@ -776,8 +792,14 @@ describe("the keyboard never offers what the write core refuses (#2875)", () => 
       const id = seedTap(pid, hhmm);
       const now = new Date(atLocal(hhmm).getTime() + 5 * 60_000);
       for (const offer of offeredWrites(pid, now)) {
-        const outcome = restampPracticeLogsCore(pid, offer.fromId, offer.resolve);
-        expect(outcome.kind, `${hhmm} local → "${offer.label}"`).toBe("restamped");
+        const outcome = restampPracticeLogsCore(
+          pid,
+          offer.fromId,
+          offer.resolve
+        );
+        expect(outcome.kind, `${hhmm} local → "${offer.label}"`).toBe(
+          "restamped"
+        );
         expect(storedDate(id), `${hhmm} local → "${offer.label}"`).toBe(DAY);
         // Put the row back so the next offer starts from the same keyboard.
         db.prepare(
@@ -803,7 +825,9 @@ describe("the keyboard never offers what the write core refuses (#2875)", () => 
     );
     expect(shown).toEqual([]);
     expect(offScope).toHaveLength(1);
-    expect(correctionActions(PRACTICE_TIME_PREFIXES, pid, bursts, TZ, now)).toEqual([]);
+    expect(
+      correctionActions(PRACTICE_TIME_PREFIXES, pid, bursts, TZ, now)
+    ).toEqual([]);
     expect(correctionOffScopeStatement(offScope, TZ)).toBe(
       "🕐 Sauna — moving this would change its day — correct it in the app"
     );

@@ -534,7 +534,9 @@ export function offeredHours(
   dayKeyed = false
 ): string[] {
   const hours = pickerHourOptions(now, tz);
-  return dayKeyed ? hours.filter((h) => hourStaysOnDay(h, burst, now, tz)) : hours;
+  return dayKeyed
+    ? hours.filter((h) => hourStaysOnDay(h, burst, now, tz))
+    : hours;
 }
 
 // True when `hhmm` is one of the hours this picker would offer for THIS burst right now.

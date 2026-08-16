@@ -763,7 +763,9 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
   it("offers nothing at all in the hour after local midnight", () => {
     // The reproduction from the review, to the minute: a sauna tapped at 00:20 local.
     const now = local("00:25");
-    const burst = collapseBursts([tap(41, local("00:20").toISOString(), "Sauna")])[0];
+    const burst = collapseBursts([
+      tap(41, local("00:20").toISOString(), "Sauna"),
+    ])[0];
 
     const { shown, offScope } = correctableBursts(
       PRACTICE_TIME_PREFIXES,
@@ -775,7 +777,9 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
     expect(offScope).toEqual([burst]);
 
     // No row is drawn — not a label button, not a chip.
-    expect(correctionActions(PRACTICE_TIME_PREFIXES, 3, [burst], TZ, now)).toEqual([]);
+    expect(
+      correctionActions(PRACTICE_TIME_PREFIXES, 3, [burst], TZ, now)
+    ).toEqual([]);
     // And the body says where the correction belongs instead of staying silent.
     expect(correctionOffScopeStatement(offScope, TZ)).toBe(
       "🕐 Sauna — moving this would change its day — correct it in the app"
@@ -786,9 +790,13 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
     // The bound is the DOMAIN's, not the clock's: food re-dates the serving and dose
     // keeps its adherence day, so both still offer the full set here.
     const now = local("00:25");
-    const burst = collapseBursts([tap(41, local("00:20").toISOString(), "Salmon")])[0];
+    const burst = collapseBursts([
+      tap(41, local("00:20").toISOString(), "Salmon"),
+    ])[0];
     for (const prefixes of [FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES]) {
-      expect(correctableBursts(prefixes, [burst], now, TZ).shown).toEqual([burst]);
+      expect(correctableBursts(prefixes, [burst], now, TZ).shown).toEqual([
+        burst,
+      ]);
       expect(
         correctionActions(prefixes, 3, [burst], TZ, now).map((a) => a.label)
       ).toEqual(["🕐 Salmon 00:20", "23:50 · −30m", "23:20 · −1h"]);
@@ -805,10 +813,16 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
       for (const ageMin of [0, 12, 41, 58]) {
         const now = local(`${String(h).padStart(2, "0")}:37`);
         const tapAt = new Date(now.getTime() - ageMin * 60_000);
-        const burst = collapseBursts([tap(41, tapAt.toISOString(), "Sauna")])[0];
+        const burst = collapseBursts([
+          tap(41, tapAt.toISOString(), "Sauna"),
+        ])[0];
         const day = burstLocalDay(burst, TZ);
         expect(day, `burst at ${tapAt.toISOString()}`).not.toBeNull();
-        for (const resolved of resolvedDays(burst, now, PRACTICE_TIME_PREFIXES)) {
+        for (const resolved of resolvedDays(
+          burst,
+          now,
+          PRACTICE_TIME_PREFIXES
+        )) {
           expect(resolved, `offer at ${now.toISOString()}`).toBe(day);
         }
       }
@@ -825,7 +839,9 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
       tap(42, local("00:03").toISOString(), "Sauna"),
     ])[0];
     expect(burstLocalDay(straddle, TZ)).toBeNull();
-    expect(correctableBursts(PRACTICE_TIME_PREFIXES, [straddle], now, TZ).shown).toEqual([]);
+    expect(
+      correctableBursts(PRACTICE_TIME_PREFIXES, [straddle], now, TZ).shown
+    ).toEqual([]);
     expect(offeredHours(straddle, now, TZ, true)).toEqual([]);
     expect(chipOffers(straddle, now, TZ, true)).toEqual([]);
   });
@@ -835,10 +851,20 @@ describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () =
     // reach starts two hours back and every hour it can name is yesterday's. The title
     // says so rather than presenting a grid of nothing.
     const now = local("01:40");
-    const burst = collapseBursts([tap(41, local("01:35").toISOString(), "Sauna")])[0];
-    expect(chipOffers(burst, now, TZ, true).map((o) => o.minutesBack)).toEqual([30, 60]);
+    const burst = collapseBursts([
+      tap(41, local("01:35").toISOString(), "Sauna"),
+    ])[0];
+    expect(chipOffers(burst, now, TZ, true).map((o) => o.minutesBack)).toEqual([
+      30, 60,
+    ]);
     expect(offeredHours(burst, now, TZ, true)).toEqual([]);
-    const picker = correctionPickerActions(PRACTICE_TIME_PREFIXES, 3, burst, now, TZ);
+    const picker = correctionPickerActions(
+      PRACTICE_TIME_PREFIXES,
+      3,
+      burst,
+      now,
+      TZ
+    );
     expect(picker.map((a) => a.label)).toEqual(["↩︎ Back"]);
     expect(correctionPickerTitle("when was this", burst, TZ, [])).toBe(
       "🕐 Sauna — no earlier hour left on this day — correct it in the app"
