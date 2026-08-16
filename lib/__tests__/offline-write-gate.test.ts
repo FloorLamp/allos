@@ -23,7 +23,7 @@ import {
   closeSnapshots,
   defaultGate,
   gateAllows,
-  openSession,
+  openSessionAs,
   openSnapshots,
   type WriteGate,
   type WriteLane,
@@ -31,8 +31,18 @@ import {
 
 const LANES: readonly WriteLane[] = ["snapshots", "queue", "drafts"];
 
+// Two session names, low-entropy on purpose. `THIS_SESSION` is the one that logs out;
+// `NEXT_SESSION` is whoever signs in on the device afterwards.
+const THIS_SESSION = "session key 1";
+const NEXT_SESSION = "session key 2";
+
 function at(gate: WriteGate): number {
   return gate.generation;
+}
+
+/** A gate as a live document of `key` leaves it. */
+function openFor(key: string, gate: WriteGate = defaultGate()): WriteGate {
+  return openSessionAs(key)(gate);
 }
 
 describe("gateAllows — the one decision every device-local PHI write asks", () => {
@@ -83,9 +93,77 @@ describe("gateAllows — the one decision every device-local PHI write asks", ()
 
   it("keeps the off switch closed even after a new session opens", () => {
     // And the other direction: logging back in does not undo a toggle the person set.
-    const gate = openSession(closeSession(closeSnapshots(defaultGate())));
+    const gate = openFor(
+      NEXT_SESSION,
+      closeSession(closeSnapshots(openFor(THIS_SESSION)))
+    );
     expect(gateAllows(gate, "snapshots", at(gate))).toBe(false);
     expect(gateAllows(gate, "queue", at(gate))).toBe(true);
+  });
+});
+
+describe("who may re-open a closed session — the second-tab defect", () => {
+  // The finding this describes was found FOUR TIMES, each time one scope out, and it is
+  // worth being blunt about what these assertions are for. Every previous guard was
+  // correct about its own subject and wrong about the system: a React flag knew about
+  // unmounting, a generation knew about one flight, a module `closed` knew about one
+  // document. Putting the gate in the database fixed the third — and the re-open was
+  // still "a component mounted", which is true of every tab that was already open when
+  // someone pressed Log out. CI caught it against the second-tab test itself.
+  //
+  // These are pure and they go red when mutated: an `openSessionAs` that opens
+  // unconditionally — the shipped behaviour — fails the first two.
+
+  it("REFUSES a document of the session that closed it — every tab still open at logout", () => {
+    const closed = closeSession(openFor(THIS_SESSION));
+    // Tab B: same session, still mounted, still authenticated because the logout POST has
+    // not landed, running its own mount effect. It asks, and it is refused.
+    const afterTabB = openFor(THIS_SESSION, closed);
+    expect(afterTabB.sessionClosed).toBe(true);
+    for (const lane of LANES) {
+      expect(gateAllows(afterTabB, lane, at(afterTabB)), lane).toBe(false);
+    }
+  });
+
+  it("stays refused however many of them ask, in any order", () => {
+    // A device with several tabs open, each mounting whenever it gets scheduled. No
+    // number of them adds up to a new session.
+    let gate = closeSession(openFor(THIS_SESSION));
+    for (let i = 0; i < 5; i += 1) gate = openFor(THIS_SESSION, gate);
+    expect(gateAllows(gate, "snapshots", at(gate))).toBe(false);
+    expect(gateAllows(gate, "queue", at(gate))).toBe(false);
+  });
+
+  it("ADMITS a genuinely new session — the person who signs in next", () => {
+    // The other half, and the reason "stay closed forever" is not the fix: whoever picks
+    // the device up and logs in must get the feature back.
+    const reopened = openFor(NEXT_SESSION, closeSession(openFor(THIS_SESSION)));
+    expect(reopened.sessionClosed).toBe(false);
+    for (const lane of LANES) {
+      expect(gateAllows(reopened, lane, at(reopened)), lane).toBe(true);
+    }
+  });
+
+  it("does not rewind the generation when a new session re-opens it", () => {
+    // A write in flight at the moment of logout must not be revived by the login that
+    // follows it. The close's fence outlives the close.
+    const closed = closeSession(openFor(THIS_SESSION));
+    const reopened = openFor(NEXT_SESSION, closed);
+    expect(reopened.generation).toBe(closed.generation);
+    expect(gateAllows(reopened, "queue", at(defaultGate()))).toBe(false);
+  });
+
+  it("records the session on a gate that is merely OPEN, so the next close knows whose it was", () => {
+    // The key has to be written by the ordinary open, not only by the close — `closeSession`
+    // has no session to name, and a gate that closed without one would admit anybody.
+    expect(openFor(THIS_SESSION).sessionKey).toBe(THIS_SESSION);
+    expect(closeSession(openFor(THIS_SESSION)).sessionKey).toBe(THIS_SESSION);
+  });
+
+  it("a device that has never held a session is open, and any session may claim it", () => {
+    expect(defaultGate().sessionKey).toBe(null);
+    expect(gateAllows(defaultGate(), "snapshots", 0)).toBe(true);
+    expect(openFor(THIS_SESSION).sessionClosed).toBe(false);
   });
 });
 
@@ -120,8 +198,8 @@ describe("the gate transitions — which wipes close, and which only fence", () 
   it("re-opening never rewinds the generation", () => {
     // A wipe's fence must survive the re-open that follows it, or a write in flight at
     // the moment of a switch-then-login could still land.
-    const wiped = closeSession(defaultGate());
-    const reopened = openSession(wiped);
+    const wiped = closeSession(openFor(THIS_SESSION));
+    const reopened = openFor(NEXT_SESSION, wiped);
     expect(reopened.generation).toBe(wiped.generation);
     expect(gateAllows(reopened, "queue", at(defaultGate()))).toBe(false);
   });

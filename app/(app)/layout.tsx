@@ -257,7 +257,10 @@ export default async function AppLayout({
                   those refreshes; it never adds one, never removes one, and
                   never touches a refresh the USER asked for. */}
               <DirtyFormProvider>
-                <OfflineQueueProvider activeProfileId={profile.id}>
+                <OfflineQueueProvider
+                  activeProfileId={profile.id}
+                  deviceSessionKey={session.deviceSessionKey}
+                >
                   <ProfileSwitchWatcher activeProfileId={profile.id} />
                   {/* Offline read snapshots (#2908): an authenticated visit
                   refreshes whatever the device holds that is absent or past its

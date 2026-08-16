@@ -114,6 +114,9 @@ export function actAs(
     // existing action tests are unaffected; a test can pass 'read' to assert a
     // mutating action is blocked by requireWriteAccess().
     access,
+    // Not a real session key — these harnesses never reach the device write gate,
+    // which is browser-side. It only has to satisfy CurrentSession (#2908).
+    deviceSessionKey: "test session key",
   };
   setActingSession(session);
   return session;

@@ -51,8 +51,24 @@ export interface WriteGate {
   // a PROFILE SWITCH, which wipes so the next profile can be captured and therefore must
   // not close anything.
   generation: number;
-  // Logout. Closes every lane until a new authenticated document opens it again.
+  // Logout. Closes every lane until a DIFFERENT session opens it again — `different` is
+  // the load-bearing word, and `sessionKey` below is why.
   sessionClosed: boolean;
+  // WHICH SESSION the gate stands for: the one it is open for, or — once closed — the one
+  // that closed it. `null` on a device that has never seen one.
+  //
+  // This is the fourth scope the same mistake was found at, and it is the last one
+  // available. Putting the gate in the database was necessary and not sufficient, because
+  // `openSession` re-opened it on any MOUNT: every tab open at logout is still mounted,
+  // still authenticated (the session outlives the logout POST), and about to run its own
+  // mount effect. Tab B's mount handed the close straight back and wrote all five
+  // snapshots into the store tab A had just cleared — reproduced by CI against the very
+  // test written for it. A tab that merely LOADS during the logout window does it with no
+  // race at all.
+  //
+  // A mount cannot tell "there is a session" from "there is a NEW session", and only the
+  // second may re-open. A session's own name can, so the gate remembers it.
+  sessionKey: string | null;
   // The offline-reads off switch. Closes the snapshots lane only, and survives a reload,
   // so the acceptance criterion — "nothing re-materializes until toggled back on" —
   // holds even while the Server Action that tells the SERVER is still in flight. The
@@ -65,6 +81,7 @@ export function defaultGate(): WriteGate {
     key: GATE_KEY,
     generation: 0,
     sessionClosed: false,
+    sessionKey: null,
     snapshotsClosed: false,
   };
 }
@@ -76,6 +93,14 @@ function parseGate(value: unknown): WriteGate {
     key: GATE_KEY,
     generation: typeof o.generation === "number" ? o.generation : 0,
     sessionClosed: o.sessionClosed === true,
+    // An absent key reads as null, which matches no session, so the next mount re-opens.
+    // That is a real trade and not a free choice: the alternative — treating "I cannot
+    // tell whose close this was" as permanently closed — kills the feature on that device
+    // until something clears the database, with no way for the person to find out why.
+    // The case is narrow (a record written by a build before this field existed), and a
+    // build before this field existed cannot have a tab of the closed session running the
+    // code that would exploit the re-open.
+    sessionKey: typeof o.sessionKey === "string" ? o.sessionKey : null,
     snapshotsClosed: o.snapshotsClosed === true,
   };
 }
@@ -180,14 +205,67 @@ export function bumpGeneration(gate: WriteGate): WriteGate {
   return { ...gate, generation: gate.generation + 1 };
 }
 
-/** Logout: every lane closed until a new authenticated document opens them. */
+/**
+ * Logout: every lane closed until a DIFFERENT session opens them.
+ *
+ * `sessionKey` is deliberately left as it stands rather than cleared — it is now the
+ * record of WHICH session closed the gate, and that is the whole defence against the
+ * session's own surviving tabs re-opening it.
+ */
 export function closeSession(gate: WriteGate): WriteGate {
   return { ...bumpGeneration(gate), sessionClosed: true };
 }
 
-/** A live authenticated document. Never touches the off switch's own state. */
-export function openSession(gate: WriteGate): WriteGate {
-  return { ...gate, sessionClosed: false };
+/**
+ * A live authenticated document says which session it belongs to, and the gate re-opens
+ * only if that is not the session that closed it.
+ *
+ * The predicate is the finding, so read it as one: `key === gate.sessionKey` on a closed
+ * gate means "a document of the logged-out session is asking", which is every tab that
+ * was open when someone pressed Log out and every tab that loads while the logout POST is
+ * still in flight. Those must stay closed. Anything else is a session that did not exist
+ * when the close happened — a fresh login, on this device, by whoever is holding it now —
+ * and that is precisely what re-opening is for.
+ *
+ * Never touches the off switch's own state: two independent closes, two independent
+ * re-opens.
+ */
+export function openSessionAs(
+  key: string
+): (gate: WriteGate) => WriteGate {
+  return (gate) => {
+    if (gate.sessionClosed && gate.sessionKey === key) return gate;
+    return { ...gate, sessionClosed: false, sessionKey: key };
+  };
+}
+
+// ── THE RE-OPEN AND THE FIRST WRITE, IN THAT ORDER ───────────────────────────
+//
+// Two mount-scoped effects in one document: OfflineQueueProvider re-opens the gate, and
+// its child OfflineSnapshotRefresher schedules the first refresh. React runs child
+// effects first, so the refresh is scheduled before the re-open is even asked for, and a
+// refresh that asks `snapshotWritesClosed()` before the re-open lands gives up — leaving
+// a freshly logged-in device with no offline copy until something happens to trigger
+// another refresh. Not a leak; a feature that silently does nothing, which is how this
+// one keeps failing.
+//
+// This IS module state, which the same file spends its header arguing against, so the
+// distinction matters: the gate itself is a security decision and lives in the database
+// because it must cross documents. This is a sequencing handle between two components of
+// the SAME document, and it can only ever make a writer wait for its own document's
+// re-open. It decides nothing about whether a write is allowed — `guardedWrite` still
+// does that, in its own transaction, having never heard of this.
+let reopened: Promise<void> = Promise.resolve();
+
+/** The mount-scoped re-open. Records the attempt so a writer can wait for it. */
+export function openSessionForDocument(key: string): Promise<void> {
+  reopened = updateGate(openSessionAs(key));
+  return reopened;
+}
+
+/** Resolves once this document's re-open has landed (or immediately, if there was none). */
+export function whenSessionOpened(): Promise<void> {
+  return reopened;
 }
 
 /** The offline-reads off switch, and its opposite. */

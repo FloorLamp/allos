@@ -26,6 +26,7 @@ import {
   warmOfflineRoute,
   WARM_START_DELAY_MS,
 } from "@/lib/offline/warm-offline-route";
+import { whenSessionOpened } from "@/lib/offline/write-gate";
 
 // How long after a page load the first snapshot refresh runs. See the call site: the
 // endpoint does synchronous SQLite work in the same single-threaded server that is
@@ -109,14 +110,24 @@ export default function OfflineSnapshotRefresher({
       if (typeof navigator !== "undefined" && navigator.onLine === false)
         return;
       running.current = true;
+      // WAIT FOR THIS DOCUMENT'S OWN RE-OPEN before asking the gate anything. Logout
+      // leaves the gate persistently closed, and it is OfflineQueueProvider's mount that
+      // says a new session has begun — a sibling effect in this same tree, and React runs
+      // child effects first, so without this the first refresh after a login can read a
+      // gate that is still closed for the PREVIOUS session, give up, and leave the device
+      // with no offline copy until something else triggers a refresh. Ordering only; it
+      // decides nothing.
+      await whenSessionOpened();
       // THE WRITE TOKEN (lib/offline/write-gate.ts), captured BEFORE the first await and
       // spent inside `putSnapshots`'s own transaction.
       //
-      // Nothing in this component can be the guard, and three attempts to make it one are
+      // Nothing in this component can be the guard, and four attempts to make it one are
       // why: the effect's `cancelled` flag is set on UNMOUNT, which on logout happens only
       // after the navigation lands; a module generation cannot see a refresh that STARTED
-      // after a wipe; a module `closed` flag cannot see another TAB. The gate is in the
-      // database the writes land in, so it sees all three.
+      // after a wipe; a module `closed` flag cannot see another TAB; and "a document
+      // mounted" cannot tell a new session from a surviving tab of the one that just left.
+      // The gate is in the database the writes land in, and it is named for the session it
+      // is open for, so it sees all four.
       let token = await captureSnapshotToken();
       try {
         // Asked BEFORE the fetch, not merely before the write: a page whose device has

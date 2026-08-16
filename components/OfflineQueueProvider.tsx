@@ -33,8 +33,7 @@ import {
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import {
   captureWriteToken,
-  openSession,
-  updateGate,
+  openSessionForDocument,
 } from "@/lib/offline/write-gate";
 import {
   enqueueIntent,
@@ -110,6 +109,7 @@ async function registerBackgroundSync(): Promise<void> {
 export default function OfflineQueueProvider({
   children,
   activeProfileId,
+  deviceSessionKey,
 }: {
   children: React.ReactNode;
   // The session's active profile at render time (issue #599). Every intent enqueued
@@ -117,6 +117,11 @@ export default function OfflineQueueProvider({
   // captured under — not whatever profile is active at flush time. The layout passes
   // the current session's profile.id; a profile switch re-renders with the new value.
   activeProfileId: number;
+  // WHICH SESSION this document belongs to (#2908) — opaque, and it grants nothing (see
+  // lib/auth.ts). It is what re-opens the device write gate, and it has to be an identity
+  // rather than the mere fact of mounting: a tab open at logout is still mounted, so
+  // "mounted" re-opened the gate for the session that had just closed it.
+  deviceSessionKey: string;
 }) {
   const [pending, setPending] = useState(0);
   // Parked rejected/undeliverable entries the user can review + re-enter (issue
@@ -311,25 +316,30 @@ export default function OfflineQueueProvider({
     [refreshCount, activeProfileId]
   );
 
-  // A LIVE AUTHENTICATED DOCUMENT re-opens the device write gate (#2908). Logout closes
-  // every lane persistently — it has to, or a second tab writes everything back — so
-  // something must say "there is a session again", and this provider is it: mounted once
-  // in the (app) layout, which only renders for a logged-in session, and the owner of the
-  // largest device-local store.
+  // A NEW SESSION re-opens the device write gate (#2908). Logout closes every lane
+  // persistently — it has to, or a second tab writes everything back — so something must
+  // say the close is over, and this provider is it: mounted once in the (app) layout,
+  // which only renders for a logged-in session, and the owner of the largest
+  // device-local store.
   //
-  // ITS OWN EFFECT, WITH `[]` AND NOTHING ELSE, and that is not tidiness. The first
-  // version of this rode the sync effect below, whose deps are four useCallbacks — so any
-  // one of them changing identity re-ran it, which meant re-OPENING the gate at arbitrary
-  // moments including inside the logout window. A second tab then wrote all five
-  // snapshots back, which is the exact defect the persisted close exists to prevent, and
-  // it is the mutant the review predicted: a re-open on anything but a genuine mount
-  // hands the close straight back.
+  // A NEW SESSION, NOT A NEW MOUNT, and the difference is the whole finding. This effect
+  // used to call `updateGate(openSession)` unconditionally, which reads as "a document
+  // exists, therefore someone is logged in". Every tab open at the moment of logout is
+  // also a document that exists — the session outlives the logout POST, so those tabs are
+  // mounted, authenticated, and each about to run this effect. CI caught it against the
+  // second-tab test itself: tab B re-opened the gate and wrote all five snapshots into
+  // the store tab A had just cleared. Passing the session's own name lets the gate refuse
+  // the session that closed it and admit only a genuinely new one.
+  //
+  // `[]` still matters for a second, separate reason: the deps of the sync effect below
+  // are four useCallbacks, so riding it re-ran this at arbitrary moments, including inside
+  // the logout window.
   //
   // It deliberately does not touch the offline-reads OFF SWITCH, which is a separate
   // promise with its own toggle.
   useEffect(() => {
-    void updateGate(openSession);
-  }, []);
+    void openSessionForDocument(deviceSessionKey);
+  }, [deviceSessionKey]);
 
   useEffect(() => {
     // Start the initial IndexedDB reads and replay from a browser task. Their state

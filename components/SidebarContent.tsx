@@ -145,16 +145,20 @@ export default function SidebarContent({
   // the common case renders, session-free, for whoever picks the phone up next. The
   // 2s bound is a liveness guarantee for the person logging out and nothing more.
   //
-  // WHAT DOES COVER IT is `clearQueue` CLOSING the snapshot store, synchronously and
-  // before it awaits anything (lib/offline/snapshot-db.ts). This page stays mounted,
+  // WHAT DOES COVER IT is `clearQueue` CLOSING THE DEVICE WRITE GATE in the same
+  // transaction as the wipe (lib/offline/write-gate.ts). This page stays mounted,
   // authenticated and interactive for the whole duration of the logout POST below, and
-  // that window admits two different re-writes:
-  //   • a refresh already in flight, dropped by the generation bump; and
-  //   • a refresh that STARTS after the wipe — whose generation is legitimately current,
-  //     which finds an empty store, asks for all five kinds, and is answered 200 because
-  //     the session does not end until the POST lands.
-  // The second is the one that actually shipped red. After the close, this document
-  // never writes a snapshot again, whatever generation it holds.
+  // that window admitted four different re-writes, each found after the previous fix:
+  //   • a refresh already in flight — dropped by the generation the gate carries;
+  //   • a refresh that STARTS after the wipe, whose generation is legitimately current,
+  //     which finds an empty store, asks for all five kinds and is answered 200 because
+  //     the session does not end until the POST lands;
+  //   • the same thing from ANOTHER TAB, which shares the database and shares no memory;
+  //   • a queue flush's retry write and a form draft's 600ms debounce, landing after.
+  // Which is why the gate is neither in this component nor in a module variable: it is a
+  // record in the database the writes land in, read inside each write's own transaction,
+  // and it stays closed until a DIFFERENT session opens it — not merely until some tab
+  // mounts, because every tab open right now is about to do exactly that.
   async function logoutAfterWipe(): Promise<void> {
     clearEmergencyPayload();
     try {

@@ -95,10 +95,13 @@ async function capturedAll(page: Page): Promise<void> {
 }
 
 /** Hold every logout Server Action open, so the authenticated window is a real interval. */
-async function holdLogoutPost(page: Page): Promise<void> {
+async function holdLogoutPost(
+  page: Page,
+  ms: number = LOGOUT_POST_LATENCY_MS
+): Promise<void> {
   await page.route("**/*", async (route) => {
     if (route.request().method() === "POST") {
-      await new Promise((r) => setTimeout(r, LOGOUT_POST_LATENCY_MS));
+      await new Promise((r) => setTimeout(r, ms));
     }
     await route.continue();
   });
@@ -205,6 +208,92 @@ test("R2 — a SECOND TAB does not write everything back after the first logs ou
     "the second tab asked the server for snapshots after the first logged out"
   ).toBe(0);
   await tabB.close();
+});
+
+test("R2b — a tab that LOADS inside the logout window does not re-open the gate", async ({
+  page,
+  context,
+}: {
+  page: Page;
+  context: BrowserContext;
+}) => {
+  test.slow();
+
+  // THE SAME FINDING AS R2, WITH THE RACE TAKEN OUT, and it is here because R2 alone did
+  // not hold the property. R2 failed on CI against the very fix written for it: the gate
+  // was re-opened by `updateGate(openSession)` on MOUNT, and tab B — mounted before the
+  // logout, still mounted after it — ran that effect whenever the loaded runner got
+  // round to scheduling it. Whether tab B won or lost was a timing coin flip, which is
+  // why R2 passed locally 12/12 and failed 2 of 3 repeats on CI.
+  //
+  // A tab that OPENS during the logout window needs no coin flip at all. The session
+  // outlives the logout POST, so this document is served, authenticated, by a live
+  // session — the one that is in the middle of ending. "A document mounted" is true of
+  // it; "a new session began" is not, and only the second may re-open the gate.
+  const LONG_HOLD_MS = 20_000;
+
+  await login(page);
+  await page.goto("/");
+  await capturedAll(page);
+
+  await holdLogoutPost(page, LONG_HOLD_MS);
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect.poll(() => storedKinds(page), { timeout: 15_000 }).toEqual([]);
+
+  // Opened after the wipe, while the session is still alive.
+  const late = await context.newPage();
+  let lateGets = 0;
+  await late.route("**/api/offline-snapshots*", async (route) => {
+    lateGets += 1;
+    await route.continue();
+  });
+  await late.goto("/");
+
+  // NON-VACUITY CONTROL, and the assertions below mean nothing without it: this tab must
+  // really have been served the authenticated app. If the session had already ended it
+  // would sit on /login, never mount the refresher, and write nothing for a reason that
+  // has nothing to do with the gate.
+  await expect(late.getByRole("button", { name: "Log out" })).toBeVisible({
+    timeout: 20_000,
+  });
+
+  // Longer than the refresher's own initial delay, so this is the window it would have
+  // used rather than a window that never arrived.
+  await late.waitForTimeout(4_000); // waitfortimeout-ok: absence — the refresh window must pass with nothing written
+
+  expect(await storedKinds(late)).toEqual([]);
+  expect(
+    lateGets,
+    "a tab opened inside the logout window asked the server for snapshots"
+  ).toBe(0);
+  await late.close();
+});
+
+test("R2c — the NEXT person to sign in on the device gets the feature back", async ({
+  page,
+}: {
+  page: Page;
+}) => {
+  test.slow();
+
+  // The other half of R2b, and the reason the fix is an identity rather than "once
+  // closed, stay closed". A close that no login could undo would be a silent, permanent
+  // death of offline reads on any device anyone had ever logged out of — a worse bug than
+  // the one being fixed, and invisible until someone reached a dead zone and found
+  // nothing there.
+  await login(page);
+  await page.goto("/");
+  await capturedAll(page);
+
+  await page.getByRole("button", { name: "Log out" }).click();
+  await page.waitForURL(/\/login/, { timeout: 30_000 });
+  await expect.poll(() => storedKinds(page), { timeout: 15_000 }).toEqual([]);
+
+  // A different session on the same device, same IndexedDB, gate still closed for the
+  // previous one.
+  await login(page);
+  await page.goto("/");
+  await capturedAll(page);
 });
 
 test("R3d — a queue flush in flight does not re-write its intents after logout", async ({

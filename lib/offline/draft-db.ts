@@ -21,6 +21,32 @@ function store(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(DRAFTS_STORE, mode).objectStore(DRAFTS_STORE);
 }
 
+// ── DRAFT MUTATIONS RUN IN CALL ORDER ────────────────────────────────────────
+//
+// components/useFormDraft fires the two that matter WITHOUT AWAITING EITHER: the autosave
+// debounce (and the unmount flush) call `putDraft`, and a successful save calls `clear()`
+// → `deleteDraft`. Nothing made the second land after the first, so the pair raced on how
+// long each took — and the write got substantially slower the moment it was gated: a
+// token capture and a guarded transaction where there had been one plain put. A put that
+// overtakes its own delete leaves the draft on the device, and the person is then offered
+// "restore your unsaved work?" for work that saved perfectly well. #2471's reload spec
+// caught precisely that on a loaded CI runner, against this branch.
+//
+// So the mutations share one chain and run in the order they were called. Ordering is
+// what the callers already assume by writing them in sequence; this makes the assumption
+// true rather than probable, and it stays true however slow a gated write becomes. Reads
+// stay off the chain: a read reorders nothing, and putting them on it would make every
+// draft lookup queue behind a write.
+let mutations: Promise<unknown> = Promise.resolve();
+
+function inOrder<T>(work: () => Promise<T>): Promise<T> {
+  const next = mutations.then(work, work);
+  // The chain has to survive a rejected link, or one failure strands every later draft
+  // write behind it forever. Each caller still gets its own result.
+  mutations = next.catch(() => undefined);
+  return next;
+}
+
 /**
  * Write (overwrite) one form's draft.
  *
@@ -35,10 +61,12 @@ function store(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
  * a wipe landing between the capture and the transaction moves the generation, and the
  * write is refused for that reason instead.
  */
-export async function putDraft(draft: FormDraft): Promise<void> {
-  const token = await captureWriteToken();
-  await guardedWrite([DRAFTS_STORE], "drafts", token, (tx) => {
-    tx.objectStore(DRAFTS_STORE).put(draft);
+export function putDraft(draft: FormDraft): Promise<void> {
+  return inOrder(async () => {
+    const token = await captureWriteToken();
+    await guardedWrite([DRAFTS_STORE], "drafts", token, (tx) => {
+      tx.objectStore(DRAFTS_STORE).put(draft);
+    });
   });
 }
 
@@ -72,7 +100,11 @@ export async function getDraft(
 }
 
 /** Drop one form's draft — on successful submit, or on explicit discard. */
-export async function deleteDraft(key: string): Promise<void> {
+export function deleteDraft(key: string): Promise<void> {
+  return inOrder(() => deleteDraftNow(key));
+}
+
+async function deleteDraftNow(key: string): Promise<void> {
   if (!hasIndexedDB()) return;
   try {
     const db = await openOfflineDb();
@@ -89,7 +121,11 @@ export async function deleteDraft(key: string): Promise<void> {
  * Sweep every expired draft. Called once when the draft machinery first mounts, so
  * the TTL is enforced even for forms the user never reopens.
  */
-export async function purgeExpiredDrafts(now: number): Promise<void> {
+export function purgeExpiredDrafts(now: number): Promise<void> {
+  return inOrder(() => purgeExpiredDraftsNow(now));
+}
+
+async function purgeExpiredDraftsNow(now: number): Promise<void> {
   if (!hasIndexedDB()) return;
   try {
     const db = await openOfflineDb();

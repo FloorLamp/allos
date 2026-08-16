@@ -75,10 +75,34 @@ export interface CurrentSession {
   // The caller's access level on `profile` — 'write' unless the active profile is
   // shared with this member as a read-only grant. Admins are always 'write'.
   access: Access;
+  // WHICH SESSION THIS IS, safe to hand to the browser (#2908). Opaque, stable for
+  // the life of one session, and different for every other one. See deviceSessionKey.
+  deviceSessionKey: string;
 }
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+// A name for THIS session that the browser may hold, and that grants nothing.
+//
+// The device write gate (lib/offline/write-gate.ts) has to answer one question that no
+// amount of client-side state can: "is the document asking to re-open device writes part
+// of the session that closed them, or a new one?" A mount cannot answer it — every tab
+// open at logout is still mounted, and each of them re-opened the gate and wrote a
+// logged-out login's PHI straight back. Identity answers it, so the session needs a name.
+//
+// It is a second hash of the stored token hash, truncated. That is deliberate on both
+// counts: it is not the token (which stays httpOnly and never reaches script), it is not
+// the token_hash the server authenticates against, and it is not reversible to either, so
+// the copy that ends up at rest in IndexedDB beside the offline snapshots authenticates
+// nothing if the device is taken. It only has to be comparable and unique per session.
+function deviceSessionKey(tokenHash: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(`allos-device-session:${tokenHash}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 // Prepared statements hoisted to module scope — these run on effectively every
@@ -275,6 +299,7 @@ export function resolveSessionToken(token: string): CurrentSession | null {
     login: { id: row.loginId, username: row.username, role: row.role },
     profile,
     access: accessForProfile(row.loginId, row.role, profile.id),
+    deviceSessionKey: deviceSessionKey(tokenHash),
   };
 }
 
