@@ -318,6 +318,15 @@ ${nodeLine}
   a failure it did not have.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
+- A PR's REVIEWS AND ITS COMMENTS ARE TWO DIFFERENT ENDPOINTS, and a review you were
+  told to read may be in either. \`/pulls/<n>/reviews\` returns only what was
+  submitted through the review API; anything posted as ordinary prose on the PR is an
+  ISSUE COMMENT and appears solely in \`/issues/<n>/comments\`. Read BOTH, always, and
+  reconcile them by timestamp. This is not hypothetical: a fix round on #2981 was
+  briefed to read \`/pulls/2981/reviews\`, which returned ONE of its two blocking
+  reviews — the earlier one, carrying findings D1 through D8, was an issue comment and
+  would have been invisible. If the count you get back is smaller than the brief
+  implies, you are on the wrong endpoint; say so rather than working from half a spec.
 - PREMISE-AUDIT AGAINST main BEFORE WRITING ANYTHING. An issue describes the tree it
   was FILED against; the brief was written from the issue. Grep for the modules and
   symbols it says are missing and confirm they still are. If the work is already done
