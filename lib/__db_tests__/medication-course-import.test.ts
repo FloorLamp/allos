@@ -285,7 +285,11 @@ describe("persist derived medication courses", () => {
           null,
           "Take 1.5 mL (1.25 mg) by nebulization every 6 (six) hours if needed for wheezing."
         ),
-        rx("amoxicillin", null, "Amoxicillin 400 MG/5ML Suspension Reconstituted"),
+        rx(
+          "amoxicillin",
+          null,
+          "Amoxicillin 400 MG/5ML Suspension Reconstituted"
+        ),
       ])
     );
 

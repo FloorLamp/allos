@@ -52,15 +52,6 @@ const NAME_STRENGTH_RE =
 const NAME_FORM_TAIL_RE =
   /\s+(tablets?|tabs?|capsules?|caps?|pills?|softgels?|lozenges?|patches?|sprays?|drops?|solution|suspension|injection|cream|ointment|gel|elixir|syrup)\b.*$/i;
 
-// A PARENTHESIZED strength/concentration segment in a drug name — the common
-// MyChart/e-prescribing rendering: "albuterol (2.5 MG/3ML)", "amoxicillin
-// (400 mg/5 mL) suspension" (issue #1026). NAME_STRENGTH_RE requires a bare
-// digit after whitespace, so it never saw these. A parenthetical is stripped
-// ONLY when its content is strength-shaped — a number + dose unit, optionally
-// "/denominator" segments for a concentration or combination strength — so an
-// ingredient/brand parenthetical ("Tylenol (acetaminophen)") carries no
-// digit+unit pair and always survives (pinned by test). Position-independent:
-// the segment may sit mid-name before a form word.
 // ONE dose grammar, shared by every reader below (the paren-strength strip, the
 // name-strength recovery, and the dose-shape guard) so the three can't drift.
 //
@@ -81,6 +72,17 @@ const RATIO_TAIL = String.raw`(?:\s*/\s*(?:${NUM}\s*)?${DENOM_UNIT})*`;
 const QUANTITY = String.raw`${NUM}\s*${DOSE_UNIT}${RATIO_TAIL}`;
 const DOSE_FORM = String.raw`(?:tab(?:let)?s?|caps?(?:ule)?s?|pills?|softgels?|lozenges?|puffs?|drops?|patch(?:es)?|sprays?|units?|sachets?|ampoules?|vials?|suppositor(?:y|ies)|applications?)`;
 const STRENGTH_CONTENT = QUANTITY;
+
+// A PARENTHESIZED strength/concentration segment in a drug name — the common
+// MyChart/e-prescribing rendering: "albuterol (2.5 MG/3ML)", "amoxicillin
+// (400 mg/5 mL) suspension" (issue #1026). NAME_STRENGTH_RE requires a bare
+// digit after whitespace, so it never saw these. A parenthetical is stripped
+// ONLY when its content is strength-shaped — a number + dose unit, optionally
+// "/denominator" segments for a concentration or combination strength — so an
+// ingredient/brand parenthetical ("Tylenol (acetaminophen)") carries no
+// digit+unit pair and always survives (pinned by test). Position-independent:
+// the segment may sit mid-name before a form word.
+//
 // The cleaning form truncates from the strength parenthetical TO THE END —
 // mirroring NAME_STRENGTH_RE's `.*$` — so the form/packaging words that follow
 // ("nebulizer solution", "suspension") go with it.
@@ -401,8 +403,7 @@ export function parsePrescription(
   // the row was the only record of (#2939). Last in the chain: it's the most
   // speculative reading, and only a value that is neither a sig nor a whole dose —
   // i.e. name-shaped text — ever reaches it.
-  const productStrength =
-    value && !valueIsSig ? strengthFromName(value) : null;
+  const productStrength = value && !valueIsSig ? strengthFromName(value) : null;
   const strength =
     explicitStrength ??
     strengthFromName(rawName) ??

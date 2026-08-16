@@ -151,7 +151,11 @@ const RECOGNITION_CORPUS: {
     key: null,
     why: "the same excipient, other mineral",
   },
-  { name: "Zinc Stearate", key: null, why: "the same excipient, other mineral" },
+  {
+    name: "Zinc Stearate",
+    key: null,
+    why: "the same excipient, other mineral",
+  },
   { name: "Magnesium Silicate", key: null, why: "an anticaking agent (talc)" },
   // Under-count: shelf spellings that genuinely mean the mineral.
   {
@@ -159,8 +163,16 @@ const RECOGNITION_CORPUS: {
     key: "magnesium",
     why: "front-of-bottle abbreviation",
   },
-  { name: "Mag L-Threonate", key: "magnesium", why: "the same, spelled in full" },
-  { name: "Milk of Magnesia", key: "magnesium", why: "a real magnesium product" },
+  {
+    name: "Mag L-Threonate",
+    key: "magnesium",
+    why: "the same, spelled in full",
+  },
+  {
+    name: "Milk of Magnesia",
+    key: "magnesium",
+    why: "a real magnesium product",
+  },
   // Near-misses: what the careless loosening would have swept in.
   { name: "Magnolia", key: null, why: "a herb — no form word, no mineral" },
   { name: "Mag 07", key: null, why: "an abbreviation with no salt named" },
@@ -245,9 +257,9 @@ describe("nutrient recognition, in both directions (#2934)", () => {
     );
     expect(asCompound.total).toBeCloseTo(166, 0); // 2000 mg × 8.3%
     expect(asCompound.contributors[0].compound).toBe("magnesium L-threonate");
-    expect(stackUlWarnings([active("Mag Threonate", ["2 g"])], 30, null)).toEqual(
-      []
-    );
+    expect(
+      stackUlWarnings([active("Mag Threonate", ["2 g"])], 30, null)
+    ).toEqual([]);
   });
 });
 

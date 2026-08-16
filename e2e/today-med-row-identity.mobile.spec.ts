@@ -48,7 +48,11 @@ async function detailsPastControls(page: Page): Promise<string[]> {
         row.querySelector(":scope > div")?.children ?? []
       );
       // One cell means the row has no controls beside the identity pair.
-      if (!detail || cells.length < 2 || row.getBoundingClientRect().width === 0)
+      if (
+        !detail ||
+        cells.length < 2 ||
+        row.getBoundingClientRect().width === 0
+      )
         return [];
       const controls = cells[cells.length - 1];
       const overhang =
