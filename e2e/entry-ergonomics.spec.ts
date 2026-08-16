@@ -608,10 +608,13 @@ test("the activity form keeps workout entry primary and context visible across b
       .evaluate((node) => getComputedStyle(node).filter)
   ).not.toBe("none");
 
-  // Crossing into the mobile presentation closes the desktop dock. Reopen the
-  // same activity in the overlay and pin the exercise/set schema while logging.
+  // Crossing into the mobile presentation closes the desktop dock. At 390px
+  // the row expands the record in place (#2897); its title button then opens
+  // the overlay editor. exact: true so the card's title button matches, not
+  // the row (whose accessible name carries the whole summary line).
   await page.setViewportSize({ width: 390, height: 844 });
-  await pushCard.getByRole("button", { name: "Push day" }).click();
+  await pushRow.click();
+  await page.getByRole("button", { name: "Push day", exact: true }).click();
   const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();
   expect(
