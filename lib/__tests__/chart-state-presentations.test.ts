@@ -156,7 +156,9 @@ describe("state 3 — an over-limit hole earns a hole", () => {
         "unlabelled empty box (#2258) and the fit rule of #2871 loses the " +
         "channel it drops the label in favour of"
     ).toContain("filterNull={false}");
-    expect(funnel).toContain('return name === "band" ? null : ["No data", label];');
+    expect(funnel).toContain(
+      'return name === "band" ? null : ["No data", label];'
+    );
   });
 
   it("an unlogged band is distinguishable from a protocol window", () => {
