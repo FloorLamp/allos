@@ -465,8 +465,16 @@ test("a never-created session closed under a stale build queues its capture, and
   }
 });
 
-// The healthy-path complement — a live draft never outliving a successful save, and
-// the offer banner for a markerless (organic) revisit — stays in
-// e2e/form-drafts.spec.ts, deliberately unchanged by this issue: nothing about an
-// ordinary reopen is a continuation, so nothing about it may apply a draft without a
-// tap.
+// The healthy-path complement is now split, and this file owns half of it.
+//
+// "A live draft never outlives a successful save" USED to live in
+// e2e/form-drafts.spec.ts. The test-fragility sweep deleted it there, because the
+// recovery test above already proves it in live mode and on the harder path: after
+// the reload it polls `activityDraftCount` to zero once the restored edit saves, so
+// the clear-on-success effect (components/ActivityForm.tsx) is asserted through a
+// live editor rather than a plain form. Duplicating it cost a second stateful
+// workout teardown and bought nothing.
+//
+// The offer banner for a markerless (organic) revisit does still live in
+// e2e/form-drafts.spec.ts: nothing about an ordinary reopen is a continuation, so
+// nothing about it may apply a draft without a tap.
