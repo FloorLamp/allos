@@ -210,6 +210,372 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
   });
 });
 
+// THE CORRECTION CHIPS' CLOCK (#2019/#2020/#2875).
+//
+// A registry entry answers "who owns this token", and the guard above makes sure every
+// minted prefix has an owner. It cannot see the OTHER half: whether that owner's `dead`
+// predicate actually ages the token out. A correction chip claims "these entries are
+// still correctable here", which stops being true an hour after the burst — and the
+// family is the only thing that says so.
+//
+// The practice domain shipped with the registry entries and no `dead` call, and the
+// registry guard was green throughout. Two sweeps after the burst edited nothing, the
+// chips stood until the 3-day pointer prune and then answered "Couldn't find those
+// entries any more", and a nudge whose remaining claims were all chips never closed.
+// So the pairing is asserted directly, as source text — the same posture as the
+// vocabulary scan above, in the same tier, for the same reason.
+//
+// ── WHAT THIS GUARD COVERS, AND WHAT IT DOES NOT ─────────────────────────────
+//
+// Stated exactly, because an over-stated guard is worse than a narrow one — it is what
+// stops the next person looking for the case it misses. Both bounds were established by
+// running the mutants, not by reading.
+//
+// IT COVERS: that the family OWNING a domain's prefixes calls `deadCorrectionTokens` on
+// that domain, inside its own `dead`. Scoping the scan to that family's `dead` body is
+// what closes the hole a file-wide scan leaves — a fourth domain whose only call sat in
+// a helper no family reached passed a global scan, because nothing tied the call to the
+// family that owns the prefixes.
+//
+// IT ADMITS EVERY SPELLING OF THE SAME CODE, and that bound is as load-bearing as the
+// other two. A guard that fails on a behaviour-preserving refactor is not conservative;
+// it teaches the next person to edit the GUARD rather than the code, which is how a
+// scan quietly stops meaning anything. Three refactors turned it red and now do not:
+// writing a family's `dead` as an arrow property rather than a method (the dangerous
+// one — the scan saw NO family that way and only `food` was ever anchored), aliasing
+// the domain constant, and the natural fourth-domain move of one shared helper taking
+// `prefixes` as a parameter. A domain is therefore recognised by its declared name, by
+// any alias of it, or by its own prefix LITERALS — and the fixtures below pin each of
+// those, against synthetic sources, so the scan's reach is tested rather than asserted.
+//
+// The alias resolution is TEXTUAL and one hop — a rename at the import, or a
+// `const X = DOMAIN` in this file. A domain re-exported under a third name from a third
+// module would not be recognised, and the answer there is a false POSITIVE (a domain
+// reported as unswept when it is swept), which is the direction to fail in: it is read
+// and argued with, where a false negative is silence.
+//
+// IT DOES NOT COVER what `dead` does with the result. Reverting only the early return on
+// the empty-`wanted` path — half of the original defect, exactly as it shipped — leaves
+// this file green: the call is still there, its result is simply dropped. Source text is
+// the wrong instrument for that, and it is already pinned where behaviour is observable:
+// `lib/__db_tests__/practice-time-correction.test.ts`'s "closes a nudge whose only
+// remaining claims are lapsed chips" fails on that mutant. The pair is what covers the
+// defect; neither half claims to do it alone.
+describe("every correction domain reaches the sweep's clock (#2875)", () => {
+  const CORRECTION_ROWS = path.join(NOTIFY_DIR, "correction-rows.ts");
+  const RECONCILE = path.join(NOTIFY_DIR, "reconcile.ts");
+
+  const reconcileSrc = () => stripComments(fs.readFileSync(RECONCILE, "utf8"));
+  const domainsSrc = () =>
+    stripComments(fs.readFileSync(CORRECTION_ROWS, "utf8"));
+
+  // The source between the brace at `open` and its match. The scan needs BODIES, not
+  // lines: what makes a call count is which body it sits in.
+  function block(src: string, open: number): string {
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}" && --depth === 0) return src.slice(open, i + 1);
+    }
+    return "";
+  }
+
+  // The body of a function whose parameter list opens at `paren`. The parameters are
+  // skipped by matching them rather than by looking for the next `{`: an inline object
+  // TYPE in a signature (`p: { chatId: string }`) opens a brace that is not the body,
+  // and reading that as the body is how a scan silently stops seeing anything.
+  function bodyAfterParams(src: string, paren: number): string {
+    let depth = 0;
+    for (let i = paren; i < src.length; i++) {
+      if (src[i] === "(") depth++;
+      else if (src[i] === ")" && --depth === 0)
+        return block(src, src.indexOf("{", i));
+    }
+    return "";
+  }
+
+  // The declared domains: `export const X: CorrectionPrefixes = { chip, at, … }`, with
+  // the prefixes each one actually mints. The source is a PARAMETER so the cases below
+  // can drive the scan with a fixture and prove what it can and cannot see.
+  function declaredDomains(
+    src = domainsSrc()
+  ): { name: string; prefixes: string[] }[] {
+    const out: { name: string; prefixes: string[] }[] = [];
+    for (const m of src.matchAll(
+      /export\s+const\s+([A-Z0-9_]+)\s*:\s*CorrectionPrefixes\s*=\s*/g
+    )) {
+      const body = block(src, src.indexOf("{", m.index + m[0].length));
+      out.push({
+        name: m[1],
+        prefixes: [
+          ...body.matchAll(/\b(?:chip|at):\s*"([a-z][a-z0-9]*)"/g),
+        ].map((p) => p[1]),
+      });
+    }
+    return out;
+  }
+
+  // Which `const <ident>: FamilyReconciler` implements each registry family key, read
+  // off the FAMILIES record so a rename cannot silently unhook the scan.
+  function familyImpls(src = reconcileSrc()): Map<string, string> {
+    const at = src.indexOf("const FAMILIES");
+    const body = block(src, src.indexOf("{", at));
+    const out = new Map<string, string>();
+    for (const m of body.matchAll(
+      /(?:"([a-z-]+)"\s*:\s*(\w+)|^\s*(\w+)\s*,)/gm
+    ))
+      if (m[1]) out.set(m[1], m[2]);
+      else if (m[3]) out.set(m[3], m[3]);
+    return out;
+  }
+
+  // The module's own top-level functions, by name.
+  function declaredFunctions(src: string): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const m of src.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g))
+      out.set(m[1], bodyAfterParams(src, m.index + m[0].length - 1));
+    for (const m of src.matchAll(
+      /\bconst\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]*)?=\s*(?:async\s*)?\([^)]*\)\s*(?::[^=\n]*)?=>\s*\{/g
+    ))
+      out.set(m[1], block(src, m.index + m[0].length - 1));
+    return out;
+  }
+
+  // The source one family's `dead` can reach INSIDE reconcile.ts: its own body, plus the
+  // bodies of every local function it names, transitively — #2817's rule, because the
+  // same escape applies. Anything outside this scope is unreachable from the sweep, and
+  // a `deadCorrectionTokens` call sitting there ages nothing out however plainly it
+  // reads. Reaching THROUGH the scope is what makes an ordinary tidying refactor legal
+  // while a helper nobody calls stays caught.
+  // The family's `dead`, in whatever shape it is WRITTEN. A method, an arrow or function
+  // property, or a reference to a named function elsewhere in the module are the same
+  // predicate — and a scan that recognised only `dead(` saw none of a module whose
+  // families are written the other way, which is a silent pass rather than a failure.
+  function deadBody(family: string, fns: Map<string, string>): string | null {
+    const m =
+      /\bdead\s*(?::\s*(?:async\s+)?)?(?:\(|function\s*\(|([A-Za-z_$][\w$]*)\s*[,}])/.exec(
+        family
+      );
+    if (!m) return null;
+    // `dead: someNamedPredicate,` — the body is that function's.
+    if (m[1]) return fns.get(m[1]) ?? "";
+    return bodyAfterParams(family, family.indexOf("(", m.index));
+  }
+
+  // Every identifier that NAMES a domain where the sweep is written: its declared name,
+  // an `import { NAME as ALIAS }` rename, and a local `const ALIAS = NAME`. Aliasing a
+  // constant changes nothing about what the code does, so it may not change the answer.
+  function domainNames(name: string, src: string): string[] {
+    const out = [name];
+    for (const m of src.matchAll(
+      new RegExp(`\\b${name}\\s+as\\s+([A-Za-z_$][\\w$]*)`, "g")
+    ))
+      out.push(m[1]);
+    for (const m of src.matchAll(
+      new RegExp(
+        `\\bconst\\s+([A-Za-z_$][\\w$]*)\\s*(?::[^=\\n]*)?=\\s*${name}\\s*[;\\n]`,
+        "g"
+      )
+    ))
+      out.push(m[1]);
+    return out;
+  }
+
+  function deadScope(impl: string, src = reconcileSrc()): string {
+    const at = src.search(
+      new RegExp(`const\\s+${impl}\\s*:\\s*FamilyReconciler\\s*=\\s*\\{`)
+    );
+    if (at < 0) return "";
+    const family = block(src, src.indexOf("{", at));
+    const fns = declaredFunctions(src);
+    const entry = deadBody(family, fns);
+    if (entry == null) return "";
+    const seen = new Set<string>();
+    const queue = [entry];
+    let scope = "";
+    while (queue.length > 0) {
+      const body = queue.pop() as string;
+      scope += `\n${body}`;
+      for (const [name, other] of fns)
+        if (!seen.has(name) && new RegExp(`\\b${name}\\b`).test(body)) {
+          seen.add(name);
+          queue.push(other);
+        }
+    }
+    return scope;
+  }
+
+  it("the scan finds both sides (it would pass vacuously otherwise)", () => {
+    // Anchored on the ORIGINAL domain rather than on a count: a count assertion would
+    // fail again for the very defect the next case reports, which reads as two bugs.
+    const food = declaredDomains().find((d) => d.name === "FOOD_TIME_PREFIXES");
+    expect(food?.prefixes).toEqual(["foodtime", "foodtimeat"]);
+    expect(familyImpls().get("food")).toBe("food");
+    expect(deadScope("food")).toContain("deadCorrectionTokens(");
+  });
+
+  // Does this family's `dead` reach the clock FOR THIS DOMAIN? Two questions, and they
+  // are asked separately on purpose: that the scope calls `deadCorrectionTokens` at all,
+  // and that the domain is what it is called ABOUT. The second is answered by any of the
+  // domain's names — declared, aliased — or by its own prefix literals, because the one
+  // refactor a fourth domain invites is a shared helper taking `prefixes` as a parameter,
+  // and there the constant reaches the call through an argument rather than beside it.
+  function reachesClock(
+    domain: { name: string; prefixes: string[] },
+    scope: string,
+    src: string
+  ): boolean {
+    if (!/deadCorrectionTokens\s*\(/.test(scope)) return false;
+    const names = domainNames(domain.name, src).map((n) => `\\b${n}\\b`);
+    const literals = domain.prefixes.map((p) => `"${p}"`);
+    return new RegExp([...names, ...literals].join("|")).test(scope);
+  }
+
+  it("every declared domain's chips die on the hour-long clock, in ITS OWN family", () => {
+    const src = reconcileSrc();
+    const impls = familyImpls(src);
+    const unswept: string[] = [];
+    for (const domain of declaredDomains()) {
+      // The family is resolved from the PREFIXES, not from a name match: a domain is
+      // swept by whichever family owns the tokens it mints, and that is the pairing a
+      // file-wide scan cannot see.
+      const family = owningFamily(domain.prefixes, (t) => t);
+      const impl = family ? impls.get(family) : null;
+      const scope = impl ? deadScope(impl, src) : "";
+      if (!reachesClock(domain, scope, src))
+        unswept.push(`${domain.name} (family: ${family ?? "none"})`);
+    }
+    expect(
+      unswept,
+      `these correction domains have no clock: ${unswept.join(", ")}. A family ` +
+        `whose \`dead\` never calls deadCorrectionTokens on its OWN domain leaves ` +
+        `its chips on the keyboard until the pointer is pruned days later, where ` +
+        `they answer "Couldn't find those entries any more" — and a message whose ` +
+        `only remaining claims are chips is never closed at all.`
+    ).toEqual([]);
+  });
+
+  // ---- what the scan can SEE, driven by fixtures rather than by the real files ----
+  //
+  // Each of these is a behaviour-preserving way of writing the same sweep. The scan has
+  // to give the same answer for all of them, because a guard that goes red on a tidying
+  // refactor gets edited instead of obeyed — and the edit that silences it is the same
+  // edit that blinds it.
+
+  // A reconcile.ts in miniature: one domain, one family, one registry hook.
+  function fixture(dead: string, extra = ""): string {
+    return `
+import { WOTIME } from "./correction-rows";
+${extra}
+const workout: FamilyReconciler = {
+  ${dead}
+};
+const FAMILIES = { workout };
+`;
+  }
+  const WOTIME = { name: "WOTIME", prefixes: ["wotime", "wotimeat"] };
+
+  it("sees a `dead` written as an arrow property, not only as a method", () => {
+    // THE DANGEROUS ONE. `dead(` matched a method and nothing else, so a module whose
+    // families are written as arrow properties had NO family the scan could enter — it
+    // stayed green while every domain went unswept.
+    const method = fixture(
+      `dead(profileId, tokens, p) { return deadCorrectionTokens(tokens, WOTIME, p); },`
+    );
+    const arrow = fixture(
+      `dead: (profileId, tokens, p) => { return deadCorrectionTokens(tokens, WOTIME, p); },`
+    );
+    for (const src of [method, arrow]) {
+      expect(deadScope("workout", src)).toContain("deadCorrectionTokens(");
+      expect(reachesClock(WOTIME, deadScope("workout", src), src)).toBe(true);
+    }
+  });
+
+  it("follows a `dead` that is a reference to a named predicate", () => {
+    const src = fixture(
+      `dead: workoutDead,`,
+      `
+function workoutDead(profileId, tokens, p) {
+  return deadCorrectionTokens(tokens, WOTIME, p);
+}
+`
+    );
+    expect(reachesClock(WOTIME, deadScope("workout", src), src)).toBe(true);
+  });
+
+  it("counts an ALIASED constant as the domain it is", () => {
+    const src = fixture(
+      `dead(profileId, tokens, p) { return deadCorrectionTokens(tokens, WORKOUT_CHIPS, p); },`,
+      `const WORKOUT_CHIPS = WOTIME;`
+    );
+    expect(reachesClock(WOTIME, deadScope("workout", src), src)).toBe(true);
+  });
+
+  it("counts a shared helper that takes the prefixes as a PARAMETER", () => {
+    // The natural refactor when a fourth domain arrives: one helper, the domain passed
+    // in. The constant then reaches the call through an argument, so requiring it beside
+    // `deadCorrectionTokens(` reports a defect that is not there.
+    const src = fixture(
+      `dead(profileId, tokens, p) { return chipClock(tokens, WOTIME, p); },`,
+      `
+function chipClock(tokens, prefixes, p) {
+  return deadCorrectionTokens(tokens, prefixes, liveAnchors(p));
+}
+`
+    );
+    expect(reachesClock(WOTIME, deadScope("workout", src), src)).toBe(true);
+  });
+
+  it("still fails a call the family's `dead` cannot reach", () => {
+    // The hole the file-wide scan left, re-pinned against the looser matcher: a helper
+    // nobody calls sweeps nothing, however plainly it reads.
+    const src = fixture(
+      `dead(profileId, tokens) { return new Set(); },`,
+      `
+function unusedClock(tokens, p) {
+  return deadCorrectionTokens(tokens, WOTIME, p);
+}
+`
+    );
+    expect(reachesClock(WOTIME, deadScope("workout", src), src)).toBe(false);
+  });
+
+  it("still fails a family that sweeps somebody ELSE's domain", () => {
+    const src = fixture(
+      `dead(profileId, tokens, p) { return deadCorrectionTokens(tokens, FOOD_TIME_PREFIXES, p); },`
+    );
+    expect(reachesClock(WOTIME, deadScope("workout", src), src)).toBe(false);
+  });
+
+  it("reads a fixture's domain declarations the same way it reads the real file", () => {
+    // The fixtures above hand the domain in by hand; this is what stops that being a
+    // fiction — `declaredDomains` finds the same shape in a synthetic source.
+    expect(
+      declaredDomains(
+        `export const WOTIME: CorrectionPrefixes = { chip: "wotime", at: "wotimeat", dayKeyed: false };`
+      )
+    ).toEqual([{ name: "WOTIME", prefixes: ["wotime", "wotimeat"] }]);
+  });
+
+  it("every declared domain's prefixes are owned by a family, not inert", () => {
+    // A chip declared INERT would be swept-proof in the other direction: `dead` would
+    // never be consulted for it. The pair has to be a real claim on a real family.
+    const prefixes = declaredDomains().flatMap((d) => d.prefixes);
+    expect(prefixes.length).toBeGreaterThanOrEqual(6);
+    for (const p of prefixes) {
+      const entry = reconcileEntryFor(p);
+      expect(
+        entry,
+        `no registry entry for correction prefix "${p}"`
+      ).toBeTruthy();
+      expect(
+        entry && "family" in entry ? entry.family : null,
+        `correction prefix "${p}" must be owned by a family, never inert`
+      ).toBeTruthy();
+    }
+  });
+});
+
 // THE SECOND COMPLETENESS GUARD (issue #1898). The prefix table above asks "what
 // happens when this BUTTON is still in the chat tomorrow?". This one asks, per KIND,
 // "does sending this again replace the last one, or add to it?" — the question nobody

@@ -199,6 +199,7 @@ import { migration as mMedicalCategoryResidue } from "./20260814-medical-categor
 import { migration as mIntegrationSourceId } from "./20260814-integration-source-id";
 import { migration as mSubstanceRecordedAt } from "./20260815-substance-recorded-at";
 import { migration as mMetricSampleInstants } from "./20260815-metric-sample-instants";
+import { migration as mPracticeTapMessageProvenance } from "./20260816-practice-tap-message-provenance";
 import { migration as mFasts } from "./20260816-fasts";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
@@ -408,6 +409,7 @@ export const MIGRATIONS: Migration[] = [
   mIntegrationSourceId,
   mSubstanceRecordedAt,
   mMetricSampleInstants,
+  mPracticeTapMessageProvenance,
   mFasts,
 ];
 
