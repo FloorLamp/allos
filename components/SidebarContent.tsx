@@ -9,6 +9,7 @@ import Wordmark from "@/components/Wordmark";
 import ProfileIdentityBar from "@/components/ProfileIdentityBar";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearQueue } from "@/lib/offline/queue-db";
+import { reopenForFailedLogout } from "@/lib/offline/write-gate";
 import { logoutAction } from "@/app/(app)/session-actions";
 import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
@@ -172,6 +173,31 @@ export default function SidebarContent({
     logoutFormRef.current?.requestSubmit();
   }
 
+  // AND IF THE LOGOUT NEVER LANDS, THE CLOSE COMES BACK OFF.
+  //
+  // The wipe above closes the gate for THIS session before the POST is even sent, which
+  // is what makes the whole logout window safe. It is also a bet: if the POST fails — no
+  // signal, which is this app's own subject matter, or a 5xx mid-deploy — the session is
+  // still alive and the gate is closed for it, and `openSessionAs` refuses to re-open for
+  // the session that closed it. Nothing changes `sessionKey` short of a SUCCESSFUL logout
+  // and a new login, so the device stayed shut: the #28 write queue stopped capturing
+  // while a dose tap still toasted "saved offline — will sync when you reconnect", drafts
+  // stopped saving, snapshots stopped refreshing. A shipped feature, silently dead, on
+  // the path the error boundary invites the person onto — "Something went wrong … Reload
+  // the app".
+  //
+  // So the closer watches its own bet settle. This runs only here, only after a failure,
+  // and it re-throws so the error still reaches the boundary exactly as before — the
+  // second tab that R2/R2b are about pressed nothing and reaches none of this.
+  async function submitLogout(): Promise<void> {
+    try {
+      await logoutAction();
+    } catch (err) {
+      await reopenForFailedLogout();
+      throw err;
+    }
+  }
+
   return (
     <>
       <div className="flex items-center justify-between gap-2">
@@ -267,7 +293,7 @@ export default function SidebarContent({
               Read-only
             </p>
           )}
-          <form action={logoutAction} ref={logoutFormRef}>
+          <form action={submitLogout} ref={logoutFormRef}>
             <button
               // NOT type="submit" (#2908). The wipe below is an ASYNC IndexedDB
               // transaction and the submit is a NAVIGATION: as a submit button

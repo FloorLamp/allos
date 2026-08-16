@@ -6,7 +6,6 @@ import {
   allSnapshots,
   captureSnapshotToken,
   clearSnapshots,
-  disableSnapshotWrites,
   putSnapshots,
   snapshotWritesClosed,
 } from "@/lib/offline/snapshot-db";
@@ -136,17 +135,11 @@ export default function OfflineSnapshotRefresher({
         // write would be refused either way; this stops the request too.
         if (await snapshotWritesClosed()) return;
         const stored = await allSnapshots();
-        // A store holding ANOTHER profile's payload is a broken invariant, not a state
-        // to reconcile: wipe it whole and re-capture for whoever is active now. The
-        // same answer covers the mixed-store case resolveSnapshotProfile refuses.
         const held = resolveSnapshotProfile(stored);
-        if (stored.length > 0 && held !== activeProfileId) {
-          await clearSnapshots();
-          // Our OWN wipe moved the generation. Re-arm against it: the token exists to
-          // catch somebody else's wipe, and re-capturing after a deliberate identity wipe
-          // is the whole point of the branch we are in.
-          token = await captureSnapshotToken();
-        }
+        // Whether the store belongs to somebody else is decided AFTER the fetch, from the
+        // server's own answer — see the wipe below. Here we only decide what to ask for:
+        // a store we cannot claim tells us nothing about what is missing, so we ask for
+        // everything.
         const mine = held === activeProfileId ? stored : [];
         // What the stored clocks ask for, plus what a tap on this page has marked. The
         // marks are the immediate half of read-your-writes for an ONLINE write: nothing
@@ -174,15 +167,43 @@ export default function OfflineSnapshotRefresher({
         // its next authenticated visit. Nothing re-materializes until it is turned back
         // on.
         if (body.enabled === false) {
-          // The server is authoritative and says this profile is off. Close the lane
-          // rather than only wiping, so a refresh starting a moment later cannot ask
-          // again and be answered differently by a racing toggle.
-          await disableSnapshotWrites();
+          // WIPE, AND DO NOT LATCH. The server is authoritative and it is asked again on
+          // every refresh, so it needs no help from this device to keep saying no —
+          // whereas a device that latched on this answer could never hear the profile
+          // being turned back ON anywhere, and the checkbox would render on above an
+          // empty store forever. The toggle's own close is the one that has to be
+          // persisted, because that is the one window the server has not been told about
+          // yet, and it is released the moment it has.
+          await clearSnapshots();
           return;
         }
         // Never store a body that is not about the profile we asked as. A response that
-        // disagrees means the session moved mid-flight; the next mount re-asks.
+        // disagrees means this DOCUMENT is out of date — a second tab does not re-render
+        // when the profile is switched in the first one — so it must not write, and it
+        // must not wipe either. The tab that did the switching handles both.
         if (body.profileId !== activeProfileId) return;
+        // A store holding ANOTHER profile's payload is a broken invariant, not a state to
+        // reconcile: wipe it whole and re-capture for whoever the SERVER just confirmed is
+        // active. Re-read rather than reuse `held`, because the fetch is a long time and
+        // another tab may have written in it.
+        //
+        // THE SERVER'S ANSWER IS WHAT MAKES THIS SAFE. Judged against this component's own
+        // `activeProfileId` and done BEFORE the fetch, this wipe fired in any tab whose
+        // props were stale — so switching profile in one tab had a second, still-open tab
+        // erase the switched-to profile's snapshots and start a wipe/re-capture loop
+        // between them. A document that has just been told by the server which profile it
+        // is acting as cannot be the stale one.
+        const onDevice = await allSnapshots();
+        if (
+          onDevice.length > 0 &&
+          resolveSnapshotProfile(onDevice) !== body.profileId
+        ) {
+          await clearSnapshots();
+          // Our OWN wipe moved the generation. Re-arm against it: the token exists to
+          // catch somebody else's wipe, and re-capturing after a deliberate identity wipe
+          // is the whole point of the branch we are in.
+          token = await captureSnapshotToken();
+        }
         const fresh = (body.snapshots ?? [])
           .map(parseSnapshot)
           .filter(

@@ -22,9 +22,9 @@ import {
   txDone as done,
 } from "@/lib/offline/idb";
 import {
-  captureWriteToken,
   closeSession,
   guardedWrite,
+  guardedWriteNow,
   updateGate,
 } from "@/lib/offline/write-gate";
 
@@ -41,12 +41,17 @@ function rejectedTx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
 // at least has the intent in memory — but in practice IndexedDB is present wherever a
 // service worker is.
 export async function enqueueIntent(intent: QueuedIntent): Promise<boolean> {
-  // Gated like every other device-local PHI write (#2908's write gate). A capture is a
-  // foreground action, so the token is taken and spent immediately — the gate matters
-  // here only for the case it was built for: a logged-out device must not accept new PHI
-  // just because a stale tab still has a button.
-  const token = await captureWriteToken();
-  return guardedWrite([STORE], "queue", token, (tx) => {
+  // Gated like every other device-local PHI write (#2908's write gate), and gated as the
+  // FOREGROUND write it is: the tap has already happened, so there is no in-flight work
+  // for a wipe to land inside and no token worth carrying. `guardedWriteNow` asks the
+  // closes inside this write's own transaction, which is the case the gate was built for
+  // — a logged-out device must not accept new PHI just because a stale tab still has a
+  // button.
+  //
+  // The answer is the caller's to read. It is `false` when the device refused to keep the
+  // write, and components/OfflineQueueProvider says so rather than letting a flow toast
+  // "saved offline — will sync when you reconnect" over a queue that captured nothing.
+  return guardedWriteNow([STORE], "queue", (tx) => {
     tx.objectStore(STORE).put(intent);
   });
 }
@@ -211,7 +216,11 @@ export async function clearQueue(): Promise<void> {
   //   • a form draft's 600ms autosave debounce landing a half-typed record afterwards,
   //     against lib/offline/draft-db.ts's own stated contract.
   // None of them is stopped by anything a wipe can do to the DATA. All are stopped here.
-  await updateGate(closeSession, [
+  //
+  // AND THE CLOSE IS A BET, stamped with the moment it was made. The logout POST that
+  // justifies it has not happened yet, and when it never happens the close has to come
+  // back off — see `reopenAfterFailedLogout` and the `now` half of `openSessionAs`.
+  await updateGate(closeSession(Date.now()), [
     STORE,
     REJECTED,
     // #1699: half-typed form drafts are PHI at rest too, and logout is the one moment

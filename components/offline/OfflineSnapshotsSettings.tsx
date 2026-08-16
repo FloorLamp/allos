@@ -43,7 +43,26 @@ export default function OfflineSnapshotsSettings({
     // re-materializes until toggled back on" true rather than intended.
     void (next ? enableSnapshotWrites() : disableSnapshotWrites());
     runSave(async () => {
-      await saveOfflineSnapshotsEnabled(fd);
+      try {
+        await saveOfflineSnapshotsEnabled(fd);
+      } finally {
+        // AND RELEASE IT ONCE THE SERVER IS THE OFF SWITCH. The close above covers one
+        // window — this action's flight — and it must not outlive it. Persisted with no
+        // path back except this device's own toggle being ticked ON again, it became a
+        // one-way latch per device: the refresher asks the gate before it asks the
+        // server, so a latched device could never hear `enabled: true` from a profile
+        // turned back on ANYWHERE, including from this same account on the phone in the
+        // other pocket. The checkbox is server-driven, so it rendered ON while the device
+        // held nothing, permanently and silently — the same "silent, permanent death of
+        // offline reads" the logout direction has a test named for.
+        //
+        // After this the server answers every refresh, and an `enabled: false` answer
+        // wipes without re-latching, so nothing re-materialises and nothing is stranded.
+        // `finally` rather than the success path: if the action FAILED the setting did
+        // not change, the server still says on, and re-capturing is the truth — the save
+        // error beside the checkbox is what tells the person their choice did not stick.
+        await enableSnapshotWrites();
+      }
     });
   }
 

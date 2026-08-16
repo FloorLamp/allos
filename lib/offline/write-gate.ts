@@ -69,12 +69,21 @@ export interface WriteGate {
   // A mount cannot tell "there is a session" from "there is a NEW session", and only the
   // second may re-open. A session's own name can, so the gate remembers it.
   sessionKey: string | null;
-  // The offline-reads off switch. Closes the snapshots lane only, and survives a reload,
-  // so the acceptance criterion — "nothing re-materializes until toggled back on" —
-  // holds even while the Server Action that tells the SERVER is still in flight. The
-  // server stays authoritative: its own `enabled: false` answer still wipes.
+  // WHEN the session was closed, epoch ms. The close is a bet that the logout will land,
+  // and `closedAt` is how the bet is settled when the closer is not around to settle it —
+  // see LOGOUT_SETTLE_MS and `openSessionAs`. 0 on a gate that has never been closed.
+  closedAt: number;
+  // The offline-reads off switch. Closes the snapshots lane for as long as the SERVER has
+  // not been told, and no longer — see `closeSnapshots` for why that scope is the whole
+  // of it. The server stays authoritative: its own `enabled: false` answer wipes.
   snapshotsClosed: boolean;
 }
+
+// How long after a logout close a document of the SAME session is still assumed to be
+// racing that logout rather than surviving it. See `openSessionAs`, which is the only
+// reader; the number is a bound on an ambiguity that has no clock-free resolution, and
+// the comment there is the argument for why a bound is what is left.
+export const LOGOUT_SETTLE_MS = 30_000;
 
 export function defaultGate(): WriteGate {
   return {
@@ -82,6 +91,7 @@ export function defaultGate(): WriteGate {
     generation: 0,
     sessionClosed: false,
     sessionKey: null,
+    closedAt: 0,
     snapshotsClosed: false,
   };
 }
@@ -94,13 +104,27 @@ function parseGate(value: unknown): WriteGate {
     generation: typeof o.generation === "number" ? o.generation : 0,
     sessionClosed: o.sessionClosed === true,
     // An absent key reads as null, which matches no session, so the next mount re-opens.
-    // That is a real trade and not a free choice: the alternative — treating "I cannot
-    // tell whose close this was" as permanently closed — kills the feature on that device
-    // until something clears the database, with no way for the person to find out why.
-    // The case is narrow (a record written by a build before this field existed), and a
-    // build before this field existed cannot have a tab of the closed session running the
-    // code that would exploit the re-open.
+    // Same for an absent `closedAt`: 0 reads as "closed long ago", which also re-opens.
+    // Both fail TOWARD a usable device, and that direction was attacked and ruled on
+    // rather than assumed, so the reasoning is here for whoever makes this branch
+    // reachable:
+    //
+    //   • It is unreachable today. The META_STORE these rows live in is new at
+    //     OFFLINE_DB_VERSION 5; main is at 3. No released build has ever written a gate
+    //     record, so there is no field-less row in the world to read.
+    //   • The alternative is worse, and we know exactly how much worse, because we
+    //     shipped it: treating "I cannot tell whose close this was" as permanently closed
+    //     is the same brick as a failed logout (see `openSessionAs`) — the queue stops
+    //     capturing, the drafts stop saving, the snapshots stop refreshing, and nothing
+    //     on the device says why or ever recovers.
+    //   • The exposure it buys is bounded. A build old enough to have written a row
+    //     without these fields is a build without this file, so it has no tab running the
+    //     code that would exploit the re-open.
+    //
+    // If a future change makes an old row readable — a downgrade path, an export/import,
+    // a repair tool — this is the sentence that has to be re-decided, not silently kept.
     sessionKey: typeof o.sessionKey === "string" ? o.sessionKey : null,
+    closedAt: typeof o.closedAt === "number" ? o.closedAt : 0,
     snapshotsClosed: o.snapshotsClosed === true,
   };
 }
@@ -178,6 +202,46 @@ export async function guardedWrite(
 }
 
 /**
+ * A FOREGROUND write: one the person is making right now, with nothing between the
+ * decision and the write for a wipe to slip into. `enqueueIntent` and a draft autosave
+ * are both this — by the time they run, the tap has happened and the debounce has already
+ * elapsed, so the generation they would capture is the generation they would spend.
+ *
+ * Same guarantee, half the work. `guardedWrite` needs a token because its caller did
+ * something slow first, and taking one costs a second database open and a second
+ * transaction on top of the write's own — which is the entire reason a gated draft
+ * autosave got materially slower than the plain put it replaced. Here the gate is read
+ * inside the write's own transaction and only the CLOSES are asked about, because a
+ * generation comparison against a generation read one line earlier answers nothing.
+ *
+ * The closes are what matter on this path anyway: a logged-out device must not accept new
+ * PHI just because a stale tab still has a button, and `sessionClosed` says so atomically.
+ */
+export async function guardedWriteNow(
+  stores: readonly string[],
+  lane: WriteLane,
+  work: (tx: IDBTransaction) => void
+): Promise<boolean> {
+  if (!hasIndexedDB()) return false;
+  try {
+    const db = await openDb();
+    const tx = db.transaction([META_STORE, ...stores], "readwrite");
+    const gate = await readGate(tx.objectStore(META_STORE));
+    if (!gateAllows(gate, lane, gate.generation)) {
+      tx.abort();
+      db.close();
+      return false;
+    }
+    work(tx);
+    await done(tx);
+    db.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Mutate the gate, and optionally clear stores in the SAME transaction. Wipes go through
  * here so the data and the gate can never disagree: there is no instant at which the
  * store is empty and the gate still says "writable at the old generation".
@@ -206,34 +270,86 @@ export function bumpGeneration(gate: WriteGate): WriteGate {
 }
 
 /**
- * Logout: every lane closed until a DIFFERENT session opens them.
+ * Logout: every lane closed until a DIFFERENT session opens them — or until this one is
+ * shown to have outlived the logout that closed it. `now` is stamped so the second half
+ * is possible at all.
  *
  * `sessionKey` is deliberately left as it stands rather than cleared — it is now the
  * record of WHICH session closed the gate, and that is the whole defence against the
  * session's own surviving tabs re-opening it.
  */
-export function closeSession(gate: WriteGate): WriteGate {
-  return { ...bumpGeneration(gate), sessionClosed: true };
+export function closeSession(now: number): (gate: WriteGate) => WriteGate {
+  return (gate) => ({
+    ...bumpGeneration(gate),
+    sessionClosed: true,
+    closedAt: now,
+  });
+}
+
+/**
+ * THE CLOSE IS A BET ON A LOGOUT THAT HAS NOT HAPPENED YET, and this undoes it when the
+ * bet is lost.
+ *
+ * components/SidebarContent wipes and closes, and only THEN submits the logout. If that
+ * POST never lands — no signal, a 5xx during a deploy — the session is still alive and
+ * the gate is closed for it, which used to be permanent: `openSessionAs` refuses the
+ * session that closed it, and only a successful logout followed by a new login changes
+ * `sessionKey`. The whole device-local write perimeter stopped: the #28 write queue
+ * stopped capturing while the app still said "saved offline — will sync when you
+ * reconnect", drafts stopped saving, snapshots stopped refreshing. That is a shipped
+ * feature going silently dead on a path the error boundary explicitly invites ("Reload
+ * the app").
+ *
+ * Only the CLOSER calls this, and only once its own logout has provably failed, so it
+ * cannot be reached by the tab that R2/R2b are about: that tab never pressed anything and
+ * has no failure to observe. It does not touch `sessionKey` — the session is unchanged,
+ * and the close simply never should have been made.
+ */
+export function reopenAfterFailedLogout(gate: WriteGate): WriteGate {
+  return { ...gate, sessionClosed: false, closedAt: 0 };
 }
 
 /**
  * A live authenticated document says which session it belongs to, and the gate re-opens
- * only if that is not the session that closed it.
+ * only if that is not the session that closed it — or if that session has outlasted its
+ * own logout by long enough that it plainly did not log out.
  *
- * The predicate is the finding, so read it as one: `key === gate.sessionKey` on a closed
- * gate means "a document of the logged-out session is asking", which is every tab that
- * was open when someone pressed Log out and every tab that loads while the logout POST is
- * still in flight. Those must stay closed. Anything else is a session that did not exist
- * when the close happened — a fresh login, on this device, by whoever is holding it now —
- * and that is precisely what re-opening is for.
+ * The key half is the finding from three rounds ago, so read it as one: `key ===
+ * gate.sessionKey` on a closed gate means "a document of the logged-out session is
+ * asking", which is every tab that was open when someone pressed Log out and every tab
+ * that loads while the logout POST is still in flight. Those must stay closed. Anything
+ * else is a session that did not exist when the close happened — a fresh login, on this
+ * device, by whoever is holding it now — and that is what re-opening is for.
  *
- * Never touches the off switch's own state: two independent closes, two independent
- * re-opens.
+ * THE `now` HALF IS THE LIVENESS QUESTION, and it is a bound because the question has no
+ * clock-free answer. At the instant a same-key document mounts, "the logout is in flight
+ * and will succeed" (R2b — must refuse) and "the logout failed and this is the reload"
+ * (R-A — must re-open) are the same observation: the session row still exists in both,
+ * so the server cannot tell them apart either, and being served the authenticated app
+ * proves only that the logout has not landed YET. The outcome is knowable only after the
+ * POST settles, and only to the document that issued it — which is why
+ * `reopenAfterFailedLogout` above is the primary path and handles every case where that
+ * document is still alive to see the failure.
+ *
+ * What is left is the case where that document was DESTROYED mid-POST (the tab was
+ * closed, the app was force-quit). A form-action POST dies with its document, so in that
+ * case the logout was cancelled and can never land — re-opening is not merely safe, it is
+ * the only correct answer. The bound is how a later document recognises that case: a
+ * logout POST that is still outstanding is being awaited by a document that is still
+ * alive, and no such document waits half a minute without its own failure path running.
  */
-export function openSessionAs(key: string): (gate: WriteGate) => WriteGate {
+export function openSessionAs(
+  key: string,
+  now: number
+): (gate: WriteGate) => WriteGate {
   return (gate) => {
-    if (gate.sessionClosed && gate.sessionKey === key) return gate;
-    return { ...gate, sessionClosed: false, sessionKey: key };
+    // `now - closedAt` rather than a comparison against a stored deadline: a device clock
+    // that jumped BACKWARDS makes this negative, which is inside the window, so it
+    // refuses — the closed direction, which is the safe one to be wrong in.
+    const racingItsOwnLogout =
+      gate.sessionKey === key && now - gate.closedAt < LOGOUT_SETTLE_MS;
+    if (gate.sessionClosed && racingItsOwnLogout) return gate;
+    return { ...gate, sessionClosed: false, sessionKey: key, closedAt: 0 };
   };
 }
 
@@ -257,7 +373,17 @@ let reopened: Promise<void> = Promise.resolve();
 
 /** The mount-scoped re-open. Records the attempt so a writer can wait for it. */
 export function openSessionForDocument(key: string): Promise<void> {
-  reopened = updateGate(openSessionAs(key));
+  reopened = updateGate(openSessionAs(key, Date.now()));
+  return reopened;
+}
+
+/**
+ * The closer's own undo, for a logout that did not land. See `reopenAfterFailedLogout`.
+ * Recorded on the same handle as the mount re-open, so a writer that is waiting for this
+ * document's gate decision waits for this one too.
+ */
+export function reopenForFailedLogout(): Promise<void> {
+  reopened = updateGate(reopenAfterFailedLogout);
   return reopened;
 }
 
@@ -266,11 +392,38 @@ export function whenSessionOpened(): Promise<void> {
   return reopened;
 }
 
-/** The offline-reads off switch, and its opposite. */
+/**
+ * The offline-reads off switch — and it closes only the gap it exists to cover, which is
+ * the SECOND FINDING of the same shape as the logout one.
+ *
+ * Why it exists at all: untick the box and a Server Action starts. Until it lands the
+ * server still answers `enabled: true`, so a refresh beginning anywhere in that window
+ * reads an empty store, asks for all five kinds, and is told yes — every payload back.
+ * The wipe alone cannot stop that; this close can, and it is persisted so it also holds
+ * across a reload and across a second tab.
+ *
+ * Why it must NOT outlive that window: it was persisted with no path back except this
+ * device's own toggle being ticked ON again, which made it a one-way latch. A device that
+ * turned offline reads off could never learn the server had been told YES again — the
+ * refresher asks the gate before it asks the server, so a latched device never hears the
+ * answer that would release it. The checkbox is server-driven, so it rendered ON while
+ * the device held nothing, forever. That is "a silent, permanent death of offline reads",
+ * which is the exact property R2c pins for the logout direction and nothing pinned here.
+ *
+ * So the latch is scoped to the flight of the Server Action that makes it redundant, and
+ * `openSnapshots` releases it when that action settles. After that the SERVER is the off
+ * switch: it answers `enabled: false` to every refresh, and the refresher wipes on that
+ * answer without re-latching, so nothing re-materialises and nothing is stranded.
+ */
 export function closeSnapshots(gate: WriteGate): WriteGate {
   return { ...bumpGeneration(gate), snapshotsClosed: true };
 }
 
+/**
+ * Releasing the latch above. Two callers, one transition: the toggle turning offline
+ * reads back ON, and the toggle's own `finally` once the server has been told OFF and no
+ * longer needs this device to remember it.
+ */
 export function openSnapshots(gate: WriteGate): WriteGate {
   return { ...gate, snapshotsClosed: false };
 }
