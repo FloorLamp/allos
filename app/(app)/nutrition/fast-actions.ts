@@ -18,6 +18,7 @@ import { zonedWallTimeToUtc } from "@/lib/date";
 import {
   discardFast,
   endFast,
+  fastAdultOnlyRefusal,
   reopenFast,
   startFast,
   type EndFastOutcome,
@@ -85,10 +86,23 @@ export async function startFastAction(
 
 // The one sentence each end outcome earns, shared by the control and by the food-log
 // follow-up offer so the two cannot describe the same write differently.
-function endMessage(outcome: EndFastOutcome): FastActionResult {
+//
+// `canUndo` is what decides whether the confirmation carries `undoFastId` — the ONE
+// answer to "may this end be taken back right now", resolved on the server, which is the
+// only tier that knows. Every surface that ends a fast keys its Undo off the presence of
+// that id, so the Nutrition control and the food-log follow-up toast cannot offer
+// different affordances for the same write, and no component has to re-derive a gate.
+function endMessage(
+  outcome: EndFastOutcome,
+  canUndo: boolean
+): FastActionResult {
   switch (outcome.kind) {
     case "ended":
-      return { ok: true, message: "Fast ended.", undoFastId: outcome.id };
+      return {
+        ok: true,
+        message: "Fast ended.",
+        ...(canUndo ? { undoFastId: outcome.id } : {}),
+      };
     // The prompt's race, answered honestly (#2756): accepting after the fast was ended
     // on another device re-derives, finds nothing active, and REPORTS that.
     case "none-active":
@@ -108,6 +122,13 @@ function endMessage(outcome: EndFastOutcome): FastActionResult {
 // End the active fast — now, or at an explicit backdated instant. NO life-stage gate,
 // by the registered exemption in lib/adult-only-writes.ts: a profile that became
 // restricted mid-fast must still be able to close the row out.
+//
+// The UNDO it offers is gated, though, because the reopen behind it is. `reopenFast` has
+// exactly one refusal that is true the instant after an accepted end — the life-stage
+// gate — so asking that question here makes the offer exact: an Undo appears if and only
+// if tapping it would land. (`too-old` cannot fire a second after the end, `overlap`
+// needs a fast recorded after this one, `already-active` needs one running, and there is
+// no duration ceiling on the Undo path at all — see lib/fast-write.ts.)
 export async function endFastAction(
   formData: FormData
 ): Promise<FastActionResult> {
@@ -118,7 +139,10 @@ export async function endFastAction(
   );
   if (endedAt === undefined)
     return { ok: false, error: "Enter a valid end time." };
-  const result = endMessage(endFast(profile.id, endedAt ?? undefined));
+  const result = endMessage(
+    endFast(profile.id, endedAt ?? undefined),
+    !fastAdultOnlyRefusal(profile.id)
+  );
   if (result.ok) {
     revalidateRoute("/nutrition");
     revalidateRoute("/");
@@ -149,10 +173,10 @@ export async function undoEndFastAction(
       return fail("That's too old to undo now.");
     case "overlap":
       return fail("Reopening that would overlap a later fast.");
-    case "too-long":
-      return fail("That fast would be too long to reopen.");
     // GATED, unlike the end it undoes: restoring an active fast is exactly what the
-    // adult-only ruling withholds, so this cannot ride the end's exemption.
+    // adult-only ruling withholds, so this cannot ride the end's exemption. Not drawn as
+    // a button anywhere — `endFastAction` withholds the id for a restricted profile — so
+    // this answers a stale tab, which is the case a surface-only rule cannot cover.
     case "refused":
       return fail("Fasting isn't available on this profile.");
   }

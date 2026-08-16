@@ -181,12 +181,45 @@ describe("Undo an end — the inverse is complete and local", () => {
     expect(getActiveFast(adult)).toBeNull();
   });
 
-  // The claim ceiling on the CREATE side. Reopening mints an active interval, so it is
-  // held to FAST_MAX_HOURS exactly as a backdated start is — and this branch is reachable
-  // only inside the undo window, so `too-old` cannot be what answers.
-  it("refuses to reopen an interval already past the maximum", () => {
+  // F1. The claim ceiling does NOT reach the Undo path, and this is the test that says
+  // so. A duration guard here could only ever fire after `too-old` had already passed —
+  // i.e. on a row this app wrote and accepted within the last quarter hour — so it was
+  // never judging a claim from a user; it was refusing to give back a state the app had
+  // just been in. Once `endFast` stopped refusing long intervals (R1, below), ending a
+  // forgotten fast became ordinary, and the Undo drawn beside it answered `too-long` on
+  // every tap with nothing behind it.
+  it("reopens a fast past the maximum length — an Undo is not a new claim", () => {
     const id = seedCompleted(adult, FAST_MAX_HOURS + 24, 1 / 60);
-    expect(reopenFast(adult, id)).toEqual({ kind: "too-long" });
+    expect(reopenFast(adult, id)).toEqual({ kind: "reopened", id });
+    expect(getActiveFast(adult)?.id).toBe(id);
+  });
+
+  // …and the Undo is a real way back, not just a state change: it lands in the state the
+  // stale suggest handles, where BOTH of that copy's resolutions work. This is the whole
+  // point of the fix — before it, the long row was permanent (reopen refused, discard
+  // refuses a completed row, no edit core exists) and it then answered `overlap` to every
+  // backdated start inside the fortnight the field can reach.
+  it("leaves the reopened long fast discardable, and the fortnight startable again", () => {
+    const id = seedCompleted(adult, FAST_MAX_HOURS + 24, 1 / 60);
+    // While it is still recorded, the honest correction is blocked — the reason the dead
+    // Undo mattered rather than being a cosmetic dead button.
+    expect(
+      startFast(adult, new Date(Date.now() - 5 * 24 * 3_600_000)).kind
+    ).toBe("overlap");
+    expect(reopenFast(adult, id).kind).toBe("reopened");
+    expect(discardFast(adult, id)).toEqual({ kind: "discarded", id });
+    expect(listFasts(adult)).toHaveLength(0);
+    expect(
+      startFast(adult, new Date(Date.now() - 5 * 24 * 3_600_000)).kind
+    ).toBe("started");
+  });
+
+  // The bound that actually separates an Undo from an arbitrary reopen is AGE, and it
+  // still does the whole job on a long row: past the window this is history, whatever its
+  // length.
+  it("still refuses a long fast whose end is outside the undo window", () => {
+    const id = seedCompleted(adult, FAST_MAX_HOURS + 24, 2);
+    expect(reopenFast(adult, id)).toEqual({ kind: "too-old" });
     expect(getActiveFast(adult)).toBeNull();
   });
 

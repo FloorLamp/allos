@@ -183,8 +183,25 @@ export default async function FoodTab({
   // of the logger; the nav entry is hidden by the same predicate, and this server-side
   // gate covers a direct URL. Eligible on unknown age (hide only on a positive match).
   if (!isFoodLoggingRelevant(getProfileAge(profile.id))) {
+    // …but the CLOSE-OUT still renders, for the same reason the life-stage gate below
+    // does not simply hide the card: an age edit can land on a profile with a fast
+    // already running, and a gate whose escape hatch is never drawn leaves that row
+    // permanently open with #2757's food nudges stood down behind it
+    // (lib/fast-write.ts's end-side exemption). This gate sits one step EARLIER than the
+    // fasting one, so returning here without it re-opened the same trap through a second
+    // door. `canStart` is false and cannot be otherwise: a known age under one is a
+    // known minor, which is the very line `fastingAvailable` draws.
+    const infantFast = getActiveFastCached(profile.id);
     return (
       <div>
+        {infantFast && (
+          <FastingCard
+            active={infantFast}
+            canStart={false}
+            history={[]}
+            nowMs={clockNow().getTime()}
+          />
+        )}
         <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
           Food-group serving logging starts after the first year.
         </p>

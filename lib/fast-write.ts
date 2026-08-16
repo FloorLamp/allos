@@ -48,34 +48,53 @@
 // e2e/fasting-lifecycle.spec.ts pins it; a gate whose escape hatch is never rendered is
 // the same stranded row with extra steps.
 //
-// ── THE SAME LINE BOUNDS DURATION ───────────────────────────────────────────────────
+// ── THE SAME LINE BOUNDS DURATION — BUT ONLY WHERE A CLAIM IS ACTUALLY MINTED ───────
 //
-// FAST_MAX_HOURS is a ceiling on what the app accepts as a CLAIM about an interval — a
-// backdated start, or a reopen that restores one — because past 14 days a claim is far
-// likelier to be a mis-set date than a fast. It is NOT a ceiling on how long a fast the
-// app WATCHED run may be, and it cannot be: an active row grows with the clock, on no
-// input at all, and refusing to close it does not shorten it.
+// FAST_MAX_HOURS is a ceiling on what the app accepts as a CLAIM about an interval,
+// because past 14 days a claim is far likelier to be a mis-set date than a fast. It is
+// NOT a ceiling on how long a fast the app WATCHED run may be, and it cannot be: an
+// active row grows with the clock, on no input at all, and refusing to close it does not
+// shorten it. Core by core:
 //
-//   GATED cores carry the ceiling. `startFast` refuses a backdated start further back
-//   than FAST_MAX_HOURS and `reopenFast` refuses to restore an interval already past it.
-//   Both take an interval FROM INPUT, so both can honestly answer "pick a shorter one".
-//   EXEMPT cores carry NO ceiling. `endFast` cannot lengthen anything: the end it writes
-//   is at most `now`, so the interval it stores is at most the one the row ALREADY has.
-//   A duration refusal there prevents no long interval — it only prevents a long
-//   interval from being CLOSED, which is the stranded row above wearing a new excuse.
+//   `startFast` CARRIES the ceiling. A backdated start takes its interval FROM INPUT, so
+//   it can honestly answer "that's too far back — pick a shorter one".
+//   `endFast` carries NONE. The end it writes is at most `now`, so the interval it stores
+//   is at most the one the row ALREADY has. A duration refusal there prevents no long
+//   interval; it only prevents a long interval from being CLOSED, which is the stranded
+//   row above wearing a new excuse.
+//   `reopenFast` carries NONE either, which is not an exception to the rule but the rule
+//   applied honestly. Its duration check sat immediately after `too-old`, so it was
+//   reachable ONLY inside FAST_REOPEN_MAX_MINUTES — on a row the app itself wrote seconds
+//   ago and had already accepted. An Undo tapped half a minute after an accepted end is
+//   not a user claiming an interval; it is the restoration of a state the app was in half
+//   a minute ago. `too-old` is what separates an Undo from an arbitrary reopen, and it
+//   does the whole of that job.
 //
-// That refusal shipped here for one revision and did exactly that: a restricted profile
-// past FAST_MAX_HOURS had `too-long` answered on every tap of the ONE control its
-// surface draws, with no backdate field and no discard beside it. Recorded rather than
-// quietly reverted, because the mistake is not obvious — the guard was locally correct
-// ("`startFast` and `endFast` cannot disagree about which intervals are storable") and
-// wrong about the system, since only one of those two ever takes the interval from a
-// user.
+// BOTH of those refusals shipped here, one revision each, and both did real harm — worth
+// recording, because neither guard looked wrong from inside the function it lived in:
 //
-// `reopenFast` is NOT exempt, and that is a deliberate cost: a restricted profile's
-// Undo-after-end is refused. Restoring an active fast for that profile is exactly what
-// the gate forbids, and the user loses one undo of a write they had just chosen to make
-// — which is a far smaller harm than the app re-creating the restricted state on tap.
+//   A ceiling in `endFast` stranded a restricted profile past 14 days: `too-long` on
+//   every tap of the ONE control its surface draws, no backdate field and no discard
+//   beside it. Locally it read as "`startFast` and `endFast` cannot disagree about which
+//   intervals are storable" — true of the pair, false of the system, since only one of
+//   the two ever takes an interval from a user.
+//
+//   A ceiling in `reopenFast` then made the Undo drawn beside every long end a dead
+//   button. Deleting the first ceiling made "you have just ended a 15-day fast" an
+//   ordinary outcome of the forgotten fast — the exact case the stale suggest exists to
+//   surface — and the app answered its own Undo with "That fast would be too long to
+//   reopen." Nothing recovered from there: reopen refused, discard refuses a completed
+//   row, and the permanent long row then answered `overlap` to every backdated start
+//   inside the fortnight the field can reach. The Undo is now the way back, and it lands
+//   in the state the stale suggest handles: an active over-long fast, with an honest
+//   backdated end and Discard both on screen.
+//
+// `reopenFast` remains GATED on LIFE STAGE, and that is a deliberate cost: a restricted
+// profile's Undo-after-end is refused. Restoring an active fast for that profile is
+// exactly what the gate forbids, and the user loses one undo of a write they had just
+// chosen to make — a far smaller harm than the app re-creating the restricted state on
+// tap. The SURFACE does not draw that Undo (the action withholds the id it needs), so
+// the refusal guards a stale tab rather than answering a button anyone can see.
 
 import { now as clockNow } from "./clock";
 import { utcInstant, parseUtcSql } from "./date";
@@ -232,11 +251,6 @@ export type ReopenFastOutcome =
   // recorded after it. That is the state the one-active invariant and every reader rule
   // out, and the id comes from a form, so it has to be checked rather than assumed.
   | { kind: "overlap"; id: number }
-  // Reopening would restore an interval already past FAST_MAX_HOURS. This core is on the
-  // CREATE side of the line, so it carries the claim ceiling a backdated start does: the
-  // app will not mint a 15-day interval as an active fast, whichever core is asked. NOT
-  // "because `endFast` would refuse to close it" — `endFast` has no ceiling, by design.
-  | { kind: "too-long" }
   // The life-stage gate refused — see below; this core is GATED, not exempt.
   | { kind: "refused" };
 
@@ -249,7 +263,7 @@ export type ReopenFastOutcome =
 // app itself renders on the exempt end's confirmation. "It only clears a column" is a
 // fact about the STATEMENT, not about the state it produces. See the module header.
 //
-// BOUNDED THREE WAYS, because `id` arrives from a form and every check below is the
+// BOUNDED TWO WAYS, because `id` arrives from a form and each check below is the
 // difference between an Undo and an arbitrary reopen:
 //
 //   • AGE — only an end inside FAST_REOPEN_MAX_MINUTES. Naming an id rather than
@@ -258,9 +272,14 @@ export type ReopenFastOutcome =
 //     the recency version would have, which is the failure the id was chosen to avoid.
 //   • OVERLAP — a reopened fast is open, so it runs to +infinity and must clear
 //     everything recorded after it. Re-checked here against fresh rows.
-//   • DURATION — restoring an active fast MINTS an interval, so it is held to the same
-//     FAST_MAX_HOURS claim ceiling a backdated start is. `endFast` deliberately is not:
-//     closing a row the clock grew is the exempt direction and carries no ceiling.
+//
+// AND DELIBERATELY NOT BY DURATION. A third check held the restored interval to
+// FAST_MAX_HOURS, and it could only ever fire AFTER the age bound had already passed —
+// i.e. on a row this app wrote and accepted within the last quarter hour. That is not a
+// claim arriving from a user, so the claim ceiling has nothing to say about it; what it
+// actually did was make the Undo beside every long end a button whose every tap was
+// refused, with no way back. See the module header. `startFast` still refuses a backdated
+// interval past the ceiling, which is the one path where a user really does name one.
 export function reopenFast(profileId: number, id: number): ReopenFastOutcome {
   if (fastAdultOnlyRefusal(profileId)) return { kind: "refused" };
   return writeTx(() => {
@@ -274,8 +293,6 @@ export function reopenFast(profileId: number, id: number): ReopenFastOutcome {
     if (!ended || !started) return { kind: "not-found" };
     if (at.getTime() - ended.getTime() > FAST_REOPEN_MAX_MINUTES * 60_000)
       return { kind: "too-old" };
-    if (at.getTime() - started.getTime() > FAST_MAX_HOURS * 3_600_000)
-      return { kind: "too-long" };
     const clash = overlappingFasts(
       listFasts(profileId),
       started.getTime(),

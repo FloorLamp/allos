@@ -51,7 +51,7 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
-import { endFastAction } from "./fast-actions";
+import { endFastAction, undoEndFastAction } from "./fast-actions";
 import {
   deleteFoodLogEvent,
   logFoodServing,
@@ -305,6 +305,29 @@ export default function FoodLogBar({
   //
   // KEYED, so one landing produces one prompt: two quick taps replace the toast in
   // place rather than stacking the same question twice.
+  //
+  // AND THE END IT WRITES CARRIES THE SAME UNDO THE NUTRITION CARD OFFERS. This is the
+  // likelier route into that write, not the rarer one: `promptsEndOfFast` has no
+  // staleness term, so it fires just as readily for a fast that has been open for weeks
+  // — and by then #2757's stand-down has released, food nudges are back on, and the user
+  // is MORE likely to be here logging a serving. One tap then records a very long fast,
+  // which is precisely the write somebody most wants back. Offering the way back on the
+  // card and not here would make recovery depend on which control the tap came from.
+  //
+  // The id comes from the action (./fast-actions), which supplies it only when the reopen
+  // behind it would be accepted — so a restricted profile's close-out through this same
+  // toast draws no Undo, exactly as its card does, and this island asks no life-stage
+  // question of its own.
+  const undoEnd = (undoFastId: number) => {
+    const fd = new FormData();
+    fd.set("id", String(undoFastId));
+    void undoEndFastAction(fd).then((back) => {
+      toast(back.ok ? back.message : back.error, {
+        key: "end-fast-offer",
+        ...(back.ok ? {} : { tone: "error" as const }),
+      });
+    });
+  };
   const offerEndFast = (offered: true | undefined) => {
     if (!offered) return;
     toast("Serving logged. End your fast?", {
@@ -313,9 +336,18 @@ export default function FoodLogBar({
         label: "End fast",
         onClick: () => {
           void endFastAction(new FormData()).then((r) => {
+            const undoFastId = r.ok ? r.undoFastId : undefined;
             toast(r.ok ? r.message : r.error, {
               key: "end-fast-offer",
               ...(r.ok ? {} : { tone: "error" as const }),
+              ...(undoFastId != null
+                ? {
+                    action: {
+                      label: "Undo",
+                      onClick: () => undoEnd(undoFastId),
+                    },
+                  }
+                : {}),
             });
           });
         },

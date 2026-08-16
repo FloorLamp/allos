@@ -18,6 +18,9 @@ import { FAST_MAX_HOURS } from "@/lib/fasting";
 //     including on a fast past FAST_MAX_HOURS;
 //   • a stale tab's Discard, carrying an id the app itself gave it, is refused once that
 //     fast was ended elsewhere rather than silently deleting finished history;
+//   • the UNDO drawn beside an end is a real way back on a LONG fast, from BOTH controls
+//     that end one — the card and the food-log follow-up toast — and is drawn nowhere a
+//     restricted profile could tap it;
 //   • logging food mid-fast OFFERS "End your fast?" beside a serving that has already
 //     landed, declining changes nothing, and the count is unaffected either way;
 //
@@ -114,11 +117,7 @@ async function setBackdate(page: Page, hoursAgo: number): Promise<void> {
   await expect(field).toHaveValue(backdateValue(hoursAgo));
 }
 
-// Make profile 1 a KNOWN MINOR by writing a birthdate 15 years back — the real shape of
-// #2756's scenario ("a birthdate edit that makes a profile restricted mid-fast"), and
-// the one that actually moves `getProfileAge`: birthdate takes precedence over the
-// stored `age` fallback, so setting `age` alone on a profile that has a birthdate
-// changes nothing at all.
+/** Put profile 1's own birthdate back exactly — it is the shared fixture. */
 function restoreBirthdate(prior: string | null): void {
   const db = openDb();
   try {
@@ -137,10 +136,26 @@ function restoreBirthdate(prior: string | null): void {
   }
 }
 
+// Make profile 1 an INFANT (under one). A second, EARLIER life-stage gate — the Food
+// tab's own `isFoodLoggingRelevant` return — sits in FRONT of the fasting one, so this
+// is the fixture for the age at which the whole tab is replaced by a note.
+function makeInfant(): void {
+  setBirthdate(0.5);
+}
+
+// Make profile 1 a KNOWN MINOR — the real shape of #2756's scenario ("a birthdate edit
+// that makes a profile restricted mid-fast").
 function makeMinor(): void {
+  setBirthdate(15);
+}
+
+// Write profile 1's birthdate `yearsAgo` back. A BIRTHDATE, because that is what
+// actually moves `getProfileAge`: it takes precedence over the stored `age` fallback, so
+// setting `age` alone on a profile that has a birthdate changes nothing at all.
+function setBirthdate(yearsAgo: number): void {
   const db = openDb();
   try {
-    const bd = new Date(frozenNow().getTime() - 15 * 365.25 * 86_400_000)
+    const bd = new Date(frozenNow().getTime() - yearsAgo * 365.25 * 86_400_000)
       .toISOString()
       .slice(0, 10);
     db.prepare(
@@ -272,6 +287,62 @@ test.describe("the fasting lifecycle (#2756)", () => {
     }
     // …and it is recorded as a completed fast rather than discarded.
     await expect(page.getByTestId("fasting-history-row")).toHaveCount(1);
+  });
+
+  // F1 — THE FULL SURFACE'S UNDO, ON A LONG FAST. The one combination the neighbouring
+  // cases never reached: the restricted close-out past the maximum is pinned below, and
+  // so is the restricted Undo's refusal on a 16 h fast, but not the ordinary card's Undo
+  // on the forgotten fast — which is the case the stale suggest exists to surface, and
+  // the case a claim ceiling inside `reopenFast` turned into a dead button. The end lands
+  // (no ceiling there, by R1) and the Undo beside it then answered "That fast would be
+  // too long to reopen" with NOTHING behind it: discard refuses a completed row, there is
+  // no edit core, and the permanent long row answers `overlap` to every backdated start
+  // inside the fortnight the field can reach.
+  test("the Undo drawn on a LONG fast's end takes it back", async ({
+    page,
+  }) => {
+    seedFast(agoInstant(FAST_MAX_HOURS + 96), null);
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("fasting-stale-suggest")).toBeVisible();
+    await settledClick(page, page.getByTestId("fasting-control"));
+    const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
+    await expect(ended).toBeVisible();
+
+    // The button is drawn — this is the assertion the surface's own rule turns on: it
+    // does not draw a control whose every tap would be refused.
+    const undo = ended.getByRole("button", { name: "Undo" });
+    await expect(undo).toBeVisible();
+    await settledClick(page, undo);
+    await expect(
+      page.getByTestId("toast").filter({ hasText: "Fast reopened." })
+    ).toBeVisible();
+
+    // The state is back exactly where it was: the same row, open again, and no completed
+    // fast left behind.
+    const db = openDb();
+    try {
+      const rows = db
+        .prepare("SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1")
+        .get() as { n: number };
+      expect(rows.n).toBe(1);
+      const open = db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(1);
+    } finally {
+      db.close();
+    }
+
+    // And it is a real way BACK, not just a state change: the reopened fast lands in the
+    // state the stale suggest handles, where both of that copy's resolutions are on
+    // screen again.
+    await page.reload();
+    await expect(page.getByTestId("fasting-stale-suggest")).toBeVisible();
+    await expect(page.getByTestId("fasting-discard")).toBeVisible();
+    await expect(page.getByTestId("fasting-backdate-toggle")).toBeVisible();
+    await expect(page.getByTestId("fasting-history-row")).toHaveCount(0);
   });
 
   test("a STALE tab's start is refused, not confirmed — the cross-device double-start", async ({
@@ -474,9 +545,11 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
     await expect(ended).toBeVisible();
     // …and it offers NO UNDO. Reopening is the one thing the gate withholds, so the core
-    // would refuse every tap of it — and this surface does not draw a control whose every
-    // tap is a refusal, which is the same reason it draws no start control. The core's
-    // refusal is still the real gate, pinned by the stale-tab case below.
+    // would refuse every tap of it — and no surface draws a control whose every tap is a
+    // refusal, which is the same reason there is no start control here. That now holds
+    // because the ACTION withholds the id the button needs, rather than because this
+    // branch passes a flag: the food-log toast, which never had such a flag, inherits it.
+    // The core's refusal is still the real gate, pinned by the stale-tab case below.
     await expect(ended.getByRole("button", { name: "Undo" })).toHaveCount(0);
 
     const after = openDb();
@@ -534,6 +607,51 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     }
 
     await page.reload();
+    await expect(page.getByTestId("fasting-card")).toHaveCount(0);
+  });
+
+  // F3 — THE SAME TRAP, ONE GATE EARLIER. The Food tab returns its infant note BEFORE it
+  // gathers anything fasting, so a profile whose known age drops under one got no card at
+  // all — an active row, #2757's food stand-down behind it, and nothing on screen. Same
+  // shape as the mid-fast birthdate edit above; a different `return` reaches it.
+  test("an INFANT profile mid-fast still gets the close-out", async ({
+    page,
+  }) => {
+    seedFast(agoInstant(16), null);
+    makeInfant();
+
+    await page.goto("/nutrition");
+    // The tab is gated exactly as it was — the note stands, the logger does not render.
+    await expect(page.getByTestId("nutrition-infant-note")).toBeVisible();
+    await expect(page.getByTestId("food-log-bar")).toHaveCount(0);
+
+    // …and the way out is there, with the same minimal surface a restricted profile gets.
+    await expect(page.getByTestId("fasting-closeout-note")).toBeVisible();
+    await expect(page.getByTestId("fasting-control")).toHaveText("End fast");
+    await expect(page.getByTestId("fasting-history-row")).toHaveCount(0);
+
+    await settledClick(page, page.getByTestId("fasting-control"));
+    const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
+    await expect(ended).toBeVisible();
+    // No Undo: reopening is what the gate withholds, and the ACTION is what withholds the
+    // id the button needs — so this holds on a surface that never passed a flag.
+    await expect(ended.getByRole("button", { name: "Undo" })).toHaveCount(0);
+
+    const after = openDb();
+    try {
+      const open = after
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(0);
+    } finally {
+      after.close();
+    }
+
+    // With nothing left to close, the card goes away and only the note remains.
+    await page.reload();
+    await expect(page.getByTestId("nutrition-infant-note")).toBeVisible();
     await expect(page.getByTestId("fasting-card")).toHaveCount(0);
   });
 
@@ -648,6 +766,47 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
         )
         .get() as { n: number };
       expect(open.n).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  // F2 — THE SAME UNDO, FROM THE OTHER CONTROL. This toast is the likelier route into a
+  // long fast's end, not the rarer one: `promptsEndOfFast` carries no staleness term, so
+  // it fires just as readily for a fast open for weeks — and by then #2757's stand-down
+  // has released, so food nudges are back on and the user is MORE likely to be here
+  // logging a serving. It used to replace itself with the bare confirmation and attach
+  // nothing, so one tap wrote a very long fast with no way back beside it.
+  test("accepting the offer offers the SAME Undo the card does", async ({
+    page,
+  }) => {
+    seedFast(agoInstant(FAST_MAX_HOURS + 96), null);
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+    await revealFoodGroup(page, "legumes");
+    await settledClick(page, page.getByTestId("log-legumes"));
+    const offer = page
+      .getByTestId("toast")
+      .filter({ hasText: "End your fast?" });
+    await expect(offer).toBeVisible();
+    await settledClick(page, offer.getByRole("button", { name: "End fast" }));
+
+    const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
+    await expect(ended).toBeVisible();
+    await settledClick(page, ended.getByRole("button", { name: "Undo" }));
+    await expect(
+      page.getByTestId("toast").filter({ hasText: "Fast reopened." })
+    ).toBeVisible();
+
+    const db = openDb();
+    try {
+      const open = db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM fasts WHERE profile_id = 1 AND ended_at IS NULL"
+        )
+        .get() as { n: number };
+      expect(open.n).toBe(1);
     } finally {
       db.close();
     }

@@ -91,16 +91,7 @@ export default function FastingCard({
       | { ok: true; message: string; undoFastId?: number }
       | { ok: false; error: string }
     >,
-    fd: FormData,
-    // Whether a successful end may offer UNDO. FALSE on the restricted close-out below,
-    // where reopening is exactly what the adult-only ruling withholds: `reopenFast` is
-    // GATED (lib/fast-write.ts), so the core refuses every tap of it for that profile.
-    // This surface's own rule is that it does not draw a control whose every tap would
-    // be refused — the reason there is no start control there either — and an Undo that
-    // can only answer "Fasting isn't available on this profile." is that same theater
-    // with a friendlier label. The core stays the real gate: a stale tab still holding
-    // the FULL surface's Undo is judged by it, which e2e pins separately.
-    { offerUndo = true }: { offerUndo?: boolean } = {}
+    fd: FormData
   ) {
     if (pending) return;
     setPending(true);
@@ -124,9 +115,17 @@ export default function FastingCard({
       // UNDO on an end (#2756). The inverse is complete and local — one column on one
       // named row — so this restores exactly the state that existed a second ago rather
       // than approximating it.
+      //
+      // DRAWN WHEN THE SERVER SAYS IT WOULD LAND, never from a rule re-derived here. The
+      // action carries `undoFastId` only when the reopen behind it would be accepted for
+      // this profile (./fast-actions), so this surface's own rule — it does not draw a
+      // control whose every tap would be refused — is kept by ASKING rather than by a
+      // client-side copy of the life-stage gate that could drift from it. The restricted
+      // close-out below therefore needs no flag of its own: the same end there simply
+      // comes back without an id.
       toast(
         result.message,
-        result.undoFastId != null && offerUndo
+        result.undoFastId != null
           ? {
               action: {
                 label: "Undo",
@@ -154,9 +153,11 @@ export default function FastingCard({
   }
 
   // A restricted profile with a fast still running (#2756's end-side exemption). The
-  // ONLY thing offered is the way out. Deliberately no elapsed duration, no history, no
-  // stale suggest and NO UNDO on the end: this is closing an account, not tracking a
-  // practice, and reopening is the one thing the gate withholds.
+  // ONLY thing offered is the way out. Deliberately no elapsed duration, no history and
+  // no stale suggest: this is closing an account, not tracking a practice. There is no
+  // Undo on the end either — reopening is the one thing the gate withholds — and that
+  // now falls out of the action rather than being asserted here: `endFastAction` withholds
+  // `undoFastId` for exactly the profiles `reopenFast` would refuse.
   //
   // ONE BUTTON IS ENOUGH ONLY BECAUSE THE CORE CANNOT REFUSE IT, and this branch is why
   // `endFast` carries no duration ceiling. There is no backdate field and no Discard
@@ -184,9 +185,7 @@ export default function FastingCard({
           type="button"
           data-testid="fasting-control"
           disabled={pending}
-          onClick={() =>
-            void run(endFastAction, new FormData(), { offerUndo: false })
-          }
+          onClick={() => void run(endFastAction, new FormData())}
           className="rounded-md border border-black/10 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-white/10"
         >
           End fast
