@@ -8,6 +8,9 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import DateField from "@/components/DateField";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
+import { shouldQueueOffline } from "@/lib/offline/queue";
+import { practiceIdentity } from "@/lib/practice";
 import {
   PRACTICE_DURATION_STEP_MIN,
   PRACTICE_USUAL_DAY_TEXT,
@@ -103,6 +106,7 @@ export default function LogPracticeButton({
   const toast = useToast();
   const confirm = useConfirm();
   const ledger = useOptimisticLedger("practice-session");
+  const { enqueue } = useOfflineQueue();
   const [pending, setPending] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(defaultDetailsOpen);
   const [count, setCount] = useState(todayCount);
@@ -174,11 +178,38 @@ export default function LogPracticeButton({
     toast("Couldn't log that session.");
   }
 
+  // Park this tap for replay (#2908). DAY-IDEMPOTENT by construction: the replay
+  // inserts only when this (practice-identity, day) still holds no session, so a day
+  // already logged from another device is a no-op rather than a second session — which
+  // is exactly what makes the offline capture safe without the #2007 confirm, since
+  // there is no server to ask.
+  async function queueOffline(): Promise<void> {
+    const mins = stepperShown ? durationValue() : null;
+    await enqueue("practice", today, {
+      practice,
+      identity: practiceIdentity(practice),
+      durationMin: mins,
+    });
+    setCount((n) => n + 1);
+    toast("Saved offline — it'll sync when you're back online.");
+  }
+
   async function onClick() {
     // Inside the post-success window this tap is the second half of a double-tap:
     // absorbed silently, and — checked here rather than inside `tap` — never
     // escalated into a dialog the user did not ask for.
     if (ledger.blocked()) return;
+    // Offline, a second same-day tap enqueues NOTHING: the replay would no-op it, and
+    // a queue badge counting an entry that will never become a session is its own small
+    // lie. The narrowing is enforced here, not merely documented.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      if (count > 0) {
+        toast("Already logged today — it'll sync when you're back online.");
+        return;
+      }
+      await queueOffline();
+      return;
+    }
     // Layer 3. `count` is TODAY's by the prop's contract, so a non-zero count is a
     // session already logged on `today`; the shared decision owns what that means.
     const asks = shouldConfirmRelog({
@@ -215,7 +246,14 @@ export default function LogPracticeButton({
           ? { kind: "keep" }
           : { kind: "rollback" };
       },
-      onError: () => {
+      onError: (err) => {
+        // The connection dropped between the online check above and the submit (or the
+        // tab's build went stale). Park it rather than losing the tap — same reading of
+        // the failure the dose confirm takes.
+        if (shouldQueueOffline(navigator.onLine !== false, err) && count === 0) {
+          void queueOffline();
+          return { kind: "keep" };
+        }
         toast("Couldn't log that session. Try again.");
         return { kind: "rollback" };
       },

@@ -1,11 +1,22 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { IconEmergencyBed, IconArrowLeft } from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
 import EmergencyCardView from "@/components/EmergencyCardView";
 import PageContainer from "@/components/PageContainer";
 import { readEmergencyPayloadRaw } from "@/components/emergency-offline";
+import OfflineSnapshotView from "@/components/offline/OfflineSnapshotView";
+import { allSnapshots } from "@/lib/offline/snapshot-db";
+import { allIntents } from "@/lib/offline/queue-db";
+import {
+  SNAPSHOT_REGISTRY,
+  overlaySnapshot,
+  resolveSnapshotProfile,
+  SNAPSHOT_KINDS,
+  type AnySnapshot,
+  type SnapshotKind,
+} from "@/lib/offline/snapshots";
 import {
   parseEmergencyPayload,
   type EmergencyCard,
@@ -13,16 +24,25 @@ import {
 
 const subscribeToEmergencyCard = () => () => {};
 
-// Offline fallback shown by the service worker (public/sw.js) when a page
-// navigation fails with no network. It's a static, session-free page — added to
-// middleware's public allowlist and precached on SW install — so it renders even
-// when the app shell itself can't be reached. Client component so "Try again" can
-// re-attempt the navigation and so it can read the offline Emergency Card from
-// localStorage (issue #42): the authenticated Passport page (/profile#emergency)
-// refreshes that copy
-// on each visit, so here — with no network and no session — we can still surface
-// it instead of dead-ending. localStorage is cleared on logout / profile switch,
-// so a stale card never lingers.
+// Offline fallback shown by the service worker (public/sw.js) when a page navigation
+// fails with no network — and, since #2908, the OFFLINE HOME. It's a static,
+// session-free page (in middleware's public allowlist, precached on SW install) so it
+// renders even when the app shell itself can't be reached. A deep-linked navigation
+// that fails still lands here, which is the right landing.
+//
+// It reads two device-local stores and nothing else:
+//   • the Emergency Card copy in localStorage (#42), and
+//   • the declared read SNAPSHOTS in IndexedDB (#2908) — today's doses, the med list,
+//     recent training, the day's food, the practice week — with the write queue's
+//     PENDING INTENTS folded in, so a dose tapped in the same dead zone shows as
+//     resolved-and-queued instead of vanishing until reconnect.
+//
+// SINGLE-PROFILE BY CONSTRUCTION. There is no session here to authorize a choice
+// between profiles, so there is no picker: the page renders the profile that was active
+// at capture, and if the store somehow holds more than one profile's payloads it
+// renders NONE of them (resolveSnapshotProfile answers null, and a mixed store means a
+// wipe failed to run). Logout and profile switch wipe both stores, so a stale card or
+// schedule never lingers for the next person holding the phone.
 export default function OfflinePage() {
   const emergencyRaw = useSyncExternalStore(
     subscribeToEmergencyCard,
@@ -34,6 +54,39 @@ export default function OfflinePage() {
     [emergencyRaw]
   );
   const [showCard, setShowCard] = useState(false);
+  const [snapshots, setSnapshots] = useState<AnySnapshot[]>([]);
+  const [open, setOpen] = useState<SnapshotKind | null>(null);
+
+  // Read once on mount, from a browser task. There is nothing to subscribe to: no
+  // network, no Server Actions, and both stores only change on a visit that has a
+  // session — which this page, by definition, does not.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [stored, intents] = await Promise.all([
+        allSnapshots(),
+        allIntents(),
+      ]);
+      if (cancelled) return;
+      const owner = resolveSnapshotProfile(stored);
+      if (owner == null) return;
+      setSnapshots(
+        stored
+          .filter((s) => s.profileId === owner)
+          .map((s) => overlaySnapshot(s, intents))
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const byKind = useMemo(
+    () => new Map(snapshots.map((s) => [s.kind, s] as const)),
+    [snapshots]
+  );
+  const available = SNAPSHOT_KINDS.filter((k) => byKind.has(k));
+  const openEnv = open ? (byKind.get(open) ?? null) : null;
 
   // `data-offline-shell` + `offline-card` hook the CSS-only prefers-color-scheme
   // base in globals.css (#2183): this page must render sensibly under OS dark
@@ -58,6 +111,27 @@ export default function OfflinePage() {
     );
   }
 
+  if (openEnv) {
+    return (
+      <main data-offline-shell className="min-h-screen px-4 py-8">
+        <PageContainer width="narrow" className="mx-auto">
+          <button
+            type="button"
+            data-testid="offline-snapshot-back"
+            className="btn-ghost mb-4"
+            onClick={() => setOpen(null)}
+          >
+            <IconArrowLeft className="h-4 w-4" stroke={1.75} />
+            Back
+          </button>
+          <div className="offline-card rounded-2xl border border-black/10 bg-white/70 p-5 dark:border-white/5 dark:bg-ink-950/70">
+            <OfflineSnapshotView env={openEnv} now={new Date()} />
+          </div>
+        </PageContainer>
+      </main>
+    );
+  }
+
   return (
     <main
       data-offline-shell
@@ -75,6 +149,24 @@ export default function OfflinePage() {
             Allos can&apos;t reach the network right now. Your data is safe on
             the server — reconnect to pick up where you left off.
           </p>
+          {available.length > 0 && (
+            <div
+              data-testid="offline-snapshot-list"
+              className="mb-4 flex flex-col gap-2 text-left"
+            >
+              {available.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  data-testid={`offline-open-${kind}`}
+                  className="btn-ghost w-full"
+                  onClick={() => setOpen(kind)}
+                >
+                  {SNAPSHOT_REGISTRY[kind].title}
+                </button>
+              ))}
+            </div>
+          )}
           {card && (
             <button
               type="button"

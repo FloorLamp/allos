@@ -44,6 +44,7 @@ import {
   STEPS_TARGET_MAX,
   setRecommendationCadence,
   setMentalHealthShareFull,
+  setOfflineSnapshotsEnabled,
   setProfileCrisisResourcesOverride,
   setAnxietyScaleOptIn,
   setProfileHouseholdRound,
@@ -613,6 +614,22 @@ export async function saveMentalHealthShareFull(formData: FormData) {
   setMentalHealthShareFull(profile.id, on);
   revalidateRoute("/settings/privacy");
   revalidateRoute("/");
+}
+
+// The offline read snapshots switch (#2908). ON by default — the person this serves is
+// in a waiting room or a basement gym and set nothing up in advance — so this is an OFF
+// switch, not an opt-in. Turning it off stops the server building payloads for this
+// profile; the DEVICE wipe is the client's half of the same tap
+// (components/offline/OfflineSnapshotsSettings.tsx), and any other device this profile
+// is signed in on wipes at its next authenticated visit, because /api/offline-snapshots
+// answers `enabled: false` and the refresher clears on reading it.
+export async function saveOfflineSnapshotsEnabled(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const on =
+    formData.get("offline_snapshots") === "1" ||
+    formData.get("offline_snapshots") === "on";
+  setOfflineSnapshotsEnabled(profile.id, on);
+  revalidateRoute("/settings/privacy");
 }
 
 // The check-in Calm (anxiety) scale opt-in (issue #1313, signal 6). Flipping it on is
