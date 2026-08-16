@@ -914,6 +914,11 @@ const FROZEN_UNGUARDED_DELETES: readonly {
     why: "#2680: same era and same reasoning as migration 092 above — pre-120, so no revision row to orphan, and the sweep migration clears whatever instrument_responses it did.",
   },
   {
+    file: "131-portal-accounts.ts",
+    table: "portal_identities",
+    why: "#2680: the migration-159 shape, not an orphaning. 131 runs at position 131 and `portal_identities` had NO inbound delete link until 20260816-document-sync-provenance added `medical_documents.acquired_identity_id` (ON DELETE SET NULL) at position 203 — so at the moment 131 deletes, there is no child to clear. The scan reads the FINAL schema, which is why a link introduced later lands on an earlier file; migration 118 is here for exactly the same reason. Runtime deletes of a binding are unaffected: foreign_keys is ON outside the runner, and lib/portals.ts nulls the column explicitly beside every identity delete it makes.",
+  },
+  {
     file: "118-imported-practice-logs.ts",
     table: "activities",
     why: "#2680: NOT a defect — 118 is the precedent. It names the runner's foreign_keys = OFF posture in its own comment, nulls fitness_assessments.activity_id by hand, and refuses to delete an activity that any of its cascading children still reference. The three telemetry children arrive later (migration 159), after it has run.",

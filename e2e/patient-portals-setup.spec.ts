@@ -231,10 +231,21 @@ function plantRunReport(portalName: string, at?: string) {
   });
 }
 
+// The filename prefix this spec's delivered archives carry, so the fixture can remove
+// exactly its own rows.
+const DELIVERED_PREFIX = "delivery archive portal ";
+
 // A DELIVERY-ONLY push on the caller's portal (#1888/#2914): a `contacted: false`
-// report plus the sync event that carries the documents it delivered. It deliberately
+// report, the archives it delivered, and the run's claim on each of them. It deliberately
 // leaves `checked_at` where the previous real run left it — that is the whole point of
 // the sticky clock, and what lets the login row state a check it does not claim to be.
+//
+// THE SPLIT IS ALL ZEROES, on purpose. This is the observed input: a push that delivered
+// documents under a report whose status was `nothing-new`, because that is the tool's
+// honest claim about the portal visit it did not make. Every number the two surfaces
+// state comes from the CLAIMED DOCUMENTS, so a fixture whose split says nothing arrived
+// still renders the delivery — and a derivation that read the split would say "Delivered
+// no documents" over two archives that are sitting in Review.
 function plantDelivery(portalName: string, documents: number) {
   withDb((handle) => {
     const portal = handle
@@ -264,23 +275,51 @@ function plantDelivery(portalName: string, documents: number) {
            status = excluded.status, contacted = 0`
       )
       .run(account.id, portal.id, bare);
-    handle
-      .prepare(
-        `INSERT INTO integration_sync_events
-           (profile_id, source_id, at, ok, received, written, inserted, updated,
-            unchanged, skipped, portal_id, account_id, patient_label)
-         VALUES (?, 'patient-portals', ?, 1, ?, ?, ?, 0, 0, 0, ?, ?, ?)`
-      )
-      .run(
-        identity.profileId,
-        canonical,
-        documents,
-        documents,
-        documents,
-        portal.id,
-        account.id,
-        identity.label
+    const eventId = Number(
+      handle
+        .prepare(
+          `INSERT INTO integration_sync_events
+             (profile_id, source_id, at, ok, received, written, inserted, updated,
+              unchanged, skipped, portal_id, account_id, patient_label)
+           VALUES (?, 'patient-portals', ?, 1, 0, 0, 0, 0, 0, 0, ?, ?, ?)`
+        )
+        .run(
+          identity.profileId,
+          canonical,
+          portal.id,
+          account.id,
+          identity.label
+        ).lastInsertRowid
+    );
+    const insertDoc = handle.prepare(
+      `INSERT INTO medical_documents
+         (filename, stored_path, mime_type, size_bytes, extraction_status,
+          uploaded_at, profile_id)
+       VALUES (?, '', 'text/xml', 400, 'done', ?, ?)`
+    );
+    const claim = handle.prepare(
+      `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+       VALUES (?, 'medical_documents', ?, 'inserted')`
+    );
+    for (let i = 0; i < documents; i++) {
+      const docId = Number(
+        insertDoc.run(
+          `${DELIVERED_PREFIX}${portalName} ${i}.xml`,
+          bare,
+          identity.profileId
+        ).lastInsertRowid
       );
+      claim.run(eventId, docId);
+    }
+  });
+}
+
+// This spec's delivered archives, removed with the portal that delivered them.
+function clearDelivery(portalName: string) {
+  withDb((handle) => {
+    handle
+      .prepare("DELETE FROM medical_documents WHERE filename LIKE ?")
+      .run(`${DELIVERED_PREFIX}${portalName} %`);
   });
 }
 
@@ -938,6 +977,7 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     );
 
     await removePortal(page, portal);
+    clearDelivery(portal);
   });
 });
 
