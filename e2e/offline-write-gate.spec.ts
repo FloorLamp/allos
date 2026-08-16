@@ -21,6 +21,20 @@ import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 //   R2c  and the other direction — the next login must get the feature back;
 //   R3d  a queue flush in flight re-wrote its retry entries after the wipe;
 //   R3e  a form draft's 600ms debounce landed a half-typed record after the wipe.
+// And the two findings from the round after that, which are the same sentence read the
+// other way round — a close that outlives the thing it was closing against:
+//   R-A  a logout that FAILED left the whole device-local perimeter shut, permanently;
+//   R-B  the off switch was a one-way latch, so a profile turned back on elsewhere never
+//        came back on this device;
+//   R-C  a stale second tab erased the switched-to profile's snapshots.
+//
+// WHICH HALF OF THE GATE A TEST ACTUALLY OBSERVES, because the titles have been wrong
+// about this before. There are two: `snapshotWritesClosed()`, asked BEFORE the fetch so a
+// closed device does not even make the request, and `gateAllows` inside the write's own
+// transaction. R1 and offline-snapshots.spec.ts's post-wipe-refresh test are satisfied by
+// the FIRST — they are real tests of a real guard, and both are titled for it. The
+// in-transaction half is what offline-snapshots.spec.ts:290, R3d and R3e observe, and
+// they are the ones that go red when `gateAllows` is mutated to `return true`.
 //
 // MOVING A TEST TO THIS TIER IS NOT THE SAME AS MAKING IT MEASURE SOMETHING, and both
 // tests added here since have been caught not measuring. Mutation testing is the only
@@ -110,6 +124,48 @@ async function storedKinds(page: Page): Promise<string[]> {
   return rows.map((r) => r.kind).sort();
 }
 
+/** The write gate itself, as it stands in the database. `null` before anything wrote it. */
+async function gateRow(page: Page): Promise<Record<string, unknown> | null> {
+  const rows = (await storedRows(page, "meta")) as Record<string, unknown>[];
+  return rows.find((r) => r.key === "device-writes") ?? null;
+}
+
+/**
+ * Re-stamp every stored snapshot onto another profile — the state a document is in when
+ * the profile was switched somewhere it cannot see. Written raw rather than through the
+ * app, because the app has no way to produce it on purpose; the rows are otherwise
+ * untouched, so they still parse.
+ */
+async function restampSnapshots(page: Page, profileId: number): Promise<void> {
+  await page.evaluate(
+    ([dbName, pid]) =>
+      new Promise<void>((resolve) => {
+        const req = indexedDB.open(dbName as string);
+        req.onerror = () => resolve();
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction("snapshots", "readwrite");
+          const store = tx.objectStore("snapshots");
+          const all = store.getAll();
+          all.onsuccess = () => {
+            for (const row of all.result as { profileId: number }[]) {
+              store.put({ ...row, profileId: pid as number });
+            }
+          };
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => {
+            db.close();
+            resolve();
+          };
+        };
+      }),
+    [DB, profileId] as const
+  );
+}
+
 async function capturedAll(
   page: Page,
   timeout: number = 30_000
@@ -132,7 +188,7 @@ async function holdLogoutPost(
   });
 }
 
-test("R1 — the OFF SWITCH: nothing re-materialises, even before the server is told", async ({
+test("R1 — the OFF SWITCH stops the REQUEST, so nothing re-materialises before the server is told", async ({
   page,
 }) => {
   test.slow();
@@ -452,4 +508,192 @@ test("R3e — a draft's autosave debounce does not land a half-typed record afte
   // lib/offline/draft-db.ts's own contract: "the next login must never be offered the
   // previous one's half-typed workout."
   expect(await storedRows(page, "drafts")).toEqual([]);
+});
+
+test("R-A — a logout that FAILS leaves the device able to save again", async ({
+  page,
+  context,
+}: {
+  page: Page;
+  context: BrowserContext;
+}) => {
+  test.slow();
+
+  // THE CLOSE IS MADE BEFORE THE LOGOUT IS SENT, which is what makes every window above
+  // safe — and what made this one fatal. SidebarContent wipes and closes, then submits.
+  // When that POST never lands the session is still alive and the gate is closed for it,
+  // and every rule in this file says only a DIFFERENT session may re-open. Nothing
+  // changes `sessionKey` short of a successful logout and a new login, so the whole
+  // device-local perimeter stayed shut — including the shipped #28 write queue, which
+  // went on toasting "saved offline — will sync when you reconnect" over a queue that
+  // captured nothing.
+  //
+  // Pressing Log out with no signal is this app's own subject matter, and a 5xx during a
+  // deploy does the same. The person is then shown the error boundary, which invites them
+  // to carry on in the very session that is now shut: "Something went wrong … Reload the
+  // app".
+  await login(page);
+  await page.goto("/medications");
+  const row = page
+    .getByTestId("medications-today")
+    .locator("[data-today-row]")
+    .filter({ hasText: "Sertraline" });
+  await expect(row).toHaveCount(1);
+
+  // Kill the logout POST outright. Not a contrivance — this is what a tap on Log out in a
+  // dead zone does, and the failure the error boundary is for.
+  await page.route("**/*", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.abort("internetdisconnected");
+      return;
+    }
+    await route.continue();
+  });
+  await page.getByRole("button", { name: "Log out" }).click();
+
+  // The close landed and was then undone by the closer, because its own logout failed.
+  await expect
+    .poll(() => gateRow(page), { timeout: 20_000 })
+    .toMatchObject({ sessionClosed: false });
+
+  await page.unroute("**/*");
+  await page.reload();
+
+  // NON-VACUITY CONTROL, and it is the whole reason this test means anything: the session
+  // must really have survived. If the logout had actually landed this page would sit on
+  // /login, there would be no dose to tap, and "the queue still works" would be a
+  // statement about a page that never existed.
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible({
+    timeout: 20_000,
+  });
+
+  // And the shipped feature still works. Measured on the PR head before this fix: `[]`
+  // intents and the "saved offline" toast anyway; on origin/main, one intent.
+  await context.setOffline(true);
+  await page
+    .getByTestId("medications-today")
+    .locator("[data-today-row]")
+    .filter({ hasText: "Sertraline" })
+    .getByRole("button", { name: "Mark taken" })
+    .click();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /1 queued offline/
+  );
+  expect((await storedRows(page, "intents")).length).toBe(1);
+  await context.setOffline(false);
+});
+
+test("R-B — the OFF SWITCH is not a latch: a profile turned back on elsewhere comes back", async ({
+  page,
+  browser,
+}) => {
+  test.slow();
+
+  // `snapshotsClosed` is persisted, and the only thing that used to clear it was THIS
+  // device's own toggle being ticked ON again. The refresher asks the gate before it asks
+  // the server, so a closed device could never hear `enabled: true` from a profile turned
+  // back on anywhere else — and the checkbox is server-driven, so it rendered ON above an
+  // empty store, permanently and silently. R1 above pins the window the close is FOR;
+  // this pins the window it must not outlive.
+  //
+  // Two contexts, because "another device" is the case: same account, same server,
+  // separate storage.
+  await login(page);
+  await page.goto("/");
+  await capturedAll(page);
+
+  await page.goto("/settings/privacy");
+  const toggle = page.getByTestId("offline-snapshots-toggle");
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await expect(page.getByLabel("Saved")).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => storedKinds(page), { timeout: 15_000 }).toEqual([]);
+
+  // The latch is released once the server has been told, and the server is the off switch
+  // from here on. Asserted directly, because the behaviour below depends on it and a
+  // still-closed lane would fail this test for a reason worth naming separately.
+  await expect
+    .poll(() => gateRow(page), { timeout: 15_000 })
+    .toMatchObject({ snapshotsClosed: false });
+
+  // Still off, though — the SERVER says so now, and it is asked on every refresh.
+  await page.reload();
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await page.waitForTimeout(3_000); // waitfortimeout-ok: absence — the server's own `enabled: false` must keep the store empty with no help from a device-local latch
+  expect(await storedKinds(page)).toEqual([]);
+
+  // THE OTHER DEVICE turns it back on.
+  const other = await browser.newContext();
+  const otherPage = await other.newPage();
+  await login(otherPage);
+  await otherPage.goto("/settings/privacy");
+  await otherPage.getByTestId("offline-snapshots-toggle").check();
+  await expect(otherPage.getByLabel("Saved")).toBeVisible({ timeout: 20_000 });
+  await other.close();
+
+  // This device's next authenticated visit hears it. Before the fix this poll never
+  // resolved: the pre-fetch check bailed on the device's own latch and the server was
+  // never asked again.
+  await page.reload();
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await capturedAll(page, 60_000);
+
+  // And the checkbox and the device agree, which is the user-visible half of the finding.
+  await page.goto("/settings/privacy");
+  await expect(page.getByTestId("offline-snapshots-toggle")).toBeChecked();
+});
+
+test("R-C — a STALE second tab does not erase the switched-to profile's snapshots", async ({
+  page,
+  context,
+}: {
+  page: Page;
+  context: BrowserContext;
+}) => {
+  test.slow();
+
+  // The foreign-profile wipe used to be judged against the COMPONENT'S OWN
+  // `activeProfileId`, before the fetch. A second tab does not re-render when the profile
+  // is switched in the first one, so its props stay on the old profile — and it wiped the
+  // switched-to profile's payloads and started a wipe/re-capture loop between the tabs.
+  //
+  // SYNTHETIC, AND SAYING SO. A real switch would mutate session state this suite shares,
+  // so the stale tab is built rather than produced: the store is seeded with a payload
+  // belonging to another profile, and the server is made to answer with that profile —
+  // which is exactly the state a stale tab is in, a document whose own `activeProfileId`
+  // is not what the server says is active. What it measures is the decision under review:
+  // WHOSE answer the wipe is judged against.
+  await login(page);
+  await page.goto("/");
+  await capturedAll(page);
+
+  const FOREIGN_PROFILE = 4242;
+  await restampSnapshots(page, FOREIGN_PROFILE);
+
+  let gets = 0;
+  await page.route("**/api/offline-snapshots*", async (route) => {
+    gets += 1;
+    const res = await route.fetch();
+    const body = (await res.json()) as Record<string, unknown>;
+    // The server's answer, with the profile a stale document is out of step with.
+    await route.fulfill({
+      status: res.status(),
+      contentType: "application/json",
+      body: JSON.stringify({ ...body, profileId: FOREIGN_PROFILE }),
+    });
+  });
+
+  await page.goto("/medications");
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+
+  // NON-VACUITY CONTROL: the refresh must actually have run, or "nothing was wiped" is a
+  // statement about a refresher that never woke up.
+  await expect.poll(() => gets, { timeout: 20_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(2_000); // waitfortimeout-ok: the wipe under review lands here or not at all
+
+  const kinds = await storedKinds(page);
+  expect(
+    kinds,
+    "a document out of step with the server erased the store anyway"
+  ).toContain("medication-list");
 });

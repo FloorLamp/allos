@@ -188,7 +188,16 @@ test("offline reads: one visit captures, /offline renders them with no network, 
 // empty, so the ordering is a fact of the test rather than a hope. A reconnect during a
 // logout round trip is a real thing to do — this is the app's own public behaviour, not
 // a back door.
-test("logout ENDS snapshot writing: a refresh started after the wipe writes nothing (#2908)", async ({
+//
+// TITLED FOR THE GUARD IT ACTUALLY OBSERVES. There are two halves to the gate:
+// `snapshotWritesClosed()`, asked before the fetch so a closed device does not even make
+// the request, and `gateAllows` inside the write's own transaction. This test is
+// satisfied by the FIRST — it stays green against `gateAllows` mutated to `return true`,
+// because the request never happens. That is a real guard and worth pinning; it is just
+// not the other one. The in-transaction half is what the test at :290 and
+// offline-write-gate.spec.ts's R3d/R3e observe, and calling this one "writes nothing"
+// claimed both.
+test("logout stops the REQUEST: a refresh started after the wipe never asks the server (#2908)", async ({
   page,
 }) => {
   test.slow();
