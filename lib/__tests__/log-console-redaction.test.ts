@@ -10,10 +10,12 @@ import { redactSecrets } from "../error-log-format";
 
 const log = createLogger("test");
 
-// Obviously fake, LOW-ENTROPY placeholders. redactSecrets keys off the field
-// NAME (and the `Bearer ` prefix), never the value's shape, so a structured
-// stand-in proves exactly the same thing as a realistic-looking one — while
-// keeping the repo's secret scanner out of a test fixture.
+// Obviously fake, LOW-ENTROPY placeholders. The rules these fixtures exercise
+// key off the field NAME and the `Bearer ` prefix, so a structured stand-in
+// proves exactly the same thing as a realistic-looking one — while keeping the
+// repo's secret scanner out of a test fixture. (redactSecrets also matches
+// credential SHAPES in URLs and after `Basic`, covered in
+// error-log-format.test.ts.)
 const FAKE_TOKEN = "xxxx-xxxx-xxxx";
 const FAKE_PASSWORD = "pw-xxxx-xxxx";
 
