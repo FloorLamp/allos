@@ -474,7 +474,7 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "skin.spec.ts": 2,
   "substance-use.spec.ts": 2,
   "training-log-merge.spec.ts": 1,
-  "training-log-provenance.spec.ts": 3,
+  "training-log-provenance.spec.ts": 2,
   "trends-card-pin.spec.ts": 1,
   "undo-delete.spec.ts": 1,
   "upcoming-aggregate.spec.ts": 2,
