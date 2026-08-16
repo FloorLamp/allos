@@ -591,13 +591,21 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
 
   // And the shipped feature still works. Measured on the PR head before this fix: `[]`
   // intents and the "saved offline" toast anyway; on origin/main, one intent.
-  await context.setOffline(true);
-  await page
+  //
+  // WAIT FOR THE CONTROL BEFORE CUTTING THE NETWORK. The first version went offline as
+  // soon as the sidebar appeared, which is a different page's chrome — on a loaded runner
+  // the today rows had not arrived yet, and cutting the network there means they never
+  // do. It failed 1 of 3 CI repeats that way, at 17s against 2s, which reads as the gate
+  // refusing the tap and is nothing of the kind.
+  const takenAfterReload = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
     .filter({ hasText: "Sertraline" })
-    .getByRole("button", { name: "Mark taken" })
-    .click();
+    .getByRole("button", { name: "Mark taken" });
+  await expect(takenAfterReload).toBeVisible({ timeout: 20_000 });
+
+  await context.setOffline(true);
+  await takenAfterReload.click();
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
     /1 queued offline/
   );
