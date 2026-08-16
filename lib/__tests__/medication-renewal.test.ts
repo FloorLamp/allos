@@ -20,6 +20,72 @@ describe("normalizeStrength", () => {
   });
 });
 
+// A strength recorded before the parser kept a concentration's denominator is
+// numerator-only, and gets compared against freshly parsed strengths that keep it.
+// Treating the two as different forked a duplicate item at the next refill of every
+// concentration-dosed med — on every install predating the change, which is every real
+// one. Fresh fixtures cannot see this by construction (it needs a row written by the
+// previous build), so the asymmetry is stated directly here.
+describe("numerator-only strength history (the upgraded-install case)", () => {
+  const UPGRADED: [string, string, string][] = [
+    ["2.5 mg", "2.5 mg/3 mL", "albuterol nebulizer solution"],
+    ["400 mg", "400 mg/5 mL", "amoxicillin suspension"],
+    ["100 units", "100 units/mL", "insulin glargine"],
+    ["875 mg", "875 mg/125 mg", "amoxicillin-clavulanate"],
+    ["125 mg", "125 mg/5 mL", "cefdinir suspension"],
+  ];
+
+  for (const [stored, incoming, product] of UPGRADED) {
+    it(`${product}: stored "${stored}" renews against "${incoming}"`, () => {
+      expect(
+        classifyReprescription({
+          existingHasOpenCourse: true,
+          existingStrengths: new Set([normalizeStrength(stored)!]),
+          newStrength: incoming,
+        })
+      ).toBe("renewal");
+      // The same asymmetry drove a spurious "update the dose" prompt every refill.
+      expect(isDoseChange(incoming, [stored])).toBe(false);
+    });
+  }
+
+  it("does NOT fold two genuinely different concentrations", () => {
+    // The tolerance is one-sided: it applies only when one side is numerator-only.
+    // With a denominator on BOTH sides these are different products, and #1027's
+    // concurrent carve-out must still fire.
+    expect(
+      classifyReprescription({
+        existingHasOpenCourse: true,
+        existingStrengths: new Set(["400mg/5ml"]),
+        newStrength: "400 mg/10 mL",
+      })
+    ).toBe("separate");
+    expect(isDoseChange("400 mg/10 mL", ["400 mg/5 mL"])).toBe(true);
+  });
+
+  it("does NOT fold different numerators", () => {
+    expect(
+      classifyReprescription({
+        existingHasOpenCourse: true,
+        existingStrengths: new Set(["200mg"]),
+        newStrength: "800 mg",
+      })
+    ).toBe("separate");
+  });
+
+  it("treats a combination numerator as one strength, not a concentration", () => {
+    // "5/325 mg" is hydrocodone/APAP — the slash follows a DIGIT, so there is no
+    // denominator to be tolerant about and it can never match a bare "5 mg".
+    expect(
+      classifyReprescription({
+        existingHasOpenCourse: true,
+        existingStrengths: new Set(["5mg"]),
+        newStrength: "5/325 mg",
+      })
+    ).toBe("separate");
+  });
+});
+
 describe("classifyReprescription", () => {
   it("renews when the prior course is closed (a refill/re-issue)", () => {
     expect(

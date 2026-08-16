@@ -37,6 +37,48 @@ export function normalizeStrength(s: string | null | undefined): string | null {
   return n || null;
 }
 
+// The CONCENTRATION denominator of a normalized strength is the part after a "/" that
+// FOLLOWS A UNIT ("2.5mg/3ml" → numerator "2.5mg"). A slash after a DIGIT is not a
+// denominator but a combination numerator ("5/325mg" is hydrocodone/APAP — one
+// strength stated in two parts), so that shape is left whole.
+const CONCENTRATION_RE = /^(.*?[a-z%])\/.+$/;
+
+function numeratorOf(normalized: string): string {
+  return normalized.match(CONCENTRATION_RE)?.[1] ?? normalized;
+}
+
+// Are two normalized strengths the same strength?
+//
+// Exact equality, plus one asymmetry the app has to carry. Strengths recorded BEFORE
+// the parser learned to keep a concentration's denominator are numerator-only, and
+// they get compared against freshly parsed strengths that now keep it. A stored
+// "2.5mg" and an incoming "2.5mg/3ml" are the same albuterol; treating them as
+// different made every concentration-dosed med fork a duplicate item at its next
+// refill — on every install that predates the change, which is every real one.
+//
+// A BACKFILL CANNOT FIX THIS, which is why the tolerance lives in the comparison
+// rather than in a migration: the denominator was never stored, so there is nothing
+// on disk to migrate. "2.5 mg" does not contain "3 mL" anywhere; the only copy is in
+// the source document, behind a reprocess the app cannot assume has happened.
+//
+// The tolerance is deliberately ONE-SIDED — it applies only when exactly one side is
+// numerator-only, i.e. when one of them is ambiguous history. When both state a
+// denominator they are compared in full, so "400mg/5ml" and "400mg/10ml" stay the
+// genuinely different concentrations they are, and #1027's carve-out still fires.
+export function sameStrength(a: string, b: string): boolean {
+  if (a === b) return true;
+  const aConc = CONCENTRATION_RE.test(a);
+  const bConc = CONCENTRATION_RE.test(b);
+  if (aConc === bConc) return false;
+  return numeratorOf(a) === numeratorOf(b);
+}
+
+// Is `candidate` one of the strengths already known, allowing for that history?
+function knownStrength(candidate: string, known: Iterable<string>): boolean {
+  for (const k of known) if (sameStrength(candidate, k)) return true;
+  return false;
+}
+
 export interface ReprescriptionState {
   // Does the existing med currently have an OPEN (stopped_on IS NULL) course?
   existingHasOpenCourse: boolean;
@@ -138,7 +180,7 @@ export function classifyReprescription(
     state.existingHasOpenCourse &&
     nu != null &&
     state.existingStrengths.size > 0 &&
-    !state.existingStrengths.has(nu)
+    !knownStrength(nu, state.existingStrengths)
   ) {
     return "separate";
   }
@@ -161,7 +203,10 @@ export function isDoseChange(
       .filter((s): s is string => !!s)
   );
   if (live.size === 0) return false;
-  return !live.has(nu);
+  // Same numerator-only history tolerance as classifyReprescription: a stored "2.5 mg"
+  // against a parsed "2.5 mg/3 mL" is not a dose change, and prompting "update the
+  // dose" for it would nag on every refill of every concentration-dosed med.
+  return !knownStrength(nu, live);
 }
 
 // The tracked-med state the medication fold needs — a STRUCTURAL subset of

@@ -63,7 +63,20 @@ export const DEFAULT_ADULT_AGE = 30;
 // documented fallback, pinned by the dataset test to only ever reference real keys.
 // Every key here MUST exist in dri.json.
 const NAME_MATCHERS: { pattern: RegExp; key: string }[] = [
-  { pattern: /magnesium/i, key: "magnesium" },
+  // Magnesium carries the shelf spellings this catalog actually meets (#2934):
+  //   * `magnesia` — "Milk of Magnesia" is a real magnesium product and the word
+  //     names the mineral outright; nothing else in the catalog contains it.
+  //   * `Mag <form>` — "Mag Threonate" is a common front-of-bottle abbreviation.
+  //     The FORM WORD is the evidence, not the abbreviation: a bare /\bmag\b/i
+  //     would count "Mag 07" and any other product that shortens the word, so the
+  //     match requires a magnesium salt to follow. That leaves a genuine
+  //     under-count on an abbreviation with no form word, which is the direction
+  //     this may fail in — it never invents a dose.
+  {
+    pattern:
+      /magnesium|\bmagnesia\b|\bmag\b[\s-]+(?:l[\s-]?)?(?:threonate|glycinate|citrate|malate|taurate|oxide|hydroxide|chloride|sulfate|sulphate|carbonate|lactate|orotate|aspartate)/i,
+    key: "magnesium",
+  },
   { pattern: /\bzinc\b/i, key: "zinc" },
   { pattern: /\bcalcium\b/i, key: "calcium" },
   { pattern: /\biron\b/i, key: "iron" },
@@ -88,10 +101,50 @@ export const MATCHER_KEYS: string[] = [
   ...new Set(NAME_MATCHERS.map((m) => m.key)),
 ];
 
+// Names that MENTION a nutrient without being a dose of it (#2934). `Magnesium
+// Stearate` is the proven case: one of the most common tablet excipients, a flow
+// agent present in trace amounts, which `/magnesium/i` counted as a magnesium dose
+// and summed toward the upper limit.
+//
+// Each entry is REDACTED from the name before the matchers run, rather than vetoing
+// the whole name. A veto would be the wrong tool: an excipient can be named
+// ALONGSIDE the real dose ("Magnesium Citrate (with magnesium stearate)"), and
+// that product does dose magnesium. Redaction removes only the mention that is not
+// a dose and lets whatever remains speak.
+//
+// This is deliberately a list of NAMED COMPOUNDS, not of the bare words `stearate`
+// or `silicate`: the mineral has to be the one being excused, so the excuse cannot
+// spread to a form the catalog might legitimately dose.
+//
+// AND NAMING A COMPOUND IS NOT ENOUGH — it has to be one that is never the dose.
+// Magnesium SILICATE is talc, an anticaking agent. Magnesium TRISILICATE differs by
+// three letters and by everything else: it is a licensed antacid active ingredient
+// (BP/USP monograph, 250–500 mg tablets), and excusing it silenced a 2000 mg/day
+// stack this module had correctly warned on — a stack going quiet is the one
+// direction it may never move, and antacid-driven hypermagnesemia in renal
+// impairment is precisely the CKD case `ulConditionCaveat` exists for. So
+// `silicate` is matched exactly, and `trisilicate` resolves like the dose it is.
+const EXCIPIENT_MENTIONS: RegExp[] = [
+  /\b(?:magnesium|calcium|zinc|sodium|potassium)[\s-]+stearates?\b/gi,
+  /\b(?:magnesium|calcium)[\s-]+silicate\b/gi,
+];
+
 // Resolve a supplement/medication name to a nutrient key, or null when it maps to
-// no UL-bearing nutrient (the common case for herbs, proteins, multivitamins).
+// no UL-bearing nutrient (the common case for herbs, proteins, multivitamins) or
+// when the only mention of one was an excipient.
+//
+// ONE VOCABULARY, TWO READERS. Both the UL check (a risk number) and the RDA
+// adequacy note (a reassurance number) resolve names through here, and recognition
+// moves them in OPPOSITE directions: counting an excipient inflates the risk number
+// AND the reassurance number, so ceasing to count it deflates both. That is the
+// honest outcome in each case — an excipient is not exposure and it is not intake —
+// but it is the reason recognition is decided once, here, instead of per reader.
 export function resolveNutrientKey(name: string): string | null {
-  for (const m of NAME_MATCHERS) if (m.pattern.test(name)) return m.key;
+  const evidence = EXCIPIENT_MENTIONS.reduce(
+    (s, re) => s.replace(re, " "),
+    name
+  );
+  for (const m of NAME_MATCHERS) if (m.pattern.test(evidence)) return m.key;
   return null;
 }
 
@@ -249,7 +302,15 @@ const COMPOUND_FORMS: CompoundForm[] = [
     elementalFraction: 0.603,
   },
   {
-    pattern: /hydroxide/i,
+    // `magnesia` rides here rather than on the oxide entry above. Strictly the word
+    // means the oxide, but the product the catalog actually meets is Milk of
+    // Magnesia — a defined USP magnesium HYDROXIDE suspension — and reading it at
+    // the oxide's 60.3% would name a compound the user never entered, the same copy
+    // failure the anchored `oxide` pattern was written to stop. Without an entry at
+    // all, "Milk of Magnesia" read 2400 mg where "Magnesium Hydroxide" — the
+    // identical product — read 1000.8 mg: a 2.4x divergence between two names for
+    // one thing (#2934 review).
+    pattern: /hydroxide|\bmagnesia\b/i,
     nutrientKey: "magnesium",
     label: "magnesium hydroxide",
     elementalFraction: 0.417,
