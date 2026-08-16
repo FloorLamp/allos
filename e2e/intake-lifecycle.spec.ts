@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
-import { settledClick, settledFill } from "./helpers";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 
 // Intake lifecycle stale-actor fixes (#2133/#2131). Both tests OWN their fixtures
 // (create-and-clean, unique names) so the shared seed profile is left as found.
@@ -47,7 +47,7 @@ async function deleteIntakeItem(
     .getByTestId("supplement-row")
     .filter({ hasText: name })
     .first(); // first-ok: spec-owned unique name; a multi-dose item renders one row per dose and any of ITS rows opens the same item menu
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await hydratedClick(page, row.getByRole("button", { name: "Supplement actions" }));
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
     page,

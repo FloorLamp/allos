@@ -661,7 +661,7 @@ function eatingTimeOf(eventId: string): {
 
 async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
   const row = page.getByTestId(`food-logged-${eventId}`);
-  await row.getByRole("button", { name: /^Actions for the/ }).click();
+  await hydratedClick(page, row.getByRole("button", { name: /^Actions for the/ }));
   await settledClick(page, page.getByTestId(`food-logged-remove-${eventId}`));
   await expect(row).toHaveCount(0);
 }

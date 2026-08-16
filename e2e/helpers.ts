@@ -104,6 +104,26 @@ import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 //    auto-dismiss window — silently before #2859, as a named 15s timeout since
 //    (#2861). Waiting it out is not a fix and neither is a bigger budget.
 //
+// 3c. The route draws LAZY CHARTS (`next/dynamic(ssr:false)`) above what you are
+//    about to measure or drive:
+//        → chartsSettled(scope, card, …) after the goto, before the first
+//          boundingBox()/drag or the first portaled ⋯ menu round trip.
+//    Chunk evaluation grows the layout under a test that already started; that is
+//    #2839's hang (a fixed menu panel stranded off-viewport) and #2714's stale
+//    coordinates, from one cause (#2862). settledBoxes is NOT this: it makes a
+//    measurement atomic, it does not decide WHICH layout gets measured.
+//
+// 3d. The control is a row's ⋯ OVERFLOW MENU TRIGGER (`overflow-menu-trigger`, or
+//    an "… actions" / "Actions for …" accessible name):
+//        → hydratedClick(page, trigger), always — never a bare `.click()`.
+//    The trigger is a pure client TOGGLE with no POST and no URL to watch, and it
+//    is very often the first interaction after a navigation, so a tap that lands
+//    pre-hydration is discarded in silence and the failure surfaces later as the
+//    MENU ITEM not being found — which reads as "the menu is broken" rather than
+//    "the trigger was never pressed" (#2942). The menu ITEM needs no such gate:
+//    the panel only renders while `open` is true, so an item exists only because a
+//    trigger click already landed, which is itself the proof that React attached.
+//
 // 4. toPass() is the LAST resort — only for a genuinely non-atomic condition that
 //    none of the above expresses (e.g. re-open a flaky palette until its input
 //    shows, `openCommandPalette` in nav.ts). Every toPass() MUST carry a comment
@@ -159,6 +179,25 @@ async function awaitAutosaveSettled(scope: Locator): Promise<void> {
       )
   );
   await expect(scope.getByLabel("Saving")).toHaveCount(0);
+}
+
+// Wait until React has ATTACHED to this node — the one hydration probe, shared.
+//
+// React tags every host node it owns with `__reactFiber$…`/`__reactProps$…`. Their
+// presence is the difference between server HTML that merely looks right and a live
+// tree with handlers on it, and it is the signal `hydratedClick` gates on. Kept in
+// one place so a second caller cannot invent a slightly different probe — this is a
+// TRUTH about React's DOM, and two spellings of it would drift.
+async function awaitHydrated(el: Locator, timeout: number): Promise<void> {
+  await expect(el).toBeVisible();
+  await expect(async () => {
+    const hydrated = await el.evaluate((node) =>
+      Object.keys(node).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    expect(hydrated, "element not hydrated yet").toBe(true);
+  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; nothing is dispatched inside the loop
 }
 
 // Tap a <PhotoCapture> trigger and hand the native file chooser its bytes.
@@ -229,6 +268,95 @@ async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
     await locator.page().waitForTimeout(50);
   }
   throw new Error("element never settled into a stable position");
+}
+
+// The chart-mount GATE: return only once a lazy-chart route's layout is done growing.
+//
+// SETTLING A READ IS NOT GATING A MOUNT, and #2862 exists because the two look alike.
+// `settledBoxes` repeats a group of boxes until two consecutive reads AGREE — that
+// makes every box come from one layout, which is the right cure for a torn relative
+// measurement (#2437). It says nothing about WHICH layout. A lazy chart card sitting
+// in its Suspense fallback is perfectly still: two reads 50 ms apart agree, the helper
+// returns, and the caller measures a page that is still one card short. Quiescence is
+// not the terminal state, and on a loaded worker the gap between them is tens of
+// seconds. sleep-page already spells the division out at its own call site — the mount
+// is behind `gotoSleepLogSettled`, and `settledBoxes` only keeps the measurement atomic.
+// This is that gate, lifted out of sleep-page so every other lazy-chart route can have it.
+//
+// Every chart in the app is `next/dynamic(ssr: false)` behind a Suspense fallback
+// (components/ChartLoading.tsx, "Loading chart…"). That is THREE renders of the same
+// box, not one: nothing at SSR, the fallback at hydration, the chart itself at chunk
+// evaluation. Each step changes the height of everything below it. Two different tests
+// get hurt by that, and this is the one gate for both:
+//
+//   • A GEOMETRY read — a boundingBox() pair fed to a drag, an adjacency claim, a
+//     height comparison — measures a layout that is still one card short. #2714's
+//     class with a chart-mount trigger: the coordinates were true when they were read.
+//   • A portaled ⋯ MENU round trip. OverflowMenu's panel is `position: fixed` and
+//     glued to its trigger's rect; growth above the trigger slides it off-viewport,
+//     `scrollIntoViewIfNeeded` cannot move a fixed element, and the pending click on
+//     the menu item retries against `<html>` until the budget dies (#2839's hang; with
+//     #2859's 15s actionTimeout it now fails NAMED instead, which is not the same as
+//     fixed).
+//
+// WHY A POSITIVE SIGNAL PER CARD, and not just "no fallback on the page". The
+// fallback's absence is true BEFORE hydration too — the server renders NOTHING in an
+// `ssr:false` box — so an absence-only gate settles on the pre-hydration paint, which
+// is the bystander false-settle (#1437) wearing a chart costume. So the caller NAMES
+// at least one card this route really does draw, and `.recharts-wrapper` (the element
+// recharts mounts around every chart it renders, and the signal sleep-page's own gate
+// used) is waited for INSIDE it. That one positive proof establishes that hydration
+// AND chunk evaluation happened; the scope-wide sweep for a remaining fallback
+// afterwards then covers the route's OTHER lazy boxes without making the caller
+// enumerate them.
+//
+// Name a card that DRAWS. A chart card with no data in the fixture renders an empty
+// state and never mounts a wrapper, so naming it gates on something that will not
+// happen and burns the full budget; pick a populated one — which is also the card
+// whose mount moves the layout.
+//
+// A GRID of sparklines is one card for this purpose: pass the grid as BOTH the scope
+// and the named card (`chartsSettled(grid, grid)`). One mounted wrapper anywhere in it
+// proves the chunk evaluated, and the sweep then covers every remaining tile — which
+// is what a grid whose populated members are fixture-dependent actually needs.
+//
+// WHEN NO CARD IS NAMEABLE — a route whose only chart widget draws or doesn't
+// depending on the fixture's data — pass a LOCATOR scope and no cards. The helper
+// then establishes the same precondition directly, by waiting for React's hydration
+// markers on the scope element (the shared probe every settled interaction uses)
+// before believing an absent fallback. What it will NOT accept is a Page scope with
+// no card: there would be nothing to probe and nothing to wait for, and the call would
+// return true against the server's first paint.
+//
+// The 20s budget is declared per hygiene pitfall 17: chunk evaluation under
+// contention is exactly the latency the 5s default loses.
+const CHART_MOUNT_TIMEOUT = 20_000;
+
+export async function chartsSettled(
+  scope: Page | Locator,
+  ...cards: Locator[]
+): Promise<void> {
+  if (cards.length === 0) {
+    if (!("first" in scope)) {
+      throw new Error(
+        "chartsSettled: a Page scope needs at least one named chart card — the " +
+          "absence of a loading fallback is also true before hydration. Pass a " +
+          "Locator scope instead to gate on that element's hydration."
+      );
+    }
+    await awaitHydrated(scope, CHART_MOUNT_TIMEOUT);
+  }
+  for (const c of cards) {
+    await expect(
+      c.locator(".recharts-wrapper").first() // first-ok: proves THIS card mounted its chart at all; a card that draws two still takes one mount step
+    ).toBeVisible({ timeout: CHART_MOUNT_TIMEOUT });
+  }
+  // The precondition above (a mounted chart, or a hydrated scope) is what makes this
+  // an answer rather than a pre-hydration coincidence: any box still loading is still
+  // showing ChartLoading's text.
+  await expect(scope.getByText(/Loading chart/)).toHaveCount(0, {
+    timeout: CHART_MOUNT_TIMEOUT,
+  });
 }
 
 // Take a toast down before the next round trip, and prove it is gone (#2861).
@@ -667,17 +795,9 @@ export async function hydratedClick(
   opts: { timeout?: number } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 10_000;
-  await expect(button).toBeVisible();
-  await expect(async () => {
-    const hydrated = await button.evaluate((el) =>
-      Object.keys(el).some(
-        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
-      )
-    );
-    // Not hydrated yet → toPass retries the PROBE only; the click below runs once,
-    // after the handler is attached, so the toggle can never be double-fired.
-    expect(hydrated, "button not hydrated yet").toBe(true);
-  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; the click stays outside the loop so a toggle is never fired twice
+  // The probe retries; the click below runs ONCE, after the handler is attached, so
+  // the toggle can never be double-fired.
+  await awaitHydrated(button, timeout);
   await button.click();
 }
 

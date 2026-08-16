@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledClick, settledPickOption } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledPickOption,
+} from "./helpers";
 import { workerDbPath } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
@@ -48,17 +53,22 @@ function tile(page: Page, name: string) {
 // Open one tile's corner ⋯ menu and return the menu panel (portaled to <body>, so
 // it is NOT inside the tile's own subtree — scope to the panel, not the card).
 async function openTileMenu(page: Page, name: string) {
-  await tile(page, name).getByTestId("overflow-menu-trigger").click();
+  await hydratedClick(
+    page,
+    tile(page, name).getByTestId("overflow-menu-trigger")
+  );
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;
 }
 
 async function openTileMenuByKey(page: Page, key: string) {
-  await page
-    .locator(`[data-testid="saved-tile"][data-tile-key="${key}"]`)
-    .getByTestId("overflow-menu-trigger")
-    .click();
+  await hydratedClick(
+    page,
+    page
+      .locator(`[data-testid="saved-tile"][data-tile-key="${key}"]`)
+      .getByTestId("overflow-menu-trigger")
+  );
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;
