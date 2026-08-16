@@ -66,10 +66,28 @@ bash "$REPO_DIR/scripts/orchestrator-checkin.sh"
 echo
 echo "=== CATCH-UP DIGEST  window ${SINCE} .. ${NOW} ==="
 
+# A FAILED READ MUST NOT CONSUME THE WINDOW. Degrading to `[]` is right — one
+# blocked read should not kill the digest — but an empty section and a section
+# that is genuinely empty look identical, and step 6 used to advance the anchor
+# either way. A run with no network then reported "nothing merged", moved the
+# anchor past the merges it never saw, and they were unreportable forever: the
+# next catch-up starts after them. That is the permissive-default failure this
+# repo keeps meeting, aimed at the one piece of state the digest owns.
+#
+# The marker is a FILE, not a variable, because every caller runs `fetch` inside
+# `$( )` — a subshell, whose increment to a counter is discarded on return.
+FAIL_MARK="$STATE_DIR/.catchup-fetch-failed.$$"
+rm -f "$FAIL_MARK"
+
 fetch() {
   # curl that degrades to an empty JSON array so one blocked read does not
-  # kill the digest; the section prints a warning instead of vanishing.
-  curl -sSf "$1" 2>/dev/null || { echo "  (fetch failed: $1)" >&2; echo "[]"; }
+  # kill the digest; the section prints a warning instead of vanishing, and the
+  # marker keeps the anchor where it is.
+  curl -sSf "$1" 2>/dev/null || {
+    echo "  (fetch failed: $1)" >&2
+    : > "$FAIL_MARK"
+    echo "[]"
+  }
 }
 
 # 2. Merged PRs since the anchor. Closed pulls sorted by updated desc: any PR
@@ -115,7 +133,7 @@ fetch "$API/pulls?state=open&per_page=50" | node -e '
 echo
 echo "--- issue queue ---"
 TMP=$(mktemp -d "$STATE_DIR/catchup-pages.XXXXXX")
-trap 'rm -rf "$TMP"' EXIT
+trap 'rm -rf "$TMP" "$FAIL_MARK"' EXIT
 for pg in 1 2 3; do
   fetch "$API/issues?state=open&per_page=100&page=$pg" > "$TMP/issues.$pg"
 done
@@ -169,10 +187,16 @@ grep '^## ' "$REPO_DIR/docs/orchestration-incidents.md" | SINCE_DAY="$SINCE_DAY"
 echo
 if [ "$PEEK" = 1 ]; then
   echo "anchor untouched ($(cat "$ANCHOR_FILE" 2>/dev/null || echo unset)) — peek/--since run"
+elif [ -e "$FAIL_MARK" ]; then
+  echo "anchor NOT advanced — at least one read failed, so this digest is"
+  echo "  INCOMPLETE and an empty section above may mean 'could not read' rather"
+  echo "  than 'nothing happened'. The window is preserved; re-run when the reads"
+  echo "  succeed. Current anchor: $(cat "$ANCHOR_FILE" 2>/dev/null || echo unset)"
 else
   echo "$NOW" > "$ANCHOR_FILE"
   echo "anchor advanced: next catch-up reports from $NOW"
 fi
+rm -f "$FAIL_MARK"
 echo "raw notes: $LOG"
 echo
 echo "Digest is data, not the pulse. Still yours: group the merges, call the"
