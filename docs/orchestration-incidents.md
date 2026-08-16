@@ -141,6 +141,38 @@ minutes before the check; neither had a PR.
   lines that existed only under `/tmp`. Rescue trees FIRST, as explicitly
   labelled un-gated WIP commits, before any diagnosis.
 
+## The stall detector measured the wrong thing (2026-08-16)
+
+`dispatch-brief.mjs list` flagged a dispatch on elapsed time since its ledger
+entry, which cannot tell one wedged agent from four agents in sequence on one
+branch across restarts and review rounds — the normal life of any PR that gets
+blocked and fixed. It fired twice in one session on the two hardest dispatches
+while both were being written to by the minute (`age=4h59m`, 18 and 170 files
+touched in the preceding fifteen). Ignorable-alarm failure again: an alarm that
+fires when nothing is wrong teaches its reader to skim the one time it is right.
+
+- **The signal was already in the file.** `worktreeIdleMs` existed for `done`,
+  which refuses to remove a tree written in the last ten minutes because "a
+  clean tree means everything is pushed, not that nobody is here". So `done`
+  and `list` disagreed about how to tell a live agent from a dead one, inside
+  one file: `done` would refuse to touch a tree written nine minutes ago while
+  `list` called that same dispatch stalled. The fix was reuse, not a mechanism.
+- **The threshold was not the defect.** 3x median now measures IDLENESS, and
+  since idle ≤ age it can only ever fire later than before — the change removes
+  alarms and adds none, which is what made it safe to land under live agents.
+- **Re-stamping a ledger entry on handover was the tempting alternative and is
+  worse.** `completedDurationsMs` measures from the LAST `active` row, so
+  re-stamping shortens every completed duration, shrinks the median, and lowers
+  3x it: the false alarms would arrive sooner. Progress needs no bookkeeping and
+  cannot drift — #2984's argument, one level over.
+- **Progress detection alone would have been blind to the canonical stall.**
+  The 12.9 h denied-and-idle agent above had no worktree after thirteen hours
+  and never created its branch, so both progress signals are absent exactly
+  where the old alarm was merely loud. Absence of a trace is therefore its own
+  alarm, qualified by age — the one job age is honest for.
+- The 13.7 h unbanked agent is correctly NOT a stall here: it was working.
+  Unpushed work is `orchestrator-checkin.sh`'s alarm and already fires.
+
 ## Credential loss — how it hides (three traps)
 
 A restart can wipe `$GH_TOKEN`/`$GITHUB_TOKEN` and the git proxy's push

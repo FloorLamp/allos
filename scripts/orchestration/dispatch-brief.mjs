@@ -25,8 +25,9 @@
 //     [--issues 123,456] [--task "one line"] [--e2e] [--port-base N]
 //
 // `new` prints a complete brief block (stdout) and appends a ledger entry.
-// `list` shows active dispatches with ages, flagging anything past 3x the
-//   median completed-dispatch duration (the runbook's stall threshold).
+// `list` shows active dispatches with ages, flagging anything that has not
+//   MOVED in 3x the median completed-dispatch duration (the runbook's stall
+//   threshold, applied to idleness rather than to age — see cmdList).
 // `brief` REPRINTS a live dispatch's brief and writes nothing. The ledger keeps
 //   parameters, not brief text, and `new` prints the text exactly once; an
 //   orchestrator that lost it (restart, compaction, a truncated tail) used to
@@ -66,7 +67,7 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -606,43 +607,74 @@ function cmdList() {
   const fmt = (ms) =>
     `${Math.floor(ms / 3_600_000)}h${String(Math.floor(ms / 60_000) % 60).padStart(2, "0")}m`;
 
+  // THE THRESHOLD IS UNCHANGED; WHAT IT MEASURES IS NOT. 3x the median and the
+  // under-5m filter are both sound (#2988 says so explicitly) — the defect was
+  // comparing them against a dispatch's AGE. Applied to idleness instead, the
+  // same number can only ever fire LATER than it did, because idle <= age always:
+  // this change removes alarms and adds none, which is the property that makes it
+  // safe to land under live agents.
+  //
+  // A dedicated idle constant was the tempting alternative and it is wrong at
+  // both ends. RECENT_WRITE_MS (10m) is calibrated for a REFUSAL at the moment of
+  // destruction, where the cost of waiting is nothing; as a warning threshold it
+  // would fire on any agent whose gate run writes its log to $SCRATCH — which the
+  // brief mandates — and go quiet for twenty minutes. Any other number would be
+  // invented. 3x median is the one the ledger measures.
+  const threshold = median === null ? null : 3 * median;
   if (!active.length) {
     console.log("No active dispatches.");
   } else {
     console.log(`Active dispatches (ledger: ${ledgerPath}):`);
+    const worktrees = worktreePathsByBranch();
     for (const d of active) {
       const age = Date.now() - Date.parse(d.at);
-      const stalled = median !== null && age > 3 * median;
+      const wt = worktrees.get(d.branch);
+      const idle = idleMsFrom({
+        worktreeIdleMs: wt ? worktreeIdleMs(wt) : null,
+        branchIdleMs: branchIdleMs(d.branch),
+      });
+      const verdict = stallVerdict({
+        ageMs: age,
+        idleMs: idle,
+        thresholdMs: threshold,
+      });
+      const flag =
+        verdict.kind === "stalled"
+          ? `  << nothing has moved in ${fmt(idle)} (past 3x median) — STALL until` +
+            " proven otherwise (check worktree + transcript bytes)"
+          : verdict.kind === "no-trace"
+            ? "  << NO WORKTREE AND NO BRANCH after " +
+              `${fmt(age)} — the agent never started (a DENIED tool call looks` +
+              " exactly like this) or its dispatch is stale: `done` it"
+            : "";
       console.log(
-        `  ${d.branch}  age=${fmt(age)}  port=${d.portBase}` +
+        `  ${d.branch}  age=${fmt(age)}  idle=${idle === null ? "(no trace)" : fmt(idle)}` +
+          `  port=${d.portBase}` +
           `${d.e2e ? "  [e2e]" : ""}${d.issues?.length ? `  issues=${d.issues.join(",")}` : ""}` +
-          (stalled
-            ? "  << past 3x median — STALL until proven otherwise (check worktree + transcript bytes)"
-            : "")
+          flag
       );
     }
   }
   const note = discarded
     ? ` (${discarded} completion(s) under ${MIN_REAL_DISPATCH_MS / 60_000}m ignored as not-real-work)`
     : "";
-  if (median !== null) {
+  if (threshold !== null) {
     console.log(
-      `Completed: ${durations.length}, median ${fmt(median)} (stall threshold ${fmt(3 * median)})${note}.`
+      `Completed: ${durations.length}, median ${fmt(median)} — a dispatch is flagged ` +
+        `after ${fmt(threshold)} with NOTHING MOVING (newest of: branch tip, worktree ` +
+        `write), not after ${fmt(threshold)} of age${note}.`
     );
   } else {
     // Say WHY it is unavailable — "no completions yet" was reported even when
     // five existed and were all discarded, which reads as a broken ledger.
     console.log(
       `Stall threshold unavailable: ${durations.length} real completion(s), need ` +
-        `${MIN_COMPLETIONS_FOR_MEDIAN}${note}. Ages above are informational only.`
+        `${MIN_COMPLETIONS_FOR_MEDIAN}${note}. Ages and idles above are ` +
+        "informational; a no-trace dispatch is still flagged."
     );
   }
 }
 
-// Locate a branch's worktree by asking git, not by guessing a path — two live
-// clusters once built theirs OUTSIDE $SCRATCH and were invisible to every
-// path-glob check. `git worktree list --porcelain` knows every worktree this
-// repo has, wherever it is.
 // "Has anybody touched this tree lately?" — the question the dirty check cannot
 // ask. Ten minutes is chosen to be longer than a gate run's quiet stretch (a
 // `next build` writes continuously; the pure tier does not) and far shorter than
@@ -653,7 +685,7 @@ function cmdList() {
 // worktree's commits, which would make every tree look permanently busy.
 const RECENT_WRITE_MS = 10 * 60_000;
 
-function worktreeIdleMs(dir) {
+export function worktreeIdleMs(dir) {
   let newest = 0;
   const walk = (d, depth) => {
     if (depth > 4) return;
@@ -679,15 +711,153 @@ function worktreeIdleMs(dir) {
   return newest === 0 ? null : Date.now() - newest;
 }
 
-function worktreeForBranch(branch) {
+// Locate a branch's worktree by asking git, not by guessing a path — two live
+// clusters once built theirs OUTSIDE $SCRATCH and were invisible to every
+// path-glob check. `git worktree list --porcelain` knows every worktree this
+// repo has, wherever it is.
+//
+// Read ONCE into a map: `list` wants this for every active dispatch, and asking
+// git per branch would re-parse the same output five times a check-in.
+function worktreePathsByBranch() {
+  const byBranch = new Map();
   const out = git("worktree list --porcelain", { allowFail: true });
-  if (!out) return null;
+  if (!out) return byBranch;
   let current = null;
   for (const line of out.split("\n")) {
     if (line.startsWith("worktree ")) current = line.slice("worktree ".length);
-    else if (line === `branch refs/heads/${branch}` && current) return current;
+    else if (line.startsWith("branch refs/heads/") && current) {
+      byBranch.set(line.slice("branch refs/heads/".length), current);
+    }
   }
-  return null;
+  return byBranch;
+}
+
+function worktreeForBranch(branch) {
+  return worktreePathsByBranch().get(branch) ?? null;
+}
+
+// --- progress ---------------------------------------------------------------
+//
+// THE STALL DETECTOR ASKS THE QUESTION AGE WAS STANDING IN FOR (#2988).
+//
+// `list` flagged a dispatch on ELAPSED TIME SINCE ITS LEDGER ENTRY, which cannot
+// tell "one agent wedged for five hours" from "four agents in sequence on one
+// branch across two restarts and three review rounds" — the normal life of any
+// PR that gets blocked and fixed, i.e. most of the hard ones. On 2026-08-16 it
+// branded the two hardest dispatches in the session STALL twice in one session
+// while their agents were demonstrably working: at 06:39Z the same two trees had
+// 18 and 170 files written in the preceding fifteen minutes. That is the
+// ignorable-alarm failure the check-in tooling exists to avoid — an alarm that
+// fires when nothing is wrong teaches its reader to skim it, and the one time it
+// is right it gets skimmed too.
+//
+// THE SIGNAL WAS ALREADY IN THIS FILE. `worktreeIdleMs` above was written for
+// `done`, which refuses to remove a tree written in the last ten minutes because
+// "a clean tree means everything is pushed, not that nobody is here". So one
+// command in this file already knew how to tell a live agent from a dead one and
+// the other did not: `done` would refuse to touch a tree written nine minutes ago
+// while `list` called the same dispatch stalled. The fix is to stop asking two
+// different questions about one fact.
+//
+// This is #2984's move exactly. The rescue alarm stopped guessing which NAMES a
+// read-only lane might be spelled with and asked what the name stood for — "was
+// anything authored here?". Same shape: stop timing the dispatch and ask what the
+// clock stood for — "has anything moved here?".
+//
+// SO NO RE-STAMPING. The alternative was to have a dispatch that changes hands
+// re-stamp its ledger entry, and it is worse in three ways. It is bookkeeping
+// nobody performs at the one moment it matters (an agent has just died). It
+// cannot be verified — a missed re-stamp is indistinguishable from a real stall,
+// which is the drift #2984 removed. And it would corrode the very threshold it
+// feeds: `completedDurationsMs` measures a dispatch from its LAST `active` row,
+// so re-stamping shortens every completed duration, shrinks the median, and
+// lowers 3x it — the false alarms would arrive SOONER. Progress detection needs
+// no bookkeeping and cannot drift.
+
+/**
+ * Idle milliseconds implied by a git committer timestamp (`%cI`).
+ *
+ * Separated from the `git log` call so the arithmetic is testable without a
+ * fixture repo. Anything git could not answer — a branch with no ref, an empty
+ * string, an unparseable date — is `null`, meaning "no signal", never `0`.
+ */
+export function commitIdleMs(isoCommitterDate, now = Date.now()) {
+  if (!isoCommitterDate) return null;
+  const at = Date.parse(isoCommitterDate);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, now - at);
+}
+
+/**
+ * How long ago this branch's tip was written.
+ *
+ * The LOCAL ref first, and the remote-tracking ref only as a fallback. #2988
+ * proposed the remote ref, but `list` does not fetch, so `refs/remotes/origin/*`
+ * is only as fresh as the last `fetch` anyone happened to run — and the brief
+ * lets an agent go ~45 minutes or ~10 files between pushes by design, so a remote
+ * ref would manufacture idleness on an agent committing steadily. Every worktree
+ * shares this checkout's `.git`, so an agent's commit is visible in
+ * `refs/heads/<branch>` the instant it lands, with no network.
+ */
+function branchIdleMs(branch) {
+  const local = git(`log -1 --format=%cI refs/heads/${branch}`, {
+    allowFail: true,
+  });
+  if (local) return commitIdleMs(local);
+  const remote = git(`log -1 --format=%cI refs/remotes/origin/${branch}`, {
+    allowFail: true,
+  });
+  return commitIdleMs(remote);
+}
+
+/**
+ * The most recent movement across every signal that has one.
+ *
+ * EITHER witness silences the warning, because either one is proof the dispatch
+ * is alive: a fresh commit without recent writes is an agent that just banked and
+ * is reading; fresh writes without a commit is an agent mid-edit. Requiring both
+ * would reintroduce a false alarm on each.
+ */
+export function idleMsFrom({ worktreeIdleMs: wt, branchIdleMs: br }) {
+  const seen = [wt, br].filter((n) => typeof n === "number");
+  return seen.length ? Math.min(...seen) : null;
+}
+
+// A dispatch with NO worktree and NO branch has left no trace at all, and that is
+// the shape of the one stall this runbook has actually measured: the 12.9-hour
+// "denied-and-idle" agent of 2026-08-10 (docs/orchestration-incidents.md) had its
+// first `git worktree add` refused by the permission system, correctly did not
+// retry, and sat — four tool calls, no worktree, thirteen hours, "visible from
+// minute five, if anyone had looked".
+//
+// So the progress signals #2988 proposes are BOTH absent in the only real stall
+// on record, and shipping them alone would trade a noisy detector for a blind
+// one. Absence of a trace is itself the alarm.
+//
+// Age is what qualifies it — the one job age is honest for. The brief makes the
+// worktree the FIRST action, before reading any source, so fifteen minutes is
+// several times a slow `cp -al` under contention and still catches the failure
+// inside one check-in.
+export const NO_TRACE_GRACE_MS = 15 * 60_000;
+
+/**
+ * What `list` should say about one dispatch.
+ *
+ * Pure: it takes the measurements, not the disk. `thresholdMs` is null when the
+ * ledger has too few real completions to have a median.
+ *
+ * @returns {{ kind: "moving" | "stalled" | "starting" | "no-trace", alarm: boolean }}
+ */
+export function stallVerdict({ ageMs, idleMs, thresholdMs }) {
+  if (idleMs === null) {
+    return ageMs >= NO_TRACE_GRACE_MS
+      ? { kind: "no-trace", alarm: true }
+      : { kind: "starting", alarm: false };
+  }
+  if (thresholdMs !== null && idleMs > thresholdMs) {
+    return { kind: "stalled", alarm: true };
+  }
+  return { kind: "moving", alarm: false };
 }
 
 function cmdDone(argv) {
@@ -992,21 +1162,35 @@ function cmdAdopt(argv) {
   );
 }
 
-const [cmd = "new", ...rest] = process.argv.slice(2);
-try {
-  if (cmd === "new") cmdNew(rest);
-  else if (cmd === "list") cmdList();
-  else if (cmd === "brief") cmdBrief(rest);
-  else if (cmd === "done") cmdDone(rest);
-  else if (cmd === "resume") cmdResume(rest);
-  else if (cmd === "adopt") cmdAdopt(rest);
-  else {
-    console.error(
-      `unknown command: ${cmd} (expected new | list | done | resume | adopt)`
-    );
-    process.exit(2);
+function main(argv) {
+  const [cmd = "new", ...rest] = argv;
+  try {
+    if (cmd === "new") cmdNew(rest);
+    else if (cmd === "list") cmdList();
+    else if (cmd === "brief") cmdBrief(rest);
+    else if (cmd === "done") cmdDone(rest);
+    else if (cmd === "resume") cmdResume(rest);
+    else if (cmd === "adopt") cmdAdopt(rest);
+    else {
+      console.error(
+        `unknown command: ${cmd} (expected new | list | brief | done | resume | adopt)`
+      );
+      process.exit(2);
+    }
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
   }
-} catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
+}
+
+// Run as a script, importable as a module — the same shape seed-next-build.mjs
+// uses so its exit codes can be asserted. Without this guard, importing the file
+// to test one pure function would RUN `new` (the default command) against the
+// live ledger and the live roster, which is the 2026-08-15 roster-fork incident
+// arriving through the test harness.
+if (
+  process.argv[1] &&
+  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
+) {
+  main(process.argv.slice(2));
 }
