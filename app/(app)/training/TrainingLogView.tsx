@@ -167,7 +167,6 @@ export default function TrainingLogView({
     openLive,
     openRepeat,
     close,
-    registerTrainingLogView,
     canStartWorkout,
     workoutOffer,
   } = useActivityEditor();
@@ -262,11 +261,13 @@ export default function TrainingLogView({
     TRAINING_LOG_DESKTOP_QUERY
   );
 
-  // Announce the Log view for the provider's bar suppression (every width — the
-  // dock above is desktop-only, but this view owns the session affordances). The
-  // bottom bar hides only while this view is mounted, so the Overview-default
-  // landing (#2893) still surfaces a fresh-loaded live session.
-  useEffect(() => registerTrainingLogView(), [registerTrainingLogView]);
+  // The Log view no longer announces itself for bar suppression (#2897): the
+  // suppression existed because a live session used to dock inline in this
+  // page's column, so the bar was redundant here. Live never docks now (#2870
+  // step 3 — resume navigates to the session's own page), the column is a
+  // READING pane, and suppressing the bar on this tab only stranded a
+  // fresh-loaded session on phone widths, where the aside's resume affordance
+  // doesn't render at all.
 
   useEffect(() => {
     if (!initialCreateDate || initialCreateHandled.current) return;
@@ -932,25 +933,29 @@ export default function TrainingLogView({
               in SQL by provenance key, so it reaches every window — not just the
               loaded ones. Hidden when there is nothing to choose between. */}
             {sourceOptions.length > 1 && (
-              <select
-                aria-label="Source"
-                data-testid="training-log-source-filter"
-                value={activeFilters.source ?? ""}
-                onChange={(e) =>
-                  setFilters((f) => ({
-                    ...f,
-                    source: e.target.value === "" ? null : e.target.value,
-                  }))
-                }
-                className="input h-auto w-auto py-1.5 text-sm"
-              >
-                <option value="">Any source</option>
-                {sourceOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              // The captioned-label treatment (#2897, the PanelFilterSelect
+              // pattern): the select says what it filters without being opened.
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <span className="font-medium">Source</span>
+                <select
+                  data-testid="training-log-source-filter"
+                  value={activeFilters.source ?? ""}
+                  onChange={(e) =>
+                    setFilters((f) => ({
+                      ...f,
+                      source: e.target.value === "" ? null : e.target.value,
+                    }))
+                  }
+                  className="input h-auto w-auto py-1.5 text-sm"
+                >
+                  <option value="">Any source</option>
+                  {sourceOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
             {/* Only shown while some row can't be saved as-is; disappears once the
               last one is fixed (faultCount → 0, which also clears the toggle). The

@@ -650,12 +650,18 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
       page.locator(`[data-testid="subject-chip-${ownerId}"]`)
     ).toHaveCount(0);
 
-    // Cross-profile merge never pairs: the owner's Alpha card merge picker offers its
-    // same-DAY same-PROFILE sibling (Bravo) but NEVER the shared member's same-day card.
-    const ownerCard = page
+    // Cross-profile merge never pairs: the owner's Alpha record's merge picker
+    // offers its same-DAY same-PROFILE sibling (Bravo) but NEVER the shared
+    // member's same-day card. The menu lives on the record — select the row
+    // into the reading pane first (#2897).
+    const ownerRow = page
       .locator('[id^="activity-"]')
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
-    await ownerCard.getByRole("button", { name: "Activity actions" }).click();
+    await ownerRow.click();
+    await page
+      .getByTestId("training-log-reading-pane")
+      .getByRole("button", { name: "Activity actions" })
+      .click();
     await page.getByTestId("merge-with").click();
     await expect(
       page
@@ -695,9 +701,14 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
 
-    // "Log again" on the SHARED member's card: opens a create prefill that auto-saves
-    // a NEW session — on the ACTING (owner) profile, never the shared subject.
-    await sharedCard.getByRole("button", { name: "Activity actions" }).click();
+    // "Log again" on the SHARED member's record: opens a create prefill that
+    // auto-saves a NEW session — on the ACTING (owner) profile, never the
+    // shared subject. Select the row into the reading pane for its menu (#2897).
+    await sharedCard.click();
+    await page
+      .getByTestId("training-log-reading-pane")
+      .getByRole("button", { name: "Activity actions" })
+      .click();
     await page.getByTestId("log-again").click();
     // The editor opens (docked beside the feed on desktop / overlay on mobile).
     await expect(page.getByTestId("activity-form")).toBeVisible();
