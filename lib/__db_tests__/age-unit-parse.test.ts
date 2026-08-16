@@ -140,9 +140,9 @@ describe("the life-stage gates see the infant, not a six-year-old (#3020)", () =
     expect(isMinor(getProfileAge(infant))).toBe(true);
     // The six-year-old is a minor too — this pair is not what separates them, and it
     // is here so the food-logging flip above is not read as the only difference.
-    expect(isMinor(getProfileAge(importDocumentStating("aup minor ctl", 6)))).toBe(
-      true
-    );
+    expect(
+      isMinor(getProfileAge(importDocumentStating("aup minor ctl", 6)))
+    ).toBe(true);
   });
 
   it("keeps the adult-only surfaces and write cores refusing", () => {
