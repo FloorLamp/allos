@@ -47,7 +47,9 @@ export default function AgeInputs({
           id="onboarding-age"
           type="number"
           name="age"
-          min={1}
+          // 0 is enterable (issue #2992): an infant's age in whole years is zero.
+          // "Unknown" is the blank field, not a floor on the number.
+          min={0}
           max={149}
           value={age}
           disabled={disabled}

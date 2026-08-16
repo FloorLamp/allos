@@ -293,10 +293,12 @@ export async function saveOnboardingBasics(formData: FormData) {
     onboardingError("Enter a valid birthdate that is not in the future.", 3);
   }
 
+  // 0 is a valid entry (issue #2992) — an infant's age in whole years is zero, and
+  // "unknown" is the blank field, which the `age === null` case already covers.
   const ageRaw = String(formData.get("age") ?? "").trim();
   const age = ageRaw === "" ? null : Number(ageRaw);
-  if (age !== null && (!Number.isInteger(age) || age < 1 || age > 149)) {
-    onboardingError("Approximate age must be a whole number from 1 to 149.", 3);
+  if (age !== null && (!Number.isInteger(age) || age < 0 || age > 149)) {
+    onboardingError("Approximate age must be a whole number from 0 to 149.", 3);
   }
 
   const timezone = String(formData.get("timezone") ?? "").trim();
