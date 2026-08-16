@@ -4,10 +4,19 @@
 // timezone change or a bound the owner retunes never needs a data migration.
 //
 // Auth-blind (profileId-first, never imports lib/auth — #319): the Server Action owns
-// the gate + revalidation. Every statement is profile-scoped (the scoping rule). This
-// module holds the table's ONLY DML — it is the registered core in
-// STATEFUL_WRITE_TABLES, and lib/fast-write.ts (the transitions + the adult-only gate)
-// reaches the table exclusively through here.
+// the gate + revalidation. Every statement is profile-scoped (the scoping rule, which
+// now HOLDS it there — `fasts` is in OWNED_TABLES, so the leak scan reads these
+// statements). This module holds every DML that NAMES the table — it is the registered
+// core in STATEFUL_WRITE_TABLES, and lib/fast-write.ts (the transitions + the
+// adult-only gate) reaches the table exclusively through here.
+//
+// One runtime write is not here and is named rather than left to be discovered: Data →
+// Manage's bulk row DELETE builds its statement from the whitelisted dataset table
+// (lib/export.ts's `fasts` dataset + DELETE_POLICY), so it never spells `fasts` in
+// source. That is a row removal, not one of this machine's transitions — it cannot mint
+// a second active fast, and REDUCING fasting state is what the life-stage exemption
+// already permits. Any write that would CREATE or REOPEN a fast still has to come
+// through here.
 
 import { db, writeTx } from "./db";
 import type { Fast } from "./fasting";
