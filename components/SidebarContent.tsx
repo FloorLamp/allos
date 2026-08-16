@@ -12,6 +12,19 @@ import { unstable_rethrow } from "next/navigation";
 import { clearQueue } from "@/lib/offline/queue-db";
 import { reopenForFailedLogout } from "@/lib/offline/write-gate";
 
+// How long the probe may take before its answer stops being worth waiting for.
+//
+// A DEAD LINK AND A FLAKY ONE ARE DIFFERENT FAILURES, and only the first is fast. A
+// refused connection rejects immediately; a link that accepts the connection and then
+// stops carrying it sits for the browser's own connect/read timeout, which is minutes.
+// Everything downstream waits behind that: the undo does not run, and the rethrow that
+// puts the person on the error boundary does not happen either — so the gate is shut,
+// the screen is unchanged, and there is no feedback at all, in exactly the no-signal case
+// this recovery exists for. The bound fails in the right direction: abort → catch →
+// "not gone" → the undo runs (see R-A5 in e2e/offline-write-gate.spec.ts, which hangs the
+// probe and watches the gate re-open anyway).
+const PROBE_TIMEOUT_MS = 5_000;
+
 /**
  * Has the server ENDED this session? The only answer that keeps the write gate closed
  * after a logout attempt that did not obviously succeed.
@@ -19,14 +32,15 @@ import { reopenForFailedLogout } from "@/lib/offline/write-gate";
  * `?probe` on the snapshots route, which is the app's one cookie-authoritative GET —
  * `getCurrentSession()` rather than the coarse middleware cookie check — and answers the
  * auth question without building or returning a single payload. Only a positive 401/403
- * counts: any other status, and any network failure at all, leaves the session's fate
- * unknown, and unknown must not brick the device.
+ * counts: any other status, any network failure, and the timeout above leave the
+ * session's fate unknown, and unknown must not brick the device.
  */
 async function sessionEndedOnServer(): Promise<boolean> {
   try {
     const res = await fetch("/api/offline-snapshots?probe=1", {
       headers: { Accept: "application/json" },
       cache: "no-store",
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     return res.status === 401 || res.status === 403;
   } catch {
@@ -225,19 +239,57 @@ export default function SidebarContent({
   // which the mistake is invisible. R-A2 in e2e/offline-write-gate.spec.ts is the test
   // that runs PAST the POST instead.
   //
-  // TWO BARRIERS, and neither is trusted on its own:
+  // TWO BARRIERS, and neither is trusted on its own — WHICH IS A CLAIM, SO EACH IS PINNED
+  // BY A TEST THAT FAILS WHEN ONLY THAT BARRIER IS REMOVED. It was not, for one round, and
+  // both barriers were individually deletable with the whole suite green: R-A2 cannot tell
+  // which one stopped the undo, so it stays green on either mutant. A redundancy nothing
+  // observes is not redundancy — it is one mechanism and a comment.
   //
   //   1. `unstable_rethrow` — the framework's own public API for "catch, but never
   //      swallow the framework's control flow". A redirect leaves here immediately, so a
   //      successful logout never reaches the undo and costs no extra request.
+  //      PINNED BY R-A3: a logout that SUCCEEDS issues ZERO probes. Delete this line and
+  //      the redirect rejection falls through to the probe, so the count is 1.
   //   2. THE SERVER IS ASKED. A framework that stopped rejecting on redirect, or a new
   //      error shape, must not be able to make barrier 1 the whole defence. The undo runs
   //      only when the server has NOT said the session is gone, and a 401 is the only
   //      thing that says so — it means `destroySession` ran.
+  //      PINNED BY R-A4: a logout DELIVERED and then robbed of its response, with the
+  //      probe reachable, leaves the gate shut. Drop this condition and the undo re-opens
+  //      the gate for a session the server has already destroyed.
   //
-  // UNREACHABLE COUNTS AS "NOT GONE", deliberately. A probe that cannot reach the server
-  // is the case in which the logout cannot have landed either, and that case — pressing
-  // Log out with no signal — is the entire reason this recovery exists.
+  // UNREACHABLE COUNTS AS "NOT GONE", deliberately — and that is a TRADE, not a proof.
+  // The earlier version of this comment claimed it was a proof: "a probe that cannot reach
+  // the server is the case in which the logout cannot have landed either". That is false,
+  // and the case it waves away is reachable.
+  //
+  //   WHAT IT GETS RIGHT — pressing Log out with no signal. The POST never left, the
+  //   session is alive, and treating unreachable as "gone" would leave the device with its
+  //   queue, drafts and snapshots shut for a session that never ended. That is this app's
+  //   own subject matter and the entire reason this recovery exists.
+  //
+  //   WHAT IT GETS WRONG — a destroy that COMMITTED and lost only its answer. The POST can
+  //   reach the server, `destroySession` can run, and the response can be dropped on the
+  //   way back; the probe that follows cannot reach the server either, so this device
+  //   re-opens the gate for a session that is already dead. Its surviving tabs go on
+  //   writing drafts and intents, and those survive into the NEXT login — exactly what
+  //   `clearDrafts` in lib/offline/draft-db.ts says must never happen.
+  //
+  // The default stays this way round because the other way is worse: "unreachable counts
+  // as gone" bricks every logout pressed in a dead zone, which is the common case, while
+  // this way round is wrong only in a case that also loses the response. It is not a
+  // regression either — on main there is no gate at all and those writes land in every
+  // ordering.
+  //
+  // IF THIS IS EVER TO BE MITIGATED RATHER THAN ANNOTATED, the bounded shape is: mark the
+  // gate that `reopenForFailedLogout` re-opened, and re-ask the probe ONCE on the next
+  // `online` or document load, scoped to that marked gate only — an ordinary expired
+  // session answering 401 must still never wipe this device's reads. It is not done here
+  // because its trigger misses its own scenario: the closer's document is on the error
+  // boundary or bounced to /login, so the re-ask needs a surviving authenticated tab that
+  // regains signal before the device is closed. That is the same way the deleted
+  // `LOGOUT_SETTLE_MS` clock failed to pay for itself, and a new barrier here would need
+  // its own pair of mutant-red tests to be worth more than this paragraph.
   async function submitLogout(): Promise<void> {
     try {
       await logoutAction();

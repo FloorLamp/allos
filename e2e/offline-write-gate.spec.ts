@@ -76,6 +76,11 @@ import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
 // The rule that falls out: when a fixture freezes something to make a window observable,
 // something else has to observe that window CLOSING.
 //
+// AND THE ROUND AFTER THAT FOUND THE SAME SHAPE ONE LEVEL UP AGAIN: R-A2 pins the
+// OUTCOME (the gate stays shut) while the code claims TWO independent reasons for it, so
+// either reason could be deleted with every test here green. R-A3, R-A4 and R-A5 at the
+// bottom of this file pin them one at a time — see the block above R-A3.
+//
 // NO TEST HERE MAY NAME THE MEDICATION IT TAPS. The worker's SQLite database is shared by
 // every test that runs on that worker, and `offline-snapshots.spec.ts`'s queued-dose test
 // taps the seeded Sertraline offline and then reconnects — so whether its replay lands
@@ -356,11 +361,15 @@ test("R2b — a tab that LOADS inside the logout window does not re-open the gat
   // outlives the logout POST, so this document is served, authenticated, by a live
   // session — the one that is in the middle of ending. "A document mounted" is true of
   // it; "a new session began" is not, and only the second may re-open the gate.
-  // MUST STAY UNDER `LOGOUT_SETTLE_MS` (lib/offline/write-gate.ts, 30s). Past that bound
-  // a same-session document is no longer treated as racing its own logout, because a
-  // logout still outstanding that long is one whose document was destroyed — see R-A.
-  // Lengthening this hold past the bound would make this test fail for the reason the
-  // bound exists rather than for the property it measures.
+  //
+  // NOTHING BOUNDS THIS HOLD FROM ABOVE, and an earlier version of this comment said
+  // something did — "MUST STAY UNDER `LOGOUT_SETTLE_MS` (30s)". That constant and the
+  // clock it belonged to were deleted from lib/offline/write-gate.ts: `openSessionAs` is
+  // identity-only now, so no amount of elapsed time re-admits a same-key document and no
+  // length of hold changes what this test measures. It is chosen from BELOW only — long
+  // enough for the late tab to load, mount the refresher and pass its first refresh
+  // window while the POST is still in flight. Shortening it below that is what would
+  // make this test pass for the wrong reason.
   const LONG_HOLD_MS = 20_000;
 
   await login(page);
@@ -849,4 +858,215 @@ test("R-A2 — a logout that SUCCEEDS still ends every lane, past the POST", asy
 
   expect(await storedRows(tabB, "drafts")).toEqual([]);
   await tabB.close();
+});
+
+// ── THE TWO BARRIERS IN FRONT OF THE UNDO, PINNED ONE AT A TIME ──────────────
+//
+// R-A2 above proves the undo does not run on a successful logout. It does NOT prove WHY,
+// and components/SidebarContent claims two independent reasons — `unstable_rethrow`, and
+// the server being asked. Both were individually deletable with this whole file green:
+// with either one gone the gate still ends up shut, because the probe on a successful
+// logout is answered 401 and 401 means "do not undo". R-A2 cannot see the difference.
+//
+// Which is the same vacuity the header describes, one level up again: not "the assertion
+// cannot fail" and not "the fixture cannot reach the case", but "the SECOND mechanism is
+// invisible while the first one holds". A redundancy nothing observes is not redundancy.
+//
+// So each barrier is pinned by the one observable that isolates it:
+//   R-A3  barrier 1 — a SUCCESSFUL logout issues ZERO probes (1 without the rethrow);
+//   R-A4  barrier 2 — a logout DELIVERED and then robbed of its response, with the probe
+//         REACHABLE, leaves the gate shut (re-opened without the server's answer).
+// And R-A5 pins the probe's own timeout, which is what stops barrier 2 from becoming a
+// hang on a link that is flaky rather than dead.
+//
+// MEASURED, one mutant at a time, all three run together on each — the isolation IS the
+// claim, so it is not enough that each mutant is caught by something:
+//
+//   mutant                                      R-A3   R-A4   R-A5
+//   delete `unstable_rethrow(err)`              FAIL   pass   pass   (probes 1, expected 0)
+//   drop the `sessionEndedOnServer()` guard     pass   FAIL   pass   (sessionClosed false)
+//   drop `AbortSignal.timeout` from the probe   pass   pass   FAIL   (gate never re-opens)
+//
+// R-A4 was then re-run against its own mutant twice more, the way R-A/R-B/R-C were: with
+// its probe-count assertion removed it still fails on the GATE, and with the gate
+// assertion removed as well it still fails on the CONSEQUENCE — a draft typed after the
+// session died, sitting in the store that `clearDrafts` promises the next login will
+// never be offered.
+
+test("R-A3 — BARRIER 1 ALONE: a logout that SUCCEEDS never even asks the server", async ({
+  page,
+}: {
+  page: Page;
+}) => {
+  test.slow();
+
+  // `logoutAction` ends in `redirect("/login")` and Next rejects a redirecting Server
+  // Action's promise on purpose, so the happy path arrives in the `catch`. Barrier 1 is
+  // what sends it straight back out. Delete `unstable_rethrow(err)` and nothing about the
+  // gate changes — the probe is answered 401 and barrier 2 declines the undo — so the only
+  // thing that moves is whether the question was asked at all. That is what this counts.
+  await login(page);
+  await page.goto("/");
+
+  let probes = 0;
+  await page.route("**/api/offline-snapshots*", async (route) => {
+    if (route.request().url().includes("probe")) probes += 1;
+    await route.continue();
+  });
+
+  // NON-VACUITY CONTROL, and an absence assertion is worth nothing without it: this is the
+  // EXACT request `sessionEndedOnServer()` makes, issued from this document, and the
+  // counter above sees it. Otherwise `probes === 0` is also what a route pattern that
+  // matches nothing looks like.
+  await page.evaluate(() =>
+    fetch("/api/offline-snapshots?probe=1", { cache: "no-store" }).then(
+      () => undefined
+    )
+  );
+  await expect.poll(() => probes, { timeout: 15_000 }).toBe(1);
+  probes = 0;
+
+  await page.getByRole("button", { name: "Log out" }).click();
+  await page.waitForURL(/\/login/, { timeout: 30_000 });
+  await page.waitForTimeout(3_000); // waitfortimeout-ok: absence — the undo's probe is issued from the catch as the action settles, so it is already out by here
+
+  expect(
+    probes,
+    "a logout that SUCCEEDED reached the undo path and asked the server — barrier 1 did not hold"
+  ).toBe(0);
+});
+
+test("R-A4 — BARRIER 2 ALONE: a delivered logout that loses its response leaves the gate shut", async ({
+  page,
+  context,
+}: {
+  page: Page;
+  context: BrowserContext;
+}) => {
+  test.slow();
+
+  // THE ORDERING THAT TAKES BARRIER 1 OUT OF THE PICTURE BY CONSTRUCTION. The POST is
+  // delivered to the server for real — `destroySession` runs and commits — and only the
+  // RESPONSE is thrown away. The client's promise then rejects with an ordinary network
+  // error rather than a redirect, so `unstable_rethrow` passes it through and the undo path
+  // is entered. What keeps the gate shut from here is the server being asked and answering
+  // 401. Drop that condition (an unguarded `await reopenForFailedLogout()`) and this device
+  // hands its whole write perimeter back to a session the server has already destroyed.
+  await login(page);
+
+  const tabB = await context.newPage();
+  await tabB.goto("/training?tab=log");
+  await hydratedClick(
+    tabB,
+    tabB.getByRole("main").getByRole("button", { name: "New activity" })
+  );
+  await expect(tabB.getByTestId("activity-form")).toBeVisible();
+
+  // NON-VACUITY CONTROL: the draft lane in this tab really writes, before anything closes
+  // it — so "nothing written afterwards" is about the gate rather than about a form that
+  // never saved anything in the first place.
+  await tabB.getByPlaceholder(/What did you do/).fill("Barrier control draft");
+  await expect
+    .poll(() => storedRows(tabB, "drafts"), { timeout: 15_000 })
+    .not.toEqual([]);
+
+  await page.goto("/");
+  let probes = 0;
+  await page.route("**/*", async (route) => {
+    const req = route.request();
+    if (req.method() === "POST") {
+      // Delivered for real — the session dies here…
+      await route.fetch();
+      // …and the answer never gets home.
+      await route.abort("internetdisconnected");
+      return;
+    }
+    if (
+      req.url().includes("/api/offline-snapshots") &&
+      req.url().includes("probe")
+    ) {
+      probes += 1;
+    }
+    await route.continue();
+  });
+  await page.getByRole("button", { name: "Log out" }).click();
+
+  // The wipe landed, observed from the other document — one database, two tabs.
+  await expect
+    .poll(() => storedRows(tabB, "drafts"), { timeout: 20_000 })
+    .toEqual([]);
+
+  // BARRIER 2 WAS ACTUALLY EXERCISED. Without this the test could be green because nothing
+  // ever reached the undo, which is a different property and one R-A3 already owns.
+  await expect.poll(() => probes, { timeout: 20_000 }).toBeGreaterThan(0);
+
+  // The undo is one IndexedDB write behind the probe's answer, so this is many times the
+  // window it would have used.
+  await page.waitForTimeout(6_000); // waitfortimeout-ok: absence — the undo would have landed several times over in this window
+
+  expect(
+    await gateRow(tabB),
+    "the probe reached the server and was told 401 — the session is gone — and the gate was re-opened anyway"
+  ).toMatchObject({ sessionClosed: true });
+
+  // And the consequence, which is lib/offline/draft-db.ts's contract: no new PHI on a
+  // device whose session the server has destroyed.
+  await tabB
+    .getByPlaceholder(/What did you do/)
+    .fill("Barrier draft after the session died");
+  await tabB.waitForTimeout(4_000); // waitfortimeout-ok: absence — several times the 600ms autosave debounce that would land the draft
+  expect(await storedRows(tabB, "drafts")).toEqual([]);
+  await tabB.close();
+});
+
+test("R-A5 — a probe that HANGS does not hold the undo behind it", async ({
+  page,
+}: {
+  page: Page;
+}) => {
+  test.slow();
+
+  // A DEAD LINK AND A FLAKY ONE FAIL DIFFERENTLY. R-A's logout is refused outright, so its
+  // probe rejects at once; a link that accepts the connection and then stops carrying it
+  // hangs for the browser's own timeout instead — minutes. Everything is behind that: the
+  // undo does not run and the rethrow to the error boundary does not happen either, so the
+  // gate stays shut with nothing on screen to say so. `AbortSignal.timeout` in
+  // components/SidebarContent is the bound; remove it and this test waits out the hang.
+  const PROBE_HANG_MS = 40_000;
+
+  await login(page);
+  await page.goto("/");
+
+  // The logout itself fails, which is the case the undo exists for.
+  await page.route("**/*", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.abort("internetdisconnected");
+      return;
+    }
+    await route.continue();
+  });
+  // And the probe hangs. Registered AFTER the catch-all so it wins — Playwright matches
+  // most-recently-registered first.
+  await page.route("**/api/offline-snapshots*", async (route) => {
+    if (!route.request().url().includes("probe")) {
+      await route.continue();
+      return;
+    }
+    await new Promise((r) => setTimeout(r, PROBE_HANG_MS));
+    try {
+      await route.abort("internetdisconnected");
+    } catch {
+      /* the page is gone, or the request was already cancelled by the timeout */
+    }
+  });
+
+  await page.getByRole("button", { name: "Log out" }).click();
+
+  // Comfortably past the 5s bound and comfortably short of the hang: the undo has to come
+  // from the timeout rather than from the probe ever answering.
+  await expect
+    .poll(() => gateRow(page), { timeout: 20_000 })
+    .toMatchObject({ sessionClosed: false });
+
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
