@@ -58,7 +58,10 @@ function blockUnder(lines: string[], headerIdx: number) {
 
 function keyIndex(lines: string[], key: string, indent: number) {
   return lines.findIndex(
-    (l) => !isSkippable(l) && indentOf(l) === indent && l.trim().startsWith(`${key}:`)
+    (l) =>
+      !isSkippable(l) &&
+      indentOf(l) === indent &&
+      l.trim().startsWith(`${key}:`)
   );
 }
 
@@ -123,7 +126,9 @@ describe("the post-merge e2e detector and ci-main.yml's header", () => {
     // X" assertion would pass vacuously — which is the failure this whole test
     // was rewritten to remove. Prove it found the real thing first.
     const events = triggerEvents(read("e2e-main.yml"));
-    expect(events).toEqual(expect.arrayContaining(["push", "workflow_dispatch"]));
+    expect(events).toEqual(
+      expect.arrayContaining(["push", "workflow_dispatch"])
+    );
     // And prove it can SEE a pull_request trigger, on a workflow that has one.
     expect(triggerEvents(read("ci.yml"))).toContain("pull_request");
   });

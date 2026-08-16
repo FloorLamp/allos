@@ -16,9 +16,9 @@ import { redactSecrets } from "../error-log-format";
 // This executes it, against the app's own vocabulary rather than against a
 // hand-picked handful: every string leaf and key from the 30 dataset JSONs,
 // the canonical result definitions and the exercise guides, plus every
-// identifier-shaped token in `lib/` and `scripts/`. ~85k distinct strings, and
-// the assertion is that redaction is the IDENTITY on all of them but a listed
-// few.
+// identifier-shaped token in `lib/` and `scripts/`. ~67k distinct strings in
+// ~2s, and the assertion is that redaction is the IDENTITY on all of them but a
+// listed few.
 //
 // WHY IDENTITY RATHER THAN A LIVE DIFF AGAINST `origin/main`. The review that
 // required this ran the corpus through both trees and compared. A repo test
@@ -64,7 +64,8 @@ const KNOWN_DIFFERENCES = [
 
 function collectJsonStrings(value: unknown, out: Set<string>): void {
   if (typeof value === "string") out.add(value);
-  else if (Array.isArray(value)) for (const v of value) collectJsonStrings(v, out);
+  else if (Array.isArray(value))
+    for (const v of value) collectJsonStrings(v, out);
   else if (value && typeof value === "object") {
     for (const [k, v] of Object.entries(value)) {
       out.add(k);
@@ -79,7 +80,10 @@ function filesUnder(dir: string, exts: string[]): string[] {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       if (e.name === "node_modules" || e.name.startsWith(".")) continue;
       // See the header: this rule's own fixtures are not app vocabulary.
-      if (e.isDirectory() && (e.name === "__tests__" || e.name.endsWith("_tests__"))) {
+      if (
+        e.isDirectory() &&
+        (e.name === "__tests__" || e.name.endsWith("_tests__"))
+      ) {
         continue;
       }
       const p = path.join(d, e.name);
@@ -108,10 +112,16 @@ function buildCorpus(): Set<string> {
   const token = /[A-Za-z][A-Za-z0-9_-]{3,}/g;
   const srcFiles = [
     ...filesUnder(path.join(repoRoot, "lib"), [".ts", ".tsx", ".json"]),
-    ...filesUnder(path.join(repoRoot, "scripts"), [".ts", ".mjs", ".js", ".sh"]),
+    ...filesUnder(path.join(repoRoot, "scripts"), [
+      ".ts",
+      ".mjs",
+      ".js",
+      ".sh",
+    ]),
   ];
   for (const f of srcFiles) {
-    for (const m of fs.readFileSync(f, "utf8").matchAll(token)) strings.add(m[0]);
+    for (const m of fs.readFileSync(f, "utf8").matchAll(token))
+      strings.add(m[0]);
   }
   return strings;
 }

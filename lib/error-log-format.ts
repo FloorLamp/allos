@@ -602,7 +602,10 @@ export function redactSecrets(s: string): string {
   // function whose whole job is the opposite. Running last cannot do that: the
   // passes above have already had the untouched string, and this one only ever
   // masks more.
-  return out.replace(VENDOR_SECRET_RE, (_whole, prefix: string) => `${prefix}***`);
+  return out.replace(
+    VENDOR_SECRET_RE,
+    (_whole, prefix: string) => `${prefix}***`
+  );
 }
 
 // Redact each leaf as it is serialized, BEFORE JSON.stringify escapes it.

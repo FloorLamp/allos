@@ -477,9 +477,9 @@ describe("redactSecrets: vendor-prefixed credentials (#2965)", () => {
     expect(
       redactSecrets(`Error: 401 authentication_error using ${ANTHROPIC}`)
     ).toBe("Error: 401 authentication_error using sk-ant-***");
-    expect(buildDetail({ err: new Error(`401 using ${ANTHROPIC}`) })!).not.toContain(
-      ANTHROPIC
-    );
+    expect(
+      buildDetail({ err: new Error(`401 using ${ANTHROPIC}`) })!
+    ).not.toContain(ANTHROPIC);
   });
 
   // #3000/D1 — the ORDER, which is the half a behavioural test misses.
