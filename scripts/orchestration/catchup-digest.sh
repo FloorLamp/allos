@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Catch-up digest for an orchestration check-in (see docs/orchestration.md).
 #
-# Not the flight recorder — that is scripts/orchestrator-checkin.sh, which this
-# runs FIRST, unchanged. The recorder answers "did the world end while I was
-# gone"; this script answers the owner's question, "catch me up": what merged
+# Not the flight recorder — that is scripts/orchestrator-checkin.sh, which
+# this runs FIRST, unchanged (and which keeps its name: CI skip-set regexes
+# and tests assert it literally). The recorder answers "did the world end
+# while I was gone"; this script answers the owner's question, "catch me up":
+# what merged
 # since the last catch-up, what is still open, what caught fire, and what the
 # queue looks like — the data half of the status pulse lifecycle.md requires.
 # Judgment (grouping, fires-vs-noise, the priority ordering within a tier)
@@ -19,9 +21,9 @@
 # search endpoint is never used.
 #
 # Usage:
-#   bash scripts/orchestration-checkin.sh              # digest, then advance the anchor
-#   bash scripts/orchestration-checkin.sh --peek       # digest, leave the anchor alone
-#   bash scripts/orchestration-checkin.sh --since ISO  # explicit window (implies --peek)
+#   bash scripts/orchestration/catchup-digest.sh              # digest, then advance the anchor
+#   bash scripts/orchestration/catchup-digest.sh --peek       # digest, leave the anchor alone
+#   bash scripts/orchestration/catchup-digest.sh --since ISO  # explicit window (implies --peek)
 #
 # Output also lands in $SCRATCH/catchup-<ts>.log — the raw notes that survive
 # the session.
