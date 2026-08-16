@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { PendingTextLink } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 // The app's ONE pager footer: "Showing 1–10 of 812 · Prev · Page 1 of 82 · Next".
@@ -59,9 +59,19 @@ export default function PaginationControls({
     return disabled || !href ? (
       <span className="btn-ghost text-sm opacity-40">{label}</span>
     ) : (
-      <Link href={href} className="btn-ghost text-sm">
+      // Link mode answers the tap (#2869). A pager step is a control people tap
+      // REPEATEDLY by design — "next, next, next" through 82 pages — which is
+      // exactly the cadence #1956 measured turning a slow navigation into a
+      // stuck one, and until now it had neither half of the guarantee. There is
+      // no icon here to swap, so the step's own label is its slot: it stays
+      // where it is, legible, with the spinner over it.
+      <PendingTextLink
+        href={href}
+        label={`page ${page + delta}`}
+        className="btn-ghost text-sm"
+      >
         {label}
-      </Link>
+      </PendingTextLink>
     );
   };
 
