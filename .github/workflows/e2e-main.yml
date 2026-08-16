@@ -101,9 +101,10 @@ jobs:
       - uses: ./.github/actions/e2e-setup
         if: steps.changes.outputs.code == 'true'
 
-      # `--retries=0`, the same bar ci.yml's sharded matrix holds PRs to. Holding
-      # main to a LOWER bar than the PRs merging into it is how a main accumulates
-      # failures no PR is allowed to have.
+      # No retries flag, exactly like ci.yml's sharded matrix: playwright.config.ts
+      # sets `retries: 0` everywhere and is the single place that decides. Main is
+      # therefore held to the same bar as the PRs merging into it, which is the
+      # point — a main allowed failures no PR may have is a main no PR can match.
       #
       # Same planner as ci.yml, which is a pure function of (spec list,
       # e2e/spec-durations.json, shard count) — so it plans four duration-balanced
@@ -116,7 +117,7 @@ jobs:
           PLAN=$(./node_modules/.bin/tsx scripts/e2e-shard-plan.ts ${{ matrix.shard }} ${{ strategy.job-total }})
           [ -n "$PLAN" ] || { echo "::error::empty shard plan"; exit 1; }
           mapfile -t ARGS <<< "$PLAN"
-          npm run test:e2e -- --retries=0 "${ARGS[@]}"
+          npm run test:e2e -- "${ARGS[@]}"
 
       # Names the failing spec on the check itself, which is what makes this
       # attributable from the API without downloading an artifact — agents behind
