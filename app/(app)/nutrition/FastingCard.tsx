@@ -116,13 +116,21 @@ export default function FastingCard({
       // named row — so this restores exactly the state that existed a second ago rather
       // than approximating it.
       //
-      // DRAWN WHEN THE SERVER SAYS IT WOULD LAND, never from a rule re-derived here. The
-      // action carries `undoFastId` only when the reopen behind it would be accepted for
-      // this profile (./fast-actions), so this surface's own rule — it does not draw a
-      // control whose every tap would be refused — is kept by ASKING rather than by a
-      // client-side copy of the life-stage gate that could drift from it. The restricted
-      // close-out below therefore needs no flag of its own: the same end there simply
-      // comes back without an id.
+      // DRAWN WHEN THE SERVER SAYS SO, never from a rule re-derived here. The action
+      // carries `undoFastId` only when the reopen behind it was accepted for this
+      // profile at the moment the end committed (./fast-actions), so the restricted
+      // close-out below needs no flag of its own: the same end there simply comes back
+      // without an id.
+      //
+      // WHAT THAT BUYS, STATED NARROWLY. This surface's rule is that it does not draw a
+      // control whose every tap would be refused, and asking the server is what keeps it
+      // — but only because the action's answer covers ALL of the reopen's refusals, not
+      // because asking is inherently enough. It was not enough for a revision: the id
+      // came back on a backdated end whose Undo was already `too-old`, since the age
+      // bound read the instant the end NAMED rather than the instant it was WRITTEN.
+      // The bound now reads the write (lib/fast-write.ts), which is what makes the
+      // question this asks the whole question. The toast auto-dismisses in seconds, well
+      // inside FAST_REOPEN_MAX_MINUTES, so the window cannot lapse under a drawn button.
       toast(
         result.message,
         result.undoFastId != null

@@ -93,8 +93,22 @@
 // profile's Undo-after-end is refused. Restoring an active fast for that profile is
 // exactly what the gate forbids, and the user loses one undo of a write they had just
 // chosen to make — a far smaller harm than the app re-creating the restricted state on
-// tap. The SURFACE does not draw that Undo (the action withholds the id it needs), so
-// the refusal guards a stale tab rather than answering a button anyone can see.
+// tap. The SURFACE does not draw that Undo, because `endFastAction` withholds the id it
+// needs for exactly this refusal, so this one guards a stale tab rather than answering a
+// button anyone can see.
+//
+// THE OTHER FOUR REFUSALS ARE NOT COVERED THAT WAY, AND MUST NOT BE READ AS IF THEY
+// WERE. Withholding the id is a claim about ONE of them; the sentence above said so for
+// a revision in which it was read as a claim about all five, which is how the Undo came
+// to be drawn beside a `too-old`. What actually makes the offer exact is that the other
+// four are FALSE AT THE MOMENT THE END COMMITS, by construction rather than by being
+// asked: `too-old` measures from that very write (`end_written_at`, below), `not-found`
+// names the row `endFast` just closed, `already-active` needs a fast running and the end
+// just cleared the only one, and `overlap` needs a fast recorded after this one, which
+// could not have been started while this one was open. Each can become true AFTERWARDS —
+// another device, another tab, a window that elapses — and each is re-derived here under
+// the write lock, which is what the typed refusals are for. The offer is exact about the
+// state it was made in, and honest about the state it lands in.
 
 import { now as clockNow } from "./clock";
 import { utcInstant, parseUtcSql } from "./date";
@@ -172,6 +186,8 @@ export function startFast(
     // finished before `start` collides with it.
     const clash = overlappingFasts(listFasts(profileId), startMs, null);
     if (clash.length > 0) return { kind: "overlap", id: clash[0].id };
+    // No end, and therefore no end stamp — the two are ONE argument, so an open row
+    // cannot carry half of them.
     return {
       kind: "started",
       id: createFastRow(profileId, utcInstant(start), null, note),
@@ -222,12 +238,15 @@ export function endFast(profileId: number, endedAt?: Date): EndFastOutcome {
     if (instantSeconds(end) <= instantSeconds(start))
       return { kind: "invalid" };
     if (instantSeconds(end) > instantSeconds(at)) return { kind: "invalid" };
+    // The claimed end AND the clock reading of this write, together. `end` may be
+    // backdated by hours; `at` is when the user actually did this, and it is what the
+    // Undo's age bound reads — see `reopenFast`.
     const endInstant = utcInstant(end);
     updateFastRow(
       profileId,
       active.id,
       active.started_at,
-      endInstant,
+      { at: endInstant, writtenAt: utcInstant(at) },
       active.note
     );
     return {
@@ -244,8 +263,9 @@ export type ReopenFastOutcome =
   | { kind: "not-found" }
   // Something else was started in the meantime, so there is no room to reopen into.
   | { kind: "already-active"; id: number }
-  // The end is older than FAST_REOPEN_MAX_MINUTES. Past that this is no longer an Undo
-  // of a write the user just made, it is the resurrection of finished history.
+  // The end was WRITTEN longer than FAST_REOPEN_MAX_MINUTES ago. Past that this is no
+  // longer an Undo of a write the user just made, it is the resurrection of finished
+  // history. Measured from the write, never from the instant the end NAMES — see below.
   | { kind: "too-old" }
   // Reopening would make this fast OPEN again — extending to +infinity — across a fast
   // recorded after it. That is the state the one-active invariant and every reader rule
@@ -266,10 +286,24 @@ export type ReopenFastOutcome =
 // BOUNDED TWO WAYS, because `id` arrives from a form and each check below is the
 // difference between an Undo and an arbitrary reopen:
 //
-//   • AGE — only an end inside FAST_REOPEN_MAX_MINUTES. Naming an id rather than
-//     resolving by recency was never sufficient on its own: an id IS an arbitrary
-//     handle, so without an age bound this core resurrects last week's fast exactly as
-//     the recency version would have, which is the failure the id was chosen to avoid.
+//   • AGE — only an end WRITTEN inside FAST_REOPEN_MAX_MINUTES, read from
+//     `end_written_at` rather than from `ended_at`. Naming an id rather than resolving
+//     by recency was never sufficient on its own: an id IS an arbitrary handle, so
+//     without an age bound this core resurrects last week's fast exactly as the recency
+//     version would have, which is the failure the id was chosen to avoid.
+//
+//     WHICH INSTANT THIS MEASURES IS THE WHOLE CHECK, and reading `ended_at` for it was
+//     wrong in a way that looked right for one revision. An Undo takes back an ACTION,
+//     and the action happened now whatever time it recorded. `ended_at` is a CLAIM about
+//     when the fast stopped, and the surface asks for a backdated one out loud — "End it
+//     at the time you actually stopped". So a backdated end blew the age bound the
+//     microsecond the write landed: an end backdated 16 minutes answered `too-old` on
+//     the Undo drawn beside it, deterministically, and behind that refusal was F1's
+//     whole damage list again — discard refuses a completed row, there is no edit core,
+//     and the permanent long row answers `overlap` to backdated starts. The plain path
+//     only ever worked because `ended_at ≈ now` there, which is an accident of that
+//     path and not a property of the check. `end_written_at` is the app's own clock at
+//     the write, so the bound now measures the thing its name claims.
 //   • OVERLAP — a reopened fast is open, so it runs to +infinity and must clear
 //     everything recorded after it. Re-checked here against fresh rows.
 //
@@ -288,10 +322,15 @@ export function reopenFast(profileId: number, id: number): ReopenFastOutcome {
     if (active) return { kind: "already-active", id: active.id };
     const row = getFast(profileId, id);
     if (!row || row.ended_at === null) return { kind: "not-found" };
-    const ended = parseUtcSql(row.ended_at);
     const started = parseUtcSql(row.started_at);
-    if (!ended || !started) return { kind: "not-found" };
-    if (at.getTime() - ended.getTime() > FAST_REOPEN_MAX_MINUTES * 60_000)
+    if (!started) return { kind: "not-found" };
+    // The write stamp is NULL only for a closed row this module did not write — nothing
+    // constructs one today, and the pair being one argument keeps it that way — so the
+    // answer for "closed, but nobody recorded when" is the same as for an ancient end:
+    // this is not an Undo of a write the user just made.
+    const written = row.end_written_at ? parseUtcSql(row.end_written_at) : null;
+    if (!written) return { kind: "too-old" };
+    if (at.getTime() - written.getTime() > FAST_REOPEN_MAX_MINUTES * 60_000)
       return { kind: "too-old" };
     const clash = overlappingFasts(
       listFasts(profileId),
@@ -300,6 +339,8 @@ export function reopenFast(profileId: number, id: number): ReopenFastOutcome {
       id
     );
     if (clash.length > 0) return { kind: "overlap", id: clash[0].id };
+    // Both halves of the end go away together: the row is active again, so there is no
+    // end for a write stamp to describe.
     updateFastRow(profileId, id, row.started_at, null, row.note);
     return { kind: "reopened", id };
   });

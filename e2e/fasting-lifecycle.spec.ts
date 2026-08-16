@@ -54,17 +54,24 @@ function clearFasts(): void {
   }
 }
 
-/** Insert a fast for profile 1 directly, so a test can start from a chosen state. */
+// Insert a fast for profile 1 directly, so a test can start from a chosen state. A
+// seeded end is a PLAIN one — its write stamp is the instant it names — which is what
+// the app writes when nobody backdates. The two coming apart is the backdated case, and
+// this file drives that through the real control rather than seeding it.
 function seedFast(startedAt: Date, endedAt: Date | null): number {
   const db = openDb();
   try {
     return Number(
       db
         .prepare(
-          "INSERT INTO fasts (profile_id, started_at, ended_at) VALUES (1, ?, ?)"
+          `INSERT INTO fasts (profile_id, started_at, ended_at, end_written_at)
+           VALUES (1, ?, ?, ?)`
         )
-        .run(utcInstant(startedAt), endedAt ? utcInstant(endedAt) : null)
-        .lastInsertRowid
+        .run(
+          utcInstant(startedAt),
+          endedAt ? utcInstant(endedAt) : null,
+          endedAt ? utcInstant(endedAt) : null
+        ).lastInsertRowid
     );
   } finally {
     db.close();
@@ -270,9 +277,17 @@ test.describe("the fasting lifecycle (#2756)", () => {
     // Do the thing the sentence says: set the time you actually stopped, then end.
     await setBackdate(page, 3);
     await settledClick(page, page.getByTestId("fasting-control"));
-    await expect(
-      page.getByTestId("toast").filter({ hasText: "Fast ended." })
-    ).toBeVisible();
+    const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
+    await expect(ended).toBeVisible();
+
+    // F4 — AND LOOK AT THE UNDO IN THAT SAME TOAST. This test used to stop one assertion
+    // short of the surface's own rule (it does not draw a control whose every tap would
+    // be refused) while the plain-end case two tests down asserted exactly that. The
+    // backdated end is where the rule broke: the Undo's age bound read the instant the
+    // end NAMED rather than the instant it was WRITTEN, so a three-hour backdate was
+    // `too-old` the moment it landed, and behind that refusal was no way back at all.
+    const undo = ended.getByRole("button", { name: "Undo" });
+    await expect(undo).toBeVisible();
 
     const db = openDb();
     try {
@@ -287,6 +302,15 @@ test.describe("the fasting lifecycle (#2756)", () => {
     }
     // …and it is recorded as a completed fast rather than discarded.
     await expect(page.getByTestId("fasting-history-row")).toHaveCount(1);
+
+    // The drawn button LANDS — the assertion that separates "an Undo is shown" from "an
+    // Undo works", and the one the fourth review found missing here.
+    await settledClick(page, undo);
+    await expect(
+      page.getByTestId("toast").filter({ hasText: "Fast reopened." })
+    ).toBeVisible();
+    await expect(page.getByTestId("fasting-control")).toContainText("End fast");
+    await expect(page.getByTestId("fasting-history-row")).toHaveCount(0);
   });
 
   // F1 — THE FULL SURFACE'S UNDO, ON A LONG FAST. The one combination the neighbouring

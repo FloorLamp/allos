@@ -477,11 +477,18 @@ export const TIME_COLUMNS = {
       note: "The claimed end, and NULL is load-bearing: `ended_at IS NULL` IS the active state (there is no status enum), which the partial unique index makes at-most-one-per-profile and every derivation downstream assumes. EXCLUSIVE as an interval end — ending one fast and starting the next at the same instant is a legitimate back-to-back pair, not an overlap. The profile-local DAY a completed fast counts for (#94) is derived from this column at read time (fastAttributedDay: a fast counts for the day it ENDS) and deliberately not stored, because storing it would freeze one timezone's answer.",
     },
     {
+      column: "end_written_at",
+      semantic: "lifecycle",
+      grain: "instant",
+      convention: "canonical",
+      note: "When the row's CURRENT end was WRITTEN — a transition in the record's own life, never a claim about the subject, and the pair of `ended_at` rather than a second opinion about it. NULL exactly while `ended_at` is NULL: the two are one argument at the store (`FastEnd`, lib/fast-store.ts) and are set and cleared together. It exists because the Undo window has to be measured from the ACTION, and `ended_at` is a claim the surface invites the user to backdate — an end backdated past the window was `too-old` the microsecond it landed. `created_at` cannot answer this either: it is the INSERT stamp and an end is an UPDATE. Read by lib/fast-write.ts's `reopenFast` and by nothing else; no reader surface sees it.",
+    },
+    {
       column: "created_at",
       semantic: "record",
       grain: "instant",
       convention: "bare",
-      note: "The ordinary bookkeeping stamp, on the schema's bare convention like every other one — NOT claimed canonical, and never a substitute for `started_at`: when the row reached the app says nothing about when the fast began, which is the whole point of accepting a backdated start.",
+      note: "The ordinary bookkeeping stamp, on the schema's bare convention like every other one — NOT claimed canonical, and never a substitute for `started_at`: when the row reached the app says nothing about when the fast began, which is the whole point of accepting a backdated start. Nor for `end_written_at`: this is stamped once at INSERT, when the fast is still open, and no writer restamps it when the end lands.",
     },
   ],
   fitness_assessment_entries: [

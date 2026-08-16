@@ -36,22 +36,40 @@ function makeProfile(name: string, age?: number): number {
 // A COMPLETED fast seeded directly, `startedHoursAgo` → `endedHoursAgo` before now.
 // Inserted rather than driven through the cores because these fixtures are deliberately
 // older than the cores would now accept — which is the point of the tests using them.
+//
+// The end's WRITE stamp defaults to the end instant itself, i.e. a PLAIN end recorded as
+// it happened, which is what every fixture here means by "ended N hours ago". Pass
+// `writtenHoursAgo` to pull the two apart — a backdated end — which is the case the Undo
+// window is actually measured against.
 function seedCompleted(
   profileId: number,
   startedHoursAgo: number,
-  endedHoursAgo: number
+  endedHoursAgo: number,
+  writtenHoursAgo: number = endedHoursAgo
 ): number {
   return Number(
     db
       .prepare(
-        "INSERT INTO fasts (profile_id, started_at, ended_at) VALUES (?, ?, ?)"
+        `INSERT INTO fasts (profile_id, started_at, ended_at, end_written_at)
+         VALUES (?, ?, ?, ?)`
       )
       .run(
         profileId,
         utcInstant(new Date(Date.now() - startedHoursAgo * 3_600_000)),
-        utcInstant(new Date(Date.now() - endedHoursAgo * 3_600_000))
+        utcInstant(new Date(Date.now() - endedHoursAgo * 3_600_000)),
+        utcInstant(new Date(Date.now() - writtenHoursAgo * 3_600_000))
       ).lastInsertRowid
   );
+}
+
+/** The row's stored end and the instant that end was written. */
+function storedEnd(id: number): {
+  ended_at: string | null;
+  end_written_at: string | null;
+} {
+  return db
+    .prepare("SELECT ended_at, end_written_at FROM fasts WHERE id = ?")
+    .get(id) as { ended_at: string | null; end_written_at: string | null };
 }
 
 let adult: number;
@@ -172,7 +190,10 @@ describe("Undo an end — the inverse is complete and local", () => {
     seedCompleted(adult, 48, 32);
     // Age is what stops this one first; prove the overlap guard independently by moving
     // the old fast's end inside the undo window while the later fast still sits after it.
-    db.prepare("UPDATE fasts SET ended_at = ? WHERE id = ?").run(
+    db.prepare(
+      "UPDATE fasts SET ended_at = ?, end_written_at = ? WHERE id = ?"
+    ).run(
+      utcInstant(new Date(Date.now() - 60_000)),
       utcInstant(new Date(Date.now() - 60_000)),
       old
     );
@@ -221,6 +242,77 @@ describe("Undo an end — the inverse is complete and local", () => {
     const id = seedCompleted(adult, FAST_MAX_HOURS + 24, 2);
     expect(reopenFast(adult, id)).toEqual({ kind: "too-old" });
     expect(getActiveFast(adult)).toBeNull();
+  });
+
+  // ── F4. THE AGE BOUND MEASURES THE WRITE, NOT THE INSTANT THE END NAMES ───────────
+  //
+  // An Undo takes back an ACTION, and the action happened now whatever time it recorded.
+  // Measuring from `ended_at` made the window already expired at the moment of the write
+  // for every backdated end — which the surface asks for out loud ("End it at the time
+  // you actually stopped") — so the Undo drawn beside it was refused on every tap, with
+  // F1's whole damage list behind the refusal.
+  it("undoes a BACKDATED end — the window runs from the write, not from the instant named", () => {
+    startFast(adult, new Date(Date.now() - 40 * 3_600_000));
+    // The user does what the stale suggest tells them: end it at the time they stopped,
+    // four hours ago. That names an instant far outside the undo window.
+    const ended = endFast(adult, new Date(Date.now() - 4 * 3_600_000));
+    expect(ended.kind).toBe("ended");
+    const id = ended.kind === "ended" ? ended.id : -1;
+    expect(reopenFast(adult, id)).toEqual({ kind: "reopened", id });
+    expect(getActiveFast(adult)?.id).toBe(id);
+  });
+
+  // The same door, driven end to end through the cores at the size that made it matter:
+  // the forgotten long fast, ended honestly at the time it really stopped.
+  it("undoes an end backdated by DAYS, and the fortnight is startable again", () => {
+    startFast(adult, new Date(Date.now() - 12 * 24 * 3_600_000));
+    const ended = endFast(adult, new Date(Date.now() - 10 * 24 * 3_600_000));
+    const id = ended.kind === "ended" ? ended.id : -1;
+    expect(reopenFast(adult, id)).toEqual({ kind: "reopened", id });
+    // …and the way out is complete from there, exactly as it is on the plain path.
+    expect(discardFast(adult, id)).toEqual({ kind: "discarded", id });
+    expect(listFasts(adult)).toHaveLength(0);
+    expect(
+      startFast(adult, new Date(Date.now() - 5 * 24 * 3_600_000)).kind
+    ).toBe("started");
+  });
+
+  // The bound did not get weaker, it got measured correctly — so an end WRITTEN two
+  // hours ago is history even when the instant it names is a minute old. This is the
+  // reading that would let a stale tab resurrect a fast if the two were confused the
+  // other way round.
+  it("refuses an end that was WRITTEN outside the window, however recent the instant it names", () => {
+    const id = seedCompleted(adult, 30, 1 / 60, 2);
+    expect(reopenFast(adult, id)).toEqual({ kind: "too-old" });
+    expect(getActiveFast(adult)).toBeNull();
+  });
+
+  // A closed row whose end nobody recorded the writing of — no core produces one, since
+  // the end and its stamp are a single argument at the store, but the column is nullable
+  // and `id` arrives from a form. It is not an Undo of anything this app just did.
+  it("refuses a closed row that carries no write stamp at all", () => {
+    const id = seedCompleted(adult, 30, 1 / 60);
+    db.prepare("UPDATE fasts SET end_written_at = NULL WHERE id = ?").run(id);
+    expect(reopenFast(adult, id)).toEqual({ kind: "too-old" });
+  });
+
+  // The pair is written together and cleared together, which is what keeps "closed with
+  // no write stamp" out of the schema rather than out of a guard.
+  it("stamps the write on an end and clears it on the reopen", () => {
+    startFast(adult, new Date(Date.now() - 5 * 3_600_000));
+    const backdated = new Date(Date.now() - 2 * 3_600_000);
+    const ended = endFast(adult, backdated);
+    const id = ended.kind === "ended" ? ended.id : -1;
+    const closed = storedEnd(id);
+    expect(closed.ended_at).toBe(utcInstant(backdated));
+    // The stamp is the app's own clock at the write, not the instant the end names.
+    expect(closed.end_written_at).not.toBe(closed.ended_at);
+    expect(
+      Date.now() - new Date(closed.end_written_at as string).getTime()
+    ).toBeLessThan(60_000);
+
+    expect(reopenFast(adult, id).kind).toBe("reopened");
+    expect(storedEnd(id)).toEqual({ ended_at: null, end_written_at: null });
   });
 
   // R1/R2. FAST_MAX_HOURS is a ceiling on a CLAIM, never on a fast the app watched run.

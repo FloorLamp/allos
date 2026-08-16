@@ -14,12 +14,38 @@ import type { Fast } from "./fasting";
 
 const COLS = "id, started_at, ended_at, note";
 
-/** One fast by id, scoped to the profile. */
-export function getFast(profileId: number, id: number): Fast | null {
+// A fast's END, as stored: the instant it CLAIMS, and the instant that claim was
+// WRITTEN. ONE value rather than two parameters, because the two are only ever set
+// together and only ever cleared together — an `ended_at` with no write stamp beside it
+// is a row this module cannot express, so the case does not need a guard anywhere.
+//
+// The distinction is the whole point of the second column. `at` is a claim the user is
+// invited to backdate; `writtenAt` is the app's own clock at the write and is what
+// bounds the Undo (lib/fast-write.ts's `too-old`).
+export interface FastEnd {
+  /** The claimed end instant, canonical (`utcInstant`). */
+  at: string;
+  /** The app's clock when that end was written, canonical (`utcInstant`). */
+  writtenAt: string;
+}
+
+// A fast as the WRITE tier sees it: the reader's `Fast` plus the end's write stamp.
+// Deliberately not folded into `Fast` — no reader, no page prop and no pure derivation
+// has a question this column answers, and widening the shared shape would ship it to
+// every surface that renders a fast.
+export interface StoredFast extends Fast {
+  end_written_at: string | null;
+}
+
+// One fast by id, scoped to the profile — the WRITE tier's read (the only two callers
+// are `reopenFast` and `discardFast`), so it carries the end's write stamp.
+export function getFast(profileId: number, id: number): StoredFast | null {
   return (
     (db
-      .prepare(`SELECT ${COLS} FROM fasts WHERE id = ? AND profile_id = ?`)
-      .get(id, profileId) as Fast | undefined) ?? null
+      .prepare(
+        `SELECT ${COLS}, end_written_at FROM fasts WHERE id = ? AND profile_id = ?`
+      )
+      .get(id, profileId) as StoredFast | undefined) ?? null
   );
 }
 
@@ -69,42 +95,52 @@ export function listFastsInRange(
     .all(profileId, toInstant, fromInstant) as Fast[];
 }
 
-// Insert a fast. `endedAt` is null for the ordinary "start it now" case and non-null
-// only when a completed interval is recorded in one go. Both instants arrive already
+// Insert a fast. `end` is null for the ordinary "start it now" case and a `FastEnd` only
+// when a completed interval is recorded in one go. Every instant arrives already
 // serialized on the canonical convention by the write core (utcInstant/instantNow) —
 // this module never builds one, which is what keeps `fasts` off SQLite's bare clock.
 export function createFastRow(
   profileId: number,
   startedAt: string,
-  endedAt: string | null,
+  end: FastEnd | null,
   note: string | null
 ): number {
   return writeTx(() => {
     const info = db
       .prepare(
-        `INSERT INTO fasts (profile_id, started_at, ended_at, note)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO fasts (profile_id, started_at, ended_at, end_written_at, note)
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(profileId, startedAt, endedAt, note);
+      .run(profileId, startedAt, end?.at ?? null, end?.writtenAt ?? null, note);
     return Number(info.lastInsertRowid);
   });
 }
 
-/** Absolute update of a fast's own fields, scoped to the profile. */
+// Absolute update of a fast's own fields, scoped to the profile. The end is ONE
+// argument, so `ended_at` and `end_written_at` cannot be set apart: reopening passes
+// null and clears both, ending passes the claimed instant with the clock reading of the
+// write beside it.
 export function updateFastRow(
   profileId: number,
   id: number,
   startedAt: string,
-  endedAt: string | null,
+  end: FastEnd | null,
   note: string | null
 ): number {
   return writeTx(() => {
     const info = db
       .prepare(
-        `UPDATE fasts SET started_at = ?, ended_at = ?, note = ?
+        `UPDATE fasts SET started_at = ?, ended_at = ?, end_written_at = ?, note = ?
           WHERE id = ? AND profile_id = ?`
       )
-      .run(startedAt, endedAt, note, id, profileId);
+      .run(
+        startedAt,
+        end?.at ?? null,
+        end?.writtenAt ?? null,
+        note,
+        id,
+        profileId
+      );
     return info.changes;
   });
 }

@@ -123,12 +123,24 @@ function endMessage(
 // by the registered exemption in lib/adult-only-writes.ts: a profile that became
 // restricted mid-fast must still be able to close the row out.
 //
-// The UNDO it offers is gated, though, because the reopen behind it is. `reopenFast` has
-// exactly one refusal that is true the instant after an accepted end — the life-stage
-// gate — so asking that question here makes the offer exact: an Undo appears if and only
-// if tapping it would land. (`too-old` cannot fire a second after the end, `overlap`
-// needs a fast recorded after this one, `already-active` needs one running, and there is
-// no duration ceiling on the Undo path at all — see lib/fast-write.ts.)
+// The UNDO it offers is gated, though, because the reopen behind it is. Of `reopenFast`'s
+// five refusals, four are false AT THE MOMENT THIS END COMMITS whatever the form said:
+// `too-old` is measured from when the end was WRITTEN rather than from the instant it
+// names, so it cannot fire on the write that just happened; `not-found` names the row we
+// just closed; `already-active` needs a fast running and this end cleared the only one;
+// and `overlap` needs a fast recorded after this one, which could not have been started
+// while this one was open. The life-stage gate is the one that can be true immediately,
+// so it is the one asked here — and asking rather than re-deriving a copy of it is what
+// keeps this from drifting.
+//
+// SO THE OFFER IS EXACT ABOUT THE STATE IT IS MADE IN, not about the state it lands in,
+// and the difference is deliberate. A device that starts a fast, or a tab that sits past
+// FAST_REOPEN_MAX_MINUTES, can still refuse the tap — the core re-derives under its own
+// lock and answers with a typed refusal, which is the whole design. A weaker claim than
+// the one this comment made for a revision ("an Undo appears if and only if tapping it
+// would land"), and unlike that one it is true: `too-old` read `ended_at` then, so it
+// fired instantly and deterministically on any end backdated past the window, beside an
+// Undo this action had already offered.
 export async function endFastAction(
   formData: FormData
 ): Promise<FastActionResult> {

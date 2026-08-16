@@ -44,12 +44,17 @@ export const FAST_STALE_HOURS = 36;
 // it would put a bar on every duration chart that dwarfs the real ones. 14 days.
 export const FAST_MAX_HOURS = 14 * 24;
 
-// How long after an end its UNDO stays live. An Undo is the inverse of a write the user
-// just made — it is not a general reopen, and the distance between those two is the
-// whole of "resolving it by recency could resurrect last week's fast". Bounding it by
-// AGE is what makes that sentence true of the CODE rather than only of the intention:
-// past this window the completed fast is history, and reopening it would mint an active
-// fast out of a row the user finished with days ago.
+// How long after an end was WRITTEN its UNDO stays live. An Undo is the inverse of a
+// write the user just made — it is not a general reopen, and the distance between those
+// two is the whole of "resolving it by recency could resurrect last week's fast".
+// Bounding it by AGE is what makes that sentence true of the CODE rather than only of
+// the intention: past this window the completed fast is history, and reopening it would
+// mint an active fast out of a row the user finished with days ago.
+//
+// AGE OF THE WRITE, NOT OF THE INSTANT THE END NAMES, and the two are routinely far
+// apart because the surface invites a backdated end out loud. The write core reads
+// `fasts.end_written_at` for this and never `ended_at`; measuring the wrong one made
+// every backdated end's Undo dead on arrival (lib/fast-write.ts).
 export const FAST_REOPEN_MAX_MINUTES = 15;
 
 const MS_PER_HOUR = 3_600_000;

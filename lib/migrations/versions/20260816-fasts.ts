@@ -33,6 +33,18 @@ import type { Migration } from "../runner";
 // fast per profile" a SCHEMA fact rather than a convention — the write core
 // (lib/fast-write.ts) enforces it in the same `writeTx` that reads it, and this index
 // is the backstop that survives a core someone forgets to route through.
+//
+// `end_written_at` — THE INSTANT THE END WAS WRITTEN, WHICH `ended_at` IS NOT. An Undo
+// takes back an action the user JUST took, and the action happened NOW regardless of
+// the time it records. `ended_at` is a CLAIM about when the fast stopped and the surface
+// invites a backdated one out loud ("End it at the time you actually stopped"), so
+// measuring the Undo window from it makes the window already expired at the moment of
+// the write. Neither existing column answers "when was this end recorded": `created_at`
+// is the INSERT stamp and an end is an UPDATE, and no writer restamps it. So the row
+// carries the write instant beside the claim, and lib/fast-write.ts's `too-old` reads
+// THIS column. NULL exactly while `ended_at` is NULL — the pair is written together and
+// cleared together (`FastEnd`, lib/fast-store.ts), which is what keeps "a closed row
+// with no write stamp" out of the schema rather than out of a guard.
 export function up(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS fasts (
@@ -40,6 +52,7 @@ export function up(db: Database.Database): void {
       profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
       started_at TEXT NOT NULL,
       ended_at TEXT,
+      end_written_at TEXT,
       note TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
