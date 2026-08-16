@@ -55,6 +55,33 @@ export function seedMergeFixtures(): void {
   insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge keeper", 42, 5);
   insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge dupe", 51, 5);
 
+  // ── Overlapping same-day pair (#2870, the discovery banner) ──────────────────
+  // Two sessions whose CLOCK WINDOWS overlap — the evidence the duplicate detector
+  // treats as its strongest, because a person cannot do two sessions at once. The
+  // three fixtures above deliberately carry no clock at all (that is their point:
+  // a duplicate no heuristic catches), so none of them can exercise a banner that
+  // exists precisely to say "these two windows are the same session". Cross-source
+  // on purpose: the banner names WHO ELSE logged it, which is the fact that makes
+  // a reader recognise the double-log.
+  const OVERLAP_DATE = shiftDateStr(today(PROFILE_ID), -11);
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Overlap keeper (e2e)', 'Overlap twin (e2e)')`
+  ).run(PROFILE_ID, OVERLAP_DATE);
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, start_time,
+        end_time, source, external_id, edited)
+     VALUES (?, ?, 'cardio', 'Overlap keeper (e2e)', 45, 8, '06:00', '06:45',
+             NULL, NULL, 0)`
+  ).run(PROFILE_ID, OVERLAP_DATE);
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, start_time,
+        end_time, source, external_id, edited)
+     VALUES (?, ?, 'cardio', 'Overlap twin (e2e)', 44, 8, '06:10', '06:54',
+             'strava', 'e2e:overlap-twin', 0)`
+  ).run(PROFILE_ID, OVERLAP_DATE);
+
   // ── Set-re-parenting merge fixture (issues #199/#200) ─────────────────────────
   // Two same-day MANUAL STRENGTH activities that conflict on duration (30 vs 45 min),
   // so the manual merge raises the per-field conflict preview — the surface that now
