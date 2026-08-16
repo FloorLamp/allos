@@ -69,7 +69,10 @@ async function newRowId(page: Page, before: string[]): Promise<string> {
 // is what re-renders.
 async function removeServingRow(page: Page, eventId: string): Promise<void> {
   const row = page.getByTestId(`food-logged-${eventId}`);
-  await hydratedClick(page, row.getByRole("button", { name: /^Actions for the/ }));
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: /^Actions for the/ })
+  );
   await settledClick(page, page.getByTestId(`food-logged-remove-${eventId}`));
   await expect(row).toHaveCount(0);
 }

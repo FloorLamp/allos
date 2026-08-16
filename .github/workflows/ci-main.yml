@@ -71,3 +71,33 @@ jobs:
       - uses: ./.github/actions/node-setup
       - name: Test (DB) + coverage
         run: npm run test:db:coverage
+
+  # Is the weekly drift census still firing? (#2968)
+  #
+  # e2e-full.yml's census went red three Sundays running, and while nobody was
+  # reading those reds the more expensive question went unasked: had it stopped?
+  # Nothing could answer it, because "has it run lately" was only ever answerable
+  # by someone remembering to open the Actions tab — the canary failure
+  # docs/orchestration-incidents.md has already billed this repo for three times.
+  #
+  # It lives HERE, on every push to main, and NOT on a schedule of its own,
+  # because a scheduled canary watching a schedule shares the failure mode it is
+  # watching for. Merge activity is the right clock: the detector is alive exactly
+  # while somebody cares about the answer, and it costs one API call.
+  #
+  # 9 days = one full weekly period plus a two-day grace. GitHub delays scheduled
+  # runs (the census's own history shows 1–2 h of slip) and a run that merely
+  # slipped must not alarm — but a whole SKIPPED week must. Keep this in step with
+  # e2e-full.yml's `cron:` if the cadence ever changes.
+  #
+  # Its own job, not a step bolted onto `check`: a red here means "the census is
+  # not running", which is a different instruction from "main is broken", and
+  # merging them would make one check name two problems.
+  census-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Weekly e2e census is still firing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/scheduled-run-freshness.mjs e2e-full.yml --max-age-days 9

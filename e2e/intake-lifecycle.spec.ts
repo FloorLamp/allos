@@ -47,7 +47,10 @@ async function deleteIntakeItem(
     .getByTestId("supplement-row")
     .filter({ hasText: name })
     .first(); // first-ok: spec-owned unique name; a multi-dose item renders one row per dose and any of ITS rows opens the same item menu
-  await hydratedClick(page, row.getByRole("button", { name: "Supplement actions" }));
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Supplement actions" })
+  );
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
     page,

@@ -807,12 +807,16 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       matches('await tile.getByTestId("overflow-menu-trigger").click();')
     ).toBe(true);
     expect(
-      matches('await row.getByRole("button", { name: "Record actions" }).click();')
+      matches(
+        'await row.getByRole("button", { name: "Record actions" }).click();'
+      )
     ).toBe(true);
     expect(matches('await row.getByLabel("More actions").click();')).toBe(true);
     // A regex name, and a chain broken across lines by the formatter.
     expect(
-      matches('await row.getByRole("button", { name: /^Actions for the/ }).click();')
+      matches(
+        'await row.getByRole("button", { name: /^Actions for the/ }).click();'
+      )
     ).toBe(true);
     expect(
       matches(

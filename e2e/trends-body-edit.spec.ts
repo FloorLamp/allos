@@ -2,7 +2,12 @@ import { test, expect } from "./fixtures";
 import { type Page, type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { dismissToast, hydratedClick, settledClick } from "./helpers";
+import {
+  chartsSettled,
+  dismissToast,
+  hydratedClick,
+  settledClick,
+} from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_BULKFIX } from "./fixture-logins";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -139,6 +144,13 @@ test("corrects ONE measure of a body-metrics row and leaves the day's others alo
     // The history table renders at `md:` and up (the body-view stack container).
     await page.setViewportSize({ width: 1280, height: 1000 });
     await page.goto("/trends#body");
+    // This table sits BELOW the starred sparkline grid and the body census, all of
+    // them lazy charts — the purest sleep-page twin in #2839's sweep. Every ⋯ round
+    // trip below opens a `position: fixed` panel glued to a trigger those mounts are
+    // still pushing down, so gate the growth before the first one (#2862). No card
+    // is named: which tiles plot depends on this spec's own fresh fixture, and a
+    // hydrated `main` is the precondition an absent loading fallback needs.
+    await chartsSettled(page.getByRole("main"));
 
     const table = page.getByTestId("body-history-table");
     await expect(table).toBeVisible();
