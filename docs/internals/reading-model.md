@@ -667,6 +667,65 @@ structural pins generalize from **one store per destination** to **one identity
 per destination** — the page's own store must be a store of the same quantity,
 which for a streaming reading is its registered stream.
 
+### Where continuous glucose belongs (#2810)
+
+A CGM is the first quantity to arrive that the model has an entry for and a place for,
+and the issue's proposed placement — "a `metric_samples` metric (`glucose_mgdl`) with a
+`/trends/metric/glucose` surface" — is **half right and half a rule this document
+already answers differently.** Recorded here so the design work starts from the rule
+rather than around it.
+
+**The half that is right, and is not new.** A stream store for a home-measured glucose,
+folded onto one chart with the lab draws, is exactly `Peak Expiratory Flow`: a
+`metric_samples` stream keyed by its own instant (a day holds many readings, which is
+what `body_metrics` — one row per day — could not carry), a metric surface, and a
+clinical half that placement clause 2 keeps in `medical_records` with its document. So
+the shape does not need inventing; it needs an entry in `READING_IDENTITY_MAP`, and both
+halves of that entry have to be answered at once, which is what #2086 made impossible to
+half-do.
+
+**The half that conflicts is GRAIN, and it is the expensive one to get wrong.** This
+model covers dated readings **above minute grain**, stated at the top of this document
+and enforced by placement clause 1 — sleep minutes, steps, HRV and per-minute heart rate
+all arrive there and each keeps its own writer. A real CGM is 288 readings a day, which
+is per-5-minute, not per-day: it is on `hr_minutes`' side of that boundary, not
+`peak_flow_lmin`'s. `hr_minutes` is the precedent for a quantity of that volume — its
+own narrow table, minute-keyed, deliberately outside this model and excluded from
+provenance for volume reasons — and it is the precedent because the reasoning is about
+what a reading IS, not about how many rows fit. A per-5-minute trace is not what a
+judgement, a period average or a readings table is asking about, and routing 100k rows a
+year through `dedupeReadings`' (identity, date, source, value) group would make a fold
+that costs more than it answers.
+
+So the placement rule gives **two** stores, not one, and the split is the grain
+boundary it already draws:
+
+1. **The raw trace** is a stream of its own, on `hr_minutes`' side of the line — one
+   narrow instant-keyed table, no `Reading` identity, no provenance, no fold. That is
+   also what makes time-in-range and an AGP day-overlay cheap: both are computed over
+   the trace, and neither is a reading question.
+2. **The daily derivations** the trace supports — mean glucose, time-in-range, and any
+   other once-a-day summary — are above the boundary and are what a `metric_samples`
+   metric legitimately holds, exactly as `hr_minutes` already rolls up into the resting
+   and summary figures that surfaces read.
+
+**And the canonical name is the third question, not a detail.** #2337 ruled unqualified
+`Glucose` **band-less** because the fasting frame it was being judged in was never
+stated, and #2799 then had to add `frameUnstatedNames` specifically so a CMP's printed
+`65-99` could not re-commit that frame — the note there names "a CGM stream lighting up
+wholesale" as the failure being avoided. Registering a CGM stream under the canonical
+name `Glucose` would fold a continuous interstitial trace into the same identity as a
+fasting venous draw and hand it that argument again from the other end. A CGM reading is
+a **patient-state-qualified sibling** in exactly `frameUnstatedNames`' sense; which
+curated entry it maps to (or whether the vocabulary needs one) is a curation decision and
+belongs to whoever adds the dataset entry, not to the ingest.
+
+**Not started here.** This is the placement ruling only — no schema, no entry, no
+surface. The `SEED_PERSONA=diabetic-cgm` walkthrough remains the live data shape to
+develop against, and it is worth saying plainly that the persona seeds the _lab_ shape
+(4 timed `medical_records` vitals a day), so it exercises the observation half and not
+the trace half this ruling is mostly about.
+
 ## Phase 3 — deliberately not started
 
 A single tall `readings` table is **deliberately deferred**. Nothing reads or

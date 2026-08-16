@@ -112,6 +112,20 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // The `demote`-on-a-dose-reminder shape one domain over: a ride-along inherits the
   // family of the message it decorates rather than earning one of its own.
   { prefix: "rslower", family: "practice" },
+  // ⤓ The practice-time correction chips + picker (#2875) — the third domain on the
+  // #2019/#2020 substrate, and the same ride-along shape `rslower` and `demote` have:
+  // a decoration inherits the family of the message it rides rather than earning one.
+  // They die on their OWN clock (a burst older than an hour), which the family's `dead`
+  // set is what expresses.
+  //
+  // SCOPED TO THE PACE NUDGE, deliberately. `owningFamily` takes a message's family
+  // from the FIRST token that claims state, and `/practice`'s own `plog` is declared
+  // inert — so attaching these to that list would make an inert listing resolve as
+  // family `practice` and inherit the nudge's close-once-the-shortfall-is-gone
+  // reconciliation, which the `practice-list` entry below explicitly argues against.
+  // Giving the list its chips needs a family of their own; see #2875's open question.
+  { prefix: "practime", family: "practice" },
+  { prefix: "practimeat", family: "practice" },
 
   // ── Class 2: additive quick-log buttons ────────────────────────────────────
   // The buttons don't lie — logging another serving stays valid all day — but the

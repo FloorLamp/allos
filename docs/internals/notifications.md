@@ -779,7 +779,7 @@ be a confident falsehood. `COALESCE(occurred_at, recorded_at)` is where #2019 sl
 transparently — a stated eating instant beats a tap stamp, with no branch and no second
 read.
 
-### Time correction: `foodtime` / `dosetime` (#2019, #2020)
+### Time correction: `foodtime` / `dosetime` / `practime` (#2019, #2020, #2875)
 
 A one-tap button in a chat carries a contract — "I'm eating NOW", "I'm taking this
 NOW" — so **the tap instant IS a measurement** of when the thing happened, with a
@@ -804,6 +804,110 @@ and the reconnect confirmation says the minute was lost and why
 (`docs/internals/time-model.md`). On the dose side there is no
 schema at all: `intake_item_logs.recorded_at` has carried the administration instant
 since migration 041, and the PRN redose window already arms off it.
+
+#### The third domain: `practime` (#2875)
+
+Practices were the third to gain one-tap logging and never got the correction substrate,
+and the gap had a worse consequence than its siblings'. `logPracticeSession` stamps
+`time` with the profile-local instant of the tap whenever a caller omits one — which
+every one-tap path does — and **that column feeds the scheduler that produced the tap**:
+`modalHour()` (`lib/weekly-rhythm.ts`) picks each practice's typical hour and #2188's
+retimed pace nudge fires at it. A sauna at 19:00 acknowledged at 21:30 therefore taught
+the inference 21:00, which fired the next nudge later, which was acknowledged later
+still. The error compounded, and it degraded exactly the feature whose purpose is
+"today is usually a red-light day, at about this time".
+
+Two prefixes is most of the extension — `correctionActions`, `correctionPickerActions`,
+`correctionBodyStatement` and `collapseBursts` are domain-blind about the SHAPE of the
+affordance, and stay that way. They were domain-blind about WHAT MAY BE OFFERED too, and
+that turned out to be wrong rather than general — see the fourth bullet. Four things
+genuinely differ:
+
+- **The stored value is not an instant.** Food stores `occurred_at` and dose stores
+  `given_at`; a practice stores `date` (a profile-local day) plus `time` (a
+  profile-local `HH:MM`). The tap reader COMPOSES them through the profile's zone and
+  the write core DECOMPOSES the answer back — both through the declared readers
+  (`eventInstant` / `recordInstant`, `lib/row-instants.ts`) rather than a second
+  hand-rolled join, and server-side per #450.
+- **`time` is three-valued and the correction does not flatten it.** `null` means the
+  session has NO instant and that is a decision (a backdated correction outside the
+  profile's today deliberately stays null). A chip may only re-time a row that already
+  carries a time; null-time rows are excluded from the tap set, so they never reach a
+  burst and no chip can invent one for them.
+- **The chips never cross local midnight.** Correcting a practice's DATE is the expanded
+  form's job, so an answer landing on another day writes nothing and says so
+  (`crosses-day`). Clamping would be worse than refusing: it would teach `modalHour()`
+  an hour the session never happened at, which is the defect this feature exists to fix.
+- **So the OFFER SET is bounded by the domain, not only by the clock.** A refusal the
+  renderer does not know about is a dead button, and here it was most of them: THE DAY
+  RULE resolves an offered hour later than the current local time to YESTERDAY, which
+  food absorbs (`movedDays`) and dose absorbs (`crossedMidnight`) and a practice refuses.
+  At 00:20 local both chips and all eleven picker hours resolved to yesterday — 100% of
+  the affordance dead in the hour the stored time is most wrong — and on an ordinary
+  morning 4 of 11 picker buttons were dead. `dayKeyed` on `CorrectionPrefixes` is how a
+  domain declares which kind of store is behind its chips; `chipOffers` and
+  `offeredHours` apply the bound, each handler admits an hour through the same
+  computation, and `correctableBursts` drops a burst with nothing left to offer so the
+  body can say the correction belongs in the app instead of drawing a keyboard that
+  cannot work.
+
+The day that bound is computed from is the **stored `date` column**, carried up from the
+tap row (`TapEvent.localDay`) rather than re-derived from the composed instant. The two
+are not the same string everywhere: `zonedWallTimeToUtc` cannot round-trip the day in the
+five zones whose DST starts at local midnight (Havana, Santiago, Asuncion, Coyhaique, the
+Azores), where a session filed under `2026-03-08` at `00:20` composes to an instant that
+reads back as `2026-03-07 23:20` — that hour never happens there. The core compares
+against the column, so a bound computed from the composed day offers chips the core is
+guaranteed to refuse: the same defect the bound exists to prevent, one derivation over.
+
+Migration `20260816-practice-tap-message-provenance` adds `practice_logs.notify_message_id`
+— migration 170's shape exactly — so a practice burst is attributed like the other two
+rather than riding as unattributed, and the pace nudge REBUILDS after a tap instead of
+closing: the common case is a single behind practice, where logging it clears the very
+shortfall that justified the message, and closing there would take the correction row
+down in exactly the case the feature exists for.
+
+**Scoped to the pace nudge.** `/practice`'s own `plog` is declared inert, and
+`owningFamily` takes a message's family from the first token that CLAIMS state — so
+attaching these chips to that list would make an inert listing resolve as family
+`practice` and inherit the nudge's close-once-resolved reconciliation, which the
+`practice-list` entry argues against. Giving the list its chips needs a family of its
+own; that is open.
+
+**A REDRAW OBEYS EVERY RULE THE SEND OBEYED.** The nudge rebuilding instead of closing
+turns one message into a thing that is rendered repeatedly, and each rule the send
+applied has to be applied again or the redraw quietly undoes it. Five of them, all
+learned the hard way:
+
+- the tapped `✅` is CONSUMED, and "re-derive from live pace" does not achieve that — a
+  practice at 1 of 3 is still behind after its session lands. The rebuild reads the ids
+  the live keyboard still offers (`offeredPracticeTargets`) and renders only those, the
+  same rule that keeps the food nudge from collapsing a keyboard the user expanded;
+- `Open practices →` is re-rendered, so #1718's "affordance that survives everywhere"
+  survives past the first tap;
+- the #2188 rhythm hold is re-applied — the rebuild re-derives the moment from the
+  profile's own waking window (`practiceNudgeTimingNow`) rather than falling through to
+  the untimed gather, which holds nothing and would surface a practice the send withheld;
+- and the chips DIE on the hour-long clock, because the `practice` family's `dead` calls
+  `deadCorrectionTokens` exactly as `food` and `intake-dose` do. That is what produces
+  the single trailing edit per burst, and — once the `✅` buttons are consumed and the
+  chips are the message's only remaining claims — what CLOSES the message. Without it
+  the chips had no clock at all: nothing aged them out, and a tapped nudge stood until
+  the pointer was pruned days later. The close reads its outcome off the DELIVERED
+  keyboard, like the dose families, because by then the `pdone` tokens naming what the
+  message claimed are gone from the live one;
+- and a `null` from `buildPracticeCorrectionRebuild` means **nothing to show AND nothing
+  to say**, which is the callers' whole contract with it: both close the message on one,
+  and neither may leave a stale keyboard standing. The day bound made the looser reading
+  dangerous — once a burst can go off scope, "no chip is offerable" stopped meaning
+  "nothing to render", because the commonest way a practice burst loses its chips is that
+  the correction SUCCEEDED. Answering null there took the message down: after a chip
+  write the chat kept the old time under a live chip whose tap is now refused, and in the
+  single-practice case at 00:20 local the confirmation was closed and the sentence
+  explaining why nothing is on offer had nowhere to land. A statement alone is enough of
+  a message. Its keyboard then makes no claim, so the hourly sweep leaves it exactly as
+  it is — the one-hour close belongs to a keyboard that claims "you may still correct
+  this here", and the pointer prune retires this one.
 
 **The offer is a QUERY over ledger state**, never a memory of what some earlier
 message rendered — which is why the rows survive a rebuild, a pointer rotation and a
