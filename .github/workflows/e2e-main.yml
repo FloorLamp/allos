@@ -1,0 +1,134 @@
+name: E2E (main)
+
+# Post-merge BROWSER validation for main (#2791).
+#
+# ci.yml is `pull_request` only and ci-main.yml deliberately carries just the
+# three cheap tiers, so until now main had NO e2e coverage at all — an e2e
+# regression on main was not merely un-noticed, it was unobservable from main's
+# own pipeline. The receipt, 2026-08-15: the activity-editor redesign merged and
+# broke three specs; four unrelated PRs went red on specs none of them touched;
+# each orchestrator checked "is main green?", saw `CI (main)` success, and
+# concluded the failures were unrelated flakes. That conclusion was reasonable
+# and wrong three times in one evening, because the green they checked cannot see
+# e2e. The signal identifying the culprit existed only on the PRs that were
+# innocent.
+#
+# This makes a base regression attributable to the merge that caused it, and
+# gives the "unrelated failure" exoneration path something that actually covers
+# the failing tier to exonerate against (docs/orchestration/e2e-ci.md).
+#
+# A DETECTOR, NOT A GATE — same standing as ci-main.yml. A red here means: stop
+# merging, attribute it, fix main first (a follow-up PR or a revert), resume.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# DEBOUNCE, not cancel. ci-main.yml uses cancel-in-progress because its three
+# tiers finish in ~3.5 min, so a superseded run is cheap and near-complete.
+# A browser matrix is not: at this repo's merge rate (merges minutes apart,
+# measured) cancel-in-progress would kill nearly every run before it produced a
+# verdict, burning the runner minutes and reporting nothing — the worst of both.
+#
+# cancel-in-progress: false gives the shape this actually wants. GitHub keeps at
+# most one run in progress and at most one PENDING run per group, and a newly
+# queued run REPLACES the pending one. So a burst of merges collapses to a single
+# follow-up run at the newest main, every started run finishes, and the cost is
+# bounded at roughly one matrix per matrix-duration however fast merges land.
+#
+# The attribution that buys: a red names the range since the last green run.
+# Exact when merges are spaced out, and a short bisect range when they are not —
+# against a status quo where the range is "some merge, discovered later, by
+# somebody else's PR".
+concurrency:
+  group: e2e-main
+  cancel-in-progress: false
+
+jobs:
+  e2e-main:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # FOUR shards, not ci.yml's twelve, and the difference is the point.
+      #
+      # Twelve is tuned for LATENCY on the critical path of a PR: measured on a
+      # recent run, twelve shards cost 39.6 CI-minutes to return a verdict in
+      # 3.6 minutes wall-clock, and the slowest shard finishing inside the
+      # `check` job is what makes the matrix free to a PR author.
+      #
+      # Nobody waits on this one. It is a detector reporting on a commit that has
+      # already landed, so wall-clock is the cheap thing to spend — the same trade
+      # e2e-full.yml states for its own 4-way split. Spending it buys two things:
+      # the per-shard setup floor is paid four times instead of twelve, and the
+      # matrix takes a third of the runner concurrency, which matters because PR
+      # checks for every live agent are competing for the same pool. A post-merge
+      # run that queues PR checks behind it would cost more than it detects.
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      # Full history so `github.event.before` resolves: a push to main can carry
+      # more than the one squash commit, and the skip below must see the whole
+      # range or not skip at all.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The same runtime-surface rule ci.yml applies to PRs, applied to the merge
+      # — see that job for why each path is on the list. Roughly a fifth of recent
+      # main commits are prose, skills, orchestration tooling or unit-test files
+      # only, and no browser can exercise those; measured, such a run costs 1.4
+      # CI-minutes against 39.6 for the same matrix.
+      #
+      # FAIL OPEN. If the range cannot be computed — a force-push, a rewritten
+      # base, the zero SHA on a first push — run the matrix. Skipping is the
+      # answer that can be silently wrong, and this workflow exists because
+      # something was silently un-covered.
+      - name: Detect changes with a runtime surface
+        id: changes
+        run: |
+          set -uo pipefail
+          before='${{ github.event.before }}'
+          if [ -z "$before" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Cannot resolve the pushed range - running the matrix rather than guessing."
+          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "No runtime surface in this push - skipping the browser suite."
+          fi
+
+      - uses: ./.github/actions/e2e-setup
+        if: steps.changes.outputs.code == 'true'
+
+      # `--retries=0`, the same bar ci.yml's sharded matrix holds PRs to. Holding
+      # main to a LOWER bar than the PRs merging into it is how a main accumulates
+      # failures no PR is allowed to have.
+      #
+      # Same planner as ci.yml, which is a pure function of (spec list,
+      # e2e/spec-durations.json, shard count) — so it plans four duration-balanced
+      # buckets here exactly as it plans twelve there, and exits non-zero if they
+      # are not an exact partition of the suite.
+      - name: E2E (Playwright, shard ${{ matrix.shard }}/${{ strategy.job-total }})
+        if: steps.changes.outputs.code == 'true'
+        run: |
+          set -euo pipefail
+          PLAN=$(./node_modules/.bin/tsx scripts/e2e-shard-plan.ts ${{ matrix.shard }} ${{ strategy.job-total }})
+          [ -n "$PLAN" ] || { echo "::error::empty shard plan"; exit 1; }
+          mapfile -t ARGS <<< "$PLAN"
+          npm run test:e2e -- --retries=0 "${ARGS[@]}"
+
+      # Names the failing spec on the check itself, which is what makes this
+      # attributable from the API without downloading an artifact — agents behind
+      # a filtering proxy can read job logs and cannot reach blob storage.
+      - name: Flake report
+        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
+        run: node scripts/e2e-flake-report.mjs test-results/e2e-results.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-main-report-shard-${{ matrix.shard }}
+          path: playwright-report/
+          retention-days: 7
