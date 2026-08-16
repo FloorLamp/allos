@@ -49,7 +49,7 @@ export function seedIntegrationSyncEvents(): void {
        (profile_id, source_id, kind, label, item_noun, status, total_items,
         completed_items, failed_items, request_count, active_seconds,
         started_at, retry_after_at, created_at, updated_at)
-     VALUES (?, 'strava', 'ride-details', 'Ride detail backfill', 'ride',
+     VALUES (?, 'strava', 'ride-details', 'Session detail backfill', 'session',
        'paused', 10, 4, 0, 10, 20, ?, ?, ?, ?)`
   ).run(
     PROFILE_ID,

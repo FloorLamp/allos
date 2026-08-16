@@ -5,7 +5,7 @@ import { openCommandPalette } from "./nav";
 // a seed module pulls in lib/db, whose migration logging lands on stdout and
 // corrupts the JSON that `scripts/e2e-shard-plan.ts --verify` parses from
 // `playwright --list`.
-import { ZONE_WALK_TITLE } from "./fixture-logins";
+import { TOTALS_ONLY_TITLE, ZONE_WALK_TITLE } from "./fixture-logins";
 
 // #2870 step 1 — every non-cycling activity has a canonical page: the Training
 // Log's card rendered whole at its own URL, with ‹ older / newer › ledger
@@ -61,6 +61,41 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   // minutes — an empty chart frame would satisfy neither.
   await expect(hr).toContainText(/\d+ recorded min/);
   await expect(page.getByTestId("activity-heart-rate-zones")).toBeVisible();
+
+  // And what the DEVICE recorded second by second (#2870 step 4): the walk's
+  // streams are stored now that the fetch follows the recording rather than the
+  // sport, so the page draws them beside the wear minutes.
+  const traces = page.getByTestId("activity-traces");
+  await expect(traces).toBeVisible();
+  await expect(traces.locator("svg")).toBeVisible();
+  // A session that HAS detail never claims to be totals-only.
+  await expect(page.getByTestId("activity-totals-only")).toHaveCount(0);
+});
+
+test("a summary-only import says so, instead of leaving a silent short page", async ({
+  page,
+}) => {
+  // The failure this closes is not that the page is short — a hand-entered walk
+  // IS a total and a title. It is that a short page reads as something failing
+  // to load. Said only where the source actually answered: its empty telemetry
+  // row is the answer.
+  await page.goto("/training?tab=log");
+  await hydratedClick(
+    page,
+    page.getByTestId("training-log-row").filter({ hasText: TOTALS_ONLY_TITLE })
+  );
+  await followLink(
+    page,
+    page.getByTestId("activity-pane-open"),
+    /\/training\/activity\/\d+$/
+  );
+
+  await expect(page.getByTestId("training-activity-page")).toBeVisible();
+  await expect(page.getByTestId("activity-totals-only")).toContainText(
+    /recorded totals for this session/
+  );
+  await expect(page.getByTestId("activity-traces")).toHaveCount(0);
+  await expect(page.getByTestId("activity-hr-chart")).toHaveCount(0);
 });
 
 test("the ledger walk: older/newer links traverse adjacent activities", async ({

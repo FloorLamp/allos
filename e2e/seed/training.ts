@@ -39,6 +39,8 @@ import {
   WEEK_SPINE_PROFILE,
   ZONE_WALK_TITLE,
   ZONE_WALK_EXTERNAL_ID,
+  TOTALS_ONLY_TITLE,
+  TOTALS_ONLY_EXTERNAL_ID,
 } from "../fixture-logins";
 import {
   getTimezone,
@@ -346,8 +348,72 @@ export function seedTrainingZones(): void {
     insHr.run(utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, hhmm)!), 96);
   }
 
+  // The walk's own second-by-second record (#2870 step 4): a device recorded it,
+  // so the widened stream fetch stores what the watch measured. Non-cycling on
+  // purpose — pace and heart rate, no power — which is exactly the shape the old
+  // cycling allowlist never asked for and no fixture could show.
+  {
+    const walkId = (
+      db
+        .prepare(
+          `SELECT id FROM activities WHERE profile_id = ? AND external_id = ?`
+        )
+        .get(PROFILE_ID, ZONE_WALK_EXTERNAL_ID) as { id: number }
+    ).id;
+    const seconds = Array.from({ length: 60 }, (_, i) => i * 30);
+    db.prepare(
+      `INSERT INTO activity_telemetry
+         (profile_id, activity_id, source, streams_json, snapshot_at)
+       VALUES (?, ?, 'strava', ?, datetime('now'))
+       ON CONFLICT(profile_id, activity_id, source) DO UPDATE SET
+         streams_json = excluded.streams_json`
+    ).run(
+      PROFILE_ID,
+      walkId,
+      JSON.stringify({
+        time: { data: seconds },
+        heartrate: {
+          data: seconds.map((_, i) => 92 + ((i * 7) % 11)),
+        },
+        velocity_smooth: {
+          data: seconds.map((_, i) => 1.2 + (i % 5) * 0.1),
+        },
+      })
+    );
+  }
+
+  // And the OTHER honest outcome (#3009): a session the source answered about
+  // with nothing. Its window (19:00–19:30) sits clear of every HR bucket seeded
+  // above, and its telemetry row is deliberately EMPTY — that row IS the answer,
+  // which is what lets the page say "totals only" instead of guessing from an
+  // absence.
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id = ?`
+  ).run(PROFILE_ID, TOTALS_ONLY_EXTERNAL_ID);
+  db.prepare(
+    `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, distance_km, intensity,
+      start_time, end_time, components, source, external_id)
+   VALUES (1, ?, 'cardio', ?, 30, 1.8, 'easy', '19:00', '19:30', ?, 'strava', ?)`
+  ).run(
+    zoneDate,
+    TOTALS_ONLY_TITLE,
+    JSON.stringify([
+      { name: "Walking", type: "cardio", distance_km: 1.8, duration_min: 30 },
+    ]),
+    TOTALS_ONLY_EXTERNAL_ID
+  );
+  db.prepare(
+    `INSERT INTO activity_telemetry
+       (profile_id, activity_id, source, streams_json, snapshot_at)
+     VALUES (?, (SELECT id FROM activities WHERE profile_id = ? AND external_id = ?),
+             'strava', '{}', datetime('now'))
+     ON CONFLICT(profile_id, activity_id, source) DO UPDATE SET
+       streams_json = excluded.streams_json`
+  ).run(PROFILE_ID, PROFILE_ID, TOTALS_ONLY_EXTERNAL_ID);
+
   console.log(
-    `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4) plus the worn walk "${ZONE_WALK_TITLE}"`
+    `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4) plus the worn walk "${ZONE_WALK_TITLE}" and the totals-only "${TOTALS_ONLY_TITLE}"`
   );
 }
 
