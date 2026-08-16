@@ -2,7 +2,10 @@
 // path: persistDocumentImport turning a prescription record's DERIVED courses into
 // medication_courses rows, keeping intake_items.active in sync with the course
 // state, falling back to the Phase-1 single open course when the source carried no
-// period, and staying idempotent across a reprocess. Runs via `npm run test:db`.
+// period, and staying idempotent across a reprocess. Also pins what the projected
+// med's DOSE ROW holds for a real Epic sig / product string (#2939) — the parse is
+// unit-tested in lib/__tests__/prescription-parse.test.ts, but only the persist path
+// shows which column each half lands in. Runs via `npm run test:db`.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { persistDocumentImport } from "@/lib/import-persist";
@@ -17,13 +20,14 @@ const DATE = "2024-01-01";
 
 function rx(
   name: string,
-  courses: ImportedMedicationCourse[] | null
+  courses: ImportedMedicationCourse[] | null,
+  value: string | null = null
 ): PersistClinicalObservation {
   return {
     category: "prescription",
     name,
     canonical: name,
-    value: null,
+    value,
     value_num: null,
     unit: null,
     date: DATE,
@@ -264,6 +268,97 @@ describe("persist derived medication courses", () => {
       stopped_on: "2024-03-01", // closed course survived; the open one was dropped
     });
     expect(activeOf(id)).toBe(0); // active derived from persisted rows, not input
+  });
+
+  // #2939 — the strings a live import actually carried. The dose row's `amount` is
+  // what the Today panel renders and what every strength reader parses, so the split
+  // between "the dose" and "everything else the source said" is asserted per column.
+  it("stores the DOSE in the dose row and the SIG in the item's notes", () => {
+    const p = newProfile("MED-SIG-SPLIT");
+    const d = newDocument(p);
+    persistDocumentImport(
+      p,
+      d,
+      inputWith([
+        rx(
+          "albuterol",
+          null,
+          "Take 1.5 mL (1.25 mg) by nebulization every 6 (six) hours if needed for wheezing."
+        ),
+        rx(
+          "amoxicillin",
+          null,
+          "Amoxicillin 400 MG/5ML Suspension Reconstituted"
+        ),
+      ])
+    );
+
+    const doseOf = (name: string) =>
+      db
+        .prepare(
+          "SELECT amount FROM intake_item_doses WHERE item_id = ? ORDER BY id"
+        )
+        .all(medId(p, name)) as { amount: string | null }[];
+    const notesOf = (name: string) =>
+      (
+        db
+          .prepare("SELECT notes FROM intake_items WHERE id = ?")
+          .get(medId(p, name)) as { notes: string | null }
+      ).notes;
+
+    // The sig is directions, not a strength: the dose row holds the dose it states,
+    // the sentence rides along in the item's notes.
+    expect(doseOf("albuterol")).toEqual([{ amount: "1.5 mL (1.25 mg)" }]);
+    expect(notesOf("albuterol")).toContain("if needed for wheezing");
+
+    // A product string is neither: its concentration is the strength, and the row
+    // never stores the product name as an amount.
+    expect(doseOf("amoxicillin")).toEqual([{ amount: "400 MG/5ML" }]);
+  });
+
+  // The UPGRADED-INSTALL case. A med tracked by an older build stored its strength
+  // numerator-only ("2.5 mg"), because the parser of the day stopped at the numerator.
+  // getMedMatchStates re-derives existing strengths from those STORED dose amounts
+  // while the incoming prescription is parsed with the current grammar
+  // ("2.5 mg/3 mL"), so the two could never intersect and every concentration-dosed
+  // med forked a duplicate item at its next refill. A fresh fixture cannot show this —
+  // it needs a row written the old way, which this sets up by hand.
+  it("renews against a strength stored numerator-only by an older build", () => {
+    const p = newProfile("MED-UPGRADED-INSTALL");
+    const item = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, active, kind)
+           VALUES (?, 'albuterol', 1, 'medication')`
+        )
+        .run(p).lastInsertRowid
+    );
+    // Written by the previous build: the denominator is simply not on disk.
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, sort)
+       VALUES (?, '2.5 mg', NULL, 0)`
+    ).run(item);
+    // Open course, started before this document's date so the renewal attaches as a
+    // SECOND course rather than deduping onto the same (item_id, started_on).
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on) VALUES (?, '2023-06-01')`
+    ).run(item);
+
+    persistDocumentImport(
+      p,
+      newDocument(p),
+      inputWith([rx("albuterol (2.5 mg/3 mL) nebulizer solution", null)])
+    );
+
+    // ONE albuterol, carrying a second course — not a forked duplicate item.
+    const items = db
+      .prepare(
+        "SELECT id FROM intake_items WHERE profile_id = ? AND kind = 'medication'"
+      )
+      .all(p) as { id: number }[];
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe(item);
+    expect(coursesOf(item).length).toBeGreaterThan(1);
   });
 
   it("dedups courses sharing a start (item_id, started_on)", () => {

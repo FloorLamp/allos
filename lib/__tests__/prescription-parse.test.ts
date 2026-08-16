@@ -5,7 +5,15 @@ import {
   cleanMedicationName,
   strengthFromName,
   looksLikeDose,
+  looksLikeSig,
 } from "../prescription-parse";
+
+// The two REAL Epic strings observed on a live medications page (#2939): a
+// pediatric nebulizer sig and a product/formulation string. Both used to be stored
+// whole as the medication's strength.
+const EPIC_SIG =
+  "Take 1.5 mL (1.25 mg) by nebulization every 6 (six) hours if needed for wheezing.";
+const EPIC_PRODUCT = "Amoxicillin 400 MG/5ML Suspension Reconstituted";
 
 // Pure parsing of an extracted prescription into structured medication fields
 //. No DB — the DB routing/dedup is exercised separately.
@@ -48,9 +56,94 @@ describe("parseSig — sig/frequency → schedule", () => {
     expect(parseSig("q8h").timesPerDay).toBe(3);
   });
 
+  it("'every 6 (six) hours' → 4x/day, the parenthetical ignored (#2939)", () => {
+    const r = parseSig("1.5 mL every 6 (six) hours");
+    expect(r.asNeeded).toBe(false);
+    expect(r.timesPerDay).toBe(4);
+    expect(r.amount).toBe("1.5 mL");
+  });
+
+  it("'if needed' is PRN, and the dose survives the instructions (#2939)", () => {
+    const r = parseSig(EPIC_SIG);
+    expect(r.asNeeded).toBe(true);
+    expect(r.timesPerDay).toBeNull();
+    // The sig tail never rides along into the amount.
+    expect(r.amount).toBe("1.5 mL (1.25 mg)");
+  });
+
   it("'1 tablet three times daily' (tid) → 3x/day", () => {
     expect(parseSig("1 tablet three times daily").timesPerDay).toBe(3);
     expect(parseSig("1 cap tid").timesPerDay).toBe(3);
+  });
+
+  // A PRN marker SUPPRESSES reminders and missed-dose escalation, so it may only fire
+  // where it is meant to. These sigs schedule a real medication and mention "if
+  // needed" in a trailing advisory clause about something else; reading them as PRN
+  // left a twice-daily beta blocker with no reminders at all.
+  describe("a PRN marker in a trailing advisory clause never suppresses a schedule", () => {
+    const ADVISORY = [
+      "Take 1 tablet by mouth twice daily. Call your provider if needed.",
+      "Take 1 tablet by mouth twice daily. Take one extra if needed for breakthrough pain.",
+      "Take 1 tablet by mouth twice daily. Contact the clinic as needed.",
+    ];
+    for (const sig of ADVISORY) {
+      it(sig, () => {
+        const r = parseSig(sig);
+        expect(r.asNeeded).toBe(false);
+        expect(r.timesPerDay).toBe(2);
+        expect(r.timeBuckets).toEqual(["Morning", "Evening"]);
+      });
+    }
+
+    it("also holds for a once-daily sig", () => {
+      const r = parseSig("Take 1 tablet by mouth daily. May repeat if needed.");
+      expect(r.asNeeded).toBe(false);
+      expect(r.timesPerDay).toBe(1);
+    });
+  });
+
+  describe("a PRN marker in the primary dosing sentence still governs", () => {
+    it("keeps an interval sig as-needed", () => {
+      // The observed Epic sig is ONE sentence, so "if needed" is the dosing rule.
+      expect(parseSig(EPIC_SIG).asNeeded).toBe(true);
+      expect(
+        parseSig("Take 1 tab every 6 hours as needed for pain")
+      ).toMatchObject({ asNeeded: true, timesPerDay: null });
+    });
+
+    it("is not defeated by a semicolon joining two source fields", () => {
+      // parsePrescription joins notes to value with "; ", so the split is on SENTENCE
+      // boundaries only — a frequency and a PRN marker that arrived in different
+      // source fields are still one dosing instruction.
+      const r = parseSig("1 tab daily; as needed for pain");
+      expect(r.asNeeded).toBe(true);
+      expect(r.timesPerDay).toBeNull();
+    });
+
+    it("a sig with no frequency stays unscheduled either way", () => {
+      // The conservative default still holds: with the advisory clause disregarded,
+      // nothing here states a schedule, so no schedule is fabricated.
+      const r = parseSig(
+        "Take 2 tablets by mouth. Call your provider if needed."
+      );
+      expect(r.asNeeded).toBe(true);
+      expect(r.timesPerDay).toBeNull();
+    });
+  });
+
+  // Everyday notations an amount field must not drop.
+  describe("real prescription dose notations survive", () => {
+    const CASES: [string, string][] = [
+      ["Take 1/2 tablet by mouth daily", "1/2 tablet"],
+      ["Take 1-2 tablets by mouth daily", "1-2 tablets"],
+      ["Take 1 to 2 tablets by mouth daily", "1 to 2 tablets"],
+      ["Take 1 or 2 tablets by mouth daily", "1 or 2 tablets"],
+    ];
+    for (const [sig, amount] of CASES) {
+      it(`${sig} → ${amount}`, () => {
+        expect(parseSig(sig).amount).toBe(amount);
+      });
+    }
   });
 
   it("keeps a strength but no schedule for a dose-only, frequency-less sig", () => {
@@ -97,6 +190,39 @@ describe("looksLikeDose", () => {
     expect(looksLikeDose("10")).toBe(false);
     expect(looksLikeDose(null)).toBe(false);
     expect(looksLikeDose("")).toBe(false);
+  });
+
+  it("accepts a concentration and a volume-with-mass-equivalent dose (#2939)", () => {
+    expect(looksLikeDose("400 MG/5ML")).toBe(true);
+    expect(looksLikeDose("2.5 mg/3 mL")).toBe(true);
+    expect(looksLikeDose("1.5 mL (1.25 mg)")).toBe(true);
+  });
+
+  it("rejects a SENTENCE that merely contains a dose (#2939)", () => {
+    // The old digit-anywhere + unit-anywhere test passed both of these, and the
+    // #417 guard then stored the whole string as the strength.
+    expect(looksLikeDose(EPIC_SIG)).toBe(false);
+    expect(looksLikeDose(EPIC_PRODUCT)).toBe(false);
+    expect(looksLikeDose("Take 1 tablet by mouth daily")).toBe(false);
+  });
+});
+
+describe("looksLikeSig — the #417 routing detector (#2939)", () => {
+  it("sees Epic's 'if needed' PRN phrasing", () => {
+    expect(looksLikeSig("if needed for wheezing")).toBe(true);
+    expect(looksLikeSig("Take 1 tab if needed for pain")).toBe(true);
+  });
+
+  it("sees an interval whose count is repeated in words", () => {
+    // Epic writes the spelled-out number between the digit and the unit.
+    expect(looksLikeSig("every 6 (six) hours")).toBe(true);
+    expect(looksLikeSig(EPIC_SIG)).toBe(true);
+  });
+
+  it("still ignores a bare strength and empty text", () => {
+    expect(looksLikeSig("500 mg")).toBe(false);
+    expect(looksLikeSig(EPIC_PRODUCT)).toBe(false);
+    expect(looksLikeSig(null)).toBe(false);
   });
 });
 
@@ -185,6 +311,19 @@ describe("cleanMedicationName — grouping name", () => {
     // The name is left intact by the balance guard, but the strength is still
     // pulled out separately so the dose field is populated.
     expect(strengthFromName("Drug (foo (2.5 mg))")).toBe("2.5 mg");
+  });
+
+  it("recovers an UNBRACKETED concentration whole, denominator included (#2939)", () => {
+    // The same product written with or without brackets yields the same strength.
+    expect(strengthFromName("Albuterol 2.5 mg/3 mL nebulizer solution")).toBe(
+      "2.5 mg/3 mL"
+    );
+    expect(strengthFromName("albuterol (2.5 mg/3 mL)")).toBe("2.5 mg/3 mL");
+    expect(strengthFromName("Insulin glargine 100 units/mL")).toBe(
+      "100 units/mL"
+    );
+    // A slash that starts prose is not a denominator, so the strength stops at it.
+    expect(strengthFromName("Lisinopril 10 mg / do not crush")).toBe("10 mg");
   });
 
   it("the unparenthesized trailing strength keeps stripping as before", () => {
@@ -319,6 +458,69 @@ describe("parsePrescription — full record → structured med", () => {
     expect(p.rxNumber).toBe("RX-555012");
     expect(p.timesPerDay).toBe(1);
     expect(p.timeBuckets).toEqual(["Before sleep"]);
+  });
+
+  // #2939 — the two strings observed in production, each stored whole as the
+  // medication's strength by the code these fixtures pin.
+  it("keeps only the DOSE out of a real Epic nebulizer sig (#2939)", () => {
+    const p = parsePrescription({ name: "albuterol", value: EPIC_SIG });
+    expect(p.strength).toBe("1.5 mL (1.25 mg)");
+    expect(p.strength).not.toContain("Take");
+    expect(p.strength).not.toContain("wheezing");
+    // "if needed" is the PRN signal, so the sentence is DIRECTIONS: it lands in the
+    // sig (the item's notes) and the med is as-needed rather than scheduled.
+    expect(p.sig).toBe(EPIC_SIG);
+    expect(p.asNeeded).toBe(true);
+    expect(p.timesPerDay).toBeNull();
+  });
+
+  it("keeps only the STRENGTH out of a product/formulation string (#2939)", () => {
+    const p = parsePrescription({ name: "amoxicillin", value: EPIC_PRODUCT });
+    expect(p.name).toBe("amoxicillin");
+    // The concentration, denominator included — never the product name.
+    expect(p.strength).toBe("400 MG/5ML");
+    expect(p.strength).not.toContain("Suspension");
+  });
+
+  // A truncated strength is worse than an absent one: it looks right. Each of these
+  // notations means something the strength field must carry whole.
+  describe("combination, weight-based and range strengths are never truncated", () => {
+    const CASES: [string, string, string][] = [
+      [
+        "Hydrocodone-Acetaminophen",
+        "5/325 mg",
+        "truncating hides the opioid component behind a plausible APAP strength",
+      ],
+      [
+        "Enoxaparin",
+        "1 mg/kg",
+        "truncating turns a weight-based dose into a fixed one",
+      ],
+      [
+        "Metoprolol",
+        "12.5 mg-25 mg",
+        "a titration range is not its lower bound",
+      ],
+    ];
+    for (const [name, value, why] of CASES) {
+      it(`${value} — ${why}`, () => {
+        expect(parsePrescription({ name, value }).strength).toBe(value);
+      });
+    }
+  });
+
+  it("keeps a scheduled med scheduled when a note adds an advisory clause", () => {
+    // The end-to-end shape of the PRN-scoping rule: obligation stays `must` because
+    // asNeeded is false, so the dose rows keep their time buckets.
+    const p = parsePrescription({
+      name: "Metoprolol 25 mg",
+      value:
+        "Take 1 tablet by mouth twice daily. Call your provider if needed.",
+    });
+    expect(p.strength).toBe("25 mg");
+    expect(p.asNeeded).toBe(false);
+    expect(p.timesPerDay).toBe(2);
+    expect(p.timeBuckets).toEqual(["Morning", "Evening"]);
   });
 
   it("falls back to scraping a note when no structured attribution is given", () => {

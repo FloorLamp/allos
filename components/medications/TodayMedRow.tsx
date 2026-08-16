@@ -58,23 +58,13 @@ export default function TodayMedRow({
               {href ? (
                 <Link
                   href={href}
-                  className="flex min-w-0 items-baseline gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  className="flex min-w-0 items-baseline gap-1 overflow-hidden text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
                 >
-                  <span className="truncate">{name}</span>
-                  {detail ? (
-                    <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
-                      · {detail}
-                    </span>
-                  ) : null}
+                  <Identity name={name} detail={detail} />
                 </Link>
               ) : (
-                <span className="flex min-w-0 items-baseline gap-1 text-sm font-medium text-slate-800 dark:text-slate-100">
-                  <span className="truncate">{name}</span>
-                  {detail ? (
-                    <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
-                      · {detail}
-                    </span>
-                  ) : null}
+                <span className="flex min-w-0 items-baseline gap-1 overflow-hidden text-sm font-medium text-slate-800 dark:text-slate-100">
+                  <Identity name={name} detail={detail} />
                 </span>
               )}
               {status}
@@ -88,5 +78,47 @@ export default function TodayMedRow({
       </div>
       {footer}
     </div>
+  );
+}
+
+// The row's identity pair, rendered identically inside the linked and unlinked
+// branches (issue #2940 — they used to carry two copies of this markup, and the
+// defect below was in both).
+//
+// TRUNCATION PRIORITY, INVERTED (the defect). The name is what this surface is FOR:
+// a row that says "check off a dose of this medication" is unusable without it, and
+// the observed page stacked four rows whose names had been crushed to zero characters
+// by an overlong dose detail. The detail used to be `shrink-0` while the name was the
+// only shrinkable element; now the name claims its width first (`shrink-0`, capped at
+// the cell by `max-w-full` so a long name still truncates rather than escaping) and
+// the DETAIL is the element that gives up its width and truncates.
+//
+// Sharing the shrinkage between them was tried and rejected: flex distributes it in
+// proportion to each item's content width, so a 73-character detail still took the
+// name down to five or six characters — better than zero, and still not a name.
+//
+// Both stay inside the flex line's `overflow-hidden`, so a long detail clips at the
+// left cell's edge instead of rendering under the row's controls.
+//
+// The detail is a reference, not the document — the full text is on the medication
+// detail page the name links to (#852).
+function Identity({ name, detail }: { name: string; detail?: string | null }) {
+  return (
+    <>
+      <span
+        data-testid="today-med-name"
+        className="max-w-full shrink-0 truncate"
+      >
+        {name}
+      </span>
+      {detail ? (
+        <span
+          data-testid="today-med-detail"
+          className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+        >
+          · {detail}
+        </span>
+      ) : null}
+    </>
   );
 }

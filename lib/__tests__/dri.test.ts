@@ -131,6 +131,190 @@ describe("resolveNutrientKey", () => {
   });
 });
 
+// #2934 — recognition was wrong in BOTH directions, and each direction needs its own
+// evidence: a real dose that contributed zero, and an excipient that contributed as
+// if it were a dose. The corpus is a list of names whose answer is known, so a later
+// change that fixes one direction by loosening into the other fails here.
+//
+// THE CORPUS IS THE LOAD-BEARING PART, not the parity test below it. A parity check
+// cannot catch a name that is wrong in BOTH directions at once — both readers go
+// silent together and agree perfectly — which is exactly how `Magnesium Trisilicate`
+// got excused as talc and took a 2000 mg/day antacid stack quiet with it. Only a
+// stated expected answer per name can see that, so every name added to the excipient
+// list belongs here with its near-misses.
+const RECOGNITION_CORPUS: {
+  name: string;
+  key: string | null;
+  why: string;
+}[] = [
+  // Over-count: a nutrient named as an EXCIPIENT is not a dose of it.
+  {
+    name: "Magnesium Stearate",
+    key: null,
+    why: "the catalog's most common flow agent, present in trace amounts",
+  },
+  {
+    name: "Calcium Stearate",
+    key: null,
+    why: "the same excipient, other mineral",
+  },
+  {
+    name: "Zinc Stearate",
+    key: null,
+    why: "the same excipient, other mineral",
+  },
+  { name: "Magnesium Silicate", key: null, why: "an anticaking agent (talc)" },
+  {
+    name: "Magnesium Stearates",
+    key: null,
+    why: "the same excipient, pluralized on a label",
+  },
+  // The excipient list's own near-miss: three letters from talc, and not an excipient.
+  {
+    name: "Magnesium Trisilicate",
+    key: "magnesium",
+    why: "a licensed antacid active ingredient, not talc",
+  },
+  // Under-count: shelf spellings that genuinely mean the mineral.
+  {
+    name: "Mag Threonate",
+    key: "magnesium",
+    why: "front-of-bottle abbreviation",
+  },
+  {
+    name: "Mag L-Threonate",
+    key: "magnesium",
+    why: "the same, spelled in full",
+  },
+  {
+    name: "Milk of Magnesia",
+    key: "magnesium",
+    why: "a real magnesium product",
+  },
+  // Near-misses: what the careless loosening would have swept in.
+  { name: "Magnolia", key: null, why: "a herb — no form word, no mineral" },
+  { name: "Mag 07", key: null, why: "an abbreviation with no salt named" },
+  { name: "Manganese", key: "manganese", why: "a different mineral entirely" },
+  // An excipient named ALONGSIDE the real dose still doses the mineral.
+  {
+    name: "Magnesium Citrate (with magnesium stearate)",
+    key: "magnesium",
+    why: "the excipient mention is excused, the citrate dose is not",
+  },
+  // Unchanged by any of the above.
+  { name: "Magnesium Glycinate", key: "magnesium", why: "the baseline case" },
+  { name: "Vitamin D3", key: "vitamin_d", why: "another matcher, untouched" },
+];
+
+describe("nutrient recognition, in both directions (#2934)", () => {
+  for (const { name, key, why } of RECOGNITION_CORPUS) {
+    it(`${name} → ${key ?? "no nutrient"} (${why})`, () => {
+      expect(resolveNutrientKey(name)).toBe(key);
+    });
+  }
+
+  // ONE VOCABULARY, TWO READERS. The UL check is a risk number and the adequacy note
+  // is a reassurance number, so recognition moves them in opposite directions — which
+  // is exactly why a change that improves one can silently degrade the other. Both are
+  // pinned on EVERY corpus entry: an item counts for both readers or for neither.
+  it("the UL reader sees exactly the recognized names", () => {
+    for (const { name, key } of RECOGNITION_CORPUS) {
+      // 800 mg is above every UL a corpus entry can resolve to, so a recognized item
+      // always warns and an unrecognized one can never warn.
+      const warnings = stackUlWarnings([active(name, ["800 mg"])], 30, null);
+      expect(warnings.map((w) => w.key)).toEqual(key ? [key] : []);
+    }
+  });
+
+  it("the RDA adequacy reader sees exactly the same names", () => {
+    for (const { name, key } of RECOGNITION_CORPUS) {
+      // 1 mcg is below every RDA a corpus entry can resolve to, so a recognized item
+      // always reports a share and an unrecognized one is never named.
+      const notes = stackRdaAdequacy([active(name, ["1 mcg"])], 30, null);
+      expect(notes.map((a) => a.key)).toEqual(key ? [key] : []);
+    }
+  });
+
+  it("an antacid dose of magnesium trisilicate still warns", () => {
+    // 500 mg x 4/day of a licensed antacid: 2000 mg against a 350 mg supplemental UL.
+    // Excusing it as talc took this stack silent, which is the one direction this
+    // module may never move.
+    const warnings = stackUlWarnings(
+      [
+        active("Magnesium Trisilicate", [
+          "500 mg",
+          "500 mg",
+          "500 mg",
+          "500 mg",
+        ]),
+      ],
+      40,
+      "male"
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].key).toBe("magnesium");
+    expect(warnings[0].total).toBe(2000);
+    expect(warnings[0].ul).toBe(350);
+  });
+
+  it("Milk of Magnesia reads like the hydroxide it is", () => {
+    // Two names for one product must not diverge: without the `magnesia` form this
+    // read 2400 mg where "Magnesium Hydroxide" read 1000.8 mg, 2.4x apart.
+    const magnesium = nutrientByKey("magnesium")!;
+    const asMilk = elementalReading("Milk of Magnesia", magnesium, 2400);
+    const asChemical = elementalReading("Magnesium Hydroxide", magnesium, 2400);
+    expect(asMilk).toEqual(asChemical);
+    expect(asMilk.compound).toBe("magnesium hydroxide");
+    // And the copy names the compound the reader can check against the bottle.
+    expect(asMilk.amount).toBeCloseTo(1000.8, 1);
+  });
+
+  it("an excipient no longer inflates a real magnesium total", () => {
+    // Before: 400 + 200 = 600 mg, and the evidence line named the flow agent as a
+    // contributor on a safety surface.
+    const warnings = stackUlWarnings(
+      [
+        active("Magnesium Glycinate", ["400 mg"]),
+        active("Magnesium Stearate", ["200 mg"]),
+      ],
+      30,
+      null
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].total).toBe(400);
+    expect(warnings[0].contributors.map((c) => c.name)).toEqual([
+      "Magnesium Glycinate",
+    ]);
+  });
+
+  it("a recognized abbreviation contributes its amount, arithmetic unchanged", () => {
+    // Recognition is all that changed: at/below the stated-elemental ceiling the
+    // amount counts exactly as entered, and above it the #2798 compound reading
+    // applies to the abbreviation the same way it applies to the full spelling.
+    const [asEntered] = stackUlWarnings(
+      [active("Mag Threonate", ["500 mg"])],
+      30,
+      null
+    );
+    expect(asEntered.total).toBe(500);
+    expect(asEntered.contributors[0].compound).toBeUndefined();
+
+    // Above the ceiling the compound reading applies — and legitimately takes the
+    // total back UNDER the UL, so the total is read off summarizeStack rather than
+    // the warning list the corrected number no longer belongs on.
+    const [asCompound] = summarizeStack(
+      [active("Mag Threonate", ["2 g"])],
+      30,
+      null
+    );
+    expect(asCompound.total).toBeCloseTo(166, 0); // 2000 mg × 8.3%
+    expect(asCompound.contributors[0].compound).toBe("magnesium L-threonate");
+    expect(
+      stackUlWarnings([active("Mag Threonate", ["2 g"])], 30, null)
+    ).toEqual([]);
+  });
+});
+
 describe("selectBand (age/sex)", () => {
   it("selects the adult band and default age when age is unknown", () => {
     const mag = nutrientByKey("magnesium")!;
