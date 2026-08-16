@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
 import { followLink, hydratedClick } from "./helpers";
+import { loginAs } from "./nav";
+import {
+  E2E_MEMBER_PASSWORD,
+  E2E_LOGIN_TRAINING_ROLLUP,
+} from "./fixture-logins";
 import type { Page, Route } from "@playwright/test";
 
 // The sidebar answers the tap (issue #1956).
@@ -501,4 +506,47 @@ test("the activity ledger's ‹older› shows the step, and five taps dispatch o
     nav.navRequests(),
     "a repeat tap on a pending ledger step must be absorbed, not dispatched"
   ).toBe(1);
+});
+
+test("the training overview's next-workout CTA is a soft navigation that answers its tap (#2983)", async ({
+  browser,
+}) => {
+  // The worst of the four surfaces #2983 named, and the only CORRECTNESS one:
+  // this CTA was a raw <a href> inside the app shell, so tapping it discarded
+  // the running client and rebuilt the whole app from the server. It is also
+  // the `?tab=` navigation the issue names — the card's action lands on Analyze.
+  //
+  // The shared seed forces profile 1's recommendation to REST, which is not an
+  // actionable one, so the CTA does not render there. The training-rollup
+  // fixture has ordinary strength history and no routine, so its recommendation
+  // is a real "train X" with an action.
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_TRAINING_ROLLUP,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    const nav = heldNavigation();
+
+    await page.goto("/training?tab=overview");
+    const cta = page.getByTestId("next-workout-details");
+    await expect(cta).toBeVisible();
+    const sameDocument = await markDocument(page);
+
+    await page.route("**/training?*", nav.handler);
+    await hydratedClick(page, cta);
+
+    // The button says it heard, in its own label, while the tab has not moved.
+    await expect(cta.getByTestId("nav-link-pending")).toBeVisible();
+    await expect(cta.getByRole("status")).toHaveText(/Opening workout details/);
+    expect(new URL(page.url()).searchParams.get("tab")).toBe("overview");
+
+    nav.release();
+    await expect(page).toHaveURL(/tab=analyze/);
+    expect(
+      await sameDocument(),
+      "the next-workout CTA must not reload the document"
+    ).toBe(true);
+  } finally {
+    await page.context().close();
+  }
 });
