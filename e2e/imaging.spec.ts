@@ -238,7 +238,6 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Body region").fill(DOSE_REGION);
     await form.getByLabel("Study date").fill(recentDate());
     await form.getByLabel("Effective dose (mSv)").fill("10.05");
-    await page.keyboard.press("Escape");
     await submitWithToast(
       page,
       form.getByRole("button", { name: "Add", exact: true }),
@@ -256,7 +255,6 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await secondForm.getByLabel("Body region").fill(DOSE_SUM_REGION);
     await secondForm.getByLabel("Study date").fill(recentDate());
     await secondForm.getByLabel("Effective dose (mSv)").fill("10.05");
-    await page.keyboard.press("Escape");
     await submitWithToast(
       page,
       secondForm.getByRole("button", { name: "Add", exact: true }),
