@@ -12,6 +12,8 @@
 import { describe, it, expect } from "vitest";
 import {
   bedtimeWearBody,
+  bedtimeWearCorrectedBody,
+  wearReminderFalsified,
   bedtimeWearVerdict,
   type BedtimeWearSignals,
 } from "@/lib/wear-reminder";
@@ -428,5 +430,118 @@ describe("bedtimeWearBody", () => {
     // reasons for.
     expect(body).not.toMatch(/\bput (it|your watch) on\b/i);
     expect(body).not.toMatch(/\byou should\b/i);
+  });
+});
+
+// ---- The claim the next push can falsify (issue #3027) ---------------------
+//
+// The message stood forever as a claim the next ingest push disproved. The predicate is
+// untouched; this is the comparison that decides whether what is already in the chat is
+// still true, and the copy that replaces it when it is not.
+
+// The observed night, in instants. The message named 19:53 local; the watch had actually
+// resumed at 21:18 and the push carrying those minutes landed at 22:05.
+const CLAIMED = new Date("2026-08-15T17:53:00Z").getTime(); // 19:53 local (UTC+2)
+const RESUMED = new Date("2026-08-15T19:59:00Z").getTime(); // 21:59 local
+// The sweep instant this is judged at, and the stream's own declared tolerance: the
+// `hr_minutes` reminder facet's `frontierFloorMin`, 40 minutes.
+const SWEEP = new Date("2026-08-15T20:05:00Z").getTime(); // 22:05 local
+const FLOOR_MIN = 40;
+
+describe("wearReminderFalsified (#3027)", () => {
+  it("a frontier past the claim AND caught up to now falsifies the message", () => {
+    expect(wearReminderFalsified(CLAIMED, RESUMED, SWEEP, FLOOR_MIN)).toEqual({
+      falsified: true,
+    });
+  });
+
+  it("a frontier that has NOT moved leaves the message alone — the real charger night", () => {
+    // The whole point of the strictness: on a genuine all-night charger the frontier is
+    // still exactly what the message named, and editing that message would be a lie in
+    // the other direction.
+    expect(wearReminderFalsified(CLAIMED, CLAIMED, SWEEP, FLOOR_MIN)).toEqual({
+      falsified: false,
+    });
+  });
+
+  it("a frontier that advanced only PARTWAY — still before the claimed instant — does not", () => {
+    const partway = new Date("2026-08-15T17:40:00Z").getTime(); // 19:40 local
+    expect(wearReminderFalsified(CLAIMED, partway, SWEEP, FLOOR_MIN)).toEqual({
+      falsified: false,
+    });
+  });
+
+  it("STRAY MINUTES recorded before the send do NOT falsify it — the charger night again", () => {
+    // THE REFUTATION THIS EXISTS FOR. On the all-night charger the 22:05 push delivers
+    // the tail of the pre-gap batch: two minutes at 21:06 and 21:07, both strictly later
+    // than the 21:05 the message named and both nearly an hour behind the sweep. A
+    // predicate that asked only "later than the claim" rewrote the message to say the
+    // night was being recorded while the watch sat on its charger.
+    const claimed2105 = new Date("2026-08-15T19:05:00Z").getTime();
+    const stray2107 = new Date("2026-08-15T19:07:00Z").getTime();
+    expect(stray2107).toBeGreaterThan(claimed2105); // the old predicate's whole test
+    expect(
+      wearReminderFalsified(claimed2105, stray2107, SWEEP, FLOOR_MIN)
+    ).toEqual({ falsified: false });
+    // A single glance at the watch hours later is the same shape and the same answer.
+    const glance = new Date("2026-08-15T21:10:00Z").getTime(); // 23:10 local
+    const laterSweep = new Date("2026-08-16T01:00:00Z").getTime(); // 03:00 local
+    expect(
+      wearReminderFalsified(claimed2105, glance, laterSweep, FLOOR_MIN)
+    ).toEqual({ falsified: false });
+  });
+
+  it("the floor is the send predicate's own, tested at its edge", () => {
+    // `<` on both sides, so the two clauses cannot disagree about the same minute: the
+    // send fires AT the declared minute, so the correction may not.
+    const frontier = new Date("2026-08-15T20:00:00Z").getTime();
+    const atFloor = frontier + FLOOR_MIN * 60_000;
+    expect(
+      wearReminderFalsified(CLAIMED, frontier, atFloor, FLOOR_MIN)
+    ).toEqual({ falsified: false });
+    expect(
+      wearReminderFalsified(CLAIMED, frontier, atFloor - 60_000, FLOOR_MIN)
+    ).toEqual({ falsified: true });
+  });
+
+  it("a missing claim or a missing frontier is not evidence", () => {
+    expect(wearReminderFalsified(null, RESUMED, SWEEP, FLOOR_MIN)).toEqual({
+      falsified: false,
+    });
+    expect(wearReminderFalsified(CLAIMED, null, SWEEP, FLOOR_MIN)).toEqual({
+      falsified: false,
+    });
+    expect(
+      wearReminderFalsified(Number.NaN, RESUMED, SWEEP, FLOOR_MIN)
+    ).toEqual({ falsified: false });
+  });
+});
+
+describe("bedtimeWearCorrectedBody (#3027)", () => {
+  it("restates what happened and takes back the prediction", () => {
+    const body = bedtimeWearCorrectedBody("19:53");
+    expect(body).toContain("19:53");
+    // The two false clauses are gone: no charger premise, and no claim that the night
+    // is not being recorded.
+    expect(body).not.toMatch(/charger/i);
+    expect(body).not.toMatch(/won't be recorded/i);
+    // It states rather than apologises — the reader needs the fact, not a confession.
+    expect(body).not.toMatch(/\bsorry\b|\bapolog/i);
+    expect(body).toMatch(/being recorded/);
+    // And it is a different sentence from the original, or the reconciler would edit a
+    // message into itself.
+    expect(body).not.toBe(bedtimeWearBody("19:53"));
+  });
+
+  it("names NO moving value, so the correction happens once", () => {
+    // The sweep re-runs every tick until rollover and hashes what it builds. A body
+    // carrying the FRONTIER's wall clock changed on every tick, so five pushes in an
+    // hour produced five edits differing only in "recorded through HH:MM". Everything
+    // this sentence names is fixed at delivery.
+    const body = bedtimeWearCorrectedBody("19:53");
+    expect(body).toBe(bedtimeWearCorrectedBody("19:53"));
+    expect(body).not.toMatch(/recorded through/);
+    // Exactly one wall clock in it — the one the delivered message named.
+    expect(body.match(/\d{2}:\d{2}/g)).toEqual(["19:53"]);
   });
 });

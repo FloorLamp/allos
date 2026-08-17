@@ -48,7 +48,12 @@
 
 import { now } from "../clock";
 import { dateStrInTz, parseUtcSql, zonedDateParts } from "../date";
-import { getTimezone, getProfileWearReminder } from "../settings";
+import {
+  getTimezone,
+  getProfileWearReminder,
+  getProfileSetting,
+  setProfileSetting,
+} from "../settings";
 import { isSleepTracking } from "../sleep-summary";
 import { getSyncedSleepWakeDays } from "../queries/sleep";
 import { getIntegrationAttention } from "../queries/integrations";
@@ -60,7 +65,9 @@ import { reminderStream } from "../integrations/continuous-streams";
 import {
   BEDTIME_WEAR_TITLE,
   bedtimeWearBody,
+  bedtimeWearCorrectedBody,
   bedtimeWearVerdict,
+  wearReminderFalsified,
   type BedtimeWearVerdict,
 } from "../wear-reminder";
 import type { NotificationMessage } from "./types";
@@ -84,7 +91,11 @@ function watchedStream() {
 export function bedtimeWearReminderState(
   profileId: number,
   at: Date = now()
-): { verdict: BedtimeWearVerdict; lastSeenLocalHhmm: string | null } {
+): {
+  verdict: BedtimeWearVerdict;
+  lastSeenLocalHhmm: string | null;
+  lastSeenAt: string | null;
+} {
   const watched = watchedStream();
   // Consent first, and cheaply: a profile that never opted in pays one settings read
   // and nothing else, which is what "off is exactly today's behaviour" means in
@@ -107,6 +118,7 @@ export function bedtimeWearReminderState(
         frozenSyncs: Number.POSITIVE_INFINITY,
       }),
       lastSeenLocalHhmm: null,
+      lastSeenAt: null,
     };
 
   const tz = getTimezone(profileId);
@@ -165,6 +177,12 @@ export function bedtimeWearReminderState(
     // The stored instant PROJECTED to the profile's own wall clock — "since 21:05"
     // must be the hour the user saw, not the UTC one.
     lastSeenLocalHhmm: latestUtc ? zonedDateParts(tz, latestUtc).hhmm : null,
+    // The SAME instant, canonical — the message's factual clause as an instant rather
+    // than as a wall clock, which is what the reconciler compares the frontier against
+    // (#3027). Recorded ON DELIVERY and never re-derived: by the time the sweep runs the
+    // frontier has moved, and the instant the message NAMED is no longer readable from
+    // the stream.
+    lastSeenAt: latestUtc ? latestUtc.toISOString() : null,
   };
 }
 
@@ -185,6 +203,117 @@ export function buildWearReminder(
   return {
     title: BEDTIME_WEAR_TITLE,
     body: bedtimeWearBody(lastSeenLocalHhmm),
+    kind: "wear-reminder",
+  };
+}
+
+/**
+ * Tonight's reminder together with the instant its factual clause names (#3027) — what
+ * the tick sends, and what it records on delivery so the sweep can tell later whether the
+ * message is still true. `buildWearReminder` above is this without the claim, kept
+ * because every other caller only wants the message.
+ */
+export function wearReminderSend(
+  profileId: number
+): { message: NotificationMessage; claimedAt: string } | null {
+  const { verdict, lastSeenLocalHhmm, lastSeenAt } =
+    bedtimeWearReminderState(profileId);
+  if (!verdict.send || lastSeenLocalHhmm == null || lastSeenAt == null)
+    return null;
+  return {
+    message: {
+      title: BEDTIME_WEAR_TITLE,
+      body: bedtimeWearBody(lastSeenLocalHhmm),
+      kind: "wear-reminder",
+    },
+    claimedAt: lastSeenAt,
+  };
+}
+
+// ---- The claim, and the sweep's answer to it (issue #3027) -----------------
+//
+// ONE PROFILE SETTING, `<profile-local date>|<ISO instant>`: the night the message was
+// sent for, and the frontier instant its sentence named. It exists because that instant
+// is UNRECOVERABLE afterwards — the falsifying event is data ARRIVING with timestamps
+// EARLIER than now, so re-reading the stream at sweep time gives the frontier as it is,
+// never as it was. The parse posture is #947's: a value this module cannot read is
+// treated as absent, which leaves the message exactly as delivered.
+const CLAIM_KEY = "notify_wear_reminder_claim";
+
+export function recordWearReminderClaim(
+  profileId: number,
+  date: string,
+  claimedAt: string
+): void {
+  setProfileSetting(profileId, CLAIM_KEY, `${date}|${claimedAt}`);
+}
+
+export function readWearReminderClaim(
+  profileId: number
+): { date: string; claimedAt: string } | null {
+  const raw = getProfileSetting(profileId, CLAIM_KEY);
+  if (!raw) return null;
+  const cut = raw.indexOf("|");
+  if (cut <= 0) return null;
+  const date = raw.slice(0, cut);
+  const claimedAt = raw.slice(cut + 1);
+  if (!date || !claimedAt || Number.isNaN(new Date(claimedAt).getTime()))
+    return null;
+  return { date, claimedAt };
+}
+
+/**
+ * The prose reconciler's rebuild for a delivered wear reminder (#3027): the corrected
+ * message when the stream has since falsified it, or NULL to leave the chat alone.
+ *
+ * NULL IS THE COMMON ANSWER AND IT COSTS TWO READS. The issue's "cheap dependency
+ * pre-check" is not a separate stamp here the way the digest's is — the whole decision IS
+ * the comparison (the recorded claim against the stream's frontier and the clock), so
+ * paying for it and paying for the "rebuild" are the same thing, and no Telegram call is
+ * made unless it says the message is false. See the `wear-reminder` entry in
+ * ./reconcile.ts.
+ *
+ * WHAT `pointerDate` ACTUALLY GUARDS, stated honestly because a previous draft called it
+ * redundant with the day boundary and it is not. The claim key holds ONE value per
+ * profile and is never cleared, while the pointer is per-night — so the two can name
+ * different nights whenever the delivery straddles local midnight: the tick captured
+ * `date` at the top of its run, and the send chokepoint stamps the pointer with
+ * `today(profileId)` re-read after the Telegram round-trip. A 23:59 Bedtime slot whose
+ * send lands at 00:00 records a claim for one day and a pointer for the next, and without
+ * this comparison last night's claimed instant would be measured against tonight's
+ * message. It is asserted directly (lib/__db_tests__/wear-reminder.test.ts) rather than
+ * left to the rollover.
+ */
+export function rebuildWearReminder(
+  profileId: number,
+  pointerDate: string
+): NotificationMessage | null {
+  const claim = readWearReminderClaim(profileId);
+  if (!claim || claim.date !== pointerDate) return null;
+  const watched = watchedStream();
+  if (!watched) return null;
+  const latest = latestStreamInstant(
+    profileId,
+    watched.stream.table,
+    watched.sourceId
+  );
+  const frontier = latest ? parseUtcSql(latest) : null;
+  const claimedAt = new Date(claim.claimedAt);
+  const verdict = wearReminderFalsified(
+    claimedAt.getTime(),
+    frontier?.getTime() ?? null,
+    now().getTime(),
+    // The stream's OWN declared tolerance, the same value the send predicate reads for
+    // its floor — never a constant here (#2341 item 2).
+    watched.stream.reminder.frontierFloorMin
+  );
+  if (!verdict.falsified) return null;
+  const tz = getTimezone(profileId);
+  return {
+    title: BEDTIME_WEAR_TITLE,
+    // Only the CLAIMED instant, which is fixed at delivery — so this body is identical on
+    // every later tick and the sweep's idempotence pin corrects the message once.
+    body: bedtimeWearCorrectedBody(zonedDateParts(tz, claimedAt).hhmm),
     kind: "wear-reminder",
   };
 }

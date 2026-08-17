@@ -52,7 +52,11 @@ import {
   correctionPickerTitle,
   PRACTICE_TIME_PREFIXES,
 } from "./correction-rows";
-import { offeredHours, type CorrectionBurst } from "../correction-time";
+import {
+  offeredHours,
+  type CorrectionBurst,
+  type CorrectionDay,
+} from "../correction-time";
 import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
 import {
@@ -316,6 +320,9 @@ export interface PracticeCorrectionContext {
   // REPLACES the keyboard in place (the #859 `symp:` → `symsev:` shape) and `↩︎ Back`
   // rebuilds the message unchanged, so no server-side pending state exists.
   picker?: CorrectionBurst;
+  // Which day level that drill-down is showing (#3010): the recent hours, or the
+  // previous day's own.
+  pickerLevel?: CorrectionDay;
   // WHICH ✓ BUTTONS THE MESSAGE MAY STILL SHOW, as target ids read off the LIVE
   // keyboard — the food nudge's rule for its expansion count (#1807), one domain over:
   // the keyboard the chat is holding is the only record of what the user can still see,
@@ -387,6 +394,24 @@ export function offeredPracticeTargets(
 // keyboard whose every button is refused — it is stated once in the body, naming the app
 // as where a session's date is changed. That is the render half of the same rule; before
 // it, at 00:20 local every chip and every picker hour on this keyboard was dead.
+// The hours the picker's TITLE speaks for — this level's, plus level two's while level
+// one is showing, because the `Yesterday →` step is an answer the question has (#3010).
+// Only its EMPTINESS is read, so the union needs no ordering or de-duplication.
+function pickerTitleHours(
+  burst: CorrectionBurst,
+  now: Date,
+  tz: string,
+  level: CorrectionDay
+): string[] {
+  const dayKeyed = PRACTICE_TIME_PREFIXES.dayKeyed;
+  return [
+    ...offeredHours(burst, now, tz, dayKeyed, level),
+    ...(level === "today"
+      ? offeredHours(burst, now, tz, dayKeyed, "prev")
+      : []),
+  ];
+}
+
 function practiceCorrection(
   profileId: number,
   ctx: PracticeCorrectionContext | undefined
@@ -416,7 +441,14 @@ function practiceCorrection(
     ? (shown.find((b) => b.fromId === ctx.picker?.fromId) ?? null)
     : null;
   const actions = open
-    ? correctionPickerActions(PRACTICE_TIME_PREFIXES, profileId, open, now, tz)
+    ? correctionPickerActions(
+        PRACTICE_TIME_PREFIXES,
+        profileId,
+        open,
+        now,
+        tz,
+        ctx.pickerLevel ?? "today"
+      )
     : correctionActions(PRACTICE_TIME_PREFIXES, profileId, shown, tz, now);
   // The body says what the keyboard cannot: the picker's question while it is open (this
   // domain's verb, finally asked — and it states the empty case rather than presenting a
@@ -428,7 +460,11 @@ function practiceCorrection(
           "when was this",
           open,
           tz,
-          offeredHours(open, now, tz, PRACTICE_TIME_PREFIXES.dayKeyed)
+          // BOTH LEVELS (#3010). The title states the EMPTY case, and a burst with
+          // nothing on the recent hours but something on yesterday's — a session tapped
+          // at 23:50 and corrected at 00:30 — is not empty: the `Yesterday →` step is
+          // right there on the keyboard.
+          pickerTitleHours(open, now, tz, ctx.pickerLevel ?? "today")
         )
       : // THE WHOLE BURST SET, not the offerable half. A statement of record is a claim
         // about what the LEDGER now holds, and the commonest way a burst goes off scope
@@ -437,7 +473,7 @@ function practiceCorrection(
         // stating the new value in exactly the interaction that produced it, leaving a
         // toast saying "Session time updated" above a body saying only that moving it
         // would change its day. What may be OFFERED is bounded; what is RECORDED is not.
-        correctionBodyStatement(bursts, tz),
+        correctionBodyStatement(bursts, tz, now),
     correctionOffScopeStatement(offScope, tz),
   ].filter((l): l is string => l != null);
   return { actions, statement: lines.length > 0 ? lines.join("\n") : null };

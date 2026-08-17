@@ -21,7 +21,7 @@ import {
   isProteinNudgeKey,
   proteinNudgeButtonLabel,
 } from "../protein-nudge";
-import type { CorrectionBurst } from "../correction-time";
+import type { CorrectionBurst, CorrectionDay } from "../correction-time";
 import type { FoodWindowGap } from "../food-window-gap";
 import {
   correctionActions,
@@ -310,7 +310,10 @@ export interface FoodNudgeRenderOpts {
   // hiding it behind a time question would be a worse trade than the extra keyboard rows.
   // Keeping them also means the `food:` tokens survive, so `↩︎ Back` can rebuild the exact
   // nudge from the live keyboard rather than guessing at a window.
-  picker?: { burst: CorrectionBurst; now: Date };
+  // `level` is WHICH DAY the drill-down is showing (#3010): the recent hours, or
+  // yesterday's whole day. Defaults to the recent hours, which is what every caller
+  // that has not stepped down passes.
+  picker?: { burst: CorrectionBurst; now: Date; level?: CorrectionDay };
   // The window that closed empty (#2376), already decided by the pure engine
   // (lib/food-window-gap.ts) from the profile's ledger. Null/omitted is the common case
   // and the only case for a profile that does not habitually log that window — the
@@ -439,7 +442,8 @@ export function renderFoodNudge(
         profileId,
         opts.picker.burst,
         opts.picker.now,
-        tz
+        tz,
+        opts.picker.level ?? "today"
       )
     );
   } else if (corrections) {
@@ -480,7 +484,11 @@ export function renderFoodNudge(
       // the stored time — the row's label states it too, but Telegram truncates buttons
       // and a clipped `(cor…` is not a statement. Uncorrected bursts add nothing.
       corrections
-        ? correctionBodyStatement(corrections.bursts, corrections.tz)
+        ? correctionBodyStatement(
+            corrections.bursts,
+            corrections.tz,
+            corrections.now
+          )
         : null,
     ],
     "\n"
