@@ -781,6 +781,96 @@ describe("the headline equals the rows it names (#2970 R5)", () => {
     ).toBe("100.1");
   });
 
+  // MIXED MAGNITUDES, coarse row LAST. Every case above uses one magnitude, so the
+  // scope's precision — the max over its rows — is indistinguishable from "whatever the
+  // last row needed", and dropping the max leaves the suite green while the headline
+  // stops matching its rows on ordinary values. Both fixtures put the COARSE row last,
+  // because that is the order in which the two rules disagree.
+  const mixed: {
+    label: string;
+    rows: Partial<DoseStudyInput>[];
+    sum: string;
+  }[] = [
+    {
+      label: "a 0.0005 mSv study beside a 25 mSv one",
+      rows: [{ dose_msv: 0.0005 }, { dose_msv: 25 }],
+      sum: "25.0005",
+    },
+    {
+      label: "a 21.9 mSv X-ray beside an ultrasound recorded at 0",
+      rows: [
+        { modality: "x-ray", body_region: "Chest", dose_msv: 21.9 },
+        { modality: "ultrasound", body_region: "Abdomen", dose_msv: 0 },
+      ],
+      sum: "21.9",
+    },
+  ];
+
+  for (const c of mixed) {
+    it(`adds up across magnitudes: ${c.label}`, () => {
+      const b = doseContributions(
+        c.rows.map((r, i) =>
+          idStudy(i + 1, { study_date: "2025-01-01", ...r })
+        ),
+        now
+      );
+      expect(b.contributions).toHaveLength(c.rows.length);
+      const rows = b.contributions.map((x) =>
+        printedFigure(doseChipLabel(x.dose)!)
+      );
+      expect(addPrinted(rows)).toBe(c.sum);
+      expect(
+        printedFigure(formatScopeMsv(b.allRecords, combinedMsv(b.allRecords)))
+      ).toBe(c.sum);
+    });
+  }
+
+  it("keeps the scope's numeric total exact, not float dust", () => {
+    // The printed figure would hide the dust; `recordedMsv` and `combinedMsv` are public
+    // numbers that other code reads, so they carry the decimal a reader would arrive at.
+    // 0.1 + 0.2 is 0.30000000000000004 in floating point, and 0.1 + 0.7 is
+    // 0.7999999999999999.
+    const recorded = doseContributions(
+      [
+        idStudy(1, {
+          modality: "x-ray",
+          body_region: "Chest",
+          dose_msv: 0.1,
+          study_date: "2025-01-01",
+        }),
+        idStudy(2, {
+          modality: "x-ray",
+          body_region: "Chest",
+          dose_msv: 0.2,
+          study_date: "2025-02-01",
+        }),
+      ],
+      now
+    );
+    expect(recorded.allRecords.recordedMsv).toBe(0.3);
+
+    const mixedSources = doseContributions(
+      [
+        idStudy(1, {
+          modality: "x-ray",
+          body_region: "Chest",
+          dose_msv: 0.1,
+          study_date: "2025-01-01",
+        }),
+        // An abdominal X-ray with no recorded dose estimates at 0.7.
+        idStudy(2, {
+          modality: "x-ray",
+          body_region: "Abdomen",
+          study_date: "2025-02-01",
+        }),
+      ],
+      now
+    );
+    expect(mixedSources.allRecords.recordedMsv).toBe(0.1);
+    expect(mixedSources.allRecords.estimatedMsv).toBe(0.7);
+    expect(combinedMsv(mixedSources.allRecords)).toBe(0.8);
+  });
+
   it("adds up across the card FACE: recorded + estimated is the headline", () => {
     // The same break one line down: `Recorded: 100 mSv` + `Estimated: 0.4 mSv` under a
     // headline of `≈ 100 mSv`. The split is printed at the same precision as the total.

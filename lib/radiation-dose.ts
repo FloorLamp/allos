@@ -480,6 +480,19 @@ export function formatMsv(msv: number): string {
 // plus a 0.1 mSv chest X-ray printed rows summing to 100.1 under a headline of 100. A
 // re-rounded total is not an explanation of its parts, so the fold adds the printed
 // figures and this prints their sum — additive by construction, at every scope.
+//
+// THE TRADE, RATIFIED ON PURPOSE — read this before "fixing" the total to the true sum.
+// Adding the ROUNDED rows means the printed total is not the sum of the TRUE doses. The
+// display carries three significant figures, which quantises at half a decade-quantum,
+// so the worst case is 0.5% (0.4965%, measured): nineteen studies recorded at 1.00499
+// mSv print a 19 mSv total against a true sum of 19.0948. That gap is two orders of
+// magnitude inside the uncertainty this figure already declares — the dataset calls its
+// values "order of magnitude, never a measurement of an individual scan", the card
+// labels any combined figure "≈ … includes estimates", and no report prints a dose to a
+// precision the gap could reach. An accuracy no reader can check was traded for an
+// addition every reader can, deliberately and with the numbers on the table. Restoring a
+// true-sum total re-opens #2970 R5 — rows that do not add up to the headline printed
+// beside them, which is the defect this whole change exists to remove.
 export function formatScopeMsv(cum: CumulativeDose, msv: number): string {
   if (msv <= 0) return "0 mSv";
   return `${trimZeros(msv.toFixed(Math.min(20, cum.decimals)))} mSv`;
@@ -506,9 +519,15 @@ export function doseFramingNote(pediatric: boolean): string {
   );
 }
 
-// Float-noise trim on a sum of display-rounded rows (0.1 + 0.2 must not surface as
-// 0.30000000000000004). The rows are all multiples of 10^-decimals, so their exact sum
-// is too: this restores that value, it does not round anything away (#2970 R5).
+// Float-noise trim on a sum of display-rounded rows: 0.1 + 0.2 must not leave
+// 0.30000000000000004 in `recordedMsv`. The rows are all multiples of 10^-decimals, so
+// their exact sum is too — this restores that value and rounds nothing away (#2970 R5).
+//
+// It is about the NUMBER, not the printing: `formatScopeMsv` would hide the dust anyway,
+// so the job here is that the CumulativeDose fields — public numbers, read by
+// `combinedMsv` and `backgroundEquivalentMonths` and by any later surface — are the exact
+// decimal a reader adding the rows arrives at. Pinned as such: the sum of a recorded 0.1
+// and a recorded 0.2 is 0.3, and combining a recorded 0.1 with an estimated 0.7 is 0.8.
 function roundTo(n: number, decimals: number): number {
   const scale = 10 ** Math.min(20, decimals);
   return Math.round(n * scale) / scale;
