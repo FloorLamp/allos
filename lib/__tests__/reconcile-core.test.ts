@@ -338,8 +338,9 @@ describe("reconcileClosingText (#1822 item 7)", () => {
 
 describe("reconcileClosingText outcome detail (#2274)", () => {
   const DOSES = "[Norton] 💊 Evening supplements";
+  // Names only, no times — the pre-#2867 shape, which still renders exactly as it did.
   const tally = (taken: string[], skipped: string[]) =>
-    closingTallyDetail({ taken, skipped });
+    closingTallyDetail({ taken: taken.map((name) => ({ name })), skipped });
 
   it("names the doses, taken first, on a resolved close", () => {
     expect(
@@ -442,11 +443,11 @@ describe("closingTallyText (#2274)", () => {
   it("renders each present group, taken first, in keyboard order", () => {
     expect(
       closingTallyText({
-        taken: ["Vitamin D", "Magnesium"],
+        taken: [{ name: "Vitamin D" }, { name: "Magnesium" }],
         skipped: ["Omega-3"],
       })
     ).toBe("Vitamin D, Magnesium taken · Omega-3 skipped");
-    expect(closingTallyText({ taken: ["Melatonin"], skipped: [] })).toBe(
+    expect(closingTallyText({ taken: [{ name: "Melatonin" }], skipped: [] })).toBe(
       "Melatonin taken"
     );
     expect(closingTallyText({ taken: [], skipped: ["Omega-3"] })).toBe(
@@ -460,7 +461,7 @@ describe("closingTallyText (#2274)", () => {
     // obligation-then-name sort. A second sort here is exactly the drift to avoid.
     expect(
       closingTallyText({
-        taken: ["Zinc", "Alpha-lipoic", "Magnesium"],
+        taken: [{ name: "Zinc" }, { name: "Alpha-lipoic" }, { name: "Magnesium" }],
         skipped: [],
       })
     ).toBe("Zinc, Alpha-lipoic, Magnesium taken");
@@ -471,10 +472,107 @@ describe("closingTallyText (#2274)", () => {
     // skipped at another is two facts.
     expect(
       closingTallyText({
-        taken: ["Magnesium", "Magnesium"],
+        taken: [{ name: "Magnesium" }, { name: "Magnesium" }],
         skipped: ["Magnesium"],
       })
     ).toBe("Magnesium taken · Magnesium skipped");
+  });
+});
+
+// ---- THE RECEIPT SAYS WHEN (#2867) ----
+//
+// #2170's rule was "no amounts, no notes, no adherence tails". The owner revised it for
+// TIMES ONLY: the one fact a person glancing back at the chat wants is whether they took
+// it this morning or are remembering yesterday. Grouping is by TIME, not per-item marks,
+// so the common one-tap-all case stays one clause.
+describe("closingTallyText states the administration time (#2867)", () => {
+  it("groups taken names by time — one tap-all collapses to a single clause", () => {
+    expect(
+      closingTallyText({
+        taken: [
+          { name: "Vitamin D", at: "08:12", date: "2026-08-14" },
+          { name: "Magnesium", at: "08:12", date: "2026-08-14" },
+        ],
+        skipped: [],
+      })
+    ).toBe("Vitamin D, Magnesium taken 08:12");
+  });
+
+  it("gives a differently-timed dose its own clause, in keyboard order", () => {
+    expect(
+      closingTallyText({
+        taken: [
+          { name: "Vitamin D", at: "08:12", date: "2026-08-14" },
+          { name: "Magnesium", at: "08:12", date: "2026-08-14" },
+          { name: "Omega-3", at: "21:45", date: "2026-08-14" },
+        ],
+        skipped: ["Melatonin"],
+      })
+    ).toBe(
+      "Vitamin D, Magnesium taken 08:12 · Omega-3 taken 21:45 · Melatonin skipped"
+    );
+  });
+
+  // Skips state that nothing was taken; a time on one would name when a button was
+  // pressed, which is not when anything happened.
+  it("never puts a time on a skip", () => {
+    expect(
+      closingTallyText({
+        taken: [{ name: "Vitamin D", at: "08:12", date: "2026-08-14" }],
+        skipped: ["Omega-3"],
+      })
+    ).toBe("Vitamin D taken 08:12 · Omega-3 skipped");
+  });
+
+  // Older rows carry no administration instant. Stated, not inferred — the same posture
+  // the tally already takes for a dose in neither ledger set.
+  it("renders a taken dose with no timestamp as a plain taken group", () => {
+    expect(
+      closingTallyText({
+        taken: [
+          { name: "Vitamin D", at: null, date: "2026-08-14" },
+          { name: "Magnesium", at: "08:12", date: "2026-08-14" },
+        ],
+        skipped: [],
+      })
+    ).toBe("Vitamin D taken · Magnesium taken 08:12");
+  });
+
+  // Bucketing is by (date, displayed minute): the rare multi-date close must not fold
+  // two days into one clock time, and the label only spends width on the date when
+  // there is more than one to tell apart.
+  it("carries the date only when the close spans more than one", () => {
+    expect(
+      closingTallyText({
+        taken: [
+          { name: "Vitamin D", at: "08:12", date: "2026-08-13" },
+          { name: "Magnesium", at: "08:12", date: "2026-08-14" },
+        ],
+        skipped: [],
+      })
+    ).toBe("Vitamin D taken Aug 13, 08:12 · Magnesium taken Aug 14, 08:12");
+    // …and one date alone never states it.
+    expect(
+      closingTallyText({
+        taken: [
+          { name: "Vitamin D", at: "08:12", date: "2026-08-14" },
+          { name: "Magnesium", at: "08:12", date: "2026-08-14" },
+        ],
+        skipped: [],
+      })
+    ).not.toContain("Aug");
+  });
+
+  it("dates a timestamp-less dose too, on a multi-date close", () => {
+    expect(
+      closingTallyText({
+        taken: [
+          { name: "Vitamin D", at: null, date: "2026-08-13" },
+          { name: "Magnesium", at: "08:12", date: "2026-08-14" },
+        ],
+        skipped: [],
+      })
+    ).toBe("Vitamin D taken Aug 13 · Magnesium taken Aug 14, 08:12");
   });
 });
 

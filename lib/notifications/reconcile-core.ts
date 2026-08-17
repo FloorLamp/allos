@@ -61,6 +61,7 @@ import type { InlineKeyboard } from "./telegram-render";
 import { plainBody } from "./rich-text";
 import type { NotificationMessage } from "./types";
 import { formatMessageLine } from "./message-line";
+import { formatMonthDay } from "../format-date";
 
 // The PROSE witness (#1913 item 4): a stable fingerprint of what a message SAYS.
 //
@@ -328,10 +329,16 @@ const RECONCILE_CLOSING_TAIL: Record<CloseReason, string> = {
 // user has always seen: the button is `✅ <name>`, the write core is `markDoseTaken`, so
 // the close says `taken` / `skipped` and never the reconcile's private "logged".
 //
-// The other half of #2170's rule DOES hold, and is why the parts below carry names and
-// nothing else: THE APP LEDGER STAYS THE COMPLETE SURFACE. No amounts, no food notes, no
-// adherence tails, no per-dose marks — the receipt answers WHICH, and how much is in the
-// app. A close can never be longer than the reminder it replaces, so it needs no cap.
+// IT ALSO SAYS WHEN, FOR DOSES (#2867, owner decision 2026-08-14). "Which" alone left
+// out the fact a person glancing back at the chat most often wants — did I take it this
+// morning, or am I remembering yesterday? The instants are already in the ledger the
+// close reads, so stating them costs one more read of rows this pass already resolved.
+//
+// The rest of #2170's rule STANDS, and is why the parts below carry names, an outcome
+// and nothing else: THE APP LEDGER STAYS THE COMPLETE SURFACE. No amounts, no food
+// notes, no adherence tails, no per-dose marks — the receipt answers WHICH and WHEN, and
+// how much is in the app. The boundary moved for times only. A close can never be longer
+// than the reminder it replaces, so it needs no cap.
 //
 // ORDER IS THE ORDER THE MESSAGE SHOWED THEM. Callers read their tokens in keyboard
 // order, which is already the reminder's own obligation-then-name sort — parity for
@@ -388,27 +395,82 @@ export function closeDetailText(
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-// The DOSE families' shape of `CloseDetail` (#2274): two name lists, taken first. Both
-// dose families share it unchanged — they are the only ones whose vocabulary is
-// take/skip, which is why it may be dose-specific at all.
+// One dose the ledger says was TAKEN, and when (#2867).
+export interface TakenDose {
+  name: string;
+  // The administration time as the profile's clock showed it, "HH:MM" — the same
+  // rendering the correction rows already use for the same fact on the same channel
+  // (`burstLabel`, "Salmon 20:11"), so one chat never shows two clock conventions.
+  //
+  // Null/absent for a taken row this pass could not read an instant from — which
+  // renders as a plain `taken` group rather than inventing a time, the same
+  // stated-not-inferred posture the tally takes for a dose in neither ledger set.
+  //
+  // Rare by construction on the dose path: `intake_item_logs.recorded_at` is NOT NULL
+  // and the read COALESCEs `occurred_at` onto it, so a taken scheduled dose has an
+  // instant even in pre-`occurred_at` data. This arm covers a stored value that will not
+  // parse, and keeps a future caller from having to invent one.
+  at?: string | null;
+  // The profile-local date this dose belongs to. Only read when a close spans MORE THAN
+  // ONE, which is the case where a clock time alone would silently merge two days.
+  date?: string;
+}
+
+// The DOSE families' shape of `CloseDetail` (#2274): the taken receipt first, then the
+// skips. Both dose families share it unchanged — they are the only ones whose vocabulary
+// is take/skip, which is why it may be dose-specific at all.
 export interface ClosingTally {
-  // Doses confirmed taken, and doses deliberately skipped — a skip is a record the user
-  // made, which is why it is stated rather than folded into the first list.
-  taken: readonly string[];
+  // Doses confirmed taken, each with its administration time, and doses deliberately
+  // skipped — a skip is a record the user made, which is why it is stated rather than
+  // folded into the first list.
+  //
+  // SKIPS CARRY NO TIME. "Skipped 8:12" would state when the button was pressed, which
+  // is not when anything happened; a skip's whole content is that nothing was taken.
+  taken: readonly TakenDose[];
   skipped: readonly string[];
 }
 
+// What one taken bucket's outcome reads as. The date rides it ONLY on a close that spans
+// several — "taken 08:12" is unambiguous on a single-date close and carrying the date
+// there would be noise on every ordinary one.
+function takenOutcome(d: TakenDose, spansDates: boolean): string {
+  const when = [
+    ...(spansDates && d.date ? [formatMonthDay(d.date)] : []),
+    ...(d.at ? [d.at] : []),
+  ].join(", ");
+  return when ? `taken ${when}` : "taken";
+}
+
+// GROUPED BY TIME, not marked per item (#2867 owner decision): the common
+// one-tap-all case collapses to a single clause, and doses logged in the same displayed
+// minute share a bucket. Buckets key on (date, displayed minute) so the rare multi-date
+// close cannot fold two days into one clock time, and they render in first-appearance
+// order — which is keyboard order, the same rule the rest of the close follows.
 export function closingTallyDetail(tally: ClosingTally): CloseDetail {
+  const spansDates = new Set(tally.taken.map((t) => t.date ?? "")).size > 1;
+  const buckets = new Map<string, { outcome: string; names: string[] }>();
+  for (const t of tally.taken) {
+    const key = `${t.date ?? ""}|${t.at ?? ""}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { outcome: takenOutcome(t, spansDates), names: [] };
+      buckets.set(key, bucket);
+    }
+    bucket.names.push(t.name);
+  }
   return {
     groups: [
-      { names: tally.taken, outcome: "taken" },
+      ...[...buckets.values()].map((b) => ({
+        names: b.names,
+        outcome: b.outcome,
+      })),
       { names: tally.skipped, outcome: "skipped" },
     ],
   };
 }
 
-// "Vitamin D, Magnesium taken · Omega-3 skipped" / "Melatonin skipped", or null when
-// neither list has anything in it.
+// "Vitamin D, Magnesium taken 08:12 · Omega-3 skipped" / "Melatonin skipped", or null
+// when neither list has anything in it.
 export function closingTallyText(tally: ClosingTally): string | null {
   return closeDetailText(closingTallyDetail(tally));
 }

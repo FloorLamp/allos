@@ -126,6 +126,11 @@ const PREFLESS_ALLOWLIST: Record<string, number> = {
   "lib/administration-format.ts": 1,
   // Telegram callback answers ("Snoozed until …") — fixed Telegram channel shape.
   "lib/notifications/callback-data.ts": 2,
+  // The dose close's administration-time receipt (#2867), which dates its clauses only
+  // when one close spans more than a single day. A reconcile sweep runs off a profile
+  // pointer and has no login in context — the same login-less channel as the two
+  // entries above — so the fixed default shape is the correct one.
+  "lib/notifications/reconcile-core.ts": 1,
 };
 
 // Count top-level arguments of the call starting at `open` (index of "(").

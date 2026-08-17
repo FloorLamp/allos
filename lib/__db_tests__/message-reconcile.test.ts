@@ -182,6 +182,29 @@ function seedDose(
   return { itemId, doseId };
 }
 
+// Pin a taken dose's stored administration instants (UTC, SQL shape), so the receipt's
+// rendering can be asserted against a KNOWN time instead of the wall clock.
+//
+// `occurredAt` may be null — that is the OLDER-DATA shape, from before the column
+// existed — and `getTakenDoseTimes` COALESCEs to `recorded_at`, which the schema makes
+// NOT NULL. A taken scheduled dose therefore always has an instant to state; the
+// tally's untimed arm exists for a stored value that will not parse.
+function stampDoseTakenAt(
+  profileId: number,
+  doseId: number,
+  recordedAt: string,
+  occurredAt: string | null = recordedAt
+): void {
+  db.prepare(
+    `UPDATE intake_item_logs
+        SET occurred_at = ?, recorded_at = ?
+      WHERE dose_id = ? AND status = 'taken'
+        AND dose_id IN (SELECT d.id FROM intake_item_doses d
+                          JOIN intake_items i ON i.id = d.item_id
+                         WHERE i.profile_id = ?)`
+  ).run(occurredAt, recordedAt, doseId, profileId);
+}
+
 function seedPrnMedication(
   profileId: number,
   name: string
@@ -596,7 +619,9 @@ describe("a dose keyboard lives as long as the write core honors the tap (#2018)
     // Resolved for real now, so the message closes as HANDLED — not as out of date.
     // Since #2274 "handled" is the dose NAMED, in the domain's own word.
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
-    expect(String(editText.mock.calls.at(-1)![2])).toContain("Bea D3 taken.");
+    expect(String(editText.mock.calls.at(-1)![2])).toMatch(
+      /Bea D3 taken \d\d:\d\d\.$/
+    );
   });
 
   it("closes past the window, naming the consequence rather than the calendar", async () => {
@@ -1254,7 +1279,9 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
     expect(out.closed).toBe(1);
     const closingText = editText.mock.calls.at(-1)![2];
     // The outcome (#2170/#2274) rides the SAME attributed subject this issue put there.
-    expect(closingText).toBe(`${title} — Norton D3 taken.`);
+    expect(String(closingText)).toMatch(
+      /^\[Norton\] 💊 Morning supplements — Norton D3 taken \d\d:\d\d\.$/
+    );
     expect(closingText).toContain("[Norton]");
   });
 
@@ -1358,7 +1385,8 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     const text = String(editText.mock.calls.at(-1)![2]);
-    expect(text).toContain("Tara A, Tara B taken · Tara C skipped.");
+    // One tap-all collapses to ONE timed clause; the skip carries no time (#2867).
+    expect(text).toMatch(/Tara A, Tara B taken \d\d:\d\d · Tara C skipped\.$/);
     // The message's own subject still leads it (#1822 item 7).
     expect(text.startsWith("💊 Morning supplements —")).toBe(true);
     // The domain's own words, and no app pointer (#2274).
@@ -1377,8 +1405,59 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     markDoseTaken(pid, b.doseId, b.itemId, today(pid));
 
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(String(editText.mock.calls.at(-1)![2])).toMatch(
+      /Wren A, Wren B taken \d\d:\d\d\.$/
+    );
+  });
+
+  // ---- …AND WHEN (#2867) ----
+  //
+  // The receipt reads the administration instants `getTakenDoseTimes` returns — stored
+  // UTC, rendered in the PROFILE's timezone. Both facts are asserted against a stamped
+  // instant rather than the wall clock, so the reading cannot pass by coincidence.
+  it("states each administration time, in the profile's timezone", async () => {
+    const pid = newProfile("Clock Cleo");
+    setTimezone(pid, "America/New_York");
+    const a = seedDose(pid, "Cleo A");
+    const b = seedDose(pid, "Cleo B");
+    const c = seedDose(pid, "Cleo C");
+    const d = seedDose(pid, "Cleo D");
+    seedLoginTelegram(pid, "5552867");
+    await sendMorningReminder(pid);
+
+    const date = today(pid);
+    markDoseTaken(pid, a.doseId, a.itemId, date);
+    markDoseTaken(pid, b.doseId, b.itemId, date);
+    markDoseTaken(pid, c.doseId, c.itemId, date);
+    markDoseSkipped(pid, d.doseId, d.itemId, date);
+    // 12:12 UTC is 08:12 in New York — the whole point of formatting in the profile's
+    // zone rather than the host's. A and B share the displayed minute; C is later.
+    stampDoseTakenAt(pid, a.doseId, `${date} 12:12:04`);
+    stampDoseTakenAt(pid, b.doseId, `${date} 12:12:51`);
+    stampDoseTakenAt(pid, c.doseId, `${date} 15:45:00`);
+
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
-      "Wren A, Wren B taken."
+      "Cleo A, Cleo B taken 08:12 · Cleo C taken 11:45 · Cleo D skipped."
+    );
+  });
+
+  it("falls back to the recorded instant for a row with no occurred_at", async () => {
+    // The older-data shape: `occurred_at` postdates these rows, so the read COALESCEs
+    // to `recorded_at`. The receipt states a time either way, and never guesses one.
+    const pid = newProfile("Legacy Lena");
+    setTimezone(pid, "America/New_York");
+    const a = seedDose(pid, "Lena A");
+    seedLoginTelegram(pid, "5552868");
+    await sendMorningReminder(pid);
+
+    const date = today(pid);
+    markDoseTaken(pid, a.doseId, a.itemId, date);
+    stampDoseTakenAt(pid, a.doseId, `${date} 12:12:00`, null);
+
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    expect(String(editText.mock.calls.at(-1)![2])).toContain(
+      "Lena A taken 08:12."
     );
   });
 
@@ -1394,7 +1473,7 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     markDoseTaken(pid, a.doseId, a.itemId, today(pid));
     await reconcileProfileMessages(pid);
     const closingText = String(editText.mock.calls.at(-1)![2]);
-    expect(closingText).toContain("Sana A taken.");
+    expect(closingText).toMatch(/Sana A taken \d\d:\d\d\.$/);
     expect(liveMessagePointers(pid)).toEqual([]);
 
     // Correct it in the app afterwards…
@@ -2109,7 +2188,7 @@ describe("escalation: a caregiver's chat is named too (#2274)", () => {
         },
       ]
     );
-    expect(text).toBe("[Esme] ⚠️ Missed dose — Esme D3 taken.");
+    expect(text).toMatch(/^\[Esme\] ⚠️ Missed dose — Esme D3 taken \d\d:\d\d\.$/);
   });
 });
 
@@ -2152,9 +2231,9 @@ describe("the name lookup is profile-scoped (#2274)", () => {
       ]
     );
 
-    expect(aText).toBe("[Ann] 💊 Morning — Ann Magnesium taken.");
+    expect(aText).toMatch(/^\[Ann\] 💊 Morning — Ann Magnesium taken \d\d:\d\d\.$/);
     expect(aText).not.toContain("Ben");
-    expect(bText).toBe("[Ben] 💊 Morning — Ben Magnesium taken.");
+    expect(bText).toMatch(/^\[Ben\] 💊 Morning — Ben Magnesium taken \d\d:\d\d\.$/);
     expect(bText).not.toContain("Ann");
   });
 });
@@ -2276,7 +2355,7 @@ describe("the pointer follows a callback edit, not just a send", () => {
     editText.mockClear();
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     const closingText = String(editText.mock.calls.at(-1)![2]);
-    expect(closingText).toContain("Receipt D3 taken.");
+    expect(closingText).toMatch(/Receipt D3 taken \d\d:\d\d\.$/);
     expect(closingText).not.toContain("handled in the app");
   });
 

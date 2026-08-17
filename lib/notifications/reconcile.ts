@@ -55,6 +55,7 @@ import {
   getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
+  getTakenDoseTimes,
   getFrequencyTargetProgress,
   redoseWindowState,
 } from "../queries";
@@ -77,6 +78,8 @@ import {
   setProfileSetting,
 } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
+import { getTimezone } from "../settings";
+import { parseUtcSql, zonedDateParts } from "../date";
 import {
   collectWindowDoses,
   slotSessionForKeyboard,
@@ -121,6 +124,7 @@ import {
   type CloseDetail,
   type CloseGroup,
   type ClosingTally,
+  type TakenDose,
   type ReconcileDecision,
   reconcileClosingText,
   stripTokens,
@@ -318,6 +322,15 @@ function resolvedDoseIds(profileId: number, date: string): Set<number> {
 // read of that profile's item names — never a name from another profile's ledger, even
 // in a shared chat. An item whose name cannot be resolved is named as neither, the same
 // posture as a dose in neither ledger set.
+//
+// AND WHEN EACH WAS TAKEN (#2867). `getTakenDoseTimes` returns the administration
+// instant per dose for a date, memoized per date beside the two id sets — one extra read
+// of rows this pass has already resolved, never a second adherence computation (#221).
+// The instant is stored UTC and rendered in the PROFILE's timezone here, which is the
+// canonical-storage posture the rest of the app takes, and rendered as "HH:MM" through
+// the same `zonedDateParts(...).hhmm` seam the correction rows already use for this
+// exact fact on this exact channel — so a chat cannot end up showing two clock
+// conventions for one administration time.
 function doseClosingTally(
   profileId: number,
   tokens: readonly string[],
@@ -325,12 +338,17 @@ function doseClosingTally(
 ): ClosingTally | null {
   const byDate = new Map<
     string,
-    { taken: Set<number>; skipped: Set<number> }
+    {
+      taken: Set<number>;
+      skipped: Set<number>;
+      times: Map<number, string>;
+    }
   >();
   const seen = new Set<string>();
-  const taken: string[] = [];
+  const taken: TakenDose[] = [];
   const skipped: string[] = [];
   let names: Map<number, string> | null = null;
+  let tz: string | null = null;
   for (const t of tokens) {
     const f = fields(t);
     if (!prefixes.includes(f[0])) continue;
@@ -346,6 +364,7 @@ function doseClosingTally(
       ledger = {
         taken: new Set(getTakenDoseIds(profileId, date)),
         skipped: new Set(getSkippedDoseIds(profileId, date)),
+        times: getTakenDoseTimes(profileId, date),
       };
       byDate.set(date, ledger);
     }
@@ -358,7 +377,15 @@ function doseClosingTally(
     names ??= getIntakeItemNames(profileId);
     const name = itemId ? names.get(itemId) : undefined;
     if (!name) continue;
-    (isTaken ? taken : skipped).push(name);
+    if (!isTaken) {
+      skipped.push(name);
+      continue;
+    }
+    // An unparseable or absent stored instant yields no time at all rather than a
+    // guessed one — the same stated-not-inferred rule as the ledger sets above.
+    tz ??= getTimezone(profileId);
+    const at = parseUtcSql(ledger.times.get(doseId));
+    taken.push({ name, date, at: at ? zonedDateParts(tz, at).hhmm : null });
   }
   return taken.length + skipped.length > 0 ? { taken, skipped } : null;
 }
