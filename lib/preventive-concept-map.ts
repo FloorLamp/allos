@@ -291,6 +291,13 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     // admitted (#3025), and "Nutrition Counseling Note" — a dietitian's note — then
     // satisfied depression AND anxiety screening for a year. A completed counseling
     // VISIT is evidence; a document with "counseling" in its title is a topic.
+    //
+    // STILL OPEN, ONE STREAM OVER, recorded here so it is not rediscovered as new: a
+    // COMPLETED CARE-PLAN ITEM described "Nutrition counseling" is `shape: "event"`, so
+    // these needles legitimately apply to it and it yields both screenings on its planned
+    // date. That is the same false satisfaction the report case was, reached through a
+    // stream whose descriptions are event labels rather than document titles, and closing
+    // it needs a rule about the care-plan stream rather than about this list.
     eventNames: [
       "mental health visit",
       "psychotherapy",

@@ -370,7 +370,7 @@ describe("matchRuleKeys: the evidence SHAPE", () => {
     ).toEqual(["colorectal_cancer"]);
   });
 
-  it("a DOCUMENT title that REFUSES its own subject is evidence of nothing", () => {
+  it("a refusal in the SAME CLAUSE as the subject withholds it", () => {
     // "Screening mammogram declined by patient" is the record of a refusal. Reading it
     // as the mammogram is a missed cancer screening.
     for (const name of [
@@ -391,18 +391,105 @@ describe("matchRuleKeys: the evidence SHAPE", () => {
         ["screening"]
       )
     ).toEqual(["mammography"]);
-    // The guard covers every path, not just the name one: a refusal that also carries
-    // the canonical name of a result proves nothing either.
+  });
+
+  it("a refusal about an ANCILLARY leaves the result it sits beside standing", () => {
+    // The other direction, and the one that matters more: a real Pap on file must not
+    // stop counting because the patient declined a CO-TEST. A refusal qualifies the
+    // subject in its own clause, it does not erase the document.
+    for (const [name, expected] of [
+      ["Pap smear — patient declined HPV co-test", "cervical_cancer"],
+      [
+        "Colonoscopy report: polypectomy, biopsy not performed",
+        "colorectal_cancer",
+      ],
+      ["Screening mammogram; additional views not performed", "mammography"],
+      ["DEXA scan; forearm not done", "osteoporosis"],
+    ] as const) {
+      expect(
+        matchRuleKeys({ name, shape: "document" }, ["screening"]),
+        name
+      ).toEqual([expected]);
+    }
+  });
+
+  it("a CANONICAL IDENTITY beats a title's prose — labs are documents too", () => {
+    // THE REGRESSION THIS CLOSES. Every clinical observation is document-shaped, so a
+    // guard placed in front of the canonical path took a lab out of its screening for a
+    // phrase printed beside the analyte's name. An exact canonical biomarker name is an
+    // identity the concept map curated; no wording may withhold it.
+    for (const [name, canonicalName, expected] of [
+      ["Lipid panel — fasting not done", "LDL Cholesterol", "lipid_screening"],
+      [
+        "Blood pressure (repeat cancelled)",
+        "Blood Pressure Systolic",
+        "blood_pressure",
+      ],
+      [
+        "Hemoglobin A1c; POC confirmation not performed",
+        "Hemoglobin A1c",
+        "diabetes_screening",
+      ],
+    ] as const) {
+      expect(
+        matchRuleKeys({ name, canonicalName, shape: "document" }, [
+          "screening",
+        ]),
+        name
+      ).toEqual([expected]);
+    }
+    // And an exact CODE is an identity in the same way.
     expect(
       matchRuleKeys(
         {
-          name: "Lipid panel declined",
+          code: "77067",
+          name: "Screening mammogram declined",
+          shape: "document",
+        },
+        ["screening"]
+      )
+    ).toEqual(["mammography"]);
+  });
+
+  it("a document that REQUESTS a screening is not a record of one", () => {
+    // An order, a referral, a reminder, a consent form and a leaflet are all documents
+    // ABOUT a screening that has not happened. Counting one silences the rule for a
+    // whole interval.
+    for (const name of [
+      "Order for screening mammogram",
+      "Referral: Screening Mammogram",
+      "Reminder letter: you are due for a mammogram",
+      "Colonoscopy consent form",
+      "Patient education leaflet: what is a Pap test?",
+      "Requisition — Pap smear",
+    ]) {
+      expect(
+        matchRuleKeys({ name, shape: "document" }, ["screening"]),
+        name
+      ).toEqual([]);
+    }
+    // Read from the title's HEAD, where a document says what it is — so a result that
+    // merely MENTIONS an order downstream is still a result.
+    expect(
+      matchRuleKeys(
+        {
+          name: "Colonoscopy report; standing order for repeat in 10 years",
+          shape: "document",
+        },
+        ["screening"]
+      )
+    ).toEqual(["colorectal_cancer"]);
+    // The genre guard is prose too, so it never withholds an identity either.
+    expect(
+      matchRuleKeys(
+        {
+          name: "Order for lipid panel",
           canonicalName: "LDL Cholesterol",
           shape: "document",
         },
         ["screening"]
       )
-    ).toEqual([]);
+    ).toEqual(["lipid_screening"]);
   });
 
   it("defaults to `event`, which is what every source was before #3025", () => {

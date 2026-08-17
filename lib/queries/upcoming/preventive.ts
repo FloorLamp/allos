@@ -26,11 +26,9 @@ import { inferScreeningResultSatisfactions } from "../../preventive-screening-re
 import { inferOpticalRxSatisfactions } from "../../preventive-optical";
 import {
   getProfileSex,
-  getTimezone,
   profileAgeMonths,
   getSmokingHistory,
 } from "../../settings";
-import { dateStrInTz, parseUtcSql } from "../../date";
 import { resolveSmoking } from "../../smoking";
 import { appointmentKindInferenceText } from "../../preventive-appointment";
 import { getAppointments } from "../appointments";
@@ -61,38 +59,6 @@ export function getPreventiveSatisfactions(
          FROM preventive_events WHERE profile_id = ?`
     )
     .all(profileId) as PreventiveSatisfaction[];
-}
-
-// ---- A REPORT WHOSE DATE THE IMPORT INVENTED (issue #3025) ------------------
-//
-// The AI/manual import path resolves a row's date as
-// `collected_date ?? document_date ?? today(profileId)` (lib/import-shape.ts, through
-// `fallbackDate` in lib/medical-pipeline.ts and app/(app)/data/actions.ts). The last
-// term is not a fact about the specimen — it is the day the file was uploaded. For a
-// dated LAB that hardly matters, because the value is what the surfaces read. For a
-// `report` the DATE IS THE ENTIRE CONTRIBUTION: a 2019 Pap scanned today would satisfy
-// cervical screening AS OF TODAY and buy three years of silence on a screening that is
-// six years old. A false satisfaction is a screening that is never nudged again, so the
-// report declines rather than guesses.
-//
-// HOW IT IS RECOGNISED, and why this is the honest test available. Nothing records
-// which of the three terms won, so the tell is the shape the third one always has: the
-// row is dated THE PROFILE-LOCAL DAY IT WAS WRITTEN. A report whose date came from the
-// document or the specimen is dated some earlier day (a cytology read is never filed the
-// day it is collected), and the CDA path is clean regardless — `mapClinicalReport` drops
-// a report with no `effectiveTime` rather than inventing one.
-//
-// THE COST OF THE FALSE DECLINE is one day of an already-overdue nudge: a report both
-// collected and imported today does not satisfy until the clock passes midnight. That is
-// the loud direction, which is the one #3025 chose to accept when the alternative was
-// silence on a screening the profile has not had.
-function reportDateIsInvented(
-  r: { date: string; created_at: string },
-  tz: string
-): boolean {
-  const created = parseUtcSql(r.created_at);
-  if (!created) return false;
-  return r.date.slice(0, 10) === dateStrInTz(tz, created);
 }
 
 // INFERRED satisfactions (issue #86): preventive rules a profile's EXISTING
@@ -157,10 +123,20 @@ export function getInferredPreventiveSatisfactions(
   // TITLE from being read as an event that happened — see EvidenceShape in
   // lib/preventive-inference.ts. It is the same statement for a lab: "Cytology, Gyn-PAP
   // Test (AP)" is the name of a filed result, not of an encounter.
-  const tz = getTimezone(profileId);
+  //
+  // WHAT IS DELIBERATELY NOT GUARDED HERE, so it is not rediscovered as an oversight: a
+  // row whose DATE the import invented. `fallbackDate = document_date ?? today(profileId)`
+  // (lib/import-shape.ts, through lib/medical-pipeline.ts and app/(app)/data/actions.ts)
+  // stamps the UPLOAD DAY on a row whose document stated no date, so a 2019 Pap scanned
+  // today reads as a screening done today. Nothing stored records WHICH of the three terms
+  // won, and every read-time proxy for it — comparing `date` to `created_at`'s local day —
+  // is either permanent (both are fixed at import, so a genuine same-day report is erased
+  // for ever) or timezone-dependent (it re-decides under a changed profile timezone).
+  // Distinguishing them needs date PROVENANCE stored at the write boundary, which is a
+  // schema decision this issue did not ask for. It is a property of the import fallback
+  // and applies to `lab` exactly as it applies to `report`.
   for (const r of getClinicalObservations(profileId)) {
     if (!categorySatisfiesScreening(r.category)) continue;
-    if (r.category === "report" && reportDateIsInvented(r, tz)) continue;
     records.push({
       code: null,
       name: r.name,

@@ -152,11 +152,13 @@ export function carriesResultIdentity(category: string): boolean {
 // and that is only a defence when the needles can tell a RESULT from a mention: admitting
 // `report` pointed those needles at DOCUMENT TITLES for the first time, and "Nutrition
 // Counseling Note" then satisfied depression and anxiety screening for a year. So the
-// admission is paid for on the other side of the gate too — `EvidenceShape` in
-// lib/preventive-inference.ts, which decides which needles a document title may be read
-// with, and the invented-date decline in lib/queries/upcoming/preventive.ts. The
-// categories ruled out below are ruled out for a reason about what the row IS, never to
-// keep the signal loud.
+// admission is paid for on the other side of the gate too, in `EvidenceShape` and the
+// document-prose guards in lib/preventive-inference.ts: which needles a document TITLE
+// may be read with, whether a refusal in the title withholds the subject beside it, and
+// whether the document is a REQUEST for a screening rather than a record of one. Those
+// guards touch the name path only — an exact code or canonical name is an identity, and
+// prose may never withhold an identity. The categories ruled out below are ruled out for
+// a reason about what the row IS, never to keep the signal loud.
 export interface ScreeningResultRuling {
   // May a row in this category satisfy a preventive screening rule?
   admits: boolean;

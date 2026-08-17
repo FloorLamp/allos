@@ -41,8 +41,8 @@ const HPV_DATE = "2023-03-27";
 // PAP_DATE + the cervical rule's 36-month interval.
 const NEXT_DUE = "2027-09-20";
 // The instant every fixture row was WRITTEN (SQLite `datetime('now')` shape, UTC): the
-// day the owner's import ran. The profiles here are UTC, so its profile-local day is
-// TODAY — which is what makes a report DATED today an invented date rather than a fact.
+// day the owner's import ran. Stated rather than left to the wall clock so the fixtures
+// are stable, and so the "dated today, imported today" case below is exactly that.
 const IMPORTED_AT = `${TODAY} 10:56:00`;
 
 beforeAll(() => {
@@ -75,10 +75,8 @@ function addRecord(
   opts: {
     value?: string | null;
     loinc?: string | null;
-    // WHEN THE ROW WAS WRITTEN, a load-bearing fact for a `report` (#3025): a report
-    // dated the profile-local day it was imported carries the import's INVENTED fallback
-    // date rather than the document's own. Defaults to the observed night's import —
-    // every fixture here was imported on 2026-08-16, which is what the owner reported.
+    // WHEN THE ROW WAS WRITTEN. Defaults to the observed night's import — every fixture
+    // here was imported on 2026-08-16, which is what the owner reported.
     createdAt?: string;
   } = {}
 ): void {
@@ -251,9 +249,9 @@ describe("preventive satisfaction: the record-category gate (#3025)", () => {
     }
   });
 
-  it("a `report` that RECORDS A REFUSAL does not satisfy the screening it names", () => {
+  it("a `report` that RECORDS A REFUSAL of its own subject does not satisfy it", () => {
     // "Screening mammogram declined by patient" is the record of a refusal. Reading it
-    // as the mammogram would be a missed cancer screening.
+    // as the mammogram is a missed cancer screening.
     const p = femaleProfile("Mammogram Declined");
     setProfileBirthdate(p, "1975-01-01"); // 51 — inside the 40–74 band
     // A real history, so the rule is genuinely OVERDUE (biennial, last done 2023) rather
@@ -289,51 +287,85 @@ describe("preventive satisfaction: the record-category gate (#3025)", () => {
     expect(isActionable(p, "mammography")).toBe(false);
   });
 
-  it("a `report` DATED THE DAY IT WAS IMPORTED does not satisfy — the date is invented", () => {
-    // `fallbackDate = document_date ?? today(profileId)` (lib/import-shape.ts through
-    // lib/medical-pipeline.ts): when the document states no date and the read carries no
-    // collected date, the row is stamped with the UPLOAD DAY. A 2019 Pap scanned today
-    // would then satisfy cervical screening AS OF TODAY and buy three years of silence.
-    const p = femaleProfile("Pap Scanned Today");
+  it("a refusal of an ANCILLARY leaves the Pap beside it counting", () => {
+    // The direction that matters more, and the one a whole-title guard got wrong: a real
+    // Pap on file stopped counting because the patient declined a CO-TEST, and the rule
+    // fell back three years and went actionable. That is the harm this issue was filed
+    // to remove, reproduced by its own fix.
+    const p = femaleProfile("Pap Co Test Declined");
     addHpvLabs(p);
-    addPapReport(p, TODAY);
-
-    expect(
-      getInferredPreventiveSatisfactions(p).some(
-        (s) => s.ruleKey === "cervical_cancer" && s.date === TODAY
-      )
-    ).toBe(false);
-    // The rule falls back to the HPV labs and is still, correctly, overdue.
-    const a = assessment(p, "cervical_cancer");
-    expect(a?.lastDate).toBe(HPV_DATE);
-    expect(isActionable(p, "cervical_cancer")).toBe(true);
-  });
-
-  it("CONTROL — the same report carrying the DOCUMENT'S own date satisfies", () => {
-    // One field apart from the fixture above: this row was imported on the same day but
-    // dated 2024-09-20, which only the document could have said.
-    const p = femaleProfile("Pap Dated By Document");
-    addHpvLabs(p);
-    addPapReport(p, PAP_DATE);
+    addRecord(
+      p,
+      "report",
+      "Pap smear — patient declined HPV co-test",
+      PAP_DATE
+    );
 
     expect(getInferredPreventiveSatisfactions(p)).toContainEqual({
       ruleKey: "cervical_cancer",
       date: PAP_DATE,
     });
+    expect(assessment(p, "cervical_cancer")?.lastDate).toBe(PAP_DATE);
     expect(isActionable(p, "cervical_cancer")).toBe(false);
   });
 
-  it("a LAB dated the day it was imported is untouched — the rule is `report`-only", () => {
-    // The decline is scoped to the category whose date IS its whole contribution. A lab
-    // carries a value the rest of the app reads, its fallback behaviour pre-dates #3025,
-    // and widening the rule onto it is a separate ruling.
-    const p = femaleProfile("Lab Today");
-    addRecord(p, "lab", "Hemoglobin A1c", TODAY, { value: "5.2" });
+  it("a LAB keeps its canonical identity whatever its printed name says", () => {
+    // Every clinical observation is document-shaped, so a prose guard placed in front of
+    // the canonical path took a lab out of its screening for a phrase printed beside the
+    // analyte — a regression against main on a safety signal.
+    const p = femaleProfile("Lipid Fasting Not Done");
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value, value_num, created_at)
+       VALUES (?, '2026-05-01', 'lab', ?, 'LDL Cholesterol', '96', 96, ?)`
+    ).run(p, "Lipid panel — fasting not done", IMPORTED_AT);
 
     expect(getInferredPreventiveSatisfactions(p)).toContainEqual({
-      ruleKey: "diabetes_screening",
+      ruleKey: "lipid_screening",
+      date: "2026-05-01",
+    });
+    expect(isActionable(p, "lipid_screening")).toBe(false);
+  });
+
+  it("a `report` that ORDERS a screening does not silence it", () => {
+    // An order, a referral, a reminder, a consent form and a leaflet are documents ABOUT
+    // a screening that has not happened. Counting one silenced mammography for two years.
+    const p = femaleProfile("Mammogram Ordered");
+    setProfileBirthdate(p, "1975-01-01");
+    addRecord(p, "report", "Mammogram, Screening Bilateral", "2023-01-10");
+    addRecord(p, "report", "Order for screening mammogram", "2026-05-01");
+
+    expect(
+      getInferredPreventiveSatisfactions(p).some(
+        (s) => s.ruleKey === "mammography" && s.date === "2026-05-01"
+      )
+    ).toBe(false);
+    const a = assessment(p, "mammography");
+    expect(a?.lastDate).toBe("2023-01-10");
+    expect(a?.nextDueDate).toBe("2025-01-10");
+    expect(isActionable(p, "mammography")).toBe(true);
+  });
+
+  it("a report DATED TODAY and imported today still satisfies — no date guess here", () => {
+    // A screening mammogram whose result letter is photographed the afternoon of the
+    // exam. A draft of this PR declined it, on the theory that a row dated its own import
+    // day carries the `document_date ?? today(profileId)` fallback rather than a fact —
+    // and that decline was PERMANENT (both sides are fixed at import, so it never
+    // recovered) and timezone-dependent. The mammogram simply never existed. The rule is
+    // gone; see the comment in lib/queries/upcoming/preventive.ts for what closing this
+    // properly needs.
+    const p = femaleProfile("Same Day Mammogram");
+    setProfileBirthdate(p, "1975-01-01");
+    addRecord(p, "report", "Mammogram, Screening Bilateral", TODAY, {
+      createdAt: IMPORTED_AT,
+    });
+
+    expect(getInferredPreventiveSatisfactions(p)).toContainEqual({
+      ruleKey: "mammography",
       date: TODAY,
     });
+    expect(assessment(p, "mammography")?.lastDate).toBe(TODAY);
+    expect(isActionable(p, "mammography")).toBe(false);
   });
 
   it("no nudge is sent for a satisfied rule, and the stale episode marker is cleared", () => {
