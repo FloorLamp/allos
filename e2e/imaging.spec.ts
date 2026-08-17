@@ -236,7 +236,21 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     // pathological one — the row shows it at the display precision, 10.1.
     await form.getByLabel("Modality").selectOption("ct");
     await form.getByLabel("Body region").fill(DOSE_REGION);
-    await form.getByLabel("Study date").fill(recentDate());
+
+    // A study happened; it is not scheduled. A date typed in 2099 used to reach the
+    // dose card and make it say "From your records, since January 1, 2099." (#2970), so
+    // the field carries the profile's today as its max and the browser refuses the
+    // value. An ordinary recent date is of course accepted — the cap is on the future,
+    // not on entry.
+    const studyDate = form.getByLabel("Study date");
+    await studyDate.fill("2099-01-01");
+    await expect(studyDate).toHaveJSProperty(
+      "validationMessage",
+      "Date is outside the allowed range."
+    );
+    await studyDate.fill(recentDate());
+    await expect(studyDate).toHaveJSProperty("validationMessage", "");
+
     await form.getByLabel("Effective dose (mSv)").fill("10.05");
     await submitWithToast(
       page,
