@@ -146,6 +146,25 @@ describe("two dispatches armed together (#3021)", () => {
     expect(seen).toEqual([47, 48]);
   });
 
+  it("a run rejecting with an UNSTRINGIFIABLE value still drains the tick's exit", async () => {
+    // `String(v)` is not total: a null-prototype value raises "Cannot convert object
+    // to primitive value". Thrown from a queued run, that throw lands INSIDE the
+    // catch that is supposed to contain it — so the chain entry rejects, the flush's
+    // Promise.all short-circuits, and every other profile behind it is dropped
+    // un-awaited. No production path produces such a value; the containment claim in
+    // this module's header is what has to hold anyway.
+    const unstringifiable = Object.create(null) as Record<string, never>;
+    const second = vi.fn(async () => {});
+    queuePostWorkoutDispatch(1, 47, 60_000, async () => {
+      throw unstringifiable;
+    });
+    queuePostWorkoutDispatch(2, 48, 60_000, second);
+
+    await expect(flushPostWorkoutDispatches()).resolves.toBeUndefined();
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(serializedPostWorkoutProfiles()).toEqual([]);
+  });
+
   it("the tick's flush waits for a run the WEB process already had in flight", async () => {
     // flushPostWorkoutDispatches() exists so the tick doesn't exit with a dispatch
     // behind it. A run already on the chain has left `pending`, so the flush has to

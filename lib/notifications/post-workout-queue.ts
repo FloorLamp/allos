@@ -97,7 +97,7 @@
 // ordering guarantee for a run that has already hung this long is the right trade
 // — the alternative is that everything after it is lost.
 
-import { createLogger } from "../log";
+import { createLogger, safeString } from "../log";
 import { clockOverride } from "../clock";
 
 const log = createLogger("notify");
@@ -128,8 +128,10 @@ function key(profileId: number, activityId: number): string {
 const chains = new Map<number, Promise<void>>();
 
 // Queue `task` behind everything already queued for this profile, and resolve when it
-// has finished. The task never rejects (the caller wraps it), but the chain is joined
-// with `then(t, t)` regardless so one broken link can never stall the rest.
+// has finished. The task never rejects — the caller wraps it, and the wrap's own
+// logging is total (safeString, in `run` below) so the catch cannot itself throw —
+// but the chain is joined with `then(t, t)` regardless so one broken link can never
+// stall the rest.
 function serializeForProfile(
   profileId: number,
   task: () => Promise<void>
@@ -214,10 +216,16 @@ export function queuePostWorkoutDispatch(
       } catch (e) {
         // Best-effort: the tick backstop re-delivers on its next run (the one-shot
         // marker is stamped only on successful delivery, so nothing is lost).
+        // safeString, not String: a rejection value with a null prototype makes
+        // `String(e)` throw INSIDE this catch, which would reject the chain entry,
+        // short-circuit the flush's Promise.all past every other profile, and
+        // surface as an unhandled rejection. Nothing in production throws such a
+        // value — but "the task never rejects" is the property the chain and the
+        // drain are built on, so it is guaranteed here rather than assumed.
         log.error("delayed post-workout dispatch failed", {
           profile: profileId,
           activity: activityId,
-          err: e instanceof Error ? e : String(e),
+          err: e instanceof Error ? e : safeString(e),
         });
       }
     });
