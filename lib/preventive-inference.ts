@@ -32,6 +32,57 @@ export interface InferenceRecord {
   canonicalName?: string | null;
   date: string | null;
   allow: PreventiveKind[];
+  shape: EvidenceShape;
+}
+
+// ---- WHAT THE `name` ACTUALLY IS (issue #3025) -----------------------------
+//
+// A second axis beside `allow`, and independent of it. `allow` says which rule KINDS a
+// source may satisfy; this says what kind of THING its `name` is, which decides which
+// needles may be read from it.
+//
+//   • "event"    — the label of something that HAPPENED: a procedure, a completed
+//                  appointment, an encounter, a completed care-plan item. Every needle
+//                  applies, `eventNames` included.
+//   • "document" — the TITLE OF A FILED DOCUMENT: a medical_records row. Only `names`
+//                  apply, and a title that NEGATES its own subject applies nothing.
+//
+// It exists because #3025 admitted the `report` category into this stream, and a report
+// is a document. The concept map's behavioural-health needles ("counseling",
+// "psychotherapy") were written for the visit stream, where the word names an encounter
+// that happened; in a document title the same word names a topic. "Nutrition Counseling
+// Note" satisfied BOTH depression and anxiety screening for a year, against a control
+// where both were overdue — a false satisfaction, which is a screening that is never
+// nudged again.
+export type EvidenceShape = "event" | "document";
+
+// A document title that REFUSES its own subject is not evidence that the subject
+// happened — "Screening mammogram declined by patient" is the record of a refusal, and
+// reading it as the mammogram is the same false satisfaction one step further on.
+//
+// DOCUMENT TITLES ONLY, deliberately. The event streams (an encounter's type + reason +
+// notes + provider, a care-plan description) are free text where a negation may be about
+// something other than the match, and they pre-date this change; widening the guard onto
+// them is a separate ruling with its own regression surface.
+//
+// Whole-word against the same space-wrapped normalization every needle uses, so
+// "undeclined" and "cancellation" are not matches.
+const NEGATED_DOCUMENT_NEEDLES = [
+  "declined",
+  "refused",
+  "cancelled",
+  "canceled",
+  "not performed",
+  "not done",
+  "no show",
+].map((n) => ` ${n} `);
+
+// Does this document title refuse its own subject?
+export function documentTitleIsNegated(
+  name: string | null | undefined
+): boolean {
+  const text = normalizeMatchText(name);
+  return NEGATED_DOCUMENT_NEEDLES.some((n) => text.includes(n));
 }
 
 // Normalize free text for whole-word matching: lowercased, every run of
@@ -75,7 +126,13 @@ interface Indexes {
   byCode: Map<string, ConceptMatcher[]>;
   byCanonical: Map<string, ConceptMatcher[]>;
   // Precomputed ` phrase ` needles per matcher for whole-word name testing.
-  nameNeedles: { matcher: ConceptMatcher; needles: string[] }[];
+  // `needles` holds `names` — legal against any record; `eventNeedles` holds
+  // `eventNames`, legal only against an EVENT-shaped record (see EvidenceShape).
+  nameNeedles: {
+    matcher: ConceptMatcher;
+    needles: string[];
+    eventNeedles: string[];
+  }[];
 }
 
 let cached: Indexes | null = null;
@@ -104,26 +161,39 @@ function indexes(): Indexes {
     nameNeedles.push({
       matcher,
       needles: matcher.names.map((n) => normalizeMatchText(n)),
+      eventNeedles: matcher.eventNames.map((n) => normalizeMatchText(n)),
     });
   }
   cached = { byCode, byCanonical, nameNeedles };
   return cached;
 }
 
-// The catalog rule keys a single record satisfies, gated by `allow`. Order of
-// precedence is immaterial (all matches are unioned): exact code, exact canonical
-// biomarker name, then whole-word name synonym. Returns a de-duplicated list.
+// The catalog rule keys a single record satisfies, gated by `allow` and by `shape`.
+// Order of precedence is immaterial (all matches are unioned): exact code, exact
+// canonical biomarker name, then whole-word name synonym. Returns a de-duplicated list.
+//
+// `shape` defaults to "event", which is what every source was before #3025 admitted a
+// document category into the stream. The DEFAULT IS THE PERMISSIVE ONE, so the place
+// that must not forget to answer is `InferenceRecord`, where it is REQUIRED — a new
+// source that never declared its shape is a type error there rather than a silent
+// document reading a conversation's word as evidence.
 export function matchRuleKeys(
   rec: {
     code?: string | null;
     name?: string | null;
     canonicalName?: string | null;
+    shape?: EvidenceShape;
   },
   allow: PreventiveKind[]
 ): string[] {
   const idx = indexes();
   const allowed = new Set(allow);
   const keys = new Set<string>();
+  const shape: EvidenceShape = rec.shape ?? "event";
+
+  // A document that refuses its own subject is evidence of nothing, by any path — not
+  // by name, and not by a code or canonical name the same row happens to carry.
+  if (shape === "document" && documentTitleIsNegated(rec.name)) return [];
 
   const code = normalizeCode(rec.code);
   if (code) {
@@ -141,10 +211,14 @@ export function matchRuleKeys(
 
   const text = normalizeMatchText(rec.name);
   if (text.trim()) {
-    for (const { matcher, needles } of idx.nameNeedles) {
+    for (const { matcher, needles, eventNeedles } of idx.nameNeedles) {
       if (!allowed.has(matcher.kind)) continue;
       if (keys.has(matcher.ruleKey)) continue;
-      if (needles.some((n) => text.includes(n))) keys.add(matcher.ruleKey);
+      // The event-only needles are added to the haystack test ONLY for an event —
+      // a document title never reaches them (see EvidenceShape).
+      const usable =
+        shape === "event" ? [...needles, ...eventNeedles] : needles;
+      if (usable.some((n) => text.includes(n))) keys.add(matcher.ruleKey);
     }
   }
 

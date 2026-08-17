@@ -106,14 +106,15 @@ describe("medical-categories: single source of truth", () => {
     ]) {
       expect(categorySatisfiesScreening(c), c).toBe(false);
     }
-    // The inversion itself: a category string this table has never met is ADMITTED —
-    // the retired `biomarker` bucket un-backfilled rows still carry (#2885), and
-    // whatever an importer introduces next.
-    expect(categorySatisfiesScreening("biomarker")).toBe(true);
-    expect(categorySatisfiesScreening("cytogenomics")).toBe(true);
     // NULL is not a category: the legacy uncategorized residue (#2877) stays excluded.
     expect(categorySatisfiesScreening(null)).toBe(false);
     expect(categorySatisfiesScreening(undefined)).toBe(false);
+    // WHAT IS DELIBERATELY NOT ASSERTED HERE: that an unknown category STRING is
+    // admitted. It cannot be exercised by anything stored — `medical_records.category`
+    // carries a CHECK constraint and migration 20260814-medical-category-residue rebuilt
+    // the table without the retired `biomarker` bucket, mapping those rows to NULL. The
+    // protection is the TYPE exhaustiveness pinned by the test above; the runtime
+    // fallback is belt-and-braces over an argument type, not a property of the data.
   });
 
   it("nothing that is denied a result identity may satisfy a screening (#2318/#3025)", () => {

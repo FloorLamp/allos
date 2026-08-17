@@ -144,12 +144,19 @@ export function carriesResultIdentity(category: string): boolean {
 // the #2786 discipline. The `Record<MedicalCategory, …>` is what gives it teeth: a new
 // enum member that never answered this question is a TYPE error, not a silent drop.
 //
-// WHICH DIRECTION THIS MOVES A SAFETY SIGNAL. Admitting a category can only ever ADD
-// satisfactions, i.e. make a screening nudge QUIETER. That is deliberate and it is the
-// cheaper failure: an admitted category still has to clear the concept map's whole-word
-// name/code needles before it satisfies anything, whereas an excluded one silently nags
-// about a screening that is on file. The categories ruled out below are ruled out for a
-// reason about what the row IS, never to keep the signal loud.
+// WHICH DIRECTION THIS MOVES A SAFETY SIGNAL, stated carefully because the first draft
+// of this comment got it wrong. Admitting a category can only ever ADD satisfactions,
+// i.e. make a screening nudge QUIETER — and a quieter nudge is a MISSED SCREENING, which
+// is the expensive failure, not the cheap one. The draft called it cheap on the grounds
+// that "an admitted category still has to clear the concept map's whole-word needles",
+// and that is only a defence when the needles can tell a RESULT from a mention: admitting
+// `report` pointed those needles at DOCUMENT TITLES for the first time, and "Nutrition
+// Counseling Note" then satisfied depression and anxiety screening for a year. So the
+// admission is paid for on the other side of the gate too — `EvidenceShape` in
+// lib/preventive-inference.ts, which decides which needles a document title may be read
+// with, and the invented-date decline in lib/queries/upcoming/preventive.ts. The
+// categories ruled out below are ruled out for a reason about what the row IS, never to
+// keep the signal loud.
 export interface ScreeningResultRuling {
   // May a row in this category satisfy a preventive screening rule?
   admits: boolean;
@@ -205,14 +212,23 @@ export const SCREENING_RESULT_CATEGORIES: Record<
 
 // May a record in this category satisfy a preventive screening rule (#3025)?
 //
-// DENYLIST SEMANTICS, and the two edges are deliberate:
-//   • a category string this table does not know — the retired `biomarker` bucket that
-//     un-backfilled rows still carry (#2885) — is ADMITTED. That is the inversion: a
-//     category nobody has classified must be included and ruled out deliberately.
-//   • NULL is NOT a category. It is the legacy catch-all residue that still owes an
-//     explicit category decision (#2877, `getUncategorizedRecords`), and it is left
-//     excluded exactly as it was — widening the single largest uncurated population is
-//     not what this gate's inversion is for.
+// WHERE THE PROTECTION ACTUALLY LIVES: the `Record<MedicalCategory, …>` above. A new
+// enum member that never answered this question does not compile, which is what makes
+// "we decided against it" and "nobody looked" stay distinguishable at the only moment
+// anybody can act on the difference. That is the whole mechanism.
+//
+// THE UNKNOWN-STRING FALLBACK IS BELT-AND-BRACES, NOT THE MECHANISM, and an earlier
+// draft of this comment claimed otherwise. `medical_records.category` carries a CHECK
+// constraint, and migration 20260814-medical-category-residue rebuilt the table WITHOUT
+// the retired `biomarker` bucket, mapping the rows that still carried it to NULL. So no
+// stored row can present a category string this table has never met, and no importer can
+// invent one; the fallback is unreachable from the database and is kept only so this
+// function is total over its argument type.
+//
+// NULL is NOT a category. It is the legacy catch-all residue that still owes an explicit
+// category decision (#2877, `getUncategorizedRecords`), and it is left excluded exactly
+// as it was — widening the single largest uncurated population is not what this gate is
+// for.
 export function categorySatisfiesScreening(
   category: string | null | undefined
 ): boolean {

@@ -45,6 +45,27 @@ describe("preventive concept map", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  it("every matcher answers the EVENT-ONLY question, and only two say yes (#3025)", () => {
+    // `eventNames` is required by TYPE, so a new matcher that never considered it is a
+    // compile error rather than a document title silently gaining every needle. This
+    // pins WHICH matchers hold one, so moving a conversation word back into `names` —
+    // where it would meet a report's title again — has to be a deliberate edit here.
+    const withEventNames = PREVENTIVE_CONCEPT_MAP.filter(
+      (m) => m.eventNames.length > 0
+    ).map((m) => m.ruleKey);
+    expect(withEventNames.sort()).toEqual([
+      "anxiety_screening",
+      "depression_screening",
+    ]);
+    for (const m of PREVENTIVE_CONCEPT_MAP) {
+      // The two lists are disjoint: a needle in both would be document-visible anyway,
+      // which is the exact hole the split exists to close.
+      for (const n of m.eventNames) {
+        expect(m.names, `${m.ruleKey}: ${n}`).not.toContain(n);
+      }
+    }
+  });
+
   // Every SCREENING declares a `satisfiedBy` concept driving its per-class deep link
   // + CTA (#1083); a VISIT keeps the Book path (no satisfiedBy). The shape must match
   // the rule's evidence: an instrument names a real instrument + page, a vital/lab
@@ -288,6 +309,112 @@ describe("matchRuleKeys", () => {
 });
 
 // ---------------------------------------------------------------------------
+// EVENT vs DOCUMENT (#3025): which needles a record's `name` may be read with
+// ---------------------------------------------------------------------------
+describe("matchRuleKeys: the evidence SHAPE", () => {
+  it("a DOCUMENT title cannot reach a needle that names a conversation", () => {
+    // The reproduction. Admitting `report` (#3025) pointed the concept map at DOCUMENT
+    // TITLES for the first time, and the behavioural-health needles were written for the
+    // VISIT stream (#997) where "counseling" means a counseling visit. A dietitian's
+    // filed note then satisfied BOTH depression and anxiety screening for a year.
+    expect(
+      matchRuleKeys({ name: "Nutrition Counseling Note", shape: "document" }, [
+        "screening",
+      ])
+    ).toEqual([]);
+    // "Genetic Counseling Consultation" is the same word in another specialty.
+    expect(
+      matchRuleKeys(
+        { name: "Genetic Counseling Consultation", shape: "document" },
+        ["screening"]
+      )
+    ).toEqual([]);
+  });
+
+  it("the SAME text as an EVENT still satisfies both mental-health screenings (#997)", () => {
+    // The other direction, and the reason the split is a shape question rather than a
+    // deletion: a completed counseling VISIT is legitimate evidence and must keep
+    // working, so a person in active behavioural-health care is not also nagged.
+    expect(
+      matchRuleKeys({ name: "Counseling session", shape: "event" }, [
+        "screening",
+      ]).sort()
+    ).toEqual(["anxiety_screening", "depression_screening"]);
+    // And through the folded appointment-KIND text the mental_health kind contributes.
+    expect(
+      matchRuleKeys({ name: "Follow-up mental health visit", shape: "event" }, [
+        "screening",
+      ]).sort()
+    ).toEqual(["anxiety_screening", "depression_screening"]);
+  });
+
+  it("a DOCUMENT title still satisfies on RESULT-shaped evidence — the #3025 Pap", () => {
+    // What the issue was actually about: the document IS the result, and its name is
+    // the whole of the evidence.
+    expect(
+      matchRuleKeys(
+        { name: "Cytology, Gyn-PAP Test (AP)", shape: "document" },
+        ["screening"]
+      )
+    ).toEqual(["cervical_cancer"]);
+    expect(
+      matchRuleKeys(
+        { name: "Mammogram, Screening Bilateral", shape: "document" },
+        ["screening"]
+      )
+    ).toEqual(["mammography"]);
+    expect(
+      matchRuleKeys({ name: "Colonoscopy report", shape: "document" }, [
+        "screening",
+      ])
+    ).toEqual(["colorectal_cancer"]);
+  });
+
+  it("a DOCUMENT title that REFUSES its own subject is evidence of nothing", () => {
+    // "Screening mammogram declined by patient" is the record of a refusal. Reading it
+    // as the mammogram is a missed cancer screening.
+    for (const name of [
+      "Screening mammogram declined by patient",
+      "Pap test refused",
+      "Colonoscopy not performed",
+      "Mammogram cancelled — no show",
+    ]) {
+      expect(
+        matchRuleKeys({ name, shape: "document" }, ["screening"]),
+        name
+      ).toEqual([]);
+    }
+    // Whole-word, so a longer token carrying the letters is not a refusal.
+    expect(
+      matchRuleKeys(
+        { name: "Mammogram, screening — undeclined", shape: "document" },
+        ["screening"]
+      )
+    ).toEqual(["mammography"]);
+    // The guard covers every path, not just the name one: a refusal that also carries
+    // the canonical name of a result proves nothing either.
+    expect(
+      matchRuleKeys(
+        {
+          name: "Lipid panel declined",
+          canonicalName: "LDL Cholesterol",
+          shape: "document",
+        },
+        ["screening"]
+      )
+    ).toEqual([]);
+  });
+
+  it("defaults to `event`, which is what every source was before #3025", () => {
+    // The permissive default lives here, on the low-level matcher; `InferenceRecord`
+    // REQUIRES the field, so a new SOURCE cannot forget to answer.
+    expect(
+      matchRuleKeys({ name: "Counseling session" }, ["screening"]).sort()
+    ).toEqual(["anxiety_screening", "depression_screening"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Completion status
 // ---------------------------------------------------------------------------
 describe("isCompletedStatus", () => {
@@ -314,6 +441,7 @@ describe("inferPreventiveSatisfactions", () => {
         name: "Colonoscopy",
         date: "2022-03-01",
         allow: ["screening"],
+        shape: "event",
       },
       {
         code: null,
@@ -321,21 +449,30 @@ describe("inferPreventiveSatisfactions", () => {
         canonicalName: "LDL Cholesterol",
         date: "2025-01-15T09:30:00",
         allow: ["screening"],
+        shape: "document",
       },
       {
         code: null,
         name: "Annual physical",
         date: "2026-02-02",
         allow: ["visit"],
+        shape: "event",
       },
       // Undated → skipped (can't place on the timeline).
-      { code: "77067", name: "Mammogram", date: null, allow: ["screening"] },
+      {
+        code: "77067",
+        name: "Mammogram",
+        date: null,
+        allow: ["screening"],
+        shape: "event",
+      },
       // Unmatched → contributes nothing.
       {
         code: null,
         name: "Grocery list",
         date: "2026-01-01",
         allow: ["visit"],
+        shape: "event",
       },
     ];
 
@@ -365,6 +502,7 @@ describe("inferPreventiveSatisfactions", () => {
         name: "Screening colonoscopy",
         date: "2023-06-06",
         allow: ["screening", "visit"],
+        shape: "event",
       },
     ]);
     expect(sats).toEqual([
