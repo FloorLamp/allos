@@ -372,7 +372,7 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
   // sentence names the parameter, the rule and the CURRENT ceiling — so the next
   // time that ceiling moves, the sync event diagnoses itself.
   describe("a rejected request carries what the host said", () => {
-    function stubAirQualityFailure(status: number, body: string) {
+    function stubAirQualityFailure(status: number, body: BodyInit) {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
       vi.stubGlobal(
@@ -436,6 +436,84 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
     it("an empty body leaves the line exactly as it was", async () => {
       const res = await stubAirQualityFailure(400, "");
       expect(res.partial).toBe("air-quality fetch failed (400)");
+    });
+
+    // ── The raw body must not hand back the home location ───────────────────
+    //
+    // The request URI carries latitude/longitude. Open-Meteo's own JSON never
+    // echoes it, but nothing guarantees Open-Meteo is what answers: a proxy or
+    // captive portal in front of it replies with its own error page, and those
+    // quote the URI they could not forward. That text lands verbatim in
+    // integration_sync_events.details AND, because the pull tick spreads the
+    // runner's result into log.info, in the operator log on every hourly tick.
+    // Home location is PHI-adjacent and must never be written to any log
+    // (lib/settings/location.ts).
+    it("drops a URL a middlebox echoed back, keeping the rest of its sentence", async () => {
+      const res = await stubAirQualityFailure(
+        503,
+        "Squid error: unable to forward https://air-quality-api.open-meteo.com/v1/air-quality?latitude=40.7&longitude=-74&hourly=us_aqi to the origin"
+      );
+      expect(res.partial).toBe(
+        "air-quality fetch failed (503): Squid error: unable to forward to the origin"
+      );
+      expect(res.partial).not.toContain("40.7");
+      expect(res.partial).not.toContain("-74");
+    });
+
+    it("drops the coordinates even when the echo carries no scheme", async () => {
+      // A gateway that quotes only the path+query is the same leak with none of
+      // the URL syntax to match on.
+      const res = await stubAirQualityFailure(
+        502,
+        "Bad gateway while requesting /v1/air-quality?latitude=40.7&longitude=-74&hourly=us_aqi"
+      );
+      expect(res.partial).not.toContain("40.7");
+      expect(res.partial).not.toContain("-74");
+      expect(res.partial).toContain("Bad gateway while requesting");
+    });
+
+    it("still prefers the vendor's own `reason` over the body around it", async () => {
+      // The JSON path is deliberately untouched by the stripping above: the
+      // sentence #3007 needed is the whole point, and Open-Meteo echoes a
+      // parameter only when that parameter is invalid.
+      const res = await stubAirQualityFailure(
+        400,
+        JSON.stringify({
+          error: true,
+          reason: "Parameter 'end_date' is out of allowed range",
+          generationtime_ms: "z".repeat(400),
+        })
+      );
+      expect(res.partial).toBe(
+        "air-quality fetch failed (400): Parameter 'end_date' is out of allowed range"
+      );
+    });
+
+    it("reads only a bounded prefix of a huge error page", async () => {
+      // `res.text()` buffers the WHOLE body before anything is capped: a 64 MB
+      // page behind a 502 cost 64 MB of heap to produce 200 characters, on a path
+      // that read no body at all before this change. Bound the read, not just the
+      // stored string.
+      const CHUNK = "x".repeat(20_000);
+      const CHUNKS = 500; // ~10 MB if it is all pulled
+      let pulled = 0;
+      const encoder = new TextEncoder();
+      const huge = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (pulled >= CHUNKS) {
+            controller.close();
+            return;
+          }
+          pulled++;
+          controller.enqueue(encoder.encode(CHUNK));
+        },
+      });
+
+      const res = await stubAirQualityFailure(502, huge);
+      expect(res.partial).toMatch(/^air-quality fetch failed \(502\): x+$/);
+      expect(res.partial!.length).toBeLessThan(260);
+      // THE ASSERTION: the stream was abandoned, not drained.
+      expect(pulled).toBeLessThan(10);
     });
 
     it("the WEATHER half's rejection carries it too — that one fails the run", async () => {

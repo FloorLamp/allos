@@ -482,6 +482,55 @@ export async function openMeteoFetch(
 // sentence, short enough that a stray HTML error page can't fill a sync event.
 const REASON_MAX_CHARS = 200;
 
+// How much of a rejected response's body to READ. The cap above bounds what is
+// STORED; this one bounds what crosses into memory to produce it. `res.text()`
+// buffers the WHOLE body first, so a 64 MB error page behind a 502 cost 64 MB of
+// heap to yield 200 characters — on a path that read no body at all before #3007.
+// Well past any real vendor error body (Open-Meteo's is a couple of hundred bytes),
+// so the JSON parse below still sees a complete document.
+const REASON_MAX_READ_CHARS = 4_096;
+
+// Read at most REASON_MAX_READ_CHARS of a body and abandon the rest. Falls back to
+// text() only for a response with no stream at all (a synthesized one).
+async function readCappedBody(res: Response): Promise<string> {
+  const stream = res.body;
+  if (!stream) return (await res.text()).slice(0, REASON_MAX_READ_CHARS);
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    while (text.length < REASON_MAX_READ_CHARS) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    // Whether we stopped early or reached the end, nothing else wants this body.
+    void reader.cancel().catch(() => {});
+  }
+  return text.slice(0, REASON_MAX_READ_CHARS);
+}
+
+// The request URI carries the profile's home coordinates, and a rejected request's
+// text travels into integration_sync_events.details AND — because the pull tick
+// spreads each runner's result into log.info — into the operator log on every
+// hourly tick. Home location is PHI-adjacent and must NEVER be written to any log
+// (lib/settings/location.ts).
+//
+// Open-Meteo's own JSON never echoes the URI (it quotes a PARAMETER, and only when
+// that parameter is invalid), but Open-Meteo is not necessarily what answers: a
+// proxy or captive portal in front of it replies with its own error page, and those
+// quote the URI they could not forward. So the RAW-body fallback drops any URL and
+// any latitude/longitude parameter — including a scheme-less path+query echo, which
+// leaks the same coordinates with none of the URL syntax to match on. The rest of
+// the sentence survives, because "unable to forward to the origin" is still the
+// diagnosis the raw fallback exists to preserve.
+const LOCATION_IN_TEXT = /https?:\/\/\S+|[?&]?\b(?:latitude|longitude)=[^\s&]*/gi;
+
+function stripLocation(text: string): string {
+  return text.replace(LOCATION_IN_TEXT, " ").replace(/\s+/g, " ").trim();
+}
+
 // What the vendor SAID about a rejected request. Open-Meteo answers a bad request
 // with `{"error":true,"reason":"Parameter 'end_date' is out of allowed range from
 // 2013-01-01 to 2026-08-22"}` — one sentence that names the parameter, the rule and
@@ -489,11 +538,12 @@ const REASON_MAX_CHARS = 200;
 // only `air-quality fetch failed (400)` and the cause needed a hand-run curl. A
 // horizon that moves again should say so on its own.
 //
-// The URL is never included: it carries the profile's home coordinates.
+// The read is bounded (REASON_MAX_READ_CHARS) and the raw fallback is scrubbed of
+// the home location (stripLocation) — see both above.
 async function failureReason(res: Response): Promise<string | undefined> {
   let body: string;
   try {
-    body = (await res.text()).trim();
+    body = (await readCappedBody(res)).trim();
   } catch {
     return undefined; // a body that won't read is not worth failing over
   }
@@ -508,9 +558,9 @@ async function failureReason(res: Response): Promise<string | undefined> {
       return reason.trim().slice(0, REASON_MAX_CHARS);
   } catch {
     // Not JSON (a gateway's HTML page, say) — the raw body is still better than
-    // nothing, capped the same way.
+    // nothing, capped the same way and with the location stripped out of it.
   }
-  return body.slice(0, REASON_MAX_CHARS);
+  return stripLocation(body).slice(0, REASON_MAX_CHARS) || undefined;
 }
 
 // One spelling of "this request failed, and here is what the other end said".
