@@ -111,12 +111,17 @@ export const POST_WORKOUT_DISPATCH_DELAY_MS = 60_000;
 // something genuinely stuck, never on a slow-but-working channel.
 //
 // That derivation is ASSERTED, not merely written down: lib/__db_tests__/
-// post-workout-duplicates.test.ts imports all four and reds if this stops exceeding
-// the largest channel cap. Lower it below them and every real send is abandoned
-// mid-flight, putting the abandoned run and its successor back into the
-// read-then-act same-push race this queue exists to close — and no other spec
-// notices. Raise a channel cap past it and the same thing happens from the other
-// side.
+// post-workout-duplicates.test.ts imports all four and reds unless this is at least
+// TWICE the largest channel cap. Twice, not merely above: a dispatch is a message
+// build plus a Promise.all fan-out, not one call, so a deadline barely over one
+// cap cuts off a merely-slow send — and cutting off a slow send is how the duplicate
+// this queue tolerates stops being the pathological case and becomes the normal one.
+// The multiple is provisional, chosen for headroom rather than measured.
+//
+// Lower this below the caps and every real send is abandoned mid-flight, putting the
+// abandoned run and its successor back into the read-then-act same-push race this
+// queue exists to close — and no other spec notices. Raise a channel cap toward it
+// and the same thing happens from the other side.
 export const POST_WORKOUT_DISPATCH_TIMEOUT_MS = 120_000;
 
 type DispatchRunner = (profileId: number, activityId: number) => Promise<void>;

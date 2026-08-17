@@ -540,6 +540,11 @@ async function readCappedBody(res: Response): Promise<string> {
 // `home_lat = '999'` planted straight into profile_settings yields null and
 // runWeatherSync returns "no home location" before any fetch happens. The sentence
 // #3007 needed is the whole point of this fallback, so it travels intact.
+//
+// That is a DEPENDENCY, not an observation about the vendor. The JSON path is
+// trusted because a stored home cannot be out of range — not because Open-Meteo
+// never quotes a coordinate, which it does when the coordinate is invalid. If
+// normalizeHome ever loosens its range check, this decision has to be revisited.
 
 // One parameter, several spellings. Folding them to a single spelling BEFORE
 // matching is what keeps this from being three patterns that drift apart: a

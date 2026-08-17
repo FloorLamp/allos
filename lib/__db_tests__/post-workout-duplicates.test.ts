@@ -605,13 +605,26 @@ describe("carryPostWorkoutMarker", () => {
 // read-then-act same-push race this change exists to close.
 //
 // So the argument lives at the constants, and changing any ONE of them reds here.
+//
+// HEADROOM, not just clearance. A dispatch is a message build plus a Promise.all
+// fan-out across channels, not one call, so a deadline barely above one channel's
+// cap cuts off a merely-slow send — and cutting off a slow send is how the duplicate
+// this queue tolerates stops being the pathological case and becomes the normal one.
+// Hence 2×, and not `> slowest`, which 30_001 ms would satisfy.
+//
+// The MULTIPLE is provisional: chosen for headroom, not derived from a measurement.
+// It is here so that changing a cap meets an argument rather than a constant.
+const DISPATCH_DEADLINE_HEADROOM = 2;
+
 describe("the dispatch deadline clears every channel cap", () => {
-  it("is longer than the slowest single channel call can be", () => {
+  it("leaves room for a whole dispatch, not just one channel call", () => {
     const slowestChannel = Math.max(
       TELEGRAM_CALL_TIMEOUT_MS,
       HOME_ASSISTANT_CALL_TIMEOUT_MS,
       PUSH_SEND_TIMEOUT_MS
     );
-    expect(POST_WORKOUT_DISPATCH_TIMEOUT_MS).toBeGreaterThan(slowestChannel);
+    expect(POST_WORKOUT_DISPATCH_TIMEOUT_MS).toBeGreaterThanOrEqual(
+      slowestChannel * DISPATCH_DEADLINE_HEADROOM
+    );
   });
 });
