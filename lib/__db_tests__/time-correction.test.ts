@@ -666,7 +666,9 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     expect(bursts[0].label).toBe("Ride Ibuprofen");
     // The tap and the administration instant agree, so nothing claims a correction.
     expect(bursts[0].corrected).toBe(false);
-    expect(burstLabel(bursts[0], "Europe/Berlin")).toBe("Ride Ibuprofen 21:20");
+    expect(burstLabel(bursts[0], "Europe/Berlin", clockNow())).toBe(
+      "Ride Ibuprofen 21:20"
+    );
   });
 
   it("re-renders the dose row with the corrected instant, not the resolve-time one (#2206)", async () => {
@@ -692,7 +694,7 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     );
     const bursts = getDoseCorrectionBursts(pid, clockNow());
     expect(bursts[0].corrected).toBe(true);
-    expect(burstLabel(bursts[0], "Europe/Berlin")).toBe(
+    expect(burstLabel(bursts[0], "Europe/Berlin", clockNow())).toBe(
       "Echo Ibuprofen 20:20 (corrected)"
     );
 
@@ -987,18 +989,27 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     );
     const levelTwoKb = lastEditedKeyboard();
     const levelTwo = pickerTokens(levelTwoKb);
-    expect(levelTwo).toContain(`foodtimeat:${pid}:${anchor}:p:18:00`);
+    expect(levelTwo).toContain(
+      `foodtimeat:${pid}:${anchor}:p:2026-08-05:18:00`
+    );
     expect(levelTwo.filter((t) => t.includes(":p:"))).toHaveLength(24);
     // The buttons say which day they mean — the grid always crossed midnight and never
     // said so (#2206 applied to the day half).
     const label = (levelTwoKb as { text: string; callback_data?: string }[][])
       .flat()
-      .find((b) => b.callback_data === `foodtimeat:${pid}:${anchor}:p:18:00`);
+      .find(
+        (b) =>
+          b.callback_data === `foodtimeat:${pid}:${anchor}:p:2026-08-05:18:00`
+      );
     expect(label?.text).toBe("18:00 yest");
 
     // The write: the serving moves to 18:00 local yesterday, and its day counter with it.
     await handleCallbackQuery(
-      cq("5553010", `foodtimeat:${pid}:${anchor}:p:18:00`, levelTwoKb)
+      cq(
+        "5553010",
+        `foodtimeat:${pid}:${anchor}:p:2026-08-05:18:00`,
+        levelTwoKb
+      )
     );
     const [row] = foodEvents(pid);
     expect(row.occurred_at).toBe("2026-08-05T16:00:00Z");
@@ -1031,11 +1042,15 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     );
     const levelTwoKb = lastEditedKeyboard();
     expect(pickerTokens(levelTwoKb)).toContain(
-      `dosetimeat:${pid}:${anchor}:p:18:00`
+      `dosetimeat:${pid}:${anchor}:p:2026-08-05:18:00`
     );
 
     await handleCallbackQuery(
-      cq("5553011", `dosetimeat:${pid}:${anchor}:p:18:00`, levelTwoKb)
+      cq(
+        "5553011",
+        `dosetimeat:${pid}:${anchor}:p:2026-08-05:18:00`,
+        levelTwoKb
+      )
     );
     // The administration instant is yesterday evening; the audit stamp never moves.
     expect(doseLogs(pid)[0].occurredAt).toBe("2026-08-05T16:00:00Z");
@@ -1049,21 +1064,23 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     expect(armed).toBe("2026-08-05T16:00:00Z");
   });
 
-  it("a FORGED day marker is refused — the handler re-derives, it does not trust", async () => {
+  it("an hour the LEVEL did not offer is refused, and a malformed day marker parses to nothing", async () => {
+    // WHAT THIS ACTUALLY PROVES, named plainly. For an instant-keyed domain level two's
+    // offer set is the WHOLE previous day, so almost no `p:` hour is refusable on hour
+    // alone — the genuinely refusable cases are a rolled day (the test below), a
+    // DST-nonexistent hour, and a day-keyed burst filed elsewhere (#2875, already
+    // covered). These two are the guards in front of that: the level's own hour set, and
+    // the tail grammar.
     const pid = newProfile("Forger Fay");
     seedLoginTelegram(pid, "5553012");
-    // 21:30 local: level one covers the evening, so a `p:` token naming an hour on
-    // yesterday's day IS parseable and IS offered — the forgery has to be an hour the
-    // keyboard could not have rendered on that level.
     await tapFood(pid, "5553012", "berries", "2026-08-05T19:10:00Z");
     setNow(NOW_ISO);
     const anchor = foodEvents(pid)[0].id;
     const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
 
     answer.mockClear();
-    // 21:00 local TODAY is covered by the chips, so level one never offered it — and
-    // wearing a day marker does not make it offered on level two either, because level
-    // two's own set is yesterday's and this token claims today's grid.
+    // 21:00 local today is inside the chips' reach, so LEVEL ONE never offered it as a
+    // picker hour — and the handler re-derives that set rather than trusting the token.
     await handleCallbackQuery(
       cq("5553012", `foodtimeat:${pid}:${anchor}:21:00`, kb)
     );
@@ -1079,5 +1096,53 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
       cq("5553012", `foodtimeat:${pid}:${anchor}:q:18:00`, kb)
     );
     expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T19:10:00Z");
+  });
+
+  it("a `p:` token whose LOCAL DAY HAS ROLLED is refused — the 24-hour drift", async () => {
+    // THE OPEN QUESTION THIS ANSWERS, sized. Level two means "the day before now", so a
+    // token minted at 23:55 for 20:00 yesterday named 2026-08-04; tapped ten minutes
+    // later, past local midnight, a bare `p:` marker would have re-resolved onto
+    // 2026-08-05 — a FULL 24 HOURS from what the button said. `judgeStatedAt` cannot
+    // catch it, because the drift moves toward the present and the instant stays in the
+    // past. So the day is stamped into the token and COMPARED, never obeyed.
+    const pid = newProfile("Midnight Mo");
+    seedLoginTelegram(pid, "5553013");
+    // 23:55 local on 2026-08-05 (UTC+2), a burst tapped moments earlier.
+    await tapFood(pid, "5553013", "berries", "2026-08-05T21:50:00Z");
+    setNow("2026-08-05T21:55:00Z");
+    const anchor = foodEvents(pid)[0].id;
+    const kb = messageKeyboard(buildFoodNudge(pid, "Evening", today(pid))!);
+
+    editText.mockClear();
+    await handleCallbackQuery(
+      cq("5553013", `foodtimeat:${pid}:${anchor}:open`, kb)
+    );
+    const levelOneKb = lastEditedKeyboard();
+    editText.mockClear();
+    await handleCallbackQuery(
+      cq("5553013", `foodtimeat:${pid}:${anchor}:prev`, levelOneKb)
+    );
+    const levelTwoKb = lastEditedKeyboard();
+    const token = `foodtimeat:${pid}:${anchor}:p:2026-08-04:20:00`;
+    expect(pickerTokens(levelTwoKb)).toContain(token);
+
+    // Ten minutes later it is 00:05 on 2026-08-06 and the same button is tapped.
+    setNow("2026-08-05T22:05:00Z");
+    answer.mockClear();
+    await handleCallbackQuery(cq("5553013", token, levelTwoKb));
+    // Nothing is written: not the 24-hours-later instant, and not the named one either
+    // — what the keyboard offered is recomputed, and it no longer offers that day.
+    expect(foodEvents(pid)[0].occurred_at).toBe("2026-08-05T21:50:00Z");
+    expect(String(answer.mock.calls[0][1])).toContain("nothing was changed");
+
+    // And the freshly drawn keyboard offers the day it is now showing, so the user's
+    // way through is a re-opened picker rather than a dead end.
+    editText.mockClear();
+    await handleCallbackQuery(
+      cq("5553013", `foodtimeat:${pid}:${anchor}:prev`, levelTwoKb)
+    );
+    expect(pickerTokens(lastEditedKeyboard())).toContain(
+      `foodtimeat:${pid}:${anchor}:p:2026-08-05:20:00`
+    );
   });
 });

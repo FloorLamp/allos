@@ -473,7 +473,7 @@ function practiceCorrection(
         // stating the new value in exactly the interaction that produced it, leaving a
         // toast saying "Session time updated" above a body saying only that moving it
         // would change its day. What may be OFFERED is bounded; what is RECORDED is not.
-        correctionBodyStatement(bursts, tz),
+        correctionBodyStatement(bursts, tz, now),
     correctionOffScopeStatement(offScope, tz),
   ].filter((l): l is string => l != null);
   return { actions, statement: lines.length > 0 ? lines.join("\n") : null };

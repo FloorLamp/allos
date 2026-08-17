@@ -654,18 +654,27 @@ export function offeredHours(
 
 // True when `hhmm` is one of the hours this picker would offer for THIS burst on THIS
 // level right now. The handler's own guard: a forged or stale token naming an unoffered
-// hour — or an hour forged onto the wrong DAY — writes nothing rather than stamping an
-// arbitrary instant. It takes the burst because what is on offer is a question about the
-// burst as well as about the clock, and it takes the level because since #3010 it is a
-// question about the day as well.
+// hour — or an hour naming a DAY that is no longer level two's — writes nothing rather
+// than stamping an arbitrary instant. It takes the burst because what is on offer is a
+// question about the burst as well as about the clock, and since #3010 it takes the day
+// too, because that is a third thing the token can be wrong about.
+//
+// `levelDate` is the day a `p:` token NAMES, and it is compared, never obeyed: level two
+// is always "the day before now", so a token minted before local midnight names a day
+// that is no longer on offer, and accepting it would stamp an instant a full 24 hours
+// later than the button said. Refusing it is the same rule the hour set already obeys —
+// what the handler accepts is what the keyboard offered, RECOMPUTED.
 export function isOfferedHour(
   hhmm: string,
   burst: CorrectionBurst,
   now: Date,
   tz: string,
   dayKeyed = false,
-  level: CorrectionDay = "today"
+  level: CorrectionDay = "today",
+  levelDate: string | null = null
 ): boolean {
+  if (level === "prev" && levelDate !== correctionDayDate("prev", now, tz))
+    return false;
   return offeredHours(burst, now, tz, dayKeyed, level).includes(hhmm);
 }
 
@@ -687,17 +696,42 @@ function hhmmOf(iso: string, tz: string): string {
 // over the ledger, so every rebuild — a tap, the hourly sweep — re-reads the corrected
 // instant and re-renders it. The marker only ever REDUCES what the row claims; it adds no
 // button and no new assertion.
-export function burstLabel(burst: CorrectionBurst, tz: string): string {
+// AND IT STATES THE DAY WHEN THE DAY IS NOT TODAY'S (#3010). A burst corrected to 18:00
+// yesterday rendered `Leafy greens 18:00 (corrected)`, which reads as this evening — the
+// half of the result that was left unstated. It was already possible in the hour after
+// local midnight; the day level makes it the NORMAL case, so the marker is not optional
+// any more. Same vocabulary as the picker's own buttons, from the same helper.
+export function burstLabel(
+  burst: CorrectionBurst,
+  tz: string,
+  now: Date
+): string {
   const mark = burst.corrected ? " (corrected)" : "";
+  const todayLocal = zonedDateParts(tz, now).date;
+  // Taken against the burst's LAST instant, which is the one both spellings below end
+  // with — so the marker always qualifies the time immediately to its left.
+  const day = localDayMarker(
+    zonedDateParts(tz, new Date(burst.atEndAt)).date,
+    todayLocal
+  );
   if (burst.count === 1 && burst.label)
-    return `${burst.label} ${hhmmOf(burst.atStartAt, tz)}${mark}`;
+    return `${burst.label} ${hhmmOf(burst.atStartAt, tz)}${day}${mark}`;
   const start = hhmmOf(burst.atStartAt, tz);
   const end = hhmmOf(burst.atEndAt, tz);
   const span =
     start === end
       ? `×${burst.count} ${start}`
       : `×${burst.count} ${start}–${end}`;
-  return `${span}${mark}`;
+  return `${span}${day}${mark}`;
+}
+
+// The day half of a stated local time, when it is not today's (#3010/#2206 — a rendered
+// value states its whole result). Empty for today, ` yest` for the day before, and the
+// bare month-day for anything further back, so the marker can never be WRONG about which
+// day it means even where a domain's correction reach exceeds one day.
+export function localDayMarker(day: string, todayLocal: string): string {
+  if (day === todayLocal) return "";
+  return day === shiftDateStr(todayLocal, -1) ? " yest" : ` ${day.slice(5)}`;
 }
 
 // The picker's own title subject — the same naming, spelled for a sentence. No marker:
@@ -739,9 +773,7 @@ export function pickerHourLabel(
 ): string {
   const at = offeredHourInstant(hhmm, level, now, tz);
   if (!at) return hhmm;
-  return zonedDateParts(tz, at).date === zonedDateParts(tz, now).date
-    ? hhmm
-    : `${hhmm} yest`;
+  return `${hhmm}${localDayMarker(zonedDateParts(tz, at).date, zonedDateParts(tz, now).date)}`;
 }
 
 // The label on the step down to level two.
@@ -752,7 +784,7 @@ export const PICKER_PREV_DAY_LABEL = "Yesterday →";
 // Both domains mint the same two shapes, differing only in prefix:
 //
 //   <chip>:<profileId>:<fromRowId>:<minutesBack>
-//   <at>:<profileId>:<fromRowId>:<open|prev|back|HH:MM|p:HH:MM>
+//   <at>:<profileId>:<fromRowId>:<open|prev|back|HH:MM|p:YYYY-MM-DD:HH:MM>
 //
 // Ids only, never names (#233), and well under Telegram's 64-byte callback cap. The
 // `open`/`back` sentinels ride the absolute-time prefix rather than earning two more
@@ -762,19 +794,31 @@ export const PICKER_PREV_DAY_LABEL = "Yesterday →";
 // step folded in, because unlike a severity the picker has no state of its own.
 //
 // THE DAY RIDES THE TAIL (#3010). The tail is REJOINED rather than read positionally
-// (an `at` tail is itself "HH:MM"), so a day marker is one more colon-separated piece
-// in front of it: `p:20:00` is 20:00 on the previous day, a bare `20:00` is level one.
+// (an `at` tail is itself "HH:MM"), so the day marker is more colon-separated pieces in
+// front of it: `p:2026-07-14:20:00` is 20:00 on that day, a bare `20:00` is level one.
 // `prev` is the step down to level two, the day dimension's own `open`.
 //
-// What the token asserts is NOT what the handler trusts: `isOfferedHour` re-derives the
-// day-qualified offer set at tap time, so a forged `p:` on an unoffered day writes
-// nothing. That property is this family's security posture and the day level inherits it
-// rather than getting an exemption.
+// THE DAY IS SPELLED OUT, and a first draft's bare `p:` is the reason. Level two means
+// "the day before NOW", so a bare marker is re-resolved against the clock at tap time —
+// and a token minted at 23:55 for 20:00 yesterday resolved, when tapped ten minutes
+// later, to 20:00 a FULL 24 HOURS ON. `judgeStatedAt` cannot catch it either: the drift
+// moves TOWARD the present, so the instant it produces is still in the past. Level one
+// does not have the bug, because THE DAY RULE re-dates relative to the same `now` the
+// label was drawn against.
+//
+// What the token asserts is still NOT what the handler trusts. The stamped day is not
+// obeyed — it is COMPARED: `isOfferedHour` re-derives which day level two is showing
+// right now and refuses a token naming any other, exactly as it re-derives which hours.
+// A forged day is refused by the same call and for the same reason as a forged hour.
 export type CorrectionPickerStep =
   | { kind: "open" }
   | { kind: "back" }
   | { kind: "prev" }
-  | { kind: "at"; hhmm: string; day: CorrectionDay };
+  // Level one carries no day: THE DAY RULE resolves it from `now`, which is also what
+  // the button was labelled against.
+  | { kind: "at"; hhmm: string; day: "today"; date?: undefined }
+  // Level two names the day it was drawn for, as a profile-local YYYY-MM-DD.
+  | { kind: "at"; hhmm: string; day: "prev"; date: string };
 
 export interface CorrectionChipToken {
   profileId: number;
@@ -806,14 +850,15 @@ export function correctionAtToken(
   const tail =
     step.kind === "at"
       ? step.day === "prev"
-        ? `${PREV_DAY_TAG}:${step.hhmm}`
+        ? `${PREV_DAY_TAG}:${step.date}:${step.hhmm}`
         : step.hhmm
       : step.kind;
   return `${prefix}:${profileId}:${fromId}:${tail}`;
 }
 
-// The day marker in the wire tail. One character, because the callback budget is 64
-// bytes and the burst id already spends some of it.
+// The day marker in the wire tail. One character in front of a spelled-out date, which
+// together with the ids and the hour is ~40 bytes — well inside Telegram's 64-byte
+// callback budget, and the clarity is worth the ten characters.
 const PREV_DAY_TAG = "p";
 
 function parseIds(
@@ -867,6 +912,9 @@ export function parseCorrectionAtToken(
 }
 
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const PREV_TAIL_RE = new RegExp(
+  `^${PREV_DAY_TAG}:(\\d{4}-\\d{2}-\\d{2}):(([01]\\d|2[0-3]):[0-5]\\d)$`
+);
 
 // The tail's own grammar. Shape only — WHICH (day, hour) pairs are legal is re-derived
 // from the clock and the burst by `isOfferedHour`, never read off the token.
@@ -875,11 +923,8 @@ function parseStep(tail: string): CorrectionPickerStep | null {
   if (tail === "back") return { kind: "back" };
   if (tail === "prev") return { kind: "prev" };
   if (HHMM_RE.test(tail)) return { kind: "at", hhmm: tail, day: "today" };
-  const prev = tail.startsWith(`${PREV_DAY_TAG}:`)
-    ? tail.slice(PREV_DAY_TAG.length + 1)
-    : null;
-  if (prev && HHMM_RE.test(prev))
-    return { kind: "at", hhmm: prev, day: "prev" };
+  const prev = PREV_TAIL_RE.exec(tail);
+  if (prev) return { kind: "at", hhmm: prev[2], day: "prev", date: prev[1] };
   return null;
 }
 

@@ -484,7 +484,11 @@ export function renderFoodNudge(
       // the stored time — the row's label states it too, but Telegram truncates buttons
       // and a clipped `(cor…` is not a statement. Uncorrected bursts add nothing.
       corrections
-        ? correctionBodyStatement(corrections.bursts, corrections.tz)
+        ? correctionBodyStatement(
+            corrections.bursts,
+            corrections.tz,
+            corrections.now
+          )
         : null,
     ],
     "\n"

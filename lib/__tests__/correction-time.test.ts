@@ -13,6 +13,7 @@ import {
   chipOffers,
   chipTarget,
   correctionAtToken,
+  correctionDayDate,
   offeredHourInstant,
   pickerHourLabel,
   pickerPrevDayHourOptions,
@@ -113,7 +114,9 @@ describe("collapseBursts — burst-mates share one error, so they share one row"
   it("names a lone tap by what it was and a burst by its span", () => {
     const [lone] = collapseBursts([tap(1, "2026-08-05T18:11:00Z", "Salmon")]);
     expect(lone.label).toBe("Salmon");
-    expect(burstLabel(lone, TZ)).toBe("Salmon 20:11");
+    expect(burstLabel(lone, TZ, new Date("2026-08-05T19:30:00Z"))).toBe(
+      "Salmon 20:11"
+    );
 
     const [many] = collapseBursts([
       tap(1, "2026-08-05T19:02:00Z", "Salmon"),
@@ -121,7 +124,9 @@ describe("collapseBursts — burst-mates share one error, so they share one row"
     ]);
     // Four groups will not fit on a button; the span is what identifies the burst.
     expect(many.label).toBe("");
-    expect(burstLabel(many, TZ)).toBe("×2 21:02–21:08");
+    expect(burstLabel(many, TZ, new Date("2026-08-05T19:30:00Z"))).toBe(
+      "×2 21:02–21:08"
+    );
     expect(burstSubject(many, TZ)).toBe("these 2 (21:02–21:08)");
   });
 });
@@ -234,7 +239,7 @@ describe("chips — the label IS the stored value (#2206)", () => {
     // fall-back and 02:10 CET is the same wall time as 02:10 CEST an hour earlier. So
     // "−1h" is a claim the clock on the wall flatly contradicts, and only the absolute
     // label lets the user see which 02:10 they are choosing.
-    expect(burstLabel(burst, TZ)).toBe("Salmon 02:10");
+    expect(burstLabel(burst, TZ, now)).toBe("Salmon 02:10");
   });
 
   it("composes: a second tap counts back from the STORED instant, not the tap", () => {
@@ -437,13 +442,25 @@ describe("tokens — ids only, and the shapes both domains share", () => {
       fromId: 412,
       step: { kind: "prev" },
     });
-    expect(parseCorrectionAtToken(`${at}:3:412:p:19:00`, at)).toEqual({
+    expect(
+      parseCorrectionAtToken(`${at}:3:412:p:2026-08-05:19:00`, at)
+    ).toEqual({
       profileId: 3,
       fromId: 412,
-      step: { kind: "at", hhmm: "19:00", day: "prev" },
+      step: {
+        kind: "at",
+        hhmm: "19:00",
+        day: "prev",
+        date: "2026-08-05",
+      },
     });
     expect(parseCorrectionAtToken(`${at}:3:412:29:00`, at)).toBeNull();
-    expect(parseCorrectionAtToken(`${at}:3:412:p:29:00`, at)).toBeNull();
+    expect(
+      parseCorrectionAtToken(`${at}:3:412:p:2026-08-05:29:00`, at)
+    ).toBeNull();
+    // A day marker with no day is not a shape this grammar knows (#3010): the day is
+    // spelled out so it can be COMPARED at tap time rather than re-resolved.
+    expect(parseCorrectionAtToken(`${at}:3:412:p:19:00`, at)).toBeNull();
     expect(parseCorrectionAtToken(`${at}:3:412:q:19:00`, at)).toBeNull();
     expect(parseCorrectionAtToken(`${at}:3:0:19:00`, at)).toBeNull();
   });
@@ -673,7 +690,7 @@ describe("correctionBodyStatement (#2264)", () => {
 
   it("says nothing while no burst is corrected — today's copy stands", () => {
     const bursts = correctionBursts([tap(1, "2026-08-05T19:02:00Z")], NOW);
-    expect(correctionBodyStatement(bursts, TZ)).toBeNull();
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBeNull();
   });
 
   it("names the stored instant of a corrected lone tap, via burstLabel", () => {
@@ -681,10 +698,10 @@ describe("correctionBodyStatement (#2264)", () => {
       [corrected(1, "2026-08-05T19:02:00Z", "2026-08-05T18:02:00Z", "Salmon")],
       NOW
     );
-    const statement = correctionBodyStatement(bursts, TZ);
+    const statement = correctionBodyStatement(bursts, TZ, NOW);
     expect(statement).toBe("🕐 Recorded: Salmon 20:02 (corrected)");
     // One computation: the sentence embeds exactly what the label button states.
-    expect(statement).toContain(burstLabel(bursts[0], TZ));
+    expect(statement).toContain(burstLabel(bursts[0], TZ, NOW));
   });
 
   it("covers the multi-burst case and skips the uncorrected sibling", () => {
@@ -697,7 +714,7 @@ describe("correctionBodyStatement (#2264)", () => {
       NOW
     );
     expect(bursts).toHaveLength(2);
-    expect(correctionBodyStatement(bursts, TZ)).toBe(
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBe(
       "🕐 Recorded: Salmon 19:50 (corrected)"
     );
   });
@@ -711,8 +728,52 @@ describe("correctionBodyStatement (#2264)", () => {
       NOW
     );
     expect(bursts).toHaveLength(MAX_CORRECTION_ROWS);
-    expect(correctionBodyStatement(bursts, TZ)).toBe(
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBe(
       "🕐 Recorded: Nuts 20:45 (corrected) · Salmon 19:50 (corrected)"
+    );
+  });
+
+  it("states the DAY when the corrected instant is not today's (#3010)", () => {
+    // A burst corrected to 18:00 YESTERDAY read `Leafy greens 18:00 (corrected)` on both
+    // surfaces, which is this evening to anyone reading it. The day level makes a
+    // day-crossing correction the normal case rather than a post-midnight edge, so the
+    // half of the result that was unstated has to be stated (#2206).
+    const bursts = correctionBursts(
+      [
+        corrected(
+          1,
+          "2026-08-05T19:02:00Z",
+          "2026-08-04T16:00:00Z",
+          "Leafy greens"
+        ),
+      ],
+      NOW
+    );
+    expect(burstLabel(bursts[0], TZ, NOW)).toBe(
+      "Leafy greens 18:00 yest (corrected)"
+    );
+    // And the #2264 statement of record says it too, from the same computation.
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBe(
+      "🕐 Recorded: Leafy greens 18:00 yest (corrected)"
+    );
+  });
+
+  it("marks a day further back by its date rather than calling it yesterday", () => {
+    // A domain whose reach exceeds one day (a dose's `occurred_at` can move as much as
+    // 47h59m back) must not be told "yest" about the day before that.
+    const bursts = correctionBursts(
+      [
+        corrected(
+          1,
+          "2026-08-05T19:02:00Z",
+          "2026-08-03T16:00:00Z",
+          "Ibuprofen"
+        ),
+      ],
+      NOW
+    );
+    expect(burstLabel(bursts[0], TZ, NOW)).toBe(
+      "Ibuprofen 18:00 08-03 (corrected)"
     );
   });
 
@@ -730,8 +791,8 @@ describe("correctionBodyStatement (#2264)", () => {
       ],
       NOW
     );
-    expect(correctionBodyStatement(bursts, TZ)).toBe(
-      `🕐 Recorded: ${burstLabel(bursts[0], TZ)}`
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBe(
+      `🕐 Recorded: ${burstLabel(bursts[0], TZ, NOW)}`
     );
   });
 });
@@ -1091,21 +1152,91 @@ describe("the picker's day level (#3010)", () => {
       kind: "at",
       hhmm: "18:00",
       day: "prev",
+      date: "2026-08-05",
     });
-    expect(token).toBe(`${at}:3:41:p:18:00`);
+    expect(token).toBe(`${at}:3:41:p:2026-08-05:18:00`);
     expect(parseCorrectionAtToken(token, at)).toEqual({
       profileId: 3,
       fromId: 41,
-      step: { kind: "at", hhmm: "18:00", day: "prev" },
+      step: { kind: "at", hhmm: "18:00", day: "prev", date: "2026-08-05" },
     });
     // Still inside Telegram's 64-byte callback budget at realistic ids.
     expect(
-      Buffer.byteLength(`${at}:999999:99999999:p:18:00`, "utf8")
+      Buffer.byteLength(`${at}:999999:99999999:p:2026-08-05:18:00`, "utf8")
     ).toBeLessThanOrEqual(64);
+    // A day marker with no date is not a shape this grammar knows.
+    expect(parseCorrectionAtToken(`${at}:3:41:p:18:00`, at)).toBeNull();
+    expect(
+      parseCorrectionAtToken(`${at}:3:41:p:2026-8-5:18:00`, at)
+    ).toBeNull();
+  });
+
+  it("a `p:` token whose LOCAL DAY HAS ROLLED is refused — the 24-hour drift (#3010)", () => {
+    // Level two means "the day before now". A token minted at 23:55 for 20:00 yesterday
+    // named 2026-08-04; ten minutes later it is a new local day, and a marker carrying
+    // no date would re-resolve onto 2026-08-05 — a FULL 24 HOURS on, in the PAST, so
+    // `judgeStatedAt`'s no-future refusal cannot catch it.
+    const beforeMidnight = new Date("2026-08-05T21:55:00Z"); // 23:55 local
+    const afterMidnight = new Date("2026-08-05T22:05:00Z"); // 00:05 local, next day
+    const lateBurst = collapseBursts([
+      {
+        id: 41,
+        tapAt: "2026-08-05T21:50:00Z",
+        localDay: "2026-08-05",
+        label: "Berries",
+      },
+    ])[0];
+
+    // The instants the same wall time resolves to on either side of midnight: exactly
+    // 24 hours apart, which is the size of the drift.
+    const named = offeredHourInstant("20:00", "prev", beforeMidnight, TZ)!;
+    const rolled = offeredHourInstant("20:00", "prev", afterMidnight, TZ)!;
+    expect(rolled.getTime() - named.getTime()).toBe(24 * 60 * 60 * 1000);
+    expect(rolled.getTime()).toBeLessThan(afterMidnight.getTime());
+
+    // Offered when the token was minted…
+    expect(
+      isOfferedHour(
+        "20:00",
+        lateBurst,
+        beforeMidnight,
+        TZ,
+        false,
+        "prev",
+        "2026-08-04"
+      )
+    ).toBe(true);
+    // …and refused ten minutes later, because level two is no longer showing that day.
+    expect(
+      isOfferedHour(
+        "20:00",
+        lateBurst,
+        afterMidnight,
+        TZ,
+        false,
+        "prev",
+        "2026-08-04"
+      )
+    ).toBe(false);
+    // The day it IS showing is accepted, so the refusal is about the roll and not about
+    // the hour.
+    expect(
+      isOfferedHour(
+        "20:00",
+        lateBurst,
+        afterMidnight,
+        TZ,
+        false,
+        "prev",
+        "2026-08-05"
+      )
+    ).toBe(true);
   });
 
   it("the handler admits exactly the day-qualified set the keyboard rendered", () => {
-    // Every rendered button, re-derived the way the handler re-derives it.
+    // Every rendered button, re-derived the way the handler re-derives it — including
+    // the day each level-two button was stamped with.
+    const prevDate = correctionDayDate("prev", MORNING, TZ);
     for (const level of ["today", "prev"] as const) {
       for (const hhmm of offeredHours(
         morningBurst,
@@ -1115,18 +1246,26 @@ describe("the picker's day level (#3010)", () => {
         level
       )) {
         expect(
-          isOfferedHour(hhmm, morningBurst, MORNING, TZ, false, level),
+          isOfferedHour(
+            hhmm,
+            morningBurst,
+            MORNING,
+            TZ,
+            false,
+            level,
+            level === "prev" ? prevDate : null
+          ),
           `${level} ${hhmm}`
         ).toBe(true);
       }
     }
-    // A FORGED DAY on an hour that is legal on the other level is refused: 07:00 is in
-    // the future today (so level one never offered it) and legal yesterday.
+    // An hour legal on the OTHER level is refused on this one: 07:00 is in the future
+    // today (so level one never offered it) and legal yesterday.
     expect(isOfferedHour("07:00", morningBurst, MORNING, TZ, false)).toBe(
       false
     );
     expect(
-      isOfferedHour("07:00", morningBurst, MORNING, TZ, false, "prev")
+      isOfferedHour("07:00", morningBurst, MORNING, TZ, false, "prev", prevDate)
     ).toBe(true);
     // And a day marker cannot smuggle an hour past the FUTURE bound: level two is a
     // complete past day, so there is no hour it can reach that has not happened.

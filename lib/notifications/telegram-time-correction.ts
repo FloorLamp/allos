@@ -301,7 +301,12 @@ export async function handleFoodTimeAt(
     r.now,
     r.tz,
     FOOD_TIME_PREFIXES.dayKeyed,
-    token.step.day
+    token.step.day,
+    // The day the token NAMES, compared against the day level two is showing now — a
+    // `p:` token minted before local midnight names a day that has rolled, and
+    // resolving it against the new clock would stamp an instant 24 hours later than
+    // the button said (#3010).
+    token.step.date ?? null
   )
     ? offeredHourInstant(hhmm, token.step.day, r.now, r.tz)
     : null;
@@ -411,7 +416,7 @@ async function rebuildDose(
   // that was tapped — and once the burst is corrected, the BODY states the stored time
   // (#2264 bug 1) from the same computation every other dose render uses.
   const { actions, bursts } = doseCorrectionParts(r, picker, level);
-  const statement = correctionBodyStatement(bursts, r.tz);
+  const statement = correctionBodyStatement(bursts, r.tz, r.now);
   await rebuildMessage(r.profileId, r.chatId, r.messageId, {
     ...rebuilt,
     ...(statement ? { body: `${plainBody(rebuilt.body)}\n${statement}` } : {}),
@@ -534,7 +539,12 @@ export async function handleDoseTimeAt(
     r.now,
     r.tz,
     DOSE_TIME_PREFIXES.dayKeyed,
-    token.step.day
+    token.step.day,
+    // The day the token NAMES, compared against the day level two is showing now — a
+    // `p:` token minted before local midnight names a day that has rolled, and
+    // resolving it against the new clock would stamp an instant 24 hours later than
+    // the button said (#3010).
+    token.step.date ?? null
   )
     ? offeredHourInstant(hhmm, token.step.day, r.now, r.tz)
     : null;
@@ -702,7 +712,12 @@ export async function handlePracticeTimeAt(
     r.now,
     r.tz,
     PRACTICE_TIME_PREFIXES.dayKeyed,
-    token.step.day
+    token.step.day,
+    // The day the token NAMES, compared against the day level two is showing now — a
+    // `p:` token minted before local midnight names a day that has rolled, and
+    // resolving it against the new clock would stamp an instant 24 hours later than
+    // the button said (#3010).
+    token.step.date ?? null
   )
     ? offeredHourInstant(hhmm, token.step.day, r.now, r.tz)
     : null;

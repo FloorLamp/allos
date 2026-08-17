@@ -47,6 +47,7 @@ import {
   chipOffers,
   correctionAtToken,
   correctionChipToken,
+  correctionDayDate,
   offeredHours,
   pickerHourLabel,
   PICKER_PREV_DAY_LABEL,
@@ -173,7 +174,7 @@ export function correctionActions(
   for (const burst of correctableBursts(prefixes, bursts, now, tz).shown) {
     const row = `${prefixes.chip}-${burst.fromId}`;
     out.push({
-      label: `${GLYPH.eventTime} ${burstLabel(burst, tz)}`,
+      label: `${GLYPH.eventTime} ${burstLabel(burst, tz, now)}`,
       data: correctionAtToken(prefixes.at, profileId, burst.fromId, {
         kind: "open",
       }),
@@ -214,15 +215,23 @@ export function correctionPickerActions(
   level: CorrectionDay = "today"
 ): NotificationAction[] {
   const hours = offeredHours(burst, now, tz, prefixes.dayKeyed, level);
+  // The day level two is showing, STAMPED INTO EVERY TOKEN IT MINTS (#3010). Level two
+  // means "the day before now", so a token that only said `p:` would re-resolve against
+  // a rolled clock and land 24 hours on; the handler compares this against the day it
+  // re-derives at tap time and refuses anything else.
+  const levelDate = correctionDayDate(level, now, tz);
   const out: NotificationAction[] = hours.map((hhmm, i) => ({
     // Each button states the DAY half of its result too (#3010/#2206) — the grid has
     // always crossed midnight and never said so.
     label: pickerHourLabel(hhmm, level, now, tz),
-    data: correctionAtToken(prefixes.at, profileId, burst.fromId, {
-      kind: "at",
-      hhmm,
-      day: level,
-    }),
+    data: correctionAtToken(
+      prefixes.at,
+      profileId,
+      burst.fromId,
+      level === "prev"
+        ? { kind: "at", hhmm, day: "prev", date: levelDate }
+        : { kind: "at", hhmm, day: "today" }
+    ),
     row: `pick${Math.floor(i / 3)}`,
   }));
   // THE DAY LEVEL (#3010). Level one carries the step down to yesterday, and it is drawn
@@ -267,15 +276,21 @@ export function correctionPickerActions(
 // and covering the multi-burst case (MAX_CORRECTION_ROWS = 2, joined on one line). The
 // "(corrected)" marker rides here by design: it belongs on the statement of a value, not
 // on a button (see burstSubject's note in lib/correction-time.ts).
+//
+// `now` reaches it for the DAY half of that value (#3010): "Recorded: Leafy greens 18:00"
+// about yesterday evening reads as this evening, and the day level makes a day-crossing
+// correction the normal case rather than a post-midnight edge. `burstLabel` owns the
+// marker, so the button and the sentence still cannot disagree.
 export function correctionBodyStatement(
   bursts: readonly CorrectionBurst[],
-  tz: string
+  tz: string,
+  now: Date
 ): string | null {
   const corrected = bursts.filter((b) => b.corrected);
   if (corrected.length === 0) return null;
   return formatMessageLine({
     glyph: GLYPH.eventTime,
-    head: `Recorded: ${corrected.map((b) => burstLabel(b, tz)).join(" · ")}`,
+    head: `Recorded: ${corrected.map((b) => burstLabel(b, tz, now)).join(" · ")}`,
   });
 }
 

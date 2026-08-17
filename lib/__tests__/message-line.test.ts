@@ -324,7 +324,7 @@ const ALLOW: { module: string; includes: string; why: string }[] = [
   },
   {
     module: "lib/notifications/correction-rows.ts",
-    includes: 'corrected.map((b) => burstLabel(b, tz)).join(" ',
+    includes: 'corrected.map((b) => burstLabel(b, tz, now)).join(" ',
     why: "A LIST of the corrected bursts, not qualifiers of a head: two bursts are two coequal statements of record, neither qualifying the other. The line they sit in ('🕐 Recorded: …') is itself composed through formatMessageLine, which owns its punctuation.",
   },
   {

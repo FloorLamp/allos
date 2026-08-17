@@ -127,7 +127,7 @@ export function withDoseCorrections(
   // The statement of record (#2264 bug 1): a corrected burst's stored time is stated in
   // the BODY — the label button states it too, but Telegram truncates buttons. One
   // computation with the food side (correctionBodyStatement over burstLabel).
-  const statement = correctionBodyStatement(bursts, tz);
+  const statement = correctionBodyStatement(bursts, tz, now);
   const lines = [
     plainBody(message.body),
     ...(open
