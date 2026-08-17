@@ -31,6 +31,11 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
 // RESETS them (Morning back to Auto — profile 1's default, digest off, sleep off)
 // so the shared fixture is left as found.
 test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
+  // This file owns one global scheduler-cadence setting. Its second test changes
+  // that value to five minutes and restores it; running the first test beside it
+  // makes 09:15 align with the temporary grid and removes the warning under test.
+  test.describe.configure({ mode: "serial" });
+
   test("Auto option, minute-precise manual time + sleep-summary opt-in round-trip", async ({
     page,
   }) => {
