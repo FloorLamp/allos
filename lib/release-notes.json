@@ -17,15 +17,9 @@
         },
         {
           "pr": 3048,
-          "title": "Air quality and pollen finally arrive — so an item you paused on high pollen or poor air quality will now be held",
+          "title": "Air quality and pollen arrive — so an item paused on high pollen is now held — and one workout sends one message",
           "kind": "fix",
-          "issues": [3007]
-        },
-        {
-          "pr": 3048,
-          "title": "One workout no longer produces two post-workout messages",
-          "kind": "fix",
-          "issues": [3021]
+          "issues": [3007, 3021]
         },
         {
           "pr": 3054,
