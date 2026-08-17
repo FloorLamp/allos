@@ -409,16 +409,10 @@ describe("one finding, one episode key (constraint 5)", () => {
 // that raises a real suggestion; asserting it against a hand-built action list would
 // only prove the test's own arithmetic.
 describe("the digest keyboard rebuild keeps the time exits (#2890)", () => {
-  const EXITS = [
-    "⏳ As soon as it’s ready",
-    "🕘 Use 07:40",
-    "🔕 No thanks",
-  ];
+  const EXITS = ["⏳ As soon as it’s ready", "🕘 Use 07:40", "🔕 No thanks"];
 
   function pointerInAnotherSlot(profileId: number, chat: string): void {
-    const hour = Number(
-      zonedDateParts(TZ, new Date()).hhmm.slice(0, 2)
-    );
+    const hour = Number(zonedDateParts(TZ, new Date()).hhmm.slice(0, 2));
     setDigestTailPointer(profileId, {
       chatId: chat,
       messageId: 7374,

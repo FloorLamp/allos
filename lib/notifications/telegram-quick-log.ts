@@ -1252,10 +1252,7 @@ import {
   tunableCategoriesFor,
   tuneToggleAnswer,
 } from "./digest-tune";
-import {
-  collapsedDigestActions,
-  digestTunableCategories,
-} from "./digest-data";
+import { collapsedDigestActions, digestTunableCategories } from "./digest-data";
 import {
   getLoginDigestDemotions,
   loginIdsForTelegramChat,

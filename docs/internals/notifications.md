@@ -4,7 +4,7 @@
 > model and the attention doctrine, not per-channel.** `must` reminds and
 > escalates; `should` reminds; `may` is never pushed and reaches the user only
 > through surfaces they open themselves — including the daily digest's
-> guaranteed "Log other (3 for midday)" tail, whose slot-boundary refresh is a
+> guaranteed "➕ Doses (3)" tail, whose slot-boundary refresh is a
 > keyboard EDIT and therefore not a send. See
 > [the attention doctrine](findings.md#the-attention-doctrine) and
 > [supplements](supplements.md).

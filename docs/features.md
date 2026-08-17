@@ -2643,8 +2643,10 @@ Marking something **May** does not hide it. It keeps its schedule as a _hint_ fo
 where to offer it, it still shows on Supplements & Meds, and on Upcoming it moves
 into an "available when you want them" section rather than disappearing. If you
 only use the app through Telegram, the daily digest carries a
-**"Log other (3 for midday)"** button that opens into whatever is available right
+**"Doses (3)"** button that opens into whatever is available right
 now — so a May item is always one tap away even though it never interrupts you.
+(On a dose reminder the same button reads **"Log other (3)"**, because there the
+list it is _other than_ is the message you are looking at.)
 
 **Medications start as Must**, and moving one lower asks first, spelling out
 exactly what you would be giving up ("no reminders, no escalation, no missed-dose

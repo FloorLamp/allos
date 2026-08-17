@@ -660,8 +660,8 @@ is always available.
   paused-item — never dueness — so the optimistic ledger, the offline queue and the
   honest refusal wording all come along unchanged.
 - _User-initiated access — always reachable_: the Supplements page and quick-log in
-  app; on Telegram the **guaranteed** path is the daily digest's slot-labelled
-  "Log other (N for <slot>)" tail (its first inline button), which expands IN PLACE
+  app; on Telegram the **guaranteed** path is the daily digest's
+  "➕ Doses (N)" tail (its first inline button), which expands IN PLACE
   into one-tap log buttons for the may items whose hint covers **now** — evaluated
   at TAP time,
   never at message-build time, because a morning digest may be tapped at bedtime.
@@ -669,7 +669,9 @@ is always available.
   rollover; both are keyboard edits, which do not notify. `buildDigest` may return
   a **tail-only** message rather than null while may items exist, so an all-may
   regimen keeps its access path. A slot reminder that fires anyway carries the same
-  row as a ride-along. Web Push / Home Assistant get a `+N available` text tail,
+  control as a ride-along, labelled **"Log other (N)"** there — it already shows
+  "✅ All (N)" over the doses that are due, and two bare dose counts on one keyboard
+  would be two numbers that cannot be added up. Web Push / Home Assistant get a `+N available` text tail,
   since neither can expand a keyboard.
 
 **Button labels take a curated short name.** An inline keyboard button has a hard

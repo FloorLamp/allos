@@ -525,7 +525,10 @@ describe("closingTallyText states the administration time (#2867)", () => {
     ).toBe("Vitamin D taken 21:12");
     // With no zone to render in there is no time to state — never the host's clock.
     expect(
-      closingTallyText({ taken: [{ name: "Vitamin D", at: at0812 }], skipped: [] })
+      closingTallyText({
+        taken: [{ name: "Vitamin D", at: at0812 }],
+        skipped: [],
+      })
     ).toBe("Vitamin D taken");
   });
 
