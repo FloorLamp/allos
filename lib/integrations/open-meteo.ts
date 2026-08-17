@@ -517,19 +517,84 @@ async function readCappedBody(res: Response): Promise<string> {
 // hourly tick. Home location is PHI-adjacent and must NEVER be written to any log
 // (lib/settings/location.ts).
 //
-// Open-Meteo's own JSON never echoes the URI (it quotes a PARAMETER, and only when
-// that parameter is invalid), but Open-Meteo is not necessarily what answers: a
-// proxy or captive portal in front of it replies with its own error page, and those
-// quote the URI they could not forward. So the RAW-body fallback drops any URL and
-// any latitude/longitude parameter — including a scheme-less path+query echo, which
-// leaks the same coordinates with none of the URL syntax to match on. The rest of
-// the sentence survives, because "unable to forward to the origin" is still the
-// diagnosis the raw fallback exists to preserve.
-const LOCATION_IN_TEXT =
-  /https?:\/\/\S+|[?&]?\b(?:latitude|longitude)=[^\s&]*/gi;
+// Open-Meteo is not necessarily what answers: a proxy or captive portal in front of
+// it replies with its own error page, and those quote the URI they could not
+// forward. So the RAW-body fallback is scrubbed before it is kept.
+//
+// WHAT IT DROPS: a `latitude`/`longitude` parameter with its value, in every
+// spelling a middlebox writes one (query parameter, percent-encoded, JSON field,
+// wrapped across a line); an `http(s)://…` URI; and a bare number left sitting
+// where such a URI was cut.
+//
+// WHAT IT DOES NOT: a coordinate whose KEY is gone. Written as prose — "for
+// location 40.7, -74.0" — or with a line break falling INSIDE the key itself, there
+// is nothing to match on, and no pattern can tell those numbers from any other pair.
+// That residue is accepted, not overlooked: it is bounded by the coordinates being
+// roundCoord-coarse (~0.1°, ~11 km) before they ever leave this process, which is
+// why this is a second line of defence rather than the first — nothing sharper is
+// ever in the request to begin with.
+//
+// The JSON `reason` path is deliberately NOT scrubbed. Open-Meteo echoes a
+// parameter only when that parameter is invalid, and an out-of-range coordinate
+// cannot reach the request: getHomeLocation re-runs normalizeHome on every READ, so
+// `home_lat = '999'` planted straight into profile_settings yields null and
+// runWeatherSync returns "no home location" before any fetch happens. The sentence
+// #3007 needed is the whole point of this fallback, so it travels intact.
 
+// One parameter, several spellings. Folding them to a single spelling BEFORE
+// matching is what keeps this from being three patterns that drift apart: a
+// percent-encoded echo is not `latitude=` and a JSON field is not `latitude=`, but
+// both are the same key bound to the same value. Only the URI delimiters are
+// decoded — never the whole body, which would invent characters nobody sent.
+function foldSpellings(text: string): string {
+  return (
+    text
+      // The three QUERY-STRING delimiters, and only those: what binds a key to its
+      // value. Decoding the scheme and path separators too would tidy the leftover
+      // host text and close no leak, so it is not done.
+      .replace(/%3F/gi, "?")
+      .replace(/%3D/gi, "=")
+      .replace(/%26/gi, "&")
+      // A JSON field is the same key/value pair with a different separator.
+      .replace(/"([^"\r\n]{1,64})"\s*:/g, "$1=")
+  );
+}
+
+// `latitude=40.7`, after the fold. `\s*` around the `=` so a URI wrapped across a
+// line still binds its value to its key. The value class ends at whitespace, `&`, a
+// quote, a comma or a semicolon — without those last three, a MINIFIED JSON body
+// offers no terminator after the final parameter and the match runs to the end of
+// the document, taking the vendor's sentence with it.
+const COORD_PARAM = /[?&]?\b(?:latitude|longitude)\s*=\s*"?[^\s&"',;]*/gi;
+
+// Whatever is left of the URI itself, plus a number immediately adjacent to it. The
+// trailing number is the wrap hazard approached from the other side: a value that
+// ended up beside a URI whose key did not survive the break goes with the URI.
+const URL_IN_TEXT = /https?:\/\/[^\s"']*(?:\s*[-+]?\d[\d.]*)?/gi;
+
+// The parameter strip runs FIRST, and that ordering is the primary defence for a
+// wrapped URI: a URL strip running first consumes the trailing `…?latitude=` and
+// leaves the bare value with no key for the parameter strip to find — the pattern
+// meant to protect the coordinate becomes the thing that exposes it. That is not a
+// hypothetical; it is what this module did before the ordering was fixed.
+//
+// Stated plainly, because it is the kind of thing a later reader should not have to
+// re-derive: with `\s*` allowed around the `=`, the ordering ALONE handles every
+// wrap shape under test, and the numeric tail of URL_IN_TEXT alone handles them too.
+// The redundancy is deliberate — they fail differently, and the failure mode is a
+// coordinate in an operator log — but neither is currently the only thing standing
+// between a wrapped URI and a leak.
+//
+// The parameter strip closes its gap rather than leaving a space, so a URI it cut a
+// parameter out of stays one contiguous token for the URL strip behind it. Replacing
+// with a space instead splits the URI and strands the tail of its query string
+// (`&hourly=us_aqi`) in the middle of the sentence.
 function stripLocation(text: string): string {
-  return text.replace(LOCATION_IN_TEXT, " ").replace(/\s+/g, " ").trim();
+  return foldSpellings(text)
+    .replace(COORD_PARAM, "")
+    .replace(URL_IN_TEXT, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // What the vendor SAID about a rejected request. Open-Meteo answers a bad request

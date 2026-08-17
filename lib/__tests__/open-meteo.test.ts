@@ -472,6 +472,81 @@ describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () 
       expect(res.partial).toContain("Bad gateway while requesting");
     });
 
+    // ── The same coordinates, spelled the other ways a middlebox spells them ──
+    //
+    // A pattern that only knows `https://` and `latitude=` catches the shape it was
+    // written against and nothing else. Each of these is a real gateway idiom, and
+    // each carried the coordinates all the way to the operator log.
+    it("drops a PERCENT-ENCODED echo of the URI", async () => {
+      const res = await stubAirQualityFailure(
+        502,
+        "Bad gateway: could not reach https%3A%2F%2Fair-quality-api.open-meteo.com%2Fv1%2Fair-quality%3Flatitude%3D40.7128%26longitude%3D-74.006"
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+      expect(res.partial).toContain("could not reach");
+    });
+
+    it("drops a percent-encoded echo that carries no scheme either", async () => {
+      // With a scheme, a URL pattern would catch the whole thing whatever the
+      // encoding. This is the shape where the DECODING is what saves it: no
+      // `https://` to match, and `latitude%3D` is not `latitude=`.
+      const res = await stubAirQualityFailure(
+        502,
+        "Bad gateway while requesting %2Fv1%2Fair-quality%3Flatitude%3D40.7128%26longitude%3D-74.006"
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+      expect(res.partial).toContain("Bad gateway while requesting");
+    });
+
+    it("keeps a coordinate bound to its key when the echoed URI WRAPS a line", async () => {
+      // The instructive one: a URL pattern that runs first eats the trailing
+      // `…?latitude=` and publishes the bare value with no key left to match on.
+      // So the parameter strip runs BEFORE the URL strip, and tolerates the break.
+      const res = await stubAirQualityFailure(
+        503,
+        "Squid error: unable to forward\nhttps://air-quality-api.open-meteo.com/v1/air-quality?latitude=\n40.7128&longitude=-74.006\nto the origin"
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+      expect(res.partial).toContain("unable to forward");
+    });
+
+    it("drops coordinates a gateway echoed as JSON FIELDS rather than parameters", async () => {
+      // The most realistic of the four. A Kong/APIM-style gateway answers with its
+      // own JSON — valid, and with no top-level `reason`, so it falls to the raw
+      // path where `"latitude":` is not `latitude=`.
+      const res = await stubAirQualityFailure(
+        400,
+        JSON.stringify({
+          error: "upstream rejected the request",
+          query: { latitude: 40.7128, longitude: -74.006, hourly: "us_aqi" },
+        })
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+      expect(res.partial).toContain("upstream rejected the request");
+    });
+
+    it("does not swallow the vendor's sentence off the end of a minified body", async () => {
+      // The value class has to END somewhere. Bounded only by whitespace and `&`,
+      // a minified JSON body offers neither after the last parameter, so the match
+      // ran to the end of the document and took the diagnosis with it — on exactly
+      // the bodies this fallback was added to preserve. (Long enough to be
+      // truncated by the bounded read, which is what puts a JSON body on the raw
+      // path in the first place.)
+      const res = await stubAirQualityFailure(
+        400,
+        `{"request":{"url":"/v1/air-quality?latitude=40.7128&longitude=-74.006"},"reason":"Parameter 'end_date' is out of allowed range","trace":"${"q".repeat(5000)}"}`
+      );
+      expect(res.partial).toContain(
+        "Parameter 'end_date' is out of allowed range"
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+    });
+
     it("still prefers the vendor's own `reason` over the body around it", async () => {
       // The JSON path is deliberately untouched by the stripping above: the
       // sentence #3007 needed is the whole point, and Open-Meteo echoes a
