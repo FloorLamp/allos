@@ -1,5 +1,5 @@
 import { dateStrInTz, parseUtcSql } from "../date";
-import { isTruncatedSyncEvent } from "./sync-details";
+import { isTruncatedSyncEvent, parseSyncEventDetails } from "./sync-details";
 import { pluralRunNoun } from "./source-state";
 import type {
   StatusTone,
@@ -54,6 +54,16 @@ export type SyncDayEntry<T extends SyncEventFacts> =
       error: string | null;
     }
   | {
+      // The same, one rung down the severity ladder: consecutive PARTIALS carrying the
+      // identical diagnostic (#3007). A standing half-failure — the weather sync's
+      // air-quality request was out of range on every run — repeated its three-line
+      // diagnostic once per run inside one day group, and eight identical rows is the
+      // shape of noise, not of news. One line, count-qualified, still openable.
+      kind: "partial-run";
+      runs: T[];
+      warning: string | null;
+    }
+  | {
       // Consecutive unremarkable runs. Collapsed by default, openable ("Show runs").
       kind: "range";
       runs: T[];
@@ -89,6 +99,15 @@ export function notableReason(ev: SyncEventFacts): SyncRunReason | null {
   if (isTruncatedSyncEvent(ev)) return "partial";
   if ((ev.skipped ?? 0) > 0) return "skipped";
   return null;
+}
+
+// What a PARTIAL run says about itself, as one comparable string. Two partials are
+// "the same partial" when their Review lines match — which for a standing cause (a
+// request that is out of range on every run) they always do, and for two genuinely
+// different half-failures they do not.
+function partialSignature(ev: SyncEventFacts): string {
+  const details = parseSyncEventDetails(ev.details ?? null);
+  return details ? details.warnings.join("\n") : "";
 }
 
 function num(v: number | null | undefined): number {
@@ -154,6 +173,30 @@ function summarizeDay<T extends SyncEventFacts>(
     // "Latest" is global history state, not something every day can claim. Only
     // the first run in the newest day earns it; older routine runs fold normally.
     const reason = options.markNewest && i === 0 ? "newest" : notableReason(ev);
+    if (reason === "partial") {
+      // Consecutive partials with the IDENTICAL diagnostic collapse, exactly as
+      // consecutive identical failures do (#3007). The newest run is checked first
+      // above, so it always keeps its own line and a collapse only ever starts below
+      // it.
+      const signature = partialSignature(ev);
+      let j = i;
+      while (
+        j < events.length &&
+        notableReason(events[j]) === "partial" &&
+        partialSignature(events[j]) === signature
+      )
+        j++;
+      const runs = events.slice(i, j);
+      if (runs.length === 1) entries.push({ kind: "run", ev, reason });
+      else
+        entries.push({
+          kind: "partial-run",
+          runs,
+          warning: signature || null,
+        });
+      i = j;
+      continue;
+    }
     if (reason) {
       entries.push({ kind: "run", ev, reason });
       i++;
@@ -233,15 +276,18 @@ export function syncDayAttention(day: {
   return null;
 }
 
-// A collapsed failure run's shared reason, count-qualified so the line still says the
-// reason held for EVERY run it collapsed (#1880 item 3). Null when the runs carried no
-// recorded reason.
-export function failureRunReason(
+// A collapsed run's shared reason, count-qualified so the line still says the reason
+// held for EVERY run it collapsed (#1880 item 3, and #3007 for the partial rung —
+// "…— all 8 runs" is the sentence that turns a stripe of identical diagnostics into
+// one standing fact). Null when the runs carried no recorded reason.
+export function repeatedRunReason(
   count: number,
-  error: string | null
+  reason: string | null
 ): string | null {
-  if (!error) return null;
-  return count === 2 ? `${error} — both runs` : `${error} — all ${count} runs`;
+  if (!reason) return null;
+  return count === 2
+    ? `${reason} — both runs`
+    : `${reason} — all ${count} runs`;
 }
 
 // A collapsed range's accounting label: "7 syncs · 128 new". The ledger renders

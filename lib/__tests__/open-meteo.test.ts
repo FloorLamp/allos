@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   parseOpenMeteoHourly,
   parseOpenMeteoDaily,
@@ -6,6 +6,10 @@ import {
   mergeDailyRows,
   chooseEndpoint,
   ARCHIVE_LAG_DAYS,
+  AIR_QUALITY_FORECAST_DAYS,
+  airQualityEndDate,
+  openMeteoFetchDaily,
+  openMeteoFetch,
 } from "../integrations/open-meteo";
 
 // A synthetic Open-Meteo hourly response (both forecast + archive share this shape).
@@ -237,5 +241,384 @@ describe("mergeDailyRows (#1726)", () => {
     ]);
     expect(merged[2].aqi).toBe(90);
     expect(merged[2].tempMaxC).toBeNull();
+  });
+});
+
+// ── The two endpoints do not share a horizon (#3007) ────────────────────────
+//
+// `runWeatherSync` computes ONE window end (today + WEATHER_FORECAST_DAYS = today + 7,
+// which the outdoor-viability scan needs) and the source sent it to BOTH endpoints. The
+// weather host publishes 16 days and answered; the air-quality host publishes 7
+// COUNTING TODAY — last valid end_date today + 6 — and answered 400, deterministically,
+// on every run since the daily half shipped. Nothing said so, because an air-quality
+// failure degrades rather than failing the run, so the AQI/pollen columns were empty
+// from the day they were added and every predicate over them was silently dataless.
+
+describe("airQualityEndDate (#3007)", () => {
+  it("clamps a window that reaches past the air-quality ceiling to today + 6", () => {
+    // The exact production shape: today + 7 asked, today + 6 is the ceiling.
+    expect(airQualityEndDate("2026-08-23", "2026-08-16")).toBe("2026-08-22");
+  });
+
+  it("is a CLAMP, not an assignment — a shorter window keeps its own end", () => {
+    // The acceptance criterion that stops this becoming a widening: an archival
+    // backfill whose window ends in the past must not be pushed forward to the ceiling.
+    expect(airQualityEndDate("2026-08-18", "2026-08-16")).toBe("2026-08-18");
+    expect(airQualityEndDate("2026-01-04", "2026-08-16")).toBe("2026-01-04");
+  });
+
+  it("leaves the ceiling day itself alone (the boundary is inclusive)", () => {
+    expect(airQualityEndDate("2026-08-22", "2026-08-16")).toBe("2026-08-22");
+  });
+
+  it("crosses a month end correctly", () => {
+    expect(airQualityEndDate("2026-09-07", "2026-08-31")).toBe("2026-09-06");
+  });
+
+  it("the ceiling is 7 days COUNTING TODAY", () => {
+    const today = "2026-08-16";
+    expect(airQualityEndDate("2030-01-01", today)).toBe("2026-08-22");
+    expect(AIR_QUALITY_FORECAST_DAYS).toBe(7);
+  });
+});
+
+describe("openMeteoFetchDaily sends each endpoint its OWN end_date (#3007)", () => {
+  const OK_BODY = { daily: { time: [] }, hourly: { time: [] } };
+
+  function stubJsonFetch(): string[] {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(String(url));
+        return new Response(JSON.stringify(OK_BODY), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      })
+    );
+    return urls;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("asks weather for today+7 and air quality for today+6 — the regression fixture", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
+    const urls = stubJsonFetch();
+
+    return openMeteoFetchDaily(
+      40.7,
+      -74,
+      "2026-08-03",
+      "2026-08-23",
+      "America/New_York"
+    ).then((res) => {
+      expect(res.ok).toBe(true);
+      expect(urls).toHaveLength(2);
+
+      const weather = new URL(urls[0]);
+      expect(weather.host).toBe("api.open-meteo.com");
+      // The weather half is UNCHANGED: the planning surfaces genuinely use +7.
+      expect(weather.searchParams.get("end_date")).toBe("2026-08-23");
+      expect(weather.searchParams.get("start_date")).toBe("2026-08-03");
+
+      const air = new URL(urls[1]);
+      expect(air.host).toBe("air-quality-api.open-meteo.com");
+      // …and this one is the day that was always out of range.
+      expect(air.searchParams.get("end_date")).toBe("2026-08-22");
+      // Same start: the air-quality archive reaches back to 2013, so only the
+      // forward edge was ever the problem.
+      expect(air.searchParams.get("start_date")).toBe("2026-08-03");
+    });
+  });
+
+  it("reports the air-quality half's HTTP status when it fails", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).includes("air-quality")
+          ? new Response("nope", { status: 400 })
+          : new Response(JSON.stringify(OK_BODY), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            })
+      )
+    );
+    const res = await openMeteoFetchDaily(
+      40.7,
+      -74,
+      "2026-08-03",
+      "2026-08-23",
+      "America/New_York"
+    );
+    // Still not a run failure — the degradation posture is unchanged.
+    expect(res.ok).toBe(true);
+    // The status is carried so the sync can tell a deterministic 4xx from a
+    // transient 5xx instead of promising a retry that cannot help.
+    expect(res.partialStatus).toBe(400);
+    expect(res.partial).toContain("400");
+  });
+
+  // ── The vendor's own sentence survives the rejection (#3007) ──────────────
+  //
+  // A 400 body reduced to `air-quality fetch failed (400)` is why eight production
+  // runs said nothing about WHY, and why the cause needed a hand-run curl. The
+  // sentence names the parameter, the rule and the CURRENT ceiling — so the next
+  // time that ceiling moves, the sync event diagnoses itself.
+  describe("a rejected request carries what the host said", () => {
+    function stubAirQualityFailure(status: number, body: BodyInit) {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          String(url).includes("air-quality")
+            ? new Response(body, { status })
+            : new Response(JSON.stringify(OK_BODY), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              })
+        )
+      );
+      return openMeteoFetchDaily(
+        40.7,
+        -74,
+        "2026-08-03",
+        "2026-08-23",
+        "America/New_York"
+      );
+    }
+
+    function stubTotalFailure(reason: string) {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-08-16T09:00:00Z"));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ error: true, reason }), {
+              status: 400,
+            })
+        )
+      );
+    }
+
+    it("keeps Open-Meteo's `reason` in the partial — the exact sentence #3007 needed", async () => {
+      // The verbatim body shape the live host returns for an out-of-range window.
+      const res = await stubAirQualityFailure(
+        400,
+        JSON.stringify({
+          error: true,
+          reason:
+            "Parameter 'end_date' is out of allowed range from 2013-01-01 to 2026-08-22",
+        })
+      );
+      expect(res.ok).toBe(true); // still a partial, not a run failure
+      expect(res.partial).toBe(
+        "air-quality fetch failed (400): Parameter 'end_date' is out of allowed range from 2013-01-01 to 2026-08-22"
+      );
+    });
+
+    it("falls back to the raw body when it isn't Open-Meteo's JSON, capped", async () => {
+      // A gateway's HTML page is still more than a bare status code — but it must
+      // not be able to fill a sync event.
+      const res = await stubAirQualityFailure(502, "x".repeat(400));
+      expect(res.partial).toMatch(/^air-quality fetch failed \(502\): x+$/);
+      expect(res.partial!.length).toBeLessThan(260);
+    });
+
+    it("an empty body leaves the line exactly as it was", async () => {
+      const res = await stubAirQualityFailure(400, "");
+      expect(res.partial).toBe("air-quality fetch failed (400)");
+    });
+
+    // ── The raw body must not hand back the home location ───────────────────
+    //
+    // The request URI carries latitude/longitude. Open-Meteo's own JSON never
+    // echoes it, but nothing guarantees Open-Meteo is what answers: a proxy or
+    // captive portal in front of it replies with its own error page, and those
+    // quote the URI they could not forward. That text lands verbatim in
+    // integration_sync_events.details AND, because the pull tick spreads the
+    // runner's result into log.info, in the operator log on every hourly tick.
+    // Home location is PHI-adjacent and must never be written to any log
+    // (lib/settings/location.ts).
+    it("drops a URL a middlebox echoed back, keeping the rest of its sentence", async () => {
+      const res = await stubAirQualityFailure(
+        503,
+        "Squid error: unable to forward https://air-quality-api.open-meteo.com/v1/air-quality?latitude=40.7&longitude=-74&hourly=us_aqi to the origin"
+      );
+      expect(res.partial).toBe(
+        "air-quality fetch failed (503): Squid error: unable to forward to the origin"
+      );
+      expect(res.partial).not.toContain("40.7");
+      expect(res.partial).not.toContain("-74");
+    });
+
+    it("drops the coordinates even when the echo carries no scheme", async () => {
+      // A gateway that quotes only the path+query is the same leak with none of
+      // the URL syntax to match on.
+      const res = await stubAirQualityFailure(
+        502,
+        "Bad gateway while requesting /v1/air-quality?latitude=40.7&longitude=-74&hourly=us_aqi"
+      );
+      expect(res.partial).not.toContain("40.7");
+      expect(res.partial).not.toContain("-74");
+      expect(res.partial).toContain("Bad gateway while requesting");
+    });
+
+    // ── The same coordinates, spelled the other ways a middlebox spells them ──
+    //
+    // A pattern that only knows `https://` and `latitude=` catches the shape it was
+    // written against and nothing else. Each of these is a real gateway idiom, and
+    // each carried the coordinates all the way to the operator log.
+    it("drops a PERCENT-ENCODED echo of the URI", async () => {
+      const res = await stubAirQualityFailure(
+        502,
+        "Bad gateway: could not reach https%3A%2F%2Fair-quality-api.open-meteo.com%2Fv1%2Fair-quality%3Flatitude%3D40.7128%26longitude%3D-74.006"
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+      expect(res.partial).toContain("could not reach");
+    });
+
+    it("drops a percent-encoded echo that carries no scheme either", async () => {
+      // With a scheme, a URL pattern would catch the whole thing whatever the
+      // encoding. This is the shape where the DECODING is what saves it: no
+      // `https://` to match, and `latitude%3D` is not `latitude=`.
+      const res = await stubAirQualityFailure(
+        502,
+        "Bad gateway while requesting %2Fv1%2Fair-quality%3Flatitude%3D40.7128%26longitude%3D-74.006"
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+      expect(res.partial).toContain("Bad gateway while requesting");
+    });
+
+    it("keeps a coordinate bound to its key when the echoed URI WRAPS a line", async () => {
+      // The instructive one: a URL pattern that runs first eats the trailing
+      // `…?latitude=` and publishes the bare value with no key left to match on.
+      // So the parameter strip runs BEFORE the URL strip, and tolerates the break.
+      const res = await stubAirQualityFailure(
+        503,
+        "Squid error: unable to forward\nhttps://air-quality-api.open-meteo.com/v1/air-quality?latitude=\n40.7128&longitude=-74.006\nto the origin"
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+      expect(res.partial).toContain("unable to forward");
+    });
+
+    it("drops coordinates a gateway echoed as JSON FIELDS rather than parameters", async () => {
+      // The most realistic of the four. A Kong/APIM-style gateway answers with its
+      // own JSON — valid, and with no top-level `reason`, so it falls to the raw
+      // path where `"latitude":` is not `latitude=`.
+      const res = await stubAirQualityFailure(
+        400,
+        JSON.stringify({
+          error: "upstream rejected the request",
+          query: { latitude: 40.7128, longitude: -74.006, hourly: "us_aqi" },
+        })
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+      expect(res.partial).toContain("upstream rejected the request");
+    });
+
+    it("does not swallow the vendor's sentence off the end of a minified body", async () => {
+      // The value class has to END somewhere. Bounded only by whitespace and `&`,
+      // a minified JSON body offers neither after the last parameter, so the match
+      // ran to the end of the document and took the diagnosis with it — on exactly
+      // the bodies this fallback was added to preserve. (Long enough to be
+      // truncated by the bounded read, which is what puts a JSON body on the raw
+      // path in the first place.)
+      const res = await stubAirQualityFailure(
+        400,
+        `{"request":{"url":"/v1/air-quality?latitude=40.7128&longitude=-74.006"},"reason":"Parameter 'end_date' is out of allowed range","trace":"${"q".repeat(5000)}"}`
+      );
+      expect(res.partial).toContain(
+        "Parameter 'end_date' is out of allowed range"
+      );
+      expect(res.partial).not.toContain("40.7128");
+      expect(res.partial).not.toContain("-74.006");
+    });
+
+    it("still prefers the vendor's own `reason` over the body around it", async () => {
+      // The JSON path is deliberately untouched by the stripping above: the
+      // sentence #3007 needed is the whole point, and Open-Meteo echoes a
+      // parameter only when that parameter is invalid.
+      const res = await stubAirQualityFailure(
+        400,
+        JSON.stringify({
+          error: true,
+          reason: "Parameter 'end_date' is out of allowed range",
+          generationtime_ms: "z".repeat(400),
+        })
+      );
+      expect(res.partial).toBe(
+        "air-quality fetch failed (400): Parameter 'end_date' is out of allowed range"
+      );
+    });
+
+    it("reads only a bounded prefix of a huge error page", async () => {
+      // `res.text()` buffers the WHOLE body before anything is capped: a 64 MB
+      // page behind a 502 cost 64 MB of heap to produce 200 characters, on a path
+      // that read no body at all before this change. Bound the read, not just the
+      // stored string.
+      const CHUNK = "x".repeat(20_000);
+      const CHUNKS = 500; // ~10 MB if it is all pulled
+      let pulled = 0;
+      const encoder = new TextEncoder();
+      const huge = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (pulled >= CHUNKS) {
+            controller.close();
+            return;
+          }
+          pulled++;
+          controller.enqueue(encoder.encode(CHUNK));
+        },
+      });
+
+      const res = await stubAirQualityFailure(502, huge);
+      expect(res.partial).toMatch(/^air-quality fetch failed \(502\): x+$/);
+      expect(res.partial!.length).toBeLessThan(260);
+      // THE ASSERTION: the stream was abandoned, not drained.
+      expect(pulled).toBeLessThan(10);
+    });
+
+    it("the WEATHER half's rejection carries it too — that one fails the run", async () => {
+      stubTotalFailure("Parameter 'daily' has an invalid value");
+      const res = await openMeteoFetchDaily(
+        40.7,
+        -74,
+        "2026-08-03",
+        "2026-08-23",
+        "America/New_York"
+      );
+      expect(res.ok).toBe(false);
+      expect(res.error).toBe(
+        "daily fetch failed (400): Parameter 'daily' has an invalid value"
+      );
+    });
+
+    it("the HOURLY fetch reports it as well", async () => {
+      stubTotalFailure("Parameter 'hourly' has an invalid value");
+      const res = await openMeteoFetch(
+        40.7,
+        -74,
+        "2026-08-03",
+        "2026-08-23",
+        "America/New_York"
+      );
+      expect(res.ok).toBe(false);
+      expect(res.error).toBe(
+        "weather fetch failed (400): Parameter 'hourly' has an invalid value"
+      );
+    });
   });
 });
