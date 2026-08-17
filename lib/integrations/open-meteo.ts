@@ -75,6 +75,11 @@ export interface DailyFetchResult {
   // A partial is NOT a sync failure — it degrades, it does not fail (the graceful-
   // degradation posture the whole weather feature is built on).
   partial?: string;
+  // The HTTP status behind `partial`, when there was one (0 = network error/timeout,
+  // absent = the partial came from somewhere other than a response). The sync reads it
+  // to tell a DETERMINISTIC failure from a transient one: a 4xx will fail identically
+  // on the next run, so promising a re-fetch would be false (#3007).
+  partialStatus?: number;
 }
 
 // The swappable source contract. `fetchHourly` returns the hourly UV + irradiance
@@ -108,6 +113,34 @@ const ARCHIVE_BASE = "https://archive-api.open-meteo.com/v1/archive";
 const AIR_QUALITY_BASE =
   "https://air-quality-api.open-meteo.com/v1/air-quality";
 const TIMEOUT_MS = 15_000;
+
+// How far ahead the AIR-QUALITY host publishes — NOT the same horizon as the weather
+// forecast host, which is what #3007 was. The weather endpoint publishes 16 days; air
+// quality publishes 7, and its "7 days" COUNTS TODAY, so the last `end_date` it
+// accepts is today + 6. The daily sync asks both endpoints for one window
+// (WEATHER_FORECAST_DAYS = today + 7, in ./weather-sync — the horizon the
+// outdoor-viability scan genuinely needs), so every air-quality request was exactly
+// one day out of range and came back 400:
+//
+//   Parameter 'end_date' is out of allowed range from 2013-01-01 to <today+6>
+//
+// deterministically, on every run since the daily half shipped. An air-quality failure
+// degrades rather than breaking (see openMeteoFetchDaily), so nothing ever said the
+// AQI/pollen half had not once succeeded.
+//
+// Kept here rather than beside WEATHER_FORECAST_DAYS because it is a property of THIS
+// host, not of what the app wants: a different source would have a different ceiling,
+// and weather-sync already imports this module (the reverse would be a cycle).
+export const AIR_QUALITY_FORECAST_DAYS = 7;
+
+// The air-quality request's end date: the caller's window end CLAMPED to this host's
+// ceiling. A clamp, never an assignment — a window that ends BEFORE the ceiling (an
+// archival backfill) keeps its own end and is never widened. Pure and exported so the
+// boundary is unit-testable without a network call.
+export function airQualityEndDate(endDate: string, today: string): string {
+  const ceiling = shiftDate(today, AIR_QUALITY_FORECAST_DAYS - 1);
+  return endDate < ceiling ? endDate : ceiling;
+}
 
 // The hourly variables we request. uv_index + uv_index_clear_sky (the headline + the
 // clear-sky degradation field), the three irradiance components (W/m²), and hourly
@@ -421,7 +454,18 @@ export async function openMeteoFetch(
     const res = await fetch(`${base}?${qs.toString()}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) return { ok: false, rows: [], status: res.status };
+    if (!res.ok)
+      return {
+        ok: false,
+        rows: [],
+        status: res.status,
+        // The host's own sentence, not just the number (#3007): the hourly half's
+        // failure is the run's failure, so it is the line Review shows.
+        error: fetchFailureLine("weather fetch", {
+          status: res.status,
+          reason: await failureReason(res),
+        }),
+      };
     const rows = parseOpenMeteoHourly(await res.json());
     return { ok: true, rows };
   } catch (err) {
@@ -434,16 +478,188 @@ export async function openMeteoFetch(
   }
 }
 
+// How much of a rejected response's body to keep. Long enough for the vendor's
+// sentence, short enough that a stray HTML error page can't fill a sync event.
+const REASON_MAX_CHARS = 200;
+
+// How much of a rejected response's body to READ. The cap above bounds what is
+// STORED; this one bounds what crosses into memory to produce it. `res.text()`
+// buffers the WHOLE body first, so a 64 MB error page behind a 502 cost 64 MB of
+// heap to yield 200 characters — on a path that read no body at all before #3007.
+// Well past any real vendor error body (Open-Meteo's is a couple of hundred bytes),
+// so the JSON parse below still sees a complete document.
+const REASON_MAX_READ_CHARS = 4_096;
+
+// Read at most REASON_MAX_READ_CHARS of a body and abandon the rest. Falls back to
+// text() only for a response with no stream at all (a synthesized one).
+async function readCappedBody(res: Response): Promise<string> {
+  const stream = res.body;
+  if (!stream) return (await res.text()).slice(0, REASON_MAX_READ_CHARS);
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    while (text.length < REASON_MAX_READ_CHARS) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    // Whether we stopped early or reached the end, nothing else wants this body.
+    void reader.cancel().catch(() => {});
+  }
+  return text.slice(0, REASON_MAX_READ_CHARS);
+}
+
+// The request URI carries the profile's home coordinates, and a rejected request's
+// text travels into integration_sync_events.details AND — because the pull tick
+// spreads each runner's result into log.info — into the operator log on every
+// hourly tick. Home location is PHI-adjacent and must NEVER be written to any log
+// (lib/settings/location.ts).
+//
+// Open-Meteo is not necessarily what answers: a proxy or captive portal in front of
+// it replies with its own error page, and those quote the URI they could not
+// forward. So the RAW-body fallback is scrubbed before it is kept.
+//
+// WHAT IT DROPS: a `latitude`/`longitude` parameter with its value, in every
+// spelling a middlebox writes one (query parameter, percent-encoded, JSON field,
+// wrapped across a line); an `http(s)://…` URI; and a bare number left sitting
+// where such a URI was cut.
+//
+// WHAT IT DOES NOT: a coordinate whose KEY is gone. Written as prose — "for
+// location 40.7, -74.0" — or with a line break falling INSIDE the key itself, there
+// is nothing to match on, and no pattern can tell those numbers from any other pair.
+// That residue is accepted, not overlooked: it is bounded by the coordinates being
+// roundCoord-coarse (~0.1°, ~11 km) before they ever leave this process, which is
+// why this is a second line of defence rather than the first — nothing sharper is
+// ever in the request to begin with.
+//
+// The JSON `reason` path is deliberately NOT scrubbed. Open-Meteo echoes a
+// parameter only when that parameter is invalid, and an out-of-range coordinate
+// cannot reach the request: getHomeLocation re-runs normalizeHome on every READ, so
+// `home_lat = '999'` planted straight into profile_settings yields null and
+// runWeatherSync returns "no home location" before any fetch happens. The sentence
+// #3007 needed is the whole point of this fallback, so it travels intact.
+//
+// That is a DEPENDENCY, not an observation about the vendor. The JSON path is
+// trusted because a stored home cannot be out of range — not because Open-Meteo
+// never quotes a coordinate, which it does when the coordinate is invalid. If
+// normalizeHome ever loosens its range check, this decision has to be revisited.
+
+// One parameter, several spellings. Folding them to a single spelling BEFORE
+// matching is what keeps this from being three patterns that drift apart: a
+// percent-encoded echo is not `latitude=` and a JSON field is not `latitude=`, but
+// both are the same key bound to the same value. Only the URI delimiters are
+// decoded — never the whole body, which would invent characters nobody sent.
+function foldSpellings(text: string): string {
+  return (
+    text
+      // The three QUERY-STRING delimiters, and only those: what binds a key to its
+      // value. Decoding the scheme and path separators too would tidy the leftover
+      // host text and close no leak, so it is not done.
+      .replace(/%3F/gi, "?")
+      .replace(/%3D/gi, "=")
+      .replace(/%26/gi, "&")
+      // A JSON field is the same key/value pair with a different separator.
+      .replace(/"([^"\r\n]{1,64})"\s*:/g, "$1=")
+  );
+}
+
+// `latitude=40.7`, after the fold. `\s*` around the `=` so a URI wrapped across a
+// line still binds its value to its key. The value class ends at whitespace, `&`, a
+// quote, a comma or a semicolon — without those last three, a MINIFIED JSON body
+// offers no terminator after the final parameter and the match runs to the end of
+// the document, taking the vendor's sentence with it.
+const COORD_PARAM = /[?&]?\b(?:latitude|longitude)\s*=\s*"?[^\s&"',;]*/gi;
+
+// Whatever is left of the URI itself, plus a number immediately adjacent to it. The
+// trailing number is the wrap hazard approached from the other side: a value that
+// ended up beside a URI whose key did not survive the break goes with the URI.
+const URL_IN_TEXT = /https?:\/\/[^\s"']*(?:\s*[-+]?\d[\d.]*)?/gi;
+
+// The parameter strip runs FIRST, and that ordering is the primary defence for a
+// wrapped URI: a URL strip running first consumes the trailing `…?latitude=` and
+// leaves the bare value with no key for the parameter strip to find — the pattern
+// meant to protect the coordinate becomes the thing that exposes it. That is not a
+// hypothetical; it is what this module did before the ordering was fixed.
+//
+// Stated plainly, because it is the kind of thing a later reader should not have to
+// re-derive: with `\s*` allowed around the `=`, the ordering ALONE handles every
+// wrap shape under test, and the numeric tail of URL_IN_TEXT alone handles them too.
+// The redundancy is deliberate — they fail differently, and the failure mode is a
+// coordinate in an operator log — but neither is currently the only thing standing
+// between a wrapped URI and a leak.
+//
+// The parameter strip closes its gap rather than leaving a space, so a URI it cut a
+// parameter out of stays one contiguous token for the URL strip behind it. Replacing
+// with a space instead splits the URI and strands the tail of its query string
+// (`&hourly=us_aqi`) in the middle of the sentence.
+function stripLocation(text: string): string {
+  return foldSpellings(text)
+    .replace(COORD_PARAM, "")
+    .replace(URL_IN_TEXT, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// What the vendor SAID about a rejected request. Open-Meteo answers a bad request
+// with `{"error":true,"reason":"Parameter 'end_date' is out of allowed range from
+// 2013-01-01 to 2026-08-22"}` — one sentence that names the parameter, the rule and
+// the current ceiling. Discarding it (#3007) is why eight production runs recorded
+// only `air-quality fetch failed (400)` and the cause needed a hand-run curl. A
+// horizon that moves again should say so on its own.
+//
+// The read is bounded (REASON_MAX_READ_CHARS) and the raw fallback is scrubbed of
+// the home location (stripLocation) — see both above.
+async function failureReason(res: Response): Promise<string | undefined> {
+  let body: string;
+  try {
+    body = (await readCappedBody(res)).trim();
+  } catch {
+    return undefined; // a body that won't read is not worth failing over
+  }
+  if (!body) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    const reason =
+      parsed && typeof parsed === "object"
+        ? (parsed as { reason?: unknown }).reason
+        : undefined;
+    if (typeof reason === "string" && reason.trim())
+      return reason.trim().slice(0, REASON_MAX_CHARS);
+  } catch {
+    // Not JSON (a gateway's HTML page, say) — the raw body is still better than
+    // nothing, capped the same way and with the location stripped out of it.
+  }
+  return stripLocation(body).slice(0, REASON_MAX_CHARS) || undefined;
+}
+
+// One spelling of "this request failed, and here is what the other end said".
+function fetchFailureLine(
+  label: string,
+  failure: { status: number; reason?: string }
+): string {
+  return `${label} failed (${failure.status})${
+    failure.reason ? `: ${failure.reason}` : ""
+  }`;
+}
+
 // A JSON GET with the shared timeout, returning the parsed body or a failure. Never
 // throws — every weather fetch degrades rather than breaking the sync.
 async function getJson(
   url: string
 ): Promise<
-  { ok: true; json: unknown } | { ok: false; status: number; error?: string }
+  | { ok: true; json: unknown }
+  | { ok: false; status: number; reason?: string; error?: string }
 > {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (!res.ok) return { ok: false, status: res.status };
+    if (!res.ok)
+      return {
+        ok: false,
+        status: res.status,
+        reason: await failureReason(res),
+      };
     return { ok: true, json: await res.json() };
   } catch (err) {
     return {
@@ -469,7 +685,8 @@ export async function openMeteoFetchDaily(
   endDate: string,
   timezone: string
 ): Promise<DailyFetchResult> {
-  const endpoint = chooseEndpoint(endDate, todayUtc());
+  const today = todayUtc();
+  const endpoint = chooseEndpoint(endDate, today);
   const base = endpoint === "archive" ? ARCHIVE_BASE : FORECAST_BASE;
   const weatherQs = new URLSearchParams({
     latitude: String(lat),
@@ -486,7 +703,9 @@ export async function openMeteoFetchDaily(
       ok: false,
       rows: [],
       status: weather.status,
-      error: weather.error,
+      // Same rule as the air half: whatever the host said about the rejection
+      // travels with the failure instead of being reduced to a status code.
+      error: weather.error ?? fetchFailureLine("daily fetch", weather),
     };
   }
   const weatherRows = parseOpenMeteoDaily(weather.json);
@@ -497,14 +716,18 @@ export async function openMeteoFetchDaily(
     hourly: AIR_QUALITY_VARS.join(","),
     timezone,
     start_date: startDate,
-    end_date: endDate,
+    // The two endpoints DO NOT share a horizon (#3007). The weather half keeps the
+    // caller's window; the air-quality half is clamped to its own shorter ceiling,
+    // which is the whole reason this request stopped being a guaranteed 400.
+    end_date: airQualityEndDate(endDate, today),
   });
   const air = await getJson(`${AIR_QUALITY_BASE}?${airQs.toString()}`);
   if (!air.ok) {
     return {
       ok: true,
       rows: weatherRows,
-      partial: air.error ?? `air-quality fetch failed (${air.status})`,
+      partial: air.error ?? fetchFailureLine("air-quality fetch", air),
+      partialStatus: air.status,
     };
   }
   return {
