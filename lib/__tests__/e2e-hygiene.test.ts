@@ -485,7 +485,7 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "food-log-correction.spec.ts": 4,
   "genomics.spec.ts": 2,
   "goal-metric-switch.spec.ts": 1,
-  "imaging.spec.ts": 4,
+  "imaging.spec.ts": 3,
   "immunization-delete-confirm.spec.ts": 1,
   "import-records-browser.spec.ts": 1,
   "intake-lifecycle.spec.ts": 2,

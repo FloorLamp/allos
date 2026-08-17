@@ -32,6 +32,10 @@ import {
 } from "@/lib/offline/queue";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import {
+  captureWriteToken,
+  openSessionForDocument,
+} from "@/lib/offline/write-gate";
+import {
   enqueueIntent,
   allIntents,
   removeIntents,
@@ -65,11 +69,16 @@ interface OfflineQueueApi {
   pending: number;
   // Persist an intent for later replay. `date` is the captured local date the write
   // lands on; `payload` is the flow's raw fields.
+  //
+  // ANSWERS WHETHER THE DEVICE ACTUALLY KEPT IT. It can say no — the write gate is closed
+  // because this device was logged out (#2908), or there is no IndexedDB at all (private
+  // mode, an embedded webview) — and a caller that ignores the answer tells someone
+  // "saved offline, will sync when you reconnect" about a write that was never recorded.
   enqueue: (
     flow: FlowKind,
     date: string,
     payload: IntentPayload
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   // Attempt to replay the whole queue now (safe to call redundantly).
   flush: () => Promise<void>;
 }
@@ -105,6 +114,7 @@ async function registerBackgroundSync(): Promise<void> {
 export default function OfflineQueueProvider({
   children,
   activeProfileId,
+  deviceSessionKey,
 }: {
   children: React.ReactNode;
   // The session's active profile at render time (issue #599). Every intent enqueued
@@ -112,6 +122,11 @@ export default function OfflineQueueProvider({
   // captured under — not whatever profile is active at flush time. The layout passes
   // the current session's profile.id; a profile switch re-renders with the new value.
   activeProfileId: number;
+  // WHICH SESSION this document belongs to (#2908) — opaque, and it grants nothing (see
+  // lib/auth.ts). It is what re-opens the device write gate, and it has to be an identity
+  // rather than the mere fact of mounting: a tab open at logout is still mounted, so
+  // "mounted" re-opened the gate for the session that had just closed it.
+  deviceSessionKey: string;
 }) {
   const [pending, setPending] = useState(0);
   // Parked rejected/undeliverable entries the user can review + re-enter (issue
@@ -187,6 +202,12 @@ export default function OfflineQueueProvider({
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
     flushing.current = true;
     try {
+      // The generation this flush started at. Everything below writes back into the
+      // queue AFTER a network round trip, and logout can land inside it: a retry
+      // re-written afterwards is one login's PHI back on a logged-out device
+      // (`attempts: 0 -> 1` in the store is what proves it a re-write rather than a wipe
+      // that missed). The gate refuses it — see lib/offline/write-gate.ts.
+      const token = await captureWriteToken();
       const intents = await allIntents();
       if (intents.length === 0) {
         // The queue may have been drained by ANOTHER actor since the badge last
@@ -261,8 +282,8 @@ export default function OfflineQueueProvider({
         // confirming (only counting "done" made the toast vanish on that race).
         const plan = planFlushDisposition(chunk, results);
         await removeIntents(plan.deleteKeys);
-        await putIntents(plan.retry);
-        await saveRejected(plan.rejected);
+        await putIntents(plan.retry, token);
+        await saveRejected(plan.rejected, token);
         totalSynced += plan.syncedCount;
         totalRejected += plan.rejected.length;
         timeNotices.push(...plan.timeNotices);
@@ -293,12 +314,41 @@ export default function OfflineQueueProvider({
     async (flow: FlowKind, date: string, payload: IntentPayload) => {
       // Stamp the write with the profile it's captured under (issue #599) so replay
       // attributes it correctly no matter which profile is active on reconnect.
-      await enqueueIntent(buildIntent(flow, date, payload, activeProfileId));
+      const kept = await enqueueIntent(
+        buildIntent(flow, date, payload, activeProfileId)
+      );
+      if (!kept) return false;
       await refreshCount();
       void registerBackgroundSync();
+      return true;
     },
     [refreshCount, activeProfileId]
   );
+
+  // A NEW SESSION re-opens the device write gate (#2908). Logout closes every lane
+  // persistently — it has to, or a second tab writes everything back — so something must
+  // say the close is over, and this provider is it: mounted once in the (app) layout,
+  // which only renders for a logged-in session, and the owner of the largest
+  // device-local store.
+  //
+  // A NEW SESSION, NOT A NEW MOUNT, and the difference is the whole finding. This effect
+  // used to call `updateGate(openSession)` unconditionally, which reads as "a document
+  // exists, therefore someone is logged in". Every tab open at the moment of logout is
+  // also a document that exists — the session outlives the logout POST, so those tabs are
+  // mounted, authenticated, and each about to run this effect. CI caught it against the
+  // second-tab test itself: tab B re-opened the gate and wrote all five snapshots into
+  // the store tab A had just cleared. Passing the session's own name lets the gate refuse
+  // the session that closed it and admit only a genuinely new one.
+  //
+  // `[]` still matters for a second, separate reason: the deps of the sync effect below
+  // are four useCallbacks, so riding it re-ran this at arbitrary moments, including inside
+  // the logout window.
+  //
+  // It deliberately does not touch the offline-reads OFF SWITCH, which is a separate
+  // promise with its own toggle.
+  useEffect(() => {
+    void openSessionForDocument(deviceSessionKey);
+  }, [deviceSessionKey]);
 
   useEffect(() => {
     // Start the initial IndexedDB reads and replay from a browser task. Their state

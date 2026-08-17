@@ -13,6 +13,7 @@ import {
   type OneTapAffordance,
   type OneTapAffordanceDecl,
 } from "@/lib/one-tap";
+import { noteOneTapWrite } from "@/lib/offline/snapshot-refresh";
 
 // The ONE client binding for one-tap logging (issues #2041 and #2007).
 //
@@ -167,6 +168,13 @@ export function useOptimisticLedger<V = void>(
       if (spec.optimistic !== undefined) spec.commit?.(optimistic);
 
       const finish = (settlement: LedgerSettlement<V>) => {
+        // #2908: a tap that LANDED — server-adopted, or captured into the write queue —
+        // makes any offline read snapshot that folds this flow in out of date. Marking
+        // it here rather than at each surface is the whole point of there being one
+        // binding: the affordance is already declared, and lib/offline/snapshot-refresh
+        // maps it to the affected kinds off registries that already exist. A rollback
+        // wrote nothing, so it marks nothing.
+        if (settlement.kind !== "rollback") noteOneTapWrite(affordance);
         const settled = ledgerReducer(states.current.get(key) ?? tapped, {
           kind: "settled",
           settlement,
@@ -204,7 +212,7 @@ export function useOptimisticLedger<V = void>(
       finish(spec.settle ? spec.settle(result) : { kind: "keep" });
       return { status: "settled", result };
     },
-    [cooldownMs, read]
+    [cooldownMs, read, affordance]
   );
 
   return {

@@ -16,7 +16,11 @@ import {
   modalityLabel,
   IMAGING_MODALITIES,
 } from "@/lib/imaging-study";
-import { formatMsv } from "@/lib/radiation-dose";
+import {
+  estimateStudyDose,
+  doseChipLabel,
+  doseSourceNote,
+} from "@/lib/radiation-dose";
 import type { ImagingFollowUpSummary, LinkedEncounterRef } from "@/lib/queries";
 import type { ImagingStudy, ImagingModality } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
@@ -61,6 +65,26 @@ function buildColumns(
   ];
 }
 
+// The row's effective-dose chip. It reads the SAME estimateStudyDose the cumulative
+// card and its breakdown read (#2970), so a row and the breakdown line for the same
+// study can never disagree — and an estimate is marked as one at the figure, never
+// merged into an unlabelled number (#703's central rule). Before this the chip was
+// recorded-only, so a record with no reported doses — the common case — showed dose
+// figures on the card and none on any row.
+function DoseChip({ study }: { study: ImagingStudy }) {
+  const dose = estimateStudyDose(study);
+  const chip = doseChipLabel(dose);
+  if (!chip) return null;
+  return (
+    <span
+      className="ml-2 rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+      title={doseSourceNote(dose)}
+    >
+      {chip}
+    </span>
+  );
+}
+
 const baseColumns = (
   fmt: DisplayFormatPrefs,
   encounters: Record<number, LinkedEncounterRef>
@@ -76,14 +100,7 @@ const baseColumns = (
             contrast
           </span>
         ) : null}
-        {s.dose_msv != null ? (
-          <span
-            className="ml-2 rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            title="Effective dose recorded from the report"
-          >
-            {formatMsv(s.dose_msv)}
-          </span>
-        ) : null}
+        <DoseChip study={s} />
         {s.impression ? (
           <span className="ml-2 line-clamp-1 text-xs font-normal text-slate-400">
             {s.impression}

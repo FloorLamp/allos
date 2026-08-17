@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { hashPasswordSync } from "@/lib/password";
 import type { WeightUnit, DistanceUnit } from "@/lib/settings";
 import { ACTION_TEST_PASSWORD } from "./password-fixture";
-import { setActingSession } from "./session-state";
+import { peekActingTokenHash, setActingSession } from "./session-state";
 
 let seq = 0;
 
@@ -114,6 +114,15 @@ export function actAs(
     // existing action tests are unaffected; a test can pass 'read' to assert a
     // mutating action is blocked by requireWriteAccess().
     access,
+    // Not a real session key — these harnesses never reach the device write gate,
+    // which is browser-side. It only has to satisfy CurrentSession (#2908).
+    //
+    // AND IT IS NOT THE SESSIONS ROW'S KEY. In prod this is a short derivative of
+    // `token_hash` and can never equal it; an action that needs to name the session
+    // row wants `actingSessionId()` below, which is what the mocked currentTokenHash
+    // returns. Reaching for this field instead is the mistake that stand-in exists
+    // to catch.
+    deviceSessionKey: "test session key",
   };
   setActingSession(session);
   return session;
@@ -148,4 +157,19 @@ export function fd(
     form.set(k, String(v));
   }
   return form;
+}
+
+/**
+ * The `sessions.token_hash` of whoever is currently acting — the id prod's
+ * `currentTokenHash()` resolves, and the one a test seeds its session row under
+ * when it wants the "you are revoking the session you are asking from" branch.
+ */
+export function actingSessionId(): string {
+  const hash = peekActingTokenHash();
+  if (!hash) {
+    throw new Error(
+      "No acting session set — call actAs() before actingSessionId()."
+    );
+  }
+  return hash;
 }
