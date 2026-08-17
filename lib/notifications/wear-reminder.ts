@@ -268,12 +268,21 @@ export function readWearReminderClaim(
  *
  * NULL IS THE COMMON ANSWER AND IT COSTS TWO READS. The issue's "cheap dependency
  * pre-check" is not a separate stamp here the way the digest's is — the whole decision IS
- * one comparison (the recorded claim against the stream's frontier), so paying for it and
- * paying for the "rebuild" are the same thing, and no Telegram call is made unless the
- * comparison says the message is false. See the `wear-reminder` entry in ./reconcile.ts.
+ * the comparison (the recorded claim against the stream's frontier and the clock), so
+ * paying for it and paying for the "rebuild" are the same thing, and no Telegram call is
+ * made unless it says the message is false. See the `wear-reminder` entry in
+ * ./reconcile.ts.
  *
- * `pointerDate` bounds it to the night the pointer is about: a claim recorded for another
- * date belongs to another message, and the day boundary drops the pointer anyway.
+ * WHAT `pointerDate` ACTUALLY GUARDS, stated honestly because a previous draft called it
+ * redundant with the day boundary and it is not. The claim key holds ONE value per
+ * profile and is never cleared, while the pointer is per-night — so the two can name
+ * different nights whenever the delivery straddles local midnight: the tick captured
+ * `date` at the top of its run, and the send chokepoint stamps the pointer with
+ * `today(profileId)` re-read after the Telegram round-trip. A 23:59 Bedtime slot whose
+ * send lands at 00:00 records a claim for one day and a pointer for the next, and without
+ * this comparison last night's claimed instant would be measured against tonight's
+ * message. It is asserted directly (lib/__db_tests__/wear-reminder.test.ts) rather than
+ * left to the rollover.
  */
 export function rebuildWearReminder(
   profileId: number,
@@ -292,16 +301,19 @@ export function rebuildWearReminder(
   const claimedAt = new Date(claim.claimedAt);
   const verdict = wearReminderFalsified(
     claimedAt.getTime(),
-    frontier?.getTime() ?? null
+    frontier?.getTime() ?? null,
+    now().getTime(),
+    // The stream's OWN declared tolerance, the same value the send predicate reads for
+    // its floor — never a constant here (#2341 item 2).
+    watched.stream.reminder.frontierFloorMin
   );
-  if (!verdict.falsified || !frontier) return null;
+  if (!verdict.falsified) return null;
   const tz = getTimezone(profileId);
   return {
     title: BEDTIME_WEAR_TITLE,
-    body: bedtimeWearCorrectedBody(
-      zonedDateParts(tz, claimedAt).hhmm,
-      zonedDateParts(tz, frontier).hhmm
-    ),
+    // Only the CLAIMED instant, which is fixed at delivery — so this body is identical on
+    // every later tick and the sweep's idempotence pin corrects the message once.
+    body: bedtimeWearCorrectedBody(zonedDateParts(tz, claimedAt).hhmm),
     kind: "wear-reminder",
   };
 }

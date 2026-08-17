@@ -45,6 +45,7 @@ import { shiftDateStr, utcMinute } from "@/lib/date";
 import {
   bedtimeWearReminderState,
   buildWearReminder,
+  rebuildWearReminder,
   recordWearReminderClaim,
   wearReminderSend,
 } from "@/lib/notifications/wear-reminder";
@@ -732,13 +733,72 @@ describe("the wear reminder stops claiming what the next push disproves (#3027)"
     const res = await reconcileProfileMessages(profileId);
     expect(res.edited).toBe(1);
     const edited = String(vi.mocked(editMessageTextRaw).mock.calls[0][2]);
-    // The two clauses that were false are gone, and the two instants are stated.
+    // The two clauses that were false are gone, and the instant the message named is
+    // still stated so the reader can tell WHICH message this replaced.
     expect(edited).toContain("21:05");
-    expect(edited).toContain("21:59");
     expect(edited).not.toContain("still on the charger");
     expect(edited).not.toContain("won't be recorded");
     // The pointer stays LIVE: the night is not over, and a later push can move it again.
     expect(liveMessagePointers(profileId)).toHaveLength(1);
+  });
+
+  it("STRAY MINUTES from before the send do NOT rewrite the charger night", async () => {
+    // THE REFUTATION. The watch is on the charger all night, and the 22:05 push delivers
+    // the tail of the pre-gap batch: two minutes at 21:06 and 21:07, recorded BEFORE the
+    // message was sent. They are strictly later than the 21:05 the message named — which
+    // is all the first version of this predicate asked — and they are still an hour
+    // behind the clock. Editing here says "tonight's sleep is being recorded" about a
+    // watch on its charger, which is the harm #3027 was filed to remove.
+    seedLostNightSignature();
+    setProfileWearReminder(profileId, true);
+    seedLoginTelegram(profileId, "9302705");
+    await sendTonight();
+    vi.mocked(editMessageTextRaw).mockClear();
+
+    vi.setSystemTime(new Date(`${DAY}T22:05:30.000Z`));
+    stream("21:07", 2); // 21:06 and 21:07 — the pre-gap tail, arriving late
+    sync("22:05:00");
+
+    const res = await reconcileProfileMessages(profileId);
+    expect(res.edited).toBe(0);
+    expect(vi.mocked(editMessageTextRaw)).not.toHaveBeenCalled();
+    // And it stays that way for the rest of the night: the frontier is frozen an hour
+    // back, so no later tick finds it caught up either.
+    for (const at of ["22:20:00", "23:10:00"]) {
+      vi.setSystemTime(new Date(`${DAY}T${at}.000Z`));
+      sync(at);
+      expect((await reconcileProfileMessages(profileId)).edited).toBe(0);
+    }
+    expect(vi.mocked(editMessageTextRaw)).not.toHaveBeenCalled();
+  });
+
+  it("the correction happens ONCE, however many pushes follow", async () => {
+    // The sweep re-runs every tick until rollover. A corrected body that embedded the
+    // moving frontier changed on every one of them, so five pushes in an hour produced
+    // five edits of the same message, differing only in a wall clock nobody reads. The
+    // corrected sentence names only what was fixed at delivery, so the sweep's
+    // idempotence pin holds it from the second tick on.
+    seedLostNightSignature();
+    setProfileWearReminder(profileId, true);
+    seedLoginTelegram(profileId, "9302706");
+    await sendTonight();
+    vi.mocked(editMessageTextRaw).mockClear();
+
+    let edits = 0;
+    for (const [at, through] of [
+      ["22:05:00", "21:59"],
+      ["22:20:00", "22:15"],
+      ["22:35:00", "22:30"],
+      ["22:50:00", "22:45"],
+      ["23:05:00", "23:00"],
+    ]) {
+      vi.setSystemTime(new Date(`${DAY}T${at}.000Z`));
+      stream(through, 40);
+      sync(at);
+      edits += (await reconcileProfileMessages(profileId)).edited;
+    }
+    expect(edits).toBe(1);
+    expect(vi.mocked(editMessageTextRaw)).toHaveBeenCalledTimes(1);
   });
 
   it("a night where nothing arrives is left exactly as delivered", async () => {
@@ -800,5 +860,30 @@ describe("the wear reminder stops claiming what the next push disproves (#3027)"
     expect(res.dropped).toBe(1);
     expect(liveMessagePointers(profileId)).toEqual([]);
     expect(vi.mocked(editMessageTextRaw)).not.toHaveBeenCalled();
+  });
+
+  it("a claim recorded for ANOTHER NIGHT is not measured against tonight's message", async () => {
+    // WHY THIS IS REACHABLE, and not merely defensive. `notify_wear_reminder_claim`
+    // holds one value per profile and is never cleared, while the pointer is per night —
+    // and the two are stamped from DIFFERENT reads of the clock: the tick captured its
+    // `date` at the top of the run, and the send chokepoint stamps the pointer with
+    // `today(profileId)` re-read after the Telegram round-trip. A Bedtime slot at 23:59
+    // whose send lands at 00:00 records the claim under one day and the pointer under
+    // the next, and without this comparison last night's claimed instant would be
+    // measured against tonight's message.
+    seedLostNightSignature();
+    setProfileWearReminder(profileId, true);
+    const send = wearReminderSend(profileId)!;
+    const lastNight = shiftDateStr(DAY, -1);
+    recordWearReminderClaim(profileId, lastNight, send.claimedAt);
+
+    vi.setSystemTime(new Date(`${DAY}T22:05:30.000Z`));
+    laterPushDelivers("21:59");
+
+    // Tonight's pointer date finds no claim of its own, so nothing is rebuilt…
+    expect(rebuildWearReminder(profileId, DAY)).toBeNull();
+    // …while the night the claim WAS recorded for rebuilds exactly as it should. Both
+    // halves, so the guard is observed rather than asserted about.
+    expect(rebuildWearReminder(profileId, lastNight)?.body).toContain("21:05");
   });
 });

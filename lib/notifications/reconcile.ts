@@ -1172,9 +1172,9 @@ const PROSE: Record<ProseReconciler, ProseClaim> = {
     gatherKey: "notify_digest_recon",
   },
   // The bedtime wear reminder (#3027). Unlike the digest, THE PRE-CHECK IS THE REBUILD:
-  // the whole decision is one comparison — the stream's frontier now against the instant
-  // the delivered message named, recorded on delivery — and `rebuildWearReminder` answers
-  // null when the claim still stands, so an unfalsified message costs two reads and no
+  // the whole decision is two comparisons over one read — the stream's
+  // frontier now against the instant the delivered message named, and against the clock —
+  // and `rebuildWearReminder` answers null when the claim still stands, so an unfalsified message costs two reads and no
   // Telegram call. There is nothing a stamp could make cheaper and nothing for a floor to
   // bound, so it declares neither, and `decideProseGather` runs it every tick by its own
   // "no pre-check declared ⇒ rebuild every tick" rule.
