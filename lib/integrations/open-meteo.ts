@@ -525,7 +525,8 @@ async function readCappedBody(res: Response): Promise<string> {
 // leaks the same coordinates with none of the URL syntax to match on. The rest of
 // the sentence survives, because "unable to forward to the origin" is still the
 // diagnosis the raw fallback exists to preserve.
-const LOCATION_IN_TEXT = /https?:\/\/\S+|[?&]?\b(?:latitude|longitude)=[^\s&]*/gi;
+const LOCATION_IN_TEXT =
+  /https?:\/\/\S+|[?&]?\b(?:latitude|longitude)=[^\s&]*/gi;
 
 function stripLocation(text: string): string {
   return text.replace(LOCATION_IN_TEXT, " ").replace(/\s+/g, " ").trim();
