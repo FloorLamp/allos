@@ -2188,7 +2188,9 @@ describe("escalation: a caregiver's chat is named too (#2274)", () => {
         },
       ]
     );
-    expect(text).toMatch(/^\[Esme\] ⚠️ Missed dose — Esme D3 taken \d\d:\d\d\.$/);
+    expect(text).toMatch(
+      /^\[Esme\] ⚠️ Missed dose — Esme D3 taken \d\d:\d\d\.$/
+    );
   });
 });
 
@@ -2231,9 +2233,13 @@ describe("the name lookup is profile-scoped (#2274)", () => {
       ]
     );
 
-    expect(aText).toMatch(/^\[Ann\] 💊 Morning — Ann Magnesium taken \d\d:\d\d\.$/);
+    expect(aText).toMatch(
+      /^\[Ann\] 💊 Morning — Ann Magnesium taken \d\d:\d\d\.$/
+    );
     expect(aText).not.toContain("Ben");
-    expect(bText).toMatch(/^\[Ben\] 💊 Morning — Ben Magnesium taken \d\d:\d\d\.$/);
+    expect(bText).toMatch(
+      /^\[Ben\] 💊 Morning — Ben Magnesium taken \d\d:\d\d\.$/
+    );
     expect(bText).not.toContain("Ann");
   });
 });

@@ -104,17 +104,21 @@ function pointerAt(profileId: number, chat: string, renderedAt: string): void {
 }
 
 function lastKeyboardLabels(): string[] {
-  return ((editKeyboardMock.mock.calls.at(-1)?.[2] ?? []) as {
-    text?: string;
-  }[][])
+  return (
+    (editKeyboardMock.mock.calls.at(-1)?.[2] ?? []) as {
+      text?: string;
+    }[][]
+  )
     .flat()
     .map((b) => b.text ?? "");
 }
 
 function lastKeyboardRows(): string[][] {
-  return ((editKeyboardMock.mock.calls.at(-1)?.[2] ?? []) as {
-    text?: string;
-  }[][]).map((row) => row.map((b) => b.text ?? ""));
+  return (
+    (editKeyboardMock.mock.calls.at(-1)?.[2] ?? []) as {
+      text?: string;
+    }[][]
+  ).map((row) => row.map((b) => b.text ?? ""));
 }
 
 beforeEach(() => {

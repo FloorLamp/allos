@@ -447,9 +447,9 @@ describe("closingTallyText (#2274)", () => {
         skipped: ["Omega-3"],
       })
     ).toBe("Vitamin D, Magnesium taken · Omega-3 skipped");
-    expect(closingTallyText({ taken: [{ name: "Melatonin" }], skipped: [] })).toBe(
-      "Melatonin taken"
-    );
+    expect(
+      closingTallyText({ taken: [{ name: "Melatonin" }], skipped: [] })
+    ).toBe("Melatonin taken");
     expect(closingTallyText({ taken: [], skipped: ["Omega-3"] })).toBe(
       "Omega-3 skipped"
     );
@@ -461,7 +461,11 @@ describe("closingTallyText (#2274)", () => {
     // obligation-then-name sort. A second sort here is exactly the drift to avoid.
     expect(
       closingTallyText({
-        taken: [{ name: "Zinc" }, { name: "Alpha-lipoic" }, { name: "Magnesium" }],
+        taken: [
+          { name: "Zinc" },
+          { name: "Alpha-lipoic" },
+          { name: "Magnesium" },
+        ],
         skipped: [],
       })
     ).toBe("Zinc, Alpha-lipoic, Magnesium taken");
