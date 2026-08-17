@@ -696,29 +696,92 @@ export function gatherDigestInput(
     // row reads (`getDigestTimeSuggestion`), so the two surfaces are one finding under
     // one episode key: a tap on either exit silences both. Null on every ordinary
     // morning, and null the moment the episode is dismissed.
-    ...(() => {
-      const timing = getDigestTimeSuggestion(profileId);
-      // …and dropped from THIS message once its topic has been declined across separate
-      // raisings (#2543). The family is the CONFIGURED minute, so the count only grows
-      // when the ratchet re-armed and the person said no to a materially later proposal
-      // a second time — at which point asking again on the morning message is the exact
-      // behaviour #2386 exists to stop. The Settings row is unaffected and keeps
-      // offering the same three exits: this reduces where the question is asked, never
-      // whether it can be answered.
-      const quieted =
-        timing != null &&
-        findingProminence(
-          digestTimeSuggestionFinding(timing),
-          dismissedSignalKeys(getFindingSuppressions(profileId))
-        ) !== "routine";
-      return timing && !quieted
-        ? {
-            timeSuggestionLine: digestTimeSuggestionLine(timing),
-            timeActions: digestTimeActions(profileId, td, timing),
-          }
-        : {};
-    })(),
+    ...digestTimeTail(profileId, td),
   };
+}
+
+// The digest TIME suggestion's line and its three exits (#2217), or {} when there is no
+// live suggestion to raise.
+//
+// EXTRACTED so the SEND and the collapsed keyboard REBUILD are one computation (#221,
+// #2890). The rebuild has to re-emit these buttons — they ride the same keyboard as the
+// two tail controls — and deriving them beside a second copy of this gate is exactly how
+// the two would drift.
+export function digestTimeTail(
+  profileId: number,
+  date: string
+): Pick<DigestInput, "timeSuggestionLine" | "timeActions"> {
+  const timing = getDigestTimeSuggestion(profileId);
+  // …and dropped from THIS message once its topic has been declined across separate
+  // raisings (#2543). The family is the CONFIGURED minute, so the count only grows
+  // when the ratchet re-armed and the person said no to a materially later proposal
+  // a second time — at which point asking again on the morning message is the exact
+  // behaviour #2386 exists to stop. The Settings row is unaffected and keeps
+  // offering the same three exits: this reduces where the question is asked, never
+  // whether it can be answered.
+  const quieted =
+    timing != null &&
+    findingProminence(
+      digestTimeSuggestionFinding(timing),
+      dismissedSignalKeys(getFindingSuppressions(profileId))
+    ) !== "routine";
+  return timing && !quieted
+    ? {
+        timeSuggestionLine: digestTimeSuggestionLine(timing),
+        timeActions: digestTimeActions(profileId, date, timing),
+      }
+    : {};
+}
+
+// ---- THE DIGEST'S COLLAPSED KEYBOARD, IN ONE PLACE (#2890) ------------------
+//
+// The digest ships `[offerTail, tuneTail, ...timeActions]`. THREE separate paths rebuild
+// that keyboard — the slot-boundary refresh, the ➕ collapse tap and the ⚙️ collapse tap —
+// and they disagreed with each other and with the send:
+//
+//   • the refresh emitted the offer tail only when something was on offer and Tune only
+//     when something was tunable, so an ordinary quiet profile got `[]` — the WHOLE
+//     keyboard stripped off a message that shipped with buttons. That is the same defect
+//     #2890 decision 3 set out to fix, surviving in the state neither guard covered;
+//   • the ➕ collapse emitted the offer tail unconditionally and Tune conditionally;
+//   • the ⚙️ collapse emitted Tune unconditionally and the offer tail conditionally;
+//   • and ALL THREE dropped the #2217 time exits, because they rebuilt two thirds of a
+//     three-part keyboard. `updateMessageKeyboard` is a wholesale replace that also
+//     rewrites the stored pointer, so those buttons died in the chat AND in the record.
+//
+// ONE FUNCTION now answers "what is this digest's collapsed keyboard, right now", and
+// every rebuild calls it. The rule:
+//
+//   1. THE OFFER TAIL IS UNCONDITIONAL. It is the GUARANTEED access path (#1505) — the
+//      one affordance always correct to offer — and its zero arm ("➕ Doses", no count)
+//      exists for exactly this. Unconditional is also what makes an empty keyboard
+//      structurally impossible, which is the invariant the per-control guards could not
+//      hold. This governs the REBUILD only; what a digest SENDS is untouched, so no
+//      message's existence or timing changes.
+//   2. ⚙️ Tune appears while the digest has something to tune (#1714) — a control with no
+//      subject is not offered. Recomputed here, which is what the collapse path already
+//      did.
+//   3. The #2217 time exits ride along from `digestTimeTail` — the same computation the
+//      send used, never a second copy.
+//
+// It always resets to COLLAPSED: an expanded list from a previous slot offers items that
+// are no longer on offer, so closing it is more honest than leaving it open.
+export function collapsedDigestActions(
+  profileId: number,
+  date: string,
+  nowHhmm: string
+): NotificationAction[] {
+  return [
+    collapsedOfferAction(
+      profileId,
+      date,
+      getOfferedIntakeForSlot(profileId, nowHhmm).length
+    ),
+    ...(digestTunableCategories(profileId, date).length > 0
+      ? [collapsedTuneAction(profileId, date)]
+      : []),
+    ...(digestTimeTail(profileId, date).timeActions ?? []),
+  ];
 }
 
 // The collapsed ⚙️ Tune action for today's message, or null when the message carries
@@ -1110,27 +1173,11 @@ export async function refreshDigestOfferTail(profileId: number): Promise<void> {
   }
   if (!offerTailNeedsRefresh(pointer.renderedAt, nowHhmm)) return;
 
-  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
-  // IT REBUILDS THE DIGEST'S WHOLE COLLAPSED KEYBOARD, not just the control it came for
-  // (#2890 decision 3). `updateMessageKeyboard` is a wholesale replace, so a rebuild
-  // from the offer tail alone silently DELETED the ⚙️ Tune button (#1714) from a digest
-  // that shipped with one, at every slot boundary. The collapse path already guards this
-  // and says so in a comment (`telegram-quick-log.ts`); the refresh never got the same
-  // treatment.
-  //
-  // Tune's presence is RECOMPUTED here, exactly as the collapse path recomputes it,
-  // rather than remembered on `DigestTailPointer`. That recompute can drift during the
-  // day (`collectRecentChanges` reads a rolling window), but the collapse path already
-  // accepts that drift — one behaviour on both paths beats a new stored flag that only
-  // one of them would honour.
-  const actions = [
-    ...(offered.length > 0
-      ? [collapsedOfferAction(profileId, date, offered.length)]
-      : []),
-    ...(digestTunableCategories(profileId, date).length > 0
-      ? [collapsedTuneAction(profileId, date)]
-      : []),
-  ];
+  // IT REBUILDS THE DIGEST'S WHOLE COLLAPSED KEYBOARD (#2890 decision 3), through the
+  // one function every other rebuild path calls — offer tail, ⚙️ Tune and the #2217 time
+  // exits. `updateMessageKeyboard` is a wholesale replace that also rewrites the stored
+  // pointer, so anything this omits dies in the chat and in the record alike.
+  const actions = collapsedDigestActions(profileId, date, nowHhmm);
   try {
     await updateMessageKeyboard(
       profileId,

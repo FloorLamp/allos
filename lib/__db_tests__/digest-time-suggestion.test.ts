@@ -14,18 +14,27 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
-import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
+import {
+  shiftDateStr,
+  utcInstant,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "@/lib/date";
 import {
   getNotifySchedule,
   getProfileSetting,
   setProfileSetting,
   setProfileSleepDigest,
+  setDigestTailPointer,
   setSetting,
   setTimezone,
 } from "@/lib/settings";
 import { DIGEST_MODE_KEY } from "@/lib/settings/notifications";
 import { buildDigest } from "@/lib/notifications/digest";
-import { gatherDigestInput } from "@/lib/notifications/digest-data";
+import {
+  gatherDigestInput,
+  refreshDigestOfferTail,
+} from "@/lib/notifications/digest-data";
 import { getDigestTimeSuggestion } from "@/lib/queries/digest-time-suggestion";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import {
@@ -47,6 +56,8 @@ import {
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
 import { resolveSuppressedKeyDisplay } from "@/lib/suppression-display";
+import { offerCollapseToken } from "@/lib/notifications/offer-tail";
+import { tuneCollapseToken } from "@/lib/notifications/digest-tune";
 import { seedLoginTelegram } from "./fixtures";
 import { plainBody } from "@/lib/notifications/rich-text";
 
@@ -381,5 +392,96 @@ describe("one finding, one episode key (constraint 5)", () => {
     expect({ ...after, digestMinute: before.digestMinute }).toEqual(before);
     // And it stops firing on its own: the configured time now clears the median.
     expect(getDigestTimeSuggestion(p)).toBeNull();
+  });
+});
+
+// ---- The time exits survive the digest's keyboard rebuilds (#2890) ----
+//
+// The digest's keyboard is `[offerTail, tuneTail, ...timeActions]`, and three separate
+// paths rebuild it: the slot-boundary refresh and the two collapse taps. Every one of
+// them used to rebuild the FIRST TWO PARTS ONLY — so a digest that shipped with these
+// three exits came back from an ordinary slot boundary with two buttons, and the exits
+// were gone from the chat AND from the stored pointer, which `updateMessageKeyboard`
+// rewrites in the same call. The question this suggestion asks was silently withdrawn
+// from the message that asked it.
+//
+// This lives here rather than beside the other tail tests because THIS is the fixture
+// that raises a real suggestion; asserting it against a hand-built action list would
+// only prove the test's own arithmetic.
+describe("the digest keyboard rebuild keeps the time exits (#2890)", () => {
+  const EXITS = [
+    "⏳ As soon as it’s ready",
+    "🕘 Use 07:40",
+    "🔕 No thanks",
+  ];
+
+  function pointerInAnotherSlot(profileId: number, chat: string): void {
+    const hour = Number(
+      zonedDateParts(TZ, new Date()).hhmm.slice(0, 2)
+    );
+    setDigestTailPointer(profileId, {
+      chatId: chat,
+      messageId: 7374,
+      date: today(profileId),
+      // A rendered-at in a DIFFERENT time bucket, so the boundary guard opens.
+      renderedAt: hour < 11 ? "23:30" : "07:30",
+    });
+  }
+
+  it("re-emits them on a slot-boundary refresh", async () => {
+    const p = seedProfile("Exit Elena");
+    const chat = `2890${p % 1_000_000}`;
+    seedLoginTelegram(p, chat);
+    // The suggestion really is live for this profile — otherwise the assertion below
+    // would pass on a keyboard that never had exits to lose.
+    expect(getDigestTimeSuggestion(p)).not.toBeNull();
+    pointerInAnotherSlot(p, chat);
+
+    editKeyboardMock.mockClear();
+    sendMock.mockClear();
+    await refreshDigestOfferTail(p);
+
+    expect(sendMock).not.toHaveBeenCalled();
+    const labels = (
+      (editKeyboardMock.mock.calls.at(-1)?.[2] ?? []) as { text?: string }[][]
+    )
+      .flat()
+      .map((b) => b.text ?? "");
+    for (const exit of EXITS) expect(labels).toContain(exit);
+    // …and the tail controls are still there too — this rebuild replaces the whole
+    // keyboard, so "kept the exits" must not mean "dropped the tail".
+    expect(labels).toContain("➕ Doses");
+  });
+
+  // The strongest form of "one rule": all three rebuild paths, same profile, same
+  // instant, must produce the SAME keyboard. Three hand-rolled variants of this list
+  // disagreed about every control on it.
+  it("agrees with the ➕ and ⚙️ collapse taps, button for button", async () => {
+    const p = seedProfile("Agree Aya");
+    const chat = `2891${p % 1_000_000}`;
+    seedLoginTelegram(p, chat);
+    const date = today(p);
+    pointerInAnotherSlot(p, chat);
+
+    const keyboardAfter = async (run: () => Promise<unknown>) => {
+      editKeyboardMock.mockClear();
+      await run();
+      return (
+        (editKeyboardMock.mock.calls.at(-1)?.[2] ?? []) as { text?: string }[][]
+      ).map((row) => row.map((b) => b.text ?? ""));
+    };
+
+    const fromRefresh = await keyboardAfter(() => refreshDigestOfferTail(p));
+    const fromOfferCollapse = await keyboardAfter(() =>
+      handleCallbackQuery(cq(chat, offerCollapseToken(p, date)))
+    );
+    const fromTuneCollapse = await keyboardAfter(() =>
+      handleCallbackQuery(cq(chat, tuneCollapseToken(p, date)))
+    );
+
+    expect(fromRefresh).toEqual(fromOfferCollapse);
+    expect(fromRefresh).toEqual(fromTuneCollapse);
+    // And it is a real keyboard, not three empties agreeing with each other.
+    expect(fromRefresh.flat()).toContain("🔕 No thanks");
   });
 });

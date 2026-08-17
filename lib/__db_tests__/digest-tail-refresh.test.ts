@@ -126,6 +126,41 @@ beforeEach(() => {
   sendMock.mockClear();
 });
 
+describe("the collapsed keyboard is never emitted empty (#2890)", () => {
+  // THE ATTACK THAT SURVIVED THE FIRST FIX. An ordinary quiet profile — nothing on
+  // offer AND nothing tunable — still got `[]`, because the guard was "re-append Tune
+  // IF tunable" rather than "never emit an empty keyboard". Every per-control guard
+  // has a state it does not cover; the invariant does not.
+  it("still renders the guaranteed access tail with nothing on offer and nothing to tune", async () => {
+    const pid = newProfile("Quiet Qadir");
+    const chat = "5552894";
+    seedLoginTelegram(pid, chat);
+    // Deliberately barren: no `may` item, no recent change, no sleep, no activity.
+    pointerAt(pid, chat, anotherSlotHhmm());
+
+    await refreshDigestOfferTail(pid);
+
+    expect(lastKeyboardRows()).toEqual([["➕ Doses"]]);
+    expect(lastKeyboardRows().flat()).not.toEqual([]);
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  // The offer tail is the GUARANTEED access path (#1505), so the rebuild emits it
+  // whatever the slot holds — and the zero arm is what keeps that honest rather than
+  // claiming a count it does not have.
+  it("renders the zero arm rather than a stale count when the slot empties", async () => {
+    const pid = newProfile("Emptied Enid");
+    const chat = "5552895";
+    seedLoginTelegram(pid, chat);
+    seedTunableCategory(pid);
+    pointerAt(pid, chat, anotherSlotHhmm());
+
+    await refreshDigestOfferTail(pid);
+
+    expect(lastKeyboardRows()).toEqual([["➕ Doses", "⚙️ Tune"]]);
+  });
+});
+
 describe("the slot-boundary refresh keeps ⚙️ Tune (#2890)", () => {
   it("re-renders BOTH collapsed controls, on one row, and sends nothing", async () => {
     const pid = newProfile("Refresh Rina");
@@ -154,8 +189,9 @@ describe("the slot-boundary refresh keeps ⚙️ Tune (#2890)", () => {
 
     await refreshDigestOfferTail(pid);
 
-    // …and the tail used to strip the whole keyboard, ⚙️ Tune with it.
-    expect(lastKeyboardLabels()).toEqual(["⚙️ Tune"]);
+    // …and the tail used to strip the whole keyboard, ⚙️ Tune with it. The offer
+    // control still renders, in its zero arm — see the invariant above.
+    expect(lastKeyboardLabels()).toEqual(["➕ Doses", "⚙️ Tune"]);
     expect(sendMock).not.toHaveBeenCalled();
   });
 
