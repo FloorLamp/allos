@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   drilldownCoverage,
   drilldownRemainderLabel,
-  failureRunReason,
+  repeatedRunReason,
   groupSyncDays,
   notableReason,
   syncDayAttention,
@@ -168,13 +168,13 @@ describe("failures inside a day", () => {
 
   it("labels a collapsed failure run with its count-qualified shared reason", () => {
     // #1880 item 3's copy, moved here with the collapse it belongs to.
-    expect(failureRunReason(2, "weather fetch failed (503)")).toBe(
+    expect(repeatedRunReason(2, "weather fetch failed (503)")).toBe(
       "weather fetch failed (503) — both runs"
     );
-    expect(failureRunReason(4, "weather fetch failed (503)")).toBe(
+    expect(repeatedRunReason(4, "weather fetch failed (503)")).toBe(
       "weather fetch failed (503) — all 4 runs"
     );
-    expect(failureRunReason(2, null)).toBeNull();
+    expect(repeatedRunReason(2, null)).toBeNull();
   });
 
   it("ranks a failure above a cut-short run above dropped rows", () => {
@@ -187,6 +187,95 @@ describe("failures inside a day", () => {
       tone: "caution",
     });
     expect(syncDayAttention({ failed: 0, partial: 0, skipped: 0 })).toBeNull();
+  });
+});
+
+// ── A STANDING half-failure is one fact, not one per run (#3007) ─────────────
+//
+// The weather sync's air-quality request was one day past its host's ceiling, so it
+// failed identically on every run. Inside one day group the same three-line diagnostic
+// repeated once per run — eight identical rows, which is the shape of noise, and
+// exactly what this surface exists to stop. It already collapses identical FAILURES;
+// a partial is the same pattern one rung down.
+describe("repeated identical partials inside a day", () => {
+  const AIR = "Partial sync — the air-quality half failed (400).";
+  const OTHER = "Partial sync — a page cap stopped this run early.";
+
+  function partial(at: string, warning: string): SyncEventFacts {
+    return ev({ at, unchanged: 73, details: truncatedSyncDetails(warning) });
+  }
+
+  it("collapses them into ONE entry carrying the run count", () => {
+    const events = [
+      partial("2026-08-16 15:00:00", AIR),
+      partial("2026-08-16 14:00:00", AIR),
+      partial("2026-08-16 13:00:00", AIR),
+      partial("2026-08-16 12:00:00", AIR),
+      routine("2026-08-16 11:00:00"),
+    ];
+    // markLatest off: the newest run always keeps its own line (asserted below), and
+    // this case is about the four that follow it.
+    const [day] = groupSyncDays(events, "UTC", { markLatest: false });
+    expect(day.entries).toHaveLength(2);
+    expect(day.entries[0]).toMatchObject({ kind: "partial-run", warning: AIR });
+    expect(
+      (day.entries[0] as { kind: "partial-run"; runs: SyncEventFacts[] }).runs
+    ).toHaveLength(4);
+    expect(day.entries[1]).toMatchObject({ kind: "run", reason: "routine" });
+    // The day's own accounting is untouched — four partials happened.
+    expect(day.partial).toBe(4);
+    expect(syncDayAttention(day)).toEqual({
+      label: "partial",
+      tone: "caution",
+    });
+  });
+
+  it("keeps two DIFFERENT partial reasons apart", () => {
+    const [day] = groupSyncDays(
+      [
+        partial("2026-08-16 15:00:00", AIR),
+        partial("2026-08-16 14:00:00", AIR),
+        partial("2026-08-16 13:00:00", OTHER),
+        partial("2026-08-16 12:00:00", OTHER),
+      ],
+      "UTC",
+      { markLatest: false }
+    );
+    expect(day.entries).toHaveLength(2);
+    expect(day.entries[0]).toMatchObject({ kind: "partial-run", warning: AIR });
+    expect(day.entries[1]).toMatchObject({
+      kind: "partial-run",
+      warning: OTHER,
+    });
+  });
+
+  it("leaves a LONE partial as its own run — collapsing one row hides a line for nothing", () => {
+    const [day] = groupSyncDays(
+      [partial("2026-08-16 15:00:00", AIR), routine("2026-08-16 14:00:00")],
+      "UTC",
+      { markLatest: false }
+    );
+    expect(day.entries[0]).toMatchObject({ kind: "run", reason: "partial" });
+  });
+
+  it("never swallows the NEWEST run — it keeps its own line and the rest collapse", () => {
+    const [day] = groupSyncDays(
+      [
+        partial("2026-08-16 15:00:00", AIR),
+        partial("2026-08-16 14:00:00", AIR),
+        partial("2026-08-16 13:00:00", AIR),
+      ],
+      "UTC"
+    );
+    expect(day.entries[0]).toMatchObject({ kind: "run", reason: "newest" });
+    expect(day.entries[1]).toMatchObject({ kind: "partial-run" });
+    expect(
+      (day.entries[1] as { kind: "partial-run"; runs: SyncEventFacts[] }).runs
+    ).toHaveLength(2);
+  });
+
+  it("states the shared reason once, count-qualified — 'all 8 runs'", () => {
+    expect(repeatedRunReason(8, AIR)).toBe(`${AIR} — all 8 runs`);
   });
 });
 

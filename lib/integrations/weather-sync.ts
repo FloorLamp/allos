@@ -33,6 +33,11 @@ export const WEATHER_WINDOW_DAYS = 14;
 // itself an input — the outdoor-viability scan (#1724) plans against the coming week.
 // Kept at the honest reliable horizon: Open-Meteo publishes 16 days, but nothing in the
 // app commits to a day beyond WEATHER_FORECAST_DAYS.
+//
+// This is the horizon of the WEATHER endpoint only. The air-quality endpoint has its
+// own, shorter ceiling (AIR_QUALITY_FORECAST_DAYS in ./open-meteo — 7 days COUNTING
+// today, i.e. today + 6), and the source clamps its own request to it. Sending this
+// window to both was #3007: every air-quality request was one day out of range.
 export const WEATHER_FORECAST_DAYS = 7;
 
 export interface WeatherSyncResult {
@@ -52,8 +57,26 @@ export interface WeatherSyncResult {
 // cap or a rate limit — neither of which is what happened here — and says the next
 // sync picks up where it left off, which for a rolling re-fetch means nothing.
 // Exported so its test asserts the copy rather than a paraphrase of it.
-export function weatherPartialWarning(reason: string): string {
-  return `Partial sync — the hourly UV series was cached, but the daily forecast/air-quality half failed (${reason}). Pollen, AQI and daily conditions are absent for this window; the next run re-fetches it.`;
+//
+// The TAIL depends on which KIND of failure it was (#3007). "The next run re-fetches
+// it" was written for #2567's load-shedding case, where the next run genuinely does
+// fix it — and it was then printed, hourly and forever, over a deterministic 400 that
+// had never once succeeded and never would. A 4xx says so instead.
+export function weatherPartialWarning(
+  reason: string,
+  options: { deterministic?: boolean } = {}
+): string {
+  const tail = options.deterministic
+    ? "the next run asks the same thing and gets the same answer, so this stays missing until it's fixed."
+    : "the next run re-fetches it.";
+  return `Partial sync — the hourly UV series was cached, but the daily forecast/air-quality half failed (${reason}). Pollen, AQI and daily conditions are absent for this window; ${tail}`;
+}
+
+// A response status that will answer the same way next time. 4xx is the request being
+// wrong (a bad parameter, an out-of-range window); 5xx and 0 (network error/timeout)
+// are the ones a retry can clear.
+export function isDeterministicFailure(status: number | undefined): boolean {
+  return status != null && status >= 400 && status < 500;
 }
 
 function shiftDate(day: string, n: number): string {
@@ -144,6 +167,9 @@ export async function runWeatherSync(
   // rather than breaking (the derived situations simply have no data and stay silent).
   let dayCounts: UpsertCounts = emptyCounts();
   let partial: string | undefined;
+  // Whether the partial above will recur identically on the next run (#3007) — it
+  // decides the warning's tail, and only a response status can answer it.
+  let partialDeterministic = false;
   const daily = await source.fetchDaily(
     home.lat,
     home.lng,
@@ -154,12 +180,16 @@ export async function runWeatherSync(
   if (!daily.ok) {
     partial =
       daily.error ?? `daily fetch failed (${daily.status ?? "unknown"})`;
+    partialDeterministic = isDeterministicFailure(daily.status);
   } else {
     partial = daily.partial;
+    partialDeterministic = isDeterministicFailure(daily.partialStatus);
     try {
       dayCounts = upsertWeatherDays(home.lat, home.lng, daily.rows, source.id);
     } catch (err) {
+      // A write failure, not a response — a retry is exactly the right advice.
       partial = err instanceof Error ? err.message : String(err);
+      partialDeterministic = false;
     }
   }
 
@@ -194,7 +224,11 @@ export async function runWeatherSync(
     // dropped it on the floor. It writes it now, through the shared shape with its own
     // honest line rather than a fourth spelling of the same fact.
     details: partial
-      ? truncatedSyncDetails(weatherPartialWarning(partial))
+      ? truncatedSyncDetails(
+          weatherPartialWarning(partial, {
+            deterministic: partialDeterministic,
+          })
+        )
       : null,
     received: tally.received,
     written: tally.inserted + tally.updated + tally.unchanged,

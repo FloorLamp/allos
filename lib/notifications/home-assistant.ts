@@ -40,6 +40,11 @@ function profileDisplayName(profileId: number): string {
   return row?.name ?? "";
 }
 
+// How long one webhook POST may hang before it is abandoned. Exported so the
+// post-workout queue's whole-dispatch deadline can be asserted against every channel
+// cap at once — raising this above that deadline reds the notification tier.
+export const HOME_ASSISTANT_CALL_TIMEOUT_MS = 10_000;
+
 // POST the payload to the HA webhook. Throws on any non-2xx (or transport error) so
 // dispatch() records the channel failed and the delivery-health marker is set. A
 // 10s timeout guards a hung LAN request. The shared secret, when set, rides the
@@ -66,7 +71,7 @@ async function postWebhook(
     headers,
     body: JSON.stringify(payload),
     redirect: "manual",
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(HOME_ASSISTANT_CALL_TIMEOUT_MS),
   });
   if (!isAcceptableWebhookStatus(res.status)) {
     throw new Error(`Home Assistant webhook failed: HTTP ${res.status}`);

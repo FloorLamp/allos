@@ -121,7 +121,10 @@ function serializes(v: unknown): boolean {
 // `String(v)` is NOT total: an object with a null prototype, or one whose
 // toString/valueOf throw, raises "Cannot convert object to primitive value".
 // This is the fallback's fallback, so it cannot be the thing that throws.
-function safeString(v: unknown): string {
+// Exported because a caller that stringifies a caught value BEFORE handing it to a
+// logger has the same hazard in a worse place: a throw inside a catch escapes the
+// containment the catch exists to provide.
+export function safeString(v: unknown): string {
   try {
     return String(v);
   } catch {

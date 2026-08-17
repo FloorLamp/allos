@@ -217,17 +217,41 @@ function RangeLine({
   );
 }
 
-function FailureRunLine({
+// One line for a maximal run of consecutive runs that said the SAME thing — identical
+// failures (#1880 item 3) and identical partials (#3007). Both rungs render the same
+// way and differ only in their verdict word, tone and fallback copy, so they share one
+// component rather than a copy each.
+const REPEAT_RUN_STYLE = {
+  "failure-run": {
+    verdict: "Failed",
+    tone: STATUS_TEXT_TONE.bad,
+    reasonClass: "text-rose-700 dark:text-rose-300",
+    fallback: "No error detail was recorded.",
+    testId: "sync-history-failure-run",
+    buttonTestId: "sync-history-show-failures",
+  },
+  "partial-run": {
+    verdict: "Partial",
+    tone: STATUS_TEXT_TONE.caution,
+    reasonClass: "text-amber-700 dark:text-amber-300",
+    fallback: "No detail was recorded.",
+    testId: "sync-history-partial-run",
+    buttonTestId: "sync-history-show-partials",
+  },
+} as const;
+
+function RepeatRunLine({
   entry,
   isAdmin,
   sourceId,
   timeZone,
 }: {
-  entry: Extract<SyncDayEntryView, { kind: "failure-run" }>;
+  entry: Extract<SyncDayEntryView, { kind: "failure-run" | "partial-run" }>;
   isAdmin: boolean;
   sourceId: IntegrationId;
   timeZone: string;
 }) {
+  const style = REPEAT_RUN_STYLE[entry.kind];
   const [runs, setRuns] = useState<SyncRunView[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -259,7 +283,7 @@ function FailureRunLine({
   }
 
   return (
-    <li className="px-3 py-3" data-testid="sync-history-failure-run">
+    <li className="px-3 py-3" data-testid={style.testId}>
       <div className={LEDGER_GRID}>
         <div className="flex items-center gap-1.5 whitespace-nowrap text-xs tabular-nums text-slate-500 dark:text-slate-400">
           <span>
@@ -277,17 +301,17 @@ function FailureRunLine({
           </span>
           {entry.isLatest && <LatestBadge />}
         </div>
-        <span className={`text-sm font-medium ${STATUS_TEXT_TONE.bad}`}>
-          Failed ×{entry.count}
+        <span className={`text-sm font-medium ${style.tone}`}>
+          {style.verdict} ×{entry.count}
         </span>
-        <p className="wrap-break-word text-xs text-rose-700 dark:text-rose-300">
-          {entry.reason ?? "No error detail was recorded."}
+        <p className={`wrap-break-word text-xs ${style.reasonClass}`}>
+          {entry.reason ?? style.fallback}
         </p>
         <button
           type="button"
           onClick={() => void expand()}
           disabled={loading}
-          data-testid="sync-history-show-failures"
+          data-testid={style.buttonTestId}
           className="inline-flex w-fit items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 disabled:cursor-wait disabled:opacity-60 dark:text-slate-400 dark:hover:text-slate-100 sm:justify-self-end"
         >
           {loading ? "Loading…" : failed ? "Try again" : "Show runs"}
@@ -411,15 +435,19 @@ export default function SyncHistoryDays({
                       />
                     );
                   }
-                  if (entry.kind === "failure-run") {
+                  if (
+                    entry.kind === "failure-run" ||
+                    entry.kind === "partial-run"
+                  ) {
                     // Consecutive IDENTICAL failures collapse (#1880 item 3) so an
                     // upstream outage retried hourly reads as one pattern, not a zebra.
-                    // The pattern remains expandable: each run can carry different
-                    // structured diagnostics or an admin raw payload even when its
-                    // top-level error string matches.
+                    // Consecutive identical PARTIALS collapse the same way (#3007) — a
+                    // standing half-failure is one fact, not one per run. Both remain
+                    // expandable: each run can carry different structured diagnostics
+                    // or an admin raw payload even when its shared line matches.
                     return (
-                      <FailureRunLine
-                        key={`failures-${entry.runIds[0]}`}
+                      <RepeatRunLine
+                        key={`${entry.kind}-${entry.runIds[0]}`}
                         entry={entry}
                         isAdmin={isAdmin}
                         sourceId={sourceId}
