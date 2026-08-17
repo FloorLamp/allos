@@ -60,7 +60,7 @@ beforeAll(() => {
 // imports it lazily (async) so it reads the live binding on every call — a test's
 // actAs() takes effect on the next requireSession().
 vi.mock("@/lib/auth", async () => {
-  const { getActingSession, peekActingSession } =
+  const { getActingSession, peekActingSession, peekActingTokenHash } =
     await import("./session-state");
   // Held as a MODULE, not destructured: the shared-registry tier
   // (vitest.db-shared.config.ts) rebinds lib/db.ts's `db` export between test
@@ -232,11 +232,15 @@ vi.mock("@/lib/auth", async () => {
     destroyLoginSessions: authActual.destroyLoginSessions,
     // WHICH SESSION IS ASKING — what revokeSessionAction hands revokeSession so it
     // can refuse the caller's own. Prod resolves the live cookie to its token_hash;
-    // this tier has no cookie, and the acting session's `deviceSessionKey` is the
-    // only per-session identity it has, so it stands in for the hash. A test that
-    // wants the refusal branch seeds its session row under that same key, which is
-    // the shape prod is in: what this returns IS the row's primary key.
-    currentTokenHash: async () => peekActingSession()?.deviceSessionKey ?? null,
+    // this tier has no cookie, so session-state mints a per-session stand-in SHAPED
+    // LIKE THE REAL VALUE (64-hex SHA-256), and a test seeding its session row under
+    // `actingSessionId()` is seeding it under the same key prod would.
+    //
+    // It is deliberately NOT `deviceSessionKey`, which is what this used to return:
+    // that made the row key and the 16-char device key interchangeable in this tier
+    // and nowhere else, so an action passing the wrong one of the two was green here
+    // and inert in production. See the note at peekActingTokenHash.
+    currentTokenHash: async () => peekActingTokenHash(),
     // The one that genuinely cannot run as-is: prod resolves the caller's live
     // cookie to spare that session. There is no cookie in this tier, which is
     // exactly the no-cookie branch prod already documents — it falls through to

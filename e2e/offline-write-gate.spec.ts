@@ -1210,6 +1210,12 @@ test("R-5 — a practice card does not claim a session the device refused to kee
 //   drop `await wipeDeviceForSignOut()` in selfSignOut  FAIL   FAIL   pass
 //   drop the `if (!isSelf) return run()` guard          FAIL   FAIL   pass
 //   drop the `survived(r)` re-open                      pass   pass   FAIL
+//
+// THAT SECOND ROW WAS NOT TRUE OF R-A6 WHEN IT WAS FIRST PUBLISHED, and the reason is
+// worth keeping: with the guard gone the control press wiped the device, `del`'s
+// predicate re-opened the gate immediately, and the refresher refilled all five kinds
+// inside the wait — so R-A6 passed on a single run and only reddened across three. The
+// controls run under `withNoRefill` now, and the row holds on every run.
 
 /** A password that clears lib/password-strength for every login seeded below. */
 const DEVICE_PASSWORD = "e2e-device-pass-9";
@@ -1254,6 +1260,34 @@ function loginRow(page: Page, username: string) {
     .filter({ has: page.getByText(username, { exact: true }) });
 }
 
+/**
+ * Run a non-self control press with the snapshot endpoint UNREACHABLE.
+ *
+ * A control that asserts "the device kept its five kinds" is only a control if the
+ * five kinds could not have come BACK. They can: pressing Delete on another login
+ * leaves this session alive and its gate open, so `OfflineSnapshotRefresher` is free
+ * to refill the store inside the seconds the press takes — and a wipe that did fire
+ * is invisible by the time the assertion looks. Measured, not theorised: with the
+ * `isSelf` guard removed, R-A6's control passed on a single run and only failed
+ * across three, which is a race dressed as an assertion.
+ *
+ * Aborting the route for the duration removes the refill, so a wipe that fires is
+ * permanent and observable. A failed refresh is never a wipe (see the catch in
+ * OfflineSnapshotRefresher), so the block cannot empty the store by itself — the
+ * assertions that follow name the only thing that could have.
+ */
+async function withNoRefill(
+  page: Page,
+  body: () => Promise<void>
+): Promise<void> {
+  await page.route("**/api/offline-snapshots**", (route) => route.abort());
+  try {
+    await body();
+  } finally {
+    await page.unroute("**/api/offline-snapshots**");
+  }
+}
+
 /** Press a row's button and answer its confirm. */
 async function pressRowAction(
   page: Page,
@@ -1294,11 +1328,14 @@ test("R-A6 — DELETING YOUR OWN LOGIN wipes the device it was pressed on", asyn
     await page.goto("/settings/family");
 
     // CONTROL — the same button, the same action, aimed at somebody else. This device is
-    // not being signed out, so it must keep everything it holds.
-    await pressRowAction(page, other, "Delete", "Delete login");
-    await expect(loginRow(page, other)).toHaveCount(0, { timeout: 20_000 });
-    expect(await storedKinds(page)).toEqual([...SNAPSHOT_KINDS].sort());
-    expect(await gateRow(page)).toMatchObject({ sessionClosed: false });
+    // not being signed out, so it must keep everything it holds. Run with no refill
+    // possible, because this press leaves the gate open and a refill would hide a wipe.
+    await withNoRefill(page, async () => {
+      await pressRowAction(page, other, "Delete", "Delete login");
+      await expect(loginRow(page, other)).toHaveCount(0, { timeout: 20_000 });
+      expect(await storedKinds(page)).toEqual([...SNAPSHOT_KINDS].sort());
+      expect(await gateRow(page)).toMatchObject({ sessionClosed: false });
+    });
 
     // And now the row that IS this device's session.
     await pressRowAction(page, self, "Delete", "Delete login");
@@ -1332,18 +1369,23 @@ test("R-A7 — SIGNING YOUR OWN LOGIN OUT OF EVERY DEVICE wipes the device it wa
     await page.goto("/settings/family");
 
     // CONTROL — the other login has a live session, so the button is pressable, and
-    // ending THAT session must leave this device untouched.
-    await pressRowAction(
-      page,
-      other,
-      "Sign out devices",
-      "Sign out all devices"
-    );
-    await expect(page.getByText("Signed out of all devices.")).toBeVisible({
-      timeout: 20_000,
+    // ending THAT session must leave this device untouched. Under the same no-refill
+    // block as R-A6's: this one has no re-open to race (a wipe here would close the
+    // gate and keep it closed), but a control whose determinism depends on which
+    // predicate the action happens to use is a control waiting to rot.
+    await withNoRefill(page, async () => {
+      await pressRowAction(
+        page,
+        other,
+        "Sign out devices",
+        "Sign out all devices"
+      );
+      await expect(page.getByText("Signed out of all devices.")).toBeVisible({
+        timeout: 20_000,
+      });
+      expect(await storedKinds(page)).toEqual([...SNAPSHOT_KINDS].sort());
+      expect(await gateRow(page)).toMatchObject({ sessionClosed: false });
     });
-    expect(await storedKinds(page)).toEqual([...SNAPSHOT_KINDS].sort());
-    expect(await gateRow(page)).toMatchObject({ sessionClosed: false });
 
     await pressRowAction(
       page,

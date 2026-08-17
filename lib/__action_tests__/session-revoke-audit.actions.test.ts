@@ -18,7 +18,13 @@ import {
 } from "@/app/(app)/settings/actions";
 import { revokeLoginSessions } from "@/app/(app)/settings/family/actions";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
-import { createLogin, createProfile, actAs, fd } from "./harness";
+import {
+  createLogin,
+  createProfile,
+  actAs,
+  actingSessionId,
+  fd,
+} from "./harness";
 
 interface AuditRow {
   login_id: number | null;
@@ -138,25 +144,33 @@ describe("a login revoking its own sessions (#1843)", () => {
     expect(sessionCount(other.id)).toBe(1);
   });
 
-  // THE ACTION ACTUALLY ASKS WHICH SESSION IS CALLING. The refusal itself lives in
-  // lib/auth's revokeSession and is pinned in the db tier; what is pinned HERE is
-  // the wiring — that revokeSessionAction passes the caller's own session id in at
-  // all. Drop that argument (pass null) and the guard is inert with the db-tier
-  // test still green, which is the whole reason this second test exists.
+  // THE ACTION ACTUALLY ASKS WHICH SESSION IS CALLING, AND ASKS FOR THE RIGHT ONE.
+  // The refusal itself lives in lib/auth's revokeSession and is pinned in the db
+  // tier; what is pinned HERE is the wiring. Two mutants, and the second is the one
+  // an earlier version of this test could not see:
   //
-  // `currentTokenHash` resolves to the acting session's deviceSessionKey in this
-  // tier (see setup.ts), so the row seeded under that key IS the session asking.
+  //   • pass `null` instead of the caller's session id — the guard goes inert with
+  //     the db-tier test still green, which is why this second test exists at all;
+  //   • pass `session.deviceSessionKey` instead of the row key. That is the value a
+  //     reader reaches for — `CurrentSession` is in hand and the field is named
+  //     "session key" — and in prod it can NEVER equal `sessions.token_hash`, so the
+  //     guard would never fire. It only looked equivalent because this tier used to
+  //     stand `currentTokenHash` in as `deviceSessionKey`. It no longer does:
+  //     `actingSessionId()` is a 64-hex SHA-256, shaped like the real primary key.
   it("refuses to revoke the session making the request, states why, and leaves it alive", async () => {
     const login = createLogin({ role: "member" });
     const profile = createProfile("revoke-self-current", login.id);
     const session = actAs(login, profile);
-    seedSession(login.id, session.deviceSessionKey);
+    const mine = actingSessionId();
+    seedSession(login.id, mine);
     const other = seedSession(login.id, `fake-session-elsewhere-${login.id}`);
 
-    const refused = await revokeSessionAction(
-      null,
-      fd({ session_id: session.deviceSessionKey })
-    );
+    // THE TRAP, asserted rather than assumed: the two per-session identifiers this
+    // tier hands out are different values, and only one of them names a row.
+    expect(mine).toHaveLength(64);
+    expect(mine).not.toBe(session.deviceSessionKey);
+
+    const refused = await revokeSessionAction(null, fd({ session_id: mine }));
 
     expect(refused?.error).toMatch(/device you're using/i);
     expect(sessionCount(login.id)).toBe(2);
