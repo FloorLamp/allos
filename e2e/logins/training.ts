@@ -144,3 +144,12 @@ export const OVERLAP_TWIN_TITLE = "Overlap twin (e2e)";
 export const E2E_LOGIN_SESSION_PEERS = "e2e_session_peers";
 export const SESSION_PEERS_PROFILE = "Session Peers (e2e)";
 export const SESSION_PEERS_TITLE = "Riverside loop (e2e)";
+
+// ── Training Overview standing actions (#3062) ──────────────────────────────
+// Two dedicated ADULT profiles make both generic-card branches visible without
+// mutating a shared seed: one has no routine plus an active knee constraint, and
+// one has a short-night recovery signal that forces the rest recommendation.
+export const E2E_LOGIN_OVERVIEW_NO_ROUTINE = "e2e_overview_no_routine";
+export const OVERVIEW_NO_ROUTINE_PROFILE = "Overview No Routine (e2e)";
+export const E2E_LOGIN_OVERVIEW_REST = "e2e_overview_rest";
+export const OVERVIEW_REST_PROFILE = "Overview Rest (e2e)";

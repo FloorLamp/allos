@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cyclingDistribution } from "@/lib/cycling-distribution";
+import { sessionDistribution } from "@/lib/session-distribution";
 import type { WeatherDay } from "@/lib/weather-situations";
 
 function weatherDay(
@@ -32,9 +32,9 @@ function dateSequence(start: string, count: number): string[] {
   });
 }
 
-describe("cyclingDistribution", () => {
+describe("sessionDistribution", () => {
   it("normalizes month and season counts and keeps true zero months visible", () => {
-    const rides = [
+    const sessions = [
       "2024-06-10",
       "2024-07-10",
       "2024-08-10",
@@ -49,26 +49,26 @@ describe("cyclingDistribution", () => {
       "2025-08-01",
     ].map((date) => ({ date }));
 
-    const result = cyclingDistribution(rides, [], "2025-08-04");
+    const result = sessionDistribution(sessions, [], "2025-08-04");
 
     expect(result.observedCalendarMonths).toBe(15);
     expect(result.months.find((month) => month.label === "June")).toMatchObject(
       {
-        rides: 2,
+        sessions: 2,
         observedMonths: 2,
-        ridesPerObservedMonth: 1,
+        sessionsPerObservedMonth: 1,
       }
     );
     expect(
       result.months.find((month) => month.label === "January")
     ).toMatchObject({
-      rides: 0,
+      sessions: 0,
       observedMonths: 1,
     });
     expect(
       result.seasons.find((season) => season.key === "winter")
     ).toMatchObject({
-      rides: 0,
+      sessions: 0,
       observedMonths: 3,
       percent: 0,
     });
@@ -78,47 +78,57 @@ describe("cyclingDistribution", () => {
       months: 3,
     });
     expect(result.highlights).toContain(
-      "No winter rides across 3 observed winter months."
+      "No winter sessions across 3 observed winter months."
     );
   });
 
-  it("compares ride-day rates against weather opportunities", () => {
+  it("compares session-day rates against weather opportunities", () => {
     const dates = dateSequence("2026-01-01", 60);
-    const clearRideDates = [dates[0], dates[1], dates[2], dates[3]];
-    const cloudyRideDates = [dates[20], dates[21]];
+    const clearSessionDates = [dates[0], dates[1], dates[2], dates[3]];
+    const cloudySessionDates = [dates[20], dates[21]];
     const temperatures = [8, 15, 25, 32];
     const weather = dates.map((date, index) =>
       weatherDay(date, index < 20 ? 0 : 3, index < 4 ? temperatures[index] : 25)
     );
 
-    const result = cyclingDistribution(
-      [...clearRideDates, ...cloudyRideDates].map((date) => ({ date })),
+    const result = sessionDistribution(
+      [...clearSessionDates, ...cloudySessionDates].map((date) => ({ date })),
       weather,
       "2026-03-01"
     );
 
     expect(result.weather).toMatchObject({
       coverageDays: 60,
-      coveredRideDays: 6,
-      insight: "You ride 4× as often on clear days as on other days.",
+      coveredSessionDays: 6,
+      insight: "You train 4× as often on clear days as on other days.",
     });
     expect(
       result.weather.conditions.find((condition) => condition.key === "clear")
-    ).toMatchObject({ availableDays: 20, rideDays: 4, rideDayRate: 20 });
+    ).toMatchObject({ availableDays: 20, sessionDays: 4, sessionDayRate: 20 });
     expect(
       result.weather.conditions.find((condition) => condition.key === "cloudy")
-    ).toMatchObject({ availableDays: 40, rideDays: 2, rideDayRate: 5 });
+    ).toMatchObject({ availableDays: 40, sessionDays: 2, sessionDayRate: 5 });
     expect(result.weather.temperatureBands).toEqual([
-      { key: "cold", label: "Below 10°C", rideDays: 1, percent: 17 },
-      { key: "cool", label: "10–19°C", rideDays: 1, percent: 17 },
-      { key: "warm", label: "20–29°C", rideDays: 3, percent: 50 },
-      { key: "hot", label: "30°C+", rideDays: 1, percent: 17 },
+      { key: "cold", label: "Below 10°C", sessionDays: 1, percent: 17 },
+      { key: "cool", label: "10–19°C", sessionDays: 1, percent: 17 },
+      { key: "warm", label: "20–29°C", sessionDays: 3, percent: 50 },
+      { key: "hot", label: "30°C+", sessionDays: 1, percent: 17 },
     ]);
+
+    const cycling = sessionDistribution(
+      [...clearSessionDates, ...cloudySessionDates].map((date) => ({ date })),
+      weather,
+      "2026-03-01",
+      { singular: "ride", plural: "rides", verb: "ride" }
+    );
+    expect(cycling.weather.insight).toBe(
+      "You ride 4× as often on clear days as on other days."
+    );
   });
 
   it("does not infer a weather preference from sparse coverage", () => {
     const dates = dateSequence("2026-06-01", 10);
-    const result = cyclingDistribution(
+    const result = sessionDistribution(
       [{ date: dates[0] }],
       dates.map((date) => weatherDay(date, 0)),
       "2026-06-10"

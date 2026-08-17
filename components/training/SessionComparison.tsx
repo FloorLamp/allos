@@ -4,9 +4,9 @@ import {
   formatComparisonValue,
 } from "@/lib/session-comparison-format";
 import type {
-  RideComparison,
-  RideComparisonMetricKey,
-} from "@/lib/ride-detail";
+  SessionComparison,
+  SessionComparisonMetricKey,
+} from "@/lib/session-detail";
 import type { DistanceUnit } from "@/lib/settings";
 
 // ONE presentation of "how this session compares to my own like-for-like ones",
@@ -17,7 +17,7 @@ import type { DistanceUnit } from "@/lib/settings";
 //
 // The peer MATH is `sessionComparison` in lib; this is only how it reads.
 
-const METRIC_LABELS: Record<RideComparisonMetricKey, string> = {
+const METRIC_LABELS: Record<SessionComparisonMetricKey, string> = {
   speed: "Speed",
   heart_rate: "Heart rate",
   power: "Power",
@@ -41,9 +41,9 @@ export default function SessionComparison({
   omitKeys = [],
   testId = "session-comparison",
 }: {
-  comparison: RideComparison;
+  comparison: SessionComparison;
   distanceUnit: DistanceUnit;
-  omitKeys?: RideComparisonMetricKey[];
+  omitKeys?: SessionComparisonMetricKey[];
   testId?: string;
 }) {
   const metrics = comparison.metrics.filter(
@@ -58,8 +58,8 @@ export default function SessionComparison({
           How this compares
         </h3>
         <span className="text-xs text-slate-500 dark:text-slate-400">
-          {comparison.rideCount} similar{" "}
-          {comparison.rideCount === 1 ? "session" : "sessions"}
+          {comparison.sessionCount} similar{" "}
+          {comparison.sessionCount === 1 ? "session" : "sessions"}
         </span>
       </div>
       {/* It states its own basis: a "median" over one peer is a comparison in

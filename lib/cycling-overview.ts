@@ -1,5 +1,9 @@
-import { speedKmh } from "./coaching/cardio";
 import { shiftDateStr } from "./date";
+import {
+  sessionOverviewRollup,
+  type SessionOverviewRecordKey,
+  type SessionPeriodTotals,
+} from "./session-overview";
 
 export interface CyclingOverviewRideInput {
   id: number;
@@ -13,56 +17,47 @@ export interface CyclingOverviewRideInput {
   kilojoules: number | null;
 }
 
-export interface CyclingPeriodTotals {
-  rides: number;
-  distanceKm: number;
-  durationMin: number;
+export interface CyclingPeriodExtras {
   elevationM: number;
   kilojoules: number;
 }
 
-export type CyclingRecordKey =
-  "distance" | "speed" | "duration" | "elevation" | "power";
+export type CyclingRecordKey = SessionOverviewRecordKey | "elevation" | "power";
 
 export interface CyclingRecord {
   key: CyclingRecordKey;
-  rideId: number;
+  activityId: number;
   date: string;
   title: string;
   value: number;
 }
 
 export interface CyclingOverviewRollup {
-  totals: CyclingPeriodTotals & { averageSpeedKmh: number | null };
-  recent: CyclingPeriodTotals;
-  previous: CyclingPeriodTotals;
+  totals: SessionPeriodTotals &
+    CyclingPeriodExtras & { averageSpeedKmh: number | null };
+  recent: SessionPeriodTotals & CyclingPeriodExtras;
+  previous: SessionPeriodTotals & CyclingPeriodExtras;
   recentDays: number;
   distanceChangePercent: number | null;
   durationChangePercent: number | null;
   records: CyclingRecord[];
 }
 
-function totals(rows: CyclingOverviewRideInput[]): CyclingPeriodTotals {
-  return rows.reduce<CyclingPeriodTotals>(
+function extras(
+  rows: readonly CyclingOverviewRideInput[]
+): CyclingPeriodExtras {
+  return rows.reduce<CyclingPeriodExtras>(
     (sum, ride) => ({
-      rides: sum.rides + 1,
-      distanceKm: sum.distanceKm + (ride.distanceKm ?? 0),
-      durationMin: sum.durationMin + (ride.durationMin ?? 0),
       elevationM: sum.elevationM + (ride.elevationM ?? 0),
       kilojoules: sum.kilojoules + (ride.kilojoules ?? 0),
     }),
-    { rides: 0, distanceKm: 0, durationMin: 0, elevationM: 0, kilojoules: 0 }
+    { elevationM: 0, kilojoules: 0 }
   );
 }
 
-function percentChange(current: number, previous: number): number | null {
-  if (previous <= 0) return null;
-  return Math.round(((current - previous) / previous) * 100);
-}
-
 function record(
-  rides: CyclingOverviewRideInput[],
-  key: CyclingRecordKey,
+  rides: readonly CyclingOverviewRideInput[],
+  key: "elevation" | "power",
   value: (ride: CyclingOverviewRideInput) => number | null
 ): CyclingRecord | null {
   let best: CyclingRecord | null = null;
@@ -75,11 +70,11 @@ function record(
       candidate > best.value ||
       (candidate === best.value &&
         (ride.date > best.date ||
-          (ride.date === best.date && ride.id > best.rideId)))
+          (ride.date === best.date && ride.id > best.activityId)))
     ) {
       best = {
         key,
-        rideId: ride.id,
+        activityId: ride.id,
         date: ride.date,
         title: ride.title,
         value: candidate,
@@ -97,46 +92,32 @@ export function cyclingOverviewRollup(
   todayStr: string,
   recentDays = 28
 ): CyclingOverviewRollup {
+  const shared = sessionOverviewRollup(rides, todayStr, recentDays);
   const recentStart = shiftDateStr(todayStr, -(recentDays - 1));
   const previousEnd = shiftDateStr(recentStart, -1);
   const previousStart = shiftDateStr(previousEnd, -(recentDays - 1));
-  const recent = totals(
-    rides.filter((ride) => ride.date >= recentStart && ride.date <= todayStr)
+  const recentRides = rides.filter(
+    (ride) => ride.date >= recentStart && ride.date <= todayStr
   );
-  const previous = totals(
-    rides.filter(
-      (ride) => ride.date >= previousStart && ride.date <= previousEnd
-    )
+  const previousRides = rides.filter(
+    (ride) => ride.date >= previousStart && ride.date <= previousEnd
   );
-  const all = totals(rides);
   const records = [
-    record(rides, "distance", (ride) => ride.distanceKm),
-    record(
-      rides,
-      "speed",
-      (ride) => ride.avgSpeedKmh ?? speedKmh(ride.distanceKm, ride.durationMin)
-    ),
-    record(rides, "duration", (ride) => ride.durationMin),
+    ...shared.records,
     record(rides, "elevation", (ride) => ride.elevationM),
     record(rides, "power", (ride) => ride.avgPowerW),
   ].filter((value): value is CyclingRecord => value != null);
 
   return {
     totals: {
-      ...all,
-      averageSpeedKmh: speedKmh(all.distanceKm, all.durationMin),
+      ...shared.totals,
+      ...extras(rides),
     },
-    recent,
-    previous,
+    recent: { ...shared.recent, ...extras(recentRides) },
+    previous: { ...shared.previous, ...extras(previousRides) },
     recentDays,
-    distanceChangePercent: percentChange(
-      recent.distanceKm,
-      previous.distanceKm
-    ),
-    durationChangePercent: percentChange(
-      recent.durationMin,
-      previous.durationMin
-    ),
+    distanceChangePercent: shared.distanceChangePercent,
+    durationChangePercent: shared.durationChangePercent,
     records,
   };
 }

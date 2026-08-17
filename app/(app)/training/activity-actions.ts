@@ -44,7 +44,6 @@ import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 // activity-reading surface is added once, not in each mutation.
 function revalidateActivitySurfaces() {
   revalidateRoute("/training");
-  revalidateRoute("/training/rides/[id]", "page");
   revalidateRoute("/training/activity/[id]", "page");
   revalidateRoute("/trends");
   revalidateRoute("/");

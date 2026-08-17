@@ -18,7 +18,7 @@ const MAX_SPLITS = 20;
 /**
  * How far apart to cut this session's splits, in metres.
  *
- * A ride hardcodes 5 km / 5 mi (`rides/[id]/page.tsx`) because that is the
+ * A ride uses 5 km / 5 mi on the canonical activity detail because that is the
  * distance a ride is discussed in. A walk of 1.4 km would produce NO splits at
  * that interval — the core declines anything under a third of one — and a
  * marathon would produce 42 rows at 1 km. So the interval is the reader's own

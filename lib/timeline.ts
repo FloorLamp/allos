@@ -1,5 +1,5 @@
 import { activityComponentSportNames } from "./activity-icon";
-import { activityDetailHref } from "./ride-detail";
+import { trainingActivityPageHref } from "./hrefs";
 import { shiftDateStr } from "./date";
 import { db, today } from "./db";
 import type { MemberTimeline } from "./timeline-multi";
@@ -406,7 +406,7 @@ function collectEvents(
           title: a.title,
           subtitle: compactList(meta, 4),
           detail: a.notes,
-          href: activityDetailHref(a),
+          href: trainingActivityPageHref(a.id),
           sortTime: a.start_time,
           // The raw local window inputs for the intraday panel's workout block
           // (#1068) — resolved through the canonical activityWindow(), so an

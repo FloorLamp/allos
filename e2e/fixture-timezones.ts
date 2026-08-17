@@ -23,6 +23,9 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
   "rest-card": {
     why: "The seed and per-test reset both construct the recovery night from a UTC date and UTC wall times, so the dedicated profile is pinned to UTC too.",
   },
+  "overview-rest": {
+    why: "The Overview rest-state fixture constructs its short recovery night from UTC wall times, so its wake day must use that same calendar.",
+  },
   "food-slot": {
     why: "The slot-ranking fixture uses fixed 08:00Z, 12:00Z and 18:00Z events whose intended meal windows are UTC.",
   },

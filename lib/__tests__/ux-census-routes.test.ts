@@ -5,9 +5,13 @@ import { fileURLToPath } from "node:url";
 import {
   DISCLOSURE_EXPANSIONS,
   DYNAMIC_ROUTES,
+  HUB_VARIANTS,
   routeSlug,
 } from "../../scripts/ux-census-routes.mjs";
+import { NUTRITION_TABS } from "../hrefs";
+import { TRAINING_TABS } from "../training-tabs";
 import { TREND_METRIC_SLUGS } from "../trend-metrics";
+import { TRENDS_TABS } from "../trends-tabs";
 import { vaccineByCode } from "../immunization-catalog";
 
 // Guard for the UX census's dynamic-route registry (#1544), in the repo's
@@ -167,5 +171,40 @@ describe("ux census disclosure-expansion registry", () => {
       seen.add(e.route);
       expect(e.label, `${e.route} has no label`).toBeTruthy();
     }
+  });
+});
+
+describe("ux census hub variants", () => {
+  it("registers live hubs with unique targets and slugs", () => {
+    expect(new Set(HUB_VARIANTS.map((entry) => entry.target)).size).toBe(
+      HUB_VARIANTS.length
+    );
+    expect(new Set(HUB_VARIANTS.map((entry) => entry.slug)).size).toBe(
+      HUB_VARIANTS.length
+    );
+    for (const entry of HUB_VARIANTS) {
+      expect(staticRoutes.has(entry.route), entry.route).toBe(true);
+      expect(entry.target).toMatch(
+        new RegExp(`^${entry.route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\?`)
+      );
+      expect(entry.slug).toMatch(/^[a-z0-9-]+$/);
+    }
+  });
+
+  it("covers every non-default tab on the tab-first hubs", () => {
+    const values = (route: string, key: string) =>
+      HUB_VARIANTS.filter((entry) => entry.route === route).map((entry) =>
+        new URL(entry.target, "https://allos.test").searchParams.get(key)
+      );
+
+    expect(values("/training", "tab")).toEqual(TRAINING_TABS.slice(1));
+    expect(values("/trends", "tab")).toEqual(TRENDS_TABS.slice(1));
+    expect(values("/nutrition", "tab")).toEqual(NUTRITION_TABS.slice(1));
+    expect(values("/data", "section")).toEqual([
+      "review",
+      "coverage",
+      "manage",
+      "trash",
+    ]);
   });
 });

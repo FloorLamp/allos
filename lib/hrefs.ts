@@ -279,9 +279,8 @@ export function medicationsFilterHref(filter: MedicationFilter): AppRoute {
   return `/medications?filter=${filter}`;
 }
 
-// One activity's canonical page (#2870): the record, reached from every
-// surface via activityDetailHref (lib/ride-detail.ts) — call this directly only
-// where the activity is known non-cycling (strength rows).
+// One activity's canonical page (#2870): every activity type uses this route;
+// callers preserve optional browsing context with typed query helpers below.
 export function trainingActivityPageHref(activityId: number): AppRoute {
   const href: Route<`/training/activity/${number}`> = `/training/activity/${activityId}`;
   return href as AppRoute;
@@ -463,13 +462,6 @@ export function protocolHref(id: number): AppRoute {
   return href as AppRoute;
 }
 
-// A read-first cycling activity detail page. The dynamic route remains scoped by
-// the active profile at its query boundary; this helper only owns its URL shape.
-export function rideHref(id: number): AppRoute {
-  const href: Route<`/training/rides/${number}`> = `/training/rides/${id}`;
-  return href as AppRoute;
-}
-
 export interface CyclingLens {
   metric: CardioMetric;
   range: RangeId;
@@ -481,7 +473,7 @@ export interface CyclingLens {
 // overview link, so opening a Power · 6m ride never silently returns to
 // Distance · All.
 export function cyclingRideHref(id: number, lens: CyclingLens): AppRoute {
-  const path: Route<`/training/rides/${number}`> = `/training/rides/${id}`;
+  const path = trainingActivityPageHref(id);
   const params = new URLSearchParams({
     metric: lens.metric,
     range: lens.range,

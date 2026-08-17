@@ -44,6 +44,7 @@ export default function ActivityVideoStrip({
   videos,
   canWrite,
   showAdd = false,
+  compact = false,
   onChange,
 }: {
   activityId: number;
@@ -52,6 +53,8 @@ export default function ActivityVideoStrip({
   // Render the add affordance (and therefore the empty state). The editor sets it;
   // the Training Log card does not.
   showAdd?: boolean;
+  // A page-level Details card already owns its surface and heading.
+  compact?: boolean;
   // Notifies the editor that the clip set changed, so it can re-read it — the card
   // gets the same news from the clip actions' own revalidate.
   onChange?: () => void;
@@ -70,8 +73,14 @@ export default function ActivityVideoStrip({
   }));
 
   return (
-    <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/10">
-      <h4 className="section-label mb-2">Form check</h4>
+    <div
+      className={
+        compact
+          ? "mt-4"
+          : "mt-3 border-t border-black/5 pt-3 dark:border-white/10"
+      }
+    >
+      {!compact && <h4 className="section-label mb-2">Form check</h4>}
       <VideoClipGrid
         clips={clips}
         serveBase="/api/activity-video"

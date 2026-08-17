@@ -64,7 +64,7 @@ test.describe("Equipment registry (#343)", () => {
     await expect(rideSession).toBeVisible();
     await expect(rideSession).toHaveAttribute(
       "href",
-      /^\/training\/rides\/\d+$/
+      /^\/training\/activity\/\d+$/
     );
 
     // Back link returns to the index.

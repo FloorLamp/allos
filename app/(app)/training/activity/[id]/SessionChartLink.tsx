@@ -1,5 +1,7 @@
 "use client";
 
+// Shared chart coordination for the canonical activity detail page.
+
 import {
   createContext,
   useCallback,
@@ -9,43 +11,49 @@ import {
   type ReactNode,
 } from "react";
 import {
-  nearestRideElapsedIndex,
-  rideElapsedSeconds,
-} from "@/lib/ride-chart-link";
+  nearestSessionElapsedIndex,
+  sessionElapsedSeconds,
+} from "@/lib/session-chart-link";
 
-interface RideChartLinkValue {
+interface SessionChartLinkValue {
   activeElapsedSec: number | null;
   setActiveLabel: (label: string | null) => void;
 }
 
-const RideChartLinkContext = createContext<RideChartLinkValue | null>(null);
+const SessionChartLinkContext = createContext<SessionChartLinkValue | null>(
+  null
+);
 
 // Recharts' value sync requires exact categories. Telemetry can be sampled every
 // few seconds while wearable HR is one point per minute, so select the nearest
 // elapsed category instead of pretending their array indexes represent one time.
-export function rideChartSyncMethod(
+export function sessionChartSyncMethod(
   ticks: ReadonlyArray<{ value?: string | number }>,
   data: { activeLabel?: string | number }
 ): number {
-  return nearestRideElapsedIndex(
+  return nearestSessionElapsedIndex(
     ticks.map((tick) => tick.value),
     data.activeLabel
   );
 }
 
-export function RideChartLinkProvider({ children }: { children: ReactNode }) {
+export function SessionChartLinkProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [activeElapsedSec, setActiveElapsedSec] = useState<number | null>(null);
   const setActiveLabel = useCallback((label: string | null) => {
-    setActiveElapsedSec(label == null ? null : rideElapsedSeconds(label));
+    setActiveElapsedSec(label == null ? null : sessionElapsedSeconds(label));
   }, []);
   const value = useMemo(
     () => ({ activeElapsedSec, setActiveLabel }),
     [activeElapsedSec, setActiveLabel]
   );
   return (
-    <RideChartLinkContext.Provider value={value}>
+    <SessionChartLinkContext.Provider value={value}>
       {children}
-    </RideChartLinkContext.Provider>
+    </SessionChartLinkContext.Provider>
   );
 }
 
@@ -55,11 +63,11 @@ export function RideChartLinkProvider({ children }: { children: ReactNode }) {
 // crash. Throwing here took down the whole page through the error boundary —
 // and it did it exactly where the feature was supposed to pay off, on every
 // non-cycling activity that HAS heart-rate minutes to draw.
-const UNLINKED: RideChartLinkValue = {
+const UNLINKED: SessionChartLinkValue = {
   activeElapsedSec: null,
   setActiveLabel: () => {},
 };
 
-export function useRideChartLink(): RideChartLinkValue {
-  return useContext(RideChartLinkContext) ?? UNLINKED;
+export function useSessionChartLink(): SessionChartLinkValue {
+  return useContext(SessionChartLinkContext) ?? UNLINKED;
 }

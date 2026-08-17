@@ -1,4 +1,4 @@
-export function rideElapsedSeconds(value: unknown): number | null {
+export function sessionElapsedSeconds(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const parts = value.split(":").map(Number);
   if (
@@ -12,16 +12,16 @@ export function rideElapsedSeconds(value: unknown): number | null {
     : parts[0] * 60 + parts[1];
 }
 
-export function nearestRideElapsedIndex(
+export function nearestSessionElapsedIndex(
   values: readonly unknown[],
   activeLabel: unknown
 ): number {
-  const target = rideElapsedSeconds(activeLabel);
+  const target = sessionElapsedSeconds(activeLabel);
   if (target == null) return 0;
   let bestIndex = 0;
   let bestDistance = Infinity;
   for (let index = 0; index < values.length; index++) {
-    const seconds = rideElapsedSeconds(values[index]);
+    const seconds = sessionElapsedSeconds(values[index]);
     if (seconds == null) continue;
     const distance = Math.abs(seconds - target);
     if (distance < bestDistance) {

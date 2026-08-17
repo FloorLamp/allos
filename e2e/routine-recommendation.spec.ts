@@ -59,6 +59,15 @@ test("Today's session card renders the resolved routine day (#740)", async ({
     ).toBeVisible();
     // Cold start (no history): the prescription shows sets × rep range, no load.
     await expect(card.getByText("4 × 5–8").first()).toBeVisible(); // first-ok: several exercises in the scoped card share the 4×5–8 scheme — order-agnostic presence
+    const actions = card.getByTestId("training-overview-actions");
+    await expect(actions.getByTestId("log-this-session")).toBeVisible();
+    await expect(
+      actions.getByTestId("training-overview-log-activity")
+    ).toBeVisible();
+    await expect(
+      actions.getByTestId("training-overview-start-workout")
+    ).toHaveCount(0);
+    await expect(actions.locator("button.btn")).toHaveCount(1);
   } finally {
     await page.context().close();
   }

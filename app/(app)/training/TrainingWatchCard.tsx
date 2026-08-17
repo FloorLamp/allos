@@ -1,5 +1,4 @@
 import { IconBarbell } from "@tabler/icons-react";
-import Link from "next/link";
 import type { Finding } from "@/lib/findings";
 import FindingRow from "@/components/FindingRow";
 import {
@@ -86,14 +85,6 @@ export default function TrainingWatchCard({
               />
             ))}
           </ul>
-          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-            <Link
-              href="/training?tab=overview#muscle-coverage"
-              className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-            >
-              See muscle coverage →
-            </Link>
-          </p>
         </details>
       </li>
     );

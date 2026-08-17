@@ -725,10 +725,16 @@ export function isPredictedWorkoutDay(
 export const getRecentDatedExercises = cache(function getRecentDatedExercises(
   profileId: number,
   days = 56
-): { date: string; exercise: string; warmup: number }[] {
+): {
+  date: string;
+  exercise: string;
+  warmup: number;
+  activityId: number;
+}[] {
   return db
     .prepare(
       `SELECT a.date AS date, s.exercise AS exercise,
+              a.id AS activityId,
               COALESCE(s.warmup, 0) AS warmup
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        WHERE a.profile_id = ? AND a.date >= ?
@@ -738,6 +744,7 @@ export const getRecentDatedExercises = cache(function getRecentDatedExercises(
     date: string;
     exercise: string;
     warmup: number;
+    activityId: number;
   }[];
 });
 

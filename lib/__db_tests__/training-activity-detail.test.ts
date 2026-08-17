@@ -116,4 +116,35 @@ describe("getActivityDetailData (#2870)", () => {
     expect(detail.heartRate.minutes).toEqual([]);
     expect(detail.heartRate.zoneMinutes).toBeNull();
   });
+
+  it("loads laps and segments for non-cycling sessions, scoped to the profile", () => {
+    db.prepare(
+      `INSERT INTO activity_laps
+         (profile_id, activity_id, source, external_id, lap_index, name,
+          distance_m, moving_time_sec, average_speed_mps)
+       VALUES (?, ?, 'test', 'walk-lap', 1, 'Park loop', 1200, 720, 1.667)`
+    ).run(profileId, mondayWalk);
+    db.prepare(
+      `INSERT INTO activity_laps
+         (profile_id, activity_id, source, external_id, lap_index, name)
+       VALUES (?, ?, 'test', 'foreign-walk-lap', 2, 'Other profile lap')`
+    ).run(otherProfileId, mondayWalk);
+    db.prepare(
+      `INSERT INTO activity_segment_efforts
+         (profile_id, activity_id, source, external_id, name, distance_m,
+          moving_time_sec, start_index, pr_rank)
+       VALUES (?, ?, 'test', 'walk-segment', 'Riverside', 400, 240, 10, 2)`
+    ).run(profileId, mondayWalk);
+    db.prepare(
+      `INSERT INTO activity_segment_efforts
+         (profile_id, activity_id, source, external_id, name, start_index)
+       VALUES (?, ?, 'test', 'foreign-walk-segment', 'Other profile segment', 20)`
+    ).run(otherProfileId, mondayWalk);
+
+    const detail = getActivityDetailData(profileId, mondayWalk, UNITS)!;
+    expect(detail.course.laps.map((lap) => lap.name)).toEqual(["Park loop"]);
+    expect(detail.course.segmentEfforts.map((effort) => effort.name)).toEqual([
+      "Riverside",
+    ]);
+  });
 });

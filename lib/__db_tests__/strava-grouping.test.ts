@@ -78,15 +78,15 @@ describe("Strava activities group by canonical-sport component (issue #15)", () 
     expect(cardio[0].activity).toBe("Cycling");
     expect(cardio[0].sessions).toBe(2);
     expect(cardio[0].totalDistanceKm).toBe(30); // 20 + 10
-    expect(cardio[0].lastHref).toMatch(/^\/training\/rides\/\d+$/);
+    expect(cardio[0].lastHref).toMatch(/^\/training\/activity\/\d+$/);
     expect(
       cardio[0].trend.every((session) =>
-        /^\/training\/rides\/\d+$/.test(session.href)
+        /^\/training\/activity\/\d+$/.test(session.href)
       )
     ).toBe(true);
     expect(
       cardio[0].recent.every((session) =>
-        /^\/training\/rides\/\d+$/.test(session.href)
+        /^\/training\/activity\/\d+$/.test(session.href)
       )
     ).toBe(true);
   });

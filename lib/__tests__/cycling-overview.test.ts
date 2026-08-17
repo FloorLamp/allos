@@ -42,7 +42,7 @@ describe("cyclingOverviewRollup", () => {
     const result = cyclingOverviewRollup(rides, "2026-08-04");
 
     expect(result.totals).toMatchObject({
-      rides: 3,
+      sessions: 3,
       distanceKm: 104,
       durationMin: 250,
       elevationM: 1100,
@@ -50,12 +50,12 @@ describe("cyclingOverviewRollup", () => {
     });
     expect(result.totals.averageSpeedKmh).toBeCloseTo(24.96, 2);
     expect(result.recent).toMatchObject({
-      rides: 1,
+      sessions: 1,
       distanceKm: 50,
       durationMin: 100,
     });
     expect(result.previous).toMatchObject({
-      rides: 1,
+      sessions: 1,
       distanceKm: 30,
       durationMin: 90,
     });
@@ -63,7 +63,7 @@ describe("cyclingOverviewRollup", () => {
     expect(result.durationChangePercent).toBe(11);
     expect(
       Object.fromEntries(
-        result.records.map((record) => [record.key, record.rideId])
+        result.records.map((record) => [record.key, record.activityId])
       )
     ).toEqual({ distance: 3, speed: 3, duration: 3, elevation: 3, power: 3 });
   });
@@ -77,7 +77,9 @@ describe("cyclingOverviewRollup", () => {
       "2026-08-04"
     );
 
-    expect(result.records.every((record) => record.rideId === 4)).toBe(true);
+    expect(result.records.every((record) => record.activityId === 4)).toBe(
+      true
+    );
     expect(result.distanceChangePercent).toBeNull();
     expect(result.durationChangePercent).toBeNull();
   });

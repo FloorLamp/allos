@@ -37,7 +37,7 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
     )
   ).toBe(true);
 
-  // Cycling titles now lead to the dedicated ride detail. The card's separate Edit
+  // Cycling titles lead to the canonical activity detail. The card's separate Edit
   // action still opens the legacy editor with the linked gear preloaded — a real
   // equipment id is selected, labelled "Road Bike".
   await card.getByRole("button", { name: "Activity actions" }).click();

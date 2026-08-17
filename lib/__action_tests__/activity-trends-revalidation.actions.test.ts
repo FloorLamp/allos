@@ -3,7 +3,7 @@
 // the dashboard. /trends reads activity-derived data, so a create/edit/merge/delete
 // that skips it leaves the fitness chart and workout history stale. These tests pin the exact
 // revalidated path SET for each mutation so a future edit can't silently drop /trends
-// or the dedicated ride read model again.
+// or a separate ride read model again.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -24,7 +24,6 @@ const revalidatedPaths = () =>
   new Set(revalidate.mock.calls.map((c) => c[0] as string));
 const ACTIVITY_SURFACES = new Set([
   "/training",
-  "/training/rides/[id]",
   "/training/activity/[id]",
   "/trends",
   "/",
@@ -126,14 +125,7 @@ describe("activity writes revalidate /trends (#333)", () => {
     );
 
     expect(revalidatedPaths()).toEqual(
-      new Set([
-        "/data",
-        "/training",
-        "/training/rides/[id]",
-        "/training/activity/[id]",
-        "/trends",
-        "/",
-      ])
+      new Set(["/data", "/training", "/training/activity/[id]", "/trends", "/"])
     );
   });
 });

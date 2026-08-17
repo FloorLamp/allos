@@ -2,6 +2,8 @@
 
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import type { ActivityEditData } from "@/components/ActivityForm";
+import LogActivityButton from "@/components/LogActivityButton";
+import type { ReactNode } from "react";
 
 // The routine-aware "Today's session" card (#740): renders today's resolved
 // routine day — the day label, its focus, and each slot's filled exercise with
@@ -22,6 +24,7 @@ export default function TodaysSessionCard({
   slots,
   prefill,
   deloadWeek = false,
+  context,
 }: {
   label: string;
   focus: string[];
@@ -30,6 +33,7 @@ export default function TodaysSessionCard({
   // The routine's mesocycle says this is the deload week (#741): the slates below
   // are already deload-adjusted (lighter load, fewer sets); the badge names it.
   deloadWeek?: boolean;
+  context?: ReactNode;
 }) {
   const { openSession, canStartWorkout, workoutOffer } = useActivityEditor();
 
@@ -79,8 +83,11 @@ export default function TodaysSessionCard({
             ))}
           </ul>
         </div>
-        {canStartWorkout && (
-          <div className="shrink-0">
+        <div
+          className="flex shrink-0 flex-wrap gap-2"
+          data-testid="training-overview-actions"
+        >
+          {canStartWorkout && (
             <button
               type="button"
               className="btn"
@@ -97,9 +104,16 @@ export default function TodaysSessionCard({
                 ? workoutOffer.label
                 : "Log this session"}
             </button>
-          </div>
-        )}
+          )}
+          <LogActivityButton
+            className="btn-ghost"
+            testId="training-overview-log-activity"
+          >
+            Log activity
+          </LogActivityButton>
+        </div>
       </div>
+      {context}
     </div>
   );
 }

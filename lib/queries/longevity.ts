@@ -29,7 +29,8 @@ import { getSleepRegularity, getSleepRegularityTrend } from "./sleep";
 import { getLatestBodyMetric } from "./metrics";
 import { getStrengthByExercise } from "./training";
 import { fitnessContext } from "../fitness-norms";
-import { strengthStanding, bestStanding } from "../strength-standards";
+import { bestStanding } from "../strength-standards";
+import { strengthLadderPlacement } from "../strength-ladder";
 import { bioAgeDelta, isBioAgeHiddenForAge } from "../bio-age";
 import { isAdultForClinical } from "../life-stage";
 import {
@@ -98,8 +99,15 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
       // freeWeightE1rmKg, not e1rmKg (#2326): the pillar scores against a barbell
       // population table, so a lift backed only by machine sets contributes no
       // standing rather than a meaningless one.
-      .map((e) =>
-        strengthStanding(e.exercise, e.freeWeightE1rmKg, sex, bodyweightKg)
+      .map(
+        (e) =>
+          strengthLadderPlacement(
+            e.exercise,
+            e.freeWeightE1rmKg,
+            null,
+            sex,
+            bodyweightKg
+          )?.current ?? null
       )
       .filter((s): s is NonNullable<typeof s> => s != null);
     const best = bestStanding(standings);

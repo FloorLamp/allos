@@ -4,13 +4,13 @@ import {
   comparisonTone,
   formatComparisonValue,
 } from "@/lib/session-comparison-format";
-import type { RideComparisonMetric } from "@/lib/ride-detail";
+import type { SessionComparisonMetric } from "@/lib/session-detail";
 
 const metric = (
-  key: RideComparisonMetric["key"],
+  key: SessionComparisonMetric["key"],
   current: number,
   median: number
-): RideComparisonMetric => ({
+): SessionComparisonMetric => ({
   key,
   current,
   median,

@@ -40,7 +40,6 @@ import {
   nutritionTabHref,
   protocolHref,
   providerHref,
-  timelineDayHref,
   MEDICATIONS_HREF,
   type AppRoute,
 } from "../hrefs";
@@ -71,7 +70,7 @@ import type {
   ImagingStudy,
   SkinLesion,
 } from "../types";
-import { rideDetailHref } from "../ride-detail";
+import { trainingActivityPageHref } from "../hrefs";
 
 // Global (Cmd-K) search fan-out. One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -210,17 +209,9 @@ function activityHits(
     key: `activity:${r.id}`,
     title: r.title,
     subtitle: `${r.type[0].toUpperCase()}${r.type.slice(1)} · ${r.date}`,
-    // A ride now has a guaranteed per-record detail. Other activities use their
-    // DAY on the timeline (#1568), not the /training hub. A hub
-    // href here was invisible as a bug: searching from /training — the natural
-    // place to look for a workout — made the selection a same-route push, so the
-    // palette closed and nothing moved, reading as a dead control.
-    //
-    // NOT the training log anchor (`#activity-<id>` in TrainingLogCard): HistorySection
-    // renders one newest window with "Load more" (#451), so an older activity's
-    // anchor isn't on the page you land on. timelineDayHref filters the feed BY
-    // the date, so it resolves for an activity of any age.
-    href: rideDetailHref(r) ?? timelineDayHref(r.date),
+    // Every session has one canonical record page (#2870/#3061), so search never
+    // needs a cycling branch or a date-filter fallback.
+    href: trainingActivityPageHref(r.id),
     date: r.date,
   }));
 }

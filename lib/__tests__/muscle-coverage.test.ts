@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   coverageFromSets,
+  coverageContributions,
   coverageList,
   musclesWorked,
   SECONDARY_CREDIT,
@@ -44,6 +45,46 @@ describe("coverageFromSets — attribution", () => {
     );
     // Deadlift secondary includes glutes.
     expect(cov.get("glutes")?.sets).toBe(SECONDARY_CREDIT);
+  });
+});
+
+describe("coverageContributions — drill-in evidence", () => {
+  it("uses the aggregate's exact warm-up, window, and fractional-credit rules", () => {
+    const rows = coverageContributions(
+      [
+        {
+          exercise: "Incline Bench Press",
+          date: TODAY,
+          activityId: 42,
+        },
+        {
+          exercise: "Incline Bench Press",
+          date: TODAY,
+          activityId: 43,
+          warmup: 1,
+        },
+        {
+          exercise: "Barbell Bench Press",
+          date: "2026-07-08",
+          activityId: 44,
+        },
+      ],
+      TODAY,
+      7
+    );
+    expect(rows.get("chest")).toEqual([
+      expect.objectContaining({
+        activityId: 42,
+        exercise: "Incline Bench Press",
+        credit: 1,
+        role: "primary",
+      }),
+    ]);
+    expect(rows.get("front-delts")?.[0]).toMatchObject({
+      activityId: 42,
+      credit: SECONDARY_CREDIT,
+      role: "secondary",
+    });
   });
 });
 
