@@ -44,7 +44,6 @@ import {
   getProcedures,
   getOpticalPrescriptions,
 } from "../clinical";
-import { categorySatisfiesScreening } from "../../medical-categories";
 import { getRiskFactors } from "./risk";
 
 // ---- Preventive care (issue #82) ------------------------------------------
@@ -60,6 +59,18 @@ export function getPreventiveSatisfactions(
     )
     .all(profileId) as PreventiveSatisfaction[];
 }
+
+// Medical-record categories whose results can satisfy a screening: cholesterol/
+// A1c/glucose labs, blood-pressure vitals, and screening INSTRUMENT scores (#1076
+// — a PHQ-9 satisfies depression screening, an AUDIT-C alcohol screening). The
+// legacy `biomarker` bucket is retained for un-backfilled rows. Genomics/scans/
+// prescriptions/derived/reference are never screening RESULTS in this sense.
+const INFERENCE_RESULT_CATEGORIES = new Set([
+  "lab",
+  "biomarker",
+  "vitals",
+  "instrument",
+]);
 
 // INFERRED satisfactions (issue #86): preventive rules a profile's EXISTING
 // records already satisfy — a colonoscopy procedure, a lipid/A1c result, a
@@ -102,48 +113,20 @@ export function getInferredPreventiveSatisfactions(
       name: p.name,
       date: p.date,
       allow: ["screening"],
-      // A performed procedure — an EVENT, so every needle applies.
-      shape: "event",
     });
   }
 
-  // Clinical observations → screenings, by canonical biomarker name (or the raw
-  // result name as a fallback synonym match).
-  //
-  // WHICH CATEGORIES MAY BE READ AS A SCREENING RESULT is not decided here (#3025). It
-  // was, as a four-entry ALLOWLIST, and a category nobody had listed — `report`, where a
-  // CCDA files its cytology and pathology reads — was dropped before any matching ran, so
-  // a filed Pap satisfied nothing and its profile got an overdue cervical-screening nudge.
-  // The ruling now lives beside the enum it is about (`SCREENING_RESULT_CATEGORIES`), is
-  // exhaustive over it by TYPE, and is a DENYLIST: a category is admitted unless it was
-  // ruled out with a reason, so the next category an importer introduces is included by
-  // default rather than dropped in silence.
-  //
-  // EVERY ROW HERE IS A DOCUMENT (`shape: "document"`), which is what stops a report's
-  // TITLE from being read as an event that happened — see EvidenceShape in
-  // lib/preventive-inference.ts. It is the same statement for a lab: "Cytology, Gyn-PAP
-  // Test (AP)" is the name of a filed result, not of an encounter.
-  //
-  // WHAT IS DELIBERATELY NOT GUARDED HERE, so it is not rediscovered as an oversight: a
-  // row whose DATE the import invented. `fallbackDate = document_date ?? today(profileId)`
-  // (lib/import-shape.ts, through lib/medical-pipeline.ts and app/(app)/data/actions.ts)
-  // stamps the UPLOAD DAY on a row whose document stated no date, so a 2019 Pap scanned
-  // today reads as a screening done today. Nothing stored records WHICH of the three terms
-  // won, and every read-time proxy for it — comparing `date` to `created_at`'s local day —
-  // is either permanent (both are fixed at import, so a genuine same-day report is erased
-  // for ever) or timezone-dependent (it re-decides under a changed profile timezone).
-  // Distinguishing them needs date PROVENANCE stored at the write boundary, which is a
-  // schema decision this issue did not ask for. It is a property of the import fallback
-  // and applies to `lab` exactly as it applies to `report`.
+  // Lab / vitals results → lab screenings, by canonical biomarker name (or the
+  // raw result name as a fallback synonym match).
   for (const r of getClinicalObservations(profileId)) {
-    if (!categorySatisfiesScreening(r.category)) continue;
+    if (r.category === null || !INFERENCE_RESULT_CATEGORIES.has(r.category))
+      continue;
     records.push({
       code: null,
       name: r.name,
       canonicalName: r.canonical_name,
       date: r.date,
       allow: ["screening"],
-      shape: "document",
     });
   }
 
@@ -166,9 +149,6 @@ export function getInferredPreventiveSatisfactions(
           .join(" ") || null,
       date: a.date,
       allow: a.kind === "mental_health" ? ["visit", "screening"] : ["visit"],
-      // A completed appointment is an EVENT, which is what lets a mental_health visit
-      // reach the depression/anxiety  a document title may not (#3025).
-      shape: "event",
     });
   }
 
@@ -192,7 +172,6 @@ export function getInferredPreventiveSatisfactions(
           .join(" ") || null,
       date: e.date,
       allow: ["visit"],
-      shape: "event",
     });
   }
 
@@ -212,7 +191,6 @@ export function getInferredPreventiveSatisfactions(
       name: d.name,
       date: d.procedure_date,
       allow: ["visit"],
-      shape: "event",
     });
   }
 
@@ -224,8 +202,6 @@ export function getInferredPreventiveSatisfactions(
       name: c.description,
       date: c.planned_date,
       allow: ["visit", "screening"],
-      // A COMPLETED care-plan item is a thing that was done, not a filed document.
-      shape: "event",
     });
   }
 

@@ -74,30 +74,7 @@ export interface ConceptMatcher {
   codes: string[];
   // Whole-word name/title/description synonyms, matched against normalized text.
   // Keep these specific to the screening/visit itself.
-  //
-  // THESE NOW MEET DOCUMENT TITLES TOO (#3025). The `report` category — where a CCDA
-  // files its cytology and pathology reads — reaches this matcher since #3025, and a
-  // report's `name` is the TITLE OF A FILED DOCUMENT, not the label of an event that
-  // happened. So a needle here has to be one that, appearing in a document title, means
-  // "this document IS that screening's result": "pap test", "mammogram", "dexa". A
-  // needle that names a CONVERSATION or a clinician belongs in `eventNames` below.
   names: string[];
-  // Synonyms that are evidence ONLY when the record is an EVENT — a procedure, a
-  // completed appointment, an encounter, a care-plan item — and never when it is a
-  // document title.
-  //
-  // WHY THE SPLIT EXISTS. "counseling", "psychotherapy", "behavioral health" were added
-  // for the VISIT stream (#997), where "counseling" means a counseling visit and a
-  // completed one is legitimate evidence toward the depression/anxiety screening. A
-  // DOCUMENT titled "Nutrition Counseling Note" carries the same word and proves
-  // nothing — a dietitian's note would otherwise satisfy BOTH depression and anxiety
-  // screening for a year. The word names a conversation; only the event is the evidence,
-  // and a false satisfaction is a screening that is never nudged again.
-  //
-  // REQUIRED ON EVERY MATCHER, `[]` when there is none — the same exhaustiveness
-  // discipline SCREENING_RESULT_CATEGORIES uses (#2786). A matcher that never answered
-  // this question would silently offer every needle it has to a document title.
-  eventNames: string[];
   // Exact canonical biomarker names (lib/canonical-result-definitions.json) whose presence
   // as a result satisfies a lab-based screening. Empty for non-lab rules.
   canonicalResultNames: string[];
@@ -133,7 +110,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "174184006", // SNOMED diagnostic endoscopic examination on colon
     ],
     names: ["colonoscopy"],
-    eventNames: [],
     canonicalResultNames: [],
     satisfiedBy: { kind: "procedure", procedure: "Colonoscopy" },
   },
@@ -150,7 +126,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "241055006", // SNOMED screening mammography
     ],
     names: ["mammogram", "mammography"],
-    eventNames: [],
     canonicalResultNames: [],
     satisfiedBy: { kind: "procedure", procedure: "Mammogram" },
   },
@@ -192,7 +167,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "hpv test",
       "hpv screening",
     ],
-    eventNames: [],
     canonicalResultNames: [],
     satisfiedBy: { kind: "procedure", procedure: "Pap smear" },
   },
@@ -213,7 +187,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "bone densitometry",
       "dual energy x ray absorptiometry",
     ],
-    eventNames: [],
     canonicalResultNames: [],
     satisfiedBy: { kind: "procedure", procedure: "DEXA scan" },
   },
@@ -228,7 +201,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "84478", // CPT triglycerides
     ],
     names: ["lipid panel", "lipid profile", "cholesterol panel"],
-    eventNames: [],
     canonicalResultNames: [
       "Total Cholesterol",
       "LDL Cholesterol",
@@ -256,7 +228,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "fasting blood glucose",
       "oral glucose tolerance",
     ],
-    eventNames: [],
     canonicalResultNames: ["Hemoglobin A1c", "Glucose"],
     satisfiedBy: { kind: "lab", primary: "Hemoglobin A1c" },
   },
@@ -275,30 +246,15 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "phq 9",
       "phq 2",
       "patient health questionnaire",
-    ],
-    // A completed MENTAL-HEALTH visit is legitimate evidence toward this screening
-    // (#997), so a person in active behavioral-health care isn't also nagged to get
-    // screened. The `mental_health` appointment KIND folds in "mental health visit"
-    // (appointmentKindInferenceText) and, uniquely, widens its inference `allow` to
-    // include "screening" so it reaches this screening matcher through the SAME
-    // shared stream a physical uses for its check-up — no forked satisfaction path.
-    // Names are UNAMBIGUOUS behavioral-health terms only (bare "therapy"/"therapist"
-    // are left out — they collapse with physical/occupational therapy, an over-match
-    // #86 conservatism forbids).
-    //
-    // EVENT-ONLY, and that is the whole reason this field exists. Every word here names
-    // a CONVERSATION. As `names` they also met document titles once `report` was
-    // admitted (#3025), and "Nutrition Counseling Note" — a dietitian's note — then
-    // satisfied depression AND anxiety screening for a year. A completed counseling
-    // VISIT is evidence; a document with "counseling" in its title is a topic.
-    //
-    // STILL OPEN, ONE STREAM OVER, recorded here so it is not rediscovered as new: a
-    // COMPLETED CARE-PLAN ITEM described "Nutrition counseling" is `shape: "event"`, so
-    // these needles legitimately apply to it and it yields both screenings on its planned
-    // date. That is the same false satisfaction the report case was, reached through a
-    // stream whose descriptions are event labels rather than document titles, and closing
-    // it needs a rule about the care-plan stream rather than about this list.
-    eventNames: [
+      // A completed MENTAL-HEALTH visit is legitimate evidence toward this screening
+      // (#997), so a person in active behavioral-health care isn't also nagged to get
+      // screened. The `mental_health` appointment KIND folds in "mental health visit"
+      // (appointmentKindInferenceText) and, uniquely, widens its inference `allow` to
+      // include "screening" so it reaches this screening matcher through the SAME
+      // shared stream a physical uses for its check-up — no forked satisfaction path.
+      // Names are UNAMBIGUOUS behavioral-health terms only (bare "therapy"/"therapist"
+      // are left out — they collapse with physical/occupational therapy, an over-match
+      // #86 conservatism forbids).
       "mental health visit",
       "psychotherapy",
       "counseling",
@@ -326,11 +282,12 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     ruleKey: "anxiety_screening",
     kind: "screening",
     codes: [],
-    names: ["anxiety screening", "gad 7", "generalized anxiety disorder"],
-    // A completed mental-health visit satisfies the anxiety screening too (#997) —
-    // same unambiguous behavioral-health synonyms + folded kind text as depression,
-    // and event-only for the same reason (see depression_screening above).
-    eventNames: [
+    names: [
+      "anxiety screening",
+      "gad 7",
+      "generalized anxiety disorder",
+      // A completed mental-health visit satisfies the anxiety screening too (#997) —
+      // same unambiguous behavioral-health synonyms + folded kind text as depression.
       "mental health visit",
       "psychotherapy",
       "counseling",
@@ -368,7 +325,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "audit c",
       "alcohol use disorders identification test",
     ],
-    eventNames: [],
     canonicalResultNames: ["AUDIT-C", "AUDIT"],
     // Deep-links to the in-app AUDIT-C (the substance-use page's default) — AUDIT is
     // total-only, so the actionable next step is the administrable AUDIT-C.
@@ -394,7 +350,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dast 10",
       "dast",
     ],
-    eventNames: [],
     canonicalResultNames: ["DAST-10"],
     // DAST-10 is in-app since #1085 (the owner-reversed #998 licensing call — see
     // lib/substance-use.ts), so the CTA verb is "Complete the DAST-10".
@@ -423,7 +378,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "hepatitis c rna",
       "hcv rna",
     ],
-    eventNames: [],
     canonicalResultNames: [],
     // A blood test, but no tracked HCV biomarker — the add form opens unprefilled.
     satisfiedBy: { kind: "lab" },
@@ -436,7 +390,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     // re-surfaces yearly, so a stale reading never suppresses the reminder for long.
     codes: [],
     names: ["blood pressure"],
-    eventNames: [],
     canonicalResultNames: [
       "Blood Pressure Systolic",
       "Blood Pressure Diastolic",
@@ -469,7 +422,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "annual check up",
       "periodic health exam",
     ],
-    eventNames: [],
     canonicalResultNames: [],
   },
   {
@@ -490,7 +442,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dental prophylaxis",
       "dentist",
     ],
-    eventNames: [],
     canonicalResultNames: [],
   },
   {
@@ -512,7 +463,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "ophthalmological",
       "ophthalmologist",
     ],
-    eventNames: [],
     canonicalResultNames: [],
   },
   {
@@ -541,7 +491,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "audiologist",
       "pure tone audiometry",
     ],
-    eventNames: [],
     canonicalResultNames: [
       "Hearing Threshold, Right Ear 1 kHz",
       "Hearing Threshold, Left Ear 1 kHz",
@@ -567,7 +516,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dermatology",
       "dermatologist",
     ],
-    eventNames: [],
     canonicalResultNames: [],
   },
 ];
