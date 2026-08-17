@@ -291,9 +291,19 @@ test("filtering to one row selects it temporarily and keeps one keyboard entry p
 const YEAR_AGO = new Date(frozenNow().getTime() - 364 * 24 * 3600 * 1000)
   .toISOString()
   .slice(0, 10);
-const MIDWEEK_TO = new Date(frozenNow().getTime() - 2 * 24 * 3600 * 1000)
-  .toISOString()
-  .slice(0, 10);
+// A window end that is deliberately INSIDE a week, because the partial-bucket
+// assertion below is about exactly that. "Two days ago" is not: the buckets are
+// Sunday-start, so on a Monday run it lands on a Saturday — a week's last day —
+// and the trailing bucket is complete, failing an assertion that has nothing to
+// do with what changed. The freeze instant is the run's own start (and #1464
+// nudges it FORWARD across midnight), so which weekday "today" is is a property
+// of when CI happened to fire. Backing up to the most recent Wednesday is
+// stable: every Sunday–Saturday week has its Wednesday strictly inside it.
+const MIDWEEK_TO = (() => {
+  const d = frozenNow();
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() - 3 + 7) % 7));
+  return d.toISOString().slice(0, 10);
+})();
 
 test("a year-scale range re-grains the intake history to weeks (#2413)", async ({
   page,
