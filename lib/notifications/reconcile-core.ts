@@ -62,6 +62,7 @@ import { plainBody } from "./rich-text";
 import type { NotificationMessage } from "./types";
 import { formatMessageLine } from "./message-line";
 import { formatMonthDay } from "../format-date";
+import { zonedDateParts } from "../date";
 
 // The PROSE witness (#1913 item 4): a stable fingerprint of what a message SAYS.
 //
@@ -398,29 +399,31 @@ export function closeDetailText(
 // One dose the ledger says was TAKEN, and when (#2867).
 export interface TakenDose {
   name: string;
-  // The administration time as the profile's clock showed it, "HH:MM" — the same
-  // rendering the correction rows already use for the same fact on the same channel
-  // (`burstLabel`, "Salmon 20:11"), so one chat never shows two clock conventions.
+  // THE ADMINISTRATION INSTANT ITSELF, ISO UTC — not a pre-rendered clock and not a
+  // date beside one. That is the whole point of the shape: the displayed date and the
+  // displayed clock are two views of ONE fact, and handing them in separately is what
+  // let them disagree.
   //
-  // Null/absent for a taken row this pass could not read an instant from — which
-  // renders as a plain `taken` group rather than inventing a time, the same
-  // stated-not-inferred posture the tally takes for a dose in neither ledger set.
+  // They did. The first cut passed the adherence DAY beside the instant's wall clock,
+  // and a correction that crosses local midnight moves only `occurred_at` — the
+  // adherence day is unchanged by design (`restampDoseLogsCore` reports
+  // `crossedMidnight` for exactly this) — so a dose stated at 23:50 the previous
+  // evening was labelled with the following day: a datetime that never happened.
+  // Deriving both from this one field makes that unrepresentable rather than tested-for.
   //
-  // Rare by construction on the dose path: `intake_item_logs.recorded_at` is NOT NULL
-  // and the read COALESCEs `occurred_at` onto it, so a taken scheduled dose has an
-  // instant even in pre-`occurred_at` data. This arm covers a stored value that will not
-  // parse, and keeps a future caller from having to invent one.
+  // Null/absent for a taken row this pass could not read an instant from — which renders
+  // as a plain `taken` group rather than inventing a time, the same stated-not-inferred
+  // posture the tally takes for a dose in neither ledger set. Rare by construction:
+  // `intake_item_logs.recorded_at` is NOT NULL and the read COALESCEs `occurred_at` onto
+  // it, so this arm covers a stored value that will not parse.
   at?: string | null;
-  // The profile-local date this dose belongs to. Only read when a close spans MORE THAN
-  // ONE, which is the case where a clock time alone would silently merge two days.
-  date?: string;
 }
 
 // The DOSE families' shape of `CloseDetail` (#2274): the taken receipt first, then the
 // skips. Both dose families share it unchanged — they are the only ones whose vocabulary
 // is take/skip, which is why it may be dose-specific at all.
 export interface ClosingTally {
-  // Doses confirmed taken, each with its administration time, and doses deliberately
+  // Doses confirmed taken, each with its administration instant, and doses deliberately
   // skipped — a skip is a record the user made, which is why it is stated rather than
   // folded into the first list.
   //
@@ -428,36 +431,65 @@ export interface ClosingTally {
   // is not when anything happened; a skip's whole content is that nothing was taken.
   taken: readonly TakenDose[];
   skipped: readonly string[];
+  // The PROFILE's timezone, which every instant above renders in. Absent means the
+  // caller has no zone to render in, and every taken dose falls back to the untimed
+  // `taken` group rather than being shown in the host's zone.
+  tz?: string;
 }
 
-// What one taken bucket's outcome reads as. The date rides it ONLY on a close that spans
-// several — "taken 08:12" is unambiguous on a single-date close and carrying the date
-// there would be noise on every ordinary one.
-function takenOutcome(d: TakenDose, spansDates: boolean): string {
-  const when = [
-    ...(spansDates && d.date ? [formatMonthDay(d.date)] : []),
-    ...(d.at ? [d.at] : []),
-  ].join(", ");
-  return when ? `taken ${when}` : "taken";
+// The rendered view of one administration instant, or null when there is nothing to
+// render it from.
+function takenAt(
+  d: TakenDose,
+  tz: string | undefined
+): { key: string; date: string; clock: string } | null {
+  if (!d.at || !tz) return null;
+  const instant = new Date(d.at);
+  if (Number.isNaN(instant.getTime())) return null;
+  const parts = zonedDateParts(tz, instant);
+  return {
+    // BUCKETS KEY ON THE UTC MINUTE, not on the rendered clock. Within one offset the
+    // two are the same thing — offsets are whole minutes — so "doses logged in the same
+    // displayed minute share a bucket" is unchanged. Across a DST FALL-BACK they are
+    // not: 05:30Z and 06:30Z on 2026-11-01 in America/New_York both display 01:30, an
+    // hour apart, and keying on the rendered clock merged them into one clause claiming
+    // they were simultaneous. They now render as two clauses reading the same time,
+    // which is what actually happened — the repeated wall hour is genuinely ambiguous,
+    // and stating it twice is honest where merging is not.
+    key: instant.toISOString().slice(0, 16),
+    date: parts.date,
+    clock: parts.hhmm,
+  };
 }
 
-// GROUPED BY TIME, not marked per item (#2867 owner decision): the common
-// one-tap-all case collapses to a single clause, and doses logged in the same displayed
-// minute share a bucket. Buckets key on (date, displayed minute) so the rare multi-date
-// close cannot fold two days into one clock time, and they render in first-appearance
-// order — which is keyboard order, the same rule the rest of the close follows.
+// GROUPED BY TIME, not marked per item (#2867 owner decision): the common one-tap-all
+// case collapses to a single clause, and doses logged in the same minute share a bucket.
+// Buckets render in first-appearance order — which is keyboard order, the same rule the
+// rest of the close follows.
+//
+// The DATE rides a clause only on a close that spans more than one. "taken 08:12" is
+// unambiguous on an ordinary single-date close, and carrying the date there would be
+// noise on every one of them.
 export function closingTallyDetail(tally: ClosingTally): CloseDetail {
-  const spansDates = new Set(tally.taken.map((t) => t.date ?? "")).size > 1;
+  const rendered = tally.taken.map((t) => takenAt(t, tally.tz));
+  const spansDates =
+    new Set(rendered.filter((r) => r !== null).map((r) => r.date)).size > 1;
   const buckets = new Map<string, { outcome: string; names: string[] }>();
-  for (const t of tally.taken) {
-    const key = `${t.date ?? ""}|${t.at ?? ""}`;
+  tally.taken.forEach((t, i) => {
+    const at = rendered[i];
+    const key = at ? at.key : "untimed";
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = { outcome: takenOutcome(t, spansDates), names: [] };
+      const when = at
+        ? spansDates
+          ? `${formatMonthDay(at.date)}, ${at.clock}`
+          : at.clock
+        : "";
+      bucket = { outcome: when ? `taken ${when}` : "taken", names: [] };
       buckets.set(key, bucket);
     }
     bucket.names.push(t.name);
-  }
+  });
   return {
     groups: [
       ...[...buckets.values()].map((b) => ({

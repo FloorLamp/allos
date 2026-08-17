@@ -51,6 +51,7 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr, utcSqlString } from "@/lib/date";
+import { formatMonthDay } from "@/lib/format-date";
 import {
   setTelegramBotConfig,
   setTimezone,
@@ -1439,6 +1440,40 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     expect((await reconcileProfileMessages(pid)).closed).toBe(1);
     expect(String(editText.mock.calls.at(-1)![2])).toContain(
       "Cleo A, Cleo B taken 08:12 · Cleo C taken 11:45 · Cleo D skipped."
+    );
+  });
+
+  // THE MIDNIGHT-CROSSING CORRECTION, end to end — and the multi-date qualifier with it.
+  //
+  // `restampDoseLogsCore` moves the stored instant and leaves the ADHERENCE DAY alone by
+  // design (it reports `crossedMidnight` for exactly this), so a dose that belongs to
+  // today can have been administered at 23:50 last night. Pairing the adherence day with
+  // the instant's wall clock rendered "Aug 14, 23:50" for an instant that was Aug 13 —
+  // a datetime that never happened.
+  //
+  // It also pins the DATE QUALIFIER at this tier, which nothing else did: the close now
+  // spans two rendered dates, so both clauses must carry one.
+  it("dates a corrected dose by the instant it names, not by its adherence day", async () => {
+    const pid = newProfile("Crossing Cora");
+    setTimezone(pid, "America/New_York");
+    const a = seedDose(pid, "Cora A");
+    const b = seedDose(pid, "Cora B");
+    seedLoginTelegram(pid, "5552869");
+    await sendMorningReminder(pid);
+
+    const date = today(pid);
+    markDoseTaken(pid, a.doseId, a.itemId, date);
+    markDoseTaken(pid, b.doseId, b.itemId, date);
+    // Both rows keep TODAY as their adherence date. 03:50Z on that date is 23:50 the
+    // PREVIOUS evening in New York — the shape a correction back across midnight leaves.
+    stampDoseTakenAt(pid, a.doseId, `${date} 03:50:00`);
+    stampDoseTakenAt(pid, b.doseId, `${date} 12:12:00`);
+
+    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
+    const yesterday = shiftDateStr(date, -1);
+    expect(String(editText.mock.calls.at(-1)![2])).toContain(
+      `Cora A taken ${formatMonthDay(yesterday)}, 23:50 · ` +
+        `Cora B taken ${formatMonthDay(date)}, 08:12.`
     );
   });
 

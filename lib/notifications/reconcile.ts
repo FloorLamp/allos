@@ -79,7 +79,7 @@ import {
 } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
 import { getTimezone } from "../settings";
-import { parseUtcSql, zonedDateParts } from "../date";
+import { parseUtcSql } from "../date";
 import {
   collectWindowDoses,
   slotSessionForKeyboard,
@@ -348,7 +348,6 @@ function doseClosingTally(
   const taken: TakenDose[] = [];
   const skipped: string[] = [];
   let names: Map<number, string> | null = null;
-  let tz: string | null = null;
   for (const t of tokens) {
     const f = fields(t);
     if (!prefixes.includes(f[0])) continue;
@@ -381,13 +380,17 @@ function doseClosingTally(
       skipped.push(name);
       continue;
     }
-    // An unparseable or absent stored instant yields no time at all rather than a
-    // guessed one — the same stated-not-inferred rule as the ledger sets above.
-    tz ??= getTimezone(profileId);
+    // The INSTANT, handed on as stored. The rendering — which clock, which date, which
+    // bucket — belongs to the pure formatter, which derives all three from this one
+    // value so they cannot disagree (see `TakenDose`). An unparseable or absent stored
+    // instant yields no time at all rather than a guessed one, the same
+    // stated-not-inferred rule as the ledger sets above.
     const at = parseUtcSql(ledger.times.get(doseId));
-    taken.push({ name, date, at: at ? zonedDateParts(tz, at).hhmm : null });
+    taken.push({ name, at: at ? at.toISOString() : null });
   }
-  return taken.length + skipped.length > 0 ? { taken, skipped } : null;
+  return taken.length + skipped.length > 0
+    ? { taken, skipped, tz: getTimezone(profileId) }
+    : null;
 }
 
 // Both dose families' `detail()`, unchanged between them.
