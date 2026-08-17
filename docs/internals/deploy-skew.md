@@ -470,6 +470,33 @@ competing-source-of-truth concern is answered by the clear-on-success effect the
 form already had: while saves land, the draft is dropped the moment the server
 copy is current, so it only ever outlives a save that failed.
 
+## Skew the other way: a ROLLBACK past an IndexedDB version (#2908)
+
+Every skew case above is a tab running an **older** build than the server. The
+device-local stores skew in the opposite direction, and the mechanism is worth
+knowing before it is met in an incident.
+
+`OFFLINE_DB_VERSION` (`lib/offline/idb.ts`) only ever goes up, and a browser refuses
+to open a database at a version **lower** than the one on disk —
+`indexedDB.open(name, 3)` against a v5 database rejects with `VersionError`. So a
+device that ran a build at v5 and is then served a rolled-back build at v3 gets a
+rejected open on every call. Nothing breaks loudly: the rejection is swallowed by
+every caller, which is the same degraded path as a browser with no IndexedDB at all.
+The whole device-local layer — the write queue (#28), the dead-letter store (#475),
+form drafts (#1699), the offline read snapshots (#2908) — becomes a **no-op**. The
+app stays fully functional online and simply keeps nothing on the device.
+
+This is inherent to IndexedDB rather than to any one feature, and it was already true
+at v3. What it means in practice:
+
+- **A rollback is not free for offline users.** A write queued on the newer build is
+  unreachable to the rolled-back build. It is not lost, and it replays once the
+  version rolls forward again.
+- **It is silent by design, and that is the right default** — an offline copy is a
+  convenience, and failing a page load over one would be worse than not having it.
+- **Recovery is rolling forward**, not clearing storage. Nothing on the device needs
+  a repair step.
+
 ## Testing
 
 Pure (`lib/__tests__/auto-reload.test.ts`): the #2471 half — every leg of

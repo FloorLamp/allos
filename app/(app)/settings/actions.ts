@@ -13,6 +13,7 @@
 import {
   requireSession,
   requireLoginWriteAccess,
+  currentTokenHash,
   destroyOtherSessionsForCurrent,
   revokeSession,
   setOwnProfileForLogin,
@@ -185,6 +186,9 @@ export async function changeOwnPassword(
 
 // ---- Active sessions (login scope) ----
 
+/** What the active-sessions list has to say after a revoke. `null` until one is pressed. */
+export type RevokeSessionState = { error: string } | null;
+
 // Revoke one of the caller's own live sessions from the active-sessions list.
 // revokeSession scopes the delete to login.id, so a forged/foreign id can only
 // ever end one of the caller's sessions (or nothing).
@@ -193,10 +197,24 @@ export async function changeOwnPassword(
 // Audited (#1843) only when a row actually went: a forged or stale session id
 // deletes nothing, and an audit row claiming a revocation that never happened is
 // worse than no row.
-export async function revokeSessionAction(formData: FormData) {
+//
+// THE SESSION MAKING THE REQUEST IS REFUSED, and refused in lib/auth's
+// revokeSession rather than by ActiveSessions declining to draw the button — the
+// exclusion was an authorization invariant living in a rendering decision. The
+// outcome comes back stated, so this is a refusal the person is TOLD about
+// instead of a delete that quietly matched nothing, and it points at the one
+// affordance that ends this session properly: Log out, which also wipes this
+// device's offline copy (#2908).
+export async function revokeSessionAction(
+  _prev: RevokeSessionState,
+  formData: FormData
+): Promise<RevokeSessionState> {
   const { login } = await requireLoginWriteAccess();
   const id = String(formData.get("session_id") ?? "");
-  if (id && revokeSession(login.id, id)) {
+  const outcome = id
+    ? revokeSession(login.id, id, await currentTokenHash())
+    : "nothing";
+  if (outcome === "revoked") {
     recordAudit({
       loginId: login.id,
       action: AUDIT_ACTIONS.sessionRevoke,
@@ -204,6 +222,12 @@ export async function revokeSessionAction(formData: FormData) {
     });
   }
   revalidateRoute("/settings");
+  return outcome === "refused-current"
+    ? {
+        error:
+          "That's the device you're using. Use Log out to end this session — it clears this device's offline copy too.",
+      }
+    : null;
 }
 
 // "Sign out everywhere else": drop every session for this login except the one

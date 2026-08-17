@@ -568,18 +568,51 @@ describe("teardown", () => {
     const bobSession = createSession(bob.id);
 
     // Alice tries to revoke Bob's session by hash — scoped to login_id, so no-op.
-    // It reports FALSE (#1843): the caller must be able to tell "I ended a
+    // It reports "nothing" (#1843): the caller must be able to tell "I ended a
     // session" from "nothing happened", or it writes an audit row for a
     // revocation that never occurred.
-    expect(revokeSession(alice.id, sha256hex(bobSession.token))).toBe(false);
+    expect(revokeSession(alice.id, sha256hex(bobSession.token), null)).toBe(
+      "nothing"
+    );
     expect(sessionRow(sha256hex(bobSession.token))).toBeDefined();
 
     // Bob revokes his own — gone; Alice's untouched.
-    expect(revokeSession(bob.id, sha256hex(bobSession.token))).toBe(true);
+    expect(revokeSession(bob.id, sha256hex(bobSession.token), null)).toBe(
+      "revoked"
+    );
     expect(sessionRow(sha256hex(bobSession.token))).toBeUndefined();
     expect(sessionRow(sha256hex(aliceSession.token))).toBeDefined();
     // Replaying the same revocation ends nothing the second time.
-    expect(revokeSession(bob.id, sha256hex(bobSession.token))).toBe(false);
+    expect(revokeSession(bob.id, sha256hex(bobSession.token), null)).toBe(
+      "nothing"
+    );
+  });
+
+  // THE EXCLUSION USED TO LIVE IN A COMPONENT. ActiveSessions renders the Revoke
+  // button only for a row that is not `current`, and that was the whole of the
+  // rule: hand this function the caller's own session id and it ended the session
+  // it was called from. Since #2908 that is the one revoke a person can aim at
+  // their OWN device, and it was the one path that ended a session without the
+  // device-local wipe running — leaving the offline health record and an open
+  // write gate on a device with no session at all.
+  it("revokeSession REFUSES the session making the request, and says so", () => {
+    const bob = mkLogin();
+    grant(bob.id, mkProfile("Bob Current"));
+    const mine = createSession(bob.id);
+    const other = createSession(bob.id);
+    const mineHash = sha256hex(mine.token);
+
+    // Same login, same ownership, everything the scoping check allows — and it is
+    // still refused, because it is the caller's own live session.
+    expect(revokeSession(bob.id, mineHash, mineHash)).toBe("refused-current");
+    expect(sessionRow(mineHash)).toBeDefined();
+
+    // NON-VACUITY: the very same call with a different current session revokes it,
+    // so the refusal above is the guard and not some unrelated no-op.
+    expect(revokeSession(bob.id, mineHash, sha256hex(other.token))).toBe(
+      "revoked"
+    );
+    expect(sessionRow(mineHash)).toBeUndefined();
   });
 });
 

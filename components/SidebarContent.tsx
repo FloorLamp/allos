@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useRef } from "react";
 import { IconLogout, IconSearch, IconX } from "@tabler/icons-react";
 import Nav from "@/components/Nav";
 import { openGlobalSearch } from "@/components/CommandPalette";
 import Wordmark from "@/components/Wordmark";
 import ProfileIdentityBar from "@/components/ProfileIdentityBar";
-import { clearEmergencyPayload } from "@/components/emergency-offline";
-import { clearQueue } from "@/lib/offline/queue-db";
+import { unstable_rethrow } from "next/navigation";
+import {
+  reopenUnlessSessionEnded,
+  wipeDeviceForSignOut,
+} from "@/components/device-wipe";
 import { logoutAction } from "@/app/(app)/session-actions";
 import LogActivityButton from "@/components/LogActivityButton";
 import FrequentPages from "@/components/FrequentPages";
@@ -121,6 +125,128 @@ export default function SidebarContent({
   onNavigate?: () => void;
   onClose?: () => void;
 }) {
+  const logoutFormRef = useRef<HTMLFormElement>(null);
+
+  // Wipe this device's PHI, THEN log out. `wipeDeviceForSignOut` (components/device-wipe)
+  // is the shared one — the family screen's "delete your own login" and "sign my login out
+  // of every device" end this device's session too and call exactly the same thing.
+  //
+  // WHAT DOES NOT COVER THE LEFTOVER, corrected here because the claim was made and was
+  // false: /offline does NOT refuse to render it. `resolveSnapshotProfile` refuses a
+  // MIXED store — two profiles' payloads at once, which one login's leftover is not.
+  // A store holding exactly one login's payloads is precisely what it CAN attribute, so
+  // the common case renders, session-free, for whoever picks the phone up next. The
+  // 2s bound is a liveness guarantee for the person logging out and nothing more.
+  //
+  // WHAT DOES COVER IT is `clearQueue` CLOSING THE DEVICE WRITE GATE in the same
+  // transaction as the wipe (lib/offline/write-gate.ts). This page stays mounted,
+  // authenticated and interactive for the whole duration of the logout POST below, and
+  // that window admitted four different re-writes, each found after the previous fix:
+  //   • a refresh already in flight — dropped by the generation the gate carries;
+  //   • a refresh that STARTS after the wipe, whose generation is legitimately current,
+  //     which finds an empty store, asks for all five kinds and is answered 200 because
+  //     the session does not end until the POST lands;
+  //   • the same thing from ANOTHER TAB, which shares the database and shares no memory;
+  //   • a queue flush's retry write and a form draft's 600ms debounce, landing after.
+  // Which is why the gate is neither in this component nor in a module variable: it is a
+  // record in the database the writes land in, read inside each write's own transaction,
+  // and it stays closed until a DIFFERENT session opens it — not merely until some tab
+  // mounts, because every tab open right now is about to do exactly that.
+  async function logoutAfterWipe(): Promise<void> {
+    await wipeDeviceForSignOut();
+    logoutFormRef.current?.requestSubmit();
+  }
+
+  // AND IF THE LOGOUT NEVER LANDS, THE CLOSE COMES BACK OFF.
+  //
+  // The wipe above closes the gate for THIS session before the POST is even sent, which
+  // is what makes the whole logout window safe. It is also a bet: if the POST fails — no
+  // signal, which is this app's own subject matter, or a 5xx mid-deploy — the session is
+  // still alive and the gate is closed for it, and `openSessionAs` refuses to re-open for
+  // the session that closed it. Nothing changes `sessionKey` short of a SUCCESSFUL logout
+  // and a new login, so the device stayed shut: the #28 write queue stopped capturing
+  // while a dose tap still toasted "saved offline — will sync when you reconnect", drafts
+  // stopped saving, snapshots stopped refreshing. A shipped feature, silently dead, on
+  // the path the error boundary invites the person onto — "Something went wrong … Reload
+  // the app".
+  //
+  // ── "THE CALL THREW" IS NOT THE SIGNAL. IT IS TRUE ON BOTH OUTCOMES. ────────────────
+  //
+  // The first version of this undid the close in a bare `catch`, and that undid EVERY
+  // logout, including every one that worked. `logoutAction` ends in `redirect("/login")`,
+  // and Next rejects the client promise of a redirecting Server Action deliberately —
+  // `server-action-reducer.js` says so in its own comment: "the action promise will be
+  // rejected with a redirect so that it's handled by RedirectBoundary as we won't have a
+  // valid action result to resolve the promise with." So the happy path arrived here as
+  // an exception, the gate was re-opened behind a session that had just been destroyed,
+  // and a surviving tab went on capturing doses under "Dose saved offline".
+  //
+  // Nothing caught it because every test of this window HOLDS THE LOGOUT POST OPEN for
+  // the duration of its assertions — the fixture constrained the world to the interval in
+  // which the mistake is invisible. R-A2 in e2e/offline-write-gate.spec.ts is the test
+  // that runs PAST the POST instead.
+  //
+  // TWO BARRIERS, and neither is trusted on its own — WHICH IS A CLAIM, SO EACH IS PINNED
+  // BY A TEST THAT FAILS WHEN ONLY THAT BARRIER IS REMOVED. It was not, for one round, and
+  // both barriers were individually deletable with the whole suite green: R-A2 cannot tell
+  // which one stopped the undo, so it stays green on either mutant. A redundancy nothing
+  // observes is not redundancy — it is one mechanism and a comment.
+  //
+  //   1. `unstable_rethrow` — the framework's own public API for "catch, but never
+  //      swallow the framework's control flow". A redirect leaves here immediately, so a
+  //      successful logout never reaches the undo and costs no extra request.
+  //      PINNED BY R-A3: a logout that SUCCEEDS issues ZERO probes. Delete this line and
+  //      the redirect rejection falls through to the probe, so the count is 1.
+  //   2. THE SERVER IS ASKED. A framework that stopped rejecting on redirect, or a new
+  //      error shape, must not be able to make barrier 1 the whole defence. The undo runs
+  //      only when the server has NOT said the session is gone, and a 401 is the only
+  //      thing that says so — it means `destroySession` ran.
+  //      PINNED BY R-A4: a logout DELIVERED and then robbed of its response, with the
+  //      probe reachable, leaves the gate shut. Drop this condition and the undo re-opens
+  //      the gate for a session the server has already destroyed.
+  //
+  // UNREACHABLE COUNTS AS "NOT GONE", deliberately — and that is a TRADE, not a proof.
+  // The earlier version of this comment claimed it was a proof: "a probe that cannot reach
+  // the server is the case in which the logout cannot have landed either". That is false,
+  // and the case it waves away is reachable.
+  //
+  //   WHAT IT GETS RIGHT — pressing Log out with no signal. The POST never left, the
+  //   session is alive, and treating unreachable as "gone" would leave the device with its
+  //   queue, drafts and snapshots shut for a session that never ended. That is this app's
+  //   own subject matter and the entire reason this recovery exists.
+  //
+  //   WHAT IT GETS WRONG — a destroy that COMMITTED and lost only its answer. The POST can
+  //   reach the server, `destroySession` can run, and the response can be dropped on the
+  //   way back; the probe that follows cannot reach the server either, so this device
+  //   re-opens the gate for a session that is already dead. Its surviving tabs go on
+  //   writing drafts and intents, and those survive into the NEXT login — exactly what
+  //   `clearDrafts` in lib/offline/draft-db.ts says must never happen.
+  //
+  // The default stays this way round because the other way is worse: "unreachable counts
+  // as gone" bricks every logout pressed in a dead zone, which is the common case, while
+  // this way round is wrong only in a case that also loses the response. It is not a
+  // regression either — on main there is no gate at all and those writes land in every
+  // ordering.
+  //
+  // IF THIS IS EVER TO BE MITIGATED RATHER THAN ANNOTATED, the bounded shape is: mark the
+  // gate that `reopenForFailedLogout` re-opened, and re-ask the probe ONCE on the next
+  // `online` or document load, scoped to that marked gate only — an ordinary expired
+  // session answering 401 must still never wipe this device's reads. It is not done here
+  // because its trigger misses its own scenario: the closer's document is on the error
+  // boundary or bounced to /login, so the re-ask needs a surviving authenticated tab that
+  // regains signal before the device is closed. That is the same way the deleted
+  // `LOGOUT_SETTLE_MS` clock failed to pay for itself, and a new barrier here would need
+  // its own pair of mutant-red tests to be worth more than this paragraph.
+  async function submitLogout(): Promise<void> {
+    try {
+      await logoutAction();
+    } catch (err) {
+      unstable_rethrow(err);
+      await reopenUnlessSessionEnded();
+      throw err;
+    }
+  }
+
   return (
     <>
       <div className="flex items-center justify-between gap-2">
@@ -216,16 +342,19 @@ export default function SidebarContent({
               Read-only
             </p>
           )}
-          <form action={logoutAction}>
+          <form action={submitLogout} ref={logoutFormRef}>
             <button
-              type="submit"
-              onClick={() => {
-                // Wipe offline PHI on logout: the emergency card copy (#42) and
-                // any queued offline writes (#28) — never leave them for the
-                // next login.
-                clearEmergencyPayload();
-                void clearQueue();
-              }}
+              // NOT type="submit" (#2908). The wipe below is an ASYNC IndexedDB
+              // transaction and the submit is a NAVIGATION: as a submit button
+              // these raced, and the navigation won often enough to leave one
+              // login's device-local PHI — a med list and a dose schedule,
+              // readable session-free at /offline — sitting there for the next
+              // person. Reproduced at 1-in-10 under CPU contention; it had
+              // simply never been observed because localStorage (the emergency
+              // card) is synchronous and the queue's own leftovers are invisible.
+              // So: wipe first, await it, THEN submit.
+              type="button"
+              onClick={() => void logoutAfterWipe()}
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
             >
               <IconLogout className="h-4 w-4 shrink-0" stroke={1.75} />

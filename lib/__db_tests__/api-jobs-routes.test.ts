@@ -54,6 +54,9 @@ function sessionFor(profileId: number, loginId: number): CurrentSession {
       photo_version: 0,
     },
     access: "write",
+    // Not a real session key — these harnesses never reach the device write gate,
+    // which is browser-side. It only has to satisfy CurrentSession (#2908).
+    deviceSessionKey: "test session key",
   };
 }
 
