@@ -35,7 +35,11 @@ import type { ImagingStudy } from "@/lib/types";
 // estimated split, the lens — goes through formatScopeMsv, which prints the sum of the
 // figures the rows print; the rows print formatMsv, the same chip the study list shows.
 // A total re-rounded independently of its rows disagreed with them in ordinary cases
-// (#2970 R5), and a decomposition whose parts do not add up is not an explanation.
+// (#2970 R5), and a decomposition whose parts do not add up is not an explanation. What
+// that costs — a printed total up to 0.5% off the sum of the TRUE doses, ratified because
+// it sits two orders of magnitude inside the uncertainty the figure already declares — is
+// written out beside `formatScopeMsv`. Read that before making this card sum anything of
+// its own.
 export default function RadiationDoseCard({
   breakdown,
   pediatric,
