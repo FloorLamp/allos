@@ -76,6 +76,11 @@ export function offerCollapseToken(profileId: number, date: string): string {
 //
 // Zero on offer drops the parenthetical rather than rendering "(0)": no count is not a
 // count of none.
+//
+// THE NOUN IS DIGEST-ONLY, and that is not a detail — see `reminderOfferAction` below.
+// Every argument above for dropping "other" is an argument about the DIGEST, where the
+// referent may be invisible. On the dose reminder it is visible, and a bare count there
+// collides with the reminder's own.
 export function collapsedOfferAction(
   profileId: number,
   date: string,
@@ -86,6 +91,34 @@ export function collapsedOfferAction(
     data: offerExpandToken(profileId, date),
     // Shared with ⚙️ Tune so the two collapsed controls occupy ONE row (#2890).
     row: DIGEST_TAIL_ROW,
+  };
+}
+
+// The SAME control on the DOSE REMINDER's ride-along row (#1505 Part 1, class 3) —
+// which keeps the word "other", deliberately.
+//
+// TWO COUNTS ON ONE KEYBOARD IS THE FAILURE THIS AVOIDS. The reminder already carries
+// "✅ All (N)" over the doses it is reminding about; putting "➕ Doses (3)" beside it
+// puts two dose counts on one keyboard that mean different things and cannot be added
+// up — "2 still due here" and "3 you may log any time".
+//
+// #2890's whole argument for dropping "other" was that the DIGEST need not name a
+// single dose, so the noun was relative to something invisible. On the reminder the
+// referent is right there: the message IS the list these are other than. The word does
+// the work it was always meant to do, and only here.
+//
+// The slot word stays gone for the reason it went everywhere else, and more so — the
+// reminder IS the slot, so naming it would be the message repeating itself.
+export function reminderOfferAction(
+  profileId: number,
+  date: string,
+  count: number
+): NotificationAction {
+  return {
+    label: `${GLYPH.more} Log other${count > 0 ? ` (${count})` : ""}`,
+    data: offerExpandToken(profileId, date),
+    // No shared row key: there is no ⚙️ Tune on a reminder to pair with, and this
+    // control has always had the row to itself here.
   };
 }
 

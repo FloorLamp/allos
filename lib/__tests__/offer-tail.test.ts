@@ -12,6 +12,7 @@ import {
 } from "@/lib/intake-schedule";
 import {
   collapsedOfferAction,
+  reminderOfferAction,
   expandedOfferActions,
   offerTailNeedsRefresh,
   offerTextTail,
@@ -141,6 +142,38 @@ describe("the collapsed tail", () => {
     expect(collapsedOfferAction(7, "2026-07-29", 1).label).not.toBe(
       collapsedOfferAction(7, "2026-07-29", 2).label
     );
+  });
+
+  // ---- …but the DOSE REMINDER keeps "other" (#2890) ----
+  //
+  // The reminder's keyboard already carries "✅ All (N)" over the doses it is
+  // reminding about. A second bare dose count beside it is two numbers that mean
+  // different things and cannot be added up — and the argument for dropping the noun
+  // was digest-only, because on the reminder the referent is the message itself.
+  it("keeps the noun 'other' on the reminder, where the referent is visible", () => {
+    expect(reminderOfferAction(7, "2026-07-29", 3).label).toBe(
+      "➕ Log other (3)"
+    );
+    expect(reminderOfferAction(7, "2026-07-29", 0).label).toBe("➕ Log other");
+  });
+
+  it("names no slot on the reminder either — the reminder IS the slot", () => {
+    const label = reminderOfferAction(7, "2026-07-29", 3).label.toLowerCase();
+    for (const slot of ["morning", "midday", "evening", "bedtime"]) {
+      expect(label).not.toContain(slot);
+    }
+  });
+
+  it("opens the same expansion as the digest control — one token, two labels", () => {
+    expect(reminderOfferAction(7, "2026-07-29", 3).data).toBe(
+      collapsedOfferAction(7, "2026-07-29", 3).data
+    );
+  });
+
+  // It has no ⚙️ Tune to pair with, so it must not claim the shared row key: a future
+  // control landing beside it would otherwise be dragged onto its row.
+  it("does not carry the digest tail's shared row key", () => {
+    expect(reminderOfferAction(7, "2026-07-29", 3).row).toBeUndefined();
   });
 });
 
