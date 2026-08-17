@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingTextLink } from "@/components/PendingLink";
 import type { FitnessCheckModel } from "@/lib/fitness-check-model";
 
 export default function FitnessCheckStrip({
@@ -57,13 +57,14 @@ export default function FitnessCheckStrip({
           {retest > 0 ? ` · ${retest} due` : ""}
           {missing > 0 ? ` · ${missing} not measured` : ""}
         </p>
-        <Link
+        <PendingTextLink
           href="/training/fitness-check"
-          data-testid="fitness-check-strip-link"
+          testId="fitness-check-strip-link"
+          label="fitness check"
           className="ml-auto text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
           {action}
-        </Link>
+        </PendingTextLink>
       </div>
     </div>
   );

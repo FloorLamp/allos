@@ -8,15 +8,9 @@ import {
 
 // The Training → Overview "Training watch" card (#1496) — ONE card, capped.
 //
-// Same findings, same dedupeKeys, same shared dismissal bus as before: the per-muscle
-// volume-band shortfalls (#742) simply render as ONE expandable rollup row instead of
-// up to ~17 sibling cards, and the row list is capped at three with the rest behind a
-// "show all" disclosure. Expanding the rollup reveals the individual findings with
-// their own dismiss buttons, so a dismiss inside it is still item-wise: it writes that
-// muscle's own suppression key and the rollup comes back with N−1 items.
-//
-// The grouping/cap decision is the pure lib/training-findings-rollup; this component
-// is the formatter over its result.
+// Weekly muscle volume now belongs to the coverage card. This surface receives only
+// distinct exceptions such as imbalance, staleness, and plateaus; it caps them at
+// three and leaves each finding's shared dismissal identity untouched.
 export default function TrainingWatchCard({
   findings,
   dismissAction,

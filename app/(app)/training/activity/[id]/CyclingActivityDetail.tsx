@@ -46,6 +46,7 @@ import SessionTelemetryChart from "./SessionTelemetryChart";
 import SessionRouteMap from "./SessionRouteMap";
 import SessionCourseTables from "./SessionCourseTables";
 import SessionHighlights from "@/components/SessionHighlights";
+import SessionComparisonCard from "@/components/SessionComparisonCard";
 import {
   ActivityDetailSectionHeading,
   ActivityDetailSectionNavigation,
@@ -265,7 +266,6 @@ export default async function CyclingActivityDetail(props: {
   if (!data) notFound();
   const rideLens = props.rideLens;
   const activityNoun = data.indoorOnly ? "session" : "ride";
-  const activityPlural = data.indoorOnly ? "sessions" : "rides";
   const timing = activityTiming({
     durationMin: data.row.duration_min,
     elapsedMin: data.row.elapsed_min,
@@ -568,23 +568,15 @@ export default async function CyclingActivityDetail(props: {
           </CardGroup>
 
           {data.comparison ? (
-            <CardGroup
-              title={`Compared with similar ${activityPlural}`}
-              description={`Median of ${data.comparison.sessionCount} similar ${
-                data.comparison.sessionCount === 1
-                  ? activityNoun
-                  : activityPlural
-              } within ${data.comparison.tolerancePercent}% of this ${activityNoun}’s ${
-                data.comparison.basis
-              }.`}
-              className="mt-4"
-              data-testid="ride-comparison"
+            <SessionComparisonCard
+              comparison={data.comparison}
+              testId="ride-comparison"
             >
               <RideComparisonChart
                 metrics={comparisonMetrics}
                 lens={rideLens}
               />
-            </CardGroup>
+            </SessionComparisonCard>
           ) : null}
         </section>
 

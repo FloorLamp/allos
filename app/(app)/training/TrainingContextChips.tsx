@@ -20,8 +20,10 @@ export default function TrainingContextChips({
   ];
   const uniqueInjuryLabels = [...new Set(injuryLabels)];
   const limitations = [
-    ...context.excludedExercises.flatMap((row) => row.limitations),
-    ...context.temperedExercises.flatMap((row) => row.limitations),
+    ...new Set([
+      ...context.excludedExercises.flatMap((row) => row.limitations),
+      ...context.temperedExercises.flatMap((row) => row.limitations),
+    ]),
   ];
   const hasContext =
     uniqueInjuryLabels.length > 0 ||

@@ -84,8 +84,15 @@ export default function MuscleCoverageCard({
                       <span className="min-w-0 flex-1 font-medium text-slate-700 dark:text-slate-200">
                         {row.label}
                       </span>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${presentation.badgeClass}`}
+                        data-testid="muscle-coverage-verdict"
+                        data-verdict={presentation.verdict}
+                      >
+                        {presentation.label}
+                      </span>
                       <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
-                        {fmtSets(row.sets)}
+                        {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
                       </span>
                       <span className="text-xs font-medium text-brand-600 group-open:hidden dark:text-brand-400">
                         What counts?

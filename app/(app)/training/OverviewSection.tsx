@@ -41,7 +41,6 @@ import {
   deloadAdjust,
   nextSetText,
   recentCardioPRs,
-  recentPRs,
   recommendCoaching,
   suggestNextSet,
   type CardioPR,
@@ -102,9 +101,8 @@ const KIND_LABEL: Record<CardioPR["kind"], string> = {
   duration: "longest time",
 };
 
-// Recent PRs render top-3 + "show all → Analyze" (#1496): the 14-row lists this page
-// used to stack are the analytics lens's job now (Trends → Fitness "PRs this window",
-// #1492) and the per-item history lives on Analyze.
+// Cardio PRs render top-3 + "show all → Analyze" (#1496). Strength progress lives
+// on the standards ladder above, where the current and prior dots explain the gain.
 const PR_CAP = 3;
 
 function prValue(p: CardioPR, du: "km" | "mi"): string {
@@ -118,10 +116,10 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
 //   1. Today's session (the daily payload leads)
 //   2. This week — the WEEK SPINE (#2566): the seven-day band, captioned by the
 //      week's counts and the weekly routine's cadence chips, as ONE card
-//   3. Training watch — the coaching findings as ONE capped rollup card
+//   3. Training watch — true coaching exceptions in ONE capped card
 //   4. Muscle coverage + mobility
 //   5. Injuries / event plans (the descriptive copy renders only when they're live)
-//   6. Recent PRs — top 3 + "show all → Analyze"
+//   6. Recent cardio PRs — top 3 + "show all → Analyze"
 // The chart block LEFT: strength/cardio volume + intensity mix live windowed on
 // Trends → Fitness (#1492), with no mini duplicates here.
 export default async function OverviewSection() {
@@ -165,16 +163,6 @@ export default async function OverviewSection() {
   const targets = getFrequencyTargetProgressForHome(profile.id, "training");
   const { model: fitnessModel } = assembleFitnessCheckModel(profile.id);
   const strength = getStrengthByExercise(profile.id);
-  // PRs read the LOAD-CONTEXT grouping (#1610) so no record blends two machines;
-  // the card labels each row with its implement (#1610 forbids unlabeled splits).
-  // Both groupings fold the SAME cached all-history scan (#1654) — asking for the
-  // second one costs a regrouping, never a second read.
-  const strengthPrs = recentPRs(
-    getStrengthByExercise(profile.id, true),
-    todayStr,
-    30
-  );
-
   const cardio = getCardioByActivity(profile.id, du, formatPrefs);
   const cardioPrs = recentCardioPRs(cardio, todayStr, 30);
 
@@ -207,9 +195,6 @@ export default async function OverviewSection() {
       row,
     ])
   );
-  const recentPrKeys = new Set(
-    strengthPrs.map((pr) => exerciseHistoryKey(pr.exercise))
-  );
   const strengthLadderRows: StrengthLadderRow[] = strength
     .flatMap((stat): StrengthLadderRow[] => {
       const series = e1rmSeries.get(exerciseHistoryKey(stat.exercise));
@@ -228,7 +213,6 @@ export default async function OverviewSection() {
             {
               exercise: stat.exercise,
               placement,
-              pr: recentPrKeys.has(exerciseHistoryKey(stat.exercise)),
             },
           ]
         : [];
@@ -241,7 +225,7 @@ export default async function OverviewSection() {
         b.placement.current.e1rmKg -
         (b.placement.prior?.e1rmKg ?? b.placement.current.e1rmKg);
       return (
-        Number(b.pr) - Number(a.pr) ||
+        Number(b.placement.moved) - Number(a.placement.moved) ||
         bMove - aMove ||
         a.exercise.localeCompare(b.exercise)
       );
@@ -610,9 +594,8 @@ export default async function OverviewSection() {
 
       <FitnessCheckStrip model={fitnessModel} />
 
-      {/* 3. TRAINING WATCH — the observational training-balance findings (issue #45,
-          domain 4) as ONE capped rollup card (#1496), distinct from the
-          recommendation above. Same findings, same dedupeKeys, same bus. */}
+      {/* 3. TRAINING WATCH — true observational exceptions (issue #45, domain 4)
+          in one capped card, distinct from the recommendation and coverage above. */}
       <TrainingFindings />
 
       {/* The three depth suites never hide. Their order follows the profile's
@@ -664,8 +647,8 @@ export default async function OverviewSection() {
 
       <EndurancePlanBar plans={endurancePlans} distanceUnit={du} />
 
-      {/* 6. RECENT PRs — top 3 each, with "show all" handing off to Analyze
-          (per-item history) — the 14-row lists are gone (#1496). */}
+      {/* 6. RECENT CARDIO PRs — strength progress is already visible in the
+          standards ladder; this remains the cardio hand-off to Analyze. */}
       {cardioPrs.length > 0 && (
         <div>
           <PrCard

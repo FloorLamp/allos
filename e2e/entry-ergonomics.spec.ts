@@ -615,15 +615,18 @@ test("the activity form keeps workout entry primary and context visible across b
   ).not.toBe("none");
 
   // Crossing into the mobile presentation closes the desktop dock. At 390px
-  // the row expands the record in place (#2897); its title button then opens
-  // the overlay editor. exact: true so the card's title button matches, not
-  // the row (whose accessible name carries the whole summary line).
+  // the row expands the record in place (#2897). The title now goes to the
+  // canonical detail page, so editing stays the explicit menu action here.
   await page.setViewportSize({ width: 390, height: 844 });
   // Wait for the width mode to settle (aria-expanded appears only when
   // expand-in-place is live) — a click before the settle deselects instead.
   await expect(pushRow).toHaveAttribute("aria-expanded", "false");
   await pushRow.click();
-  await page.getByRole("button", { name: "Push day", exact: true }).click();
+  await expect(
+    pushRow.getByTestId("activity-detail-link")
+  ).toHaveAccessibleName("Push day");
+  await hydratedClick(page, pushRow.getByTestId("overflow-menu-trigger"));
+  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
   const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();
   expect(

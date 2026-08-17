@@ -763,12 +763,12 @@ export function seedEndurancePlans(): void {
   );
 }
 
-// ── Training → Overview rollup fixture (#1496) ──
+// ── Training → Overview coverage aggregate fixture (#1496/#2566) ──
 export function seedTrainingRollup(): void {
   // A dedicated ADULT profile with a LIGHT recent strength log: five small-muscle
   // exercises at 2 sets each inside the trailing 7-day window, so the per-muscle
-  // volume-band engine (#742) fires a HANDFUL of `below` shortfalls at once — the pile
-  // the Overview rollup exists to fold into one card. Earlier sessions in the two
+  // volume-band engine (#742) fires a HANDFUL of `below` shortfalls at once — the count
+  // the coverage card owns without repeating it in Training watch. Earlier sessions in the two
   // preceding weeks clear the #719 cold-start gate (≥2 distinct training weeks). NO
   // routine (so no deload gate) and NO injury (so no excluded region), and every date
   // is RELATIVE so the fixture never goes stale.
@@ -808,7 +808,7 @@ export function seedTrainingRollup(): void {
   });
   seedMemberLogin(E2E_LOGIN_TRAINING_ROLLUP, profileId, "write");
   console.log(
-    `e2e: seeded training-overview rollup fixture — profile ${profileId} (${TRAINING_ROLLUP_PROFILE}) (#1496)`
+    `e2e: seeded training-overview coverage fixture — profile ${profileId} (${TRAINING_ROLLUP_PROFILE}) (#1496/#2566)`
   );
 }
 
@@ -1028,7 +1028,7 @@ export function seedOverviewActionStates(): void {
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(noRoutineId);
   db.prepare(
     `INSERT INTO injuries (profile_id, label, regions, status, since)
-     VALUES (?, 'Right knee (e2e)', '["Quads"]', 'active', ?)`
+     VALUES (?, 'Right knee (e2e)', '["Legs"]', 'active', ?)`
   ).run(noRoutineId, shiftDateStr(noRoutineToday, -5));
   seedMemberLogin(E2E_LOGIN_OVERVIEW_NO_ROUTINE, noRoutineId, "write");
 
@@ -1040,7 +1040,7 @@ export function seedOverviewActionStates(): void {
   db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(restId);
   db.prepare(
     `INSERT INTO injuries (profile_id, label, regions, status, since)
-     VALUES (?, 'Right knee (e2e)', '["Quads"]', 'active', ?)`
+     VALUES (?, 'Right knee (e2e)', '["Legs"]', 'active', ?)`
   ).run(restId, shiftDateStr(restToday, -5));
   db.prepare(
     `DELETE FROM metric_samples

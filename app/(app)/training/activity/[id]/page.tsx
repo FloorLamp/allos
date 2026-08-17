@@ -29,6 +29,7 @@ import SessionRouteMap from "./SessionRouteMap";
 import SessionCourseTables from "./SessionCourseTables";
 import { SessionChartLinkProvider } from "./SessionChartLink";
 import SessionComparisonChart from "@/components/SessionComparisonChart";
+import SessionComparisonCard from "@/components/SessionComparisonCard";
 import CardGroup from "@/components/CardGroup";
 import { sessionComparisonChartMetrics } from "@/lib/session-comparison-view";
 import { formatLongDate } from "@/lib/format-date";
@@ -459,20 +460,12 @@ export default async function TrainingActivityPage(props: {
                 </SessionChartLinkProvider>
 
                 {data.comparison && comparisonMetrics.length > 0 && (
-                  <div className="card mt-4" data-testid="activity-comparison">
-                    <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                      Compared with similar sessions
-                    </h3>
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      Median of {data.comparison.sessionCount} similar{" "}
-                      {data.comparison.sessionCount === 1
-                        ? "session"
-                        : "sessions"}{" "}
-                      within {data.comparison.tolerancePercent}% of this
-                      session&rsquo;s {data.comparison.basis}.
-                    </p>
+                  <SessionComparisonCard
+                    comparison={data.comparison}
+                    testId="activity-comparison"
+                  >
                     <SessionComparisonChart metrics={comparisonMetrics} />
-                  </div>
+                  </SessionComparisonCard>
                 )}
               </section>
             ) : null}

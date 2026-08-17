@@ -7,7 +7,6 @@ import type { WeightUnit } from "@/lib/settings";
 export interface StrengthLadderRow {
   exercise: string;
   placement: StrengthLadderPlacement;
-  pr: boolean;
 }
 
 const BANDS = [
@@ -45,7 +44,7 @@ export default function StrengthStandardsLadder({
         </p>
       ) : (
         <div className="mt-4 space-y-5">
-          {rows.map(({ exercise, placement, pr }) => (
+          {rows.map(({ exercise, placement }) => (
             <div key={exercise} data-testid="strength-ladder-row">
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <Link
@@ -57,7 +56,7 @@ export default function StrengthStandardsLadder({
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {fmtWeight(placement.current.e1rmKg, weightUnit)} e1RM ·{" "}
                   {strengthLevelLabel(placement.current.level)}
-                  {pr ? " · PR" : ""}
+                  {placement.moved ? " · PR" : ""}
                 </span>
               </div>
               <div

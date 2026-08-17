@@ -24,6 +24,9 @@ async function expectStandingActions(page: Page): Promise<void> {
     actions.getByTestId("training-overview-log-activity")
   ).toBeVisible();
   await expect(context).toBeVisible();
+  await expect(context.getByTestId("training-context-chip")).toContainText(
+    "Legs (Right knee (e2e) injury)"
+  );
   expect(
     await card.evaluate((element) => {
       const title = element.querySelector('[data-testid="next-workout-title"]');

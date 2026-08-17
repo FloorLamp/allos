@@ -281,7 +281,9 @@ test("a session is measured against its own like-for-like peers (#3009)", async 
     // It says what it compared against — a median of one would be a comparison
     // in name only.
     await expect(comparison).toContainText(/3 similar sessions/);
-    await expect(comparison).toContainText(/within \d+% of the same distance/);
+    await expect(comparison).toContainText(
+      /within \d+% of this session’s distance/
+    );
     // Speed and heart rate both have peers carrying them, so both are measured.
     await expect(member.getByTestId("activity-comparison-speed")).toContainText(
       /median/
