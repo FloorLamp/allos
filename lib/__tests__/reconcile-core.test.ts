@@ -338,8 +338,9 @@ describe("reconcileClosingText (#1822 item 7)", () => {
 
 describe("reconcileClosingText outcome detail (#2274)", () => {
   const DOSES = "[Norton] 💊 Evening supplements";
+  // Names only, no times — the pre-#2867 shape, which still renders exactly as it did.
   const tally = (taken: string[], skipped: string[]) =>
-    closingTallyDetail({ taken, skipped });
+    closingTallyDetail({ taken: taken.map((name) => ({ name })), skipped });
 
   it("names the doses, taken first, on a resolved close", () => {
     expect(
@@ -442,13 +443,13 @@ describe("closingTallyText (#2274)", () => {
   it("renders each present group, taken first, in keyboard order", () => {
     expect(
       closingTallyText({
-        taken: ["Vitamin D", "Magnesium"],
+        taken: [{ name: "Vitamin D" }, { name: "Magnesium" }],
         skipped: ["Omega-3"],
       })
     ).toBe("Vitamin D, Magnesium taken · Omega-3 skipped");
-    expect(closingTallyText({ taken: ["Melatonin"], skipped: [] })).toBe(
-      "Melatonin taken"
-    );
+    expect(
+      closingTallyText({ taken: [{ name: "Melatonin" }], skipped: [] })
+    ).toBe("Melatonin taken");
     expect(closingTallyText({ taken: [], skipped: ["Omega-3"] })).toBe(
       "Omega-3 skipped"
     );
@@ -460,7 +461,11 @@ describe("closingTallyText (#2274)", () => {
     // obligation-then-name sort. A second sort here is exactly the drift to avoid.
     expect(
       closingTallyText({
-        taken: ["Zinc", "Alpha-lipoic", "Magnesium"],
+        taken: [
+          { name: "Zinc" },
+          { name: "Alpha-lipoic" },
+          { name: "Magnesium" },
+        ],
         skipped: [],
       })
     ).toBe("Zinc, Alpha-lipoic, Magnesium taken");
@@ -471,10 +476,185 @@ describe("closingTallyText (#2274)", () => {
     // skipped at another is two facts.
     expect(
       closingTallyText({
-        taken: ["Magnesium", "Magnesium"],
+        taken: [{ name: "Magnesium" }, { name: "Magnesium" }],
         skipped: ["Magnesium"],
       })
     ).toBe("Magnesium taken · Magnesium skipped");
+  });
+});
+
+// ---- THE RECEIPT SAYS WHEN (#2867) ----
+//
+// #2170's rule was "no amounts, no notes, no adherence tails". The owner revised it for
+// TIMES ONLY: the one fact a person glancing back at the chat wants is whether they took
+// it this morning or are remembering yesterday. Grouping is by TIME, not per-item marks,
+// so the common one-tap-all case stays one clause.
+//
+// THE TALLY CARRIES INSTANTS, not pre-rendered clocks: the displayed date and the
+// displayed time are two views of ONE fact, and every test below hands in the instant so
+// it is the formatter's derivation under test rather than the test's own arithmetic.
+describe("closingTallyText states the administration time (#2867)", () => {
+  const NY = "America/New_York";
+  // 12:12Z is 08:12 in New York — so a rendering that leaked the host zone, or the raw
+  // stored value, cannot pass any of these.
+  const at0812 = "2026-08-14T12:12:04.000Z";
+  const at0812b = "2026-08-14T12:12:51.000Z";
+  const at2145 = "2026-08-15T01:45:00.000Z";
+
+  it("groups taken names by time — one tap-all collapses to a single clause", () => {
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [
+          { name: "Vitamin D", at: at0812 },
+          // A different SECOND in the same displayed minute shares the bucket.
+          { name: "Magnesium", at: at0812b },
+        ],
+        skipped: [],
+      })
+    ).toBe("Vitamin D, Magnesium taken 08:12");
+  });
+
+  it("renders in the PROFILE's zone, not the host's", () => {
+    expect(
+      closingTallyText({
+        tz: "Asia/Tokyo",
+        taken: [{ name: "Vitamin D", at: at0812 }],
+        skipped: [],
+      })
+    ).toBe("Vitamin D taken 21:12");
+    // With no zone to render in there is no time to state — never the host's clock.
+    expect(
+      closingTallyText({
+        taken: [{ name: "Vitamin D", at: at0812 }],
+        skipped: [],
+      })
+    ).toBe("Vitamin D taken");
+  });
+
+  it("gives a differently-timed dose its own clause, in keyboard order", () => {
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [
+          { name: "Vitamin D", at: at0812 },
+          { name: "Magnesium", at: at0812b },
+          { name: "Omega-3", at: at2145 },
+        ],
+        skipped: ["Melatonin"],
+      })
+    ).toBe(
+      "Vitamin D, Magnesium taken 08:12 · Omega-3 taken 21:45 · Melatonin skipped"
+    );
+  });
+
+  // Skips state that nothing was taken; a time on one would name when a button was
+  // pressed, which is not when anything happened.
+  it("never puts a time on a skip", () => {
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [{ name: "Vitamin D", at: at0812 }],
+        skipped: ["Omega-3"],
+      })
+    ).toBe("Vitamin D taken 08:12 · Omega-3 skipped");
+  });
+
+  // Stated, not inferred — the same posture the tally takes for a dose in neither
+  // ledger set. An unparseable stored value takes the same arm as a missing one.
+  it("renders a taken dose with no readable instant as a plain taken group", () => {
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [
+          { name: "Vitamin D", at: null },
+          { name: "Magnesium", at: at0812 },
+        ],
+        skipped: [],
+      })
+    ).toBe("Vitamin D taken · Magnesium taken 08:12");
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [{ name: "Vitamin D", at: "not-an-instant" }],
+        skipped: [],
+      })
+    ).toBe("Vitamin D taken");
+  });
+
+  // The date only spends width when there is more than one to tell apart.
+  it("carries the date only when the close spans more than one", () => {
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [
+          { name: "Vitamin D", at: "2026-08-13T12:12:00.000Z" },
+          { name: "Magnesium", at: at0812 },
+        ],
+        skipped: [],
+      })
+    ).toBe("Vitamin D taken Aug 13, 08:12 · Magnesium taken Aug 14, 08:12");
+    // …and one date alone never states it.
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [
+          { name: "Vitamin D", at: at0812 },
+          { name: "Magnesium", at: at0812b },
+        ],
+        skipped: [],
+      })
+    ).not.toContain("Aug");
+  });
+
+  // THE MIDNIGHT-CROSSING CORRECTION. `restampDoseLogsCore` moves the stored instant and
+  // leaves the ADHERENCE DAY alone by design, so a dose belonging to the 14th can have
+  // been administered at 23:50 on the 13th. The first cut labelled that pair with the
+  // adherence day and rendered "Aug 14, 23:50" — a datetime that never happened. Date and
+  // clock now come from the same instant, so the label is the evening it actually was.
+  it("dates a midnight-crossing correction by the instant, not the adherence day", () => {
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [
+          // 03:50Z on the 14th is 23:50 on the 13th in New York.
+          { name: "Melatonin", at: "2026-08-14T03:50:00.000Z" },
+          { name: "Magnesium", at: at0812 },
+        ],
+        skipped: [],
+      })
+    ).toBe("Melatonin taken Aug 13, 23:50 · Magnesium taken Aug 14, 08:12");
+  });
+
+  // THE DST FALL-BACK. 01:30 happens twice on 2026-11-01 in New York, an hour apart.
+  // Keying buckets on the rendered clock merged them into one clause claiming the two
+  // doses were simultaneous; keying on the UTC minute keeps them two, both reading the
+  // time they were actually taken at.
+  it("does not merge two administrations across a repeated wall hour", () => {
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [
+          { name: "Fern A", at: "2026-11-01T05:30:00.000Z" }, // 01:30 EDT
+          { name: "Fern B", at: "2026-11-01T06:30:00.000Z" }, // 01:30 EST
+        ],
+        skipped: [],
+      })
+    ).toBe("Fern A taken 01:30 · Fern B taken 01:30");
+  });
+
+  // The forward jump has no repeated hour, so it must NOT split what is one minute.
+  it("still merges one displayed minute across the spring-forward hour", () => {
+    expect(
+      closingTallyText({
+        tz: NY,
+        taken: [
+          { name: "Spring A", at: "2026-03-08T07:30:00.000Z" },
+          { name: "Spring B", at: "2026-03-08T07:30:40.000Z" },
+        ],
+        skipped: [],
+      })
+    ).toBe("Spring A, Spring B taken 03:30");
   });
 });
 

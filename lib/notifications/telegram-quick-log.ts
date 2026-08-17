@@ -97,7 +97,7 @@ export async function handleDoseCommand(
 // ── WHEN THE TAP CAME FROM THE DIGEST'S OFFER LIST (#2418 part 2) ────────────
 //
 // A dose confirmed from a REMINDER gets the 🕐 correction chips; one logged through the
-// expanded "Log other" list got none anywhere — so stating WHEN was impossible for
+// expanded "➕ Doses" list got none anywhere — so stating WHEN was impossible for
 // exactly the taps most likely to be late, a `may` item logged from a digest hours
 // after the fact. The chips are keyboard assembly over a ledger read that already
 // exists, so this rebuilds the offer list WITH the correction row for the tap that just
@@ -214,7 +214,7 @@ async function rebuildOfferListWithChips(
   // what a re-expand would show anyway.
   const actions = offered.length
     ? expandedOfferActions(profileId, date, offered, prnLogToken)
-    : [collapsedOfferAction(profileId, date, nowHhmm, 0)];
+    : [collapsedOfferAction(profileId, date, 0)];
   // The chips, from the SAME ledger read and the SAME binding the reminder flow uses —
   // `doseAnchor`'s lookup one level up (#2443): the keyboard cannot supply the dose or
   // the day, so the ledger does.
@@ -1248,12 +1248,11 @@ import {
 import { getDoseCorrectionBursts } from "../queries";
 import { correctionActions, DOSE_TIME_PREFIXES } from "./correction-rows";
 import {
-  collapsedTuneAction,
   expandedTuneActions,
   tunableCategoriesFor,
   tuneToggleAnswer,
 } from "./digest-tune";
-import { digestTunableCategories } from "./digest-data";
+import { collapsedDigestActions, digestTunableCategories } from "./digest-data";
 import {
   getLoginDigestDemotions,
   loginIdsForTelegramChat,
@@ -1407,7 +1406,7 @@ import type { TelegramMessage } from "./telegram-api";
 import { prefixMessage, type NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
 
-// An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
+// An offer-tail tap (#1505): expand the digest's "➕ Doses" button IN PLACE into
 // one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.
 //
 // Nothing is sent and nothing is written — both directions are a single
@@ -1451,9 +1450,12 @@ export async function handleOfferTailTap(
     // to hear had been decided, and making them watch a spinner through a Bot API
     // round-trip was a latency cost with nothing behind it.
     await answerCallbackQuery(cq.id);
-    // Collapsing restores the digest's WHOLE collapsed keyboard, not just this
-    // control: the ⚙️ Tune button (#1714) shares the message and would otherwise be
-    // destroyed by the first expand/collapse round-trip.
+    // Collapsing restores the digest's WHOLE collapsed keyboard, not just this control —
+    // the ⚙️ Tune button (#1714) and the #2217 time exits share the message and would
+    // otherwise be destroyed by the first expand/collapse round-trip. Through
+    // `collapsedDigestActions`, which is the ONE answer to "what is this digest's
+    // collapsed keyboard" that the boundary refresh and the ⚙️ collapse also use (#2890):
+    // three hand-rolled variants of this list disagreed about every control on it.
     //
     // The ack moved ahead of the edit; the POINTER SYNC did not (#2443). It lives
     // inside `updateMessageKeyboard`, after a SUCCESSFUL Bot API call, so a failed
@@ -1465,12 +1467,7 @@ export async function handleOfferTailTap(
       messageKeyboard({
         title: "",
         body: "",
-        actions: [
-          collapsedOfferAction(profileId, date, nowHhmm, offered.length),
-          ...(digestTunableCategories(profileId, date).length
-            ? [collapsedTuneAction(profileId, date)]
-            : []),
-        ],
+        actions: collapsedDigestActions(profileId, date, nowHhmm),
       })
     );
     return;
@@ -1718,8 +1715,10 @@ export async function handleTuneTap(
   if (token.action === "collapse") {
     // Pure keyboard edit, so the ack goes first (#2418).
     await answerCallbackQuery(cq.id);
+    // The same ONE rebuild the ➕ collapse and the boundary refresh use (#2890). This
+    // path used to emit ⚙️ Tune unconditionally and the offer tail only when something
+    // was on offer — the mirror image of the other two, on the same keyboard.
     const nowHhmm = zonedDateParts(getTimezone(profileId), clockNow()).hhmm;
-    const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
     await updateMessageKeyboard(
       profileId,
       chatId,
@@ -1727,12 +1726,7 @@ export async function handleTuneTap(
       messageKeyboard({
         title: "",
         body: "",
-        actions: [
-          ...(offered.length
-            ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
-            : []),
-          collapsedTuneAction(profileId, date),
-        ],
+        actions: collapsedDigestActions(profileId, date, nowHhmm),
       })
     );
     return;

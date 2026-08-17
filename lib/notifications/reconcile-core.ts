@@ -61,6 +61,8 @@ import type { InlineKeyboard } from "./telegram-render";
 import { plainBody } from "./rich-text";
 import type { NotificationMessage } from "./types";
 import { formatMessageLine } from "./message-line";
+import { formatMonthDay } from "../format-date";
+import { zonedDateParts } from "../date";
 
 // The PROSE witness (#1913 item 4): a stable fingerprint of what a message SAYS.
 //
@@ -328,10 +330,16 @@ const RECONCILE_CLOSING_TAIL: Record<CloseReason, string> = {
 // user has always seen: the button is `✅ <name>`, the write core is `markDoseTaken`, so
 // the close says `taken` / `skipped` and never the reconcile's private "logged".
 //
-// The other half of #2170's rule DOES hold, and is why the parts below carry names and
-// nothing else: THE APP LEDGER STAYS THE COMPLETE SURFACE. No amounts, no food notes, no
-// adherence tails, no per-dose marks — the receipt answers WHICH, and how much is in the
-// app. A close can never be longer than the reminder it replaces, so it needs no cap.
+// IT ALSO SAYS WHEN, FOR DOSES (#2867, owner decision 2026-08-14). "Which" alone left
+// out the fact a person glancing back at the chat most often wants — did I take it this
+// morning, or am I remembering yesterday? The instants are already in the ledger the
+// close reads, so stating them costs one more read of rows this pass already resolved.
+//
+// The rest of #2170's rule STANDS, and is why the parts below carry names, an outcome
+// and nothing else: THE APP LEDGER STAYS THE COMPLETE SURFACE. No amounts, no food
+// notes, no adherence tails, no per-dose marks — the receipt answers WHICH and WHEN, and
+// how much is in the app. The boundary moved for times only. A close can never be longer
+// than the reminder it replaces, so it needs no cap.
 //
 // ORDER IS THE ORDER THE MESSAGE SHOWED THEM. Callers read their tokens in keyboard
 // order, which is already the reminder's own obligation-then-name sort — parity for
@@ -388,27 +396,113 @@ export function closeDetailText(
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-// The DOSE families' shape of `CloseDetail` (#2274): two name lists, taken first. Both
-// dose families share it unchanged — they are the only ones whose vocabulary is
-// take/skip, which is why it may be dose-specific at all.
-export interface ClosingTally {
-  // Doses confirmed taken, and doses deliberately skipped — a skip is a record the user
-  // made, which is why it is stated rather than folded into the first list.
-  taken: readonly string[];
-  skipped: readonly string[];
+// One dose the ledger says was TAKEN, and when (#2867).
+export interface TakenDose {
+  name: string;
+  // THE ADMINISTRATION INSTANT ITSELF, ISO UTC — not a pre-rendered clock and not a
+  // date beside one. That is the whole point of the shape: the displayed date and the
+  // displayed clock are two views of ONE fact, and handing them in separately is what
+  // let them disagree.
+  //
+  // They did. The first cut passed the adherence DAY beside the instant's wall clock,
+  // and a correction that crosses local midnight moves only `occurred_at` — the
+  // adherence day is unchanged by design (`restampDoseLogsCore` reports
+  // `crossedMidnight` for exactly this) — so a dose stated at 23:50 the previous
+  // evening was labelled with the following day: a datetime that never happened.
+  // Deriving both from this one field makes that unrepresentable rather than tested-for.
+  //
+  // Null/absent for a taken row this pass could not read an instant from — which renders
+  // as a plain `taken` group rather than inventing a time, the same stated-not-inferred
+  // posture the tally takes for a dose in neither ledger set. Rare by construction:
+  // `intake_item_logs.recorded_at` is NOT NULL and the read COALESCEs `occurred_at` onto
+  // it, so this arm covers a stored value that will not parse.
+  at?: string | null;
 }
 
+// The DOSE families' shape of `CloseDetail` (#2274): the taken receipt first, then the
+// skips. Both dose families share it unchanged — they are the only ones whose vocabulary
+// is take/skip, which is why it may be dose-specific at all.
+export interface ClosingTally {
+  // Doses confirmed taken, each with its administration instant, and doses deliberately
+  // skipped — a skip is a record the user made, which is why it is stated rather than
+  // folded into the first list.
+  //
+  // SKIPS CARRY NO TIME. "Skipped 8:12" would state when the button was pressed, which
+  // is not when anything happened; a skip's whole content is that nothing was taken.
+  taken: readonly TakenDose[];
+  skipped: readonly string[];
+  // The PROFILE's timezone, which every instant above renders in. Absent means the
+  // caller has no zone to render in, and every taken dose falls back to the untimed
+  // `taken` group rather than being shown in the host's zone.
+  tz?: string;
+}
+
+// The rendered view of one administration instant, or null when there is nothing to
+// render it from.
+function takenAt(
+  d: TakenDose,
+  tz: string | undefined
+): { key: string; date: string; clock: string } | null {
+  if (!d.at || !tz) return null;
+  const instant = new Date(d.at);
+  if (Number.isNaN(instant.getTime())) return null;
+  const parts = zonedDateParts(tz, instant);
+  return {
+    // BUCKETS KEY ON THE UTC MINUTE, not on the rendered clock. Within one offset the
+    // two are the same thing — offsets are whole minutes — so "doses logged in the same
+    // displayed minute share a bucket" is unchanged. Across a DST FALL-BACK they are
+    // not: 05:30Z and 06:30Z on 2026-11-01 in America/New_York both display 01:30, an
+    // hour apart, and keying on the rendered clock merged them into one clause claiming
+    // they were simultaneous. They now render as two clauses reading the same time,
+    // which is what actually happened — the repeated wall hour is genuinely ambiguous,
+    // and stating it twice is honest where merging is not.
+    key: instant.toISOString().slice(0, 16),
+    date: parts.date,
+    clock: parts.hhmm,
+  };
+}
+
+// GROUPED BY TIME, not marked per item (#2867 owner decision): the common one-tap-all
+// case collapses to a single clause, and doses logged in the same minute share a bucket.
+// Buckets render in first-appearance order — which is keyboard order, the same rule the
+// rest of the close follows.
+//
+// The DATE rides a clause only on a close that spans more than one. "taken 08:12" is
+// unambiguous on an ordinary single-date close, and carrying the date there would be
+// noise on every one of them.
 export function closingTallyDetail(tally: ClosingTally): CloseDetail {
+  const rendered = tally.taken.map((t) => takenAt(t, tally.tz));
+  const spansDates =
+    new Set(rendered.filter((r) => r !== null).map((r) => r.date)).size > 1;
+  const buckets = new Map<string, { outcome: string; names: string[] }>();
+  tally.taken.forEach((t, i) => {
+    const at = rendered[i];
+    const key = at ? at.key : "untimed";
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      const when = at
+        ? spansDates
+          ? `${formatMonthDay(at.date)}, ${at.clock}`
+          : at.clock
+        : "";
+      bucket = { outcome: when ? `taken ${when}` : "taken", names: [] };
+      buckets.set(key, bucket);
+    }
+    bucket.names.push(t.name);
+  });
   return {
     groups: [
-      { names: tally.taken, outcome: "taken" },
+      ...[...buckets.values()].map((b) => ({
+        names: b.names,
+        outcome: b.outcome,
+      })),
       { names: tally.skipped, outcome: "skipped" },
     ],
   };
 }
 
-// "Vitamin D, Magnesium taken · Omega-3 skipped" / "Melatonin skipped", or null when
-// neither list has anything in it.
+// "Vitamin D, Magnesium taken 08:12 · Omega-3 skipped" / "Melatonin skipped", or null
+// when neither list has anything in it.
 export function closingTallyText(tally: ClosingTally): string | null {
   return closeDetailText(closingTallyDetail(tally));
 }

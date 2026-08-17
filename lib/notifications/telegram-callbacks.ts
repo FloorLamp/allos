@@ -374,7 +374,7 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // The digest's offer tail (#1505): expand/collapse the "Log other…" button in
+  // The digest's offer tail (#1505): expand/collapse the "➕ Doses" button in
   // place. Checked BEFORE the prn: log tokens because the expanded keyboard is made
   // of those, and a tail tap must never be mistaken for a log.
   const offerTail = parseOfferTailCallback(cq.data);

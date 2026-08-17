@@ -50,7 +50,7 @@ import type { NotificationMessage } from "./types";
 import { isOnDemand } from "../intake-schedule";
 import { demotionCandidateItemIds } from "../rule-findings";
 import { getUnconfirmedMedicationIds } from "../intake-history";
-import { collapsedOfferAction } from "./offer-tail";
+import { reminderOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { now as clockNow } from "../clock";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
@@ -402,7 +402,10 @@ export function buildIntakeReminderForSlots(
   if (offered.length > 0) {
     message.actions = [
       ...(message.actions ?? []),
-      collapsedOfferAction(profileId, date, nowHhmm, offered.length),
+      // The REMINDER's wording, not the digest's (#2890): this keyboard already
+      // carries "✅ All (N)", and a second bare dose count beside it would be two
+      // numbers that mean different things and cannot be added up.
+      reminderOfferAction(profileId, date, offered.length),
     ];
   }
   return { message, slots: parts.map((p) => p.slot) };

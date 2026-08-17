@@ -1059,11 +1059,11 @@ Every surface in the app falls into exactly one of three classes. The class is
 decided by **who initiates the contact**, not by which channel it uses — Telegram
 appears in all three, and that is the point.
 
-| Class                         | Who initiates               | Examples                                                                                                  | Rule                                                                                                                 |
-| ----------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **1. System-initiated sends** | the system, unprompted      | dose reminders, missed-dose escalation, refill nudges, the morning digest, the periodic recap             | Costs the user's attention. Needs a standing reason and an obligation behind it.                                     |
-| **2. Rendered aggregates**    | the user, by opening a page | Upcoming, the dashboard hero, the #1504 count, the Household card                                         | Costs nothing until looked at, but competes for scarce space — so it ranks and folds rather than listing everything. |
-| **3. User-initiated access**  | the user, by asking         | the Supplements page, quick-log overlays, the digest's "Log other…" tail, a reminder's More… row, `/dose` | Costs nothing. Must be COMPLETE — anything the user owns has to be reachable here, or it is effectively deleted.     |
+| Class                         | Who initiates               | Examples                                                                                                | Rule                                                                                                                 |
+| ----------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **1. System-initiated sends** | the system, unprompted      | dose reminders, missed-dose escalation, refill nudges, the morning digest, the periodic recap           | Costs the user's attention. Needs a standing reason and an obligation behind it.                                     |
+| **2. Rendered aggregates**    | the user, by opening a page | Upcoming, the dashboard hero, the #1504 count, the Household card                                       | Costs nothing until looked at, but competes for scarce space — so it ranks and folds rather than listing everything. |
+| **3. User-initiated access**  | the user, by asking         | the Supplements page, quick-log overlays, the digest's "➕ Doses" tail, a reminder's More… row, `/dose` | Costs nothing. Must be COMPLETE — anything the user owns has to be reachable here, or it is effectively deleted.     |
 
 Two consequences that are easy to get wrong:
 

@@ -362,7 +362,13 @@ describe("the ⚙️ Tune keyboard on Telegram (#1714)", () => {
     expect(answerMock.mock.calls.at(-1)?.[1]).toContain("notable only");
 
     await handleCallbackQuery(tuneCq(chat, tuneCollapseToken(pid, td)));
-    expect(lastKeyboardLabels()).toEqual(["⚙️ Tune"]);
+    // Collapsing restores the digest's WHOLE collapsed keyboard through the one
+    // rebuild every path shares (#2890), so the guaranteed-access tail comes back
+    // beside ⚙️ Tune — in its zero arm, since this profile has no `may` items. The
+    // control is honest empty-handed: tapping it answers "Nothing available in this
+    // slot right now." Emitting it unconditionally is what makes an empty keyboard
+    // structurally impossible, which the per-control guards could not do.
+    expect(lastKeyboardLabels()).toEqual(["➕ Doses", "⚙️ Tune"]);
   });
 
   it("a demoted category stays in its own toggle, so the demotion is reversible on Telegram", async () => {
