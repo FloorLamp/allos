@@ -1,6 +1,41 @@
 {
   "days": [
     {
+      "date": "2026-08-17",
+      "entries": [
+        {
+          "pr": 3042,
+          "title": "Your cumulative radiation figure names the studies behind it, the ones it left out, and covers your whole record",
+          "kind": "feature",
+          "issues": [2970]
+        },
+        {
+          "pr": 2994,
+          "title": "Meds, today's doses, last lifts and day tallies stay readable on your phone offline, and clear when you sign out",
+          "kind": "feature",
+          "issues": [2908]
+        },
+        {
+          "pr": 3048,
+          "title": "Air quality and pollen finally arrive — so an item you paused on high pollen or poor air quality will now be held",
+          "kind": "fix",
+          "issues": [3007]
+        },
+        {
+          "pr": 3048,
+          "title": "One workout no longer produces two post-workout messages",
+          "kind": "fix",
+          "issues": [3021]
+        },
+        {
+          "pr": 3054,
+          "title": "The training overview says what you actually did",
+          "kind": "feature",
+          "issues": []
+        }
+      ]
+    },
+    {
       "date": "2026-08-16",
       "entries": [
         {
