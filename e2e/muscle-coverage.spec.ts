@@ -22,5 +22,7 @@ test("weekly muscle coverage renders list-first on Training → Overview (#736)"
   await expect(rows.first()).toBeVisible(); // first-ok: asserts a muscle-coverage row renders — order-agnostic presence
   await expect(coverage).toContainText("Quads");
   // Every row states a set count (whole or half credit).
-  await expect(rows.first()).toContainText(/\bsets?\b/); // first-ok: asserts any coverage row shows a set count — order-agnostic structure check
+  await expect(rows.first().getByTestId("muscle-coverage-count")).toContainText(
+    /\bsets?$/
+  ); // first-ok: asserts any coverage row shows a set count — order-agnostic structure check
 });

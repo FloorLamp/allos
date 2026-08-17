@@ -622,10 +622,11 @@ test("the activity form keeps workout entry primary and context visible across b
   // expand-in-place is live) — a click before the settle deselects instead.
   await expect(pushRow).toHaveAttribute("aria-expanded", "false");
   await pushRow.click();
+  const mobileCard = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the one Push day card expanded beside its row
   await expect(
-    pushRow.getByTestId("activity-detail-link")
+    mobileCard.getByTestId("activity-detail-link")
   ).toHaveAccessibleName("Push day");
-  await hydratedClick(page, pushRow.getByTestId("overflow-menu-trigger"));
+  await hydratedClick(page, mobileCard.getByTestId("overflow-menu-trigger"));
   await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
   const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();

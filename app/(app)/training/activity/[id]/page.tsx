@@ -464,7 +464,10 @@ export default async function TrainingActivityPage(props: {
                     comparison={data.comparison}
                     testId="activity-comparison"
                   >
-                    <SessionComparisonChart metrics={comparisonMetrics} />
+                    <SessionComparisonChart
+                      metrics={comparisonMetrics}
+                      testIdPrefix="activity-comparison"
+                    />
                   </SessionComparisonCard>
                 )}
               </section>

@@ -91,7 +91,10 @@ export default function MuscleCoverageCard({
                       >
                         {presentation.label}
                       </span>
-                      <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+                      <span
+                        className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400"
+                        data-testid="muscle-coverage-count"
+                      >
                         {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
                       </span>
                       <span className="text-xs font-medium text-brand-600 group-open:hidden dark:text-brand-400">
