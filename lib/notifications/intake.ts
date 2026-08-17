@@ -392,7 +392,7 @@ export function buildIntakeReminderForSlots(
   if (offered.length > 0) {
     message.actions = [
       ...(message.actions ?? []),
-      collapsedOfferAction(profileId, date, nowHhmm, offered.length),
+      collapsedOfferAction(profileId, date, offered.length),
     ];
   }
   return { message, slots: parts.map((p) => p.slot) };

@@ -64,6 +64,19 @@ export interface NotificationAction {
   row?: string;
 }
 
+// The row key the digest's two COLLAPSED tail controls share, so the ➕ offer tail and
+// the ⚙️ Tune button sit side by side instead of stacking (#2890). It lives here rather
+// than in either builder because it belongs to NEITHER of them alone: `offer-tail.ts`
+// and `digest-tune.ts` know nothing about each other, and a literal copied into both is
+// the pairing that drifts apart the next time one of them is edited.
+//
+// It groups the COLLAPSED pair only. Each control's EXPANDED keyboard is its own layout
+// with its own keys (`offer-<itemId>` plus `offer-tail` for the list, `tune-<n>` plus
+// `digest-tune` for the toggles), and neither is grouped with anything here. Grouping is
+// by ADJACENCY (#232), so either control still renders as a single button when its
+// partner is absent.
+export const DIGEST_TAIL_ROW = "digest-tail";
+
 export interface NotificationMessage {
   title: string;
   // Plain text, or a RichText of builder-declared runs (#1720). The Telegram renderer

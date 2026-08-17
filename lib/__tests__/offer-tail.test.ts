@@ -1,5 +1,5 @@
 // PURE TIER — the slot-hint reading of a `may` item's time_of_day (#1505) and the
-// digest's "Log other…" tail built on top of it.
+// digest's "➕ Doses" tail built on top of it.
 //
 // The load-bearing property under test is that scoping is a function of the CURRENT
 // clock, not of when a message was built. Everything else here is copy and shape.
@@ -18,6 +18,9 @@ import {
   OFFER_COLLAPSE_PREFIX,
   OFFER_EXPAND_PREFIX,
 } from "@/lib/notifications/offer-tail";
+import { collapsedTuneAction } from "@/lib/notifications/digest-tune";
+import { messageKeyboard } from "@/lib/notifications/telegram-render";
+import type { NotificationAction } from "@/lib/notifications/types";
 
 const ctx = {
   date: "2026-03-04",
@@ -103,24 +106,88 @@ describe("isOfferedOn", () => {
 });
 
 describe("the collapsed tail", () => {
-  // #1819 item 8: the label is a sentence about what tapping does, not a slot and a
-  // count crammed into one bar. Same guaranteed-access semantics, same slot rule.
-  it("says what tapping does, naming the slot and the count", () => {
-    const a = collapsedOfferAction(7, "2026-07-29", "22:30", 3);
-    expect(a.label).toBe("➕ Log other (3 for bedtime)");
+  // #2890: the label names the THING it opens — the app's own noun for what these
+  // buttons write — and states how many are behind it. It replaces #1819 item 8's
+  // "Log other (3 for bedtime)", whose noun was relative to a list the reader may not
+  // be able to see, and whose slot word the expansion restates the moment it opens.
+  it("names the doses it opens, and how many are on offer", () => {
+    const a = collapsedOfferAction(7, "2026-07-29", 3);
+    expect(a.label).toBe("➕ Doses (3)");
     expect(a.data).toBe(`${OFFER_EXPAND_PREFIX}:7:2026-07-29`);
   });
 
-  it("names the slot alone when there is no count to state", () => {
-    expect(collapsedOfferAction(7, "2026-07-29", "12:30", 0).label).toBe(
-      "➕ Log other (midday)"
-    );
+  it("drops the parenthetical when there is no count to state", () => {
+    expect(collapsedOfferAction(7, "2026-07-29", 0).label).toBe("➕ Doses");
+    // Never "(0)" — no count, rather than a count of none.
+    expect(collapsedOfferAction(7, "2026-07-29", 0).label).not.toContain("0");
   });
 
-  it("relabels with the clock, which is what the tick refresh keeps true", () => {
-    const morning = collapsedOfferAction(7, "2026-07-29", "08:00", 1);
-    const bedtime = collapsedOfferAction(7, "2026-07-29", "22:30", 1);
-    expect(morning.label).not.toBe(bedtime.label);
+  // The slot is still what SCOPES the offer (the caller reads the profile-local clock
+  // to build `count`); it is no longer what the label spends its width on.
+  it("names no slot in either state", () => {
+    for (const label of [
+      collapsedOfferAction(7, "2026-07-29", 3).label,
+      collapsedOfferAction(7, "2026-07-29", 0).label,
+    ]) {
+      for (const slot of ["morning", "midday", "evening", "bedtime"]) {
+        expect(label.toLowerCase()).not.toContain(slot);
+      }
+    }
+  });
+
+  // The label is now a function of the COUNT alone, and the count is what the
+  // boundary refresh re-reads — so a boundary that moves it still re-labels.
+  it("re-labels when the slot boundary changes what is on offer", () => {
+    expect(collapsedOfferAction(7, "2026-07-29", 1).label).not.toBe(
+      collapsedOfferAction(7, "2026-07-29", 2).label
+    );
+  });
+});
+
+// ---- The two collapsed controls share ONE keyboard row (#2890) ----
+//
+// They are always assembled adjacent (`[offerTail, tuneTail, …]` on the digest, and
+// the same order in every keyboard rebuild), and two small controls had no business
+// claiming a full-width row each. `messageKeyboard` already merges consecutive actions
+// sharing a `row` key (#232) — these two simply never declared the same one.
+describe("the collapsed tail pairs with ⚙️ Tune (#2890)", () => {
+  const keyboard = (actions: NotificationAction[]) =>
+    messageKeyboard({ title: "", body: "", actions });
+
+  it("renders the pair as one row of two buttons", () => {
+    const rows = keyboard([
+      collapsedOfferAction(7, "2026-07-29", 3),
+      collapsedTuneAction(7, "2026-07-29"),
+    ]);
+    expect(rows.map((r) => r.map((b) => b.text))).toEqual([
+      ["➕ Doses (3)", "⚙️ Tune"],
+    ]);
+  });
+
+  // The shared key must not depend on the partner being present: grouping is by
+  // ADJACENCY, so a digest carrying only one of them still renders one button.
+  it("renders a single button when either control is alone", () => {
+    expect(keyboard([collapsedOfferAction(7, "2026-07-29", 3)])).toEqual([
+      [expect.objectContaining({ text: "➕ Doses (3)" })],
+    ]);
+    expect(keyboard([collapsedTuneAction(7, "2026-07-29")])).toEqual([
+      [expect.objectContaining({ text: "⚙️ Tune" })],
+    ]);
+  });
+
+  // The EXPANDED offer list is a different layout, and keeps its own keys: a Tune
+  // button appended after its ▲ Collapse must not be dragged onto that row.
+  it("does not merge the expanded list's ▲ Collapse with ⚙️ Tune", () => {
+    const rows = keyboard([
+      ...expandedOfferActions(
+        7,
+        "2026-07-29",
+        [{ itemId: 11, name: "Magnesium (test)", detail: null, countToday: 0 }],
+        () => "tok"
+      ),
+      collapsedTuneAction(7, "2026-07-29"),
+    ]);
+    expect(rows.map((r) => r.length)).toEqual([1, 1, 1]);
   });
 });
 

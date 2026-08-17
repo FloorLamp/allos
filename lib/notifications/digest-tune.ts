@@ -57,7 +57,7 @@ import {
   type RecentChangeCategory,
 } from "../recent-changes";
 import { sleepVerdict } from "../sleep-summary";
-import type { NotificationAction } from "./types";
+import { DIGEST_TAIL_ROW, type NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
 
 // The digest's OWN sections, tuned by the same control because a reader does not think
@@ -319,6 +319,11 @@ export function tuneToggleToken(
 // The COLLAPSED control: one button, zero keyboard cost until used. It rides the
 // digest itself — the escape hatch belongs on the surface that annoys you, not on a
 // settings page you visit later (#1505's Take/Skip/Demote precedent).
+//
+// It shares `DIGEST_TAIL_ROW` with the collapsed ➕ offer tail (#2890): two small
+// controls that are always assembled adjacent had no business claiming a full-width row
+// each. The EXPANDED keyboard below keeps its own `tune-<n>` pairing and its own
+// `digest-tune` key for ▲ Done — that is a different layout and is unchanged.
 export function collapsedTuneAction(
   profileId: number,
   date: string
@@ -326,7 +331,7 @@ export function collapsedTuneAction(
   return {
     label: `${GLYPH.tune} Tune`,
     data: tuneExpandToken(profileId, date),
-    row: "digest-tune",
+    row: DIGEST_TAIL_ROW,
   };
 }
 

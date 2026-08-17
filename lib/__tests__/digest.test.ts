@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { bodyFor } from "@/lib/notifications/types";
 import { plainBody, type MessageBody } from "@/lib/notifications/rich-text";
+import { collapsedOfferAction } from "@/lib/notifications/offer-tail";
 import {
   buildDigest,
   dedupeFlaggedByAnalyte,
@@ -710,11 +711,9 @@ describe("digest offer tail per channel (#1712)", () => {
         ...empty,
         doseCount: 9,
         offerCount: count,
-        offerTail: {
-          label: "➕ Log other (3 for morning)",
-          data: "offerexp:1:2026-03-04",
-          row: "offer-tail",
-        },
+        // Built by the real builder rather than hand-written, so the digest's copy
+        // cannot drift from the tail's own (#2890).
+        offerTail: collapsedOfferAction(1, "2026-03-04", count),
       })!
     );
 
@@ -722,9 +721,9 @@ describe("digest offer tail per channel (#1712)", () => {
     const msg = withOffers(3);
     const telegram = plainBody(bodyFor(msg, "telegram"));
     expect(telegram).not.toContain("you can log any time");
-    // The control is present and self-describing (it names the slot and the count).
-    expect(msg.actions?.[0].label).toContain("Log other");
-    expect(msg.actions?.[0].label).toContain("3 for morning");
+    // The control is present and self-describing: it names what it opens and how
+    // many are on offer (#2890).
+    expect(msg.actions?.[0].label).toBe("➕ Doses (3)");
   });
 
   it("Web Push and Home Assistant get the line, since they cannot render the control", () => {

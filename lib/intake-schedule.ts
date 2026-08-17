@@ -318,7 +318,7 @@ export function slotHintCoversNow(
 
 // Whether a `may` item is ON OFFER today — the access-hint twin of isDueOn, and the
 // gate for every user-initiated surface: Upcoming's collapsed "available" disclosure,
-// the digest's "Log other…" tail, the ride-along More… row, quick log.
+// the digest's "➕ Doses" tail, the ride-along More… row, quick log.
 //
 // "Offered" is NOT "due": nothing here creates an obligation, a miss, or a send. It
 // only answers whether the item is worth putting one tap away right now.
@@ -571,7 +571,7 @@ export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
 // dose reminders, refill nudges, the digest's Today section, Upcoming's due rows, the
 // dashboard hero. `may` means the user declared no expectation, so the system never
 // initiates about it — it stays fully reachable through USER-initiated access (the
-// Supplements page, quick log, the digest's "Log other…" tail, keyboards) exactly as
+// Supplements page, quick log, the digest's "➕ Doses" tail, keyboards) exactly as
 // the surface taxonomy in docs/internals/findings.md requires.
 //
 // This is the ONE gate every push surface consults; a surface that grows its own

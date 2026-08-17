@@ -2015,7 +2015,7 @@ export function getIntakeLogsInRange(
 // ---- The offer tail's gather (issue #1505) --------------------------------
 
 // The `may` items this profile may be OFFERED right now, scoped by their slot hint
-// against the profile-local wall clock — the DB half of the "Log other…" tail.
+// against the profile-local wall clock — the DB half of the "➕ Doses" tail.
 //
 // Two filters, both load-bearing and both evaluated at CALL time (which is TAP time
 // for the tail): the item's day CONDITION must apply today (a rest-day magnesium is

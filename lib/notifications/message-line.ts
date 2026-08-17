@@ -300,7 +300,7 @@ export const MESSAGE_LINE_MODULES: readonly { module: string; why: string }[] =
     },
     {
       module: "lib/notifications/offer-tail.ts",
-      why: "The digest's 'Log other…' tail (#1505). Registered so its keyboard-label separator is a REVIEWED exemption with a reason rather than an unexamined omission.",
+      why: "The digest's '➕ Doses (N)' tail (#1505/#2890). Registered so its keyboard-label separator is a REVIEWED exemption with a reason rather than an unexamined omission — the label is now a noun and a count, so the only separator left is the parenthetical the count rides in.",
     },
     {
       module: "lib/nutrition-day.ts",

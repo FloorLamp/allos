@@ -637,7 +637,7 @@ export const GLYPH_MODULES: readonly { module: string; why: string }[] = [
   },
   {
     module: "lib/notifications/offer-tail.ts",
-    why: "The digest's guaranteed 'Log other…' access tail and its expanded per-item labels (#1505/#1819).",
+    why: "The digest's guaranteed '➕ Doses (N)' access tail and its expanded per-item labels (#1505/#1819/#2890).",
   },
   {
     module: "lib/notifications/correction-rows.ts",

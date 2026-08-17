@@ -636,7 +636,7 @@ export function gatherDigestInput(
         offerCount: offered.length,
         offerTail:
           offered.length > 0
-            ? collapsedOfferAction(profileId, td, nowHhmm, offered.length)
+            ? collapsedOfferAction(profileId, td, offered.length)
             : null,
       };
     })(),
@@ -1111,10 +1111,26 @@ export async function refreshDigestOfferTail(profileId: number): Promise<void> {
   if (!offerTailNeedsRefresh(pointer.renderedAt, nowHhmm)) return;
 
   const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
-  const actions =
-    offered.length > 0
-      ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
-      : [];
+  // IT REBUILDS THE DIGEST'S WHOLE COLLAPSED KEYBOARD, not just the control it came for
+  // (#2890 decision 3). `updateMessageKeyboard` is a wholesale replace, so a rebuild
+  // from the offer tail alone silently DELETED the ⚙️ Tune button (#1714) from a digest
+  // that shipped with one, at every slot boundary. The collapse path already guards this
+  // and says so in a comment (`telegram-quick-log.ts`); the refresh never got the same
+  // treatment.
+  //
+  // Tune's presence is RECOMPUTED here, exactly as the collapse path recomputes it,
+  // rather than remembered on `DigestTailPointer`. That recompute can drift during the
+  // day (`collectRecentChanges` reads a rolling window), but the collapse path already
+  // accepts that drift — one behaviour on both paths beats a new stored flag that only
+  // one of them would honour.
+  const actions = [
+    ...(offered.length > 0
+      ? [collapsedOfferAction(profileId, date, offered.length)]
+      : []),
+    ...(digestTunableCategories(profileId, date).length > 0
+      ? [collapsedTuneAction(profileId, date)]
+      : []),
+  ];
   try {
     await updateMessageKeyboard(
       profileId,

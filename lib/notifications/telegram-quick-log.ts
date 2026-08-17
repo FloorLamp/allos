@@ -97,7 +97,7 @@ export async function handleDoseCommand(
 // ── WHEN THE TAP CAME FROM THE DIGEST'S OFFER LIST (#2418 part 2) ────────────
 //
 // A dose confirmed from a REMINDER gets the 🕐 correction chips; one logged through the
-// expanded "Log other" list got none anywhere — so stating WHEN was impossible for
+// expanded "➕ Doses" list got none anywhere — so stating WHEN was impossible for
 // exactly the taps most likely to be late, a `may` item logged from a digest hours
 // after the fact. The chips are keyboard assembly over a ledger read that already
 // exists, so this rebuilds the offer list WITH the correction row for the tap that just
@@ -214,7 +214,7 @@ async function rebuildOfferListWithChips(
   // what a re-expand would show anyway.
   const actions = offered.length
     ? expandedOfferActions(profileId, date, offered, prnLogToken)
-    : [collapsedOfferAction(profileId, date, nowHhmm, 0)];
+    : [collapsedOfferAction(profileId, date, 0)];
   // The chips, from the SAME ledger read and the SAME binding the reminder flow uses —
   // `doseAnchor`'s lookup one level up (#2443): the keyboard cannot supply the dose or
   // the day, so the ledger does.
@@ -1407,7 +1407,7 @@ import type { TelegramMessage } from "./telegram-api";
 import { prefixMessage, type NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
 
-// An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
+// An offer-tail tap (#1505): expand the digest's "➕ Doses" button IN PLACE into
 // one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.
 //
 // Nothing is sent and nothing is written — both directions are a single
@@ -1466,7 +1466,7 @@ export async function handleOfferTailTap(
         title: "",
         body: "",
         actions: [
-          collapsedOfferAction(profileId, date, nowHhmm, offered.length),
+          collapsedOfferAction(profileId, date, offered.length),
           ...(digestTunableCategories(profileId, date).length
             ? [collapsedTuneAction(profileId, date)]
             : []),
@@ -1729,7 +1729,7 @@ export async function handleTuneTap(
         body: "",
         actions: [
           ...(offered.length
-            ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
+            ? [collapsedOfferAction(profileId, date, offered.length)]
             : []),
           collapsedTuneAction(profileId, date),
         ],
