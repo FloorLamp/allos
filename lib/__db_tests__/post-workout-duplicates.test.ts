@@ -33,7 +33,11 @@ import {
   flushPostWorkoutDispatches,
   pendingPostWorkoutDispatchKeys,
   POST_WORKOUT_DISPATCH_DELAY_MS,
+  POST_WORKOUT_DISPATCH_TIMEOUT_MS,
 } from "@/lib/notifications/post-workout-queue";
+import { TELEGRAM_CALL_TIMEOUT_MS } from "@/lib/notifications/telegram-api";
+import { HOME_ASSISTANT_CALL_TIMEOUT_MS } from "@/lib/notifications/home-assistant";
+import { PUSH_SEND_TIMEOUT_MS } from "@/lib/notifications/push";
 import { writeActivityFold } from "@/lib/merge-activity";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-dupes";
@@ -588,5 +592,26 @@ describe("carryPostWorkoutMarker", () => {
     writeTx(() => writeActivityFold(p, keep, keepRow, [dropRow]));
 
     expect(marker(p, keep)).toBe("2026-07-17");
+  });
+});
+
+// ── The deadline's VALUE, not just its existence ─────────────────────────────
+//
+// POST_WORKOUT_DISPATCH_TIMEOUT_MS is derived from the channel caps: it is a
+// last-resort bound on something genuinely stuck, never a ceiling a healthy send
+// can reach. Nothing above enforces that. Set to 1 ms, every spec in this file and
+// in the queue's own stayed green while the deadline abandoned each real send
+// mid-flight — which puts the abandoned run and its successor back into exactly the
+// read-then-act same-push race this change exists to close.
+//
+// So the argument lives at the constants, and changing any ONE of them reds here.
+describe("the dispatch deadline clears every channel cap", () => {
+  it("is longer than the slowest single channel call can be", () => {
+    const slowestChannel = Math.max(
+      TELEGRAM_CALL_TIMEOUT_MS,
+      HOME_ASSISTANT_CALL_TIMEOUT_MS,
+      PUSH_SEND_TIMEOUT_MS
+    );
+    expect(POST_WORKOUT_DISPATCH_TIMEOUT_MS).toBeGreaterThan(slowestChannel);
   });
 });

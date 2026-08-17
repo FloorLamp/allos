@@ -106,8 +106,17 @@ export const POST_WORKOUT_DISPATCH_DELAY_MS = 60_000;
 
 // How long ONE queued dispatch may hold the chain before the queue gives up on it
 // (see the header). Generous against a healthy send — a Telegram call is capped at
-// 30s, Home Assistant at 10s, a push send at PUSH_SEND_TIMEOUT_MS — so this only
-// ever fires on something genuinely stuck, never on a slow-but-working channel.
+// TELEGRAM_CALL_TIMEOUT_MS (30s), Home Assistant at HOME_ASSISTANT_CALL_TIMEOUT_MS
+// (10s), a push send at PUSH_SEND_TIMEOUT_MS (30s) — so this only ever fires on
+// something genuinely stuck, never on a slow-but-working channel.
+//
+// That derivation is ASSERTED, not merely written down: lib/__db_tests__/
+// post-workout-duplicates.test.ts imports all four and reds if this stops exceeding
+// the largest channel cap. Lower it below them and every real send is abandoned
+// mid-flight, putting the abandoned run and its successor back into the
+// read-then-act same-push race this queue exists to close — and no other spec
+// notices. Raise a channel cap past it and the same thing happens from the other
+// side.
 export const POST_WORKOUT_DISPATCH_TIMEOUT_MS = 120_000;
 
 type DispatchRunner = (profileId: number, activityId: number) => Promise<void>;

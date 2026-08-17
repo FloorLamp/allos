@@ -198,7 +198,11 @@ export function getPushSubscriptionsForProfile(
 // trips it), so it is the first of two bounds rather than the only one: the
 // post-workout queue also races its own POST_WORKOUT_DISPATCH_TIMEOUT_MS, because
 // silence on a safety signal is worse than a duplicate.
-const PUSH_SEND_TIMEOUT_MS = 30_000;
+//
+// Exported so the queue's deadline can be ASSERTED against it: raising this above
+// POST_WORKOUT_DISPATCH_TIMEOUT_MS reds the notification tier, because a channel cap
+// past the whole-dispatch deadline means every slow send is abandoned mid-flight.
+export const PUSH_SEND_TIMEOUT_MS = 30_000;
 
 // Push a message to an explicit set of subscriptions. Prunes endpoints the
 // service reports as gone (404/410). Resolves when at least one delivery
