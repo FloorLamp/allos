@@ -690,6 +690,11 @@ function LoginRow({
   //     would stay shut for the rest of this login — queue, drafts and snapshots silently
   //     dead, which is the #2908 R-A failure.
   //   • `deleteLogin` RETURNING AT ALL means it refused, because success redirects.
+  //     THAT BRANCH IS NOT PINNED BY ITS OWN TEST, and that was considered rather than
+  //     missed: R-A8 pins this exact re-open through `resetPassword`, which runs the same
+  //     line of this same function, and the Delete button is disabled when `isLastAdmin`,
+  //     so the only way left to reach a refused self-delete is a race against another
+  //     admin disappearing mid-click. A forced-race test would cost more than it defends.
   // A THROW is ambiguous either way — the redirect arrives that way and so does a dead
   // network — so `unstable_rethrow` lets framework control flow leave untouched and what
   // is left is asked of the server, because unreachable must not brick the device.

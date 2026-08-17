@@ -105,6 +105,11 @@ export default async function FamilySettingsPage() {
         // only be performed by a document on the device — so the client has to be able
         // to recognise itself. It is an id the caller already knows about themselves,
         // not a capability: every one of these actions re-derives the actor server-side.
+        // So "a prop decides which device gets wiped" reads alarming and is not: tamper
+        // with it and the worst reachable outcome is wiping YOUR OWN device when you did
+        // not need to. It can never wipe someone else's — that device is not running this
+        // code — and it can never skip an authorization check, because the server does not
+        // consult it.
         selfLoginId={login.id}
       />
     </SettingsGroupLayout>

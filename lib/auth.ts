@@ -606,8 +606,9 @@ export interface SessionSummary {
 }
 
 // The SHA-256 of the caller's current cookie token, or null when there's no
-// cookie — used to flag the current row in the sessions list.
-async function currentTokenHash(): Promise<string | null> {
+// cookie — used to flag the current row in the sessions list, and to let
+// revokeSession refuse the session making the request.
+export async function currentTokenHash(): Promise<string | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   return token ? hashToken(token) : null;
 }
@@ -631,19 +632,46 @@ export async function listLoginSessions(
   return rows.map((r) => ({ ...r, current: r.id === currentHash }));
 }
 
+/** What a per-device revoke actually did. Three outcomes, and the caller must tell them apart. */
+export type SessionRevokeOutcome = "revoked" | "nothing" | "refused-current";
+
 // Revoke one session by its token_hash, scoped to the owning login so a login
-// can only ever end its own sessions. Revoking the current session logs the
-// caller out on their next request (getCurrentSession finds no row).
+// can only ever end its own sessions.
 //
-// Returns TRUE only when a row actually went. A forged, stale, or foreign
-// session id deletes nothing, and the caller must not write an audit event (or
-// otherwise claim success) for a revocation that never happened.
-export function revokeSession(loginId: number, sessionId: string): boolean {
-  return (
+// AND IT REFUSES THE SESSION MAKING THE REQUEST. That exclusion used to live in
+// the SETTINGS PAGE — ActiveSessions renders the Revoke button only for a row
+// that is not `current` — which is an authorization invariant enforced by a
+// RENDERING DECISION: hand this function the caller's own session id (a forged
+// POST is the only way, so it is self-inflicted, but the shape is the one that
+// keeps costing this repo) and it happily ended the session it was called from.
+//
+// That mattered beyond tidiness once #2908 landed: the offline snapshots, the
+// queue and the write gate are wiped by a document on the device, and the ONE
+// revoke a person can aim at their own device was the one path that ended its
+// session without any of that running — so it left the health record and an OPEN
+// write gate behind on a device that now has no session at all.
+//
+// `currentSessionId` is REQUIRED, and `null` only for a caller with no cookie:
+// making it optional would let a future call site drop the guard by forgetting
+// it, which is how the guard ended up in a component in the first place.
+//
+// The outcome is STATED rather than a boolean, because "I refused" and "there
+// was nothing there" are different answers and the caller owes the person the
+// difference. Only "revoked" means a row went — the #1843 audit event must not
+// be written for either of the others.
+export function revokeSession(
+  loginId: number,
+  sessionId: string,
+  currentSessionId: string | null
+): SessionRevokeOutcome {
+  if (currentSessionId !== null && sessionId === currentSessionId) {
+    return "refused-current";
+  }
+  const ended =
     db
       .prepare("DELETE FROM sessions WHERE token_hash = ? AND login_id = ?")
-      .run(sessionId, loginId).changes > 0
-  );
+      .run(sessionId, loginId).changes > 0;
+  return ended ? "revoked" : "nothing";
 }
 
 // How many admin logins exist — the guard rail against locking the instance

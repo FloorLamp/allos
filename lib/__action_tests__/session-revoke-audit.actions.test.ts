@@ -112,7 +112,7 @@ describe("a login revoking its own sessions (#1843)", () => {
     actAs(login, profile);
     const hash = seedSession(login.id, `fake-session-self-${login.id}`);
 
-    await revokeSessionAction(fd({ session_id: hash }));
+    await revokeSessionAction(null, fd({ session_id: hash }));
 
     const rows = auditFor(login.id);
     expect(rows).toHaveLength(1);
@@ -131,11 +131,44 @@ describe("a login revoking its own sessions (#1843)", () => {
     const other = createLogin({ role: "member" });
     const foreign = seedSession(other.id, `fake-session-foreign-${other.id}`);
 
-    await revokeSessionAction(fd({ session_id: "no-such-session" }));
-    await revokeSessionAction(fd({ session_id: foreign }));
+    await revokeSessionAction(null, fd({ session_id: "no-such-session" }));
+    await revokeSessionAction(null, fd({ session_id: foreign }));
 
     expect(auditFor(login.id)).toEqual([]);
     expect(sessionCount(other.id)).toBe(1);
+  });
+
+  // THE ACTION ACTUALLY ASKS WHICH SESSION IS CALLING. The refusal itself lives in
+  // lib/auth's revokeSession and is pinned in the db tier; what is pinned HERE is
+  // the wiring — that revokeSessionAction passes the caller's own session id in at
+  // all. Drop that argument (pass null) and the guard is inert with the db-tier
+  // test still green, which is the whole reason this second test exists.
+  //
+  // `currentTokenHash` resolves to the acting session's deviceSessionKey in this
+  // tier (see setup.ts), so the row seeded under that key IS the session asking.
+  it("refuses to revoke the session making the request, states why, and leaves it alive", async () => {
+    const login = createLogin({ role: "member" });
+    const profile = createProfile("revoke-self-current", login.id);
+    const session = actAs(login, profile);
+    seedSession(login.id, session.deviceSessionKey);
+    const other = seedSession(login.id, `fake-session-elsewhere-${login.id}`);
+
+    const refused = await revokeSessionAction(
+      null,
+      fd({ session_id: session.deviceSessionKey })
+    );
+
+    expect(refused?.error).toMatch(/device you're using/i);
+    expect(sessionCount(login.id)).toBe(2);
+    // Nothing ended, so nothing may be claimed in the trail (#1843).
+    expect(auditFor(login.id)).toEqual([]);
+
+    // NON-VACUITY: the same action, same login, one row over — it revokes, says
+    // nothing, and audits. So the refusal above is the guard, not a dead action.
+    const allowed = await revokeSessionAction(null, fd({ session_id: other }));
+    expect(allowed).toBeNull();
+    expect(sessionCount(login.id)).toBe(1);
+    expect(auditFor(login.id)).toHaveLength(1);
   });
 
   it("sign out everywhere else records the count, and nothing when there were none", async () => {
