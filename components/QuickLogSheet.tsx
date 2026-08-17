@@ -146,9 +146,12 @@ export default function QuickLogSheet({
   const shown = segments.find((s) => s.id === segment) ?? segments[0];
 
   function run(item: QuickLogItem) {
-    // Close first: whatever opens next is its own overlay, and stacking a second
-    // one under this sheet would leave a locked body scroll behind when the
-    // inner surface closes.
+    // Close first: whatever opens next is its own overlay and should stand
+    // alone, not stack over a sheet that has finished its job. (This close and
+    // the open land in one tick while the sheet's exit animation keeps it
+    // mounted, so the two surfaces' body-scroll locks OVERLAP and release in
+    // FIFO order — which is exactly why useLockBodyScroll is reference-counted
+    // rather than save/restore. See the note there before changing either.)
     onClose();
     if (item.target.kind === "activity") openCreate();
     else if (item.target.kind === "live") openLive();
