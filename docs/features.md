@@ -1571,11 +1571,17 @@ and studies without a recorded dose fall back to a curated
 ~10 mSv, whole-body PET/CT ~25 mSv, cardiac SPECT ~12 mSv,
 fluoroscopy/interventional study-dependent; MRI/ultrasound are 0 — non-ionizing;
 cited to the Mettler et al. catalog and RadiologyInfo.org). A calm,
-informational **trailing-3-year total** shows the recorded and estimated
-portions **separately labeled** (never one summed figure) with a
-natural-background comparison, framed as context for a provider conversation —
-never alarmist, never a "you've had too much" verdict; a child profile carries
-the age-appropriate pediatric framing. The `indication` (why the study was
+informational **all-records total** shows the recorded and estimated portions
+**separately labeled** (never one summed figure) with a natural-background
+comparison. It is labelled with how far back the record reaches ("since the
+oldest contributing study") rather than truncated — a trailing window would make
+a cumulative figure go down with no event to explain it — so the **trailing
+3-year figure sits beside it as a recent-intensity lens**. A disclosure names
+**every study behind the total, and every study left out with the reason** (no
+date, type unclear, non-ionizing), and the figures the rows print add up to the
+figure the headline prints. All of it is framed as context for a provider
+conversation — never alarmist, never a "you've had too much" verdict; a child
+profile carries the age-appropriate pediatric framing. The `indication` (why the study was
 ordered) is captured for the record and the FHIR feed. The
 **screening-vs-diagnostic** question — whether a diagnostic mammogram (done for
 a lump) should satisfy the routine _screening_ reminder the same way a screening

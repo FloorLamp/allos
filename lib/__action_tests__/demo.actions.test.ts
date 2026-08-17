@@ -111,7 +111,7 @@ describe("demo mode login-scoped guard (#278)", () => {
       )
     ).rejects.toThrow(/demo mode/i);
     await expect(
-      revokeSessionAction(fd({ session_id: "any-session-id" }))
+      revokeSessionAction(null, fd({ session_id: "any-session-id" }))
     ).rejects.toThrow(/demo mode/i);
     await expect(signOutOtherSessions()).rejects.toThrow(/demo mode/i);
 
