@@ -14,6 +14,7 @@ import OfflineQueueProvider from "@/components/OfflineQueueProvider";
 import DirtyFormProvider from "@/components/DirtyFormRegistry";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
+import OfflineSnapshotRefresher from "@/components/OfflineSnapshotRefresher";
 import ShellChrome from "@/components/ShellChrome";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
@@ -256,8 +257,18 @@ export default async function AppLayout({
                   those refreshes; it never adds one, never removes one, and
                   never touches a refresh the USER asked for. */}
               <DirtyFormProvider>
-                <OfflineQueueProvider activeProfileId={profile.id}>
+                <OfflineQueueProvider
+                  activeProfileId={profile.id}
+                  deviceSessionKey={session.deviceSessionKey}
+                >
                   <ProfileSwitchWatcher activeProfileId={profile.id} />
+                  {/* Offline read snapshots (#2908): an authenticated visit
+                  refreshes whatever the device holds that is absent or past its
+                  clock, and nothing else — no background sync, no service-worker
+                  credentials. Mounted here beside the write queue because the two
+                  are halves of one offline story and share one IndexedDB
+                  perimeter. */}
+                  <OfflineSnapshotRefresher activeProfileId={profile.id} />
                   {/* The shared quick-entry overlay host (#1468). Inside
                   OfflineQueueProvider by necessity: the forms it mounts
                   (MeasurementsQuickAdd) queue offline writes, and it

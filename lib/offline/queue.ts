@@ -11,8 +11,9 @@
 // mood check-in (issue #992, idempotent per day), a workout SESSION logged
 // entirely offline ("set" — #28's original "add set" ask, landed by #1596), a
 // food quick-add ("food", #1596: a one-serving food-group tap or a protein-grams
-// tap), and a mobility move tapped ON ("mobility", #2130: set semantics per
-// (profile, date, move)).
+// tap), a mobility move tapped ON ("mobility", #2130: set semantics per
+// (profile, date, move)), and a practice session ("practice", #2908: DAY-idempotent
+// per (profile, practice-identity, date) — see the amended coverage row below).
 // Anything with server-derived state stays online-only. The COVERAGE RECORD
 // below (#2130) is this scope sentence with teeth: every ONE_TAP_AFFORDANCES
 // entry is either mapped to its flow or excluded with a written argument, and
@@ -67,7 +68,8 @@ export type FlowKind =
   | "mood"
   | "set"
   | "food"
-  | "mobility";
+  | "mobility"
+  | "practice";
 
 export const FLOW_KINDS: readonly FlowKind[] = [
   "dose",
@@ -78,6 +80,7 @@ export const FLOW_KINDS: readonly FlowKind[] = [
   "set",
   "food",
   "mobility",
+  "practice",
 ];
 
 // ── THE COVERAGE RECORD (#2130) ──────────────────────────────────────────────
@@ -116,9 +119,23 @@ export const OFFLINE_QUEUE_COVERAGE = {
   "substance-unit": arguedExclusion(
     "The tap's own feedback is server-derived: the card renders the week count and the #998 cap verdict beside the button, and a queued unit would leave that safety readout silently understating until replay. The queue's scope line — anything with server-derived state stays online-only — applies to the surface, not just the write."
   ),
-  "practice-session": arguedExclusion(
-    "Cadenced, not idempotent: the #2007 layer-3 re-log confirm asks a same-DAY question from the server-known session count, which an offline capture cannot answer honestly — a replay could double-log a day already logged from another device with no confirm ever shown."
-  ),
+  // AMENDED, not overridden (#2908 owner decision 3). The original #2130 exclusion —
+  // preserved verbatim so the next reader sees the argument rather than rediscovering
+  // #2007 — read: "Cadenced, not idempotent: the #2007 layer-3 re-log confirm asks a
+  // same-DAY question from the server-known session count, which an offline capture
+  // cannot answer honestly — a replay could double-log a day already logged from
+  // another device with no confirm ever shown."
+  //
+  // That reasoning is ANSWERED rather than discarded. The queued intent is "practice X
+  // happened on day D" with the dose flow's set-to-taken semantics: replay inserts ONLY
+  // if that (practice-identity, day) holds no session, otherwise it is a no-op
+  // (lib/practice-log.ts::logPracticeSessionForDay). The confirm question never arises,
+  // because the second-session capture is exactly what replay declines. The narrowing
+  // this buys and costs: offline logs a practice day ONCE; a genuine second same-day
+  // session still needs signal. The affordance stays declared `cadenced` in
+  // ONE_TAP_AFFORDANCES — its ONLINE semantics are unchanged, and it is the OFFLINE
+  // capture that is narrowed to a day.
+  "practice-session": "practice",
   "prn-dose": arguedExclusion(
     "A PRN administration arms the #798 redose window from its recorded_at — the safety-relevant instant (#2020). The control renders that advisory from server state at tap time; offline it would be stale, and a queued administration would guard nothing until replay. Deliberately online-only."
   ),
@@ -296,6 +313,26 @@ export interface MobilityPayload {
   move: string;
 }
 
+// A practice session tapped while offline (#2908 owner decision 3 — the amendment to
+// #2130's argued exclusion above). The payload is the captured raw fields: the
+// practice's stored NAME as the surface knew it, plus the `identity` the offline
+// snapshot overlay folds on (`practiceIdentity(name)` — the same lowercase fold every
+// practice surface keys on, carried explicitly so the browser never has to re-derive it
+// with a different normalizer than the server's).
+//
+// DAY-IDEMPOTENT ON REPLAY: the day rides the intent's own `date`, and the server
+// inserts only when that (practice-identity, day) holds no session. Two taps on one
+// offline day are one day's session either way, so a second tap need not be suppressed
+// at the surface to be safe — but it is suppressed anyway, because a badge saying
+// "2 queued" for something that will land once is its own small lie.
+export interface PracticePayload {
+  practice: string;
+  identity: string;
+  // The session's duration in minutes, when the surface captured one. Null/absent when
+  // the tap made no statement about it — never a fabricated default.
+  durationMin?: number | null;
+}
+
 export type IntentPayload =
   | DosePayload
   | BodyMetricPayload
@@ -303,7 +340,8 @@ export type IntentPayload =
   | MoodPayload
   | SetPayload
   | FoodPayload
-  | MobilityPayload;
+  | MobilityPayload
+  | PracticePayload;
 
 // The maximum number of intents accepted (server) and sent (client) per replay POST
 // — the SINGLE source of truth for both sides so they can never disagree (issue
@@ -571,6 +609,7 @@ export function describeIntent(intent: QueuedIntent): string {
     set: "Workout session",
     food: "Food log",
     mobility: "Mobility move",
+    practice: "Practice session",
   };
   return `${label[intent.flow]} · ${intent.date}`;
 }

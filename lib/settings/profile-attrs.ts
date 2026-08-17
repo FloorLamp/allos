@@ -864,6 +864,33 @@ export function setEmergencyCardEnabled(
   setProfileSetting(profileId, "emergency_card_offline", enabled ? "1" : "0");
 }
 
+// ---- Offline read snapshots (issue #2908) ----
+// Whether this profile's curated read snapshots (today's doses, the med list, recent
+// training, the day's food, the practice week) are kept on the device for offline
+// reading.
+//
+// DEFAULT ON, and that is the opposite of the emergency card above ON PURPOSE (owner
+// decision 1). The card's opt-in is defensible because a first responder can be told
+// where to look; these serve the person who is holding their own phone in a clinic
+// waiting room with no bars, and that person set nothing up in advance — an opt-in
+// would serve nobody at the exact moment it is needed. Accepted knowingly: at-rest PHI
+// on the device widens from one emergency card to these payloads for every profile that
+// does not opt out. The mitigations are the same ones the card relies on and no others
+// — bounded curated payloads, and a wipe on every identity change.
+//
+// Stored inverted (an explicit "0" means off) so a profile with no row is ON, which is
+// what "on by default" has to mean for a setting nobody has visited.
+export function getOfflineSnapshotsEnabled(profileId: number): boolean {
+  return getProfileSetting(profileId, "offline_snapshots") !== "0";
+}
+
+export function setOfflineSnapshotsEnabled(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(profileId, "offline_snapshots", enabled ? "1" : "0");
+}
+
 // ---- Blood group ----
 // The profile's blood type, stored as its two INDEPENDENT halves: the ABO group
 // ("A"/"B"/"AB"/"O") and the Rh factor ("+"/"-"). Migration 035 split the single

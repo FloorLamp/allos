@@ -44,6 +44,7 @@ import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
+import { logPracticeSessionForDay } from "@/lib/practice-log";
 import { recordReading, resolveStatedOccurredAt } from "@/lib/reading-writes";
 import {
   classifyDoseReplay,
@@ -59,6 +60,7 @@ import {
   type SetPayload,
   type FoodPayload,
   type MobilityPayload,
+  type PracticePayload,
 } from "@/lib/offline/queue";
 
 // ── dose confirm / skip ───────────────────────────────────────────────────────
@@ -982,6 +984,41 @@ export function applyIntent(
           status: "rejected",
           reason:
             "This mobility move is no longer in the catalog, so it wasn't logged.",
+        };
+        return;
+      }
+      ok = true;
+    } else if (intent.flow === "practice") {
+      // A queued practice tap (#2908) replays DAY-IDEMPOTENTLY: the core inserts only
+      // when that (practice-identity, day) holds no session, so a day already logged
+      // from another device between capture and replay is a NO-OP, not a second
+      // session. That is the amendment to #2130's argued exclusion, and the reason the
+      // #2007 same-day confirm never needs asking here.
+      //
+      // "already-logged" settles as DONE, not rejected, for the same reason a dose
+      // confirm that finds the dose already taken is done: a set-to intent's whole
+      // point is that the state it wanted is the state that stands. Reporting it as a
+      // failure would put a red "couldn't be applied" card in front of someone whose
+      // practice day is recorded exactly as they meant it.
+      const p = intent.payload as PracticePayload;
+      const name = typeof p?.practice === "string" ? p.practice.trim() : "";
+      if (!name) {
+        outcome = { status: "rejected" };
+        return;
+      }
+      const applied = logPracticeSessionForDay(profileId, name, intent.date, {
+        durationMin: p.durationMin ?? null,
+        // No stated time: the capture happened offline on a device clock, and the write
+        // core's own tap stamp is the profile's clock (#450). A replay landing the next
+        // morning must not stamp the session with the reconnect minute, so this path
+        // states nothing rather than stating something false.
+        time: null,
+      });
+      if (applied.kind === "invalid-date") {
+        outcome = {
+          status: "rejected",
+          reason:
+            "This practice entry is too old to log automatically. Re-enter it from the practice's history.",
         };
         return;
       }

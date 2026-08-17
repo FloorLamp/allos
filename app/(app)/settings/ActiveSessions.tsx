@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import SubmitButton from "@/components/SubmitButton";
 import type { SessionSummary } from "@/lib/auth";
 import { deviceLabel } from "@/lib/user-agent-label";
-import { revokeSessionAction, signOutOtherSessions } from "./actions";
+import {
+  revokeSessionAction,
+  signOutOtherSessions,
+  type RevokeSessionState,
+} from "./actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { formatTimestamp } from "@/lib/format-date";
 
@@ -41,6 +45,17 @@ export default function ActiveSessions({
   const formatPrefs = useFormatPrefs();
   const fmt = (ts: string) => formatTimestamp(ts, formatPrefs, { zone: "utc" });
   const otherCount = sessions.filter((s) => !s.current).length;
+  // ONE state for the whole list, not one per row: every row's form posts to the
+  // same action, and the only thing it ever has to say is the server's refusal of
+  // the current session. That refusal is unreachable by pressing anything here —
+  // the current row draws no button — so this renders what a HAND-FORGED post gets
+  // back. It is drawn anyway because the alternative is an action that refuses in
+  // silence, and because the button's absence is no longer what enforces the rule
+  // (lib/auth's revokeSession is).
+  const [revokeState, revokeAction] = useActionState<
+    RevokeSessionState,
+    FormData
+  >(revokeSessionAction, null);
   const [expanded, setExpanded] = useState(false);
   const hidden = Math.max(0, sessions.length - COLLAPSED_COUNT);
   const shown = expanded ? sessions : sessions.slice(0, COLLAPSED_COUNT);
@@ -65,6 +80,16 @@ export default function ActiveSessions({
           </form>
         )}
       </div>
+
+      {revokeState && (
+        <p
+          role="alert"
+          data-testid="revoke-session-error"
+          className="text-sm text-rose-600 dark:text-rose-400"
+        >
+          {revokeState.error}
+        </p>
+      )}
 
       <ul className="space-y-2">
         {shown.map((s) => {
@@ -104,7 +129,7 @@ export default function ActiveSessions({
                 </dl>
               </div>
               {!s.current && canRevoke && (
-                <form action={revokeSessionAction} className="shrink-0">
+                <form action={revokeAction} className="shrink-0">
                   <input type="hidden" name="session_id" value={s.id} />
                   <SubmitButton className="btn-ghost text-sm" pendingLabel="…">
                     Revoke
