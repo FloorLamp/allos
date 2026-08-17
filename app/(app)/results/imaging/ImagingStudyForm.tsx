@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import DateField from "@/components/DateField";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { dateStrInTz } from "@/lib/date";
 import SubmitButton from "@/components/SubmitButton";
 import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
@@ -34,6 +36,11 @@ export default function ImagingStudyForm({
 }) {
   const toast = useToast();
   const closeEntryModal = useAddEntryModalClose();
+  // A study happened; it is not scheduled. A typo'd 2099 date sailed through and put
+  // "From your records, since January 1, 2099." on the dose card (#2970), so the field
+  // stops at the profile's today.
+  const timezone = useTimezone();
+  const today = dateStrInTz(timezone);
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!study;
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +136,7 @@ export default function ImagingStudyForm({
             id={`is-study-date-${uid}`}
             name="study_date"
             defaultValue={study?.study_date ?? ""}
+            max={today}
           />
         </div>
       </div>

@@ -16,6 +16,11 @@ import { workerDbPath, frozenNow } from "./worker-env";
 const DB_PATH = workerDbPath();
 const REGION = "E2EREGION1";
 const DOSE_REGION = "E2EDOSEREGION1";
+// A second CT with the SAME recorded dose. Two studies at 10.05 mSv are what make the
+// card's addition checkable on the surface: each row prints 10.1, so the headline owes
+// the reader 20.2 — it printed 20.1, because every figure was rounded independently of
+// the sum (#2970 R5). One such study cannot show it; two can.
+const DOSE_SUM_REGION = "E2EDOSESUMREGION1";
 const PET_REGION = "E2EPETREGION1";
 // Carries the "chest" token on purpose: the estimate resolves to the named
 // "Chest X-ray" dataset entry, which is what the breakdown row cites.
@@ -36,11 +41,12 @@ function cleanup() {
   try {
     handle
       .prepare(
-        "DELETE FROM imaging_studies WHERE body_region IN (?, ?, ?, ?, ?, ?, ?)"
+        "DELETE FROM imaging_studies WHERE body_region IN (?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(
         REGION,
         DOSE_REGION,
+        DOSE_SUM_REGION,
         PET_REGION,
         BREAKDOWN_REGION,
         EXCLUDED_REGION,
@@ -81,6 +87,33 @@ function msvFigure(text: string): number {
   const m = /([\d.]+)\s*mSv/.exec(text);
   expect(m, `no mSv figure in: ${text}`).not.toBeNull();
   return Number(m![1]);
+}
+
+// The same figure as TEXT — the digits on the screen, not a number parsed out of them.
+function printedFigure(text: string): string {
+  const m = /(\d[\d.]*)\s*mSv/.exec(text);
+  expect(m, `no mSv figure in: ${text}`).not.toBeNull();
+  return m![1];
+}
+
+// Add printed figures the way a reader adds them: exact decimal arithmetic on the digits
+// shown, no rounding at any step. Rounding here is what made the pure-tier version of
+// this check vacuous (#2970 R5) — it re-formatted the row sum, and the last rounding
+// erased the disagreement the reader can see.
+function addPrintedFigures(figures: string[]): string {
+  const places = Math.max(
+    0,
+    ...figures.map((f) => (f.split(".")[1] ?? "").length)
+  );
+  let total = 0n;
+  for (const f of figures) {
+    const [whole, frac = ""] = f.split(".");
+    total += BigInt(whole + frac.padEnd(places, "0"));
+  }
+  const digits = total.toString().padStart(places + 1, "0");
+  const frac = places > 0 ? digits.slice(digits.length - places) : "";
+  const trimmed = frac.replace(/0+$/, "");
+  return `${digits.slice(0, digits.length - places)}${trimmed ? `.${trimmed}` : ""}`;
 }
 
 // Wait for the toast stack to drain. This spec's breakdown test adds FOUR studies in a
@@ -198,21 +231,42 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
-    // Add a CT with a recorded effective dose, dated inside the trailing window.
+    // Add a CT with a recorded effective dose, dated inside the trailing window. A
+    // reported CT dose prints two decimals, so 10.05 is an ordinary value, not a
+    // pathological one — the row shows it at the display precision, 10.1.
     await form.getByLabel("Modality").selectOption("ct");
     await form.getByLabel("Body region").fill(DOSE_REGION);
     await form.getByLabel("Study date").fill(recentDate());
-    await form.getByLabel("Effective dose (mSv)").fill("10");
+    await form.getByLabel("Effective dose (mSv)").fill("10.05");
+    await page.keyboard.press("Escape");
     await submitWithToast(
       page,
       form.getByRole("button", { name: "Add", exact: true }),
       "Study saved"
     );
 
+    await toastsCleared(page);
+
+    // A second CT at the same dose: two rows of 10.1 that the headline has to account
+    // for. With one such study the card's arithmetic cannot be checked at all.
+    await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
+    const secondForm = page.getByTestId("imaging-study-form");
+    await expect(secondForm).toBeVisible();
+    await secondForm.getByLabel("Modality").selectOption("ct");
+    await secondForm.getByLabel("Body region").fill(DOSE_SUM_REGION);
+    await secondForm.getByLabel("Study date").fill(recentDate());
+    await secondForm.getByLabel("Effective dose (mSv)").fill("10.05");
+    await page.keyboard.press("Escape");
+    await submitWithToast(
+      page,
+      secondForm.getByRole("button", { name: "Add", exact: true }),
+      "Study saved"
+    );
+
     // The list row shows the recorded-dose badge.
     const list = page.getByTestId("imaging-study-list");
     const row = list.getByRole("row").filter({ hasText: DOSE_REGION });
-    await expect(row).toContainText("10 mSv");
+    await expect(row).toContainText("10.1 mSv", { timeout: 20_000 });
 
     // The calm cumulative card renders, with a recorded portion and no alarmist copy.
     const card = page.getByTestId("radiation-dose-card");
@@ -225,16 +279,39 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await expect(card.getByTestId("radiation-dose-total")).toContainText("mSv");
     await expect(card).not.toContainText("Informational, not medical advice.");
 
-    // Clean up the study we created.
-    await row.getByLabel("Record actions").click();
-    await page.getByRole("menuitem", { name: "Delete" }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
-    await expect(
-      list.getByRole("row").filter({ hasText: DOSE_REGION })
-    ).toHaveCount(0);
+    // THE READER'S OWN CHECK, on the rendered card: read the figure off every row of
+    // the breakdown, add the digits shown, and compare with the digits in the headline.
+    // Nothing here rounds. Rounding each row independently of the sum printed two rows
+    // of 10.1 under a headline of 20.1 (#2970 R5), and the pure-tier assertion that was
+    // meant to catch it re-formatted the row sum, which erased the difference.
+    const details = card.getByTestId("radiation-dose-breakdown");
+    if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await details.locator("summary").click();
+    }
+    await expect(details).toHaveJSProperty("open", true);
+    const rowFigures = await details
+      .getByTestId("radiation-dose-contribution-figure")
+      .allInnerTexts();
+    // Both CTs are in there, plus whatever else this profile's record holds — the check
+    // is over ALL the rows the card is showing, which is what a reader would add.
+    expect(rowFigures.length).toBeGreaterThanOrEqual(2);
+    expect(addPrintedFigures(rowFigures.map(printedFigure))).toBe(
+      printedFigure(await card.getByTestId("radiation-dose-total").innerText())
+    );
+
+    // Clean up the studies we created.
+    for (const marker of [DOSE_REGION, DOSE_SUM_REGION]) {
+      const created = list.getByRole("row").filter({ hasText: marker });
+      await hydratedClick(page, created.getByLabel("Record actions"));
+      await page.getByRole("menuitem", { name: "Delete" }).click();
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Delete", exact: true })
+        .click();
+      await expect(
+        list.getByRole("row").filter({ hasText: marker })
+      ).toHaveCount(0);
+    }
   });
 
   test("a PET study estimates into the cumulative dose card without a recorded dose (#1034)", async ({

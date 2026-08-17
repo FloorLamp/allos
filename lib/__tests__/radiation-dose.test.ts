@@ -815,7 +815,9 @@ describe("the headline equals the rows it names (#2970 R5)", () => {
     expect(addPrinted(split)).toBe(headline);
     // …and the rows the reader can see add to the same figure.
     expect(
-      addPrinted(b.contributions.map((x) => printedFigure(doseChipLabel(x.dose)!)))
+      addPrinted(
+        b.contributions.map((x) => printedFigure(doseChipLabel(x.dose)!))
+      )
     ).toBe(headline);
   });
 
