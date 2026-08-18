@@ -30,7 +30,6 @@ import {
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { today } from "@/lib/db";
 import {
   getUnitPrefs,
@@ -182,8 +181,6 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
 const DEFAULT_SHOW = 300;
 const SHOW_STEP = 300;
 const MAX_SHOW = 1000;
-
-const TRAINING_CATEGORIES = new Set<TimelineCategory>(["activity", "goal"]);
 
 // The relative-day badge copy for a divergent day (issue #1329). Honest, per member.
 const RELATIVE_LABEL: Record<DayMark["relative"], string> = {
@@ -577,20 +574,11 @@ export default async function TimelinePage(props: {
 
   const units = getUnitPrefs(loginId);
   const formatPrefs = getDisplayFormatPrefs(loginId);
-  // Category pills + the training-category drop follow the ACTING profile's restriction
-  // (the viewer's anchor); each in-view member's own restriction is applied inside the
-  // per-member gather, so a restricted member simply contributes no training events.
-  const actingRestricted = isTrainingRestricted(actingProfileId);
-  const visibleCategories = actingRestricted
-    ? TIMELINE_CATEGORIES.filter((c) => !TRAINING_CATEGORIES.has(c))
-    : TIMELINE_CATEGORIES;
+  // Timeline is a profile-owned data surface. Training categories and every
+  // activity type remain visible at every life stage.
+  const visibleCategories = TIMELINE_CATEGORIES;
   const requestedCategory = timelineCategoryFromParam(searchParams.category);
-  const category =
-    actingRestricted && requestedCategory
-      ? TRAINING_CATEGORIES.has(requestedCategory)
-        ? undefined
-        : requestedCategory
-      : requestedCategory;
+  const category = requestedCategory;
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
   const show = parseShow(searchParams.show);
@@ -629,7 +617,6 @@ export default async function TimelinePage(props: {
 
   // Per-subject context (the single-subject branch): home/timezone/cycle/today all key
   // on the subject whose day we're rendering (acting in the common case).
-  const trainingRestricted = isTrainingRestricted(daySubjectId);
   const home = getHomeLocation(daySubjectId);
   const profileTimezone = getTimezone(daySubjectId);
   const todayStr = today(daySubjectId);
@@ -644,7 +631,6 @@ export default async function TimelinePage(props: {
         endDate: range.to,
         limit: show,
         units,
-        restricted: trainingRestricted,
       });
   const days = groupTimelineDays(singlePage.events);
 
@@ -756,8 +742,8 @@ export default async function TimelinePage(props: {
 
   // The intraday panel (#1068) — the SINGLE-day view only. It is the day rotated
   // 90°, so it reads the SAME resolved event list the feed below renders (never a
-  // second gather): whatever the category filter and the age restriction dropped
-  // is already gone, which makes "a hidden feed event can never appear as a tick"
+  // second gather): whatever the category filter dropped is already gone, which
+  // makes "a hidden feed event can never appear as a tick"
   // true by construction. Null when nothing on the day is intraday.
   const intraday =
     singleDaySelected && range.from && days.length > 0

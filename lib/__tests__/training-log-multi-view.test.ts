@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   mergeTrainingLogDayGroups,
-  trainingLogFitnessSurfacesVisible,
+  trainingLogDrillInsVisible,
   type MemberTrainingLogGroups,
 } from "@/lib/training-log-multi-view";
 import type { DayGroup, TrainingLogCardData } from "@/lib/training-log-card";
@@ -95,34 +95,9 @@ describe("mergeTrainingLogDayGroups", () => {
   });
 });
 
-describe("trainingLogFitnessSurfacesVisible (per-member age gate, #1330/#489)", () => {
-  it("shows adult fitness surfaces only on the acting profile's un-restricted cards", () => {
-    // Acting + un-restricted → the caregiver's own cards keep drill-ins.
-    expect(
-      trainingLogFitnessSurfacesVisible({
-        isActing: true,
-        subjectRestricted: false,
-      })
-    ).toBe(true);
-    // Acting BUT restricted (a child logged in as themselves) → gated.
-    expect(
-      trainingLogFitnessSurfacesVisible({
-        isActing: true,
-        subjectRestricted: true,
-      })
-    ).toBe(false);
-    // A non-acting subject's card never drills into the acting profile's stats.
-    expect(
-      trainingLogFitnessSurfacesVisible({
-        isActing: false,
-        subjectRestricted: false,
-      })
-    ).toBe(false);
-    expect(
-      trainingLogFitnessSurfacesVisible({
-        isActing: false,
-        subjectRestricted: true,
-      })
-    ).toBe(false);
+describe("trainingLogDrillInsVisible (#1330/#3067)", () => {
+  it("shows drill-ins only for the acting profile", () => {
+    expect(trainingLogDrillInsVisible(true)).toBe(true);
+    expect(trainingLogDrillInsVisible(false)).toBe(false);
   });
 });

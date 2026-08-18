@@ -5,7 +5,7 @@
 // second drift-prone copy of the rules). Takes profileId first and never imports
 // lib/auth: the saveActivity Server Action owns the auth gate (requireSession +
 // gateItemProfile) and the cache revalidation; the replay route owns its own
-// session + per-intent write-access check. Everything else — the age-gate, the
+// session + per-intent write-access check. Everything else — the
 // title/date guard, unit conversion honoring the CAPTURED unit (#630), the
 // composite rollup (#313/#1202), the ownership re-check on an untrusted id, the
 // #194 stored-kg snapshot, routine crediting (#740), and the post-workout dose
@@ -31,7 +31,6 @@ import {
 } from "@/lib/units";
 import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
-import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 import { regionForExercise, type MuscleRegion } from "@/lib/lifts";
 import { creditRoutineSession } from "@/lib/routines";
 import { cleanupOrphanPrDismissals } from "@/lib/queries/upcoming/suppressions";
@@ -146,14 +145,8 @@ export function saveActivityCore(
   const profile = { id: profileId };
   const id = formData.get("id") ? Number(formData.get("id")) : null;
   const type = String(formData.get("type")) as ActivityType;
-  // Training-restriction gate — TYPE-AWARE (#489, evolving #488). A profile below
-  // the instance min_training_age keeps duration-based SPORT/CARDIO logging but
-  // still cannot log a STRENGTH session. Authoritative HERE at the write boundary
-  // so the create and view paths agree regardless of what the UI offers (a stale
-  // editor / command palette / queued offline intent can't slip a strength row
-  // past the restriction, nor lose a legitimate sport log).
-  if (!isActivityTypeAllowed(type, isTrainingRestricted(profile.id)))
-    return { ok: false, reason: "restricted" };
+  // Activity logging is age-neutral. Adult-population benchmarks are gated at
+  // their read surfaces; every activity type remains a profile-owned record.
   const title = String(formData.get("title") ?? "").trim();
   const date = String(formData.get("date") ?? "").trim();
   // Reject non-ISO dates server-side too: the client gates on this, but the

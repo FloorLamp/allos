@@ -240,9 +240,8 @@ const entries: Entry[] = [
     icon: IconSparkles,
     relevanceKey: "wellness",
   },
-  // Longevity took over Protocols' slot in #1042 phase 4: the healthspan-pillar
-  // page whose #protocols section absorbed the old Protocols hub (the /protocols
-  // URL 308-redirects there). Ungated, exactly as Protocols was.
+  // Longevity and its protocols are adult-only content. The route independently
+  // enforces the same life-stage predicate.
   { href: "/longevity", label: "Longevity", icon: IconHourglass },
   RECORDS,
   // One "Data" umbrella covering both halves — bringing data in (upload/paste/
@@ -252,15 +251,9 @@ const entries: Entry[] = [
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];
 
-// Nav entries FULLY hidden for age-restricted profiles (see lib/age-gate.ts).
-// Empty since #489: Training is no longer all-or-nothing — a restricted profile
-// keeps a lightweight sport/cardio activity log there (the page swaps in
-// RestrictedActivityView and gates only the adult strength/analytics content), so
-// the nav link must stay reachable. AI Insights already folded into the Trends
-// "Insights" tab (server-gated), and no other top-level route is age-gated. The
-// mechanism is retained (and group children are still filtered against it) so a
-// future genuinely-gated route is one array entry away.
-const RESTRICTED_HREFS = new Set<string>([]);
+// Whole-route adult content. Activity, Timeline, Trends, and Equipment stay
+// reachable; only the longevity/protocol content class is hidden here.
+const ADULT_ONLY_HREFS = new Set<string>(["/longevity"]);
 
 const leafClass = (active: boolean, nested: boolean) =>
   `flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition ${
@@ -318,7 +311,7 @@ function NavLink({
 
 function NavGroup({
   group,
-  restricted,
+  adultContentAvailable,
   isAdmin,
   multiProfile,
   foodLoggingRelevant,
@@ -327,7 +320,7 @@ function NavGroup({
   badges,
 }: {
   group: Group;
-  restricted: boolean;
+  adultContentAvailable: boolean;
   isAdmin: boolean;
   multiProfile: boolean;
   foodLoggingRelevant: boolean;
@@ -337,19 +330,19 @@ function NavGroup({
 }) {
   const pathname = usePathname();
   // Reuse the same visibility predicate as the top-level entries so a group
-  // child honors the age-gate (RESTRICTED_HREFS), `adminOnly`,
+  // child honors the adult-content boundary (ADULT_ONLY_HREFS), `adminOnly`,
   // `requiresMultiProfile`, `requiresFoodLogging`, and the relevance bitset
   // identically — otherwise appending a gated leaf to a group's children (which
   // the array shape invites) would leak it in the sidebar.
   const children = group.children.filter((c) =>
     isNavLeafVisible(c, {
       isAdmin,
-      restricted,
+      adultContentAvailable,
       multiProfile,
       foodLoggingRelevant,
       hasIntakeItems,
       relevance,
-      restrictedHrefs: RESTRICTED_HREFS,
+      adultOnlyHrefs: ADULT_ONLY_HREFS,
     })
   );
   // Force-expanded whenever a child route is active so the active item is always
@@ -400,7 +393,7 @@ function NavGroup({
 }
 
 export default function Nav({
-  restricted = false,
+  adultContentAvailable = true,
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
@@ -408,7 +401,7 @@ export default function Nav({
   relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
 }: {
-  restricted?: boolean;
+  adultContentAvailable?: boolean;
   isAdmin?: boolean;
   // True when the caller has more than one ACCESSIBLE profile; gates entries
   // flagged `requiresMultiProfile` (e.g. the Household cross-profile overview).
@@ -438,12 +431,12 @@ export default function Nav({
       ? true
       : isNavLeafVisible(e, {
           isAdmin,
-          restricted,
+          adultContentAvailable,
           multiProfile,
           foodLoggingRelevant,
           hasIntakeItems,
           relevance,
-          restrictedHrefs: RESTRICTED_HREFS,
+          adultOnlyHrefs: ADULT_ONLY_HREFS,
         })
   );
   return (
@@ -453,7 +446,7 @@ export default function Nav({
           <NavGroup
             key={e.group}
             group={e}
-            restricted={restricted}
+            adultContentAvailable={adultContentAvailable}
             isAdmin={isAdmin}
             multiProfile={multiProfile}
             foodLoggingRelevant={foodLoggingRelevant}

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { isLongevityRelevant } from "@/lib/life-stage";
+import { getProfileAge } from "@/lib/settings";
 import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
 import type { LongevitySection } from "@/lib/longevity";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
@@ -25,6 +27,7 @@ export default async function FitnessSection({
   section: LongevitySection;
 }) {
   const { profile } = await requireSession();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return null;
   const { model } = assembleFitnessCheckModel(profile.id);
 
   return (

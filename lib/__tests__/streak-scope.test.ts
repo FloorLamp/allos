@@ -123,7 +123,6 @@ describe("streak scope after the retirement (#1935/#1936/#1937/#1939/#1966)", ()
       "app/(app)/training/OverviewSection.tsx",
       "app/(app)/training/TrainingLogView.tsx",
       "app/(app)/training/HistorySection.tsx",
-      "app/(app)/training/RestrictedActivityView.tsx",
       "components/AdherenceRefill.tsx",
       "components/dashboard/WeeklyRecapWidget.tsx",
       "components/practices/PracticeTrends.tsx",

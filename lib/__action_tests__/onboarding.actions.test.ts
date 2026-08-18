@@ -12,7 +12,6 @@ import {
   startOnboardingRoutine,
 } from "@/app/(app)/onboarding/actions";
 import { createProfile as createProfileAction } from "@/app/(app)/settings/family/actions";
-import { setMinTrainingAge } from "@/lib/age-gate";
 import { db } from "@/lib/db";
 import {
   getDashboardLayout,
@@ -42,7 +41,6 @@ async function redirected(action: Promise<unknown>) {
 }
 
 beforeEach(() => revalidate.mockClear());
-afterEach(() => setMinTrainingAge(null));
 
 describe("onboarding actions", () => {
   it("defers setup without inventing who the profile represents", async () => {
@@ -313,11 +311,10 @@ describe("onboarding actions", () => {
     });
   });
 
-  it("does not persist fitness widgets hidden by the dashboard age gate", async () => {
+  it("persists age-neutral fitness widgets for a minor", async () => {
     const login = createLogin({ username: "onboarding-restricted-layout" });
     const profile = createTestProfile("Restricted Layout", login.id);
     actAs(login, profile);
-    setMinTrainingAge(18);
     setProfileBirthdate(profile.id, "2018-01-01");
     setOnboardingState(profile.id, {
       ...initialOnboardingState(),
@@ -334,8 +331,8 @@ describe("onboarding actions", () => {
     layout.append("widget", "goals-habits");
     await redirected(saveOnboardingDashboard(layout));
 
-    expect(getDashboardLayout(profile.id)?.order).not.toContain("coaching");
-    expect(getDashboardLayout(profile.id)?.order).not.toContain("goals-habits");
+    expect(getDashboardLayout(profile.id)?.order).toContain("coaching");
+    expect(getDashboardLayout(profile.id)?.order).toContain("goals-habits");
     expect(getDashboardLayout(profile.id)?.order).toContain("recent-labs");
   });
 

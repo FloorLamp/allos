@@ -103,19 +103,11 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
 export default function QuickLogSheet({
   open,
   onClose,
-  restricted = false,
   cycleRelevant = true,
   logHabitDays = null,
 }: {
   open: boolean;
   onClose: () => void;
-  // An age-restricted profile has no training surface, so the activity entry is
-  // dropped (lib/quick-log.ts owns that rule) and its whole segment with it. It
-  // still gets the sheet and the puck that opens it (#2651, owner ruling
-  // 2026-08-13) — every entry that survives `quickLogMenu(true)` is one a
-  // restricted profile may log, and hiding the door removed one-tap logging
-  // without adding any protection the per-entry gates were not already giving.
-  restricted?: boolean;
   // The #1042 `cycle` relevance bit, resolved once by the app layout — the SAME bit
   // gating the Cycle nav entry and the dashboard phase widget (#1892).
   cycleRelevant?: boolean;
@@ -128,7 +120,7 @@ export default function QuickLogSheet({
   const { openCreate, openLive, workoutOffer } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
 
-  const segments = logSheetSegments(restricted, cycleRelevant);
+  const segments = logSheetSegments(cycleRelevant);
   // Reset to the route's own segment on every OPEN, not only on navigation: the
   // sheet is opened repeatedly from the same page and should always lead with
   // what that page is for.
@@ -199,7 +191,7 @@ export default function QuickLogSheet({
             exactly the campaigning this chrome refuses. A live or just-abandoned
             session genuinely is now, and "Log activity" stays one segment away
             regardless (#2419: dueness gates nudging, never logging). */}
-            {!restricted && workoutOffer.kind === "resume" && (
+            {workoutOffer.kind === "resume" && (
               <ContextChip
                 testId="log-sheet-chip-session"
                 workoutOffer={workoutOffer.kind}

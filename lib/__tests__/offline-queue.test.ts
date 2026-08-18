@@ -433,10 +433,6 @@ describe("classifySetReplay (honoring the typed outcome, #1596)", () => {
   });
 
   it("rejects every refusal with a human reason — never a silent drop", () => {
-    const restricted = classifySetReplay({ ok: false, reason: "restricted" });
-    expect(restricted.status).toBe("rejected");
-    expect(restricted.reason).toMatch(/isn't available for this profile/i);
-
     const invalid = classifySetReplay({ ok: false, reason: "invalid" });
     expect(invalid.status).toBe("rejected");
     expect(invalid.reason).toMatch(/couldn't be validated/i);

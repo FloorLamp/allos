@@ -76,6 +76,7 @@ import {
 import { goalPaceTone, goalPct } from "@/lib/outcome-goals";
 import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
+import { isAdultForClinical } from "@/lib/life-stage";
 import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { type BiomarkerBands } from "@/components/BiomarkerChart";
@@ -509,12 +510,9 @@ export default async function ClinicalResultDetailPage(props: {
   const latestCanonicalValue = latestPlottable
     ? convertToCanonical(latestPlottable.value, latestPlottable.r.unit, cb)
     : null;
-  const fitnessCtx = fitnessContextFor(
-    canonical,
-    latestCanonicalValue,
-    sex,
-    age
-  );
+  const fitnessCtx = isAdultForClinical(age)
+    ? fitnessContextFor(canonical, latestCanonicalValue, sex, age)
+    : null;
 
   // Staleness: most biomarkers want a yearly retest; genomics never go stale, and an
   // immune-positive durable-immunity titer (hep A/B surface Ab, MMR/varicella IgG)
@@ -900,8 +898,8 @@ export default async function ClinicalResultDetailPage(props: {
         </div>
       )}
 
-      {/* Age/sex percentile + fitness age (#158) — fitness markers only, hidden
-          when sex/age unset. */}
+      {/* Age/sex percentile + fitness age (#158) — fitness markers only, and only
+          for a known adult with sex recorded. */}
       <FitnessPercentileCard ctx={fitnessCtx} />
 
       {/* Chart */}

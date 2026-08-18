@@ -1,8 +1,8 @@
 // One age model, many surfaces (issue #494). The app used to carry FOUR decoupled
 // age axes — a fixed-18 "minor" line (body-fat / Body layout / fitness norms /
-// bio-age / PhenoAge), a fixed-13 BP-regime line, a 240-month (20 y) growth-chart
-// ceiling, and the orthogonal admin `min_training_age` access knob — each with its
-// own magic number and null-handling, which drifted (a 14-year-old was an adult for
+// bio-age / PhenoAge), a fixed-13 BP-regime line, and a 240-month (20 y)
+// growth-chart ceiling — each with its own magic number and null-handling, which
+// drifted (a 14-year-old was an adult for
 // BP but a child everywhere else; eGFR had no pediatric floor while PhenoAge beside
 // it did; the growth card demoted itself for 18–19-year-olds). This module is the
 // SINGLE identity computation the biomarker-family (#482) and preventive concept-map
@@ -11,10 +11,10 @@
 // to 20, adult-population models at 18) become NAMED, DOCUMENTED members of one model
 // instead of scattered constants a new surface can silently re-invent.
 //
-// `min_training_age` stays OUT of this module on purpose: it is an admin access
-// policy (does this instance let a young profile reach the training surfaces at
-// all), not a life stage — it lives in lib/age-gate.ts. This module owns the
-// CONTENT-FRAMING lines (adult fitness science vs child-appropriate presentation).
+// This module owns CONTENT-FRAMING lines (adult fitness science vs
+// child-appropriate presentation). Activity records and ordinary training tools
+// are age-neutral; only content validated for adult populations uses the adult
+// predicate below.
 //
 // NULL-AGE POLICY (documented once, here): `lifeStage(null)` is `null` — "unknown".
 // Each predicate then states its own unknown-age default, and those defaults are
@@ -98,8 +98,18 @@ export function isAdultForClinical(
   return known(age) && age >= ADULT_MIN_AGE;
 }
 
-// Legal minor — the complement of the adult-clinical floor for a KNOWN age.
-// (age < 18; unknown → false, treated as an adult like the presentations above)
+// Longevity and protocol experiments are an adult-only content class. Unlike a
+// presentation tweak, the whole route stands down for both a known minor and an
+// unknown age, so callers never expose adult-population healthspan claims without
+// a known adult age. This named predicate is the single route/nav/section answer.
+export function isLongevityRelevant(
+  age: number | null | undefined
+): age is number {
+  return isAdultForClinical(age);
+}
+
+// Legal minor for a KNOWN age. Unknown → false because "unknown" is not evidence
+// that the profile is a minor; adult-only predicates still reject unknown separately.
 export function isMinor(age: number | null | undefined): boolean {
   return known(age) && age < ADULT_MIN_AGE;
 }

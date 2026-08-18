@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { IconActivityHeartbeat } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getProfileAge, getDisplayFormatPrefs } from "@/lib/settings";
 import { getBioAgeReadings } from "@/lib/queries";
 import {
@@ -70,8 +69,7 @@ export default async function BioAgeSection() {
   const { login, profile } = await requireSession();
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const age = getProfileAge(profile.id);
-  const hiddenForProfile =
-    isBioAgeHiddenForAge(age) || isTrainingRestricted(profile.id);
+  const hiddenForProfile = isBioAgeHiddenForAge(age);
   const { draws, presentInputs } = getBioAgeReadings(profile.id);
   const surface = bioAgeSurface(
     hiddenForProfile,

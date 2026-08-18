@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   lifeStage,
   isAdultForClinical,
+  isLongevityRelevant,
   isMinor,
   isAdultBpRegime,
   isGrowthTracked,
@@ -57,6 +58,17 @@ describe("isAdultForClinical — adult-population statistical floor (18)", () =>
     // known adult age.
     expect(isAdultForClinical(null)).toBe(false);
     expect(isAdultForClinical(undefined)).toBe(false);
+  });
+});
+
+describe("isLongevityRelevant — adult-only route/content class", () => {
+  it("allows adults and hides children and unknown ages", () => {
+    expect(isLongevityRelevant(18)).toBe(true);
+    expect(isLongevityRelevant(64)).toBe(true);
+    expect(isLongevityRelevant(17)).toBe(false);
+    expect(isLongevityRelevant(0)).toBe(false);
+    expect(isLongevityRelevant(null)).toBe(false);
+    expect(isLongevityRelevant(undefined)).toBe(false);
   });
 });
 

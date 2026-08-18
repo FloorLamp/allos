@@ -84,7 +84,9 @@ import {
   setProfileSetting,
   getPublicUrl,
   getRecapScale,
+  getProfileAge,
 } from "../settings";
+import { isAdultForClinical } from "../life-stage";
 import { situationHistoryResolver } from "../trend-annotations";
 import { illnessDaysInWindow } from "../illness-episode-store";
 import { getLatestFitnessAssessmentDate } from "../fitness-assessment";
@@ -488,7 +490,11 @@ export function gatherRecapInput(
     // the check page's finale uses). Reports the completed check's fitness age; null when
     // no check completed in the window (line omitted).
     fitnessCheck: (() => {
-      if (!speaks("fitness-check")) return null;
+      if (
+        !speaks("fitness-check") ||
+        !isAdultForClinical(getProfileAge(profileId))
+      )
+        return null;
       const lastCheck = getLatestFitnessAssessmentDate(profileId);
       if (!lastCheck || !inWindow(lastCheck, win.start, win.end)) return null;
       const { model, equipmentMissingKeys } =

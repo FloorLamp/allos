@@ -11,12 +11,8 @@
 //
 // ── WHY A REGISTRY AND NOT FOUR JSX ROWS ─────────────────────────────────────
 //
-// Because the slot set is CONTEXTUAL and the contexts are the app's existing
-// ones. An age-restricted profile (lib/age-gate.ts) has no training surface at
-// all, so a Training slot there is a dock slot spent on a 404-in-spirit; it
-// takes Timeline instead. Deciding that in the component would put an
-// untestable `restricted ? … : …` inside a fixed-position element that only
-// renders below `md`, which is precisely the shape nobody notices is wrong.
+// Because the slot set is a registry rather than four JSX rows, order and route
+// matching stay pure and testable.
 //
 // ── WHAT IT DELIBERATELY IS NOT ──────────────────────────────────────────────
 //
@@ -71,17 +67,6 @@ const TRAINING: DockSlot = {
   icon: "barbell",
   href: "/training",
 };
-// The restricted-profile stand-in. Timeline is the right substitute rather than
-// Nutrition or Medical: it is the one surface whose CONTENT is already
-// age-filtered by the same gate (the layout passes `restricted` into
-// getTimelineDates), so the slot leads somewhere honest for that profile instead
-// of somewhere merely allowed.
-const TIMELINE: DockSlot = {
-  id: "timeline",
-  label: "Timeline",
-  icon: "timeline",
-  href: "/timeline",
-};
 const TRENDS: DockSlot = {
   id: "trends",
   label: "Trends",
@@ -99,11 +84,9 @@ const MORE: DockSlot = {
  * The dock's four slots, in tap order (left to right; the puck sits between
  * index 1 and index 2).
  *
- * `restricted` is the age gate the whole shell already resolves once
- * (lib/age-gate.ts) and threads into MobileNav — never re-derived here.
  */
-export function dockSlots(restricted: boolean): DockSlot[] {
-  return [HOME, restricted ? TIMELINE : TRAINING, TRENDS, MORE];
+export function dockSlots(): DockSlot[] {
+  return [HOME, TRAINING, TRENDS, MORE];
 }
 
 /**

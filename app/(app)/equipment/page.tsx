@@ -3,7 +3,6 @@ import { getEquipment } from "@/lib/equipment";
 import { getEquipmentUsage } from "@/lib/queries";
 import { getUnitPrefs } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { PageHeader } from "@/components/ui";
 import EquipmentManager, {
   type EquipmentUsageBadge,
@@ -19,10 +18,6 @@ export const dynamic = "force-dynamic";
 // from top-level nav — it's an occasionally-visited registry.
 export default async function EquipmentPage() {
   const { login, profile } = await requireSession();
-  // Age-restricted profiles can't reach equipment even by direct URL (the fitness
-  // surfaces are hidden for them); bounce to the dashboard. Mirrors /training.
-  if (isTrainingRestricted(profile.id)) redirect("/");
-
   // includeRetired: the registry lists retired gear too (with an Unretire action).
   const equipment = getEquipment(profile.id, { includeRetired: true });
   const usageMap = getEquipmentUsage(profile.id);

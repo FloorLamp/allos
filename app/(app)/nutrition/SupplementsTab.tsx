@@ -58,7 +58,6 @@ import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
@@ -249,11 +248,6 @@ export default async function SupplementsTab({
     getUnitPrefs(login.id).temperatureUnit
   );
   const showPoorSleepOverride = derivedLines.poorSleepOverridable;
-  // When fitness tracking is restricted for this profile the workout/rest-day
-  // concept is meaningless, so we drop the subtitle prefix and the workout/
-  // rest-day schedule options (see lib/age-gate.ts).
-  const trainingRestricted = isTrainingRestricted(profile.id);
-
   // Adherence strip inputs.
   const workoutDays = new Set(getActivityDates(profile.id));
   const dates = lastNDates(todayStr, STRIP_DAYS);
@@ -662,7 +656,6 @@ export default async function SupplementsTab({
         isTaken={isTaken}
         isSkipped={isSkipped}
         strip={stripFor(it.supplement)}
-        trainingRestricted={trainingRestricted}
         refillRate={refillRates.get(it.supplement.id) ?? null}
         poolChip={poolChips.get(it.supplement.id) ?? null}
         historicalStatus={historicalStatus}
@@ -675,9 +668,7 @@ export default async function SupplementsTab({
     );
   };
 
-  const dayContext = trainingRestricted
-    ? null
-    : workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay);
+  const dayContext = workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay);
   const scheduleBucketsFor = (date: string, dayItems: Item[]) => {
     const grouped = date === todayStr ? byBucket : byBucketFor(dayItems);
     return TIME_BUCKETS.map((bucket) => {
@@ -1223,7 +1214,6 @@ export default async function SupplementsTab({
                         allIntakeItems={intakeItems}
                         stackItems={stackItems}
                         pgxVariants={pgxVariants}
-                        trainingRestricted={trainingRestricted}
                       />
                       <SharedSuppliesLink count={cabinetCount} />
                       <DoseLedgerLink kind="supplement" />
@@ -1250,7 +1240,6 @@ export default async function SupplementsTab({
                       allIntakeItems={intakeItems}
                       stackItems={stackItems}
                       pgxVariants={pgxVariants}
-                      trainingRestricted={trainingRestricted}
                     />
                   }
                 />

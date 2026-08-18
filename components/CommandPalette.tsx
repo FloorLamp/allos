@@ -206,8 +206,7 @@ export default function CommandPalette({
       matchPaletteActions(query).filter(
         (a) =>
           (a.target.kind !== "repeat" || hasLastActivity) &&
-          // Live workout is strength-centric; hidden for age-restricted profiles
-          // (#489/#340).
+          // The provider can still withhold live mode for a read-only context.
           (a.target.kind !== "live" || canStartWorkout)
       ),
     [query, hasLastActivity, canStartWorkout]

@@ -23,7 +23,6 @@ import {
   runLiveIntegrityCheck,
 } from "@/lib/backup";
 import { formatBytes } from "@/lib/format-bytes";
-import { setMinTrainingAge } from "@/lib/age-gate";
 import { normalizePublicUrl } from "@/lib/public-url";
 import {
   setWebhook,
@@ -207,22 +206,6 @@ export async function saveTrashRetention(formData: FormData) {
   setTrashRetentionDays(Number(raw));
   revalidateRoute("/settings/server");
   revalidateRoute("/data");
-}
-
-// ---- Fitness age gate (global, admin-only) ----
-// The minimum age (whole years) a profile must be to see the ADULT fitness
-// content: training analytics (e1RM/standards/fitness-age/coaching/goals), AI
-// Insights, and the Equipment registry. Duration-based sport/cardio logging is
-// age-neutral and survives the gate (issue #489). Empty / non-positive clears it
-// (gate off). Setting it changes nav/tabs/pages for every profile, so the whole
-// app layout is revalidated. See lib/age-gate.ts.
-
-export async function saveMinTrainingAge(formData: FormData) {
-  await requireAdmin();
-  const raw = String(formData.get("min_training_age") ?? "").trim();
-  setMinTrainingAge(raw === "" ? null : Number(raw));
-  revalidateRoute("/", "layout");
-  revalidateRoute("/settings/server");
 }
 
 // ---- Outbound email / SMTP (global, admin-only) — issue #985 ----

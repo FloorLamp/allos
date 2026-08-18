@@ -262,11 +262,33 @@ describe("saveFitnessTest — validation", () => {
       ).ok
     ).toBe(false);
   });
+
+  it.each([
+    ["minor", "2015-01-01"],
+    ["unknown age", null],
+  ])(
+    "refuses adult fitness outcomes for a profile with %s",
+    async (_label, birthdate) => {
+      const { profile } = seedActor();
+      if (birthdate) setDemographics(profile.id, "male", birthdate);
+
+      const result = await saveFitnessTest(
+        fd({ testKey: "grip", value: 48, date: DATE })
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        error: "fitness check is available for adults",
+      });
+      expect(sessionRows(profile.id)).toEqual([]);
+    }
+  );
 });
 
 describe("setFitnessCadence", () => {
   it("stores the per-profile retest cadence", async () => {
     const { profile }: { profile: TestProfile } = seedActor();
+    setDemographics(profile.id, "male", "1985-06-01");
     const r = await setFitnessCadence(fd({ days: 120 }));
     expect(r.ok).toBe(true);
     expect(getFitnessRetestCadenceDays(profile.id)).toBe(120);
@@ -274,7 +296,17 @@ describe("setFitnessCadence", () => {
   });
 
   it("rejects a non-positive cadence", async () => {
-    seedActor();
+    const { profile } = seedActor();
+    setDemographics(profile.id, "male", "1985-06-01");
     expect((await setFitnessCadence(fd({ days: 0 }))).ok).toBe(false);
+  });
+
+  it("refuses the hidden adult cadence for an unknown-age profile", async () => {
+    const { profile } = seedActor();
+    expect(await setFitnessCadence(fd({ days: 120 }))).toEqual({
+      ok: false,
+      error: "fitness check is available for adults",
+    });
+    expect(getFitnessRetestCadenceDays(profile.id)).not.toBe(120);
   });
 });

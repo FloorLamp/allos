@@ -12,12 +12,14 @@ import {
 import {
   getUnitPrefs,
   getProfileSex,
+  getProfileAge,
   getDisplayFormatPrefs,
 } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { EMPTY_TRAINING_LOG_FILTERS } from "@/lib/training-log-filters";
 import { resolveTrainingLogFeedContext } from "./training-log-feed-resolve";
 import TrainingLogView from "./TrainingLogView";
+import { isAdultForClinical } from "@/lib/life-stage";
 
 export default async function HistorySection({
   initialCreateDate,
@@ -86,6 +88,7 @@ export default async function HistorySection({
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}
       sex={getProfileSex(profile.id)}
+      adultClinicalContent={isAdultForClinical(getProfileAge(profile.id))}
       canWriteVideos={feed.canWriteVideos}
       multiView={
         feed.multi ? { actingProfileId: feed.actingProfileId } : undefined

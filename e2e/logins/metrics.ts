@@ -82,7 +82,7 @@ export const INTRADAY_TICK_TIME = "07:15";
 // move "latest weight" for the dashboard/coaching specs that assert it. Seeded with
 // nothing at all — the spec asserts only the row it wrote, never a count — so
 // --repeat-each and re-runs are safe. No birthdate → adult → never
-// training-restricted, so the bar renders its full action cluster.
+// activity surfaces are age-neutral, so the bar renders its full action cluster.
 export const E2E_LOGIN_SHELL = "e2e_shell";
 export const SHELL_PROFILE = "Mobile Shell (e2e)";
 export const SHELL_WEIGHT_KG = "77.7";

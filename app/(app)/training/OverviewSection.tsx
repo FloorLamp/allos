@@ -30,7 +30,9 @@ import {
   getUnitPrefs,
   getDisplayFormatPrefs,
   getProfileSex,
+  getProfileAge,
 } from "@/lib/settings";
+import { isAdultForClinical } from "@/lib/life-stage";
 import {
   coverageFromSets,
   coverageList,
@@ -129,6 +131,7 @@ export default async function OverviewSection() {
   const du = units.distanceUnit;
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const todayStr = today(profile.id);
+  const adultClinicalContent = isAdultForClinical(getProfileAge(profile.id));
 
   // The week's (day, type) tallies — ONE row set, folded twice (#2566/#221): into the
   // spine's seven day cells, and into the caption's session/active-day counts. The
@@ -161,7 +164,9 @@ export default async function OverviewSection() {
   // strength regions and groups, activity types, and mobility regions. A food habit or
   // a wellness practice is a real target on a real page; that page is not this one.
   const targets = getFrequencyTargetProgressForHome(profile.id, "training");
-  const { model: fitnessModel } = assembleFitnessCheckModel(profile.id);
+  const fitnessModel = adultClinicalContent
+    ? assembleFitnessCheckModel(profile.id).model
+    : null;
   const strength = getStrengthByExercise(profile.id);
   const cardio = getCardioByActivity(profile.id, du, formatPrefs);
   const cardioPrs = recentCardioPRs(cardio, todayStr, 30);
@@ -195,42 +200,44 @@ export default async function OverviewSection() {
       row,
     ])
   );
-  const strengthLadderRows: StrengthLadderRow[] = strength
-    .flatMap((stat): StrengthLadderRow[] => {
-      const series = e1rmSeries.get(exerciseHistoryKey(stat.exercise));
-      const prior = series?.points
-        .filter((point) => point.date <= priorCutoff)
-        .at(-1);
-      const placement = strengthLadderPlacement(
-        stat.exercise,
-        stat.freeWeightE1rmKg,
-        prior?.value ?? null,
-        sex,
-        bodyweightKg
-      );
-      return placement
-        ? [
-            {
-              exercise: stat.exercise,
-              placement,
-            },
-          ]
-        : [];
-    })
-    .sort((a, b) => {
-      const aMove =
-        a.placement.current.e1rmKg -
-        (a.placement.prior?.e1rmKg ?? a.placement.current.e1rmKg);
-      const bMove =
-        b.placement.current.e1rmKg -
-        (b.placement.prior?.e1rmKg ?? b.placement.current.e1rmKg);
-      return (
-        Number(b.placement.moved) - Number(a.placement.moved) ||
-        bMove - aMove ||
-        a.exercise.localeCompare(b.exercise)
-      );
-    })
-    .slice(0, 3);
+  const strengthLadderRows: StrengthLadderRow[] = adultClinicalContent
+    ? strength
+        .flatMap((stat): StrengthLadderRow[] => {
+          const series = e1rmSeries.get(exerciseHistoryKey(stat.exercise));
+          const prior = series?.points
+            .filter((point) => point.date <= priorCutoff)
+            .at(-1);
+          const placement = strengthLadderPlacement(
+            stat.exercise,
+            stat.freeWeightE1rmKg,
+            prior?.value ?? null,
+            sex,
+            bodyweightKg
+          );
+          return placement
+            ? [
+                {
+                  exercise: stat.exercise,
+                  placement,
+                },
+              ]
+            : [];
+        })
+        .sort((a, b) => {
+          const aMove =
+            a.placement.current.e1rmKg -
+            (a.placement.prior?.e1rmKg ?? a.placement.current.e1rmKg);
+          const bMove =
+            b.placement.current.e1rmKg -
+            (b.placement.prior?.e1rmKg ?? b.placement.current.e1rmKg);
+          return (
+            Number(b.placement.moved) - Number(a.placement.moved) ||
+            bMove - aMove ||
+            a.exercise.localeCompare(b.exercise)
+          );
+        })
+        .slice(0, 3)
+    : [];
   const recentActivities = getActivitiesSince(
     profile.id,
     shiftDateStr(todayStr, -365)
@@ -255,7 +262,7 @@ export default async function OverviewSection() {
     weekDays.end
   );
   const vo2Percentile =
-    fitnessModel.results.find((result) => result.key === "vo2max")
+    fitnessModel?.results.find((result) => result.key === "vo2max")
       ?.percentile ?? null;
   const sports = getSportByActivity(
     profile.id,
@@ -592,7 +599,7 @@ export default async function OverviewSection() {
         </div>
       </div>
 
-      <FitnessCheckStrip model={fitnessModel} />
+      {fitnessModel && <FitnessCheckStrip model={fitnessModel} />}
 
       {/* 3. TRAINING WATCH — true observational exceptions (issue #45, domain 4)
           in one capped card, distinct from the recommendation and coverage above. */}
@@ -617,10 +624,12 @@ export default async function OverviewSection() {
               />
               {/* Mobility remains a separate question and view (#482). */}
               <MobilitySection profileId={profile.id} today={todayStr} />
-              <StrengthStandardsLadder
-                rows={strengthLadderRows}
-                weightUnit={wu}
-              />
+              {adultClinicalContent && (
+                <StrengthStandardsLadder
+                  rows={strengthLadderRows}
+                  weightUnit={wu}
+                />
+              )}
             </>
           ) : suite === "endurance" ? (
             <EnduranceDepthSuite
@@ -628,6 +637,7 @@ export default async function OverviewSection() {
               form={enduranceOverview}
               vo2={vo2Percentile}
               distanceUnit={du}
+              adultClinicalContent={adultClinicalContent}
             />
           ) : (
             <SportDepthSuite cadence={sportCadence} sports={sports} />

@@ -1,7 +1,6 @@
 import { IconFileExport } from "@tabler/icons-react";
-import { DATASETS, PAGE_SIZE, RESTRICTED_DATASETS } from "@/lib/export";
+import { DATASETS, PAGE_SIZE } from "@/lib/export";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import DataTableManager from "@/components/DataTableManager";
 import ExportAllDownload from "@/components/ExportAllDownload";
 
@@ -25,9 +24,7 @@ export default async function DataExport({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const { profile } = await requireSession();
-  const datasets = isTrainingRestricted(profile.id)
-    ? DATASETS.filter((ds) => !RESTRICTED_DATASETS.has(ds.key))
-    : DATASETS;
+  const datasets = DATASETS;
   return (
     <div className="space-y-6">
       {/* Full-account export (issue #18): one portable bundle for this profile —

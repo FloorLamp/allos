@@ -1,6 +1,5 @@
 import { requireSession, accessForProfile } from "@/lib/auth";
 import { requireScope, stampSubjects } from "@/lib/scope";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import {
   buildTrainingLogFeedPage,
@@ -81,7 +80,7 @@ export async function resolveTrainingLogFeedContext(
     // Multi-view (issue #1330): loop-compose the per-profile feed over the whole
     // view-set (each member's newest MATCHING window built in ITS own timezone/
     // labels), merge by date, and stamp subject identity (name/photo/access via
-    // stampSubjects, plus each member's OWN training-restriction) onto each card.
+    // stampSubjects) onto each card.
     const merged = buildMultiViewTrainingLogGroups(
       scope.viewIds,
       scope.actingProfileId,
@@ -94,9 +93,6 @@ export async function resolveTrainingLogFeedContext(
         scope,
         scope.viewIds.map((id) => ({ profileId: id }))
       ).map((s) => [s.profileId, s.subject])
-    );
-    const restrictedByProfile = new Map(
-      scope.viewIds.map((id) => [id, isTrainingRestricted(id)])
     );
     groups = merged.map((g) => ({
       ...g,
@@ -112,7 +108,6 @@ export async function resolveTrainingLogFeedContext(
                 photoPath: subject.photoPath,
                 photoVersion: subject.photoVersion,
                 canWrite: subject.access === "write",
-                restricted: restrictedByProfile.get(subject.profileId) ?? false,
               }
             : undefined,
         };

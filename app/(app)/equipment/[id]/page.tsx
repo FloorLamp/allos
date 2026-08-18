@@ -6,7 +6,6 @@ import { today } from "@/lib/db";
 import { getEquipmentById } from "@/lib/equipment";
 import { getEquipmentUsageById, getEquipmentSessions } from "@/lib/queries";
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { kindOf } from "@/lib/types";
 import { kgTo, kmTo, round } from "@/lib/units";
 import { formatLastUsed } from "@/lib/usage-format";
@@ -57,8 +56,6 @@ export default async function EquipmentDetailPage(props: {
 }) {
   const params = await props.params;
   const { login, profile } = await requireSession();
-  if (isTrainingRestricted(profile.id)) redirect("/");
-
   const id = Number(params.id);
   const equipment = id ? getEquipmentById(profile.id, id) : undefined;
   if (!equipment) notFound();

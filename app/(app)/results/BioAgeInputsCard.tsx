@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { IconActivityHeartbeat, IconCircleCheck } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getProfileAge } from "@/lib/settings";
 import { getBioAgeReadings } from "@/lib/queries";
 import {
@@ -32,11 +31,9 @@ import { clinicalResultDetailHref } from "@/lib/hrefs";
 export default async function BioAgeInputsCard() {
   const { profile } = await requireSession();
 
-  // Adult gate — hidden for child profiles, mirroring the computation's floor (and
-  // the fitness age-gate as a defensive belt-and-suspenders).
+  // Adult-only population estimate: unknown and minor profiles see no bio-age UI.
   const age = getProfileAge(profile.id);
-  const hiddenForProfile =
-    isBioAgeHiddenForAge(age) || isTrainingRestricted(profile.id);
+  const hiddenForProfile = isBioAgeHiddenForAge(age);
 
   const { draws, presentInputs } = getBioAgeReadings(profile.id);
   const completeness = inputCompleteness(presentInputs);

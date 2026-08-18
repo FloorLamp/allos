@@ -1,8 +1,7 @@
 // Dashboard widget registry — PURE data + merge logic, no JSX and no
 // DB, so it's importable by both the server page and the client grid and fully
 // unit-tested. The catalog is the source of truth for which widgets exist, their
-// default order (array index), whether they're fitness-gated (hidden for
-// age-restricted profiles), whether they're on by default, and their grid span.
+// default order (array index), whether they're on by default, and their grid span.
 // The per-profile customization (order + hidden ids) is stored elsewhere
 // (lib/settings.ts) as a DashboardLayout blob and merged against this catalog by
 // the resolve* functions here, so a stored layout survives the catalog gaining or
@@ -38,8 +37,8 @@ export interface WidgetDef {
   // On by default for a fresh profile (or a widget the stored layout has never
   // seen). Off-by-default widgets stay hidden until the user opts in.
   defaultOn: boolean;
-  // Fitness-oriented: never rendered or listed for age-restricted profiles,
-  // replacing the old per-card `!restricted` JSX guards.
+  // Training-oriented metadata retained for catalog descriptions and audits;
+  // it does not gate visibility. Coaching and recaps use the profile's own data.
   fitness: boolean;
   // Does this card exist to be ACTED on today (issue #1890)? True for a card whose
   // body carries a decision to make or a log/fix affordance meant to be tapped —
@@ -76,6 +75,9 @@ export interface WidgetDef {
   // the Nutrition nav entry. The page resolves the bit (isFoodLoggingRelevant) and
   // passes it via the WidgetGate.
   requiresFoodLogging?: boolean;
+  // Adult-only route/content class (Longevity and Protocols). The page resolves
+  // this from isLongevityRelevant so unknown age hides as well as a known minor.
+  requiresAdultContent?: boolean;
   // Hidden when the named nav-relevance bit is false for the active profile — the
   // #1042 `relevanceKey` gate applied to the dashboard. Only "cycle" is used today
   // (the Cycle-phase card, gated on the SAME bit as the Cycle nav entry, so the card
@@ -136,6 +138,7 @@ export interface WidgetGate {
   foodLogging?: boolean;
   // The nav-relevance `cycle` bit; gates `relevanceKey === "cycle"` widgets.
   cycle?: boolean;
+  adultContent?: boolean;
 }
 
 // Per-profile customization. `order` is the display order of widget ids; `hidden`
@@ -419,6 +422,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     // slots inside the actionable band rather than after the glance cards.
     actionable: true,
     span: "half",
+    requiresAdultContent: true,
   },
   {
     id: "data-quality",
@@ -617,6 +621,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     actionable: false,
     span: "half",
     dataAware: true,
+    requiresAdultContent: true,
   },
   {
     id: "coaching-observations",
@@ -624,8 +629,8 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     description:
       "A calm rollup of the observational patterns that otherwise live only on their own tabs — training plateaus/balance, weight-log hygiene, off-pace goals, and adherence patterns. FYIs, not alerts; dismiss any and it's silenced everywhere.",
     // On by default so the tab-only findings gain dashboard REACH (issue #449) —
-    // discoverable without becoming pushy. Not fitness-gated: it spans body-metric
-    // hygiene and medication adherence too, which matter for a restricted profile.
+    // discoverable without becoming pushy. Available at every life stage: it spans
+    // body-metric hygiene and medication adherence as well as training observations.
     // Not data-aware: it self-hides (renders nothing) when no observation is firing,
     // so an empty state would be noise rather than an onboarding CTA.
     defaultOn: true,
@@ -707,22 +712,19 @@ export function widgetDisplayState(
 }
 
 // The widgets a profile is eligible to customize, in registry order: everything
-// except pinned widgets (rendered separately), fitness widgets on an age-restricted
-// profile, and per-`WidgetGate` entries whose gate bit is off for the profile
+// except pinned widgets (rendered separately) and per-`WidgetGate` entries whose gate bit is off for the profile
 // (`requiresFoodLogging` on an infant, `relevanceKey` when the relevance bit is
 // false) — the dashboard twin of the nav's per-entry gating. The gate defaults to
 // all-eligible so a caller that doesn't thread it never over-hides.
-export function customizableWidgetDefs(
-  restricted: boolean,
-  gate: WidgetGate = {}
-): WidgetDef[] {
+export function customizableWidgetDefs(gate: WidgetGate = {}): WidgetDef[] {
   const foodLogging = gate.foodLogging ?? true;
   const cycle = gate.cycle ?? true;
+  const adultContent = gate.adultContent ?? true;
   return DASHBOARD_WIDGETS.filter(
     (w) =>
       !w.pinned &&
-      !(restricted && w.fitness) &&
       !(w.requiresFoodLogging && !foodLogging) &&
+      !(w.requiresAdultContent && !adultContent) &&
       !(w.relevanceKey === "cycle" && !cycle)
   );
 }
@@ -743,11 +745,10 @@ export function customizableWidgetDefs(
 // — nothing is removed by adaptation. `widgetDisplayState` above owns the precedence.
 export function resolveWidgetList(
   layout: DashboardLayout | null,
-  restricted: boolean,
   emptyIds: Set<string> = new Set(),
   gate: WidgetGate = {}
 ): ResolvedWidget[] {
-  const eligible = customizableWidgetDefs(restricted, gate);
+  const eligible = customizableWidgetDefs(gate);
   const eligibleIds = new Set(eligible.map((w) => w.id));
 
   const ordered: string[] = [];
@@ -779,11 +780,10 @@ export function resolveWidgetList(
 // The visible widgets a profile should render, in display order.
 export function resolveWidgets(
   layout: DashboardLayout | null,
-  restricted: boolean,
   emptyIds: Set<string> = new Set(),
   gate: WidgetGate = {}
 ): WidgetDef[] {
-  return resolveWidgetList(layout, restricted, emptyIds, gate)
+  return resolveWidgetList(layout, emptyIds, gate)
     .filter((w) => w.visible)
     .map((w) => w.def);
 }

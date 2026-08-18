@@ -1,5 +1,4 @@
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import {
@@ -43,12 +42,8 @@ function recapTitle(
 // (#1297), and — since #1489 — the **Compare** overlay, which used to be a tab of
 // its own.
 //
-// THE GATE LIVES HERE, NOT ON THE TAB (#1489). The AI half is an age-gated surface,
-// but compare is age-neutral and training-restricted profiles have always had it.
-// So the hub offers the Insights tab to everyone and this section hides the gated
-// half: a restricted profile gets the compare section alone (and never a generate
-// form — the write actions re-check the gate independently, since hidden UI is not
-// an auth boundary).
+// These analyses summarize the profile's own history and are age-neutral. Any
+// adult-population statistic they consume is already absent from its source model.
 export default async function InsightsSection({
   range,
   cmpA,
@@ -61,150 +56,138 @@ export default async function InsightsSection({
   cmpNormalized: boolean;
 }) {
   const { login, profile } = await requireSession();
-  const restricted = isTrainingRestricted(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   // Read every insight (ALL_ROWS overrides the default 30-row cap) so an older
-  // window isn't silently truncated before filterSeriesByRange windows it. Skipped
-  // wholesale for a restricted profile — the gated half doesn't render, so it
-  // doesn't run its queries either.
-  const insights = restricted
-    ? []
-    : filterSeriesByRange(getDailyInsights(profile.id, ALL_ROWS), range);
+  // window isn't silently truncated before filterSeriesByRange windows it.
+  const insights = filterSeriesByRange(
+    getDailyInsights(profile.id, ALL_ROWS),
+    range
+  );
   // Recap narratives are not date-windowed by the shared range — a weekly/monthly
   // recap is a standing summary, so show the most recent few regardless of window.
-  const recaps = restricted
-    ? []
-    : getRecentPeriodRecaps(profile.id, RECAP_KINDS, 6);
+  const recaps = getRecentPeriodRecaps(profile.id, RECAP_KINDS, 6);
 
   // Situation-window impact cards (#1297): pooled protocol-compare over the declared
   // transition log. Standing summaries like the recaps (not range-windowed) — the pooling
   // spans a situation's whole windowed history — so they lead the tab regardless of range.
-  const situationImpacts = restricted
-    ? []
-    : getSituationImpacts(
-        profile.id,
-        today(profile.id),
-        getUnitPrefs(login.id).weightUnit
-      );
+  const situationImpacts = getSituationImpacts(
+    profile.id,
+    today(profile.id),
+    getUnitPrefs(login.id).weightUnit
+  );
 
   return (
     <div className="space-y-6">
-      {!restricted && (
-        <div className="space-y-6" data-testid="insights-ai">
-          <SituationImpactCards impacts={situationImpacts} />
+      <div className="space-y-6" data-testid="insights-ai">
+        <SituationImpactCards impacts={situationImpacts} />
 
-          {/* ---- Weekly / monthly AI recap (issue #20) ---- */}
-          <section className="space-y-4">
-            <form
-              action={generateRecap}
-              data-testid="recap-narrative-form"
-              className="card flex flex-wrap items-end gap-3"
-            >
-              <div className="mr-1">
-                <div className="label">Period recap</div>
-                <p className="max-w-md text-xs text-slate-500 dark:text-slate-400">
-                  An AI narrative of your training, adherence, and body-metric
-                  trends over the last week, month or quarter, grounded in your
-                  recap data. Uses Claude when <code>ANTHROPIC_API_KEY</code> is
-                  set; otherwise a built-in summary is generated.
-                </p>
-              </div>
-              {/* One button per recap SCALE, from the registry (#2178) — the
+        {/* ---- Weekly / monthly AI recap (issue #20) ---- */}
+        <section className="space-y-4">
+          <form
+            action={generateRecap}
+            data-testid="recap-narrative-form"
+            className="card flex flex-wrap items-end gap-3"
+          >
+            <div className="mr-1">
+              <div className="label">Period recap</div>
+              <p className="max-w-md text-xs text-slate-500 dark:text-slate-400">
+                An AI narrative of your training, adherence, and body-metric
+                trends over the last week, month or quarter, grounded in your
+                recap data. Uses Claude when <code>ANTHROPIC_API_KEY</code> is
+                set; otherwise a built-in summary is generated.
+              </p>
+            </div>
+            {/* One button per recap SCALE, from the registry (#2178) — the
                   narrative periods and the recap's own cadence are one
                   vocabulary, so a fourth scale would not need a fourth button
                   written by hand. */}
-              {REVIEW_CADENCES.map((sc) => (
-                <SubmitButton
-                  key={sc.scale}
-                  name="period"
-                  value={sc.value}
-                  pendingLabel="Generating…"
-                >
-                  {`✦ ${sc.label}`}
-                </SubmitButton>
-              ))}
-            </form>
-
-            {recaps.length > 0 && (
-              <div className="space-y-4">
-                {recaps.map((n) => (
-                  <div
-                    key={n.id}
-                    className="card"
-                    data-testid="recap-narrative"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                        {recapTitle(
-                          parseRecapScale(n.kind),
-                          n.period_start,
-                          n.period_end,
-                          formatPrefs
-                        )}
-                      </h3>
-                      <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
-                        {n.model ?? "n/a"}
-                      </span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                      {n.summary}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* ---- Daily insight ---- */}
-          <section className="space-y-4">
-            <form
-              action={generateForDate}
-              className="card flex flex-wrap items-end gap-4"
-            >
-              <div>
-                <label className="label" htmlFor="insight-date">
-                  Date to analyze
-                </label>
-                <DateField
-                  id="insight-date"
-                  name="date"
-                  defaultValue={today(profile.id)}
-                />
-              </div>
-              <SubmitButton pendingLabel="Generating…">
-                ✦ Generate analysis
+            {REVIEW_CADENCES.map((sc) => (
+              <SubmitButton
+                key={sc.scale}
+                name="period"
+                value={sc.value}
+                pendingLabel="Generating…"
+              >
+                {`✦ ${sc.label}`}
               </SubmitButton>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                AI-generated daily analysis of your activity, metrics, and
-                goals. Uses Claude when <code>ANTHROPIC_API_KEY</code> is set;
-                otherwise a built-in summary is generated.
-              </p>
-            </form>
+            ))}
+          </form>
 
-            {insights.length === 0 ? (
-              <EmptyState message="No insights in this range. Generate one above, or widen the date range." />
-            ) : (
-              <div className="space-y-4">
-                {insights.map((i) => (
-                  <div key={i.id} className="card">
-                    <div className="mb-2 flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                        {formatLongDate(i.date, formatPrefs)}
-                      </h3>
-                      <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
-                        {i.model ?? "n/a"}
-                      </span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-                      {i.summary}
-                    </p>
+          {recaps.length > 0 && (
+            <div className="space-y-4">
+              {recaps.map((n) => (
+                <div key={n.id} className="card" data-testid="recap-narrative">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                      {recapTitle(
+                        parseRecapScale(n.kind),
+                        n.period_start,
+                        n.period_end,
+                        formatPrefs
+                      )}
+                    </h3>
+                    <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
+                      {n.model ?? "n/a"}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-      )}
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                    {n.summary}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ---- Daily insight ---- */}
+        <section className="space-y-4">
+          <form
+            action={generateForDate}
+            className="card flex flex-wrap items-end gap-4"
+          >
+            <div>
+              <label className="label" htmlFor="insight-date">
+                Date to analyze
+              </label>
+              <DateField
+                id="insight-date"
+                name="date"
+                defaultValue={today(profile.id)}
+              />
+            </div>
+            <SubmitButton pendingLabel="Generating…">
+              ✦ Generate analysis
+            </SubmitButton>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              AI-generated daily analysis of your activity, metrics, and goals.
+              Uses Claude when <code>ANTHROPIC_API_KEY</code> is set; otherwise
+              a built-in summary is generated.
+            </p>
+          </form>
+
+          {insights.length === 0 ? (
+            <EmptyState message="No insights in this range. Generate one above, or widen the date range." />
+          ) : (
+            <div className="space-y-4">
+              {insights.map((i) => (
+                <div key={i.id} className="card">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                      {formatLongDate(i.date, formatPrefs)}
+                    </h3>
+                    <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
+                      {i.model ?? "n/a"}
+                    </span>
+                  </div>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                    {i.summary}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
 
       {/* ---- Compare (#1489: the former Compare tab, now a section) ---- */}
       <section id="compare" className="scroll-mt-28 space-y-4">

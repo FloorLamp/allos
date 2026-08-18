@@ -79,7 +79,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
   });
 
   it("buildMetricSeries weight is the deduped daily series — one point per day, no zig-zag (#395)", () => {
-    const [weight] = buildMetricSeries(profileId, 1, {}, false);
+    const [weight] = buildMetricSeries(profileId, 1, {});
     expect(weight.key).toBe("metric:weight");
     // One point per DAY (not one per raw row): the two-device DAY2 collapses to one.
     const dates = weight.points.map((p) => p.date);
@@ -97,7 +97,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
   });
 
   it("the tile's latest agrees with the dashboard QuickStats current weight (#395)", () => {
-    const [weight] = buildMetricSeries(profileId, 1, {}, false);
+    const [weight] = buildMetricSeries(profileId, 1, {});
     const tileLatest = weight.points[weight.points.length - 1].value;
     expect(tileLatest).toBe(getDashboardStats(profileId).latestWeight?.value);
     expect(getDashboardStats(profileId).latestWeight).toEqual(
@@ -107,7 +107,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
 
   it("routes Overview metrics to their detailed chart surfaces", () => {
     const byKey = new Map(
-      buildMetricSeries(profileId, 1, {}, false).map((series) => [
+      buildMetricSeries(profileId, 1, {}).map((series) => [
         series.key,
         series.href,
       ])
@@ -157,7 +157,7 @@ describe("logical outcome identity", () => {
                'Resting Heart Rate', 61, 'bpm')`
     ).run(profileId);
 
-    const options = listCompareOptions(profileId, false);
+    const options = listCompareOptions(profileId);
     expect(options.metrics.map((option) => option.key)).toContain(
       "metric:resting_hr"
     );
@@ -165,7 +165,7 @@ describe("logical outcome identity", () => {
       "result:Resting Heart Rate"
     );
 
-    const digest = buildDigestSeries(profileId, 1, {}, false);
+    const digest = buildDigestSeries(profileId, 1, {});
     expect(
       digest.filter(
         (series) => series.label === TREND_METRIC_META["resting-hr"].title

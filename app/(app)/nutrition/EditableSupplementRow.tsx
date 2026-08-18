@@ -55,7 +55,6 @@ export default function EditableSupplementRow({
   isTaken,
   isSkipped,
   strip,
-  trainingRestricted,
   refillRate,
   poolChip = null,
   historicalStatus = null,
@@ -77,7 +76,6 @@ export default function EditableSupplementRow({
   isTaken: boolean;
   isSkipped: boolean;
   strip: AdherenceDot[];
-  trainingRestricted: boolean;
   refillRate: DoseRate | null;
   // The shared-bottle chip when this item draws from a pool (#1374) — it REPLACES
   // the per-item refill badge, since a linked item keeps no private count.
@@ -408,7 +406,6 @@ export default function EditableSupplementRow({
               pgxVariants={pgxVariants}
               pairs={pairs}
               onDone={() => setEditing(false)}
-              trainingRestricted={trainingRestricted}
             />
           </div>
         </ModalShell>

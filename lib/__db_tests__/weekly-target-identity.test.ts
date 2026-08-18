@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { trainingItems, trainingPaceLine } from "@/lib/queries/upcoming/plans";
 import { practiceIdentity } from "@/lib/practice";
-import { setWeekMode } from "@/lib/settings";
+import { setStoredAge, setWeekMode } from "@/lib/settings";
 import { trainingSignalKey } from "@/lib/workout-nudge";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
@@ -24,6 +24,7 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
   // Rolling window, so the week the targets are measured over never depends on which
   // weekday the suite happens to run.
   setWeekMode(profileId, "rolling");
+  setStoredAge(profileId, 15);
   return { profileId, anchor: today(profileId) };
 }
 

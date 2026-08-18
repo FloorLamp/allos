@@ -20,10 +20,14 @@ import { searchAll } from "@/lib/queries";
 import type { SearchHit } from "@/lib/search-rank";
 
 function newProfile(name: string): number {
-  return Number(
+  const profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  db.prepare(
+    "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-01-01')"
+  ).run(profileId);
+  return profileId;
 }
 
 function hit(

@@ -281,8 +281,8 @@ describe("isBioAgeHiddenForAge", () => {
     expect(isBioAgeHiddenForAge(50)).toBe(false);
   });
 
-  it("never hides on unknown age", () => {
-    expect(isBioAgeHiddenForAge(null)).toBe(false);
+  it("hides on unknown age", () => {
+    expect(isBioAgeHiddenForAge(null)).toBe(true);
   });
 });
 

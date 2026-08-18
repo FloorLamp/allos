@@ -345,8 +345,8 @@ export function gatherDigestInput(
   };
 
   // Today: the MERGED "what's due" list (issue #1108). ONE engine (#221) — the
-  // banded collectUpcoming, which already drops snoozed/dismissed items and
-  // training items for an age-restricted profile, and whose dose items carry the
+  // banded collectUpcoming, which already drops snoozed/dismissed items and whose
+  // dose items carry the
   // #558 predicted-training-day dueness. This REPLACES the digest's own dueDoseIds /
   // frequency-target computation, so the morning message and the Upcoming page/hero
   // can't disagree, and a page dismissal finally silences the digest too.

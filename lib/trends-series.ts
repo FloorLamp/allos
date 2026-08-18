@@ -123,7 +123,6 @@ interface MetricDef {
   color: string;
   href: AppRoute;
   decimals: number;
-  restricted?: boolean; // a training surface (hidden for age-restricted profiles)
   // Metric-aware digest "trending" threshold (#37); omitted → digest default
   // (0.05). Weight barely moves in percent so a low bar is right; volume is
   // spiky day-to-day so it needs a high one.
@@ -170,19 +169,17 @@ const METRIC_DEFS: MetricDef[] = [
     color: "#0ea5e9",
     href: "/training?tab=analyze",
     decimals: 0,
-    restricted: true,
     minPctChange: 0.15, // training volume swings hugely session-to-session
   },
 ];
 
 // Build the standard body/training metric series (weight, body fat, resting HR,
-// training volume) windowed to `range`, in the login's display units. Volume is a
-// training surface, so it's dropped for age-restricted profiles.
+// training volume) windowed to `range`, in the login's display units. These are
+// all the profile's own readings and are age-neutral.
 export function buildMetricSeries(
   profileId: number,
   loginId: number,
-  range: DateRange,
-  restricted: boolean
+  range: DateRange
 ): TrendSeries[] {
   const wu = getUnitPrefs(loginId).weightUnit;
   const weightUnitSuffix = ` ${wu}`;
@@ -225,21 +222,21 @@ export function buildMetricSeries(
     }
   };
 
-  return METRIC_DEFS.filter(
-    (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
-  ).map((d) => ({
-    key: metricSeriesKey(d.id),
-    label: d.label,
-    shortLabel: d.shortLabel,
-    unit: d.id === "weight" || d.id === "volume" ? weightUnitSuffix : d.unit,
-    color: d.color,
-    href: d.href,
-    kind: "metric" as const,
-    decimals: d.decimals,
-    points: filterSeriesByRange(pointsFor(d.id), range),
-    range: null,
-    minPctChange: d.minPctChange,
-  }));
+  return METRIC_DEFS.filter((d) => !(d.id === "bodyfat" && hideBodyFat)).map(
+    (d) => ({
+      key: metricSeriesKey(d.id),
+      label: d.label,
+      shortLabel: d.shortLabel,
+      unit: d.id === "weight" || d.id === "volume" ? weightUnitSuffix : d.unit,
+      color: d.color,
+      href: d.href,
+      kind: "metric" as const,
+      decimals: d.decimals,
+      points: filterSeriesByRange(pointsFor(d.id), range),
+      range: null,
+      minPctChange: d.minPctChange,
+    })
+  );
 }
 
 // Rebuild a saved trend metric that is not one of the original standard Overview
@@ -413,13 +410,13 @@ export function placeholderBiomarkerTile(canonical: string): TrendSeries {
 // retest-due or flagged analyte leads every picker rather than whatever starts with
 // "A". MEMBERSHIP is untouched: the age gates above and the body-metric exclusion below
 // still decide what is offered at all, so a gated metric is neither tile nor option.
-export function listCompareOptions(
-  profileId: number,
-  restricted: boolean
-): { metrics: TrendOption[]; biomarkers: TrendOption[] } {
+export function listCompareOptions(profileId: number): {
+  metrics: TrendOption[];
+  biomarkers: TrendOption[];
+} {
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
   const metrics = METRIC_DEFS.filter(
-    (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
+    (d) => !(d.id === "bodyfat" && hideBodyFat)
   ).map((d) => ({
     key: metricSeriesKey(d.id),
     label: d.label,
@@ -447,11 +444,10 @@ export function resolveSeriesByKey(
   profileId: number,
   loginId: number,
   range: DateRange,
-  key: string,
-  restricted: boolean
+  key: string
 ): TrendSeries | null {
   if (key.startsWith("metric:")) {
-    const metrics = buildMetricSeries(profileId, loginId, range, restricted);
+    const metrics = buildMetricSeries(profileId, loginId, range);
     return metrics.find((m) => m.key === key) ?? null;
   }
   if (key.startsWith("result:")) {
@@ -465,8 +461,7 @@ export function resolveSeriesByKey(
 // appointments, and active-situation changes. Every source read goes through an
 // already PROFILE-SCOPED query (getMedicationCourses / getIntakeItems /
 // getAppointments) or the per-profile situation-event log (getSituationEvents), so
-// no owned SQL is added here; the pure lib/trend-annotations does the shaping. None
-// of these sources is training-derived, so they're safe for restricted profiles.
+// no owned SQL is added here; the pure lib/trend-annotations does the shaping.
 export function buildTrendAnnotations(
   profileId: number,
   range: DateRange
@@ -546,10 +541,9 @@ export function buildPracticeDigestSeries(
 export function buildDigestSeries(
   profileId: number,
   loginId: number,
-  range: DateRange,
-  restricted: boolean
+  range: DateRange
 ): TrendSeries[] {
-  const out = buildMetricSeries(profileId, loginId, range, restricted);
+  const out = buildMetricSeries(profileId, loginId, range);
   for (const name of getUsedCanonicalNamesWithDerived(profileId)) {
     if (bodyMetricKindForBiomarker(name) != null) continue;
     const s = buildBiomarkerSeries(profileId, name, range);

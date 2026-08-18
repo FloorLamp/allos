@@ -25,7 +25,6 @@ import {
 } from "./findings";
 import { buildDigestSeries } from "./trends-series";
 import { summarizeTrends } from "./trends-digest";
-import { isTrainingRestricted } from "./age-gate";
 import { getUnitPrefs, getProfileSex, getProfileAge } from "./settings";
 import { quickRanges } from "./timeline-format";
 import {
@@ -85,11 +84,10 @@ function gatherInsightContext(
   ).map((pr) => cardioPrToFinding(pr, units.distanceUnit));
 
   // "What's trending" digest over the trailing 90-day window, adapted to findings.
-  const restricted = isTrainingRestricted(profileId);
   // By LABEL, not index — #1938 grew the shared set to four pills, and this read
   // must keep meaning "the 90D window" whatever the row's length.
   const range = quickRanges(date).find((qr) => qr.label === "90D")!;
-  const series = buildDigestSeries(profileId, loginId ?? 0, range, restricted);
+  const series = buildDigestSeries(profileId, loginId ?? 0, range);
   const trends = summarizeTrends(series, { limit: 5 }).map(trendItemToFinding);
 
   // IntakeItem/med adherence for the day.

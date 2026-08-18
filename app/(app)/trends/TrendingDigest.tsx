@@ -6,7 +6,6 @@ import {
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   buildDigestSeries,
   buildPracticeDigestSeries,
@@ -39,14 +38,13 @@ const LEAD_CHIPS = 3;
 // band repeating "over this window" only delayed the charts.
 export default async function TrendingDigest({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
-  const restricted = isTrainingRestricted(profile.id);
   const todayStr = today(profile.id);
   // Metrics + biomarkers, plus wellness-practice CADENCE (#1632): a practice whose
   // days-per-week really moved is a mover like any other. Its series carries no
   // reference range on purpose, so the chip stays neutral — a coaching-tier signal
   // does not get a crossing colour (see buildPracticeDigestSeries).
   const series = [
-    ...buildDigestSeries(profile.id, login.id, range, restricted),
+    ...buildDigestSeries(profile.id, login.id, range),
     ...buildPracticeDigestSeries(profile.id, range, todayStr),
   ];
   // Drop chips the user has dismissed (findings bus, #39) — a dismissal keyed by

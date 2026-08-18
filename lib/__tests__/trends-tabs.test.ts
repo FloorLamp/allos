@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_TRENDS_TAB,
   TRENDS_TABS,
-  isTabRestricted,
   parseTab,
   trendsTabStrip,
 } from "@/lib/trends-tabs";
@@ -51,7 +50,7 @@ describe("parseTab", () => {
 
 describe("trendsTabStrip", () => {
   it("is FOUR tabs in frequency order (#1644)", () => {
-    const strip = trendsTabStrip(false);
+    const strip = trendsTabStrip();
     expect(strip.map((t) => t.id)).toEqual([
       "overview",
       "fitness",
@@ -66,31 +65,11 @@ describe("trendsTabStrip", () => {
     }
   });
 
-  it("keeps Insights for a restricted profile, dropping only Fitness (#1489)", () => {
-    const strip = trendsTabStrip(true);
-    expect(strip.map((t) => t.id)).toEqual([
-      "overview",
-      "nutrition",
-      "insights",
-    ]);
-  });
-
-  it("labels every entry from the live tab set, for both roles", () => {
-    for (const restricted of [false, true]) {
-      for (const entry of trendsTabStrip(restricted)) {
-        expect(TRENDS_TABS).toContain(entry.id);
-        expect(entry.label).toBeTruthy();
-      }
+  it("labels every entry from the live tab set", () => {
+    for (const entry of trendsTabStrip()) {
+      expect(TRENDS_TABS).toContain(entry.id);
+      expect(entry.label).toBeTruthy();
     }
-  });
-});
-
-describe("isTabRestricted", () => {
-  it("only restricts fitness — insights is section-gated now (#1489)", () => {
-    expect(isTabRestricted("fitness", true)).toBe(true);
-    expect(isTabRestricted("insights", true)).toBe(false);
-    expect(isTabRestricted("overview", true)).toBe(false);
-    expect(isTabRestricted("fitness", false)).toBe(false);
   });
 });
 

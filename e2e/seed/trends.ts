@@ -256,11 +256,10 @@ export function seedCuratedOverview(): void {
   }
 }
 
-// ── Compare folds into Insights, gate moves to the section ──
+// ── Compare folds into Insights ──
 export function seedCompareFold(): void {
   // ── Compare-into-Insights fixture (#1489) ────────────────────────────────────
-  // A TRAINING-RESTRICTED profile that can actually run a comparison: an age UNDER
-  // the instance gate (13, set by e2e/seed/coverage-gaps.ts) with TWO overlappable
+  // A minor profile that can actually run a comparison, with TWO overlappable
   // series — weight + resting HR on the same dates — so the compare overlay draws
   // its dual-axis chart for a minor. It is dedicated rather than shared because the
   // seeded "Riley (child)" has no second metric to overlay.
@@ -274,8 +273,7 @@ export function seedCompareFold(): void {
   const cmpId = fixtureProfileId(TRENDS_COMPARE_PROFILE);
   const cmpToday = today(cmpId);
 
-  // ~10 years old → under the 13-year gate → training-restricted. (Set, not
-  // ignored, on a re-seed: a stale birthdate would silently un-restrict it.)
+  // ~10 years old. Set on every re-seed so the life-stage fixture stays explicit.
   db.prepare(
     `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', ?)
        ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`

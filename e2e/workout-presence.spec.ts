@@ -6,7 +6,6 @@ import { hashPasswordSync } from "../lib/password";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import {
   E2E_LOGIN_PRESENCE,
-  E2E_LOGIN_CHILD,
   E2E_MEMBER_PASSWORD,
   PRESENCE_PROFILE,
 } from "./fixture-logins";
@@ -154,23 +153,6 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   // really gone rather than merely un-rendered.
   await page.goto("/");
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
-});
-
-test("a restricted profile (no live workout mode) never shows the dock", async ({
-  browser,
-}) => {
-  test.slow();
-  // Riley is a child (training-restricted) — presence is never gathered, so no dock.
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_CHILD,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    await expect(page.getByTestId("workout-dock")).toHaveCount(0);
-  } finally {
-    await page.context().close();
-  }
 });
 
 // ── A COMPLETED manual log is never live (#1441) ─────────────────────────────

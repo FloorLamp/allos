@@ -48,8 +48,6 @@ interface ActivityEditorApi {
   openCreate: (prefill?: { type?: PracticeType; date?: string }) => void;
   // Start a LIVE workout (issue #340): opens a fresh create form (date=today,
   // start=now) in the in-gym layout — the rest timer + set check-off flow. A
-  // no-op for an age-restricted profile (strength is gated, #489); gate the
-  // affordance on `canStartWorkout`.
   //
   // #1893: with a session ALREADY live this RESUMES it (reopens the docked session,
   // epoch untouched) instead of clearing state and re-stamping the start instant. The
@@ -57,7 +55,7 @@ interface ActivityEditorApi {
   // in-progress session either — defence in depth, not a substitute for rendering
   // `workoutOffer`.
   openLive: () => void;
-  // Whether live workout mode is available (false for age-restricted profiles).
+  // Whether live workout mode is available.
   canStartWorkout: boolean;
   // The ONE start-vs-resume derivation every workout entry point renders (#1893/#221):
   // the bolt, the palette's live action, the Training Log aside, and the routine card all
@@ -66,8 +64,7 @@ interface ActivityEditorApi {
   workoutOffer: WorkoutOffer;
   // "Log this session" (#740): open a CREATE form pre-filled with a resolved
   // routine session (the day's slots as exercises + prescribed sets) IN live mode,
-  // so a routine day goes straight into the in-gym flow. A no-op for an
-  // age-restricted profile (strength is gated, #489) — gate on `canStartWorkout`.
+  // so a routine day goes straight into the in-gym flow.
   //
   // #1893: guarded exactly like openLive — a running session is resumed, never
   // restarted, so the coaching card cannot discard a workout in progress.
@@ -123,7 +120,6 @@ export default function ActivityEditorProvider({
   recentActivityEquipment = [],
   bodyweightKg,
   lastActivity = null,
-  restricted = false,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
@@ -144,9 +140,6 @@ export default function ActivityEditorProvider({
   // The single most recent activity (issue #337), seeding the "Repeat last
   // activity" palette command / mobile quick action. null when nothing's logged.
   lastActivity?: ActivityEditData | null;
-  // True for an age-restricted profile (#489): strength is gated, so live
-  // workout mode (issue #340) is unavailable. Hides the Start-workout affordances.
-  restricted?: boolean;
   // Deload/plateau inputs for the strength editor (#923): whether the active routine
   // is in its deload week (+ which lifts to shave), and the active plateau hints.
   deloadContext: FormDeloadContext;
@@ -379,7 +372,6 @@ export default function ActivityEditorProvider({
     reopenedRef.current = true;
     // A stored row this provider has no edit data for cannot be reopened here — but
     // a LIVE session always can, whatever its row id, because presence supplies it.
-    if (marker.live && restricted) return;
     if (!marker.live && marker.recordId != null) return;
     if (marker.live && marker.recordId != null && !liveEditData) return;
     // Reopening is a response to state this document booted with, not a render this
@@ -415,7 +407,7 @@ export default function ActivityEditorProvider({
       updateDocked(false);
       setOpen(true);
     });
-  }, [liveEditData, resumeLive, restricted, updateDocked]);
+  }, [liveEditData, resumeLive, updateDocked]);
 
   // A fresh-load active session: nothing is mounted in this client, but the
   // server-hydrated #921 presence says one is running and its draft is reopenable.
@@ -478,8 +470,6 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       openLive: () => {
-        // Age-restricted profiles have no strength surface (#489) — no-op.
-        if (restricted) return;
         // A session is already running (#1893): reopen it. Never clear the editor and
         // never re-stamp liveStartEpoch — that would silently reset the running
         // session's clock and drop its in-flight sets.
@@ -489,11 +479,9 @@ export default function ActivityEditorProvider({
         }
         startLiveSession({ type: "strength", title: "" }, null);
       },
-      canStartWorkout: !restricted,
+      canStartWorkout: true,
       workoutOffer: offer,
       openSession: (prefillData) => {
-        // Age-restricted profiles have no strength surface (#489) — no-op.
-        if (restricted) return;
         // Same guard as openLive (#1893): the routine card's "Log this session" must
         // not discard a workout already in progress. The running session wins; the
         // routine slate is still one tap away once it is finished.
@@ -565,7 +553,6 @@ export default function ActivityEditorProvider({
       registerDock,
       tz,
       lastActivity,
-      restricted,
       subjectName,
       offer,
       resumeOffer,

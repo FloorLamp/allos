@@ -4,7 +4,6 @@ import PageContainer from "@/components/PageContainer";
 import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   parseTrainingTab,
   retiredTrainingTabTarget,
@@ -13,7 +12,6 @@ import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
 import AnalyzeSection from "./AnalyzeSection";
 import PlanSection from "./PlanSection";
-import RestrictedActivityView from "./RestrictedActivityView";
 import { isRealIsoDate } from "@/lib/date";
 import { today } from "@/lib/db";
 
@@ -26,12 +24,9 @@ export default async function TrainingPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const searchParams = await props.searchParams;
-  // Type-aware training restriction (#489): a minor keeps age-neutral sport/cardio
-  // tracking via a lightweight activity log instead of losing the surface outright.
-  // The adult hub below (strength e1RM/standards, fitness-age, coaching, goals)
-  // stays gated — this branch swaps it for the sport/cardio log.
   const { profile } = await requireSession();
-  if (isTrainingRestricted(profile.id)) return <RestrictedActivityView />;
+  // The activity hub itself is age-neutral. Adult-population statistics are
+  // gated inside the sections that render them.
 
   // Retired tab names redirect to their canonical URLs (#2892/#2894) — an
   // explicit mapping, not the unknown-tab fallback, because these links live on

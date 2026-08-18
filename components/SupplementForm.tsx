@@ -37,7 +37,7 @@ import type { IntakeObligation } from "@/lib/types";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
-  availableConditions,
+  CONDITIONS,
   CONDITION_LABELS,
   OBLIGATIONS,
   OBLIGATION_HINTS,
@@ -77,7 +77,6 @@ export default function SupplementForm({
   pgxVariants = [],
   pairs: initialPairs = [],
   onDone,
-  trainingRestricted = false,
   initialSupply = null,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
@@ -90,16 +89,12 @@ export default function SupplementForm({
   pgxVariants?: PgxVariantInput[];
   pairs?: IntakePair[];
   onDone?: () => void;
-  trainingRestricted?: boolean;
   // Opened FROM a shared bottle (#1705) — the cabinet's "Add for another person". The
   // product fields are seeded from it and it links on save.
   initialSupply?: SupplyOption | null;
 }) {
   const s = supplement;
-  const conditionOptions = availableConditions(
-    trainingRestricted,
-    s?.condition
-  );
+  const conditionOptions = CONDITIONS;
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const fid = s?.id ?? "new";

@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { LogoMark } from "@/components/Wordmark";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
 import { getEquipment } from "@/lib/equipment";
@@ -30,7 +29,9 @@ import {
   getUnitPrefs,
   getProfileBirthdate,
   getProfileSex,
+  getProfileAge,
 } from "@/lib/settings";
+import { isLongevityRelevant } from "@/lib/life-stage";
 import {
   completeOnboarding,
   continueOnboardingData,
@@ -209,10 +210,9 @@ export default async function OnboardingPage({
   const activeStep = resolveOnboardingStep(params.step, state, hasFirstValue);
   const readOnly = access === "read";
   const layout = getDashboardLayout(profile.id);
-  const dashboardWidgetList = resolveWidgetList(
-    layout,
-    isTrainingRestricted(profile.id)
-  );
+  const dashboardWidgetList = resolveWidgetList(layout, undefined, {
+    adultContent: isLongevityRelevant(getProfileAge(profile.id)),
+  });
   const visibleWidgets = new Set(
     dashboardWidgetList
       .filter((widget) => widget.visible)

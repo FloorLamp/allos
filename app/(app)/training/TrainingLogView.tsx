@@ -43,7 +43,7 @@ import {
   appendDayGroups,
   reconcileTrainingLogPaging,
 } from "@/lib/training-log-card";
-import { trainingLogFitnessSurfacesVisible } from "@/lib/training-log-multi-view";
+import { trainingLogDrillInsVisible } from "@/lib/training-log-multi-view";
 import {
   EMPTY_TRAINING_LOG_FILTERS,
   filterTrainingLogGroups,
@@ -58,7 +58,7 @@ export type { TrainingLogCardData, DayGroup };
 // than one profile is in view; undefined in single view, so the feed renders
 // byte-identical. Carries the acting profile id — the card layer re-keys each card's
 // affordances to its own subject (edit → subject profile; chip on non-acting rows;
-// fitness surfaces per the subject's own age gate).
+// drill-ins stay on the acting profile's own aggregates).
 export interface TrainingLogMultiView {
   actingProfileId: number;
 }
@@ -118,6 +118,7 @@ export default function TrainingLogView({
   recentByExercise,
   showHeader = true,
   sex,
+  adultClinicalContent = false,
   canWriteVideos = false,
   multiView,
   initialCreateDate,
@@ -149,6 +150,8 @@ export default function TrainingLogView({
   showHeader?: boolean;
   // Profile sex, so the exercise detail's strength standards use the right chart.
   sex?: Sex | null;
+  // Population strength standings are adult-only; history remains age-neutral.
+  adultClinicalContent?: boolean;
   // Whether the acting login can write to the feed's profile — gates the per-card
   // form-check video affordances (#1224). The server actions re-gate regardless.
   canWriteVideos?: boolean;
@@ -774,10 +777,7 @@ export default function TrainingLogView({
       !multi ||
       c.subject == null ||
       (multiView != null && c.subject.profileId === multiView.actingProfileId);
-    const fitness = trainingLogFitnessSurfacesVisible({
-      isActing,
-      subjectRestricted: c.subject?.restricted ?? false,
-    });
+    const fitness = trainingLogDrillInsVisible(isActing);
     return (
       <ActivityRecord
         key={c.activity.id}
@@ -840,6 +840,7 @@ export default function TrainingLogView({
       }
       headerRight={closeDetailButton}
       sex={sex}
+      showLevel={adultClinicalContent}
     />
   ) : selectedCardio ? (
     <CardioDetailPanel
@@ -1143,11 +1144,9 @@ export default function TrainingLogView({
                   </h2>
                   <div className="space-y-3">
                     {g.cards.map((c) => {
-                      // Per-member (issue #1330): a card's adult fitness drill-ins
-                      // (exercise/cardio/sport detail) show only for the ACTING
-                      // profile's own, un-restricted cards — the acting profile's
-                      // detail panel is what's loaded, and a subject's own age gate
-                      // governs its cards. Single view → isActing true, so byte-
+                      // Per-member (issue #1330): exercise/cardio/sport drill-ins
+                      // show only for the ACTING profile's own cards — the acting
+                      // profile's detail panel is what's loaded. Single view → isActing true, so byte-
                       // identical (drill-ins on every card). Per-card gating
                       // lives in recordFor — ONE render path serves the desktop
                       // pane and this phone expansion (#2897's three-host rule).

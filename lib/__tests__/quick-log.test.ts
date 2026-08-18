@@ -60,7 +60,7 @@ describe("primaryQuickLog", () => {
 
 describe("quickLogMenu", () => {
   it("lists every action for a training-capable profile", () => {
-    expect(quickLogMenu(false).map((i) => i.id)).toEqual([
+    expect(quickLogMenu().map((i) => i.id)).toEqual([
       "log-activity",
       // #2745 — the retired top-bar bolt keeps its user-initiated home beside
       // Log activity, with Start/Resume resolved by the activity context.
@@ -87,25 +87,10 @@ describe("quickLogMenu", () => {
     ]);
   });
 
-  it("drops the training-only entries for an age-restricted profile", () => {
-    const ids = quickLogMenu(true).map((i) => i.id);
-    expect(ids).not.toContain(LOG_ACTIVITY_ID);
-    expect(ids).not.toContain("live-workout");
-    expect(ids).toEqual([
-      "log-food",
-      "log-dose",
-      "log-measurements",
-      "log-practice",
-      "log-mood",
-      "log-period",
-      "add-document",
-    ]);
-  });
-
   // Issue #1892 — the cycle relevance gate, the SAME `cycle` bit as the Cycle nav
   // entry and the dashboard phase widget.
   it("drops the period row for a profile where cycle tracking is irrelevant", () => {
-    const ids = quickLogMenu(false, false).map((i) => i.id);
+    const ids = quickLogMenu(false).map((i) => i.id);
     expect(ids).not.toContain("log-period");
     // Nothing else moves — the gate is per-entry, not a mode.
     expect(ids).toEqual([
@@ -123,13 +108,7 @@ describe("quickLogMenu", () => {
   it("defaults to SHOWING the period row, so an unthreaded caller never over-hides", () => {
     // The DEFAULT_NAV_RELEVANCE posture: a surface that hasn't resolved the bitset
     // must not hide a row the profile is entitled to.
-    expect(quickLogMenu(false).map((i) => i.id)).toContain("log-period");
-  });
-
-  it("applies BOTH gates at once", () => {
-    const ids = quickLogMenu(true, false).map((i) => i.id);
-    expect(ids).not.toContain(LOG_ACTIVITY_ID);
-    expect(ids).not.toContain("log-period");
+    expect(quickLogMenu().map((i) => i.id)).toContain("log-period");
   });
 });
 

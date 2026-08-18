@@ -145,7 +145,7 @@ function isUnmetWeeklyTarget(p: FrequencyTargetProgress): boolean {
 
 // The morning digest's weekly-progress line (#1819 item 4): "2 of 3 training targets
 // on pace — behind on Back, Chest", or null for a profile with no weekly TRAINING
-// targets (and for an age-restricted one, mirroring the items).
+// targets.
 //
 // Scoped to the `training` domain's own targets since #2578, and that is what keeps
 // the invariant rather than breaking it. The digest applies this phrase in place of a
@@ -156,7 +156,6 @@ function isUnmetWeeklyTarget(p: FrequencyTargetProgress): boolean {
 // are counted plainly by their own domains in the same band, which is honest and
 // costs no new digest surface.
 export function trainingPaceLine(profileId: number): string | null {
-  if (isTrainingRestricted(profileId)) return null;
   return weeklyTargetPaceLine(
     weeklyFloorTargets(profileId)
       .filter((p) => weeklyTargetIdentity(p)?.domain === "training")
@@ -167,13 +166,12 @@ export function trainingPaceLine(profileId: number): string | null {
   );
 }
 
-// Unmet weekly frequency targets (reuses getFrequencyTargetProgress). Hidden for
-// age-restricted profiles, mirroring the Training surface. A weekly concern, so
+// Unmet weekly frequency targets (reuses getFrequencyTargetProgress). These are
+// age-neutral planning rows. A weekly concern, so
 // each unmet target sits in This week with a progress due-text. The row's domain,
 // detail and destination come from its SCOPE (WEEKLY_TARGET_IDENTITY, #2578) — a
 // food-group target is not a training target with a barbell on it.
 export function trainingItems(profileId: number): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   return weeklyFloorTargets(profileId)
     .filter(isUnmetWeeklyTarget)
     .map((p) => {
@@ -210,7 +208,6 @@ export function trainingItems(profileId: number): UpcomingItem[] {
 // Dismissible through the shared bus, keyed per (activity, week start), so declining
 // this week's plan never silences next week's.
 export function outdoorPlanItems(profileId: number): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   return getOutdoorPlans(profileId, today(profileId)).map((plan) => ({
     key: plan.dedupeKey,
     domain: "training" as const,
@@ -235,9 +232,8 @@ export function outdoorPlanItems(profileId: number): UpcomingItem[] {
 //
 // A weekly concern, so it sits in the This-week band with a progress due-text (a range
 // shows the ceiling: "2/3–5 this week"). Reuses getFrequencyTargetProgress (one
-// computation); hidden for age-restricted profiles, mirroring the Training surface.
+// computation); age-neutral like the underlying practice log.
 export function practiceItems(profileId: number): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   return getFrequencyTargetProgress(profileId)
     .filter((p) => p.target.scope_kind === "practice")
     .filter(isUnmetWeeklyTarget)
@@ -276,7 +272,6 @@ export function stepsPaceItems(
   profileId: number,
   today: string
 ): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   const obs = getStepsPaceObservation(profileId, today);
   if (!obs) return [];
   return [
@@ -295,7 +290,7 @@ export function stepsPaceItems(
 
 // Endurance event days (#839): each active plan's event as a dated forward-looking item,
 // so the EVENT DAY rides the Upcoming page + the calendar feed (domain "training" is a
-// FeedCategory). Hidden for age-restricted profiles, mirroring the Training surface. The
+// FeedCategory). It is age-neutral like the plan record itself. The
 // key namespace is DISTINCT from the coaching long-session finding prefix ("endurance:"),
 // so the event marker and the calm long-session nudge never collide. Not suppressible — a
 // dated event is a hard commitment, not a dismissable nudge.
@@ -307,7 +302,6 @@ export function enduranceEventItems(
   today: string,
   distanceUnit: DistanceUnit = "km"
 ): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   return getActiveEndurancePlans(profileId)
     .filter((p) => p.eventDate >= today)
     .map((p) => {
@@ -387,7 +381,6 @@ export function markCarePlanItemDone(
     return { kind: "completed" };
   });
 }
-import { isTrainingRestricted } from "../../age-gate";
 import {
   carePlanUpcomingItems,
   isCarePlanItemOpen,

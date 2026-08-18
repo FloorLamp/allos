@@ -51,8 +51,7 @@ import FitnessSportSection from "./FitnessSportSection";
 // ftab=cardio` from a Telegram nudge or a bookmark still lands here, now on a page
 // where the zone content it wanted is simply a section.
 //
-// The whole tab stays TAB-level age-gated (RESTRICTED_TRENDS_TABS): a
-// training-restricted profile never sees the chip and never reaches the section.
+// These are the profile's own history analytics, so the tab is age-neutral.
 export default async function FitnessSection({ range }: { range: DateRange }) {
   const { profile } = await requireSession();
   const todayStr = today(profile.id);

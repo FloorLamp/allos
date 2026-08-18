@@ -44,12 +44,11 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // lowered to lock the improvement in. A `<=` would have let the 49 accumulate
 // exactly as it did.
 const DB_ISOLATED = 29;
-// 6 since #2970: radiation-dose-unlisted-modality replaces the typical-dose DATASET, to
-// reach a case the shipped one cannot express — a modality whose entry resolves to 0 mSv
-// and that is absent from the non-ionizing list. The classifier must call that "not
-// estimated", never "no ionizing radiation", and no shared stub can serve it: every other
-// dose spec needs the real dataset, and a stub-by-default one would quietly retune them.
-const PURE_ISOLATED = 6;
+// 7 since #3065: Longevity's server-component FitnessSection is tested directly with
+// controlled session, age, and assembler boundaries. It must prove that minor and unknown
+// profiles return null before assembling adult population data; sharing those module stubs
+// would change the real dependencies exercised by every other pure spec.
+const PURE_ISOLATED = 7;
 
 const ADVICE =
   "\n\nAn isolated spec re-pays the whole module graph — ~259ms against ~26ms " +

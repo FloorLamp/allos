@@ -62,7 +62,7 @@ export default function MobileNav({
   profiles,
   viewIds = [],
   readOnlyIds = [],
-  restricted = false,
+  adultContentAvailable = true,
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
@@ -90,9 +90,8 @@ export default function MobileNav({
   // Accessible profiles held READ-only by this login (issue #33) — the per-row
   // hint in the switcher panel.
   readOnlyIds?: number[];
-  // When true, the fitness-oriented nav entries are hidden for the active
-  // (age-restricted) profile. Resolved on the server; see lib/age-gate.ts.
-  restricted?: boolean;
+  // Known-adult predicate for the Longevity nav entry.
+  adultContentAvailable?: boolean;
   // Reveals the admin-only nav entries (the household overview) in the drawer.
   isAdmin?: boolean;
   // True when the instance has >1 profile; gates the Household overview.
@@ -268,7 +267,7 @@ export default function MobileNav({
                 // lives in the top bar, where it is readable without opening
                 // anything (#1801). Same component, placed once per viewport.
                 showIdentityBar={false}
-                restricted={restricted}
+                adultContentAvailable={adultContentAvailable}
                 isAdmin={isAdmin}
                 multiProfile={multiProfile}
                 foodLoggingRelevant={foodLoggingRelevant}
@@ -288,7 +287,6 @@ export default function MobileNav({
       <QuickLogSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        restricted={restricted}
         // The same server-resolved relevance bitset the drawer's nav entries gate on,
         // so the sheet's period row and the Cycle nav entry appear together (#1892).
         cycleRelevant={relevance.cycle}

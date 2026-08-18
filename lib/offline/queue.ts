@@ -693,12 +693,6 @@ export function classifySetReplay(outcome: SaveActivityOutcome): {
 } {
   if (outcome.ok) return { status: "done" };
   switch (outcome.reason) {
-    case "restricted":
-      return {
-        status: "rejected",
-        reason:
-          "Activity logging isn't available for this profile, so the workout wasn't saved.",
-      };
     case "not-owned":
       return {
         status: "rejected",

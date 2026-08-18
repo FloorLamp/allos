@@ -10,7 +10,6 @@ import { now as clockNow } from "../../lib/clock";
 import { utcSqlString } from "../../lib/date";
 import { upsertConnection } from "../../lib/integrations/connections";
 import { hashShareToken } from "../../lib/share-token";
-import { setMinTrainingAge } from "../../lib/age-gate";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_HC,
@@ -22,7 +21,7 @@ import {
 } from "../fixture-logins";
 import { seedMemberLogin, fixtureProfileId } from "./common";
 
-// ── E2E coverage-gap fixtures (age gate + integration-state profiles) ──
+// ── E2E coverage-gap fixtures (life stage + integration-state profiles) ──
 export function seedCoverageGaps(): void {
   // ── E2E coverage-gap fixtures (issue #391) ────────────────────────────────────
   // Fill the browser-coverage holes the audit flagged: share links, immunizations,
@@ -31,18 +30,6 @@ export function seedCoverageGaps(): void {
   // by a purpose-built member login + grant (created directly below) so the spec can
   // sign in as an isolated session in its own cookie context — never mutating the
   // shared admin storageState's active profile. All synthetic; idempotent.
-
-  // The instance-wide age gate, ON at 13 whole years. This is deliberately global,
-  // but SAFE for every existing spec: it restricts ONLY a profile whose known age is
-  // under 13, and the sole such profile is the ~18-month-old "Riley (child)". Profile
-  // 1 (the admin's active profile, ~40y) is never restricted, so the training /
-  // equipment specs that run as profile 1 are untouched; Test Child / Sam Rivers have
-  // no birthdate → unknown age → never restricted; and the demo webServer boots from
-  // scripts/seed.ts ONLY (no seed-events), so its DB never sees this setting. The two
-  // child-profile specs (kids-growth, pediatric-ranges) only visit Trends / Settings /
-  // Biomarkers as Riley — none of which the gate touches. The equipment-manager spec
-  // uses it to prove /equipment bounces a restricted profile to the dashboard.
-  setMinTrainingAge(13);
 
   // Riley (child) is seeded by scripts/seed.ts; grant the child member to it.
   const rileyId = (
@@ -92,6 +79,6 @@ export function seedCoverageGaps(): void {
   seedMemberLogin(E2E_LOGIN_MOBILE_HC, mobileHcId);
 
   console.log(
-    `e2e: enabled age gate (13) + seeded member logins for the child (${rileyId}), Strava-reauth (${stravaReauthId}), and Health-Connect (${healthConnectId}) fixture profiles (#391)`
+    `e2e: seeded member logins for the child (${rileyId}), Strava-reauth (${stravaReauthId}), and Health-Connect (${healthConnectId}) fixture profiles (#391)`
   );
 }

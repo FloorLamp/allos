@@ -7,7 +7,6 @@ import {
   type SettingsGroupContext,
   type SettingsGroupId,
 } from "@/lib/settings-groups";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings";
 import type { SessionLogin, SessionProfile } from "@/lib/auth";
@@ -25,7 +24,6 @@ export function settingsGroupContext(
 ): SettingsGroupContext {
   return {
     isAdmin: login.role === "admin",
-    trainingRelevant: !isTrainingRestricted(profile.id),
     nutritionRelevant: isFoodLoggingRelevant(getProfileAge(profile.id)),
   };
 }

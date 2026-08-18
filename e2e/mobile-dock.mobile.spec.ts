@@ -176,7 +176,7 @@ test("the sheet opens on the segment the current route is about", async ({
   await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
 });
 
-test("an age-restricted profile gets the puck, and a sheet with no Train segment", async ({
+test("a minor gets Training and the full age-neutral activity logger", async ({
   browser,
 }) => {
   // #2651's owner ruling (2026-08-13). The dock shipped with the puck hidden for a
@@ -197,19 +197,16 @@ test("an age-restricted profile gets the puck, and a sheet with no Train segment
     const dock = child.getByTestId("mobile-dock");
     await expect(dock).toBeVisible();
     await expect(dock.getByTestId("dock-log-puck")).toBeVisible();
-    // The slot substitution is unchanged: Timeline stands in for Training.
-    await expect(dock.getByTestId("dock-slot-timeline")).toBeVisible();
-    await expect(dock.getByTestId("dock-slot-training")).toHaveCount(0);
+    await expect(dock.getByTestId("dock-slot-training")).toBeVisible();
+    await expect(dock.getByTestId("dock-slot-timeline")).toHaveCount(0);
 
     const sheet = child.getByTestId("quick-log-sheet");
     await tapUntilOpen(child, child.getByTestId("dock-log-puck"), sheet);
 
-    // What the ruling did NOT change: the activity entry is still gated away, so
-    // the track carries no Train segment at all rather than an empty one.
     const track = sheet.getByTestId("log-sheet-segments");
     await expect(track).toBeVisible();
-    await expect(track.getByTestId("log-sheet-segment-train")).toHaveCount(0);
-    await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
+    await expect(track.getByTestId("log-sheet-segment-train")).toBeVisible();
+    await expect(sheet.getByTestId("quick-log-log-activity")).toBeVisible();
 
     // And what it reinstates: a log this profile may make, one tap from the puck.
     const row = await showLogRow(sheet, "log-food");

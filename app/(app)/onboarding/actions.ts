@@ -10,7 +10,6 @@ import {
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate, utcInstant } from "@/lib/date";
 import { customizableWidgetDefs } from "@/lib/dashboard-widgets";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import {
   completeOnboardingState,
@@ -45,6 +44,7 @@ import {
   getTimezone,
   getProfileBirthdate,
   getProfileSex,
+  getProfileAge,
   isValidTimezone,
   setDashboardLayout,
   setOnboardingState,
@@ -58,6 +58,7 @@ import {
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
+import { isLongevityRelevant } from "@/lib/life-stage";
 import { DEFAULT_PROTEIN_GOAL_LEVEL } from "@/lib/protein";
 import type { Sex } from "@/lib/types";
 
@@ -188,7 +189,9 @@ export async function saveOnboardingDashboard(formData: FormData) {
     onboardingError("Review the data step before shaping your dashboard.", 4);
   }
 
-  const eligible = customizableWidgetDefs(isTrainingRestricted(profile.id));
+  const eligible = customizableWidgetDefs({
+    adultContent: isLongevityRelevant(getProfileAge(profile.id)),
+  });
   const eligibleIds = new Set(eligible.map((widget) => widget.id));
   const requested = new Set(formData.getAll("widget").map(String));
   const visible = eligible

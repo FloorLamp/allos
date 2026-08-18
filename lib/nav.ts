@@ -84,9 +84,8 @@ import type { NavRelevance, NavRelevanceKey } from "./nav-relevance";
 //     (issue #31) — the Household cross-profile overview is meaningless with one
 //     profile, so a single-profile login (member or one-profile instance) never
 //     sees it while any login granted 2+ profiles does.
-//   - age-gate: hidden when the active profile is age-restricted AND the href is
-//     in the caller's restricted set (see lib/age-gate.ts / Nav's
-//     RESTRICTED_HREFS).
+//   - `adultOnlyHrefs`: hidden when the active profile is not a known adult.
+//     The destination independently enforces the same life-stage boundary.
 //   - `requiresFoodLogging`: gates the Nutrition entry for an infant profile
 //     (< 1 y). Since #746 Nutrition is a Food | Supplements umbrella, and infant
 //     supplements are real (vitamin D drops) even though the food-group serving
@@ -111,12 +110,12 @@ export function isNavLeafVisible(
   },
   ctx: {
     isAdmin: boolean;
-    restricted: boolean;
+    adultContentAvailable: boolean;
     multiProfile: boolean;
     foodLoggingRelevant: boolean;
     hasIntakeItems: boolean;
     relevance: NavRelevance;
-    restrictedHrefs: ReadonlySet<string>;
+    adultOnlyHrefs: ReadonlySet<string>;
   }
 ): boolean {
   if (leaf.adminOnly && !ctx.isAdmin) return false;
@@ -128,6 +127,8 @@ export function isNavLeafVisible(
     !ctx.hasIntakeItems
   )
     return false;
-  if (ctx.restricted && ctx.restrictedHrefs.has(leaf.href)) return false;
+  if (!ctx.adultContentAvailable && ctx.adultOnlyHrefs.has(leaf.href)) {
+    return false;
+  }
   return true;
 }

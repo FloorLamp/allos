@@ -12,7 +12,7 @@ import {
 
 describe("dockSlots", () => {
   it("is Home · Training · Trends · More for an ordinary profile", () => {
-    expect(dockSlots(false).map((s) => s.id)).toEqual([
+    expect(dockSlots().map((s) => s.id)).toEqual([
       "home",
       "training",
       "trends",
@@ -20,41 +20,26 @@ describe("dockSlots", () => {
     ]);
   });
 
-  it("substitutes Timeline for Training on an age-restricted profile", () => {
-    const slots = dockSlots(true);
-    expect(slots.map((s) => s.id)).toEqual([
-      "home",
-      "timeline",
-      "trends",
-      "more",
-    ]);
-    // The substitution replaces rather than removes: a restricted profile gets a
-    // full row, not a gap where Training used to be.
-    expect(slots).toHaveLength(DOCK_SLOT_COUNT);
-  });
-
   it("is always exactly four slots — the puck's two-either-side layout", () => {
-    for (const restricted of [false, true]) {
-      expect(dockSlots(restricted)).toHaveLength(DOCK_SLOT_COUNT);
-    }
+    expect(dockSlots()).toHaveLength(DOCK_SLOT_COUNT);
   });
 
   it("gives every slot but More a destination, and More none", () => {
-    for (const slot of dockSlots(false)) {
+    for (const slot of dockSlots()) {
       if (slot.id === "more") expect(slot.href).toBeNull();
       else expect(slot.href).not.toBeNull();
     }
   });
 
   it("labels every slot (the caption IS the accessible name)", () => {
-    for (const slot of [...dockSlots(false), ...dockSlots(true)]) {
+    for (const slot of dockSlots()) {
       expect(slot.label.length).toBeGreaterThan(0);
     }
   });
 });
 
 describe("activeDockSlotId", () => {
-  const slots: readonly DockSlot[] = dockSlots(false);
+  const slots: readonly DockSlot[] = dockSlots();
 
   it("lights Home only on the dashboard itself", () => {
     expect(activeDockSlotId(slots, "/")).toBe("home");
@@ -80,11 +65,5 @@ describe("activeDockSlotId", () => {
     // claim the drawer is the page.
     expect(activeDockSlotId(slots, "/medications")).toBeNull();
     expect(activeDockSlotId(slots, "/settings/notifications")).toBeNull();
-  });
-
-  it("lights Timeline on a restricted profile's substituted slot", () => {
-    expect(activeDockSlotId(dockSlots(true), "/timeline")).toBe("timeline");
-    // …and Training is not even a slot there, so /training lights nothing.
-    expect(activeDockSlotId(dockSlots(true), "/training")).toBeNull();
   });
 });

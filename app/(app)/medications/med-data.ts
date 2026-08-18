@@ -62,7 +62,6 @@ import {
 } from "@/lib/medication-list";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, zonedDateParts, parseUtcSql } from "@/lib/date";
 import {
   getActiveSituations,
@@ -173,7 +172,6 @@ export interface MedicationsData {
   // The profile's local wall clock (HH:MM) at load, so the Today panel can flag a
   // past-bucket unresolved dose in the profile's timezone (#852 item 1).
   nowHhmm: string;
-  trainingRestricted: boolean;
   // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so a
   // child never sees an age-gated food note (alcohol → adult). Null when unknown.
   age: number | null;
@@ -270,8 +268,6 @@ export function loadMedicationsData(
     predictedWorkoutDay,
     postWorkoutReady,
   };
-  const trainingRestricted = isTrainingRestricted(profileId);
-
   // Adherence strip inputs (shared with the supplement row via the pure
   // intakeAdherenceStrip — #313/#747 parity).
   const workoutDays = new Set(getActivityDates(profileId));
@@ -581,7 +577,6 @@ export function loadMedicationsData(
     tz,
     nowIso: nowInstant.toISOString(),
     nowHhmm: hhmm,
-    trainingRestricted,
     age: getProfileAge(profileId),
     taken,
     skipped,

@@ -361,15 +361,11 @@ export function isBioAgeAgeInput(e: PhenoAgeInputEffect): boolean {
 
 // ── Adult gate ────────────────────────────────────────────────────────────────
 
-// Hidden for CHILD profiles — the card gates on exactly the adult floor the
-// computation uses (PhenoAge is an adult population model). An UNKNOWN age is never
-// hidden: we hide on a positive under-age match, not on missing data (an unknown-age
-// adult can still see the import checklist). This is the inverse of the shared
-// adult-clinical predicate (lib/life-stage) — `isAdultForClinical` is false for both
-// a child AND an unknown age, so the "hidden" answer must additionally require a
-// KNOWN age to preserve the show-on-unknown policy.
+// Hidden for minor and unknown-age profiles. PhenoAge is an adult population model,
+// so missing age cannot safely opt into it. This is the inverse of the shared
+// adult-clinical predicate (lib/life-stage).
 export function isBioAgeHiddenForAge(age: number | null): boolean {
-  return age != null && !isAdultForClinical(age);
+  return !isAdultForClinical(age);
 }
 
 // ── Surface state ─────────────────────────────────────────────────────────────
@@ -388,7 +384,7 @@ export function isBioAgeHiddenForAge(age: number | null): boolean {
 // catalog and the answer is useful whether or not the panel is complete. The states
 // come from here rather than from either page, so the two can never disagree about
 // whether bio-age renders at all. `hiddenForProfile` is the caller's combined gate
-// (isBioAgeHiddenForAge + any surface-level restriction like the training age gate).
+// (`isBioAgeHiddenForAge`).
 export type BioAgeSurface = "hidden" | "checklist" | "hero";
 
 export function bioAgeSurface(

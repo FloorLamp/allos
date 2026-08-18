@@ -35,7 +35,6 @@ import {
   type StartWorkoutResult,
 } from "@/lib/workout-finish";
 import { isRealIsoDate } from "@/lib/date";
-import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 
 // Re-validate every surface that reads activity-derived data after a create/edit/
 // merge/delete: the Training Log feed on /training, the /trends fitness-volume chart +
@@ -84,17 +83,14 @@ export async function saveActivity(
 // Create-at-start (#2870 step 3): starting a live session writes its row before
 // the first set, so the session has a canonical page URL from second one and
 // presence can see it from other devices. Always the ACTING profile (a workout
-// you start is yours), age-gated like every other training write (#489):
-// restricted profiles get cardio only — strength requests are refused, not
-// coerced. The row is the live-draft shape; an abandoned zero-content start is
+// you start is yours):
+// The row is the live-draft shape; an abandoned zero-content start is
 // a draft (#1205 §4), discardable and never a husk in the log.
 export async function startWorkout(
   formData: FormData
 ): Promise<({ ok: true } & StartWorkoutResult) | { ok: false }> {
   const { profile } = await requireWriteAccess();
   const type = formData.get("type") === "cardio" ? "cardio" : "strength";
-  if (!isActivityTypeAllowed(type, isTrainingRestricted(profile.id)))
-    return { ok: false };
   const title = String(formData.get("title") ?? "").slice(0, 200);
   const res = startWorkoutSession(profile.id, { type, title });
   revalidateActivitySurfaces();
@@ -208,11 +204,6 @@ export async function mergeActivities(
   // profile_id) falls back to the acting profile.
   const profileId = await gateItemProfile(formData);
   const profile = { id: profileId };
-  // Merge is an adult-analytics affordance (the Training Log duplicate-review flow) and
-  // is not offered on the restricted profile's lightweight activity log; keep it
-  // fully gated for a restricted profile (#489) so the un-surfaced action can't be
-  // reached out-of-band.
-  if (isTrainingRestricted(profile.id)) return { undoIds: [] };
   const keepId = Number(formData.get("keep_id"));
   // drop_ids is a JSON array (the multi-select); a single drop_id is still accepted
   // for the pairwise callers and the in-flight-form back-compat.
@@ -375,16 +366,6 @@ export async function deleteActivity(
   const profile = { id: profileId };
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
-  // Type-aware restriction (#489): a restricted profile owns only sport/cardio
-  // rows (strength creation is blocked), but guard defensively so a leftover
-  // strength row can't be deleted from the lightweight activity log either — the
-  // gate matches the write path so create/delete agree.
-  if (isTrainingRestricted(profile.id)) {
-    const act = db
-      .prepare("SELECT type FROM activities WHERE id = ? AND profile_id = ?")
-      .get(id, profile.id) as { type: ActivityType } | undefined;
-    if (act && !isActivityTypeAllowed(act.type, true)) return { undoId: null };
-  }
   // Capture the activity + its exercise_sets into the undo holding table and
   // delete it in one transaction (issue #30), so a mis-tap can be undone from the
   // toast. children cascade; captureDelete returns the undo token.

@@ -151,13 +151,12 @@ describe("visibleSettingsGroups", () => {
     expect(ids).toContain("notifications");
   });
 
-  it("drops per-profile groups that don't apply to this profile", () => {
+  it("drops the nutrition group when food logging does not apply", () => {
     const ids = visibleSettingsGroups({
       isAdmin: false,
-      trainingRelevant: false,
       nutritionRelevant: false,
     }).map((g) => g.id);
-    expect(ids).not.toContain("training");
+    expect(ids).toContain("training");
     expect(ids).not.toContain("nutrition");
     expect(ids).toContain("health");
   });

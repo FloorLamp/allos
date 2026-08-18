@@ -14,8 +14,8 @@
 //
 // The shapes: never curated, stars with no explicit positions, an explicitly ordered
 // set, a profile that already saved a standard metric, a positioned/unpositioned mix,
-// an age-restricted profile (training volume gated), and an infant (body fat hidden).
-// The last two are the saved-ref-with-no-tile case: age gates stay a RENDER-time
+// a minor profile and an infant (body fat hidden).
+// The last is the saved-ref-with-no-tile case: life-stage gates stay a RENDER-time
 // filter, so a gated metric is skipped, never rendered empty.
 //
 // The second describe covers the migration itself at the 113 standard: it builds a
@@ -42,7 +42,6 @@ import {
   buildSavedClinicalResultTile,
   type TrendSeries,
 } from "@/lib/trends-series";
-import { isTrainingRestricted, setMinTrainingAge } from "@/lib/age-gate";
 import { setProfileSetting } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
 import { defaultTrendsRange } from "@/lib/timeline-format";
@@ -54,20 +53,15 @@ const SEEDS_MIGRATION = 114;
 
 // ── The Overview composition under test ──────────────────────────────────────
 // A faithful replay of app/(app)/trends/OverviewSection.tsx as it stands NOW: one
-// tile per saved ref, in saved order, with a saved metric the age gate removed
-// simply skipped. This is the membership grid.
+// tile per saved ref, in saved order, with an unavailable saved metric skipped.
 function overviewTileKeys(
   profileId: number,
   loginId: number,
   range: DateRange
 ): string[] {
-  const restricted = isTrainingRestricted(profileId);
   const todayStr = today(profileId);
   const metricByKey = new Map(
-    buildMetricSeries(profileId, loginId, range, restricted).map((t) => [
-      t.key,
-      t,
-    ])
+    buildMetricSeries(profileId, loginId, range).map((t) => [t.key, t])
   );
   const tiles: TrendSeries[] = [];
   for (const ref of getSavedItems(profileId)) {
@@ -96,14 +90,13 @@ function legacyOverviewTileKeys(
   loginId: number,
   range: DateRange
 ): string[] {
-  const restricted = isTrainingRestricted(profileId);
   const todayStr = today(profileId);
   const savedRefs = getSavedItems(profileId).map((s) => ({
     kind: s.kind,
     key: s.key,
   }));
   const tiles: TrendSeries[] = [
-    ...buildMetricSeries(profileId, loginId, range, restricted),
+    ...buildMetricSeries(profileId, loginId, range),
     ...savedRefs
       .filter((r) => r.kind === "clinical-result")
       .map((r) =>
@@ -215,9 +208,8 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
       },
     ],
     [
-      "an age-restricted profile (training volume gated)",
+      "a minor profile (training volume remains available)",
       (p) => {
-        setMinTrainingAge(18);
         setProfileSetting(p, "birthdate", shiftDateStr(today(p), -365 * 10));
         star(p, "clinical-result", "LDL Cholesterol");
       },
@@ -234,23 +226,19 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
     it(`renders what the pre-#1487 sampler rendered — ${name}`, () => {
       const p = newProfile("Seed Fixture");
       setup(p);
-      try {
-        for (const [label, range] of RANGES) {
-          // The old grid, on the profile as it was BEFORE seeding: the sampler's
-          // unconditional metric tiles plus this profile's own curation.
-          const before = legacyOverviewTileKeys(p, 1, range);
-          // Seeding is idempotent, so running it inside the range loop is safe and
-          // asserts the invariant against the SAME profile at both windows.
-          seedStandardMetricSaves(db, p);
-          // The new grid: membership only. Same tiles, same order — which is the
-          // whole claim of #1487, and the reason the seeds are unpositioned and
-          // epoch-stamped (a positioned seed would sort ahead of the user's saves
-          // and this assertion would fail).
-          const after = overviewTileKeys(p, 1, range);
-          expect(after, `${name} @ ${label}`).toEqual(before);
-        }
-      } finally {
-        setMinTrainingAge(null); // global setting — never leak into a sibling case
+      for (const [label, range] of RANGES) {
+        // The old grid, on the profile as it was BEFORE seeding: the sampler's
+        // unconditional metric tiles plus this profile's own curation.
+        const before = legacyOverviewTileKeys(p, 1, range);
+        // Seeding is idempotent, so running it inside the range loop is safe and
+        // asserts the invariant against the SAME profile at both windows.
+        seedStandardMetricSaves(db, p);
+        // The new grid: membership only. Same tiles, same order — which is the
+        // whole claim of #1487, and the reason the seeds are unpositioned and
+        // epoch-stamped (a positioned seed would sort ahead of the user's saves
+        // and this assertion would fail).
+        const after = overviewTileKeys(p, 1, range);
+        expect(after, `${name} @ ${label}`).toEqual(before);
       }
     });
   }
@@ -300,9 +288,8 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
          VALUES (?, ?, 70, 'manual')`
     ).run(p, today(p));
 
-    const restricted = isTrainingRestricted(p);
     const metricByKey = new Map(
-      buildMetricSeries(p, 1, {}, restricted).map((t) => [t.key, t])
+      buildMetricSeries(p, 1, {}).map((t) => [t.key, t])
     );
     const tiles: TrendSeries[] = [];
     for (const ref of getSavedItems(p)) {
@@ -404,7 +391,7 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
     // two drifting (a new standard tile that never seeds would silently vanish from
     // Overview once the grid is membership-driven).
     const p = newProfile("Tile Order");
-    const built = buildMetricSeries(p, 1, {}, false).map((s) =>
+    const built = buildMetricSeries(p, 1, {}).map((s) =>
       s.key.replace(/^metric:/, "")
     );
     expect(built).toEqual([...STANDARD_TREND_METRIC_IDS]);

@@ -31,10 +31,8 @@ import { QUICK_PARAM, shortcutAction } from "@/lib/pwa-shortcuts";
 // shortcut still opens.
 
 export default function QuickShortcutHandler({
-  restricted = false,
   cycleRelevant = true,
 }: {
-  restricted?: boolean;
   // The #1042 `cycle` relevance bit (#1892), so `?quick=log-period` is gated exactly
   // as the sheet row is. The overlay re-checks it server-side regardless.
   cycleRelevant?: boolean;
@@ -70,7 +68,7 @@ export default function QuickShortcutHandler({
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
     setConsumed(raw);
 
-    const action = shortcutAction(raw, restricted, cycleRelevant);
+    const action = shortcutAction(raw, cycleRelevant);
     if (!action) return;
     if (action.kind === "search") {
       openGlobalSearch();
@@ -85,15 +83,7 @@ export default function QuickShortcutHandler({
     // union stays exhaustive so a future one is a compile error here, not a
     // silently dead deep link.
     else router.push(target.href);
-  }, [
-    raw,
-    router,
-    restricted,
-    cycleRelevant,
-    openCreate,
-    openLive,
-    openQuickEntry,
-  ]);
+  }, [raw, router, cycleRelevant, openCreate, openLive, openQuickEntry]);
 
   return (
     <span

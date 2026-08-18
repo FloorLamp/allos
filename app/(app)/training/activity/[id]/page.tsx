@@ -7,7 +7,6 @@ import ActivityVideoStrip from "@/components/activity/ActivityVideoStrip";
 import NotesText from "@/components/NotesText";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { accessForProfile, requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import { getActivityDetailData } from "@/lib/training-activity-detail";
 import { getWorkoutPresence } from "@/lib/queries/presence";
@@ -66,8 +65,6 @@ export default async function TrainingActivityPage(props: {
   if (!Number.isInteger(id) || id <= 0) notFound();
 
   const { login, profile } = await requireSession();
-  if (isTrainingRestricted(profile.id)) redirect("/training");
-
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const data = getActivityDetailData(profile.id, id, units, formatPrefs);

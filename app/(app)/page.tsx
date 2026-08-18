@@ -57,7 +57,7 @@ import {
 } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
-import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import { isFoodLoggingRelevant, isLongevityRelevant } from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
@@ -76,7 +76,6 @@ import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { foodGroupBySlug } from "@/lib/datasets/food-groups";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   getDashboardLayout,
   getOnboardingState,
@@ -211,10 +210,9 @@ export default async function Dashboard() {
   if (access === "write" && storedOnboarding?.status === "not_started") {
     redirect("/onboarding");
   }
-  // Age-restricted profiles don't see the fitness surfaces (Training, AI
-  // Insights), so their fitness dashboard widgets are dropped by the registry
-  // merge (see lib/dashboard-widgets.ts / lib/age-gate.ts).
-  const restricted = isTrainingRestricted(profile.id);
+  // Dashboard coaching, goals, and recaps are based on the profile's own
+  // history, so they are age-neutral. Adult population statistics gate inside
+  // their own model/surface.
   const on = today(profile.id);
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -224,9 +222,9 @@ export default async function Dashboard() {
   // on live mode — a manual fresh-end-time log or a freshness-capped import also
   // enters `finished`. The card feeds off the ONE server-side sessionRecap gather;
   // it disappears when the 60-min window closes on the next render. Skipped for a
-  // restricted profile (no training surface). Shown only when there's strength work
-  // to recap (a pure-cardio finish has no working sets).
-  const finishedPresence = restricted ? null : getWorkoutPresence(profile.id);
+  // Shown only when there's strength work to recap (a pure-cardio finish has no
+  // working sets).
+  const finishedPresence = getWorkoutPresence(profile.id);
   const finishedRecap =
     finishedPresence?.state === "finished" &&
     finishedPresence.activityId != null
@@ -336,10 +334,10 @@ export default async function Dashboard() {
   const widgetGate = {
     foodLogging: isFoodLoggingRelevant(getProfileAge(profile.id)),
     cycle: getNavRelevance(profile.id).cycle,
+    adultContent: isLongevityRelevant(getProfileAge(profile.id)),
   };
   const list = resolveWidgetList(
     getDashboardLayout(profile.id),
-    restricted,
     undefined,
     widgetGate
   );
@@ -648,8 +646,8 @@ export default async function Dashboard() {
     ? getFrequencyTargetProgress(profile.id)
     : [];
 
-  // coaching: the ranked, rule-based recommendations (deterministic, no AI).
-  // Fitness-gated in the registry, so restricted profiles never reach this.
+  // coaching: ranked, rule-based recommendations from the profile's own history
+  // (deterministic, no AI), available at every life stage.
   // Snoozed recommendations (findings bus, #39) drop out here, so a "Not today"
   // on the top rec surfaces the next-ranked one until the snooze expires.
   const coachingRecs = has("coaching")
