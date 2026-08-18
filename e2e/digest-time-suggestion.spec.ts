@@ -28,6 +28,7 @@ import { pinnedTimezone } from "./pinned-timezone";
 
 const PROFILE = 1;
 const PROVIDER = "e2e-digest-time";
+let previousTickInterval: string | undefined;
 
 // #2217's measured 13 nights, as (days back, arrival minute of day, sync lag).
 const MEASURED: [number, number, number][] = [
@@ -139,6 +140,12 @@ function resetDigest(): void {
 }
 
 test.beforeAll(() => {
+  previousTickInterval = withDb(
+    (db) =>
+      db
+        .prepare("SELECT value FROM settings WHERE key = ?")
+        .get("notify_tick_interval_min") as { value: string } | undefined
+  )?.value;
   seedArrivals();
 });
 
@@ -170,6 +177,19 @@ test.afterAll(() => {
     ).run(PROFILE);
     // …and so is the 24-h clock, which is the login-tier default.
     db.prepare(`DELETE FROM login_settings WHERE key = 'time_format'`).run();
+    // `seedArrivals` needs a five-minute scheduler cadence, but the setting is
+    // instance-wide. Restore the worker database so later specs do not inherit
+    // this file's grid.
+    if (previousTickInterval === undefined) {
+      db.prepare("DELETE FROM settings WHERE key = ?").run(
+        "notify_tick_interval_min"
+      );
+    } else {
+      db.prepare(
+        `INSERT INTO settings (key, value) VALUES ('notify_tick_interval_min', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+      ).run(previousTickInterval);
+    }
   });
 });
 

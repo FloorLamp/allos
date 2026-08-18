@@ -284,12 +284,23 @@ test("a session is measured against its own like-for-like peers (#3009)", async 
     await expect(comparison).toContainText(
       /within \d+% of this session’s distance/
     );
-    // Speed and heart rate both have peers carrying them, so both are measured.
-    await expect(member.getByTestId("activity-comparison-speed")).toContainText(
-      /median/
+    // Speed and heart rate both have peers carrying them, so both are available
+    // in the converged comparison chart. Selecting either metric updates the one
+    // shared ranking instead of rendering parallel metric blocks.
+    const metrics = comparison.getByRole("group", {
+      name: "Comparison metric",
+    });
+    const speed = metrics.getByRole("button", { name: "Speed" });
+    const heartRate = metrics.getByRole("button", { name: "Heart rate" });
+    await expect(speed).toHaveAttribute("aria-pressed", "true");
+    await expect(heartRate).toBeVisible();
+    await expect(member.getByTestId("activity-comparison-range")).toContainText(
+      /Median/
     );
+    await heartRate.click();
+    await expect(heartRate).toHaveAttribute("aria-pressed", "true");
     await expect(
-      member.getByTestId("activity-comparison-heart-rate")
+      comparison.getByRole("list", { name: /Average heart rate across/ })
     ).toBeVisible();
   } finally {
     await member.close();
