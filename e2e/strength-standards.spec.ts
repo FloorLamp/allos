@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { hydratedClick } from "./helpers";
 // #152: an estimated 1RM gains a bodyweight-band strength-standard from ONE model
 // (lib/strength-standards.json) that now feeds every strength-level surface — the
 // exercise-detail coaching line + level badge, the Analyze "Benchmarks" card, and
@@ -13,21 +14,31 @@ import { test, expect } from "./fixtures";
 test("exercise detail shows the bodyweight-band strength standard line (#152)", async ({
   page,
 }) => {
-  // Training → Log: clicking a lift on a training log card opens the per-exercise
-  // detail panel, which carries the coaching STANDING line. (#1492 moved this
-  // host: Trends → Fitness became the WINDOWED analytics lens — four sections of
-  // trend charts — so the full-history explorer that used to carry the panel is
-  // gone from it; /training owns the "do" surfaces. Analyze renders the SAME panel
-  // with showLevel=false, because there the standing is the Benchmarks card the
-  // second test drives — one standing per surface, never both.)
-  await page.goto("/training");
+  // Training → Log: clicking a lift on a training log record opens the
+  // per-exercise detail panel, which carries the coaching STANDING line. (#1492
+  // moved this host: Trends → Fitness became the WINDOWED analytics lens — four
+  // sections of trend charts — so the full-history explorer that used to carry
+  // the panel is gone from it; /training owns the "do" surfaces. Analyze renders
+  // the SAME panel with showLevel=false, because there the standing is the
+  // Benchmarks card the second test drives — one standing per surface, never
+  // both.)
+  await page.goto("/training?tab=log");
 
   const main = page.getByRole("main");
-  // A COVERED core lift (a dataset barbell lift). The seeded Leg day card carries
-  // Back Squat; the drill-in button names the lift it opens.
-  const squatDrillIn = main
+  // The feed is slim rows (#2897): the exercise drill-in buttons live on the
+  // full record card in the reading pane, so select a seeded Leg day session
+  // first (hydratedClick — a pure client toggle right after the goto).
+  const legDayRow = main
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Leg day" })
+    .first(); // first-ok: any seeded Leg day session carries Back Squat, and EVERY drill-in opens the same panel
+  await hydratedClick(page, legDayRow);
+  // A COVERED core lift (a dataset barbell lift). The seeded Leg day record
+  // carries Back Squat; the drill-in button names the lift it opens.
+  const squatDrillIn = page
+    .getByTestId("training-log-reading-pane")
     .getByRole("button", { name: "Back Squat", exact: true })
-    .first(); // first-ok: the seeded Back Squat drill-in — the lift is logged on several days and EVERY button opens the same panel
+    .first(); // first-ok: the pane record's Back Squat drill-in — the lift may repeat across sets, and EVERY button opens the same panel
   await squatDrillIn.click();
   const standard = main.getByTestId("strength-standard").first(); // first-ok: asserts a strength-standard row renders — order-agnostic presence
   await expect(standard).toBeVisible();

@@ -19,12 +19,14 @@ import { seedWorkerSession } from "./seed/session";
 import {
   seedTrainingLogCard,
   seedTrainingZones,
+  seedSessionPeers,
   seedActivityFormPaths,
   seedEndurancePlans,
   seedTrainingRollup,
   seedLabValueGoal,
   seedLoadContexts,
   seedWeekSpine,
+  seedOverviewActionStates,
 } from "./seed/training";
 import {
   seedIntegrationSyncEvents,
@@ -160,6 +162,7 @@ seedSleep();
 seedSleepWaiting();
 seedMultiSourceMetric();
 seedTrainingZones();
+seedSessionPeers();
 seedRuleDomains();
 seedGoalPacing();
 seedDropReport();
@@ -270,6 +273,9 @@ seedTrendsSparse();
 // Appended LAST (#2652): one new profile plus its own weight/sleep/vital rows, so
 // every existing fixture's row ids stay exactly where they were.
 seedDormantDomains();
+// Appended LAST (#3062): two new profiles make the no-routine and rest branches
+// visible without shifting any older fixture's row ids.
+seedOverviewActionStates();
 // LAST, and it must stay last: this mints the admin session every worker starts
 // with, and `createSession` records the profile the session lands on. Running it
 // before a fixture that adds profiles or grants would pin the session to a world

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledFill } from "./helpers";
+import { hydratedClick, openConfirm, settledFill } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath, frozenNow } from "./worker-env";
 import {
@@ -228,6 +228,112 @@ function plantRunReport(portalName: string, at?: string) {
            checked_ok_at = excluded.checked_ok_at`
       )
       .run(account.id, portal.id, stamp, stamp, stamp);
+  });
+}
+
+// The filename prefix this spec's delivered archives carry, so the fixture can remove
+// exactly its own rows.
+const DELIVERED_PREFIX = "delivery archive portal ";
+
+// A DELIVERY-ONLY push on the caller's portal (#1888/#2914): a `contacted: false`
+// report, the archives it delivered, and the run's claim on each of them. It deliberately
+// leaves `checked_at` where the previous real run left it — that is the whole point of
+// the sticky clock, and what lets the login row state a check it does not claim to be.
+//
+// THE SPLIT IS ALL ZEROES, on purpose. This is the observed input: a push that delivered
+// documents under a report whose status was `nothing-new`, because that is the tool's
+// honest claim about the portal visit it did not make. Every number the two surfaces
+// state comes from the CLAIMED DOCUMENTS, so a fixture whose split says nothing arrived
+// still renders the delivery — and a derivation that read the split would say "Delivered
+// no documents" over two archives that are sitting in Review.
+function plantDelivery(portalName: string, documents: number) {
+  withDb((handle) => {
+    const portal = handle
+      .prepare("SELECT id FROM portals WHERE name = ?")
+      .get(portalName) as { id: number };
+    const account = handle
+      .prepare("SELECT id FROM portal_accounts WHERE portal_id = ?")
+      .get(portal.id) as { id: number };
+    const identity = handle
+      .prepare(
+        `SELECT profile_id AS profileId, patient_label AS label
+           FROM portal_identities
+          WHERE account_id = ? AND profile_id IS NOT NULL`
+      )
+      .get(account.id) as { profileId: number; label: string };
+    const instant = frozenNow().toISOString();
+    // `portal_run_reports.at` is stored bare, `integration_sync_events.at` canonical
+    // (#2205) — the same instant in the two conventions each column declares.
+    const bare = instant.replace("T", " ").slice(0, 19);
+    const canonical = `${instant.slice(0, 19)}Z`;
+    handle
+      .prepare(
+        `INSERT INTO portal_run_reports
+           (account_id, portal_id, at, ok, status, message, discovered, contacted)
+         VALUES (?, ?, ?, 1, 'nothing-new', NULL, 0, 0)
+         ON CONFLICT(account_id) DO UPDATE SET at = excluded.at, ok = 1,
+           status = excluded.status, contacted = 0`
+      )
+      .run(account.id, portal.id, bare);
+    const eventId = Number(
+      handle
+        .prepare(
+          `INSERT INTO integration_sync_events
+             (profile_id, source_id, at, ok, received, written, inserted, updated,
+              unchanged, skipped, portal_id, account_id, patient_label)
+           VALUES (?, 'patient-portals', ?, 1, 0, 0, 0, 0, 0, 0, ?, ?, ?)`
+        )
+        .run(
+          identity.profileId,
+          canonical,
+          portal.id,
+          account.id,
+          identity.label
+        ).lastInsertRowid
+    );
+    const identityId = (
+      handle
+        .prepare(
+          `SELECT id FROM portal_identities
+            WHERE account_id = ? AND patient_label = ?`
+        )
+        .get(account.id, identity.label) as { id: number }
+    ).id;
+    // A delivered archive carries the identity it was acquired for and the DURABLE mark
+    // that says a run claimed it — the two facts the login row's count is read from, and
+    // the ones that outlive the run's own provenance rows (#388's sweep takes those).
+    const insertDoc = handle.prepare(
+      `INSERT INTO medical_documents
+         (filename, stored_path, mime_type, size_bytes, extraction_status,
+          uploaded_at, profile_id, acquired_identity_id, delivered_at)
+       VALUES (?, '', 'text/xml', 400, 'done', ?, ?, ?, ?)`
+    );
+    const claim = handle.prepare(
+      `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+       VALUES (?, 'medical_documents', ?, 'inserted')`
+    );
+    for (let i = 0; i < documents; i++) {
+      const docId = Number(
+        insertDoc.run(
+          `${DELIVERED_PREFIX}${portalName} ${i}.xml`,
+          bare,
+          identity.profileId,
+          identityId,
+          // `delivered_at` is BARE, like `uploaded_at` beside it (#2205).
+          bare
+        ).lastInsertRowid
+      );
+      claim.run(eventId, docId);
+    }
+  });
+}
+
+// This spec's delivered archives, removed with the portal that delivered them.
+function clearDelivery(portalName: string) {
+  withDb((handle) => {
+    handle
+      .prepare("DELETE FROM medical_documents WHERE filename LIKE ?")
+      .run(`${DELIVERED_PREFIX}${portalName} %`);
   });
 }
 
@@ -584,10 +690,10 @@ test.describe("Patient portals — checklist and mapping (#1874)", () => {
     await expect(mapped.getByTestId("patient-chip")).toContainText(chosen);
     // Steady again: the strip is gone — a finished checklist is clutter.
     await expect(page.getByTestId("portal-checklist")).toHaveCount(0);
-    // Per-patient "Last checked" lives on the row (the planted run belongs to the
+    // Per-patient "Last synced" lives on the row (the planted run belongs to the
     // login, not to this patient, so this row honestly says it was never checked).
     await expect(mapped.getByTestId("portal-patient-status")).toContainText(
-      "Not checked yet"
+      "Not synced yet"
     );
 
     await removePortal(page, portal);
@@ -836,6 +942,56 @@ test.describe("Patient portals — ignore and dismiss (#1739)", () => {
     ).toHaveCount(0);
 
     await removePortal(page, portal);
+  });
+
+  test("a delivery-only push says what it delivered, and leaves the sync ask standing (#2914)", async ({
+    page,
+  }) => {
+    test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Delivery Portal ${stamp}`;
+    const label = `Delivery Patient ${stamp}`;
+
+    await addPortal(page, portal);
+    await prebind(page, portal, label);
+    // An OLD genuine run, so the request raised below stays open — and so the check
+    // clock has a real date to lag behind.
+    plantRunReport(portal, "2026-01-05 09:00:00");
+    await page.reload();
+
+    const section = sectionFor(page, portal);
+    await hydratedClick(page, section.getByTestId("sync-request-ask"));
+    await expect(section.getByTestId("sync-request-open")).toContainText(
+      "Sync requested"
+    );
+
+    // Now the push lands: two archives arrive, and the tool honestly reports that it
+    // visited no portal.
+    plantDelivery(portal, 2);
+    await page.reload();
+
+    const after = sectionFor(page, portal);
+    const status = after.getByTestId("login-status");
+    // The run KIND and the delivered COUNT — never the bare "Last run" that made a
+    // delivery indistinguishable from an empty check.
+    await expect(status).toContainText("Delivered 2 documents");
+    // …and the real check clock, which the delivery deliberately did not advance.
+    await expect(status).toContainText("portal last checked 2026-01-05");
+    // The count is one tap from what arrived.
+    await expect(status.getByTestId("login-status-delivered")).toHaveAttribute(
+      "href",
+      "/data?section=review"
+    );
+
+    // THE INVARIANT (#1888): a delivery answers nothing. The ask is still standing
+    // directly beneath the line that says documents arrived, and the page now explains
+    // why instead of merely looking self-contradictory.
+    await expect(after.getByTestId("sync-request-open")).toContainText(
+      "Sync requested"
+    );
+
+    await removePortal(page, portal);
+    clearDelivery(portal);
   });
 });
 
@@ -1094,14 +1250,13 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     const heldBefore = afterUpload.held.length;
     expect(heldBefore).toBeGreaterThan(0);
 
-    // 3. The user deletes it, through the real confirm dialog.
+    // 3. The user deletes it, through the real confirm dialog. openConfirm, not the
+    //    re-click loop this file carried at four sites (#2729) — this test and the
+    //    tombstone one below are the pair that issue was filed for. A swallowed
+    //    pre-hydration click changes nothing, so it cannot be retried into working,
+    //    and the loop's 15 s ceiling went on clicks that could not land.
     await page.goto(`/import/${docId}`);
-    const del = page.getByTestId("delete-document");
-    const dialog = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog.isVisible())) await del.click();
-      await expect(dialog).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: re-open the client confirm until it appears — no Server-Action POST to settle on, and the discrete onClick can be swallowed pre-hydration
+    const dialog = await openConfirm(page, page.getByTestId("delete-document"));
     await dialog
       .getByRole("button", { name: "Delete document & its records" })
       .click();
@@ -1149,12 +1304,10 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     // Clean up this test's own document so the feed it shares stays as it was found.
     const cleanupId = afterAllowDoc.id as number;
     await page.goto(`/import/${cleanupId}`);
-    const del2 = page.getByTestId("delete-document");
-    const dialog2 = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog2.isVisible())) await del2.click();
-      await expect(dialog2).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: same pre-hydration guard as the delete above
+    const dialog2 = await openConfirm(
+      page,
+      page.getByTestId("delete-document")
+    );
     await dialog2
       .getByRole("button", { name: "Delete document & its records" })
       .click();
@@ -1206,12 +1359,7 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     // A PORTAL-ACQUIRED document's confirm states the consequence: the acquirer will
     // not bring it back, and that is reversible from Data → Review.
     await page.goto(`/import/${acquiredDoc.id}`);
-    const del = page.getByTestId("delete-document");
-    const dialog = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog.isVisible())) await del.click();
-      await expect(dialog).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: re-open the client confirm until it appears — the discrete onClick can be swallowed pre-hydration
+    const dialog = await openConfirm(page, page.getByTestId("delete-document"));
     await expect(dialog.getByTestId("delete-tombstone-note")).toContainText(
       "will not bring this back"
     );
@@ -1239,12 +1387,10 @@ test.describe("Document tombstones and the held inventory (#1776/#1777)", () => 
     });
     const manualDoc = (await manual.json()).documents[0];
     await page.goto(`/import/${manualDoc.id}`);
-    const del2 = page.getByTestId("delete-document");
-    const dialog2 = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog2.isVisible())) await del2.click();
-      await expect(dialog2).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: same pre-hydration guard as above
+    const dialog2 = await openConfirm(
+      page,
+      page.getByTestId("delete-document")
+    );
     await expect(dialog2).toContainText("every record it imported");
     await expect(dialog2.getByTestId("delete-tombstone-note")).toHaveCount(0);
     await dialog2

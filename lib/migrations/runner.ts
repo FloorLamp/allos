@@ -7,6 +7,7 @@ import {
   introducedViolations,
   type ForeignKeyViolationTally,
 } from "./cascade-delete";
+import { takePreMigrationSnapshot } from "./snapshot";
 import { MIGRATIONS } from "./versions";
 
 const log = createLogger("migrate");
@@ -158,6 +159,39 @@ export function runMigrations(
   );
 
   const applied = appliedNames(db);
+
+  // PRE-FLIGHT SNAPSHOT (#2702). A migration that FAILS loses nothing — the
+  // per-migration IMMEDIATE transaction rolls back and no ledger row is written. A
+  // migration that SUCCEEDS and deleted the wrong rows is unrecoverable, because
+  // this is a BOOT-time delete with no copy behind it: #2699 open question 6
+  // records rows already removed that way which cannot be resurrected. So the
+  // database is copied aside before the pending set is applied.
+  //
+  // It runs HERE, deliberately: after the ledger, backfill and both downgrade
+  // guards (a refused boot must still write nothing, and the guards are the cheaper
+  // refusal), and BEFORE the foreign-key toggle and the per-migration transactions
+  // — so it is in autocommit, which `VACUUM INTO` requires, and it disturbs neither
+  // the `foreign_keys = OFF` posture nor the savepoint/transaction structure the
+  // rollback correctness depends on.
+  //
+  // The trigger is "an upgrade is happening", not "a pending migration deletes
+  // rows" — see lib/migrations/snapshot-policy.ts for the whole argument, which
+  // turns on this repository's own record of forgotten (#2444) and incomplete
+  // (#2703) delete declarations. It skips every boot with nothing pending, so the
+  // ordinary boot pays one set difference already computed above.
+  //
+  // A snapshot that cannot be taken THROWS. Nothing has been applied at this point,
+  // which makes the refusal both reversible (the previous image still boots this
+  // database) and the only moment in this runner where refusing costs less than
+  // proceeding — the exact opposite of reportOrphansIntroduced below.
+  const pending = migrations
+    .filter((m) => !applied.has(m.name))
+    .map((m) => m.name);
+  takePreMigrationSnapshot(db, {
+    pending,
+    appliedCount: applied.size,
+    fromUserVersion: readVersion(db),
+  });
 
   // Apply migrations with foreign_keys DISABLED, restoring the prior setting after
   // (issue #95). SQLite cannot attach a foreign key to an existing column, so a

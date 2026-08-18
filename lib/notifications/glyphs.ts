@@ -560,7 +560,7 @@ export const GLYPH_MODULES: readonly { module: string; why: string }[] = [
     why: "The periodic recap message (#32/#2178) — the second system-initiated message a profile receives, at whichever of the three cadences the profile chose. In scope precisely because it does not live under lib/notifications/.",
   },
   {
-    module: "lib/notifications/supplement-format.ts",
+    module: "lib/notifications/intake-format.ts",
     why: "The dose reminder: window title, per-dose body lines with their state markers, and the confirm/skip keyboard (#232/#380).",
   },
   {
@@ -637,7 +637,7 @@ export const GLYPH_MODULES: readonly { module: string; why: string }[] = [
   },
   {
     module: "lib/notifications/offer-tail.ts",
-    why: "The digest's guaranteed 'Log other…' access tail and its expanded per-item labels (#1505/#1819).",
+    why: "The digest's guaranteed '➕ Doses (N)' access tail and its expanded per-item labels (#1505/#1819/#2890).",
   },
   {
     module: "lib/notifications/correction-rows.ts",

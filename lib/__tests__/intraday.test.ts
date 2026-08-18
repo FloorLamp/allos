@@ -430,8 +430,8 @@ describe("buildIntradayModel — the tick rail", () => {
   });
 
   // The "one visibility predicate" contract: the panel is handed the feed's OWN
-  // resolved event list, so anything the feed filtered out (an age-restricted
-  // training event, a category-filtered row) is structurally unable to produce a
+  // resolved event list, so anything the feed filtered out (such as a
+  // category-filtered row) is structurally unable to produce a
   // block or a tick. Pinned here so a future refactor that re-queries events
   // inside the model breaks this test.
   it("yields nothing for an event the feed filtered out", () => {

@@ -74,7 +74,12 @@ import {
   SETUP_HEALTH_QUIET_PROFILE,
   SETUP_HEALTH_GAP_MED,
 } from "../fixture-logins";
-import { seedMemberLogin, fixtureProfileId, grantProfile } from "./common";
+import {
+  seedMemberLogin,
+  adultFixtureProfileId,
+  fixtureProfileId,
+  grantProfile,
+} from "./common";
 import {
   completeOnboardingState,
   initialOnboardingState,
@@ -181,7 +186,7 @@ export function seedHouseholdRollup(): void {
   db.prepare(
     `INSERT INTO import_jobs
      (profile_id, type, status, summary, created_at, updated_at)
-   VALUES (?, 'biomarkers', 'ready', 'e2e-p2: 3 readings',
+   VALUES (?, 'clinical-results', 'ready', 'e2e-p2: 3 readings',
            '2026-07-07 08:00:00', '2026-07-07 08:00:00')`
   ).run(HOUSEHOLD_PROFILE_ID);
 
@@ -266,7 +271,7 @@ export function seedToasterIsolation(): void {
       db.prepare(
         `INSERT INTO import_jobs
          (profile_id, type, status, summary, created_at, updated_at)
-       VALUES (?, 'biomarkers', 'ready', ?, '2026-07-06 08:00:00', '2026-07-06 08:00:00')`
+       VALUES (?, 'clinical-results', 'ready', ?, '2026-07-06 08:00:00', '2026-07-06 08:00:00')`
       ).run(profileId, `${tag}: readings`);
     };
 
@@ -492,7 +497,7 @@ export function seedMultiProfile(): void {
     );
   }
 
-  // ── Multi-view Biomarkers (Results) table (issue #1331) ───────────────────────
+  // ── Multi-view Clinical results table (issue #1331) ───────────────────────
   // E2E_LOGIN_MVBIO: a base profile (WRITE, acting) + a second profile READ-ONLY. Both
   // carry the SHARED "Vitamin D" analyte family with DIFFERENT values/dates (so the
   // merged table proves per-member is_latest never crosses), plus one uniquely-named
@@ -554,7 +559,7 @@ export function seedMultiProfile(): void {
     const bioLoginId = seedMemberLogin(E2E_LOGIN_MVBIO, bioSelfId, "write");
     grantProfile(bioLoginId, bioRoId, "read");
     console.log(
-      `e2e: seeded biomarkers-table fixture — ${E2E_LOGIN_MVBIO} granted ${MVBIO_SELF_PROFILE} (${bioSelfId}, write) + ${MVBIO_RO_PROFILE} (${bioRoId}, read)`
+      `e2e: seeded clinical-results-table fixture — ${E2E_LOGIN_MVBIO} granted ${MVBIO_SELF_PROFILE} (${bioSelfId}, write) + ${MVBIO_RO_PROFILE} (${bioRoId}, read)`
     );
   }
 
@@ -614,8 +619,8 @@ export function seedMultiProfile(): void {
   // dose-confirm buttons) + one weigh-in (the dashboard weight widget renders). The
   // spec asserts the not-self naming on the OTHER profile (never the login's own).
   {
-    const ownSelfId = fixtureProfileId(OWN_SELF_PROFILE);
-    const ownOtherId = fixtureProfileId(OWN_OTHER_PROFILE);
+    const ownSelfId = adultFixtureProfileId(OWN_SELF_PROFILE);
+    const ownOtherId = adultFixtureProfileId(OWN_OTHER_PROFILE);
     const seedOwnDose = (profileId: number, name: string): void => {
       if (
         !db

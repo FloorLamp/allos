@@ -20,8 +20,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setWeekMode } from "@/lib/settings";
-import { CADENCE_SCOPES } from "@/lib/cadence";
-import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 import { practiceIdentity } from "@/lib/practice";
 import {
   cadenceWindows,
@@ -30,6 +28,7 @@ import {
 } from "@/lib/queries/cadence-ledger";
 import {
   getFrequencyTargetProgress,
+  getFrequencyTargetProgressForHome,
   getFrequencyTargetWeeklyHistory,
   getSubstanceWeekState,
   getSubstanceWeeklyTrend,
@@ -104,7 +103,7 @@ function logSet(pid: number, date: string, exercise: string): void {
 
 function logFood(pid: number, date: string, group: string, n: number): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
   ).run(pid, date, group, n);
 }
@@ -195,8 +194,8 @@ describe("the cadence ledger (#2034)", () => {
     logActivity(
       pid,
       newer,
-      "recovery",
-      JSON.stringify([{ type: "recovery", name: "pigeon_pose" }])
+      "mobility",
+      JSON.stringify([{ type: "mobility", name: "pigeon_pose" }])
     );
     logPracticeSession(pid, "Sauna", newer);
     logPracticeSession(pid, "Sauna", newer); // same day, DAY-distinct not summed
@@ -316,13 +315,13 @@ describe("the cadence ledger (#2034)", () => {
     expect(trend[1]).toMatchObject({ isCurrent: true, count: state.count });
   });
 
-  it("reads a counter-ledger substance from substance_log, per substance", () => {
+  it("reads a counter-ledger substance from substance_daily_totals, per substance", () => {
     const pid = newProfile("cl-cap-units");
     db.prepare(
-      `INSERT INTO substance_log (profile_id, date, substance, units) VALUES (?, ?, 'nicotine', 3)`
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units) VALUES (?, ?, 'nicotine', 3)`
     ).run(pid, dayBack(pid, 2));
     db.prepare(
-      `INSERT INTO substance_log (profile_id, date, substance, units) VALUES (?, ?, 'cannabis', 1)`
+      `INSERT INTO substance_daily_totals (profile_id, date, substance, units) VALUES (?, ?, 'cannabis', 1)`
     ).run(pid, dayBack(pid, 2));
     expect(getSubstanceWeekState(pid, "nicotine").count).toBe(3);
     expect(getSubstanceWeekState(pid, "cannabis").count).toBe(1);
@@ -362,10 +361,66 @@ describe("the cadence ledger (#2034)", () => {
     ).toEqual(["practice"]);
   });
 
-  it("registers a direction for every scope kind the CHECK enum allows", () => {
-    for (const kind of FREQUENCY_SCOPE_KINDS) {
-      expect(CADENCE_SCOPES[kind], kind).toBeDefined();
-    }
+  // ---- home is declared too (#2888) ----------------------------------------
+
+  it("narrows the SAME rollup to one page's scopes without touching its numbers", () => {
+    // Four floor tenants, one per home-relevant scope, each with real events in the
+    // current window so none of the numbers is a trivial zero.
+    const pid = newProfile("cl-home");
+    makeTarget(pid, "region", "Chest", 2);
+    makeTarget(pid, "mobility_region", "Glutes", 2);
+    makeTarget(pid, "food_group", "fatty_fish", 3);
+    makeTarget(pid, "practice", "Sauna", 2);
+
+    logSet(pid, dayBack(pid, 1), "Barbell Bench Press");
+    logActivity(
+      pid,
+      dayBack(pid, 2),
+      "mobility",
+      JSON.stringify([{ type: "mobility", name: "pigeon_pose" }])
+    );
+    logFood(pid, dayBack(pid, 1), "fatty_fish", 2);
+    logPracticeSession(pid, "Sauna", dayBack(pid, 1));
+
+    const all = getFrequencyTargetProgress(pid);
+    expect(all.map((p) => p.target.scope_kind).sort()).toEqual([
+      "food_group",
+      "mobility_region",
+      "practice",
+      "region",
+    ]);
+
+    // Membership: the training page gets the training routine proper plus mobility.
+    const training = getFrequencyTargetProgressForHome(pid, "training");
+    expect(training.map((p) => p.target.scope_kind)).toEqual([
+      "region",
+      "mobility_region",
+    ]);
+    // And each other page still gets its own, unchanged — nothing is hidden from the
+    // user, it renders where it already lived.
+    expect(
+      getFrequencyTargetProgressForHome(pid, "nutrition").map(
+        (p) => p.target.scope_value
+      )
+    ).toEqual(["fatty_fish"]);
+    expect(
+      getFrequencyTargetProgressForHome(pid, "wellness").map(
+        (p) => p.target.scope_value
+      )
+    ).toEqual(["Sauna"]);
+
+    // COUNTING IS UNCHANGED: every surviving row is the identical object the generic
+    // rollup produced — count, pace, met, ceiling and all — so a chip that still
+    // renders draws the same squares it drew before.
+    expect(training).toEqual(
+      all.filter((p) =>
+        ["region", "mobility_region"].includes(p.target.scope_kind)
+      )
+    );
+    expect(training.map((p) => [p.count, p.per_week, p.met, p.pace])).toEqual([
+      [1, 2, false, "behind"],
+      [1, 2, false, "behind"],
+    ]);
   });
 
   // ---- the anchor clamp ----------------------------------------------------

@@ -6,6 +6,7 @@ import {
   followLink,
   expectNoClippedContent,
   expectInView,
+  hydratedClick,
 } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -610,7 +611,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
 
     // Single view (acting = owner): the owner's two cards show; the shared member's
     // card is absent, no strip, no chips — the byte-identical regression bar.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await expect(
       page
         .locator('[id^="activity-"]')
@@ -632,13 +633,13 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
 
     // Multi view: the merged feed now carries the shared member's card WITH a subject
     // chip on ITS card; the acting (owner) cards never carry a chip.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     const sharedCard = page
       .locator('[id^="activity-"]')
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
     await expect(
-      sharedCard.getByTestId(`subject-chip-${sharedId}`)
+      sharedCard.getByTestId(`subject-chip-${sharedId}-row`)
     ).toBeVisible();
     // The owner's own cards are still there, without a chip anywhere on the feed.
     await expect(
@@ -650,12 +651,18 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
       page.locator(`[data-testid="subject-chip-${ownerId}"]`)
     ).toHaveCount(0);
 
-    // Cross-profile merge never pairs: the owner's Alpha card merge picker offers its
-    // same-DAY same-PROFILE sibling (Bravo) but NEVER the shared member's same-day card.
-    const ownerCard = page
+    // Cross-profile merge never pairs: the owner's Alpha record's merge picker
+    // offers its same-DAY same-PROFILE sibling (Bravo) but NEVER the shared
+    // member's same-day card. The menu lives on the record — select the row
+    // into the reading pane first (#2897).
+    const ownerRow = page
       .locator('[id^="activity-"]')
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
-    await ownerCard.getByRole("button", { name: "Activity actions" }).click();
+    await hydratedClick(page, ownerRow);
+    await page
+      .getByTestId("training-log-reading-pane")
+      .getByRole("button", { name: "Activity actions" })
+      .click();
     await page.getByTestId("merge-with").click();
     await expect(
       page
@@ -684,20 +691,25 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     });
 
     // Enter multi-view, then open the Training Log.
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
     await expectInView(page, 2);
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
 
     const sharedCard = page
       .locator('[id^="activity-"]')
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
 
-    // "Log again" on the SHARED member's card: opens a create prefill that auto-saves
-    // a NEW session — on the ACTING (owner) profile, never the shared subject.
-    await sharedCard.getByRole("button", { name: "Activity actions" }).click();
+    // "Log again" on the SHARED member's record: opens a create prefill that
+    // auto-saves a NEW session — on the ACTING (owner) profile, never the
+    // shared subject. Select the row into the reading pane for its menu (#2897).
+    await hydratedClick(page, sharedCard);
+    await page
+      .getByTestId("training-log-reading-pane")
+      .getByRole("button", { name: "Activity actions" })
+      .click();
     await page.getByTestId("log-again").click();
     // The editor opens (docked beside the feed on desktop / overlay on mobile).
     await expect(page.getByTestId("activity-form")).toBeVisible();
@@ -1077,7 +1089,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
   });
 });
 
-// Multi-view Readings (Results) table (issue #1331). The results table becomes a
+// Multi-view Clinical results table (issue #1331). The results table becomes a
 // MERGE of per-(profile, family) partitions when several profiles are in view:
 // is_latest/dedup are per member (a shared "Vitamin D" family never crosses), rows
 // are subject-stamped, and the read-only member's rows show no edit/delete. Spec-OWNED
@@ -1085,7 +1097,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
 // each with a shared + a unique analyte — see e2e/seed-events.ts). Read-only in this
 // spec (only reads + toggles the view-set), so it never races a neighbor and stays
 // repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
-test.describe("Multi-view Readings table (issue #1331)", () => {
+test.describe("Multi-view Clinical results table (issue #1331)", () => {
   function mvBioIds(): { selfId: number; roId: number } {
     const dbPath = workerDbPath();
     const db = new Database(dbPath);
@@ -1121,8 +1133,8 @@ test.describe("Multi-view Readings table (issue #1331)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    await page.goto("/results/readings");
-    await expect(page.getByTestId("results-readings")).toBeVisible();
+    await page.goto("/results/clinical-results");
+    await expect(page.getByTestId("results-clinical-results")).toBeVisible();
     // The acting (self) member's unique analyte renders.
     await expect(
       page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
@@ -1152,7 +1164,7 @@ test.describe("Multi-view Readings table (issue #1331)", () => {
 
     await toggleIntoView(page, roId);
     // The view-set persists on the session — re-navigate for a deterministic reload.
-    await page.goto("/results/readings");
+    await page.goto("/results/clinical-results");
     await expectInView(page, 2);
 
     // The leading Profile column appears in multi-view.
@@ -1174,7 +1186,7 @@ test.describe("Multi-view Readings table (issue #1331)", () => {
 
     // Filter to the SHARED family: BOTH members' Vitamin D rows survive — the family
     // dedup never collapsed the two people into one series (per-member partitions).
-    await page.goto("/results/readings?q=vitamin+d");
+    await page.goto("/results/clinical-results?q=vitamin+d");
     await expectInView(page, 2);
     await expect(
       page.getByRole("link", { name: MVBIO_SHARED_ANALYTE, exact: true })
@@ -1194,7 +1206,7 @@ test.describe("Multi-view Readings table (issue #1331)", () => {
   });
 });
 
-// Cross-profile Undo on the multi-view Readings table (#2104). The delete stamps
+// Cross-profile Undo on the multi-view Clinical results table (#2104). The delete stamps
 // the ROW's profile onto the capture; the restore used to resolve the ACTING profile,
 // so this exact round trip — delete the non-acting member's reading, tap Undo — always
 // failed ("Couldn't undo") and the capture purged for good in the retention sweep.
@@ -1235,7 +1247,7 @@ test.describe("Cross-profile Undo round trip (#2104)", () => {
       ).run();
       db.prepare(
         `DELETE FROM deleted_rows
-          WHERE kind = 'biomarker-record' AND payload LIKE '%${UNDO_PROBE_PREFIX}%'`
+          WHERE kind = 'clinical-observation' AND payload LIKE '%${UNDO_PROBE_PREFIX}%'`
       ).run();
       db.prepare(
         `INSERT INTO medical_records
@@ -1264,7 +1276,9 @@ test.describe("Cross-profile Undo round trip (#2104)", () => {
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
     await expectInView(page, 2);
-    await page.goto(`/results/readings?q=${encodeURIComponent(probeName)}`);
+    await page.goto(
+      `/results/clinical-results?q=${encodeURIComponent(probeName)}`
+    );
     await expectInView(page, 2);
 
     // The probe row renders as the SHARED member's (subject chip) with its write menu

@@ -4,16 +4,16 @@
 //
 // `lib/instrument-recognize.ts` answers "do these questions spell out an instrument,
 // and what did it score?". This module applies that answer to what the clinical
-// parsers actually hold — `ImportedRecord`s — and is the ONLY place that turns a
+// parsers actually hold — `ImportedClinicalObservation`s — and is the ONLY place that turns a
 // recognition into rows:
 //
-//   • SCORED → the per-question records LEAVE (their answers now ride on the score, in
-//     `instrument_responses`) and one `instrument`-category record takes their place,
+//   • SCORED → the per-question observations LEAVE (their answers now ride on the score, in
+//     `instrument_responses`) and one `instrument`-category observation takes their place,
 //     under the instrument's curated canonical name. That name is the whole point: it
 //     joins the shared range/flag machinery, the severity band and the crisis decision
 //     the in-app administration path already feeds, and NO question text ever coins an
 //     identity of its own.
-//   • REFUSED → nothing moves. The per-question records keep their #2318 `assessment`
+//   • REFUSED → nothing moves. The per-question observations keep their #2318 `assessment`
 //     treatment — stored, dated, viewable on the document, carrying no biomarker
 //     identity — and the SCORE is reported as one reasoned drop, so a screening the
 //     app declined to score is visible in the import debugger rather than absent.
@@ -23,7 +23,7 @@
 // needs ("this score is somebody else's" / "this screening is half-answered") is
 // exactly the thing a generic bucket erases.
 
-import type { ImportedRecord } from "./health-import";
+import type { ImportedClinicalObservation } from "./health-import";
 import type { ImportDrop } from "./import-report";
 import { instrumentDef } from "./mental-health";
 import {
@@ -32,7 +32,7 @@ import {
 } from "./instrument-recognize";
 
 export interface InstrumentFold {
-  records: ImportedRecord[];
+  observations: ImportedClinicalObservation[];
   drops: ImportDrop[];
 }
 
@@ -40,38 +40,40 @@ export interface InstrumentFold {
 // #2318 already routes a questionnaire item there — no number, no unit, no range, no
 // analyte identity — so this reads exactly the population that used to become
 // per-question pseudo-biomarkers, and never touches a real reading.
-function isCandidate(r: ImportedRecord): boolean {
+function isCandidate(r: ImportedClinicalObservation): boolean {
   return r.category === "assessment" && (r.value ?? "").trim() !== "";
 }
 
-// Fold one section's records. `attribution` is the document's own statement of whose
+// Fold one section's observations. `attribution` is the document's own statement of whose
 // screening this is plus how many patients the document is about (see
 // lib/instrument-recognize.ts on what silence means); `section` names the originating
 // section for the drop's context.
 export function foldInstrumentScores(
-  records: readonly ImportedRecord[],
+  observations: readonly ImportedClinicalObservation[],
   attribution: InstrumentAttribution,
   section: string
 ): InstrumentFold {
   const candidateIdx: number[] = [];
-  records.forEach((r, i) => {
+  observations.forEach((r, i) => {
     if (isCandidate(r)) candidateIdx.push(i);
   });
-  if (candidateIdx.length < 2) return { records: [...records], drops: [] };
+  if (candidateIdx.length < 2)
+    return { observations: [...observations], drops: [] };
 
   const recognized = recognizeInstrument(
     candidateIdx.map((i) => ({
-      name: records[i].name,
-      answerText: records[i].value,
+      name: observations[i].name,
+      answerText: observations[i].value,
     })),
     attribution
   );
-  if (recognized.kind === "none") return { records: [...records], drops: [] };
+  if (recognized.kind === "none")
+    return { observations: [...observations], drops: [] };
 
   const def = instrumentDef(recognized.instrument);
   if (recognized.kind === "refused") {
     return {
-      records: [...records],
+      observations: [...observations],
       drops: [
         {
           kind: "lab",
@@ -100,8 +102,8 @@ export function foldInstrumentScores(
   // and keyed the score off whichever row answered the lowest-numbered question. The
   // answer must not depend on our catalog's numbering: the document's own order is the
   // only order the source stated.
-  const first = records[Math.min(...consumed)];
-  const score: ImportedRecord = {
+  const first = observations[Math.min(...consumed)];
+  const score: ImportedClinicalObservation = {
     category: "instrument",
     name: def.title,
     canonical: def.canonicalName,
@@ -122,7 +124,7 @@ export function foldInstrumentScores(
     instrumentAnswers: recognized.answers,
   };
   return {
-    records: [...records.filter((_, i) => !consumed.has(i)), score],
+    observations: [...observations.filter((_, i) => !consumed.has(i)), score],
     drops: [],
   };
 }

@@ -165,30 +165,30 @@ describe("HC chunked ingest — orchestration (#1064)", () => {
       {
         metric: "steps",
         date: "2026-06-04",
-        start_time: "2026-06-04T01:00:00Z",
-        end_time: "2026-06-04T01:10:00Z",
+        started_at: "2026-06-04T01:00:00Z",
+        ended_at: "2026-06-04T01:10:00Z",
         value: 100,
       },
       {
         metric: "steps",
         date: "2026-06-04",
-        start_time: "2026-06-04T02:00:00Z",
-        end_time: "2026-06-04T02:10:00Z",
+        started_at: "2026-06-04T02:00:00Z",
+        ended_at: "2026-06-04T02:10:00Z",
         value: 200,
       },
     ];
     const poison = {
       metric: null as unknown as string, // NOT NULL → INSERT throws
       date: "2026-06-04",
-      start_time: "2026-06-04T03:00:00Z",
-      end_time: "2026-06-04T03:10:00Z",
+      started_at: "2026-06-04T03:00:00Z",
+      ended_at: "2026-06-04T03:10:00Z",
       value: 300,
     } as NormMetricSample;
     const validInBadChunk: NormMetricSample = {
       metric: "steps",
       date: "2026-06-04",
-      start_time: "2026-06-04T04:00:00Z",
-      end_time: "2026-06-04T04:10:00Z",
+      started_at: "2026-06-04T04:00:00Z",
+      ended_at: "2026-06-04T04:10:00Z",
       value: 400,
     };
 
@@ -370,8 +370,8 @@ describe("HC mid-batch failure reports the committed split (#1614)", () => {
     const sample = (hour: number, value: number): NormMetricSample => ({
       metric: "steps",
       date: "2026-06-10",
-      start_time: `2026-06-10T0${hour}:00:00Z`,
-      end_time: `2026-06-10T0${hour}:10:00Z`,
+      started_at: `2026-06-10T0${hour}:00:00Z`,
+      ended_at: `2026-06-10T0${hour}:10:00Z`,
       value,
     });
     const parsed = {

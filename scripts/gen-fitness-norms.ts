@@ -12,7 +12,7 @@
 //   • 30-Second Chair Stand   (reps)      — lower-body strength / frailty
 //   • Single-Leg Balance      (seconds)   — postural control / fall risk
 //
-// Mirrors the gen-canonical-biomarkers.ts / gen-mets.ts / gen-growth-charts.ts
+// Mirrors the gen-canonical-result-definitions.ts / gen-mets.ts / gen-growth-charts.ts
 // pattern: the curated PUBLIC normative tables below are the SOURCE OF TRUTH,
 // HUMAN-REVIEWABLE, and the committed JSON is a FIXED POINT of buildFitnessNorms()
 // (guarded by lib/__tests__/fitness-norms-dataset.test.ts so the generator and the
@@ -83,7 +83,7 @@ export interface MarkerNorms {
 }
 
 // One framework ENTRY: a marker with its identity `name` (the canonical biomarker name
-// — must match the canonical_biomarkers rows / vitals-input names byte-for-byte) plus
+// — must match the canonical_result_definitions rows / vitals-input names byte-for-byte) plus
 // its unit/direction/per-marker `source` citation and the male/female band tables. The
 // pure lookup (lib/fitness-norms.ts) rebuilds a name→MarkerNorms map from these entries.
 export interface FitnessNormEntry extends MarkerNorms {

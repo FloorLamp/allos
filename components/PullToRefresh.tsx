@@ -8,6 +8,7 @@ import { useStandaloneDisplayMode } from "./useStandaloneDisplayMode";
 import {
   classifyPull,
   indicatorPresentation,
+  overlayOwnsViewport,
   shouldRefresh,
   type PullState,
 } from "@/lib/pull-to-refresh";
@@ -33,6 +34,28 @@ import {
 // not an awaited Server Action, so there is no action response to carry a fresh
 // tree (docs/internals/server-action-refresh.md).
 //
+// ── Standing down for an overlay (#2725) ─────────────────────────────────────
+//
+// The listeners are on the WINDOW, so they see every touch in the app including
+// the ones inside a sheet, drawer or modal. A bottom sheet's drag-dismiss is
+// downward, starts from a page sitting at its top and travels far past the
+// arming distance, so `classifyPull` — which asks only about direction, travel
+// and scroll position — armed on it: in the installed app every drag-dismiss
+// fired a whole-page `router.refresh()` at the exact moment the sheet was
+// closing. (`touch-action: none` on the drag handle stops the browser's scroll
+// arbitration, not event delivery, so these listeners still saw every move.)
+//
+// The DOM READING behind that clause; the decision itself is the pure
+// `overlayOwnsViewport` in lib/pull-to-refresh.ts, which is where the reasoning
+// for it lives. This file supplies the one fact and nothing else.
+//
+// `useLockBodyScroll` is the only writer of `body.style.overflow` in the app, so
+// reading the inline style — rather than a computed value that a stylesheet
+// could also produce — asks exactly "did an overlay lock this?".
+function bodyScrollLocked(): boolean {
+  return document.body.style.overflow === "hidden";
+}
+
 // `data-state` / `data-refreshes` on the indicator are the observable contract —
 // they are what the e2e spec asserts against, since "did router.refresh() get
 // called" is otherwise invisible from the outside. `data-refreshes` counts
@@ -46,7 +69,12 @@ export default function PullToRefresh() {
   const [pending, startTransition] = useTransition();
   // Gesture origin. A ref, not state: touchmove fires at frame rate and must not
   // re-render on every sample beyond the indicator's own state.
-  const start = useRef<{ y: number; x: number; scrollY: number } | null>(null);
+  const start = useRef<{
+    y: number;
+    x: number;
+    scrollY: number;
+    overlayOpen: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -61,7 +89,14 @@ export default function PullToRefresh() {
     const onStart = (e: TouchEvent) => {
       const t = e.touches[0];
       if (!t) return;
-      start.current = { y: t.clientY, x: t.clientX, scrollY: window.scrollY };
+      start.current = {
+        y: t.clientY,
+        x: t.clientX,
+        scrollY: window.scrollY,
+        overlayOpen: overlayOwnsViewport({
+          bodyScrollLocked: bodyScrollLocked(),
+        }),
+      };
       setState({ kind: "idle" });
     };
     const onMove = (e: TouchEvent) => {
@@ -70,6 +105,7 @@ export default function PullToRefresh() {
       if (!origin || !t) return;
       setState(
         classifyPull({
+          overlayOpen: origin.overlayOpen,
           startScrollY: origin.scrollY,
           scrollY: window.scrollY,
           deltaY: t.clientY - origin.y,

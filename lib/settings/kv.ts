@@ -3,8 +3,8 @@ import { db, hoistedStatement, invalidateTimezoneMemo } from "../db";
 // Generic key/value access over the global settings table, for simple scalar
 // app-wide prefs. Statement hoisted for the same reason as
 // LOGIN_SETTING_GET_STMT below: an instance setting is read many times per
-// render (`min_training_age` alone answers every age gate), and preparing it
-// inline pays SQL COMPILATION on each one. NOT cache()-wrapped — a request may
+// render, and preparing it inline pays SQL COMPILATION on each one. NOT
+// cache()-wrapped — a request may
 // write via setSetting then re-read, and hoisting caches the compiled statement,
 // never the value.
 const SETTING_GET_STMT = hoistedStatement(

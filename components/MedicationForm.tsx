@@ -74,7 +74,7 @@ import type {
 
 // A medication's condition is either scheduled (daily) or context-gated (situational);
 // the workout/rest-day scheduling is a SUPPLEMENT concept and lives only on the
-// supplement form. PRN is the separate `as_needed` toggle below.
+// supplement form. As-needed use is the `may` obligation below.
 const MED_CONDITIONS: IntakeItem["condition"][] = ["daily", "situational"];
 
 function savedFormulationSlug(s?: IntakeItem): string {
@@ -101,11 +101,11 @@ function PrefillBadge() {
 
 // The medication add/edit form (#846, real split from the former shared
 // IntakeItemForm). Owns the medication-shaped surface — the med name combobox (#817) +
-// brand suggestions, prescriber/pharmacy/Rx, the PRN toggle + redose-notice + pediatric
+// brand suggestions, prescriber/pharmacy/Rx, obligation + as-needed redose notice + pediatric
 // weight-band dosing (#798), the critical flag, dose strengths from OTC label data, and
 // SELECTION PREFILL (picking a med fills every knowable field as an editable, marked
 // suggestion that never clobbers a touched field). Renders NONE of the supplement
-// concepts (no catalog/priority/stack, no workout scheduling); composes the shared
+// concepts (no supplement catalog or stack, no workout scheduling); composes the shared
 // subcomponents. With no `medication` it adds; with one it edits and calls `onDone`.
 export default function MedicationForm({
   action,
@@ -137,9 +137,6 @@ export default function MedicationForm({
   pgxVariants?: PgxVariantInput[];
   pairs?: IntakePair[];
   onDone?: () => void;
-  // Accepted for prop symmetry with the supplement form / existing med plumbing, but
-  // unused: a medication has no workout/rest-day scheduling to gate (#846).
-  trainingRestricted?: boolean;
   // Pediatric label-dosing context (#798): the child's age + latest recorded weight,
   // so a PRN medication form can reproduce the OTC weight-band suggestion AND the
   // dose-amount prefill can come from the band for a child. Absent for surfaces that
@@ -198,7 +195,7 @@ export default function MedicationForm({
   // a prescription" disclosure. Defaults from the stored flag, or OTC for a new med;
   // the combobox pick and any recorded prescriber flip it on.
   const [rxFlag, setRxFlag] = useState(s?.rx === 1);
-  // Obligation (#1505) replaces both the old priority band and the as-needed
+  // Obligation (#1505) replaces both legacy commitment controls and the as-needed
   // checkbox. A medication DEFAULTS to `must` — the tier that reminds AND escalates —
   // because that is the posture a prescription is prescribed under; a new med the
   // user never touches is protected rather than quietly unmonitored.
@@ -910,18 +907,13 @@ export default function MedicationForm({
       />
 
       {/* Medication identity (#851 items 1–2). The Rx/OTC flag rides as a hidden field
-          the toggle keeps in sync. The PRN toggle is ALWAYS shown (an OTC ibuprofen is
-          commonly PRN); the prescriber/pharmacy/Rx-number/provider fields show only for
-          a prescription — a small disclosure flips an OTC med to Rx for the edge case,
-          so an OTC med isn't asked for a prescriber it doesn't have. */}
+          the prescription disclosure keeps in sync. Prescriber/pharmacy/Rx-number/provider
+          fields show only for a prescription, so an OTC medication isn't asked for a
+          prescriber it doesn't have. */}
       <input type="hidden" name="rx" value={rxFlag ? "1" : "0"} />
-      {/* Obligation (#1505). One field where a Priority select and an "As needed"
-          checkbox used to sit — they were two spellings of the same question, and
-          keeping both is what let a "low priority" medication look reminded while a
-          PRN one looked un-prioritized. `may` IS as-needed, so choosing it reveals the
-          redose block below exactly as the old checkbox did. The hint states the
-          CURRENT choice's consequences from the shared copy; the med-specific
-          consequence confirm lives at submit (see handle()). */}
+      {/* Obligation (#1505). `may` means as-needed, so choosing it reveals the redose
+          block below. The hint states the current choice's consequences from the shared
+          copy; the medication-specific consequence confirm lives at submit (see handle()). */}
       <div className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5">
         <label className="label" htmlFor={`med-obligation-${fid}`}>
           Obligation

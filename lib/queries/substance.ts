@@ -1,9 +1,9 @@
 // Substance-use reads (issues #998, #1078): the per-substance reduction target +
 // this-week consumption state and the trailing weekly trend. Consumption is a
 // SPLIT LEDGER dispatched per substance ("one question, one computation", #221):
-// alcohol rides the EXISTING food_log / food_log_events observation store
+// alcohol rides the EXISTING food_daily_totals / food_log_events observation store
 // (#860/#944 — a standard drink IS one serving of the curated `alcohol` food
-// group), while nicotine/cannabis ride the dedicated `substance_log` counter
+// group), while nicotine/cannabis ride the dedicated `substance_daily_totals` counter
 // ledger (migration 096 — not foods, so they never touch the nutrition ledger).
 // The target lives on the EXISTING frequency_targets table (scope_kind
 // 'substance', migration 072) for every substance; this module only derives.
@@ -42,7 +42,7 @@ export interface SubstanceTarget {
 
 // The unified consumption-history row (#2009). There is deliberately no ledger
 // field: each card and every mutation addresses a substance plus this row id,
-// while the query layer owns dispatch to food_log or substance_log.
+// while the query layer owns dispatch to food_daily_totals or substance_daily_totals.
 export interface SubstanceDailyTotal {
   id: number;
   substance: Substance;
@@ -60,7 +60,7 @@ export function getSubstanceDailyTotals(
       ? (db
           .prepare(
             `SELECT id, date, servings AS amount, notes
-             FROM food_log
+             FROM food_daily_totals
              WHERE profile_id = ? AND group_key = ?
              ORDER BY date DESC, id DESC`
           )
@@ -73,7 +73,7 @@ export function getSubstanceDailyTotals(
       : (db
           .prepare(
             `SELECT id, date, units AS amount, notes
-             FROM substance_log
+             FROM substance_daily_totals
              WHERE profile_id = ? AND substance = ?
              ORDER BY date DESC, id DESC`
           )
@@ -116,9 +116,9 @@ export function getSubstanceTarget(
 }
 
 // The cadence-ledger scope a substance is counted through. The ledger owns the
-// dispatch to the substance's own store (alcohol on food_log — a standard drink IS
+// dispatch to the substance's own store (alcohol on food_daily_totals — a standard drink IS
 // one serving of the curated `alcohol` food group; nicotine/cannabis on the
-// substance_log counter ledger), so this module never re-decides it.
+// substance_daily_totals counter ledger), so this module never re-decides it.
 const substanceScope = (substance: Substance) =>
   ({ kind: "substance", value: substance }) as const;
 

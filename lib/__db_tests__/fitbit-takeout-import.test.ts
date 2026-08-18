@@ -377,11 +377,11 @@ describe("Fitbit Takeout import", () => {
       },
     ]);
     const yoga = acts.find((a) => a.title === "Yoga")!;
-    expect(yoga.type).toBe("recovery");
+    expect(yoga.type).toBe("mobility");
     expect(JSON.parse(yoga.components!)).toEqual([
       {
         name: "Yoga",
-        type: "recovery",
+        type: "mobility",
         distance_km: null,
         duration_min: 40,
       },
@@ -419,7 +419,7 @@ describe("Fitbit Takeout import", () => {
         `SELECT r.target_id, r.disposition
            FROM integration_sync_rows r
            JOIN integration_sync_events e ON e.id = r.event_id
-          WHERE e.profile_id = ? AND e.provider = 'fitbit-takeout'
+          WHERE e.profile_id = ? AND e.source_id = 'fitbit-takeout'
             AND r.target_table = 'practice_logs'`
       )
       .all(profileId);
@@ -518,7 +518,7 @@ describe("Fitbit Takeout import", () => {
         `SELECT ok, received, written, inserted, updated, unchanged,
                 suppressed, edited, skipped, details
            FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'fitbit-takeout'
+          WHERE profile_id = ? AND source_id = 'fitbit-takeout'
           ORDER BY id DESC LIMIT 1`
       )
       .get(profileId) as {
@@ -559,7 +559,7 @@ describe("Fitbit Takeout import", () => {
       db
         .prepare(
           `SELECT suppressed FROM integration_sync_events
-            WHERE profile_id = ? AND provider = 'fitbit-takeout'
+            WHERE profile_id = ? AND source_id = 'fitbit-takeout'
             ORDER BY id DESC LIMIT 1`
         )
         .get(profileId)
@@ -641,7 +641,7 @@ describe("Fitbit Takeout import", () => {
           `SELECT id, ok, received, written, inserted, updated, unchanged,
                   suppressed, edited, skipped, error
              FROM integration_sync_events
-            WHERE profile_id = ? AND provider = 'fitbit-takeout'
+            WHERE profile_id = ? AND source_id = 'fitbit-takeout'
             ORDER BY id DESC LIMIT 1`
         )
         .get(partialProfile) as {

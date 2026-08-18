@@ -48,7 +48,7 @@
 //     scoped/deleted THROUGH their parent's profile_id via a JOIN/subquery
 //     (routine_days → routines, routine_slots → routine_days → routines).
 //   • GLOBAL tables (logins, profiles, login_profiles, sessions, login_attempts,
-//     settings, canonical_biomarkers, providers) — shared across the instance and
+//     settings, canonical_result_definitions, providers) — shared across the instance and
 //     intentionally not profile-scoped.
 export const OWNED_TABLES = [
   "activities",
@@ -118,8 +118,7 @@ export const OWNED_TABLES = [
   "integration_connections",
   "integration_sync_events",
   "integration_backfill_jobs",
-  // The continuous-stream watermark (#2341): one row per (profile, source, stream)
-  // — the column is still named `provider` (#2487 phase 1 renamed types only)
+  // The continuous-stream watermark (#2341): one row per (profile, source, stream),
   // holding the frontier and whether the last pushes advanced it.
   "stream_frontiers",
   "profile_share_links",
@@ -144,8 +143,8 @@ export const OWNED_TABLES = [
   "protocols",
   "coverage_gaps",
   "situations",
-  "food_log",
-  // Food-log EVENT ledger (#950): per-tap append-only rows beside the food_log
+  "food_daily_totals",
+  // Food-log EVENT ledger (#950): per-tap append-only rows beside the food_daily_totals
   // daily counter, carrying the tap `recorded_at` so button ranking can be slot-aware.
   // Directly owned; deleteProfile clears it by profile_id (the row-ops side-state
   // rule — the ledger is popped/cleared alongside its counter).
@@ -153,13 +152,25 @@ export const OWNED_TABLES = [
   // Protein-grams quick-add log (#824): the direct-grams `logged` protein basis — a
   // single running gram total per day (UNIQUE(profile_id, date)), SUMMED with the
   // food-group estimated floor. Directly owned; deleteProfile clears it by profile_id.
-  "protein_log",
+  "protein_daily_totals",
   // Non-food substance consumption ledger (#1078): one row per (date, substance)
   // with a per-use `units` count — nicotine/cannabis one-tap log/undo (alcohol
-  // stays on food_log; the reconciliation is recorded in lib/substance-use.ts).
+  // stays on food_daily_totals; the reconciliation is recorded in lib/substance-use.ts).
   // Directly owned; nothing FKs into it, so a delete is a plain row delete and
   // deleteProfile clears it by profile_id.
-  "substance_log",
+  "substance_daily_totals",
+  // The fasting log (#2756): one row per claimed fast — an interval the user STARTS and
+  // ENDS explicitly (never inferred), plus an optional note. Directly owned; nothing FKs
+  // into it, so a delete is a plain row delete and deleteProfile clears it by profile_id.
+  //
+  // Its `profile_id` FK does declare ON DELETE CASCADE, and that is NOT what clears it:
+  // deleteProfile sweeps with `PRAGMA foreign_keys = OFF` (#729), so the cascade never
+  // fires on the one path that deletes a profile. The cascade is a fact about the SCHEMA;
+  // membership in THIS list is the fact about the SYSTEM. Without the entry the fasting
+  // rows outlived their profile as orphans (`foreign_key_check` named them by rowid) —
+  // this module's header charge verbatim — and every `fasts` statement sat outside
+  // OWNED_RE, so the profile-scoping leak scan never asked them about profile_id.
+  "fasts",
   // Day-by-day symptom log (#799). Directly owned; UNIQUE(profile_id, date, symptom)
   // keeps one row per symptom-day (worst-severity semantics).
   "symptom_logs",

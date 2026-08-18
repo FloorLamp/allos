@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ExerciseStat, GoalProgress } from "@/lib/queries";
@@ -13,7 +14,7 @@ import {
   strengthStandingPhrase,
   bodyweightMultiple,
 } from "@/lib/strength-standards";
-import { goalsForExercise, goalTargetText } from "@/lib/outcome-goals";
+import { goalsForExercise, goalTargetValueText } from "@/lib/outcome-goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -29,9 +30,11 @@ import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import LevelBadge from "@/components/LevelBadge";
 import { StatBox } from "@/components/StatBox";
-import { trainingLogActivityHref } from "@/lib/timeline-format";
+import { trainingActivityPageHref } from "@/lib/hrefs";
 import type { AppRoute } from "@/lib/hrefs";
 import ExerciseGuideSection from "@/components/ExerciseGuideSection";
+import { hasExerciseGuide } from "@/lib/exercise-guides";
+import { isNewLift } from "@/lib/exercise-familiarity";
 
 const PR_CHIP = (
   <span
@@ -244,15 +247,21 @@ export default function ExerciseDetailPanel({
           label="Last trained"
           value={formatRelativeDate(stat.lastDate, todayStr)}
           sub={formatLongDate(stat.lastDate, formatPrefs)}
-          href={trainingLogActivityHref(stat.lastActivityId)}
+          href={trainingActivityPageHref(stat.lastActivityId)}
+          // A stable handle for the ONE linked tile on this panel: its value is
+          // a relative date, so the link is otherwise addressable only by text
+          // that changes with the clock (#2983's e2e pin).
+          data-testid="exercise-last-trained"
         />
         {matchedGoals.map((g) => {
           const pct = goalProgress?.[g.id]?.pct ?? 0;
+          // Scoped to this exercise already, so the value drops the name
+          // prefix the cross-exercise goal cards keep (#2895).
           return (
             <StatBox
               key={g.id}
               label="Goal"
-              value={goalTargetText(g, wu) ?? g.title}
+              value={goalTargetValueText(g, wu) ?? g.title}
               href="/training?tab=goals#goals"
               sub={`${pct}% complete`}
               progress={pct}
@@ -329,12 +338,16 @@ export default function ExerciseDetailPanel({
                 key={i}
                 className="flex items-baseline justify-between gap-3 border-b border-black/5 pb-1 last:border-0 dark:border-white/5"
               >
-                <a
+                {/* A raw <a> to an internal route is a full document load out
+                    of the app shell (#2983). Soft navigation restored; the
+                    pending state stays on the global floor, because this is a
+                    row's date cell, not a button-shaped control. */}
+                <Link
                   href={r.href}
                   className="shrink-0 text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
                 >
                   {r.date}
-                </a>
+                </Link>
                 <span className="flex items-baseline justify-end gap-2 text-right">
                   {r.equipment && (
                     <span
@@ -355,10 +368,27 @@ export default function ExerciseDetailPanel({
       )}
 
       {/* Static how-to guide for catalog lifts (#734). Renders nothing for a
-          custom (non-catalog) lift — getExerciseGuide returns undefined. The
-          aggregate panel spans every implement, so no single equipment is passed
-          (all per-implement notes are shown). */}
-      <ExerciseGuideSection name={stat.exercise} />
+          custom (non-catalog) lift — hasExerciseGuide gates the disclosure so an
+          empty <details> never renders. The aggregate panel spans every
+          implement, so no single equipment is passed (all per-implement notes
+          are shown).
+
+          Collapsed once the lift is familiar (#2895) — the same isNewLift gate
+          the Telegram nudge's "How to" button uses, so "familiar" is one
+          decision. The guide stays permanently reachable behind the disclosure,
+          preserving the 2026-08-06 ruling recorded in lib/exercise-familiarity;
+          a never-logged lift still renders it open. */}
+      {hasExerciseGuide(stat.exercise) &&
+        (isNewLift(stat.sessions) ? (
+          <ExerciseGuideSection name={stat.exercise} />
+        ) : (
+          <details className="mt-5" data-testid="exercise-guide-disclosure">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-700 select-none dark:text-slate-200">
+              How to
+            </summary>
+            <ExerciseGuideSection name={stat.exercise} heading={false} />
+          </details>
+        ))}
     </div>
   );
 }

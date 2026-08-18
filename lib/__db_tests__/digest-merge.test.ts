@@ -21,6 +21,7 @@ import {
   setTelegramBotConfig,
   setProfileSetting,
   getProfileSetting,
+  setStoredAge,
 } from "@/lib/settings";
 import { runDigest, gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
@@ -28,10 +29,12 @@ import { up as retireUpcomingMarker } from "@/lib/migrations/versions/093-retire
 import { seedLoginTelegram } from "./fixtures";
 
 function newProfile(name: string): number {
-  return Number(
+  const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setStoredAge(id, 30);
+  return id;
 }
 
 // A due daily supplement dose (no supply tracking → no refill). Returns the dose id.

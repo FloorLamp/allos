@@ -26,7 +26,10 @@ import {
   persistDocumentImport,
   clearImportedDocumentRows,
 } from "@/lib/import-persist";
-import type { PersistInput, PersistRecord } from "@/lib/import-shape";
+import type {
+  PersistInput,
+  PersistClinicalObservation,
+} from "@/lib/import-shape";
 import { db } from "@/lib/db";
 
 const DATE = "2021-03-01";
@@ -58,7 +61,7 @@ function glucoseInput(overrides?: {
   value?: string;
   value_num?: number;
 }): PersistInput {
-  const rec: PersistRecord = {
+  const rec: PersistClinicalObservation = {
     category: "lab",
     name: "Glucose",
     canonical: "Glucose",
@@ -76,7 +79,7 @@ function glucoseInput(overrides?: {
     provider: null,
   };
   return {
-    records: [rec],
+    observations: [rec],
     immunizations: [
       {
         date: DATE,

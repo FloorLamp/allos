@@ -129,7 +129,7 @@ export default function InjuryBar({
   const current = injuries.filter((i) => i.status !== "resolved");
 
   return (
-    <div className="card" data-testid="injury-bar">
+    <div className="card scroll-mt-20" id="injuries" data-testid="injury-bar">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">

@@ -43,7 +43,7 @@
 
 import type { ReviewCadence } from "../recap-scale";
 import type { FoodNudgeWindow } from "./food-format";
-import type { IntakeSendSlot } from "./supplement-format";
+import type { IntakeSendSlot } from "./intake-format";
 
 /**
  * How a send marker is protected from re-attaching to a subject it was never set for —
@@ -258,7 +258,7 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     cadence: "per-day",
     store: "profile_settings",
     shape:
-      "`<IntakeSendSlot>` — Morning / Midday / Evening / Bedtime / PreWorkout (lib/notifications/supplement-format)",
+      "`<IntakeSendSlot>` — Morning / Midday / Evening / Bedtime / PreWorkout (lib/notifications/intake-format)",
     value: "the profile-local date this slot's merged reminder was delivered",
     writer:
       "scripts/notify.ts (the hourly tick), read back by lib/notifications/escalate.ts to know which windows actually went out today",
@@ -491,6 +491,10 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
   {
     key: "notify_digest_recon",
     what: "the digest prose reconciler's last-rebuild record (#2069): `date|dependency stamp|epoch ms`, written by lib/notifications/reconcile.ts and read back by its own pre-check. Nothing is ever suppressed by it — it only decides whether a REBUILD is worth paying for, and its floor forces one regardless once the record is old enough",
+  },
+  {
+    key: "notify_wear_reminder_claim",
+    what: "what the delivered bedtime wear reminder CLAIMED (#3027): `profile-local date|ISO frontier instant`, written on delivery by scripts/notify.ts and read by the prose reconciler to ask whether a later push has falsified the sentence. It gates a silent EDIT and never a send — the night's single send is deduped by notify_last_wear_reminder above, and this key is written after that one, so it cannot affect whether anything is sent. It exists because the claimed instant is UNRECOVERABLE afterwards: the falsifying event is data arriving with timestamps EARLIER than now, so re-reading the stream gives the frontier as it is and never as it was",
   },
   // Per-profile SCHEDULE and content preferences (profile_settings), not markers.
   {

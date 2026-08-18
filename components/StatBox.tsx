@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { goalBarClass } from "@/lib/outcome-goals";
+import { PendingTextLink } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 // A labelled stat box used in the Cardio/Sport/Exercise detail panels: an
@@ -51,12 +52,21 @@ export function StatBox({
         title={valueTitle}
       >
         {href ? (
-          <a
+          // A raw <a> to an INTERNAL route was a full document load out of the
+          // app shell (#2983) — the same defect as the training overview's
+          // "next workout" CTA, and this tile is a door into a session's
+          // canonical activity page. The
+          // value is the tile's only text, so it is also the pending slot. The
+          // announcement names the TILE, lower-cased to match the shipped
+          // convention ("Opening 5s best"): the box cannot name what is at the
+          // other end, and the number alone would announce nothing.
+          <PendingTextLink
             href={href}
+            label={label.toLowerCase()}
             className="hover:text-brand-600 hover:underline dark:hover:text-brand-400"
           >
             {value}
-          </a>
+          </PendingTextLink>
         ) : (
           value
         )}

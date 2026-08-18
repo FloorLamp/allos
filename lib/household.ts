@@ -19,17 +19,17 @@ export interface Adherence {
 
 // x/y intake adherence for a single day: how many of today's due doses have been
 // logged. A dose counts as "due" when its (active) parent item is due under today's
-// context (workout/rest/situational — the same isDueOn used by the supplements page
-// and the notifier). Doses whose item is missing from `activeSuppById`
+// context (workout/rest/situational — the same isDueOn used by the intake surfaces
+// and the notifier). Doses whose item is missing from `activeItemById`
 // (inactive/deleted) are skipped.
 //
 // `may` items are absent from this fraction, and that is the point of #1505 rather
 // than an omission: a may item has no dueness, so it has no denominator to be part
 // of and cannot drag an honest number down. It comes for free — isDueOn short-
 // circuits on `may` — which is why the obligation must be in the Pick.
-export function supplementAdherenceToday(
+export function intakeAdherenceToday(
   doses: (DoseCadence & { id: number; item_id: number })[],
-  activeSuppById: Map<
+  activeItemById: Map<
     number,
     Pick<IntakeItem, "condition" | "situation" | "obligation"> & ItemCadence
   >,
@@ -39,13 +39,13 @@ export function supplementAdherenceToday(
   let due = 0;
   let taken = 0;
   for (const dose of doses) {
-    const supp = activeSuppById.get(dose.item_id);
-    if (!supp) continue;
+    const item = activeItemById.get(dose.item_id);
+    if (!item) continue;
     // doseDueOn, not isDueOn: an off-cadence day and an out-of-window dose row must
     // leave the DENOMINATOR alone too (#1602). A weekly med counted as due every day
     // would read 1/7 on a perfectly-followed week — the same dishonest fraction the
     // `may` short-circuit exists to prevent, arriving through the calendar instead.
-    if (!doseDueOn(supp, dose, ctx)) continue;
+    if (!doseDueOn(item, dose, ctx)) continue;
     due++;
     if (takenDoseIds.has(dose.id)) taken++;
   }

@@ -46,10 +46,10 @@ export function seedIntegrationSyncEvents(): void {
   const retryAfter = new Date(backfillNow.getTime() + 30 * 60 * 1000);
   db.prepare(
     `INSERT INTO integration_backfill_jobs
-       (profile_id, provider, kind, label, item_noun, status, total_items,
+       (profile_id, source_id, kind, label, item_noun, status, total_items,
         completed_items, failed_items, request_count, active_seconds,
         started_at, retry_after_at, created_at, updated_at)
-     VALUES (?, 'strava', 'ride-details', 'Ride detail backfill', 'ride',
+     VALUES (?, 'strava', 'ride-details', 'Session detail backfill', 'session',
        'paused', 10, 4, 0, 10, 20, ?, ?, ?, ?)`
   ).run(
     PROFILE_ID,
@@ -112,7 +112,7 @@ export function seedIntegrationSyncEvents(): void {
   db.prepare(
     `UPDATE integration_sync_events
       SET details = ?
-    WHERE profile_id = ? AND provider = 'health-connect' AND at = ?`
+    WHERE profile_id = ? AND source_id = 'health-connect' AND at = ?`
   ).run(
     JSON.stringify({
       warnings: [],
@@ -159,7 +159,7 @@ export function seedIntegrationSyncEvents(): void {
       db
         .prepare(
           `SELECT id FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'health-connect' AND at = '2026-07-08T07:00:00Z'`
+          WHERE profile_id = ? AND source_id = 'health-connect' AND at = '2026-07-08T07:00:00Z'`
         )
         .get(PROFILE_ID) as { id: number } | undefined
     )?.id;
@@ -266,7 +266,7 @@ export function seedIntegrationSyncEvents(): void {
   db.prepare(
     `UPDATE integration_sync_events
         SET details = ?, raw_ref = ?
-      WHERE profile_id = ? AND provider = 'strava' AND at = ?`
+      WHERE profile_id = ? AND source_id = 'strava' AND at = ?`
   ).run(
     truncatedSyncDetails(),
     // #1991: the admin-only raw payload is one LINK per run opening a dialog, not a
@@ -311,7 +311,7 @@ export function seedIntegrationSyncEvents(): void {
   // disconnected + ok=1 shape keeps this off the "currently failing" surface, so the
   // review badge count is unaffected.
   db.prepare(
-    `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = 'oura'`
+    `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = 'oura'`
   ).run(PROFILE_ID);
   upsertConnection(PROFILE_ID, "oura", {
     status: "disconnected",
@@ -342,7 +342,7 @@ export function seedIntegrationSyncEvents(): void {
   // Reconnect link (contrast Oura's benign "Not connected"). Its latest event is a
   // failure, so it also surfaces under "Needs attention". Synthetic config only.
   db.prepare(
-    `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = 'withings'`
+    `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = 'withings'`
   ).run(PROFILE_ID);
   upsertConnection(PROFILE_ID, "withings", {
     status: "needs_reauth",
@@ -398,7 +398,7 @@ export function seedSyncHistoryDay(): void {
   // A live connection, so the source page renders the status card and the history.
   generateHealthConnectToken(profileId);
   db.prepare(
-    `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = 'health-connect'`
+    `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = 'health-connect'`
   ).run(profileId);
 
   // The frozen clock reads 13:mm LOCAL for this run (e2e/pinned-timezone.ts), so ten
@@ -453,7 +453,7 @@ export function seedSyncHistoryDay(): void {
     db
       .prepare(
         `SELECT id FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'health-connect'
+          WHERE profile_id = ? AND source_id = 'health-connect'
           ORDER BY at DESC, id DESC LIMIT 1`
       )
       .get(profileId) as { id: number }
@@ -550,7 +550,7 @@ export function seedQuietStream(): void {
   // for this stream. The connection is green; only the device went away.
   const push = db.prepare(
     `INSERT INTO integration_sync_events
-       (profile_id, provider, at, ok, received, written, inserted, updated, unchanged)
+       (profile_id, source_id, at, ok, received, written, inserted, updated, unchanged)
      VALUES (?, 'health-connect', ?, 1, 12, 12, 0, 2, 10)`
   );
   // Oldest first, so the fold sees the pushes in the order they landed: the first
@@ -601,7 +601,7 @@ function seedStreamMinutes(
 function seedStreamPush(profileId: number, at: Date): void {
   db.prepare(
     `INSERT INTO integration_sync_events
-       (profile_id, provider, at, ok, received, written, inserted, updated, unchanged)
+       (profile_id, source_id, at, ok, received, written, inserted, updated, unchanged)
      VALUES (?, 'health-connect', ?, 1, 8, 8, 0, 2, 6)`
   ).run(profileId, utcMinute(at));
 }

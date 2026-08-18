@@ -1,4 +1,4 @@
-import { db, today, writeTx } from "../db";
+import { db, hoistedStatement, today, writeTx } from "../db";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
 import {
   type LinkableEncounter,
@@ -140,6 +140,49 @@ const RECORD_DOMAIN_LIST = Object.keys(RECORD_DOMAINS) as Exclude<
   VisitLinkDomain,
   "episode"
 >[];
+
+type RecordDomain = Exclude<VisitLinkDomain, "episode">;
+
+const ENCOUNTERS_FOR_RECORDS_STMTS = Object.fromEntries(
+  RECORD_DOMAIN_LIST.map((domain) => {
+    const table = RECORD_DOMAINS[domain].table;
+    return [
+      domain,
+      hoistedStatement(
+        `SELECT t.id AS recordId, e.id, e.date, e.type, p.name AS providerName
+           FROM ${table} t
+           JOIN encounters e ON e.id = t.encounter_id AND e.profile_id = t.profile_id
+           LEFT JOIN providers p ON p.id = e.provider_id
+          WHERE t.profile_id = ?`
+      ),
+    ];
+  })
+) as Record<RecordDomain, ReturnType<typeof hoistedStatement>>;
+
+const LINKED_ROW_COUNT_STMTS = Object.fromEntries(
+  RECORD_DOMAIN_LIST.map((domain) => {
+    const c = RECORD_DOMAINS[domain];
+    return [
+      domain,
+      hoistedStatement(
+        `SELECT t.encounter_id AS encounterId, COUNT(*) AS count
+           FROM ${c.table} t
+          WHERE t.profile_id = ? AND t.encounter_id IS NOT NULL
+                ${c.extra ? `AND ${c.extra}` : ""}
+          GROUP BY t.encounter_id`
+      ),
+    ];
+  })
+) as Record<RecordDomain, ReturnType<typeof hoistedStatement>>;
+
+const EPISODES_FOR_ENCOUNTERS_STMT = hoistedStatement(
+  `SELECT le.encounter_id AS encounterId,
+          ie.id, ie.situation, ie.start_date, ie.end_date
+     FROM episode_encounters le
+     JOIN illness_episodes ie ON ie.id = le.episode_id AND ie.profile_id = le.profile_id
+    WHERE le.profile_id = ?
+    ORDER BY le.encounter_id, ie.start_date, ie.id`
+);
 
 function domainTable(domain: VisitLinkDomain): string {
   if (domain === "episode") return "illness_episodes";
@@ -478,16 +521,9 @@ export function encountersForRecords(
   profileId: number,
   domain: Exclude<VisitLinkDomain, "episode">
 ): Record<number, LinkedEncounterRef> {
-  const table = RECORD_DOMAINS[domain].table;
-  const rows = db
-    .prepare(
-      `SELECT t.id AS recordId, e.id, e.date, e.type, p.name AS providerName
-         FROM ${table} t
-         JOIN encounters e ON e.id = t.encounter_id AND e.profile_id = t.profile_id
-         LEFT JOIN providers p ON p.id = e.provider_id
-        WHERE t.profile_id = ?`
-    )
-    .all(profileId) as (LinkedEncounterRef & { recordId: number })[];
+  const rows = ENCOUNTERS_FOR_RECORDS_STMTS[domain].all(
+    profileId
+  ) as (LinkedEncounterRef & { recordId: number })[];
   const out: Record<number, LinkedEncounterRef> = {};
   for (const { recordId, ...ref } of rows) out[recordId] = ref;
   return out;
@@ -523,6 +559,24 @@ export function linkedRowsForEncounter(
       date: string | null;
     }[];
     for (const r of rows) out.push({ domain, ...r });
+  }
+  return out;
+}
+
+// Batch-shaped count for the visits index (#1355). It wraps the same registered
+// record-domain tables as linkedRowsForEncounter, but gathers every encounter for a
+// profile so a list never performs one read per row.
+export function linkedRowCountsForEncounters(
+  profileId: number
+): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const domain of RECORD_DOMAIN_LIST) {
+    const rows = LINKED_ROW_COUNT_STMTS[domain].all(profileId) as {
+      encounterId: number;
+      count: number;
+    }[];
+    for (const row of rows)
+      out[row.encounterId] = (out[row.encounterId] ?? 0) + row.count;
   }
   return out;
 }
@@ -878,6 +932,18 @@ export function episodesForEncounter(
         ORDER BY ie.start_date, ie.id`
     )
     .all(encounterId, profileId) as LinkedEpisodeRef[];
+}
+
+export function episodesForEncounters(
+  profileId: number
+): Record<number, LinkedEpisodeRef[]> {
+  const rows = EPISODES_FOR_ENCOUNTERS_STMT.all(
+    profileId
+  ) as (LinkedEpisodeRef & { encounterId: number })[];
+  const out: Record<number, LinkedEpisodeRef[]> = {};
+  for (const { encounterId, ...episode } of rows)
+    (out[encounterId] ??= []).push(episode);
+  return out;
 }
 
 // The encounter-side "Link an illness episode…" suggestion (#1350): which episode(s)

@@ -10,7 +10,7 @@ import Link from "next/link";
 // microbiology culture, gram stain, or cytopathology report, recovered from an imported
 // CCD/XDM Results-section ED-valued observation. These are documents, not analytes:
 // they carry no value and never trend or flag, so they live here rather than in the
-// Biomarkers catalog. The structured organism datum (e.g. "Culture Organism" = MSSA)
+// Clinical results catalog. The structured organism datum (e.g. "Culture Organism" = MSSA)
 // still imports as its own reading; this is its narrative companion. Reports are
 // import-only — there is no manual add form (the AI-extract path handles uploaded PDFs).
 export default function ReportsSection({

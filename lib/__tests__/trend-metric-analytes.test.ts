@@ -9,8 +9,8 @@ import {
   listedInResultsCatalog,
 } from "../trend-metric-analytes";
 import { acronymNameForms } from "../canonical-name";
-import { readingDetailHref } from "../hrefs";
-import { CANONICAL_BIOMARKERS } from "../datasets/canonical-biomarkers";
+import { clinicalResultDetailHref } from "../hrefs";
+import { CANONICAL_RESULT_DEFINITIONS } from "../datasets/canonical-result-definitions";
 import {
   METRIC_KNOWLEDGE,
   metricIdentity,
@@ -27,7 +27,7 @@ import {
 } from "../trend-metrics";
 
 // #2365 — a `vitals` analyte with a body-metric home is not listed in the flat
-// Biomarkers browser; one without a home stays. BOTH directions are asserted, over the
+// Clinical results catalog; one without a home stays. BOTH directions are asserted, over the
 // REAL registries rather than a fixture list: a test that only proves the slugged
 // analytes left is half a test, and the removing direction is the expensive one — a
 // domain vital with no other home would disappear from the app.
@@ -60,10 +60,9 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
   // a calorimetry BMR on NO surface. Reachability is a different question from chart
   // existence, and this suite is what keeps the two from being confused again.
 
-  it("every slug declares, and every refusal states a reason", () => {
+  it("every refusal states a reason", () => {
     for (const slug of TREND_METRIC_SLUGS) {
       const reach = METRIC_DOCUMENT_REACH[slug];
-      expect(reach, `${slug} must declare document reachability`).toBeDefined();
       if (reach.reaches === false)
         expect(reach.reason.length, `${slug} must say WHY not`).toBeGreaterThan(
           30
@@ -153,11 +152,11 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
   });
 
   it("a DEPARTING analyte keeps a detail page — so a star stays un-starrable", () => {
-    // `StarredBiomarkers` reads `getSavedBiomarkers` straight from `saved_items`,
+    // `StarredResults` reads `getSavedClinicalResults` straight from `saved_items`,
     // independently of the browser gather, so a starred analyte still renders its tile
-    // after leaving the catalog — and the tile links through `readingDetailHref`. Both
+    // after leaving the catalog — and the tile links through `clinicalResultDetailHref`. Both
     // branches of that helper land on a page that carries a StarButton (the metric
-    // detail page for a continuous vital, `/results/readings/view` otherwise), so the un-star
+    // detail page for a continuous vital, `/results/clinical-results/view` otherwise), so the un-star
     // path can never be orphaned by this change. Pinned because the failure mode would
     // be a tile you cannot remove.
     for (const name of [
@@ -169,10 +168,10 @@ describe("document reachability is DECLARED and CHECKED (#2365)", () => {
       "Body Mass Index (BMI)",
     ]) {
       expect(hasTrendMetricHome(name), name).toBe(true);
-      const href = readingDetailHref(name);
+      const href = clinicalResultDetailHref(name);
       expect(
         href.startsWith("/trends/metric/") ||
-          href.startsWith("/results/readings/view"),
+          href.startsWith("/results/clinical-results/view"),
         `${name} → ${href}`
       ).toBe(true);
     }
@@ -246,7 +245,7 @@ describe("what LEAVES the browser (#2365)", () => {
   // The whole `vitals` half of the controlled vocabulary, partitioned by the rule. Kept
   // as an exact list on both sides so a vocabulary change that moves an analyte across
   // the line has to be looked at.
-  const vitalsEntries = CANONICAL_BIOMARKERS.filter(
+  const vitalsEntries = CANONICAL_RESULT_DEFINITIONS.filter(
     (e) => e.category === "vitals"
   );
 
@@ -292,7 +291,7 @@ describe("what LEAVES the browser (#2365)", () => {
 
 describe("what STAYS in the browser (#2365)", () => {
   it("every canonical `vitals` analyte with no metric chart", () => {
-    const staying = CANONICAL_BIOMARKERS.filter(
+    const staying = CANONICAL_RESULT_DEFINITIONS.filter(
       (e) => e.category === "vitals" && !hasTrendMetricHome(e.name)
     ).map((e) => e.name);
     // The specialty domains #1076 was protecting, in full.
@@ -620,7 +619,7 @@ describe("a statistic signifier refuses the home too (#2700)", () => {
     // vocabulary is swept rather than the `vitals` slice: the homed set is EXACTLY the
     // six physiologic vitals, peak flow, and the DEXA body-fat entry that homes but
     // stays listed because its category is `scan`. Nothing was evicted by #2700.
-    const homed = CANONICAL_BIOMARKERS.filter((e) =>
+    const homed = CANONICAL_RESULT_DEFINITIONS.filter((e) =>
       hasTrendMetricHome(e.name)
     ).map((e) => e.name);
     expect(homed.sort()).toEqual(
@@ -639,14 +638,14 @@ describe("a statistic signifier refuses the home too (#2700)", () => {
 
   it("the detail link never lands on the BMI chart", () => {
     // The issue's third clause. Worth pinning even though it was already true: nothing
-    // in `readingDetailHref` consults `trendMetricHomeFor` — the metric-detail branch is
+    // in `clinicalResultDetailHref` consults `trendMetricHomeFor` — the metric-detail branch is
     // `continuousReadingSlug`, whose per-name table has no BMI entry — so these labels
     // resolve to the episodic reading surface both before and after. The assertion
     // exists so a future attempt to route homed analytes by this recognizer has to
     // notice the percentile.
     for (const spelling of ["BMI%", "BMI %", "Body Mass Index Percentile"])
-      expect(readingDetailHref(spelling), spelling).not.toContain(
-        "/trends/metric"
+      expect(clinicalResultDetailHref(spelling), spelling).toBe(
+        `/results/clinical-results/view?name=${encodeURIComponent(spelling)}`
       );
   });
 });
@@ -808,19 +807,19 @@ describe("derivedInputsMetricFor (#2646)", () => {
     // once. A curated entry is a quantity the app stores and charts under its own
     // identity; not one of them may resolve to a derived-input slug, because that
     // resolution is a DELETE.
-    const swallowed = CANONICAL_BIOMARKERS.map((e) => e.name).filter(
+    const swallowed = CANONICAL_RESULT_DEFINITIONS.map((e) => e.name).filter(
       (name) => derivedInputsMetricFor(name) !== null
     );
     expect(swallowed).toEqual([]);
     // Non-vacuous: the registry it swept is the whole curated vocabulary (327 entries
     // when this landed), not an empty list.
-    expect(CANONICAL_BIOMARKERS.length).toBeGreaterThan(300);
+    expect(CANONICAL_RESULT_DEFINITIONS.length).toBeGreaterThan(300);
     // #2700 extends the sweep to the SIGNIFIER-decorated spellings, now that the same
     // refusal runs at Tier 1: no curated name decorated with a statistic signifier may
     // resolve to a derived-input slug either. (Not the `(ABBR)` print form — appending
     // `(BMI)` to an unrelated curated name is the DISJOINT full half #2678 deliberately
     // lets the acronym corroborate, so that sweep would assert the opposite rule.)
-    const swallowedDecorated = CANONICAL_BIOMARKERS.flatMap((e) =>
+    const swallowedDecorated = CANONICAL_RESULT_DEFINITIONS.flatMap((e) =>
       STATISTIC_SIGNIFIERS.map((sig) => `${e.name} ${sig.token}`)
     ).filter((name) => derivedInputsMetricFor(name) !== null);
     expect(swallowedDecorated).toEqual([]);

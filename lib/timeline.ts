@@ -1,5 +1,5 @@
 import { activityComponentSportNames } from "./activity-icon";
-import { activityDetailHref } from "./ride-detail";
+import { trainingActivityPageHref } from "./hrefs";
 import { shiftDateStr } from "./date";
 import { db, today } from "./db";
 import type { MemberTimeline } from "./timeline-multi";
@@ -13,11 +13,18 @@ import {
 import {
   CONDITION_REPRESENTATIVE_IDS,
   ALLERGY_REPRESENTATIVE_IDS,
+  IMAGING_REPRESENTATIVE_IDS,
 } from "./queries/clinical";
-import { restrictedActivityTypeClause, isTrainingRestricted } from "./age-gate";
+import {
+  flagInSql,
+  LAB_STATED_FLAGS,
+  NON_OPTIMAL_FLAGS,
+  OUT_OF_RANGE_FLAGS,
+} from "./reference-range";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./training-log-format";
-import { getTimezone, type UnitPrefs } from "./settings";
+import { getProfileAge, getTimezone, type UnitPrefs } from "./settings";
+import { isLongevityRelevant } from "./life-stage";
 import {
   compactList,
   countTone,
@@ -72,12 +79,6 @@ export interface TimelineOptions {
   limit?: number;
   units?: UnitPrefs;
   includeTrainingEvents?: boolean;
-  // Age-restricted profile (#489/#618): the FULL training domain (strength
-  // activities + goals) is hidden, but the age-neutral duration activities
-  // (sport/cardio) that /training's RestrictedActivityView still shows remain
-  // visible — the type-aware successor to the old all-or-nothing
-  // includeTrainingEvents=false. Ignored when includeTrainingEvents is false.
-  restricted?: boolean;
   // Multi-view Timeline (#1329): the profile whose day a per-day deep-link
   // (`timelineDayHref` on symptom/practice events) should land on. Set ONLY by the
   // cross-profile gather (getMultiProfileTimeline) to the member being gathered, so a
@@ -183,18 +184,76 @@ function activitySetSummaries(
   return out;
 }
 
-// Sibling records a single import document produced alongside a visit (#662): the
-// care-plan items, procedures, and medications sharing the visit's document_id.
+// Sibling records a visit's import produced alongside it (#662), SCOPED PER VISIT
+// (#2920).
+//
+// #662 gathered by DOCUMENT LINEAGE alone — "a visit event linking the care-plan
+// items / meds / procedures it produced" — an equation of document with visit that
+// held for the single-visit CCDs it was built on. A multi-visit portal container
+// falsifies it: every encounter in an "all visits" export shares ONE document_id, so
+// every record the container produced attached to every visit in it. The observed
+// card read "From this visit's document — Medication: albuterol" on a pediatric
+// ophthalmology visit; the med and the visit merely shared an export.
+//
+// So the gather has two modes, and the caller's `singleVisitDocument` picks:
+//   • DOCUMENT ≈ VISIT (the document produced exactly one representative-collapsed
+//     encounter): today's behavior, unchanged, labeled "From this visit's document".
+//   • A CONTAINER: only rows carrying a real `encounter_id` link to THIS visit — the
+//     same Tier-1/Tier-2 links the encounter detail page's already-correct "From this
+//     visit" section reads (#1050/#1053/#1350) — labeled with its honest vocabulary.
+//     Unlinked rows are suppressed: a reference chip that cannot name its visit says
+//     nothing, per the section's own "never a causal claim" doctrine. `care_plan_items`
+//     has no encounter_id column, so plan items only ever appear in the first mode
+//     (the observed ones are standing vaccine/screening reminders anyway). Inferring
+//     membership by date-proximity is deliberately NOT done — guessing which visit a
+//     record belongs to is the same harm in subtler form, and #1050's suggest-and-
+//     accept flow is the sanctioned path for new links.
+//
 // Each SELECT is a LITERAL, profile-scoped string (never runtime-built), so the
 // source-scanning scoping guard can verify profile_id is present; the medication
-// gather also pins source='extracted' (a MANUAL med with a NULL document_id can't
+// gathers also pin source='extracted' (a MANUAL med with a NULL document_id can't
 // leak in, and only imported meds carry a document_id anyway). Capped small — a
 // visit's linked-context list is a reference, not an exhaustive dump.
 const LINEAGE_CAP = 8;
+
+// Which scope produced a visit card's linked rows — it selects the card's heading, so
+// the card never claims more attribution than it has.
+export type VisitLineageScope = "visit" | "document";
+
 function visitLineageRows(
   profileId: number,
-  documentId: number
+  encounterId: number,
+  documentId: number,
+  singleVisitDocument: boolean
 ): VisitLinkedRow[] {
+  if (!singleVisitDocument) {
+    const linkedProcedures = db
+      .prepare(
+        `SELECT name FROM procedures
+          WHERE profile_id = ? AND encounter_id = ?
+            AND TRIM(COALESCE(name,'')) != ''
+          ORDER BY date DESC, id DESC LIMIT ?`
+      )
+      .all(profileId, encounterId, LINEAGE_CAP) as { name: string }[];
+    const linkedMedications = db
+      .prepare(
+        `SELECT name FROM intake_items
+          WHERE profile_id = ? AND encounter_id = ? AND source = 'extracted'
+            AND TRIM(COALESCE(name,'')) != ''
+          ORDER BY id DESC LIMIT ?`
+      )
+      .all(profileId, encounterId, LINEAGE_CAP) as { name: string }[];
+    return [
+      ...linkedProcedures.map((r) => ({
+        kind: "procedure" as const,
+        label: r.name,
+      })),
+      ...linkedMedications.map((r) => ({
+        kind: "medication" as const,
+        label: r.name,
+      })),
+    ];
+  }
   const procedures = db
     .prepare(
       `SELECT name FROM procedures
@@ -231,6 +290,30 @@ function visitLineageRows(
   ];
 }
 
+// Does this document stand for exactly ONE visit? Counted over the SAME
+// representative-collapsed encounter set the Visits list and the Timeline read, so a
+// per-visit CCD uploaded three times still counts as one visit and keeps its
+// document-lineage chips. Memoized per collect pass — a Timeline page renders many
+// visits and most share a handful of documents.
+function isSingleVisitDocument(
+  profileId: number,
+  documentId: number,
+  memo: Map<number, boolean>
+): boolean {
+  const cached = memo.get(documentId);
+  if (cached !== undefined) return cached;
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM encounters
+        WHERE profile_id = ? AND document_id = ?
+          AND id IN (${ENCOUNTER_REPRESENTATIVE_IDS})`
+    )
+    .get(profileId, documentId, profileId) as { n: number };
+  const single = row.n <= 1;
+  memo.set(documentId, single);
+  return single;
+}
+
 // Collect + merge + sort every category's events for the profile. Each per-table
 // query pushes the requested date window into SQL AND caps at `perTableLimit`
 // most-recent in-range rows. Because the global top-N of the merge is a subset of
@@ -248,7 +331,6 @@ function collectEvents(
     temperatureUnit: "F",
   };
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
-  const restricted = options.restricted ?? false;
   const tz = getTimezone(profileId);
   const events: TimelineEvent[] = [];
 
@@ -274,9 +356,7 @@ function collectEvents(
       .prepare(
         `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, end_time, notes, source, components
            FROM activities
-          WHERE profile_id = ?${restrictedActivityTypeClause(
-            restricted
-          )}${activityBounds.clause}
+          WHERE profile_id = ?${activityBounds.clause}
           ORDER BY date DESC, id DESC
           LIMIT ?`
       )
@@ -317,7 +397,7 @@ function collectEvents(
           title: a.title,
           subtitle: compactList(meta, 4),
           detail: a.notes,
-          href: activityDetailHref(a),
+          href: trainingActivityPageHref(a.id),
           sortTime: a.start_time,
           // The raw local window inputs for the intraday panel's workout block
           // (#1068) — resolved through the canonical activityWindow(), so an
@@ -413,8 +493,9 @@ function collectEvents(
               CASE WHEN panel_id <> 'other' THEN panel_id ELSE panel_fallback END
                 AS group_key,
               COUNT(*) AS count,
-              SUM(CASE WHEN flag IN ('high','low','abnormal') THEN 1 ELSE 0 END) AS abnormal_count,
-              SUM(CASE WHEN flag LIKE 'non-optimal%' THEN 1 ELSE 0 END) AS nonoptimal_count,
+              SUM(CASE WHEN ${flagInSql(OUT_OF_RANGE_FLAGS)} THEN 1 ELSE 0 END) AS abnormal_count,
+              SUM(CASE WHEN ${flagInSql(NON_OPTIMAL_FLAGS)} THEN 1 ELSE 0 END) AS nonoptimal_count,
+              SUM(CASE WHEN ${flagInSql(LAB_STATED_FLAGS)} THEN 1 ELSE 0 END) AS reported_count,
               GROUP_CONCAT(COALESCE(NULLIF(TRIM(canonical_name), ''), name), '||') AS names,
               GROUP_CONCAT(
                 COALESCE(NULLIF(TRIM(canonical_name), ''), name) || '::' ||
@@ -442,6 +523,7 @@ function collectEvents(
     abnormal_count: number;
     nonoptimal_count: number;
     names: string | null;
+    reported_count: number;
     result_details: string | null;
     first_name: string | null;
     document_id: number | null;
@@ -450,6 +532,11 @@ function collectEvents(
   for (const m of medicalGroups) {
     const abnormal = m.abnormal_count || 0;
     const nonoptimal = m.nonoptimal_count || 0;
+    // #2799: a value outside the range the SOURCE printed. Counted SEPARATELY from
+    // non-optimal rather than folded in, because the subtitle names what it counted and
+    // "non-optimal" would be the wrong word for it — it is the lab's own range, not our
+    // band. It shares non-optimal's amber tone, which is the tier flagTone puts it in.
+    const reported = m.reported_count || 0;
     const names = (m.names ?? "").split("||").filter(Boolean);
     pushLimited(
       events,
@@ -458,10 +545,18 @@ function collectEvents(
         date: m.date,
         category: "medical",
         title: `${medicalGroupLabel(m.panel_id, m.panel_fallback)} results`,
-        subtitle: `${m.count} result${m.count === 1 ? "" : "s"}${abnormal ? `, ${abnormal} out of range` : nonoptimal ? `, ${nonoptimal} non-optimal` : ""}`,
+        subtitle: `${m.count} result${m.count === 1 ? "" : "s"}${
+          abnormal
+            ? `, ${abnormal} out of range`
+            : nonoptimal
+              ? `, ${nonoptimal} non-optimal`
+              : reported
+                ? `, ${reported} outside reported range`
+                : ""
+        }`,
         detail: compactList(names, 5),
         href: clinicalObservationHref(m.document_id, names, m.first_name),
-        tone: countTone(abnormal, nonoptimal),
+        tone: countTone(abnormal, nonoptimal + reported),
         detailItems: parseDetailItems(m.result_details),
         meta: m.document_id
           ? [`Document #${m.document_id}`]
@@ -629,22 +724,24 @@ function collectEvents(
   // Ended event on end_date. Two-sided like medication courses, so no date-bound
   // clause here — the pure shaper emits both dates and pushLimited filters each
   // against the window. Ordered by the freshest boundary.
-  const protocolRows = db
-    .prepare(
-      `SELECT id, name, start_date, end_date
-         FROM protocols
-        WHERE profile_id = ?
-        ORDER BY COALESCE(end_date, start_date) DESC, id DESC
-        LIMIT ?`
-    )
-    .all(profileId, perTableLimit) as {
-    id: number;
-    name: string;
-    start_date: string;
-    end_date: string | null;
-  }[];
-  for (const event of protocolTimelineEvents(protocolRows)) {
-    pushLimited(events, event, options);
+  if (isLongevityRelevant(getProfileAge(profileId))) {
+    const protocolRows = db
+      .prepare(
+        `SELECT id, name, start_date, end_date
+           FROM protocols
+          WHERE profile_id = ?
+          ORDER BY COALESCE(end_date, start_date) DESC, id DESC
+          LIMIT ?`
+      )
+      .all(profileId, perTableLimit) as {
+      id: number;
+      name: string;
+      start_date: string;
+      end_date: string | null;
+    }[];
+    for (const event of protocolTimelineEvents(protocolRows)) {
+      pushLimited(events, event, options);
+    }
   }
 
   const immunizationBounds = exact("date");
@@ -803,16 +900,26 @@ function collectEvents(
     provider_name: string | null;
     location_name: string | null;
   }[];
+  const singleVisitDocMemo = new Map<number, boolean>();
   for (const e of encounters) {
-    // Linked context (#662): an imported visit deep-links the OTHER records its
-    // source document produced — the care-plan items / procedures / medications
-    // sharing this visit's document_id (import lineage the writer already stamped).
-    // Informational reference, never a causal claim; manual visits (no document)
-    // carry none. Cheap: only imported visits run the gather, all profile-scoped.
+    // Linked context (#662, scoped by #2920): an imported visit deep-links the OTHER
+    // records of its import. A document that stands for ONE visit links everything it
+    // produced ("From this visit's document"); a multi-visit container links only the
+    // rows with a real encounter link to THIS visit ("From this visit"). Informational
+    // reference, never a causal claim; manual visits (no document) carry none. Cheap:
+    // only imported visits run the gather, all profile-scoped.
+    const singleVisitDoc =
+      e.document_id != null &&
+      isSingleVisitDocument(profileId, e.document_id, singleVisitDocMemo);
     const linkedRefs =
       e.document_id != null
-        ? visitLinkedRefs(visitLineageRows(profileId, e.document_id))
+        ? visitLinkedRefs(
+            visitLineageRows(profileId, e.id, e.document_id, singleVisitDoc)
+          )
         : [];
+    const linkedRefsScope: VisitLineageScope = singleVisitDoc
+      ? "document"
+      : "visit";
     pushLimited(
       events,
       {
@@ -828,7 +935,7 @@ function collectEvents(
         ),
         detail: e.diagnoses ?? e.notes,
         href: encounterHref(e.id),
-        ...(linkedRefs.length > 0 ? { linkedRefs } : {}),
+        ...(linkedRefs.length > 0 ? { linkedRefs, linkedRefsScope } : {}),
       },
       options
     );
@@ -838,6 +945,9 @@ function collectEvents(
   // Study rows carry a document_id but are a distinct entity from the uploaded
   // document event; the impression is the detail. Loose-bounded on study_date with a
   // created_at fallback so an undated study still lands somewhere sensible.
+  // De-duplicated across documents via IMAGING_REPRESENTATIVE_IDS (#2919) — the same
+  // collapse the imaging list and Search read, so three overlapping portal exports
+  // don't stack the same study three times (its profile_id bind comes second).
   const imagingBounds = loose(
     "COALESCE(study_date, substr(created_at, 1, 10))"
   );
@@ -846,11 +956,12 @@ function collectEvents(
       `SELECT id, modality, body_region, laterality, contrast, study_date,
               impression, indication, created_at
          FROM imaging_studies
-        WHERE profile_id = ?${imagingBounds.clause}
+        WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
+              ${imagingBounds.clause}
         ORDER BY COALESCE(study_date, substr(created_at, 1, 10)) DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, ...imagingBounds.params, perTableLimit) as {
+    .all(profileId, profileId, ...imagingBounds.params, perTableLimit) as {
     id: number;
     modality: ImagingModality;
     body_region: string | null;
@@ -884,7 +995,7 @@ function collectEvents(
     );
   }
 
-  if (includeTrainingEvents && !restricted) {
+  if (includeTrainingEvents) {
     const goalBounds = loose(
       "COALESCE(target_date, substr(created_at, 1, 10))"
     );
@@ -1302,14 +1413,13 @@ export function getTimelinePage(
 // SUBJECT's day context. `hasMore` is true when ANY member has more history.
 export function getMultiProfileTimeline(
   viewIds: readonly number[],
-  options: Omit<TimelineOptions, "restricted" | "dayLinkProfileId"> = {}
+  options: Omit<TimelineOptions, "dayLinkProfileId"> = {}
 ): { members: MemberTimeline[]; hasMore: boolean } {
   const members: MemberTimeline[] = [];
   let hasMore = false;
   for (const pid of viewIds) {
     const page = getTimelinePage(pid, {
       ...options,
-      restricted: isTrainingRestricted(pid),
       dayLinkProfileId: pid,
     });
     if (page.hasMore) hasMore = true;
@@ -1324,10 +1434,9 @@ export function getMultiProfileTimeline(
 
 export function getTimelineDates(
   profileId: number,
-  options: Pick<TimelineOptions, "includeTrainingEvents" | "restricted"> = {}
+  options: Pick<TimelineOptions, "includeTrainingEvents"> = {}
 ): string[] {
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
-  const restricted = options.restricted ?? false;
   const tz = getTimezone(profileId);
   const dates = new Set<string>();
   const add = (d: string | null | undefined) => {
@@ -1335,9 +1444,8 @@ export function getTimelineDates(
   };
 
   // Explicit-date tables: the event date IS a stored calendar column, so the raw
-  // slice matches where the timeline places the event. Activities are type-aware
-  // for a restricted profile (#618, same set RestrictedActivityView shows); goals
-  // stay gated. `date`-column selects go straight into this UNION.
+  // slice matches where the timeline places the event. Activities and goals are
+  // age-neutral profile-owned data. `date`-column selects go straight into this UNION.
   const explicitSelects: string[] = [
     "SELECT date FROM body_metrics WHERE profile_id = @profileId",
     "SELECT date FROM medical_records WHERE profile_id = @profileId",
@@ -1357,8 +1465,7 @@ export function getTimelineDates(
   ];
   if (includeTrainingEvents) {
     explicitSelects.push(
-      `SELECT date FROM activities
-        WHERE profile_id = @profileId${restrictedActivityTypeClause(restricted)}`,
+      `SELECT date FROM activities WHERE profile_id = @profileId`,
       "SELECT since AS date FROM injuries WHERE profile_id = @profileId AND since IS NOT NULL",
       `SELECT resolved_date AS date FROM injuries
         WHERE profile_id = @profileId AND resolved_date IS NOT NULL`,
@@ -1418,7 +1525,7 @@ export function getTimelineDates(
       )
       .all(profileId) as { explicit: string | null; stamp: string | null }[]
   );
-  if (includeTrainingEvents && !restricted) {
+  if (includeTrainingEvents) {
     resolveFallback(
       db
         .prepare(

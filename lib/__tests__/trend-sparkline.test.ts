@@ -36,10 +36,10 @@ describe("sparklineShapeForSeriesKey", () => {
   });
 
   // A biomarker is always a level — an analyte has a value on the days between
-  // draws — so no `bio:` key is ever bar-shaped, whatever it is called.
+  // draws — so no `result:` key is ever bar-shaped, whatever it is called.
   it("never bars a biomarker, including one named like a metric", () => {
-    expect(sparklineShapeForSeriesKey("bio:LDL Cholesterol")).toBe("line");
-    expect(sparklineShapeForSeriesKey("bio:volume")).toBe("line");
+    expect(sparklineShapeForSeriesKey("result:LDL Cholesterol")).toBe("line");
+    expect(sparklineShapeForSeriesKey("result:volume")).toBe("line");
   });
 
   it("falls back to the line for an unprefixed or empty key", () => {

@@ -7,11 +7,9 @@
 //      schema stops being true; the fix is only worth anything if the published copy
 //      cannot fall behind the declaration.
 //
-//   2. A SOURCE SCAN over the fallbacks the row readers exist to replace. A dozen
-//      surfaces hand-roll `COALESCE(recorded_at, taken_at)` and four more pair
-//      `occurred_at ?? recorded_at`. Both are declared fallbacks now — the first WITHIN the
-//      record question (the owner's #2205 ruling made recorded_at a record instant), the
-//      second ACROSS questions, which is the one that has to stay visible. Each is
+//   2. A SOURCE SCAN over the fallbacks the row readers exist to replace. Several
+//      surfaces pair `occurred_at ?? recorded_at` across event and record questions.
+//      Each is
 //      frozen at its current count with a reason; a NEW one fails, and converting one
 //      must LOWER the count, so the ledger only shrinks.
 //
@@ -71,6 +69,11 @@ function entries(): { table: TemporalTable; col: TimeColumn }[] {
   return out;
 }
 
+// A suffix exception must name the physical column and explain why its grain cannot
+// use the ordinary persisted vocabulary. Empty today; keeping the reasoned shape
+// here makes any future exception an explicit review decision rather than a skip.
+const TIME_SUFFIX_ALLOW: Record<string, string> = {};
+
 describe("the declared index is internally consistent", () => {
   it("uses only the declared vocabulary", () => {
     // The types already say this; the registry is DATA, and a `satisfies` clause is
@@ -105,6 +108,27 @@ describe("the declared index is internally consistent", () => {
     expect(bad, bad.join("\n")).toEqual([]);
   });
 
+  it("reserves `_at` for instants and `_time` for profile-local clock values", () => {
+    const bad: string[] = [];
+    const used = new Set<string>();
+    for (const { table, col } of entries()) {
+      const key = `${table}.${col.column}`;
+      const wrong =
+        (col.grain === "instant" && col.column.endsWith("_time")) ||
+        (col.grain === "time-of-day" && col.column.endsWith("_at"));
+      if (!wrong) continue;
+      if (TIME_SUFFIX_ALLOW[key]) used.add(key);
+      else bad.push(`${key}: ${col.grain}`);
+    }
+    const thin = Object.entries(TIME_SUFFIX_ALLOW)
+      .filter(([, reason]) => reason.trim().length < 20)
+      .map(([key]) => `${key}: exception has no useful reason`);
+    const stale = Object.keys(TIME_SUFFIX_ALLOW)
+      .filter((key) => !used.has(key))
+      .map((key) => `${key}: exception is no longer needed`);
+    expect([...bad, ...thin, ...stale]).toEqual([]);
+  });
+
   it("keeps `day` semantics day-grained", () => {
     // #2205 constraint 4: a profile-local day is a different question from an instant,
     // and nothing in phase 3 may quietly promote one.
@@ -114,9 +138,16 @@ describe("the declared index is internally consistent", () => {
     expect(bad, bad.join(", ")).toEqual([]);
   });
 
+  it("keeps practice and activity rhythm inputs at profile-local clock grain", () => {
+    const grain = (table: TemporalTable, column: string) =>
+      TIME_COLUMNS[table].find((entry) => entry.column === column)?.grain;
+    expect(grain("practice_logs", "time")).toBe("time-of-day");
+    expect(grain("activities", "start_time")).toBe("time-of-day");
+    expect(grain("activities", "end_time")).toBe("time-of-day");
+  });
+
   it("declares at most one event column per table", () => {
-    // A RECORD chain is legitimate — intake_item_logs falls from recorded_at to taken_at,
-    // and both answer "when did this enter the app". An EVENT chain never is: falling
+    // A RECORD chain can be legitimate. An EVENT chain never is: falling
     // from one event column to another would be a substitution wearing a declaration.
     const bad = (Object.keys(TIME_COLUMNS) as TemporalTable[])
       .filter((t) => timeColumnsFor(t, "event").length > 1)
@@ -187,8 +218,8 @@ describe("the declared index is internally consistent", () => {
       "integration_backfill_jobs.started_at",
       "integration_connections.last_sync_at",
       "integration_connections.refresh_claimed_at",
-      "metric_samples.end_time",
-      "metric_samples.start_time",
+      "metric_samples.ended_at",
+      "metric_samples.started_at",
     ]);
   });
 
@@ -233,8 +264,12 @@ describe("the published index cannot fall behind the declaration", () => {
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 6,
-    why: "the adherence reader's SQL walking the recorded_at → taken_at RECORD CHAIN: one projection, three ORDER BY / MAX() expressions, and — since #2417 — ONE shared `DOSE_HISTORY_ORDER` constant standing in for what used to be three separately-spelled dose-history ORDER BYs. Correct values (the owner's #2205 ruling settled that both links answer one question). The extraction is why this entry went DOWN when a third dose-history reader was added: the three readers must sort identically (the cross-item ledger narrowed to one item is asserted row-for-row against the item-scoped one), so sharing the string makes drift impossible rather than merely observed. Routing the chain through recordInstant still means selecting both columns and ordering in JS, which changes the perf shape of the medication surface's hottest query — a read-path change with its own PR — but it is now a one-line edit for the dose-history family.",
+    count: 9,
+    why: "SQL readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated. The shared dose-history ordering keeps three scopes identical; the redose readers require the same database-side ordering and aggregation.",
+  },
+  "lib/queries/intake/prn-family.ts": {
+    count: 2,
+    why: "the family safety gather selects and orders the latest administration event, with immutable capture as the fallback for rows whose event is unstated. Both operations must remain database-side across all family members.",
   },
   "lib/queries/nutrition.ts": {
     count: 3,
@@ -246,15 +281,15 @@ const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   },
   "lib/school-return-data.ts": {
     count: 1,
-    why: "the ORDER BY that sequences a day's administrations over the record chain. The JS-side read moved to bestKnownInstant in #2205 phase 3; the SQL ordering stays until the same pass converts the query shape.",
+    why: "the ORDER BY sequences administrations by event time with capture fallback. The JS-side read uses bestKnownInstant, while ordering must remain in SQL.",
   },
   "lib/illness-episode.ts": {
     count: 1,
-    why: "as school-return-data: the ORDER BY only. The row read moved to bestKnownInstant.",
+    why: "as school-return-data: the event-to-capture ORDER BY only. The row read uses bestKnownInstant.",
   },
   "app/(app)/medications/med-data.ts": {
     count: 2,
-    why: "the medication detail's administration list and its 'last taken' label. A rendered surface, so converting it needs a browser test in the same change — deliberately left to the surface's own PR rather than smuggled into the substrate one.",
+    why: "the medication detail's administration list and its 'last taken' label use the event instant with capture fallback, matching the shared dose history semantics.",
   },
   "lib/food-slot-count.ts": {
     count: 1,
@@ -312,7 +347,7 @@ function pairPatterns(): PairPattern[] {
     // The table's declared FALLBACK ORDER: its event column, then its record chain.
     // Any ordered pair drawn from it is a substitution a reader can hand-roll —
     // whether it crosses the event/record line (`occurred_at ?? recorded_at`) or stays
-    // inside the record question (`COALESCE(recorded_at, taken_at)`). Both belong to
+    // inside a possible record chain. Both belong to
     // lib/row-instants.ts now, so both are counted here.
     const chain = [
       ...timeColumnsFor(table, "event"),
@@ -419,10 +454,10 @@ describe("the event/record pairing ledger (issue #2205 phase 3)", () => {
     // A silently-empty match set would make the ledger pass vacuously.
     const patterns = pairPatterns();
     const hits = (s: string) => countPairings(s, patterns);
-    expect(hits("ORDER BY COALESCE(l.recorded_at, l.taken_at) ASC")).toBe(1);
-    expect(hits("const stored = r.recorded_at ?? r.taken_at;")).toBe(1);
+    expect(hits("ORDER BY COALESCE(l.occurred_at, l.recorded_at) ASC")).toBe(1);
+    expect(hits("const stored = r.occurred_at ?? r.recorded_at;")).toBe(1);
     expect(hits("new Date(occurredAt ?? recordedAt)")).toBe(1);
     // The other direction is not a substitution and must not be flagged.
-    expect(hits("const stamp = r.taken_at ?? r.recorded_at;")).toBe(0);
+    expect(hits("const stamp = r.recorded_at ?? r.occurred_at;")).toBe(0);
   });
 });

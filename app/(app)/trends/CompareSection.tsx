@@ -1,5 +1,4 @@
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   listCompareOptions,
   resolveSeriesByKey,
@@ -29,8 +28,7 @@ import CompareOverlay from "@/components/CompareOverlay";
 // #1489 folded it out of a tab of its own and into a SECTION of Insights (rendered
 // by InsightsSection). It MOVED, it did not change: same params, same dual-axis
 // (#400) / time-axis (#402) / normalized behaviour. It is
-// age-NEUTRAL — a training-restricted profile sees this section (with the gated
-// series already filtered out of `listCompareOptions`) and nothing else on the tab.
+// age-neutral — it compares the profile's own series.
 export default async function CompareSection({
   range,
   a,
@@ -43,14 +41,13 @@ export default async function CompareSection({
   normalized: boolean;
 }) {
   const { login, profile } = await requireSession();
-  const restricted = isTrainingRestricted(profile.id);
-  const options = listCompareOptions(profile.id, restricted);
+  const options = listCompareOptions(profile.id);
 
   const seriesA: TrendSeries | null = a
-    ? resolveSeriesByKey(profile.id, login.id, range, a, restricted)
+    ? resolveSeriesByKey(profile.id, login.id, range, a)
     : null;
   const seriesB: TrendSeries | null = b
-    ? resolveSeriesByKey(profile.id, login.id, range, b, restricted)
+    ? resolveSeriesByKey(profile.id, login.id, range, b)
     : null;
 
   const alignedRaw =

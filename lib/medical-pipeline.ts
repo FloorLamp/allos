@@ -272,7 +272,7 @@ export interface IngestOutcome {
   // Why no row was written, when none was. NULL whenever docId is set.
   //   blocked          — the user deleted these bytes; the tombstone refused the re-offer.
   //   already-held     — this profile already has these exact bytes stored.
-  //   already-imported — different bytes, same records: every clinical entry in the
+  //   already-imported — different bytes, same observations: every clinical entry in the
   //                      offered health record is already imported from another document
   //                      of this profile (#1780). The one an acquirer hits repeatedly,
   //                      because a portal regenerates its container on every collection
@@ -510,7 +510,7 @@ export async function ingestMedicalUpload(
   //
   // It is the SECOND identity a file can be recognized by, and it sits beside the first
   // rather than replacing it. The content hash still answers "the same file, picked
-  // twice"; this answers "the same records, packaged again" — the case a portal produces
+  // twice"; this answers "the same observations, packaged again" — the case a portal produces
   // every single collection, because it regenerates the container per request while the
   // clinical documents inside stay byte-identical.
   const clinicalKey = healthKind ? offeredClinicalKey(buffer) : null;
@@ -548,7 +548,7 @@ export async function ingestMedicalUpload(
   if ("clinicalHolder" in reserved) {
     const holder = reserved.clinicalHolder;
     // NO MARKER ROW ON THE ACQUIRER PATH, exactly as for a byte duplicate (#1776): an
-    // offer of records allos already holds is an EVENT, and the sync report is its
+    // offer of observations Allos already holds is an EVENT, and the sync report is its
     // record. This matters MORE here than it does for the hash: a portal's container is
     // never byte-stable, so an acquirer re-collecting daily would land a fresh marker row
     // every single day and inflate the import feed without bound.
@@ -770,7 +770,7 @@ function revalidateAfterHealthImport() {
 // Background extraction: call the AI, then import all results and finalize the
 // document's status/metadata in a single transaction. The page polls for the
 // status flip (processing → done/failed) while this runs. Idempotent: on a
-// successful extraction it replaces the document's existing records, so it
+// successful extraction it replaces the document's existing observations, so it
 // doubles as the reprocess path (a fresh upload simply has none to replace).
 // Returns the final status so callers (e.g. reprocess) can tally results.
 //
@@ -867,10 +867,10 @@ async function persistExtractionResult(
 ): Promise<"done" | "failed" | "skipped"> {
   try {
     if (result.status === "done") {
-      log.info("importing extracted records", {
+      log.info("importing extracted observations", {
         docId,
         filename,
-        records: result.results.length,
+        observations: result.results.length,
       });
     } else {
       log.info("extraction not imported", {
@@ -881,7 +881,7 @@ async function persistExtractionResult(
       });
     }
 
-    // On skip/fail we leave any existing records in place (don't destroy data on
+    // On skip/fail we leave any existing observations in place (don't destroy data on
     // a failed reprocess); only a successful extraction replaces them below.
     if (result.status === "skipped") {
       db.prepare(
@@ -932,7 +932,7 @@ function commitPersistInput(
   filename: string,
   loginId?: number
 ): void {
-  const { insertedRecordIds: insertedIds } = persistDocumentImport(
+  const { insertedObservationIds: insertedIds } = persistDocumentImport(
     profileId,
     docId,
     input
@@ -948,8 +948,8 @@ function commitPersistInput(
     const adopted = applyImportFollowups(profileId, {
       demographics: input.demographics,
       canonicalNames: input.canonicalNamesToRegister,
-      insertedRecordIds: insertedIds,
-      records: input.records,
+      insertedObservationIds: insertedIds,
+      observations: input.observations,
     });
     if (adopted.bloodType) {
       log.info("adopted blood type from document", {
@@ -1061,7 +1061,7 @@ function beginReprocess(
 }
 
 // Reprocess one document and AWAIT the result: claim it, then run extraction
-// (which replaces its records on success). Returns the resulting status
+// (which replaces its observations on success). Returns the resulting status
 // ('processing' means it was already claimed by a concurrent call). Used by the
 // bulk reprocess, which runs documents sequentially and tallies their outcomes.
 // Does not revalidate or clean up stars — callers do.
@@ -1136,8 +1136,8 @@ function revalidateAfterReprocess() {
 // SAME `stored_path`/`processing` filter reprocessAllForProfile uses so the preview
 // counts exactly the set that would run. Read-only — never touches the DB.
 // Re-run AI extraction on every uploaded document and replace its imported
-// records with the fresh results. This OVERWRITES any manual edits made to a
-// document's records (manual standalone records are untouched). Runs the
+// observations with the fresh results. This OVERWRITES any manual edits made to a
+// document's observations (manual standalone observations are untouched). Runs the
 // documents sequentially to stay within API rate limits.
 export async function reprocessAllForProfile(
   loginId: number,
@@ -1282,7 +1282,7 @@ function commitCachedPreview(
   }
 }
 
-// Reprocess a single document. Overwrites that document's records. Mirrors the
+// Reprocess a single document. Overwrites that document's observations. Mirrors the
 // upload path: flip the document to 'processing' and run extraction in the
 // BACKGROUND (do NOT await) so the caller returns immediately. Awaiting the AI
 // call would keep the client's transition pending for its entire duration,
@@ -1400,7 +1400,7 @@ export interface ReprocessFromRawResult {
 //
 // This is the right tool whenever the bug was in OUR parsing rather than in the
 // model's answer. #902 is the motivating case: a payload the model nested under an
-// envelope key imported as ZERO records, and the only recovery was paying for a
+// envelope key imported as ZERO observations, and the only recovery was paying for a
 // full re-extraction — which is slower, costs a unit, and can return different
 // data. The saved extraction is the same answer; it just needed parsing correctly.
 //
@@ -1490,7 +1490,7 @@ export async function reprocessFromRawById(
       };
     return {
       status: "done",
-      message: `Re-imported ${result.results.length} record(s) from the saved extraction — no AI call.`,
+      message: `Re-imported ${result.results.length} observation(s) from the saved extraction — no AI call.`,
     };
   } catch (err) {
     log.error("raw reprocess crashed", { id, err });
@@ -1536,7 +1536,7 @@ async function extractPersistInputForPreview(
     try {
       const { parsed, source } = parseHealthRecord(buffer);
       const canonicalIndex = buildCanonicalIndex(getCanonicalVocabulary());
-      for (const r of parsed.records) {
+      for (const r of parsed.observations) {
         // Batch-aware, exactly as persistHealthRecordDoc snaps — the preview must
         // collapse same-key spellings the same way the commit will.
         r.canonical = snapCanonicalNameIntoBatch(
@@ -1650,7 +1650,7 @@ export async function previewReprocessById(
   // carries them, so without this every derived flag reads as a phantom change on
   // a byte-identical reprocess. Runs BEFORE the stash so the previewed input and
   // the committed input are the same object state.
-  previewReconcileFlags(profileId, extracted.input.records);
+  previewReconcileFlags(profileId, extracted.input.observations);
   const current = getReprocessSnapshot(profileId, id);
   const next = snapshotFromPersistInput(extracted.input);
   // Consolidated medications (#1204): a derived drug the profile already tracks
@@ -1660,7 +1660,7 @@ export async function previewReprocessById(
     profileId,
     current,
     next.medications,
-    extracted.input.records
+    extracted.input.observations
   );
   // Deferred body metrics / height / head-circ: a weight, resting-HR, height, or
   // head-circ that a reprocess would DEFER (another source already covers that date's

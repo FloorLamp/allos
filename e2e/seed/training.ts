@@ -37,6 +37,17 @@ import {
   LAB_GOAL_TARGET,
   E2E_LOGIN_WEEK_SPINE,
   WEEK_SPINE_PROFILE,
+  ZONE_WALK_TITLE,
+  ZONE_WALK_EXTERNAL_ID,
+  TOTALS_ONLY_TITLE,
+  TOTALS_ONLY_EXTERNAL_ID,
+  E2E_LOGIN_SESSION_PEERS,
+  SESSION_PEERS_PROFILE,
+  SESSION_PEERS_TITLE,
+  E2E_LOGIN_OVERVIEW_NO_ROUTINE,
+  OVERVIEW_NO_ROUTINE_PROFILE,
+  E2E_LOGIN_OVERVIEW_REST,
+  OVERVIEW_REST_PROFILE,
 } from "../fixture-logins";
 import {
   getTimezone,
@@ -46,7 +57,8 @@ import {
 } from "../../lib/settings";
 import { reconcileFlags } from "../../lib/queries";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
-import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
+import { PROFILE_ID, seedMemberLogin, adultFixtureProfileId } from "./common";
+import { setFixtureTimezone } from "../fixture-timezones";
 
 // ── Dense Training Log card + met-target fixtures ──
 export function seedTrainingLogCard(): void {
@@ -254,7 +266,7 @@ export function seedTrainingLogCard(): void {
   ).run(PROFILE_ID);
 
   db.prepare(
-    `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider IN ('strava','health-connect')`
+    `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id IN ('strava','health-connect')`
   ).run(PROFILE_ID);
 }
 
@@ -310,8 +322,159 @@ export function seedTrainingZones(): void {
   // scopes to workout windows (this all-day wear minute must not count as training).
   insHr.run(utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, "12:00")!), 62);
 
+  // A WORN NON-CYCLING session on the same owned day (#2870): a walk with its own
+  // per-minute HR. Cycling has always had somewhere to draw a chart — its ride
+  // page — so every HR-carrying fixture here was a ride, and the canonical
+  // activity page's heart-rate block (the whole point of #2870) had no subject in
+  // the suite at all. It renders only when hr_minutes fall inside the activity's
+  // window, so this is the fixture that exercises it.
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id = ?`
+  ).run(PROFILE_ID, ZONE_WALK_EXTERNAL_ID);
+  db.prepare(
+    `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, distance_km, intensity,
+      start_time, end_time, avg_hr, max_hr, components, source, external_id)
+   VALUES (1, ?, 'cardio', ?, 33, 1.4, 'easy', '16:31', '17:04', 96, 118, ?,
+           'health-connect', ?)`
+  ).run(
+    zoneDate,
+    ZONE_WALK_TITLE,
+    JSON.stringify([
+      { name: "Walking", type: "cardio", distance_km: 1.4, duration_min: 33 },
+    ]),
+    ZONE_WALK_EXTERNAL_ID
+  );
+  // 33 minutes of easy wear inside 16:31–17:04, all below the Zone 2 floor, so the
+  // ride's polarization story is unchanged in shape (the split assertion reads the
+  // ratio, not a pinned pair of numbers).
+  for (let m = 0; m < 33; m++) {
+    const minute = 16 * 60 + 31 + m;
+    const hhmm = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
+      minute % 60
+    ).padStart(2, "0")}`;
+    insHr.run(utcMinute(zonedWallTimeToUtc(zoneTz, zoneDate, hhmm)!), 96);
+  }
+
+  // The walk's own second-by-second record (#2870 step 4): a device recorded it,
+  // so the widened stream fetch stores what the watch measured. Non-cycling on
+  // purpose — pace and heart rate, no power — which is exactly the shape the old
+  // cycling allowlist never asked for and no fixture could show.
+  {
+    const walkId = (
+      db
+        .prepare(
+          `SELECT id FROM activities WHERE profile_id = ? AND external_id = ?`
+        )
+        .get(PROFILE_ID, ZONE_WALK_EXTERNAL_ID) as { id: number }
+    ).id;
+    const seconds = Array.from({ length: 60 }, (_, i) => i * 30);
+    db.prepare(
+      `INSERT INTO activity_telemetry
+         (profile_id, activity_id, source, streams_json, snapshot_at)
+       VALUES (?, ?, 'strava', ?, datetime('now'))
+       ON CONFLICT(profile_id, activity_id, source) DO UPDATE SET
+         streams_json = excluded.streams_json`
+    ).run(
+      PROFILE_ID,
+      walkId,
+      JSON.stringify({
+        time: { data: seconds },
+        // 1.4 km of it, so the per-unit splits (#3009) have a boundary to cut
+        // at — the ride page's 5 km interval would yield NONE for a walk this
+        // long, which is exactly why the interval follows the reader's unit.
+        distance: { data: seconds.map((_, i) => Math.round(i * 23.7)) },
+        heartrate: {
+          data: seconds.map((_, i) => 92 + ((i * 7) % 11)),
+        },
+        velocity_smooth: {
+          data: seconds.map((_, i) => 1.2 + (i % 5) * 0.1),
+        },
+        moving: { data: seconds.map(() => true) },
+      })
+    );
+  }
+
+  // And the OTHER honest outcome (#3009): a session the source answered about
+  // with nothing. Its window (19:00–19:30) sits clear of every HR bucket seeded
+  // above, and its telemetry row is deliberately EMPTY — that row IS the answer,
+  // which is what lets the page say "totals only" instead of guessing from an
+  // absence.
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id = ?`
+  ).run(PROFILE_ID, TOTALS_ONLY_EXTERNAL_ID);
+  db.prepare(
+    `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, distance_km, intensity,
+      start_time, end_time, components, source, external_id)
+   VALUES (1, ?, 'cardio', ?, 30, 1.8, 'easy', '19:00', '19:30', ?, 'strava', ?)`
+  ).run(
+    zoneDate,
+    TOTALS_ONLY_TITLE,
+    JSON.stringify([
+      { name: "Walking", type: "cardio", distance_km: 1.8, duration_min: 30 },
+    ]),
+    TOTALS_ONLY_EXTERNAL_ID
+  );
+  db.prepare(
+    `INSERT INTO activity_telemetry
+       (profile_id, activity_id, source, streams_json, snapshot_at)
+     VALUES (?, (SELECT id FROM activities WHERE profile_id = ? AND external_id = ?),
+             'strava', '{}', datetime('now'))
+     ON CONFLICT(profile_id, activity_id, source) DO UPDATE SET
+       streams_json = excluded.streams_json`
+  ).run(PROFILE_ID, PROFILE_ID, TOTALS_ONLY_EXTERNAL_ID);
+
   console.log(
-    `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4)`
+    `e2e: seeded a windowed HR-zone ride for profile 1 on ${zoneDate} (50 min Z2 + 10 min Z4) plus the worn walk "${ZONE_WALK_TITLE}" and the totals-only "${TOTALS_ONLY_TITLE}"`
+  );
+}
+
+// ── Like-for-like peer comparison (#3009) ──
+export function seedSessionPeers(): void {
+  // FOUR runs of the same kind at comparable distances, so "how this compares"
+  // has a median rather than a sample of one. The newest is the subject; the
+  // three before it are the peers, each carrying heart rate so the metric has
+  // something to vote with, and one deliberately slower so the median is not the
+  // subject's own number.
+  //
+  // Its own profile: adding sessions to the shared profile-1 feed moves the
+  // Timeline's 250-event page (see e2e/logins/training.ts).
+  const peersId = adultFixtureProfileId(SESSION_PEERS_PROFILE);
+  seedMemberLogin(E2E_LOGIN_SESSION_PEERS, peersId);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(peersId);
+  const insPeer = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, intensity,
+        start_time, end_time, avg_speed_kmh, avg_hr, components, source,
+        external_id, edited)
+     VALUES (?, ?, 'cardio', ?, ?, ?, 'moderate', '07:00', '07:40', ?, ?, ?,
+             NULL, NULL, 0)`
+  );
+  const components = JSON.stringify([
+    { name: "Running", type: "cardio", distance_km: 6, duration_min: 36 },
+  ]);
+  // [days back, duration, distance, speed, avg HR]
+  const peers: [number, number, number, number, number][] = [
+    [1, 36, 6.0, 10.0, 152], // the subject
+    [8, 38, 6.1, 9.6, 150],
+    [15, 40, 5.9, 8.9, 148],
+    [22, 37, 6.0, 9.7, 151],
+  ];
+  for (const [back, minutes, km, speed, hr] of peers) {
+    insPeer.run(
+      peersId,
+      shiftDateStr(today(peersId), -back),
+      SESSION_PEERS_TITLE,
+      minutes,
+      km,
+      speed,
+      hr,
+      components
+    );
+  }
+  console.log(
+    `e2e: seeded ${peers.length} like-for-like sessions for profile ${peersId} (#3009)`
   );
 }
 
@@ -323,7 +486,7 @@ export function seedActivityFormPaths(): void {
   // a routine lift is deload-shaved (100 kg progression → ~90 kg + the shared rationale).
   // Dedicated on purpose so a create-and-clean save in the form spec never touches the
   // #741 deload fixture (which asserts an exact slate). Idempotent: reset + re-adopt.
-  const formDeloadProfileId = fixtureProfileId(FORM_DELOAD_PROFILE);
+  const formDeloadProfileId = adultFixtureProfileId(FORM_DELOAD_PROFILE);
   db.prepare(
     `DELETE FROM routine_slots WHERE routine_day_id IN (
      SELECT rd.id FROM routine_days rd
@@ -371,7 +534,7 @@ export function seedActivityFormPaths(): void {
   // plateaued lift — never shaved, since the profile has no cycle. Dedicated so the
   // dismiss test's suppression write stays isolated from profile 1's Skullcrusher plateau
   // (which rule-findings.spec relies on).
-  const formPlateauProfileId = fixtureProfileId(FORM_PLATEAU_PROFILE);
+  const formPlateauProfileId = adultFixtureProfileId(FORM_PLATEAU_PROFILE);
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:form-plateau-%'`
   ).run(formPlateauProfileId);
@@ -402,7 +565,7 @@ export function seedActivityFormPaths(): void {
   // 0.6) OUTSIDE any deload week — the axis #1115 left open. The form now threads the same
   // recovering-region context the Analyze/detail panel reads, so both surfaces seed 60 kg.
   // Dedicated so the recovering injury never tempers a shared profile's coaching surfaces.
-  const formInjuryProfileId = fixtureProfileId(FORM_INJURY_PROFILE);
+  const formInjuryProfileId = adultFixtureProfileId(FORM_INJURY_PROFILE);
   db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(
     formInjuryProfileId
   );
@@ -568,7 +731,7 @@ export function seedEndurancePlans(): void {
   // plan created in the spec has a real weekly-volume base + this-week actuals. The spec
   // OWNS the endurance_plans lifecycle (create-and-clean), so hard-clear any leftover
   // plans on a reused server. Runs seeded across the last three weeks + this week.
-  const enduranceProfileId = fixtureProfileId(ENDURANCE_PROFILE);
+  const enduranceProfileId = adultFixtureProfileId(ENDURANCE_PROFILE);
   db.prepare(`DELETE FROM endurance_plans WHERE profile_id = ?`).run(
     enduranceProfileId
   );
@@ -600,16 +763,16 @@ export function seedEndurancePlans(): void {
   );
 }
 
-// ── Training → Overview rollup fixture (#1496) ──
+// ── Training → Overview coverage aggregate fixture (#1496/#2566) ──
 export function seedTrainingRollup(): void {
   // A dedicated ADULT profile with a LIGHT recent strength log: five small-muscle
   // exercises at 2 sets each inside the trailing 7-day window, so the per-muscle
-  // volume-band engine (#742) fires a HANDFUL of `below` shortfalls at once — the pile
-  // the Overview rollup exists to fold into one card. Earlier sessions in the two
+  // volume-band engine (#742) fires a HANDFUL of `below` shortfalls at once — the count
+  // the coverage card owns without repeating it in Training watch. Earlier sessions in the two
   // preceding weeks clear the #719 cold-start gate (≥2 distinct training weeks). NO
   // routine (so no deload gate) and NO injury (so no excluded region), and every date
   // is RELATIVE so the fixture never goes stale.
-  const profileId = fixtureProfileId(TRAINING_ROLLUP_PROFILE);
+  const profileId = adultFixtureProfileId(TRAINING_ROLLUP_PROFILE);
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:training-rollup-%'`
   ).run(profileId);
@@ -645,7 +808,7 @@ export function seedTrainingRollup(): void {
   });
   seedMemberLogin(E2E_LOGIN_TRAINING_ROLLUP, profileId, "write");
   console.log(
-    `e2e: seeded training-overview rollup fixture — profile ${profileId} (${TRAINING_ROLLUP_PROFILE}) (#1496)`
+    `e2e: seeded training-overview coverage fixture — profile ${profileId} (${TRAINING_ROLLUP_PROFILE}) (#1496/#2566)`
   );
 }
 
@@ -665,7 +828,7 @@ export function seedTrainingRollup(): void {
 // them without widening the range. Idempotent: its own rows are cleared and
 // rewritten, children first.
 export function seedLoadContexts(): void {
-  const profileId = fixtureProfileId(LOAD_CONTEXT_PROFILE);
+  const profileId = adultFixtureProfileId(LOAD_CONTEXT_PROFILE);
   const t = today(profileId);
 
   db.prepare(
@@ -734,7 +897,7 @@ export function seedLoadContexts(): void {
 export function seedLabValueGoal(): void {
   // The fixture behind e2e/lab-value-goal.spec.ts (#1853). See the constants' header
   // in e2e/logins/training.ts for why it is a dedicated, write-granted profile.
-  const pid = fixtureProfileId(LAB_GOAL_PROFILE);
+  const pid = adultFixtureProfileId(LAB_GOAL_PROFILE);
   seedMemberLogin(E2E_LOGIN_LAB_GOAL, pid, "write");
   setProfileBirthdate(pid, "1984-02-19");
   setProfileSex(pid, "male");
@@ -821,7 +984,7 @@ export function seedLabValueGoal(): void {
 // ── The week spine (#2566, Viz 1) ─────────────────────────────────────────────
 export function seedWeekSpine(): void {
   // See e2e/logins/training.ts for the shape this pins and why it is dedicated.
-  const profileId = fixtureProfileId(WEEK_SPINE_PROFILE);
+  const profileId = adultFixtureProfileId(WEEK_SPINE_PROFILE);
   setWeekMode(profileId, "rolling");
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:week-spine-%'`
@@ -834,7 +997,7 @@ export function seedWeekSpine(): void {
   const anchor = today(profileId);
   const SESSIONS: [number, string, string][] = [
     [-4, "sport", "Pickup game"],
-    [-3, "recovery", "Hip mobility"],
+    [-3, "mobility", "Hip mobility"],
     [-1, "cardio", "Easy run"],
     [0, "strength", "Squat day"],
     [0, "strength", "Evening accessories"],
@@ -854,5 +1017,54 @@ export function seedWeekSpine(): void {
   seedMemberLogin(E2E_LOGIN_WEEK_SPINE, profileId, "write");
   console.log(
     `e2e: seeded week-spine fixture — profile ${profileId} (${WEEK_SPINE_PROFILE}) (#2566)`
+  );
+}
+
+// ── Training Overview standing actions (#3062) ──────────────────────────────
+export function seedOverviewActionStates(): void {
+  const noRoutineId = adultFixtureProfileId(OVERVIEW_NO_ROUTINE_PROFILE);
+  const noRoutineToday = today(noRoutineId);
+  db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(noRoutineId);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(noRoutineId);
+  db.prepare(
+    `INSERT INTO injuries (profile_id, label, regions, status, since)
+     VALUES (?, 'Right knee (e2e)', '["Legs"]', 'active', ?)`
+  ).run(noRoutineId, shiftDateStr(noRoutineToday, -5));
+  seedMemberLogin(E2E_LOGIN_OVERVIEW_NO_ROUTINE, noRoutineId, "write");
+
+  const restId = adultFixtureProfileId(OVERVIEW_REST_PROFILE);
+  setFixtureTimezone(db, restId, "overview-rest", "UTC");
+  const restToday = today(restId);
+  const restYesterday = shiftDateStr(restToday, -1);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(restId);
+  db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(restId);
+  db.prepare(
+    `INSERT INTO injuries (profile_id, label, regions, status, since)
+     VALUES (?, 'Right knee (e2e)', '["Legs"]', 'active', ?)`
+  ).run(restId, shiftDateStr(restToday, -5));
+  db.prepare(
+    `DELETE FROM metric_samples
+      WHERE profile_id = ? AND metric = 'sleep_min'`
+  ).run(restId);
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, intensity, source, external_id)
+     VALUES (?, ?, 'strength', 'Overview rest context', 40, 'hard', 'manual',
+             'e2e:overview-rest-context')`
+  ).run(restId, shiftDateStr(restToday, -10));
+  db.prepare(
+    `INSERT INTO metric_samples
+       (profile_id, source, metric, date, started_at, ended_at, value)
+     VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
+  ).run(
+    restId,
+    restToday,
+    zonedWallTimeToUtc("UTC", restYesterday, "23:00")!.toISOString(),
+    zonedWallTimeToUtc("UTC", restToday, "04:00")!.toISOString()
+  );
+  seedMemberLogin(E2E_LOGIN_OVERVIEW_REST, restId, "write");
+
+  console.log(
+    `e2e: seeded Overview standing-action fixtures — profiles ${noRoutineId} and ${restId} (#3062)`
   );
 }

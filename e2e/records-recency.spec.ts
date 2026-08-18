@@ -72,12 +72,12 @@ function seedFixture(): void {
     ).run(frontier);
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (1, 'fitbit-takeout', 'fitbit_sleep_score', ?, ?, ?, 84)`
     ).run(frontier, `${frontier}T00:00`, `${frontier}T23:59`);
     db.prepare(
       `UPDATE medical_records SET date = date(date, '-${LAB_SHIFT_DAYS} day')
-        WHERE profile_id = 1 AND category IN ('lab','biomarker')`
+        WHERE profile_id = 1 AND category = 'lab'`
     ).run();
   });
 }
@@ -92,7 +92,7 @@ function clearFixture(): void {
     ).run();
     db.prepare(
       `UPDATE medical_records SET date = date(date, '+${LAB_SHIFT_DAYS} day')
-        WHERE profile_id = 1 AND category IN ('lab','biomarker')`
+        WHERE profile_id = 1 AND category = 'lab'`
     ).run();
     db.prepare(
       "DELETE FROM upcoming_dismissals WHERE profile_id = 1 AND signal_key LIKE 'records-recency:%'"

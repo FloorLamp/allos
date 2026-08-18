@@ -80,10 +80,10 @@ test("the Timeline titles lab draws by clinical panel, not the lab vendor (#1502
   await expect(page.getByText(VENDOR_TITLES)).toHaveCount(0);
 });
 
-test("the biomarkers browser filters by a clinical panel slug (#1502)", async ({
+test("the clinical results catalog filters by a clinical panel slug (#1502)", async ({
   page,
 }) => {
-  await page.goto("/results/readings");
+  await page.goto("/results/clinical-results");
 
   // The facet is a first-class dropdown now, offering the curated taxonomy —
   // not a chip that only appeared after clicking a vendor string.
@@ -102,7 +102,7 @@ test("the biomarkers browser filters by a clinical panel slug (#1502)", async ({
     timeout: 20_000,
   });
 
-  const table = page.getByTestId("biomarkers-table");
+  const table = page.getByTestId("clinical-results-table");
   await expect(
     table.getByText("LDL Cholesterol").first() // first-ok: presence check; the shared seed holds several LDL readings
   ).toBeVisible();
@@ -126,9 +126,14 @@ test("an unknown ?panel= slug is ignored rather than emptying the table (#1502)"
   // `?q=` bounds the view to a known-present analyte, so a table that still
   // renders it proves the bogus panel value filtered NOTHING (a slug that reached
   // the query would have matched no row and emptied the table).
-  await page.goto("/results/readings?panel=Quest%20Diagnostics&q=Cholesterol");
+  await page.goto(
+    "/results/clinical-results?panel=Quest%20Diagnostics&q=Cholesterol"
+  );
   await expect(
-    page.getByTestId("biomarkers-table").getByText("LDL Cholesterol").first() // first-ok: presence check on the shared seed
+    page
+      .getByTestId("clinical-results-table")
+      .getByText("LDL Cholesterol")
+      .first() // first-ok: presence check on the shared seed
   ).toBeVisible();
   await expect(page.getByTestId("panel-filter")).toHaveValue("");
 });
@@ -137,7 +142,8 @@ test("biomarker detail links to the rest of its panel (#1502)", async ({
   page,
 }) => {
   await page.goto(
-    "/results/readings/view?name=" + encodeURIComponent("LDL Cholesterol")
+    "/results/clinical-results/view?name=" +
+      encodeURIComponent("LDL Cholesterol")
   );
   const siblings = page.getByTestId("panel-siblings");
   await expect(siblings).toBeVisible();
@@ -146,11 +152,14 @@ test("biomarker detail links to the rest of its panel (#1502)", async ({
   // A sibling analyte from the same panel deep-links to its own detail page…
   await expect(
     siblings.getByRole("link", { name: "HDL Cholesterol" })
-  ).toHaveAttribute("href", "/results/readings/view?name=HDL%20Cholesterol");
+  ).toHaveAttribute(
+    "href",
+    "/results/clinical-results/view?name=HDL%20Cholesterol"
+  );
   // …and the whole-panel link carries the slug facet.
   await expect(
     siblings.getByRole("link", { name: /See the whole panel/ })
-  ).toHaveAttribute("href", "/results/readings?panel=lipids");
+  ).toHaveAttribute("href", "/results/clinical-results?panel=lipids");
 });
 
 test("an un-canonicalized reading keeps its stored heading as provenance (#1502)", async ({
@@ -161,8 +170,10 @@ test("an un-canonicalized reading keeps its stored heading as provenance (#1502)
   // The taxonomy has nothing to say about it, so the Panel cell falls back to the
   // heading the document reported — as PLAIN TEXT, not a filter link, because
   // "everything under this heading" is exactly the useless facet #1502 removed.
-  await page.goto("/results/readings?q=" + encodeURIComponent("E2E Novel Lab"));
-  const table = page.getByTestId("biomarkers-table");
+  await page.goto(
+    "/results/clinical-results?q=" + encodeURIComponent("E2E Novel Lab")
+  );
+  const table = page.getByTestId("clinical-results-table");
   await expect(table.getByText("E2E Novel Lab")).toBeVisible();
   await expect(table.getByText("E2E Iron Panel")).toBeVisible();
   await expect(table.getByRole("link", { name: "E2E Iron Panel" })).toHaveCount(
@@ -189,7 +200,8 @@ const PHONE = { width: 390, height: 844 };
 // shared seed that carries a `document_id`, so it is the row whose ⋯ menu must be
 // able to reach a source document. `?q=` bounds the view to it.
 const IMPORT_ROW = "E2E Novel Lab";
-const IMPORT_ROW_URL = "/results/readings?q=" + encodeURIComponent(IMPORT_ROW);
+const IMPORT_ROW_URL =
+  "/results/clinical-results?q=" + encodeURIComponent(IMPORT_ROW);
 
 // The card labels a row is currently spending lines on. `.card-cell-label` is
 // rendered ONLY for a cell that claims a `meta`/`value` slot (components/
@@ -197,7 +209,7 @@ const IMPORT_ROW_URL = "/results/readings?q=" + encodeURIComponent(IMPORT_ROW);
 // question — the `<th>` strip is hidden in card mode and contributes nothing here.
 async function cardLabels(page: Page, rowText: string): Promise<string[]> {
   const row = page
-    .getByTestId("biomarkers-table")
+    .getByTestId("clinical-results-table")
     .locator("tr")
     .filter({ hasText: rowText });
   await expect(row).toHaveCount(1);
@@ -213,7 +225,7 @@ test.describe("the phone card (#2316)", () => {
     page,
   }) => {
     await page.goto(IMPORT_ROW_URL);
-    const table = page.getByTestId("biomarkers-table");
+    const table = page.getByTestId("clinical-results-table");
     await expect(table.getByText(IMPORT_ROW)).toBeVisible();
 
     const labels = await cardLabels(page, IMPORT_ROW);
@@ -233,18 +245,20 @@ test.describe("the phone card (#2316)", () => {
   test("prints the date and its compact age as ONE line", async ({ page }) => {
     await page.goto(IMPORT_ROW_URL);
     const row = page
-      .getByTestId("biomarkers-table")
+      .getByTestId("clinical-results-table")
       .locator("tr")
       .filter({ hasText: IMPORT_ROW });
     // The age token sits inside the same cell as the ISO date — one `<td>`, one
     // line, at both viewports. Its text is the #1216 compact bucket, so it is
     // never the "2 months ago" long form the stack used to carry.
     const dateCell = row.locator('td[data-card="meta"]').filter({
-      has: page.getByTestId("biomarker-age"),
+      has: page.getByTestId("clinical-result-age"),
     });
     await expect(dateCell).toHaveCount(1);
     await expect(dateCell).toContainText("2026-06-20");
-    await expect(dateCell.getByTestId("biomarker-age")).not.toHaveText(/ago/);
+    await expect(dateCell.getByTestId("clinical-result-age")).not.toHaveText(
+      /ago/
+    );
   });
 
   test("reaches the source document from the row's ⋯ menu", async ({
@@ -252,13 +266,13 @@ test.describe("the phone card (#2316)", () => {
   }) => {
     await page.goto(IMPORT_ROW_URL);
     const row = page
-      .getByTestId("biomarkers-table")
+      .getByTestId("clinical-results-table")
       .locator("tr")
       .filter({ hasText: IMPORT_ROW });
     await hydratedClick(page, row.getByTestId("overflow-menu-trigger"));
 
     // The menu is portaled to <body>, so it is addressed from the page.
-    const link = page.getByTestId("biomarker-source-document-link");
+    const link = page.getByTestId("clinical-result-source-document-link");
     await expect(link).toHaveText("View source document");
     await expect(link).toHaveAttribute("href", "/import/908");
     await expect(link).toHaveAttribute("role", "menuitem");
@@ -295,7 +309,7 @@ test.describe("the phone filter block (#2316)", () => {
     page,
   }) => {
     // Two non-default facets — a filtered list may never look unfiltered.
-    await page.goto("/results/readings?panel=lipids&current=1");
+    await page.goto("/results/clinical-results?panel=lipids&current=1");
     const toggle = page.getByTestId("medical-filters-toggle");
     await expect(toggle).toHaveText("Filters · 2");
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -306,8 +320,8 @@ test.describe("the phone filter block (#2316)", () => {
 test("Panel and Category keep their columns, filter links and sorting at desktop width (#2316)", async ({
   page,
 }) => {
-  await page.goto("/results/readings?panel=lipids&current=1");
-  const table = page.getByTestId("biomarkers-table");
+  await page.goto("/results/clinical-results?panel=lipids&current=1");
+  const table = page.getByTestId("clinical-results-table");
   await expect(table).toBeVisible();
 
   // Both columns are still in the header strip …
@@ -389,10 +403,10 @@ test("a read-only household row keeps a ⋯ menu holding only the source documen
 
     await page.setViewportSize(PHONE);
     await page.goto(
-      "/results/readings?q=" + encodeURIComponent(MVBIO_RO_ANALYTE)
+      "/results/clinical-results?q=" + encodeURIComponent(MVBIO_RO_ANALYTE)
     );
     const row = page
-      .getByTestId("biomarkers-table")
+      .getByTestId("clinical-results-table")
       .locator("tr")
       .filter({ hasText: MVBIO_RO_ANALYTE });
     await expect(row).toHaveCount(1);

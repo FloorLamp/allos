@@ -11,7 +11,7 @@
 // The tables whose keyed upserts consult the tombstone. Each maps to a natural key the
 // upsert dedups on (see lib/integrations/normalize.ts): activities/medical_records by
 // external_id, body_metrics by (date, source), metric_samples by
-// (metric, source, origin, start_time).
+// (metric, source, origin, started_at).
 //
 // `hr_minutes` was covered on the READ side historically but never had a tombstone
 // WRITER (#653): its dataset is browse/export-only (`deletable: false` in lib/export.ts)
@@ -53,7 +53,7 @@ export function bodyMetricTombstoneKey(date: string, source: string): string {
   return `${date}${SEP}${source}`;
 }
 
-// metric_samples dedups on (metric, source, origin, start_time). A null origin is
+// metric_samples dedups on (metric, source, origin, started_at). A null origin is
 // encoded as an empty component, matching the DB unique index's COALESCE.
 export function metricSampleTombstoneKey(
   metric: string,
@@ -113,12 +113,12 @@ export function importTombstoneForRow(
         : null;
     }
     case "metric_samples": {
-      // metric_samples dedups on (metric, source, origin, start_time). Origin may
+      // metric_samples dedups on (metric, source, origin, started_at). Origin may
       // legitimately be null; the other three fields must be present. A row missing them
       // isn't a source-owned re-import target, so no tombstone.
       const metric = row.metric;
       const src = row.source;
-      const start = row.start_time;
+      const start = row.started_at;
       const origin = typeof row.origin === "string" ? row.origin : null;
       return typeof metric === "string" &&
         metric &&

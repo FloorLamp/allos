@@ -714,14 +714,28 @@ export function isPredictedWorkoutDay(
 }
 
 // (date, exercise) rows over the recent window — one scan that powers the workout
-// recommendation (yesterday's regions, the per-weekday pattern, exercise frequency).
-export function getRecentDatedExercises(
+// recommendation (yesterday's regions, the per-weekday pattern, exercise frequency)
+// and the coverage attribution. Rows carry the set's warm-up flag: coverage drops
+// flagged rows (#2891 — coverage counts what the strength queries count, #338),
+// while the pattern/familiarity consumers ignore the flag (a warm-up is still an
+// exposure to the lift and a training day for the pattern). cache()d like
+// getActivitySuggestions above: the Overview render runs this scan for the
+// coverage card AND the volume findings in one request — and #2893 made
+// Overview the default landing — so the two collapse to one scan per request.
+export const getRecentDatedExercises = cache(function getRecentDatedExercises(
   profileId: number,
   days = 56
-): { date: string; exercise: string }[] {
+): {
+  date: string;
+  exercise: string;
+  warmup: number;
+  activityId: number;
+}[] {
   return db
     .prepare(
-      `SELECT a.date AS date, s.exercise AS exercise
+      `SELECT a.date AS date, s.exercise AS exercise,
+              a.id AS activityId,
+              COALESCE(s.warmup, 0) AS warmup
        FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
        WHERE a.profile_id = ? AND a.date >= ?
        ORDER BY a.date DESC`
@@ -729,8 +743,10 @@ export function getRecentDatedExercises(
     .all(profileId, shiftDateStr(today(profileId), -days)) as {
     date: string;
     exercise: string;
+    warmup: number;
+    activityId: number;
   }[];
-}
+});
 
 // Sets belong to a profile only through their parent activity, so the ids (which
 // arrive from forms) are filtered via a join on activities.profile_id — a set id
@@ -825,7 +841,7 @@ export function getActiveCaloriesForActivities(
   const dates = legacyCandidates.map((activity) => activity.date).sort();
   const rows = db
     .prepare(
-      `SELECT source, date, start_time, end_time, value
+      `SELECT source, date, started_at, ended_at, value
          FROM metric_samples
         WHERE profile_id = ? AND metric = 'active_kcal'
           AND source = 'strava'
@@ -835,8 +851,8 @@ export function getActiveCaloriesForActivities(
     .all(profileId, dates[0], dates[dates.length - 1]) as {
     source: string;
     date: string;
-    start_time: string;
-    end_time: string;
+    started_at: string;
+    ended_at: string;
     value: number;
   }[];
   const storedClock = (value: string): string =>
@@ -860,7 +876,7 @@ export function getActiveCaloriesForActivities(
   ): string => `${source}\0${date}\0${storedClock(start)}\0${storedClock(end)}`;
   const byWindow = new Map(
     rows.map((row) => [
-      sampleKey(row.source, row.date, row.start_time, row.end_time),
+      sampleKey(row.source, row.date, row.started_at, row.ended_at),
       row.value,
     ])
   );

@@ -20,8 +20,7 @@
 //
 // They are the four things a phone is actually held up to do, and each has at
 // least one entry for every profile that can see it. Empty segments are dropped
-// rather than disabled: a restricted profile has no training entry at all, so it
-// gets a three-segment track, not a fourth segment that refuses.
+// rather than disabled.
 
 import { arguedExclusion, type ArguedExclusion } from "./loggable-domains";
 import {
@@ -61,6 +60,7 @@ const SEGMENT_LABELS: Record<LogSegmentId, string> = {
  */
 export const LOG_SEGMENT_CENSUS = {
   "log-activity": "train",
+  "live-workout": "train",
   "log-food": "food",
   // The measurements form is weight + vitals + a minor's growth fields (#1486),
   // and the period offer is the other thing the body itself reports — both are
@@ -78,16 +78,13 @@ export const LOG_SEGMENT_CENSUS = {
 
 /**
  * The sheet's segments for a given profile: the SAME `quickLogMenu` the flat
- * sheet has always rendered (so both gates — the age gate and the #1042 cycle
- * relevance bit — apply exactly once, where they always did), regrouped.
+ * sheet has always rendered (so the #1042 cycle relevance bit applies exactly
+ * once, where it always did), regrouped.
  *
  * Segments with no surviving entry are dropped entirely.
  */
-export function logSheetSegments(
-  restricted: boolean,
-  cycleRelevant = true
-): LogSegment[] {
-  const items = quickLogMenu(restricted, cycleRelevant);
+export function logSheetSegments(cycleRelevant = true): LogSegment[] {
+  const items = quickLogMenu(cycleRelevant);
   return SEGMENT_ORDER.map((id) => ({
     id,
     label: SEGMENT_LABELS[id],
@@ -97,10 +94,9 @@ export function logSheetSegments(
 
 /**
  * Which segment the track opens on: the one holding the CURRENT ROUTE's promoted
- * log (`primaryQuickLog`, the same rule the top bar's contextual **+** obeys), so
- * opening the puck on Nutrition lands on Food. Falls back to the first surviving
- * segment when that item is gated away for this profile — never to an empty or
- * absent one.
+ * log (`primaryQuickLog`), so opening the puck on Nutrition lands on Food. Falls
+ * back to the first surviving segment when that item is gated away for this
+ * profile — never to an empty or absent one.
  */
 export function defaultLogSegment(
   segments: readonly LogSegment[],
@@ -192,7 +188,10 @@ export type SegmentLogDays = Readonly<Partial<Record<LogSegmentId, number>>>;
  */
 export const LOG_DAY_SOURCES = {
   "log-activity": ["activities"],
-  "log-food": ["food_log"],
+  // A completed live session lands in the same canonical activity store. This
+  // is a second door to the same evidence, not a second source.
+  "live-workout": ["activities"],
+  "log-food": ["food_daily_totals"],
   // A vitals sitting is `medical_records` rows by placement (#2032), so Body would
   // under-count a blood-pressure logger without that third store.
   "log-measurements": ["body_metrics", "metric_samples", "medical_records"],
@@ -223,12 +222,33 @@ export const LOG_DAY_SOURCES = {
 } as const satisfies Record<QuickLogId, readonly string[] | ArguedExclusion>;
 
 /**
+ * The dose context chip names the first two due items, then gives a compact
+ * overflow count. `count` is kept separately so a malformed/missing title can
+ * still fall back to the old honest count label rather than rendering "Due:".
+ */
+export function dueDoseChipLabel({
+  count,
+  names,
+}: {
+  count: number;
+  names: readonly string[];
+}): string | null {
+  if (count <= 0) return null;
+  const usable = names
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (usable.length === 0)
+    return count === 1 ? "1 dose due" : `${count} doses due`;
+  const overflow = Math.max(0, count - usable.length);
+  return `Due: ${usable.join(", ")}${overflow > 0 ? ` +${overflow}` : ""}`;
+}
+
+/**
  * The segment this profile logs in on the most DAYS, or null when no segment
  * clears the evidence floor.
  *
- * Only segments actually on this profile's track can win — a restricted profile
- * has no `train` segment, so activity history predating the gate cannot name a
- * segment the sheet does not render. Exact ties go to track order, which is
+ * Only segments actually on this profile's track can win. Exact ties go to track order, which is
  * deterministic and needs no second opinion about what "most" means.
  */
 export function habitualLogSegment(

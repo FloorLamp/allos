@@ -17,7 +17,7 @@ import {
 //
 // The readings are stored as canonical `vitals` medical_records rows — the SAME
 // observation store the perio and vision analytes use, and the same rows that already
-// trend on the Biomarkers surface (#713). No parallel table; see lib/audiogram.ts for
+// trend on the Clinical results surface (#713). No parallel table; see lib/audiogram.ts for
 // the full store argument.
 export default function HearingSection({ profileId }: { profileId: number }) {
   const audiograms = getAudiograms(profileId);

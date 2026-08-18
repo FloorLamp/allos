@@ -272,7 +272,7 @@ describe("the target codec", () => {
       unit: "bpm",
       date: "2026-03-04",
       measuredAt: null,
-      source: "lab",
+      source: "clinical",
       store: "medical_records",
       rowId: 41,
       sourceKey: null,

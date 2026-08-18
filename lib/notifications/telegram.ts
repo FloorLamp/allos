@@ -31,6 +31,7 @@ import {
   setFoodNudgePointer,
 } from "../settings";
 import { today } from "../db";
+import { now } from "../clock";
 import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
 import type {
@@ -385,16 +386,36 @@ async function rotatePointer<P extends PointerTarget>(
     // A "message is not modified" is already swallowed inside it; a "message to edit
     // not found" / "message can't be edited" (too old) throws and is caught here — the
     // point is that a fresh keyboard now exists.
-    await editMessageReplyMarkupRaw(
-      plan.strip.chatId,
-      plan.strip.messageId,
-      []
-    ).catch((e) => {
+    try {
+      await editMessageReplyMarkupRaw(
+        plan.strip.chatId,
+        plan.strip.messageId,
+        []
+      );
+    } catch (e) {
+      // The keyboard is STILL LIVE in the chat, so the pointer that names it stays —
+      // the sweep goes on reconciling it and closes it at rollover, which is the only
+      // thing that can still close it.
       log.info(`${label}: previous keyboard strip failed (ignored)`, {
         profile: profileId,
         err: e instanceof Error ? e.message : String(e),
       });
-    });
+      return;
+    }
+    // THE STRIP IS ONLY HALF DONE UNTIL THE POINTER AGREES (#2749). The rotation
+    // removed the keyboard from the chat but left the #1779 pointer row describing
+    // the buttons the SEND had put there — and the sweep reasons entirely from that
+    // blob. For the food family that is not merely stale bookkeeping: its reconciler
+    // RE-RENDERS from the same builder and edits whenever the render differs, so the
+    // first count change after a strip puts a live food keyboard back on the message
+    // the rotation just closed, carrying its SEND-TIME date in the tokens — the
+    // wrong-day tap #947 exists to prevent. Until then it is the hourly edit per stale
+    // duplicate that #1898 exists to stop paying.
+    //
+    // Closing IS forgetting, exactly as `closeMessage` and the sweep's own close arm
+    // say: a message with no buttons left makes no claim for a later tick to
+    // reconcile. Only after a SUCCEEDING strip — see the catch above.
+    forgetMessagePointerAt(profileId, plan.strip.chatId, plan.strip.messageId);
   } catch (e) {
     // Any unexpected error (a settings write throw, etc.) stays swallowed — the send
     // succeeded and this bookkeeping must never turn a delivery into a failure.
@@ -460,7 +481,7 @@ function recordDigestTailPointer(
       chatId,
       messageId,
       date: today(profileId),
-      renderedAt: zonedDateParts(getTimezone(profileId), new Date()).hhmm,
+      renderedAt: zonedDateParts(getTimezone(profileId), now()).hhmm,
     });
   } catch (e) {
     log.info("digest tail: pointer store failed (ignored)", {

@@ -99,7 +99,7 @@ describe("parseSmartHealthCard", () => {
   });
 
   it("maps lab Observations to records (qualitative value preserved)", () => {
-    const recs = parseSmartHealthCard(jws).records;
+    const recs = parseSmartHealthCard(jws).observations;
     expect(recs).toHaveLength(1);
     expect(recs[0].category).toBe("lab");
     expect(recs[0].name).toBe("SARS-CoV-2 Antibody");

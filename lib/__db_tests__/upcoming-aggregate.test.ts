@@ -13,6 +13,7 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
+  collectDueDosesNow,
   doseDayProgress,
   collectMultiProfileDoseProgress,
 } from "@/lib/queries";
@@ -26,6 +27,7 @@ import {
   planBandRender,
 } from "@/lib/upcoming-aggregate";
 import { shiftDateStr, weekdayOfDateStr } from "@/lib/date";
+import { setStoredAge } from "@/lib/settings";
 
 let seq = 0;
 
@@ -69,6 +71,17 @@ function mkDose(itemId: number, sort = 0): number {
          VALUES (?, '1 cap', 'morning', 'any', ?)`
       )
       .run(itemId, sort).lastInsertRowid
+  );
+}
+
+function mkTimedDose(itemId: number, timeOfDay: string): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '1 cap', ?, 'any', 0)`
+      )
+      .run(itemId, timeOfDay).lastInsertRowid
   );
 }
 
@@ -166,6 +179,43 @@ describe("doseDayProgress (#1504)", () => {
   });
 });
 
+describe("collectDueDosesNow (#2744)", () => {
+  it("withholds future slots without changing the whole-day due set", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    const morning = mkItem(profileId, "Current Morning");
+    const midday = mkItem(profileId, "Future Midday");
+    const evening = mkItem(profileId, "Future Evening");
+    const anytime = mkItem(profileId, "Current Anytime");
+    mkTimedDose(morning, "Morning");
+    mkTimedDose(midday, "Midday");
+    mkTimedDose(evening, "Evening");
+    mkTimedDose(anytime, "Anytime");
+
+    expect(doseItems(profileId, day).map((item) => item.title)).toHaveLength(4);
+    expect(
+      collectDueDosesNow(profileId, day, "08:00").map((item) => item.title)
+    ).toEqual(["Current Morning", "Current Anytime"]);
+    expect(
+      collectDueDosesNow(profileId, day, "13:00").map((item) => item.title)
+    ).toEqual(["Current Morning", "Future Midday", "Current Anytime"]);
+  });
+
+  it("carries #2853's short control label without replacing the full title", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    const creatine = mkItem(profileId, "Creatine Monohydrate");
+    mkTimedDose(creatine, "Morning");
+
+    expect(collectDueDosesNow(profileId, day, "08:00")).toMatchObject([
+      {
+        title: "Creatine Monohydrate",
+        shortLabel: "Creatine",
+      },
+    ]);
+  });
+});
+
 describe("collectMultiProfileDoseProgress (#1504 × #1096)", () => {
   it("reports each in-view member's own day, with no bleed between profiles", () => {
     const a = mkProfile();
@@ -215,6 +265,40 @@ function mkGoal(profileId: number, title: string, targetDate: string): number {
 }
 
 describe("goal deadlines through the fold (#2579-A)", () => {
+  it("omits Training-owned deadlines through early childhood", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    setStoredAge(profileId, 2);
+    mkGoal(profileId, "Toddler legacy goal", shiftDateStr(day, 30));
+
+    expect(
+      collectUpcoming(profileId, day).filter((item) => item.domain === "goal")
+    ).toEqual([]);
+  });
+
+  it("keeps general goals but omits strength goals below adolescence", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    setStoredAge(profileId, 10);
+    const general = mkGoal(
+      profileId,
+      "Aggregate goal — play outside",
+      shiftDateStr(day, 20)
+    );
+    const strength = mkGoal(
+      profileId,
+      "Aggregate goal — squat 40 kg",
+      shiftDateStr(day, 20)
+    );
+    db.prepare(
+      "UPDATE goals SET exercise = 'Back Squat', metric = 'weight' WHERE id = ? AND profile_id = ?"
+    ).run(strength, profileId);
+
+    expect(goalItems(profileId).map((item) => item.key)).toEqual([
+      `goal:${general}`,
+    ]);
+  });
+
   it("folds a real profile's Later goals and keeps every one present and counted", () => {
     const profileId = mkProfile();
     const day = today(profileId);

@@ -373,6 +373,12 @@ export default function TrendMiniCard({
                 yDomain={chartYDomain}
                 gapFill={gapFill}
                 sparkline
+                // The tile's own one-reading decision, passed DOWN rather than
+                // re-made below it (#2653 state 1). Reaching this branch already
+                // means the tile chose the chart over the mark — either the
+                // caller declared `singleReadingAsChart` or the series has more
+                // than one reading — so the funnel must not overrule it.
+                singleReadingAsChart
                 // Dots are part of the shared tile grammar. The chart scaffold
                 // still suppresses them for genuinely dense series.
                 sparklineDots

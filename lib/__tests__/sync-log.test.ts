@@ -465,6 +465,21 @@ describe("isNoOpSyncEvent", () => {
       })
     ).toBe(false);
   });
+
+  it("is NOT a no-op when the run's whole content is rows it could not bring in", () => {
+    // `inserted 0 / skipped 3` — a portal run that failed to push three documents. Not
+    // counting it here dropped that run out of the Imports feed for looking quiet, and
+    // three failures-to-push is exactly what this feed exists to show (#2999).
+    expect(
+      isNoOpSyncEvent({
+        ok: 1,
+        inserted: 0,
+        updated: 0,
+        unchanged: 0,
+        skipped: 3,
+      })
+    ).toBe(false);
+  });
 });
 
 describe("currentlyFailingProviders", () => {

@@ -10,6 +10,7 @@ import EpisodeTimeline from "@/components/illness/EpisodeTimeline";
 import type { TemperatureUnit } from "@/lib/settings";
 import { fmtTemp } from "@/lib/units";
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import EpisodeLatestReadings from "@/components/illness/EpisodeLatestReadings";
 import {
@@ -17,6 +18,7 @@ import {
   formatDateShape,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
+import { RECORDS_CONDITIONS_HREF } from "@/lib/hrefs";
 
 // The printable / shareable illness-episode summary (issue #801). A pure
 // presentational server component over the ONE assembled model — reused by the
@@ -90,10 +92,12 @@ export default function EpisodeSummary({
   identity,
   feverFree,
   careEvents,
+  linkCareDocuments = true,
   timelineActions,
   timelineTools,
   timelineAfterHistory,
   linkLatestMedication = false,
+  linkConditions = false,
   collapsePeakSymptoms = false,
   formatPrefs = DEFAULT_FORMAT_PREFS,
 }: {
@@ -117,10 +121,14 @@ export default function EpisodeSummary({
   identity?: ReactNode;
   feverFree?: { label: string; met: boolean } | null;
   careEvents?: EpisodeInRangeEvents;
+  linkCareDocuments?: boolean;
   timelineActions?: ReactNode;
   timelineTools?: ReactNode;
   timelineAfterHistory?: ReactNode;
   linkLatestMedication?: boolean;
+  // Authenticated detail can complete the condition half of the episode association;
+  // the public share stays plain text and never points into a login-gated surface.
+  linkConditions?: boolean;
   collapsePeakSymptoms?: boolean;
   formatPrefs?: DisplayFormatPrefs;
 }) {
@@ -277,14 +285,24 @@ export default function EpisodeSummary({
           <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/5">
             <h2 className="section-label mb-2">Linked conditions</h2>
             <div className="flex flex-wrap gap-2">
-              {episode.conditions.map((c) => (
-                <span
-                  key={c.id}
-                  className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
-                >
-                  {c.name} · {c.status}
-                </span>
-              ))}
+              {episode.conditions.map((c) =>
+                linkConditions ? (
+                  <Link
+                    key={c.id}
+                    href={RECORDS_CONDITIONS_HREF}
+                    className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+                  >
+                    {c.name} · {c.status}
+                  </Link>
+                ) : (
+                  <span
+                    key={c.id}
+                    className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+                  >
+                    {c.name} · {c.status}
+                  </span>
+                )
+              )}
             </div>
           </div>
         )}
@@ -296,6 +314,7 @@ export default function EpisodeSummary({
         temperatureUnit={temperatureUnit}
         profileId={eventProfileId}
         careEvents={careEvents}
+        linkCareDocuments={linkCareDocuments}
         actions={timelineActions}
         tools={timelineTools}
         afterHistory={timelineAfterHistory}

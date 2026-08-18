@@ -367,6 +367,13 @@ test("an Upcoming Available row logs in one tap and stays available rather than 
       .filter({ hasText: OFFER_ITEM });
     await expect(row).toBeVisible();
 
+    // #2579-F: availability stops wearing work's uniform. The offer is a CHIP in a
+    // wrapped run — its name and its slot ON the button, and the tap IS the log —
+    // instead of a full-height row whose subtitle led with the section's own heading.
+    await expect(available.getByTestId("available-chips")).toBeVisible();
+    await expect(row).toContainText("Morning");
+    await expect(row).not.toContainText("Available ·");
+
     await settledClick(page, row.getByTestId("available-mark-taken"));
     await expect.poll(() => takenCount(db, item.doseId)).toBe(1);
 

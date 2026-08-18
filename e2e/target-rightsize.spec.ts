@@ -178,7 +178,7 @@ test("a chronically under-floor food habit can be untracked without touching the
   try {
     targetId = seedTarget(db, "food_group", FOOD_GROUP, 10);
     const logs = db.prepare(
-      "INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (1, ?, ?, 1)"
+      "INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (1, ?, ?, 1)"
     );
     for (const date of ONE_PER_WEEK) logs.run(date, FOOD_GROUP);
 
@@ -199,13 +199,13 @@ test("a chronically under-floor food habit can be untracked without touching the
     expect(
       db
         .prepare(
-          "SELECT COUNT(*) AS n FROM food_log WHERE profile_id = 1 AND group_key = ?"
+          "SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = 1 AND group_key = ?"
         )
         .get(FOOD_GROUP)
     ).toEqual({ n: ONE_PER_WEEK.length });
   } finally {
     db.prepare(
-      "DELETE FROM food_log WHERE profile_id = 1 AND group_key = ?"
+      "DELETE FROM food_daily_totals WHERE profile_id = 1 AND group_key = ?"
     ).run(FOOD_GROUP);
     dropTarget(db, targetId);
     db.close();

@@ -74,8 +74,8 @@ export default defineConfig({
         // Generated / pure-data modules (no logic to exercise): excluding them
         // from the denominator keeps the floor honest. Catalog modules that also
         // export functions (immunization-catalog, cvx-map, activities-catalog,
-        // biomarker-loinc) are intentionally KEPT in — they have logic.
-        "lib/canonical-biomarkers.json", // generated (scripts/gen-canonical-biomarkers.ts); not TS
+        // canonical-result-loinc) are intentionally KEPT in — they have logic.
+        "lib/canonical-result-definitions.json", // generated (scripts/gen-canonical-result-definitions.ts); not TS
         "lib/growth-charts.json", // generated (scripts/gen-growth-charts.ts); pure data
         "lib/supplement-catalog.ts", // hand-maintained pure data, no functions
       ],

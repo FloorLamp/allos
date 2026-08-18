@@ -25,8 +25,9 @@ attention** hero, AND the Telegram nudge (one assessor). The **coaching tier** �
 the four observational builders
 (`buildTrainingObservationFindings`/`buildBodyHygieneFindings`/`buildGoalPacingFindings`/`buildAdherencePatternFindings`,
 aggregated by `collectCoachingFindings`) — is _calm/observational_: it reaches
-its own tab AND the hideable dashboard **Coaching observations** rollup, but
-**never a notification and never the non-hideable hero** (reach without noise).
+its own tab and is eligible for the hideable dashboard **Coaching observations**
+rollup when it clears that surface's relevance floor, but **never a notification
+and never the non-hideable hero** (reach without noise).
 A new observational engine joins the coaching tier by adding its builder to
 `collectCoachingFindings` and its dedupeKey prefix to the registry; it does NOT
 get a push channel unless it's genuinely _care_. Every surface renders the SAME
@@ -58,11 +59,29 @@ an attention slot) always does. A cold-start state must never newly page anyone.
 for findings that would otherwise render only on their own tab, so a family that
 has earned its OWN dashboard widget is excluded from it: `FINDING_DASHBOARD_HOME`
 in `lib/dashboard-widgets.ts` maps a dedupeKey prefix to that widget id, and the
-page splits `activeCoaching` into the homed slice and the rollup's catch-all. The
-two sets are disjoint, their union is the whole set, the rollup's count and
-"Show N more" overflow are computed over what it renders, and hiding the home
-widget puts its family straight back into the rollup. A new family with its own
-widget adds one registry line — it does not add another one-off filter.
+page splits `activeCoaching` into the homed slice and the rollup's eligible
+residual. The two rendered sets are disjoint. Hiding the home widget returns its
+family to the residual, where the same relevance floor decides whether it has
+earned dashboard reach. A new family with its own widget adds one registry line —
+it does not add another one-off filter.
+
+**The rollup has a relevance floor, not a row cap (#3090).**
+`COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD` is `review` (2). A producer's explicit
+`Finding.dashboardRelevance` wins; otherwise `caution`/`action` clears the floor
+and calm informational findings remain on their origin tabs. When nothing clears
+the floor, there is no card. When several findings clear it, all render: the card
+never says “N of M” and never hides a withheld queue behind “Show more.”
+
+Profile-entity fan-out is bounded before suppression, per family, in
+`COACHING_ENTITY_FINDING_LIMITS` (and the food–drug variance family's adjacent
+declaration). That ordering means dismissing the generated set cannot promote the
+next rows from the same family. Closed catalogs remain bounded by their registries.
+Stale exercises collapse further into one episodic family finding: it names at most
+three newest-lapsed lifts and says “several” rather than exposing a hidden count when
+the tail is longer. Its key is anchored to the first day of the continuous interval
+where at least one established lift is stale. Member changes cannot mint replacement
+rows while that interval remains nonempty; after every member clears, a later lapse
+starts a new episode and can appear again.
 
 **The same contract governs the Upcoming page's display aggregation (#1504).**
 The planning page folds a band's scheduled `dose` rows into one disclosure, its
@@ -210,12 +229,12 @@ declaring how far it reaches.
 **Dedupe keys follow their series' identity, not display names.** Two
 consequences worth knowing when touching identity code:
 
-- Training plateau/stale keys are built from the shared identity builders
-  (`plateauSignalKey` on `movementLoadKey` — variant-collapsed movement + the
-  equipment load lane; `staleExerciseSignalKey` on `exerciseHistoryKey`), never
-  from a raw display name (#1399/#1610). The old raw-name keys were re-keyed the
-  #482 way: a dismissal stored before the change goes inert and its finding
-  resurfaces once.
+- Training plateau keys use `plateauSignalKey` on `movementLoadKey` — the
+  variant-collapsed movement plus equipment load lane — never a raw display name
+  (#1399/#1610). The collapsed stale row instead uses one declared family stem and
+  the start of its continuous family episode; individual exercise names are copy,
+  not identity. The old raw-name plateau keys were re-keyed the #482 way: a dismissal
+  stored before the change goes inert and its finding resurfaces once.
 - The biomarker family key is no longer a finite SQL preimage: SQL calls the one
   pure `biomarkerFamily()` through the `biomarker_family()` user function
   (#1401), so a family's freeform `match` regex is load-bearing on the
@@ -484,7 +503,7 @@ the shipped step; a push is a larger decision left to a follow-up.
 ## Food log × food–drug rules (two tiers, #2021)
 
 The food catalog logged `alcohol` and `leafy_greens` as first-class groups while
-`matchFoodInteractions` took an ITEM and never touched `food_log`, so the
+`matchFoodInteractions` took an ITEM and never touched `food_daily_totals`, so the
 medication row printed _"Avoid all alcohol during treatment and for 3 days
 after"_ and then watched the user log an alcohol serving in silence. The join is
 `lib/food-drug-ledger.ts` (pure) behind `lib/food-drug-ledger-findings.ts` (the
@@ -1059,11 +1078,11 @@ Every surface in the app falls into exactly one of three classes. The class is
 decided by **who initiates the contact**, not by which channel it uses — Telegram
 appears in all three, and that is the point.
 
-| Class                         | Who initiates               | Examples                                                                                                  | Rule                                                                                                                 |
-| ----------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **1. System-initiated sends** | the system, unprompted      | dose reminders, missed-dose escalation, refill nudges, the morning digest, the periodic recap             | Costs the user's attention. Needs a standing reason and an obligation behind it.                                     |
-| **2. Rendered aggregates**    | the user, by opening a page | Upcoming, the dashboard hero, the #1504 count, the Household card                                         | Costs nothing until looked at, but competes for scarce space — so it ranks and folds rather than listing everything. |
-| **3. User-initiated access**  | the user, by asking         | the Supplements page, quick-log overlays, the digest's "Log other…" tail, a reminder's More… row, `/dose` | Costs nothing. Must be COMPLETE — anything the user owns has to be reachable here, or it is effectively deleted.     |
+| Class                         | Who initiates               | Examples                                                                                                | Rule                                                                                                                 |
+| ----------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **1. System-initiated sends** | the system, unprompted      | dose reminders, missed-dose escalation, refill nudges, the morning digest, the periodic recap           | Costs the user's attention. Needs a standing reason and an obligation behind it.                                     |
+| **2. Rendered aggregates**    | the user, by opening a page | Upcoming, the dashboard hero, the #1504 count, the Household card                                       | Costs nothing until looked at, but competes for scarce space — so it ranks and folds rather than listing everything. |
+| **3. User-initiated access**  | the user, by asking         | the Supplements page, quick-log overlays, the digest's "➕ Doses" tail, a reminder's More… row, `/dose` | Costs nothing. Must be COMPLETE — anything the user owns has to be reachable here, or it is effectively deleted.     |
 
 Two consequences that are easy to get wrong:
 
@@ -1227,7 +1246,7 @@ you sure?".
 
 An **obligation** only exists where the user has committed to future behavior.
 Domains that merely RECORD what happened have nothing to demote, and trying to
-give them a priority band is how a model acquires a meaningless field.
+give them an obligation is how a model acquires a meaningless field.
 
 | Domain                                          | Commitment? | Its `may`-equivalent state                          |
 | ----------------------------------------------- | ----------- | --------------------------------------------------- |
@@ -1237,7 +1256,7 @@ give them a priority band is how a model acquires a meaningless field.
 | Food groups                                     | yes         | excluded: off the suggestion engine, still loggable |
 | Body metrics, labs, sleep, symptoms, activities | **no**      | n/a — an observation cannot be missed               |
 
-The right question when adding a domain is therefore not "what priority band does
+The right question when adding a domain is therefore not "what obligation does
 this get" but "**did the user promise anything?**" A no makes obligation
 inapplicable, and the domain's quiet state is simply "we still record it".
 

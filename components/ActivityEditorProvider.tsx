@@ -10,8 +10,13 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useHistoryBackClose } from "./useHistoryBackClose";
+import {
+  startWorkout,
+  discardWorkout,
+} from "@/app/(app)/training/activity-actions";
+import { trainingActivityPageHref } from "@/lib/hrefs";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
@@ -26,23 +31,24 @@ import WorkoutDock from "./WorkoutDock";
 import {
   buildActivityTypePrefill,
   buildRepeatPrefill,
+  activityEditDataHasStrength,
   todayStr,
 } from "./activity-form/model";
 import { useTimezone } from "./TimezoneProvider";
 import { resumeContinuation } from "./resume-continuation";
 import type { PracticeType } from "@/lib/protocol-practice";
 
-// The training route hosts the inline docked editor (TrainingLogView registers a dock
-// column), so the app-wide bottom bar is suppressed there — the session is already
-// visible in the page column. Everywhere else the minimized bar carries it.
-const TRAINING_LOG_ROUTE = "/training";
+// The training LOG TAB hosts the inline docked editor (TrainingLogView registers a
+// dock column), so the app-wide bottom bar is suppressed while that view is mounted —
+// the session is already visible in the page column. Everywhere else the minimized
+// bar carries it. Mount-based, not route-based (#2893 review): /training now lands on
+// Overview by default, and a pathname test would hide the bar on tabs that have no
+// dock, stranding a fresh-loaded live session with no resume affordance.
 
 interface ActivityEditorApi {
   openCreate: (prefill?: { type?: PracticeType; date?: string }) => void;
   // Start a LIVE workout (issue #340): opens a fresh create form (date=today,
   // start=now) in the in-gym layout — the rest timer + set check-off flow. A
-  // no-op for an age-restricted profile (strength is gated, #489); gate the
-  // affordance on `canStartWorkout`.
   //
   // #1893: with a session ALREADY live this RESUMES it (reopens the docked session,
   // epoch untouched) instead of clearing state and re-stamping the start instant. The
@@ -50,8 +56,14 @@ interface ActivityEditorApi {
   // in-progress session either — defence in depth, not a substitute for rendering
   // `workoutOffer`.
   openLive: () => void;
-  // Whether live workout mode is available (false for age-restricted profiles).
+  // Whether live workout mode is available.
   canStartWorkout: boolean;
+  // Whether this profile may create workout-oriented activity records at all.
+  // Existing records remain editable and an existing live session resumable.
+  trainingRelevant: boolean;
+  // Strength-specific creation/programming eligibility for the acting profile.
+  // Existing strength records remain editable and a running session resumable.
+  strengthTrainingAvailable: boolean;
   // The ONE start-vs-resume derivation every workout entry point renders (#1893/#221):
   // the bolt, the palette's live action, the Training Log aside, and the routine card all
   // take their LABEL from here, and the open* calls above enforce the same state. See
@@ -59,8 +71,7 @@ interface ActivityEditorApi {
   workoutOffer: WorkoutOffer;
   // "Log this session" (#740): open a CREATE form pre-filled with a resolved
   // routine session (the day's slots as exercises + prescribed sets) IN live mode,
-  // so a routine day goes straight into the in-gym flow. A no-op for an
-  // age-restricted profile (strength is gated, #489) — gate on `canStartWorkout`.
+  // so a routine day goes straight into the in-gym flow.
   //
   // #1893: guarded exactly like openLive — a running session is resumed, never
   // restarted, so the coaching card cannot discard a workout in progress.
@@ -91,8 +102,10 @@ interface ActivityEditorApi {
   minimized: boolean;
   editData: ActivityEditData | null;
   // Register a DOM node for the editor to render into inline instead of the
-  // overlay. Pass null to unregister.
-  registerDock: (el: HTMLElement | null) => void;
+  // overlay. Pass null to unregister. `scope` marks a PAGE dock that only hosts
+  // edits of that one activity (the activity detail page); omit it for a
+  // general column that hosts any create/edit (the training log).
+  registerDock: (el: HTMLElement | null, scope?: number | null) => void;
 }
 
 const Ctx = createContext<ActivityEditorApi | null>(null);
@@ -113,8 +126,9 @@ export default function ActivityEditorProvider({
   equipment,
   recentActivityEquipment = [],
   bodyweightKg,
+  trainingRelevant,
+  strengthTrainingAvailable,
   lastActivity = null,
-  restricted = false,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
@@ -132,12 +146,11 @@ export default function ActivityEditorProvider({
   // form's activity-level equipment picker, narrowed per-activity by the form.
   recentActivityEquipment?: number[];
   bodyweightKg: number | null;
+  trainingRelevant: boolean;
+  strengthTrainingAvailable: boolean;
   // The single most recent activity (issue #337), seeding the "Repeat last
   // activity" palette command / mobile quick action. null when nothing's logged.
   lastActivity?: ActivityEditData | null;
-  // True for an age-restricted profile (#489): strength is gated, so live
-  // workout mode (issue #340) is unavailable. Hides the Start-workout affordances.
-  restricted?: boolean;
   // Deload/plateau inputs for the strength editor (#923): whether the active routine
   // is in its deload week (+ which lifts to shave), and the active plateau hints.
   deloadContext: FormDeloadContext;
@@ -162,7 +175,6 @@ export default function ActivityEditorProvider({
   children: React.ReactNode;
 }) {
   const tz = useTimezone();
-  const pathname = usePathname();
   const [mountedAt] = useState(Date.now);
   const [open, setOpen] = useState(false);
   // Minimized-but-MOUNTED: the live overlay collapses to the bottom bar without
@@ -194,15 +206,38 @@ export default function ActivityEditorProvider({
   // memoized api on every dock registration).
   const [docked, setDocked] = useState(false);
   const dockElRef = useRef<HTMLElement | null>(null);
-
-  const registerDock = useCallback((el: HTMLElement | null) => {
-    dockElRef.current = el;
-    setDockEl(el);
-    // The dock is going away (e.g. navigating off the training log). Close the editor
-    // rather than letting it pop back as an overlay on the next page; the
-    // docked ActivityForm flushes any pending auto-save on unmount.
-    if (!el) setOpen(false);
+  // What the dock is FOR (#2870 step 2 review): null = a general dock (the
+  // training log's column hosts any create/edit), an activity id = a page dock
+  // that only hosts edits of that record — global openers (palette create,
+  // repeat-last, a live resume) must not portal an unrelated form under it.
+  const dockScopeRef = useRef<number | null>(null);
+  // Mirror of `docked` so registerDock's unregister can tell whether the dock
+  // is actually hosting the open editor without taking state as a dependency.
+  const dockedRef = useRef(false);
+  const updateDocked = useCallback((v: boolean) => {
+    dockedRef.current = v;
+    setDocked(v);
   }, []);
+  const router = useRouter();
+
+  const registerDock = useCallback(
+    (el: HTMLElement | null, scope: number | null = null) => {
+      dockElRef.current = el;
+      dockScopeRef.current = el ? scope : null;
+      setDockEl(el);
+      // The dock is going away (navigating off its page, or a breakpoint
+      // crossing). Close the editor IT IS HOSTING rather than letting it pop
+      // back as an overlay on the next page; the docked ActivityForm flushes
+      // any pending auto-save on unmount. An editor the dock never hosted —
+      // the overlay, a minimized live session with its running clock — is none
+      // of the dock's business and survives the unregister.
+      if (!el && dockedRef.current) {
+        updateDocked(false);
+        setOpen(false);
+      }
+    },
+    [updateDocked]
+  );
 
   // Resume the acting profile's active session in the live editor from the dock —
   // hydrated from the persisted #451 draft (getActivityEditData). Docks into the
@@ -216,9 +251,124 @@ export default function ActivityEditorProvider({
     setLive(true);
     setLiveStartEpoch(liveStartEpochMs ?? Date.now());
     setMinimized(false);
-    setDocked(dockElRef.current != null);
+    // Live NEVER docks (#2870 step 3) — resume included. It used to borrow the
+    // log column when one was present, but the resume now navigates to the
+    // session's page, and a docked form dies with the dock it borrowed (the
+    // log unmounts on that very navigation, and its unregister closes whatever
+    // it hosts). The overlay is navigation-proof and reads as its own screen.
+    updateDocked(false);
     setOpen(true);
-  }, [liveEditData, liveStartEpochMs]);
+    // One URL (#2870 step 3): resuming also stands the tab on the session's
+    // canonical page, so minimizing reveals the record-in-progress and
+    // finishing settles where the reader already is. scroll: false on every
+    // live navigation — the page beneath an overlay must not steal focus from
+    // the open form (Next's focus-and-scroll reset would blur it, closing an
+    // open combobox mid-pick).
+    router.push(trainingActivityPageHref(liveEditData.id), { scroll: false });
+  }, [liveEditData, liveStartEpochMs, updateDocked, router]);
+
+  // CREATE-AT-START (#2870 step 3). Starting a session opens the live editor
+  // IMMEDIATELY (rowless, exactly the pre-step shape — nothing may stand
+  // between the tap and the form) while the row-create runs alongside. When it
+  // returns, the form ADOPTS the created id through the autosave's own
+  // created-row channel — no re-key, no remount, nothing typed in the gap can
+  // be lost — so every save UPDATEs the row. Navigation to the session's
+  // canonical page is driven by ROW OWNERSHIP, not by the create's timing: the
+  // form reports the first row it owns (adopted, or minted by its own first
+  // save on a dead connection), and THAT is when the tab moves to the page —
+  // so a slow round-trip still converges on one URL, and a gym dead spot
+  // degrades to exactly the pre-step session whose page appears at first save.
+  // A create that returns after the form already owns a DIFFERENT row (or
+  // after the session was replaced) is discarded — never a husk beside the
+  // form's own row.
+  const [liveRowId, setLiveRowId] = useState<number | null>(null);
+  const liveSessionSeqRef = useRef(0);
+  const liveOwnedRowIdRef = useRef<number | null>(null);
+  const onLiveRowOwned = useCallback(
+    (id: number) => {
+      liveOwnedRowIdRef.current = id;
+      // One URL: the session has a page now — stand the tab on it. scroll:
+      // false — the page beneath an overlay must not steal focus from the open
+      // form (Next's focus-and-scroll reset would blur it, closing an open
+      // combobox mid-pick).
+      router.push(trainingActivityPageHref(id), { scroll: false });
+    },
+    [router]
+  );
+  // Closing a live session that never logged anything abandons its
+  // create-at-start row: discard IF EMPTY (server-checked — a just-flushed set
+  // keeps the row, and the form's close path flushes before onClose runs).
+  // Without this, the empty draft keeps presence "active" for 90 minutes and
+  // the resume bar haunts every page offering a session with nothing in it.
+  const abandonEmptyLiveRow = useCallback(() => {
+    if (!live) return;
+    // The session is over: invalidate any still-in-flight create so it
+    // discards itself instead of stranding an orphan row nobody adopted.
+    liveSessionSeqRef.current++;
+    const id = liveOwnedRowIdRef.current ?? editData?.id ?? null;
+    if (id == null) return;
+    const fd = new FormData();
+    fd.set("activity_id", String(id));
+    fd.set("if_empty", "1");
+    void discardWorkout(fd)
+      .then((out) => {
+        if (out.kind !== "discarded") return;
+        // The page beneath may BE the discarded row's — don't strand the
+        // reader on a just-deleted activity; the hub is where they started.
+        if (window.location.pathname === `/training/activity/${id}`)
+          router.replace(trainingRelevant ? "/training" : "/timeline");
+      })
+      .catch(() => {});
+  }, [live, editData, router, trainingRelevant]);
+
+  const leaveDeletedActivityPage = useCallback(
+    (id: number) => {
+      if (window.location.pathname === `/training/activity/${id}`)
+        router.replace(trainingRelevant ? "/training" : "/timeline");
+    },
+    [router, trainingRelevant]
+  );
+
+  const startLiveSession = useCallback(
+    (
+      kind: { type: "strength" | "cardio"; title: string },
+      prefillData: ActivityEditData | null
+    ) => {
+      setCreateDate(null);
+      setEditData(null);
+      setPrefill(prefillData);
+      setLive(true);
+      setLiveRowId(null);
+      liveOwnedRowIdRef.current = null;
+      const seq = ++liveSessionSeqRef.current;
+      setLiveStartEpoch(Date.now());
+      setMinimized(false);
+      if (prefillData) setRepeatNonce((n) => n + 1);
+      // Live mode is a focused, full-attention flow — never dock it; the
+      // overlay reads as its own screen over whatever page is beneath.
+      updateDocked(false);
+      setOpen(true);
+
+      const fd = new FormData();
+      fd.set("type", kind.type);
+      fd.set("title", kind.title);
+      void startWorkout(fd)
+        .catch(() => null)
+        .then((res) => {
+          if (!res || !res.ok) return;
+          const replaced = liveSessionSeqRef.current !== seq;
+          const owned = liveOwnedRowIdRef.current;
+          if (replaced || (owned != null && owned !== res.id)) {
+            const fd2 = new FormData();
+            fd2.set("activity_id", String(res.id));
+            void discardWorkout(fd2).catch(() => {});
+            return;
+          }
+          setLiveRowId(res.id);
+        });
+    },
+    [updateDocked]
+  );
 
   // REOPEN WHAT THE DEPLOY CLOSED (#2471). The tab reloaded ITSELF to take a new
   // build, so the editor that was on screen a second ago is gone with the document —
@@ -241,7 +391,6 @@ export default function ActivityEditorProvider({
     reopenedRef.current = true;
     // A stored row this provider has no edit data for cannot be reopened here — but
     // a LIVE session always can, whatever its row id, because presence supplies it.
-    if (marker.live && restricted) return;
     if (!marker.live && marker.recordId != null) return;
     if (marker.live && marker.recordId != null && !liveEditData) return;
     // Reopening is a response to state this document booted with, not a render this
@@ -255,7 +404,7 @@ export default function ActivityEditorProvider({
         setLive(false);
         setLiveStartEpoch(null);
         setMinimized(false);
-        setDocked(dockElRef.current != null);
+        updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
         return;
       }
@@ -274,10 +423,10 @@ export default function ActivityEditorProvider({
       setLive(true);
       setLiveStartEpoch(Date.now());
       setMinimized(false);
-      setDocked(false);
+      updateDocked(false);
       setOpen(true);
     });
-  }, [liveEditData, resumeLive, restricted]);
+  }, [liveEditData, resumeLive, updateDocked]);
 
   // A fresh-load active session: nothing is mounted in this client, but the
   // server-hydrated #921 presence says one is running and its draft is reopenable.
@@ -302,10 +451,16 @@ export default function ActivityEditorProvider({
     if (offer.from === "mounted") {
       setMinimized(false);
       setOpen(true);
+      // One URL (#2870 step 3): a mounted resume also returns to the session's
+      // page when its row exists (a rowless-fallback session has none — it
+      // just un-hides where it stands).
+      const rowId = editData?.id ?? liveRowId;
+      if (rowId)
+        router.push(trainingActivityPageHref(rowId), { scroll: false });
       return;
     }
     resumeLive();
-  }, [offer, resumeLive]);
+  }, [offer, resumeLive, editData, liveRowId, router]);
 
   // Memoized so always-mounted consumers (e.g. MobileNav's quick-log button)
   // only re-render when open/editData actually change — not on every provider
@@ -314,6 +469,9 @@ export default function ActivityEditorProvider({
   const api: ActivityEditorApi = useMemo(
     () => ({
       openCreate: (createPrefill) => {
+        if (!trainingRelevant) return;
+        if (createPrefill?.type === "strength" && !strengthTrainingAvailable)
+          return;
         setEditData(null);
         setCreateDate(createPrefill?.date ?? null);
         setPrefill(
@@ -326,12 +484,14 @@ export default function ActivityEditorProvider({
         setMinimized(false);
         if (createPrefill?.type || createPrefill?.date)
           setRepeatNonce((n) => n + 1);
-        setDocked(dockElRef.current != null);
+        // A create form docks only into a GENERAL dock — a page dock is scoped
+        // to its own record's edits (see registerDock), so a palette "New
+        // activity" on the activity page opens the overlay, visible where the
+        // tap happened, not portaled under an unrelated record.
+        updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
       },
       openLive: () => {
-        // Age-restricted profiles have no strength surface (#489) — no-op.
-        if (restricted) return;
         // A session is already running (#1893): reopen it. Never clear the editor and
         // never re-stamp liveStartEpoch — that would silently reset the running
         // session's clock and drop its in-flight sets.
@@ -339,22 +499,16 @@ export default function ActivityEditorProvider({
           resumeOffer();
           return;
         }
-        setEditData(null);
-        setCreateDate(null);
-        setPrefill(null);
-        setLive(true);
-        setLiveStartEpoch(Date.now());
-        setMinimized(false);
-        // Live mode is a focused, full-attention flow — never dock it into the
-        // training log's side column; use the overlay so it reads as its own screen.
-        setDocked(false);
-        setOpen(true);
+        if (!trainingRelevant || !strengthTrainingAvailable) return;
+        startLiveSession({ type: "strength", title: "" }, null);
       },
-      canStartWorkout: !restricted,
+      canStartWorkout:
+        (trainingRelevant && strengthTrainingAvailable) ||
+        offer.kind === "resume",
+      trainingRelevant,
+      strengthTrainingAvailable,
       workoutOffer: offer,
       openSession: (prefillData) => {
-        // Age-restricted profiles have no strength surface (#489) — no-op.
-        if (restricted) return;
         // Same guard as openLive (#1893): the routine card's "Log this session" must
         // not discard a workout already in progress. The running session wins; the
         // routine slate is still one tap away once it is finished.
@@ -362,16 +516,15 @@ export default function ActivityEditorProvider({
           resumeOffer();
           return;
         }
-        setEditData(null);
-        setCreateDate(null);
-        setPrefill(prefillData);
-        setLive(true);
-        setLiveStartEpoch(Date.now());
-        setMinimized(false);
-        setRepeatNonce((n) => n + 1);
-        // Live mode is its own focused screen — never dock it into a page column.
-        setDocked(false);
-        setOpen(true);
+        if (!trainingRelevant) return;
+        if (prefillData.type !== "cardio" && !strengthTrainingAvailable) return;
+        startLiveSession(
+          {
+            type: prefillData.type === "cardio" ? "cardio" : "strength",
+            title: prefillData.title,
+          },
+          prefillData
+        );
       },
       openEdit: (data) => {
         setEditData(data);
@@ -380,10 +533,17 @@ export default function ActivityEditorProvider({
         setLive(false);
         setLiveStartEpoch(null);
         setMinimized(false);
-        setDocked(dockElRef.current != null);
+        // A general dock hosts any edit; a scoped page dock only its own record.
+        updateDocked(
+          dockElRef.current != null &&
+            (dockScopeRef.current == null || dockScopeRef.current === data.id)
+        );
         setOpen(true);
       },
       openRepeat: (data) => {
+        if (!trainingRelevant) return;
+        if (activityEditDataHasStrength(data) && !strengthTrainingAvailable)
+          return;
         setEditData(null);
         setCreateDate(null);
         setPrefill(buildRepeatPrefill(data, todayStr(tz)));
@@ -391,11 +551,16 @@ export default function ActivityEditorProvider({
         setLiveStartEpoch(null);
         setMinimized(false);
         setRepeatNonce((n) => n + 1);
-        setDocked(dockElRef.current != null);
+        updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
       },
       openRepeatLast: () => {
-        if (!lastActivity) return;
+        if (!trainingRelevant || !lastActivity) return;
+        if (
+          activityEditDataHasStrength(lastActivity) &&
+          !strengthTrainingAvailable
+        )
+          return;
         setEditData(null);
         setCreateDate(null);
         setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
@@ -403,14 +568,19 @@ export default function ActivityEditorProvider({
         setLiveStartEpoch(null);
         setMinimized(false);
         setRepeatNonce((n) => n + 1);
-        setDocked(dockElRef.current != null);
+        updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
       },
-      hasLastActivity: lastActivity != null,
+      hasLastActivity:
+        trainingRelevant &&
+        lastActivity != null &&
+        (strengthTrainingAvailable ||
+          !activityEditDataHasStrength(lastActivity)),
       subjectName,
       close: () => {
         setMinimized(false);
         setOpen(false);
+        abandonEmptyLiveRow();
       },
       open,
       minimized,
@@ -424,10 +594,14 @@ export default function ActivityEditorProvider({
       registerDock,
       tz,
       lastActivity,
-      restricted,
+      trainingRelevant,
+      strengthTrainingAvailable,
       subjectName,
       offer,
       resumeOffer,
+      startLiveSession,
+      abandonEmptyLiveRow,
+      updateDocked,
     ]
   );
 
@@ -438,12 +612,13 @@ export default function ActivityEditorProvider({
   // (see `docked`) and that dock is still mounted; otherwise it's the overlay.
   const showDock = docked && dockEl != null;
 
-  const onTrainingLog = pathname === TRAINING_LOG_ROUTE;
-  // The bar shows for a client-minimized live session (mounted, hidden) anywhere,
-  // and for a fresh-load active session everywhere except the training log route (where
-  // the editor docks inline instead). A docked-open editor never shows the bar.
-  const showBar =
-    (minimized && !showDock) || (hydrationActive && !onTrainingLog);
+  // The bar shows for a client-minimized live session (mounted, hidden) and
+  // for a fresh-load active session — EVERYWHERE, the Log tab included
+  // (#2897): the old Log-view suppression existed because a live session used
+  // to dock inline in that page's column; live never docks now (#2870 step 3),
+  // so the bar is the one resume affordance every page shares. A docked-open
+  // editor never shows the bar.
+  const showBar = (minimized && !showDock) || hydrationActive;
   // Elapsed baseline + copy for the bar: the mounted session's own start when
   // minimized, else the server-hydrated start.
   const barStartEpoch = minimized
@@ -490,14 +665,18 @@ export default function ActivityEditorProvider({
               equipment={equipment}
               recentActivityEquipment={recentActivityEquipment}
               bodyweightKg={bodyweightKg}
+              strengthTrainingAvailable={strengthTrainingAvailable}
               editData={editData}
               prefill={prefill}
               initialDate={createDate ?? undefined}
               live={live}
+              adoptRowId={live ? liveRowId : null}
+              onRowOwned={live ? onLiveRowOwned : undefined}
               deloadContext={deloadContext}
               recoveringContext={recoveringContext}
               plateauHints={plateauHints}
               onClose={() => setOpen(false)}
+              onDeleted={leaveDeletedActivityPage}
             />,
             dockEl
           )
@@ -510,10 +689,13 @@ export default function ActivityEditorProvider({
             equipment={equipment}
             recentActivityEquipment={recentActivityEquipment}
             bodyweightKg={bodyweightKg}
+            strengthTrainingAvailable={strengthTrainingAvailable}
             editData={editData}
             prefill={prefill}
             initialDate={createDate ?? undefined}
             live={live}
+            adoptRowId={live ? liveRowId : null}
+            onRowOwned={live ? onLiveRowOwned : undefined}
             deloadContext={deloadContext}
             recoveringContext={recoveringContext}
             plateauHints={plateauHints}
@@ -527,7 +709,9 @@ export default function ActivityEditorProvider({
             onClose={() => {
               setMinimized(false);
               setOpen(false);
+              abandonEmptyLiveRow();
             }}
+            onDeleted={leaveDeletedActivityPage}
           />
         ))}
       {/* Spacer so the fixed bottom bar never overlaps the last of the page
@@ -540,9 +724,51 @@ export default function ActivityEditorProvider({
           live={minimized ? live : true}
           stale={presence?.stale ?? false}
           ownerName={subjectName}
-          onOpen={minimized ? () => setMinimized(false) : resumeLive}
+          onOpen={
+            minimized
+              ? () => {
+                  setMinimized(false);
+                  // One URL (#2870 step 3): un-pocketing also returns to the
+                  // session's page when its row exists (a rowless-fallback
+                  // session has no page yet — it just un-hides in place).
+                  const rowId = editData?.id ?? (live ? liveRowId : null);
+                  if (rowId)
+                    router.push(trainingActivityPageHref(rowId), {
+                      scroll: false,
+                    });
+                }
+              : resumeLive
+          }
         />
       )}
     </Ctx.Provider>
   );
+}
+
+// The dock-host discipline, owned here so every host obeys it once instead of
+// re-deriving it (#2870 step 2 review; #2897 plans a third host). Register only
+// a REAL dock: passing null means "the dock went away" and closes a docked
+// editor, so registering during first paint — where the media query hasn't
+// settled and `wide` still holds its false initial — would force-close an
+// editor that survived navigation as the overlay. `scope` marks a page dock
+// that only hosts edits of that one record; omit it for a general column (the
+// training log). Returns the ref the host renders as the dock element, plus the
+// settled match for the host's own layout decisions.
+export function useEditorDock(query: string, scope?: number) {
+  const { registerDock } = useActivityEditor();
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setWide(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [query]);
+  useEffect(() => {
+    if (!wide) return;
+    registerDock(dockRef.current, scope ?? null);
+    return () => registerDock(null);
+  }, [registerDock, wide, scope]);
+  return { dockRef, wide };
 }

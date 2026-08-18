@@ -51,6 +51,7 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
+import { endFastAction, undoEndFastAction } from "./fast-actions";
 import {
   deleteFoodLogEvent,
   logFoodServing,
@@ -272,7 +273,7 @@ export default function FoodLogBar({
   const [earlierOpen, setEarlierOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   // Optimistic daily totals and meal-slot counts live in the parent date context:
-  // food_log remains the source-of-truth day counter, while food_log_events powers
+  // food_daily_totals remains the source-of-truth day counter, while food_log_events powers
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
   // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -294,6 +295,65 @@ export default function FoodLogBar({
   // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
+  // "End your fast?" (#2756). A FOLLOW-UP OFFER beside a log that has ALREADY landed —
+  // never a confirm-before-write, and the serving is on the counter whatever happens
+  // next. DECLINING IS DOING NOTHING: the toast times out on its own and the fast is
+  // untouched, because the app never auto-ends one. The TAP is the write, and it goes
+  // through the same end core the Nutrition control does — which re-derives the active
+  // fast under its own lock, so accepting after the fast was ended on another device
+  // reports "No fast is running" instead of confirming (#2756's prompt race).
+  //
+  // KEYED, so one landing produces one prompt: two quick taps replace the toast in
+  // place rather than stacking the same question twice.
+  //
+  // AND THE END IT WRITES CARRIES THE SAME UNDO THE NUTRITION CARD OFFERS. This is the
+  // likelier route into that write, not the rarer one: `promptsEndOfFast` has no
+  // staleness term, so it fires just as readily for a fast that has been open for weeks
+  // — and by then #2757's stand-down has released, food nudges are back on, and the user
+  // is MORE likely to be here logging a serving. One tap then records a very long fast,
+  // which is precisely the write somebody most wants back. Offering the way back on the
+  // card and not here would make recovery depend on which control the tap came from.
+  //
+  // The id comes from the action (./fast-actions), which supplies it only when the reopen
+  // behind it would be accepted — so a restricted profile's close-out through this same
+  // toast draws no Undo, exactly as its card does, and this island asks no life-stage
+  // question of its own.
+  const undoEnd = (undoFastId: number) => {
+    const fd = new FormData();
+    fd.set("id", String(undoFastId));
+    void undoEndFastAction(fd).then((back) => {
+      toast(back.ok ? back.message : back.error, {
+        key: "end-fast-offer",
+        ...(back.ok ? {} : { tone: "error" as const }),
+      });
+    });
+  };
+  const offerEndFast = (offered: true | undefined) => {
+    if (!offered) return;
+    toast("Serving logged. End your fast?", {
+      key: "end-fast-offer",
+      action: {
+        label: "End fast",
+        onClick: () => {
+          void endFastAction(new FormData()).then((r) => {
+            const undoFastId = r.ok ? r.undoFastId : undefined;
+            toast(r.ok ? r.message : r.error, {
+              key: "end-fast-offer",
+              ...(r.ok ? {} : { tone: "error" as const }),
+              ...(undoFastId != null
+                ? {
+                    action: {
+                      label: "Undo",
+                      onClick: () => undoEnd(undoFastId),
+                    },
+                  }
+                : {}),
+            });
+          });
+        },
+      },
+    });
+  };
   // The acting profile's timezone — the zone the correction sheet's day/time pair is
   // judged in, matching the server's own resolution of the submitted wall time.
   const tz = useTimezone();
@@ -859,6 +919,7 @@ export default function FoodLogBar({
               ...(outcome.limitNote.hold ? { duration: null } : {}),
             });
           }
+          offerEndFast(outcome.endFastOffer);
           // Reconcile with the server's authoritative daily total (#748 item 2) so a
           // dropped/failed write can never leave a phantom count.
           return {
@@ -992,6 +1053,9 @@ export default function FoodLogBar({
             )
           )}.`
         );
+        // ONE prompt for the whole bundle (#2756): the server answers a bundled write
+        // with a single flag, so a usual-tap that landed five servings asks once.
+        offerEndFast(result.endFastOffer);
         // Adopt the server's authoritative figures for every group it actually wrote —
         // which may be FEWER than the button named, if part of the offer expired.
         // Groups it did not write keep their pre-tap counts, so the display matches
@@ -1522,7 +1586,7 @@ export default function FoodLogBar({
                           : "";
                       })()
                     }.`
-                  : "Servings you add record no eating time until you say one."}
+                  : "Servings you add are recorded with no eating time until you say one."}
               </span>
             </div>
           )}

@@ -5,20 +5,16 @@
 // rows from more than one domain, order or window them against each other, and report
 // what happened. It was untestable until phase 1 landed, because before then the
 // answer depended on which convention each table happened to be on. Now it is
-// testable, so it is tested — including the half that is STILL wrong if you compare
-// stored strings, which is the point.
+// testable, so it is tested — including direct stored-string comparison now that the
+// participating instant columns share one convention.
 //
 // The fixture spans every pattern the issue enumerates:
 //
-//   1. event/record pair — food_log_events (occurred_at canonical / recorded_at canonical),
-//                          and intake_item_logs, whose recorded_at/taken_at turned out
-//                          under the owner's ruling to be a RECORD CHAIN rather than
-//                          an event/record pair — so its event instant is the separate
-//                          `occurred_at` phase 2 wave 1 added, NULL here because this
-//                          dose was confirmed against a schedule and nobody said when
-//   2. record-only       — substance_log (logged_at canonical)
+//   1. event/record pair — food_log_events and intake_item_logs, both canonical;
+//                          the dose event is NULL because nobody said when
+//   2. record-only       — substance_daily_totals (recorded_at canonical)
 //   3. optional event    — practice_logs (a local HH:MM, and a NULL one)
-//   4. window            — metric_samples (start_time / end_time)
+//   4. window            — metric_samples (started_at / ended_at)
 //   5. day-only          — body_metrics (a date, and an `occurred_at` nobody stated)
 //
 // plus hr_minutes, whose instant is canonical since migration 164.
@@ -63,12 +59,11 @@ beforeAll(() => {
       .run(itemId, "1 tab").lastInsertRowid
   );
 
-  // Pattern 1a — a PRN administration. `recorded_at` is on SQLite's BARE shape; the dose
-  // was taken at 13:30Z, i.e. ten minutes AFTER the meal below.
+  // Pattern 1a — a PRN administration captured at 13:30Z, ten minutes after the meal.
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, taken_at, status)
-     VALUES (?, ?, ?, ?, ?, 'taken')`
-  ).run(doseId, itemId, DAY, "2026-03-10 13:30:00", "2026-03-10 18:05:00");
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
+     VALUES (?, ?, ?, ?, 'taken')`
+  ).run(doseId, itemId, DAY, "2026-03-10T13:30:00Z");
 
   // Pattern 1b — two servings. The first STATES an eating time (13:20Z); the second is
   // a web backfill that states none, so `occurred_at` is NULL and stays that way.
@@ -83,7 +78,7 @@ beforeAll(() => {
 
   // Pattern 2 — record-only.
   db.prepare(
-    `INSERT INTO substance_log (profile_id, date, substance, units, logged_at)
+    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, recorded_at)
      VALUES (?, ?, 'alcohol', 1, ?)`
   ).run(profileId, DAY, "2026-03-10T22:40:00Z");
 
@@ -100,7 +95,7 @@ beforeAll(() => {
 
   // Pattern 4 — a window.
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'fixture', 'steps', ?, ?, ?, 4200)`
   ).run(profileId, DAY, "2026-03-10T12:00:00Z", "2026-03-10T13:00:00Z");
 
@@ -121,7 +116,7 @@ function doseAndMeal() {
   const dose = db
     .prepare(
       `SELECT l.date AS date, l.occurred_at AS occurred_at,
-              l.recorded_at AS recorded_at, l.taken_at AS taken_at
+              l.recorded_at AS recorded_at
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
         WHERE ii.profile_id = ? AND l.date = ?`
@@ -138,11 +133,7 @@ function doseAndMeal() {
 }
 
 describe("the comparison that produced the wrong answers", () => {
-  it("is still wrong when two conventions are compared as strings", () => {
-    // This is not a hypothetical. `recorded_at` is bare ('2026-03-10 13:30:00') and
-    // `occurred_at` carries a Z ('2026-03-10T13:20:00Z'); within one day ' ' (0x20) sorts
-    // before 'T' (0x54), so the LATER dose compares as EARLIER — and the query returns
-    // a clean, confident, wrong row rather than an error.
+  it("compares canonical instants correctly as stored strings", () => {
     const row = db
       .prepare(
         `SELECT (l.recorded_at > f.occurred_at) AS dose_came_after
@@ -153,7 +144,7 @@ describe("the comparison that produced the wrong answers", () => {
           WHERE ii.profile_id = ? AND l.date = ? AND f.occurred_at IS NOT NULL`
       )
       .get(profileId, DAY) as { dose_came_after: number };
-    expect(row.dose_came_after).toBe(0); // the dose WAS after the meal. This says no.
+    expect(row.dose_came_after).toBe(1);
   });
 
   it("is right when each row is asked for its instant", () => {
@@ -217,7 +208,8 @@ describe("one ordering across all five patterns", () => {
 
     const dose = db
       .prepare(
-        `SELECT l.date AS date, l.recorded_at AS recorded_at, l.taken_at AS taken_at
+        `SELECT l.date AS date, l.occurred_at AS occurred_at,
+                l.recorded_at AS recorded_at
            FROM intake_item_logs l
            JOIN intake_items ii ON ii.id = l.item_id
           WHERE ii.profile_id = ? AND l.date = ?`
@@ -236,10 +228,10 @@ describe("one ordering across all five patterns", () => {
 
     const drinks = db
       .prepare(
-        "SELECT date, logged_at, created_at FROM substance_log WHERE profile_id = ? AND date = ?"
+        "SELECT date, recorded_at, created_at FROM substance_daily_totals WHERE profile_id = ? AND date = ?"
       )
       .all(profileId, DAY) as Record<string, unknown>[];
-    for (const r of drinks) push("drink", "substance_log", r);
+    for (const r of drinks) push("drink", "substance_daily_totals", r);
 
     const practice = db
       .prepare(
@@ -347,7 +339,7 @@ describe("day attribution across the same join", () => {
       .get(profileId, DAY) as Record<string, unknown>;
     const sample = db
       .prepare(
-        "SELECT date, start_time, end_time FROM metric_samples WHERE profile_id = ? AND date = ?"
+        "SELECT date, started_at, ended_at FROM metric_samples WHERE profile_id = ? AND date = ?"
       )
       .get(profileId, DAY) as Record<string, unknown>;
     expect(rowLocalDay("body_metrics", weighIn, TZ)).toMatchObject({

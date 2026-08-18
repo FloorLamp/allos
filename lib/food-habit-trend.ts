@@ -46,7 +46,7 @@ export interface HabitWeekCell {
 
 // Classify each trailing week for one habit target. `countForWeek` returns the group's
 // servings summed over a week's window (the #579 rollup extended over N weeks — the
-// caller supplies it from the same food_log SUM the this-week progress uses).
+// caller supplies it from the same food_daily_totals SUM the this-week progress uses).
 // `createdDate` is the target's creation day (YYYY-MM-DD); a week whose whole window
 // precedes it is not-applicable. Pure: no clock, no DB.
 export function foodHabitTrendCells(

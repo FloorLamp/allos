@@ -20,7 +20,9 @@ const REGIONS: MuscleRegion[] = [
 
 describe("muscleRegion rollup", () => {
   it("is total over the MuscleId enum (every id maps to a valid region)", () => {
-    expect(MUSCLE_IDS).toHaveLength(22);
+    // 21 since the upper-chest merge (#2891) retired the enum's only
+    // fractional muscle.
+    expect(MUSCLE_IDS).toHaveLength(21);
     for (const m of MUSCLE_IDS) {
       expect(REGIONS).toContain(muscleRegion(m));
     }

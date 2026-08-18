@@ -6,6 +6,7 @@ import TrackFollowUpControl from "./TrackFollowUpControl";
 import { updateImagingStudy, deleteImagingStudy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import RecordEncounterLink from "@/components/RecordEncounterLink";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -15,8 +16,12 @@ import {
   modalityLabel,
   IMAGING_MODALITIES,
 } from "@/lib/imaging-study";
-import { formatMsv } from "@/lib/radiation-dose";
-import type { ImagingFollowUpSummary } from "@/lib/queries";
+import {
+  estimateStudyDose,
+  doseChipLabel,
+  doseSourceNote,
+} from "@/lib/radiation-dose";
+import type { ImagingFollowUpSummary, LinkedEncounterRef } from "@/lib/queries";
 import type { ImagingStudy, ImagingModality } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
@@ -39,11 +44,12 @@ function tracksFollowUp(
 // (issue #700) without a module-level global.
 function buildColumns(
   followUps: Map<number, ImagingFollowUpSummary>,
+  encounters: Record<number, LinkedEncounterRef>,
   fmt: DisplayFormatPrefs,
   multiView?: ListMultiView
 ): RecordColumn<ImagingStudy>[] {
   return [
-    ...baseColumns(fmt),
+    ...baseColumns(fmt, encounters),
     {
       header: "Follow-up",
       // The non-acting placeholder is a "—" like any other (#2588): on a card it
@@ -59,7 +65,30 @@ function buildColumns(
   ];
 }
 
-const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
+// The row's effective-dose chip. It reads the SAME estimateStudyDose the cumulative
+// card and its breakdown read (#2970), so a row and the breakdown line for the same
+// study can never disagree — and an estimate is marked as one at the figure, never
+// merged into an unlabelled number (#703's central rule). Before this the chip was
+// recorded-only, so a record with no reported doses — the common case — showed dose
+// figures on the card and none on any row.
+function DoseChip({ study }: { study: ImagingStudy }) {
+  const dose = estimateStudyDose(study);
+  const chip = doseChipLabel(dose);
+  if (!chip) return null;
+  return (
+    <span
+      className="ml-2 rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+      title={doseSourceNote(dose)}
+    >
+      {chip}
+    </span>
+  );
+}
+
+const baseColumns = (
+  fmt: DisplayFormatPrefs,
+  encounters: Record<number, LinkedEncounterRef>
+): RecordColumn<ImagingStudy>[] => [
   {
     header: "Study",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -71,18 +100,18 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
             contrast
           </span>
         ) : null}
-        {s.dose_msv != null ? (
-          <span
-            className="ml-2 rounded-sm bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            title="Effective dose recorded from the report"
-          >
-            {formatMsv(s.dose_msv)}
-          </span>
-        ) : null}
+        <DoseChip study={s} />
         {s.impression ? (
           <span className="ml-2 line-clamp-1 text-xs font-normal text-slate-400">
             {s.impression}
           </span>
+        ) : null}
+        {encounters[s.id] ? (
+          <RecordEncounterLink
+            label="Performed at"
+            encounter={encounters[s.id]}
+            testid={`imaging-encounter-${s.id}`}
+          />
         ) : null}
       </>
     ),
@@ -156,10 +185,12 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
 export default function ImagingStudyList({
   items,
   followUps = [],
+  encounters = {},
   multiView,
 }: {
   items: Stamped<ImagingStudy>[];
   followUps?: ImagingFollowUpSummary[];
+  encounters?: Record<number, LinkedEncounterRef>;
   multiView?: ListMultiView;
 }) {
   const [modality, setModality] = useState<ImagingModality | "">("");
@@ -174,8 +205,8 @@ export default function ImagingStudyList({
   }, [followUps]);
   const fmt = useFormatPrefs();
   const columns = useMemo(
-    () => buildColumns(followUpByStudy, fmt, multiView),
-    [followUpByStudy, fmt, multiView]
+    () => buildColumns(followUpByStudy, encounters, fmt, multiView),
+    [followUpByStudy, encounters, fmt, multiView]
   );
 
   const filtered = useMemo(() => {

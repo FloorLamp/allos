@@ -75,10 +75,12 @@ export const DYNAMIC_ROUTES = [
     match: /^\/equipment\/\d+$/,
   },
   {
-    pattern: "/training/rides/[id]",
+    // Every session's canonical record. Analyze's sessions table and Log both
+    // link it; the seeded shapes carry enough history to resolve one instance.
+    pattern: "/training/activity/[id]",
     strategy: "follow",
-    from: ["/training?tab=log", "/training"],
-    match: /^\/training\/rides\/\d+(?:\?.*)?$/,
+    from: ["/training?tab=analyze", "/training?tab=log"],
+    match: /^\/training\/activity\/\d+$/,
   },
   {
     // The providers registry index lives under Records → Care, not /providers.
@@ -138,8 +140,7 @@ export const DYNAMIC_ROUTES = [
 // spot must be visible, never silent.
 //
 // lib/__tests__/ux-census-routes.test.ts pins each entry's route to a live
-// page.tsx and each selector's data-testid to source, so a renamed toggle fails
-// a cheap unit test instead of silently un-expanding the surface.
+// page.tsx. Selector behavior is exercised by the census itself.
 /**
  * @typedef {object} DisclosureExpansion
  * @property {string} route        censused static route whose default state collapses content
@@ -151,14 +152,75 @@ export const DYNAMIC_ROUTES = [
 /** @type {DisclosureExpansion[]} */
 export const DISCLOSURE_EXPANSIONS = [
   {
-    // The readings catalog: every panel group (Vitamins, Lipids, …) collapses by
+    // The Clinical results catalog: every panel group (Vitamins, Lipids, …) collapses by
     // default, hiding the per-analyte rows where identity splits show.
-    route: "/results/readings",
-    label: "readings catalog panel groups",
+    route: "/results/clinical-results",
+    label: "clinical results catalog panel groups",
     closedToggle:
-      '[data-testid="biomarker-panel-toggle"][aria-expanded="false"]',
-    loadMore: '[data-testid="biomarker-panel-load-all"]',
+      '[data-testid="clinical-result-panel-toggle"][aria-expanded="false"]',
+    loadMore: '[data-testid="clinical-result-panel-load-all"]',
   },
+];
+
+// Query-driven hub panels are not separate page.tsx files, so the filesystem
+// census otherwise sees only their default state. Keep each non-default state
+// explicit: these visits get their own desktop/mobile screenshot and metrics row.
+/**
+ * @typedef {object} HubVariant
+ * @property {string} route static hub route
+ * @property {string} target canonical query-driven panel URL
+ * @property {string} slug filesystem-safe capture key
+ */
+
+/** @type {HubVariant[]} */
+export const HUB_VARIANTS = [
+  { route: "/training", target: "/training?tab=log", slug: "training-tab-log" },
+  {
+    route: "/training",
+    target: "/training?tab=analyze",
+    slug: "training-tab-analyze",
+  },
+  {
+    route: "/training",
+    target: "/training?tab=plan",
+    slug: "training-tab-plan",
+  },
+  {
+    route: "/trends",
+    target: "/trends?tab=fitness",
+    slug: "trends-tab-fitness",
+  },
+  {
+    route: "/trends",
+    target: "/trends?tab=nutrition",
+    slug: "trends-tab-nutrition",
+  },
+  {
+    route: "/trends",
+    target: "/trends?tab=insights",
+    slug: "trends-tab-insights",
+  },
+  {
+    route: "/nutrition",
+    target: "/nutrition?tab=supplements",
+    slug: "nutrition-tab-supplements",
+  },
+  {
+    route: "/data",
+    target: "/data?section=review",
+    slug: "data-section-review",
+  },
+  {
+    route: "/data",
+    target: "/data?section=coverage",
+    slug: "data-section-coverage",
+  },
+  {
+    route: "/data",
+    target: "/data?section=manage",
+    slug: "data-section-manage",
+  },
+  { route: "/data", target: "/data?section=trash", slug: "data-section-trash" },
 ];
 
 // Stable, filesystem-safe capture/metrics key for a route pattern. Detail-page

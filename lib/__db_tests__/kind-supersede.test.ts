@@ -244,7 +244,7 @@ describe("one live keyboard per (chat, kind) — /dose (#1898)", () => {
     // cannot express. Without that condition a view-control-only nudge (#1807) would
     // close the only keyboard in the chat that can still log a serving.
     db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, 'leafy_greens', 3)`
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, 'leafy_greens', 3)`
     ).run(p.profileId, t);
 
     await dispatch(p.profileId, buildFoodNudge(p.profileId, "Morning", t)!);

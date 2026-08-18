@@ -1,24 +1,18 @@
 # The time model
 
-Status: partial (phases 0, 1 and 3 shipped — the ingest boundary, storage, the writer
-chokepoint, the declared column index and the row-level readers. Phase 2, the
-column-name vocabulary, is open: wave 1 landed `occurred_at` on the three observation
-stores (migration 165), wave 2 renamed `intake_item_logs.given_at` → `recorded_at`
-(migration 173), and wave 3 — the food wave — renamed
-`food_log_events.logged_at` → `recorded_at` and `eaten_at` → `occurred_at`
-(migration 183). `food_log_events.time_source` is KEPT, by owner ruling on #2205
-(2026-08-08): it distinguishes "nobody stated a time" from "someone stated one and the
-write path refused it", which `occurred_at IS NULL` collapses. Still to come:
-`substance_log.logged_at`, `practice_logs.time`, the window columns
-(`start_time`/`end_time` on event tables), the ledger stamps (`at`, `ts`,
-`snapshot_at`), and the remaining bare-instant conversions.)
+Status: partial (phases 0–3 shipped — the ingest boundary, storage, writer
+chokepoint, persisted column-name vocabulary, declared column index, and row-level
+readers. The remaining work is serialization cleanup, not naming. `practice_logs.time`
+and `activities.start_time` / `end_time` stay profile-local clock values by design;
+`food_log_events.time_source` stays because it distinguishes an unstated time from a
+stated time the write path refused.)
 
 Two questions look the same and are not:
 
-| question                               | stored as                  | example                                              |
-| -------------------------------------- | -------------------------- | ---------------------------------------------------- |
-| **When did this happen?** (INSTANT)    | UTC, absolute              | `medical_records.occurred_at`, `activities.end_time` |
-| **Which day does it count for?** (DAY) | profile-local `YYYY-MM-DD` | `body_metrics.date`, `food_log.date`, dose adherence |
+| question                               | stored as                  | example                                                       |
+| -------------------------------------- | -------------------------- | ------------------------------------------------------------- |
+| **When did this happen?** (INSTANT)    | UTC, absolute              | `medical_records.occurred_at`, `metric_samples.ended_at`      |
+| **Which day does it count for?** (DAY) | profile-local `YYYY-MM-DD` | `body_metrics.date`, `food_daily_totals.date`, dose adherence |
 
 A day is **not** a lesser instant. It is the answer to a different question
 (#94): dose, adherence, cadence and the digest all key on it, and several
@@ -119,14 +113,17 @@ Known gaps, stated rather than implied:
 
 `lib/date.ts` answers a question about a VALUE. The question a surface actually asks is
 about a ROW — "when did this dose happen", "which day does this serving count for" — and
-until phase 3 nothing owned it, so `COALESCE(recorded_at, taken_at)` was hand-rolled in six
-places and food paired `occurred_at ?? recorded_at` (then spelled
+until phase 3 nothing owned it, so dose readers hand-rolled a record chain and food paired `occurred_at ?? recorded_at` (then spelled
 `eaten_at ?? logged_at`) in four more.
 
 `lib/time-columns.ts` declares what every temporal column MEANS, and `lib/row-instants.ts`
 asks the row-level question over that declaration: `eventInstant`, `recordInstant`,
 `bestKnownInstant`, `rowLocalDay`. A surface names a quantity, never a column, so phase
 2's renames reach it through one registry entry.
+
+Issue #2876 completed the dose ledger's vocabulary: `recorded_at` is now its immutable
+capture instant and `occurred_at` its event instant, both canonical UTC+Z. Dose readers
+that need a best-known administration time fall from event to capture explicitly.
 
 Two rules are worth repeating here:
 
@@ -189,7 +186,7 @@ Three consequences worth stating separately:
 
 Device integrations are untouched: their destinations always wanted instants, so they
 already preserved them (`lib/integrations/oura.ts` writes one straight into
-`metric_samples.start_time`). #2096 tracks the one device path with the same class of
+`metric_samples.started_at`). #2096 tracks the one device path with the same class of
 problem.
 
 ### The narrowing ledger
@@ -262,7 +259,7 @@ The three observation stores spell the same absence differently, **on purpose**.
 `medical_records`, `body_metrics` and `intake_item_logs` leave `occurred_at`
 NULL for an untimed reading (migration 165) rather than anchoring it at
 midnight, because each carries a real `date` column and keys on it, so it can
-afford honest absence. `metric_samples` cannot: its `start_time` is part of the
+afford honest absence. `metric_samples` cannot: its `started_at` is part of the
 natural key, and a NULL there would make a re-entry a duplicate instead of a
 correction. Two stores say NULL, one says midnight; that difference is real and
 an eventual readings merge has to resolve it, which is why it is named here

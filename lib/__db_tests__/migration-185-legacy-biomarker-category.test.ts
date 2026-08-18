@@ -16,12 +16,9 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
 import {
-  ASSIGNABLE_MEDICAL_CATEGORIES,
   MEDICAL_CATEGORIES,
   NON_IDENTITY_CATEGORIES,
-  RETIRED_MEDICAL_CATEGORIES,
   carriesResultIdentity,
 } from "@/lib/medical-categories";
 import {
@@ -298,33 +295,5 @@ describe("the frozen reclass targets, against the migrated schema", () => {
         target
       );
     }
-  });
-
-  it("no target is itself retired", () => {
-    for (const target of RECLASS_TARGET_CATEGORIES)
-      expect(RETIRED_MEDICAL_CATEGORIES as readonly string[]).not.toContain(
-        target
-      );
-  });
-
-  it("the live CHECK still admits the retired value, so residue can be stored and read", () => {
-    const sql = (
-      db
-        .prepare(
-          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'"
-        )
-        .get() as { sql: string }
-    ).sql;
-    for (const retired of RETIRED_MEDICAL_CATEGORIES)
-      expect(sql).toContain(`'${retired}'`);
-  });
-
-  it("the assignable set is the enum minus the retired values", () => {
-    expect(ASSIGNABLE_MEDICAL_CATEGORIES).toEqual(
-      MEDICAL_CATEGORIES.filter(
-        (c) => !(RETIRED_MEDICAL_CATEGORIES as readonly string[]).includes(c)
-      )
-    );
-    expect(ASSIGNABLE_MEDICAL_CATEGORIES).not.toContain("biomarker");
   });
 });

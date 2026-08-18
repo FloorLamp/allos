@@ -279,18 +279,59 @@ export function setProfileBirthdate(profileId: number, date: string | null) {
 // A stored age fallback (whole years) for the profile, used only when no birthdate
 // is known — e.g. a document states an age but no date of birth. A birthdate always
 // wins.
+//
+// ZERO IS A VALUE, NOT A SENTINEL (issue #2992). This used to require `n > 0`, so a
+// stored "0" read back as `null` — the SAME answer as "nothing recorded". Since this
+// is the fallback consulted when no birthdate is known, an infant with no DOB then
+// reached the UNKNOWN-age branch of every gate downstream (isMinor, food-logging
+// relevance, substance-use surfaces, mental-health screening), each of which defaults
+// unknown → eligible/adult per lib/life-stage's documented positive-match-only policy.
+// So the one profile the gates most need to recognise was the one they could not see.
+// 0 is an ordinary recorded age here — the app has an infant branch in FoodTab, WHO
+// growth curves from 0, and pediatric flag banding — and `lifeStage(0)` is already
+// "infant", so accepting it is all that was needed downstream.
+//
+// `null` now means exactly one thing: no usable age is recorded. The remaining guards
+// are sanity checks on the STORED STRING, and they are deliberately written so that
+// none of them can swallow a newborn:
+//   • blank/whitespace is rejected BEFORE Number() — `Number("")` and `Number(" ")`
+//     are both 0, so a bare `n >= 0` would newly read an empty value as an infant and
+//     hide the food logger on a profile whose age is simply unknown. The `n > 0` bound
+//     used to mask that by accident; the trim guard makes it explicit.
+//   • the upper bound (< 150) and the integer/negative checks stay — they reject values
+//     no real age can take, which a newborn's "0" is not.
+// Junk that is genuinely indistinguishable from 0 is rejected at the WRITE boundary
+// (normalizeAge, and the onboarding/settings validators) where the provenance is known,
+// rather than here where it is not.
+//
+// THIS READ HAS A TWIN: `readAge` in lib/migrations/boot-tasks.ts, which cannot import
+// this one (bootTasks runs version-agnostically against schemas that predate the
+// settings split, so it reads profile_settings with a legacy global fallback). The two
+// feed the SAME pure computeFlagReconciliation, so they must agree exactly — a
+// disagreement makes a row's stored `flag` depend on which pass ran last. #2992 changed
+// the bound here and missed the twin; both are now kept in sync deliberately, and
+// lib/__db_tests__/stored-age-zero.test.ts asserts the two passes agree for a stored 0.
+// Change one, change the other.
 export function getStoredAge(profileId: number): number | null {
-  const v = getProfileSetting(profileId, "age");
-  const n = v != null ? Number(v) : NaN;
-  return Number.isInteger(n) && n > 0 && n < 150 ? n : null;
+  const v = getProfileSetting(profileId, "age")?.trim();
+  if (!v) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n < 150 ? n : null;
 }
 
+// An age in years FLOORS on the way in, it does not round (#3020). Every caller passes
+// a whole number today — normalizeAge and the two form validators each reject a
+// fraction — so this changes nothing that ships; it is here because it was the only
+// surviving round-UP in the write path, which is the trap the whole of #3020 is about.
+// Rounding up is what crosses a life-stage boundary in the unlocking direction (0.5
+// stored as 1 makes an infant a "child"; 17.6 stored as 18 makes a minor an adult), and
+// an age in years is the number of years COMPLETED. Now agrees with normalizeAge.
 export function setStoredAge(profileId: number, age: number | null) {
   if (age === null) {
     deleteProfileSetting(profileId, "age");
     return;
   }
-  setProfileSetting(profileId, "age", String(Math.round(age)));
+  setProfileSetting(profileId, "age", String(Math.floor(age)));
 }
 
 // The profile's age in MONTHS for the schedule engines (issue #310): the
@@ -705,7 +746,7 @@ export interface ProfileAdoption {
 //
 // Without this a blood type only reaches the emergency card / passport / FHIR export
 // if the user types it in by hand: the derived path (profile-summary-load) looks up
-// two records canonically named "ABO Blood Group" and "Rh Type", which nothing maps
+// two observations canonically named "ABO Blood Group" and "Rh Type", which nothing maps
 // a LOINC onto, so a real imported row (Epic's combined "ABORh Interpretation")
 // resolves to nothing and the card reads "Unknown" with the record sitting in the DB.
 // Adopting at import time settles it once instead of re-deriving per read.
@@ -722,7 +763,7 @@ export interface ProfileAdoption {
 // completes the type rather than starting over.
 //
 // Returns the resulting printable type when anything was adopted, else null.
-export function adoptBloodTypeFromRecords(
+export function adoptBloodTypeFromObservations(
   profileId: number,
   readings: readonly BloodGroupReading[] | null | undefined
 ): string | null {
@@ -821,6 +862,33 @@ export function setEmergencyCardEnabled(
   enabled: boolean
 ): void {
   setProfileSetting(profileId, "emergency_card_offline", enabled ? "1" : "0");
+}
+
+// ---- Offline read snapshots (issue #2908) ----
+// Whether this profile's curated read snapshots (today's doses, the med list, recent
+// training, the day's food, the practice week) are kept on the device for offline
+// reading.
+//
+// DEFAULT ON, and that is the opposite of the emergency card above ON PURPOSE (owner
+// decision 1). The card's opt-in is defensible because a first responder can be told
+// where to look; these serve the person who is holding their own phone in a clinic
+// waiting room with no bars, and that person set nothing up in advance — an opt-in
+// would serve nobody at the exact moment it is needed. Accepted knowingly: at-rest PHI
+// on the device widens from one emergency card to these payloads for every profile that
+// does not opt out. The mitigations are the same ones the card relies on and no others
+// — bounded curated payloads, and a wipe on every identity change.
+//
+// Stored inverted (an explicit "0" means off) so a profile with no row is ON, which is
+// what "on by default" has to mean for a setting nobody has visited.
+export function getOfflineSnapshotsEnabled(profileId: number): boolean {
+  return getProfileSetting(profileId, "offline_snapshots") !== "0";
+}
+
+export function setOfflineSnapshotsEnabled(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(profileId, "offline_snapshots", enabled ? "1" : "0");
 }
 
 // ---- Blood group ----

@@ -9,7 +9,7 @@
 // ── The model ─────────────────────────────────────────────────────────────────
 // Each undoable KIND is a small DAG of ENTITIES (tables). The first entity is the
 // ROOT — the profile-owned parent the user deleted (an activity, a body metric, a
-// biomarker record, an intake item). The rest are its cascade CHILDREN, listed in
+// clinical observation, an intake item). The rest are its cascade CHILDREN, listed in
 // dependency (topological) order so a parent is always re-inserted before a child
 // that references it.
 //
@@ -69,7 +69,7 @@ export interface ExternalRefSpec {
 // A denormalized day COUNTER that the kind's ROOT row is one tick of — not a cascade
 // child, and not a row that is deleted and re-inserted whole (#2038).
 //
-// `food_log.servings` is the first and only tenant: one logged serving is a
+// `food_daily_totals.servings` is the first and only tenant: one logged serving is a
 // `food_log_events` ledger row AND +1 on the (date, group_key) day counter — one fact in
 // two shapes (#1963). So deleting ONE serving out of three must DECREMENT the counter,
 // never remove it, and undo must increment it back — re-creating the row (from the
@@ -296,8 +296,8 @@ const KIND_SPECS = {
     entities: [{ entity: "metric", table: "body_metrics", fks: [] }],
   },
 
-  "biomarker-record": {
-    kind: "biomarker-record",
+  "clinical-observation": {
+    kind: "clinical-observation",
     ownedTable: "medical_records",
     entities: [
       {
@@ -595,6 +595,19 @@ const KIND_SPECS = {
         entity: "sessions",
         table: "practice_logs",
         fks: [],
+        // Tap-message provenance (#2875, migration
+        // 20260816-practice-tap-message-provenance): the notify_messages row whose chat
+        // tap logged this session. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, which is exactly the "unattributed" degradation the live
+        // ON DELETE SET NULL performs, and the answer a web quick-sheet tap gets anyway.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
         childWhere:
           "profile_id = (SELECT profile_id FROM frequency_targets WHERE id = ?) AND practice = (SELECT scope_value FROM frequency_targets WHERE id = ?)",
         childBinds: 2,
@@ -624,11 +637,37 @@ const KIND_SPECS = {
         entity: "session",
         table: "practice_logs",
         fks: [],
+        // Tap-message provenance (#2875, migration
+        // 20260816-practice-tap-message-provenance): the notify_messages row whose chat
+        // tap logged this session. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, which is exactly the "unattributed" degradation the live
+        // ON DELETE SET NULL performs, and the answer a web quick-sheet tap gets anyway.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
       },
       {
         entity: "sessions",
         table: "practice_logs",
         fks: [],
+        // Tap-message provenance (#2875, migration
+        // 20260816-practice-tap-message-provenance): the notify_messages row whose chat
+        // tap logged this session. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, which is exactly the "unattributed" degradation the live
+        // ON DELETE SET NULL performs, and the answer a web quick-sheet tap gets anyway.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
         childWhere:
           "profile_id = (SELECT profile_id FROM practice_logs WHERE id = ?) AND id != ? AND practice = (SELECT practice FROM practice_logs WHERE id = ?)",
         childBinds: 3,
@@ -637,14 +676,14 @@ const KIND_SPECS = {
     ],
   },
 
-  // One alcohol history row is the food_log day counter plus every alcohol tap
+  // One alcohol history row is the food_daily_totals day counter plus every alcohol tap
   // event on that day. The event ledger has no FK, so capture/delete it explicitly
   // and restore it alongside the counter on Undo.
   "substance-alcohol-history": {
     kind: "substance-alcohol-history",
-    ownedTable: "food_log",
+    ownedTable: "food_daily_totals",
     entities: [
-      { entity: "entry", table: "food_log", fks: [] },
+      { entity: "entry", table: "food_daily_totals", fks: [] },
       {
         entity: "events",
         table: "food_log_events",
@@ -660,7 +699,7 @@ const KIND_SPECS = {
           },
         ],
         childWhere:
-          "profile_id = (SELECT profile_id FROM food_log WHERE id = ?) AND group_key = 'alcohol' AND date = (SELECT date FROM food_log WHERE id = ?)",
+          "profile_id = (SELECT profile_id FROM food_daily_totals WHERE id = ?) AND group_key = 'alcohol' AND date = (SELECT date FROM food_daily_totals WHERE id = ?)",
         childBinds: 2,
         deleteExplicitly: true,
       },
@@ -670,8 +709,8 @@ const KIND_SPECS = {
   // Nicotine/cannabis history is already one profile-owned day row.
   "substance-history": {
     kind: "substance-history",
-    ownedTable: "substance_log",
-    entities: [{ entity: "entry", table: "substance_log", fks: [] }],
+    ownedTable: "substance_daily_totals",
+    entities: [{ entity: "entry", table: "substance_daily_totals", fks: [] }],
   },
 
   // ONE recorded period (#2127). Byte-for-byte the substance-history shape: a single
@@ -934,12 +973,31 @@ const KIND_SPECS = {
   "practice-session": {
     kind: "practice-session",
     ownedTable: "practice_logs",
-    entities: [{ entity: "session", table: "practice_logs", fks: [] }],
+    entities: [
+      {
+        entity: "session",
+        table: "practice_logs",
+        fks: [],
+        // Tap-message provenance (#2875, migration
+        // 20260816-practice-tap-message-provenance): the notify_messages row whose chat
+        // tap logged this session. Pointer rows are pruned routinely (a 3-day
+        // retention), so a captured link can easily outlive its target — restore with
+        // the link NULLed, which is exactly the "unattributed" degradation the live
+        // ON DELETE SET NULL performs, and the answer a web quick-sheet tap gets anyway.
+        externalRefs: [
+          {
+            column: "notify_message_id",
+            table: "notify_messages",
+            onMissing: "null",
+          },
+        ],
+      },
+    ],
   },
 
   // ONE logged food serving (#2038/#1963). The root is the LEDGER row the ⋯ row menu
-  // named; `food_log` is its day counter, which the delete decremented and the undo has
-  // to give back — see CounterSpec. Rooting on the event (not on food_log, the way the
+  // named; `food_daily_totals` is its day counter, which the delete decremented and the undo has
+  // to give back — see CounterSpec. Rooting on the event (not on food_daily_totals, the way the
   // alcohol kind does) is what keeps deleting one serving out of three from taking the
   // other two with it: the alcohol history row IS the whole day, this is one tap inside
   // it.
@@ -964,7 +1022,7 @@ const KIND_SPECS = {
       },
       {
         entity: "counter",
-        table: "food_log",
+        table: "food_daily_totals",
         fks: [],
         counter: { column: "servings", key: ["date", "group_key"] },
         childWhere:
@@ -984,7 +1042,7 @@ const KIND_SPECS = {
   // accidental rather than decided.
 
   // ONE device/manual sample. `metric_samples` IS tombstone-tracked (it dedups on
-  // (metric, source, origin, start_time) — TOMBSTONE_TABLES), and captureDelete owns
+  // (metric, source, origin, started_at) — TOMBSTONE_TABLES), and captureDelete owns
   // that write, so routing here PRESERVES the #508/#653 re-import protection the bare
   // delete had rather than duplicating it: the tombstone goes down with the capture and
   // comes back up with the restore. It also means a resync can never have re-taken the

@@ -29,6 +29,7 @@ export * from "./queries/vitals-latest";
 export * from "./queries/biomarker-options";
 export * from "./queries/saved";
 export * from "./queries/visit-links";
+export * from "./queries/episode-links";
 export * from "./queries/med-links";
 export * from "./queries/derived";
 export * from "./queries/appointments";

@@ -543,7 +543,7 @@ export const DATASETS: ExportDataset[] = [
   }),
   tableDataset({
     key: "medical_records",
-    label: "Biomarkers & records",
+    label: "Clinical results & records",
     table: "medical_records",
     columns: [
       "date",
@@ -742,7 +742,7 @@ export const DATASETS: ExportDataset[] = [
     // item level preserves the edit/delete model: deleting a row removes the
     // parent intake_items (its doses/logs cascade). The dose schedule is
     // read-only here — dose editing lives on the intake surfaces.
-    key: "supplements",
+    key: "intake_items",
     label: "Supplements & Medications",
     table: "intake_items",
     columns: [
@@ -804,9 +804,17 @@ export const DATASETS: ExportDataset[] = [
     // status + skip_reason distinguish a SKIPPED dose from a taken one (a skipped
     // dose used to export with a timestamp indistinguishable from a confirmed one —
     // an actively-wrong adherence history); amount is the #280 dose snapshot (#466).
-    columns: ["date", "item", "status", "taken_at", "amount", "skip_reason"],
-    select: `SELECT l.id, l.date, ii.name AS item, l.status, l.taken_at, l.amount,
-              l.skip_reason
+    columns: [
+      "date",
+      "item",
+      "status",
+      "occurred_at",
+      "recorded_at",
+      "amount",
+      "skip_reason",
+    ],
+    select: `SELECT l.id, l.date, ii.name AS item, l.status, l.occurred_at,
+              l.recorded_at, l.amount, l.skip_reason
        FROM intake_item_logs l JOIN intake_items ii ON ii.id = l.item_id
        WHERE ii.profile_id = ? ORDER BY l.date DESC, ii.name`,
     countSql: `SELECT COUNT(*) AS n
@@ -817,7 +825,7 @@ export const DATASETS: ExportDataset[] = [
     // Dose schedule HISTORY (#1973/#2000): the dueness-relevant schedule of each
     // dose as of every effective_from day, so past adherence keeps being judged by
     // the rule that held then. Undo already preserves these rows; export must not
-    // silently drop them (#2129) — the supplements dataset carries only the
+    // silently drop them (#2129) — the intake_items dataset carries only the
     // CURRENT derived schedule string. A grandchild of intake_items (JOINed
     // through intake_item_doses via ii.profile_id), so browse/export-only.
     key: "dose_schedule_versions",
@@ -922,14 +930,14 @@ export const DATASETS: ExportDataset[] = [
       "date",
       "metric",
       "value",
-      "start_time",
-      "end_time",
+      "started_at",
+      "ended_at",
       "source",
       "origin",
     ],
-    select: `SELECT id, date, metric, value, start_time, end_time, source, origin
+    select: `SELECT id, date, metric, value, started_at, ended_at, source, origin
        FROM metric_samples WHERE profile_id = ?
-       ORDER BY date DESC, metric, start_time DESC`,
+       ORDER BY date DESC, metric, started_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ?`,
   }),
   tableDataset({
@@ -1272,21 +1280,21 @@ export const DATASETS: ExportDataset[] = [
   tableDataset({
     // Food-group serving log (#579): one row per (date, group) with a servings count.
     // Fully profile-owned + id-keyed, so it's deletable like the other logged datasets.
-    key: "food_log",
+    key: "food_daily_totals",
     label: "Food log",
-    table: "food_log",
+    table: "food_daily_totals",
     columns: ["date", "group_key", "servings", "notes"],
     select: `SELECT id, date, group_key, servings, notes
-       FROM food_log WHERE profile_id = ? ORDER BY date DESC, group_key`,
-    countSql: `SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`,
+       FROM food_daily_totals WHERE profile_id = ? ORDER BY date DESC, group_key`,
+    countSql: `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
     // Food-log EVENT ledger (#950): one append-only row per serving TAP, carrying the
     // tap `recorded_at` (a UTC instant) beside the food day. It's the timing layer behind
-    // slot-aware button ranking; the food_log counter stays the day's data of record.
+    // slot-aware button ranking; the food_daily_totals counter stays the day's data of record.
     // User-entered health data, so it's in the portable export; id-keyed + owned, so
     // deletable like the other logged datasets (a wipe just degrades ranking to overall
-    // frecency — the food_log counter is untouched).
+    // frecency — the food_daily_totals counter is untouched).
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
@@ -1297,29 +1305,56 @@ export const DATASETS: ExportDataset[] = [
   }),
   tableDataset({
     // Non-food substance consumption ledger (#1078): one row per (date, substance)
-    // with a per-use units count (nicotine/cannabis; alcohol rides food_log above).
+    // with a per-use units count (nicotine/cannabis; alcohol rides food_daily_totals above).
     // User-entered health data, so it's in the portable export; id-keyed + owned,
     // deletable like the other logged datasets.
-    key: "substance_log",
+    key: "substance_daily_totals",
     label: "Substance log",
-    table: "substance_log",
-    columns: ["date", "substance", "units", "logged_at", "notes"],
-    select: `SELECT id, date, substance, units, logged_at, notes
-       FROM substance_log WHERE profile_id = ? ORDER BY date DESC, substance`,
-    countSql: `SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`,
+    table: "substance_daily_totals",
+    columns: ["date", "substance", "units", "recorded_at", "notes"],
+    select: `SELECT id, date, substance, units, recorded_at, notes
+       FROM substance_daily_totals WHERE profile_id = ? ORDER BY date DESC, substance`,
+    countSql: `SELECT COUNT(*) AS n FROM substance_daily_totals WHERE profile_id = ?`,
   }),
   tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
     // (protein powder / shakes have no food-group home). User-entered health data, so
     // it's in the portable export; id-keyed + owned, deletable like the other logged
     // datasets.
-    key: "protein_log",
+    key: "protein_daily_totals",
     label: "Protein log",
-    table: "protein_log",
+    table: "protein_daily_totals",
     columns: ["date", "grams"],
     select: `SELECT id, date, grams
-       FROM protein_log WHERE profile_id = ? ORDER BY date DESC`,
-    countSql: `SELECT COUNT(*) AS n FROM protein_log WHERE profile_id = ?`,
+       FROM protein_daily_totals WHERE profile_id = ? ORDER BY date DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM protein_daily_totals WHERE profile_id = ?`,
+  }),
+  tableDataset({
+    // Fasting log (#2756): one row per claimed fast — the two instants and an optional
+    // note. IN the portable export because it is the one thing here that cannot be
+    // re-derived from anything else in the bundle: a fast is an EXPLICIT claim the user
+    // starts and ends, never inferred from the food log (inferring eating times from TAP
+    // times is the trap the table exists to avoid), so if these rows do not travel, the
+    // family's entire fasting record is simply gone — #465/#2129's disease. It is
+    // user-entered health data in exactly the sense practice_logs, symptom_logs and the
+    // substance ledger are, and it fits none of the allowlist's four excuses (UI state,
+    // AI-derived, operational/non-portable, media-file bundle).
+    //
+    // NOT exported: `end_written_at`. That column is the app's own clock at the moment an
+    // end was WRITTEN, carried solely to bound the Undo window (lib/fast-write.ts) — it
+    // is not a claim the user made and answers no question on another instance. The two
+    // instants that ARE the record travel; elapsed time, day attribution and staleness
+    // stay derived (lib/fasting.ts), so nothing here freezes one timezone's answer.
+    //
+    // Adult-only content is NOT a reason to withhold a dataset (the substance ledger
+    // above is the precedent, #1174): exported rows remain the profile's own data.
+    key: "fasts",
+    label: "Fasting log",
+    table: "fasts",
+    columns: ["started_at", "ended_at", "note", "created_at"],
+    select: `SELECT id, started_at, ended_at, note, created_at
+       FROM fasts WHERE profile_id = ? ORDER BY started_at DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM fasts WHERE profile_id = ?`,
   }),
   tableDataset({
     // Day-by-day symptom log (#799): one row per (date, symptom) with a 1–4 severity.
@@ -1449,7 +1484,7 @@ export const DELETE_POLICY = {
     // Also refresh the import document subpages, which list these readings.
     revalidate: [
       "/results",
-      "/results/readings/view",
+      "/results/clinical-results/view",
       revalidateTarget("/import/[id]"),
       "/",
     ],
@@ -1462,7 +1497,7 @@ export const DELETE_POLICY = {
   goals: { revalidate: ["/training", "/"] },
   injuries: { revalidate: ["/training", "/timeline", "/"] },
   endurance_plans: { revalidate: ["/training", "/timeline", "/upcoming", "/"] },
-  supplements: { revalidate: ["/nutrition", "/medications", "/"] },
+  intake_items: { revalidate: ["/nutrition", "/medications", "/"] },
   allergies: { revalidate: ["/records", "/"] },
   conditions: { revalidate: ["/records", "/"] },
   encounters: { revalidate: ["/records", "/"] },
@@ -1486,10 +1521,27 @@ export const DELETE_POLICY = {
     cleanupPersonalRecords: true,
   },
   frequency_targets: { revalidate: ["/training", "/"] },
-  food_log: { revalidate: ["/nutrition", "/trends", "/"] },
+  food_daily_totals: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },
-  substance_log: { revalidate: ["/records/specialty/substance-use", "/"] },
-  protein_log: { revalidate: ["/nutrition", "/"] },
+  substance_daily_totals: {
+    revalidate: ["/records/specialty/substance-use", "/"],
+  },
+  protein_daily_totals: { revalidate: ["/nutrition", "/"] },
+  // The fasting card and its history live on the nutrition tab. A plain id + profile_id
+  // delete: nothing FKs into `fasts`, no counter is decremented beside it, and no derived
+  // state is stored — elapsed/attribution/staleness are all recomputed on read — so
+  // removing rows here means exactly "these fasts are no longer on record". Not an undo
+  // root (no UNDO_KINDS entry), so DATASET_UNDO_KIND needs no decision.
+  //
+  // This does NOT re-open the ruling that `discardFast` must refuse a COMPLETED row.
+  // That refusal is about what Discard MEANS on the fasting card — "I never actually
+  // fasted" — which the app is not entitled to pick for someone whose fast has already
+  // ended. Removing a row from a table of rows on Data → Manage is the generic
+  // "delete this from my record" every logged dataset carries, chosen deliberately
+  // against the row itself; it makes no claim about whether the fast happened.
+  // (`equipment` is the precedent for a STATEFUL_WRITE_TABLES-registered table that is
+  // also bulk-deletable: a delete is not one of the table's state transitions.)
+  fasts: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
   cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
   mood_logs: { revalidate: ["/trends", "/"] },
@@ -1497,18 +1549,9 @@ export const DELETE_POLICY = {
 } satisfies Record<string, DatasetDeletePolicy>;
 
 // The closed union of deletable dataset keys — every key equals its dataset's
-// physical table except `supplements` (table intake_items); the db-tier
-// dataset-undo test pins that correspondence at runtime.
+// physical table; the db-tier dataset-undo test pins that correspondence at runtime.
 export type DeletableDatasetKey = keyof typeof DELETE_POLICY;
 
 export function getDataset(key: string): ExportDataset | undefined {
   return DATASETS.find((d) => d.key === key);
 }
-
-// Datasets tied to the age-gated fitness surfaces (Activities, Goals). Restricted
-// profiles have these hidden across the app (see lib/age-gate.ts) — the export UI
-// filters them from the card list, and the AUTHORITATIVE layers enforce it too
-// (issue #471): the per-dataset CSV route 404s a restricted one, and the full-ZIP
-// snapshot omits them. Lives here beside DATASETS so the UI list and the route/ZIP
-// gate share one source of truth rather than each spelling the set out.
-export const RESTRICTED_DATASETS = new Set(["activities", "goals"]);

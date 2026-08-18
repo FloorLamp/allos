@@ -16,7 +16,7 @@ import { providerDisambigLabel } from "./provider-merge";
 import { encounterTypeDisplay } from "./encounter-kind";
 import { fmtWeight } from "./units";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   encounterHref,
   providerHref,
   MEDICATIONS_HREF,
@@ -78,7 +78,7 @@ export type ImportTabKind =
 // age, an immutable reference fact (blood type) — added by #1076 and kept in
 // medical_records storage. For them the "Panel" and "Reference" columns mean
 // nothing and the editable affordance exposes fields that don't apply. Every
-// OTHER category keeps the analyte grid AS-IS: lab/biomarker/genomics (which
+// OTHER category keeps the analyte grid AS-IS: lab/genomics (which
 // legitimately have a value/unit/reference band) AND prescription (whose story
 // #1178 owns — deliberately not re-litigated here) AND any unknown category.
 // Pure so the page and its tests agree.
@@ -104,8 +104,9 @@ export interface ImportTab {
   label: string;
   count: number;
   kind: ImportTabKind;
-  // The medical_records category a "records" tab scopes to.
-  category?: string;
+  // The medical_records category a "records" tab scopes to. NULL is the
+  // explicit review state for migrated rows that Allos could not classify.
+  category?: string | null;
 }
 
 export interface ImportTabStrip {
@@ -118,13 +119,12 @@ export interface ImportTabStrip {
 }
 
 // Display label for a medical_records category (mirrors the category vocabulary
-// of the biomarkers filter; an unknown category falls back to its raw name).
-export function observationCategoryLabel(category: string): string {
+// of the clinical-result filter; an unknown category falls back to its raw name).
+export function observationCategoryLabel(category: string | null): string {
+  if (category === null) return "Needs category";
   switch (category) {
     case "lab":
       return "Labs";
-    case "biomarker":
-      return "Biomarkers";
     case "genomics":
       return "Genomics";
     case "vitals":
@@ -146,20 +146,14 @@ export function observationCategoryLabel(category: string): string {
 
 // Canonical display order for record-category tabs (matching the category
 // filter's option order); unknown categories sort after, alphabetically.
-const CATEGORY_ORDER = [
-  "vitals",
-  "lab",
-  "genomics",
-  "biomarker",
-  "scan",
-  "prescription",
-];
+const CATEGORY_ORDER = ["vitals", "lab", "genomics", "scan", "prescription"];
 
 // Where a records category sits in the tab strip. Exported so anything that has
 // to order rows the way the STRIP orders their tabs (the #2339 triage rows, whose
 // first match decides which tab an ambiguous label filters) reads the one order
 // instead of inventing a second.
-export function observationCategoryRank(category: string): number {
+export function observationCategoryRank(category: string | null): number {
+  if (category === null) return -1;
   const i = CATEGORY_ORDER.indexOf(category);
   return i === -1 ? CATEGORY_ORDER.length : i;
 }
@@ -189,7 +183,8 @@ const DOMAIN_TAB_KEYS = new Set<string>([
 // The tab key a medical_records category gets. Exported because the triage links
 // (#2339) have to name the tab a given row is rendered on WITHOUT rebuilding the
 // strip, and a second copy of the collision rule would be a second answer.
-export function observationsTabKey(category: string): string {
+export function observationsTabKey(category: string | null): string {
+  if (category === null) return "needs-category";
   return DOMAIN_TAB_KEYS.has(category) ? `records:${category}` : category;
 }
 
@@ -207,7 +202,7 @@ export function buildImportTabs(
       (a, b) =>
         observationCategoryRank(a.category) -
           observationCategoryRank(b.category) ||
-        a.category.localeCompare(b.category)
+        (a.category ?? "").localeCompare(b.category ?? "")
     );
   for (const r of cats) {
     tabs.push({
@@ -266,9 +261,9 @@ export function resolveImportTab(
 // ---- Category-correct record links ----
 
 // Where a medical_records row's NAME should link, by category. Series-style
-// categories (labs/vitals/biomarkers/genomics) go to the biomarker series view
+// categories (labs/vitals/genomics) go to the clinical-result series view
 // for their canonical name; prescriptions go to the medications page (the
-// prescription→biomarker bug this fixes); scans/notes/unknown categories get NO
+// prescription→series bug this fixes); scans/notes/unknown categories get NO
 // link rather than a wrong one.
 export function observationNameLink(
   category: string,
@@ -276,13 +271,12 @@ export function observationNameLink(
 ): { href: AppRoute; title: string } | null {
   switch (category) {
     case "lab":
-    case "biomarker":
     case "vitals":
     case "genomics": {
       const name = canonicalName?.trim();
       if (!name) return null;
       return {
-        href: readingDetailHref(name),
+        href: clinicalResultDetailHref(name),
         title: `View ${name} over time`,
       };
     }

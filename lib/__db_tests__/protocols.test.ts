@@ -160,11 +160,11 @@ describe("protocol comparison seam", () => {
       name: "Statin trial",
       start: "2026-05-01",
       end: "2026-06-25",
-      keys: ["biomarker:LDL Cholesterol"],
+      keys: ["result:LDL Cholesterol"],
     });
     const protocol = getProtocol(profile, id)!;
     const cmp = getProtocolComparison(profile, protocol, "2026-06-25", "kg");
-    const o = cmp.outcomes.find((x) => x.key === "biomarker:LDL Cholesterol")!;
+    const o = cmp.outcomes.find((x) => x.key === "result:LDL Cholesterol")!;
     expect(o.baseline.mean).toBe(130); // nearest draw before start
     expect(o.intervention.mean).toBe(110);
     expect(o.meanDelta).toBe(-20);
@@ -177,9 +177,8 @@ describe("protocol comparison seam", () => {
       "kg"
     );
     expect(
-      picker.options.find(
-        (option) => option.key === "biomarker:LDL Cholesterol"
-      )?.preview
+      picker.options.find((option) => option.key === "result:LDL Cholesterol")
+        ?.preview
     ).toMatchObject({
       beforeMean: 130,
       duringMean: 110,
@@ -202,7 +201,7 @@ describe("protocol comparison seam", () => {
     const id = insertProtocol(profile, {
       name: "Historical marker",
       start: "2026-05-01",
-      keys: ["biomarker:Ferritin"],
+      keys: ["result:Ferritin"],
     });
     db.prepare(
       `DELETE FROM medical_records
@@ -216,10 +215,10 @@ describe("protocol comparison seam", () => {
       "kg"
     );
     expect(picker.options.map((option) => option.key)).toContain(
-      "biomarker:Ferritin"
+      "result:Ferritin"
     );
     expect(picker.comparison.outcomes.map((outcome) => outcome.key)).toContain(
-      "biomarker:Ferritin"
+      "result:Ferritin"
     );
   });
 });
@@ -261,13 +260,13 @@ describe("protocol outcome options (#1586)", () => {
     );
 
     const biomarkerKeys = getProtocolOutcomeOptions(profile, "2026-06-25")
-      .filter((option) => option.key.startsWith("biomarker:"))
+      .filter((option) => option.key.startsWith("result:"))
       .map((option) => option.key);
 
     expect(biomarkerKeys.slice(0, 3)).toEqual([
-      "biomarker:Hemoglobin A1c",
-      "biomarker:LDL Cholesterol",
-      "biomarker:Albumin",
+      "result:Hemoglobin A1c",
+      "result:LDL Cholesterol",
+      "result:Albumin",
     ]);
   });
 
@@ -283,11 +282,10 @@ describe("protocol outcome options (#1586)", () => {
 
     const options = getProtocolOutcomeOptions(profile, "2026-06-25");
     expect(options.map((option) => option.key)).toContain(
-      "biomarker:Non-HDL Cholesterol"
+      "result:Non-HDL Cholesterol"
     );
     expect(
-      resolveOutcomeSeries(profile, "biomarker:Non-HDL Cholesterol", "kg")
-        ?.samples
+      resolveOutcomeSeries(profile, "result:Non-HDL Cholesterol", "kg")?.samples
     ).toEqual([{ date: "2026-05-01", value: 160 }]);
   });
 
@@ -342,14 +340,14 @@ describe("protocol outcome options (#1586)", () => {
     );
     expect(optionKeys).not.toEqual(
       expect.arrayContaining([
-        "biomarker:Resting Heart Rate",
-        "biomarker:Body Fat Percentage",
-        "biomarker:PhenoAge",
+        "result:Resting Heart Rate",
+        "result:Body Fat Percentage",
+        "result:PhenoAge",
       ])
     );
 
     expect(
-      resolveOutcomeSeries(profile, "biomarker:Resting Heart Rate", "kg")
+      resolveOutcomeSeries(profile, "result:Resting Heart Rate", "kg")
     ).toMatchObject({
       key: "metric:resting_hr",
       samples: [
@@ -358,7 +356,7 @@ describe("protocol outcome options (#1586)", () => {
       ],
     });
     expect(
-      resolveOutcomeSeries(profile, "biomarker:PhenoAge", "kg")
+      resolveOutcomeSeries(profile, "result:PhenoAge", "kg")
     ).toMatchObject({
       key: "index:phenoage",
       samples: [{ date: "2026-05-01", value: 44 }],
@@ -379,7 +377,7 @@ describe("protocol chart windows (issue #660)", () => {
       name: "Statin",
       start: "2026-01-01",
       end: "2026-02-01",
-      keys: ["biomarker:LDL Cholesterol"],
+      keys: ["result:LDL Cholesterol"],
     });
 
     const all = getProtocolWindows(profile);
@@ -388,10 +386,7 @@ describe("protocol chart windows (issue #660)", () => {
     expect(ongoing.endDate).toBeNull();
 
     // Only the protocol declaring the LDL outcome shows on the LDL chart.
-    const ldl = getProtocolWindowsForOutcome(
-      profile,
-      "biomarker:LDL Cholesterol"
-    );
+    const ldl = getProtocolWindowsForOutcome(profile, "result:LDL Cholesterol");
     expect(ldl.map((w) => w.name)).toEqual(["Statin"]);
     expect(getProtocolWindowsForOutcome(profile, "metric:weight")).toHaveLength(
       1
@@ -403,14 +398,14 @@ describe("protocol chart windows (issue #660)", () => {
     const id = insertProtocol(profile, {
       name: "Legacy HR trial",
       start: "2026-03-01",
-      keys: ["biomarker:Resting Heart Rate", "metric:resting_hr"],
+      keys: ["result:Resting Heart Rate", "metric:resting_hr"],
     });
 
     expect(getProtocol(profile, id)?.outcomeKeys).toEqual([
       "metric:resting_hr",
     ]);
     expect(
-      getProtocolWindowsForOutcome(profile, "biomarker:Resting Heart Rate").map(
+      getProtocolWindowsForOutcome(profile, "result:Resting Heart Rate").map(
         (window) => window.name
       )
     ).toEqual(["Legacy HR trial"]);

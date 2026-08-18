@@ -1,6 +1,6 @@
 // The food-log nudge + first-connection opt-in prompt (issue #682). This is the
 // GATHER half (DB reads → the pure renderer in ./food-format), mirroring how
-// supplements.ts gathers for supplement-format.ts. The nudge rides the profile's
+// intake.ts gathers for intake-format.ts. The nudge rides the profile's
 // morning/midday/evening supplement slots (wired in scripts/notify.ts) and is
 // opt-in per profile (food_telegram_enabled) — so a household that doesn't want it
 // never sees it.
@@ -21,7 +21,7 @@ import { now as clockNow } from "../clock";
 import { dateStrInTz, minuteOfDayInTz } from "../date";
 import { profileFoodSlotBoundaries } from "../profile-food-slot";
 import { foodWindowGap, foodWindowGapDates } from "../food-window-gap";
-import type { CorrectionBurst } from "../correction-time";
+import type { CorrectionBurst, CorrectionDay } from "../correction-time";
 import { proteinTodayNudgeParts } from "../protein";
 import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
@@ -69,6 +69,8 @@ export function buildFoodNudge(
   opts: {
     now?: Date;
     picker?: CorrectionBurst;
+    // Which day level the open picker is showing (#3010).
+    pickerLevel?: CorrectionDay;
     ref?: CorrectionMessageRef | null;
   } = {}
 ): NotificationMessage | null {
@@ -85,7 +87,7 @@ export function buildFoodNudge(
   // "(n)" suffix along with the read-time window derivation it depended on).
   const dayServings = getFoodServingsOnDate(profileId, date);
   // The protein button's own day count (#1379's sibling consistency, on #2019's day
-  // meaning). The reserved key never lands in the food_log counter `dayServings` reads,
+  // meaning). The reserved key never lands in the food_daily_totals counter `dayServings` reads,
   // so its taps are counted off the ledger and merged in here — the renderer then applies
   // ONE suffix rule to every button on the keyboard.
   const proteinTaps = getProteinTapsOnDate(profileId, date);
@@ -143,7 +145,15 @@ export function buildFoodNudge(
     corrections: { bursts: corrections, now },
     gap,
     tz,
-    ...(opts.picker ? { picker: { burst: opts.picker, now } } : {}),
+    ...(opts.picker
+      ? {
+          picker: {
+            burst: opts.picker,
+            now,
+            level: opts.pickerLevel ?? "today",
+          },
+        }
+      : {}),
   });
 }
 

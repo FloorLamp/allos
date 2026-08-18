@@ -18,16 +18,19 @@ import {
 } from "@/lib/retrospective";
 import { countsAsRecordAt } from "@/lib/recap";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
+import { setStoredAge } from "@/lib/settings";
 
 // A frozen "today" well inside the year after the fixture's last full year, so the
 // closed-year path is the one under test and the suite's own clock never enters it.
 const TODAY = "2026-05-20";
 
 function newProfile(name: string): number {
-  return Number(
+  const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setStoredAge(id, 30);
+  return id;
 }
 
 // `activities.date` is a profile-LOCAL day column, not an instant, so a day string is

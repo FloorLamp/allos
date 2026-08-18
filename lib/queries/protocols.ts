@@ -7,7 +7,7 @@
 // login's display unit HERE (the units boundary), keeping the engine unit-agnostic.
 
 import { db } from "../db";
-import { getAllBiomarkerSeries, getCanonicalBiomarker } from "./medical";
+import { getAllBiomarkerSeries, getCanonicalResultDefinition } from "./medical";
 import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
 import {
   getFrequencyTargetProgress,
@@ -60,7 +60,7 @@ import {
 } from "./wellness";
 import { practiceDurationPrefill } from "../practice";
 import {
-  biomarkerOutcomeOption,
+  clinicalResultOutcomeOption,
   type OutcomeOption,
 } from "../protocol-outcome-picker";
 import { canonicalGroupKey, groupByCanonicalName } from "../biomarker-group";
@@ -206,7 +206,7 @@ export function getProtocolWindows(profileId: number): ProtocolWindowInput[] {
 // The windows of protocols that DECLARE a given outcome key as something they
 // measure (issue #660): an outcome biomarker's own detail chart shades only the
 // protocols targeting it, not every protocol the profile runs. `outcomeKey` is a
-// namespaced metric key (e.g. "biomarker:LDL Cholesterol"). Profile-scoped.
+// namespaced metric key (e.g. "result:LDL Cholesterol"). Profile-scoped.
 export function getProtocolWindowsForOutcome(
   profileId: number,
   outcomeKey: string
@@ -252,7 +252,7 @@ export function situationUsedByOtherProtocol(
 
 // Usage-during-window for a protocol (issues #344/#1583): event-row counts within
 // [start_date, end_date ?? today]. Each scope reads its own ledger: activities,
-// food_log, or practice_logs. Multi-session days remain multiple sessions.
+// food_daily_totals, or practice_logs. Multi-session days remain multiple sessions.
 export interface ProtocolUsage {
   sessions: number;
   lastUsed: string | null;
@@ -458,7 +458,7 @@ export function getProtocolUsageByDayMap(
     }
   }
 
-  // ---- food_log ------------------------------------------------------------------
+  // ---- food_daily_totals ------------------------------------------------------------------
   const foods = scoped.filter((r) => r.scope.kind === "food_group");
   if (foods.length > 0) {
     const keys = [
@@ -472,7 +472,7 @@ export function getProtocolUsageByDayMap(
     const rows = db
       .prepare(
         `SELECT date, group_key, CAST(SUM(servings) AS INTEGER) AS count
-           FROM food_log
+           FROM food_daily_totals
           WHERE profile_id = ? AND date >= ? AND date <= ?
             AND group_key IN (${keys.map(() => "?").join(",")}) AND servings > 0
           GROUP BY date, group_key`
@@ -713,15 +713,15 @@ export function getProtocolOutcomeOptions(
     panel: null,
     searchTerms: [],
   }));
-  const biomarkers = getRankedBiomarkerOptions(
+  const clinicalResults = getRankedBiomarkerOptions(
     profileId,
     today,
     getUsedCanonicalNamesWithDerived(profileId)
   )
     .map((option) => option.name)
     .filter((name) => preferredOutcomeKeyForBiomarker(name) == null)
-    .map(biomarkerOutcomeOption);
-  return [...fixed, ...biomarkers];
+    .map(clinicalResultOutcomeOption);
+  return [...fixed, ...clinicalResults];
 }
 
 // Resolve one outcome key to its labeled series for a profile. Returns null when
@@ -738,8 +738,8 @@ export function resolveOutcomeSeries(
   const parsed = parseOutcomeKey(canonicalKey);
   if (!parsed) return null;
 
-  if (parsed.kind === "biomarker") {
-    const cb = getCanonicalBiomarker(parsed.id);
+  if (parsed.kind === "result") {
+    const cb = getCanonicalResultDefinition(parsed.id);
     const samples: OutcomeSample[] = getBiomarkerSeriesWithDerived(
       profileId,
       parsed.id
@@ -837,24 +837,26 @@ export function getProtocolOutcomePickerData(
   for (const key of normalizeOutcomeKeys(protocol.outcomeKeys)) {
     if (baseKeys.has(key)) continue;
     const parsed = parseOutcomeKey(key);
-    if (parsed?.kind !== "biomarker") continue;
-    baseOptions.push(biomarkerOutcomeOption(parsed.id));
+    if (parsed?.kind !== "result") continue;
+    baseOptions.push(clinicalResultOutcomeOption(parsed.id));
     baseKeys.add(key);
   }
   const keys = normalizeOutcomeKeys([
     ...baseOptions.map((option) => option.key),
     ...protocol.outcomeKeys,
   ]);
-  const hasBiomarkers = keys.some((key) => key.startsWith("biomarker:"));
-  const storedByCanonical = hasBiomarkers
+  const hasClinicalResults = keys.some((key) => key.startsWith("result:"));
+  const storedByCanonical = hasClinicalResults
     ? groupByCanonicalName(getAllBiomarkerSeries(profileId))
     : new Map();
-  const derived = hasBiomarkers ? getDerivedBiomarkerReadings(profileId) : [];
+  const derived = hasClinicalResults
+    ? getDerivedBiomarkerReadings(profileId)
+    : [];
 
   const series = keys
     .map((key): OutcomeSeries | null => {
       const parsed = parseOutcomeKey(key);
-      if (parsed?.kind !== "biomarker") {
+      if (parsed?.kind !== "result") {
         return resolveOutcomeSeries(profileId, key, weightUnit);
       }
 
@@ -869,7 +871,7 @@ export function getProtocolOutcomePickerData(
       ].sort((a, b) =>
         a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id
       );
-      const cb = getCanonicalBiomarker(canonical);
+      const cb = getCanonicalResultDefinition(canonical);
       return {
         key,
         label: canonical,

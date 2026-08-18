@@ -30,6 +30,7 @@ import {
 import {
   mergeFeed,
   documentEntry,
+  dropQuietSyncs,
   jobEntry,
   syncEntry,
   type FeedSyncEvent,
@@ -53,7 +54,7 @@ import { integrationsWithDelivery } from "../integrations/registry";
 import { getMedMatchStates } from "./intake/medications";
 import { foldConsolidatedMeds } from "../medication-renewal";
 import { parsePrescription } from "../prescription-parse";
-import type { PersistInput, PersistRecord } from "../import-shape";
+import type { PersistInput, PersistClinicalObservation } from "../import-shape";
 import { getObservationsForDocument } from "./medical";
 import { observationCategoryRank, observationsTabKey } from "../import-browser";
 import { encounterTypeDisplay } from "../encounter-kind";
@@ -193,19 +194,50 @@ function getAttendedImportSyncEvents(
   limit: number
 ): FeedSyncEvent[] {
   if (ATTENDED_SOURCES.length === 0) return [];
-  return (
-    db
-      // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
-      .prepare(
-        `SELECT id, provider AS source_id, at, ok, window_start, window_end,
+  return db
+    .prepare(
+      `SELECT id, source_id, at, ok, window_start, window_end,
               inserted, updated, unchanged, written, suppressed, edited, skipped,
               error, raw_ref
          FROM integration_sync_events
-        WHERE profile_id = ? AND provider IN (${ATTENDED_SOURCE_PLACEHOLDERS})
+        WHERE profile_id = ? AND source_id IN (${ATTENDED_SOURCE_PLACEHOLDERS})
         ORDER BY at DESC, id DESC
         LIMIT ?`
-      )
-      .all(profileId, ...ATTENDED_SOURCES, limit) as FeedSyncEvent[]
+    )
+    .all(profileId, ...ATTENDED_SOURCES, limit) as FeedSyncEvent[];
+}
+
+// What each attended run can actually SHOW in its drill-in, per event (#1991/#1771).
+// Two facts in one indexed pass: how many provenance rows exist, and whether they are
+// DOCUMENTS. A portal delivery's rows are documents — its product is archives, not
+// records — and the drill-in must say so before the fetch as well as after, because the
+// promised label and the listed rows may never disagree in front of the reader (#1991).
+//
+// One seek over the id range being rendered rather than a per-event existence check:
+// sync-event ids are monotonic, so the events in the rendered set are exactly those at
+// or above the oldest id in it. PROFILE-SCOPED through the parent event (the child table
+// has no own profile_id).
+function feedProvenanceByEvent(
+  profileId: number,
+  minEventId: number
+): Map<number, { count: number; documents: number }> {
+  const rows = db
+    .prepare(
+      `SELECT r.event_id AS eventId, COUNT(*) AS n,
+              SUM(CASE WHEN r.target_table = 'medical_documents' THEN 1 ELSE 0 END)
+                AS documents
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+        WHERE e.profile_id = ? AND r.event_id >= ?
+        GROUP BY r.event_id`
+    )
+    .all(profileId, minEventId) as {
+    eventId: number;
+    n: number;
+    documents: number;
+  }[];
+  return new Map(
+    rows.map((r) => [r.eventId, { count: r.n, documents: r.documents }])
   );
 }
 
@@ -215,6 +247,12 @@ function getAttendedImportSyncEvents(
 // "Connected sources" section (getConnectedSources), collapsed to latest-state, so
 // hourly sync noise cannot drown the occasional import. Capped at `limit` after the
 // merge.
+//
+// TWO RULES THIS FEED NEVER ADOPTED, and now does (#2999). A successful run that wrote
+// nothing is DROPPED (dropQuietSyncs) rather than rendered as a "nothing new" dead end;
+// and each surviving run is handed the drill-in count it can actually LIST, resolved
+// from provenance, so the expander is offered only where there is something to open
+// (#1771) and the label never falls to zero in front of the reader (#1991).
 export function getImportDocumentsFeed(
   profileId: number,
   limit = 40
@@ -234,7 +272,42 @@ export function getImportDocumentsFeed(
     })
   );
   const jobs = getImportLogJobs(profileId).map(jobEntry);
-  const attended = getAttendedImportSyncEvents(profileId, limit).map(syncEntry);
+  // PROVENANCE FIRST, then the drop — the order is load-bearing. A delivery reported with
+  // an all-zero split still CLAIMED its documents, and dropping the row before asking
+  // would strand them: the unclaimed guard keeps them from being re-claimed, and the
+  // event that owns them would never render (#2999).
+  const all = getAttendedImportSyncEvents(profileId, limit);
+  const provenance =
+    all.length > 0
+      ? feedProvenanceByEvent(profileId, Math.min(...all.map((e) => e.id)))
+      : new Map<number, { count: number; documents: number }>();
+  const events = dropQuietSyncs(
+    all,
+    (ev) => (provenance.get(ev.id)?.documents ?? 0) > 0
+  );
+  const attended = events.map((ev) => {
+    const found = provenance.get(ev.id);
+    // NO PROVENANCE → NO EXPANDER (#1771). Nothing to open is not an apologetic empty
+    // state, and it is certainly not a promised count over an empty list.
+    if (!found || found.count === 0) return syncEntry(ev, null);
+    // drilldownCoverage's arithmetic, WITHOUT its cap at the run's split — and the
+    // difference is deliberate. That cap is right for the record family, where
+    // recordSyncRows can only ever persist a SUBSET of what an upsert wrote, so it
+    // never actually fires. A DELIVERY's claim is over what allos actually STORED for
+    // this patient, while the split is the tool's claim about the portal visit — the
+    // observed case is a delivery of two archives reported as `nothing-new` with an
+    // all-zero split. Capping there would promise fewer rows than the list then shows,
+    // which is exactly the pre/post-load disagreement #1991 forbids.
+    const written = (ev.inserted ?? 0) + (ev.updated ?? 0);
+    return syncEntry(ev, {
+      count: found.count,
+      // What the run wrote that carries no openable identity, named rather than hidden.
+      remainder: Math.max(written - found.count, 0),
+      // A run whose provenance is entirely documents says "documents" — the word for
+      // what it delivered. Anything else stays on the record vocabulary.
+      noun: found.documents === found.count ? "document" : "record",
+    });
+  });
   return mergeFeed([...documents, ...jobs, ...attended]).slice(0, limit);
 }
 
@@ -262,7 +335,7 @@ export function getDocumentProduced(
         GROUP BY category
         ORDER BY category`
     )
-    .all(profileId, docId) as { category: string; count: number }[];
+    .all(profileId, docId) as { category: string | null; count: number }[];
 
   const immunizations = scalar(
     db
@@ -825,13 +898,14 @@ export function getDocumentTriageRows(
   // serves whichever of them were hedged on. Ordered by the tab strip's own
   // category order, so "the first match's tab" means the leftmost tab.
   if (want.has("lab") || want.has("vitals") || want.has("medication")) {
-    const records = getObservationsForDocument(profileId, docId)
-      .map((r) => ({ r, rank: observationCategoryRank(r.category) }))
+    const observations = getObservationsForDocument(profileId, docId)
+      .filter((r) => r.category !== null)
+      .map((r) => ({ r, rank: observationCategoryRank(r.category!) }))
       .sort((a, b) => a.rank - b.rank || a.r.id - b.r.id);
-    for (const { r } of records) {
-      const kind = recordConfidenceKind(r.category);
+    for (const { r } of observations) {
+      const kind = recordConfidenceKind(r.category!);
       if (!want.has(kind)) continue;
-      push(kind, observationsTabKey(r.category), r.id, [
+      push(kind, observationsTabKey(r.category!), r.id, [
         r.name,
         r.canonical_name,
       ]);
@@ -946,7 +1020,7 @@ export function getReprocessSnapshot(
   const source = documentSource(docId);
   const snap = emptySnapshot();
 
-  const records = db
+  const observations = db
     .prepare(
       `SELECT date, category, name, value, value_num, unit, reference_range,
               panel, flag, canonical_name, notes, external_id
@@ -955,7 +1029,7 @@ export function getReprocessSnapshot(
     )
     .all(profileId, docId) as {
     date: string;
-    category: string;
+    category: string | null;
     name: string;
     value: string | null;
     value_num: number | null;
@@ -967,7 +1041,7 @@ export function getReprocessSnapshot(
     notes: string | null;
     external_id: string | null;
   }[];
-  snap.records = records.map((r) =>
+  snap.records = observations.map((r) =>
     recordRow({
       date: r.date,
       category: r.category,
@@ -1149,20 +1223,20 @@ export function getReprocessSnapshot(
 // classifyReprescription. Critically (#1280) it does NOT fold a derived med that
 // would resolve to a "separate" item (existing open course + provably different
 // strength, the #1027 carve-out): that is a genuinely-new medication and must
-// preview as an addition, never be silently hidden. `derivedRecords` are the fresh
-// extraction's records, from which we recover each derived med's strength the same
+// preview as an addition, never be silently hidden. `derivedObservations` are the fresh
+// extraction's observations, from which we recover each derived med's strength the same
 // way the commit path does (parsePrescription), keyed by the medicationRow key.
 export function foldConsolidatedMedsIntoSnapshot(
   profileId: number,
   snap: ImportSnapshot,
   derivedMeds: DiffRow[],
-  derivedRecords: PersistRecord[]
+  derivedObservations: PersistClinicalObservation[]
 ): void {
   const newStrengthByKey = new Map<string, string | null>();
-  for (const r of derivedRecords) {
+  for (const r of derivedObservations) {
     if (r.category !== "prescription" || !r.name?.trim()) continue;
     const key = medicationRow(r.name).key;
-    if (newStrengthByKey.has(key)) continue; // first record per key wins (mirrors grouping)
+    if (newStrengthByKey.has(key)) continue; // first observation per key wins (mirrors grouping)
     newStrengthByKey.set(
       key,
       parsePrescription({

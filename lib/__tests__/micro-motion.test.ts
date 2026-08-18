@@ -58,6 +58,35 @@ function sectionVar(name: string): string {
 }
 
 const KINDS = Object.keys(MICRO_MOTIONS) as MicroMotion[];
+const SORTED_KINDS = [...KINDS].sort();
+
+// THE CSS HALF IS A CENSUS, AND A CENSUS MAY NOT SKIP WHAT IT CANNOT PARSE (#2770).
+// Both stylesheet checks below used to key on `[a-z]+` followed by a required
+// ` {`, so `.motion-slide2` and `.motion-count-roll` matched NOTHING — and an
+// unmatched rule is not a counted rule, so the `length` equality still held. Every
+// other assertion here iterates the registry keys, so a motion with no registry row
+// was never visited at all: the audit's 900 ms `.motion-slide2`, animating `width`,
+// passed all 21 tests while breaking all four load-bearing rules.
+//
+// Widening the class to `[a-z0-9-]` fixes the two counts, but only until the next
+// name the pattern cannot spell. So the NAMES are collected with a pattern wide
+// enough to catch a name the convention FORBIDS, and required to equal the registry
+// exactly — in all three places a motion is written down. An unspellable name now
+// FAILS instead of disappearing, which is the difference between a census and a
+// filter.
+const CSS_NAME = /^[a-z][a-z0-9-]*$/;
+
+const MOTION_VAR = /--motion-([^\s:;{}()]+)\s*:/g;
+const MOTION_CLASS = /\.motion-([^\s{,:;.)]+)/g;
+const MOTION_FRAME = /@keyframes\s+micro-([^\s{]+)/g;
+
+function namesIn(pattern: RegExp, source: string): string[] {
+  return [...new Set([...source.matchAll(pattern)].map((m) => m[1]))].sort();
+}
+
+function sectionNames(pattern: RegExp): string[] {
+  return namesIn(pattern, SECTION);
+}
 
 describe("micro-motion tokens", () => {
   it("declares every duration once in CSS and matches the module", () => {
@@ -68,11 +97,77 @@ describe("micro-motion tokens", () => {
     }
   });
 
+  it("names the same motions in the stylesheet as in the registry, three ways", () => {
+    // A motion is written down in three places, and each one is matched LOOSELY —
+    // any run of characters a CSS identifier could hold — so a name outside the
+    // convention lands in the census as an extra rather than slipping past the
+    // pattern. Set equality in both directions is what makes the registry the only
+    // way to add a motion: CSS with no row fails HERE, a row with no CSS fails in
+    // "gives every declared motion a class".
+    expect(
+      sectionNames(MOTION_VAR).filter((n) => n !== "ease"),
+      "a `--motion-…` custom property with no MICRO_MOTIONS row, or vice versa"
+    ).toEqual(SORTED_KINDS);
+    expect(
+      sectionNames(MOTION_CLASS),
+      "a `.motion-…` class with no MICRO_MOTIONS row, or vice versa"
+    ).toEqual(SORTED_KINDS);
+    expect(
+      sectionNames(MOTION_FRAME),
+      "a `@keyframes micro-…` block with no MICRO_MOTIONS row, or vice versa"
+    ).toEqual(SORTED_KINDS);
+  });
+
+  it("counts a motion the OLD pattern could not spell", () => {
+    // #2770's mutation, made permanent, and the assertion that fails the moment
+    // anyone narrows these patterns back. Spelling the reach is not exercising it
+    // (#2677), so the rogue motion is run through the same census the real one
+    // uses — as a synthetic section, because a permanent case must not require a
+    // permanent violation in globals.css.
+    const rogue = [
+      ":root {",
+      "  --motion-slide2: 900ms;",
+      "}",
+      ".motion-slide2 {",
+      "  animation: micro-slide2 var(--motion-slide2) var(--motion-ease);",
+      "}",
+      "@keyframes micro-slide2 {",
+      "  from {",
+      "    width: 0;",
+      "  }",
+      "}",
+    ].join("\n");
+    expect(namesIn(MOTION_VAR, rogue).filter((n) => n !== "ease")).toEqual([
+      "slide2",
+    ]);
+    expect(namesIn(MOTION_CLASS, rogue)).toEqual(["slide2"]);
+    expect(namesIn(MOTION_FRAME, rogue)).toEqual(["slide2"]);
+    // And the names the widened `[a-z0-9-]` class STILL cannot spell are reported
+    // by the loose census rather than skipped — which is the whole reason the
+    // census is loose and the convention is pinned separately. A pattern that has
+    // to keep chasing the next legal identifier is the defect, not the width.
+    expect(namesIn(MOTION_CLASS, ".motion-Slide_2 {\n}")).toEqual(["Slide_2"]);
+    expect(namesIn(MOTION_FRAME, "@keyframes micro-fade.in {\n}")).toEqual([
+      "fade.in",
+    ]);
+  });
+
+  it("keeps every name inside the shape the stylesheet checks can read", () => {
+    // The other half of #2770's fix, and the half that stops the widening being a
+    // chase. The rule-body and keyframe-body checks below still parse by name, so a
+    // motion named outside `[a-z][a-z0-9-]*` — an underscore, a capital, a leading
+    // digit — would be a rule nobody reads. That is a FAILURE here, at the registry,
+    // rather than a silent gap in the two censuses.
+    for (const kind of KINDS) expect(kind, kind).toMatch(CSS_NAME);
+  });
+
   it("declares ONE ease curve, in both halves", () => {
     expect(sectionVar("--motion-ease")).toBe(MICRO_MOTION_EASE);
     // No rule may carry its own curve — that is the fourth-vocabulary drift the
     // token exists to stop.
-    const rules = (SECTION.match(/\.motion-[a-z]+ \{[^}]*\}/g) ?? []).filter(
+    const rules = (
+      SECTION.match(/\.motion-[a-z0-9-]+ \{[^}]*\}/g) ?? []
+    ).filter(
       // The reduced-motion block neutralizes the same selectors; it is asserted
       // separately below and has no duration or curve to carry.
       (rule) => !/animation:\s*none/.test(rule)
@@ -119,7 +214,7 @@ describe("micro-motion tokens", () => {
     // around them. Read out of the @keyframes blocks, which are the only place a
     // property is actually interpolated.
     const frames =
-      SECTION.match(/@keyframes micro-[a-z]+ \{[\s\S]*?\n\}/g) ?? [];
+      SECTION.match(/@keyframes micro-[a-z0-9-]+ \{[\s\S]*?\n\}/g) ?? [];
     expect(frames.length).toBe(KINDS.length);
     const animated = new Set(
       frames.flatMap((block) =>

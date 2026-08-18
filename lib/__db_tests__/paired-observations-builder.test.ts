@@ -45,7 +45,7 @@ function logFood(
   servings: number
 ): void {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
   ).run(profileId, date, group, servings);
 }
@@ -66,7 +66,7 @@ function sample(
 ): void {
   const ts = `${date}T00:00:00`;
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', ?, ?, ?, ?, ?)`
   ).run(profileId, metric, date, ts, ts, value);
 }

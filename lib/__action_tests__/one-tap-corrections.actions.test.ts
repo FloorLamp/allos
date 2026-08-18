@@ -61,7 +61,7 @@ function seedServing(profileId: number, date: string, group = "berries") {
 function counters(profileId: number) {
   return db
     .prepare(
-      `SELECT date, group_key, servings FROM food_log
+      `SELECT date, group_key, servings FROM food_daily_totals
         WHERE profile_id = ? ORDER BY date, group_key`
     )
     .all(profileId) as { date: string; group_key: string; servings: number }[];

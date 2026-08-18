@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { hydratedClick, settledBoxes } from "./helpers";
 // #737 — the hand-authored MuscleAnatomy SVG figure, in its two wired hosts:
 // per-exercise mode inside the ExerciseDetailPanel guide section, and weekly
 // coverage mode on Training → Overview beside the #736 list (which stays — the
@@ -17,6 +18,10 @@ test("per-exercise anatomy renders in the detail panel guide section (#737)", as
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   const main = page.getByRole("main");
 
+  // Back Squat has logged sessions, so the guide sits behind the collapsed
+  // "How to" disclosure (#2895) — open it before asserting its content.
+  const disclosure = main.getByTestId("exercise-guide-disclosure").first(); // first-ok: asserts a guide disclosure renders — order-agnostic presence
+  await disclosure.locator("summary").click();
   const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
 
@@ -50,46 +55,64 @@ test("per-exercise anatomy renders in the detail panel guide section (#737)", as
 test("per-session anatomy renders on a strength session's training log card, absent for a custom-only session (#789)", async ({
   page,
 }) => {
-  // /training defaults to the Log tab, which renders the training log feed. The seeded
+  // /training defaults to the Log tab — slim rows since #2897, with the full
+  // record card in the desktop reading pane once its row is selected. The seeded
   // "Push day" strength session (Bench Press, Overhead Press, Lateral Raise,
   // Tricep Pushdown — all catalog lifts) resolves to tagged muscles, so its card
   // carries the per-session figure. Multiple weeks exist; the newest is on page one.
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
-  const pushCard = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the seeded Push day routine card — order-agnostic
+  const pushRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Push day" })
+    .first(); // first-ok: the newest seeded Push day session — order-agnostic
+  // The row is a pure client toggle; hydratedClick closes the pre-hydration window.
+  await hydratedClick(page, pushRow);
+  const pane = page.getByTestId("training-log-reading-pane");
+  const pushCard = pane.locator(".card", { hasText: "Push day" });
   await expect(pushCard).toBeVisible();
 
   const visualBox = pushCard.getByTestId("activity-visuals");
   await expect(visualBox).toBeVisible();
   await expect(visualBox).toHaveClass(/rounded-lg/);
   await expect(visualBox).toHaveClass(/border/);
-  const visualBounds = await visualBox.boundingBox();
-  const detailBounds = await pushCard
-    .getByTestId("activity-parts")
-    .boundingBox();
-  expect(visualBounds).not.toBeNull();
-  expect(detailBounds).not.toBeNull();
-  expect(visualBounds!.x).toBeGreaterThan(detailBounds!.x);
-  expect(visualBounds!.width).toBeLessThan(detailBounds!.width);
-  expect(detailBounds!.y).toBeLessThan(visualBounds!.y + visualBounds!.height);
+  const [visualBounds, detailBounds] = await settledBoxes([
+    visualBox,
+    pushCard.getByTestId("activity-parts"),
+  ]);
+  expect(visualBounds.x).toBeGreaterThan(detailBounds.x);
+  expect(visualBounds.width).toBeLessThan(detailBounds.width);
+  expect(detailBounds.y).toBeLessThan(visualBounds.y + visualBounds.height);
 
   // The shared right-hand slot starts at the same card-top baseline for a
-  // muscle figure and for a richer Strava card whose summary wraps differently.
-  const stravaCard = page.locator(".card", {
+  // muscle figure and for a richer Strava card whose summary wraps differently —
+  // both render in the pane's one slot, so swap the pane and compare offsets.
+  // Each pair is read via settledBoxes (one settled layout per snapshot — a
+  // relative-layout assertion built from separate boundingBox round-trips can
+  // describe a layout that never existed, per the e2e-hygiene doctrine).
+  const [pushBounds, pushVisualBounds] = await settledBoxes([
+    pushCard,
+    visualBox,
+  ]);
+  const stravaRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Strava morning ride" });
+  await stravaRow.click();
+  const stravaCard = pane.locator(".card", {
     hasText: "Strava morning ride",
   });
-  const [pushBounds, stravaBounds, stravaVisualBounds] = await Promise.all([
-    pushCard.boundingBox(),
-    stravaCard.boundingBox(),
-    stravaCard.getByTestId("activity-visuals").boundingBox(),
+  await expect(stravaCard).toBeVisible();
+  const [stravaBounds, stravaVisualBounds] = await settledBoxes([
+    stravaCard,
+    stravaCard.getByTestId("activity-visuals"),
   ]);
-  expect(pushBounds).not.toBeNull();
-  expect(stravaBounds).not.toBeNull();
-  expect(stravaVisualBounds).not.toBeNull();
-  expect(visualBounds!.y - pushBounds!.y).toBeCloseTo(
-    stravaVisualBounds!.y - stravaBounds!.y,
+  expect(pushVisualBounds.y - pushBounds.y).toBeCloseTo(
+    stravaVisualBounds.y - stravaBounds.y,
     0
   );
+
+  // Back to the push session for its figure.
+  await pushRow.click();
   const session = visualBox.getByTestId("session-muscles");
   await expect(session).toBeVisible();
 
@@ -101,13 +124,6 @@ test("per-session anatomy renders on a strength session's training log card, abs
     /muscles this session worked/
   );
   await expect(figure.locator("text")).toHaveCount(0);
-  await page.setViewportSize({ width: 390, height: 844 });
-  const mobileVisualBounds = await visualBox.boundingBox();
-  const mobileFigureBounds = await figure.boundingBox();
-  expect(mobileVisualBounds).not.toBeNull();
-  expect(mobileFigureBounds).not.toBeNull();
-  expect(mobileVisualBounds!.height).toBeCloseTo(128, 0);
-  expect(mobileFigureBounds!.height).toBeLessThanOrEqual(112);
   // Bench Press works the chest; the figure marks it as worked this session.
   await expect(figure.locator('[data-muscle="chest"]')).toHaveAttribute(
     "data-state",
@@ -119,9 +135,35 @@ test("per-session anatomy renders on a strength session's training log card, abs
     "none"
   );
 
+  // On a phone the pane doesn't exist — tapping the row expands the full card
+  // in place, where the same visual box renders as a shallow strip.
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Wait for the width mode to settle: the row advertises aria-expanded only
+  // once expand-in-place is its live affordance (a click landing before the
+  // settle hits the desktop branch and deselects instead).
+  await expect(pushRow).toHaveAttribute("aria-expanded", "false");
+  await pushRow.click();
+  const mobileCard = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the one Push day card expanded in place (rows are not .card)
+  await expect(mobileCard).toBeVisible();
+  const mobileVisualBounds = await mobileCard
+    .getByTestId("activity-visuals")
+    .boundingBox();
+  const mobileFigureBounds = await mobileCard
+    .getByTestId("muscle-anatomy")
+    .boundingBox();
+  expect(mobileVisualBounds).not.toBeNull();
+  expect(mobileFigureBounds).not.toBeNull();
+  expect(mobileVisualBounds!.height).toBeCloseTo(128, 0);
+  expect(mobileFigureBounds!.height).toBeLessThanOrEqual(112);
+
   // The custom-only strength session (its only lift is a made-up, non-catalog
   // name) resolves to no tagged muscles, so its card renders NO session figure —
   // the gate degrades to nothing rather than an empty diagram.
+  const customRow = page
+    .getByTestId("training-log-row")
+    .filter({ hasText: "Custom-only lift day (e2e)" })
+    .first(); // first-ok: the session row THIS spec created (unique name)
+  await customRow.click();
   const customCard = page
     .locator(".card", { hasText: "Custom-only lift day (e2e)" })
     .first(); // first-ok: the session card THIS spec created (unique name)

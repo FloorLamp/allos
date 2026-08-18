@@ -2,7 +2,7 @@
 // check (#2022), through the real gather and the real formatter rather than the pure
 // predicate alone. The thread under test is:
 //
-//   buildSupplementReminder → gatherWindowDoses → getMinutesSinceLastFoodLog
+//   buildIntakeReminder → gatherWindowDoses → getMinutesSinceLastFoodLog
 //                           → foodTimingCheck → doseLine's tail
 //
 // and the properties that matter are the ones a pure test cannot see: that the ledger is
@@ -13,12 +13,12 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { logFoodServingCore } from "@/lib/food-log-write";
-import { buildSupplementReminder } from "@/lib/notifications/supplements";
+import { buildIntakeReminder } from "@/lib/notifications/intake";
 import { WITH_FOOD_RECENT_MIN } from "@/lib/food-timing-check";
 import type { FoodTiming } from "@/lib/types/intake";
 
 // A scheduled daily medication with one pending Morning dose declaring `timing`. A
-// medication rather than a supplement so the #1156 priority floor can never be what
+// medication rather than a supplement so the #1156 obligation floor can never be what
 // decides whether the line renders.
 function seedDose(timing: FoodTiming): number {
   const profileId = Number(
@@ -43,7 +43,7 @@ function seedDose(timing: FoodTiming): number {
 }
 
 function reminderText(profileId: number): string {
-  const msg = buildSupplementReminder(profileId, "Morning");
+  const msg = buildIntakeReminder(profileId, "Morning");
   expect(msg).not.toBeNull();
   return `${msg!.title}\n${msg!.body}`;
 }
@@ -136,7 +136,7 @@ describe("the check is informational, never a gate (#2022)", () => {
     const fed = seedDose("with_food");
     logServing(fed, 5);
     for (const profileId of [hungry, fed]) {
-      const msg = buildSupplementReminder(profileId, "Morning");
+      const msg = buildIntakeReminder(profileId, "Morning");
       expect(msg).not.toBeNull();
       expect(msg!.body).toContain("Levothyroxine");
       // Still a tappable dose send — the clause adds no button and removes none.

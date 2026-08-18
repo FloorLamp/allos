@@ -1,13 +1,20 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { IconArrowLeft, IconBarbell } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getEquipmentById } from "@/lib/equipment";
 import { getEquipmentUsageById, getEquipmentSessions } from "@/lib/queries";
-import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
-import { isTrainingRestricted } from "@/lib/age-gate";
+import {
+  getUnitPrefs,
+  getDisplayFormatPrefs,
+  getProfileAge,
+} from "@/lib/settings";
 import { kindOf } from "@/lib/types";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 import { kgTo, kmTo, round } from "@/lib/units";
 import { formatLastUsed } from "@/lib/usage-format";
 import { formatRecordDate } from "@/lib/record-format";
@@ -57,17 +64,22 @@ export default async function EquipmentDetailPage(props: {
 }) {
   const params = await props.params;
   const { login, profile } = await requireSession();
-  if (isTrainingRestricted(profile.id)) redirect("/");
-
   const id = Number(params.id);
   const equipment = id ? getEquipmentById(profile.id, id) : undefined;
   if (!equipment) notFound();
+
+  const kind = kindOf(equipment.category);
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
+  if (
+    kind === "strength" &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  )
+    notFound();
 
   const units = getUnitPrefs(login.id);
   const fmt = getDisplayFormatPrefs(login.id);
   const usage = getEquipmentUsageById(profile.id, id);
   const sessions = getEquipmentSessions(profile.id, id);
-  const kind = kindOf(equipment.category);
 
   const sessionCount = usage?.sessions ?? 0;
   const lastUsed = usage?.lastUsed ?? null;
@@ -164,8 +176,16 @@ export default async function EquipmentDetailPage(props: {
           <EmptyState
             compact
             testId="equipment-no-usage"
-            message="No sessions have used this equipment yet. Tag a workout with it to start building usage history."
-            action={{ href: "/training", label: "Log a workout" }}
+            message={
+              trainingRelevant
+                ? "No sessions have used this equipment yet. Tag a workout with it to start building usage history."
+                : "No sessions have used this equipment yet."
+            }
+            action={
+              trainingRelevant
+                ? { href: "/training", label: "Log a workout" }
+                : undefined
+            }
           />
         </div>
       )}

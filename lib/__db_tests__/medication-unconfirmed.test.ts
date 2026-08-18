@@ -4,7 +4,7 @@
 //
 // The thread under test:
 //
-//   getUnconfirmedMedicationIds → buildSupplementReminder's `stoppable` flag
+//   getUnconfirmedMedicationIds → buildIntakeReminder's `stoppable` flag
 //                               → the Stop button on the dose row
 //                               → handleCallbackQuery → stopMedicationCourses
 //
@@ -28,7 +28,7 @@ import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { buildSupplementReminder } from "@/lib/notifications/supplements";
+import { buildIntakeReminder } from "@/lib/notifications/intake";
 import { getUnconfirmedMedicationIds } from "@/lib/intake-history";
 import {
   IMPORTED_SOURCE,
@@ -107,7 +107,7 @@ function logDose(f: Fixture, status: "taken" | "skipped"): void {
 }
 
 function reminderActions(profileId: number): NotificationAction[] {
-  const msg = buildSupplementReminder(profileId, "Morning");
+  const msg = buildIntakeReminder(profileId, "Morning");
   expect(msg).not.toBeNull();
   return msg!.actions ?? [];
 }
@@ -186,7 +186,7 @@ describe("the offer's gate, over real provenance and a real log ledger (#2574)",
 describe("the button on the real reminder", () => {
   it("adds exactly one Stop button to the dose's row, and no words about it", () => {
     const f = seedMed("button");
-    const msg = buildSupplementReminder(f.profileId, "Morning");
+    const msg = buildIntakeReminder(f.profileId, "Morning");
     expect(msg).not.toBeNull();
     const stops = (msg!.actions ?? []).filter((a) =>
       a.data?.startsWith(`${MED_STOP_PREFIX}:`)

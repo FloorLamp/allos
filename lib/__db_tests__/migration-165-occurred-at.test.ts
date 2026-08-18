@@ -145,9 +145,8 @@ describe("migration 165 — occurred_at on the three observation stores", () => 
     up(mem);
     const at = utcInstant(new Date("2026-01-09T18:41:00Z"));
     mem.prepare(`UPDATE body_metrics SET occurred_at = ? WHERE id = 7`).run(at);
-    // The non-version-gated migrate() wrapper replays every migration over an at-rest
-    // database, and SQLite has no ADD COLUMN IF NOT EXISTS — so the guard is load
-    // bearing, and a replay must not throw OR clobber a stated value.
+    // SQLite has no ADD COLUMN IF NOT EXISTS, so the migration's own guard still
+    // makes a direct replay harmless and preserves the stated value.
     expect(() => up(mem)).not.toThrow();
     try {
       expect(

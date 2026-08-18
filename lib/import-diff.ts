@@ -17,7 +17,7 @@
 import { round } from "./units";
 import { cleanMedicationName } from "./prescription-parse";
 import { encodeDiagnosisRanks } from "./visit-diagnosis-rank";
-import type { PersistInput, PersistRecord } from "./import-shape";
+import type { PersistInput, PersistClinicalObservation } from "./import-shape";
 
 // The entity kinds an import writes that the diff tracks. Kept in a fixed display
 // order so the UI renders sections consistently.
@@ -150,7 +150,7 @@ function serializeFields(payload: Record<string, unknown>): string {
 
 export interface RecordFields {
   date: string;
-  category: string;
+  category: string | null;
   name: string;
   value: string | null;
   value_num: number | null;
@@ -364,10 +364,12 @@ export function sampleRow(
 // mirroring persistExtractedMedications: one row per cleaned drug name. The
 // existing-manual-med skip is NOT replicated here — a preview shows what THIS
 // document derives, and that skip needs the DB (documented in the UI copy).
-function medicationsFromRecords(records: PersistRecord[]): DiffRow[] {
+function medicationsFromObservations(
+  observations: PersistClinicalObservation[]
+): DiffRow[] {
   const seen = new Set<string>();
   const rows: DiffRow[] = [];
-  for (const r of records) {
+  for (const r of observations) {
     if (r.category !== "prescription" || !r.name?.trim()) continue;
     const row = medicationRow(r.name);
     if (seen.has(row.key)) continue;
@@ -382,7 +384,7 @@ export function snapshotFromPersistInput(input: PersistInput): ImportSnapshot {
     // Since #1178 a prescription is NOT a medical_records row — it persists ONLY as
     // the medications projection (below) — so it is excluded here to match the DB-side
     // snapshot (getReprocessSnapshot reads medical_records, which no longer holds it).
-    records: input.records
+    records: input.observations
       .filter((r) => r.category !== "prescription")
       .map((r) =>
         recordRow({
@@ -441,7 +443,7 @@ export function snapshotFromPersistInput(input: PersistInput): ImportSnapshot {
         external_id: e.external_id,
       })
     ),
-    medications: medicationsFromRecords(input.records),
+    medications: medicationsFromObservations(input.observations),
     bodyMetrics: input.bodyMetrics.map((b) =>
       bodyMetricRow({
         date: b.date,

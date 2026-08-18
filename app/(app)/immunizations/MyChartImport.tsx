@@ -4,7 +4,7 @@ import { IconFileImport, IconChevronRight } from "@tabler/icons-react";
 // Points at the Import page, where health-record uploads live alongside lab/scan
 // documents. A MyChart "Download Summary" (CCD/XDM) or SMART Health Card imported
 // there flows into the same immunizations shown on this page (and its labs/vitals
-// into Biomarkers), and the file becomes a managed document you can reprocess or
+// into Clinical results), and the file becomes a managed document you can reprocess or
 // delete.
 export default function MyChartImport({
   compact = false,

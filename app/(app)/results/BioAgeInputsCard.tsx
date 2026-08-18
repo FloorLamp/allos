@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { IconActivityHeartbeat, IconCircleCheck } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getProfileAge } from "@/lib/settings";
 import { getBioAgeReadings } from "@/lib/queries";
 import {
@@ -11,11 +10,12 @@ import {
   isBioAgeHiddenForAge,
   PHENOAGE_INPUT_NAMES,
 } from "@/lib/bio-age";
+import { isLongevityRelevant } from "@/lib/life-stage";
 import { pillarHref } from "@/lib/longevity-pillars";
 import CardFootnote from "@/components/CardFootnote";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 
-// The bio-age INPUT PANEL on Results › Biomarkers (#2367).
+// The bio-age INPUT PANEL on Results › Clinical results (#2367).
 //
 // The hero used to render here AND on Longevity, so a reader moving between the two
 // pages met the same headline block twice. The split is by what each page lets you
@@ -32,11 +32,11 @@ import { readingDetailHref } from "@/lib/hrefs";
 export default async function BioAgeInputsCard() {
   const { profile } = await requireSession();
 
-  // Adult gate — hidden for child profiles, mirroring the computation's floor (and
-  // the fitness age-gate as a defensive belt-and-suspenders).
+  // A known minor sees no bio-age UI. Unknown age remains eligible for this input
+  // checklist because it exposes no adult-population estimate; it helps the profile
+  // complete its labs and age metadata instead.
   const age = getProfileAge(profile.id);
-  const hiddenForProfile =
-    isBioAgeHiddenForAge(age) || isTrainingRestricted(profile.id);
+  const hiddenForProfile = isBioAgeHiddenForAge(age);
 
   const { draws, presentInputs } = getBioAgeReadings(profile.id);
   const completeness = inputCompleteness(presentInputs);
@@ -87,7 +87,7 @@ export default async function BioAgeInputsCard() {
               )}
               {have ? (
                 <Link
-                  href={readingDetailHref(name)}
+                  href={clinicalResultDetailHref(name)}
                   className="truncate text-slate-700 hover:underline dark:text-slate-200"
                 >
                   {name}
@@ -103,17 +103,21 @@ export default async function BioAgeInputsCard() {
       </ul>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {/* The door to the headline result, wherever the panel stands: a partial
-            panel has a section to land on once it completes, and a complete one has a
-            number waiting there now. The href is pillarHref's, so this link and the
-            dashboard pillar card can never point at different anchors. */}
-        <Link
-          href={pillarHref("bio-age")}
-          className="btn btn-sm"
-          data-testid="bio-age-hero-link"
-        >
-          See biological age
-        </Link>
+        {isLongevityRelevant(age) ? (
+          // The href is pillarHref's, so this link and the dashboard pillar card can
+          // never point at different anchors.
+          <Link
+            href={pillarHref("bio-age")}
+            className="btn btn-sm"
+            data-testid="bio-age-hero-link"
+          >
+            See biological age
+          </Link>
+        ) : (
+          <Link href="/settings/health" className="btn btn-sm">
+            Add your age
+          </Link>
+        )}
         {!completeness.complete && (
           <Link href="/data" className="btn-ghost btn-sm">
             Import labs

@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { isAnxietyScaleRelevant } from "@/lib/queries";
-import { setAnxietyScaleOptIn } from "@/lib/settings";
+import { setAnxietyScaleOptIn, setStoredAge } from "@/lib/settings";
 
 function newProfile(name: string): number {
   return Number(
@@ -71,10 +71,11 @@ describe("isAnxietyScaleRelevant (the #1313 gate resolver)", () => {
 
   it("signal 5 — an ongoing protocol whose outcome is the anxiety series reveals it", () => {
     const p = newProfile("Protocol (gate)");
+    setStoredAge(p, 30);
     db.prepare(
       `INSERT INTO protocols (profile_id, name, start_date, end_date, outcome_keys)
        VALUES (?, 'Daily meditation', '2026-06-01', NULL, ?)`
-    ).run(p, JSON.stringify(["biomarker:GAD-7"]));
+    ).run(p, JSON.stringify(["result:GAD-7"]));
     expect(isAnxietyScaleRelevant(p)).toBe(true);
   });
 
@@ -83,7 +84,7 @@ describe("isAnxietyScaleRelevant (the #1313 gate resolver)", () => {
     db.prepare(
       `INSERT INTO protocols (profile_id, name, start_date, end_date, outcome_keys)
        VALUES (?, 'Old meditation', '2026-01-01', '2026-03-01', ?)`
-    ).run(p, JSON.stringify(["biomarker:GAD-7"]));
+    ).run(p, JSON.stringify(["result:GAD-7"]));
     expect(isAnxietyScaleRelevant(p)).toBe(false);
   });
 

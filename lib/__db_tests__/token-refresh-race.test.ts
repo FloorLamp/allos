@@ -31,7 +31,7 @@ function statusOf(provider: string): string | undefined {
 // Stand in for a sibling process that has already claimed the refresh slot.
 function preclaim(provider: string) {
   db.prepare(
-    "UPDATE integration_connections SET refresh_claimed_at = datetime('now') WHERE profile_id = ? AND provider = ?"
+    "UPDATE integration_connections SET refresh_claimed_at = datetime('now') WHERE profile_id = ? AND source_id = ?"
   ).run(profileId, provider);
 }
 
@@ -68,7 +68,7 @@ describe("claimTokenRefresh single-flight", () => {
     });
     // A claim stamped 2 minutes ago is stale — the next caller may re-claim.
     db.prepare(
-      "UPDATE integration_connections SET refresh_claimed_at = datetime('now','-120 seconds') WHERE profile_id = ? AND provider = 'strava'"
+      "UPDATE integration_connections SET refresh_claimed_at = datetime('now','-120 seconds') WHERE profile_id = ? AND source_id = 'strava'"
     ).run(profileId);
     expect(claimTokenRefresh(profileId, "strava")).toBe(true);
   });

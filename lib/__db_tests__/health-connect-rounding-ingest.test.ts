@@ -77,7 +77,7 @@ function latestSplit(): {
   return db
     .prepare(
       `SELECT ok, inserted, updated, unchanged FROM integration_sync_events
-        WHERE profile_id = ? AND provider = 'health-connect'
+        WHERE profile_id = ? AND source_id = 'health-connect'
         ORDER BY id DESC LIMIT 1`
     )
     .get(profileId) as {
@@ -93,7 +93,7 @@ function sampleValue(metric: string): number {
     .prepare(
       `SELECT value FROM metric_samples
         WHERE profile_id = ? AND metric = ? AND source = 'health-connect'
-        ORDER BY start_time LIMIT 1`
+        ORDER BY started_at LIMIT 1`
     )
     .get(profileId, metric) as { value: number } | undefined;
   return row!.value;

@@ -51,7 +51,7 @@ Enter a valid date (YYYY-MM-DD).                 // validation — imperative, n
 
 "you" and "your" always address the **active profile** — the person the header
 switcher currently points at. This is a rule, not an accident: on a per-profile
-surface (Biomarkers, Trends, the dashboard) `"Explore your results…"` is correct
+surface (Clinical results, Trends, the dashboard) `"Explore your results…"` is correct
 because "your" resolves to whoever is active.
 
 **Cross-profile surfaces never say "your".** The household strip, Family
@@ -94,7 +94,7 @@ Range-scoped empties say what to change:
 Sentence case for buttons, labels, headings, and toasts. **Feature and nav names
 are Title Case as proper nouns** — "Supplements & Meds", the "Needs attention"
 hero — but a mid-sentence reference to the _concept_ stays lowercase. The
-Telegram `"supplements & meds"` pairing in `supplement-format.ts` is the
+Telegram `"supplements & meds"` pairing in `intake-format.ts` is the
 documented example of a correct lowercase concept reference, not a bug.
 
 ### 6. House voice: short, declarative, calm
@@ -149,7 +149,7 @@ Term table (colloquial form / clinical form / where each leads):
 | Meds                                     | Medications                                 | Coded RxNorm record labels, the Medications nav name |
 | Log a dose / Took a med?                 | Administer / PRN dose                       | Safety confirm names the drug + amount               |
 | As needed                                | PRN                                         | `"As needed (PRN)"` on the dose-schedule form        |
-| Results / readings                       | Biomarkers / analytes                       | LOINC-coded lab views, extraction                    |
+| Clinical results                         | Biomarkers / analytes                       | Quantity-specific charts, LOINC views, extraction    |
 | Shots                                    | Immunizations / vaccines                    | CVX-coded immunization records                       |
 
 ## Enforcement — the copy-lint scan

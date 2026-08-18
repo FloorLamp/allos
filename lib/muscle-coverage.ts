@@ -28,10 +28,20 @@ import {
 export const SECONDARY_CREDIT = 0.5;
 const PRIMARY_CREDIT = 1.0;
 
-/** A logged set, reduced to what attribution needs: its exercise name and date. */
+/**
+ * A logged set, reduced to what attribution needs: its exercise name and date.
+ * A truthy `warmup` excludes the set from coverage credit (#2891) — coverage
+ * counts what the strength queries count (#338); callers without warm-up data
+ * simply omit the field.
+ */
 export interface CoverageSet {
   exercise: string;
   date: string; // YYYY-MM-DD
+  warmup?: number | boolean | null;
+  // Optional session identity for drill-in surfaces. Attribution itself does not
+  // need it, but carrying it on the same row lets "what counts" point back to the
+  // exact activity without a second lookup or a parallel attribution pass.
+  activityId?: number | null;
 }
 
 /** Per-muscle coverage: accumulated (possibly fractional) set credit + recency. */
@@ -96,6 +106,7 @@ export function coverageFromSets(
 ): Map<MuscleId, MuscleCoverage> {
   const out = new Map<MuscleId, MuscleCoverage>();
   for (const s of sets) {
+    if (s.warmup) continue;
     if (windowDays !== undefined) {
       const ago = daysBetweenDateStr(s.date, today);
       if (ago === null || ago < 0 || ago >= windowDays) continue;
@@ -104,6 +115,71 @@ export function coverageFromSets(
     if (!def) continue;
     credit(out, def.primaryMuscles, PRIMARY_CREDIT, s.date);
     credit(out, def.secondaryMuscles, SECONDARY_CREDIT, s.date);
+  }
+  return out;
+}
+
+export interface MuscleCoverageContribution {
+  muscle: MuscleId;
+  exercise: string;
+  date: string;
+  activityId: number | null;
+  credit: number;
+  role: "primary" | "secondary";
+}
+
+/**
+ * The evidence behind `coverageFromSets`, using the exact same catalog identity,
+ * warm-up exclusion, window, and credit constants. Overview's per-muscle
+ * drill-in formats these rows; it never tries to reverse-engineer the aggregate.
+ */
+export function coverageContributions(
+  sets: CoverageSet[],
+  today: string,
+  windowDays?: number
+): Map<MuscleId, MuscleCoverageContribution[]> {
+  const out = new Map<MuscleId, MuscleCoverageContribution[]>();
+  const add = (
+    muscle: MuscleId,
+    set: CoverageSet,
+    credit: number,
+    role: MuscleCoverageContribution["role"]
+  ) => {
+    const rows = out.get(muscle) ?? [];
+    rows.push({
+      muscle,
+      exercise: set.exercise,
+      date: set.date,
+      activityId: set.activityId ?? null,
+      credit,
+      role,
+    });
+    out.set(muscle, rows);
+  };
+
+  for (const set of sets) {
+    if (set.warmup) continue;
+    if (windowDays !== undefined) {
+      const ago = daysBetweenDateStr(set.date, today);
+      if (ago === null || ago < 0 || ago >= windowDays) continue;
+    }
+    const def = catalogDefFor(set.exercise);
+    if (!def) continue;
+    for (const muscle of def.primaryMuscles) {
+      add(muscle, set, PRIMARY_CREDIT, "primary");
+    }
+    for (const muscle of def.secondaryMuscles) {
+      add(muscle, set, SECONDARY_CREDIT, "secondary");
+    }
+  }
+
+  for (const rows of out.values()) {
+    rows.sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) ||
+        a.exercise.localeCompare(b.exercise) ||
+        b.credit - a.credit
+    );
   }
   return out;
 }

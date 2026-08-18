@@ -1,5 +1,5 @@
-// Pure scheduling helpers for supplements (no DB access), shared by the
-// supplements page, the dashboard widget, and any future notifier. Keeping the
+// Pure scheduling helpers for intake items (no DB access), shared by the
+// intake surfaces, the dashboard widget, and any future notifier. Keeping the
 // "is this due today?" / time-bucket / priority logic here (not inline in the
 // page) means an alerting layer can reuse it directly.
 
@@ -65,6 +65,18 @@ export function currentTimeBucket(hhmm: string): TimeBucket {
   return "Before sleep";
 }
 
+// Whether a scheduled bucket has arrived by the profile-local current bucket.
+// "Anytime" is available from the start of the day; otherwise the dose-day order
+// is the clock. Shared by moment-led dose sections and compact "due now" offers so
+// neither can call an evening dose current during the morning.
+export function timeBucketHasArrived(
+  bucket: TimeBucket,
+  currentBucket: TimeBucket
+): boolean {
+  if (bucket === "Anytime") return true;
+  return TIME_BUCKETS.indexOf(bucket) <= TIME_BUCKETS.indexOf(currentBucket);
+}
+
 export const CONDITION_LABELS: Record<IntakeCondition, string> = {
   daily: "Daily",
   pre_workout: "Pre-workout",
@@ -75,26 +87,23 @@ export const CONDITION_LABELS: Record<IntakeCondition, string> = {
 
 export const CONDITIONS = Object.keys(CONDITION_LABELS) as IntakeCondition[];
 
-// Conditions whose meaning depends on fitness/training tracking (workout vs rest
-// day). They're hidden from the schedule dropdown when training is restricted for
-// the profile, mirroring how the Training surfaces vanish (see age-gate.ts).
+// Conditions whose meaning depends on fitness/training tracking (workout vs rest day).
 export const WORKOUT_CONDITIONS: IntakeCondition[] = [
   "pre_workout",
   "post_workout",
   "rest_day",
 ];
 
-// Conditions offered in the add/edit form. When training is restricted the
-// workout/rest-day options are dropped (meaningless without fitness tracking),
-// except one already stored on the item being edited (`keep`), so its select
-// value stays valid rather than silently blanking.
-export function availableConditions(
-  trainingRestricted: boolean,
+// Workout-relative schedules only make sense when the Training product is available
+// for this profile. Keep an already-stored value in the edit picker so standing down
+// the affordance never makes historical configuration impossible to inspect or save.
+export function availableIntakeConditions(
+  activityScheduleAvailable: boolean,
   keep?: IntakeCondition | null
 ): IntakeCondition[] {
-  if (!trainingRestricted) return CONDITIONS;
+  if (activityScheduleAvailable) return CONDITIONS;
   return CONDITIONS.filter(
-    (c) => !WORKOUT_CONDITIONS.includes(c) || c === keep
+    (condition) => !WORKOUT_CONDITIONS.includes(condition) || condition === keep
   );
 }
 
@@ -124,12 +133,12 @@ export function availableConditions(
 // the dueness engine agree about "what's held" (one computation, #221). NULL
 // pause_situation (or an item with no link) is never held.
 export function heldBySituation(
-  supp: { pause_situation?: string | null },
+  item: { pause_situation?: string | null },
   activeSituations: ReadonlySet<string>
 ): string | null {
-  return supp.pause_situation != null &&
-    activeSituations.has(supp.pause_situation)
-    ? supp.pause_situation
+  return item.pause_situation != null &&
+    activeSituations.has(item.pause_situation)
+    ? item.pause_situation
     : null;
 }
 
@@ -162,7 +171,7 @@ export interface IntakeDayContext {
 }
 
 export function conditionAppliesOn(
-  supp: Pick<IntakeItem, "condition" | "situation"> & {
+  item: Pick<IntakeItem, "condition" | "situation"> & {
     pause_situation?: string | null;
   },
   ctx: IntakeDayContext
@@ -173,10 +182,10 @@ export function conditionAppliesOn(
   // B → held). The active set is the SAME one the on-condition reads, so a pause
   // situation's active state flows in without a second lookup. A hold suppresses the
   // OFFER too: a paused item should not be one tap from being logged either.
-  if (heldBySituation(supp, ctx.activeSituations)) return false;
+  if (heldBySituation(item, ctx.activeSituations)) return false;
   // "Is today a training day?" — predicted cadence when known, else logged reality.
   const trainingToday = ctx.predictedWorkoutDay ?? ctx.isWorkoutDay;
-  switch (supp.condition) {
+  switch (item.condition) {
     case "daily":
       return true;
     case "pre_workout":
@@ -187,14 +196,14 @@ export function conditionAppliesOn(
     case "rest_day":
       return !trainingToday;
     case "situational":
-      return supp.situation != null && ctx.activeSituations.has(supp.situation);
+      return item.situation != null && ctx.activeSituations.has(item.situation);
     default:
       return true;
   }
 }
 
 export function isDueOn(
-  supp: Pick<IntakeItem, "condition" | "situation"> &
+  item: Pick<IntakeItem, "condition" | "situation"> &
     ItemCadence & {
       obligation?: IntakeObligation;
       pause_situation?: string | null;
@@ -206,15 +215,15 @@ export function isDueOn(
   // the user owes nothing on cannot be due, so it cannot be missed, cannot be counted
   // in a fraction, and cannot be reminded. Its slot survives as an ACCESS HINT — read
   // by isOfferedOn / slotHintCoversNow and the offer surfaces, never by this one.
-  if (supp.obligation === "may") return false;
+  if (item.obligation === "may") return false;
   // The CALENDAR gate (#1602), ANDed with the condition gate. Order is irrelevant to
   // the result and deliberate for reading: obligation first (is anything owed at all?),
   // then the calendar (is today one of this item's days?), then the day's context (is
   // it the right kind of day?). A cadence can only ever remove days from a schedule the
   // user already declared — it never creates dueness, which is why it is safe to AND it
   // in here rather than to give it its own surface-by-surface filter.
-  if (!cadenceOn(supp, ctx.date)) return false;
-  return conditionAppliesOn(supp, ctx);
+  if (!cadenceOn(item, ctx.date)) return false;
+  return conditionAppliesOn(item, ctx);
 }
 
 // Whether ONE DOSE ROW of a due item lands on this day — the item's dueness ANDed with
@@ -223,18 +232,18 @@ export function isDueOn(
 // THIS rather than isDueOn + a local dose filter, so an alternating-amount pair and a
 // taper window can never mean one thing on the page and another in a reminder (#221).
 export function doseDueOn(
-  supp: Parameters<typeof isDueOn>[0],
+  item: Parameters<typeof isDueOn>[0],
   dose: DoseCadence,
   ctx: IntakeDayContext
 ): boolean {
-  if (!isDueOn(supp, ctx)) return false;
+  if (!isDueOn(item, ctx)) return false;
   return doseOnDay(dose, ctx.date);
 }
 
 // The TIME BUCKET a dose occupied on a given day (#1973) — `timeBucket` over the
 // schedule version in force then, rather than over the current row. A dose moved
 // evening → morning last week was an evening dose the week before, and any surface
-// that attributes a PAST day to a slot (the bedtime-supplement summary) has to ask
+// that attributes a PAST day to a slot (the bedtime intake summary) has to ask
 // about the slot it actually sat in that day.
 export function doseBucketOn(dose: DoseCadence, dateISO: string): TimeBucket {
   return timeBucket(doseScheduleAsOf(dose, dateISO).time_of_day ?? null);
@@ -306,7 +315,7 @@ export function slotHintCoversNow(
 
 // Whether a `may` item is ON OFFER today — the access-hint twin of isDueOn, and the
 // gate for every user-initiated surface: Upcoming's collapsed "available" disclosure,
-// the digest's "Log other…" tail, the ride-along More… row, quick log.
+// the digest's "➕ Doses" tail, the ride-along More… row, quick log.
 //
 // "Offered" is NOT "due": nothing here creates an obligation, a miss, or a send. It
 // only answers whether the item is worth putting one tap away right now.
@@ -320,14 +329,14 @@ export function slotHintCoversNow(
 // via cadenceLabel, and they never remove it. The condition gate stays, because a hold
 // or a rest-day condition is a statement about TODAY rather than about a calendar.
 export function isOfferedOn(
-  supp: Pick<IntakeItem, "condition" | "situation"> & {
+  item: Pick<IntakeItem, "condition" | "situation"> & {
     obligation?: IntakeObligation;
     pause_situation?: string | null;
   },
   ctx: IntakeDayContext
 ): boolean {
-  if (supp.obligation !== "may") return false;
-  return conditionAppliesOn(supp, ctx);
+  if (item.obligation !== "may") return false;
+  return conditionAppliesOn(item, ctx);
 }
 
 // The count of situational intake items currently due BECAUSE their situation is
@@ -337,13 +346,13 @@ export function isOfferedOn(
 // formatter over the shared count, never a second count). Counts active, non-`may`
 // situational items; a paused item (active 0) is excluded.
 export function countSituationalDue(
-  supps: readonly (Pick<IntakeItem, "condition" | "situation"> & {
+  items: readonly (Pick<IntakeItem, "condition" | "situation"> & {
     active?: number | boolean;
     obligation?: IntakeObligation;
   })[],
   ctx: Parameters<typeof isDueOn>[1]
 ): number {
-  return supps.filter(
+  return items.filter(
     (s) =>
       (s.active ?? true) && s.condition === "situational" && isDueOn(s, ctx)
   ).length;
@@ -458,7 +467,7 @@ function timeToMinutes(t: string | null | undefined): number | null {
   return h * 60 + min;
 }
 
-// Whether a post_workout supplement's window has opened on a day with logged
+// Whether a post_workout item's window has opened on a day with logged
 // activity (issue #558). `nowMinutes` is the current profile-local minute-of-day;
 // pass null for a past day (always ready). Ready once the EARLIEST logged session
 // whose end time is known has ended; when no session carries an end time, ready as
@@ -481,7 +490,7 @@ export function isPostWorkoutReady(
 //   - a predicted training day             → "Workout day"
 //   - a predicted REST day with a workout   → "Rest day — unplanned workout logged"
 //     logged anyway (cadence says rest, but the user trained): the plain "Rest
-//     day" contradicted a due post-workout supplement sitting right below it, so
+//     day" contradicted a due post-workout item sitting right below it, so
 //     the label names the mismatch. DUENESS is unchanged — the engine stays
 //     conservative (post_workout still gates on a logged session); only the
 //     header wording distinguishes this case.
@@ -559,7 +568,7 @@ export const OBLIGATION_HINTS: Record<IntakeObligation, string> = {
 // dose reminders, refill nudges, the digest's Today section, Upcoming's due rows, the
 // dashboard hero. `may` means the user declared no expectation, so the system never
 // initiates about it — it stays fully reachable through USER-initiated access (the
-// Supplements page, quick log, the digest's "Log other…" tail, keyboards) exactly as
+// Supplements page, quick log, the digest's "➕ Doses" tail, keyboards) exactly as
 // the surface taxonomy in docs/internals/findings.md requires.
 //
 // This is the ONE gate every push surface consults; a surface that grows its own
@@ -658,6 +667,9 @@ const FAT_SOLUBLE = [
   "turmeric",
   "astaxanthin",
   "lutein",
+  "zeaxanthin",
+  "lycopene",
+  "carotene",
 ];
 
 // Best-effort default food timing for a supplement name (catalog entries can

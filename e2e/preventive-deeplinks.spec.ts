@@ -105,7 +105,10 @@ test.describe("preventive deep-links per class (#1083)", () => {
     await page.goto("/upcoming");
     await expect(cta).toHaveText(/Record your LDL Cholesterol result/);
 
-    await followCta("lipid_screening", /\/results\/readings\?new=1&name=LDL/);
+    await followCta(
+      "lipid_screening",
+      /\/results\/clinical-results\?new=1&name=LDL/
+    );
     // The add form's name field arrives prefilled to the canonical (#662).
     await expect(page.locator("#rec-new-name")).toHaveValue("LDL Cholesterol");
   });

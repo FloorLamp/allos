@@ -11,7 +11,7 @@
 //   • getSyncRowProvenance — the Connected-sources per-row drill-in, whose label
 //     precedence was literally `name || canonical_name` (raw first)
 //
-// The pure guard (lib/__tests__/biomarker-canonical-render.test.ts) scans RENDER
+// The pure guard (lib/__tests__/clinical-result-canonical-render.test.ts) scans RENDER
 // sites; a defect that lives in the SELECT is invisible to it, which is why these
 // two need a DB-tier fixture. Synthetic analytes only (no PHI).
 
@@ -88,7 +88,7 @@ describe("getSyncRowProvenance labels by the canonical analyte (#1501)", () => {
       db
         .prepare(
           `INSERT INTO integration_sync_events
-             (profile_id, provider, at, ok, inserted, updated, unchanged)
+             (profile_id, source_id, at, ok, inserted, updated, unchanged)
            VALUES (?, 'health-connect', '2024-02-02T09:00:00Z', 1, 1, 0, 0)`
         )
         .run(profileId).lastInsertRowid

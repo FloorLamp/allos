@@ -4,7 +4,9 @@ import {
   getTrashRetentionDays,
   getUnitPrefs,
   getProfileFullName,
+  getProfileAge,
 } from "@/lib/settings";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { PageHeader } from "@/components/ui";
@@ -50,7 +52,7 @@ function parseSection(value: string | string[] | undefined): Section {
 // standalone Data page content) browses and exports everything you've logged,
 // with per-dataset CSV download and row edit/delete. The "Coverage" tab (issue
 // #1086) is the catalog-coverage-gaps workflow (formerly /coverage, then briefly
-// /records#coverage) — biomarkers/meds/conditions the curated catalogs don't cover
+// /records#coverage) — clinical results/meds/conditions the curated catalogs don't cover
 // yet, with the track/enrich/request paths — a data-management workflow about the
 // app's coverage of your data, not a clinical record. The "Trash" tab (issue #2013)
 // is the rendered view over the restorable capture every destructive delete has
@@ -66,6 +68,9 @@ export default async function DataPage(
   const searchParams = await props.searchParams;
   const { login, profile, access } = await requireSession();
   const units = getUnitPrefs(login.id);
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(
+    getProfileAge(profile.id)
+  );
   const section = parseSection(searchParams.section);
   // Demo mode (#181): disable the medical-upload input (a PHI-entry vector) with a
   // hint. The write is already blocked server-side; this is the UX on top.
@@ -172,14 +177,21 @@ export default async function DataPage(
                   id: "paste",
                   label: "Paste CSV",
                   content: (
-                    <ImportClient units={{ weightUnit: units.weightUnit }} />
+                    <ImportClient
+                      units={{ weightUnit: units.weightUnit }}
+                      workoutImportAvailable={strengthTrainingAvailable}
+                    />
                   ),
                 },
               ]}
             />
           </div>
 
-          <ImportJobList jobs={importJobs} unit={units.weightUnit} />
+          <ImportJobList
+            jobs={importJobs}
+            unit={units.weightUnit}
+            workoutImportAvailable={strengthTrainingAvailable}
+          />
         </section>
 
         {/* The continuous-stream on/offboarding offer (#2162), directly above the

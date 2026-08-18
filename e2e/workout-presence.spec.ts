@@ -6,12 +6,12 @@ import { hashPasswordSync } from "../lib/password";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import {
   E2E_LOGIN_PRESENCE,
-  E2E_LOGIN_CHILD,
   E2E_MEMBER_PASSWORD,
   PRESENCE_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { hydratedClick } from "./helpers";
+import { shiftDateStr } from "@/lib/date";
 
 // Derived workout presence (issue #921), driven end-to-end:
 //   • the household presence chip (grants-scoped, active-only),
@@ -67,9 +67,11 @@ test("the workout dock hydrates for an in-progress session, suppressed on the tr
     await expect(dock).toBeVisible();
     await expect(dock).toContainText(/\d+ min/);
 
-    // The training route hosts the inline docked editor, so the bar is suppressed.
-    await page.goto("/training");
-    await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+    // The bar shows on the Log like everywhere else (#2897): the old
+    // suppression existed because live sessions docked inline in this page's
+    // column, and live never docks since #2870 step 3.
+    await page.goto("/training?tab=log");
+    await expect(page.getByTestId("workout-dock")).toBeVisible();
 
     // Back on the dashboard, tapping the bar reopens the live editor (the minimize
     // affordance proves the live overlay is up), and minimizing collapses it back.
@@ -89,7 +91,7 @@ test("a live workout raises the dock, and discarding it removes the dock", async
 }) => {
   test.slow();
   // Start a live session on the admin profile (create-and-clean, repeat-safe).
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page.getByRole("main").getByTestId("start-workout").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 
@@ -153,23 +155,6 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 });
 
-test("a restricted profile (no live workout mode) never shows the dock", async ({
-  browser,
-}) => {
-  test.slow();
-  // Riley is a child (training-restricted) — presence is never gathered, so no dock.
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_CHILD,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    await expect(page.getByTestId("workout-dock")).toHaveCount(0);
-  } finally {
-    await page.context().close();
-  }
-});
-
 // ── A COMPLETED manual log is never live (#1441) ─────────────────────────────
 //
 // "+ Log activity → Walking → Duration 30 → Done" defaults start_time to now and
@@ -202,6 +187,11 @@ test.beforeAll(() => {
       .prepare("SELECT id FROM profiles WHERE name = ?")
       .get(OWNED_PROFILE) as { id: number } | undefined;
     const profileId = existing?.id ?? createFixtureProfile(db, OWNED_PROFILE);
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+         VALUES (?, 'birthdate', '1988-01-01')
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(profileId);
     db.prepare(
       "INSERT OR IGNORE INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
     ).run(OWNED_LOGIN, hashPasswordSync(E2E_MEMBER_PASSWORD));
@@ -241,7 +231,7 @@ test.afterAll(() => {
 
 // Open the plain (non-live) create form on /training and title it.
 async function openNewActivity(page: Page, title: string) {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page
     .getByRole("main")
     .getByRole("button", { name: "New activity" })
@@ -303,20 +293,21 @@ test("a completed strength log lands in the finished window, not the live dock (
     ).toBeVisible();
 
     // Back-date Start by 40 minutes so start + a 30-minute duration ends in the
-    // PAST — the "I just finished my 13:30–14:00 session" entry. Read from the
-    // field's own pre-filled value so the arithmetic stays profile-timezone-free.
+    // PAST — the "I just finished my 13:30–14:00 session" entry. Read the form's
+    // own date and time so the arithmetic stays profile-timezone-free, including
+    // the first 40 minutes after midnight.
+    const dateField = page.locator("#activity-date");
     const startField = page.locator("#activity-start-time");
+    const currentDate = await dateField.inputValue();
     const nowValue = await startField.inputValue();
     const [h, m] = nowValue.split(":").map(Number);
     const mins = h * 60 + m;
-    // Below 00:40 local the back-date would wrap onto yesterday, which is a
-    // different `date` entirely — skip rather than assert against a wrapped clock
-    // (the date-boundary class, #1534).
-    test.skip(mins < 40, "start back-date would wrap past local midnight");
     const back = mins - 40;
+    if (back < 0) await dateField.fill(shiftDateStr(currentDate, -1));
+    const backInDay = (back + 24 * 60) % (24 * 60);
     await startField.fill(
-      `${String(Math.floor(back / 60)).padStart(2, "0")}:${String(
-        back % 60
+      `${String(Math.floor(backInDay / 60)).padStart(2, "0")}:${String(
+        backInDay % 60
       ).padStart(2, "0")}`
     );
     await page.getByTestId("activity-duration").fill("30");

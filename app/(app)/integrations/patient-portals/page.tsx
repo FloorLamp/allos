@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import {
   accessForProfile,
+  accessibleProfileIdsForLogin,
   requireSession,
   getAccessibleProfiles,
 } from "@/lib/auth";
@@ -16,6 +17,7 @@ import {
   type IdentitySyncStatus,
 } from "@/lib/portals";
 import {
+  deliveredDocumentCountsByAccount,
   listVisiblePendingIdentities,
   listVisiblePortalRegistry,
   listVisiblePortalRunReports,
@@ -78,8 +80,9 @@ export const dynamic = "force-dynamic";
 //
 // The page is household-wide and says so once; nothing on it follows the active profile
 // (the old status sentence did, so switching the header profile silently rewrote the
-// page's claim). Per-patient "Last checked" lives on the patient rows, each computed
-// against the profile that patient is actually bound to.
+// page's claim). Per-patient "Last synced" lives on the patient rows, each computed
+// against the profile that patient is actually bound to — "synced", not "checked",
+// because a delivery advances it too (#1888/#2914).
 //
 // Every read is the VIEWER's (#1796/#1875): the registry, the run reports, and the
 // pending list all narrow onto accounts claimed by a profile this login can access.
@@ -94,7 +97,11 @@ export default async function PatientPortalsPage() {
   const isAdmin = login.role === "admin";
 
   const accessible = await getAccessibleProfiles();
-  const accessibleIds = [...accessible.map((p) => p.id)];
+  // The same accessible set, in its AUTHORIZED-SET form (#2898) — minted at lib/auth's
+  // grant derivation, which is what the three scoped reads below take. This page has no
+  // ProfileScope to draw it from: it is deliberately household-wide and follows no
+  // active profile, so the login's accessible set IS its boundary.
+  const accessibleIds = accessibleProfileIdsForLogin(login.id);
   const accessibleSet = new Set(accessibleIds);
 
   // Bindings are shown for the profiles this LOGIN can reach. The stored table is
@@ -138,6 +145,13 @@ export default async function PatientPortalsPage() {
   // admin-only unclaimed clause as everything else on this page.
   const reports = listVisiblePortalRunReports(accessibleIds, isAdmin);
   const reportByAccount = new Map(reports.map((r) => [r.accountId, r]));
+  // What each login most recently DELIVERED, and the day it landed (#2914) — the count
+  // the status line names and links to Data → Review. Same scoping as the reports
+  // themselves, and read from the documents so it outlives the retention sweep.
+  const deliveredByAccount = deliveredDocumentCountsByAccount(
+    accessibleIds,
+    isAdmin
+  );
 
   // Sync requests may be raised by the same population that can act on the page at all.
   const canAct = isAdmin || writableProfiles.length > 0;
@@ -164,9 +178,9 @@ export default async function PatientPortalsPage() {
     }
   }
 
-  // Per-(login, patient) "Last checked", computed against the profile each patient is
+  // Per-(login, patient) "Last synced", computed against the profile each patient is
   // BOUND to — never the active profile. A household with two portals and three patients
-  // has six answers to "when was this last checked", and each belongs to its own row.
+  // has six answers to "when was this last synced", and each belongs to its own row.
   const mappedProfileIds = [
     ...new Set(
       identities
@@ -248,7 +262,12 @@ export default async function PatientPortalsPage() {
       name: a.name,
       implicit: a.implicit,
       hasReport: report !== null,
-      status: portalLoginStatus(report),
+      status: portalLoginStatus(
+        report && {
+          ...report,
+          delivered: deliveredByAccount.get(a.id) ?? null,
+        }
+      ),
       openRequestLine: requestLines.get(a.id) ?? null,
     };
   });

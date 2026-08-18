@@ -23,7 +23,7 @@ import { parseCcda } from "@/lib/cda";
 // An empty PersistInput with the shape the collector walks. Only the entity lists matter.
 function emptyInput(): PersistInput {
   return {
-    records: [],
+    observations: [],
     immunizations: [],
     allergies: [],
     conditions: [],
@@ -69,7 +69,7 @@ describe("collectClinicalEntryIds", () => {
     const ids = collectClinicalEntryIds(
       withIds({
         encounters: ["ccda:encounter:900001"],
-        records: ["ccda:obs:2093-3:2019-04-02:188"],
+        observations: ["ccda:obs:2093-3:2019-04-02:188"],
         conditions: ["ccda:condition:hypertension"],
       })
     );
@@ -82,11 +82,11 @@ describe("collectClinicalEntryIds", () => {
 
   it("is order-independent and de-duplicating — a reshuffled or repeated export agrees", () => {
     const a = withIds({
-      records: ["ccda:obs:a", "ccda:obs:b", "ccda:obs:c"],
+      observations: ["ccda:obs:a", "ccda:obs:b", "ccda:obs:c"],
     });
     const b = withIds({
       // Same three entries, walked in another order, with one repeated across sections.
-      records: ["ccda:obs:c", "ccda:obs:a", "ccda:obs:b", "ccda:obs:c"],
+      observations: ["ccda:obs:c", "ccda:obs:a", "ccda:obs:b", "ccda:obs:c"],
     });
     expect(collectClinicalEntryIds(a)).toEqual(collectClinicalEntryIds(b));
     expect(clinicalKeyForInput(a)).toBe(clinicalKeyForInput(b));
@@ -102,10 +102,10 @@ describe("collectClinicalEntryIds", () => {
 
   it("ignores rows with no external_id — the AI path mints none", () => {
     const input = emptyInput();
-    input.records = [
+    input.observations = [
       { external_id: null },
       { external_id: "" },
-    ] as unknown as PersistInput["records"];
+    ] as unknown as PersistInput["observations"];
     expect(collectClinicalEntryIds(input)).toEqual([]);
   });
 });

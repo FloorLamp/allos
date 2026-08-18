@@ -2,7 +2,7 @@
   "$schema": "allos-dataset/v1",
   "id": "biomarker-descriptions",
   "title": "Plain-language biomarker descriptions",
-  "description": "Plain-language educational descriptions for every canonical biomarker in lib/canonical-biomarkers.json, identity-keyed by EXACT canonical name. Each entry carries an optional abbreviation, a full_name expansion, and a 1-3 sentence description of what the marker measures and why it generally matters. General educational content, not personal interpretation. A coverage test (lib/__tests__/biomarker-descriptions.test.ts) fails the build if a canonical biomarker is added without a description here.",
+  "description": "Plain-language educational descriptions for every canonical biomarker in lib/canonical-result-definitions.json, identity-keyed by EXACT canonical name. Each entry carries an optional abbreviation, a full_name expansion, and a 1-3 sentence description of what the marker measures and why it generally matters. General educational content, not personal interpretation. A coverage test (lib/__tests__/biomarker-descriptions.test.ts) fails the build if a canonical biomarker is added without a description here.",
   "citation": [
     {
       "source": "MedlinePlus Medical Encyclopedia (U.S. National Library of Medicine)",

@@ -1,9 +1,9 @@
-// DB INTEGRATION TIER — the supplement priority lifecycle (#1505), all three parts
+// DB INTEGRATION TIER — the supplement obligation lifecycle (#1505), all three parts
 // where they can actually be SEEN:
 //
-//   Part 1  the ONE shared push predicate's REACH: a low-priority supplement is off
+//   Part 1  the ONE shared push predicate's REACH: a `may` supplement is off
 //           Upcoming (and so off the hero/aggregate/digest) and off the refill nudge,
-//           while still tracked on the page and in the adherence fraction. A low
+//           while still tracked on the page and in the adherence fraction. A `may`
 //           MEDICATION is exempt everywhere, and the safety tier (an interaction
 //           warning with a low member) is untouched.
 //   Part 2  the demotion-suggestion builder end-to-end from a realistic ledger,
@@ -41,7 +41,7 @@ import {
   getSituationEvents,
   getTimezone,
 } from "@/lib/settings";
-import { supplementAdherenceToday } from "@/lib/household";
+import { intakeAdherenceToday } from "@/lib/household";
 import { isDueOn } from "@/lib/intake-schedule";
 import {
   adherenceSummary,
@@ -53,7 +53,7 @@ import {
   buildDemotionSuggestionFindings,
   demotionCandidateItemIds,
 } from "@/lib/rule-findings";
-import { buildSupplementReminder } from "@/lib/notifications/supplements";
+import { buildIntakeReminder } from "@/lib/notifications/intake";
 import { activeFindings } from "@/lib/findings";
 import { dismissFinding, getFindingSuppressions } from "@/lib/queries";
 import { demoteIntakeObligation } from "@/lib/intake-obligation-write";
@@ -175,7 +175,7 @@ describe("#1505 part 1 — a `may` item is tracked, never pushed", () => {
 
     // The adherence x/y counts ONLY the pushed tier now (#1505): a `may` item has no
     // occurrences, so it cannot drag an honest fraction down.
-    const adherence = supplementAdherenceToday(
+    const adherence = intakeAdherenceToday(
       getIntakeDoses(p),
       new Map(
         getIntakeItems(p)
@@ -363,7 +363,7 @@ describe("#1505 part 2 — the demotion suggestion builder", () => {
 
     // The reminder carries ⤓ May for the candidate and NOT for the steady item —
     // ride-the-nag, zero extra sends.
-    const msg = buildSupplementReminder(p, "Morning");
+    const msg = buildIntakeReminder(p, "Morning");
     expect(msg).not.toBeNull();
     const demoteButtons = (msg!.actions ?? []).filter((a) =>
       a.data?.startsWith("demote:")
@@ -418,7 +418,7 @@ describe("#1505 part 3 — the digest reports state changes", () => {
     // The gather carries the STRUCTURED deltas (#1819 item 6); the line is the same
     // shared formatter every digest channel renders them through.
     const line = intakeDeltaLine(input.intakeDeltas!);
-    expect(line).toBe("Missed: Magnesium (test) (3 days)");
+    expect(line).toBe("Missed: Magnesium (test) for 3 days");
     // The `may` item's identical log history is NOT news: it has no dueness, so it
     // has no misses, so there is no state change to report. Its administrations are
     // still in the ledger — this is a reporting boundary, not a data one.
@@ -437,7 +437,7 @@ describe("#1505 part 3 — the digest reports state changes", () => {
 
     const input = gatherDigestInput(p, "Deltas Resumed (test)");
     expect(intakeDeltaLine(input.intakeDeltas!)).toBe(
-      "Resumed: Vitamin D (test) (3 days)"
+      "Resumed: Vitamin D (test) for 3 days"
     );
   });
 
@@ -698,5 +698,49 @@ describe("#2419 — a collapsed row can be LOGGED, and logging changes nothing e
     );
     // …and the tap landed in the ledger.
     expect(getIntakeDoseHistory(p, itemId, day)).toHaveLength(1);
+  });
+});
+
+// ---- Part 5 (#2579-F): the offer's own phrase, in both shapes ---------------
+
+describe("#2579-F — an offer states its qualifier for a chip and for a sentence", () => {
+  it("composes the row phrase and the chip fragment from the same pieces", () => {
+    // Upcoming renders an offer as a CHIP whose text is the item's own name, so the
+    // qualifier has to be available WITHOUT the leading "Available" — and the two must
+    // be one composition, not a renderer slicing the other apart. Read against the
+    // real schema because the qualifier is assembled from the item's stored slot and
+    // its cadence.
+    const p = createProfile("Offer Hint (test)");
+    const day = today(p);
+    seedItem(p, "Chamomile (test)", { obligation: "may" });
+
+    const offer = offeredItems(p, day).find(
+      (i) => i.title === "Chamomile (test)"
+    );
+    expect(offer).toBeDefined();
+    // The dose is seeded in the morning slot, so the qualifier is that slot and
+    // nothing else — a daily item states no cadence.
+    expect(offer!.offerHint).toBe("Morning");
+    expect(offer!.dueText).toBe("Available · Morning");
+  });
+
+  it("says nothing rather than something empty when there is no slot to name", () => {
+    // An item with no dose has no slot and no cadence. The chip is then just the
+    // item's name, and the row phrase is just "Available" — never a dangling
+    // separator, which is what a blank-string hint would have produced.
+    const p = createProfile("Offer Hint Bare (test)");
+    const day = today(p);
+    const { itemId } = seedItem(p, "Bare Offer (test)", { obligation: "may" });
+    db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(itemId);
+
+    const offer = offeredItems(p, day).find(
+      (i) => i.title === "Bare Offer (test)"
+    );
+    expect(offer).toBeDefined();
+    expect(offer!.offerHint).toBeNull();
+    expect(offer!.dueText).toBe("Available");
+    // No dose ⇒ nothing to log, so the page renders this one as a plain link chip
+    // rather than dropping it: an offer that vanished would read as a deletion.
+    expect(offer!.doseId).toBeUndefined();
   });
 });

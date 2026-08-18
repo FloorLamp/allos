@@ -361,13 +361,10 @@ export function isBioAgeAgeInput(e: PhenoAgeInputEffect): boolean {
 
 // ── Adult gate ────────────────────────────────────────────────────────────────
 
-// Hidden for CHILD profiles — the card gates on exactly the adult floor the
-// computation uses (PhenoAge is an adult population model). An UNKNOWN age is never
-// hidden: we hide on a positive under-age match, not on missing data (an unknown-age
-// adult can still see the import checklist). This is the inverse of the shared
-// adult-clinical predicate (lib/life-stage) — `isAdultForClinical` is false for both
-// a child AND an unknown age, so the "hidden" answer must additionally require a
-// KNOWN age to preserve the show-on-unknown policy.
+// Hidden for a KNOWN minor. Unknown age stays eligible for the Results checklist:
+// that surface shows which inputs are present/missing, never a PhenoAge number.
+// Adult-population outputs independently require isAdultForClinical at their model
+// or route boundary (for example Longevity and its healthspan pillars).
 export function isBioAgeHiddenForAge(age: number | null): boolean {
   return age != null && !isAdultForClinical(age);
 }
@@ -382,13 +379,14 @@ export function isBioAgeHiddenForAge(age: number | null): boolean {
 // ONE decision shared by both bio-age surfaces, which since #2367 render DIFFERENT
 // parts of it on different pages: the Longevity §1 hero
 // (app/(app)/longevity/BioAgeSection.tsx) renders the "hero" state only — the number
-// is a longevity index and belongs on exactly one page — while the Biomarkers-page
+// is a longevity index and belongs on exactly one page — while the Clinical-results-page
 // input panel (app/(app)/results/BioAgeInputsCard.tsx) renders on BOTH non-hidden
 // states, because "which analytes does this still need" is a question about the
 // catalog and the answer is useful whether or not the panel is complete. The states
 // come from here rather than from either page, so the two can never disagree about
 // whether bio-age renders at all. `hiddenForProfile` is the caller's combined gate
-// (isBioAgeHiddenForAge + any surface-level restriction like the training age gate).
+// (`isBioAgeHiddenForAge` for the Results checklist; adult-only callers may add
+// their own content-class boundary).
 export type BioAgeSurface = "hidden" | "checklist" | "hero";
 
 export function bioAgeSurface(

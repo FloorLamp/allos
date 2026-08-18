@@ -7,13 +7,13 @@ import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 import { markTaken } from "@/app/(app)/upcoming/actions";
 import type { QuickEntryDose } from "@/app/(app)/quick-entry-actions";
 
-// The quick-entry overlay's DOSE form (issue #1468): today's due doses, each with
-// a confirm.
+// The quick-entry overlay's DOSE form (issue #1468): doses whose declared slot
+// has arrived today, each with a confirm.
 //
 // It is a thin LIST over an existing write path, not a new one. The rows come
-// from the same `collectHouseholdRollup` due-dose computation the household card
-// and the medications strip read (gathered in quick-entry-actions.ts), and the
-// confirm posts the EXISTING `markTaken` action — the same idempotent
+// from the same `collectDueDosesNow` computation the context chip reads (gathered
+// in quick-entry-actions.ts), and the confirm posts the EXISTING `markTaken`
+// action — the same idempotent
 // markDoseTaken the Upcoming page's inline form, the dashboard hero and the
 // Telegram tap all go through. Nothing here logs a dose itself.
 //

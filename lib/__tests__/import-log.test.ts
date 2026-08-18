@@ -81,11 +81,13 @@ describe("documentFormatLabel", () => {
 });
 
 describe("job labels", () => {
-  it("titles and formats workouts/biomarkers", () => {
+  it("titles and formats workout/clinical-result imports", () => {
     expect(jobTitle("workouts")).toBe("Pasted workouts");
-    expect(jobTitle("biomarkers")).toBe("Pasted labs");
-    expect(jobFormatLabel("workouts")).toContain("Workouts");
-    expect(jobFormatLabel("biomarkers")).toContain("Biomarkers");
+    expect(jobTitle("clinical-results")).toBe("Pasted clinical results");
+    expect(jobFormatLabel("workouts")).toBe("Workouts (paste/CSV)");
+    expect(jobFormatLabel("clinical-results")).toBe(
+      "Clinical results (paste/CSV)"
+    );
   });
 });
 

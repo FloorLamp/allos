@@ -216,7 +216,7 @@ real zeros. Training volume is the second kind, and its line drew a slope across
 rest days that had no training in them at all — a sawtooth that reads as noise
 at tile width. So the sparkline has a bar twin (`BarSparkline`, registered in
 the scan's form inventory), and **which series get it is one pure decision** —
-`lib/trend-sparkline.ts`, keyed on the shared `metric:` / `bio:` series
+`lib/trend-sparkline.ts`, keyed on the shared `metric:` / `result:` series
 vocabulary, with a short justified list rather than a runtime "does it
 oscillate?" heuristic (a mark that changed shape as you moved the range would be
 worse than one that is occasionally conservative). The mark's own styling is a
@@ -306,7 +306,7 @@ bars; `lib/day-fill.ts` is its day-grain twin.
   `MAX_FILL_DAYS` degrades to the raw series rather than truncating one.
 
 **The gap is a per-SERIES declaration, not a per-surface prop.** It lives beside
-the mark decision in `lib/trend-sparkline.ts`, on the same `metric:` / `bio:`
+the mark decision in `lib/trend-sparkline.ts`, on the same `metric:` / `result:`
 vocabulary — the mark follows the data, and so does the gap. A surface passes
 `gapFill={{ seriesKey, from, to }}`; the card looks the policy up. That is what
 keeps the Body card, the tile and the metric detail page from disagreeing about
@@ -318,7 +318,7 @@ whether a missing steps day is a zero.
 | `break`     | `null` | no       | per-night / per-day READINGS — sleep duration, sleep stages, sleep regularity, the Oura scores                                                                                            |
 | `slot-zero` | `0`    | —        | per-day TOTALS whose missing day is a real zero — training volume (a rest day)                                                                                                            |
 | `slot-null` | `null` | no       | per-day TOTALS that were NOT measured — steps, active calories, sun minutes, intake calories, macros/fiber                                                                                |
-| `exempt`    | —      | —        | every `bio:` series: lab draws are sparse by nature, and 365 mostly-null categories around three draws degrade the tile for no honesty gain                                               |
+| `exempt`    | —      | —        | every `result:` series: lab draws are sparse by nature, and 365 mostly-null categories around three draws degrade the tile for no honesty gain                                            |
 
 A level bridges because the quantity exists on the days you didn't sample it;
 what densification buys it is honest calendar-PROPORTIONAL spacing (two weigh-ins
@@ -366,7 +366,7 @@ to hide the line: it is to draw it at the confidence it earns.
 **The floor is a per-SERIES declaration, beside the gap.** `METRIC_CONTINUITY_DAYS`
 in `lib/trend-sparkline.ts` gives every series a **continuity span** — the longest
 interval between two consecutive readings across which that quantity's stroke is
-still a fair interpolation — on the same `metric:` / `bio:` vocabulary, in named
+still a fair interpolation — on the same `metric:` / `result:` vocabulary, in named
 tiers rather than 30 loose integers:
 
 | Tier     | Span | Series                                                                                                                                                                    |
@@ -376,7 +376,7 @@ tiers rather than 30 loose integers:
 | habit    | 60d  | a scale step-on or a tape — weight, body fat, BMI, lean/bone mass, BMR, waist circumference                                                                               |
 | episodic | 365d | picked up when there is a reason — blood pressure, SpO₂, respiratory rate                                                                                                 |
 | slow     | 730d | moves over seasons and years — height, head circumference                                                                                                                 |
-| lab      | 540d | the whole `bio:` namespace, one number for an open vocabulary                                                                                                             |
+| lab      | 540d | the whole `result:` namespace, one number for an open vocabulary                                                                                                          |
 
 **The measure is the MEDIAN interval, never a rate.** "Readings per year" cannot
 tell a sparse series from a dense one with an outage: ten daily weigh-ins followed
@@ -474,7 +474,7 @@ at once:
   chart (training volume, macros, zone minutes) points at the existing
   full-depth surface its bars are summed from, named at the call site. A chart of
   a stored clinical READING (a biomarker or a vital) uses
-  `readingDetailHref(canonicalName)` instead, which picks the surface by cadence
+  `clinicalResultDetailHref(canonicalName)` instead, which picks the surface by cadence
   (#1932) — never `metricDetailHref` directly, or the two link lanes could
   disagree about where one reading opens.
 - **The plot height.** The card owns it — square below `sm`, `plotHeightClass`

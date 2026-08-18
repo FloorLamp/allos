@@ -213,9 +213,14 @@ describe("FLOW_KINDS", () => {
       "set",
       // Additive food quick-adds (#1596): a food-group serving or protein grams.
       "food",
-      // Mobility move tapped ON (#2130): set semantics per (profile, date, move),
-      // the coverage record's newest member — its ON tap is a pure capture.
+      // Mobility move tapped ON (#2130): set semantics per (profile, date, move) —
+      // its ON tap is a pure capture.
       "mobility",
+      // Practice session (#2908): the coverage record's newest member, and the one
+      // that arrived by AMENDING an argued exclusion rather than by being new. It is
+      // DAY-idempotent per (profile, practice-identity, date), which is what answers
+      // #2130's "a replay could double-log a day" objection.
+      "practice",
     ]);
   });
 });
@@ -428,10 +433,6 @@ describe("classifySetReplay (honoring the typed outcome, #1596)", () => {
   });
 
   it("rejects every refusal with a human reason — never a silent drop", () => {
-    const restricted = classifySetReplay({ ok: false, reason: "restricted" });
-    expect(restricted.status).toBe("rejected");
-    expect(restricted.reason).toMatch(/isn't available for this profile/i);
-
     const invalid = classifySetReplay({ ok: false, reason: "invalid" });
     expect(invalid.status).toBe("rejected");
     expect(invalid.reason).toMatch(/couldn't be validated/i);
@@ -441,6 +442,13 @@ describe("classifySetReplay (honoring the typed outcome, #1596)", () => {
     const notOwned = classifySetReplay({ ok: false, reason: "not-owned" });
     expect(notOwned.status).toBe("rejected");
     expect(notOwned.reason).toBeTruthy();
+
+    const ageGated = classifySetReplay({
+      ok: false,
+      reason: "strength-unavailable",
+    });
+    expect(ageGated.status).toBe("rejected");
+    expect(ageGated.reason).toMatch(/profile's age/i);
   });
 });
 

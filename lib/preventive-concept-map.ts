@@ -5,7 +5,7 @@ import type { PreventiveKind } from "./preventive-catalog";
 // colonoscopy arrives as CPT 45378, a SNOMED code, or a typed-in "Screening
 // colonoscopy" string — so a per-rule bundle of code sets + name synonyms maps
 // any of those onto a stable catalog rule key. This is the same committed-data
-// pattern `lib/canonical-biomarkers.json` uses for lab names, kept here as a
+// pattern `lib/canonical-result-definitions.json` uses for lab names, kept here as a
 // typed module alongside the catalog it references (`lib/preventive-catalog.ts`).
 //
 // DETERMINISTIC and CONSERVATIVE by design (issue #86 constraints): only clear,
@@ -36,7 +36,7 @@ export type InstrumentPage =
 // per-class deep link + CTA copy on the Upcoming row, the page, AND the nudge so
 // all three say the identical thing (#1083, #221). Only kind:"screening" matchers
 // carry one; kind:"visit" rules keep the existing Book path. Replaces the fragile
-// `canonicalBiomarkers.length > 0` guess (wrong for the instrument/vital classes
+// `canonicalResultNames.length > 0` guess (wrong for the instrument/vital classes
 // #1076 moved off the biomarker surface).
 export type ScreeningSatisfiedBy =
   // A validated screening instrument taken/entered in-app. `instrument` is the
@@ -51,7 +51,7 @@ export type ScreeningSatisfiedBy =
       entry: "in-app" | "total-only";
     }
   // A lab result. `primary` is the canonical biomarker the add-form deep link
-  // prefills (`/results/readings?new=1&name=<primary>`, #662); absent when no
+  // prefills (`/results/clinical-results?new=1&name=<primary>`, #662); absent when no
   // tracked biomarker exists (e.g. hepatitis C) → the add form opens unprefilled.
   | { kind: "lab"; primary?: string }
   // A self-recordable vital — a recorded reading IS the screening. Links to the
@@ -75,9 +75,9 @@ export interface ConceptMatcher {
   // Whole-word name/title/description synonyms, matched against normalized text.
   // Keep these specific to the screening/visit itself.
   names: string[];
-  // Exact canonical biomarker names (lib/canonical-biomarkers.json) whose presence
+  // Exact canonical biomarker names (lib/canonical-result-definitions.json) whose presence
   // as a result satisfies a lab-based screening. Empty for non-lab rules.
-  canonicalBiomarkers: string[];
+  canonicalResultNames: string[];
   // What satisfies this screening — drives its deep link + CTA (#1083). REQUIRED for
   // every kind:"screening" matcher (asserted by preventive-inference.test.ts); absent
   // on kind:"visit" rules, which keep the existing Book path.
@@ -110,7 +110,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "174184006", // SNOMED diagnostic endoscopic examination on colon
     ],
     names: ["colonoscopy"],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
     satisfiedBy: { kind: "procedure", procedure: "Colonoscopy" },
   },
   {
@@ -126,7 +126,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "241055006", // SNOMED screening mammography
     ],
     names: ["mammogram", "mammography"],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
     satisfiedBy: { kind: "procedure", procedure: "Mammogram" },
   },
   {
@@ -167,7 +167,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "hpv test",
       "hpv screening",
     ],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
     satisfiedBy: { kind: "procedure", procedure: "Pap smear" },
   },
   {
@@ -187,7 +187,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "bone densitometry",
       "dual energy x ray absorptiometry",
     ],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
     satisfiedBy: { kind: "procedure", procedure: "DEXA scan" },
   },
   {
@@ -201,7 +201,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "84478", // CPT triglycerides
     ],
     names: ["lipid panel", "lipid profile", "cholesterol panel"],
-    canonicalBiomarkers: [
+    canonicalResultNames: [
       "Total Cholesterol",
       "LDL Cholesterol",
       "HDL Cholesterol",
@@ -228,7 +228,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "fasting blood glucose",
       "oral glucose tolerance",
     ],
-    canonicalBiomarkers: ["Hemoglobin A1c", "Glucose"],
+    canonicalResultNames: ["Hemoglobin A1c", "Glucose"],
     satisfiedBy: { kind: "lab", primary: "Hemoglobin A1c" },
   },
   {
@@ -265,7 +265,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     ],
     // A recorded PHQ-9 SCORE (the biomarker-shaped instrument reading, #716) is
     // stronger evidence than a bare coded screen, so it satisfies the screening too.
-    canonicalBiomarkers: ["PHQ-9"],
+    canonicalResultNames: ["PHQ-9"],
     satisfiedBy: {
       kind: "instrument",
       instrument: "PHQ-9",
@@ -296,7 +296,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "psychologist",
       "behavioral health",
     ],
-    canonicalBiomarkers: ["GAD-7"],
+    canonicalResultNames: ["GAD-7"],
     satisfiedBy: {
       kind: "instrument",
       instrument: "GAD-7",
@@ -325,7 +325,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "audit c",
       "alcohol use disorders identification test",
     ],
-    canonicalBiomarkers: ["AUDIT-C", "AUDIT"],
+    canonicalResultNames: ["AUDIT-C", "AUDIT"],
     // Deep-links to the in-app AUDIT-C (the substance-use page's default) — AUDIT is
     // total-only, so the actionable next step is the administrable AUDIT-C.
     satisfiedBy: {
@@ -350,7 +350,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dast 10",
       "dast",
     ],
-    canonicalBiomarkers: ["DAST-10"],
+    canonicalResultNames: ["DAST-10"],
     // DAST-10 is in-app since #1085 (the owner-reversed #998 licensing call — see
     // lib/substance-use.ts), so the CTA verb is "Complete the DAST-10".
     satisfiedBy: {
@@ -378,7 +378,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "hepatitis c rna",
       "hcv rna",
     ],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
     // A blood test, but no tracked HCV biomarker — the add form opens unprefilled.
     satisfiedBy: { kind: "lab" },
   },
@@ -390,7 +390,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     // re-surfaces yearly, so a stale reading never suppresses the reminder for long.
     codes: [],
     names: ["blood pressure"],
-    canonicalBiomarkers: [
+    canonicalResultNames: [
       "Blood Pressure Systolic",
       "Blood Pressure Diastolic",
     ],
@@ -422,7 +422,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "annual check up",
       "periodic health exam",
     ],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
   },
   {
     ruleKey: "dental_cleaning",
@@ -442,7 +442,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dental prophylaxis",
       "dentist",
     ],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
   },
   {
     ruleKey: "vision_exam",
@@ -463,7 +463,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "ophthalmological",
       "ophthalmologist",
     ],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
   },
   {
     // Hearing screening (issue #713): a recorded audiometry/audiogram or an audiology
@@ -491,7 +491,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "audiologist",
       "pure tone audiometry",
     ],
-    canonicalBiomarkers: [
+    canonicalResultNames: [
       "Hearing Threshold, Right Ear 1 kHz",
       "Hearing Threshold, Left Ear 1 kHz",
       "Hearing Threshold, Right Ear 4 kHz",
@@ -516,6 +516,6 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dermatology",
       "dermatologist",
     ],
-    canonicalBiomarkers: [],
+    canonicalResultNames: [],
   },
 ];

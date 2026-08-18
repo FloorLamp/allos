@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { dismissToast, settledClick } from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { shiftDateStr } from "@/lib/date";
@@ -55,11 +55,11 @@ function cleanup(): void {
       "DELETE FROM upcoming_dismissals WHERE profile_id = 1 AND signal_key = 'food-reduce:ldl-apob'"
     ).run();
     db.prepare(
-      "DELETE FROM food_log WHERE profile_id = 1 AND group_key = ? AND date >= ?"
+      "DELETE FROM food_daily_totals WHERE profile_id = 1 AND group_key = ? AND date >= ?"
     ).run(GROUP, COLLECTED);
     for (const row of priorRows) {
       db.prepare(
-        `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (1, ?, ?, ?)
+        `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (1, ?, ?, ?)
          ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
       ).run(row.date, GROUP, row.servings);
     }
@@ -74,12 +74,12 @@ function seed(): void {
   try {
     priorRows = db
       .prepare(
-        "SELECT date, servings FROM food_log WHERE profile_id = 1 AND group_key = ? AND date >= ?"
+        "SELECT date, servings FROM food_daily_totals WHERE profile_id = 1 AND group_key = ? AND date >= ?"
       )
       .all(GROUP, COLLECTED) as { date: string; servings: number }[];
     // Nothing logged since the reading — the state the note is armed in.
     db.prepare(
-      "DELETE FROM food_log WHERE profile_id = 1 AND group_key = ? AND date >= ?"
+      "DELETE FROM food_daily_totals WHERE profile_id = 1 AND group_key = ? AND date >= ?"
     ).run(GROUP, COLLECTED);
     seededReadingId = Number(
       db
@@ -142,8 +142,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
 
     // The gate that makes this tolerable on a one-tap bar: at most one note per group
     // per day. The second tap logs and says nothing.
-    await toast.getByRole("button", { name: "Dismiss" }).click();
-    await expect(toast).toHaveCount(0);
+    await dismissToast(page, "foods to limit");
     // The reload is load-bearing twice over. It clears the #2007 post-success cooldown,
     // without which a second tap of the SAME write key is absorbed as an accidental
     // double and never reaches the server at all; and it proves the once-a-day gate is

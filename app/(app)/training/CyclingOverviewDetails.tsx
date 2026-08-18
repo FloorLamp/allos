@@ -11,7 +11,7 @@ import {
 } from "@/lib/format-date";
 import { cyclingRideHref, type CyclingLens } from "@/lib/hrefs";
 import type { CyclingOverviewData } from "@/lib/queries";
-import { rideZoneRows } from "@/lib/ride-detail";
+import { sessionZoneRows } from "@/lib/session-detail";
 import type { DistanceUnit } from "@/lib/settings";
 import { ZONE_COLORS } from "@/lib/training-zones";
 import { fmtDistance, fmtKmh } from "@/lib/units";
@@ -85,7 +85,7 @@ export default function CyclingOverviewDetails({
   lens: CyclingLens;
 }) {
   const { rollup } = data;
-  const zones = data.zoneMinutes ? rideZoneRows(data.zoneMinutes) : [];
+  const zones = data.zoneMinutes ? sessionZoneRows(data.zoneMinutes) : [];
   const zoneTotal = zones.reduce((sum, zone) => sum + zone.minutes, 0);
   const totalLoad = data.loadPoints.reduce(
     (sum, point) => sum + point.trainingLoad,
@@ -109,7 +109,7 @@ export default function CyclingOverviewDetails({
             <dl className="mt-4 grid grid-cols-2 gap-3">
               <StatBox
                 label={data.indoorOnly ? "Sessions" : "Rides"}
-                value={String(rollup.totals.rides)}
+                value={String(rollup.totals.sessions)}
               />
               <StatBox
                 label="Distance"
@@ -164,7 +164,7 @@ export default function CyclingOverviewDetails({
                         </span>
                       </span>
                       <Link
-                        href={cyclingRideHref(record.rideId, lens)}
+                        href={cyclingRideHref(record.activityId, lens)}
                         className="shrink-0 text-sm font-semibold tabular-nums text-brand-700 hover:underline dark:text-brand-300"
                       >
                         {recordValue(record.key, record.value, distanceUnit)}
@@ -199,7 +199,7 @@ export default function CyclingOverviewDetails({
             <dl className="mt-4 grid grid-cols-2 gap-3">
               <StatBox
                 label={data.indoorOnly ? "Sessions" : "Rides"}
-                value={String(rollup.recent.rides)}
+                value={String(rollup.recent.sessions)}
               />
               <StatBox
                 label="Distance"
@@ -268,23 +268,23 @@ export default function CyclingOverviewDetails({
               {data.distribution.months.map((month) => {
                 const maxRate = Math.max(
                   ...data.distribution.months.map(
-                    (candidate) => candidate.ridesPerObservedMonth
+                    (candidate) => candidate.sessionsPerObservedMonth
                   ),
                   1
                 );
                 const height =
                   month.observedMonths === 0
                     ? 0
-                    : month.ridesPerObservedMonth === 0
+                    : month.sessionsPerObservedMonth === 0
                       ? 2
                       : Math.max(
                           8,
-                          (month.ridesPerObservedMonth / maxRate) * 100
+                          (month.sessionsPerObservedMonth / maxRate) * 100
                         );
                 const description =
                   month.observedMonths === 0
                     ? `${month.label}: outside recorded history`
-                    : `${month.label}: ${month.rides} ${month.rides === 1 ? noun : plural} across ${month.observedMonths} observed ${month.label}s`;
+                    : `${month.label}: ${month.sessions} ${month.sessions === 1 ? noun : plural} across ${month.observedMonths} observed ${month.label}s`;
                 return (
                   <div
                     key={month.month}
@@ -293,7 +293,7 @@ export default function CyclingOverviewDetails({
                     aria-label={description}
                   >
                     <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
-                      {month.observedMonths > 0 ? month.rides : ""}
+                      {month.observedMonths > 0 ? month.sessions : ""}
                     </span>
                     <span className="flex h-24 w-full items-end justify-center rounded-xs bg-slate-100 dark:bg-ink-800">
                       {month.observedMonths > 0 ? (
@@ -336,10 +336,10 @@ export default function CyclingOverviewDetails({
                 <StatBox
                   key={season.key}
                   label={season.label}
-                  value={String(season.rides)}
+                  value={String(season.sessions)}
                   sub={
                     season.observedMonths > 0
-                      ? `${season.ridesPerObservedMonth}/month · ${season.percent}% of ${plural}`
+                      ? `${season.sessionsPerObservedMonth}/month · ${season.percent}% of ${plural}`
                       : "Not observed yet"
                   }
                 />
@@ -372,7 +372,8 @@ export default function CyclingOverviewDetails({
                 {data.distribution.weather.coverageDays > 0 ? (
                   <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
                     {data.distribution.weather.coverageDays} weather days ·{" "}
-                    {data.distribution.weather.coveredRideDays} covered ride
+                    {data.distribution.weather.coveredSessionDays} covered{" "}
+                    {noun}
                     days
                   </span>
                 ) : null}
@@ -396,21 +397,21 @@ export default function CyclingOverviewDetails({
                           {condition.label}
                         </dt>
                         <dd className="mt-1 text-xl font-semibold tabular-nums text-slate-900 dark:text-white">
-                          {condition.rideDayRate}%
+                          {condition.sessionDayRate}%
                         </dd>
                         <dd className="mt-0.5 text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                          {condition.rideDays} ride days /{" "}
+                          {condition.sessionDays} {noun} days /{" "}
                           {condition.availableDays} available
                         </dd>
                       </div>
                     ))}
                   </dl>
                   {data.distribution.weather.temperatureBands.some(
-                    (band) => band.rideDays > 0
+                    (band) => band.sessionDays > 0
                   ) ? (
                     <div className="mt-4">
                       <h4 className="section-label">
-                        Daily high on covered ride days
+                        Daily high on covered {noun} days
                       </h4>
                       <ul className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
                         {data.distribution.weather.temperatureBands.map(
@@ -423,7 +424,7 @@ export default function CyclingOverviewDetails({
                                 {band.label}
                               </span>
                               <span className="font-semibold tabular-nums text-slate-900 dark:text-white">
-                                {band.rideDays} · {band.percent}%
+                                {band.sessionDays} · {band.percent}%
                               </span>
                             </li>
                           )

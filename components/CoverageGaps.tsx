@@ -11,7 +11,7 @@ import {
   IconCircleCheck,
 } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import type {
   CoverageGap,
   CoverageGapCandidate,
@@ -163,7 +163,7 @@ function DeclinedRow({ item }: { item: DeclinedCoverageItem }) {
       </p>
       {item.declaration.kind === "covered-elsewhere" && (
         <Link
-          href={readingDetailHref(item.declaration.instead)}
+          href={clinicalResultDetailHref(item.declaration.instead)}
           data-testid="coverage-declined-instead"
           className="mt-0.5 inline-block text-xs text-brand-700 hover:underline dark:text-brand-400"
         >

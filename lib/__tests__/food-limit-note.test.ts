@@ -107,6 +107,7 @@ describe("the curated limits come from the engine, never a second copy", () => {
           label: "X",
           direction: "reduce",
           dedupeKey: "food-reduce:x",
+          side: "high",
           triggeredBy: ["Whatever"],
           foods: [
             {

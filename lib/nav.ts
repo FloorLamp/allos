@@ -56,8 +56,8 @@ export function navParentFor(pathname: string): string | null {
 
 // True when `href` should be treated as the active route for the current
 // `pathname`. The dashboard ("/") matches exactly so it isn't lit up on every
-// page; every other entry matches by prefix so nested routes (e.g.
-// /biomarkers/123) still highlight their parent nav item. A registry route in
+// page; every other entry matches by prefix so nested routes still highlight
+// their parent nav item. A registry route in
 // NAV_PARENT_ROUTES delegates entirely to its declared parent — exactly one entry
 // lights up, and it is never the child's own (the child has no nav row).
 export function isRouteActive(href: string, pathname: string): boolean {
@@ -84,9 +84,8 @@ import type { NavRelevance, NavRelevanceKey } from "./nav-relevance";
 //     (issue #31) — the Household cross-profile overview is meaningless with one
 //     profile, so a single-profile login (member or one-profile instance) never
 //     sees it while any login granted 2+ profiles does.
-//   - age-gate: hidden when the active profile is age-restricted AND the href is
-//     in the caller's restricted set (see lib/age-gate.ts / Nav's
-//     RESTRICTED_HREFS).
+//   - `adultOnlyHrefs`: hidden when the active profile is not a known adult.
+//     The destination independently enforces the same life-stage boundary.
 //   - `requiresFoodLogging`: gates the Nutrition entry for an infant profile
 //     (< 1 y). Since #746 Nutrition is a Food | Supplements umbrella, and infant
 //     supplements are real (vitamin D drops) even though the food-group serving
@@ -96,6 +95,8 @@ import type { NavRelevance, NavRelevanceKey } from "./nav-relevance";
 //     still shows the calm note there), and the Supplements tab is always
 //     reachable. Eligible on unknown age (hide only on a positive infant match
 //     AND no intake items).
+//   - `requiresTraining`: hides the workout product through early childhood.
+//     Existing activity records remain reachable through record-level links.
 //   - `relevanceKey`: hidden when the server-resolved relevance bitset
 //     (lib/nav-relevance.ts, issue #1042) reads false for that key — the
 //     data/life-stage gate for the Cycle entry and the data-presence gate for
@@ -107,20 +108,23 @@ export function isNavLeafVisible(
     adminOnly?: boolean;
     requiresMultiProfile?: boolean;
     requiresFoodLogging?: boolean;
+    requiresTraining?: boolean;
     relevanceKey?: NavRelevanceKey;
   },
   ctx: {
     isAdmin: boolean;
-    restricted: boolean;
+    adultContentAvailable: boolean;
     multiProfile: boolean;
     foodLoggingRelevant: boolean;
     hasIntakeItems: boolean;
+    trainingRelevant?: boolean;
     relevance: NavRelevance;
-    restrictedHrefs: ReadonlySet<string>;
+    adultOnlyHrefs: ReadonlySet<string>;
   }
 ): boolean {
   if (leaf.adminOnly && !ctx.isAdmin) return false;
   if (leaf.requiresMultiProfile && !ctx.multiProfile) return false;
+  if (leaf.requiresTraining && ctx.trainingRelevant === false) return false;
   if (leaf.relevanceKey && !ctx.relevance[leaf.relevanceKey]) return false;
   if (
     leaf.requiresFoodLogging &&
@@ -128,6 +132,8 @@ export function isNavLeafVisible(
     !ctx.hasIntakeItems
   )
     return false;
-  if (ctx.restricted && ctx.restrictedHrefs.has(leaf.href)) return false;
+  if (!ctx.adultContentAvailable && ctx.adultOnlyHrefs.has(leaf.href)) {
+    return false;
+  }
   return true;
 }

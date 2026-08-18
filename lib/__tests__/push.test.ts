@@ -85,9 +85,9 @@ describe("push-core: parsePushSubscription", () => {
 
 describe("push-core: buildPushPayload", () => {
   it("packs title, body and a default deep link", () => {
-    const json = buildPushPayload({ title: "Morning supps", body: "Take 2" });
+    const json = buildPushPayload({ title: "Morning doses", body: "Take 2" });
     expect(JSON.parse(json)).toEqual({
-      title: "Morning supps",
+      title: "Morning doses",
       body: "Take 2",
       url: DEFAULT_PUSH_URL,
     });

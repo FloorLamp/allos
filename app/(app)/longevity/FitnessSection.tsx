@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { isLongevityRelevant } from "@/lib/life-stage";
+import { getProfileAge } from "@/lib/settings";
 import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
 import type { LongevitySection } from "@/lib/longevity";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
@@ -7,7 +9,7 @@ import PillarStat from "./PillarStat";
 
 // Longevity §2 — Fitness-check percentiles (#1042 phase 4): a READ view over
 // fitness_assessments. The numbers all come from the ONE existing pure model
-// (buildFitnessCheckModel — the same computation /training?tab=fitness renders,
+// (buildFitnessCheckModel — the same computation /training/fitness-check renders,
 // percentiles from lib/fitness-norms), never a forked engine; recording a check
 // stays on the Training tab, which "Run a fitness check" deep-links into. The
 // section's headline stats are the fitness pillars (vo2max/strength) — the SAME
@@ -25,6 +27,7 @@ export default async function FitnessSection({
   section: LongevitySection;
 }) {
   const { profile } = await requireSession();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return null;
   const { model } = assembleFitnessCheckModel(profile.id);
 
   return (
@@ -38,7 +41,7 @@ export default async function FitnessSection({
           {section.title}
         </h2>
         <Link
-          href="/training?tab=fitness"
+          href="/training/fitness-check"
           className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
           data-testid="longevity-run-check"
         >

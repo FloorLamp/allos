@@ -63,10 +63,10 @@ beforeAll(() => {
 });
 
 describe("canonical-flags version gate (pediatric re-derivation)", () => {
-  it("seeds the ALP age band into canonical_biomarkers on boot", () => {
+  it("seeds the ALP age band into canonical_result_definitions on boot", () => {
     const row = db
       .prepare(
-        "SELECT ranges_by_age FROM canonical_biomarkers WHERE name = 'Alkaline Phosphatase'"
+        "SELECT ranges_by_age FROM canonical_result_definitions WHERE name = 'Alkaline Phosphatase'"
       )
       .get() as { ranges_by_age: string | null } | undefined;
     expect(row?.ranges_by_age).toBeTruthy();

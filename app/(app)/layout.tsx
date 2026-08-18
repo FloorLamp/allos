@@ -14,6 +14,7 @@ import OfflineQueueProvider from "@/components/OfflineQueueProvider";
 import DirtyFormProvider from "@/components/DirtyFormRegistry";
 import { ActiveProfileProvider } from "@/components/ActiveProfileProvider";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
+import OfflineSnapshotRefresher from "@/components/OfflineSnapshotRefresher";
 import ShellChrome from "@/components/ShellChrome";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
@@ -35,8 +36,12 @@ import {
 } from "@/lib/settings";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
-import { isTrainingRestricted } from "@/lib/age-gate";
-import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import {
+  isFoodLoggingRelevant,
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
@@ -121,11 +126,12 @@ export default async function AppLayout({
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const timezone = getTimezone(profile.id);
   const weekStart = getWeekStart(profile.id);
-  const restricted = isTrainingRestricted(profile.id);
+  const profileAge = getProfileAge(profile.id);
+  const adultContentAvailable = isLongevityRelevant(profileAge);
+  const trainingRelevant = isTrainingRelevant(profileAge);
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const suggestions = getActivitySuggestions(profile.id);
-  const timelineDates = getTimelineDates(profile.id, {
-    restricted,
-  });
+  const timelineDates = getTimelineDates(profile.id);
   // One extra session per exercise: the editor filters out the activity being
   // logged (which auto-save inserts into its own history) and still shows 3.
   const exerciseHistory = getRecentExerciseHistory(profile.id, 4);
@@ -136,35 +142,25 @@ export default async function AppLayout({
   const recentActivityEquipment = getRecentActivityEquipmentIds(profile.id);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   // The most recent activity seeds the "Repeat last activity" palette command +
-  // mobile quick action (issue #337); null hides both. A restricted profile has
-  // no training surface, so it gets none.
-  const lastActivity = restricted
-    ? null
-    : getMostRecentActivityEditData(profile.id);
-  // The strength editor's two deload/plateau inputs (#923), skipped for a restricted
-  // profile (no training surface). `deloadContext` shaves the next-set suggestion on a
+  // mobile quick action (issue #337).
+  const lastActivity = getMostRecentActivityEditData(profile.id);
+  // The strength editor's two deload/plateau inputs (#923).
+  // `deloadContext` shaves the next-set suggestion on a
   // routine deload week; `plateauHints` renders the calm inline plateau hint. Both read
   // the SAME gathers the Training-watch / session-card surfaces use, so nothing drifts.
   const now = today(profile.id);
-  const deloadContext = restricted
-    ? { isDeloadWeek: false, routineKeys: [] }
-    : getFormDeloadContext(profile.id, now);
+  const deloadContext = getFormDeloadContext(profile.id, now);
   // The recovering-injury context the form tempers by (#1144): the coarse regions
   // returning from a RECOVERING injury (#838), read from the SAME temperedRegions gather
   // the Analyze/detail panel uses so the live logger and its deep-link target agree on
-  // the injury axis (#221/#1115). Skipped (empty) for a restricted profile.
-  const recoveringContext = restricted
-    ? { temperedRegions: [], constraints: [] }
-    : getFormRecoveringContext(profile.id);
-  const plateauHints = restricted
-    ? []
-    : buildActivePlateauHints(profile.id, now);
+  // the injury axis (#221/#1115).
+  const recoveringContext = getFormRecoveringContext(profile.id);
+  const plateauHints = buildActivePlateauHints(profile.id, now);
   // Derived workout presence (#921) for the app-wide minimized dock: on a fresh load
   // (or another device) the dock hydrates from this gather + the persisted #451 draft
-  // instead of client memory. Acting-profile-scoped; skipped for a restricted profile
-  // (no live workout mode). `liveStartEpochMs` places the elapsed clock off the real
+  // instead of client memory. Acting-profile-scoped. `liveStartEpochMs` places the elapsed clock off the real
   // session start.
-  const presence = restricted ? undefined : getWorkoutPresence(profile.id);
+  const presence = getWorkoutPresence(profile.id);
   const liveEditData =
     presence?.state === "active" && presence.activityId != null
       ? getActivityEditData(profile.id, presence.activityId)
@@ -191,7 +187,7 @@ export default async function AppLayout({
   // food-group serving catalog is meaningless there (issue #591). Cosmetic; the
   // /nutrition page independently gates on the same predicate. Eligible on
   // unknown age (hide only on a positive infant match).
-  const foodLoggingRelevant = isFoodLoggingRelevant(getProfileAge(profile.id));
+  const foodLoggingRelevant = isFoodLoggingRelevant(profileAge);
   // Keeps the Nutrition nav entry (→ Supplements tab) reachable for an infant who
   // takes a supplement even though food-group logging isn't relevant (#746). The
   // Food tab still gates server-side on isFoodLoggingRelevant.
@@ -256,8 +252,18 @@ export default async function AppLayout({
                   those refreshes; it never adds one, never removes one, and
                   never touches a refresh the USER asked for. */}
               <DirtyFormProvider>
-                <OfflineQueueProvider activeProfileId={profile.id}>
+                <OfflineQueueProvider
+                  activeProfileId={profile.id}
+                  deviceSessionKey={session.deviceSessionKey}
+                >
                   <ProfileSwitchWatcher activeProfileId={profile.id} />
+                  {/* Offline read snapshots (#2908): an authenticated visit
+                  refreshes whatever the device holds that is absent or past its
+                  clock, and nothing else — no background sync, no service-worker
+                  credentials. Mounted here beside the write queue because the two
+                  are halves of one offline story and share one IndexedDB
+                  perimeter. */}
+                  <OfflineSnapshotRefresher activeProfileId={profile.id} />
                   {/* The shared quick-entry overlay host (#1468). Inside
                   OfflineQueueProvider by necessity: the forms it mounts
                   (MeasurementsQuickAdd) queue offline writes, and it
@@ -271,8 +277,9 @@ export default async function AppLayout({
                       equipment={equipment}
                       recentActivityEquipment={recentActivityEquipment}
                       bodyweightKg={bodyweightKg}
+                      trainingRelevant={trainingRelevant}
+                      strengthTrainingAvailable={strengthTrainingAvailable}
                       lastActivity={lastActivity}
-                      restricted={restricted}
                       deloadContext={deloadContext}
                       recoveringContext={recoveringContext}
                       plateauHints={plateauHints}
@@ -299,7 +306,8 @@ export default async function AppLayout({
                               profiles={scope.profiles}
                               viewIds={scope.viewIds}
                               readOnlyIds={readOnlyIds}
-                              restricted={restricted}
+                              adultContentAvailable={adultContentAvailable}
+                              trainingRelevant={trainingRelevant}
                               isAdmin={isAdmin}
                               multiProfile={multiProfile}
                               foodLoggingRelevant={foodLoggingRelevant}
@@ -322,11 +330,7 @@ export default async function AppLayout({
                     IS that answer and rides inside the bar itself, so the
                     separate view-banner slot the chrome used to carry is gone —
                     one surface, not two. */}
-                            <ShellChrome
-                              disabledTabFirstPageIds={
-                                restricted ? ["training"] : undefined
-                              }
-                            >
+                            <ShellChrome>
                               <MobileNav
                                 activityDates={timelineDates}
                                 version={version}
@@ -335,7 +339,8 @@ export default async function AppLayout({
                                 profiles={scope.profiles}
                                 viewIds={scope.viewIds}
                                 readOnlyIds={readOnlyIds}
-                                restricted={restricted}
+                                adultContentAvailable={adultContentAvailable}
+                                trainingRelevant={trainingRelevant}
                                 isAdmin={isAdmin}
                                 multiProfile={multiProfile}
                                 foodLoggingRelevant={foodLoggingRelevant}
@@ -377,7 +382,7 @@ export default async function AppLayout({
                       transformed ancestor re-parents `position: fixed` to itself,
                       which would slide the dock off the bottom of the screen with
                       the top bar. */}
-                        <MobileDock restricted={restricted} />
+                        <MobileDock trainingRelevant={trainingRelevant} />
                       </MobileChromeProvider>
                       <CommandPalette
                         profileName={session.profile.name}
@@ -388,10 +393,7 @@ export default async function AppLayout({
                       overlay / palette the sheet does. Beside CommandPalette so
                       it sits inside both contexts it dispatches into, and
                       viewport-agnostic — the shortcut URL is an ordinary link. */}
-                      <QuickShortcutHandler
-                        restricted={restricted}
-                        cycleRelevant={relevance.cycle}
-                      />
+                      <QuickShortcutHandler cycleRelevant={relevance.cycle} />
                       <ExtractionToaster profileId={profile.id} />
                       <ImportJobsToaster profileId={profile.id} />
                       {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and

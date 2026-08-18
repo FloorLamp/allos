@@ -23,6 +23,8 @@ import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Encounter } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
+import { episodeHref } from "@/lib/hrefs";
+import type { LinkedEpisodeRef } from "@/lib/queries";
 
 // The canonical kind of one encounter (#1233) — the ONE identity function every
 // surface keys on, never a per-surface string match.
@@ -43,7 +45,11 @@ function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
   return start;
 }
 
-const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
+const buildColumns = (
+  fmt: DisplayFormatPrefs,
+  linkedRecordCounts: Record<number, number>,
+  episodes: Record<number, LinkedEpisodeRef[]>
+): RecordColumn<Encounter>[] => [
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
@@ -53,12 +59,29 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Visit",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
     cell: (e) => (
-      <Link
-        href={`/encounters/${e.id}`}
-        className="font-medium text-brand-700 transition hover:underline dark:text-brand-300"
-      >
-        {encounterTypeDisplay(e.type, e.class_code)}
-      </Link>
+      <div>
+        <Link
+          href={`/encounters/${e.id}`}
+          className="font-medium text-brand-700 transition hover:underline dark:text-brand-300"
+        >
+          {encounterTypeDisplay(e.type, e.class_code)}
+        </Link>
+        {(linkedRecordCounts[e.id] ?? 0) > 0 ? (
+          <span className="block text-xs font-normal text-slate-500 dark:text-slate-400">
+            {linkedRecordCounts[e.id]} linked record
+            {linkedRecordCounts[e.id] === 1 ? "" : "s"}
+          </span>
+        ) : null}
+        {(episodes[e.id] ?? []).map((episode) => (
+          <Link
+            key={episode.id}
+            href={episodeHref(episode.id)}
+            className="mr-1 mt-1 inline-flex badge bg-slate-100 text-xs font-normal text-slate-600 hover:text-brand-700 dark:bg-ink-800 dark:text-slate-300"
+          >
+            {episode.situation}
+          </Link>
+        ))}
+      </div>
     ),
   },
   {
@@ -146,6 +169,8 @@ export default function EncounterList({
   items,
   defaultDate,
   multiView,
+  linkedRecordCounts = {},
+  episodes = {},
 }: {
   items: Stamped<Encounter>[];
   defaultDate: string;
@@ -153,6 +178,8 @@ export default function EncounterList({
   // then chips each non-acting row and gates its edit/delete on that member. Omitted
   // in single view → byte-identical.
   multiView?: ListMultiView;
+  linkedRecordCounts?: Record<number, number>;
+  episodes?: Record<number, LinkedEpisodeRef[]>;
 }) {
   const fmt = useFormatPrefs();
   const undoable = useUndoableDelete();
@@ -196,7 +223,7 @@ export default function EncounterList({
       ) : null}
       <RecordTable
         items={shown}
-        columns={buildColumns(fmt)}
+        columns={buildColumns(fmt, linkedRecordCounts, episodes)}
         emptyMessage="No visits yet. Add one, or import a MyChart / CCD health record to populate your visit history."
         multiView={
           multiView

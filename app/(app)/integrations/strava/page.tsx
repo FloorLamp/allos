@@ -11,14 +11,17 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
 import { TokenRow } from "@/components/TokenRow";
-import { baseUrl, stravaCallbackUrl } from "./url";
+import { stravaCallbackUrl } from "./url";
+import { externalBaseUrl } from "@/lib/external-url-server";
 import {
   saveStravaCredentials,
   connectStrava,
   disconnectStravaAction,
 } from "./actions";
 import StravaBackfillButton from "./StravaBackfillButton";
-import { countMissingStravaRideDetails } from "@/lib/integrations/strava-sync";
+import { countMissingStravaSessionDetails } from "@/lib/integrations/strava-sync";
+import { getProfileAge } from "@/lib/settings";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -45,14 +48,15 @@ export default async function StravaPage(props: {
   const cfg = getStravaConfig(profile.id);
   const hasCreds = !!(cfg.clientId && cfg.clientSecret);
   const connected = conn?.status === "connected" && !!cfg.accessToken;
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
   const missingRideDetails = connected
-    ? countMissingStravaRideDetails(profile.id)
+    ? countMissingStravaSessionDetails(profile.id)
     : 0;
   // The refresh token died/was revoked (issue #326): show an actionable notice above
   // the reconnect form instead of leaving the user with a silent, forever-failing sync.
   const needsReauth = conn?.status === "needs_reauth";
   const callbackUrl = await stravaCallbackUrl();
-  const callbackDomain = new URL(await baseUrl()).host;
+  const callbackDomain = new URL(await externalBaseUrl()).host;
   const error = searchParams.error
     ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;
@@ -121,6 +125,7 @@ export default async function StravaPage(props: {
           <SetupCard
             callbackUrl={callbackUrl}
             callbackDomain={callbackDomain}
+            trainingRelevant={trainingRelevant}
           />
 
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
@@ -204,6 +209,7 @@ export default async function StravaPage(props: {
           <SetupCard
             callbackUrl={callbackUrl}
             callbackDomain={callbackDomain}
+            trainingRelevant={trainingRelevant}
           />
         </div>
       )}
@@ -214,9 +220,11 @@ export default async function StravaPage(props: {
 function SetupCard({
   callbackUrl,
   callbackDomain,
+  trainingRelevant,
 }: {
   callbackUrl: string;
   callbackDomain: string;
+  trainingRelevant: boolean;
 }) {
   return (
     <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
@@ -248,10 +256,10 @@ function SetupCard({
         <li>
           Imported runs, rides, and workouts appear under{" "}
           <Link
-            href="/training?tab=log"
+            href={trainingRelevant ? "/training?tab=log" : "/timeline"}
             className="text-brand-700 underline dark:text-brand-400"
           >
-            Training history
+            {trainingRelevant ? "Training history" : "Timeline"}
           </Link>
           ; calories feed the{" "}
           <Link

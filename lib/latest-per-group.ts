@@ -1,7 +1,7 @@
 // The ONE latest-per-group selection (issue #944, the `is_latest` substrate helper).
 //
 // "Which reading is current for its group" is asked on every observation-shaped
-// surface — the Biomarkers table's is_latest marker, the current-value filter, the
+// surface — the Clinical results table's is_latest marker, the current-value filter, the
 // series head. The GROUPING identity is domain-owned (biomarker rows group by the
 // #482 FAMILY, not the bare name; a future observation domain supplies its own key),
 // but the ORDERING rule is universal and must not be re-implemented per surface:

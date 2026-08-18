@@ -1,6 +1,6 @@
 import {
   CARDIO_ACTIVITIES,
-  RECOVERY_ACTIVITIES,
+  MOBILITY_ACTIVITIES,
   SPORTS,
 } from "./activities-catalog";
 import { liftInfo } from "./lifts";
@@ -78,10 +78,10 @@ const SPORT_KEYWORDS = [
   "gymnast",
   "dance",
 ];
-// Recovery / mobility keywords (issue #840): yoga, stretch, mobility work — the
+// Mobility keywords (issue #840): yoga, stretch, mobility work — the
 // HABIT-tier movement domain. Split out of SPORT_KEYWORDS so these classify as
-// `recovery`, never `sport` (a mobility session carries no sport performance stats).
-const RECOVERY_KEYWORDS = [
+// `mobility`, never `sport` (a mobility session carries no sport performance stats).
+const MOBILITY_KEYWORDS = [
   "yoga",
   "pilates",
   "barre",
@@ -101,8 +101,8 @@ const RECOVERY_KEYWORDS = [
 // open-ended free text the catalog can't enumerate.
 const CARDIO_CATALOG = new Set(CARDIO_ACTIVITIES.map((n) => n.toLowerCase()));
 const SPORT_CATALOG = new Set(SPORTS.map((n) => n.toLowerCase()));
-const RECOVERY_CATALOG = new Set(
-  RECOVERY_ACTIVITIES.map((n) => n.toLowerCase())
+const MOBILITY_CATALOG = new Set(
+  MOBILITY_ACTIVITIES.map((n) => n.toLowerCase())
 );
 
 /** Infer the activity type from a name, or null if it can't be determined. */
@@ -111,10 +111,10 @@ export function resolveActivityType(name: string): ActivityType | null {
   if (!t) return null;
   if (CARDIO_CATALOG.has(t)) return "cardio";
   if (SPORT_CATALOG.has(t)) return "sport";
-  if (RECOVERY_CATALOG.has(t)) return "recovery";
+  if (MOBILITY_CATALOG.has(t)) return "mobility";
   if (liftInfo(name)) return "strength";
   if (CARDIO_KEYWORDS.some((k) => t.includes(k))) return "cardio";
-  if (RECOVERY_KEYWORDS.some((k) => t.includes(k))) return "recovery";
+  if (MOBILITY_KEYWORDS.some((k) => t.includes(k))) return "mobility";
   if (SPORT_KEYWORDS.some((k) => t.includes(k))) return "sport";
   return null;
 }

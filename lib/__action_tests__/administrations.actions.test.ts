@@ -121,11 +121,11 @@ describe("logMedicationAdministration action (#797)", () => {
     expect(res.ok).toBe(true);
     const row = db
       .prepare(
-        "SELECT recorded_at FROM intake_item_logs WHERE item_id = ? ORDER BY id DESC LIMIT 1"
+        "SELECT occurred_at FROM intake_item_logs WHERE item_id = ? ORDER BY id DESC LIMIT 1"
       )
-      .get(itemId) as { recorded_at: string };
-    // Stored as a UTC "YYYY-MM-DD HH:MM:SS" instant (not the raw wall string).
-    expect(row.recorded_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+      .get(itemId) as { occurred_at: string };
+    // Stored as a canonical UTC instant (not the raw wall string).
+    expect(row.occurred_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
   });
 
   it("rejects a malformed custom time without writing", async () => {

@@ -10,7 +10,7 @@ describe("cycling navigation and metric presentation", () => {
 
   it("carries one metric/range lens through ride and overview hrefs", () => {
     expect(cyclingRideHref(42, lens)).toBe(
-      "/training/rides/42?metric=power&range=6m"
+      "/training/activity/42?metric=power&range=6m"
     );
     expect(cyclingOverviewHref(lens)).toBe(
       "/training?tab=analyze&kind=cardio&item=Cycling&metric=power&range=6m"
@@ -23,7 +23,7 @@ describe("cycling navigation and metric presentation", () => {
       activity: "Mountain Biking",
     } as const;
     expect(cyclingRideHref(42, mountainBikeLens)).toBe(
-      "/training/rides/42?metric=power&range=6m&item=Mountain+Biking"
+      "/training/activity/42?metric=power&range=6m&item=Mountain+Biking"
     );
     expect(cyclingOverviewHref(mountainBikeLens)).toBe(
       "/training?tab=analyze&kind=cardio&item=Mountain+Biking&metric=power&range=6m"

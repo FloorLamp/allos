@@ -28,13 +28,9 @@
 // value already falls through to the default. Adding an alias would be a shim for
 // a link that already lands correctly, which is exactly what #1635 forbids.
 //
-// GATE SHAPE (#1489). Fitness is wholly age-gated content, so it keeps its
-// TAB-level gate: a training-restricted profile never sees the chip and a
-// `?tab=fitness` falls back to the default. Insights is now MIXED — the AI insight
-// content is age-gated but compare is age-neutral (restricted profiles have always
-// had it) — so its gate moved DOWN to the sections: the tab is offered to everyone
-// and InsightsSection hides the gated half. Hence RESTRICTED_TRENDS_TABS lists
-// fitness alone.
+// Fitness is the workout-product tab and is omitted through early childhood.
+// Population benchmarks and adult clinical models keep their stricter gates inside
+// the components that render those numbers.
 
 export const TRENDS_TABS = [
   "overview",
@@ -44,10 +40,6 @@ export const TRENDS_TABS = [
 ] as const;
 
 export type TrendsTab = (typeof TRENDS_TABS)[number];
-
-// The tabs an age-restricted profile never sees. Fitness alone since #1489 —
-// Insights survives the gate carrying only its compare section (see the header).
-export const RESTRICTED_TRENDS_TABS: readonly TrendsTab[] = ["fitness"];
 
 // Retired tab names that still resolve to a DIFFERENT tab. ONE map, so "the
 // Compare tab is gone but its links are not" is a single fact rather than a
@@ -120,17 +112,9 @@ const TAB_LABELS: Record<TrendsTab, string> = {
   insights: "Insights",
 };
 
-// The tab strip, in display order — FOUR entries since #1644. A training-restricted
-// profile loses only the wholly age-gated Fitness surface; Insights stays (its
-// gated half is hidden by the section, not the strip — #1489).
-export function trendsTabStrip(restricted: boolean): TrendsTabEntry[] {
-  return TRENDS_TABS.filter(
-    (id) => !restricted || !RESTRICTED_TRENDS_TABS.includes(id)
-  ).map((id) => ({ id, label: TAB_LABELS[id] }));
-}
-
-// Whether a requested tab is unavailable to this profile (so the caller can fall
-// back rather than advertise a tab that isn't in the strip).
-export function isTabRestricted(tab: TrendsTab, restricted: boolean): boolean {
-  return restricted && RESTRICTED_TRENDS_TABS.includes(tab);
+// The tab strip, in display order — FOUR entries since #1644.
+export function trendsTabStrip(trainingRelevant = true): TrendsTabEntry[] {
+  return TRENDS_TABS.filter((id) => trainingRelevant || id !== "fitness").map(
+    (id) => ({ id, label: TAB_LABELS[id] })
+  );
 }

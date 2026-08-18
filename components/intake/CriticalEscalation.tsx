@@ -27,7 +27,7 @@ export default function CriticalEscalation({
           type="checkbox"
           name="critical"
           value="1"
-          data-testid={`supp-critical-${fid}`}
+          data-testid={`intake-critical-${fid}`}
           checked={critical}
           onChange={(e) => setCritical(e.target.checked)}
           className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"

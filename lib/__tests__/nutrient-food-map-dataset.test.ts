@@ -10,7 +10,7 @@ import {
   flaggableDriNutrients,
   foodSourcesForDriNutrient,
 } from "@/lib/food-suggest";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import { FOOD_DRUG_INTERACTIONS } from "@/lib/datasets/food-drug-interactions";
 import dri from "@/lib/datasets/data/dri.json";
 
@@ -25,9 +25,9 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const OUT = path.join(REPO, "lib/datasets/data/nutrient-food-map.json");
 
 const CANONICAL_NAMES = new Set(
-  ((canonicalSeed as { biomarkers?: { name: string }[] }).biomarkers ?? []).map(
-    (b) => b.name.toLowerCase()
-  )
+  (
+    (canonicalSeed as { definitions?: { name: string }[] }).definitions ?? []
+  ).map((b) => b.name.toLowerCase())
 );
 const DRUG_KEYS = new Set(FOOD_DRUG_INTERACTIONS.map((e) => e.key));
 
@@ -44,7 +44,7 @@ describe("nutrient-food-map.json dataset", () => {
     );
     expect(
       missing,
-      `biomarker names in the map with no canonical-biomarkers.json entry: ${missing}`
+      `biomarker names in the map with no canonical-result-definitions.json entry: ${missing}`
     ).toEqual([]);
   });
 
@@ -56,13 +56,27 @@ describe("nutrient-food-map.json dataset", () => {
     ).toEqual([]);
   });
 
-  it("every entry carries an evidence note, a source, and at least one food", () => {
+  it("every entry carries an evidence note, a source, at least one food, and a declared direction", () => {
     for (const e of buildNutrientFoodMap().entries) {
       expect(e.evidence.trim().length, e.key).toBeGreaterThan(0);
       expect(e.source.trim().length, e.key).toBeGreaterThan(0);
       expect(e.foods.length, e.key).toBeGreaterThan(0);
-      expect(e.direction, e.key).toBe("low");
+      expect(["low", "high"], e.key).toContain(e.direction);
     }
+  });
+
+  it("soluble-fiber is the ONLY add-on-high entry, keyed to the lipid family (#2754)", () => {
+    // The direction inversion is a per-entry declaration so it stays a deliberate,
+    // reviewed act: a new high-triggered ADD entry must be added here with its own
+    // defense, never ride in silently.
+    const high = buildNutrientFoodMap().entries.filter(
+      (e) => e.direction === "high"
+    );
+    expect(high.map((e) => e.key)).toEqual(["soluble-fiber"]);
+    expect(high[0].biomarkers).toEqual([
+      "LDL Cholesterol",
+      "Apolipoprotein B (ApoB)",
+    ]);
   });
 
   it("every reduce entry carries an evidence note, a source, at least one food, and direction high (#775)", () => {
@@ -108,7 +122,7 @@ describe("DRI ↔ food-map coverage (#774)", () => {
       .filter((n) => !CANONICAL_NAMES.has(n.toLowerCase()));
     expect(
       missing,
-      `ledger biomarker names with no canonical-biomarkers.json entry: ${missing}`
+      `ledger biomarker names with no canonical-result-definitions.json entry: ${missing}`
     ).toEqual([]);
   });
 

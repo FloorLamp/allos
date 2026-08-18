@@ -63,6 +63,22 @@ const nextConfig = {
   // build dir (playwright.config.ts sets NEXT_DIST_DIR=.next-demo, dev only —
   // CI's two `next start` instances share the one .next build and take no lock).
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // When `next dev` detects an AI coding agent, Next appends a managed
+  // "This is NOT the Next.js you know" block to AGENTS.md pointing at
+  // node_modules/next/dist/docs/. Default is on; this repo turns it OFF.
+  //
+  // AGENTS.md is a deliberate one-pager (#2775) with a hard 80-line budget
+  // enforced by lib/__tests__/runbook-brevity-scan.test.ts, and the block is
+  // ~8 lines nobody chose. Worse, it is re-added on every dev-server start
+  // whose tree lacks it, so leaving it out is not a one-time edit: every agent
+  // that runs `npm run dev` gets an uncommitted change it did not make, and
+  // the block's own text tells them to commit it. That is a dirty tree by
+  // construction on a repo where a clean one is how the check-in script
+  // distinguishes unrescued work from finished work.
+  //
+  // The docs it points at are real and worth reading — they just do not belong
+  // in the file we cap at 80 lines and re-read constantly.
+  agentRules: false,
   // The workstation's nginx virtual hosts proxy the development server on port
   // 3000. Allow those origins so Next's HMR WebSocket works through the proxy;
   // ordinary page requests already carry the same preserved Host header.

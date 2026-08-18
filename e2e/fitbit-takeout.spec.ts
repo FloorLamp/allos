@@ -89,7 +89,7 @@ test.describe("Fitbit (Google Takeout) integration", () => {
       event = db
         .prepare(
           `SELECT id, error FROM integration_sync_events
-            WHERE profile_id = 1 AND provider = 'fitbit-takeout' AND ok = 0
+            WHERE profile_id = 1 AND source_id = 'fitbit-takeout' AND ok = 0
             ORDER BY id DESC LIMIT 1`
         )
         .get() as { id: number; error: string } | undefined;

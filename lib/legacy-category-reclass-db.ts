@@ -18,7 +18,7 @@
 // registry instead of a hand-list, so the answer cannot drift from the vocabulary.
 //
 // EVIDENCE, AND ONLY EVIDENCE. A candidate row is matched to a
-// `canonical_biomarkers` entry on its own identity — `canonical_name` when it has
+// `canonical_result_definitions` entry on its own identity — `canonical_name` when it has
 // one, otherwise the printed `name` — by EXACT (NOCASE) name, the table's own primary
 // key collation. No fuzzy snapping, no LOINC inference, no name heuristics: this is a
 // one-shot write against data a user cannot review first, and a wrong re-file is
@@ -27,7 +27,7 @@
 // `residue`. Unclassifiable is a real answer here; guessing is not.
 //
 // IDENTITY IS NEVER REMOVED. Every target below carries result identity
-// (`carriesResultIdentity`), so a moved row keeps its `canonical_biomarkers`
+// (`carriesResultIdentity`), so a moved row keeps its `canonical_result_definitions`
 // registration, stays in `getUsedCanonicalNames`, and keeps backing its ★, its retest
 // and flag dismissals, its coverage entry and its series. That is what makes this
 // pass so much smaller than #2318's (lib/assessment-reclass-db.ts): nothing takes a
@@ -56,11 +56,10 @@
 //   • Nothing else. `name`, `canonical_name`, `value`, `flag`, `loinc`, the document
 //     link and the provenance are all untouched.
 //
-// The `'biomarker'` value stays LEGAL in the `medical_records` CHECK. Dropping it
-// would need a table rebuild that can only be safe if this pass is total, and it is
-// deliberately not total — the residue above is the point. The value is retired in
-// CODE instead (`RETIRED_MEDICAL_CATEGORIES` in lib/medical-categories.ts): no write
-// path this build ships can produce it, so the residue can shrink and never grow.
+// Migration 185 deliberately left `'biomarker'` legal so it could report residue
+// without guessing. The final #2877 caller runs this evidence pass once more, then
+// rebuilds the table without that value and copies residue into the explicit NULL
+// review state.
 //
 // It takes an explicit handle rather than the lib/db singleton because a migration
 // runs before that singleton exists, and it assumes the caller has already opened a
@@ -70,6 +69,7 @@
 // classify, and writes nothing.
 
 import type Database from "better-sqlite3";
+import { canonicalResultDefinitionTableForSchema } from "./canonical-result-definition-table";
 import type { MedicalCategory } from "./types";
 
 /** The legacy catch-all this pass empties. */
@@ -119,20 +119,21 @@ function profileIds(db: Database.Database): number[] {
 
 /**
  * The registry's classification for every identity it recognises, lower-cased for the
- * NOCASE match the `canonical_biomarkers.name` primary key already uses.
+ * NOCASE match the `canonical_result_definitions.name` primary key already uses.
  *
- * Read from the TABLE, not from lib/canonical-biomarkers.json: the migration runs
+ * Read from the TABLE, not from lib/canonical-result-definitions.json: the migration runs
  * before the boot task that seeds the JSON, so the table is the vocabulary as the
  * database actually has it — data, not this release's code. A database whose
  * vocabulary lacks an entry leaves that row in the residue rather than being
  * classified by a dataset it has never seen.
  */
 function registryCategories(db: Database.Database): Map<string, string> {
+  const definitionTable = canonicalResultDefinitionTableForSchema(db);
   const allowed = new Set<string>(RECLASS_TARGET_CATEGORIES);
   const out = new Map<string, string>();
   const rows = db
     .prepare(
-      `SELECT name, category FROM canonical_biomarkers
+      `SELECT name, category FROM ${definitionTable}
         WHERE TRIM(COALESCE(category, '')) != ''`
     )
     .all() as { name: string; category: string }[];
@@ -159,7 +160,7 @@ function candidates(db: Database.Database, profileId: number): CandidateRow[] {
  *
  * PROFILE SCOPING: every `medical_records` statement filters by `profile_id` and the
  * pass runs per profile, exactly as the #2306 and #2318 passes do. The one global read
- * is `canonical_biomarkers`, which is a global reference table and carries no
+ * is `canonical_result_definitions`, which is a global reference table and carries no
  * profile-owned data.
  */
 export function reclassifyLegacyBiomarkerCategory(

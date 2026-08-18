@@ -94,7 +94,7 @@ function latestOnOrBefore(
 //                  month), and well-child length checks in the first year are 2–3
 //                  months apart, so a length older than a quarter predates the last
 //                  scheduled measurement.
-//   • child      — six months. The pediatric growth-monitoring interval; beyond it a
+//   • early-childhood / child — six months. The pediatric growth-monitoring interval; beyond it a
 //                  height is a different child's height.
 //   • adolescent — six months, for the same reason: peak height velocity runs to
 //                  8–9 cm a year and does not announce itself.
@@ -109,6 +109,7 @@ function latestOnOrBefore(
 // `due`: no clock applies, so the pairing stands.
 export const PAIRED_HEIGHT_INTERVAL_DAYS: Record<LifeStage, number | null> = {
   infant: 92,
+  "early-childhood": 183,
   child: 183,
   adolescent: 183,
   adult: null,
@@ -319,33 +320,15 @@ export function growthBadge(profile: GrowthProfile | null): GrowthBadge | null {
   return badge;
 }
 
-// The passport badge from the latest scalar height/weight scored at the CURRENT
-// age (no full series needed) — for the profile summary card. Null for an
-// adult / out-of-range age or unknown sex, so the badge simply doesn't render.
-export function currentGrowthBadge(input: {
-  sex: GrowthSex | null;
-  ageMonths: number | null;
-  heightCm: number | null;
-  weightKg: number | null;
-}): GrowthBadge | null {
-  const { sex, ageMonths, heightCm, weightKg } = input;
-  if (!sex || ageMonths == null || ageMonths < 0 || ageMonths > MAX_AGE_MONTHS)
-    return null;
-  const score = (metric: GrowthMetric, value: number | null) =>
-    value != null
-      ? (measurementPercentile(sex, ageMonths, metric, value)?.percentile ??
-        null)
-      : null;
-  const badge = {
-    heightPercentile: score("height", heightCm),
-    weightPercentile: score("weight", weightKg),
-    bmiPercentile: score("bmi", bmiFrom(weightKg, heightCm)),
-  };
-  if (
-    badge.heightPercentile == null &&
-    badge.weightPercentile == null &&
-    badge.bmiPercentile == null
-  )
-    return null;
-  return badge;
-}
+// THE PASSPORT READS THE SAME COMPUTATION (#2802). There used to be a second,
+// series-avoiding scorer here — `currentGrowthBadge`, which took the latest scalar
+// height/weight and scored them at the age TODAY. It gave the passport a different
+// answer from /trends/growth for the very same reading: a birthdate whose day of
+// month falls between the measurement date and today floors to a different whole
+// month, one reference row apart on a steep median, and the two surfaces printed
+// percentiles ~10 points apart. It also derived BMI from the latest weight × the
+// latest height, bypassing the date-paired derivation above.
+//
+// The shortcut is gone. `growthBadge(buildGrowthProfile(...))` is the ONE
+// computation: every measurement scored at the age on ITS OWN date, BMI date-paired,
+// for the passport and the growth charts alike.

@@ -81,7 +81,7 @@ const KEYED_ENTITIES: readonly {
   prefix: string;
   pick: (input: PersistInput) => readonly { external_id: string | null }[];
 }[] = [
-  { prefix: "rec", pick: (i) => i.records },
+  { prefix: "rec", pick: (i) => i.observations },
   { prefix: "imm", pick: (i) => i.immunizations },
   { prefix: "alg", pick: (i) => i.allergies },
   { prefix: "cnd", pick: (i) => i.conditions },

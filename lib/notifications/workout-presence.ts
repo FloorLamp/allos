@@ -48,13 +48,14 @@ import {
 import { getFrequencyTargetProgress } from "../queries";
 import { getSessionCadenceFacts } from "../queries/cadence-ledger";
 import type { ActivityType } from "../types/training";
-import { collectWindowDoses } from "./supplements";
+import { collectWindowDoses } from "./intake";
 import {
   notifiableWindowDoses,
   type ReminderWindow,
   type WindowDose,
-} from "./supplement-format";
+} from "./intake-format";
 import { OBLIGATION_ORDER } from "../intake-schedule";
+import { intakeItemShortLabel } from "../intake-short-name";
 import { dispatch } from "./index";
 import { prefixForProfile } from "./attribution";
 import { workoutFinishCallback } from "./callback-data";
@@ -69,6 +70,8 @@ import {
   postWorkoutFinishMarkerKey,
 } from "./post-workout-marker";
 import { announcedActivityTwin } from "../queries/integrations";
+import { getProfileAge } from "../settings/profile-attrs";
+import { isTrainingRelevant } from "../life-stage";
 
 const log = createLogger("notify");
 
@@ -97,7 +100,7 @@ function collectPostWorkoutDoses(
 ): WindowDose[] {
   return ALL_WINDOWS.flatMap((w) =>
     collectWindowDoses(profileId, w, date)
-  ).filter((e) => e.supp.condition === "post_workout");
+  ).filter((e) => e.item.condition === "post_workout");
 }
 
 // The finish message: the pending post_workout doses with per-dose take/skip
@@ -110,44 +113,44 @@ export function renderPostWorkoutFinishMessage(
   date: string,
   entries: WindowDose[]
 ): NotificationMessage | null {
-  // The #1156 priority floor: a low-priority SUPPLEMENT never rides a dose
+  // The #1156 obligation floor: a `may` SUPPLEMENT never rides a dose
   // reminder (body or buttons); medications are never gated (safety tier).
   const pending = notifiableWindowDoses(entries)
     .filter((e) => !e.taken && !e.skipped)
     .sort(
       (a, b) =>
-        OBLIGATION_ORDER[a.supp.obligation] -
-          OBLIGATION_ORDER[b.supp.obligation] ||
-        a.supp.name.localeCompare(b.supp.name)
+        OBLIGATION_ORDER[a.item.obligation] -
+          OBLIGATION_ORDER[b.item.obligation] ||
+        a.item.name.localeCompare(b.item.name)
     );
   if (pending.length === 0) return null;
 
   const body = pending
     .map((e) => {
       const dose =
-        e.supp.kind === "medication"
-          ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
+        e.item.kind === "medication"
+          ? formatMedicationDoseProduct(e.dose.amount, e.item.product)
           : e.dose.amount;
       const amt = dose ? ` — ${dose}` : "";
       const mark =
-        e.supp.obligation === "must"
+        e.item.obligation === "must"
           ? `${GLYPH.required} `
           : `${GLYPH.bullet} `;
-      return `${mark}${e.supp.name}${amt}`;
+      return `${mark}${e.item.name}${amt}`;
     })
     .join("\n");
 
   const actions: NotificationAction[] = [];
-  for (const { dose, supp } of pending) {
+  for (const { dose, item } of pending) {
     const row = `dose:${dose.id}`;
     actions.push({
-      label: `${GLYPH.done} ${supp.name}`,
-      data: `take:${profileId}:${dose.id}:${supp.id}:${date}`,
+      label: `${GLYPH.done} ${intakeItemShortLabel(item)}`,
+      data: `take:${profileId}:${dose.id}:${item.id}:${date}`,
       row,
     });
     actions.push({
       label: `${GLYPH.skipped} Skip`,
-      data: `skip:${profileId}:${dose.id}:${supp.id}:${date}`,
+      data: `skip:${profileId}:${dose.id}:${item.id}:${date}`,
       row,
     });
   }
@@ -238,6 +241,7 @@ export async function runPostWorkoutForActivity(
   activityId: number,
   opts: { verifyCompletedToday?: boolean } = {}
 ): Promise<{ failed: boolean }> {
+  if (!isTrainingRelevant(getProfileAge(profileId))) return { failed: false };
   const date = today(profileId);
   const finishRow = loadFinishRow(profileId, activityId);
   if (opts.verifyCompletedToday) {

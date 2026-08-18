@@ -2,7 +2,7 @@
 // (doseSendSlot), its minute (preWorkoutSlotMinute), the merged one-per-tick render
 // (renderMergedIntakeMessage), and the callback plumbing that keeps a merged
 // message's buttons working (parseAllCallback / keyboardDoseFootprint).
-// Plus the #1156 notification priority floor's pure pieces.
+// Plus the #1156 notification obligation floor's pure pieces.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -12,7 +12,7 @@ import {
   renderMergedIntakeMessage,
   INTAKE_SLOT_LABELS,
   type WindowDose,
-} from "../notifications/supplement-format";
+} from "../notifications/intake-format";
 import { preWorkoutSlotMinute } from "../notifications/schedule";
 import {
   parseAllCallback,
@@ -35,7 +35,7 @@ import type {
   IntakeObligation,
 } from "../types";
 
-function supp(
+function item(
   id: number,
   name: string,
   obligation: IntakeObligation = "should",
@@ -87,14 +87,10 @@ function supp(
   };
 }
 
-function dose(
-  id: number,
-  supplementId: number,
-  amount: string | null
-): IntakeDose {
+function dose(id: number, itemId: number, amount: string | null): IntakeDose {
   return {
     id,
-    item_id: supplementId,
+    item_id: itemId,
     amount,
     time_of_day: "morning",
     food_timing: "any",
@@ -123,7 +119,7 @@ function entry(
 ): WindowDose {
   return {
     dose: d,
-    supp: s,
+    item: s,
     taken: state.taken ?? false,
     skipped: state.skipped ?? false,
     adherence: NONE,
@@ -210,15 +206,15 @@ describe("the obligation semantics table (#1505)", () => {
 describe("notifiableWindowDoses (#1156/#1505)", () => {
   it("drops `may`, keeps must and should — of either kind", () => {
     const entries = [
-      entry(supp(1, "Ashwagandha", "may"), dose(11, 1, "300 mg")),
-      entry(supp(2, "Creatine", "should"), dose(12, 2, "5 g")),
+      entry(item(1, "Ashwagandha", "may"), dose(11, 1, "300 mg")),
+      entry(item(2, "Creatine", "should"), dose(12, 2, "5 g")),
       entry(
-        supp(3, "Levothyroxine", "must", "medication"),
+        item(3, "Levothyroxine", "must", "medication"),
         dose(13, 3, "50 mcg")
       ),
-      entry(supp(4, "Vitamin D", "must"), dose(14, 4, "1000 IU")),
+      entry(item(4, "Vitamin D", "must"), dose(14, 4, "1000 IU")),
     ];
-    expect(notifiableWindowDoses(entries).map((e) => e.supp.name)).toEqual([
+    expect(notifiableWindowDoses(entries).map((e) => e.item.name)).toEqual([
       "Creatine",
       "Levothyroxine",
       "Vitamin D",
@@ -227,8 +223,8 @@ describe("notifiableWindowDoses (#1156/#1505)", () => {
 
   it("an all-`may` slot filters to empty → the builder sends nothing (intended, not a bug)", () => {
     const entries = [
-      entry(supp(1, "Beta-Alanine", "may"), dose(11, 1, "3 g")),
-      entry(supp(2, "Citrulline", "may"), dose(12, 2, "6 g")),
+      entry(item(1, "Beta-Alanine", "may"), dose(11, 1, "3 g")),
+      entry(item(2, "Citrulline", "may"), dose(12, 2, "6 g")),
     ];
     expect(notifiableWindowDoses(entries)).toEqual([]);
   });
@@ -237,11 +233,11 @@ describe("notifiableWindowDoses (#1156/#1505)", () => {
 // ---- merged render (#1154 one-per-hour) ------------------------------------
 
 describe("renderMergedIntakeMessage", () => {
-  const s1 = supp(1, "Vitamin D");
+  const s1 = item(1, "Vitamin D");
   const d1 = dose(11, 1, "1000 IU");
-  const s2 = supp(2, "Magnesium");
+  const s2 = item(2, "Magnesium");
   const d2 = dose(12, 2, "200 mg");
-  const preSupp = supp(3, "Creatine", "should", "supplement", "pre_workout");
+  const preSupp = item(3, "Creatine", "should", "supplement", "pre_workout");
   const preDose = dose(13, 3, "5 g");
 
   it("a single slot renders EXACTLY the classic window message", () => {

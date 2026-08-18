@@ -15,8 +15,8 @@ import { shiftDateStr } from "@/lib/date";
 import { collectUpcoming } from "@/lib/queries";
 import { groupUpcoming } from "@/lib/upcoming";
 import { buildUpcomingDigest } from "@/lib/notifications/upcoming-digest";
-import { collectWindowDoses } from "@/lib/notifications/supplements";
-import { buildSupplementReminder } from "@/lib/notifications/supplements";
+import { collectWindowDoses } from "@/lib/notifications/intake";
+import { buildIntakeReminder } from "@/lib/notifications/intake";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 function dismiss(profileId: number, signalKey: string) {
@@ -84,7 +84,7 @@ describe("dose reminders + escalation are NOT bus-gated (safety tier)", () => {
     const doseKey = doseItem!.key;
 
     // Baseline: reminder + escalation gather both see the dose.
-    const reminderBefore = buildSupplementReminder(p.profileId, "Morning");
+    const reminderBefore = buildIntakeReminder(p.profileId, "Morning");
     expect(reminderBefore?.body).toContain("Lisinopril");
     const gatherBefore = collectWindowDoses(p.profileId, "Morning", date);
     expect(gatherBefore.some((e) => e.dose.id === doseItem!.doseId)).toBe(true);
@@ -96,7 +96,7 @@ describe("dose reminders + escalation are NOT bus-gated (safety tier)", () => {
     ).toBe(false);
 
     // …but the safety-tier reminder + escalation gather are UNAFFECTED.
-    const reminderAfter = buildSupplementReminder(p.profileId, "Morning");
+    const reminderAfter = buildIntakeReminder(p.profileId, "Morning");
     expect(reminderAfter?.body).toContain("Lisinopril");
     const gatherAfter = collectWindowDoses(p.profileId, "Morning", date);
     expect(gatherAfter.some((e) => e.dose.id === doseItem!.doseId)).toBe(true);

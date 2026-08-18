@@ -111,6 +111,10 @@ const INTERPOLATED_DATETIME_ALLOW: Record<
     count: 1,
     why: "Parses an explicit-Z midnight solely for UTC day arithmetic; it is not written as a fixture timestamp.",
   },
+  "e2e/fasting-lifecycle.spec.ts": {
+    count: 1,
+    why: "Builds the `datetime-local` FORM VALUE (`YYYY-MM-DDTHH:MM`) the fasting card's backdating field submits — the profile-local ZONELESS wall time the input type is defined to carry, assembled from the run's pinned zone via toLocaleDateString/toLocaleTimeString. It is not an instant and no instant is stored from it: the SERVER resolves it through zonedWallTimeToUtc against the profile's timezone, which is the whole point of posting a wall time rather than a client instant. The spec's actual fixture instants are built by the neighbouring agoInstant(), which does go through zonedWallTimeToUtc.",
+  },
   "e2e/food-drug-ledger.spec.ts": {
     count: 1,
     why: "Parses an explicit-Z midnight solely to shift a date in UTC; no profile-owned instant is stored from it.",

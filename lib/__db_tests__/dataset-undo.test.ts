@@ -3,8 +3,7 @@
 // pure suite). The completeness guard itself is the type system since #2125
 // (lib/dataset-undo.ts); this suite pins the runtime facts the types stand on:
 // every mapped table is a real, deletable dataset's physical table, and the
-// dataset-key ⇄ table correspondence the DeletableDatasetTable alias assumes
-// (key == table everywhere except supplements → intake_items) actually holds.
+// dataset-key ⇄ table correspondence the DeletableDatasetTable alias assumes.
 
 import { describe, it, expect } from "vitest";
 import { DATASET_UNDO_KIND } from "@/lib/dataset-undo";
@@ -22,14 +21,13 @@ describe("DATASET_UNDO_KIND ↔ DATASETS", () => {
     }
   });
 
-  it("every deletable dataset's key IS its table, except supplements → intake_items", () => {
-    // lib/dataset-undo.ts translates DeletableDatasetKey (DELETE_POLICY keys) into
-    // physical tables at the TYPE level with exactly this one special case; a new
-    // dataset whose key diverges from its table must extend that alias too.
+  it("every deletable dataset's key is its table", () => {
+    // A new dataset whose key diverges from its table must make that distinction an
+    // explicit contract instead of reviving a compatibility alias.
     for (const key of Object.keys(DELETE_POLICY)) {
       const ds = DATASETS.find((d) => d.key === key);
       expect(ds, `dataset ${key} exists`).toBeDefined();
-      expect(ds!.table).toBe(key === "supplements" ? "intake_items" : key);
+      expect(ds!.table).toBe(key);
     }
   });
 });

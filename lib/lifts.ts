@@ -13,8 +13,7 @@ export type MuscleRegion =
  * everything keyed on regions keeps working unchanged.
  */
 export type MuscleId =
-  | "chest-upper" // clavicular (upper) pec head, split out from the main pecs
-  | "chest" // pecs (sternal/lower head)
+  | "chest" // pecs, all heads — incline work counts here in full (#2891)
   | "lats"
   | "traps"
   | "mid-back" // rhomboids / mid-trap / teres
@@ -46,7 +45,6 @@ export type MuscleId =
  * keep the rollup total.
  */
 const MUSCLE_REGION: Record<MuscleId, MuscleRegion> = {
-  "chest-upper": "Chest",
   chest: "Chest",
   lats: "Back",
   traps: "Back",
@@ -86,7 +84,6 @@ export function muscleRegion(m: MuscleId): MuscleRegion {
  * label, so a rename lands in one place.
  */
 const MUSCLE_LABEL: Record<MuscleId, string> = {
-  "chest-upper": "Upper chest",
   chest: "Chest",
   lats: "Lats",
   traps: "Traps",
@@ -286,10 +283,10 @@ const PLAIN_DEFS: LiftDef[] = [
   },
   {
     name: "Incline Bench Press",
-    muscle: "Upper chest",
+    muscle: "Chest",
     region: "Chest",
     pattern: "push",
-    primaryMuscles: ["chest-upper"],
+    primaryMuscles: ["chest"],
     secondaryMuscles: ["front-delts", "triceps"],
   },
   {
@@ -1415,7 +1412,7 @@ export const REGION_SCOPES: MuscleRegion[] = [
 ];
 export const GROUP_SCOPES: BodyGroup[] = ["Upper", "Lower", "Core", "Full"];
 // The activity types a weekly frequency TARGET may be scoped to — deliberately NOT
-// the full ActivityType set. `recovery` has its own mobility scope, and `unclassified`
+// the full ActivityType set. `mobility` has its own mobility scope, and `unclassified`
 // (#2272) is excluded on purpose: a "Cardio 2×/week" target is rightly unaffected by a
 // session nobody said was cardio, and no one sets a target for the unspecified.
 export const TYPE_SCOPES = ["strength", "cardio", "sport"] as const;

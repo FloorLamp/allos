@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { bodyFor } from "@/lib/notifications/types";
 import { plainBody, type MessageBody } from "@/lib/notifications/rich-text";
+import { collapsedOfferAction } from "@/lib/notifications/offer-tail";
 import {
   buildDigest,
   dedupeFlaggedByAnalyte,
@@ -252,7 +253,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         intakeDeltas: missed(["Glycine (test)"]),
         adherence: { taken: 8, skipped: 0, due: 9 },
       })
-    ).toEqual(["💊 Supplements: 8/9 taken — missed Glycine (test) (1 day)"]);
+    ).toEqual(["💊 Supplements: 8/9 taken — missed Glycine (test) for 1 day"]);
   });
 
   it("keeps two lines when several misses cannot ride one fraction", () => {
@@ -263,7 +264,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         adherence: { taken: 7, skipped: 0, due: 9 },
       })
     ).toEqual([
-      "🔁 Missed: Glycine (test) (1 day), Magnesium (test) (1 day)",
+      "🔁 Missed: Glycine (test) for 1 day, Magnesium (test) for 1 day",
       "💊 Supplements: 7/9 taken",
     ]);
   });
@@ -281,7 +282,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         adherence: { taken: 8, skipped: 0, due: 9 },
       })
     ).toEqual([
-      "🔁 Resumed: Vitamin D (test) (2 days)",
+      "🔁 Resumed: Vitamin D (test) for 2 days",
       "💊 Supplements: 8/9 taken",
     ]);
   });
@@ -295,7 +296,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         adherence: { taken: 8, skipped: 1, due: 9 },
       })
     ).toEqual([
-      "🔁 Missed: Glycine (test) (1 day)",
+      "🔁 Missed: Glycine (test) for 1 day",
       // The em dash introduces the FIRST qualifier a line actually has (#2391): with
       // no merged clause to explain the gap, the skip count leads the tail instead of
       // arriving after a `·` with nothing in front of it.
@@ -306,7 +307,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
   it("still leads with the delta when there is no fraction beside it", () => {
     expect(
       yesterday({ ...empty, intakeDeltas: missed(["Glycine (test)"]) })
-    ).toEqual(["🔁 Missed: Glycine (test) (1 day)"]);
+    ).toEqual(["🔁 Missed: Glycine (test) for 1 day"]);
   });
 
   it("a quiet delta window leaves the fraction alone", () => {
@@ -710,11 +711,9 @@ describe("digest offer tail per channel (#1712)", () => {
         ...empty,
         doseCount: 9,
         offerCount: count,
-        offerTail: {
-          label: "➕ Log other (3 for morning)",
-          data: "offerexp:1:2026-03-04",
-          row: "offer-tail",
-        },
+        // Built by the real builder rather than hand-written, so the digest's copy
+        // cannot drift from the tail's own (#2890).
+        offerTail: collapsedOfferAction(1, "2026-03-04", count),
       })!
     );
 
@@ -722,9 +721,9 @@ describe("digest offer tail per channel (#1712)", () => {
     const msg = withOffers(3);
     const telegram = plainBody(bodyFor(msg, "telegram"));
     expect(telegram).not.toContain("you can log any time");
-    // The control is present and self-describing (it names the slot and the count).
-    expect(msg.actions?.[0].label).toContain("Log other");
-    expect(msg.actions?.[0].label).toContain("3 for morning");
+    // The control is present and self-describing: it names what it opens and how
+    // many are on offer (#2890).
+    expect(msg.actions?.[0].label).toBe("➕ Doses (3)");
   });
 
   it("Web Push and Home Assistant get the line, since they cannot render the control", () => {

@@ -19,7 +19,7 @@ import {
   uncuratedAnalytes,
   isGarbageCanonical,
 } from "../canonical-name";
-import canonicalSeed from "../canonical-biomarkers.json";
+import canonicalSeed from "../canonical-result-definitions.json";
 
 describe("normalizeCanonicalKey", () => {
   it("is case-, punctuation- and order-insensitive", () => {
@@ -339,7 +339,7 @@ describe("biomarkerFamily (unified identity — #482)", () => {
 
   it("every family anchor is a real dataset name inside its own family", () => {
     const vocab = new Set(
-      (canonicalSeed as { biomarkers: { name: string }[] }).biomarkers.map(
+      (canonicalSeed as { definitions: { name: string }[] }).definitions.map(
         (b) => b.name.toLowerCase()
       )
     );
@@ -365,8 +365,8 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
   // The real production vocabulary, so the alias routes are exercised against the
   // spellings the dataset actually ships.
   const vocab = (
-    canonicalSeed as { biomarkers: { name: string }[] }
-  ).biomarkers.map((b) => b.name);
+    canonicalSeed as { definitions: { name: string }[] }
+  ).definitions.map((b) => b.name);
   const index = buildCanonicalIndex(vocab);
   const rawKeys = new Set(vocab.map((n) => normalizeCanonicalKey(n)));
 
@@ -922,8 +922,8 @@ describe("deliberately uncurated analytes (#2313)", () => {
   // The real production vocabulary, as the dataset ships it — the same set a
   // curated entry is judged against everywhere else in this file.
   const vocabulary = (
-    canonicalSeed as { biomarkers: { name: string }[] }
-  ).biomarkers.map((b) => b.name);
+    canonicalSeed as { definitions: { name: string }[] }
+  ).definitions.map((b) => b.name);
   const curatedKeys = new Set(vocabulary.map((n) => normalizeCanonicalKey(n)));
 
   it("declares a non-empty reason for every entry", () => {
@@ -996,10 +996,14 @@ describe("deliberately uncurated analytes (#2313)", () => {
       "Body Fat Percentage, Left Arm",
       "Body Fat Percentage, Android",
       "Right Leg Body Fat Percentage",
-      // Per-site bone density and mineral content.
-      "Bone Mineral Density, Lumbar Spine",
+      // Per-site bone mineral CONTENT. The per-site DENSITY rows sat here until
+      // #2765 and do not any more: a density is what a T- and Z-score standardize,
+      // which this reason's second clause denies. They are asserted below, together
+      // with the audit that separated the two rows every site prints.
       "Bone Mineral Content, Pelvis",
-      "Bone Mineral Density Z-Score",
+      // "Bone Mineral Density Z-Score" sat here until #2679 and does not any more: a
+      // Z-score IS an age- and sex-matched population reference, which this reason
+      // denies. It is asserted with the other standardization of that density below.
       // The compartment-mass grid, with and without the gram suffix a report prints
       // inside the name (normalizeCanonicalKey keeps "(g)" as a token, so the two
       // spellings are different keys and both are declared).
@@ -1229,6 +1233,191 @@ describe("deliberately uncurated analytes (#2313)", () => {
     expect(uncuratedAnalyte("Visceral Adipose Tissue")).toBeNull();
   });
 
+  // #2679 — the THIRD standardization question about the same whole-body density, and
+  // the third time DEXA_DECOMPOSITION's sentence was found false of a member.
+  it("declines a bone density Z-score without denying it has a reference (#2679)", () => {
+    const z = uncuratedAnalyte("Bone Mineral Density Z-Score");
+    expect(z?.kind).toBe("covered-elsewhere");
+    expect(z && z.kind === "covered-elsewhere" && z.instead).toBe(
+      "Bone Mineral Density T-Score"
+    );
+    // THE DEFECT, pinned as the property rather than as a string diff: a Z-score is
+    // an age- and sex-matched population reference, so the one thing its reason may
+    // never do is tell the reader no population reference exists for it.
+    expect(z?.reason).not.toContain("per-region decomposition");
+    expect(z?.reason).not.toContain("no population reference");
+    // And it says what the score actually IS, which is what makes the decline
+    // informative rather than merely not-false.
+    expect(z?.reason).toContain("age");
+
+    // NOT folded into the absolute-density declaration, even though both point at the
+    // T-score. DEXA_TOTAL_BMD's sentence turns on g/cm² not being comparable between
+    // scanners — which is false of a Z-score, the whole point of standardizing. One
+    // `instead`, two reasons.
+    const total = uncuratedAnalyte("Bone Mineral Density, Total");
+    expect(z).not.toBe(total);
+    expect(z?.reason).not.toBe(total?.reason);
+
+    // Word order and casing fold onto the one declaration, as everywhere else here.
+    expect(uncuratedAnalyte("z-score bone mineral density")).toBe(z);
+    // The T-score itself stays curated; the registry never speaks about it.
+    expect(uncuratedAnalyte("Bone Mineral Density T-Score")).toBeNull();
+  });
+
+  // #2765 — the FOURTH member DEXA_DECOMPOSITION's sentence was found wrong of, and
+  // the first that is a whole grid rather than one row.
+  //
+  // The audit is written out in full — both rows of every site, the passes beside the
+  // hits — because "audit the site grid" is answered by a list that shows what it
+  // looked at. A test that asserted only the moved rows would be indistinguishable
+  // from one that stopped at the first site it checked.
+  //
+  // SYNTHETIC: label text only, in the word orders scanners print.
+  const DEXA_BONE_SITES = [
+    "Left Arm",
+    "Right Arm",
+    "Arms",
+    "Left Ribs",
+    "Right Ribs",
+    "Ribs",
+    "Thoracic Spine",
+    "Lumbar Spine",
+    "Spine",
+    "Left Pelvis",
+    "Right Pelvis",
+    "Pelvis",
+    "Left Leg",
+    "Right Leg",
+    "Legs",
+    "Trunk",
+    "Head",
+    "Subtotal",
+  ];
+
+  it("declines a per-site bone density without denying it has a reference (#2765)", () => {
+    // THE HITS: every density row in the grid, checked as the property rather than
+    // as a string diff. A bone density is the quantity population references are
+    // built for, so the one thing its reason may never do is say none exists.
+    for (const site of DEXA_BONE_SITES) {
+      const name = `Bone Mineral Density, ${site}`;
+      const d = uncuratedAnalyte(name);
+      expect(d?.kind, name).toBe("out-of-scope");
+      expect(d?.reason, name).not.toContain("no population reference");
+      // And it says where bone density IS read, which is what makes the decline
+      // informative rather than merely not-false.
+      expect(d?.reason, name).toContain("T-score");
+    }
+    // ONE declaration for the whole grid — the same "one decision per machine table"
+    // property #2643 protects, applied to the block that moved.
+    expect(
+      new Set(
+        DEXA_BONE_SITES.map((s) =>
+          uncuratedAnalyte(`Bone Mineral Density, ${s}`)
+        )
+      ).size
+    ).toBe(1);
+
+    // THE PASSES: the other row every site prints. Grams of mineral in one region is
+    // a compartment mass, both clauses of the per-region sentence are true of it, and
+    // nothing standardizes it — so it stays where it was, on purpose.
+    for (const site of DEXA_BONE_SITES) {
+      const name = `Bone Mineral Content, ${site}`;
+      const d = uncuratedAnalyte(name);
+      expect(d?.kind, name).toBe("out-of-scope");
+      expect(d?.reason, name).toContain("per-region decomposition");
+    }
+    // Which makes the two rows of one site two decisions, not one.
+    expect(uncuratedAnalyte("Bone Mineral Density, Lumbar Spine")).not.toBe(
+      uncuratedAnalyte("Bone Mineral Content, Lumbar Spine")
+    );
+
+    // NOT the whole-body decision either: "Bone Mineral Density, Total" points at the
+    // curated T-score, and a site may not, because a region is not its total.
+    const total = uncuratedAnalyte("Bone Mineral Density, Total");
+    expect(total?.kind).toBe("covered-elsewhere");
+    expect(uncuratedAnalyte("Bone Mineral Density, Spine")).not.toBe(total);
+
+    // Word order and casing fold onto the one declaration, as everywhere else here.
+    expect(uncuratedAnalyte("lumbar spine bone mineral density")).toBe(
+      uncuratedAnalyte("Bone Mineral Density, Lumbar Spine")
+    );
+  });
+
+  // #2679 — THE RATCHET, and it is deliberately narrow.
+  //
+  // Three separate corrections (#2322, #2675, #2679) landed on ONE sentence:
+  // DEXA_DECOMPOSITION's "no population reference range exists for them", applied to a
+  // member it is false of. No mechanical check can decide whether a sentence of
+  // clinical prose is true of an analyte, and a guard that pretended to would be the
+  // #2306 shape one level up — a wrong reason made to look verified. So this checks
+  // the one contradiction that IS decidable from two strings, and claims nothing more.
+  //
+  // WHAT IT CHECKS: a name that names a STANDARDIZED SCORE — T-score, Z-score,
+  // percentile, SD score — may not be declared `out-of-scope`. Such a score exists
+  // only as a comparison against a reference population; that is what the number IS,
+  // not a fact about it. So "this app models nothing here" is never its shape: either
+  // the underlying quantity is tracked somewhere (`covered-elsewhere`, whose `instead`
+  // the guard above already pins to a real entry) or the score wants curating. It
+  // reads the NAME's own grammar and never the reason's prose.
+  //
+  // WHAT IT WOULD HAVE CAUGHT: #2679 exactly — "Bone Mineral Density Z-Score" was an
+  // out-of-scope member of the cross-product family, and this fails on it. It would
+  // NOT have caught #2322 or #2675, whose names carry no score token. That is stated
+  // rather than glossed, because a guard credited with more than it does is worse than
+  // none. What it buys is the recurrence path that is actually open: the cross product
+  // MINTS names mechanically and DEXA_SCAN_LEVEL is appended to by hand, so the next
+  // "…Z-Score" row a report teaches us would inherit a sentence nobody re-reads.
+  const STANDARDIZED_SCORE = /\b(?:[tz][ -]?score|percentile|sd ?score)\b/i;
+
+  it("never declares a standardized score out-of-scope (#2679)", () => {
+    // Empty today. An exemption must be WRITTEN WITH A REASON, the way every scan in
+    // this repo takes its allowlist — an unreasoned one is the silence this whole
+    // registry exists to replace.
+    const exempt: readonly (readonly [string, string])[] = [];
+    for (const [name, reason] of exempt)
+      expect(reason.trim().length, name).toBeGreaterThan(0);
+    const exemptKeys = new Set(
+      exempt.map(([name]) => normalizeCanonicalKey(name))
+    );
+
+    const offenders = uncuratedAnalytes()
+      .filter(
+        ([name, d]) =>
+          d.kind === "out-of-scope" &&
+          STANDARDIZED_SCORE.test(name) &&
+          !exemptKeys.has(normalizeCanonicalKey(name))
+      )
+      .map(([name]) => name);
+    expect(
+      offenders,
+      "a T-score / Z-score / percentile IS a population comparison, so it cannot be " +
+        "out of scope: point it at the series carrying the measurement, or curate it"
+    ).toEqual([]);
+  });
+
+  it("pins what that guard can see (#2679)", () => {
+    // The regex is the guard's entire reach, so the reach is asserted rather than
+    // assumed: a guard that passes by matching nothing is indistinguishable from one
+    // that works, which is the failure mode it was built against.
+    for (const hit of [
+      "Bone Mineral Density Z-Score",
+      "Bone Mineral Density T-Score",
+      "Lumbar Spine BMD Z Score",
+      "Height Percentile",
+    ])
+      expect(STANDARDIZED_SCORE.test(hit), hit).toBe(true);
+    // The names it deliberately cannot judge — including the two earlier instances of
+    // this defect, which is the honest limit of a name-grammar check.
+    for (const miss of [
+      "Bone Mineral Density, Total",
+      "Fat Mass Index",
+      "Lean Mass Index",
+      "Android/Gynoid Ratio",
+      "Total Lean Mass",
+    ])
+      expect(STANDARDIZED_SCORE.test(miss), miss).toBe(false);
+  });
+
   // The limb rows the cross product was missing, asserted as ONE decision with the
   // rows that were already declared beside them — the property the bug broke.
   it("declares a limb's compartment mass exactly as its fat percentage (#2643)", () => {
@@ -1248,13 +1437,15 @@ describe("deliberately uncurated analytes (#2313)", () => {
       expect(d?.kind, name).toBe("out-of-scope");
       expect(d?.reason, name).toContain("per-region decomposition");
     }
-    // The same declaration object the limb's fat percentage and bone density carry —
-    // one decision for the whole machine's table, which is what went wrong.
+    // The same declaration object the limb's fat percentage and mineral content
+    // carry — one decision for the whole machine's table, which is what went wrong.
+    // The limb's bone DENSITY left this set in #2765 and is asserted below instead;
+    // it is a different sentence now, not a missing one.
     expect(
       new Set([
         ...limbRows.map((n) => uncuratedAnalyte(n)),
         uncuratedAnalyte("Body Fat Percentage, Left Arm"),
-        uncuratedAnalyte("Bone Mineral Density, Left Arm"),
+        uncuratedAnalyte("Bone Mineral Content, Left Arm"),
       ]).size
     ).toBe(1);
   });

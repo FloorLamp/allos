@@ -13,11 +13,6 @@
 import { describe, it, expect } from "vitest";
 import { ACTIVITY_TYPES, type ActivityType } from "@/lib/types";
 import { pickActivityIconKey } from "@/lib/activity-icon";
-import {
-  DURATION_ACTIVITY_TYPES,
-  isDurationActivityType,
-  restrictedActivityTypeClause,
-} from "@/lib/age-gate";
 import { normalizeTrainingLogFilters } from "@/lib/training-log-filters";
 import { equipmentKindsForActivityType } from "@/lib/activity-equipment";
 import { metsForActivity } from "@/lib/calorie-estimate";
@@ -30,7 +25,7 @@ describe("the declared ActivityType tuple (#2272)", () => {
       "strength",
       "cardio",
       "sport",
-      "recovery",
+      "mobility",
       "unclassified",
     ]);
   });
@@ -46,7 +41,7 @@ describe("every per-type map answers for every type", () => {
       strength: "barbell",
       cardio: "run",
       sport: "medal",
-      recovery: "stretch",
+      mobility: "stretch",
       // The generic glyph is the HONEST picture for a stated absence — a barbell or a
       // medal would re-assert the claim the type exists to withhold.
       unclassified: "activity",
@@ -83,10 +78,10 @@ describe("every per-type map answers for every type", () => {
   });
 
   it("the effort-class map settles or defers for every type", () => {
-    // Only `recovery` is incidental BY TYPE; everything else defers to the name.
+    // Only `mobility` is incidental BY TYPE; everything else defers to the name.
     for (const t of ACTIVITY_TYPES)
       expect(effortClass(t, "Bench press")).toBe(
-        t === "recovery" ? "incidental" : "training"
+        t === "mobility" ? "incidental" : "training"
       );
     // "Unspecified" is not "light": a provider that declined to name a session still
     // recorded one, so it counts as training unless the NAME says otherwise.
@@ -106,29 +101,13 @@ describe("the training log filter vocabulary is the declared tuple", () => {
   });
 });
 
-describe("the age gate's SQL list includes the unspecified session (#489/#2272)", () => {
-  it("keeps an unclassified import visible to a restricted profile", () => {
-    // This list RENDERS SQL shared by Timeline, the sidebar calendar and Search, so
-    // omitting a type removes a restricted profile's own workout from three surfaces
-    // at once with no error anywhere.
-    expect(isDurationActivityType("unclassified")).toBe(true);
-    expect(DURATION_ACTIVITY_TYPES).toEqual([
-      "cardio",
-      "sport",
-      "unclassified",
-    ]);
-    expect(restrictedActivityTypeClause(true)).toContain("'unclassified'");
-    expect(restrictedActivityTypeClause(true)).not.toContain("'strength'");
-  });
-});
-
 describe("the narrower unions stay narrower on purpose", () => {
   it("a weekly TYPE target cannot be scoped to the unspecified", () => {
     // A "Cardio 2×/week" target is rightly unaffected by a session nobody said was
     // cardio — the ask (#2272 §3) is how it gets counted, not a silent inclusion.
     const scopes: readonly string[] = TYPE_SCOPES;
     expect(scopes).not.toContain("unclassified");
-    expect(scopes).not.toContain("recovery");
+    expect(scopes).not.toContain("mobility");
   });
 });
 

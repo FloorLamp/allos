@@ -13,6 +13,10 @@ import {
 } from "./session-cookie";
 import { isDemoMode, isDemoRestricted } from "./demo";
 import {
+  AUTHORIZED_PROFILE_IDS_MARK,
+  type AuthorizedProfileIds,
+} from "./cross-profile";
+import {
   parseViewProfileIds,
   serializeViewProfileIds,
   toggleViewId,
@@ -71,10 +75,34 @@ export interface CurrentSession {
   // The caller's access level on `profile` — 'write' unless the active profile is
   // shared with this member as a read-only grant. Admins are always 'write'.
   access: Access;
+  // WHICH SESSION THIS IS, safe to hand to the browser (#2908). Opaque, stable for
+  // the life of one session, and different for every other one. See deviceSessionKey.
+  deviceSessionKey: string;
 }
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+// A name for THIS session that the browser may hold, and that grants nothing.
+//
+// The device write gate (lib/offline/write-gate.ts) has to answer one question that no
+// amount of client-side state can: "is the document asking to re-open device writes part
+// of the session that closed them, or a new one?" A mount cannot answer it — every tab
+// open at logout is still mounted, and each of them re-opened the gate and wrote a
+// logged-out login's PHI straight back. Identity answers it, so the session needs a name.
+//
+// It is a second hash of the stored token hash, truncated. That is deliberate on both
+// counts: it is not the token (which stays httpOnly and never reaches script), it is not
+// the token_hash the server authenticates against, and it is not reversible to either, so
+// the copy that ends up at rest in IndexedDB beside the offline snapshots authenticates
+// nothing if the device is taken. It only has to be comparable and unique per session.
+function deviceSessionKey(tokenHash: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(`allos-device-session:${tokenHash}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 // Prepared statements hoisted to module scope — these run on effectively every
@@ -271,6 +299,7 @@ export function resolveSessionToken(token: string): CurrentSession | null {
     login: { id: row.loginId, username: row.username, role: row.role },
     profile,
     access: accessForProfile(row.loginId, row.role, profile.id),
+    deviceSessionKey: deviceSessionKey(tokenHash),
   };
 }
 
@@ -401,6 +430,68 @@ export function accessibleProfilesForLogin(loginId: number): SessionProfile[] {
   return accessibleProfiles(loginId, acct.role);
 }
 
+// ── Minting the authorized-set capability (#2898) ─────────────────────────────
+//
+// `AuthorizedProfileIds` (lib/cross-profile.ts) is the type a set-based cross-profile
+// query demands. It has no constructor that takes a list of numbers; it is DERIVED,
+// here, from the same grant resolution every other access decision in this module
+// uses. That is what makes these boundaries and not casts in disguise: whatever a
+// caller believes about a login, the set that comes back is recomputed from
+// `accessibleProfiles` at call time, so a revoked grant drops out immediately and an
+// id nobody granted can never appear.
+//
+// The seal lives in this one helper, beside the derivation that justifies it, and is
+// deliberately NOT exported: an exported `authorized(ids)` would be exactly the
+// arbitrary-numbers minter the capability exists to prevent. It is a three-line copy
+// of lib/cross-profile's private `seal` — mark non-enumerably so `Object.assign`
+// cannot launder the mark onto a forged array, then freeze so `Object.assign` cannot
+// overwrite this one in place. Two short copies is the price of not exporting a
+// sealer; the shared SYMBOL is all the two modules have in common.
+function authorized(ids: readonly number[]): AuthorizedProfileIds {
+  Object.defineProperty(ids, AUTHORIZED_PROFILE_IDS_MARK, {
+    value: true,
+    enumerable: false,
+  });
+  return Object.freeze(ids) as unknown as AuthorizedProfileIds;
+}
+
+// The login's accessible set as the capability — for the token-authenticated surfaces
+// that have no session to resolve a ProfileScope from (the portals registry endpoint,
+// the Patient portals page's reads). Session-backed pages take `scope.ids` instead.
+export function accessibleProfileIdsForLogin(
+  loginId: number
+): AuthorizedProfileIds {
+  return authorized(accessibleProfilesForLogin(loginId).map((p) => p.id));
+}
+
+// The subset of that set the login may WRITE — the authority a reporting token's
+// account gate and the "can this viewer act at all?" checks ask about. Reach FIRST,
+// then access (accessForProfile assumes reachability), and demo-restriction refuses
+// every non-admin write, so a demo-restricted token resolves to the empty set exactly
+// as it would be refused at an upload.
+//
+// The ROLE IS READ HERE, not taken as an argument (#2935 review). A caller passing the
+// wrong role would silently promote every read-only grant to writable — `accessForProfile`
+// answers "write" unconditionally for an admin — and this function's result is one the
+// type system labels authorized, so it must not depend on the caller getting a second
+// argument right. It resolves the login's CURRENT role from the same row
+// `accessibleProfilesForLogin` reads, which is also what makes a demotion take effect
+// immediately instead of riding a stale value.
+export function writableProfileIdsForLogin(
+  loginId: number
+): AuthorizedProfileIds {
+  const acct = db
+    .prepare("SELECT role FROM logins WHERE id = ?")
+    .get(loginId) as { role: Role } | undefined;
+  if (!acct) return authorized([]);
+  if (isDemoRestricted(isDemoMode(), acct.role)) return authorized([]);
+  return authorized(
+    accessibleProfilesForLogin(loginId)
+      .filter((p) => accessForProfile(loginId, acct.role, p.id) === "write")
+      .map((p) => p.id)
+  );
+}
+
 // ── Own-profile association (issue #1013) ─────────────────────────────────────
 //
 // A login may designate ONE of its accessible profiles as "mine" — the self the
@@ -515,8 +606,9 @@ export interface SessionSummary {
 }
 
 // The SHA-256 of the caller's current cookie token, or null when there's no
-// cookie — used to flag the current row in the sessions list.
-async function currentTokenHash(): Promise<string | null> {
+// cookie — used to flag the current row in the sessions list, and to let
+// revokeSession refuse the session making the request.
+export async function currentTokenHash(): Promise<string | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   return token ? hashToken(token) : null;
 }
@@ -540,19 +632,46 @@ export async function listLoginSessions(
   return rows.map((r) => ({ ...r, current: r.id === currentHash }));
 }
 
+/** What a per-device revoke actually did. Three outcomes, and the caller must tell them apart. */
+export type SessionRevokeOutcome = "revoked" | "nothing" | "refused-current";
+
 // Revoke one session by its token_hash, scoped to the owning login so a login
-// can only ever end its own sessions. Revoking the current session logs the
-// caller out on their next request (getCurrentSession finds no row).
+// can only ever end its own sessions.
 //
-// Returns TRUE only when a row actually went. A forged, stale, or foreign
-// session id deletes nothing, and the caller must not write an audit event (or
-// otherwise claim success) for a revocation that never happened.
-export function revokeSession(loginId: number, sessionId: string): boolean {
-  return (
+// AND IT REFUSES THE SESSION MAKING THE REQUEST. That exclusion used to live in
+// the SETTINGS PAGE — ActiveSessions renders the Revoke button only for a row
+// that is not `current` — which is an authorization invariant enforced by a
+// RENDERING DECISION: hand this function the caller's own session id (a forged
+// POST is the only way, so it is self-inflicted, but the shape is the one that
+// keeps costing this repo) and it happily ended the session it was called from.
+//
+// That mattered beyond tidiness once #2908 landed: the offline snapshots, the
+// queue and the write gate are wiped by a document on the device, and the ONE
+// revoke a person can aim at their own device was the one path that ended its
+// session without any of that running — so it left the health record and an OPEN
+// write gate behind on a device that now has no session at all.
+//
+// `currentSessionId` is REQUIRED, and `null` only for a caller with no cookie:
+// making it optional would let a future call site drop the guard by forgetting
+// it, which is how the guard ended up in a component in the first place.
+//
+// The outcome is STATED rather than a boolean, because "I refused" and "there
+// was nothing there" are different answers and the caller owes the person the
+// difference. Only "revoked" means a row went — the #1843 audit event must not
+// be written for either of the others.
+export function revokeSession(
+  loginId: number,
+  sessionId: string,
+  currentSessionId: string | null
+): SessionRevokeOutcome {
+  if (currentSessionId !== null && sessionId === currentSessionId) {
+    return "refused-current";
+  }
+  const ended =
     db
       .prepare("DELETE FROM sessions WHERE token_hash = ? AND login_id = ?")
-      .run(sessionId, loginId).changes > 0
-  );
+      .run(sessionId, loginId).changes > 0;
+  return ended ? "revoked" : "nothing";
 }
 
 // How many admin logins exist — the guard rail against locking the instance

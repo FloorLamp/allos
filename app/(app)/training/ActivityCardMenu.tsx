@@ -18,6 +18,7 @@ import {
 } from "@/lib/import-review/conflicts";
 import type { AppRoute } from "@/lib/hrefs";
 import { mergeActivities } from "./activity-actions";
+import { activityEditDataHasStrength } from "@/lib/activity-form-model";
 
 // A same-day sibling this card can absorb: id + label, plus its fold-field values
 // (from TrainingLogView's unfiltered scope group) so the shared conflict picker
@@ -47,12 +48,12 @@ interface PendingConflictMerge {
 
 // The kebab (⋯) action menu on a Training Log activity card. Its affordances:
 //
-//  • "View ride details" — read-first navigation for cycling activities.
-//  • "Edit" — opens the existing activity editor without making the ride title
+//  • "View details" — read-first navigation to the canonical activity page.
+//  • "Edit" — opens the existing activity editor without making the title
 //    itself an edit affordance.
 //  • "Log again" (issue #29) — opens a CREATE form pre-filled from this activity
 //    (title, exercises, sets) with the date reset to today, so repeating a
-//    session is one tap + a save. Always available.
+//    session is one tap + a save when the workout product and activity type apply.
 //  • "Merge with…" (issue #64) — reveals a picker of the OTHER activities logged
 //    the SAME day and folds the chosen one into this card (this card is the
 //    keeper) via mergeActivities, wired through useUndoableDelete so the delete
@@ -71,6 +72,7 @@ export default function ActivityCardMenu({
   units,
   detailHref,
   canWrite = true,
+  openMergeSignal,
 }: {
   // The full card activity — the source for "Log again".
   activity: ActivityEditData;
@@ -84,7 +86,8 @@ export default function ActivityCardMenu({
   // the deliberate re-enable action lives here rather than lengthening the card.
   editLocked: boolean;
   units: UnitPrefs;
-  // Read-first destination for activities with a dedicated detail surface.
+  // Read-first destination for this activity's canonical detail surface. Null
+  // when the menu is already rendered on that page.
   detailHref?: AppRoute | null;
   // Whether the acting login may write to THIS card's subject profile (issue #1330).
   // Merge (edits the keeper + deletes the sibling) and resume-sync (clears the edit
@@ -92,9 +95,24 @@ export default function ActivityCardMenu({
   // "Log again" survives regardless — it CREATES on the acting profile, never the
   // subject, so repeating a read-only member's workout logs it as yours.
   canWrite?: boolean;
+  // Bumped by a host that wants the merge picker opened (the overlap banner).
+  openMergeSignal?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
+  // A host OUTSIDE this menu can ask for the picker (the same-day overlap banner,
+  // #2870): discovery and merging must not become two different merge flows, so
+  // the banner opens THIS one rather than growing a second. A counter, not a
+  // boolean — asking twice in a row has to reopen it. Adjusted DURING render
+  // (React's own "state derived from a prop change" pattern) rather than in an
+  // effect, so the picker is open in the same commit the ask arrives in and
+  // nothing renders a closed menu first.
+  const [seenMergeAsk, setSeenMergeAsk] = useState(openMergeSignal ?? 0);
+  if ((openMergeSignal ?? 0) !== seenMergeAsk) {
+    setSeenMergeAsk(openMergeSignal ?? 0);
+    setOpen(true);
+    setPicking(true);
+  }
   // Multi-select mode (#1081). The picker DEFAULTS to the quick single-pick list (this
   // card keeper, one sibling — the #64 flow); a toggle reveals the full keeper-radio
   // multi-select across all members. Kept as an opt-in mode so the quick path (and its
@@ -110,7 +128,8 @@ export default function ActivityCardMenu({
   const [pendingConflict, setPendingConflict] =
     useState<PendingConflictMerge | null>(null);
   const undoable = useUndoableDelete();
-  const { openEdit, openRepeat } = useActivityEditor();
+  const { openEdit, openRepeat, trainingRelevant, strengthTrainingAvailable } =
+    useActivityEditor();
   const { busy: resumingSync, resumeSyncUpdates } = useResumeSyncUpdates(
     "activities",
     activity.id
@@ -339,7 +358,7 @@ export default function ActivityCardMenu({
                   className={MENU_ITEM}
                   onClick={() => setOpen(false)}
                 >
-                  View ride details
+                  View details
                 </Link>
               ) : null}
               {canWrite && detailHref ? (
@@ -355,18 +374,22 @@ export default function ActivityCardMenu({
                   Edit
                 </button>
               ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="log-again"
-                className={MENU_ITEM}
-                onClick={() => {
-                  setOpen(false);
-                  openRepeat(activity);
-                }}
-              >
-                Log again
-              </button>
+              {trainingRelevant &&
+                (strengthTrainingAvailable ||
+                  !activityEditDataHasStrength(activity)) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="log-again"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      setOpen(false);
+                      openRepeat(activity);
+                    }}
+                  >
+                    Log again
+                  </button>
+                )}
               {canWrite && siblings.length > 0 && (
                 <button
                   type="button"

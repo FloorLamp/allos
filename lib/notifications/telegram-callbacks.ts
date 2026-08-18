@@ -9,7 +9,7 @@ import {
   recordPreventiveDone,
   setPreventiveOverride,
   snoozeFinding,
-  supplementExists,
+  intakeItemExists,
   getDoseEscalateChatId,
   escalationAckState,
   logAdministration,
@@ -20,12 +20,18 @@ import {
   parseCorrectionAtToken,
   parseCorrectionChipToken,
 } from "../correction-time";
-import { DOSE_TIME_PREFIXES, FOOD_TIME_PREFIXES } from "./correction-rows";
+import {
+  DOSE_TIME_PREFIXES,
+  FOOD_TIME_PREFIXES,
+  PRACTICE_TIME_PREFIXES,
+} from "./correction-rows";
 import {
   handleDoseTimeAt,
   handleDoseTimeChip,
   handleFoodTimeAt,
   handleFoodTimeChip,
+  handlePracticeTimeAt,
+  handlePracticeTimeChip,
 } from "./telegram-time-correction";
 import { shiftDateStr } from "../date";
 import {
@@ -136,11 +142,11 @@ import {
   collectWindowDoses,
   slotSessionForKeyboard,
   withDoseCorrections,
-} from "./supplements";
+} from "./intake";
 import {
   notifiableWindowDoses,
   renderMergedIntakeMessage,
-} from "./supplement-format";
+} from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { countVisibleFoodButtons } from "./food-format";
 import { FOOD_QUICK_COUNT } from "../food-rank";
@@ -328,6 +334,26 @@ export async function handleCallbackQuery(
     await handleDoseTimeAt(cq, doseTimeAt);
     return;
   }
+  // The practice twin (#2875), over `practice_logs.time` — the one whose column feeds
+  // the scheduler that produced the tap: `modalHour()` reads it to pick each practice's
+  // typical hour, and #2188's retimed pace nudge fires at that hour, so an uncorrectable
+  // late acknowledgement compounds into a later and later nudge.
+  const practiceTimeChip = parseCorrectionChipToken(
+    cq.data,
+    PRACTICE_TIME_PREFIXES.chip
+  );
+  if (practiceTimeChip) {
+    await handlePracticeTimeChip(cq, practiceTimeChip);
+    return;
+  }
+  const practiceTimeAt = parseCorrectionAtToken(
+    cq.data,
+    PRACTICE_TIME_PREFIXES.at
+  );
+  if (practiceTimeAt) {
+    await handlePracticeTimeAt(cq, practiceTimeAt);
+    return;
+  }
 
   // ⤓ May (#1505 part 2): accept the demotion suggestion riding this reminder. The
   // one obligation write the notification layer can make — user-initiated, downward,
@@ -348,7 +374,7 @@ export async function handleCallbackQuery(
     return;
   }
 
-  // The digest's offer tail (#1505): expand/collapse the "Log other…" button in
+  // The digest's offer tail (#1505): expand/collapse the "➕ Doses" button in
   // place. Checked BEFORE the prn: log tokens because the expanded keyboard is made
   // of those, and a tail tap must never be mistaken for a log.
   const offerTail = parseOfferTailCallback(cq.data);
@@ -565,10 +591,10 @@ function applyRefillTap(
   profileId: number,
   rf: RefillCallback
 ): RefillTapOutcome {
-  if (!supplementExists(profileId, rf.suppId)) return "stale-item";
+  if (!intakeItemExists(profileId, rf.itemId)) return "stale-item";
   snoozeFinding(
     profileId,
-    refillSignalKey(rf.suppId),
+    refillSignalKey(rf.itemId),
     shiftDateStr(today(profileId), REFILL_SNOOZE_DAYS)
   );
   return "snoozed";
@@ -622,7 +648,7 @@ async function handleEscalationTap(
   // have FANNED OUT to for this profile (issue #1072 — each managing login's chat,
   // deduped) plus the escalate override of the supplement the tapped DOSE actually
   // belongs to (issue #615). The caregiver chat is derived from the dose row, NOT
-  // from the token's supp id — otherwise a token could pair supplement X's escalate
+  // from the token's item id — otherwise a token could pair supplement X's escalate
   // chat with a dose of supplement Y, letting X's caregiver confirm/silence Y's
   // doses. The fan-out set resolves through grants, so a forged id can't widen it.
   const authorizedChats = [
@@ -646,7 +672,7 @@ async function handleEscalationTap(
     const outcome = markDoseSkipped(
       profileId,
       esc.doseId,
-      esc.suppId,
+      esc.itemId,
       esc.date
     );
     await answerCallbackQuery(cq.id, tapSkipAnswerText(outcome), {
@@ -668,7 +694,7 @@ async function handleEscalationTap(
     // anywhere. Left unattributed, it behaves like a web one-tap — its correction row
     // rides the newest live dose message — which keeps the chat-side correction
     // reachable instead of burying it on a closed message.
-    const outcome = markDoseTaken(profileId, esc.doseId, esc.suppId, esc.date);
+    const outcome = markDoseTaken(profileId, esc.doseId, esc.itemId, esc.date);
     await answerCallbackQuery(
       cq.id,
       tapAnswerText(outcome, offDayCadence(profileId, esc.doseId, outcome)),
@@ -836,7 +862,7 @@ async function handleDoseTap(
     return;
   }
 
-  // markDoseTaken/markDoseSkipped independently verify the dose → supplement →
+  // markDoseTaken/markDoseSkipped independently verify the dose → item →
   // profile chain before writing, so a forged dose id from another profile is
   // rejected there. The message the button lives in is a frozen snapshot — the
   // dose may have been deleted/retired by an edit, or its item paused, since it
@@ -852,14 +878,14 @@ async function handleDoseTap(
       ? markDoseTaken(
           profileId,
           tap.doseId,
-          tap.suppId,
+          tap.itemId,
           tap.date,
           undefined,
           chatId != null && messageId != null
             ? messagePointerIdAt(profileId, chatId, messageId)
             : null
         )
-      : markDoseSkipped(profileId, tap.doseId, tap.suppId, tap.date);
+      : markDoseSkipped(profileId, tap.doseId, tap.itemId, tap.date);
   await answerCallbackQuery(
     cq.id,
     kind === "take"
@@ -1059,7 +1085,7 @@ async function handleAllTaken(
   // The slot's doses are re-collected from CURRENT state (active, non-retired,
   // due today), so this tolerates schedule edits made after the message was
   // sent. Floor-filtered (#1156): "✅ All" marks only the doses the reminder
-  // actually listed — a low-priority supplement the send excluded is never
+  // actually listed — a `may` supplement the send excluded is never
   // silently logged by a bulk tap. Count only real inserts; when the whole slot
   // has since emptied (schedule restructured / items paused), say so instead of
   // "Logged ✅".
@@ -1083,7 +1109,7 @@ async function handleAllTaken(
       markDoseTaken(
         profileId,
         e.dose.id,
-        e.supp.id,
+        e.item.id,
         all.date,
         undefined,
         notifyMessageId

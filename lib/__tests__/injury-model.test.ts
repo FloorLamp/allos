@@ -43,6 +43,14 @@ describe("injury-model — parsing + region rollup", () => {
     expect(parseMuscles('["biceps","nope"]')).toEqual(["biceps"]);
   });
 
+  it("folds a retired muscle into its absorber instead of dropping it (#2891)", () => {
+    // An injury stored before the upper-chest merge must keep its Chest
+    // constraint — voiding it would resume pushing chest work against a
+    // declared active injury.
+    expect(parseMuscles('["chest-upper"]')).toEqual(["chest"]);
+    expect(parseMuscles('["chest-upper","chest"]')).toEqual(["chest"]);
+  });
+
   it("rolls fine muscles up into their coarse region (REGION_SCOPES order)", () => {
     // biceps → Arms, glutes → Glutes; declared Chest stays. Ordered by REGION_SCOPES.
     expect(injuryRegions(["Chest"], ["biceps", "glutes"])).toEqual([

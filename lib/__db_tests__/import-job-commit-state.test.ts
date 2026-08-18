@@ -73,7 +73,7 @@ describe("import_jobs 'committing' state — migration 015", () => {
     const db = newDb();
     migrate(db);
     db.prepare(
-      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (7, 1, 'biomarkers', 'ready')"
+      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (7, 1, 'clinical-results', 'ready')"
     ).run();
     expect(() =>
       db.prepare("UPDATE import_jobs SET status = 'bogus' WHERE id = 7").run()
@@ -131,7 +131,7 @@ describe("boot reaper — a crash-stranded 'committing' job (age-gated, issue #4
       "INSERT INTO import_jobs (id, profile_id, type, status, updated_at) VALUES (1, 1, 'workouts', 'committing', datetime('now','-60 minutes'))"
     ).run();
     db.prepare(
-      "INSERT INTO import_jobs (id, profile_id, type, status, updated_at) VALUES (2, 1, 'biomarkers', 'processing', datetime('now','-60 minutes'))"
+      "INSERT INTO import_jobs (id, profile_id, type, status, updated_at) VALUES (2, 1, 'clinical-results', 'processing', datetime('now','-60 minutes'))"
     ).run();
     db.prepare(
       "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (3, 1, 'workouts', 'ready')"
@@ -140,7 +140,7 @@ describe("boot reaper — a crash-stranded 'committing' job (age-gated, issue #4
       "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (4, 1, 'workouts', 'committing')"
     ).run();
     db.prepare(
-      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (5, 1, 'biomarkers', 'processing')"
+      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (5, 1, 'clinical-results', 'processing')"
     ).run();
 
     bootTasks(db); // re-runs the per-boot (now age-gated) stuck-state cleanup

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { today } from "@/lib/db";
 import { Notice } from "@/components/Notice";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 import {
   getSubstanceInstrumentReadings,
   type SubstanceInstrumentReading,
@@ -36,7 +36,7 @@ import {
 // screen → track → support reduction. Validated screening instruments (AUDIT-C
 // and DAST-10 in-app — the latter since #1085; AUDIT as an outside total) trended
 // like biomarkers; per-substance consumption ledgers (#1078: alcohol on the shared
-// food-log ledger, nicotine/cannabis on substance_log); user-set weekly reduction
+// food-log ledger, nicotine/cannabis on substance_daily_totals); user-set weekly reduction
 // targets with calm progress. NON-JUDGMENTAL AND NEVER GAMIFIED (product-decided):
 // no streaks, no badges, no milestones, no celebratory copy — a harm-reduction
 // tracker, not a chip-counter. A high score gets a calm discuss-with-a-clinician
@@ -110,7 +110,7 @@ export default function SubstanceUseSection({
 
       {/* Consumption + reduction target, one section per tracked substance
           (#1078): alcohol on the shared food-log ledger, nicotine/cannabis on
-          the dedicated substance_log ledger — same one-tap log/undo, weekly cap,
+          the dedicated substance_daily_totals ledger — same one-tap log/undo, weekly cap,
           calm progress line, and trailing trend, all through the ONE dispatched
           computation the coaching finding also reads. */}
       {weeks.map((week) => {
@@ -153,7 +153,7 @@ export default function SubstanceUseSection({
               total: r.total,
               bandLabel: r.band.label,
               maxTotal: substanceInstrumentDef(r.instrument).maxTotal,
-              href: readingDetailHref(r.instrument),
+              href: clinicalResultDetailHref(r.instrument),
               documentId: r.documentId,
             }))}
           />

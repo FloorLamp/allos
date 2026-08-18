@@ -95,7 +95,9 @@ describe("migrate() — fresh boot", () => {
     ).toBe(1);
     expect(
       (
-        db.prepare("SELECT COUNT(*) AS c FROM canonical_biomarkers").get() as {
+        db
+          .prepare("SELECT COUNT(*) AS c FROM canonical_result_definitions")
+          .get() as {
           c: number;
         }
       ).c
@@ -109,20 +111,20 @@ describe("migrate() — idempotency (up-to-date DB replays as a no-op)", () => {
   it("can be run twice on the same database without throwing or changing schema", () => {
     const db = newDb();
     migrate(db);
-    const before = db
-      .prepare(
-        "SELECT group_concat(sql, ';') AS s FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name"
-      )
-      .get() as { s: string };
+    const schema = () =>
+      db
+        .prepare(
+          `SELECT type, name, tbl_name, sql
+             FROM sqlite_master
+            WHERE sql IS NOT NULL
+            ORDER BY type, name`
+        )
+        .all();
+    const before = schema();
 
     expect(() => migrate(db)).not.toThrow();
 
-    const after = db
-      .prepare(
-        "SELECT group_concat(sql, ';') AS s FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name"
-      )
-      .get() as { s: string };
-    expect(after.s).toBe(before.s);
+    expect(schema()).toEqual(before);
     db.close();
   });
 });

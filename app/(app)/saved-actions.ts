@@ -2,7 +2,7 @@
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
-import { toggleBiomarkerSaved } from "@/lib/queries";
+import { toggleClinicalResultSaved } from "@/lib/queries";
 import { setSavedOrder, toggleItemSaved } from "@/lib/queries/saved";
 import {
   isSavedKind,
@@ -19,12 +19,12 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // (requireWriteAccess — saves are per-profile data, so any login acting as the profile
 // may save), keeping this module's gate uniform per the #319 grouping rule.
 
-// Toggle a save. The form carries a Trends SERIES KEY ("bio:LDL Cholesterol" |
+// Toggle a save. The form carries a Trends SERIES KEY ("result:LDL Cholesterol" |
 // "metric:weight") — the vocabulary every savable tile already speaks — which
 // savedRefFromSeriesKey resolves to a (kind, key) pair. An unparseable key is a
 // friendly error, never a write.
 //
-// Kind dispatch: `biomarker` goes through toggleBiomarkerSaved so the #482 FAMILY
+// Kind dispatch: `clinical-result` goes through toggleClinicalResultSaved so the #482 FAMILY
 // semantics (a save on any member lights the family; unsaving clears every member)
 // live in exactly one place; every other kind is an exact-key toggle.
 export async function toggleSavedItem(formData: FormData): Promise<FormResult> {
@@ -33,17 +33,17 @@ export async function toggleSavedItem(formData: FormData): Promise<FormResult> {
   const ref = savedRefFromSeriesKey(raw);
   if (!ref || !isSavedKind(ref.kind))
     return formError("Couldn't find that item.");
-  if (ref.kind === "biomarker") {
-    toggleBiomarkerSaved(profile.id, ref.key);
+  if (ref.kind === "clinical-result") {
+    toggleClinicalResultSaved(profile.id, ref.key);
   } else {
     toggleItemSaved(profile.id, ref.kind, ref.key);
   }
-  // A biomarker save is membership on three surfaces (status card, Trends tile,
+  // A clinical-result save is membership on three surfaces (status card, Trends tile,
   // passport summary), so every kind revalidates the same set — cheap, and it can't
   // drift as kinds are added.
   revalidateRoute("/trends");
   revalidateRoute("/results");
-  revalidateRoute("/results/readings/view", "page");
+  revalidateRoute("/results/clinical-results/view", "page");
   revalidateRoute("/trends/metric/[kind]", "page");
   revalidateRoute("/");
   return formOk();
@@ -57,7 +57,7 @@ export async function toggleSavedItem(formData: FormData): Promise<FormResult> {
 // `moveInOrder`, applied in the grid — see components/SavedTilesGrid.tsx.
 //
 // The list arrives as a JSON array of Trends SERIES KEYS ("metric:weight",
-// "bio:ApoB") — the vocabulary the tiles already speak — because a saved key may
+// "result:ApoB") — the vocabulary the tiles already speak — because a saved key may
 // contain any character a canonical analyte name does (spaces, commas, slashes), so
 // a delimiter-joined string would be a parsing bug waiting for the first analyte
 // with a comma in it. Unparseable input is a friendly error, never a partial write;

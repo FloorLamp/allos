@@ -31,6 +31,41 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
 // RESETS them (Morning back to Auto — profile 1's default, digest off, sleep off)
 // so the shared fixture is left as found.
 test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
+  // Establish the cadence precondition explicitly. Worker databases are isolated
+  // from one another, but files sharing a worker run sequentially against the same
+  // database; an earlier cadence-focused spec may legitimately have used 5 minutes.
+  test.describe.configure({ mode: "serial" });
+  let previousTickInterval: string | undefined;
+
+  test.beforeEach(() => {
+    previousTickInterval = withDb(
+      (db) =>
+        db
+          .prepare("SELECT value FROM settings WHERE key = ?")
+          .get("notify_tick_interval_min") as { value: string } | undefined
+    )?.value;
+    withDb((db) =>
+      db
+        .prepare("DELETE FROM settings WHERE key = ?")
+        .run("notify_tick_interval_min")
+    );
+  });
+
+  test.afterEach(() => {
+    withDb((db) => {
+      if (previousTickInterval === undefined) {
+        db.prepare("DELETE FROM settings WHERE key = ?").run(
+          "notify_tick_interval_min"
+        );
+      } else {
+        db.prepare(
+          `INSERT INTO settings (key, value) VALUES ('notify_tick_interval_min', ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+        ).run(previousTickInterval);
+      }
+    });
+  });
+
   test("Auto option, minute-precise manual time + sleep-summary opt-in round-trip", async ({
     page,
   }) => {
@@ -43,7 +78,7 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
     await expect(scheduleCard).toBeVisible();
     await expect(kindsCard).toBeVisible();
 
-    const morning = page.getByTestId("supp-morning-hour");
+    const morning = page.getByTestId("intake-morning-hour");
 
     // The wake-aware option is offered on the Morning intake slot. It is NOT offered
     // on the digest any more (#2211) — that slot needs you awake, the digest needs
@@ -59,12 +94,12 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
     // choice. Switching the mode to "At time" reveals the time input seeded with
     // the slot default; the fill then lands the sub-hourly minute.
     await settledSelectSave(page, morning, "time", scheduleCard);
-    const morningTime = page.getByTestId("supp-morning-hour-time");
+    const morningTime = page.getByTestId("intake-morning-hour-time");
     await expect(morningTime).toBeVisible();
     await settledFillSave(page, morningTime, "09:15", scheduleCard);
     await page.reload();
-    await expect(page.getByTestId("supp-morning-hour")).toHaveValue("time");
-    await expect(page.getByTestId("supp-morning-hour-time")).toHaveValue(
+    await expect(page.getByTestId("intake-morning-hour")).toHaveValue("time");
+    await expect(page.getByTestId("intake-morning-hour-time")).toHaveValue(
       "09:15"
     );
 
@@ -80,7 +115,7 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
     // as an explicit "1").
     await settledSelectSave(
       page,
-      page.getByTestId("supp-morning-hour"),
+      page.getByTestId("intake-morning-hour"),
       "auto",
       scheduleCard
     );
@@ -110,7 +145,7 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
 
     // All three round-trip across a reload.
     await page.reload();
-    await expect(page.getByTestId("supp-morning-hour")).toHaveValue("auto");
+    await expect(page.getByTestId("intake-morning-hour")).toHaveValue("auto");
     await expect(page.getByTestId("digest-hour")).toHaveValue("static");
     await expect(page.getByTestId("digest-sleep-enabled")).toBeChecked();
 
@@ -164,11 +199,11 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
 
       await settledSelectSave(
         page,
-        page.getByTestId("supp-morning-hour"),
+        page.getByTestId("intake-morning-hour"),
         "time",
         scheduleCard
       );
-      const morningTime = page.getByTestId("supp-morning-hour-time");
+      const morningTime = page.getByTestId("intake-morning-hour-time");
       // The observed 5-minute cadence renders a 5-minute grid (step is seconds).
       await expect(morningTime).toHaveAttribute("step", "300");
 
@@ -176,13 +211,12 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
       // warning then NAMES it, with the grid the steps copy points at.
       await settledFillSave(page, morningTime, "07:42", scheduleCard);
       await page.reload();
-      await expect(page.getByTestId("supp-morning-hour-time")).toHaveValue(
+      await expect(page.getByTestId("intake-morning-hour-time")).toHaveValue(
         "07:42"
       );
-      await expect(page.getByTestId("supp-morning-hour-time")).toHaveAttribute(
-        "step",
-        "300"
-      );
+      await expect(
+        page.getByTestId("intake-morning-hour-time")
+      ).toHaveAttribute("step", "300");
       const warning = page.getByTestId("sub-hourly-tick-warning");
       await expect(warning).toContainText("07:42");
       await expect(warning).toContainText("5-minute steps");
@@ -190,7 +224,7 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
       // A grid-aligned minute is silent: the cadence can hit 07:40 exactly.
       await settledFillSave(
         page,
-        page.getByTestId("supp-morning-hour-time"),
+        page.getByTestId("intake-morning-hour-time"),
         "07:40",
         scheduleCard
       );
@@ -199,7 +233,7 @@ test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
       // Reset the shared fixture: Morning back to Auto (profile 1's default).
       await settledSelectSave(
         page,
-        page.getByTestId("supp-morning-hour"),
+        page.getByTestId("intake-morning-hour"),
         "auto",
         scheduleCard
       );

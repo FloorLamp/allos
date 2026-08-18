@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, settledBoxes } from "./helpers";
 import { TREND_ANNOTATION_VISIBILITY_KEY } from "../lib/trend-annotation-visibility";
 
 test.describe("desktop Trends annotations", () => {
@@ -17,14 +17,9 @@ test.describe("desktop Trends annotations", () => {
     ).toBeVisible();
 
     const rangeRow = page.getByTestId("trends-chip-row");
-    const [rangeBox, eventBox] = await Promise.all([
-      rangeRow.boundingBox(),
-      controls.boundingBox(),
-    ]);
-    expect(rangeBox).not.toBeNull();
-    expect(eventBox).not.toBeNull();
-    const rangeCenter = rangeBox!.y + rangeBox!.height / 2;
-    const eventCenter = eventBox!.y + eventBox!.height / 2;
+    const [rangeBox, eventBox] = await settledBoxes([rangeRow, controls]);
+    const rangeCenter = rangeBox.y + rangeBox.height / 2;
+    const eventCenter = eventBox.y + eventBox.height / 2;
     expect(
       Math.abs(rangeCenter - eventCenter),
       "Events should share the desktop row with the range controls"
@@ -32,7 +27,14 @@ test.describe("desktop Trends annotations", () => {
 
     const protocols = page.getByRole("button", { name: "Protocols" });
     await expect(protocols).toHaveAttribute("aria-pressed", "true");
-    const shaded = page.locator(".recharts-reference-area");
+    // A plot carries two unrelated kinds of shading since #2653: the protocol
+    // windows this control toggles, and the grey band marking a run of unlogged
+    // days. Both are recharts reference areas, so the protocol assertions scope
+    // AWAY from the gap band — otherwise "protocols are off" would be answered
+    // by a silence in the data.
+    const shaded = page.locator(
+      ".recharts-reference-area:not(.chart-unlogged-band)"
+    );
     await expect
       .poll(async () => await shaded.count(), {
         message: "the seeded protocol windows should be shaded to begin with",
@@ -54,7 +56,9 @@ test.describe("desktop Trends annotations", () => {
     await page.reload();
     const reloadedProtocols = page.getByRole("button", { name: "Protocols" });
     await expect(reloadedProtocols).toHaveAttribute("aria-pressed", "false");
-    await expect(page.locator(".recharts-reference-area")).toHaveCount(0);
+    await expect(
+      page.locator(".recharts-reference-area:not(.chart-unlogged-band)")
+    ).toHaveCount(0);
 
     // The metric detail page mounts a fresh provider but reads the same durable
     // per-browser preference.
@@ -87,17 +91,10 @@ test.describe("desktop Trends annotations", () => {
       1
     );
 
-    const [rangeBox, eventBox] = await Promise.all([
-      rangeRow.boundingBox(),
-      controls.boundingBox(),
-    ]);
-    expect(rangeBox).not.toBeNull();
-    expect(eventBox).not.toBeNull();
+    const [rangeBox, eventBox] = await settledBoxes([rangeRow, controls]);
     expect(
       Math.abs(
-        rangeBox!.y +
-          rangeBox!.height / 2 -
-          (eventBox!.y + eventBox!.height / 2)
+        rangeBox.y + rangeBox.height / 2 - (eventBox.y + eventBox.height / 2)
       ),
       "Metric-detail Events should share the desktop range row"
     ).toBeLessThanOrEqual(2);
@@ -108,7 +105,12 @@ test.describe("desktop Trends annotations", () => {
   }) => {
     await page.goto("/trends?view=all&range=all");
     await expect
-      .poll(async () => await page.locator(".recharts-reference-area").count())
+      .poll(
+        async () =>
+          await page
+            .locator(".recharts-reference-area:not(.chart-unlogged-band)")
+            .count()
+      )
       .toBeGreaterThan(0);
 
     const sizes = await page

@@ -104,8 +104,8 @@ six months or a resting heart rate older than two weeks — the value stays exac
 where it was, the date line becomes an age ("4 years ago") in amber, and the trend
 arrow drops, because an arrow is a claim about now. Readings taken in one sitting
 (three sequential cuff readings at a clinic visit) never draw an arrow between
-each other at any age. Biomarker stars remain available on Biomarkers and Trends as personal
-pins—what someone wants to follow even while normal—and are deliberately
+each other at any age. Saved clinical results remain available in Clinical results as
+personal pins—what someone wants to follow even while normal—and are deliberately
 separate from urgency. Healthspan pillars surfaces VO₂ Max percentile, strength
 standard, sleep regularity, biological age, and biomarkers in optimal range as
 separate signals, never one invented score.
@@ -175,7 +175,8 @@ birthdate/sex gaps cluster and the caregiver is who can fix them.
 ## Timeline
 
 Day-by-day health history across activity, body metrics, labs, medications,
-documents, visits, goals, protocol start/end, and milestones; each day header
+documents, visits, goals, milestones, and — for adult profiles — protocol
+start/end; each day header
 also shows **sunrise/sunset daylight chips** once a home location is set
 (**Settings → Health profile → Home location** — optional coarse coordinates
 you enter or detect, stored rounded to ~11 km and used only for on-device sun
@@ -340,6 +341,9 @@ to improve.
 
 Route: `/longevity`.
 
+Longevity analysis and protocol experiments are available to profiles with a
+known adult life stage.
+
 The healthspan pillars expand into one page of anchored sections: **biological
 age** (the PhenoAge hero, its pace-of-aging, and the per-input breakdown below —
 the one page the hero renders on),
@@ -364,7 +368,7 @@ The biomarker pillar states **how many markers** its ratio describes and **how
 current they are**, because "8 of 10 optimal" says nothing on its own about a
 two-analyte stub versus a forty-marker draw, or about results from last month
 versus five years ago. Each marker's retest state comes from the same retest
-clock the Biomarkers table and the Upcoming retest nudge use — Longevity has no
+clock the Clinical results table and the Upcoming retest nudge use — Longevity has no
 staleness rule of its own. A panel where **every** judged marker is past its own
 retest window renders **neutral** with "all based on older results" rather than a
 current-looking green; a mixed panel names its stale count; and a panel with no
@@ -657,8 +661,10 @@ and drops back to the normal form for notes and intensity. While a session is
 running, every one of those entry points — including "Log this session" on
 Today's session — reads **Resume workout** and reopens the session you already
 have going, with its clock and its logged sets intact; you can never restart a
-workout you're in the middle of by tapping the wrong thing. It's a
-strength-focused surface, so it's hidden for age-restricted profiles. A
+workout you're in the middle of by tapping the wrong thing. The workout product
+stands down through early childhood, and strength-specific logging, routines,
+live workouts, and analysis start at age 13. Existing and imported activity facts
+remain available from Timeline, search, export, and their detail pages. A
 non-strength session can also be tagged with the **gear** it used — a bike for a
 ride, shoes for a run — picked from your **Equipment** registry, with the picker
 filtered to what fits the activity (only bikes for a ride, only shoes for a run)
@@ -935,7 +941,7 @@ specifically".
 
 Biomarker tables, flags, trajectories, reference ranges, food-first context,
 fitness percentiles, and pediatric interpretation live under
-**Medical → Results → Biomarkers**, not in Trends. Functional-fitness readings
+**Medical → Results → Clinical results**, not in Trends. Functional-fitness readings
 are entered through the Training **Fitness check**.
 
 The default window is the last 90 days. Every tab uses the same range model and
@@ -1294,7 +1300,7 @@ dismissible **Goal pacing** note; it never escalates and never notifies.
 Route: `/nutrition`.
 
 Nutrition is a food-group serving log at the **habit tier**, deliberately _not_
-a calorie counter. A curated ~24-group catalog (fatty fish, leafy greens,
+a calorie counter. A curated ~25-group catalog (fatty fish, leafy greens,
 legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 …; `lib/datasets/data/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
 as **servings, one tap each** (undo decrements), each row badged by whether the
@@ -1413,16 +1419,16 @@ equipment recorded are unaffected, which is most of them.
 
 ## Medical
 
-Vitals, labs, genomics — the **Biomarkers** browser, **imaging studies**, and
-**genomic variants** share one merged **Results** page (#1042 phase 5, retabbed
-to route-per-tab in #1079: `/results`, Medical → Results, as three tabs
-`/results/readings` / `/results/imaging` / `/results/genomics` — bare
-`/results` lands on Biomarkers; the old `/biomarkers`, `/imaging`, and
-`/genomics` index routes were removed in #1635 and 404, and the per-biomarker
-detail page `/results/readings/view` survives at its own route).
+Clinical results, imaging studies, narrative reports, and genomic variants share
+one **Results** page (#1042 phase 5, retabbed to route-per-tab in #1079:
+`/results`, Medical → Results, as four tabs at `/results/clinical-results`,
+`/results/imaging`, `/results/reports`, and `/results/genomics` — bare `/results`
+lands on Clinical results; the old `/biomarkers`, `/imaging`, and `/genomics`
+index routes were removed in #1635 and 404, and the per-analyte
+detail page `/results/clinical-results/view` survives at its own route).
 
 **One renderer per cadence (#1932).** A dated reading opens on the surface its
-arrival rate calls for, and `readingDetailHref(canonicalName, rawName)`
+arrival rate calls for, and `clinicalResultDetailHref(canonicalName, rawName)`
 (`lib/hrefs.ts`) is the ONE helper every list, search hit, finding, panel chip
 and import drilldown asks — so no call site decides for itself. A **continuous**
 vital (blood pressure, SpO2, respiratory rate, body temperature) opens on its
@@ -1430,12 +1436,12 @@ metric detail page `/trends/metric/<slug>`: a windowed chart, the rolling
 7/30/90/365-day summary, and the readings table with row actions. Every **episodic**
 reading — labs, and the `category = 'vitals'` DOMAIN vitals (functional-fitness
 markers, audiogram thresholds, intraocular pressure, visual acuity, periodontal
-measures) — opens on `/results/readings/view`, which reads it against its reference and
+measures) — opens on `/results/clinical-results/view`, which reads it against its reference and
 optimal bands. The classification lives in `lib/reading-cadence.ts`; the pure
 test audits it against every canonical `vitals` entry, so a newly added vital
 cannot ship unclassified, and the DB-tier test pins that each continuous
 reading's metric kind really stores that canonical name. A vitals URL under
-`/results/readings/view` redirects to the metric page (current-IA plumbing for a stale
+`/results/clinical-results/view` redirects to the metric page (current-IA plumbing for a stale
 bookmark, not a compatibility shim — both routes are live), and blood pressure's
 pediatric AAP percentile card (#150) and the panel cross-reference (#1502)
 travelled with the reading to that surface.
@@ -1466,12 +1472,18 @@ known minor, its instruments being adult-validated), and Skin/Mental health
 always rendered — the latter because their in-page forms are the only creation
 path, and Mental health's crisis line travels with its pane).
 
-### Biomarkers browser
+Record rows reflect the relationships already stored elsewhere: procedures,
+conditions, imaging studies, and vaccine doses link back to their visit; visit rows
+show their illness episode and linked-record count; scheduled appointments appear on
+matching open care-plan items and health goals; and an early-onset family-history row
+states which screening cadence it changes. Rows without that context stay compact.
 
-The Biomarkers tab (`/results/readings`) is a collapsed **panel index**, not a
-scroll: every reading is grouped under its normalized clinical panel ("Lipids ·
-7 analytes · 3 flagged"), and a group opens on tap to reveal its readings. A
-panel whose current readings include an out-of-range one says so on its header,
+### Clinical results catalog
+
+The Clinical results tab (`/results/clinical-results`) is a collapsed **panel
+index**, not a scroll: every result is grouped under its normalized clinical panel
+("Lipids · 7 analytes · 3 flagged"), and a group opens on tap to reveal its
+results. A panel whose current results include an out-of-range one says so on its header,
 so a flagged group self-identifies while collapsed.
 
 **What it lists is decided per analyte, not per category (#2365).** Labs,
@@ -1520,7 +1532,7 @@ Opening a group, or asking a truncated one for the rest, loads that one panel's
 readings on the spot. So the page you land on costs the index, never the whole
 lab history, however many years of it there are.
 
-Readings sort by **name** (A–Z, newest reading first within an analyte) or by
+Clinical results sort by **name** (A–Z, newest result first within an analyte) or by
 date; panel is not a sort, because the groups are already emitted in clinical
 order. Filters are free-text search, category, clinical **panel**, an
 all/non-optimal/out-of-range lens, and "current values only". The panel facet
@@ -1565,11 +1577,17 @@ and studies without a recorded dose fall back to a curated
 ~10 mSv, whole-body PET/CT ~25 mSv, cardiac SPECT ~12 mSv,
 fluoroscopy/interventional study-dependent; MRI/ultrasound are 0 — non-ionizing;
 cited to the Mettler et al. catalog and RadiologyInfo.org). A calm,
-informational **trailing-3-year total** shows the recorded and estimated
-portions **separately labeled** (never one summed figure) with a
-natural-background comparison, framed as context for a provider conversation —
-never alarmist, never a "you've had too much" verdict; a child profile carries
-the age-appropriate pediatric framing. The `indication` (why the study was
+informational **all-records total** shows the recorded and estimated portions
+**separately labeled** (never one summed figure) with a natural-background
+comparison. It is labelled with how far back the record reaches ("since the
+oldest contributing study") rather than truncated — a trailing window would make
+a cumulative figure go down with no event to explain it — so the **trailing
+3-year figure sits beside it as a recent-intensity lens**. A disclosure names
+**every study behind the total, and every study left out with the reason** (no
+date, type unclear, non-ionizing), and the figures the rows print add up to the
+figure the headline prints. All of it is framed as context for a provider
+conversation — never alarmist, never a "you've had too much" verdict; a child
+profile carries the age-appropriate pediatric framing. The `indication` (why the study was
 ordered) is captured for the record and the FHIR feed. The
 **screening-vs-diagnostic** question — whether a diagnostic mammogram (done for
 a lump) should satisfy the routine _screening_ reminder the same way a screening
@@ -1660,7 +1678,7 @@ so it reuses the **observation store** rather than minting a table — each
 threshold is a canonical `vitals` `medical_records` row
 ("Hearing Threshold, Right Ear 4 kHz", `dB HL`), which is the same store, the
 same curated WHO ≤25 dB HL band, and the same rows that already trend and flag
-on Results → Biomarkers. Each ear/frequency stays its own independently-flagging
+on Results → Clinical results. Each ear/frequency stays its own independently-flagging
 series (deliberately never collapsed into one "hearing" family, so a normal
 frequency can't hide a flagged one). This change added **no migration**.
 
@@ -1717,7 +1735,7 @@ which is why they render in two places:
   the evening correcting the morning.
 - **Spirometry** — FEV1, FVC and the FEV1/FVC ratio — arrives on a pulmonology
   report the document-extraction pipeline already ingests, and lands as
-  `medical_records` readings that trend and flag on Results → Biomarkers exactly
+  `medical_records` readings that trend and flag on Results → Clinical results exactly
   like an audiogram threshold or a probing depth. All four share one
   **Respiratory function** panel, so a peak-flow reading's cross-reference points
   at the spirometry it was measured alongside.
@@ -2003,7 +2021,7 @@ apparently exact result.
 PhenoAge is also surfaced as a **biological-age hero**, on the Longevity page and
 nowhere else: your estimated biological age, how it compares to your calendar age
 (younger is better), your pace of aging across draws, and — ranked by how much
-each one moves the result — the inputs behind it. Results › Biomarkers keeps the
+each one moves the result — the inputs behind it. Results › Clinical results keeps the
 half of that block which is about the analyte catalog: which of the nine inputs
 you have, which you still need, and a link to the hero. That is the page where
 the missing analytes get added, so the prompt to complete the panel lives there
@@ -2469,10 +2487,10 @@ preventive **alcohol/drug-use screening** (USPSTF grade B, 2018/2020, both added
 to the curated screenings dataset).
 
 **Consumption** (per substance since #1078): one tap logs a **standard drink**
-into the SAME `food_log`/`food_log_events` ledger as Nutrition's `alcohol` food
+into the SAME `food_daily_totals`/`food_log_events` ledger as Nutrition's `alcohol` food
 group (the group's serving is literally one standard drink — one store, two
 surfaces, no parallel table), and a **nicotine** or **cannabis** use into the
-dedicated non-food `substance_log` counter ledger (migration 096 — they aren't
+dedicated non-food `substance_daily_totals` counter ledger (migration 096 — they aren't
 foods, so they never pollute the nutrition ledger or the one-tap bar; units are
 plain per-use counts — a cigarette/pouch/vape session or a cannabis session —
 deliberately never normalized to mg across product types), each with this-week
@@ -2631,8 +2649,10 @@ Marking something **May** does not hide it. It keeps its schedule as a _hint_ fo
 where to offer it, it still shows on Supplements & Meds, and on Upcoming it moves
 into an "available when you want them" section rather than disappearing. If you
 only use the app through Telegram, the daily digest carries a
-**"Log other (3 for midday)"** button that opens into whatever is available right
+**"Doses (3)"** button that opens into whatever is available right
 now — so a May item is always one tap away even though it never interrupts you.
+(On a dose reminder the same button reads **"Log other (3)"**, because there the
+list it is _other than_ is the message you are looking at.)
 
 **Medications start as Must**, and moving one lower asks first, spelling out
 exactly what you would be giving up ("no reminders, no escalation, no missed-dose
@@ -2752,7 +2772,7 @@ better than naming its category.
 
 ## Undo delete
 
-Deleting an activity, body-metrics entry, biomarker record,
+Deleting an activity, body-metrics entry, clinical observation,
 supplement/medication, wellness practice, substance-use history row, **practice
 session**, or **logged food serving** offers a one-tap **Undo** toast; the row
 (and its children) is held and restored intact if you undo, then purged.
@@ -3198,7 +3218,7 @@ disclaimer), and the point-of-action "discuss with your prescriber / pharmacist
 The rule is about **rendered user-facing copy, not about file type** (#2342). A
 source scan under `app/`/`components/` could not see the two other routes the
 sentence took to the same pages: 40 entries of curated JSON under `lib/` —
-`canonical-biomarkers.json`'s `note` and `biomarker-descriptions.json`'s
+`canonical-result-definitions.json`'s `note` and `biomarker-descriptions.json`'s
 `description`, both rendered verbatim on the reading detail page, one of them
 byte-identical to the `NOT_A_DIAGNOSIS` constant — and AI-written coverage
 descriptions, which are generated and stored at runtime and never pass through a
@@ -3206,7 +3226,7 @@ source file at all. All three now read the same banned-phrasing list, which live
 `lib/disclaimers.ts` beside the copy it protects: the guard scans every curated
 dataset's entry payloads (file-level `$comment`/`citation`/provenance metadata is
 out of scope — no surface renders it), `clampAiDescription` strips a disclaimer
-sentence out of a stored AI description, and `scripts/gen-canonical-biomarkers.ts`
+sentence out of a stored AI description, and `scripts/gen-canonical-result-definitions.ts`
 both forbids the sentence in its prompt and strips one from a generated `note`. The
 prompt was the root cause: it used to tell the model "These are INFORMATIONAL, not
 medical advice", which is what taught it to append the framing to the rows it wrote.

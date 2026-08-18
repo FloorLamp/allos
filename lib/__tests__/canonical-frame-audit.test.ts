@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import descriptionsJson from "@/lib/datasets/data/biomarker-descriptions.json";
 import {
   DERIVED_NAMES,
@@ -34,14 +34,15 @@ import { normalizeCanonicalKey } from "@/lib/canonical-name";
 // qualified twin is purely ADDITIVE, and normalizeCanonicalKey folds word order, so the
 // coined name needs no alias to stay reachable.
 
-type Biomarker = {
+type CanonicalFrameEntry = {
   name: string;
   note?: string | null;
   [k: string]: unknown;
 };
 
-const BIOMARKERS = (canonicalSeed as { biomarkers: Biomarker[] }).biomarkers;
-const VOCAB = BIOMARKERS.map((b) => b.name);
+const DEFINITIONS = (canonicalSeed as { definitions: CanonicalFrameEntry[] })
+  .definitions;
+const VOCAB = DEFINITIONS.map((b) => b.name);
 const DESCRIPTION = new Map(
   (
     descriptionsJson as { entries: { name: string; description: string }[] }
@@ -69,7 +70,7 @@ const BAND_FIELDS = [
   "ranges_by_cycle_phase",
 ] as const;
 
-function hasBand(b: Biomarker): boolean {
+function hasBand(b: CanonicalFrameEntry): boolean {
   return BAND_FIELDS.some((f) => b[f] != null);
 }
 
@@ -111,7 +112,7 @@ function tokensIn(text: string): string[] {
 }
 
 // The frames an entry's PROSE names that its NAME does not carry — the audit's trigger.
-function unstatedFrames(b: Biomarker): string[] {
+function unstatedFrames(b: CanonicalFrameEntry): string[] {
   const prose = `${b.note ?? ""} ${DESCRIPTION.get(b.name) ?? ""}`;
   const inName = new Set(tokensIn(b.name));
   return tokensIn(prose).filter((t) => !inName.has(t));
@@ -254,7 +255,7 @@ const FRAME_AUDIT: Record<string, AuditRow> = {
 
 describe("#2526 — canonical entries whose clinical FRAME is asserted only by prose", () => {
   it("every entry of that shape carries an audit verdict", () => {
-    const unaudited = BIOMARKERS.filter(
+    const unaudited = DEFINITIONS.filter(
       (b) => unstatedFrames(b).length > 0 && !FRAME_AUDIT[b.name]
     ).map((b) => `${b.name} [${unstatedFrames(b).join(", ")}]`);
     expect(
@@ -268,7 +269,7 @@ describe("#2526 — canonical entries whose clinical FRAME is asserted only by p
 
   it("no audit row is dead weight", () => {
     const stale = Object.keys(FRAME_AUDIT).filter((name) => {
-      const row = BIOMARKERS.find((b) => b.name === name);
+      const row = DEFINITIONS.find((b) => b.name === name);
       return !row || unstatedFrames(row).length === 0;
     });
     expect(
@@ -283,14 +284,14 @@ describe("#2526 — canonical entries whose clinical FRAME is asserted only by p
     const problems: string[] = [];
     for (const [name, row] of Object.entries(FRAME_AUDIT)) {
       if (row.verdict !== "coined") continue;
-      const bare = BIOMARKERS.find((b) => b.name === name)!;
+      const bare = DEFINITIONS.find((b) => b.name === name)!;
       if (hasBand(bare))
         problems.push(`${name}: still carries a band it cannot justify`);
       if (!row.twin) {
         problems.push(`${name}: no twin named`);
         continue;
       }
-      const twin = BIOMARKERS.find((b) => b.name === row.twin);
+      const twin = DEFINITIONS.find((b) => b.name === row.twin);
       if (!twin)
         problems.push(`${name}: twin "${row.twin}" is not in the vocabulary`);
       else {
@@ -332,7 +333,7 @@ describe("#2526 — canonical entries whose clinical FRAME is asserted only by p
     const wrong = Object.entries(FRAME_AUDIT)
       .filter(([name, row]) => {
         if (row.verdict !== "no-band") return false;
-        const b = BIOMARKERS.find((x) => x.name === name);
+        const b = DEFINITIONS.find((x) => x.name === name);
         return !b || hasBand(b);
       })
       .map(([name]) => name);

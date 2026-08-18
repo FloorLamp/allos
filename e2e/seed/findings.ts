@@ -211,7 +211,7 @@ export function seedGoalPacing(): void {
     `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
        ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
   );
-  // An adult, so /training is never age-gated for this login (lib/age-gate.ts).
+  // Adult demographics also let this fixture exercise population benchmarks.
   setGp.run(gpId, "birthdate", "1988-03-12");
   setGp.run(gpId, "sex", "male");
 
@@ -280,23 +280,6 @@ export function seedSuppressedCenter(): void {
         .run(scId, shiftDateStr(scToday, 5)).lastInsertRowid
     );
 
-    // A SECOND appointment, deliberately left UNSUPPRESSED (#2654 motion 2): the
-    // dismissal-slide spec needs one live Upcoming row to dismiss on a profile whose
-    // fold already exists, so it can watch the row travel and the fold's count answer.
-    // It owns this row's suppression state itself (delete-then-assert per test) and
-    // restores it, exactly as suppressed-center.spec.ts owns the three below.
-    db.prepare(
-      `DELETE FROM appointments WHERE profile_id = ? AND title = 'E2E Dismissable Appointment'`
-    ).run(scId);
-    const scDismissableApptId = Number(
-      db
-        .prepare(
-          `INSERT INTO appointments (profile_id, date, time_of_day, title, status)
-         VALUES (?, ?, '11:00', 'E2E Dismissable Appointment', 'scheduled')`
-        )
-        .run(scId, shiftDateStr(scToday, 6)).lastInsertRowid
-    );
-
     // The three suppression rows (the spec re-asserts these per test). The
     // med-bridge key needs no backing row — the section's resolver labels it from
     // the key alone (lib/suppression-display.ts), and Restore simply clears it.
@@ -315,7 +298,7 @@ export function seedSuppressedCenter(): void {
     scDismiss.run(scId, "med-bridge:e2e suppressed rx");
 
     console.log(
-      `e2e: seeded suppressed-center fixture — profile ${scId} (${SUPPRESSED_PROFILE}), appointment ${scApptId} (#1151), dismissable appointment ${scDismissableApptId} (#2654)`
+      `e2e: seeded suppressed-center fixture — profile ${scId} (${SUPPRESSED_PROFILE}), appointment ${scApptId} (#1151)`
     );
   }
 

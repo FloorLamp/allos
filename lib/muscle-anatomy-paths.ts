@@ -119,15 +119,14 @@ export const MUSCLE_PATHS: Record<MuscleId, MuscleShape[]> = {
       d: "M 28.6 34.6 C 25.6 35.4 23.4 37.9 22.9 41.4 C 22.6 44.4 23.3 46.9 24.6 48.4 C 27 47.4 28.8 43.9 29.2 39.9 C 29.4 37.9 29.3 35.9 28.6 34.6 Z",
     },
   ],
-  "chest-upper": [
-    // Clavicular pec band, sternum to shoulder.
+  chest: [
+    // Clavicular pec band, sternum to shoulder — drawn separately but one muscle
+    // with the sternal block below since the upper-chest merge (#2891).
     {
       view: "front",
       bilateral: true,
       d: "M 35 40.3 C 37 38.1 42.5 37.1 49.2 37.7 L 49.2 43 C 43.5 43.6 38 44.2 35.5 45.2 C 34.7 43.6 34.6 41.8 35 40.3 Z",
     },
-  ],
-  chest: [
     // Main (sternal) pec block.
     {
       view: "front",

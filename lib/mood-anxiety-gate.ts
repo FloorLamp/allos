@@ -27,11 +27,11 @@ import { itemRxcuis } from "./drug-interactions";
 export const ANXIETY_INSTRUMENT_CANONICAL = ["GAD-7", "PHQ-9"] as const;
 
 // Signal 5 anchor: a protocol (#1259) whose primary outcome IS the anxiety series
-// declares one of these outcome keys (the instruments are biomarker-shaped, so the
-// N-of-1 outcome vocabulary names them "biomarker:GAD-7"/"biomarker:PHQ-9").
+// declares one of these outcome keys. They are clinical instrument results, so the
+// N-of-1 outcome vocabulary uses the broad result namespace.
 export const ANXIETY_PROTOCOL_OUTCOME_KEYS = [
-  "biomarker:GAD-7",
-  "biomarker:PHQ-9",
+  "result:GAD-7",
+  "result:PHQ-9",
 ] as const;
 
 // Signal 3: a curated anxiety/mood keyword set matched (substring, case-folded) over

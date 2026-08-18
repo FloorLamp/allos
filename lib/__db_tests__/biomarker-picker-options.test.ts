@@ -11,7 +11,7 @@ import { shiftDateStr } from "@/lib/date";
 import {
   getRankedBiomarkerOptions,
   reconcileFlags,
-  toggleBiomarkerSaved,
+  toggleClinicalResultSaved,
 } from "@/lib/queries";
 import { listCompareOptions } from "@/lib/trends-series";
 import { biomarkerRankKey } from "@/lib/biomarker-rank";
@@ -72,7 +72,7 @@ beforeAll(() => {
   addReading(profileId, MEASURED, shiftDateStr(todayStr, -10), 4.5, "g/dL");
   // Starred WITHOUT any reading: a star is a declaration of interest, and the picker
   // must honour it before the profile has ever measured the analyte.
-  toggleBiomarkerSaved(profileId, STARRED);
+  toggleClinicalResultSaved(profileId, STARRED);
   reconcileFlags(profileId);
 
   // The other member's rows exist and must not leak into this profile's order.
@@ -145,7 +145,7 @@ describe("getRankedBiomarkerOptions over a profile's own facts", () => {
 
 describe("listCompareOptions after #1675", () => {
   it("returns its biomarker half relevance-ordered and group-tagged", () => {
-    const options = listCompareOptions(profileId, false);
+    const options = listCompareOptions(profileId);
     const names = options.biomarkers.map((o) => o.label);
     // Only analytes with stored readings are offered at all — membership unchanged.
     expect(names).toContain(OVERDUE);
@@ -158,16 +158,21 @@ describe("listCompareOptions after #1675", () => {
     expect(options.metrics.every((o) => o.group == null)).toBe(true);
   });
 
-  it("keeps the age gates: a gated metric is neither tile nor option", () => {
-    // A ten-year-old profile: body fat is withheld by the growth-metrics gate, and a
-    // training-restricted read drops training volume. Ranking must not reintroduce
-    // either — it reorders what membership already decided.
+  it("keeps body fat and strength volume gated for a school-age profile", () => {
     const child = makeProfile("PICKER CHILD");
     setProfileBirthdate(child, shiftDateStr(todayStr, -3650));
-    const gated = listCompareOptions(child, true);
+    const gated = listCompareOptions(child);
     const keys = gated.metrics.map((o) => o.key);
     expect(keys).not.toContain("metric:bodyfat");
     expect(keys).not.toContain("metric:volume");
     expect(gated.biomarkers).toEqual([]);
+  });
+
+  it("removes training volume while the workout product is unavailable", () => {
+    const toddler = makeProfile("PICKER TODDLER");
+    setProfileBirthdate(toddler, shiftDateStr(todayStr, -730));
+    const keys = listCompareOptions(toddler).metrics.map((o) => o.key);
+    expect(keys).not.toContain("metric:bodyfat");
+    expect(keys).not.toContain("metric:volume");
   });
 });

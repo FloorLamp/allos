@@ -4,7 +4,6 @@ import { PageHeader } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { LogoMark } from "@/components/Wordmark";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
 import { getEquipment } from "@/lib/equipment";
@@ -30,7 +29,13 @@ import {
   getUnitPrefs,
   getProfileBirthdate,
   getProfileSex,
+  getProfileAge,
 } from "@/lib/settings";
+import {
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 import {
   completeOnboarding,
   continueOnboardingData,
@@ -208,25 +213,30 @@ export default async function OnboardingPage({
   const unlockedStep = nextOnboardingStep(state, hasFirstValue);
   const activeStep = resolveOnboardingStep(params.step, state, hasFirstValue);
   const readOnly = access === "read";
+  const profileAge = getProfileAge(profile.id);
+  const trainingRelevant = isTrainingRelevant(profileAge);
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const layout = getDashboardLayout(profile.id);
-  const dashboardWidgetList = resolveWidgetList(
-    layout,
-    isTrainingRestricted(profile.id)
-  );
+  const dashboardWidgetList = resolveWidgetList(layout, undefined, {
+    adultContent: isLongevityRelevant(getProfileAge(profile.id)),
+    training: trainingRelevant,
+  });
   const visibleWidgets = new Set(
     dashboardWidgetList
       .filter((widget) => widget.visible)
       .map((widget) => widget.def.id)
   );
-  const activeRoutine = state.focuses.includes("fitness")
-    ? getActiveRoutine(profile.id)
-    : null;
-  const replaceTargets = state.focuses.includes("fitness")
-    ? getTrainingTargetsToReplace(profile.id).map((target) => ({
-        label: frequencyScopeLabel(target.scope_kind, target.scope_value),
-        perWeek: target.per_week,
-      }))
-    : [];
+  const activeRoutine =
+    trainingRelevant && state.focuses.includes("fitness")
+      ? getActiveRoutine(profile.id)
+      : null;
+  const replaceTargets =
+    trainingRelevant && state.focuses.includes("fitness")
+      ? getTrainingTargetsToReplace(profile.id).map((target) => ({
+          label: frequencyScopeLabel(target.scope_kind, target.scope_value),
+          perWeek: target.per_week,
+        }))
+      : [];
   const hasEquipment = getEquipment(profile.id).length > 0;
   const starterRoutineTemplates = ROUTINE_TEMPLATES.filter(
     (template) => template.audience === "beginner"
@@ -324,7 +334,11 @@ export default async function OnboardingPage({
         {activeStep === 2 && (
           <section className="card" data-testid="onboarding-outcomes">
             <form action={saveOnboardingFocuses} className="space-y-4">
-              <FocusChoices selected={state.focuses} readOnly={readOnly} />
+              <FocusChoices
+                selected={state.focuses}
+                readOnly={readOnly}
+                trainingRelevant={trainingRelevant}
+              />
               {!readOnly && (
                 <WizardActions backStep={1}>
                   <SubmitButton
@@ -471,7 +485,7 @@ export default async function OnboardingPage({
               <IconArrowRight className="h-5 w-5 shrink-0 text-brand-600 transition group-hover:translate-x-0.5 dark:text-brand-400" />
             </Link>
 
-            {state.focuses.includes("fitness") && (
+            {state.focuses.includes("fitness") && strengthTrainingAvailable && (
               <RoutineStarter
                 templates={starterRoutineTemplates}
                 replaceTargets={replaceTargets}

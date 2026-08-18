@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
+import {
+  expectNoClippedContent,
+  followLink,
+  hydratedClick,
+  settledBoxes,
+} from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_BODY,
@@ -43,37 +48,32 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     const chart = page.getByTestId("metric-detail-chart");
     const plot = chart.getByTestId("chart-card-plot");
     const summary = page.getByTestId("metric-period-stats");
-    const detailBox = await detail.boundingBox();
-    const chartBox = await chart.boundingBox();
-    const plotBox = await plot.boundingBox();
-    const summaryBox = await summary.boundingBox();
-
-    expect(detailBox).not.toBeNull();
-    expect(chartBox).not.toBeNull();
-    expect(plotBox).not.toBeNull();
-    expect(summaryBox).not.toBeNull();
+    const [detailBox, chartBox, plotBox, summaryBox] = await settledBoxes([
+      detail,
+      chart,
+      plot,
+      summary,
+    ]);
     // Desktop is an analysis canvas, not the old narrow reading column.
-    expect(detailBox!.width).toBeGreaterThan(1000);
+    expect(detailBox.width).toBeGreaterThan(1000);
     // Chart + summary form one opening row, with the chart as the primary column.
-    expect(Math.abs(chartBox!.y - summaryBox!.y)).toBeLessThan(4);
-    expect(chartBox!.width).toBeGreaterThan(summaryBox!.width);
+    expect(Math.abs(chartBox.y - summaryBox.y)).toBeLessThan(4);
+    expect(chartBox.width).toBeGreaterThan(summaryBox.width);
     // TrendMetricCharts normally lays overview cards out two-up. The detail page's
     // only chart must consume its column rather than leaving a blank sibling.
-    expect(plotBox!.width).toBeGreaterThan(chartBox!.width * 0.85);
+    expect(plotBox.width).toBeGreaterThan(chartBox.width * 0.85);
     await expect(page.getByTestId("measurements-quick-add")).toHaveCount(0);
     const measurementToggle = page.getByTestId("metric-measurement-toggle");
     await expect(page.getByTestId("star-toggle")).toBeVisible();
     await expect(measurementToggle).toHaveText("Log Manually");
     await expect(measurementToggle).toHaveAccessibleName("Log weight manually");
 
-    const headingBox = await page
-      .getByRole("heading", { level: 1, name: "Weight" })
-      .boundingBox();
-    const toggleBox = await measurementToggle.boundingBox();
-    expect(headingBox).not.toBeNull();
-    expect(toggleBox).not.toBeNull();
-    expect(Math.abs(toggleBox!.y - headingBox!.y)).toBeLessThan(8);
-    expect(toggleBox!.height).toBeGreaterThanOrEqual(30);
+    const [headingBox, toggleBox] = await settledBoxes([
+      page.getByRole("heading", { level: 1, name: "Weight" }),
+      measurementToggle,
+    ]);
+    expect(Math.abs(toggleBox.y - headingBox.y)).toBeLessThan(8);
+    expect(toggleBox.height).toBeGreaterThanOrEqual(30);
 
     await hydratedClick(page, measurementToggle);
     await expect(measurementToggle).toHaveAttribute("aria-expanded", "true");
@@ -201,18 +201,13 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     const sourcePickerControl = page.getByTestId(
       "primary-source-control-weight"
     );
-    const [sourceTitleBox, sourceCopyBox, sourcePickerBox] = await Promise.all([
-      sourceTitle.boundingBox(),
-      sourceCopy.boundingBox(),
-      sourcePickerControl.boundingBox(),
-    ]);
-    expect(sourceTitleBox).not.toBeNull();
-    expect(sourceCopyBox).not.toBeNull();
-    expect(sourcePickerBox).not.toBeNull();
-    expect(sourceTitleBox!.height).toBeLessThan(30);
-    expect(sourceCopyBox!.width).toBeGreaterThan(250);
-    expect(sourcePickerBox!.y).toBeGreaterThan(
-      sourceCopyBox!.y + sourceCopyBox!.height
+    const [sourceTitleBox, sourceCopyBox, sourcePickerBox] = await settledBoxes(
+      [sourceTitle, sourceCopy, sourcePickerControl]
+    );
+    expect(sourceTitleBox.height).toBeLessThan(30);
+    expect(sourceCopyBox.width).toBeGreaterThan(250);
+    expect(sourcePickerBox.y).toBeGreaterThan(
+      sourceCopyBox.y + sourceCopyBox.height
     );
     const readingsSection = page.getByTestId("metric-readings");
     await expect(readingsSection).toBeVisible();
@@ -221,14 +216,10 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
       .locator("tbody tr")
       .first(); // first-ok: this fixture's newest reading owns the row-layout assertion
     await expect(firstReading).toBeVisible();
-    const [readingsHeadingBox, firstReadingBox] = await Promise.all([
-      readingsSection
-        .getByRole("heading", { level: 2, name: "Readings" })
-        .boundingBox(),
-      firstReading.boundingBox(),
+    const [readingsHeadingBox, firstReadingBox] = await settledBoxes([
+      readingsSection.getByRole("heading", { level: 2, name: "Readings" }),
+      firstReading,
     ]);
-    expect(readingsHeadingBox).not.toBeNull();
-    expect(firstReadingBox).not.toBeNull();
     const readingsHeader = readingsSection.getByTestId(
       "metric-readings-header"
     );
@@ -266,9 +257,9 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
       paddingTop: "10px",
     });
     expect(readingsHeadingStyles).toEqual(sourceTitleStyles);
-    expect(Math.abs(readingsHeadingBox!.x - sourceTitleBox!.x)).toBeLessThan(1);
+    expect(Math.abs(readingsHeadingBox.x - sourceTitleBox.x)).toBeLessThan(1);
     const headingToFirstRow =
-      firstReadingBox!.y - (readingsHeadingBox!.y + readingsHeadingBox!.height);
+      firstReadingBox.y - (readingsHeadingBox.y + readingsHeadingBox.height);
     expect(headingToFirstRow).toBeGreaterThanOrEqual(3);
     expect(headingToFirstRow).toBeLessThanOrEqual(5);
     expect(
@@ -309,23 +300,19 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     const firstReadingMenu = firstReading.getByRole("button", {
       name: "Reading actions",
     });
-    const [readingDateBox, readingValueBox, readingMenuBox] = await Promise.all(
-      [
-        firstReading.locator('[data-card="title"]').boundingBox(),
-        firstReading.locator('[data-card="value"]').boundingBox(),
-        firstReadingMenu.boundingBox(),
-      ]
+    const [readingDateBox, readingValueBox, readingMenuBox] =
+      await settledBoxes([
+        firstReading.locator('[data-card="title"]'),
+        firstReading.locator('[data-card="value"]'),
+        firstReadingMenu,
+      ]);
+    expect(readingMenuBox.height).toBe(32);
+    expect(readingDateBox.y - firstReadingBox.y).toBeLessThanOrEqual(6);
+    expect(Math.abs(readingDateBox.y - readingValueBox.y)).toBeLessThanOrEqual(
+      2
     );
-    expect(readingDateBox).not.toBeNull();
-    expect(readingValueBox).not.toBeNull();
-    expect(readingMenuBox).not.toBeNull();
-    expect(readingMenuBox!.height).toBe(32);
-    expect(readingDateBox!.y - firstReadingBox!.y).toBeLessThanOrEqual(6);
-    expect(
-      Math.abs(readingDateBox!.y - readingValueBox!.y)
-    ).toBeLessThanOrEqual(2);
-    expect(readingValueBox!.x).toBeGreaterThan(
-      readingDateBox!.x + readingDateBox!.width
+    expect(readingValueBox.x).toBeGreaterThan(
+      readingDateBox.x + readingDateBox.width
     );
     await expect(
       firstReading.locator('[data-card="value"] .card-cell-label')
@@ -333,19 +320,34 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     const firstReadingMeta = firstReading.locator("td.metric-reading-source");
     await expect(firstReadingMeta).toHaveCSS("justify-content", "flex-start");
     await expect(firstReadingMeta).toHaveCSS("text-align", "left");
-    const [sourceLabelBox, sourceValueBox] = await Promise.all([
-      firstReadingMeta.getByText("Source", { exact: true }).boundingBox(),
-      firstReadingMeta.locator(":scope").evaluate((element) => {
-        const text = Array.from(element.childNodes).find(
+    const [sourceLabelBox, sourceValueBox] = await firstReadingMeta
+      .getByText("Source", { exact: true })
+      .evaluate((label) => {
+        const cell = label.closest("td");
+        if (!cell) return [null, null];
+        const text = Array.from(cell.childNodes).find(
           (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
         );
-        if (!text) return null;
+        if (!text) return [null, null];
         const range = document.createRange();
         range.selectNode(text);
-        const box = range.getBoundingClientRect();
-        return { x: box.x, y: box.y, width: box.width, height: box.height };
-      }),
-    ]);
+        const labelBox = label.getBoundingClientRect();
+        const valueBox = range.getBoundingClientRect();
+        return [
+          {
+            x: labelBox.x,
+            y: labelBox.y,
+            width: labelBox.width,
+            height: labelBox.height,
+          },
+          {
+            x: valueBox.x,
+            y: valueBox.y,
+            width: valueBox.width,
+            height: valueBox.height,
+          },
+        ];
+      });
     expect(sourceLabelBox).not.toBeNull();
     expect(sourceValueBox).not.toBeNull();
     expect(sourceValueBox!.x).toBeGreaterThan(sourceLabelBox!.x);
@@ -357,22 +359,20 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     await expect(page.getByTestId("measurements-quick-add")).toHaveCount(0);
     const mobileStar = page.getByTestId("star-toggle");
     const mobileLog = page.getByTestId("metric-measurement-toggle");
-    const [mobileStarBox, mobileLogBox] = await Promise.all([
-      mobileStar.boundingBox(),
-      mobileLog.boundingBox(),
+    const [mobileStarBox, mobileLogBox] = await settledBoxes([
+      mobileStar,
+      mobileLog,
     ]);
-    expect(mobileStarBox).not.toBeNull();
-    expect(mobileLogBox).not.toBeNull();
-    expect(mobileStarBox!.width).toBeLessThanOrEqual(40);
-    expect(mobileLogBox!.width).toBeLessThanOrEqual(40);
+    expect(mobileStarBox.width).toBeLessThanOrEqual(40);
+    expect(mobileLogBox.width).toBeLessThanOrEqual(40);
     await expect(mobileLog).toHaveAccessibleName("Log weight manually");
     await expect(mobileLog.locator("svg")).toBeVisible();
     await expect(mobileLog.locator("span")).toBeHidden();
     expect(
       Math.abs(
-        mobileStarBox!.y +
-          mobileStarBox!.height / 2 -
-          (mobileLogBox!.y + mobileLogBox!.height / 2)
+        mobileStarBox.y +
+          mobileStarBox.height / 2 -
+          (mobileLogBox.y + mobileLogBox.height / 2)
       )
     ).toBeLessThan(2);
     await hydratedClick(page, mobileLog);
@@ -421,15 +421,11 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     await expect(page.getByTestId("metric-period-stats")).toBeVisible();
     // The chart is the drill-in's primary answer. Secondary period stats follow
     // it, instead of consuming another full card before any plotted data appears.
-    const chartBox = await page
-      .getByTestId("metric-detail-chart")
-      .boundingBox();
-    const statsBox = await page
-      .getByTestId("metric-period-stats")
-      .boundingBox();
-    expect(chartBox).not.toBeNull();
-    expect(statsBox).not.toBeNull();
-    expect(chartBox!.y).toBeLessThan(statsBox!.y);
+    const [chartBox, statsBox] = await settledBoxes([
+      page.getByTestId("metric-detail-chart"),
+      page.getByTestId("metric-period-stats"),
+    ]);
+    expect(chartBox.y).toBeLessThan(statsBox.y);
     await expect(
       page.getByRole("heading", { level: 2, name: "Rolling summary" })
     ).toBeVisible();
@@ -600,19 +596,18 @@ test.describe("Trends → Overview → body census metric pages (#1067 Phase 2)"
     expect(count).toBeGreaterThan(0);
     for (let i = 0; i < count; i++) {
       const row = rows.nth(i);
-      const rowBox = await row.boundingBox();
-      const term = await row.locator("dt").boundingBox();
-      const value = await row.locator("dd").boundingBox();
-      expect(rowBox, "the stat row should be laid out").not.toBeNull();
-      expect(term, "the stat label should be laid out").not.toBeNull();
-      expect(value, "the stat value should be laid out").not.toBeNull();
+      const [rowBox, term, value] = await settledBoxes([
+        row,
+        row.locator("dt"),
+        row.locator("dd"),
+      ]);
       expect(
-        value!.height,
+        value.height,
         `stat value wrapped onto a second line: ${await row.innerText()}`
-      ).toBeLessThan(term!.height * 1.5);
+      ).toBeLessThan(term.height * 1.5);
       // …and it stays inside its own cell.
-      expect(value!.x + value!.width).toBeLessThanOrEqual(
-        rowBox!.x + rowBox!.width + 1
+      expect(value.x + value.width).toBeLessThanOrEqual(
+        rowBox.x + rowBox.width + 1
       );
     }
 

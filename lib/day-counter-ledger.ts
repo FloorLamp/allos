@@ -6,12 +6,12 @@
 // Three domains keep the same shape of row: ONE row per (profile, date, …identity)
 // carrying a running amount that taps push up and undos push back down, and that is
 // DROPPED when it returns to zero so a fully-undone day leaves no stray row. Food
-// servings (`food_log.servings`), non-food substance units (`substance_log.units`) and
-// quick-add protein grams (`protein_log.grams`) are three instances of one idea.
+// servings (`food_daily_totals.servings`), non-food substance units (`substance_daily_totals.units`) and
+// quick-add protein grams (`protein_daily_totals.grams`) are three instances of one idea.
 //
 // Each of them had hand-written the same four-step discipline, and the file headers
-// admitted the copying ("the food-log-write pattern re-instantiated for substance_log",
-// "the food_log discipline"). The four steps are:
+// admitted the copying ("the food-log-write pattern re-instantiated for substance_daily_totals",
+// "the food_daily_totals discipline"). The four steps are:
 //
 //   1. an upsert that ADDS (`ON CONFLICT … DO UPDATE SET x = x + excluded.x`), so two
 //      concurrent taps on the same coordinate compose instead of overwriting;
@@ -38,7 +38,7 @@
 // exactly the text it prepares). It owns the counter arithmetic and nothing else.
 // Everything domain-specific stays at the call site: catalog validation, typed outcome
 // shapes, the event-ledger rows that ride the same transaction, the alcohol/food-group
-// coupling (#1078 — alcohol rides `food_log` deliberately, and nothing here changes
+// coupling (#1078 — alcohol rides `food_daily_totals` deliberately, and nothing here changes
 // which table anything lands in), and undo/`captureDelete` integration.
 //
 // RELATIONSHIP TO `CounterSpec` (lib/undo-delete.ts, #2074). That registry DECLARES,
@@ -172,22 +172,22 @@ export const DAY_COUNTERS = {
    * this is the general per-group day counter, not a nutrition-only one.
    */
   food: {
-    table: "food_log",
+    table: "food_daily_totals",
     keyColumns: ["group_key"],
     amountColumn: "servings",
   },
   /** Non-food substance units — nicotine/cannabis (#1078). */
   substance: {
-    table: "substance_log",
+    table: "substance_daily_totals",
     keyColumns: ["substance"],
     amountColumn: "units",
     // A use re-stamps the day row's LAST tap instant, which is why the substance bump
     // carries a touch column and the other two do not.
-    touchColumns: ["logged_at"],
+    touchColumns: ["recorded_at"],
   },
   /** Quick-add protein grams (#824) — one row per day, no identity column. */
   protein: {
-    table: "protein_log",
+    table: "protein_daily_totals",
     keyColumns: [],
     amountColumn: "grams",
   },

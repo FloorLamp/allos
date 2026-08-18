@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  isHabitTierRecovery,
+  isHabitTierMobility,
   storedActivityFault,
   type StoredActivity,
   type StoredSet,
@@ -219,12 +219,12 @@ describe("storedActivityFault", () => {
 describe("habit-tier mobility sessions are out of the fault population", () => {
   const mobility = (over: Partial<StoredActivity> = {}) =>
     act({
-      type: "recovery",
+      type: "mobility",
       title: "Mobility",
       components: comps(
-        { name: "Couch stretch", type: "recovery" },
-        { name: "Ankle rocks", type: "recovery" },
-        { name: "Deep squat hold", type: "recovery" }
+        { name: "Couch stretch", type: "mobility" },
+        { name: "Ankle rocks", type: "mobility" },
+        { name: "Deep squat hold", type: "mobility" }
       ),
       duration_min: 8,
       ...over,
@@ -232,7 +232,7 @@ describe("habit-tier mobility sessions are out of the fault population", () => {
 
   it("passes the exact shape logMobilityMoveCore and the seed write", () => {
     expect(storedActivityFault(mobility(), [])).toBeNull();
-    expect(isHabitTierRecovery(mobility(), [])).toBe(true);
+    expect(isHabitTierMobility(mobility(), [])).toBe(true);
   });
 
   it("passes with no session duration at all", () => {
@@ -251,32 +251,32 @@ describe("habit-tier mobility sessions are out of the fault population", () => {
     expect(storedActivityFault(durationOnly, [])).toBeNull();
   });
 
-  it("still judges a recovery row carrying exercise sets", () => {
+  it("still judges a mobility row carrying exercise sets", () => {
     // Sets are something the mobility bar cannot write — an editor-shaped row
     // again, so the scan keeps its say (about the first fault it reaches).
     const sets = [set({ exercise: "Back Squat", weight_kg: 100, reps: 5 })];
-    expect(isHabitTierRecovery(mobility(), sets)).toBe(false);
+    expect(isHabitTierMobility(mobility(), sets)).toBe(false);
     expect(storedActivityFault(mobility(), sets)).not.toBeNull();
   });
 
-  it("still judges a recovery row with a non-recovery component", () => {
+  it("still judges a mobility row with a non-mobility component", () => {
     const mixed = mobility({
       components: comps({ name: "Easy Spin", type: "cardio" }),
     });
-    expect(isHabitTierRecovery(mixed, [])).toBe(false);
+    expect(isHabitTierMobility(mixed, [])).toBe(false);
     expect(storedActivityFault(mixed, [])).toMatch(
       /Easy Spin.*no distance, duration, or time range/
     );
   });
 
-  it("still judges a legacy recovery row with no components list", () => {
+  it("still judges a legacy mobility row with no components list", () => {
     const legacy = mobility({ components: null, duration_min: null });
-    expect(isHabitTierRecovery(legacy, [])).toBe(false);
+    expect(isHabitTierMobility(legacy, [])).toBe(false);
     expect(storedActivityFault(legacy, [])).toMatch(/No distance/);
   });
 
-  it("leaves non-recovery activity types alone", () => {
+  it("leaves non-mobility activity types alone", () => {
     const cardio = mobility({ type: "cardio" });
-    expect(isHabitTierRecovery(cardio, [])).toBe(false);
+    expect(isHabitTierMobility(cardio, [])).toBe(false);
   });
 });

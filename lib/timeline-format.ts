@@ -1,7 +1,7 @@
 import { isRealIsoDate, shiftDateStr, zonedDateParts } from "./date";
 import { OTHER_PANEL, panelLabel, parsePanelId } from "./biomarker-panels";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   dataSectionHref,
   importHref,
   protocolHref,
@@ -69,12 +69,16 @@ export interface TimelineEvent {
   // matched before iconTitle so an imported ride icons as a bike.
   iconSportNames?: string[] | null;
   // Non-causal cross-domain LINKED CONTEXT (#662): informational deep-links to
-  // OTHER records this event relates to by KNOWN lineage — a visit's `linkedRefs`
-  // point at the care-plan items / procedures / medications the SAME import
-  // document produced. This is a reference ("also produced from this visit's
-  // document"), NEVER a causal claim; the primary `href` stays the event's own
-  // source record. AppRoute-typed like every internal link (#285).
+  // OTHER records this event relates to by KNOWN lineage. This is a reference,
+  // NEVER a causal claim; the primary `href` stays the event's own source record.
+  // AppRoute-typed like every internal link (#285).
   linkedRefs?: { label: string; href: AppRoute }[];
+  // WHICH lineage those refs came from (#2920), so the card's heading claims exactly
+  // that much and no more: "document" = everything the visit's import document
+  // produced (only ever set when that document stands for a single visit, where
+  // document ≈ visit); "visit" = rows carrying a real encounter link to THIS visit,
+  // the encounter detail page's own vocabulary (#1350). Absent when there are no refs.
+  linkedRefsScope?: "visit" | "document";
   // The event's raw LOCAL clock window (issue #1068), carried on the event so the
   // Timeline day view's intraday panel can draw it as a span from the SAME event
   // set the feed lists — one gather, two formatters, never a second per-layer
@@ -480,8 +484,8 @@ export function medicalGroupLabel(
 }
 
 // Destination for a grouped medical/lab panel event: the source document when
-// known, else a single-biomarker chart when the panel is one marker, else the
-// biomarkers index.
+// known, else a single-analyte chart when the panel is one marker, else the
+// Clinical results index.
 export function clinicalObservationHref(
   documentId: number | null,
   names: string[],
@@ -489,9 +493,9 @@ export function clinicalObservationHref(
 ): AppRoute {
   if (documentId != null) return importHref(documentId);
   if (names.length === 1 && firstName) {
-    return readingDetailHref(firstName);
+    return clinicalResultDetailHref(firstName);
   }
-  return "/results/readings";
+  return "/results/clinical-results";
 }
 
 // Parse the "label::value::unit::flag" pipe-delimited GROUP_CONCAT payloads the

@@ -124,6 +124,7 @@ export function frequentPages(
   visits: PageVisits,
   options: {
     currentPath?: string;
+    excludedHrefs?: readonly AppRoute[];
     limit?: number;
     minVisits?: number;
   } = {}
@@ -133,9 +134,15 @@ export function frequentPages(
   const current = options.currentPath
     ? trackedPageFor(options.currentPath)
     : null;
+  const excluded = new Set(options.excludedHrefs);
   return TRACKED_PAGES.filter((p) => {
     const v = visits[p.href];
-    return v != null && v.n >= minVisits && p.href !== current?.href;
+    return (
+      v != null &&
+      v.n >= minVisits &&
+      p.href !== current?.href &&
+      !excluded.has(p.href)
+    );
   })
     .sort((a, b) => {
       const av = visits[a.href];

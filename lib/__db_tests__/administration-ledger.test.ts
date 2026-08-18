@@ -28,6 +28,7 @@ import {
   getAdministrationsForItemOnDate,
   getAdministrationsForItemsOnDate,
   getPrnMedicationsForQuickLog,
+  getIntakeDoseHistory,
 } from "@/lib/queries";
 import type { IntakeItem } from "@/lib/types";
 
@@ -377,13 +378,92 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
       .prepare(
         `SELECT product FROM intake_item_logs
           WHERE item_id = ? AND status = 'taken'
-          ORDER BY COALESCE(recorded_at, taken_at), id`
+          ORDER BY COALESCE(occurred_at, recorded_at), id`
       )
       .all(itemId) as { product: string | null }[];
     expect(products.map((row) => row.product)).toEqual([
       "Children's oral suspension (100 mg / 5 mL)",
       "Chewable tablet (100 mg)",
     ]);
+  });
+
+  // The SCHEDULED confirm path's half of the same snapshot (#2800). It was covered
+  // only for PRN above, which left the snapshot looking absent to anyone reading the
+  // write cores: none of the INSERT statements in lib/queries/intake/adherence.ts
+  // mention `product`, because the capture is done by the migration-079 triggers.
+  // Two table rebuilds (173, 20260814-intake-log-time-vocabulary) have already had to
+  // re-create those triggers by hand, and a third that forgot would silently blank the
+  // dose-history PRODUCT column for every user with nothing failing. This pins the
+  // behavior end-to-end — confirm a scheduled dose, read it back off the ledger — so
+  // the next rebuild that drops them fails here instead of in production.
+  it("snapshots the product when a SCHEDULED dose is confirmed, and the ledger reads it back", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('Sched Product')").run()
+        .lastInsertRowid
+    );
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, product, active, kind, condition, obligation)
+           VALUES (?, 'Levothyroxine', 'Tablet 50 mcg', 1, 'medication', 'daily', 'must')`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '50 mcg', 'morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    const date = today(profileId);
+    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
+
+    const history = getIntakeDoseHistory(profileId, itemId, "0001-01-01");
+    expect(history).toHaveLength(1);
+    expect(history[0].product).toBe("Tablet 50 mcg");
+    // And it is a SNAPSHOT, not a live join: switching the item's formulation leaves
+    // the dose already taken describing what was actually taken.
+    db.prepare("UPDATE intake_items SET product = ? WHERE id = ?").run(
+      "Tablet 75 mcg",
+      itemId
+    );
+    expect(
+      getIntakeDoseHistory(profileId, itemId, "0001-01-01")[0].product
+    ).toBe("Tablet 50 mcg");
+  });
+
+  // The empty PRODUCT column the walkthrough saw is an item with no product on file,
+  // not a dead write path: nothing to snapshot, so the ledger honestly says nothing.
+  it("leaves the ledger product empty when the item never had one", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('No Product')").run()
+        .lastInsertRowid
+    );
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, 'Vitamin D', 1, 'supplement', 'daily', 'should')`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1000 iu', 'morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    const date = today(profileId);
+    expect(markDoseTaken(profileId, doseId, itemId, date)).toBe("logged");
+    expect(
+      getIntakeDoseHistory(profileId, itemId, "0001-01-01")[0].product
+    ).toBeNull();
   });
 });
 

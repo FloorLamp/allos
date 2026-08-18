@@ -206,7 +206,7 @@ const INSURANCE = `
 describe("Ordered Prescriptions (66149-6, #268)", () => {
   it("imports the order as a prescription tagged 'Ordered at visit', never an open course", () => {
     const r = extractFromCcda(doc(ORDERED_PRESCRIPTIONS));
-    const meds = r.records.filter((x) => x.category === "prescription");
+    const meds = r.observations.filter((x) => x.category === "prescription");
     expect(meds).toHaveLength(1);
     const m = meds[0];
     expect(m.name).toBe("Atorvastatin 20 mg tablet");
@@ -224,7 +224,7 @@ describe("Ordered Prescriptions (66149-6, #268)", () => {
 
   it("keeps an explicit therapy period's bounds", () => {
     const r = extractFromCcda(doc(ORDERED_BOUNDED));
-    const meds = r.records.filter((x) => x.category === "prescription");
+    const meds = r.observations.filter((x) => x.category === "prescription");
     expect(meds).toHaveLength(1);
     const course = meds[0].courses![0];
     expect(course.started_on).toBe("2026-06-03");
@@ -234,7 +234,7 @@ describe("Ordered Prescriptions (66149-6, #268)", () => {
 
   it("anchors an undated order (LOINC-only section match) to the document date, still closed", () => {
     const r = extractFromCcda(doc(ORDERED_UNDATED));
-    const meds = r.records.filter((x) => x.category === "prescription");
+    const meds = r.observations.filter((x) => x.category === "prescription");
     expect(meds).toHaveLength(1);
     const m = meds[0];
     expect(m.name).toBe("Clarithromycin 250 mg tablet");
@@ -269,7 +269,7 @@ describe("Patient Instructions (69730-0, #268)", () => {
 describe("Functional Status (47420-5, #268)", () => {
   it("imports bare and organizer-nested assessment observations as qualitative records", () => {
     const r = extractFromCcda(doc(FUNCTIONAL_STATUS));
-    const byName = new Map(r.records.map((x) => [x.name, x]));
+    const byName = new Map(r.observations.map((x) => [x.name, x]));
     expect([...byName.keys()].sort()).toEqual([
       "Ambulation",
       "Cognitive status",
@@ -285,7 +285,7 @@ describe("Functional Status (47420-5, #268)", () => {
 
   it("does not carry the assessment LOINC onto the stored record (no unmapped-lab noise)", () => {
     const r = extractFromCcda(doc(FUNCTIONAL_STATUS));
-    for (const rec of r.records) {
+    for (const rec of r.observations) {
       expect(rec.loinc, rec.name).toBeNull();
     }
     // The unmapped-lab-code report must not invite canonicalizing assessment
@@ -309,20 +309,20 @@ describe("Functional Status (47420-5, #268)", () => {
   // misclassification can't hide either).
   it("keeps a vital-LOINC-colliding assessment out of 'vitals' (#694)", () => {
     const r = extractFromCcda(doc(FUNCTIONAL_STATUS_VITAL_COLLISION));
-    const rec = r.records.find((x) => x.name === "Reach ability");
+    const rec = r.observations.find((x) => x.name === "Reach ability");
     expect(rec, "assessment record present").toBeTruthy();
     expect(rec!.category).toBe("assessment");
     expect(rec!.value).toBe("Full reach");
     expect(rec!.loinc).toBeNull();
     // And it never leaks into the vitals category.
-    expect(r.records.some((x) => x.category === "vitals")).toBe(false);
+    expect(r.observations.some((x) => x.category === "vitals")).toBe(false);
   });
 });
 
 describe("Results noise drops (#681/#684/#722/#693 — precise reasons)", () => {
   it("drops non-analyte + derived-percentile rows, keeps the real analyte", () => {
     const r = extractFromCcda(doc(RESULTS_WITH_NOISE));
-    const names = r.records.map((x) => x.name).sort();
+    const names = r.observations.map((x) => x.name).sort();
     expect(names).toEqual(["Glucose"]);
     // The administrative + percentile codes never surface in the unmapped-code report.
     expect(r.report!.unmappedLoincs).toEqual([]);
@@ -350,7 +350,7 @@ describe("Results noise drops (#681/#684/#722/#693 — precise reasons)", () => 
 describe("Insurance (48768-6, #268 — recognized but ignored)", () => {
   it("imports nothing from the section and reports no unrecognized-section gap", () => {
     const r = extractFromCcda(doc(INSURANCE));
-    expect(r.records).toEqual([]);
+    expect(r.observations).toEqual([]);
     expect(r.conditions).toEqual([]);
     expect(r.encounters).toEqual([]);
     expect(

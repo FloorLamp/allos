@@ -103,7 +103,7 @@ function logFood(
   servings: number
 ): void {
   db.prepare(
-    "INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
+    "INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
   ).run(profileId, date, group, servings);
 }
 
@@ -298,7 +298,7 @@ describe("frequency-target right-sizing (#1670)", () => {
     expect(
       db
         .prepare(
-          "SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ? AND group_key = 'leafy_greens'"
+          "SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ? AND group_key = 'leafy_greens'"
         )
         .get(pid)
     ).toEqual({ n: 4 });

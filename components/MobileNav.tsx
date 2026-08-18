@@ -3,29 +3,12 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  IconBolt,
-  IconChevronUp,
-  IconDroplet,
-  IconFileText,
-  IconHeartbeat,
-  IconMenu2,
-  IconMoodSmile,
-  IconPill,
-  IconPlus,
-  IconSalad,
-  IconScale,
-  IconSearch,
-  IconSparkles,
-} from "@tabler/icons-react";
+import { IconSearch } from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
 import ProfileIdentityBar from "@/components/ProfileIdentityBar";
 import SidebarContent from "@/components/SidebarContent";
 import QuickLogSheet from "@/components/QuickLogSheet";
 import { openGlobalSearch } from "@/components/CommandPalette";
-import { useActivityEditor } from "@/components/ActivityEditorProvider";
-import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { usePresence } from "@/components/usePresence";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
@@ -37,11 +20,6 @@ import {
   OVERLAY_SCRIM,
 } from "@/components/overlay";
 import { motionMs } from "@/lib/motion";
-import {
-  primaryQuickLog,
-  showsActivityShortcuts,
-  type QuickLogIcon,
-} from "@/lib/quick-log";
 import type { SegmentLogDays } from "@/lib/log-sheet";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
@@ -51,8 +29,8 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 // hidden below `md`; this surfaces the same navigation on phones by rendering the
 // shared <SidebarContent> (the single source of truth for the sidebar's contents)
 // inside the drawer, so the two viewports can't drift apart. Only the
-// collapsed top bar — hamburger, identity, search and the quick-log actions — is
-// mobile-specific chrome and lives here.
+// collapsed top bar — identity and search — is mobile-specific chrome and lives
+// here. The dock owns the drawer and quick-log triggers (#2745/#2746).
 //
 // The bar is no longer sticky ITSELF: <ShellChrome> wraps it in the one sticky,
 // auto-hiding element (issue #1416). Everything about scroll behavior lives
@@ -64,45 +42,17 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 // wordmark — identity chrome when identity is ambiguous, brand chrome when it
 // isn't.
 //
-// The bar's actions (issue #1416, section B):
-//   * Search — one tap to the CommandPalette, which already deep-links
-//     everywhere. It used to be two (hamburger → drawer → palette).
-//   * A CONTEXTUAL primary "+": lib/quick-log.ts maps the current route to its
-//     obvious log (Nutrition → food, Medications → dose, Trends/Body → weight),
-//     falling back to "log activity" — the bar's historical behavior — on every
-//     route with no opinion.
-//   * A caret beside it opening the quick-log sheet, so the actions this route
-//     does NOT promote stay one tap away.
-//   * The activity-specific shortcut (start a live workout) shows only where
-//     the primary action IS the activity editor; on Nutrition or Medications it
-//     is noise competing for a 390px bar. It used to be a PAIR — the ⟳
-//     repeat-last button left the bar in #1509 as a fourth home for a shortcut
-//     the palette and the Training Log card's ⋯ menu already carry.
+// Search remains one tap from every page. The former contextual +, caret, and
+// workout bolt were a second permanently-visible logging cluster beside the dock
+// puck; #2745 moved the workout offer into the sheet's Train segment and retired
+// all three. #2746 likewise made the dock's More slot the sole visible drawer
+// trigger. Edge-swipe-right remains a gesture route to that same drawer.
 //
 // The drawer slides in and out (issue #1416, section F): usePresence keeps it
 // mounted for the length of its exit animation and then unmounts it for real, so
 // it animates both ways without leaving a second copy of the whole navigation in
 // the accessibility tree. Reduced motion collapses both durations to 0 — same
 // states, no travel.
-
-// The bar's primary-action glyph. "Log activity" keeps the plain **+** it has
-// always had (a barbell glyph next to a hamburger reads as a nav entry, not an
-// action); a contextual primary shows its domain icon so the bar says what it
-// will do before you tap it.
-const PRIMARY_ICONS: Record<QuickLogIcon, typeof IconPlus> = {
-  barbell: IconPlus,
-  salad: IconSalad,
-  pill: IconPill,
-  scale: IconScale,
-  heartbeat: IconHeartbeat,
-  // Reachable only if a future promotion rule ever names one of these rows; the map is
-  // exhaustive so adding a registry icon stays a compile error here rather than a
-  // missing glyph on the bar.
-  sparkles: IconSparkles,
-  droplet: IconDroplet,
-  mood: IconMoodSmile,
-  document: IconFileText,
-};
 
 export default function MobileNav({
   activityDates,
@@ -112,7 +62,8 @@ export default function MobileNav({
   profiles,
   viewIds = [],
   readOnlyIds = [],
-  restricted = false,
+  adultContentAvailable = true,
+  trainingRelevant = true,
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
@@ -136,13 +87,14 @@ export default function MobileNav({
   profiles: SessionProfile[];
   // The session's multi-profile VIEW-SET (issue #1096) — the stacked avatars on
   // the bar and the panel's view toggles read the same validated set.
-  viewIds?: number[];
+  viewIds?: readonly number[];
   // Accessible profiles held READ-only by this login (issue #33) — the per-row
   // hint in the switcher panel.
   readOnlyIds?: number[];
-  // When true, the fitness-oriented nav entries are hidden for the active
-  // (age-restricted) profile. Resolved on the server; see lib/age-gate.ts.
-  restricted?: boolean;
+  // Known-adult predicate for the Longevity nav entry.
+  adultContentAvailable?: boolean;
+  // False through early childhood; hides workout logging and navigation.
+  trainingRelevant?: boolean;
   // Reveals the admin-only nav entries (the household overview) in the drawer.
   isAdmin?: boolean;
   // True when the instance has >1 profile; gates the Household overview.
@@ -168,23 +120,16 @@ export default function MobileNav({
   // DASHBOARD only; null means "not gathered", and the route's own default stands.
   logHabitDays?: SegmentLogDays | null;
 }) {
-  const pathname = usePathname();
-  // Both overlays now have TWO triggers each — this bar's hamburger and caret,
-  // and the bottom dock's More slot and puck (#2651) — and the dock is rendered
-  // outside <ShellChrome> (a transformed ancestor re-parents `position: fixed`).
-  // So the boolean lives in the shared provider one level up; the OVERLAYS still
-  // live here, and navigation still owns their lifetime — the provider resets
-  // both on a new pathname during render, exactly as this file used to.
+  // The dock's More slot and puck own the two visible triggers (#2745/#2746), and
+  // the dock is rendered outside <ShellChrome> (a transformed ancestor re-parents
+  // `position: fixed`). The booleans therefore live in the shared provider one
+  // level up; the OVERLAYS still live here, and navigation owns their lifetime.
   const {
     drawerOpen: open,
     setDrawerOpen: setOpen,
     logSheetOpen: sheetOpen,
     setLogSheetOpen: setSheetOpen,
   } = useMobileChrome();
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const { openCreate, openLive, workoutOffer } = useActivityEditor();
-  const { open: openQuickEntry } = useQuickEntry();
   const reduceMotion = usePrefersReducedMotion();
   const drawer = usePresence(open, motionMs("drawer", reduceMotion));
   const drawerRef = useRef<HTMLElement>(null);
@@ -199,12 +144,14 @@ export default function MobileNav({
     panelRef: drawerRef,
     direction: "left",
     onOutcome: () => setOpen(false),
+    // The latch expires with the panel it protects (#2725): this drawer's panel
+    // unmounts between opens, so a remounted one is owed its slide again.
+    panelMounted: drawer.mounted,
     enabled: open,
   });
 
-  // Edge-swipe-right from the left screen edge OPENS it — the gesture the
-  // hamburger used to be the only route to. Only while closed; the hamburger
-  // remains the discoverable, pointer- and keyboard-reachable route.
+  // Edge-swipe-right from the left screen edge OPENS it. The dock's More slot is
+  // the discoverable, pointer- and keyboard-reachable route.
   //
   // Unlike the close drag this one does not follow the finger: the drawer is not
   // mounted when the gesture starts, and mounting the entire navigation tree
@@ -224,12 +171,6 @@ export default function MobileNav({
     },
   });
 
-  // The route's primary log. `?tab=` is still the app's URL-driven tab convention
-  // on the surfaces that have tabs, so it is passed through; lib/quick-log.ts owns
-  // which routes (and tabs) have an opinion.
-  const primary = primaryQuickLog(pathname, searchParams.get("tab"));
-  const PrimaryIcon = PRIMARY_ICONS[primary.icon];
-
   // While mounted (including through the exit animation): lock body scroll, and
   // while open allow Escape to close.
   useLockBodyScroll(drawer.mounted);
@@ -241,17 +182,6 @@ export default function MobileNav({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, setOpen]);
-
-  // The bar's contextual **+**. It shares the registry with the sheet, so it
-  // inherits #1468's rule: the primary action opens IN PLACE too. Tapping "Log
-  // food" on the dashboard no longer teleports you to Nutrition — the same
-  // FoodLogBar arrives over the page you were reading.
-  function runPrimary() {
-    if (primary.target.kind === "activity") openCreate();
-    else if (primary.target.kind === "overlay")
-      openQuickEntry(primary.target.form);
-    else router.push(primary.target.href);
-  }
 
   const phase = drawer.phase === "enter" ? "enter" : "exit";
   // A hand-dragged panel owns its transform for the rest of its life (see
@@ -269,16 +199,6 @@ export default function MobileNav({
       Stickiness lives on the <ShellChrome> wrapper, not here. */}
       <header className="border-b border-black/10 bg-(--nav) pt-[env(safe-area-inset-top)] md:hidden print:hidden dark:border-white/5">
         <div className="flex h-14 items-center gap-2 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
-          <button
-            type="button"
-            aria-label="Open menu"
-            title="Open menu"
-            aria-expanded={open}
-            onClick={() => setOpen(true)}
-            className="tap-target press -ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-          >
-            <IconMenu2 className="h-6 w-6" stroke={1.75} />
-          </button>
           {/* The identity bar takes the WORDMARK'S SLOT on a multi-profile
               instance (issue #1801). In a personal health app the brand line
               spends ~90px of a 390px bar saying nothing, while "whose data is
@@ -313,64 +233,6 @@ export default function MobileNav({
             >
               <IconSearch className="h-5 w-5" stroke={1.75} />
             </button>
-            {!restricted && (
-              <>
-                {/* Start a live workout — the phone-at-the-gym entry to the
-                    rest timer + set check-off flow (issue #340). It is the ONLY
-                    activity-specific bar shortcut since #1509: the ⟳ repeat-last
-                    twin was a FOURTH home for a shortcut the command palette and
-                    the Training Log card's ⋯ "Log again" already carry, and it spent a
-                    slot of a 390px bar on it. Repeat-last now lives in exactly
-                    those two homes (deliberately NOT in the quick-log sheet —
-                    #1506 keeps that list to logging actions); the
-                    `openRepeatLast` context API stays for them and for the
-                    desktop aside. */}
-                {showsActivityShortcuts(primary) && (
-                  <button
-                    type="button"
-                    // The label IS the offer (#1893): with a session already live this
-                    // reads "Resume workout" and reopens the docked session, because
-                    // the old unconditional "Start workout" tap reset its clock. One
-                    // derivation (lib/workout-offer), four surfaces.
-                    aria-label={workoutOffer.label}
-                    title={workoutOffer.label}
-                    data-testid="start-workout-mobile"
-                    data-workout-offer={workoutOffer.kind}
-                    onClick={() => openLive()}
-                    className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-                  >
-                    <IconBolt className="h-5 w-5" stroke={1.75} />
-                  </button>
-                )}
-                {/* The contextual primary. Its accessible name IS the action
-                    ("Log food" on Nutrition), so the bar never lies about what
-                    the + will do. */}
-                <button
-                  type="button"
-                  aria-label={primary.label}
-                  data-testid="quick-log-primary"
-                  data-quick-log-id={primary.id}
-                  onClick={runPrimary}
-                  className="tap-target press flex h-10 w-9 items-center justify-center rounded-lg text-brand-600 transition hover:bg-slate-100 dark:text-brand-400 dark:hover:bg-ink-750"
-                >
-                  <PrimaryIcon
-                    className="h-6 w-6"
-                    stroke={primary.icon === "barbell" ? 2 : 1.75}
-                  />
-                </button>
-                <button
-                  type="button"
-                  aria-label="More log options"
-                  title="More log options"
-                  aria-expanded={sheetOpen}
-                  data-testid="quick-log-more"
-                  onClick={() => setSheetOpen(true)}
-                  className="tap-target press -ml-1 flex h-10 w-6 items-center justify-center rounded-lg text-brand-600 transition hover:bg-slate-100 dark:text-brand-400 dark:hover:bg-ink-750"
-                >
-                  <IconChevronUp className="h-4 w-4" stroke={2} />
-                </button>
-              </>
-            )}
           </div>
         </div>
       </header>
@@ -408,7 +270,8 @@ export default function MobileNav({
                 // lives in the top bar, where it is readable without opening
                 // anything (#1801). Same component, placed once per viewport.
                 showIdentityBar={false}
-                restricted={restricted}
+                adultContentAvailable={adultContentAvailable}
+                trainingRelevant={trainingRelevant}
                 isAdmin={isAdmin}
                 multiProfile={multiProfile}
                 foodLoggingRelevant={foodLoggingRelevant}
@@ -428,7 +291,6 @@ export default function MobileNav({
       <QuickLogSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        restricted={restricted}
         // The same server-resolved relevance bitset the drawer's nav entries gate on,
         // so the sheet's period row and the Cycle nav entry appear together (#1892).
         cycleRelevant={relevance.cycle}

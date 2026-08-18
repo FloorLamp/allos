@@ -90,7 +90,7 @@ domain functions.
   for single-key identity, and `multiValueStrategy()` / `pairStrategy()` /
   `compositeStrategy()` for synonyms/aliases/RxCUI-sets/`gene|allele` pairs.
   Each dataset declares its `identity.keys` in its envelope;
-  `canonical-biomarkers` keys on the exact canonical `name` (which curated row —
+  `canonical-result-definitions` keys on the exact canonical `name` (which curated row —
   distinct from `biomarkerFamily`, which collapses ACROSS names; different
   layers). Full spec: `docs/internals/datasets.md`.
 - **Biomarker goals: family for FACTS, canonical row for the ANCHOR (#1853).**

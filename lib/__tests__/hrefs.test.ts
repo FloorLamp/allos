@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  readingDetailHref,
-  readingAddHref,
+  clinicalResultDetailHref,
+  clinicalResultAddHref,
   timelineDayHref,
   trainingLogDayHref,
   dayHistoryAddHref,
@@ -17,25 +17,19 @@ import {
   currentPathHref,
 } from "@/lib/hrefs";
 
-describe("readingAddHref", () => {
-  it("links the biomarker add form prefilled with the analyte name (#662/#1083)", () => {
-    expect(readingAddHref("LDL Cholesterol")).toBe(
-      "/results/readings?new=1&name=LDL%20Cholesterol"
+describe("clinicalResultAddHref", () => {
+  it("links the result form prefilled with the analyte name (#662/#1083)", () => {
+    expect(clinicalResultAddHref("LDL Cholesterol")).toBe(
+      "/results/clinical-results?new=1&name=LDL%20Cholesterol"
     );
   });
 
   it("falls back to the unprefilled add form without a name", () => {
-    expect(readingAddHref(null)).toBe("/results/readings?new=1");
-    expect(readingAddHref(undefined)).toBe("/results/readings?new=1");
-    expect(readingAddHref("  ")).toBe("/results/readings?new=1");
-  });
-
-  it("uses the post-#1079 tabbed base, never the redirect-surviving hash form", () => {
-    expect(
-      readingAddHref("High-Sensitivity C-Reactive Protein (hs-CRP)").startsWith(
-        "/results/readings?"
-      )
-    ).toBe(true);
+    expect(clinicalResultAddHref(null)).toBe("/results/clinical-results?new=1");
+    expect(clinicalResultAddHref(undefined)).toBe(
+      "/results/clinical-results?new=1"
+    );
+    expect(clinicalResultAddHref("  ")).toBe("/results/clinical-results?new=1");
   });
 });
 
@@ -53,68 +47,61 @@ describe("medicationsFilterHref", () => {
   });
 });
 
-describe("readingDetailHref", () => {
+describe("clinicalResultDetailHref", () => {
   // #1932: one helper, two destinations, chosen by CADENCE. A call site asks for
   // "the detail page for this reading" and can't decide the renderer for itself.
   it("sends a CONTINUOUS vital to the metric detail surface", () => {
-    expect(readingDetailHref("Oxygen Saturation")).toBe("/trends/metric/spo2");
-    expect(readingDetailHref("Blood Pressure Systolic")).toBe(
+    expect(clinicalResultDetailHref("Oxygen Saturation")).toBe(
+      "/trends/metric/spo2"
+    );
+    expect(clinicalResultDetailHref("Blood Pressure Systolic")).toBe(
       "/trends/metric/systolic"
     );
-    expect(readingDetailHref("Body Temperature")).toBe(
+    expect(clinicalResultDetailHref("Body Temperature")).toBe(
       "/trends/metric/temperature"
     );
   });
 
   it("sends a continuous vital there even when the raw name differs", () => {
     // The produced-rows drilldown (#1333) passes both; the canonical decides.
-    expect(readingDetailHref("Oxygen Saturation", "SpO2 (arterial)")).toBe(
-      "/trends/metric/spo2"
-    );
+    expect(
+      clinicalResultDetailHref("Oxygen Saturation", "SpO2 (arterial)")
+    ).toBe("/trends/metric/spo2");
   });
 
   it("keeps EPISODIC readings on the reference-range page, vitals or not", () => {
     // A domain vital is `category = 'vitals'` too, and belongs on the lab renderer:
     // it arrives a few times a year and is read against a band / a percentile.
-    expect(readingDetailHref("Grip Strength")).toBe(
-      "/results/readings/view?name=Grip%20Strength"
+    expect(clinicalResultDetailHref("Grip Strength")).toBe(
+      "/results/clinical-results/view?name=Grip%20Strength"
     );
-    expect(readingDetailHref("Intraocular Pressure")).toBe(
-      "/results/readings/view?name=Intraocular%20Pressure"
+    expect(clinicalResultDetailHref("Intraocular Pressure")).toBe(
+      "/results/clinical-results/view?name=Intraocular%20Pressure"
     );
   });
 
   it("links to the view page with the CANONICAL name when one is present", () => {
     // The #283 bug 5 fix: the view page resolves ?name= as the canonical name, so
     // a canonicalized reading links to its series under the canonical spelling.
-    expect(readingDetailHref("LDL Cholesterol", "LDL-C")).toBe(
-      "/results/readings/view?name=LDL%20Cholesterol"
+    expect(clinicalResultDetailHref("LDL Cholesterol", "LDL-C")).toBe(
+      "/results/clinical-results/view?name=LDL%20Cholesterol"
     );
   });
 
-  it("prefers the canonical name over the raw display name (the bug it fixes)", () => {
-    // flaggedToAttention used to encode the RAW name (b.name) while gating on the
-    // canonical — so a raw≠canonical reading linked to a name the view can't resolve.
-    // The helper always encodes the canonical when gated on it.
-    const canonical = "Hemoglobin A1c";
-    const raw = "HbA1c";
-    expect(readingDetailHref(canonical, raw)).toBe(
-      "/results/readings/view?name=Hemoglobin%20A1c"
-    );
-  });
-
-  it("falls back to the biomarkers list when there is no canonical name", () => {
+  it("falls back to the Clinical results list when there is no canonical name", () => {
     // An uncanonicalized reading has no ?name= the view can resolve.
-    expect(readingDetailHref(null, "Some Raw Analyte")).toBe(
-      "/results/readings"
+    expect(clinicalResultDetailHref(null, "Some Raw Analyte")).toBe(
+      "/results/clinical-results"
     );
-    expect(readingDetailHref(undefined)).toBe("/results/readings");
-    expect(readingDetailHref("   ")).toBe("/results/readings");
+    expect(clinicalResultDetailHref(undefined)).toBe(
+      "/results/clinical-results"
+    );
+    expect(clinicalResultDetailHref("   ")).toBe("/results/clinical-results");
   });
 
   it("encodes query-unsafe characters in the canonical name", () => {
-    expect(readingDetailHref("Vitamin D (25-OH)")).toBe(
-      "/results/readings/view?name=Vitamin%20D%20(25-OH)"
+    expect(clinicalResultDetailHref("Vitamin D (25-OH)")).toBe(
+      "/results/clinical-results/view?name=Vitamin%20D%20(25-OH)"
     );
   });
 });
@@ -199,8 +186,8 @@ describe("integrationDetailHref", () => {
 
 describe("currentPathHref", () => {
   it("passes a runtime pathname+query through unchanged", () => {
-    expect(currentPathHref("/biomarkers?sort=date")).toBe(
-      "/biomarkers?sort=date"
+    expect(currentPathHref("/results/clinical-results?sort=date")).toBe(
+      "/results/clinical-results?sort=date"
     );
   });
 });

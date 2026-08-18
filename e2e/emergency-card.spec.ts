@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { settledClick } from "./helpers";
+import { hydratedClick, readyForOffline, settledClick } from "./helpers";
 // Offline Emergency Card (issue #42), living as the #emergency section of the
 // Passport page since the #1042 phase-3 merge (the old /emergency route was
 // removed outright in #1635 and 404s). This spec runs in its OWN unauthenticated
@@ -123,23 +123,33 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   await page.getByTestId("offline-view-emergency").click();
   await expect(page.getByTestId("emergency-card")).toContainText("Peanuts");
 
-  // 4b. Genuine offline render. Offline, a failed navigation is served the precached
-  //     /offline shell, which reads the cached card from localStorage — no network,
-  //     still readable.
+  // 4b. Offline render, with the precondition stated rather than assumed. A failed
+  //     navigation is served the precached /offline shell, which reads the cached card
+  //     out of localStorage and shows it.
   //
-  //     This block used to sit behind `if (process.env.CI)`, on the premise that
-  //     "only the CI harness boots a production build with a live service worker
-  //     (local `next dev` unregisters it)". That premise died with #1538: every
-  //     worker's server is `next start` off one shared production build, with
-  //     NODE_ENV=production spawned unconditionally (e2e/fixtures.ts), and
-  //     ServiceWorkerRegister only unregisters when NODE_ENV !== "production". So
-  //     the local harness has the same live worker CI does, and the gate meant the
-  //     single most important assertion in this spec — the card is readable with no
-  //     network — ran nowhere but CI (#2645/#2648). The controller wait below is the
-  //     real precondition, and it states itself.
-  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
-    timeout: 15_000,
-  });
+  //     WHAT THIS BLOCK PROVES, EXACTLY. The localStorage read is genuinely offline —
+  //     there is no server involved in it and the bypass below cannot fake it. The
+  //     SHELL that renders it is a different claim: Playwright's offline emulation is
+  //     per-browser-context and does not cover the SERVICE WORKER's own fetches, so
+  //     `cacheFirst` in public/sw.js can still pull a missing chunk over the network
+  //     during a navigation the page believes is offline (#3002 — measured: chunks
+  //     absent from the cache before `setOffline(true)` were present after it). A real
+  //     device has no such escape hatch, and there a missing chunk is a blank card.
+  //
+  //     So this used to claim more than it delivered — it called itself the assertion
+  //     that "the card is readable with no network", which is not what a leaky offline
+  //     emulation can measure. `readyForOffline` closes the gap by asserting the thing
+  //     that CAN be checked faithfully: the shell's own chunks are in the worker's
+  //     cache BEFORE the network goes away. Delete a chunk from the cache and this
+  //     block now fails; before, it passed by fetching it.
+  //
+  //     (It also used to sit behind `if (process.env.CI)`, on the premise that only
+  //     the CI harness boots a production build with a live service worker. That
+  //     premise died with #1538 — every worker's server is `next start` with
+  //     NODE_ENV=production, spawned unconditionally by e2e/fixtures.ts — so the gate
+  //     only meant the block ran nowhere but CI (#2645/#2648). Removing it was right;
+  //     the claim it guarded is what this note corrects.)
+  await readyForOffline(page);
   await context.setOffline(true);
   try {
     await page.goto("/profile");
@@ -244,4 +254,63 @@ test("switching profiles via the household strip wipes the previous profile's em
   // … and /offline no longer offers it.
   await page.goto("/offline");
   await expect(page.getByTestId("offline-view-emergency")).toHaveCount(0);
+});
+
+// #2997 — THE CARD HAS TO WORK FOR SOMEONE WHO NEVER OPENED /offline.
+//
+// `public/sw.js` precaches the /offline HTML and the icon, and nothing else. This page
+// is a CLIENT component, and build assets are `cacheFirst` — cached as a side effect of
+// being fetched — so its route chunk reached the cache only if /offline had already been
+// loaded in this browser. Nothing in the app links there, prefetches it, or visits it.
+// So the precached shell was served to a first-time offline user, rendered, and never
+// hydrated: no "View emergency card" button, no card, nothing but the static copy. The
+// card was readable in a dead zone only for someone who had happened to open a page they
+// had no reason to know existed.
+//
+// The test above hides this: its step 4 visits /offline online, which warms the chunk
+// before its own offline block. This one never does, and that omission IS the assertion.
+// The app warms the shell's code itself now, from the authenticated refresher
+// (lib/offline/warm-offline-route.ts, under the owner's narrow amendment: the precache
+// is still shell + icon, rendered HTML is still never cached, PHI is still never
+// cached).
+test("the emergency card is readable offline for a first-time offline user (#42/#2997)", async ({
+  page,
+  context,
+}) => {
+  test.slow();
+  await login(page);
+
+  // Opt in and let the device copy land — a client effect after hydration, so poll.
+  await page.goto("/profile#emergency");
+  const toggle = page.getByTestId("emergency-toggle");
+  if (!(await toggle.isChecked())) {
+    await toggle.check();
+    await expect(page.getByLabel("Saved")).toBeVisible();
+  }
+  await expect(page.getByTestId("emergency-card")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate((k) => localStorage.getItem(k), LS_KEY))
+    .toContain("Peanuts");
+
+  // A live worker and the shell's own code in its cache — put there by the app, not by
+  // this test. `readyForOffline` deliberately does not visit /offline.
+  await readyForOffline(page);
+
+  // `readyForOffline` is the LOAD-BEARING assertion, and its doc comment says why: an
+  // "it renders offline" check cannot see this defect, because Playwright's offline
+  // emulation does not cover the service worker's own fetches, so the worker keeps a
+  // network the real device would not have. The offline block below is still worth
+  // having — it pins the card end to end — but it is not what would go red.
+  await context.setOffline(true);
+  try {
+    // A URL this context has NOT loaded, so the browser's own HTTP cache cannot satisfy
+    // the navigation and the worker's offline fallback genuinely runs.
+    await page.goto("/medications");
+    // A pure client toggle, so hydratedClick rather than settledClick: there is no
+    // Server Action here to correlate against.
+    await hydratedClick(page, page.getByTestId("offline-view-emergency"));
+    await expect(page.getByTestId("emergency-card")).toContainText("Peanuts");
+  } finally {
+    await context.setOffline(false);
+  }
 });

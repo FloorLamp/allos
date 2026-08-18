@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
-import { openCombobox, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  openCombobox,
+  settledBoxes,
+  settledFill,
+} from "./helpers";
 
 // Pick an activity in the editor's exercise combobox. The option button's text
 // varies with the input state: a partial filter lists options as the name plus a
@@ -67,18 +72,23 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
 test("'Log again' pre-fills a create form that saves a new activity (#29)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The e2e seed plants a manual "Training Log merge keeper" activity; repeat it.
-  const titleCards = page
-    .locator('[id^="activity-"]')
+  const titleRows = page
+    .getByTestId("training-log-row")
     .filter({ hasText: "Training Log merge keeper" });
-  await expect(titleCards.first()).toBeVisible(); // first-ok: the "Training Log merge keeper" card THIS spec created (filtered) — one match
-  const before = await titleCards.count();
+  await expect(titleRows.first()).toBeVisible(); // first-ok: the "Training Log merge keeper" row (filtered) — one match
+  const before = await titleRows.count();
 
-  // Open the first matching card's overflow (⋯) menu → "Log again".
-  await titleCards
-    .first() // first-ok: the "Training Log merge keeper" card THIS spec created (filtered) — one match
+  // Select the record into the reading pane (#2897), then its overflow (⋯)
+  // menu → "Log again".
+  await hydratedClick(
+    page,
+    titleRows.first() // first-ok: the "Training Log merge keeper" row (filtered) — one match
+  );
+  await page
+    .getByTestId("training-log-reading-pane")
     .getByRole("button", { name: "Activity actions" })
     .click();
   await page.getByTestId("log-again").click();
@@ -89,8 +99,8 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
   ).toBeVisible();
 
   // The prefilled, complete session auto-saves as a NEW row (dated today), so a
-  // second card with the same title appears on the feed.
-  await expect(titleCards).toHaveCount(before + 1);
+  // second row with the same title appears on the feed.
+  await expect(titleRows).toHaveCount(before + 1);
 
   // Clean up the row this test just created: the editor is still open on it, so
   // delete it from there. The e2e DB is shared across specs (the harness seeds
@@ -104,14 +114,14 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  await expect(titleCards).toHaveCount(before);
+  await expect(titleRows).toHaveCount(before);
 });
 
 test("Training Log actions share the search toolbar and stay outside the editor scroller", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1800, height: 900 });
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The shared app shell uses the available desktop width instead of stopping at
   // the old 6xl/7xl caps. The 3xl ultra-wide cap remains separate.
@@ -135,14 +145,10 @@ test("Training Log actions share the search toolbar and stay outside the editor 
     "href",
     /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
   );
+  // The weekly-routine chips left this row for Overview/Plan (#2892): the row
+  // carries the cadence strip alone now.
   const routineRow = page.getByTestId("training-log-routine-row");
-  const routineLabelBox = await routineRow
-    .getByText("Weekly routine")
-    .boundingBox();
-  const cadenceBox = await cadence.boundingBox();
-  expect(routineLabelBox).not.toBeNull();
-  expect(cadenceBox).not.toBeNull();
-  expect(Math.abs(routineLabelBox!.y - cadenceBox!.y)).toBeLessThan(12);
+  await expect(routineRow.getByText("Weekly routine")).toHaveCount(0);
 
   // The longer window is reserved for the largest practical layout. At an
   // intermediate desktop width, the strip contracts to its newest 14 days.
@@ -150,15 +156,6 @@ test("Training Log actions share the search toolbar and stay outside the editor 
   await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
   await expect(cadence.getByTestId("active-days-label-expanded")).toBeHidden();
   await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
-  const intermediateRoutineBox = await routineRow
-    .getByText("Weekly routine")
-    .boundingBox();
-  const intermediateCadenceBox = await cadence.boundingBox();
-  expect(intermediateRoutineBox).not.toBeNull();
-  expect(intermediateCadenceBox).not.toBeNull();
-  expect(intermediateCadenceBox!.y).toBeGreaterThan(
-    intermediateRoutineBox!.y + intermediateRoutineBox!.height
-  );
   expect(
     await cadence
       .locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
@@ -246,21 +243,26 @@ test("Training Log actions share the search toolbar and stay outside the editor 
 test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The seed plants recurring "Push day" strength sessions across several weeks,
   // each repeating the same lifts (Barbell Bench Press, …). Opening the NEWEST
   // one for edit — by clicking its title — must show the "Recent" reference
   // panel of prior sessions (issue #188: edit mode used to omit it entirely).
   const main = page.getByRole("main");
-  const pushCard = main
-    .locator('[id^="activity-"]')
+  const pushRow = main
+    .getByTestId("training-log-row")
     .filter({ hasText: "Push day" })
-    .first(); // first-ok: the seeded Push day session card (filtered by its title) — order-agnostic
-  await expect(pushCard).toBeVisible();
+    .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
+  await expect(pushRow).toBeVisible();
 
-  // Click the card's title to open the editor in EDIT mode (openEdit).
-  await pushCard.getByRole("button", { name: "Push day" }).click();
+  // Select the record into the reading pane (#2897), then open the editor in
+  // EDIT mode from there.
+  await hydratedClick(page, pushRow);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
+    .click();
 
   // The editor opens on the stored session — its header carries the title.
   await expect(page.getByRole("heading", { name: "Push day" })).toBeVisible();
@@ -321,37 +323,44 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
 test("editing cardio duration updates the parent session total", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   // This seeded manual cardio row has no clock range and stores 28 minutes on
   // both its parent and visible Running component. Editing the visible field
   // must not resubmit the parent's hidden 28-minute seed.
-  const card = page
-    .locator('[id^="activity-"]')
+  const row = page
+    .getByTestId("training-log-row")
     .filter({ hasText: "Intervals" })
-    .first(); // first-ok: the "Intervals" activity card (filtered by its title) — order-agnostic
-  await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "Intervals" }).click();
+    .first(); // first-ok: the "Intervals" activity row (filtered by its title) — order-agnostic
+  await expect(row).toBeVisible();
+  // Select into the reading pane, then edit from there (#2897). The pane stays
+  // on this record across editor open/close, so the RESTORE below re-enters
+  // through the pane's Edit — a second row click would toggle the pane away.
+  await hydratedClick(page, row);
+  const paneEdit = page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit");
+  await paneEdit.click();
 
   const duration = page.getByTestId("cardio-duration");
   await expect(duration).toHaveValue("28");
   await duration.fill("35");
   await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.getByRole("button", { name: "Close" }).click();
-  await expect(card.getByTestId("activity-summary")).toContainText("35 min");
+  await expect(row.getByTestId("activity-summary-row")).toContainText("35 min");
 
   // Restore the shared seed row so other specs remain order-independent.
-  await card.getByRole("button", { name: "Intervals" }).click();
+  await paneEdit.click();
   await page.getByTestId("cardio-duration").fill("28");
   await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.getByRole("button", { name: "Close" }).click();
-  await expect(card.getByTestId("activity-summary")).toContainText("28 min");
+  await expect(row.getByTestId("activity-summary-row")).toContainText("28 min");
 });
 
 test("logging a manual cardio activity auto-fills an editable estimated-calorie value (#151)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form. The "New activity" button lives in the Training Log
   // header inside <main>; the editor it opens mounts either in the docked pane
@@ -439,36 +448,25 @@ test("logging a manual cardio activity auto-fills an editable estimated-calorie 
 test("the activity form keeps workout entry primary and context visible across breakpoints", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
-  const pushCard = page
+  const pushRow = page
     .getByRole("main")
-    .locator('[id^="activity-"]')
+    .getByTestId("training-log-row")
     .filter({ hasText: "Push day" })
-    .first(); // first-ok: the seeded Push day session card (filtered by its title) — order-agnostic
+    .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
 
-  // This test targets the DOCKED editor variant, and docked-vs-overlay is
-  // CAPTURED at open time and held for the session (the anti-yank design in
-  // ActivityEditorProvider). The training log dock REGISTERS one effect pass after
-  // its div attaches (TrainingLogView's isDesktop starts false and settles first),
-  // so a click landing in that window opens the OVERLAY variant (sm:pt-6 =
-  // 24px header padding) and stays there — the recurring padding flake (#979).
-  // No DOM state distinguishes "attached" from "registered", so re-drive:
-  // close the overlay and re-open until the docked header (pt-5 → 20px)
-  // renders. toPass is justified (a commented last resort): only the settled
-  // docked state can satisfy the inner expect, so the loop cannot false-pass.
+  // This test targets the DOCKED editor variant. The #979 registration race is
+  // structurally gone with the reading pane (#2897): the pane renders only
+  // after the SAME isDesktop settle that registers the dock, so by the time
+  // its Edit button exists, an edit opened from it always docks.
+  await hydratedClick(page, pushRow);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
+    .click();
   const header = page.getByTestId("activity-form-header");
-  await expect(async () => {
-    await pushCard.getByRole("button", { name: "Push day" }).click();
-    try {
-      await expect(header).toHaveCSS("padding-top", "20px", { timeout: 2000 });
-    } catch (err) {
-      // Opened as the held overlay — close it and try again (registration has
-      // an effect pass to complete between attempts).
-      await page.getByRole("button", { name: "Close", exact: true }).click();
-      throw err;
-    }
-  }).toPass({ timeout: 30_000 }); // topass-ok: re-click Push day, closing the held-overlay variant between tries, until the docked-header CSS lands — two open states, no single awaitable event
+  await expect(header).toHaveCSS("padding-top", "20px");
 
   // The single visible title is editable in place; there is no duplicate Name
   // field beneath it. Its desktop header stays with a long docked form.
@@ -541,16 +539,8 @@ test("the activity form keeps workout entry primary and context visible across b
   await editorScroll.evaluate((node) => {
     node.scrollTop = 100;
   });
-  await expect
-    .poll(async () => {
-      const [scroller, stickyHeader] = await Promise.all([
-        editorScroll.boundingBox(),
-        header.boundingBox(),
-      ]);
-      if (!scroller || !stickyHeader) return Number.POSITIVE_INFINITY;
-      return stickyHeader.y - scroller.y;
-    })
-    .toBeLessThanOrEqual(1);
+  const [scroller, stickyHeader] = await settledBoxes([editorScroll, header]);
+  expect(stickyHeader.y - scroller.y).toBeLessThanOrEqual(1);
   await expect(header).toHaveCSS("padding-top", "20px");
   await editorScroll.evaluate((node) => {
     node.scrollTop = 0;
@@ -624,10 +614,20 @@ test("the activity form keeps workout entry primary and context visible across b
       .evaluate((node) => getComputedStyle(node).filter)
   ).not.toBe("none");
 
-  // Crossing into the mobile presentation closes the desktop dock. Reopen the
-  // same activity in the overlay and pin the exercise/set schema while logging.
+  // Crossing into the mobile presentation closes the desktop dock. At 390px
+  // the row expands the record in place (#2897). The title now goes to the
+  // canonical detail page, so editing stays the explicit menu action here.
   await page.setViewportSize({ width: 390, height: 844 });
-  await pushCard.getByRole("button", { name: "Push day" }).click();
+  // Wait for the width mode to settle (aria-expanded appears only when
+  // expand-in-place is live) — a click before the settle deselects instead.
+  await expect(pushRow).toHaveAttribute("aria-expanded", "false");
+  await pushRow.click();
+  const mobileCard = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the one Push day card expanded beside its row
+  await expect(
+    mobileCard.getByTestId("activity-detail-link")
+  ).toHaveAccessibleName("Push day");
+  await hydratedClick(page, mobileCard.getByTestId("overflow-menu-trigger"));
+  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
   const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();
   expect(
@@ -644,7 +644,7 @@ test("the activity form keeps workout entry primary and context visible across b
 test("a fresh strength part OFFERS the coached suggestion; arriving in the field never writes it (#335/#1971)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form (fields addressed by testid/role — see the
   // est-calories spec's note on why the editor isn't main-scoped).
@@ -700,7 +700,7 @@ test("a fresh strength part OFFERS the coached suggestion; arriving in the field
 test("a cardio part derives avg speed AND pace from distance + duration (#336)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   await page
     .getByRole("main")
@@ -730,7 +730,7 @@ test("a cardio part derives avg speed AND pace from distance + duration (#336)",
 test("a lone sport logged with Start/End auto-fills its Duration and shows real minutes (#791)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh create form (fields addressed by testid/role — see the
   // est-calories spec's note on why the editor isn't main-scoped).
@@ -770,24 +770,26 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
   ).toBeVisible();
 
   // Clean up the row this test created so the shared seed DB is left untouched:
-  // reopen it from the feed (its generated title carries "Tennis") and delete it.
+  // select it into the reading pane (its generated title carries "Tennis"),
+  // edit from there, and delete.
   await page.goto("/training?tab=log");
-  const newCard = page
-    .locator('[id^="activity-"]')
+  const newRow = page
+    .getByTestId("training-log-row")
     .filter({ hasText: "Tennis" })
     .filter({ hasText: "55 min" })
-    .first(); // first-ok: the Tennis/55-min card THIS spec just logged (filtered) — one match
-  await expect(newCard).toBeVisible();
-  await newCard
-    .getByRole("button", { name: /Tennis/ })
-    .first() // first-ok: the Tennis title button in the scoped card this spec created
+    .first(); // first-ok: the Tennis/55-min row THIS spec just logged (filtered) — one match
+  await expect(newRow).toBeVisible();
+  await hydratedClick(page, newRow);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
     .click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  await expect(newCard).toHaveCount(0);
+  await expect(newRow).toHaveCount(0);
 });
 
 test("the command palette offers 'Repeat last activity' when history exists (#337)", async ({
@@ -810,7 +812,7 @@ test("the command palette offers 'Repeat last activity' when history exists (#33
 test("weight steppers bump a set's load by the lift-appropriate increment (#337)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page
     .getByRole("main")
@@ -907,7 +909,7 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
 test("the reps stepper steps DOWN as well as up, clamped at 0 (#1524)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page
     .getByRole("main")
@@ -940,7 +942,7 @@ test("the reps stepper steps DOWN as well as up, clamped at 0 (#1524)", async ({
 test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page
     .getByRole("main")
@@ -970,7 +972,7 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
 test("a set row has a warmup toggle that flips its pressed state (#338)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   await page
     .getByRole("main")
@@ -993,7 +995,7 @@ test("a set row has a warmup toggle that flips its pressed state (#338)", async 
 test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Force every saveActivity call to fail at the network layer. saveActivity runs
   // as a Server Action — a POST to the page carrying a `next-action` header; the
@@ -1039,7 +1041,10 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   await expect(
     page.locator('[aria-label="Couldn’t save"]:visible')
   ).toBeVisible();
-  await expect(page.getByLabel("Saved")).toHaveCount(0);
+  // EXACT: getByLabel matches accessible names by case-insensitive substring,
+  // so a bare "Saved" also matches any unrelated control whose label happens to
+  // contain the word — this pinned the autosave indicator only by luck.
+  await expect(page.getByLabel("Saved", { exact: true })).toHaveCount(0);
 
   // Nothing persisted (the save was forced to fail), so there is no draft row to
   // clean up — the shared seed DB is left untouched.
@@ -1097,7 +1102,7 @@ test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async
 test("typing keeps the lifts you log ahead of a sport you never have (#2384)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
   await page.getByRole("button", { name: "New activity" }).click();
 
   const field = page.getByPlaceholder(/What did you do/);

@@ -1,6 +1,8 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { hydratedClick, touchSwipeFrom } from "./helpers";
 import { workerAuthPath } from "./worker-env";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 // Standalone-PWA pull-to-refresh (issue #1428, section B).
 //
 // Installed to the home screen there is no URL bar and so no refresh control: a
@@ -126,6 +128,54 @@ test("a pull at the top of a standalone page refreshes; a mid-page pull does not
   }
 });
 
+test("dragging a bottom sheet closed is not a pull, and refreshes nothing", async ({
+  browser,
+}) => {
+  // #2725's second defect. The listeners are on the WINDOW, so they see touches
+  // inside overlays too — and a sheet's drag-dismiss passed every test the
+  // classifier had: downward, from a page sitting at its top, far past the
+  // arming distance. Installed, that meant a whole-page `router.refresh()` at
+  // the exact moment the sheet was closing, plus the PTR spinner (`z-90`)
+  // surfacing over the sheet (`z-60`) during a gesture that was never a pull.
+  //
+  // The existing test above proves a mid-page pull does nothing; this proves an
+  // overlay gesture does nothing, which is a different clause of the classifier
+  // and was the one that did not exist. Real Chromium touch input (not the
+  // synthesised events `pullDown` uses), because the sheet has to actually drag.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    storageState: workerAuthPath(),
+  });
+  const page = await context.newPage();
+  await emulateStandalone(page);
+  try {
+    await page.goto("/");
+    await expect(page.getByTestId("shell-chrome")).toHaveAttribute(
+      "data-ready",
+      "true"
+    );
+    const indicator = page.getByTestId(INDICATOR);
+    await expect(indicator).toHaveAttribute("data-refreshes", "0");
+
+    const sheet = page.getByTestId("quick-log-sheet");
+    await hydratedClick(page, page.getByTestId("dock-log-puck"));
+    await expect(sheet).toBeVisible();
+
+    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+      dy: 240,
+    });
+    // The gesture did what it was for…
+    await expect(sheet).toHaveCount(0);
+    // …and nothing else. The count is what makes that statable: the refresh is
+    // counted synchronously on touchend, and the sheet's exit has since run to
+    // completion, so a fired refresh would already be visible here.
+    await expect(indicator).toHaveAttribute("data-refreshes", "0");
+  } finally {
+    await context.close();
+  }
+});
+
 test("in a browser tab there is no pull-to-refresh at all", async ({
   page,
 }) => {
@@ -137,4 +187,66 @@ test("in a browser tab there is no pull-to-refresh at all", async ({
   // loaded page rather than about a page that hadn't painted yet.
   await expect(page.getByTestId("shell-chrome")).toBeVisible();
   await expect(page.getByTestId(INDICATOR)).toHaveCount(0);
+});
+
+test("the sheet → inner-overlay handoff never strands the body scroll lock", async ({
+  browser,
+}) => {
+  // The PWA stuck-state bug. A quick-log row closes the sheet and opens the
+  // inner overlay in one tick, but the sheet's exit animation keeps it mounted
+  // — so the two body-scroll locks OVERLAP and release in FIFO order. Under the
+  // old save/restore lock the inner overlay captured `prev = "hidden"` and
+  // faithfully restored it onto an empty page: the body stayed locked forever,
+  // the page could not scroll, and — because the pull classifier's overlay
+  // clause reads exactly that style — pull-to-refresh never armed again. The
+  // one recovery gesture died with the same bug it was needed for, until a hard
+  // reload cleared the inline style.
+  //
+  // Asserted in standalone with the indicator mounted because the DEAD REFRESH
+  // is the consequence that made this unrecoverable; the lock reads pin the
+  // mechanism on the way.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    storageState: workerAuthPath(),
+  });
+  const page = await context.newPage();
+  await emulateStandalone(page);
+  try {
+    await page.goto("/");
+    await expect(page.getByTestId("shell-chrome")).toHaveAttribute(
+      "data-ready",
+      "true"
+    );
+    const indicator = page.getByTestId(INDICATOR);
+    await expect(indicator).toHaveAttribute("data-refreshes", "0");
+    const lock = () =>
+      page.evaluate(() => document.body.style.overflow || "(unlocked)");
+
+    // Sheet up: locked.
+    const sheet = await openLogSheet(page);
+    expect(await lock()).toBe("hidden");
+
+    // Row tap → sheet exits, inner overlay opens. THROUGH the handoff — sheet
+    // gone, overlay up — the body must STAY locked: the old code unlocked it
+    // here, under a full-screen surface.
+    const row = await showLogRow(sheet, "log-measurements");
+    await row.click();
+    await expect(sheet).toHaveCount(0);
+    const overlay = page.getByTestId("quick-entry-sheet");
+    await expect(overlay).toBeVisible();
+    expect(await lock()).toBe("hidden");
+
+    // Close the inner overlay: NOW everything is gone, so the lock must be too.
+    // This is the absorbing end state the old code left behind.
+    await page.keyboard.press("Escape");
+    await expect(overlay).toHaveCount(0);
+    expect(await lock()).toBe("(unlocked)");
+
+    // And the consequence the state killed: a pull still refreshes.
+    await pullDown(page, 200);
+    await expect(indicator).toHaveAttribute("data-refreshes", "1");
+  } finally {
+    await context.close();
+  }
 });

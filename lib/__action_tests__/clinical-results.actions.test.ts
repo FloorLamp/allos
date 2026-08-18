@@ -9,13 +9,15 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   addResult,
+  classifyResultCategory,
   updateResult,
   deleteResult,
-} from "@/app/(app)/results/reading-actions";
+} from "@/app/(app)/results/clinical-result-actions";
 import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import {
   getClinicalObservations,
   getLatestClinicalObservationByCanonical,
+  getUnclassifiedClinicalObservations,
 } from "@/lib/queries";
 import { seedActor, createProfile, actAs, fd } from "./harness";
 import { MAX_AI_BYTES, MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
@@ -51,6 +53,58 @@ function attributesOf(id: number) {
 }
 
 beforeEach(() => revalidate.mockClear());
+
+describe("legacy category review (#2877)", () => {
+  it("surfaces the unresolved row and changes only its category after an explicit choice", async () => {
+    const { profile } = seedActor();
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, canonical_name, value, unit,
+              source, external_id, edited)
+           VALUES (?, '2020-04-05', NULL, 'Mystery Index', 'Mystery Index',
+                   '7', 'points', 'document', 'mystery-1', 0)`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    const before = db
+      .prepare(
+        `SELECT id, date, name, canonical_name, value, unit, source, external_id
+           FROM medical_records WHERE id = ?`
+      )
+      .get(id);
+    expect(getUnclassifiedClinicalObservations(profile.id)).toMatchObject([
+      { id, name: "Mystery Index", value: "7", unit: "points" },
+    ]);
+
+    expect(
+      await classifyResultCategory(
+        fd({ id, profile_id: profile.id, category: "bogus" })
+      )
+    ).toEqual({ ok: false, error: "Choose a category." });
+    expect(
+      await classifyResultCategory(
+        fd({ id, profile_id: profile.id, category: "lab" })
+      )
+    ).toEqual({ ok: true });
+
+    expect(
+      db
+        .prepare(
+          `SELECT id, date, name, canonical_name, value, unit, source, external_id
+             FROM medical_records WHERE id = ?`
+        )
+        .get(id)
+    ).toEqual(before);
+    expect(
+      db
+        .prepare("SELECT category, edited FROM medical_records WHERE id = ?")
+        .get(id)
+    ).toEqual({ category: "lab", edited: 1 });
+    expect(getUnclassifiedClinicalObservations(profile.id)).toEqual([]);
+  });
+});
 
 describe("addResult", () => {
   it("inserts a record and flags an out-of-range value in one transaction", async () => {
@@ -116,10 +170,10 @@ describe("addResult", () => {
     ).toEqual({ category: "lab" });
   });
 
-  it("does not let 'prescription' be created from the Biomarkers add path (#385)", async () => {
+  it("does not let 'prescription' be created from the Clinical results add path (#385)", async () => {
     const { profile } = seedActor();
     // The add form only offers RESULTS_CATALOG_CATEGORIES (no 'prescription'); a crafted
-    // POST is coerced to 'lab' so meds can't sneak into the biomarkers browser.
+    // POST is coerced to 'lab' so meds can't sneak into the clinical results catalog.
     await addResult(
       fd({
         date: "2026-01-15",
@@ -356,7 +410,7 @@ describe("manual record (no document_id) round-trips edit + delete", () => {
     const { login, profile: profileA } = seedActor();
     const profileB = createProfile("ManualB", login.id);
 
-    // Add a manual record as A (the Biomarkers add slot's path — no document_id).
+    // Add a manual record as A (the Clinical results add slot's path — no document_id).
     actAs(login, profileA);
     await addResult(
       fd({

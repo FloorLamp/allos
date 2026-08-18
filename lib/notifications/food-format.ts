@@ -21,7 +21,7 @@ import {
   isProteinNudgeKey,
   proteinNudgeButtonLabel,
 } from "../protein-nudge";
-import type { CorrectionBurst } from "../correction-time";
+import type { CorrectionBurst, CorrectionDay } from "../correction-time";
 import type { FoodWindowGap } from "../food-window-gap";
 import {
   correctionActions,
@@ -242,9 +242,9 @@ function rowFor(index: number): string {
 // The day-total tally line (#1016): groups with a positive count TODAY, most-logged first
 // (name breaks ties), labeled so a slot-framed message makes clear the tally answers "where
 // am I on the DAY" (the buttons answer "what have I had this SLOT"): "✅ Today: Leafy greens
-// ×2 · Berries ×1". Reads the DAY counter (food_log via getFoodServingsOnDate), never the
+// ×2 · Berries ×1". Reads the DAY counter (food_daily_totals via getFoodServingsOnDate), never the
 // slot counts. Empty string when nothing's been logged yet today (the caller shows the
-// prompt instead). The reserved __protein__ key can't appear (it never lands in food_log),
+// prompt instead). The reserved __protein__ key can't appear (it never lands in food_daily_totals),
 // but is filtered defensively so it can never leak into the food-serving tally (#1073).
 function tallyLine(dayServings: Map<string, number>): MessageBody | null {
   const logged = [...dayServings.entries()]
@@ -310,7 +310,10 @@ export interface FoodNudgeRenderOpts {
   // hiding it behind a time question would be a worse trade than the extra keyboard rows.
   // Keeping them also means the `food:` tokens survive, so `↩︎ Back` can rebuild the exact
   // nudge from the live keyboard rather than guessing at a window.
-  picker?: { burst: CorrectionBurst; now: Date };
+  // `level` is WHICH DAY the drill-down is showing (#3010): the recent hours, or
+  // yesterday's whole day. Defaults to the recent hours, which is what every caller
+  // that has not stepped down passes.
+  picker?: { burst: CorrectionBurst; now: Date; level?: CorrectionDay };
   // The window that closed empty (#2376), already decided by the pure engine
   // (lib/food-window-gap.ts) from the profile's ledger. Null/omitted is the common case
   // and the only case for a profile that does not habitually log that window — the
@@ -439,7 +442,8 @@ export function renderFoodNudge(
         profileId,
         opts.picker.burst,
         opts.picker.now,
-        tz
+        tz,
+        opts.picker.level ?? "today"
       )
     );
   } else if (corrections) {
@@ -480,7 +484,11 @@ export function renderFoodNudge(
       // the stored time — the row's label states it too, but Telegram truncates buttons
       // and a clipped `(cor…` is not a statement. Uncorrected bursts add nothing.
       corrections
-        ? correctionBodyStatement(corrections.bursts, corrections.tz)
+        ? correctionBodyStatement(
+            corrections.bursts,
+            corrections.tz,
+            corrections.now
+          )
         : null,
     ],
     "\n"

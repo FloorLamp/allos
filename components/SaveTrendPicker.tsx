@@ -14,9 +14,7 @@ import type { SeriesPickerInput } from "@/lib/series-picker-options";
 //
 // It offers only what is NOT already saved (submitting always ADDS), and only what
 // the profile may see: the metric options come from listCompareOptions, which applies
-// the same age gates as the tile builder — so a training-restricted profile is never
-// offered training volume, and a saved-but-gated metric simply has no tile and no
-// option, exactly as before.
+// the same metric membership rules as the tile builder.
 //
 // A server-action form, writing through the same action as the ★ anywhere else.
 // Renders nothing when there is nothing left to add.

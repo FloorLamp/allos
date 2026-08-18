@@ -50,7 +50,7 @@
 import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
 
 // One recorded sleep session. `start`/`end` are absolute ISO instants (the same
-// zone-independent anchors stored in metric_samples.start_time/end_time). `source`
+// zone-independent anchors stored in metric_samples.started_at/ended_at). `source`
 // carries provenance so a future multi-source world (Oura, #140) can be made
 // source-aware (#14) without changing this signature. `type` is an OPTIONAL
 // provider-supplied session label (Oura's `long_sleep` / `late_nap` / `rest`);

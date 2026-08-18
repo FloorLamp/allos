@@ -14,8 +14,7 @@
 // via the JOIN to activities).
 
 import { db } from "../db";
-import { activityDetailHref } from "../ride-detail";
-import type { AppRoute } from "../hrefs";
+import { trainingActivityPageHref, type AppRoute } from "../hrefs";
 
 export interface EquipmentUsage {
   equipmentId: number;
@@ -186,7 +185,7 @@ export function getEquipmentSessions(
         aid,
         (p = {
           activityId: aid,
-          href: activityDetailHref({ id: aid, type, title, components }),
+          href: trainingActivityPageHref(aid),
           date,
           title,
           volumeKg: 0,

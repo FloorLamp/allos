@@ -14,14 +14,51 @@
 // are bound by different things and those scale apart. Measured — plan CI's work
 // with laptop weights and the buckets come out predicted-equal while CI runs
 // 127-183s (max/mean 1.16 against an independent run); with runner weights, 1.05.
-// Refresh from `e2e-results-shard-*` artifacts when the SHAPE changes (a heavy
-// spec added, split, or deleted), not to chase drift.
+// Refresh when the SHAPE changes (a heavy spec added, split, or deleted), not to
+// chase drift.
+//
+// TWO WAYS TO GET RUNNER NUMBERS, because the obvious one is not always available.
+// The `e2e-results-shard-*` artifacts are the richer source, but downloading a
+// GitHub artifact means reaching `*.blob.core.windows.net`, which an agent sandbox
+// behind a filtering proxy cannot do — the artifact LIST returns 200 and the
+// download returns 403 CONNECT, so the failure looks like a permissions problem
+// and is not. Job LOGS stay reachable, but NOT via curl — `/actions/jobs/<id>/logs`
+// redirects to the same blob host and fails the same way; fetch them server-side
+// through the MCP GitHub tool (`get_job_logs`, `return_content: true`), with
+// `tail_lines` big enough to clear a post-job cleanup whose length varies per
+// shard (~150). So each e2e shard also PRINTS its per-file durations:
+//
+//   e2e-durations<TAB>e2e/some.spec.ts<TAB>12345
+//
+// Collect those lines from the twelve shard logs and feed them back:
+//
+//   npx tsx scripts/gen-e2e-durations.ts --from-log shard1.log [...more]
+//
+// Same arithmetic, same manifest — a log line is the JSON report's one number per
+// file, and this script only ever summed to that. `--emit-log` is what CI runs to
+// produce them.
+//
+// ONE RUN'S INPUTS, NOT TWO. Merging is additive, so two whole runs pasted in
+// double every weight — which is what made the manifest replaced in #2825 ~1.9x
+// high. This script refuses inputs whose spec files overlap, because a file lives
+// in exactly one shard and so one run never names it twice. `--allow-rerun` is
+// the escape hatch for the one legitimate duplicate, a single shard re-run; see
+// `crossInputDuplicates` in lib/e2e-durations-log.ts.
 //
 // A stale manifest degrades balance, never correctness: an unlisted file is still
 // planned (estimated, see UNKNOWN_WEIGHT_FACTOR) and the planner refuses any plan
 // that is not an exact partition of the suite.
 import fs from "node:fs";
 import path from "node:path";
+import {
+  ALLOW_RERUN_FLAG,
+  crossInputDuplicates,
+  DURATION_LOG_TAG,
+  duplicateRunRefusal,
+  formatDurationLog,
+  parseDurationLog,
+  type DurationInputFiles,
+} from "../lib/e2e-durations-log";
 import {
   movedFiles,
   planShards,
@@ -61,26 +98,95 @@ function collect(
   }
 }
 
-function main(): void {
-  const reports = process.argv.slice(2);
-  if (reports.length === 0) {
+/** Sum one Playwright JSON report into `totals`. */
+function collectReport(file: string, totals: Map<string, number>): void {
+  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as {
+    suites?: JsonSpec[];
+  };
+  for (const suite of raw.suites ?? []) collect(suite, undefined, totals);
+}
+
+/**
+ * Sum the tagged lines out of a saved CI log. A file that yields NONE is an
+ * error rather than an empty contribution — see `parseDurationLog`.
+ */
+function collectLog(file: string, totals: Map<string, number>): void {
+  const found = parseDurationLog(fs.readFileSync(file, "utf8"), totals);
+  if (found === 0) {
     console.error(
-      "usage: tsx scripts/gen-e2e-durations.ts <playwright-report.json> [...]"
+      `${file}: no \`${DURATION_LOG_TAG}\` lines — is that an e2e shard log from ` +
+        `a run AFTER the emit step shipped? An older run has no such lines and ` +
+        `would silently contribute nothing.`
+    );
+    process.exit(1);
+  }
+}
+
+/**
+ * Merge every input into one per-file total, refusing a set that spans more than
+ * one CI run.
+ *
+ * Each input is read into its OWN map first, so the file sets can be compared
+ * before they are added together — once summed, one run and two are the same
+ * number. `allowRerun` is the deliberate spelling of the one legitimate
+ * duplicate, a single shard re-run whose two attempts are both cost that run paid.
+ */
+function collectAll(
+  inputs: string[],
+  { fromLog, allowRerun }: { fromLog: boolean; allowRerun: boolean }
+): Map<string, number> {
+  const totals = new Map<string, number>();
+  const perInput: DurationInputFiles[] = [];
+  for (const file of inputs) {
+    const one = new Map<string, number>();
+    if (fromLog) collectLog(file, one);
+    else collectReport(file, one);
+    perInput.push({ source: file, files: [...one.keys()] });
+    for (const [spec, ms] of one)
+      totals.set(spec, (totals.get(spec) ?? 0) + ms);
+  }
+  const duplicates = crossInputDuplicates(perInput);
+  if (duplicates.length > 0 && !allowRerun) {
+    console.error(duplicateRunRefusal(duplicates));
+    process.exit(1);
+  }
+  return totals;
+}
+
+/** Print this report's per-file totals for a log reader to recover later. */
+function emitLog(reports: string[], allowRerun: boolean): void {
+  const totals = collectAll(reports, { fromLog: false, allowRerun });
+  for (const line of formatDurationLog(totals)) console.log(line);
+}
+
+function main(): void {
+  const args = process.argv.slice(2);
+  const fromLog = args.includes("--from-log");
+  const emit = args.includes("--emit-log");
+  const allowRerun = args.includes(ALLOW_RERUN_FLAG);
+  const inputs = args.filter((a) => !a.startsWith("--"));
+  if (inputs.length === 0) {
+    console.error(
+      "usage: tsx scripts/gen-e2e-durations.ts <playwright-report.json> [...]\n" +
+        "       tsx scripts/gen-e2e-durations.ts --from-log <shard.log> [...]\n" +
+        "       tsx scripts/gen-e2e-durations.ts --emit-log <playwright-report.json>\n" +
+        `\n${ALLOW_RERUN_FLAG}  sum inputs that name the same spec file — ONE shard ` +
+        `re-run, never two whole runs.`
     );
     process.exit(2);
   }
-
-  const totals = new Map<string, number>();
-  for (const file of reports) {
-    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as {
-      suites?: JsonSpec[];
-    };
-    for (const suite of raw.suites ?? []) collect(suite, undefined, totals);
+  if (emit) {
+    emitLog(inputs, allowRerun);
+    return;
   }
+
+  const totals = collectAll(inputs, { fromLog, allowRerun });
 
   if (totals.size === 0) {
     console.error(
-      "no test durations found — is that a Playwright JSON report?"
+      fromLog
+        ? "no test durations found — are those e2e shard logs?"
+        : "no test durations found — is that a Playwright JSON report?"
     );
     process.exit(1);
   }

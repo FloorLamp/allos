@@ -5,6 +5,7 @@
 // the glyphs can't drift per surface — the components/ActivityIcon.tsx precedent.
 import {
   IconApple,
+  IconAvocado,
   IconBottle,
   IconBowl,
   IconBread,
@@ -48,6 +49,7 @@ const KEY_ICONS: Record<FoodGroupIconKey, IconCmp> = {
   grain: IconWheat,
   apple: IconApple,
   cherry: IconCherry,
+  avocado: IconAvocado,
   bottle: IconBottle,
   meat: IconMeat,
   egg: IconEgg,
@@ -68,7 +70,7 @@ export default function FoodGroupIcon({
   className = "h-5 w-5",
   stroke = 1.75,
 }: {
-  // The food-group catalog slug (food_log.group_key).
+  // The food-group catalog slug (food_daily_totals.group_key).
   slug: string;
   className?: string;
   stroke?: number;

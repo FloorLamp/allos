@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER — cycle-phase-aware reference ranges (issue #718). Proves the
 // gather + reconcile path end-to-end against the real schema:
-//   • the boot seed populates canonical_biomarkers.ranges_by_cycle_phase for the
+//   • the boot seed populates canonical_result_definitions.ranges_by_cycle_phase for the
 //     phase-dependent hormones (Progesterone shown here),
 //   • reconcileFlags loads the profile's logged periods and derives each hormone
 //     record's cycle phase from ITS OWN collection date, so the SAME 15 ng/mL
@@ -78,7 +78,7 @@ describe("cycle-phase-aware reference ranges (#718)", () => {
   it("seeds ranges_by_cycle_phase for Progesterone on boot", () => {
     const row = db
       .prepare(
-        "SELECT ranges_by_cycle_phase FROM canonical_biomarkers WHERE name = 'Progesterone'"
+        "SELECT ranges_by_cycle_phase FROM canonical_result_definitions WHERE name = 'Progesterone'"
       )
       .get() as { ranges_by_cycle_phase: string | null } | undefined;
     expect(row?.ranges_by_cycle_phase).toBeTruthy();

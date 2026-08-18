@@ -53,16 +53,25 @@ function detectType(text: string): ImportType | null {
     "test",
   ]);
   if (workout === 0 && bio === 0) return null;
-  return workout >= bio ? "workouts" : "biomarkers";
+  return workout >= bio ? "workouts" : "clinical-results";
 }
+
+const IMPORT_TYPE_LABEL: Record<ImportType, string> = {
+  workouts: "Workouts",
+  "clinical-results": "Clinical results",
+};
 
 export default function ImportClient({
   units,
+  workoutImportAvailable = true,
 }: {
   units: { weightUnit: WeightUnit };
+  workoutImportAvailable?: boolean;
 }) {
   const toast = useToast();
-  const [type, setType] = useState<ImportType>("workouts");
+  const [type, setType] = useState<ImportType>(
+    workoutImportAvailable ? "workouts" : "clinical-results"
+  );
   const [typeTouched, setTypeTouched] = useState(false);
   const [text, setText] = useState("");
   const [starting, setStarting] = useState(false);
@@ -70,7 +79,11 @@ export default function ImportClient({
 
   const suggested = useMemo(() => detectType(text), [text]);
   // Apply the autodetected type until the user picks one themselves.
-  const effectiveType = typeTouched ? type : (suggested ?? type);
+  const effectiveType = workoutImportAvailable
+    ? typeTouched
+      ? type
+      : (suggested ?? type)
+    : "clinical-results";
 
   function onText(v: string) {
     setText(v);
@@ -110,33 +123,38 @@ export default function ImportClient({
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-500 dark:text-slate-400">
-        Paste a CSV or a plain workout / lab log and the AI reads it into
-        reviewable rows. To import a spreadsheet or CSV <em>file</em>, use the
-        File Upload tab.
+        {workoutImportAvailable
+          ? "Paste a CSV or a plain workout / lab log and the AI reads it into reviewable rows."
+          : "Paste a CSV or a plain lab log and the AI reads it into reviewable rows."}{" "}
+        To import a spreadsheet or CSV <em>file</em>, use the File Upload tab.
       </p>
       {/* Type selector */}
       <div>
         <label className="label">What are you importing?</label>
-        <div className="grid grid-cols-2 gap-2">
-          {(["workouts", "biomarkers"] as const).map((t) => {
-            const active = effectiveType === t;
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => pickType(t)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium capitalize transition ${
-                  active
-                    ? "border-(--seg-active-bg) bg-(--seg-active-bg) text-(--seg-active-fg)"
-                    : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
-                }`}
-              >
-                {t}
-              </button>
-            );
-          })}
+        <div
+          className={`grid gap-2 ${workoutImportAvailable ? "grid-cols-2" : "grid-cols-1"}`}
+        >
+          {(["workouts", "clinical-results"] as const)
+            .filter((t) => workoutImportAvailable || t !== "workouts")
+            .map((t) => {
+              const active = effectiveType === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => pickType(t)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium capitalize transition ${
+                    active
+                      ? "border-(--seg-active-bg) bg-(--seg-active-bg) text-(--seg-active-fg)"
+                      : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                  }`}
+                >
+                  {IMPORT_TYPE_LABEL[t]}
+                </button>
+              );
+            })}
         </div>
-        {!typeTouched && suggested && (
+        {!typeTouched && suggested && workoutImportAvailable && (
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Auto-detected from the header row — tap to override.
           </p>
@@ -145,7 +163,11 @@ export default function ImportClient({
 
       {/* Paste */}
       <div>
-        <label className="label">Paste CSV or a workout / lab log</label>
+        <label className="label">
+          {workoutImportAvailable
+            ? "Paste CSV or a workout / lab log"
+            : "Paste CSV or a lab log"}
+        </label>
         <textarea
           value={text}
           onChange={(e) => onText(e.target.value)}
@@ -185,15 +207,22 @@ export default function ImportClient({
 export function ImportJobList({
   jobs,
   unit,
+  workoutImportAvailable = true,
 }: {
   jobs: ImportJob[];
   unit: WeightUnit;
+  workoutImportAvailable?: boolean;
 }) {
   if (jobs.length === 0) return null;
   return (
     <div className="space-y-3">
       {jobs.map((job) => (
-        <ImportJobCard key={job.id} job={job} unit={unit} />
+        <ImportJobCard
+          key={job.id}
+          job={job}
+          unit={unit}
+          workoutImportAvailable={workoutImportAvailable}
+        />
       ))}
     </div>
   );
@@ -201,7 +230,15 @@ export function ImportJobList({
 
 // A single async import job: shows its status, and for a 'ready' job lets the
 // user expand the extracted preview table and save it (or discard).
-function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
+function ImportJobCard({
+  job,
+  unit,
+  workoutImportAvailable,
+}: {
+  job: ImportJob;
+  unit: WeightUnit;
+  workoutImportAvailable: boolean;
+}) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<null | "save" | "discard">(null);
@@ -243,7 +280,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
     }
   }
 
-  const label = job.type === "workouts" ? "Workouts" : "Biomarkers";
+  const label = job.type === "workouts" ? "Workouts" : "Clinical results";
 
   return (
     <div className="card space-y-3">
@@ -311,17 +348,24 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
           {job.result.type === "workouts" ? (
             <WorkoutPreview preview={job.result} unit={unit} />
           ) : (
-            <BiomarkerPreview preview={job.result} />
+            <ClinicalResultPreview preview={job.result} />
           )}
           <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              onClick={save}
-              disabled={pending !== null}
-              className="btn"
-            >
-              {pending === "save" ? "Saving…" : "Save to your log"}
-            </button>
+            {job.result.type !== "workouts" || workoutImportAvailable ? (
+              <button
+                type="button"
+                onClick={save}
+                disabled={pending !== null}
+                className="btn"
+              >
+                {pending === "save" ? "Saving…" : "Save to your log"}
+              </button>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                This strength workout import can be reviewed or discarded, but
+                it isn’t available for this profile’s age.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -406,15 +450,15 @@ function WorkoutPreview({
   );
 }
 
-function BiomarkerPreview({
+function ClinicalResultPreview({
   preview,
 }: {
-  preview: Extract<ImportResult, { type: "biomarkers" }>;
+  preview: Extract<ImportResult, { type: "clinical-results" }>;
 }) {
   if (preview.results.length === 0)
     return (
       <p className="text-sm text-slate-500 dark:text-slate-400">
-        No biomarkers found in that input.
+        No clinical results found in that input.
       </p>
     );
   return (

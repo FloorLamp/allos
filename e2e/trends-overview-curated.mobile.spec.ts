@@ -2,7 +2,14 @@ import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledClick, settledPickOption } from "./helpers";
+import {
+  chartsSettled,
+  followLink,
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+  settledPickOption,
+} from "./helpers";
 import { workerDbPath } from "./worker-env";
 import {
   E2E_MEMBER_PASSWORD,
@@ -47,18 +54,35 @@ function tile(page: Page, name: string) {
 
 // Open one tile's corner ⋯ menu and return the menu panel (portaled to <body>, so
 // it is NOT inside the tile's own subtree — scope to the panel, not the card).
+// The menu PANEL is `position: fixed` and glued to its trigger's rect, so the grid
+// has to be done GROWING before a round trip starts — a sparkline chunk that
+// evaluates mid-flight slides the panel out from under the pending click (#2839's
+// hang, #2862's class). The fixture always has populated tiles, so one mounted
+// sparkline is a real signal here.
+async function savedTilesSettled(page: Page) {
+  const grid = page.getByTestId("saved-tiles");
+  await chartsSettled(grid, grid);
+}
+
 async function openTileMenu(page: Page, name: string) {
-  await tile(page, name).getByTestId("overflow-menu-trigger").click();
+  await savedTilesSettled(page);
+  await hydratedClick(
+    page,
+    tile(page, name).getByTestId("overflow-menu-trigger")
+  );
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;
 }
 
 async function openTileMenuByKey(page: Page, key: string) {
-  await page
-    .locator(`[data-testid="saved-tile"][data-tile-key="${key}"]`)
-    .getByTestId("overflow-menu-trigger")
-    .click();
+  await savedTilesSettled(page);
+  await hydratedClick(
+    page,
+    page
+      .locator(`[data-testid="saved-tile"][data-tile-key="${key}"]`)
+      .getByTestId("overflow-menu-trigger")
+  );
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;
@@ -215,7 +239,7 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
         tile(page, TRENDS_CURATE_EMPTY_ANALYTE).getByTestId(
           "trend-mini-header-link"
         )
-      ).toHaveAttribute("href", /\/results\/readings\/view\?name=/);
+      ).toHaveAttribute("href", /\/results\/clinical-results\/view\?name=/);
 
       await followLink(
         page,
@@ -310,7 +334,7 @@ test.describe("curated Trends Overview (#1487 / #1485 A+B)", () => {
       const emptyWrapper = empty.locator("xpath=..");
       await expect(emptyWrapper).toHaveAttribute(
         "data-tile-key",
-        `bio:${TRENDS_CURATE_EMPTY_ANALYTE}`
+        `result:${TRENDS_CURATE_EMPTY_ANALYTE}`
       );
       expect(
         await emptyWrapper.evaluate((element) =>
@@ -355,19 +379,26 @@ async function tileOrder(page: Page): Promise<string[]> {
 // distance is the same DndContext the long-press TouchSensor feeds — so this
 // exercises the real reorder path without emulating a press-and-hold.
 async function dragTile(page: Page, fromKey: string, toKey: string) {
+  // The tiles are lazy sparklines, so the grid is still GROWING until their chunk
+  // evaluates — and a drag is aimed at coordinates read before that lands, which is
+  // #2714's stale-point class with a chart-mount trigger (#2862). Gate the layout
+  // before measuring it: one mounted wrapper anywhere in the grid proves the chunk
+  // evaluated, and the sweep covers the rest of the tiles.
+  await savedTilesSettled(page);
   const from = page.locator(`[data-tile-key="${fromKey}"]`);
   const to = page.locator(`[data-tile-key="${toKey}"]`);
-  const a = await from.boundingBox();
-  const b = await to.boundingBox();
-  expect(a, `no box for ${fromKey}`).not.toBeNull();
-  expect(b, `no box for ${toKey}`).not.toBeNull();
-  await page.mouse.move(a!.x + a!.width / 2, a!.y + a!.height / 2);
+  // ONE settled snapshot for both, not two independent reads: the drag asserts a
+  // RELATIVE geometry (lift here, drop there) and the two boxes have to describe the
+  // same layout (#2437). settledBoxes also returns non-null, so the null guards the
+  // raw reads needed are gone with them.
+  const [a, b] = await settledBoxes([from, to]);
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
   await page.mouse.down();
   // Clear the activation distance first — a lift is deliberate, never a tap.
-  await page.mouse.move(a!.x + a!.width / 2 + 14, a!.y + a!.height / 2, {
+  await page.mouse.move(a.x + a.width / 2 + 14, a.y + a.height / 2, {
     steps: 4,
   });
-  await page.mouse.move(b!.x + b!.width / 2, b!.y + b!.height / 2, {
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, {
     steps: 12,
   });
   await page.mouse.up();
@@ -475,7 +506,7 @@ test.describe("reorder converges on drag (#1485 C)", () => {
       await expect(page.getByTestId("saved-tiles")).toBeVisible();
 
       const before = await tileOrder(page);
-      const emptyKey = `bio:${TRENDS_CURATE_EMPTY_ANALYTE}`;
+      const emptyKey = `result:${TRENDS_CURATE_EMPTY_ANALYTE}`;
       const beforeIndex = before.indexOf(emptyKey);
       expect(beforeIndex).toBeGreaterThanOrEqual(0);
       const menu = await openTileMenu(page, TRENDS_CURATE_EMPTY_ANALYTE);

@@ -188,6 +188,22 @@ export function getPushSubscriptionsForProfile(
 
 // ---- Sending ----
 
+// Socket timeout for one push send. web-push arms one ONLY when it is passed, so
+// without this a push service that accepts the connection and then never answers
+// leaves the send pending with no ceiling — and dispatch() fans the channels under
+// Promise.all, so that one endpoint becomes the whole dispatch's latency. Matches
+// the Telegram channel's 30s cap.
+//
+// It is a SOCKET timeout, not a whole-response one (a trickle of packets never
+// trips it), so it is the first of two bounds rather than the only one: the
+// post-workout queue also races its own POST_WORKOUT_DISPATCH_TIMEOUT_MS, because
+// silence on a safety signal is worse than a duplicate.
+//
+// Exported so the queue's deadline can be ASSERTED against it: raising this above
+// POST_WORKOUT_DISPATCH_TIMEOUT_MS reds the notification tier, because a channel cap
+// past the whole-dispatch deadline means every slow send is abandoned mid-flight.
+export const PUSH_SEND_TIMEOUT_MS = 30_000;
+
 // Push a message to an explicit set of subscriptions. Prunes endpoints the
 // service reports as gone (404/410). Resolves when at least one delivery
 // succeeded (or there was nothing live to deliver to); throws only when every
@@ -210,7 +226,8 @@ async function sendToSubscriptions(
       try {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          payload
+          payload,
+          { timeout: PUSH_SEND_TIMEOUT_MS }
         );
         ok++;
       } catch (e) {

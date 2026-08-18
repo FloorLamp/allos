@@ -160,15 +160,18 @@ describe("the builders over the shared grid", () => {
   });
 
   it("adherence calendar: padding is `null`, rows are Sun→Sat, dates are kept", () => {
+    // The miss is deliberately NOT the last dot: a trailing unresolved day is the
+    // still-pending today (#2796) and renders as its own state, which is the adherence
+    // calendar's own rule and not what this grid-shape case is about.
     const { weeks } = buildAdherenceCalendar([
-      { date: "2026-03-04", state: "taken" },
-      { date: "2026-03-05", state: "missed" },
+      { date: "2026-03-04", state: "missed" },
+      { date: "2026-03-05", state: "taken" },
     ]);
     expect(weeks).toHaveLength(1);
     expect(weeks[0]).toHaveLength(7);
     expect(weeks[0][0]).toEqual({ date: null, state: null }); // Sun Mar 1, before
-    expect(weeks[0][3]).toEqual({ date: "2026-03-04", state: "taken" });
-    expect(weeks[0][4]).toEqual({ date: "2026-03-05", state: "missed" });
+    expect(weeks[0][3]).toEqual({ date: "2026-03-04", state: "missed" });
+    expect(weeks[0][4]).toEqual({ date: "2026-03-05", state: "taken" });
     expect(weeks[0][6]).toEqual({ date: null, state: null }); // Sat Mar 7, after
   });
 });

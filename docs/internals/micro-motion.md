@@ -6,18 +6,19 @@ document governs is motion that answers **"did that work?"** inside the interfac
 itself, which is faster and quieter than a toast. Motion here is information, and
 it is held to the same standard as copy.
 
-Four motions ship today (#2654). The last two are the two halves of one gesture —
-a dismissal travelling, and the fold answering — and they are deliberately **two**
-tokens, because they are two durations with two different justifications.
+Five motions ship today (#2654, #2657). `slide` and `fold` are the two halves of one
+gesture — a dismissal travelling, and the fold answering — and they are deliberately
+**two** tokens, because they are two durations with two different justifications.
 
 | Motion   | Token             | Duration             | What it says                                               |
 | -------- | ----------------- | -------------------- | ---------------------------------------------------------- |
 | `settle` | `--motion-settle` | 300 ms               | the control you tapped **became** its done state           |
 | `count`  | `--motion-count`  | 250 ms               | a **quantity** changed, rather than a value being replaced |
 | `slide`  | `--motion-slide`  | 300 ms               | the finding you dismissed **went somewhere**               |
+| `tick`   | `--motion-tick`   | 180 ms               | the scrub crossed **into a different month**               |
 | `fold`   | `--motion-fold`   | 500 ms (band-exempt) | the fold **caught** it — this is where to look             |
 
-One ease curve for all four, `--motion-ease`, decelerating: the move arrives and
+One ease curve for all five, `--motion-ease`, decelerating: the move arrives and
 settles, it never bounces back.
 
 ## The four rules
@@ -30,8 +31,7 @@ settles, it never bounces back.
 2. **Nothing loops.** A looping animation is an attention claim that never stops
    making itself, and a health app must not campaign at anyone. The token test fails
    an iteration count, `infinite` or `alternate` anywhere in the stylesheet's
-   Micro-motion section, and `e2e/micro-motion.spec.ts` counts `animationiteration`
-   events at zero on the live page.
+   Micro-motion section, including every declared keyframe body.
 3. **Reduced motion is the designed state, not a degradation.** Every motion
    declares its `reducedEndState`: the same information, arriving instantly. A motion
    whose meaning is lost when it is switched off was decoration and does not belong
@@ -93,6 +93,8 @@ smuggle the row's travel out of the band too, and the test fails that.
   only works because its JS caller remembered to check is one refactor from animating
   someone who asked it not to.
 - `components/RollingNumber.tsx` — the one `requestAnimationFrame` case.
+- `app/(app)/timeline/TimelineScrubber.tsx` — the jump rail's bubble, beating once per
+  month boundary a drag crosses.
 - `components/SnoozeDismissMenu.tsx` — the dismissal's travel, started on the tap.
 - `app/(app)/upcoming/FoldSummary.tsx` — the fold line that pulses when it catches one.
 - `lib/__tests__/micro-motion.test.ts` — pins the CSS numbers to the module's, and
@@ -102,11 +104,21 @@ This is **tokens and a declaration, not a registry engine**: there is no schedul
 and no runtime dispatch. Adding a motion is a row in `MICRO_MOTIONS` plus a
 `--motion-<name>` property and a class; the test fails either half on its own.
 
+It fails the CSS half by CENSUS, not by pattern match: the property, class and
+keyframe names are collected with a loose pattern and required to equal the
+registry keys exactly. A pattern that silently skips a name it cannot spell
+reports a clean count for a motion nothing checked — `[a-z]+` matched neither
+`.motion-slide2` nor `.motion-count-roll`, so a 900 ms motion animating `width`
+with no registry row passed every assertion (#2770). The name shape is pinned
+separately, so widening the pattern is not a permanent chase.
+
 ## Not the overlay family
 
 `lib/motion.ts` owns a different question — a panel _arriving_, at 240 ms, with an
 enter/exit pair and a `usePresence` unmount window (see `docs/internals/overlays.md`).
-That is navigation. Micro-motion is feedback on a write. Keep the vocabularies apart:
+That is navigation. Micro-motion is feedback on a write — and, since `tick`, on a
+GESTURE, which is the same question ("did that register?") asked of a drag instead of a
+save. Keep the vocabularies apart:
 a surface that slides a sheet does not reach into this module, and the token test
 fails a micro-motion name that collides with an overlay one.
 
@@ -176,15 +188,36 @@ not deleted, and _here_ is where to look.
   changes size, and it is **slate, not the success green** the confirm settle uses —
   catching a dismissal is a location, not an achievement.
 
-## How the browser suite proves it
+**`tick` — `app/(app)/timeline/TimelineScrubber.tsx`, the #2657 jump rail.** The first
+tenant that is not feedback on a write. Dragging the timeline's right-edge scrubber
+moves a floating bubble that names the period under the finger; the bubble beats once
+each time the finger crosses out of one month and into the next, which is the difference
+between scrubbing _through_ history and sliding around inside one month.
 
-`e2e/micro-motion.spec.ts` never measures a duration — the frozen-clock harness dislikes
-animation timing, and "the thing was mid-animation when I looked" is the flakiest
-assertion in the suite. It installs a document-level `animationstart` /
-`animationiteration` probe **before** the gesture, then asserts stable post-conditions:
-the keyframe ran exactly once, it never iterated, and the end state is correct. The
-reduced-motion half runs the same gestures under `reducedMotion: "reduce"` and asserts
-the same end states with the keyframe count at zero.
+- **Its other channel is missing on most of the devices it exists for.** One 8 ms haptic
+  fires alongside it (`HAPTIC_PATTERNS["scrubber-tick"]`), and iOS ships no web Vibration
+  API at all — so on an iPhone the beat is the only non-textual feedback there is. That is
+  why the #2657 ruling makes the visual pulse the universal channel and the haptic the
+  enhancement. The iOS 17.4+ `<input type="checkbox" switch>` haptic trick is deliberately
+  not used: unspecified behaviour Apple can remove, bought with a hidden form control that
+  assistive technology can see.
+- **The carrier is the bubble's own text**, correct on every frame with or without motion,
+  and the rail's `aria-valuetext`, which announces the same period change to a reader who
+  sees no bubble at all. Under reduced motion the haptic is suppressed by the same
+  preference and the text is the whole feedback.
+- **It fires on a crossing, never on arrival.** The bubble does not exist at rest — "no
+  text at rest" is the idiom's whole point — so there is no mount to pulse on.
+- The beat is replayed by **remounting the bubble's label** (React `key` on a counter),
+  because a one-shot CSS animation cannot re-run from a class that never left.
+
+## How the suite proves it
+
+`lib/__tests__/micro-motion.test.ts` owns the animation contract directly: registry ↔
+stylesheet completeness, duration, allowed properties, non-looping keyframes, motion
+plans, and reduced-motion suppression. The domain browser specs own the independent
+carriers and user outcomes (dose state, protein total, dismissal/restore). The suite
+deliberately does not count live `animationstart` events: that couples correctness to
+browser scheduling while duplicating those domain flows.
 
 ## What is not here
 

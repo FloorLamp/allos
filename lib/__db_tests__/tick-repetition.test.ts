@@ -79,7 +79,7 @@ function syncEventCount(profileId: number, provider: string): number {
   return (
     db
       .prepare(
-        "SELECT COUNT(*) AS n FROM integration_sync_events WHERE profile_id = ? AND provider = ?"
+        "SELECT COUNT(*) AS n FROM integration_sync_events WHERE profile_id = ? AND source_id = ?"
       )
       .get(profileId, provider) as { n: number }
   ).n;
@@ -249,7 +249,7 @@ describe("the pull pass, run twice in one hour", () => {
     db.prepare(
       `UPDATE integration_sync_events
           SET at = datetime(at, '-3 hours')
-        WHERE profile_id = ? AND provider = 'strava'`
+        WHERE profile_id = ? AND source_id = 'strava'`
     ).run(p);
 
     const out = await syncIntegrations(p, new Date());

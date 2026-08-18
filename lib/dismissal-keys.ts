@@ -1,9 +1,9 @@
 // Pure key helpers for the name-keyed suppression stores (upcoming_dismissals)
-// and the starred-biomarker pin, plus the set logic that decides which of those
+// and the starred clinical-result save, plus the set logic that decides which of those
 // name/code-keyed rows have lost their subject (issue #203).
 //
 // Why this exists: `upcoming_dismissals.signal_key` and
-// `saved_items.key` (kind='biomarker') are keyed by REUSABLE strings (a canonical
+// `saved_items.key` (kind='clinical-result') are keyed by REUSABLE strings (a canonical
 // biomarker name, a vaccine code) — not an AUTOINCREMENT id — so when the subject
 // they point at is deleted or renamed, the row can silently re-attach to a
 // DIFFERENT later subject that reuses the same string (AGENTS.md #224: "names and
@@ -110,8 +110,8 @@ export function immunizationCodesLosingBacking(
 //      are ONE record but produced two different keys, and deleting the oldest session
 //      silently re-spelled the key of a record that had not changed. Same for cardio,
 //      whose stats group case-insensitively while the key carried the raw casing. This
-//      is exactly what #1399/#1610 fixed for the plateau/stale findings, which now key
-//      on `movementLoadKey`/`exerciseHistoryKey`; the PR celebration was left behind.
+//      is exactly what #1399/#1610 fixed for plateau findings, which key on
+//      `movementLoadKey`; the PR celebration was left behind.
 //   2. Nothing swept it. A dismissal minted for a movement/activity whose sets are
 //      later renamed, re-laned or deleted stays in the table forever, and a genuinely
 //      NEW record earned under a recycled name arrives pre-silenced — the celebration

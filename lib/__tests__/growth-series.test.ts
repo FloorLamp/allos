@@ -332,6 +332,7 @@ describe("bmiSeriesDatePaired height staleness bound (issue #2646)", () => {
   it("declares an interval for every life stage", () => {
     const stages: LifeStage[] = [
       "infant",
+      "early-childhood",
       "child",
       "adolescent",
       "adult",
@@ -342,7 +343,12 @@ describe("bmiSeriesDatePaired height staleness bound (issue #2646)", () => {
     );
     // The growing stages are bounded and the grown ones are not — the substantive
     // claim, spelled out so a future edit that unbounds a child has to say so here.
-    for (const growing of ["infant", "child", "adolescent"] as const) {
+    for (const growing of [
+      "infant",
+      "early-childhood",
+      "child",
+      "adolescent",
+    ] as const) {
       const days = PAIRED_HEIGHT_INTERVAL_DAYS[growing];
       expect(days, growing).not.toBeNull();
       expect(days as number, growing).toBeGreaterThan(0);

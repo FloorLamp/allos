@@ -1,5 +1,5 @@
 // The NAME/SHAPE axis of "this observation is not a measurement" (#2318) — the twin
-// of the CODE axis that already exists in lib/biomarker-loinc.ts.
+// of the CODE axis that already exists in lib/canonical-result-loinc.ts.
 //
 // `functionalStatusExtractor` has always nulled the assessment LOINC before storing,
 // and said why: these are assessment instruments, not lab analytes, so carrying the

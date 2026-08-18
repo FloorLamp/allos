@@ -15,9 +15,9 @@ import { QUICK_PARAM, shortcutAction } from "@/lib/pwa-shortcuts";
 // **No new entry paths.** The dispatch below is the SAME switch
 // `components/QuickLogSheet.tsx` runs over the same `QuickLogTarget` union from
 // the same `lib/quick-log.ts` registry (#1476) — a shortcut opens the activity
-// editor through `openCreate()` and every other logger through the shared
-// quick-entry overlay's `open(form)`. Search reuses `openGlobalSearch()`, the
-// palette's existing programmatic seam (already used by the mobile bar).
+// editor through `openCreate()`, a live session through `openLive()`, and a
+// transactional logger through the shared quick-entry overlay's `open(form)`.
+// Search reuses `openGlobalSearch()`, the palette's existing programmatic seam.
 //
 // Mounted beside `CommandPalette` in `app/(app)/layout.tsx` — inside
 // `ActivityEditorProvider` (it needs both contexts) and viewport-agnostic on
@@ -31,17 +31,15 @@ import { QUICK_PARAM, shortcutAction } from "@/lib/pwa-shortcuts";
 // shortcut still opens.
 
 export default function QuickShortcutHandler({
-  restricted = false,
   cycleRelevant = true,
 }: {
-  restricted?: boolean;
   // The #1042 `cycle` relevance bit (#1892), so `?quick=log-period` is gated exactly
   // as the sheet row is. The overlay re-checks it server-side regardless.
   cycleRelevant?: boolean;
 }) {
   const params = useSearchParams();
   const router = useRouter();
-  const { openCreate } = useActivityEditor();
+  const { openCreate, openLive, canStartWorkout } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
   const handled = useRef<string | null>(null);
   const [consumed, setConsumed] = useState<string | null>(null);
@@ -70,7 +68,7 @@ export default function QuickShortcutHandler({
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
     setConsumed(raw);
 
-    const action = shortcutAction(raw, restricted, cycleRelevant);
+    const action = shortcutAction(raw, cycleRelevant);
     if (!action) return;
     if (action.kind === "search") {
       openGlobalSearch();
@@ -78,13 +76,23 @@ export default function QuickShortcutHandler({
     }
     const target = action.item.target;
     if (target.kind === "activity") openCreate();
-    else if (target.kind === "overlay") openQuickEntry(target.form);
+    else if (target.kind === "live") {
+      if (canStartWorkout) openLive();
+    } else if (target.kind === "overlay") openQuickEntry(target.form);
     // `navigate` is unreachable from a shortcut (no registry row carries one, and
     // a shortcut URL that navigates would be a plain href instead) — but the
     // union stays exhaustive so a future one is a compile error here, not a
     // silently dead deep link.
     else router.push(target.href);
-  }, [raw, router, restricted, cycleRelevant, openCreate, openQuickEntry]);
+  }, [
+    raw,
+    router,
+    cycleRelevant,
+    openCreate,
+    openLive,
+    canStartWorkout,
+    openQuickEntry,
+  ]);
 
   return (
     <span

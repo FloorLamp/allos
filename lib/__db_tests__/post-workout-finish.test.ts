@@ -425,17 +425,17 @@ describe("runPostWorkoutForActivity (the delayed-dispatch core, #1154 §B)", () 
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("#1156 floor: a LOW-priority post_workout supplement is excluded; an all-low finish sends nothing", async () => {
+  it("#1156 floor: a `may` post_workout supplement is excluded; an all-`may` finish sends nothing", async () => {
     const p = newProfile("PWFloor");
     const date = today(p);
-    // One low post_workout supplement — the whole dose section goes silent, and
+    // One `may` post_workout supplement — the whole dose section goes silent, and
     // with no working sets there's no recap either → no send, one-shot kept.
     const itemId = Number(
       db
         .prepare(
           `INSERT INTO intake_items
              (profile_id, name, active, kind, condition, obligation)
-         VALUES (?, 'Low Post (test)', 1, 'supplement', 'post_workout', 'may')`
+         VALUES (?, 'May Post (test)', 1, 'supplement', 'post_workout', 'may')`
         )
         .run(p).lastInsertRowid
     );

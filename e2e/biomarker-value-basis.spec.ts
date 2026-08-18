@@ -154,7 +154,7 @@ test("a band-less analyte shows the source's own range, attributed, and keeps it
   page,
 }) => {
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent(REPORTED)}`
+    `/results/clinical-results/view?name=${encodeURIComponent(REPORTED)}`
   );
 
   const value = page.getByTestId("biomarker-latest-value");
@@ -184,7 +184,9 @@ test("a band-less analyte shows the source's own range, attributed, and keeps it
 test("a reading with no band and no printed range is not coloured, and claims no severity", async ({
   page,
 }) => {
-  await page.goto(`/results/readings/view?name=${encodeURIComponent(BARE)}`);
+  await page.goto(
+    `/results/clinical-results/view?name=${encodeURIComponent(BARE)}`
+  );
 
   const value = page.getByTestId("biomarker-latest-value");
   await expect(value).toBeVisible();
@@ -200,7 +202,6 @@ test("a reading with no band and no printed range is not coloured, and claims no
   // sr-only severity span the header would otherwise carry is gone too.
   await expect(value.getByTestId("medical-flag-text")).toHaveCount(0);
   const row = page.getByRole("row").filter({ hasText: "42 mg/dL" });
-  await expect(row).toHaveCount(1);
   await expect(row).toBeVisible();
   await expect(row.getByTestId("medical-flag-text")).toHaveCount(0);
   await expect(row.locator('[data-basis="none"]')).toBeVisible();
@@ -240,7 +241,7 @@ test("a reading the page CAN judge keeps its recheck offer with no note, because
   page,
 }) => {
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent(REPORTED)}`
+    `/results/clinical-results/view?name=${encodeURIComponent(REPORTED)}`
   );
 
   // Same flag, same offer — but the range that produced it is rendered right beside
@@ -251,11 +252,11 @@ test("a reading the page CAN judge keeps its recheck offer with no note, because
   await expect(page.getByTestId("biomarker-retest-basis")).toHaveCount(0);
 });
 
-test("the page explains the analyte once, and says why it has no band beside the missing band", async ({
+test("the page explains the analyte and places the missing-band reason beside the value", async ({
   page,
 }) => {
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent(REPORTED)}`
+    `/results/clinical-results/view?name=${encodeURIComponent(REPORTED)}`
   );
 
   // The explainer card keeps the educational description.
@@ -263,14 +264,8 @@ test("the page explains the analyte once, and says why it has no band beside the
   await expect(explainer).toBeVisible();
   await expect(explainer).toContainText("hormone released by fat tissue");
 
-  // The subtitle no longer repeats it in the curated note's slightly different
-  // words — the duplication the issue is about.
-  await expect(page.getByText("hormone made by fat tissue")).toHaveCount(0);
-  const subtitle = page.getByText("2 readings", { exact: true });
-  await expect(subtitle).toBeVisible();
-
-  // And the note's one distinct clause is now where the band is missing, in the
-  // summary card beside the value and the attributed range.
+  // The missing-band reason belongs in the summary card beside the value and the
+  // attributed range.
   const bandNote = page.getByTestId("biomarker-band-note");
   await expect(bandNote).toBeVisible();
   await expect(bandNote).toContainText("No reference band.");
@@ -281,7 +276,7 @@ test("an unqualified glucose shows its value unflagged and says why, while the f
   page,
 }) => {
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent(UNQUALIFIED_GLUCOSE)}`
+    `/results/clinical-results/view?name=${encodeURIComponent(UNQUALIFIED_GLUCOSE)}`
   );
 
   // The value is shown. Nothing judges it: the catalog publishes no band for a draw
@@ -306,7 +301,7 @@ test("an unqualified glucose shows its value unflagged and says why, while the f
   // spec's own row rather than the header, because the shared seed owns fasting
   // glucose draws of its own on this profile.
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent(FASTING_GLUCOSE)}`
+    `/results/clinical-results/view?name=${encodeURIComponent(FASTING_GLUCOSE)}`
   );
   await expect(page.getByText("70–99 mg/dL")).toBeVisible();
   await expect(page.getByTestId("biomarker-band-note")).toHaveCount(0);

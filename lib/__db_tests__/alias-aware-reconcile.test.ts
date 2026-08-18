@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — alias-aware flag reconciliation.
 //
 // reconcileFlags looks a stored row's canonical_name up by exact name against the
-// canonical_biomarkers table. A row whose canonical_name is a LEGACY spelling or a
+// canonical_result_definitions table. A row whose canonical_name is a LEGACY spelling or a
 // bare abbreviation the dataset no longer uses verbatim (e.g. "RDW" after the entry
 // was renamed to "Red Cell Distribution Width (RDW)") would MISS its entry and lose
 // its reference band. flagReconcileProfileContext now snaps the name through the

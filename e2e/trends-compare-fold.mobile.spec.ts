@@ -14,9 +14,7 @@ import { followLink } from "./helpers";
 //   A. the strip is FIVE chips in frequency order — Overview | Body | Fitness |
 //      Nutrition | Insights — which is what makes it fit a 390px phone unclipped;
 //   B. Compare stopped being a tab and became a SECTION of Insights, and with it
-//      the age gate moved from the TAB to the sections: a training-restricted
-//      profile now SEES the Insights tab carrying only its (age-neutral) compare
-//      section, while Fitness keeps its wholly-gated tab-level splice.
+//      body self-history analytics remain available for a school-age minor.
 //
 // Runs in the `mobile` project (390×844) by its file name alone; the desktop
 // project testIgnores `*.mobile.spec.ts`. The chip-fit assertion is only
@@ -26,15 +24,14 @@ import { followLink } from "./helpers";
 // Fixtures (#868 hygiene), both read-only:
 //   • the shared seed (profile 1, an adult) for the strip and the legacy deep
 //     link — navigation only, no writes, no exact count of a shared-seed row;
-//   • the dedicated E2E_LOGIN_TRENDS_COMPARE profile (a MINOR under the seeded
-//     min-training-age gate, with weight + resting HR on shared dates) for the
-//     gate move. It owns its readings, so a neighbour's write and
+//   • the dedicated E2E_LOGIN_TRENDS_COMPARE minor profile, with weight + resting
+//     HR on shared dates. It owns its readings, so a neighbour's write and
 //     `--repeat-each` can't move them.
 const PHONE = { viewport: { width: 390, height: 844 }, hasTouch: true };
 
 // FOUR since #1644 folded Body into Overview; permanent by owner ruling.
 const TAB_ORDER = ["Overview", "Fitness", "Nutrition", "Insights"];
-// Data-independent markers of the Insights tab's AI half (the age-gated content).
+// Data-independent marker of the Insights tab's AI half.
 const INSIGHTS_MARKER = "Date to analyze";
 
 // `loginAs` opens its own context, which does NOT inherit the project's `use`
@@ -133,8 +130,8 @@ test.describe("B — Compare folded into Insights", () => {
   });
 });
 
-test.describe("C — the age gate moved from the tab to the sections", () => {
-  test("a restricted profile gets the Insights tab with compare and no insight content", async ({
+test.describe("C — school-age self-history analytics stay available", () => {
+  test("a school-age minor gets Fitness and the complete Insights surface", async ({
     browser,
   }) => {
     test.slow(); // local `next dev` compiles the Trends route on first hit
@@ -143,13 +140,7 @@ test.describe("C — the age gate moved from the tab to the sections", () => {
       await member.goto("/trends");
       await expandTrendsContext(member);
       const strip = tabStrip(member);
-      // Fitness — wholly age-gated content — keeps its TAB-level splice; Insights
-      // no longer does.
-      await expect(strip.getByRole("tab")).toHaveText([
-        "Overview",
-        "Nutrition",
-        "Insights",
-      ]);
+      await expect(strip.getByRole("tab")).toHaveText(TAB_ORDER);
 
       await member.goto(
         "/trends?tab=insights&cmpA=metric:weight&cmpB=metric:resting_hr"
@@ -164,21 +155,15 @@ test.describe("C — the age gate moved from the tab to the sections", () => {
       await expect(chart).toBeVisible();
       await expect(chart).toHaveAttribute("data-axis-mode", "dual");
 
-      // …and the gated half is not on the page at all — no situation analytics, no
-      // recap cards, and above all no AI generate form.
-      await expect(member.getByTestId("insights-ai")).toHaveCount(0);
-      await expect(member.getByText(INSIGHTS_MARKER)).toHaveCount(0);
-      await expect(member.getByTestId("recap-narrative-form")).toHaveCount(0);
+      await expect(member.getByTestId("insights-ai")).toBeVisible();
+      await expect(member.getByText(INSIGHTS_MARKER)).toBeVisible();
+      await expect(member.getByTestId("recap-narrative-form")).toBeVisible();
 
-      // The surviving tab-level gate still bounces its tab to the default.
       await member.goto("/trends?tab=fitness");
       await expandTrendsContext(member);
       await expect(
-        member.getByRole("tab", { name: "Overview", exact: true })
-      ).toHaveAttribute("aria-selected", "true");
-      await expect(
         member.getByRole("tab", { name: "Fitness", exact: true })
-      ).toHaveCount(0);
+      ).toHaveAttribute("aria-selected", "true");
     } finally {
       await member.context().close();
     }

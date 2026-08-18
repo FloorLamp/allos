@@ -8,7 +8,7 @@ import {
   type PanelId,
 } from "@/lib/biomarker-panels";
 
-// Clinical PANEL dropdown for the biomarkers browser (#1502). Before the panel
+// Clinical PANEL dropdown for the clinical results catalog (#1502). Before the panel
 // taxonomy existed, `?panel=` held the document's free-text section heading —
 // which in practice is the lab VENDOR, so the only facet the browser could offer
 // was "show me everything drawn at Quest Diagnostics". This offers the normalized

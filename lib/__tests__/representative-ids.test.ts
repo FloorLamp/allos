@@ -125,6 +125,49 @@ describe("representativeIds — golden pin against the pre-#2035 SQL", () => {
 // 2. Registry invariants.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 1b. Emitted-SQL pin for the sites that JOINED the registry after #2035.
+// ---------------------------------------------------------------------------
+//
+// imaging_studies and care_plan_items had no pre-extraction spelling to pin — they
+// were never hand-written, they simply never collapsed at all (#2919). What they get
+// instead is the same protection in the other direction: the identity they collapse
+// on is written out here, so a later edit to the registry has to say so out loud.
+
+const NEW_SITES: { site: string; sql: string; got: string }[] = [
+  {
+    site: "imaging_studies (#2919)",
+    sql: "SELECT id FROM ( SELECT id, ROW_NUMBER() OVER ( PARTITION BY profile_id, COALESCE( CASE WHEN external_id IS NOT NULL THEN substr(external_id, instr(external_id, '|') + 1) END, modality || '|' || COALESCE(body_region, '') || '|' || COALESCE(laterality, '') || '|' || COALESCE(study_date, '') ) ORDER BY (document_id IS NULL) DESC, id DESC ) AS rn FROM imaging_studies WHERE profile_id = ? ) WHERE rn = 1",
+    got: representativeIds(REPRESENTATIVE_SPECS.imaging_studies),
+  },
+  {
+    site: "care_plan_items (#2919)",
+    sql: "SELECT id FROM ( SELECT id, ROW_NUMBER() OVER ( PARTITION BY profile_id, COALESCE( CASE WHEN external_id IS NOT NULL THEN substr(external_id, instr(external_id, '|') + 1) END, CASE WHEN source_kind IS NOT NULL THEN 'followup:' || id END, LOWER(TRIM(description)) || '|' || COALESCE(planned_date, '') ) ORDER BY (document_id IS NULL) DESC, id DESC ) AS rn FROM care_plan_items WHERE profile_id = ? ) WHERE rn = 1",
+    got: representativeIds(REPRESENTATIVE_SPECS.care_plan_items),
+  },
+];
+
+describe("representativeIds — the post-#2035 sites", () => {
+  for (const { site, sql: want, got } of NEW_SITES) {
+    it(`emits the declared identity for ${site}`, () => {
+      expect(sql(got)).toBe(sql(want));
+    });
+  }
+
+  it("takes a view-SET scope for the cross-profile imaging reader", () => {
+    // lib/queries/multi-view-lists.ts reads a resolved view-set, so its window's own
+    // predicate is the bound `profile_id IN (…)` tuple rather than a single id. The
+    // PARTITION still leads with profile_id, so members can never merge.
+    const out = representativeIds(REPRESENTATIVE_SPECS.imaging_studies, {
+      scope: "profile_id IN (?,?)",
+    });
+    expect(sql(out)).toContain(
+      "FROM imaging_studies WHERE profile_id IN (?,?)"
+    );
+    expect(sql(out)).toContain("PARTITION BY profile_id,");
+  });
+});
+
 describe("the representative registry", () => {
   const entries = Object.entries(REPRESENTATIVE_SPECS) as [
     string,

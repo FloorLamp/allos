@@ -1,9 +1,7 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
-import { redirect } from "next/navigation";
 import { requireWriteAccess } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { generateInsight, saveInsight } from "@/lib/ai";
 import { generatePeriodRecap } from "@/lib/ai-period-recap";
 import { withAiLogContext } from "@/lib/ai-log";
@@ -17,15 +15,9 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // Generate (or regenerate) the AI daily insight for a date and store it for the
 // active profile. Moved here from the former standalone /insights page when AI
 // Insights was folded into the Trends "Insights" tab (sidebar consolidation).
-// The Trends page hides this tab entirely for age-restricted profiles, so the
-// generate form is only ever rendered for eligible profiles.
+// The insight summarizes the profile's own history and is age-neutral.
 export async function generateForDate(formData: FormData) {
   const { login, profile } = await requireWriteAccess();
-  // Re-check the age gate on the write path: the Insights tab (and its generate
-  // form) is spliced out of the UI for age-restricted profiles, but a direct
-  // POST would otherwise still run the AI work. Bounce to the dashboard exactly
-  // as the Trends/Training pages do for direct navigation (see lib/age-gate.ts).
-  if (isTrainingRestricted(profile.id)) redirect("/");
   // Fall back to today for a missing/non-ISO date rather than generating an
   // insight for a garbage key ("Friday" / "2026-13-45").
   const raw = String(formData.get("date") ?? "").trim();
@@ -40,14 +32,11 @@ export async function generateForDate(formData: FormData) {
 }
 
 // Generate (or regenerate) the AI period recap narrative and store it for
-// the active profile (issue #20). Like the daily insight, the Insights tab is
-// age-gated, so this re-checks the gate on the write path and bounces a direct
-// POST for a restricted profile. The narrative narrates over the same rule-based
+// the active profile (issue #20). The narrative runs over the same rule-based
 // recap the dashboard widget shows; without an API key it stores the offline
 // composition (still useful, still persisted).
 export async function generateRecap(formData: FormData) {
   const { login, profile } = await requireWriteAccess();
-  if (isTrainingRestricted(profile.id)) redirect("/");
   // The narrative period IS the recap scale (#2178) — parsed through the registry's
   // own parser, so a fourth scale needs no change here and an unknown value falls back
   // to `week` rather than being refused.

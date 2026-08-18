@@ -44,6 +44,7 @@ import {
   STEPS_TARGET_MAX,
   setRecommendationCadence,
   setMentalHealthShareFull,
+  setOfflineSnapshotsEnabled,
   setProfileCrisisResourcesOverride,
   setAnxietyScaleOptIn,
   setProfileHouseholdRound,
@@ -142,6 +143,8 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   // Manual age is editable only while no birthdate is set (a birthdate always
   // derives the age and clears this). Blank clears the fallback; an invalid
   // number is ignored so a fat-fingered entry can't wipe a good value.
+  // 0 is a valid entry, not a blank (issue #2992) — an infant's age in whole years
+  // is zero, and CLEARING is the empty string, which the branch above already owns.
   let ageChanged = false;
   if (!birthdate) {
     const ageRaw = String(formData.get("age") ?? "").trim();
@@ -154,7 +157,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
       const age = Number(ageRaw);
       if (
         Number.isInteger(age) &&
-        age > 0 &&
+        age >= 0 &&
         age < 150 &&
         age !== getStoredAge(profile.id)
       ) {
@@ -175,7 +178,7 @@ function saveProfileSettingsCore(profileId: number, formData: FormData): void {
   if (sexChanged || rsChanged || birthdateChanged || ageChanged) {
     reconcileFlags(profile.id);
     revalidateRoute("/results");
-    revalidateRoute("/results/readings/view", "page");
+    revalidateRoute("/results/clinical-results/view", "page");
   }
 
   // Full/legal name of the tracked person — distinct from the profile's display
@@ -613,6 +616,22 @@ export async function saveMentalHealthShareFull(formData: FormData) {
   setMentalHealthShareFull(profile.id, on);
   revalidateRoute("/settings/privacy");
   revalidateRoute("/");
+}
+
+// The offline read snapshots switch (#2908). ON by default — the person this serves is
+// in a waiting room or a basement gym and set nothing up in advance — so this is an OFF
+// switch, not an opt-in. Turning it off stops the server building payloads for this
+// profile; the DEVICE wipe is the client's half of the same tap
+// (components/offline/OfflineSnapshotsSettings.tsx), and any other device this profile
+// is signed in on wipes at its next authenticated visit, because /api/offline-snapshots
+// answers `enabled: false` and the refresher clears on reading it.
+export async function saveOfflineSnapshotsEnabled(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const on =
+    formData.get("offline_snapshots") === "1" ||
+    formData.get("offline_snapshots") === "on";
+  setOfflineSnapshotsEnabled(profile.id, on);
+  revalidateRoute("/settings/privacy");
 }
 
 // The check-in Calm (anxiety) scale opt-in (issue #1313, signal 6). Flipping it on is

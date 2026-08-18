@@ -8,7 +8,7 @@
 // it, so a rule change is DETECTABLE — but only if something re-derives. A
 // migration could not: POWER_CURVE_DURATIONS and the derivation logic live in
 // lib/, and they change in releases with NO schema change at all. That is exactly
-// the reasoning seedCanonicalBiomarkers and reconcileFlagsIfCanonicalChanged are
+// the reasoning seedCanonicalResultDefinitions and reconcileFlagsIfCanonicalChanged are
 // boot tasks for, and it is the shape of the two bugs #2306 and PR #2309 fixed:
 // stored state silently out of sync with the rule that produced it.
 //
@@ -16,7 +16,7 @@
 // no lib imports inside a permanently frozen file — because this same pass IS the
 // backfill: a NULL summary and a stale-signature summary are the same case to it.
 // One mechanism covers the backfill, every future rule change, and any row a
-// writer other than upsertCyclingTelemetry ever creates.
+// writer other than upsertActivityTelemetry ever creates.
 //
 // CHEAP WHEN THERE IS NOTHING TO DO, following #2307's refinement of the pattern:
 // the plan is computed with READS ONLY over the small summary column, and the

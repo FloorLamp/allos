@@ -218,29 +218,55 @@ while read -r d; do
   # its attacks wrote. Classified as an agent's branch it reads DIRTY AND NO AGENT
   # plus NEVER PUSHED, and the second of those is advice that cannot be followed:
   # a detached HEAD has no branch to push. An alarm you cannot act on is the
-  # canary again, so name the lane instead of alarming on it.
+  # canary again, so recognise the lane instead of alarming on it.
   #
-  # The exemption is the DECLARED lane only (`wt-refute*`, detached). A detached
-  # worktree that is NOT the lane still gets said out loud, because commits made
-  # there belong to no branch and are one `worktree remove` from gone — a
-  # different problem from an unpushed branch, and not one to silence.
+  # This exemption was keyed on the lane's NAME twice, and drifted twice. First
+  # `wt-refute-*`, which missed the hand-named `wt-refute2-2634` by one character
+  # and alarmed on the very lane it had just been taught to recognise; then
+  # `wt-refute*`, whose own comment predicted the next drift in as many words —
+  # "an exemption keyed on a name a human types will drift from the name that
+  # human types next time". It did. #2976 now tells every agent to build an
+  # origin/main CONTROL worktree before calling a contended failure a regression,
+  # so disposable checkouts arrive constantly and under whatever name the agent
+  # picked: `wt-base-2978`, `wt-ctrl-2979`, `wt-control-fasting` and
+  # `wt-navpend-base` all appeared within one session, and the two dirty ones
+  # each raised RESCUE NOW over untracked probe files. A recurring false alarm on
+  # the most common workflow in the session is the canary again.
   #
-  # The glob has no hyphen after `refute` because the first version did, and the
-  # second refuter — a re-run on the same PR — got hand-named `wt-refute2-2634`,
-  # which the pattern missed by one character. So the alarm fired on the very lane
-  # it had just been taught to recognise. An exemption keyed on a name a human
-  # types will drift from the name that human types next time; matching the prefix
-  # rather than one spelling of it is the cheap half of the fix, and briefing the
-  # lane to use `wt-refute-<pr>` is the other.
-  case "$(basename "$d")" in
-    wt-refute*)
-      if [ "$b" = "HEAD" ]; then
-        printf "  %-16s %-32s %-6s local=%s  (read-only refuter lane — nothing to rescue)\n" \
-          "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
-        continue
-      fi
-      ;;
-  esac
+  # So stop guessing spellings and ask the question the name was standing in for:
+  # WAS ANYTHING AUTHORED HERE? The rescuable thing in a detached worktree is a
+  # COMMIT, because a commit on no branch is one `worktree remove` from gone.
+  # Both lanes author none — they check out a ref that already exists on the
+  # remote (`origin/main` for a control, `refs/pull/N/merge` for a refuter) and
+  # write only probes on top. A worktree's HEAD reflog is worktree-local, so it
+  # answers this directly and needs no network.
+  #
+  # Reachability was the tempting test and it is WRONG, measured rather than
+  # assumed: a refuter at a fetched merge ref is not an ancestor of origin/main
+  # and `for-each-ref --contains` finds nothing, because the merge ref lands in
+  # FETCH_HEAD and never gets a named ref. Testing reachability would have
+  # re-broken the exact lane this exemption was written for.
+  #
+  # The deliberate silence is a DIRTY detached worktree with no commits: that is
+  # a lane's scratch. Real work arrives on a branch, because that is what the
+  # dispatch procedure hands every agent — so detached-and-uncommitted is probes.
+  #
+  # The reflog is CAPTURED FIRST and matched without a pipeline, and that is
+  # load-bearing under this script's `set -o pipefail` (line 39). Written as
+  # `git … | grep -q`, grep closes the pipe at the first match, git takes SIGPIPE
+  # and reports 141, pipefail promotes 141 to the pipeline's status, and the
+  # leading `!` turns a MATCH into "nothing authored". It is a race, not a
+  # constant: the first draft of this test printed the rescue alarm on runs 1 and
+  # 3 and swallowed it on run 2, same tree, same commit, nothing changed between
+  # them. A safety alarm that fires two times in three is worse than one that
+  # never fires, because the two successes teach you to trust the silence.
+  wt_reflog=$(git -C "$d" reflog show HEAD 2>/dev/null || true)
+  if [ "$b" = "HEAD" ] &&
+     ! grep -qE '\bcommit( \([a-z-]+\))?: ' <<<"$wt_reflog"; then
+    printf "  %-16s %-32s %-6s local=%s  (read-only lane, nothing authored here — nothing to rescue)\n" \
+      "$(basename "$d")" "(detached)" "lane" "${h:0:7}"
+    continue
+  fi
   # "Was this branch ever pushed?" — read the tracking CONFIG, not @{upstream}.
   #
   # The two are not the same thing and the difference is a false alarm. The
@@ -334,6 +360,56 @@ echo
 #   future  -> silent.
 # If you armed but forgot to record it, this over-reports and you arm a second
 # one. An extra check-in is the safe direction; silence is not.
+# 3b. OWNER HOLDS — the one input no script can derive.
+#
+# Everything else this recorder prints is recoverable: worktrees from git, the
+# roster from disk, CI from the API. A HOLD is different — "do not dispatch
+# training until #2953 merges" exists only because the owner said so, and until
+# now it lived only in the orchestrator's context, which a restart or a
+# compaction erases. That is the canary failure aimed at the one fact whose loss
+# is unrecoverable: the others fail loudly, a forgotten hold fails by an agent
+# quietly doing fenced work.
+#
+# Conditional holds are the sharp case and the reason this is a file rather than
+# a habit: a release condition ("when PR #2953 merges") has to survive long
+# enough to be NOTICED, and the noticing happens here, at the next check-in.
+# Format is deliberately prose after the scope — a human writes it, this only
+# has to hand it back, and a parser would be a second thing to keep in step.
+echo "--- owner holds ---"
+HOLDS_FILE="$STATE_DIR/.holds"
+# Branch on REAL holds, not on file size. A file holding only its header comment
+# is non-empty, so `-s` sent it down the has-holds path: no hold lines printed
+# and the "check your conditions" footer fired anyway, telling the reader to
+# check nothing. Caught by running the control rather than by reading the code.
+#
+# A `#` FOLLOWED BY A DIGIT IS A HOLD, NOT A COMMENT. Every hold is about issues,
+# so the natural way to write one starts `#2870 and #3009 are the owner's` — and
+# under a bare `^#` comment rule that line is stripped, silently, leaving the
+# check-in printing "none recorded" for a hold that was just written. Measured
+# here on 2026-08-16 with exactly that text. It is the worst possible failure for
+# this file specifically: the header above says a forgotten hold "fails by an
+# agent quietly doing fenced work", and a hold silently swallowed at write time
+# is indistinguishable from one never written. Prose comments still start `#`
+# plus a space or a letter, which is how every comment in this file is already
+# written, so nothing existing changes meaning.
+holds=$(grep -vE '^[[:space:]]*(#([^0-9]|$)|$)' "$HOLDS_FILE" 2>/dev/null)
+if [ -n "$holds" ]; then
+  # Per LINE, not per string: `printf '%s' "$holds"` passes a multi-line value as
+  # ONE argument, so a second hold printed without its own marker and read as
+  # continuation prose of the first. A hold that does not look like a hold is a
+  # hold that gets skimmed.
+  while IFS= read -r hold; do
+    echo "  *** HELD: ${hold}"
+  done <<EOF
+$holds
+EOF
+  echo "  Check each release condition NOW — a hold whose condition has fired is"
+  echo "  work you are wrongly refusing. Clear it by editing $HOLDS_FILE."
+else
+  echo "  none recorded"
+fi
+echo
+
 echo "--- wake ---"
 WAKE_FILE="$STATE_DIR/.wake"
 if [ ! -s "$WAKE_FILE" ]; then
@@ -341,14 +417,32 @@ if [ ! -s "$WAKE_FILE" ]; then
   echo "      echo '<fire_at ISO> <trigger_id>' > $WAKE_FILE"
   alarms=1
 else
-  wake_at=$(awk '{print $1}' "$WAKE_FILE")
-  wake_id=$(awk '{print $2}' "$WAKE_FILE")
+  # Tolerate a leading `next:` label, because the check-in PRINTS the armed wake
+  # as "next: <ISO> <id>" and an orchestrator copying its own output back into
+  # the file is the obvious mistake — one that made this alarm lie for a whole
+  # session (2026-08-16). `awk '{print $1}'` read "next:", `date -d` refused it,
+  # `|| echo 0` turned that refusal into epoch 0, and 0 is in the past — so a
+  # correctly-armed wake reported as lapsed at every check-in. Three redundant
+  # one-shot triggers were armed chasing it.
+  wake_at=$(awk '{ if ($1 == "next:") print $2; else print $1 }' "$WAKE_FILE")
+  wake_id=$(awk '{ if ($1 == "next:") print $3; else print $2 }' "$WAKE_FILE")
   now_s=$(date -u +%s)
-  wake_s=$(date -u -d "$wake_at" +%s 2>/dev/null || echo 0)
-  if [ "$wake_s" -gt "$now_s" ]; then
-    printf "  next: %s (in %dm) %s\n" "$wake_at" $(((wake_s - now_s) / 60)) "$wake_id"
+  # MALFORMED IS NOT PAST. Collapsing an unparseable timestamp into "past" is the
+  # ignorable-alarm failure this script exists to avoid: both answers say "re-arm",
+  # but re-arming cannot fix a format the reader cannot parse, so the alarm repeats
+  # after the fix and teaches its reader to skip it. Keep the two distinguishable.
+  if wake_s=$(date -u -d "$wake_at" +%s 2>/dev/null); then
+    if [ "$wake_s" -gt "$now_s" ]; then
+      printf "  next: %s (in %dm) %s\n" "$wake_at" $(((wake_s - now_s) / 60)) "$wake_id"
+    else
+      echo "  *** WAKE IS IN THE PAST ($wake_at) — nothing future is armed. Re-arm send_later NOW. ***"
+      alarms=1
+    fi
   else
-    echo "  *** WAKE IS IN THE PAST ($wake_at) — nothing future is armed. Re-arm send_later NOW. ***"
+    echo "  *** WAKE FILE IS MALFORMED — cannot tell whether anything is armed. ***"
+    echo "      unparseable as a date: '$wake_at'"
+    echo "      expected: <fire_at ISO> <trigger_id>   (a leading 'next:' is also accepted)"
+    echo "      found:    $(head -c 120 "$WAKE_FILE")"
     alarms=1
   fi
 fi

@@ -4,10 +4,10 @@
 // WHAT WAS BROKEN. `METRIC_DOCUMENT_REACH.bmi` declares `reaches: "derived-inputs"` —
 // BMI has no row of its own, and `/trends/metric/bmi` computes it from the weight and
 // height that arrive in the same document, both of which are themselves projected.
-// That declaration removes "Body Mass Index" from the flat Biomarkers browser. But
+// That declaration removes "Body Mass Index" from the flat Clinical results catalog. But
 // unlike every other REACHING variant it resolved nothing at ingest: no projector, no
 // destination, no drop. So the imported `medical_records` row survived, an AI import
-// coined an `ai` `canonical_biomarkers` name for it, and the name sat under
+// coined an `ai` `canonical_result_definitions` name for it, and the name sat under
 // Data → Coverage → "Uncatalogued items" forever — a permanent outstanding candidate
 // for a quantity the app already answers on a chart.
 //
@@ -26,10 +26,37 @@ import { ingestMedicalUpload } from "@/lib/medical-pipeline";
 import { seedActor } from "@/lib/__action_tests__/harness";
 import { getCanonicalVocabulary, getUsedCanonicalNames } from "@/lib/queries";
 import { getCoverageGapCandidates } from "@/lib/queries/coverage";
-import { up } from "@/lib/migrations/versions/20260813-bmi-derived-rows";
+import { up as applyBmiDerivedRows } from "@/lib/migrations/versions/20260813-bmi-derived-rows";
 
 const VISIT = "2026-04-08";
 const VISIT_HL7 = "20260408";
+
+// The immutable migration predates #2737 and therefore names the table it actually
+// ran against. Most cases build that historical schema directly; the final case uses
+// the shared current-schema DB, so it temporarily presents the historical name and
+// restores the current one after the pass.
+function up(mem: Database.Database): void {
+  const current = mem
+    .prepare(
+      `SELECT 1 FROM sqlite_master
+        WHERE type = 'table' AND name = 'canonical_result_definitions'`
+    )
+    .get();
+  if (!current) {
+    applyBmiDerivedRows(mem);
+    return;
+  }
+  mem.exec(
+    "ALTER TABLE canonical_result_definitions RENAME TO canonical_biomarkers"
+  );
+  try {
+    applyBmiDerivedRows(mem);
+  } finally {
+    mem.exec(
+      "ALTER TABLE canonical_biomarkers RENAME TO canonical_result_definitions"
+    );
+  }
+}
 
 // A vitals section that prints the two INPUTS and the derived result beside them,
 // which is the shape every real encounter summary has. `inputs: false` reproduces the

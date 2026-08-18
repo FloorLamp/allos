@@ -1,6 +1,12 @@
 import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
+
+// The feed is slim rows since #2897 — a training-log-row carrying the title is
+// an activity's presence signal (full cards render only in the reading pane).
+const feedRow = (page: Page, title: string) =>
+  page.getByTestId("training-log-row").filter({ hasText: title });
 
 // Training Log search reaches the WHOLE ledger, not the loaded window (#1634).
 //
@@ -86,27 +92,27 @@ test.afterAll(() => {
 test("search finds an activity in an UNFETCHED window without Load more (#1634)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const search = page.getByPlaceholder("Search activities or exercises…");
   await expect(search).toBeVisible();
 
   // Precondition: the planted rows are NOT in the first window — otherwise the test
   // would pass without the fix ever running.
-  await expect(page.locator(".card", { hasText: MARKER })).toHaveCount(0);
+  await expect(feedRow(page, MARKER)).toHaveCount(0);
   const loadMore = page.getByTestId("training-log-load-more");
   await expect(loadMore).toBeVisible();
 
   await search.fill(MARKER);
 
   // The store answers through a Server Action (loadTrainingLogPage), whose response
-  // carries a rebuilt window of cards. Named 20 s ceiling for that Server-Action
+  // carries a rebuilt window of rows. Named 20 s ceiling for that Server-Action
   // round-trip on a loaded shard, per docs/internals/e2e-hygiene.md.
-  await expect(page.locator(".card", { hasText: IMPORTED_TITLE })).toBeVisible({
+  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.locator(".card", { hasText: MANUAL_TITLE })).toBeVisible();
-  await expect(page.locator(".card", { hasText: OLDER_TITLE })).toBeVisible();
+  await expect(feedRow(page, MANUAL_TITLE)).toBeVisible();
+  await expect(feedRow(page, OLDER_TITLE)).toBeVisible();
 
   // No "Load more" was clicked anywhere above — the match came from the store.
   // And the honest-scope apology the old client-side filter had to print is gone:
@@ -122,26 +128,24 @@ test("search finds an activity in an UNFETCHED window without Load more (#1634)"
 test("'Load more' pages DEEPER under an active filter, and the loaded window sticks", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const search = page.getByPlaceholder("Search activities or exercises…");
   await search.fill(PAGED_MARKER);
 
   // Page one of the filtered feed: the newest 14 matching days, so the newest leg
   // renders and the oldest does not.
-  await expect(
-    page.locator(".card", { hasText: pagedTitle(PAGED_DAYS - 1) })
-  ).toBeVisible({ timeout: 20_000 }); // Server-Action round-trip ceiling (see above).
-  await expect(page.locator(".card", { hasText: pagedTitle(0) })).toHaveCount(
-    0
-  );
+  await expect(feedRow(page, pagedTitle(PAGED_DAYS - 1))).toBeVisible({
+    timeout: 20_000,
+  }); // Server-Action round-trip ceiling (see above).
+  await expect(feedRow(page, pagedTitle(0))).toHaveCount(0);
 
   const loadMore = page.getByTestId("training-log-load-more");
   await expect(loadMore).toBeVisible();
   await loadMore.click();
 
   // The next-older MATCHING window lands: the oldest planted day is on the page…
-  await expect(page.locator(".card", { hasText: pagedTitle(0) })).toBeVisible({
+  await expect(feedRow(page, pagedTitle(0))).toBeVisible({
     timeout: 20_000, // Server-Action round-trip ceiling (see above).
   });
   // …and with the matching set exhausted the pager goes away.
@@ -167,21 +171,19 @@ test("'Load more' pages DEEPER under an active filter, and the loaded window sti
 
   // And the deep window survived the quiet period intact — oldest and newest
   // matching days both still rendered, pager still exhausted.
-  await expect(page.locator(".card", { hasText: pagedTitle(0) })).toBeVisible();
-  await expect(
-    page.locator(".card", { hasText: pagedTitle(PAGED_DAYS - 1) })
-  ).toBeVisible();
+  await expect(feedRow(page, pagedTitle(0))).toBeVisible();
+  await expect(feedRow(page, pagedTitle(PAGED_DAYS - 1))).toBeVisible();
   await expect(loadMore).toHaveCount(0);
 });
 
 test("the source filter narrows a matching day by provider (#1634)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const search = page.getByPlaceholder("Search activities or exercises…");
   await search.fill(MARKER);
-  await expect(page.locator(".card", { hasText: IMPORTED_TITLE })).toBeVisible({
+  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible({
     timeout: 20_000, // Server-Action round-trip ceiling (see above).
   });
 
@@ -193,16 +195,16 @@ test("the source filter narrows a matching day by provider (#1634)", async ({
 
   // Both planted rows sit on ONE day, so this proves the filter separates ROWS, not
   // just days: the Strava row stays, its manual same-day sibling goes.
-  await expect(page.locator(".card", { hasText: IMPORTED_TITLE })).toBeVisible({
+  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible({
     timeout: 20_000, // Server-Action round-trip ceiling (see above).
   });
-  await expect(page.locator(".card", { hasText: MANUAL_TITLE })).toHaveCount(0);
-  await expect(page.locator(".card", { hasText: OLDER_TITLE })).toHaveCount(0);
+  await expect(feedRow(page, MANUAL_TITLE)).toHaveCount(0);
+  await expect(feedRow(page, OLDER_TITLE)).toHaveCount(0);
 
   // Clearing every filter returns the feed to its newest unfiltered window, which
   // does not contain the deep rows at all.
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.locator(".card", { hasText: MARKER })).toHaveCount(0, {
+  await expect(feedRow(page, MARKER)).toHaveCount(0, {
     timeout: 20_000, // Server-Action round-trip ceiling (see above).
   });
   await expect(search).toHaveValue("");

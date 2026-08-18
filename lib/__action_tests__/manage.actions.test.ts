@@ -201,12 +201,12 @@ describe("deleteDatasetRows — undoable datasets capture each row", () => {
     const id = Number(
       db
         .prepare(
-          "INSERT INTO substance_log (profile_id, date, substance, units) VALUES (?, '2026-02-02', 'nicotine', 3)"
+          "INSERT INTO substance_daily_totals (profile_id, date, substance, units) VALUES (?, '2026-02-02', 'nicotine', 3)"
         )
         .run(profile.id).lastInsertRowid
     );
 
-    const res = await deleteDatasetRows("substance_log", [id]);
+    const res = await deleteDatasetRows("substance_daily_totals", [id]);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.deleted).toBe(1);
@@ -216,7 +216,7 @@ describe("deleteDatasetRows — undoable datasets capture each row", () => {
     expect(restoreDeletedRow(profile.id, res.undoIds[0])).toBe(true);
     const row = db
       .prepare(
-        "SELECT substance, units FROM substance_log WHERE profile_id = ? AND date = '2026-02-02'"
+        "SELECT substance, units FROM substance_daily_totals WHERE profile_id = ? AND date = '2026-02-02'"
       )
       .get(profile.id);
     expect(row).toEqual({ substance: "nicotine", units: 3 });
@@ -258,7 +258,7 @@ describe("deleteDatasetRows — metric_samples writes a re-import tombstone (#65
       db
         .prepare(
           `INSERT INTO metric_samples
-             (profile_id, source, metric, date, start_time, end_time, value)
+             (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, ?, 'lean_mass_kg', '2026-03-10', ?, ?, 42.5)`
         )
         .run(profileId, source, "2026-03-10T07:00:00Z", "2026-03-10T07:00:00Z")
@@ -282,8 +282,8 @@ describe("deleteDatasetRows — metric_samples writes a re-import tombstone (#65
         {
           metric: "lean_mass_kg",
           date: "2026-03-10",
-          start_time: "2026-03-10T07:00:00Z",
-          end_time: "2026-03-10T07:00:00Z",
+          started_at: "2026-03-10T07:00:00Z",
+          ended_at: "2026-03-10T07:00:00Z",
           value: 42.5,
         },
       ],

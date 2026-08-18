@@ -119,7 +119,8 @@ export function getInferredPreventiveSatisfactions(
   // Lab / vitals results → lab screenings, by canonical biomarker name (or the
   // raw result name as a fallback synonym match).
   for (const r of getClinicalObservations(profileId)) {
-    if (!INFERENCE_RESULT_CATEGORIES.has(r.category)) continue;
+    if (r.category === null || !INFERENCE_RESULT_CATEGORIES.has(r.category))
+      continue;
     records.push({
       code: null,
       name: r.name,

@@ -44,9 +44,9 @@ function connect(
   status = "connected"
 ): void {
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status)
+    `INSERT INTO integration_connections (profile_id, source_id, status)
      VALUES (?, ?, ?)
-     ON CONFLICT (profile_id, provider) DO UPDATE SET status = excluded.status`
+     ON CONFLICT (profile_id, source_id) DO UPDATE SET status = excluded.status`
   ).run(profileId, sourceId, status);
 }
 
@@ -64,7 +64,7 @@ function syncEvent(
   );
   db.prepare(
     `INSERT INTO integration_sync_events
-       (profile_id, provider, at, ok, inserted, updated, unchanged, error)
+       (profile_id, source_id, at, ok, inserted, updated, unchanged, error)
      VALUES (?, ?, ?, ?, ?, 0, 0, ?)`
   ).run(profileId, sourceId, at, ok, ok ? 3 : null, error);
 }

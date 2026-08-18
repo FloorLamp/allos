@@ -145,10 +145,10 @@ const TYPE_DEFAULTS: Record<ActivityType, MetTiers> = {
   strength: { easy: 3.5, moderate: 5.0, hard: 6.0 },
   cardio: { easy: 4.0, moderate: 6.0, hard: 8.0 },
   sport: { easy: 4.5, moderate: 6.5, hard: 8.0 },
-  // Recovery / mobility (issue #840): compendium ~2.3 (stretching) → 3.0. Low by
-  // design — a mobility session is light, and a coined recovery name with no per-name
+  // Mobility (issue #840): compendium ~2.3 (stretching) → 3.0. Low by
+  // design — a mobility session is light, and a coined mobility name with no per-name
   // entry falls back here rather than being over-counted as sport.
-  recovery: { easy: 2.3, moderate: 2.8, hard: 3.5 },
+  mobility: { easy: 2.3, moderate: 2.8, hard: 3.5 },
   // The source did not say (issue #2272). The compendium's "conditioning exercise,
   // general" row is the honest answer to "a workout, unspecified": the same tiers as
   // resistance training, which sit between mobility and sport. Deliberately NOT the

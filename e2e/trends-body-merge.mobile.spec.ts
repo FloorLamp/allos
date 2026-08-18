@@ -121,7 +121,6 @@ test.describe("one census, one ordered stack (#1486)", () => {
 
     // ONE card — Body's old copy retired when the metric moved to Vitals.
     const restingHr = page.getByTestId("vitals-resting-hr");
-    await expect(restingHr).toHaveCount(1);
     await expect(restingHr).toBeVisible();
     // It sits in the ONE flat stack, at its own ranked slot — there is no box left
     // for it to be "inside" (#1674).
@@ -229,7 +228,7 @@ test.describe("logging: desktop uses a modal, mobile uses the overlay (#1486)", 
     // …and they are all still enterable on /training's guided Fitness check, which
     // writes the very same canonical medical_records rows (pinned end-to-end by
     // lib/__action_tests__/measurements.actions.test.ts).
-    await page.goto("/training?tab=fitness");
+    await page.goto("/training/fitness-check");
     await expect(page.getByTestId("fitness-tile-grip")).toBeVisible();
     await expect(page.getByTestId("fitness-tile-chairstand")).toBeVisible();
     await expect(page.getByTestId("fitness-tile-balance")).toBeVisible();

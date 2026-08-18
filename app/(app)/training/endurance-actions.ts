@@ -15,6 +15,14 @@ import { toKm } from "@/lib/units";
 import type { DistanceUnit } from "@/lib/settings";
 import { getUnitPrefs } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isTrainingRelevant } from "@/lib/life-stage";
+
+function trainingUnavailable(profileId: number): FormResult | null {
+  return isTrainingRelevant(getProfileAge(profileId))
+    ? null
+    : formError("Training plans aren’t available for this profile’s age.");
+}
 
 // Server write-path for endurance event plans (issue #839). The Training-overview plan bar
 // posts here; each action owns the auth gate (requireWriteAccess — the write-access scanner
@@ -58,6 +66,8 @@ export async function createEndurancePlan(
   formData: FormData
 ): Promise<FormResult> {
   const { profile, login } = await requireWriteAccess();
+  const unavailable = trainingUnavailable(profile.id);
+  if (unavailable) return unavailable;
   const discipline = String(formData.get("discipline") ?? "").trim();
   if (!isEnduranceDiscipline(discipline))
     return formError("Pick a discipline (run, ride, or swim).");
@@ -96,6 +106,8 @@ export async function updateEndurancePlan(
   formData: FormData
 ): Promise<FormResult> {
   const { profile, login } = await requireWriteAccess();
+  const unavailable = trainingUnavailable(profile.id);
+  if (unavailable) return unavailable;
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return formError("Invalid plan.");
   const discipline = String(formData.get("discipline") ?? "").trim();
@@ -139,6 +151,10 @@ export async function setEndurancePlanStatus(
     !["active", "completed", "abandoned"].includes(status)
   )
     return formError("Invalid update.");
+  if (status === "active") {
+    const unavailable = trainingUnavailable(profile.id);
+    if (unavailable) return unavailable;
+  }
   const out = setEndurancePlanStatusCore(
     profile.id,
     id,

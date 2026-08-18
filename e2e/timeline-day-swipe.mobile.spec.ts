@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { followLink, touchSwipe } from "./helpers";
+import { hydratedClick, touchSwipe } from "./helpers";
 
 // Timeline day-swipe (issue #1425).
 //
@@ -73,17 +73,18 @@ test("the arrows and the swipe reach the same day", async ({ page }) => {
   await page.goto(dayUrl(DAY));
   await hydrated(page);
 
-  await followLink(
-    page,
-    page.getByTestId("timeline-day-next"),
-    new RegExp(`from=${NEXT_DAY}`)
-  );
+  // hydratedClick, not followLink — the arrows are RELATIVE controls, and since
+  // #2869 they are also ANSWERED ones. followLink's retry loop exists to survive
+  // a tap swallowed before hydration; it re-clicks until the URL moves, and on a
+  // relative control a re-click that lands just after the first navigation
+  // commits walks a second day forward (measured: 03-15 → 03-17). The arrow now
+  // shows pending from the first frame and absorbs the repeat itself, so there
+  // is nothing left for a retry loop to rescue — one click, then assert.
+  await hydratedClick(page, page.getByTestId("timeline-day-next"));
+  await landedOn(page, NEXT_DAY);
   await expect(page.getByTestId("timeline-day-nav")).toBeVisible();
-  await followLink(
-    page,
-    page.getByTestId("timeline-day-prev"),
-    new RegExp(`from=${DAY}`)
-  );
+  await hydratedClick(page, page.getByTestId("timeline-day-prev"));
+  await landedOn(page, DAY);
 });
 
 test("a mostly-vertical drag scrolls and never changes the day", async ({

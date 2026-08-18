@@ -134,7 +134,7 @@ describe("intakeDeltaLine — the one formatter", () => {
       { itemId: 2, name: "Vitamin D (test)", strip: strip([T, M, M, T]) },
     ]);
     expect(intakeDeltaLine(deltas)).toBe(
-      "Missed: Magnesium (test) (3 days) · Resumed: Vitamin D (test) (2 days)"
+      "Missed: Magnesium (test) for 3 days · Resumed: Vitamin D (test) for 2 days"
     );
   });
 
@@ -142,7 +142,7 @@ describe("intakeDeltaLine — the one formatter", () => {
     const deltas = classifyIntakeDeltas([
       { itemId: 1, name: "Magnesium (test)", strip: strip([T, T, T, M]) },
     ]);
-    expect(intakeDeltaLine(deltas)).toBe("Missed: Magnesium (test) (1 day)");
+    expect(intakeDeltaLine(deltas)).toBe("Missed: Magnesium (test) for 1 day");
   });
 
   it("collapses past the naming cap so the line stays a line", () => {
@@ -153,7 +153,7 @@ describe("intakeDeltaLine — the one formatter", () => {
     }));
     const line = intakeDeltaLine(classifyIntakeDeltas(many))!;
     expect(line).toContain("+2 more");
-    expect(line.startsWith("Missed: Item A (test) (1 day)")).toBe(true);
+    expect(line.startsWith("Missed: Item A (test) for 1 day")).toBe(true);
   });
 });
 
@@ -166,7 +166,7 @@ describe("intakeGapExplainedBy — when the delta and the fraction say one thing
 
   it("returns the clause the fraction absorbs when one miss explains a gap of one", () => {
     expect(intakeGapExplainedBy(missedOne, 1)).toBe(
-      "missed Glycine (test) (1 day)"
+      "missed Glycine (test) for 1 day"
     );
   });
 

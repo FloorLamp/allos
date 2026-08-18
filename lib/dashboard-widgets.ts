@@ -1,8 +1,7 @@
 // Dashboard widget registry — PURE data + merge logic, no JSX and no
 // DB, so it's importable by both the server page and the client grid and fully
 // unit-tested. The catalog is the source of truth for which widgets exist, their
-// default order (array index), whether they're fitness-gated (hidden for
-// age-restricted profiles), whether they're on by default, and their grid span.
+// default order (array index), whether they're on by default, and their grid span.
 // The per-profile customization (order + hidden ids) is stored elsewhere
 // (lib/settings.ts) as a DashboardLayout blob and merged against this catalog by
 // the resolve* functions here, so a stored layout survives the catalog gaining or
@@ -26,6 +25,7 @@
 // the daily check-in. A deliberate violation needs a NAMED exception in that test.
 
 import { DATA_QUALITY_PREFIX } from "./data-quality";
+import { FINDING_DASHBOARD_RELEVANCE } from "./findings";
 import type { DormancyDomain } from "./domain-dormancy";
 import type { ReorderStrategy } from "./drag-order";
 
@@ -38,8 +38,8 @@ export interface WidgetDef {
   // On by default for a fresh profile (or a widget the stored layout has never
   // seen). Off-by-default widgets stay hidden until the user opts in.
   defaultOn: boolean;
-  // Fitness-oriented: never rendered or listed for age-restricted profiles,
-  // replacing the old per-card `!restricted` JSX guards.
+  // Training-oriented metadata retained for catalog descriptions and audits;
+  // it does not gate visibility. Coaching and recaps use the profile's own data.
   fitness: boolean;
   // Does this card exist to be ACTED on today (issue #1890)? True for a card whose
   // body carries a decision to make or a log/fix affordance meant to be tapped —
@@ -76,6 +76,11 @@ export interface WidgetDef {
   // the Nutrition nav entry. The page resolves the bit (isFoodLoggingRelevant) and
   // passes it via the WidgetGate.
   requiresFoodLogging?: boolean;
+  // Adult-only route/content class (Longevity and Protocols). The page resolves
+  // this from isLongevityRelevant so unknown age hides as well as a known minor.
+  requiresAdultContent?: boolean;
+  // Hidden while the workout product is not relevant (through early childhood).
+  requiresTraining?: boolean;
   // Hidden when the named nav-relevance bit is false for the active profile — the
   // #1042 `relevanceKey` gate applied to the dashboard. Only "cycle" is used today
   // (the Cycle-phase card, gated on the SAME bit as the Cycle nav entry, so the card
@@ -136,6 +141,8 @@ export interface WidgetGate {
   foodLogging?: boolean;
   // The nav-relevance `cycle` bit; gates `relevanceKey === "cycle"` widgets.
   cycle?: boolean;
+  adultContent?: boolean;
+  training?: boolean;
 }
 
 // Per-profile customization. `order` is the display order of widget ids; `hidden`
@@ -182,15 +189,38 @@ export function findingDashboardHome(dedupeKey: string): string | null {
 // caller passes a VISIBILITY predicate — "is this widget actually on the person's
 // dashboard right now?", i.e. the resolved item's `visible` flag, not mere catalog
 // eligibility (the page resolves hidden widgets too, so Customize can preview them).
-// Callers MUST derive the widget's count and its cap/overflow from this result, not
-// from the unfiltered input — the count has to equal what is on screen.
-export function rollupCoachingFindings<T extends { dedupeKey: string }>(
-  findings: readonly T[],
-  isWidgetVisible: (widgetId: string) => boolean
-): T[] {
+// The rollup is thresholded rather than capped: below-floor observations stay on
+// their origin tabs, while every qualifying observation renders. An explicit
+// producer score wins; otherwise caution/action clears the floor and calm info does
+// not. This is attention policy, not presentation slicing.
+export const COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD =
+  FINDING_DASHBOARD_RELEVANCE.review;
+
+export function coachingObservationRelevance(finding: {
+  tone?: string;
+  dashboardRelevance?: number;
+}): number {
+  if (finding.dashboardRelevance != null) return finding.dashboardRelevance;
+  return finding.tone === "caution" || finding.tone === "action"
+    ? FINDING_DASHBOARD_RELEVANCE.review
+    : FINDING_DASHBOARD_RELEVANCE.supporting;
+}
+
+export function rollupCoachingFindings<
+  T extends {
+    dedupeKey: string;
+    tone?: string;
+    dashboardRelevance?: number;
+  },
+>(findings: readonly T[], isWidgetVisible: (widgetId: string) => boolean): T[] {
   return findings.filter((f) => {
     const home = findingDashboardHome(f.dedupeKey);
-    return home === null || !isWidgetVisible(home);
+    const belongsInRollup = home === null || !isWidgetVisible(home);
+    return (
+      belongsInRollup &&
+      coachingObservationRelevance(f) >=
+        COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD
+    );
   });
 }
 
@@ -208,8 +238,6 @@ export function findingsForDashboardHome<T extends { dedupeKey: string }>(
 // that shows "N of M" must also offer a path to the hidden M−N. The caps are
 // named here so the widgets and the pure test agree on the policy.
 
-// Coaching observations rollup: top 2 (the calm dashboard slice, #449).
-export const COACHING_OBSERVATIONS_CAP = 2;
 // Data-quality gaps widget: top 3 by leverage (#1045).
 export const DATA_QUALITY_GAPS_CAP = 3;
 // Active protocols: 3 rows, the standard list-widget footprint (#660/#1219).
@@ -388,6 +416,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
       "One focused suggestion — train or rest — from your routine and recovery.",
     defaultOn: true,
     fitness: true,
+    requiresTraining: true,
     // Today's train/rest decision, with the action link on it.
     actionable: true,
     span: "half",
@@ -419,6 +448,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     // slots inside the actionable band rather than after the glance cards.
     actionable: true,
     span: "half",
+    requiresAdultContent: true,
   },
   {
     id: "data-quality",
@@ -617,6 +647,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     actionable: false,
     span: "half",
     dataAware: true,
+    requiresAdultContent: true,
   },
   {
     id: "coaching-observations",
@@ -624,8 +655,8 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     description:
       "A calm rollup of the observational patterns that otherwise live only on their own tabs — training plateaus/balance, weight-log hygiene, off-pace goals, and adherence patterns. FYIs, not alerts; dismiss any and it's silenced everywhere.",
     // On by default so the tab-only findings gain dashboard REACH (issue #449) —
-    // discoverable without becoming pushy. Not fitness-gated: it spans body-metric
-    // hygiene and medication adherence too, which matter for a restricted profile.
+    // discoverable without becoming pushy. Available at every life stage: it spans
+    // body-metric hygiene and medication adherence as well as training observations.
     // Not data-aware: it self-hides (renders nothing) when no observation is firing,
     // so an empty state would be noise rather than an onboarding CTA.
     defaultOn: true,
@@ -707,22 +738,21 @@ export function widgetDisplayState(
 }
 
 // The widgets a profile is eligible to customize, in registry order: everything
-// except pinned widgets (rendered separately), fitness widgets on an age-restricted
-// profile, and per-`WidgetGate` entries whose gate bit is off for the profile
+// except pinned widgets (rendered separately) and per-`WidgetGate` entries whose gate bit is off for the profile
 // (`requiresFoodLogging` on an infant, `relevanceKey` when the relevance bit is
 // false) — the dashboard twin of the nav's per-entry gating. The gate defaults to
 // all-eligible so a caller that doesn't thread it never over-hides.
-export function customizableWidgetDefs(
-  restricted: boolean,
-  gate: WidgetGate = {}
-): WidgetDef[] {
+export function customizableWidgetDefs(gate: WidgetGate = {}): WidgetDef[] {
   const foodLogging = gate.foodLogging ?? true;
   const cycle = gate.cycle ?? true;
+  const adultContent = gate.adultContent ?? true;
+  const training = gate.training ?? true;
   return DASHBOARD_WIDGETS.filter(
     (w) =>
       !w.pinned &&
-      !(restricted && w.fitness) &&
       !(w.requiresFoodLogging && !foodLogging) &&
+      !(w.requiresAdultContent && !adultContent) &&
+      !(w.requiresTraining && !training) &&
       !(w.relevanceKey === "cycle" && !cycle)
   );
 }
@@ -743,11 +773,10 @@ export function customizableWidgetDefs(
 // — nothing is removed by adaptation. `widgetDisplayState` above owns the precedence.
 export function resolveWidgetList(
   layout: DashboardLayout | null,
-  restricted: boolean,
   emptyIds: Set<string> = new Set(),
   gate: WidgetGate = {}
 ): ResolvedWidget[] {
-  const eligible = customizableWidgetDefs(restricted, gate);
+  const eligible = customizableWidgetDefs(gate);
   const eligibleIds = new Set(eligible.map((w) => w.id));
 
   const ordered: string[] = [];
@@ -779,11 +808,10 @@ export function resolveWidgetList(
 // The visible widgets a profile should render, in display order.
 export function resolveWidgets(
   layout: DashboardLayout | null,
-  restricted: boolean,
   emptyIds: Set<string> = new Set(),
   gate: WidgetGate = {}
 ): WidgetDef[] {
-  return resolveWidgetList(layout, restricted, emptyIds, gate)
+  return resolveWidgetList(layout, emptyIds, gate)
     .filter((w) => w.visible)
     .map((w) => w.def);
 }

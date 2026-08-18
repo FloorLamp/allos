@@ -314,11 +314,11 @@ describe("substance catalog + findings-bus namespace", () => {
     expect(MAX_WEEKLY_CAP).toBeGreaterThan(0);
   });
 
-  it("ledger split (#1078/#860): alcohol rides food_log; nicotine/cannabis ride substance_log", () => {
+  it("ledger split (#1078/#860): alcohol rides food_daily_totals; nicotine/cannabis ride substance_daily_totals", () => {
     expect(substanceDef("alcohol").ledger).toBe("food-log");
     expect(substanceDef("nicotine").ledger).toBe("substance-log");
     expect(substanceDef("cannabis").ledger).toBe("substance-log");
-    // The write-core validator admits ONLY substance_log-ledger substances — an
+    // The write-core validator admits ONLY substance_daily_totals-ledger substances — an
     // alcohol (food-log) key or a forged key writes nothing there.
     expect(isSubstanceLogged("nicotine")).toBe(true);
     expect(isSubstanceLogged("cannabis")).toBe(true);

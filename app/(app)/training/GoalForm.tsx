@@ -69,6 +69,7 @@ export default function GoalForm({
   weightUnit,
   biomarkerOptions = [],
   editGoal,
+  strengthTrainingAvailable = true,
   onDone,
 }: {
   lifts: string[];
@@ -83,9 +84,13 @@ export default function GoalForm({
   // a caller that predates the target keeps rendering the other three kinds.
   biomarkerOptions?: GoalBiomarkerOption[];
   editGoal?: OutcomeGoal;
+  strengthTrainingAvailable?: boolean;
   onDone?: () => void;
 }) {
-  const initialKind: OutcomeGoalKind = editGoal?.kind ?? "exercise";
+  const allowExerciseGoal =
+    strengthTrainingAvailable || editGoal?.kind === "exercise";
+  const initialKind: OutcomeGoalKind =
+    editGoal?.kind ?? (allowExerciseGoal ? "exercise" : "freeform");
   const [kind, setKind] = useState(initialKind);
   const [exercise, setExercise] = useState(editGoal?.exercise ?? "");
   const [metric, setMetric] = useState<OutcomeGoalMetric>(() => {
@@ -270,7 +275,9 @@ export default function GoalForm({
 
       {/* Kind toggle */}
       <div className="flex flex-wrap gap-1.5">
-        {OUTCOME_GOAL_KINDS.map((k) => (
+        {OUTCOME_GOAL_KINDS.filter(
+          (k) => allowExerciseGoal || k !== "exercise"
+        ).map((k) => (
           <button
             key={k}
             type="button"
@@ -682,7 +689,7 @@ export default function GoalForm({
             {referenceHint && (
               <p
                 className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="goal-biomarker-reference"
+                data-testid="goal-clinical-result-reference"
               >
                 {referenceHint}
               </p>

@@ -3,7 +3,7 @@
 //
 // "Collapse cross-document duplicates to one representative row" is asked by every
 // clinical-list surface — the Conditions/Procedures/Family history/Allergies
-// managers, Visits, Immunizations, the Biomarkers table, the Timeline, and Search.
+// managers, Visits, Immunizations, the Clinical results table, the Timeline, and Search.
 // The SQL idiom is always the same window:
 //
 //   SELECT id FROM (
@@ -166,6 +166,45 @@ export const REPRESENTATIVE_SPECS = {
     partition: ["vaccine", "date", "COALESCE(dose_label, '')"],
     prefer: "source",
   },
+  // Imaging studies collapse on the source system's own study id when there is one
+  // (stripped of its `document:<id>|` prefix — the encounters precedent verbatim),
+  // else on the content tuple (#2919). imaging_studies (#702) post-dates #134's
+  // sweep and #2035's consolidation, so it read FLAT until three overlapping portal
+  // exports put every study on the list three times.
+  imaging_studies: {
+    table: "imaging_studies",
+    partition: [
+      `COALESCE(
+          CASE WHEN external_id IS NOT NULL
+               THEN substr(external_id, instr(external_id, '|') + 1) END,
+          modality || '|' || COALESCE(body_region, '')
+               || '|' || COALESCE(laterality, '') || '|' || COALESCE(study_date, '')
+        )`,
+    ],
+    prefer: "document",
+  },
+  // Care-plan items collapse on the source system's own plan id when there is one,
+  // else on (description, planned date) (#2919) — same story as imaging_studies.
+  //
+  // The middle branch is the one addition to the encounters idiom: a row carrying a
+  // `source_kind` is a FOLLOW-UP CHAIN NODE (migration 050 — an imaging/labs/dental/
+  // skin/IOP recheck), not an imported plan. Those are minted one per SOURCE RECORD
+  // and their titles are not unique — two same-day knee x-rays produce two follow-ups
+  // whose title and planned date match exactly, because the title helper reads only
+  // modality + region. Collapsing them would DROP a due recheck from Upcoming, so a
+  // chain node is its own identity and never collapses with anything.
+  care_plan_items: {
+    table: "care_plan_items",
+    partition: [
+      `COALESCE(
+          CASE WHEN external_id IS NOT NULL
+               THEN substr(external_id, instr(external_id, '|') + 1) END,
+          CASE WHEN source_kind IS NOT NULL THEN 'followup:' || id END,
+          LOWER(TRIM(description)) || '|' || COALESCE(planned_date, '')
+        )`,
+    ],
+    prefer: "document",
+  },
   // Procedures collapse on (coded-or-named identity, performed date). Two procedures
   // with the same name on different dates stay distinct; an undated pair groups
   // together (COALESCE(date,'') treats NULLs as equal).
@@ -236,11 +275,20 @@ export function representativeOrderBy(spec: RepresentativeSpec): string {
 //     exists.
 //   • the medical LATEST CTE ranking over the deduped id set.
 // It is SQL text, never user input: callers pass a constant or a `?` placeholder.
+//
+// `scope` replaces the default `profile_id = ?` predicate, for the ONE caller that
+// reads a view-SET rather than a profile: the registered cross-profile module
+// (lib/queries/multi-view-lists.ts, #1328) passes `profile_id IN ${profileIdsIn(ids)}`
+// and binds the tuple. The window still PARTITIONs by profile_id, so a set-based read
+// collapses each member's duplicates within that member and can never merge two
+// members' rows. Like `where`, it is SQL text a caller composes from placeholders —
+// never user input.
 export function representativeIds(
   spec: RepresentativeSpec,
-  opts: { where?: string } = {}
+  opts: { where?: string; scope?: string } = {}
 ): string {
   const where = opts.where ? ` AND ${opts.where}` : "";
+  const scope = opts.scope ?? "profile_id = ?";
   return `
   SELECT id FROM (
     SELECT id, ROW_NUMBER() OVER (
@@ -248,7 +296,7 @@ export function representativeIds(
         ${spec.partition.join(",\n        ")}
       ORDER BY ${representativeOrderBy(spec)}
     ) AS rn
-    FROM ${spec.table} WHERE profile_id = ?${where}
+    FROM ${spec.table} WHERE ${scope}${where}
   ) WHERE rn = 1`;
 }
 
@@ -257,7 +305,7 @@ export function representativeIds(
 export function representativeCte(
   name: string,
   spec: RepresentativeSpec,
-  opts: { where?: string } = {}
+  opts: { where?: string; scope?: string } = {}
 ): string {
   return `${name} AS (${representativeIds(spec, opts)}
 )`;

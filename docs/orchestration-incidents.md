@@ -141,6 +141,38 @@ minutes before the check; neither had a PR.
   lines that existed only under `/tmp`. Rescue trees FIRST, as explicitly
   labelled un-gated WIP commits, before any diagnosis.
 
+## The stall detector measured the wrong thing (2026-08-16)
+
+`dispatch-brief.mjs list` flagged a dispatch on elapsed time since its ledger
+entry, which cannot tell one wedged agent from four agents in sequence on one
+branch across restarts and review rounds — the normal life of any PR that gets
+blocked and fixed. It fired twice in one session on the two hardest dispatches
+while both were being written to by the minute (`age=4h59m`, 18 and 170 files
+touched in the preceding fifteen). Ignorable-alarm failure again: an alarm that
+fires when nothing is wrong teaches its reader to skim the one time it is right.
+
+- **The signal was already in the file.** `worktreeIdleMs` existed for `done`,
+  which refuses to remove a tree written in the last ten minutes because "a
+  clean tree means everything is pushed, not that nobody is here". So `done`
+  and `list` disagreed about how to tell a live agent from a dead one, inside
+  one file: `done` would refuse to touch a tree written nine minutes ago while
+  `list` called that same dispatch stalled. The fix was reuse, not a mechanism.
+- **The threshold was not the defect.** 3x median now measures IDLENESS, and
+  since idle ≤ age it can only ever fire later than before — the change removes
+  alarms and adds none, which is what made it safe to land under live agents.
+- **Re-stamping a ledger entry on handover was the tempting alternative and is
+  worse.** `completedDurationsMs` measures from the LAST `active` row, so
+  re-stamping shortens every completed duration, shrinks the median, and lowers
+  3x it: the false alarms would arrive sooner. Progress needs no bookkeeping and
+  cannot drift — #2984's argument, one level over.
+- **Progress detection alone would have been blind to the canonical stall.**
+  The 12.9 h denied-and-idle agent above had no worktree after thirteen hours
+  and never created its branch, so both progress signals are absent exactly
+  where the old alarm was merely loud. Absence of a trace is therefore its own
+  alarm, qualified by age — the one job age is honest for.
+- The 13.7 h unbanked agent is correctly NOT a stall here: it was working.
+  Unpushed work is `orchestrator-checkin.sh`'s alarm and already fires.
+
 ## Credential loss — how it hides (three traps)
 
 A restart can wipe `$GH_TOKEN`/`$GITHUB_TOKEN` and the git proxy's push
@@ -179,10 +211,26 @@ the first, one `git add -A` from being committed into itself. Nothing broke;
 
 ## gitleaks — what actually triggers it (#2409)
 
-CI's gitleaks runs over the refs in that job's checkout (its branch + main), so
-a finding on one feature branch left every other open PR green — blast radius
-is one branch _until it merges_, at which point the blob is in every checkout
-and only rewriting published main history removes it. The trigger is an
+**What the check scans depends on the event (#2949, #2969).** A PR or
+merge-queue run scans **that branch's own range**; a `push` to a non-main branch
+scans `--log-opts="--all"`, every ref in the `fetch-depth: 0` checkout. Between
+#2949 and #2969 every PR scanned `--all`, and the blast radius was the whole
+repository: one branch's credential-shaped fixture redded `gitleaks` on **every
+open PR**, naming a file none of them touched, until that branch was rebased or
+deleted. It was paid for live on 2026-08-16 and the PR check was narrowed to the
+range; the accepted cost, recorded in #2969, is that the whole-repo re-audit now
+happens per push per branch rather than ~30 times a day.
+
+Two things survive the narrowing. A PR run that cannot resolve its base **falls
+back to `--all`** and says so in the step log — under-scanning silently is the
+worse failure — so a finding from another ref is still possible on a PR. And a
+follow-up commit that DELETES the literal still does not clear it: the scan
+reads COMMITS, not tips, so only an amend, a rebase, or deleting the branch
+does. The job explains which case it is
+(`scripts/gitleaks-explain.mjs`) instead of relying on this page being read.
+
+Once it merges the blob is in every checkout and only rewriting published main
+history removes it. The trigger is an
 identifier `generic-api-key` recognizes + an entropy threshold + a word-shape
 filter, and **entropy alone does not predict it**: measured on three sibling
 values in one file, `omega3-anticoagulant` (3.522) FIRED while
@@ -266,7 +314,7 @@ is kept because it is the argument for the change:
   274 entries; the agent's own base had 278. At this merge rate, ask for a
   re-count in the brief and check the PR reports one.
 - **A curated dataset's diff must show only intended changes (#2544).** Four
-  `1.0`→`1` edits in `canonical-biomarkers.json` were the only visible
+  `1.0`→`1` edits in `canonical-result-definitions.json` were the only visible
   evidence of a `JSON.parse`/`stringify` round-trip — a regenerate is
   invisible whenever it preserves key order and loses no precision. (Prettier
   leaves JSON numbers alone; check before believing that story.)
@@ -407,3 +455,182 @@ transfer-ready artifact (inert, zero cost). A strict up-to-date
 required-checks ruleset was considered and rejected: it re-runs full CI per
 open PR per landing while buying nothing the hand-serialization protocol
 doesn't.
+
+## 2026-08-15 — the roster forked because a brief could not be reprinted
+
+A live session lost a dispatch brief's text (it is printed once, at `new`; the
+ledger keeps parameters, not prose) and re-ran `new` to get it back. That
+appended a second ledger row and a second roster cluster per branch, and the
+next check-in printed seven clusters for four live agents.
+
+The roster is the only coordination state that outlives the orchestrator, and
+it is read after a restart to decide which dirty worktrees hold unrescued work.
+A roster that double-counts is wrong exactly when nothing else can correct it —
+the same class as the canary that died with the house.
+
+Two of the four re-runs were REFUSED, by the e2e cap, which is the receipt that
+the guard shape works: the non-e2e path simply had no equivalent. Fixed in
+`dispatch-brief.mjs` (#2923): `brief <branch>` reprints from recorded
+parameters and writes nothing, and `new` refuses an already-active branch,
+naming both exits.
+
+## A gate PASS that its own last step invalidated (#2935, 2026-08-15)
+
+`agent-gates.sh` runs `format` LAST, on purpose: a late edit after formatting is
+the CI breaker the script exists to prevent. But it had also assumed formatting
+is semantically inert. It is not. An agent wrote a `@ts-expect-error` directly
+above its erroring call, typecheck passed on exactly that, and Prettier then
+rewrapped the call across three lines — sliding it out from under the directive.
+The push was red on `TS2578: Unused '@ts-expect-error' directive` plus the
+now-unsuppressed error, after a gate block that legitimately read PASS. Nobody
+edited anything, so the existing NOTE ("commit them NOW, do not edit") could not
+have helped; following it literally is what produced the red push.
+
+The exposed class is gates that read LINE-POSITIONED comment directives —
+`@ts-expect-error`, `eslint-disable-next-line`, and the `-ok` pragmas the
+e2e-hygiene scan pairs with the line beneath them. The test tiers are immune, a
+rewrap changing no runtime behavior, so the script now re-runs only those three
+after a rewrite and the cost stays seconds. The agent diagnosed this itself and
+declined to edit shared tooling outside its dispatch, which was the right call
+and is why the finding arrived intact.
+
+## The wake alarm that lied for a session (2026-08-16)
+
+`orchestrator-checkin.sh` §4 read the wake file with `awk '{print $1}'` and
+expected a bare `<ISO> <trigger id>`. The check-in PRINTS the armed wake as
+`next: <ISO> <id>`, so an orchestrator recording its own output wrote the label
+into the file. `date -d "next:"` refused it, `|| echo 0` turned that refusal into
+epoch 0, and 0 is always in the past — so a correctly-armed wake reported as
+lapsed at EVERY check-in for a whole session. Three redundant one-shot triggers
+were armed chasing it, and two had to be deleted.
+
+Two defects, one line apart. The parser was brittle about the one mistake its own
+output invites. And the fallback collapsed "cannot parse this" into "this is in
+the past" — two states whose advice sounds identical ("re-arm") but is not:
+re-arming cannot fix a format the reader cannot parse, so the alarm survives the
+fix and teaches its reader to skip it. That is the canary failure in its third
+costume — an alarm that fires when nothing is wrong.
+
+Now the label is accepted, and an unparseable file says so, prints what it found,
+and prints the shape it wanted. Verified against five controls before shipping,
+per the canary section's last lesson: absent, future bare, future labelled,
+genuinely past, and malformed.
+
+## The high-stakes registry read "which subsystem", not "what does a bug disclose" (2026-08-16)
+
+`adversarial-review-brief.mjs --check` answered "not high-stakes" for #2955 — a
+rewrite of `redactSecrets`, the function that decides whether a credential
+reaches a user's screen. It had answered the same way for #2929's `lib/dri.ts`,
+the arithmetic behind an upper-limit safety warning (#2932). Both were overridden
+by hand, and both had real defects the falsifying lane then found.
+
+The registry was assembled by SUBSYSTEM — migrations, auth, backup, notifications
+— which is why it kept missing files that belong to no dangerous subsystem while
+deciding something dangerous. The question it has to answer is not "is this the
+auth module" but "what does a bug here disclose, decide, or destroy". Redaction
+discloses; DRI decides; a backup destroys. Same tier, three different subsystems.
+
+Two overrides in one session is the signal that the next miss is likelier than a
+false positive, so `lib/error-log-format.ts` and `lib/log.ts` are now declared —
+and the entry says WHY in disclosure terms, so the next person extending the list
+has the right test to apply rather than a list of module names to pattern-match.
+
+## Clustering costs the BOX, not just the review queue (2026-08-16)
+
+The arrival warning (#2973) was written against review depth: dispatch several
+at once and their PRs land together, and review is serial. Measured an hour
+later, that framing was half the story.
+
+Five agents dispatched in two batches — two, then three within a minute — drove
+the load average to **17.70 on 4 cores**, 4.4x oversubscribed and half again the
+11.86 that produced two contention misdiagnoses the night before. `ps` said why,
+and it was not five agents idling: three vitest tiers, a `next build`, and two
+Playwright servers with their browsers, all inside the same minute.
+
+Simultaneous starts are simultaneous GATES, not merely simultaneous arrivals.
+Gate cost is the dominant per-agent cost (that is what #2964 scoped), so agents
+started together reach the expensive phase together and contend for the same
+four cores — which is the mechanism that makes a starved tier fail in code the
+agent never touched.
+
+So the cap number was not the defect and lowering it would have been the wrong
+correction: five agents SPREAD OUT cost nothing unusual. The evidence points at
+pacing, which is what #2973 already warns about — it just understated why. The
+warning's own rationale now names both queues it protects.
+
+## A deleted requirement, mistaken for dead code (2026-08-16)
+
+The fasting lifecycle (#2756) listed editability as an acceptance criterion:
+_"beyond it, a completed fast's instants stay editable."_ `editFast` shipped in
+the first commit, with a comment that shows the author understood the
+distinction — _"editing a completed fast's interval is recording fasting
+content, not closing out."_
+
+No `editFastAction` was ever written. `git log -S'editFastAction'` across every
+ref returns nothing. So from day one there was a write core with no Server
+Action and no surface, reachable only from tests.
+
+The first adversarial pass found exactly that and filed **D6: `editFast` is
+unreachable (tests only), yet cited as evidence the asymmetry is bounded.** That
+was a correct and useful finding — the PR really was citing an uncallable
+function as proof its life-stage gate was bounded. The orchestrator relayed it
+under _Lower severity_, the author deleted the function, and **nobody checked
+the dead code against the issue's acceptance criteria before removing it.**
+
+Five rounds later the fifth adversarial pass found that an implausibly long
+recorded fast has no recovery path: reopen refuses, discard refuses, and there
+is no edit core. The reason there was no edit core is that the review had
+deleted it. The owner then ruled (#2993) to rebuild it — a core plus a surface,
+earning its own adversarial pass.
+
+So the loop was: the issue asked for it → it was half-built → review classified
+the half as debris → the absence was rediscovered as a defect → it was ordered
+rebuilt. Each step was locally defensible. The cost was five rounds and a
+rebuild.
+
+**The rule this bought** (`review-merge.md` §Review): a removal is checked
+against the issue's acceptance criteria before it is accepted. An unreachable
+export can be debris or an unfinished requirement, and the code cannot tell you
+which — only the issue can.
+
+Worth separating from the sibling question in the same PR: **delete** was never
+fasting-specific. The app's generic delete is Data → Manage, per registered
+dataset, and fasting only reached it in #2981 as a side effect of the
+`OWNED_TABLES` right-to-delete fix. That was a registration gap. Editability was
+a scoped requirement — different failure, different fix.
+
+## The redundancy nobody observed (#2994, 2026-08-16)
+
+Four adversarial passes over one PR, each finding a real defect in the previous
+fix's new surface. The fourth is the one worth keeping, because it is the first
+that could not have been found by reading.
+
+The logout undo shipped with a comment stating its own invariant: _"TWO
+BARRIERS, and neither is trusted on its own"_ — the framework's
+`unstable_rethrow` first, the server probe second, the second existing
+precisely so that a framework which stopped rejecting on redirect could not make
+the first one the whole defence. The mechanism was right. Every gate was green:
+927 pure files, 720 db files, the changed e2e specs 17/17.
+
+The refuter deleted each barrier **separately** and re-ran the shipped suite.
+Both mutants passed everything. Neither mutant was equivalent — removing the
+rethrow widens the failure window from "response lost" to any successful logout
+followed by a drop; making the probe unconditional re-admits the previous
+round's blocker for every non-redirect rejection. The suite stayed green because
+the one test covering that path could not tell **which** barrier had stopped the
+undo.
+
+So the redundancy existed in the code and nowhere else. A second guard that no
+assertion distinguishes from the first is one mechanism and a comment — and the
+comment is the part that survives a refactor.
+
+**The rule this bought** (encoded in `adversarial-review-brief.mjs`'s METHOD, so
+it is asked on every high-stakes diff rather than remembered): if a diff claims
+redundancy, delete each half separately and run the suite. Each half needs an
+assertion that goes RED when only that half is removed. Show the mutant red —
+the fixed head being green is not evidence about either barrier.
+
+This is the session's dominant defect class one level up. The first three passes
+were guards _true of their own function and false of the system_; this one is a
+guard true of the system whose **backup** was unobservable. Same test:
+could this control have come out the other way?

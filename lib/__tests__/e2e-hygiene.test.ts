@@ -117,6 +117,14 @@ const TOPASS_RE = /\.toPass\(/g;
 // is wherever `.toPass(` itself appears — usually the closing `}).toPass({...})`.
 const TOPASS_OK_MARKER = "topass-ok";
 
+// A committed skip is missing coverage disguised as a test. Runtime skips are worse:
+// the same revision tests different behavior by wall-clock or environment state, so a
+// green run cannot say which contract actually ran. Keep the committed count at zero;
+// a scenario that is no longer valuable is deleted, and a real boundary is made
+// deterministic in its fixture.
+const TEST_SKIP_RE = /\btest\.skip\s*\(/g;
+const TEST_SKIP_ALLOW: Record<string, number> = {};
+
 // A branch on `process.env.CI` (#2648). The runner is not a property of the app, and
 // three of the four sites this rule was written from were the SAME category error:
 // `process.env.CI` standing in for "is this a production build". It never was one —
@@ -243,6 +251,38 @@ const WALL_CLOCK_ALLOW: Record<string, number> = {};
 const DOC_SCROLLWIDTH_RE = /(?:documentElement|document\.body)\.scrollWidth/g;
 const DOC_SCROLLWIDTH_ALLOW: Record<string, number> = {};
 
+// ── (xi) Navigating while "offline" (issue #3002) ───────────────────────────
+// Playwright's offline emulation is per-browser-CONTEXT and does not cover requests
+// the SERVICE WORKER initiates. `context.setOffline(true)` cuts the page's own
+// fetches; `cacheFirst` in public/sw.js still reaches the server from inside the
+// worker. So an "it renders offline" assertion can pass on assets pulled over the
+// network DURING the offline navigation — measured on the /offline shell: chunks
+// absent from the cache before `setOffline(true)` were present after it. A real
+// device has no such escape hatch, and there a missing chunk is a blank page.
+//
+// The rule is scoped to the case that can lie. Going offline on an ALREADY-LOADED
+// page — the offline write queue's tap → queued → reconnect → replayed flows — is
+// honest as written: nothing navigates, so no shell has to come from anywhere, and
+// the page's own POST is exactly what the emulation does block. Only a `goto` /
+// `reload` inside the offline window needs the shell, so only that shape is caught.
+//
+// The fix is never to delete the block: the coverage is wanted, the CLAIM is what
+// was wrong. `readyForOffline(page)` (e2e/helpers.ts) states the precondition the
+// harness cannot fake — a live controlling worker, and every chunk the /offline
+// document declares already in the worker's cache BEFORE the network goes away.
+// Call it before `setOffline(true)` and the block measures the app again.
+//
+// An offline navigation that asserts something the bypass genuinely cannot fake and
+// needs no shell of its own carries an `offline-nav-ok: <why>` marker anywhere in
+// its offline window (the `first-ok` escape shape).
+const SET_OFFLINE_TRUE_RE = /setOffline\(\s*true\s*\)/;
+const SET_OFFLINE_FALSE_RE = /setOffline\(\s*false\s*\)/;
+const OFFLINE_NAVIGATION_RE = /\.(?:goto|reload)\(/;
+const OFFLINE_READY_RE = /readyForOffline\(/;
+const OFFLINE_NAV_OK_MARKER = "offline-nav-ok";
+// The helper module that OWNS the precondition — it spells the markers out by design.
+const OFFLINE_HELPERS_FILE = "helpers.ts";
+
 const WORKER_HARNESS_FILES = new Set([
   "fixtures.ts",
   "worker-env.ts",
@@ -319,12 +359,9 @@ const TOPASS_ALLOW: Record<string, number> = {};
 // `settledBoxes([...])` reads the whole group and repeats until two consecutive
 // passes agree, so every box comes from one settled layout and none is null.
 //
-// Frozen, not banned: the survivors below predate the helper and are a migration
-// list, not an exemption — `checkPattern` fails a file whose count goes UP and
-// equally fails one whose count drops without the entry shrinking, so this
-// ratchets to zero. There is no per-line escape marker on purpose: unlike
-// `.first()` there is no legitimate reason to read a RELATIVE geometry from two
-// unsynchronised snapshots.
+// EMPTY after the test-fragility sweep migrated the remaining 25 reads. There is
+// no per-line escape marker on purpose: unlike `.first()` there is no legitimate
+// reason to read RELATIVE geometry from two unsynchronised snapshots.
 // The `(?!Promise\.all)` lookahead is load-bearing twice over. Without it a lazy
 // `[\s\S]*?` walks out of one Promise.all and into the NEXT one to find its second
 // `.boundingBox(`, so a block holding a single box pairs up with a stranger's and
@@ -333,26 +370,149 @@ const TOPASS_ALLOW: Record<string, number> = {};
 // ends the match early, under-counting. Both mistakes were made writing this.
 const MULTI_BOX_RE =
   /await\s+Promise\.all\(\s*\[(?:(?!Promise\.all)[\s\S])*?\.boundingBox\((?:(?!Promise\.all)[\s\S])*?\.boundingBox\(/g;
-const MULTI_BOX_ALLOW: Record<string, number> = {
-  "dashboard.spec.ts": 1,
-  // 2 → 1: the mobile visit-row card spec moved onto settledBoxes when #2588 gave its
-  // geometry claim something deterministic to assert (the head line's end, rather than
-  // whichever meta happened to wrap).
-  "encounters.spec.ts": 1,
+const MULTI_BOX_ALLOW: Record<string, number> = {};
+
+// ── (v-b) A swipe aimed at a point it MEASURED (issue #2714) ─────────────────
+//
+// `touchSwipe(page, from, to)` is for the gestures anchored to the DOCUMENT —
+// the drawer's edge swipe, the Timeline's day swipe, a mid-screen swipe that
+// must open nothing. Every one of them names its coordinates inline, because a
+// screen position IS the gesture and no element has to be under it.
+//
+// A gesture anchored to an ELEMENT cannot be spelled that way honestly. Its
+// point has to be measured, and a measured point is a fact about the PAST from
+// the instant it is returned. #2714 is what that costs: the quick-log sheet
+// gathers its "Due & usual now" row lazily (#1468) and a bottom-anchored panel
+// grows UPWARD when it lands, so the drag handle left the coordinate a settled
+// measurement had just certified, the recognizer's containment test rejected
+// the landing, and the swipe did NOTHING — silently, while the spec waited out
+// its budget for an exit that was never scheduled.
+//
+// So a `from` that is not an inline `{ x, y }` literal is banned: use
+// `touchSwipeFrom(page, locator, { dx, dy })`, which re-aims and then proves
+// where the finger landed. Un-exporting `centerOf` closed the blessed way to
+// mint such a point; this closes the hand-rolled way (a `boundingBox()` read
+// and some arithmetic), which is the half a helper change cannot reach.
+//
+// `touchSwipeFrom(` is not matched — the `\(` is anchored to the end of the
+// name. The allowlist is EMPTY and there is no known reason to grow it.
+//
+// The whitespace goes INSIDE the lookahead — `,(?!\s*\{)`, never `,\s*(?!\{)`.
+// The second spelling is the one that reads right and is always wrong: `\s*` can
+// match nothing, so on ` { x: 2 …` the lookahead is asked about the SPACE, which
+// is not a brace, and every compliant call site is reported. That bug is why
+// this comment exists.
+const SWIPE_POINT_RE = /touchSwipe\(\s*[A-Za-z_$][\w$]*\s*,(?!\s*\{)/g;
+const SWIPE_POINT_ALLOW: Record<string, number> = {};
+
+// ── (v-c) A bare .click() on a ⋯ MENU TRIGGER (issue #2942) ──────────────────
+//
+// A tap dispatched before React attaches the handler is DISCARDED — no error, no
+// warning, Playwright's actionability checks all pass because the element really is
+// there. The failure then surfaces seconds later as the thing the tap should have
+// revealed being missing, which reads as "the menu is broken" rather than "the
+// trigger was never pressed". `form-drafts.spec.ts` flaked two shards on exactly
+// that shape, and the 2026-07-26 weekly census red was another copy of it
+// (`wellbeing-check.spec.ts:154`, on two shards at once).
+//
+// WHY THIS RULE KEYS ON THE CONTROL AND NOT ON THE POSITION. #2942 first proposed the
+// positional form — a `.click()` whose nearest preceding statement is a
+// `goto`/`reload`/`waitForURL`. That rule cannot see its own motivating case:
+// `openNewActivity`'s click is the FIRST statement of a module-local helper and the
+// `goto` is in the CALLER, one function up. Following that would need the call graph,
+// which a text scan does not have, and a helper called from five places is only
+// sometimes preceded by a navigation anyway. The control's IDENTITY is the stable
+// property, and it sits in the SAME statement as the click — so the rule is local, and
+// it reaches into helper bodies for free (the scan has read every e2e/*.ts, module-local
+// helpers included, since #868 phase 2; what it never had was a rule phrased locally
+// enough to use that reach).
+//
+// THE CONTROL: the `OverflowMenu` trigger (components/OverflowMenu.tsx) — the row ⋯
+// kebab. It is a pure client TOGGLE: no POST to settle on, no URL to watch, so
+// `settledClick` and `followLink` do not apply and a retry loop would close the menu
+// it just opened. `hydratedClick` is the primitive for exactly this — probe for React's
+// markers on the node, then click ONCE.
+//
+// Located two ways in the suite, both matched: the `overflow-menu-trigger` testid, and
+// the trigger's accessible name (`aria-label={label}` on the same button), which reads
+// "… actions" or "Actions for …" at all but three call sites.
+//
+// THE MENU ITEM IS NOT IN SCOPE, and that is a mechanism claim, not a concession. The
+// panel is `{open && createPortal(…)}` — a menu item exists only because a trigger
+// click already landed, which is itself proof that React had attached. Scanning items
+// too would have flagged 51 more sites for a window that is already closed; the
+// false-positive tail #2942 anticipated turned out to live entirely in that half, and
+// it is removed by an argument rather than papered over with a marker.
+//
+// KNOWN LIMIT: a trigger stored in a `const` and clicked in a later statement evades
+// the `(?!;)` gap, and so does a trigger named by one of the three labels that do not
+// say "actions" (`"Snooze or dismiss"`, `${def.label} options`, `label={name}`) unless
+// the spec used the testid. Both are deliberate — the testid is on every trigger, so
+// the honest fix at an evading site is to spell it that way — not supported escapes.
+//
+// The `(?!;)` guard is the MULTI_BOX_RE `(?!Promise\.all)` trick: without it the lazy
+// gap walks out of one statement and pairs a marker with a stranger's `.click(`.
+const MENU_TRIGGER_CLICK_RE =
+  /(?:overflow-menu-trigger|(?:getByLabel|getByRole)\((?:(?!;)[^)])*?[Aa]ctions)(?:(?!;)[\s\S])*?\.click\(/g;
+// A same-line `hydrated-ok: <why>` comment is a reviewed bare click (the first-ok
+// escape-marker shape). The one use today is a re-open-if-closed `toPass` guard that
+// already tolerates a swallowed tap and only re-opens when the item is NOT visible,
+// so it can never toggle the menu shut.
+const MENU_TRIGGER_OK_MARKER = "hydrated-ok";
+// Frozen at today's per-file counts. This is a GRANDFATHER list, not an endorsement:
+// every entry is a bare tap on a control whose click can be swallowed, and the same
+// immutable-downward discipline as FIRST_ALLOW applies — convert a site to
+// hydratedClick and LOWER its number in the same PR. The #2942 pass cleared the
+// module-local HELPER sites first (the class the issue was filed about, and the half a
+// call-site-only reading would never have found): food-log, food-log-correction,
+// illness-episode-followups, intake-lifecycle, offline-dose-confirm, saved-star.mobile,
+// trends-default-range and trends-overview-curated.mobile, six of which reached zero.
+const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
+  "activity-equipment.spec.ts": 1,
+  "appointments.spec.ts": 2,
+  "biomarker-picker-rank.spec.ts": 1,
+  "care-plan.spec.ts": 1,
+  "clinical-undo.spec.ts": 3,
+  "condition-family-attributes.spec.ts": 2,
+  "dental.spec.ts": 1,
+  "dose-history.spec.ts": 6,
+  "dose-skip.spec.ts": 1,
+  "drug-interactions.spec.ts": 1,
   "entry-ergonomics.spec.ts": 1,
-  "kids-growth.spec.ts": 1,
-  "medications-followups.spec.ts": 1,
-  "medications-page.spec.ts": 4,
-  "mobile-ui-polish.spec.ts": 2,
-  "muscle-anatomy.spec.ts": 1,
-  "saved-star.mobile.spec.ts": 1,
-  "sleep-page.spec.ts": 1,
-  "training-overview-doing.mobile.spec.ts": 4,
-  "trends-annotations.spec.ts": 2,
-  "trends-body-mobile.spec.ts": 1,
-  "trends-context-bar.mobile.spec.ts": 1,
-  "trends-fitness-lens.mobile.spec.ts": 1,
-  "trends-metric-pages.spec.ts": 4,
+  "episode-med-reconcile.spec.ts": 1,
+  "equipment-lifecycle.spec.ts": 3,
+  "equipment-manager.spec.ts": 1,
+  "food-log-correction.spec.ts": 4,
+  "genomics.spec.ts": 2,
+  "goal-metric-switch.spec.ts": 1,
+  "imaging.spec.ts": 3,
+  "immunization-delete-confirm.spec.ts": 1,
+  "import-records-browser.spec.ts": 1,
+  "intake-lifecycle.spec.ts": 2,
+  "medications-followups.spec.ts": 4,
+  "medications-page.spec.ts": 1,
+  "menu-confirm-cancel.spec.ts": 1,
+  "merge-conflict.spec.ts": 1,
+  "merge-sets.spec.ts": 1,
+  "mobile-ui-polish.spec.ts": 1,
+  "multi-view.spec.ts": 3,
+  "nway-merge.spec.ts": 1,
+  "pause-situation.spec.ts": 1,
+  "preventive-upcoming.spec.ts": 2,
+  "protocol-practice.spec.ts": 1,
+  "records-recency.spec.ts": 1,
+  "shared-supply-details.spec.ts": 2,
+  "shared-supply-picker.spec.ts": 1,
+  "skin.spec.ts": 2,
+  "substance-use.spec.ts": 2,
+  "training-log-merge.spec.ts": 1,
+  "training-log-provenance.spec.ts": 2,
+  "trends-card-pin.spec.ts": 1,
+  "undo-delete.spec.ts": 1,
+  "upcoming-aggregate.spec.ts": 2,
+  "upcoming-row-actions.mobile.spec.ts": 1,
+  "upcoming-row-actions.spec.ts": 1,
+  "vision.spec.ts": 2,
 };
 
 // ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────
@@ -572,6 +732,15 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     });
   });
 
+  it("no committed test.skip in e2e/*.ts (delete it or make its fixture deterministic)", () => {
+    checkPattern("test.skip(", TEST_SKIP_RE, TEST_SKIP_ALLOW, {
+      hint:
+        `A committed skip makes a green run ambiguous about which contracts ran. ` +
+        `Delete obsolete coverage, or make the boundary deterministic in the fixture; ` +
+        `see docs/internals/e2e-hygiene.md.`,
+    });
+  });
+
   it("no NEW multi-box Promise.all geometry read in an e2e/*.ts (use settledBoxes)", () => {
     checkPattern(
       "multi-box Promise.all boundingBox read",
@@ -586,6 +755,131 @@ describe("e2e suite hygiene guard (issue #868)", () => {
           `whole group until two consecutive reads agree and returns non-null ` +
           `boxes; see docs/internals/e2e-hygiene.md.`,
       }
+    );
+  });
+
+  it("no NEW touchSwipe aimed at a measured point in an e2e/*.ts (use touchSwipeFrom)", () => {
+    checkPattern(
+      "touchSwipe from a non-literal point",
+      SWIPE_POINT_RE,
+      SWIPE_POINT_ALLOW,
+      {
+        hint:
+          `A swipe's starting point may only be an inline { x, y } literal — that ` +
+          `is a gesture anchored to the DOCUMENT (the drawer's edge swipe, the ` +
+          `Timeline's day swipe). A gesture that must START INSIDE AN ELEMENT ` +
+          `cannot aim at a measured point: the point is stale from the instant it ` +
+          `is returned, and a surface that relays out after settling (#2714 — the ` +
+          `quick-log sheet's lazily gathered context row grows the panel upward) ` +
+          `moves the target out from under it, whereupon the recognizer rejects ` +
+          `the landing and the gesture does nothing at all. Use ` +
+          `touchSwipeFrom(page, locator, { dx, dy }) from e2e/helpers.ts, which ` +
+          `re-aims and proves where the finger landed; see ` +
+          `docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  // The guard above has an EMPTY allowlist, so the suite passing proves only
+  // that nothing matched — a pattern that matches NOTHING would pass it forever.
+  // These four samples are what make the green mean something, and they are not
+  // hypothetical: the first draft of the pattern spelled the brace check
+  // `,\s*(?!\{)`, whose `\s*` matches nothing and hands the lookahead a SPACE,
+  // so it flagged every compliant call site in the tree.
+  it("the measured-point pattern discriminates a point from a literal", () => {
+    const matches = (src: string) => countMatches(src, SWIPE_POINT_RE) > 0;
+
+    expect(matches("await touchSwipe(page, grip, { x: grip.x, y: 1 });")).toBe(
+      true
+    );
+    expect(
+      matches("await touchSwipe(\n  page,\n  grip,\n  { x: 1, y: 2 }\n);")
+    ).toBe(true);
+    expect(
+      matches("await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });")
+    ).toBe(false);
+    expect(matches("await touchSwipeFrom(page, handle, { dy: 240 });")).toBe(
+      false
+    );
+  });
+
+  it("no NEW bare .click() on a ⋯ menu trigger in an e2e/*.ts (use hydratedClick)", () => {
+    checkPattern(
+      "bare .click() on a ⋯ menu trigger",
+      MENU_TRIGGER_CLICK_RE,
+      MENU_TRIGGER_CLICK_ALLOW,
+      {
+        excludeLineMarker: MENU_TRIGGER_OK_MARKER,
+        hint:
+          `A row's ⋯ overflow-menu trigger is a pure client TOGGLE — no POST to ` +
+          `settle on, no URL to watch — so a tap dispatched before React attaches ` +
+          `its onClick is DISCARDED in silence, and the failure surfaces later as ` +
+          `the menu item not being found (#2942). Use ` +
+          `hydratedClick(page, trigger) from e2e/helpers.ts, which waits for ` +
+          `React's markers on that node and then clicks ONCE (a retry loop is wrong ` +
+          `here: the second tap closes the menu the first one opened). The menu ` +
+          `ITEM needs no gate — it exists only because the trigger click landed. ` +
+          `For a reviewed exception add a same-line \`hydrated-ok: <why>\` comment; ` +
+          `see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  // The allowlist above is a per-file FREEZE, so the suite passing proves the counts
+  // did not grow — it cannot prove the pattern still matches the thing it names. A
+  // regex that silently stopped matching would freeze every count at a number it can
+  // no longer reach and pass forever. These samples are what make the green mean
+  // something, and each is a shape that was actually in the tree.
+  it("the menu-trigger pattern discriminates a bare tap from a gated one", () => {
+    const matches = (src: string) =>
+      countMatches(src, MENU_TRIGGER_CLICK_RE) > 0;
+
+    // Bare taps — the three spellings the suite uses.
+    expect(
+      matches('await tile.getByTestId("overflow-menu-trigger").click();')
+    ).toBe(true);
+    expect(
+      matches(
+        'await row.getByRole("button", { name: "Record actions" }).click();'
+      )
+    ).toBe(true);
+    expect(matches('await row.getByLabel("More actions").click();')).toBe(true);
+    // A regex name, and a chain broken across lines by the formatter.
+    expect(
+      matches(
+        'await row.getByRole("button", { name: /^Actions for the/ }).click();'
+      )
+    ).toBe(true);
+    expect(
+      matches(
+        'await page\n  .locator("[data-tile-key=x]")\n  .getByTestId("overflow-menu-trigger")\n  .click();'
+      )
+    ).toBe(true);
+
+    // Gated — hydratedClick does not spell the tap `.click(` at all.
+    expect(
+      matches(
+        'await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));'
+      )
+    ).toBe(false);
+    // A trigger merely ASSERTED on, with an unrelated click in the NEXT statement.
+    // Without the `(?!;)` gap guard this pairs the marker with a stranger's click.
+    expect(
+      matches(
+        'await expect(row.getByTestId("overflow-menu-trigger")).toHaveCount(1);\n' +
+          "await other.click();"
+      )
+    ).toBe(false);
+    // The menu ITEM is deliberately out of scope — the panel renders only while the
+    // menu is open, so its existence already proves the trigger click landed.
+    expect(
+      matches('await page.getByRole("menuitem", { name: "Edit" }).click();')
+    ).toBe(false);
+    // Not every button whose name merely CONTAINS a word is a menu trigger; the
+    // marker is anchored to a locator call, so a testid that happens to read
+    // "quick-actions" is not matched by the accessible-name arm.
+    expect(matches('await page.getByTestId("quick-actions").click();')).toBe(
+      false
     );
   });
 
@@ -792,6 +1086,90 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `comment for a use that is NOT a stored timestamp (a unique-name suffix, a ` +
         `TOTP probe); see docs/internals/e2e-hygiene.md.`,
     });
+  });
+
+  it("no offline NAVIGATION in an e2e/*.ts without a cache-warm precondition (use readyForOffline)", () => {
+    const violations: string[] = [];
+    for (const { name, text } of specFiles()) {
+      if (name === OFFLINE_HELPERS_FILE) continue;
+      const lines = text.split("\n");
+      // Strip line comments and block-comment continuations before looking for the
+      // window's boundaries and its navigation: this rule's own explanatory prose
+      // SPELLS OUT `setOffline(true)` and `page.goto`, and the CI-branch rule above
+      // learned the same lesson — read code, not the note beside it. The markers are
+      // matched against the RAW lines, since a marker lives in a comment by design.
+      const code = lines.map((l) =>
+        l.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "")
+      );
+      code.forEach((line, i) => {
+        if (!SET_OFFLINE_TRUE_RE.test(line)) return;
+        // The offline WINDOW: from here to the matching setOffline(false), or to the
+        // end of the file when the spec never comes back online.
+        let end = lines.length;
+        for (let j = i + 1; j < code.length; j += 1) {
+          if (SET_OFFLINE_FALSE_RE.test(code[j])) {
+            end = j;
+            break;
+          }
+        }
+        if (!code.slice(i, end).some((l) => OFFLINE_NAVIGATION_RE.test(l))) {
+          return;
+        }
+        if (
+          lines.slice(i, end).some((l) => l.includes(OFFLINE_NAV_OK_MARKER))
+        ) {
+          return;
+        }
+        // The precondition is asserted BEFORE the network goes away, so it may sit
+        // anywhere above this line — including inside a helper this file defines.
+        if (code.slice(0, i).some((l) => OFFLINE_READY_RE.test(l))) return;
+        violations.push(
+          `${name}:${i + 1}: navigates while offline with no cache-warm ` +
+            `precondition. Playwright's offline emulation is per-browser-context and ` +
+            `does not cover SERVICE-WORKER fetches, so cacheFirst (public/sw.js) can ` +
+            `pull the shell's chunks over the network DURING this navigation and the ` +
+            `assertion passes on assets a real device would not have (#3002). Do NOT ` +
+            `delete the block — call \`readyForOffline(page)\` from e2e/helpers.ts ` +
+            `before setOffline(true), which asserts a live controlling worker and the ` +
+            `/offline document's own chunks already cached. If this block asserts ` +
+            `something the bypass cannot fake and needs no shell, add an ` +
+            `\`offline-nav-ok: <why>\` comment inside the offline window; see ` +
+            `docs/internals/e2e-hygiene.md.`
+        );
+      });
+    }
+    expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  it("the offline-navigation rule sees a navigation and ignores a queue-only block", () => {
+    const navigates = [
+      "await context.setOffline(true);",
+      "await page.goto('/profile');",
+      "await context.setOffline(false);",
+    ];
+    const queueOnly = [
+      "await context.setOffline(true);",
+      "await page.getByTestId('log-x').click();",
+      "await context.setOffline(false);",
+    ];
+    const inWindow = (lines: string[]) => {
+      const start = lines.findIndex((l) => SET_OFFLINE_TRUE_RE.test(l));
+      const rest = lines.slice(start + 1);
+      const stop = rest.findIndex((l) => SET_OFFLINE_FALSE_RE.test(l));
+      return rest
+        .slice(0, stop === -1 ? rest.length : stop)
+        .some((l) => OFFLINE_NAVIGATION_RE.test(l));
+    };
+    expect(inWindow(navigates)).toBe(true);
+    expect(inWindow(queueOnly)).toBe(false);
+  });
+
+  it("the blessed offline precondition exists and asserts the cache, not a render", () => {
+    const helpers = fs.readFileSync(path.join(E2E_DIR, "helpers.ts"), "utf8");
+    expect(helpers).toContain("export async function offlineChunksWarm");
+    expect(helpers).toContain("export async function readyForOffline");
+    // It reads the cache — a render assertion is exactly what cannot see the bypass.
+    expect(helpers).toContain("caches.match(");
   });
 
   it("the per-worker harness exposes its addressing helpers", () => {

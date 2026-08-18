@@ -44,7 +44,7 @@ export function normalizeCanonicalKey(name: string): string {
 // The rule the dataset is held to, written down here because this is where the
 // naming discipline already lives — and enforced, so it can't regrow: the scan in
 // lib/__tests__/canonical-naming-rule.test.ts fails a bare name that has a qualified
-// sibling in canonical-biomarkers.json.
+// sibling in canonical-result-definitions.json.
 //
 //   • A bare name is permitted ONLY where a single universal convention fixes its
 //     meaning. In practice that is the SERUM specimen: "Albumin", "Creatinine",
@@ -732,6 +732,10 @@ const DEXA_FAT_REGIONS = [
 // the curated T-score expresses, and a site is not the skeleton. That is a statement
 // about which LIST the total belongs in, not permission to leave the name undeclared
 // — see DEXA_TOTAL_BMD below, and "Bone Mineral Content, Total" in DEXA_SCAN_LEVEL.
+//
+// The two rows a site prints take DIFFERENT declarations (#2765). The mineral CONTENT
+// rides DEXA_DECOMPOSITION with the rest of the grid; the DENSITY rows take
+// DEXA_SITE_BMD. See that declaration for why, and for the audit that separated them.
 const DEXA_BONE_REGIONS = [
   "Left Arm",
   "Right Arm",
@@ -798,12 +802,19 @@ const DEXA_MASS_COMPARTMENTS = ["Fat", "Lean", "Total"];
 // "Trunk to Legs Fat Ratio" — a different denominator (all four limbs rather than the
 // legs), the same arithmetic over the same scan's segments — and a report that prints
 // one often prints both.
+//
+// "Bone Mineral Density Z-Score" left in #2679 — the THIRD time this one sentence was
+// found false of a member (#2322 for the two mass indices, #2675 declining to extend
+// it to "Bone Mineral Density, Total"). A Z-score IS an age- and sex-matched
+// population reference; "no population reference range exists for them" states the
+// opposite of what the value is, and the reason is shown to the reader as why their
+// marker isn't curated. See DEXA_BMD_Z_SCORE below. Every remaining member of this
+// list was re-read against both clauses of that sentence in the same pass.
 const DEXA_SCAN_LEVEL = [
   "Total Mass",
   "Total Fat Mass",
   "Total Lean Mass",
   "Bone Mineral Content, Total",
-  "Bone Mineral Density Z-Score",
   "Android/Gynoid Ratio",
   "Trunk to Legs Fat Ratio",
   "Trunk to Limb Fat Mass Ratio",
@@ -827,6 +838,85 @@ const DEXA_TOTAL_BMD: UncuratedAnalyte = {
     "Whole-body bone mineral density in g/cm² isn’t comparable between scanners, which is why bone density is read as a T-score — the same measurement expressed against the reference population. Allos trends the T-score, so that is where your bone density is tracked.",
 };
 
+// The OTHER standardization of that same whole-body density (#2679), and the third
+// time DEXA_DECOMPOSITION's sentence was found false of a member it was covering.
+// The curation call is written out here because the next reader will ask it again.
+//
+// A DEXA measures one bone mineral density and prints two standardizations of it. The
+// T-score counts standard deviations from PEAK YOUNG-ADULT bone; the Z-score counts
+// them from AGE- AND SEX-MATCHED PEERS. One measurement, two reference populations,
+// diverging with age by construction: at seventy a T-score of -2.5 and a Z-score of
+// 0.0 can describe the same skeleton.
+//
+// `covered-elsewhere` → the T-score, on exactly the argument #2675 made for the
+// absolute g/cm²: all three are the same measurement, so the quantity IS tracked and
+// there is something real to point at. This is not the STRESS_TEST_PEAK_VITALS false
+// promise, where a peak reading has no resting series it could belong to — a reader
+// who follows this link lands on their own bone density from their own scan. An
+// `out-of-scope` declaration whose reason then named the T-score would be this shape
+// wearing the other one's clothes, and would drop the link the reader wants.
+//
+// NOT curated as a second entry — the alternative shape — and the reason is a property
+// of this app rather than of the clinic: a Z-score is age-adjusted, so it holds steady
+// while you lose bone at the population rate. A longitudinal tracker that plotted it
+// would draw a flat line straight through the decline it exists to surface. The
+// T-score's reference is fixed, so it moves when the bones do, and it is the score the
+// WHO thresholds (−1.0 osteopenia, −2.5 osteoporosis) in the curated entry's band are
+// defined on. Curating both would also put two lines on one measurement that separate
+// for a reason that is not bone.
+//
+// The wrinkle, recorded rather than buried: the ISCD reads bone density by Z-score
+// rather than T-score below age 50 and before menopause, where Z ≤ −2.0 ("below the
+// expected range for age") prompts a workup for secondary causes. That is an argument
+// about whether the CURATED T-score entry's band should be life-stage aware, not about
+// this name deserving its own series, and it is left open rather than settled here.
+const DEXA_BMD_Z_SCORE: UncuratedAnalyte = {
+  kind: "covered-elsewhere",
+  instead: "Bone Mineral Density T-Score",
+  reason:
+    "A bone density Z-score compares you with others of your age and sex, so it holds steady for as long as your bones track the average for your age — including while that average falls. Allos trends the T-score from the same scan instead: the same bone density measured against peak young-adult bone, which is the comparison osteoporosis thresholds are defined on and the one that moves when your bone density does. The two scores are different numbers from one measurement, because the reference populations differ.",
+};
+
+// The PER-SITE bone densities (#2765), and the fourth member DEXA_DECOMPOSITION's
+// sentence was found wrong of. Its second clause — "no population reference range
+// exists for them" — is the one that fails: bone density is the quantity population
+// references are BUILT for, and the lumbar spine is the site the WHO thresholds are
+// most often read at. Telling a reader no reference exists for their spine density
+// is the #2322 / #2675 / #2679 mistake in its fourth costume.
+//
+// THE AUDIT, passes included, because a list of only its hits cannot be told from one
+// that stopped early. Each site prints TWO rows, and they are not the same decision:
+//
+//   • "Bone Mineral Density, <site>" — 18 rows, ALL MOVED HERE. g/cm² is what a
+//     T- and Z-score standardize; a reason may not deny that standard exists.
+//   • "Bone Mineral Content, <site>" — 18 rows, ALL PASS, left on DEXA_DECOMPOSITION.
+//     Grams of mineral in one region is a compartment mass like "Trunk Fat Mass", and
+//     both of that sentence's clauses are true of it: it is a per-region decomposition
+//     output, and there is no population band for pelvic mineral content. Nothing
+//     standardizes it, so nothing is being denied.
+//
+// Moved as ONE block rather than site by site. "Head" and "Left Ribs" have no
+// standardized score either, so a per-site taxonomy of which sites are clinical would
+// be a second judgement on top of the one this fixes — and the sentence below is true
+// of every site in the grid, which is the property that matters.
+//
+// `out-of-scope`, NOT `covered-elsewhere` → the curated T-score. That is the line
+// DEXA_DECOMPOSITION's own comment already draws: a region is not its total, so an
+// `instead` here would promise the reader their spine is tracked when the score Allos
+// trends is the whole skeleton's. The reason may NAME the T-score — that is where
+// their bone density is read — without claiming this row routes to it.
+//
+// LEFT OPEN, deliberately, and not decided here: whether Allos should curate
+// SITE-SPECIFIC T- and Z-scores (spine and hip diverge, and a whole-body number can
+// hide a hip that has crossed a threshold). If it ever does, these rows become
+// `covered-elsewhere` pointing at them and this declaration goes away. Repairing the
+// sentence does not foreclose that.
+const DEXA_SITE_BMD: UncuratedAnalyte = {
+  kind: "out-of-scope",
+  reason:
+    "A DEXA prints a bone mineral density for each region it scans. The raw g/cm² for one region isn’t comparable between scanners, which is why bone density is read as a T-score instead — and the T-score Allos trends is for your whole skeleton, not for one site. So a single region’s density stays on the scan rather than becoming its own trend.",
+};
+
 // VAT area (cm²) and VAT volume (cm³) are the SAME visceral-fat estimate the curated
 // "Visceral Adipose Tissue" entry carries as a mass — one scan-derived number a
 // report prints in three units, related by an assumed tissue density. So this is the
@@ -841,31 +931,40 @@ const DEXA_VAT_ALTERNATE_UNIT: UncuratedAnalyte = {
 };
 
 // Expanded rather than hand-listed: the family is a cross product, and writing ~80
-// literal rows is how one region quietly goes missing. The expansion is still just
-// `[name, declaration]` pairs in UNCURATED_ANALYTES, so the completeness guard walks
-// every generated name exactly as it walks a hand-written one.
-function dexaDecompositionNames(): string[] {
-  const names: string[] = [];
+// literal rows is how one region quietly goes missing. The expansion emits the same
+// `[name, declaration]` pairs UNCURATED_ANALYTES is written in, so the completeness
+// guard walks every generated name exactly as it walks a hand-written one.
+//
+// It emits TWO declarations, not one (#2765): the per-site bone DENSITY rows carry
+// DEXA_SITE_BMD, everything else carries DEXA_DECOMPOSITION. The cross product is
+// still what mints the names — which row gets which sentence is the only thing that
+// varies, so a site added to DEXA_BONE_REGIONS still cannot go undeclared.
+function dexaDecompositionRows(): [string, UncuratedAnalyte][] {
+  const rows: [string, UncuratedAnalyte][] = [];
+  const decomposed = (name: string) => rows.push([name, DEXA_DECOMPOSITION]);
   for (const region of DEXA_FAT_REGIONS)
-    names.push(`Body Fat Percentage, ${region}`);
+    decomposed(`Body Fat Percentage, ${region}`);
   for (const region of DEXA_BONE_REGIONS) {
-    names.push(`Bone Mineral Density, ${region}`);
-    names.push(`Bone Mineral Content, ${region}`);
+    rows.push([`Bone Mineral Density, ${region}`, DEXA_SITE_BMD]);
+    decomposed(`Bone Mineral Content, ${region}`);
   }
   for (const region of DEXA_MASS_REGIONS)
     for (const compartment of DEXA_MASS_COMPARTMENTS)
-      names.push(`${region} ${compartment} Mass`);
-  names.push(...DEXA_SCAN_LEVEL);
-  // The gram-suffixed print form of every mass row. A ratio, an index and a
-  // percentage are not masses, so they get no "(g)" twin.
-  const withUnits = [
-    ...names,
-    ...names.filter((n) => n.endsWith(" Mass")).map((n) => `${n} (g)`),
+      decomposed(`${region} ${compartment} Mass`);
+  for (const name of DEXA_SCAN_LEVEL) decomposed(name);
+  // The gram-suffixed print form of every mass row, carrying its own row's
+  // declaration. A ratio, an index, a percentage and a density are not masses, so
+  // they get no "(g)" twin.
+  const withUnits: [string, UncuratedAnalyte][] = [
+    ...rows,
+    ...rows
+      .filter(([name]) => name.endsWith(" Mass"))
+      .map(([name, d]): [string, UncuratedAnalyte] => [`${name} (g)`, d]),
   ];
   // De-duped by the key the registry is keyed on, so an overlap between the cross
   // product and the scan-level list can never mint two rows for one decision.
   const byKey = new Map(
-    withUnits.map((n) => [normalizeCanonicalKey(n), n] as const)
+    withUnits.map((row) => [normalizeCanonicalKey(row[0]), row] as const)
   );
   return [...byKey.values()];
 }
@@ -922,15 +1021,13 @@ const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
   ["Stress Test Maximum Blood Pressure Systolic", STRESS_TEST_PEAK_VITALS],
   ["Stress Test Maximum Blood Pressure Diastolic", STRESS_TEST_PEAK_VITALS],
   ["Stress Test Maximum Heart Rate", STRESS_TEST_PEAK_VITALS],
-  // The two DEXA scan-level names that are covered ELSEWHERE rather than out of
-  // scope (#2643) — they carry an `instead`, so they cannot ride the cross product.
+  // The DEXA scan-level names that are covered ELSEWHERE rather than out of scope
+  // (#2643, #2679) — they carry an `instead`, so they cannot ride the cross product.
   ["Bone Mineral Density, Total", DEXA_TOTAL_BMD],
+  ["Bone Mineral Density Z-Score", DEXA_BMD_Z_SCORE],
   ["Visceral Adipose Tissue Area", DEXA_VAT_ALTERNATE_UNIT],
   ["Visceral Adipose Tissue Volume", DEXA_VAT_ALTERNATE_UNIT],
-  ...dexaDecompositionNames().map((name): [string, UncuratedAnalyte] => [
-    name,
-    DEXA_DECOMPOSITION,
-  ]),
+  ...dexaDecompositionRows(),
 ];
 
 const UNCURATED_BY_KEY = new Map<string, UncuratedAnalyte>(

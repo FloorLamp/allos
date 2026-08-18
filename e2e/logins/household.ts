@@ -92,7 +92,7 @@ export const TL_WEST_TZ = "Etc/GMT+12"; // UTC−12
 // household cards render dose-confirm buttons and the dashboard weight widget renders.
 // Acting as SELF → affordances stay plain; switching to the OTHER (not the login's
 // own) → they NAME the subject ("Confirm — Own Other (e2e)", "Finish workout — …").
-// Both profiles are adults (no birthdate → never training-restricted), so the live
+// Both profiles have unknown ages; activity surfaces remain available while adult-only
 // workout editor is available. Dedicated + isolated so this spec's weigh-in / workout
 // writes never race the shared household specs; SELF is created first so it holds the
 // lower id and is the caregiver's ACTING profile on login (createSession picks
@@ -118,7 +118,7 @@ export const MVMEDS_RO_PROFILE = "Meds Board RO (e2e)";
 export const MVMEDS_SELF_MED = "Board Lisinopril";
 export const MVMEDS_RO_MED = "Board Metformin";
 
-// #1331 — multi-view Biomarkers (Results) table. A caregiver granted its OWN base
+// #1331 — multi-view Clinical results table. A caregiver granted its OWN base
 // profile (WRITE, the lowest-id grant → the acting profile on sign-in) plus a second
 // member profile READ-ONLY. Both carry the SHARED "Vitamin D" analyte family with
 // DIFFERENT values/dates, plus a uniquely-named analyte each, so the merged results

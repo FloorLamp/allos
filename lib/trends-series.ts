@@ -23,6 +23,11 @@ import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import { getUnitPrefs, getProfileAge, getSituationEvents } from "./settings";
 import { showBodyFat } from "./growth-metrics";
 import {
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "./life-stage";
+import {
   buildAnnotations,
   buildProtocolWindows,
   type TrendAnnotation,
@@ -46,7 +51,7 @@ import { fullTrendMetricSeries } from "./trend-metric-series";
 // (#1853): one answer to "what does this analyte's series look like, in what unit".
 import { biomarkerPlot } from "./queries/biomarker-plot";
 import { activeRangeLabel } from "./trends-context";
-import { bioSeriesKey, metricSeriesKey } from "./saved-items";
+import { resultSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
 import type { DigestSeries } from "./trends-digest";
 import {
@@ -56,10 +61,14 @@ import {
   PRACTICE_DIGEST_MIN_CHANGE,
 } from "./trends-practices";
 import type { DateRange } from "./timeline-format";
-import { readingDetailHref, metricDetailHref, type AppRoute } from "./hrefs";
+import {
+  clinicalResultDetailHref,
+  metricDetailHref,
+  type AppRoute,
+} from "./hrefs";
 
 export interface TrendSeries {
-  key: string; // "metric:weight" | "bio:LDL Cholesterol" — also the pin key
+  key: string; // "metric:weight" | "result:LDL Cholesterol" — also the pin key
   label: string;
   // Registry-owned compact label for phone tiles. Full `label` remains the chart
   // and detail title; biomarkers omit this because their canonical name is the
@@ -119,7 +128,6 @@ interface MetricDef {
   color: string;
   href: AppRoute;
   decimals: number;
-  restricted?: boolean; // a training surface (hidden for age-restricted profiles)
   // Metric-aware digest "trending" threshold (#37); omitted → digest default
   // (0.05). Weight barely moves in percent so a low bar is right; volume is
   // spiky day-to-day so it needs a high one.
@@ -166,25 +174,28 @@ const METRIC_DEFS: MetricDef[] = [
     color: "#0ea5e9",
     href: "/training?tab=analyze",
     decimals: 0,
-    restricted: true,
     minPctChange: 0.15, // training volume swings hugely session-to-session
   },
 ];
 
 // Build the standard body/training metric series (weight, body fat, resting HR,
-// training volume) windowed to `range`, in the login's display units. Volume is a
-// training surface, so it's dropped for age-restricted profiles.
+// training volume) windowed to `range`, in the login's display units. Strength
+// volume follows the shared adolescent content boundary; the underlying activity
+// records remain available from Timeline, search, and their detail pages.
 export function buildMetricSeries(
   profileId: number,
   loginId: number,
-  range: DateRange,
-  restricted: boolean
+  range: DateRange
 ): TrendSeries[] {
   const wu = getUnitPrefs(loginId).weightUnit;
   const weightUnitSuffix = ` ${wu}`;
   // Body fat % is not a datapoint we surface for children (kids growth trends) —
   // drop its tile for a minor, matching the body census age-aware layout.
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
@@ -222,7 +233,10 @@ export function buildMetricSeries(
   };
 
   return METRIC_DEFS.filter(
-    (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
+    (d) =>
+      !(d.id === "bodyfat" && hideBodyFat) &&
+      (trainingRelevant || d.id !== "volume") &&
+      (strengthTrainingRelevant || d.id !== "volume")
   ).map((d) => ({
     key: metricSeriesKey(d.id),
     label: d.label,
@@ -285,11 +299,11 @@ export function buildBiomarkerSeries(
   if (windowed.length === 0) return null;
 
   return {
-    key: bioSeriesKey(canonical),
+    key: resultSeriesKey(canonical),
     label: canonical,
     unit: plot.unit ? ` ${plot.unit}` : "",
     color: bioColor(canonical),
-    href: readingDetailHref(canonical),
+    href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
     decimals: 1,
     points: windowed,
@@ -320,7 +334,7 @@ function outOfWindowText(
   return { date: row.date, text: `${raw}${row.unit ? ` ${row.unit}` : ""}` };
 }
 
-// The Overview tile for a SAVED biomarker (#1456: always rendered, so its ★ stays
+// The Overview tile for a SAVED clinical result (#1456: always rendered, so its ★ stays
 // reachable at any window). Never null — it resolves to one of three honest states:
 //
 //   • readings in the window → the real windowed series (identical to
@@ -334,7 +348,7 @@ function outOfWindowText(
 // The out-of-window reading is deliberately NOT merged into `points`: it is carried
 // beside them so the renderer must mark it as outside the window rather than plot a
 // stale value on the line.
-export function buildSavedBiomarkerTile(
+export function buildSavedClinicalResultTile(
   profileId: number,
   canonical: string,
   range: DateRange,
@@ -345,11 +359,11 @@ export function buildSavedBiomarkerTile(
 
   const windowed = filterSeriesByRange(plot.points, range);
   const base: TrendSeries = {
-    key: bioSeriesKey(canonical),
+    key: resultSeriesKey(canonical),
     label: canonical,
     unit: plot.unit ? ` ${plot.unit}` : "",
     color: bioColor(canonical),
-    href: readingDetailHref(canonical),
+    href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
     decimals: BIO_TILE_DECIMALS,
     points: windowed,
@@ -388,11 +402,11 @@ export function buildSavedBiomarkerTile(
 // tile so it slots into the Pinned section and TrendMiniCard shows its empty state.
 export function placeholderBiomarkerTile(canonical: string): TrendSeries {
   return {
-    key: bioSeriesKey(canonical),
+    key: resultSeriesKey(canonical),
     label: canonical,
     unit: "",
     color: bioColor(canonical),
-    href: readingDetailHref(canonical),
+    href: clinicalResultDetailHref(canonical),
     kind: "biomarker",
     decimals: 1,
     points: [],
@@ -409,13 +423,20 @@ export function placeholderBiomarkerTile(canonical: string): TrendSeries {
 // retest-due or flagged analyte leads every picker rather than whatever starts with
 // "A". MEMBERSHIP is untouched: the age gates above and the body-metric exclusion below
 // still decide what is offered at all, so a gated metric is neither tile nor option.
-export function listCompareOptions(
-  profileId: number,
-  restricted: boolean
-): { metrics: TrendOption[]; biomarkers: TrendOption[] } {
+export function listCompareOptions(profileId: number): {
+  metrics: TrendOption[];
+  biomarkers: TrendOption[];
+} {
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
   const metrics = METRIC_DEFS.filter(
-    (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
+    (d) =>
+      !(d.id === "bodyfat" && hideBodyFat) &&
+      (trainingRelevant || d.id !== "volume") &&
+      (strengthTrainingRelevant || d.id !== "volume")
   ).map((d) => ({
     key: metricSeriesKey(d.id),
     label: d.label,
@@ -429,7 +450,7 @@ export function listCompareOptions(
     today(profileId),
     names
   ).map((option) => ({
-    key: bioSeriesKey(option.name),
+    key: resultSeriesKey(option.name),
     label: option.name,
     kind: "biomarker" as const,
     group: option.group,
@@ -437,21 +458,20 @@ export function listCompareOptions(
   return { metrics, biomarkers };
 }
 
-// Resolve a single series by its key ("metric:…" or "bio:…"), windowed to `range`.
+// Resolve a single series by its key ("metric:…" or "result:…"), windowed to `range`.
 // Returns null for an unknown/empty key or a series with no points in the window.
 export function resolveSeriesByKey(
   profileId: number,
   loginId: number,
   range: DateRange,
-  key: string,
-  restricted: boolean
+  key: string
 ): TrendSeries | null {
   if (key.startsWith("metric:")) {
-    const metrics = buildMetricSeries(profileId, loginId, range, restricted);
+    const metrics = buildMetricSeries(profileId, loginId, range);
     return metrics.find((m) => m.key === key) ?? null;
   }
-  if (key.startsWith("bio:")) {
-    return buildBiomarkerSeries(profileId, key.slice("bio:".length), range);
+  if (key.startsWith("result:")) {
+    return buildBiomarkerSeries(profileId, key.slice("result:".length), range);
   }
   return null;
 }
@@ -461,8 +481,7 @@ export function resolveSeriesByKey(
 // appointments, and active-situation changes. Every source read goes through an
 // already PROFILE-SCOPED query (getMedicationCourses / getIntakeItems /
 // getAppointments) or the per-profile situation-event log (getSituationEvents), so
-// no owned SQL is added here; the pure lib/trend-annotations does the shaping. None
-// of these sources is training-derived, so they're safe for restricted profiles.
+// no owned SQL is added here; the pure lib/trend-annotations does the shaping.
 export function buildTrendAnnotations(
   profileId: number,
   range: DateRange
@@ -496,6 +515,7 @@ export function buildProtocolTrendWindows(
   profileId: number,
   range: DateRange
 ): TrendWindow[] {
+  if (!isLongevityRelevant(getProfileAge(profileId))) return [];
   return buildProtocolWindows(getProtocolWindows(profileId), range);
 }
 
@@ -542,10 +562,9 @@ export function buildPracticeDigestSeries(
 export function buildDigestSeries(
   profileId: number,
   loginId: number,
-  range: DateRange,
-  restricted: boolean
+  range: DateRange
 ): TrendSeries[] {
-  const out = buildMetricSeries(profileId, loginId, range, restricted);
+  const out = buildMetricSeries(profileId, loginId, range);
   for (const name of getUsedCanonicalNamesWithDerived(profileId)) {
     if (bodyMetricKindForBiomarker(name) != null) continue;
     const s = buildBiomarkerSeries(profileId, name, range);

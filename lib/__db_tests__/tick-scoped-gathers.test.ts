@@ -127,7 +127,7 @@ const FAMILY_SIGNATURE =
 //   • the arrival join — issued only by getSleepArrivals (#2249), whose callers in a
 //     tick are the Dynamic deadline and the decision's own evidence line.
 const ARRIVAL_SIGNATURE =
-  /SELECT ms\.end_time AS endTime, MIN\(r\.created_at\)/;
+  /SELECT ms\.ended_at AS endTime, MIN\(r\.created_at\)/;
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -428,7 +428,7 @@ function seedArrivalNight(
     db
       .prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, origin, metric, date, start_time, end_time, value)
+           (profile_id, source, origin, metric, date, started_at, ended_at, value)
          VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
       )
       .run(
@@ -442,7 +442,7 @@ function seedArrivalNight(
   const eventId = Number(
     db
       .prepare(
-        `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+        `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
          VALUES (?, ?, ?, 1, 1)`
       )
       .run(profileId, ARRIVAL_PROVIDER, utcInstant(arrived)).lastInsertRowid
@@ -574,7 +574,7 @@ const SLEEP_SESSION_SIGNATURE =
 //     cannot also match the recent-changes digest's own DISTINCT-provider read, which
 //     asks a different question (`AND ok = 1 AND at <= ?`) of the same table.
 const INTEGRATION_ATTENTION_SIGNATURE =
-  /SELECT DISTINCT provider AS source_id FROM integration_sync_events\s+WHERE profile_id = \?\s*$/;
+  /SELECT DISTINCT source_id FROM integration_sync_events\s+WHERE profile_id = \?\s*$/;
 
 function seedSendNight(
   profileId: number,
@@ -589,7 +589,7 @@ function seedSendNight(
   const start = new Date(end.getTime() - 420 * 60_000);
   db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, origin, metric, date, start_time, end_time, value)
+       (profile_id, source, origin, metric, date, started_at, ended_at, value)
      VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
   ).run(
     profileId,
@@ -618,19 +618,19 @@ function seedSendProfile(name: string): number {
   // success inside its tolerance — the one shape that escalates onto the attention
   // list both phases read.
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status)
+    `INSERT INTO integration_connections (profile_id, source_id, status)
      VALUES (?, ?, 'connected')`
   ).run(p, SEND_BROKEN_PROVIDER);
   const at = (hoursAgo: number) =>
     utcInstant(new Date(clockNow().getTime() - hoursAgo * 3600_000));
   db.prepare(
     `INSERT INTO integration_sync_events
-       (profile_id, provider, at, ok, inserted, error)
+       (profile_id, source_id, at, ok, inserted, error)
      VALUES (?, ?, ?, 1, 1, NULL)`
   ).run(p, SEND_BROKEN_PROVIDER, at(SEND_TOLERANCE_HOURS + 1));
   db.prepare(
     `INSERT INTO integration_sync_events
-       (profile_id, provider, at, ok, inserted, error)
+       (profile_id, source_id, at, ok, inserted, error)
      VALUES (?, ?, ?, 0, NULL, ?)`
   ).run(p, SEND_BROKEN_PROVIDER, at(1), SEND_SYNC_ERROR);
   return p;

@@ -61,9 +61,9 @@ export interface NormBodyMetric {
 
 export interface NormMetricSample {
   metric: string; // 'steps','distance_km','active_kcal','total_kcal','hrv_ms'
-  date: string; // YYYY-MM-DD in the profile timezone at ingest (#94); start_time is the natural key
-  start_time: string; // absolute ISO instant; point records set start == end
-  end_time: string;
+  date: string; // YYYY-MM-DD in the profile timezone at ingest (#94); started_at is the natural key
+  started_at: string; // absolute ISO instant; point records set start == end
+  ended_at: string;
   value: number;
   // Source-within-source provenance. Health Connect can carry records from
   // several origin apps (for example Fitbit and Garmin) under the single
@@ -448,9 +448,9 @@ const BODY_METRIC_COMPARE_COLS: string[] = [
 export const BODY_METRIC_SAMPLE_MEASURES: readonly string[] =
   streamKeysPlacedIn("body_metrics");
 
-// Idempotent on (profile_id, metric, source, origin, start_time): a resent
+// Idempotent on (profile_id, metric, source, origin, started_at): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
-// (or two origins inside Health Connect) each keep their own row. `end_time` is
+// (or two origins inside Health Connect) each keep their own row. `ended_at` is
 // deliberately mutable: daily cumulative exporter snapshots keep a stable start
 // while their end advances to the push moment (#1101).
 //
@@ -471,16 +471,16 @@ export function upsertMetricSamples(
   // an update's provenance row (#1333) names the existing row rather than relying on
   // lastInsertRowid (unreliable for an ON CONFLICT DO UPDATE).
   const find = db.prepare(
-    "SELECT id, value, date, end_time, edited, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?"
+    "SELECT id, value, date, ended_at, edited, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND started_at = ?"
   );
   const stmt = db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, origin, metric, date, start_time, end_time, value, activity_external_id)
+       (profile_id, source, origin, metric, date, started_at, ended_at, value, activity_external_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
        value = excluded.value,
        date = excluded.date,
-       end_time = excluded.end_time,
+       ended_at = excluded.ended_at,
        activity_external_id = COALESCE(
          excluded.activity_external_id,
          metric_samples.activity_external_id
@@ -501,13 +501,13 @@ export function upsertMetricSamples(
       r.metric,
       source,
       r.origin ?? null,
-      r.start_time
+      r.started_at
     ) as
       | {
           id: number;
           value: number;
           date: string;
-          end_time: string;
+          ended_at: string;
           edited: number;
           activity_external_id: string | null;
         }
@@ -520,7 +520,7 @@ export function upsertMetricSamples(
           r.metric,
           source,
           r.origin ?? null,
-          r.start_time
+          r.started_at
         )
       )
     ) {
@@ -539,9 +539,9 @@ export function upsertMetricSamples(
       continue;
     }
     // A delayed retry of an older cumulative snapshot must never roll a newer
-    // day-so-far value backward. The natural key intentionally omits end_time, so
+    // day-so-far value backward. The natural key intentionally omits ended_at, so
     // freshness is an explicit part of the runtime merge rule (#1101 review).
-    if (found && isStaleMetricSnapshot(found.end_time, r.end_time)) {
+    if (found && isStaleMetricSnapshot(found.ended_at, r.ended_at)) {
       tallyUpsert(counts, classifyUpsert(true, true));
       continue;
     }
@@ -551,8 +551,8 @@ export function upsertMetricSamples(
       r.origin ?? null,
       r.metric,
       r.date,
-      r.start_time,
-      r.end_time,
+      r.started_at,
+      r.ended_at,
       r.value,
       r.activity_external_id ?? null
     );
@@ -560,7 +560,7 @@ export function upsertMetricSamples(
       !!found &&
       found.value === r.value &&
       found.date === r.date &&
-      found.end_time === r.end_time &&
+      found.ended_at === r.ended_at &&
       (r.activity_external_id == null ||
         found.activity_external_id === r.activity_external_id);
     const disposition = classifyUpsert(!!found, equal);

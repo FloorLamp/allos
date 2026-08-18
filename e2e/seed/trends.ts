@@ -82,7 +82,12 @@ import {
   TRENDS_CURRENCY_BODY_FAT_DAYS,
   TRENDS_CURRENCY_BODY_FAT_PCT,
 } from "../fixture-logins";
-import { ins, seedMemberLogin, fixtureProfileId } from "./common";
+import {
+  ins,
+  seedMemberLogin,
+  adultFixtureProfileId,
+  fixtureProfileId,
+} from "./common";
 
 // ── Trends -> Overview -> body census mobile overhaul ──
 export function seedBodyMobile(): void {
@@ -134,7 +139,7 @@ export function seedBodyMobile(): void {
     // gives the tile full-series history outside a 1D range, pinning the empty-in-
     // range state instead of letting the derived tile disappear.
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'height_cm', ?, ?, ?, 178)`
     ).run(
       tbId,
@@ -145,7 +150,7 @@ export function seedBodyMobile(): void {
 
     // Steps (additive) — three recent days so the chart + chip render and are recent.
     const insSteps = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
     );
     for (const [ago, steps] of [
@@ -161,7 +166,7 @@ export function seedBodyMobile(): void {
     // instead of deciding presence from the newer global latest session.
     const oldSleepPrev = shiftDateStr(TRENDS_BODY_OLD_DAY, -1);
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 420)`
     ).run(
       tbId,
@@ -173,7 +178,7 @@ export function seedBodyMobile(): void {
     // One sleep night ending today → the default compact Sleep tile renders.
     const sleepPrev = shiftDateStr(tbToday, -1);
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 445)`
     ).run(tbId, tbToday, `${sleepPrev}T23:10:00Z`, `${tbToday}T06:35:00Z`);
 
@@ -237,7 +242,7 @@ export function seedCuratedOverview(): void {
   // analyte with no readings anywhere (the never-measured case #1485 A compacts).
   // Idempotent: its own fixture rows are cleared first.
   {
-    const curateId = fixtureProfileId(TRENDS_CURATE_PROFILE);
+    const curateId = adultFixtureProfileId(TRENDS_CURATE_PROFILE);
     const curateToday = today(curateId);
     db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(curateId);
     const insCurate = db.prepare(
@@ -247,7 +252,7 @@ export function seedCuratedOverview(): void {
     insCurate.run(curateId, shiftDateStr(curateToday, -9), 74.2, 57);
     insCurate.run(curateId, shiftDateStr(curateToday, -2), 73.6, 55);
     db.prepare(
-      `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+      `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)`
     ).run(curateId, TRENDS_CURATE_EMPTY_ANALYTE);
     seedMemberLogin(E2E_LOGIN_TRENDS_CURATE, curateId, "write");
     console.log(
@@ -256,11 +261,10 @@ export function seedCuratedOverview(): void {
   }
 }
 
-// ── Compare folds into Insights, gate moves to the section ──
+// ── Compare folds into Insights ──
 export function seedCompareFold(): void {
   // ── Compare-into-Insights fixture (#1489) ────────────────────────────────────
-  // A TRAINING-RESTRICTED profile that can actually run a comparison: an age UNDER
-  // the instance gate (13, set by e2e/seed/coverage-gaps.ts) with TWO overlappable
+  // A minor profile that can actually run a comparison, with TWO overlappable
   // series — weight + resting HR on the same dates — so the compare overlay draws
   // its dual-axis chart for a minor. It is dedicated rather than shared because the
   // seeded "Riley (child)" has no second metric to overlay.
@@ -274,8 +278,7 @@ export function seedCompareFold(): void {
   const cmpId = fixtureProfileId(TRENDS_COMPARE_PROFILE);
   const cmpToday = today(cmpId);
 
-  // ~10 years old → under the 13-year gate → training-restricted. (Set, not
-  // ignored, on a re-seed: a stale birthdate would silently un-restrict it.)
+  // ~10 years old. Set on every re-seed so the life-stage fixture stays explicit.
   db.prepare(
     `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', ?)
        ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
@@ -323,7 +326,7 @@ export function seedFitnessLens(): void {
   // near-present). Read-only in its spec. Idempotent: its own rows are cleared and
   // rewritten (child exercise_sets go first — they reach profile through the
   // activity, so the parents can't be deleted under them).
-  const fitId = fixtureProfileId(TRENDS_FITNESS_PROFILE);
+  const fitId = adultFixtureProfileId(TRENDS_FITNESS_PROFILE);
   const fitToday = today(fitId);
 
   db.prepare(
@@ -432,7 +435,7 @@ export function seedTrendsReadings(): void {
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(rdId);
 
   const insHrv = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, ?, 'hrv_ms', ?, ?, ?, ?)`
   );
   const manualDay = shiftDateStr(rdToday, -1);
@@ -510,7 +513,7 @@ export function seedRankedCardOrder(): void {
     setProfileBirthdate(id, shiftDateStr(anchor, -365 * 6 - 30));
 
     const insHeight = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'height_cm', ?, ?, ?, ?)`
     );
     const insBm = db.prepare(
@@ -575,7 +578,7 @@ export function seedRankedCardOrder(): void {
        VALUES (?, ?, 'vitals', 'Oxygen Saturation', 'Oxygen Saturation', ?, ?, '%', 'e2e:trends-rank')`
     );
     const insSample = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'e2e-device', ?, ?, ?, ?, ?)`
     );
     db.prepare(
@@ -675,7 +678,7 @@ export function seedPinnedCardOrder(): void {
      VALUES (?, ?, ?, 'e2e:trends-pin')`
   );
   const insSample = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'e2e-pin', 'steps', ?, ?, ?, ?)`
   );
   for (const [ago, kg, steps] of [
@@ -706,8 +709,8 @@ export function seedDayOneAverages(): void {
   const anchor = today(id);
   setProfileBirthdate(id, shiftDateStr(anchor, -365 * 34));
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(id);
-  db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(id);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM protein_daily_totals WHERE profile_id = ?`).run(id);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(id);
   seedMemberLogin(E2E_LOGIN_DAY_ONE, id, "write");
   console.log(
     `e2e: seeded day-one averages fixture — profile ${id} (${DAY_ONE_PROFILE}) (#1909/#1917)`
@@ -777,7 +780,7 @@ export function seedBiomarkerPickerRank(): void {
   // run (or a reused dev server) can't leave the analyte already saved, which would
   // withdraw it from the picker's options.
   db.prepare(
-    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'`
+    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result'`
   ).run(pid);
 }
 
@@ -950,7 +953,7 @@ export function seedWaistCircumference(): void {
   ).run(pid);
 
   const insWaist = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'waist_circumference_cm', ?, ?, ?, ?)`
   );
   for (let i = WAIST_SEEDED_READINGS; i >= 1; i--) {
@@ -991,7 +994,7 @@ export function seedPeakFlow(): void {
   ).run(pid);
 
   const insBlow = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'peak_flow_lmin', ?, ?, ?, ?)`
   );
   for (let ago = PEAK_FLOW_DAYS; ago >= 1; ago--) {

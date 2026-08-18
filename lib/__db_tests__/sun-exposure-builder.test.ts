@@ -29,7 +29,7 @@ function seedLowVitaminD(profileId: number, date: string, value: number) {
   db.prepare(
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, value_num, unit, canonical_name)
-     VALUES (?, ?, 'biomarker', 'Vitamin D, 25-Hydroxy', ?, ?, 'ng/mL', 'Vitamin D, 25-Hydroxy')`
+     VALUES (?, ?, 'lab', 'Vitamin D, 25-Hydroxy', ?, ?, 'ng/mL', 'Vitamin D, 25-Hydroxy')`
   ).run(profileId, date, String(value), value);
 }
 

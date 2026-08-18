@@ -96,7 +96,7 @@ function indexes(): Indexes {
   for (const matcher of PREVENTIVE_CONCEPT_MAP) {
     for (const code of matcher.codes)
       push(byCode, normalizeCode(code), matcher);
-    for (const cn of matcher.canonicalBiomarkers) {
+    for (const cn of matcher.canonicalResultNames) {
       push(byCanonical, cn.trim().toLowerCase(), matcher);
     }
     // Each needle is already space-wrapped (` phrase `), so a substring test

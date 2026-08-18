@@ -43,7 +43,7 @@ const OUT = path.join(
 export type MobilityMoveKind = "hold" | "reps";
 
 export interface MobilityMove {
-  // Stable slug — an activity `components[].name` for a recovery session. NEVER changes
+  // Stable slug — an activity `components[].name` for a mobility session. NEVER changes
   // once shipped (renames are display only). Lowercase snake_case.
   slug: string;
   // Display name for the tap button / coverage label.

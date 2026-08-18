@@ -40,6 +40,7 @@ import { getWorkoutPresence } from "@/lib/queries/presence";
 import { applyIntent } from "@/lib/offline/writes";
 import { buildIntent } from "@/lib/offline/queue";
 import { STALE_MIN } from "@/lib/workout-presence";
+import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
 
 // The gap the freeze nudge produces for a run starting at 23:32Z (nudged to
 // midnight + 30). Deliberately larger than STALE_MIN so a stamp on the wrong clock
@@ -64,10 +65,12 @@ afterEach(() => {
 });
 
 function newProfile(name: string): number {
-  return Number(
+  const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setProfileBirthdate(id, "1990-01-01");
+  return id;
 }
 
 function stamps(activityId: number): {
@@ -139,7 +142,7 @@ describe("activities record instants come off the clock seam (#2287)", () => {
     expect(logMobilityMoveCore(p, "neck_cars", date).kind).toBe("logged");
     const row = db
       .prepare(
-        "SELECT id FROM activities WHERE profile_id = ? AND date = ? AND type = 'recovery'"
+        "SELECT id FROM activities WHERE profile_id = ? AND date = ? AND type = 'mobility'"
       )
       .get(p, date) as { id: number };
     expect(stamps(row.id).created_at).toBe(utcSqlString(clockNow()));

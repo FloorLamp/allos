@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import { expectNoClippedContent, settledFill } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // Issue #1613 — the activity form's sticky exercise header at phone width.
 //
@@ -59,12 +60,9 @@ async function cleanUpDraft(page: Page): Promise<void> {
 test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
   page,
 }) => {
-  await page.goto("/training");
-  // The phone shell labels the editor entry point "Log activity".
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Log activity" })
-    .click();
+  await page.goto("/training?tab=log");
+  const sheet = await openLogSheet(page);
+  await (await showLogRow(sheet, "log-activity")).click();
 
   const firstName = page.getByPlaceholder(/What did you do/);
   await pickActivity(page, firstName, "Barbell Bench Press");

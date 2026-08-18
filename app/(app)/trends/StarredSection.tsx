@@ -1,10 +1,9 @@
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getSavedItems } from "@/lib/queries/saved";
 import {
   buildMetricSeries,
   buildSavedTrendMetricSeries,
-  buildSavedBiomarkerTile,
+  buildSavedClinicalResultTile,
   listCompareOptions,
   type TrendSeries,
 } from "@/lib/trends-series";
@@ -45,15 +44,14 @@ import SavedTilesGrid, {
 // profile creation and, for the installed base, by migration 114 (#1487's data half,
 // lib/standard-metric-seeds.ts) — so day-one appearance is IDENTICAL and the change
 // is that the tiles are now REMOVABLE. One star answers "what's in my starred grid"
-// for every kind; SaveTrendPicker (metrics AND biomarkers) is the way back.
+// for every kind; SaveTrendPicker (metrics AND clinical results) is the way back.
 //
-// #1456 remains the store: ONE ★ behind ONE table (`saved_items`). A saved biomarker
+// #1456 remains the store: ONE ★ behind ONE table (`saved_items`). A saved clinical result
 // simultaneously earns the Results status card, a tile here, and passport inclusion.
 //
 // Two rules the grid must not break:
-//   • A saved ref with NO tile is SKIPPED, never rendered empty — the age gates are a
-//     render-time filter (buildMetricSeries drops training volume for a restricted
-//     profile, body fat below the growth-metrics age), and the seed set is the same
+//   • A saved ref with NO tile is SKIPPED, never rendered empty — body fat below the
+//     growth-metrics age is a render-time filter, and the seed set is the same
 //     for every profile. A gated metric is simply absent, exactly as before.
 //   • A saved item with a tile but NOTHING TO SHOW still renders, so its unstar
 //     control stays reachable at any window (#1456). #2153 reverses #1485 A's
@@ -61,7 +59,6 @@ import SavedTilesGrid, {
 //     geometry as their neighbours. Uniform cells are the accepted whitespace cost.
 export default async function StarredSection({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
-  const restricted = isTrainingRestricted(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   // The profile's today, for the age label on a sparse tile's out-of-window
   // reading (#1485 G) — profile timezone, never the server's local day.
@@ -74,14 +71,11 @@ export default async function StarredSection({ range }: { range: DateRange }) {
   }));
 
   // One tile per saved ref, in saved order. Metrics resolve against the age-gated
-  // series set (a gated metric yields no tile and is skipped); a saved biomarker
-  // always resolves — buildSavedBiomarkerTile answers with a windowed series, the
+  // series set (a gated metric yields no tile and is skipped); a saved clinical result
+  // always resolves — buildSavedClinicalResultTile answers with a windowed series, the
   // #1485 G sparse fallback (latest reading + age), or an empty placeholder.
   const metricByKey = new Map(
-    buildMetricSeries(profile.id, login.id, range, restricted).map((t) => [
-      t.key,
-      t,
-    ])
+    buildMetricSeries(profile.id, login.id, range).map((t) => [t.key, t])
   );
   const tiles: TrendSeries[] = [];
   for (const ref of savedRefs) {
@@ -97,16 +91,17 @@ export default async function StarredSection({ range }: { range: DateRange }) {
         );
       if (tile) tiles.push(tile);
     } else {
-      tiles.push(buildSavedBiomarkerTile(profile.id, ref.key, range, todayStr));
+      tiles.push(
+        buildSavedClinicalResultTile(profile.id, ref.key, range, todayStr)
+      );
     }
   }
 
   // What the picker can still add: everything savable that isn't saved yet — metrics
   // included, since unstarring one now removes its tile and the picker is the way
   // back (see components/SaveTrendPicker.tsx). listCompareOptions applies the same
-  // age gates as the tile builder, so a restricted profile is never offered training
-  // volume.
-  const options = listCompareOptions(profile.id, restricted);
+  // metric membership rules as the tile builder.
+  const options = listCompareOptions(profile.id);
   const unsaved = (o: { key: string }) => !isSeriesKeySaved(savedRefs, o.key);
   const unsavedMetrics = options.metrics.filter(unsaved);
   const unsavedBiomarkers = options.biomarkers.filter(unsaved);
@@ -137,7 +132,7 @@ export default async function StarredSection({ range }: { range: DateRange }) {
       // line through them draws a slope over training that never happened.
       sparklineShape={sparklineShapeForSeriesKey(t.key)}
       // …and so does the GAP (#2258): the same registry declares whether this
-      // series' missing days are holes, real zeros, or (for `bio:`) not to be
+      // series' missing days are holes, real zeros, or (for `result:`) not to be
       // densified at all. Passing the KEY, never a policy, is what keeps the tile
       // and the detail chart from disagreeing.
       gapFill={{ seriesKey: t.key, ...dayFillWindow(range) }}

@@ -31,7 +31,7 @@ function seedNight(profileId: number, wakeDay: string, source = "oura"): void {
   const zone = getTimezone(profileId);
   db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, ?, 'sleep_min', ?, ?, ?, 430)`
   ).run(
     profileId,

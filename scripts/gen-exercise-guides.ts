@@ -11,7 +11,7 @@
 // Content SOURCE. The setup/execution/mistakes/etc. text is authored, not
 // re-derived at runtime — it comes from the committed curated content module
 // `scripts/exercise-guide-content.ts` (GUIDE_CONTENT), exactly the way the
-// biomarker generator seeds from lib/curated-biomarkers.ts's CURATED_LABS. When a
+// biomarker generator seeds from lib/curated-result-definitions.ts's CURATED_LABS. When a
 // catalog key is MISSING from GUIDE_CONTENT and an ANTHROPIC_API_KEY is present,
 // the model drafts a first pass for that key (AI is a build-time convenience, NEVER
 // a runtime dependency — the committed JSON works fully offline). With every key

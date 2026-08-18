@@ -112,6 +112,20 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // The `demote`-on-a-dose-reminder shape one domain over: a ride-along inherits the
   // family of the message it decorates rather than earning one of its own.
   { prefix: "rslower", family: "practice" },
+  // ⤓ The practice-time correction chips + picker (#2875) — the third domain on the
+  // #2019/#2020 substrate, and the same ride-along shape `rslower` and `demote` have:
+  // a decoration inherits the family of the message it rides rather than earning one.
+  // They die on their OWN clock (a burst older than an hour), which the family's `dead`
+  // set is what expresses.
+  //
+  // SCOPED TO THE PACE NUDGE, deliberately. `owningFamily` takes a message's family
+  // from the FIRST token that claims state, and `/practice`'s own `plog` is declared
+  // inert — so attaching these to that list would make an inert listing resolve as
+  // family `practice` and inherit the nudge's close-once-the-shortfall-is-gone
+  // reconciliation, which the `practice-list` entry below explicitly argues against.
+  // Giving the list its chips needs a family of their own; see #2875's open question.
+  { prefix: "practime", family: "practice" },
+  { prefix: "practimeat", family: "practice" },
 
   // ── Class 2: additive quick-log buttons ────────────────────────────────────
   // The buttons don't lie — logging another serving stays valid all day — but the
@@ -357,7 +371,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
   {
     kind: "wear-reminder",
     reissuable: false,
-    why: "It sends at most once a night by construction (one Bedtime slot, one per-day marker), so there is never a previous copy in the chat to supersede. It also carries no keyboard — its whole content is words — so it records no pointer and would have nothing to rotate even if a second send existed.",
+    why: 'It sends at most once a night by construction (one Bedtime slot, one per-day marker), so there is never a previous copy in the chat to supersede. Its second clause used to be "it carries no keyboard, so it records no pointer and would have nothing to rotate" — which stopped being true the moment it declared a prose reconciler (#3027): the send chokepoint records a pointer for a keyboardless message exactly when its kind declares one (`telegram.ts`\'s `keyboard.length === 0 && !prose` branch, the #1913 item 4 rule). It now DOES record a pointer, and re-issue is still refused on the first clause alone, which was always the load-bearing one.',
   },
   {
     kind: "temp",
@@ -497,7 +511,7 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
 // too: the next report-shaped message (a weekly recap) has to say whether its prose
 // reconciles rather than inheriting silence.
 
-export type ProseReconciler = "digest";
+export type ProseReconciler = "digest" | "wear-reminder";
 
 export interface KindProseEntry {
   kind: NotificationKind;
@@ -602,8 +616,8 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
   },
   {
     kind: "wear-reminder",
-    prose: null,
-    why: "A question about the data (\"your watch hasn't recorded since 21:05 — still on the charger?\"), not a claim an in-app write can resolve. Putting the watch back on is not an app action at all, and the stream healing is already answered by the next night's silence: the reminder is evaluated fresh at each Bedtime slot and simply does not send.",
+    prose: "wear-reminder",
+    why: "Its claims ARE its sentences, and the next ingest push can falsify them (#3027). It reads as a question, but it asserts two things: that the watch is off the wrist, and that tonight's sleep is not being recorded — and on 2026-08-15 both were false when sent and provably false five minutes later, when the push carrying 42 minutes of already-recorded wrist time landed. The earlier ruling here failed on both halves: \"no in-app write can resolve it\" is true and beside the point, because the resolving event is DATA ARRIVING, which is precisely what this sweep watches; and \"the next night's silence\" is not the healing, because the message goes on asserting tonight's night in the chat for another 24 hours. Reconciled by `rebuildWearReminder` (lib/notifications/wear-reminder.ts), whose whole decision is two comparisons over the same two reads — the frontier now must be past the instant the message named AND within the stream's declared `frontierFloorMin` of the present, because the falsifying data arrives with timestamps EARLIER than now, and a frontier merely later than the claim is not a wrist that is on. An unfalsified message costs those two reads and no Telegram call, and the corrected sentence names only the claimed instant, so the correction happens once rather than on every remaining tick. At the day boundary the pointer is DROPPED, not closed (#2071): the reminder is about one night, and that night's message is honest as history.",
   },
   {
     kind: "prn-list",

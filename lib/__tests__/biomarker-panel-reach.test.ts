@@ -11,7 +11,7 @@ import {
   PANEL_IDS,
   type PanelId,
 } from "../biomarker-panels";
-import { CANONICAL_BIOMARKERS } from "../datasets/canonical-biomarkers";
+import { CANONICAL_RESULT_DEFINITIONS } from "../datasets/canonical-result-definitions";
 import { DERIVED_NAMES } from "../derived-biomarkers";
 import { RESULTS_CATALOG_CATEGORIES } from "../medical-categories";
 import { hasTrendMetricHome } from "../trend-metric-analytes";
@@ -46,7 +46,7 @@ describe("reachablePanelIds (#1581 section D)", () => {
     //                    respiratory rate, resting heart rate, body temperature) are
     //                    body metrics with a `/trends/metric/<slug>` chart, so the
     //                    browser lists none of them and the facet option can only
-    //                    return "No readings match these filters".
+    //                    return "No clinical results match these filters".
     expect(unreachablePanelIds()).toEqual([
       "blood-type",
       "vital-signs",
@@ -96,7 +96,7 @@ describe("reachablePanelIds (#1581 section D)", () => {
       RESULTS_CATALOG_CATEGORIES as readonly string[]
     );
     const expected = new Set<PanelId>([OTHER_PANEL]);
-    for (const e of CANONICAL_BIOMARKERS) {
+    for (const e of CANONICAL_RESULT_DEFINITIONS) {
       if (!listed.has(e.category)) continue;
       if (e.category === "vitals" && hasTrendMetricHome(e.name)) continue;
       expected.add(panelForCanonicalName(e.name));

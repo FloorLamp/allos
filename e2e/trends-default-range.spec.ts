@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { settledClick, settledPickOption, followLink } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledPickOption,
+} from "./helpers";
 import type { Locator } from "@playwright/test";
 
 // #1485 G — Trends opens on 90D, and a sparse series shows its latest reading.
@@ -43,7 +48,7 @@ const rangePill = (page: Page, label: string) =>
 // A tile's unstar control (#1485 B): open its corner ⋯ menu, then take the item out
 // of the portaled panel. Returns the locator for settledClick to drive.
 async function unstarItem(page: Page, tile: Locator): Promise<Locator> {
-  await tile.getByTestId("overflow-menu-trigger").click();
+  await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu.getByTestId("star-toggle");
@@ -107,7 +112,7 @@ test("an explicit window in the URL always wins over the default", async ({
   await expect(page).toHaveURL(/from=2026-01-01&to=2026-02-01/);
 });
 
-test("a sparse saved biomarker shows its latest reading and age, not 'No data'", async ({
+test("a sparse saved clinical result shows its latest reading and age, not 'No data'", async ({
   page,
 }) => {
   await page.goto("/trends");
@@ -184,7 +189,7 @@ test("a qualitative reading falls back too, though nothing can plot it", async (
   await expect(fallback).toContainText(/\d+(y|mo|w|d) ago/);
 });
 
-test("a never-measured saved biomarker keeps the plain empty tile", async ({
+test("a never-measured saved clinical result keeps the plain empty tile", async ({
   page,
 }) => {
   // The fallback needs history to fall back TO. The seed stars two analytes that

@@ -67,7 +67,7 @@ export const RESULTS_TAB_FIRST_PAGE = {
   testId: "results-tabs",
   desktopStripClassName: "mb-6",
   tabs: [
-    { href: "/results/readings", label: "Readings" },
+    { href: "/results/clinical-results", label: "Clinical results" },
     { href: "/results/imaging", label: "Imaging" },
     { href: "/results/reports", label: "Reports" },
     { href: "/results/genomics", label: "Genomics" },

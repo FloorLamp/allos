@@ -30,19 +30,20 @@ enable an authenticated ingest endpoint here and point the exporter at it.
 
 **What gets imported** (mapped from the app's native payload):
 
-| Health Connect data                                                 | Where it lands                                                                                                                                                                                   |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Weight                                                              | **Trends → Overview → body census** (one imported weigh-in per day)                                                                                                                              |
-| Body fat, resting HR                                                | **Trends → Overview → body census** charts (kept lossless even on days without a weigh-in)                                                                                                       |
-| Steps, distance, calories                                           | **Trends → Overview → body census** charts (daily totals)                                                                                                                                        |
-| Sleep                                                               | **Trends → Overview → body census** charts: total per night + a stacked deep/REM/light/awake stage breakdown (attributed to the wake-up day), plus a **Sleep Regularity Index** card (see below) |
-| Heart rate (continuous)                                             | Bucketed to 1-minute averages → daily + intraday HR charts                                                                                                                                       |
-| Heart rate variability                                              | Stored per day                                                                                                                                                                                   |
-| Exercise sessions                                                   | **Training history** (cardio, sport, or — when Health Connect sends "a workout, unspecified" — an **unspecified** session it asks you to name)                                                   |
-| Blood pressure, glucose, SpO₂, body temp, respiratory rate, VO₂ max | **Medical → Results → Biomarkers** (with reference-range flags)                                                                                                                                  |
-| Lean mass, bone mass, BMR, height                                   | **Trends → Overview → body census** charts (height also drives a BMI chart)                                                                                                                      |
-| Hydration                                                           | **Trends → Overview → body census** chart (liters/day)                                                                                                                                           |
-| Nutrition                                                           | Calories under **Trends → Overview → body census**; macros and fiber under **Trends → Nutrition**                                                                                                |
+| Health Connect data                               | Where it lands                                                                                                                                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Weight                                            | **Trends → Overview → body census** (one imported weigh-in per day)                                                                                                                              |
+| Body fat, resting HR                              | **Trends → Overview → body census** charts (kept lossless even on days without a weigh-in)                                                                                                       |
+| Steps, distance, calories                         | **Trends → Overview → body census** charts (daily totals)                                                                                                                                        |
+| Sleep                                             | **Trends → Overview → body census** charts: total per night + a stacked deep/REM/light/awake stage breakdown (attributed to the wake-up day), plus a **Sleep Regularity Index** card (see below) |
+| Heart rate (continuous)                           | Bucketed to 1-minute averages → daily + intraday HR charts                                                                                                                                       |
+| Heart rate variability                            | Stored per day                                                                                                                                                                                   |
+| Exercise sessions                                 | **Training history** (cardio, sport, or — when Health Connect sends "a workout, unspecified" — an **unspecified** session it asks you to name)                                                   |
+| Blood pressure, SpO₂, body temp, respiratory rate | **Trends** metric pages and Vitals summaries                                                                                                                                                     |
+| Glucose, VO₂ max                                  | **Medical → Results → Clinical results** (with reference-range flags)                                                                                                                            |
+| Lean mass, bone mass, BMR, height                 | **Trends → Overview → body census** charts (height also drives a BMI chart)                                                                                                                      |
+| Hydration                                         | **Trends → Overview → body census** chart (liters/day)                                                                                                                                           |
+| Nutrition                                         | Calories under **Trends → Overview → body census**; macros and fiber under **Trends → Nutrition**                                                                                                |
 
 Ingest is **idempotent**: the rolling 48-hour window means records are resent,
 so imports dedup on natural keys (time windows) and never double-count. Manually
@@ -214,8 +215,8 @@ app. The app pulls your measurements from Withings' REST API on the hourly tick
 | Heart pulse (scale / BP cuff)         | **Trends → Overview → body census** resting heart rate                                               |
 | Lean & bone mass                      | **Trends → Overview → body census** composition charts (`metric_samples`, one reading per weigh-in)  |
 | Muscle mass, total body water         | `metric_samples` (`muscle_mass_kg` / `body_water_kg`) — captured per weigh-in                        |
-| VO₂ max                               | **Medical → Results → Biomarkers** (`medical_records`)                                               |
-| Blood pressure (systolic + diastolic) | **Medical → Results → Biomarkers**, alongside manually entered blood pressure                        |
+| VO₂ max                               | **Medical → Results → Clinical results** (`medical_records`)                                         |
+| Blood pressure (systolic + diastolic) | **Trends** blood-pressure metric pages, alongside manually entered blood pressure                    |
 | SpO₂, body temperature                | **Vitals** (temperature converted °C → °F canonical)                                                 |
 | Sleep (deep / REM / light / awake)    | **Trends → Overview → body census** — total per night + stage breakdown (attributed to the wake day) |
 

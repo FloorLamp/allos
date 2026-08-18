@@ -28,43 +28,54 @@ export interface FrequencyTargetItem extends WeeklyTarget {
 }
 
 function optionsFor(
-  kind: FrequencyScopeKind
+  kind: FrequencyScopeKind,
+  strengthTrainingAvailable = true
 ): { value: string; label: string }[] {
   // Mobility-region (#840) reuses the MuscleRegion vocabulary — a separate weekly view
-  // counted from recovery sessions, kept apart from strength `region` (#482).
+  // counted from mobility sessions, kept apart from strength `region` (#482).
   if (kind === "region" || kind === "mobility_region")
     return REGION_SCOPES.map((v) => ({ value: v, label: v }));
   if (kind === "group")
     return GROUP_SCOPES.map((v) => ({ value: v, label: GROUP_LABELS[v] ?? v }));
-  return TYPE_SCOPES.map((v) => ({
+  return TYPE_SCOPES.filter(
+    (v) => strengthTrainingAvailable || v !== "strength"
+  ).map((v) => ({
     value: v,
     label: v[0].toUpperCase() + v.slice(1),
   }));
 }
 
 const DEFAULT_KIND: FrequencyScopeKind = "region";
-const defaultValue = (kind: FrequencyScopeKind) => optionsFor(kind)[0].value;
+const defaultValue = (kind: FrequencyScopeKind, strength = true) =>
+  optionsFor(kind, strength)[0].value;
 
 // Chips + editor for weekly frequency targets. Clicking a chip loads it into the
 // form for editing (and reveals a Delete button); there's one target per scope,
 // so saving an existing scope updates its cadence rather than adding a duplicate.
 export default function FrequencyTargets({
   items,
+  strengthTrainingAvailable = true,
 }: {
   items: FrequencyTargetItem[];
+  strengthTrainingAvailable?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [kind, setKind] = useState<FrequencyScopeKind>(DEFAULT_KIND);
-  const [value, setValue] = useState(defaultValue(DEFAULT_KIND));
+  const initialKind: FrequencyScopeKind = strengthTrainingAvailable
+    ? DEFAULT_KIND
+    : "type";
+  const [kind, setKind] = useState<FrequencyScopeKind>(initialKind);
+  const [value, setValue] = useState(
+    defaultValue(initialKind, strengthTrainingAvailable)
+  );
   const [perWeek, setPerWeek] = useState("2");
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setSelectedId(null);
-    setKind(DEFAULT_KIND);
-    setValue(defaultValue(DEFAULT_KIND));
+    setKind(initialKind);
+    setValue(defaultValue(initialKind, strengthTrainingAvailable));
     setPerWeek("2");
   }
 
@@ -80,7 +91,7 @@ export default function FrequencyTargets({
 
   function changeKind(k: FrequencyScopeKind) {
     setKind(k);
-    setValue(defaultValue(k));
+    setValue(defaultValue(k, strengthTrainingAvailable));
   }
 
   async function save(fd: FormData) {
@@ -144,8 +155,12 @@ export default function FrequencyTargets({
             onChange={(e) => changeKind(e.target.value as FrequencyScopeKind)}
             className="input"
           >
-            <option value="region">Muscle region</option>
-            <option value="group">Body group</option>
+            {strengthTrainingAvailable && (
+              <option value="region">Muscle region</option>
+            )}
+            {strengthTrainingAvailable && (
+              <option value="group">Body group</option>
+            )}
             <option value="type">Activity type</option>
             <option value="mobility_region">Mobility region</option>
           </select>
@@ -158,7 +173,7 @@ export default function FrequencyTargets({
             onChange={(e) => setValue(e.target.value)}
             className="input"
           >
-            {optionsFor(kind).map((v) => (
+            {optionsFor(kind, strengthTrainingAvailable).map((v) => (
               <option key={v.value} value={v.value}>
                 {v.label}
               </option>

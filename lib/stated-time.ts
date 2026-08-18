@@ -11,7 +11,7 @@
 // holds by construction) or verifies it and refuses.
 //
 // `statedAt` is never a record stamp and never a coalesced fallback. A caller that
-// holds `recorded_at ?? taken_at` does not hold a statement — it holds a filing
+// holds only `recorded_at` does not hold a statement — it holds a filing
 // timestamp wearing one's clothes (#2228's laundering defect) — so the type is
 // `string | null` and null RENDERS EMPTY rather than being filled in. Nothing here
 // defaults to now: an absent statement stays absent (#2053's rule).

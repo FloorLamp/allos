@@ -16,6 +16,7 @@ import {
   deleteProfileSetting,
   getSituations,
   getTimezone,
+  getProfileAge,
   setSituationIllnessType,
 } from "@/lib/settings";
 import { generateAndStoreSuggestions } from "@/lib/supplement-suggest";
@@ -66,12 +67,14 @@ import {
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   CONDITIONS,
+  WORKOUT_CONDITIONS,
   OBLIGATIONS,
   FOOD_TIMINGS,
   parseDosage,
   spreadDoseTimes,
   collapseOnDemandDoses,
 } from "@/lib/intake-schedule";
+import { isTrainingRelevant } from "@/lib/life-stage";
 import {
   CADENCE_KINDS,
   doseScheduleDiffers,
@@ -402,10 +405,10 @@ const insertDoseStmt = () =>
 // core (#2131, lib/queries/intake/dose-lifecycle.ts) so the dose-edit path and the
 // retire/un-retire transitions share ONE version writer; imported above.
 
-// Insert a fresh set of doses for a supplement (used on add + accept). Must run
+// Insert a fresh set of doses for an intake item (used on add + accept). Must run
 // inside a transaction.
 function insertDoses(
-  suppId: number,
+  itemId: number,
   doses: {
     amount: string | null;
     time_of_day: string | null;
@@ -424,7 +427,7 @@ function insertDoses(
   const ins = insertDoseStmt();
   doses.forEach((d, i) => {
     const info = ins.run(
-      suppId,
+      itemId,
       d.amount,
       d.time_of_day,
       d.food_timing,
@@ -467,28 +470,28 @@ function parsePairs(formData: FormData): PairInput[] {
     .filter((p) => p.otherId > 0);
 }
 
-// Replace all pairs involving `suppId` with the submitted set. Pairs carry no
+// Replace all pairs involving `itemId` with the submitted set. Pairs carry no
 // child data, so delete-and-reinsert is simpler than diffing and is correct from
-// either supplement's edit form. Must run inside a transaction.
-function reconcilePairs(suppId: number, pairs: PairInput[], profileId: number) {
+// either item's edit form. Must run inside a transaction.
+function reconcilePairs(itemId: number, pairs: PairInput[], profileId: number) {
   db.prepare("DELETE FROM intake_item_pairs WHERE a_id = ? OR b_id = ?").run(
-    suppId,
-    suppId
+    itemId,
+    itemId
   );
   const ins = db.prepare(
     `INSERT OR IGNORE INTO intake_item_pairs (a_id, b_id, relation, note) VALUES (?,?,?,?)`
   );
-  // Only pair with supplements this profile owns — the other id comes from the
+  // Only pair with intake items this profile owns — the other id comes from the
   // form and must not be trusted to reference the caller's own data.
   const owned = db.prepare(
     "SELECT 1 FROM intake_items WHERE id = ? AND profile_id = ?"
   );
   for (const p of pairs) {
-    if (p.otherId === suppId) continue;
+    if (p.otherId === itemId) continue;
     if (!owned.get(p.otherId, profileId)) continue;
     // Normalize order so the pair is direction-independent (UNIQUE dedups; the
     // CHECK (a_id < b_id) requires it) — the one shared orderIntakePair helper.
-    const [a, b] = orderIntakePair(suppId, p.otherId);
+    const [a, b] = orderIntakePair(itemId, p.otherId);
     ins.run(a, b, p.relation, p.note);
   }
 }
@@ -498,6 +501,15 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const f = fields(formData);
+  if (
+    f.kind === "supplement" &&
+    WORKOUT_CONDITIONS.includes(f.condition) &&
+    !isTrainingRelevant(getProfileAge(profile.id))
+  ) {
+    return formError(
+      "Workout-based supplement schedules aren't available for this profile's age."
+    );
+  }
   // Created FROM a shared bottle (#1705): the item form's picker posts the bottle it was
   // seeded from, so "there's a shared bottle of D3 5000 IU; add it for my daughter" is
   // ONE step instead of create-then-find-the-link-control. Validated against the SAME
@@ -622,16 +634,16 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
         f.cadenceAnchorDate,
         supplyId
       );
-    const suppId = Number(info.lastInsertRowid);
-    insertDoses(suppId, doses, todayStr);
-    reconcilePairs(suppId, pairs, profile.id);
+    const itemId = Number(info.lastInsertRowid);
+    insertDoses(itemId, doses, todayStr);
+    reconcilePairs(itemId, pairs, profile.id);
     // Ensure-course-on-create: a new medication opens an initial course
     // on the chosen date (today for quick-add). A no-op for supplements (kind
     // guard inside the helper).
     if (f.kind === "medication") {
       ensureMedicationCourse(
         profile.id,
-        suppId,
+        itemId,
         hasStartedOn ? startedOnRaw || null : f.isOnDemand ? null : todayStr,
         f.isOnDemand && (!hasStartedOn || !startedOnRaw)
       );
@@ -723,16 +735,26 @@ export async function updateIntakeItem(
     // quantity tracking off can clear the low-supply episode marker (issue #325).
     const owned = db
       .prepare(
-        "SELECT active, quantity_on_hand, created_at FROM intake_items WHERE id = ? AND profile_id = ?"
+        "SELECT active, quantity_on_hand, created_at, kind, condition FROM intake_items WHERE id = ? AND profile_id = ?"
       )
       .get(id, profile.id) as
       | {
           active: number;
           quantity_on_hand: number | null;
           created_at: string | null;
+          kind: IntakeItemKind;
+          condition: IntakeCondition;
         }
       | undefined;
     if (!owned) return false;
+    if (
+      f.kind === "supplement" &&
+      WORKOUT_CONDITIONS.includes(f.condition) &&
+      !isTrainingRelevant(getProfileAge(profile.id)) &&
+      (owned.kind !== "supplement" || owned.condition !== f.condition)
+    ) {
+      return "workout-schedule-unavailable" as const;
+    }
     // A medication can have several historical courses. The edit form submits the
     // specific current/latest course it displayed, and this scoped lookup prevents a
     // forged id from changing another medication or profile. Validate before any row
@@ -1013,6 +1035,11 @@ export async function updateIntakeItem(
   }
   if (result === "start-after-stop") {
     return formError("The start date must be on or before the stop date.");
+  }
+  if (result === "workout-schedule-unavailable") {
+    return formError(
+      "Workout-based supplement schedules aren't available for this profile's age."
+    );
   }
   if (!result) return formError("Couldn't find that supplement.");
   revalidateIntake();
@@ -1512,7 +1539,7 @@ export async function acceptSuggestion(
   // across a slow response, two devices) produce exactly one medication and one honest
   // refusal — the old guard was a plain read before the transaction, and both racers
   // passed it.
-  const accepted = writeTx((tx): boolean => {
+  const accepted = writeTx((tx): boolean | "workout-schedule-unavailable" => {
     const s = readForUpdate<{
       status: string;
       name: string;
@@ -1534,6 +1561,12 @@ export async function acceptSuggestion(
       profile.id
     );
     if (!s || s.status !== "pending") return false;
+    if (
+      WORKOUT_CONDITIONS.includes(s.condition as IntakeCondition) &&
+      !isTrainingRelevant(getProfileAge(profile.id))
+    ) {
+      return "workout-schedule-unavailable" as const;
+    }
     // Claim the suggestion FIRST: the expectation lives in the WHERE, and only the
     // accept whose UPDATE lands may mint the item.
     const claim = casUpdate(
@@ -1581,9 +1614,9 @@ export async function acceptSuggestion(
         profile.id,
         sqlNow()
       );
-    const suppId = Number(info.lastInsertRowid);
+    const itemId = Number(info.lastInsertRowid);
     insertDoses(
-      suppId,
+      itemId,
       times.map((t) => ({
         amount,
         time_of_day: t,
@@ -1593,6 +1626,11 @@ export async function acceptSuggestion(
     );
     return true;
   });
+  if (accepted === "workout-schedule-unavailable") {
+    return formError(
+      "Workout-based supplement schedules aren't available for this profile's age."
+    );
+  }
   if (!accepted) return formError("That suggestion is no longer available.");
   revalidateIntake();
   return formOk();
@@ -1655,13 +1693,13 @@ export async function dismissAdherencePattern(
   return formOk();
 }
 
-// Accept a priority DEMOTION SUGGESTION (issue #1505 part 2): re-tag a high/mandatory
-// supplement the user has effectively stopped taking as `low` — tracked, never pushed.
+// Accept an obligation DEMOTION SUGGESTION (issue #1505 part 2): move a `must`/`should`
+// supplement the user has effectively stopped taking to `may` — tracked, never pushed.
 //
-// THIS TAP IS THE PRIORITY WRITE. The detector only ever suggests; nothing in the
-// system demotes on its own (#559 — priority is the user's declaration). The write
+// THIS TAP IS THE OBLIGATION WRITE. The detector only ever suggests; nothing in the
+// system demotes on its own (#559 — obligation is the user's declaration). The write
 // core is auth-blind and returns a typed outcome, which is surfaced verbatim rather
-// than confirmed unconditionally: accepting a stale card for a paused or already-low
+// than confirmed unconditionally: accepting a stale card for a paused or already-`may`
 // item legitimately refuses, and the caller must say so (the inline-action rule).
 //
 // The suggestion's finding is also dismissed on success, so the accepted card leaves
@@ -1687,7 +1725,7 @@ export async function acceptDemotionSuggestion(
   return formOk();
 }
 
-// Dismiss a priority DEMOTION SUGGESTION without acting on it — the calm half of the
+// Dismiss an obligation DEMOTION SUGGESTION without acting on it — the calm half of the
 // coaching-tier contract. Hides it through the shared findings-bus suppression store,
 // guarded to the demotion namespace; profile-scoped via dismissFinding.
 export async function dismissDemotionSuggestion(

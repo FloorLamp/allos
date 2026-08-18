@@ -1,9 +1,7 @@
 import { db } from "../db";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
-import {
-  isTrainingRestricted,
-  restrictedActivityTypeClause,
-} from "../age-gate";
+import { getProfileAge } from "../settings";
+import { isLongevityRelevant, isTrainingRelevant } from "../life-stage";
 import { vaccineDisplayName } from "../immunization-catalog";
 import {
   matchTier,
@@ -25,9 +23,11 @@ import {
   PROCEDURE_REPRESENTATIVE_IDS,
   FAMILY_HISTORY_REPRESENTATIVE_IDS,
   ALLERGY_REPRESENTATIVE_IDS,
+  IMAGING_REPRESENTATIVE_IDS,
+  CARE_PLAN_REPRESENTATIVE_IDS,
 } from "./clinical";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   encounterHref,
   episodeHref,
   equipmentHref,
@@ -38,14 +38,13 @@ import {
   nutritionTabHref,
   protocolHref,
   providerHref,
-  timelineDayHref,
   MEDICATIONS_HREF,
   type AppRoute,
 } from "../hrefs";
 import {
   medicationHitActions,
   appointmentHitActions,
-  biomarkerHitActions,
+  clinicalResultHitActions,
 } from "../hit-actions";
 import { skinLesionDisplayLabel, skinLesionIdentityKey } from "../skin-lesion";
 import {
@@ -69,7 +68,7 @@ import type {
   ImagingStudy,
   SkinLesion,
 } from "../types";
-import { rideDetailHref } from "../ride-detail";
+import { trainingActivityPageHref } from "../hrefs";
 
 // Global (Cmd-K) search fan-out. One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -84,7 +83,7 @@ import { rideDetailHref } from "../ride-detail";
 // SQL LIMIT.
 //
 // HREF RULE (#1568): a hit's href is the most PRECISE destination its row data
-// supports — the per-record page (biomarker/document/encounter/medication/vaccine,
+// supports — the per-record page (clinical result/document/encounter/medication/vaccine,
 // and since #1595 provider/episode/protocol/equipment) or a day/tab-scoped hub link
 // (a non-ride activity's timeline day, the goals tab). A bare hub route is correct ONLY where
 // no precise target exists: the passport list surfaces
@@ -105,11 +104,11 @@ function isoDate(value: string | null): string | null {
   return isoDay(value);
 }
 
-function biomarkerHits(profileId: number, like: string): SearchHit[] {
-  // One row per distinct canonical biomarker. Only canonical-named records are
-  // returned because the detail page (/results/readings/view) resolves its series by
+function clinicalResultHits(profileId: number, like: string): SearchHit[] {
+  // One row per distinct canonical clinical result. Only canonical-named records are
+  // returned because the detail page (/results/clinical-results/view) resolves its series by
   // canonical_name alone — a raw, uncanonicalized name has no viewable
-  // destination (the biomarkers list renders those as non-clickable text), so
+  // destination (the Clinical results list renders those as non-clickable text), so
   // surfacing it here would be a dead link. A query still matches on the raw
   // `name`, but the hit is shown/linked under its canonical identity.
   // MAX(date) with bare value/unit uses SQLite's documented min/max bare-column
@@ -132,15 +131,15 @@ function biomarkerHits(profileId: number, like: string): SearchHit[] {
     unit: string | null;
   }[];
   return rows.map((r) => ({
-    domain: "biomarker",
-    key: `biomarker:${r.title.toLowerCase()}`,
+    domain: "clinical-result",
+    key: `clinical-result:${r.title.toLowerCase()}`,
     title: r.title,
     subtitle:
       [r.value, r.unit].filter(Boolean).join(" ").trim() || isoDate(r.date),
-    href: readingDetailHref(r.title),
+    href: clinicalResultDetailHref(r.title),
     date: isoDate(r.date),
     // "Add result" — navigate to the add form prefilled with this analyte (#662).
-    actions: biomarkerHitActions(r.title),
+    actions: clinicalResultHitActions(r.title),
   }));
 }
 
@@ -179,19 +178,13 @@ function documentHits(profileId: number, like: string): SearchHit[] {
   });
 }
 
-// For a restricted profile only the age-neutral duration activities (sport/cardio)
-// that /training's RestrictedActivityView shows are searchable; strength (and
-// goals, skipped entirely in searchAll) stay gated (#489/#618).
-function activityHits(
-  profileId: number,
-  like: string,
-  restricted: boolean
-): SearchHit[] {
+// Activity search is a profile-owned data surface; every type is age-neutral.
+function activityHits(profileId: number, like: string): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, title, type, date, components
          FROM activities
-        WHERE profile_id = ?${restrictedActivityTypeClause(restricted)}
+        WHERE profile_id = ?
           AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
         ORDER BY date DESC
         LIMIT ?`
@@ -208,17 +201,9 @@ function activityHits(
     key: `activity:${r.id}`,
     title: r.title,
     subtitle: `${r.type[0].toUpperCase()}${r.type.slice(1)} · ${r.date}`,
-    // A ride now has a guaranteed per-record detail. Other activities use their
-    // DAY on the timeline (#1568), not the /training hub. A hub
-    // href here was invisible as a bug: searching from /training — the natural
-    // place to look for a workout — made the selection a same-route push, so the
-    // palette closed and nothing moved, reading as a dead control.
-    //
-    // NOT the training log anchor (`#activity-<id>` in TrainingLogCard): HistorySection
-    // renders one newest window with "Load more" (#451), so an older activity's
-    // anchor isn't on the page you land on. timelineDayHref filters the feed BY
-    // the date, so it resolves for an activity of any age.
-    href: rideDetailHref(r) ?? timelineDayHref(r.date),
+    // Every session has one canonical record page (#2870/#3061), so search never
+    // needs a cycling branch or a date-filter fallback.
+    href: trainingActivityPageHref(r.id),
     date: r.date,
   }));
 }
@@ -251,7 +236,7 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     href: r.kind === "medication" ? medicationHref(r.id) : intakeHref(r.kind),
     date: null,
     // Contextual actions on a FOUND medication (#662): log a dose, and refill when
-    // it tracks supply. Supplements get none (issue-scoped to meds/appt/biomarker).
+    // it tracks supply. Supplements get none (issue-scoped to meds/appt/clinical result).
     ...(r.kind === "medication"
       ? {
           actions: medicationHitActions(r.id, r.quantity_on_hand != null),
@@ -567,12 +552,12 @@ function carePlanHits(profileId: number, like: string): SearchHit[] {
     .prepare(
       `SELECT id, description, category, status, planned_date
          FROM care_plan_items
-        WHERE profile_id = ?
+        WHERE profile_id = ? AND id IN (${CARE_PLAN_REPRESENTATIVE_IDS})
           AND (description LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
         ORDER BY COALESCE(planned_date, created_at) DESC
         LIMIT ?`
     )
-    .all(profileId, like, like, CANDIDATE_LIMIT) as {
+    .all(profileId, profileId, like, like, CANDIDATE_LIMIT) as {
     id: number;
     description: string;
     category: string | null;
@@ -700,7 +685,7 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
     .prepare(
       `SELECT id, modality, body_region, laterality, study_date, impression, indication
          FROM imaging_studies
-        WHERE profile_id = ?
+        WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
           AND (modality LIKE ? ESCAPE '\\'
                OR body_region LIKE ? ESCAPE '\\'
                OR impression LIKE ? ESCAPE '\\'
@@ -709,7 +694,16 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
         ORDER BY COALESCE(study_date, '') DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, like, like, like, like, like, CANDIDATE_LIMIT) as Pick<
+    .all(
+      profileId,
+      profileId,
+      like,
+      like,
+      like,
+      like,
+      like,
+      CANDIDATE_LIMIT
+    ) as Pick<
     ImagingStudy,
     | "id"
     | "modality"
@@ -1013,13 +1007,10 @@ const SETTINGS_SEARCH_KEYWORDS: Partial<Record<SettingsGroupId, string>> = {
 };
 
 // Static navigation destinations, so the palette doubles as a jump-to-page bar.
-// `restricted` entries are hidden for age-restricted profiles (see age-gate.ts /
-// Nav's RESTRICTED_HREFS).
 const PAGES: {
   title: string;
   href: AppRoute;
   keywords?: string;
-  restricted?: boolean;
 }[] = [
   { title: "Dashboard", href: "/", keywords: "home overview" },
   {
@@ -1040,13 +1031,8 @@ const PAGES: {
   {
     title: "Training history",
     href: "/training?tab=log",
-    restricted: true,
   },
   {
-    // Not restricted: #489 un-gated the Training page for restricted profiles (it
-    // renders RestrictedActivityView with sport/cardio logging), so its palette
-    // entry must stay reachable (#618). The adult "Training history" tab below
-    // stays restricted.
     title: "Training",
     href: "/training",
     keywords: "workouts strength cardio sport exercise lifts",
@@ -1062,7 +1048,7 @@ const PAGES: {
     keywords: "health passport summary medical overview conditions medications",
   },
   {
-    // The merged Results page (#1042 phase 5) — Biomarkers + Imaging + Genomics.
+    // The merged Results page (#1042 phase 5) — Clinical results + Imaging + Reports + Genomics.
     title: "Results",
     href: "/results",
     keywords: "labs bloodwork biomarkers imaging radiology genomics variants",
@@ -1113,7 +1099,6 @@ const PAGES: {
     title: "AI Insights",
     href: "/trends?tab=insights",
     keywords: "insights analysis coaching",
-    restricted: true,
   },
   {
     // The single "Data" umbrella (import + manage/export folded into one hub at
@@ -1153,22 +1138,26 @@ const PAGES: {
   },
 ];
 
-function pageHits(query: string, restricted: boolean): SearchHit[] {
+function pageHits(query: string, trainingRelevant = true): SearchHit[] {
   const q = query.trim().toLowerCase();
-  return PAGES.filter((p) => !(restricted && p.restricted))
-    .filter(
-      (p) =>
-        matchTier(p.title, query) > 0 ||
-        (p.keywords ? p.keywords.includes(q) : false)
-    )
-    .map((p) => ({
-      domain: "page" as const,
-      key: `page:${p.href}:${p.title}`,
-      title: p.title,
-      subtitle: null,
-      href: p.href,
-      date: null,
-    }));
+  return PAGES.filter((p) => {
+    const trainingPage =
+      p.href === "/training" ||
+      p.href.startsWith("/training?") ||
+      p.href === "/settings/training";
+    return (
+      (trainingRelevant || !trainingPage) &&
+      (matchTier(p.title, query) > 0 ||
+        (p.keywords ? p.keywords.includes(q) : false))
+    );
+  }).map((p) => ({
+    domain: "page" as const,
+    key: `page:${p.href}:${p.title}`,
+    title: p.title,
+    subtitle: null,
+    href: p.href,
+    date: null,
+  }));
 }
 
 // Fan out across every domain for the active profile and return ranked, grouped
@@ -1180,10 +1169,11 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
   const query = rawQuery.trim().slice(0, 100);
   if (query.length < 1) return [];
   const like = likePattern(query);
-  const restricted = isTrainingRestricted(profileId);
-
+  const age = getProfileAge(profileId);
+  const longevityRelevant = isLongevityRelevant(age);
+  const trainingRelevant = isTrainingRelevant(age);
   const hits: SearchHit[] = [
-    ...biomarkerHits(profileId, like),
+    ...clinicalResultHits(profileId, like),
     ...imagingHits(profileId, like),
     ...genomicHits(profileId, like),
     ...documentHits(profileId, like),
@@ -1198,21 +1188,16 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...dentalHits(profileId, like),
     ...skinHits(profileId, query),
     ...supplementHits(profileId, like),
-    ...protocolHits(profileId, like),
+    ...(longevityRelevant ? protocolHits(profileId, like) : []),
     ...practiceHits(profileId, query),
     ...equipmentHits(profileId, like),
     ...familyHistoryHits(profileId, like),
     ...carePlanHits(profileId, like),
     ...careGoalHits(profileId, like),
-    ...pageHits(query, restricted),
-    // Type-aware (#489/#618): a restricted profile keeps sport/cardio activities
-    // (the set /training still shows), so activityHits is always included but
-    // filters to those types when restricted. Goals stay fully gated.
-    ...activityHits(profileId, like, restricted),
+    ...pageHits(query, trainingRelevant),
+    ...activityHits(profileId, like),
+    ...(trainingRelevant ? goalHits(profileId, like) : []),
   ];
-  if (!restricted) {
-    hits.push(...goalHits(profileId, like));
-  }
 
   return rankAndGroup(hits, query, PER_DOMAIN_CAP);
 }

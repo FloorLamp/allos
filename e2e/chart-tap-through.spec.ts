@@ -1,7 +1,13 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expandTrendsContext } from "./trends-chrome";
-import { followLink, settledClick, hydratedClick } from "./helpers";
+import {
+  chartsSettled,
+  dismissToast,
+  followLink,
+  settledClick,
+  hydratedClick,
+} from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TRENDS_BODY,
@@ -104,6 +110,12 @@ test.describe("chart tap-through (#1488)", () => {
     await page.setViewportSize(DESKTOP);
     await page.goto("/trends/metric/hrv");
 
+    // /trends/metric/[kind] draws its chart through the same lazy wrapper the rest
+    // of the suite does, ABOVE this table — so the row ⋯ menus below are driven on a
+    // layout that is still growing until the chunk evaluates. Gate before the first
+    // round trip, not after (#2862).
+    await chartsSettled(page, page.getByTestId("metric-detail-chart"));
+
     const table = page.getByTestId("metric-readings-table");
     await expect(table).toBeVisible();
     // Two seeded HRV readings, addressed by their DISTINCT values rather than by
@@ -148,6 +160,9 @@ test.describe("chart tap-through (#1488)", () => {
     ).toHaveCount(1);
     // The chart above is server-rendered from the same rows, so it redrew with it.
     await expect(page.getByTestId("metric-detail-chart")).toBeVisible();
+    // MetricReadingsTable toasts the edit into the bottom-right stack, which is where
+    // this table's actions column and its portaled menu panel live (#2861).
+    await dismissToast(page, "Reading updated.");
 
     // ── Delete ────────────────────────────────────────────────────────────────
     await hydratedClick(
@@ -179,8 +194,10 @@ test.describe("chart tap-through (#1488)", () => {
 
     // The routing half of the same change: a resting heart rate is a CONTINUOUS
     // reading now, so the reading detail page sends it to the surface that charts it.
-    await page.goto("/results/readings/view?name=Resting+Heart+Rate");
+    await page.goto("/results/clinical-results/view?name=Resting+Heart+Rate");
     await expect(page).toHaveURL(/\/trends\/metric\/resting-hr$/);
+    // Same lazy chart above the same table, same gate (#2862).
+    await chartsSettled(page, page.getByTestId("metric-detail-chart"));
 
     const table = page.getByTestId("metric-readings-table");
     await expect(table).toBeVisible();

@@ -13,13 +13,17 @@ import {
 // reconnect CTA. Both run as isolated member sessions so neither depends on (nor
 // disturbs) profile 1's seeded "connected" Strava that the review-inbox spec needs.
 test.describe("Strava integration (#391)", () => {
-  test("a connected profile can backfill older ride details", async ({
+  test("a connected profile can backfill older session details", async ({
     page,
   }) => {
     await page.goto("/integrations/strava");
     const backfill = page.getByTestId("strava-backfill-details");
     await expect(backfill).toBeVisible();
-    await expect(backfill).toContainText("Backfill ride details");
+    // "session", not "ride": the backfill covers every Strava activity since
+    // #2870 step 4 widened the stream fetch past the cycling allowlist. The
+    // JOB ID stays `ride-details` — it is a persisted key in
+    // integration_backfill_jobs, so the testid below is unchanged.
+    await expect(backfill).toContainText("Backfill session details");
 
     const progress = page.getByTestId("backfill-job-ride-details");
     await expect(progress).toBeVisible();
@@ -27,7 +31,7 @@ test.describe("Strava integration (#391)", () => {
       "aria-valuenow",
       "40"
     );
-    await expect(progress).toContainText("4 rides of 10");
+    await expect(progress).toContainText("4 sessions of 10");
     await expect(progress).toContainText("Waiting for quota");
     await expect(progress).toContainText(/Next retry in .*ETA/);
 
@@ -35,7 +39,7 @@ test.describe("Strava integration (#391)", () => {
     const reviewSource = page.getByTestId("source-strava");
     await expect(
       reviewSource.getByTestId("backfill-job-ride-details")
-    ).toContainText("4 rides of 10");
+    ).toContainText("4 sessions of 10");
   });
 
   test("a profile with no Strava connection renders the credentials setup form", async ({
@@ -45,7 +49,8 @@ test.describe("Strava integration (#391)", () => {
     test.slow();
 
     // Riley (child) has no Strava connection → the disconnected state. Integration
-    // setup is not age-gated, so the page renders for this restricted profile.
+    // Integration setup remains available when the workout product is not, so
+    // the page still renders for this early-childhood profile.
     const member = await loginAs(browser, {
       username: E2E_LOGIN_CHILD,
       password: E2E_MEMBER_PASSWORD,

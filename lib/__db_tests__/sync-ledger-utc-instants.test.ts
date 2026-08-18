@@ -241,7 +241,7 @@ describe("migration 163 — the sync ledger's instants state their zone", () => 
 describe("the cross-domain join the wrong analyses came from (#2205)", () => {
   // The sleep ARRIVAL LAG: how long after a night ends its row actually lands. It
   // joins `integration_sync_rows.created_at` (the sync ledger) to
-  // `metric_samples.end_time` (the observation store) and subtracts them. One side was
+  // `metric_samples.ended_at` (the observation store) and subtracts them. One side was
   // bare, the other has always carried a `Z` — the exact shape of read the issue says
   // produced a confident wrong answer.
   function seedArrival(
@@ -255,7 +255,7 @@ describe("the cross-domain join the wrong analyses came from (#2205)", () => {
       db
         .prepare(
           `INSERT INTO metric_samples
-             (profile_id, source, metric, date, start_time, end_time, value)
+             (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, 'health-connect', 'sleep_min', ?, ?, ?, 480)`
         )
         .run(profileId, wakeDay, start, end).lastInsertRowid
@@ -264,7 +264,7 @@ describe("the cross-domain join the wrong analyses came from (#2205)", () => {
     const eventId = Number(
       db
         .prepare(
-          `INSERT INTO integration_sync_events (profile_id, provider, at, ok)
+          `INSERT INTO integration_sync_events (profile_id, source_id, at, ok)
            VALUES (?, 'health-connect', ?, 1)`
         )
         .run(profileId, arrived).lastInsertRowid
@@ -303,7 +303,7 @@ describe("the cross-domain join the wrong analyses came from (#2205)", () => {
         .lastInsertRowid
     );
     const insert = db.prepare(
-      `INSERT INTO integration_sync_events (profile_id, provider, at, ok)
+      `INSERT INTO integration_sync_events (profile_id, source_id, at, ok)
        VALUES (?, 'health-connect', ?, 1)`
     );
     insert.run(profileId, "2026-05-20T02:00:00Z"); // before the cursor

@@ -99,7 +99,7 @@ test("the week spine draws seven days, blocks by type, and a caption that matche
     // …and each of the three earlier days carries exactly its own one type.
     for (const [date, type] of [
       [cardioDay, "cardio"],
-      [mobilityDay, "recovery"],
+      [mobilityDay, "mobility"],
       [sportDay, "sport"],
     ] as const) {
       const cell = spine.locator(`[data-date="${date}"]`);
@@ -121,7 +121,7 @@ test("the week spine draws seven days, blocks by type, and a caption that matche
     );
 
     // The legend names only the types this week actually contains, in the declared
-    // ACTIVITY_TYPES order — and `recovery` is called mobility, the app's own word.
+    // ACTIVITY_TYPES order, including mobility in the app's own word.
     const legend = spine.getByTestId("week-spine-legend-item");
     await expect(legend).toHaveCount(4);
     await expect(legend).toHaveText([
@@ -173,6 +173,69 @@ test("an empty day states its emptiness rather than a miss", async ({
       );
     }
     await expect(empty.getByTestId("week-spine-block")).toHaveCount(0);
+  } finally {
+    await page.close();
+  }
+});
+
+test("the band's blocks are named — the week's sessions read on the card", async ({
+  browser,
+}) => {
+  // The other half of the same card (#2566): the spine says a session happened,
+  // this says what it was. Before it existed, Overview could tell you Tuesday had
+  // a cardio block and not that it was an 8 km run — that reading needed the Log.
+  //
+  // The fixture's week holds FIVE sessions across four days, plus two decoys the
+  // band already excludes. Literals throughout: the spec never asks the fold what
+  // it should have listed.
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_WEEK_SPINE,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/training?tab=overview");
+    const list = page.getByTestId("recent-sessions");
+    await expect(list).toBeVisible();
+    // Composed into the week card, not stacked beside it.
+    await expect(page.getByTestId("training-week")).toContainText(
+      "What you did"
+    );
+    await expect(list).toHaveAttribute("data-scope", "week");
+
+    // Four sessions, newest first — two from today (the later-logged one leads),
+    // then yesterday's run, then the mobility day.
+    const sessions = list.getByTestId("recent-session");
+    await expect(sessions).toHaveCount(4);
+    await expect(sessions.getByTestId("recent-session-link")).toHaveText([
+      /Evening accessories/,
+      /Squat day/,
+      /Easy run/,
+      /Hip mobility/,
+    ]);
+
+    // Each row carries the Log's own summary, not a second formatting of it.
+    await expect(sessions.nth(0).getByTestId("recent-session-meta")).toHaveText(
+      "40 min"
+    );
+    // Today reads "Today" here exactly as it does in the Log's day heading.
+    await expect(sessions.nth(0)).toContainText("Today");
+    await expect(sessions.nth(2)).toContainText("Yesterday");
+
+    // The fifth in-window session is CUT, and the cut is stated — the link is the
+    // handoff, not a silent truncation.
+    await expect(list.getByTestId("recent-sessions-log-link")).toHaveText(
+      "1 more in Log →"
+    );
+
+    // Neither decoy reaches the list: last week's session is outside the window,
+    // and tomorrow's planned run is a plan, not a thing that was done.
+    await expect(list).not.toContainText("Last week's session");
+    await expect(list).not.toContainText("Planned run");
+
+    // A session opens its own record.
+    await expect(
+      sessions.nth(1).getByTestId("recent-session-link")
+    ).toHaveAttribute("href", /^\/training\/activity\/\d+$/);
   } finally {
     await page.close();
   }

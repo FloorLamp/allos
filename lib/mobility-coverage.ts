@@ -2,7 +2,7 @@
 // muscle coverage, kept DELIBERATELY APART from strength's trained-coverage
 // (lib/muscle-coverage.ts). Merging the two would answer the wrong question with a false
 // all-clear (#482: trained ≠ mobilized), so this is its OWN view over its OWN input:
-// recovery-session MOVE slugs, resolved through the mobility-move catalog's MuscleId
+// mobility-session MOVE slugs, resolved through the mobility-move catalog's MuscleId
 // tags, never through the lift catalog or `exercise_sets`.
 //
 // It reuses the SHARED #735 rollup machinery — a move's `muscles: MuscleId[]` roll up to
@@ -18,7 +18,7 @@ import {
   type MuscleRegion,
 } from "./lifts";
 
-// One mobility session (a recovery activity row): its date and the move slugs tapped.
+// One mobility session: its date and the move slugs tapped.
 export interface MobilitySessionInput {
   date: string; // YYYY-MM-DD
   moves: string[]; // canonical move slugs

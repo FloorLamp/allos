@@ -48,7 +48,7 @@ export const STANDARD_TREND_METRIC_IDS: readonly string[] = [
 //
 //   • Giving the seeds POSITIONS would sort them ahead of every unpositioned row —
 //     i.e. ahead of the user's own plain ★ saves, and ahead of every star they make
-//     LATER. A newly starred biomarker would land behind the four standard metrics
+//     LATER. A newly saved clinical result would land behind the four standard metrics
 //     instead of at the front of the grid, which is not where it lands today.
 //   • Leaving them unpositioned with a normal `created_at` would make them the
 //     NEWEST saves, sorting them ahead of existing stars for the same reason.

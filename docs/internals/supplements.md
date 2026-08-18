@@ -117,16 +117,16 @@ answers from the typed `AdministrationOutcome`, never unconditionally). The
 Medications page surfaces a PRN med as a Today-panel administration row + the
 day's ledger on its detail page ("2 today · last 4:02pm") instead of a binary
 check-off pill; a SCHEDULED med keeps the tri-state `DoseStatusControl` (in the
-Today panel). Migration 041 backfills `recorded_at = taken_at` for every existing
-row, so scheduled adherence strips/percentages/escalation read bit-identically
-(pinned by the `administration-ledger` DB-tier regression fixture).
+Today panel). Migration #2876 gives the ledger the same vocabulary as food:
+`recorded_at` is the immutable tap/capture instant and `occurred_at` is the
+administration instant. Existing rows preserve both meanings through the rename.
 
 **A late Telegram confirm can be corrected in place (#2020).** A scheduled confirm
-stamps `recorded_at` = the tap moment, so a bedtime dose confirmed at 07:00 told the PRN
+stamps `recorded_at` = the tap moment and `occurred_at` = the administration moment, so a bedtime dose confirmed at 07:00 told the PRN
 redose window it was nine hours fresher than it was, and the chat had no way to say
 otherwise. The rebuilt reminder now carries burst-collapsed `dosetime` chips —
 `−1h · −2h · −3h` plus the 🕐 absolute-hour picker, the same model #2019 gave the food
-ledger, over the `recorded_at` this ledger has had since migration 041 (no schema). The
+ledger, over mutable `occurred_at`. The
 correction moves the administration INSTANT only: the row's `date` is schedule-owned
 (#614), so a bedtime dose corrected across midnight still counts for the day the
 reminder was asking about. It does not re-run the `ADMIN_DEDUP_WINDOW_SEC` proximity
@@ -660,8 +660,8 @@ is always available.
   paused-item — never dueness — so the optimistic ledger, the offline queue and the
   honest refusal wording all come along unchanged.
 - _User-initiated access — always reachable_: the Supplements page and quick-log in
-  app; on Telegram the **guaranteed** path is the daily digest's slot-labelled
-  "Log other (N for <slot>)" tail (its first inline button), which expands IN PLACE
+  app; on Telegram the **guaranteed** path is the daily digest's
+  "➕ Doses (N)" tail (its first inline button), which expands IN PLACE
   into one-tap log buttons for the may items whose hint covers **now** — evaluated
   at TAP time,
   never at message-build time, because a morning digest may be tapped at bedtime.
@@ -669,8 +669,37 @@ is always available.
   rollover; both are keyboard edits, which do not notify. `buildDigest` may return
   a **tail-only** message rather than null while may items exist, so an all-may
   regimen keeps its access path. A slot reminder that fires anyway carries the same
-  row as a ride-along. Web Push / Home Assistant get a `+N available` text tail,
+  control as a ride-along, labelled **"Log other (N)"** there — it already shows
+  "✅ All (N)" over the doses that are due, and two bare dose counts on one keyboard
+  would be two numbers that cannot be added up. Web Push / Home Assistant get a `+N available` text tail,
   since neither can expand a keyboard.
+
+**Button labels take a curated short name.** An inline keyboard button has a hard
+width budget the Telegram client enforces by cutting labels mid-word, so the
+one-tap surfaces label items through `lib/intake-short-name.ts` — a hand-curated
+map from intake item names to short display forms ("Vitamin D3 + K2" → "D3+K2",
+"Coenzyme Q10" → "CoQ10"), matched case-/whitespace-/separator-insensitively.
+Curated, never derived: an unknown name passes through WHOLE rather than being
+truncated on a guess (the #1817 lookup-not-strip posture). A MEDICATION is
+never shortened at all — `intakeItemShortLabel` gates on `kind` explicitly,
+because the map's supplement vocabulary contains names that are also drugs
+(ergocalciferol, magnesium citrate) and a shortened drug name is a misread
+risk; the medications-only `/dose` list applies no shortening for the same
+reason. Applied at the COMPACT CONTROL label boundary only (dose-reminder take
+buttons, post-workout finish, the digest offer tail, the `/dose` list,
+household-round confirms, and the in-app quick-log dose chip); body lines, toasts
+and in-app row content keep the full name — the full name is the record, the short
+name is a control label. When the map misses,
+`intakeItemShortLabel` falls back to a SUPPLEMENT's own `product` when it is
+genuinely shorter than the name — the "name carries the composition, product
+carries the product identity" convention (name "Astaxanthin/Lutein/Zeaxanthin",
+product "Eye Health+"); a medication's `product` is a formulation label already
+rendered beside the dose and never substitutes. Two rules for
+entries, pinned by `lib/__tests__/intake-short-name.test.ts`: a short form must
+be recognizable on its own (no bare "C" for Vitamin C), and two distinct
+substances must never collapse onto one short name (the K2 forms keep
+MK-4/MK-7), while aliases of one substance (Ubiquinone / Coenzyme Q10)
+deliberately share one.
 
 **Safety stays obligation-BLIND, pinned.** Missed-dose escalation reads the
 deliberately unfiltered gather (the send floor is applied at assembly, never at the
@@ -678,12 +707,11 @@ gather), and the interaction / PGx / UL warnings fire identically for a `may`
 member. Adherence fractions re-scope to must+should for free — a `may` item has no
 occurrences, so it cannot drag an honest number down.
 
-**Two vestigial columns.** The rebuilt table keeps unread `priority` and
-`as_needed` columns because `migrate()` replays every migration unconditionally and
-migrations 092/101 hold prepared statements naming them (SQLite validates at
-prepare time). A compatibility TRIGGER translates a legacy insert's intent onto
-`obligation`, and `lib/__tests__/obligation-collapse-guard.test.ts` fails the build
-if any non-migration source names either — so the collapse cannot quietly un-collapse.
+**One stored obligation.** Migration `20260814-remove-legacy-schema-shells` removed
+the retired `priority` / `as_needed` columns and their replay-only trigger after the
+test harness moved to the production ledger-gated startup path. Current storage has
+only `obligation`; historical migrations remain immutable and run only while their
+historical schema is current.
 
 **Adherence-based demotion SUGGESTIONS (#1505 part 2).** A `must`/`should`
 SUPPLEMENT taken on ≤25% of its scheduled days over 30 days (≥10 occurrences)
@@ -1163,8 +1191,11 @@ contested. So the curation standard is deliberately higher than the food map's,
 and it lives at the top of the generator:
 
 - an entry may only claim what is **uncontested at the level of the MARKER** —
-  that taking the substance repletes the quantity the biomarker measures. Not
-  that it improves an outcome.
+  that taking the substance moves the very quantity the biomarker measures, in
+  the direction the entry declares. For every repletion entry that is a LOW
+  reading answered by repleting it; the one add-on-high entry (`lipids`, #2754)
+  answers a HIGH LDL/ApoB with the soluble fiber whose LDL-lowering effect is
+  FDA-authorized-health-claim territory. Never that it improves an outcome.
 - every entry carries `evidence` (a one-line reason a reviewer can check) and
   `source` (a public citation). No one-liner, no entry.
 - **no entry states a dose**, anywhere in its text. The dataset test fails one

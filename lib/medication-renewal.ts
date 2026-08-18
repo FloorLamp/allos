@@ -27,6 +27,7 @@
 // provable open-course + different-strength case #1027 owns.
 
 import { medNameKey } from "./medication-record-match";
+import { strengthFromName } from "./prescription-parse";
 import type { DiffRow, ImportSnapshot } from "./import-diff";
 
 // Normalize a strength token for comparison: lowercased, whitespace removed
@@ -34,6 +35,48 @@ import type { DiffRow, ImportSnapshot } from "./import-diff";
 export function normalizeStrength(s: string | null | undefined): string | null {
   const n = (s ?? "").toLowerCase().replace(/\s+/g, "");
   return n || null;
+}
+
+// The CONCENTRATION denominator of a normalized strength is the part after a "/" that
+// FOLLOWS A UNIT ("2.5mg/3ml" → numerator "2.5mg"). A slash after a DIGIT is not a
+// denominator but a combination numerator ("5/325mg" is hydrocodone/APAP — one
+// strength stated in two parts), so that shape is left whole.
+const CONCENTRATION_RE = /^(.*?[a-z%])\/.+$/;
+
+function numeratorOf(normalized: string): string {
+  return normalized.match(CONCENTRATION_RE)?.[1] ?? normalized;
+}
+
+// Are two normalized strengths the same strength?
+//
+// Exact equality, plus one asymmetry the app has to carry. Strengths recorded BEFORE
+// the parser learned to keep a concentration's denominator are numerator-only, and
+// they get compared against freshly parsed strengths that now keep it. A stored
+// "2.5mg" and an incoming "2.5mg/3ml" are the same albuterol; treating them as
+// different made every concentration-dosed med fork a duplicate item at its next
+// refill — on every install that predates the change, which is every real one.
+//
+// A BACKFILL CANNOT FIX THIS, which is why the tolerance lives in the comparison
+// rather than in a migration: the denominator was never stored, so there is nothing
+// on disk to migrate. "2.5 mg" does not contain "3 mL" anywhere; the only copy is in
+// the source document, behind a reprocess the app cannot assume has happened.
+//
+// The tolerance is deliberately ONE-SIDED — it applies only when exactly one side is
+// numerator-only, i.e. when one of them is ambiguous history. When both state a
+// denominator they are compared in full, so "400mg/5ml" and "400mg/10ml" stay the
+// genuinely different concentrations they are, and #1027's carve-out still fires.
+export function sameStrength(a: string, b: string): boolean {
+  if (a === b) return true;
+  const aConc = CONCENTRATION_RE.test(a);
+  const bConc = CONCENTRATION_RE.test(b);
+  if (aConc === bConc) return false;
+  return numeratorOf(a) === numeratorOf(b);
+}
+
+// Is `candidate` one of the strengths already known, allowing for that history?
+function knownStrength(candidate: string, known: Iterable<string>): boolean {
+  for (const k of known) if (sameStrength(candidate, k)) return true;
+  return false;
 }
 
 export interface ReprescriptionState {
@@ -48,6 +91,84 @@ export interface ReprescriptionState {
 
 export type ReprescriptionRelationship = "renewal" | "separate";
 
+// A value that is ALREADY a bare strength token, so running the extractor over it
+// would only damage it: "2.5 MG/3ML" is a complete concentration whose denominator
+// the bare (non-parenthesized) extraction truncates to "2.5 MG".
+const BARE_STRENGTH_RE =
+  /^\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|g|ml|iu|units?|meq|%)(?:\s*\/\s*\d*(?:\.\d+)?\s*(?:mg|mcg|µg|ug|g|ml|iu|units?|meq|%))?$/i;
+
+// The comparable strength for the NEW side of a re-prescription (#2919 leg 2).
+//
+// The comparison in classifyReprescription is only sound when both sides are in the
+// SAME form. The existing side always is: getMedMatchStates runs strengthFromName
+// over the med's name and its dose amounts. The new side used its parsed
+// `med.strength` RAW — and that field is only as good as the sig parse. #2939 has
+// parsePrescription returning an entire sentence ("Take 1.5 mL (1.25 mg) by
+// nebulization every 6 (six) hours if needed for wheezing.") as the strength; a
+// sentence never equals an extracted token, so the pair read as "provably different"
+// and every re-import spawned a duplicate item.
+//
+// So the new side passes through the same extraction — unless it is already a bare
+// strength, which extraction would truncate. An unextractable value ("one tablet")
+// yields null, i.e. UNKNOWN, which conservatively renews: the documented direction
+// for weak evidence, and never the direction that invents a duplicate.
+export function comparableNewStrength(raw: string | null): string | null {
+  const v = (raw ?? "").trim();
+  if (!v) return null;
+  if (BARE_STRENGTH_RE.test(v)) return v;
+  return strengthFromName(v);
+}
+
+// Pick the existing tracked med a re-prescription should RENEW onto, from every
+// candidate sharing its identity — or null when each one is a genuinely separate
+// concurrent product (#2919 leg 1).
+//
+// The caller used to take the FIRST same-key candidate and classify only against it.
+// That was correct while at most one item per key could exist — but "separate" is
+// precisely how a SECOND one arises, and from then on first-match perpetuates it: the
+// observed profile had a manual "Acetaminophen 500 mg" with an open course sitting at
+// a lower id than its extracted 325 MG twin, so every import classified against the
+// manual row, returned "separate" by the book, and minted a fresh item. Three exports,
+// three items, none of them wrong individually.
+//
+// Preferring a renewal is the conservative direction and cannot fold two genuinely
+// concurrent products together: a candidate is only renewed onto when IT classifies
+// as a renewal against this exact prescription.
+export function pickRenewalTarget<T extends MedFoldMatch>(
+  candidates: readonly T[],
+  newStrength: string | null
+): T | null {
+  for (const ex of candidates) {
+    const relationship = classifyReprescription({
+      existingHasOpenCourse: ex.hasOpenCourse,
+      existingStrengths: new Set(
+        ex.strengths
+          .map((s) => normalizeStrength(s))
+          .filter((s): s is string => !!s)
+      ),
+      newStrength,
+    });
+    if (relationship === "renewal") return ex;
+  }
+  return null;
+}
+
+// Every tracked med a parsed prescription's identity matches — the SAME cleaned/
+// grouping medNameKey the #1027 duplication family and the observations bridge use,
+// on the existing row's name AND its brand.
+export function medFoldCandidates<T extends MedFoldMatch>(
+  existing: readonly T[],
+  name: string
+): T[] {
+  const key = medNameKey(name);
+  if (!key) return [];
+  return existing.filter((ex) => {
+    const exKeys = new Set([medNameKey(ex.name)]);
+    if (ex.brand) exKeys.add(medNameKey(ex.brand));
+    return exKeys.has(key);
+  });
+}
+
 // Classify a matched re-prescription as a renewal (new course on the existing med)
 // or a separate item (the #1027 concurrent different-strength carve-out).
 export function classifyReprescription(
@@ -59,7 +180,7 @@ export function classifyReprescription(
     state.existingHasOpenCourse &&
     nu != null &&
     state.existingStrengths.size > 0 &&
-    !state.existingStrengths.has(nu)
+    !knownStrength(nu, state.existingStrengths)
   ) {
     return "separate";
   }
@@ -82,7 +203,10 @@ export function isDoseChange(
       .filter((s): s is string => !!s)
   );
   if (live.size === 0) return false;
-  return !live.has(nu);
+  // Same numerator-only history tolerance as classifyReprescription: a stored "2.5 mg"
+  // against a parsed "2.5 mg/3 mL" is not a dose change, and prompting "update the
+  // dose" for it would nag on every refill of every concentration-dosed med.
+  return !knownStrength(nu, live);
 }
 
 // The tracked-med state the medication fold needs — a STRUCTURAL subset of
@@ -119,31 +243,17 @@ export function foldConsolidatedMeds(
   newStrengthByKey: Map<string, string | null>
 ): void {
   const have = new Set(snap.medications.map((m) => m.key));
-  // Name key → the FIRST tracked med declaring it (mirrors matchExisting's first-match
-  // over ctx.existing, so preview and commit resolve the same existing med).
-  const trackedByKey = new Map<string, MedFoldMatch>();
-  for (const med of trackedStates) {
-    for (const k of [
-      medNameKey(med.name),
-      med.brand ? medNameKey(med.brand) : null,
-    ]) {
-      if (k && !trackedByKey.has(k)) trackedByKey.set(k, med);
-    }
-  }
   for (const row of derivedMeds) {
     if (have.has(row.key)) continue;
-    const existing = trackedByKey.get(medNameKey(row.label));
-    if (!existing) continue;
-    const relationship = classifyReprescription({
-      existingHasOpenCourse: existing.hasOpenCourse,
-      existingStrengths: new Set(
-        existing.strengths
-          .map((s) => normalizeStrength(s))
-          .filter((s): s is string => !!s)
-      ),
-      newStrength: newStrengthByKey.get(row.key) ?? null,
-    });
-    if (relationship !== "renewal") continue; // #1027 "separate" → previews as added
+    // The SAME candidate gather + renewal preference the commit path runs (#2919), so
+    // preview and commit resolve the same existing med. Before that, both took the
+    // first same-key candidate — which is how a shadowed twin previewed as an addition
+    // and then landed as one.
+    const target = pickRenewalTarget(
+      medFoldCandidates(trackedStates, row.label),
+      comparableNewStrength(newStrengthByKey.get(row.key) ?? null)
+    );
+    if (!target) continue; // #1027 "separate" → previews as added
     have.add(row.key);
     snap.medications.push({ ...row });
   }

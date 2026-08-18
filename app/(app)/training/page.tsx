@@ -1,33 +1,44 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import PageContainer from "@/components/PageContainer";
 import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
-import { parseTrainingTab } from "@/lib/training-tabs";
+import {
+  parseTrainingTab,
+  retiredTrainingTabTarget,
+} from "@/lib/training-tabs";
 import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
-import FitnessCheckSection from "./FitnessCheckSection";
 import AnalyzeSection from "./AnalyzeSection";
-import GoalsSection from "./GoalsSection";
-import RoutinesSection from "./RoutinesSection";
-import RestrictedActivityView from "./RestrictedActivityView";
+import PlanSection from "./PlanSection";
 import { isRealIsoDate } from "@/lib/date";
 import { today } from "@/lib/db";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 export const dynamic = "force-dynamic";
 
 // Combined training hub: the Training Log, the doing-first overview, per-activity
-// analysis, the fitness check, routines, and goals behind tabs.
+// analysis, and planning (routines + goals + targets) behind tabs. The fitness
+// check lives on its own route (#2894), reached from Overview's strip.
 export default async function TrainingPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const searchParams = await props.searchParams;
-  // Type-aware training restriction (#489): a minor keeps age-neutral sport/cardio
-  // tracking via a lightweight activity log instead of losing the surface outright.
-  // The adult hub below (strength e1RM/standards, fitness-age, coaching, goals)
-  // stays gated — this branch swaps it for the sport/cardio log.
   const { profile } = await requireSession();
-  if (isTrainingRestricted(profile.id)) return <RestrictedActivityView />;
+  // The workout product stands down through early childhood. Activity facts are
+  // still preserved and their record-level pages remain reachable from Timeline,
+  // search, and imports; only the hub/create/programming experience redirects.
+  if (!isTrainingRelevant(getProfileAge(profile.id))) redirect("/");
+
+  // Retired tab names redirect to their canonical URLs (#2892/#2894) — an
+  // explicit mapping, not the unknown-tab fallback, because these links live on
+  // in bookmarks and Telegram history and mean a specific surface, not whatever
+  // tab happens to be default. Normalizing the URL is also what keeps the
+  // client tab strip's highlight honest and restores the section anchors.
+  const retired = retiredTrainingTabTarget(searchParams?.tab);
+  if (retired) redirect(retired);
 
   const activeTab = parseTrainingTab(searchParams?.tab);
   const requestedDate = one(searchParams?.date);
@@ -46,8 +57,6 @@ export default async function TrainingPage(props: {
   // ?tab=goals from the dashboard widget, …) lands exactly where it always did.
   const activeSection: React.ReactNode = (() => {
     switch (activeTab) {
-      case "overview":
-        return <OverviewSection />;
       case "analyze":
         return (
           <AnalyzeSection
@@ -59,38 +68,44 @@ export default async function TrainingPage(props: {
             lane={one(searchParams?.lane)}
           />
         );
-      case "fitness":
-        return <FitnessCheckSection />;
-      case "routines":
-        return <RoutinesSection />;
-      case "goals":
-        return <GoalsSection />;
       case "log":
-      default:
         return <HistorySection initialCreateDate={initialCreateDate} />;
+      case "plan":
+        return <PlanSection />;
+      case "overview":
+      default:
+        return <OverviewSection />;
     }
   })();
 
   return (
-    <TabFirstPage
-      config={TRAINING_TAB_FIRST_PAGE}
-      testId="training-page"
-      // A stable, ungated door to the equipment registry (#592) — gear lives
-      // conceptually under training, but /equipment has no top-level nav item.
-      // Reachable on a phone too since #1661; the vertical padding is what makes
-      // it a real tap target there (it costs desktop nothing, the row is taller).
-      action={
-        <Link
-          href="/equipment"
-          data-testid="training-equipment-link"
-          className="inline-flex shrink-0 items-center py-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-        >
-          Equipment
-        </Link>
-      }
-    >
-      {activeSection}
-    </TabFirstPage>
+    // Width cap (#2893): "wide" (72rem) fits every tab's densest layout
+    // (Analyze's chart + 28rem aside). The cap wraps the WHOLE tab-first shell
+    // — header, tab strip, and panel — the way records and nutrition cap
+    // theirs: capping only the panel left the tab strip running to the shell's
+    // 3xl (~1760px) edge, wider than the content beneath it.
+    <PageContainer width="wide" className="mx-auto">
+      <TabFirstPage
+        config={TRAINING_TAB_FIRST_PAGE}
+        testId="training-page"
+        // A stable, ungated door to the equipment registry (#592) — gear lives
+        // conceptually under training, but /equipment has no top-level nav item.
+        // Desktop-only since #2892: on phones the header action rendered as a
+        // full-width row above every tab, and the Plan tab's Equipment card is
+        // the phone door now.
+        action={
+          <Link
+            href="/equipment"
+            data-testid="training-equipment-link"
+            className="hidden shrink-0 items-center py-1 text-sm font-medium text-brand-600 hover:underline md:inline-flex dark:text-brand-400"
+          >
+            Equipment
+          </Link>
+        }
+      >
+        {activeSection}
+      </TabFirstPage>
+    </PageContainer>
   );
 }
 

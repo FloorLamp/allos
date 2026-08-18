@@ -11,7 +11,8 @@ import {
   disconnectStrava,
   getStravaConfig,
 } from "@/lib/integrations/connections";
-import { stravaCallbackUrl, isLoopbackUrl } from "./url";
+import { stravaCallbackUrl } from "./url";
+import { isLoopbackUrl } from "@/lib/external-url";
 import {
   queueIntegrationBackfill,
   runIntegrationBackfillJob,

@@ -10,7 +10,6 @@ import {
 import { db, today, writeTx } from "@/lib/db";
 import { isRealIsoDate, utcInstant } from "@/lib/date";
 import { customizableWidgetDefs } from "@/lib/dashboard-widgets";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import {
   completeOnboardingState,
@@ -45,6 +44,7 @@ import {
   getTimezone,
   getProfileBirthdate,
   getProfileSex,
+  getProfileAge,
   isValidTimezone,
   setDashboardLayout,
   setOnboardingState,
@@ -58,6 +58,11 @@ import {
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
+import {
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 import { DEFAULT_PROTEIN_GOAL_LEVEL } from "@/lib/protein";
 import type { Sex } from "@/lib/types";
 
@@ -76,6 +81,18 @@ export async function startOnboardingRoutine(
   formData: FormData
 ): Promise<OnboardingRoutineResult> {
   const { profile } = await requireWriteAccess();
+  if (!isTrainingRelevant(getProfileAge(profile.id))) {
+    return {
+      ok: false,
+      error: "Training routines aren’t available for this profile’s age.",
+    };
+  }
+  if (!isStrengthTrainingRelevant(getProfileAge(profile.id))) {
+    return {
+      ok: false,
+      error: "Strength routines aren’t available for this profile’s age.",
+    };
+  }
   const state = getOnboardingState(profile.id);
   if (!state?.focuses.includes("fitness")) {
     return { ok: false, error: "Choose fitness as a priority first." };
@@ -152,11 +169,13 @@ export async function saveOnboardingFocuses(formData: FormData) {
   const state = getOnboardingState(profile.id) ?? initialOnboardingState();
   if (!state.profilePath)
     onboardingError("Choose who this profile is for first.", 2);
-  const next = onboardingWithFocuses(
-    state,
-    formData.getAll("focus"),
-    utcInstant()
-  );
+  const submittedFocuses = formData
+    .getAll("focus")
+    .filter(
+      (focus) =>
+        focus !== "fitness" || isTrainingRelevant(getProfileAge(profile.id))
+    );
+  const next = onboardingWithFocuses(state, submittedFocuses, utcInstant());
   if (next.focuses.length === 0) {
     onboardingError("Choose one or two outcomes to continue.", 2);
   }
@@ -188,7 +207,9 @@ export async function saveOnboardingDashboard(formData: FormData) {
     onboardingError("Review the data step before shaping your dashboard.", 4);
   }
 
-  const eligible = customizableWidgetDefs(isTrainingRestricted(profile.id));
+  const eligible = customizableWidgetDefs({
+    adultContent: isLongevityRelevant(getProfileAge(profile.id)),
+  });
   const eligibleIds = new Set(eligible.map((widget) => widget.id));
   const requested = new Set(formData.getAll("widget").map(String));
   const visible = eligible
@@ -293,10 +314,12 @@ export async function saveOnboardingBasics(formData: FormData) {
     onboardingError("Enter a valid birthdate that is not in the future.", 3);
   }
 
+  // 0 is a valid entry (issue #2992) — an infant's age in whole years is zero, and
+  // "unknown" is the blank field, which the `age === null` case already covers.
   const ageRaw = String(formData.get("age") ?? "").trim();
   const age = ageRaw === "" ? null : Number(ageRaw);
-  if (age !== null && (!Number.isInteger(age) || age < 1 || age > 149)) {
-    onboardingError("Approximate age must be a whole number from 1 to 149.", 3);
+  if (age !== null && (!Number.isInteger(age) || age < 0 || age > 149)) {
+    onboardingError("Approximate age must be a whole number from 0 to 149.", 3);
   }
 
   const timezone = String(formData.get("timezone") ?? "").trim();

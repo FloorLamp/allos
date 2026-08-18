@@ -104,8 +104,20 @@ describe("authenticated illness timeline composition", () => {
         kind: "document",
         date: "2026-07-17",
         label: "Lab results",
+        href: "/import/10",
       },
     ]);
+  });
+
+  it("keeps cross-profile documents in the timeline without linking to the acting profile", () => {
+    const events = illnessCareTimelineEvents(care, { linkDocuments: false });
+    const document = events.find((event) => event.kind === "document");
+    expect(document).toMatchObject({
+      kind: "document",
+      id: "document:10",
+      detail: "synthetic-results.pdf",
+    });
+    expect(document).not.toHaveProperty("href");
   });
 
   it("groups mixed episode and care events by day and time", () => {

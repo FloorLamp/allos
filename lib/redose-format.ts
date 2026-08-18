@@ -166,6 +166,8 @@ export function prnQuickLogLabel(input: {
   familyMemberCount?: number;
 }): string {
   const members = input.familyMemberCount ?? 1;
+  // Always the FULL name: this list is medications-only (getPrnMedicationsForQuickLog),
+  // and a medication is never label-shortened — a shortened drug name is a misread risk.
   const head = `${input.prefix ?? ""}${input.name}${input.dose ? ` · ${input.dose}` : ""}`;
   const verdict =
     redoseCardLabel(input.status, members) ??

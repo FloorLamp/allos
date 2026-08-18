@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 // Direction that matters: every nav destination (and every remaining
 // next.config redirect target) MUST resolve to a real route. We deliberately do
 // NOT assert the reverse (every route has a nav entry) — many routes are
-// intentionally unlinked detail/new/API pages (e.g. /biomarkers/[id],
+// intentionally unlinked detail/new/API pages (e.g. /results/clinical-results/view,
 // /goals, /import, /integrations) reached by deep links, not the sidebar.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -33,8 +33,8 @@ const PAGE_FILES = new Set([
 
 // Walk the app/ tree and collect every *static* URL path that is backed by a
 // page (or route handler). Next.js route groups — directories named `(name)` —
-// don't contribute a URL segment, so `app/(app)/biomarkers/page.tsx` serves
-// `/biomarkers`. Dynamic (`[id]`), catch-all (`[...x]`), parallel (`@slot`),
+// don't contribute a URL segment, so `app/(app)/results/page.tsx` serves
+// `/results`. Dynamic (`[id]`), catch-all (`[...x]`), parallel (`@slot`),
 // and intercepting (`(.)`) segments are skipped: nav hrefs are all static, so
 // they never need those, and including them would only add noise.
 function collectRoutePaths(dir: string, urlSegments: string[]): Set<string> {
@@ -91,8 +91,8 @@ function navHrefs(): string[] {
 // /medical route for months — nothing guarded item links the way nav links are).
 // These are the sources feeding the Upcoming page, the dashboard "Needs
 // attention" hero, and the preventive adapter. Static targets only: a template
-// literal contributes its static path prefix (e.g. `/results/readings/view?name=${…}`
-// → /results/readings/view).
+// literal contributes its static path prefix (e.g. `/results/clinical-results/view?name=${…}`
+// → /results/clinical-results/view).
 const DUE_SIGNAL_SOURCES = [
   ["lib", "attention.ts"],
   // The Upcoming item builders (their href literals) live in the generators

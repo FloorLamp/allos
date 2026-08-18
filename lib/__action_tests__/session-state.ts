@@ -7,6 +7,7 @@
 // harness/tests import the SAME live binding: the factory reads it late, so a
 // mid-test actAs() is reflected on the next requireSession() call.
 
+import { createHash } from "node:crypto";
 import type { CurrentSession } from "@/lib/auth";
 
 let current: CurrentSession | null = null;
@@ -37,4 +38,26 @@ export function getActingSession(): CurrentSession {
     );
   }
   return current;
+}
+
+// THE SESSIONS-TABLE PRIMARY KEY for the acting session — what prod's
+// currentTokenHash() resolves the live cookie to, and the id revokeSessionAction
+// must hand revokeSession so it can refuse the session making the request.
+//
+// SHAPED LIKE THE REAL VALUE ON PURPOSE, and that is the whole point of it
+// existing. `sessions.token_hash` is a 64-hex SHA-256; `CurrentSession.deviceSessionKey`
+// is a 16-char derivative of it (lib/auth's deviceSessionKey) and can never equal
+// it. This tier used to stand `currentTokenHash` in as `deviceSessionKey`, which
+// made the two interchangeable HERE and nowhere else — so an action that passed
+// `session.deviceSessionKey` instead of the row key passed every test and would
+// never have refused anything in production. A stand-in that cannot tell the right
+// identifier from the plausible wrong one is not a stand-in.
+//
+// Deterministic per acting login+profile so a test can seed its session row under
+// the same key: harness.ts re-exports it as `actingSessionId()`.
+export function peekActingTokenHash(): string | null {
+  if (!current) return null;
+  return createHash("sha256")
+    .update(`action-tier-session:${current.login.id}:${current.profile.id}`)
+    .digest("hex");
 }

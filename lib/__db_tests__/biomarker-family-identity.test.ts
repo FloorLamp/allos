@@ -13,8 +13,8 @@ import { shiftDateStr } from "@/lib/date";
 import {
   getClinicalObservations,
   getBiomarkerSeries,
-  getSavedBiomarkers,
-  isBiomarkerSaved,
+  getSavedClinicalResults,
+  isClinicalResultSaved,
   collectUpcoming,
   biomarkerFamilyKey,
 } from "@/lib/queries";
@@ -25,17 +25,17 @@ import {
   snapCanonicalName,
 } from "@/lib/canonical-name";
 import { reconciledFlag } from "@/lib/reference-range";
-import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "@/lib/datasets/canonical-result-definitions";
 import type { CanonicalResultDefinition } from "@/lib/types";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
 // The committed JSON is the seed for CanonicalResultDefinition rows; treat it as such for the
 // reconciledFlag() calls below, which take the full CanonicalRanges shape (the same
-// cast the sibling biomarker-loinc test uses — the dataset's CanonicalBiomarkerEntry
+// cast the sibling canonical-result-loinc test uses — the dataset's CanonicalResultDefinitionEntry
 // omits the sex-specific optimal_* fields CanonicalRanges now Picks).
-const CB_ROWS = (canonicalSeed as { biomarkers: unknown[] })
-  .biomarkers as CanonicalResultDefinition[];
+const CB_ROWS = (canonicalSeed as { definitions: unknown[] })
+  .definitions as CanonicalResultDefinition[];
 const cbByName = new Map<string, CanonicalResultDefinition>(
   CB_ROWS.map((b) => [b.name.toLowerCase(), b])
 );
@@ -43,8 +43,8 @@ const cbRanges = (name: string): CanonicalResultDefinition | null =>
   cbByName.get(name.toLowerCase()) ?? null;
 
 const VOCAB = (
-  canonicalSeed as { biomarkers: { name: string }[] }
-).biomarkers.map((b) => b.name);
+  canonicalSeed as { definitions: { name: string }[] }
+).definitions.map((b) => b.name);
 const INDEX = buildCanonicalIndex(VOCAB);
 
 let p: SeededProfile;
@@ -122,15 +122,15 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 
     // BAND: only the TOTAL carries the 30–100 sufficiency band; the fractions carry
     // null bands, so a low D2 (5) never flags "deficient" (adult age).
-    expect(canonicalBiomarkerForName("Vitamin D, 25-Hydroxy")?.ref_low).toBe(
-      30
-    );
-    expect(canonicalBiomarkerForName("Vitamin D2, 25-Hydroxy")?.ref_low).toBe(
-      null
-    );
-    expect(canonicalBiomarkerForName("Vitamin D3, 25-Hydroxy")?.ref_low).toBe(
-      null
-    );
+    expect(
+      canonicalResultDefinitionForName("Vitamin D, 25-Hydroxy")?.ref_low
+    ).toBe(30);
+    expect(
+      canonicalResultDefinitionForName("Vitamin D2, 25-Hydroxy")?.ref_low
+    ).toBe(null);
+    expect(
+      canonicalResultDefinitionForName("Vitamin D3, 25-Hydroxy")?.ref_low
+    ).toBe(null);
     const totalEntry = cbRanges("Vitamin D, 25-Hydroxy");
     const d2Entry = cbRanges("Vitamin D2, 25-Hydroxy");
     // A total of 20 flags low (below 30); a D2 of 4 does NOT flag deficient (no band).
@@ -188,9 +188,9 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 
     // A star on one total spelling lights the star on the other total spelling.
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Vitamin D, 25-Hydroxy')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
-    expect(isBiomarkerSaved(p.profileId, "Vitamin D")).toBe(true);
+    expect(isClinicalResultSaved(p.profileId, "Vitamin D")).toBe(true);
 
     // RETEST: a fresh total satisfies the family, so no retest nudge fires.
     expect(retestKeys()).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
@@ -201,11 +201,11 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     addReading("Vitamin D, 25-Hydroxy", old, 30);
     // Star the total; then a NEWER generic-"Vitamin D" total sibling arrives.
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Vitamin D, 25-Hydroxy')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
     addReading("Vitamin D", shiftDateStr(p.todayStr, -5), 41);
 
-    const star = getSavedBiomarkers(p.profileId).find(
+    const star = getSavedClinicalResults(p.profileId).find(
       (s) => s.canonical_name === "Vitamin D, 25-Hydroxy"
     );
     // The tile shows the family's latest reading — the newer total sibling.
@@ -215,7 +215,7 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 });
 
 // The supplement-suggest "is this biomarker new" gate counts prior readings by the
-// SAME family identity the biomarkers table partitions on (#504) — not the raw name.
+// SAME family identity the clinical results table partitions on (#504) — not the raw name.
 // Before the fix it keyed on the literal canonical-or-name, so a fresh reading under a
 // DIFFERENT family member's spelling counted as 0 prior readings and was misjudged
 // "brand new" (eligible for a first-ever AI supplement suggestion) even when the
@@ -368,10 +368,10 @@ describe("the SQL family key honours a family's match matcher (#1401)", () => {
     // "current reading" pointed at different rows.
     addReading(FREEFORM, shiftDateStr(p.todayStr, -5), 6.3, "%");
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Hemoglobin A1c')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', 'Hemoglobin A1c')"
     ).run(p.profileId);
-    expect(isBiomarkerSaved(p.profileId, FREEFORM)).toBe(true);
-    const star = getSavedBiomarkers(p.profileId).find(
+    expect(isClinicalResultSaved(p.profileId, FREEFORM)).toBe(true);
+    const star = getSavedClinicalResults(p.profileId).find(
       (s) => s.canonical_name === "Hemoglobin A1c"
     );
     expect(star?.latest_value_num).toBe(6.3);

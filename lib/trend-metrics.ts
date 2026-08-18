@@ -491,7 +491,7 @@ export function trendMetricSlugForSavedId(id: string): TrendMetricSlug | null {
 // ── The ★ ↔ Body-card correspondence (#1643) ────────────────────────────────
 //
 // The body census arrangement is driven by the SAVED store (`saved_items`), whose
-// vocabulary is the Trends SERIES KEY ("metric:weight", "bio:ApoB"); the census's
+// vocabulary is the Trends SERIES KEY ("metric:weight", "result:ApoB"); the census's
 // vocabulary is `BodyCardId`. ONE mapping answers both directions — the #482
 // one-identity rule, which is why it lives beside `savedMetricIdForTrendSlug` (the
 // legacy-id table it composes) rather than being restated per surface: the Body

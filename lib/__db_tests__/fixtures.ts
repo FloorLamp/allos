@@ -95,7 +95,7 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
     ).run(profileId, todayStr, weightKg);
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'health-connect', 'steps', ?, ?, ?, 8000)`
     ).run(profileId, todayStr, `${todayStr}T00:00`, `${todayStr}T23:59`);
 
@@ -107,7 +107,7 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
        VALUES (?, ?, 'lab', 'Glucose', ?, 'mg/dL', 'Glucose', ?, 'Metabolic')`
     ).run(profileId, todayStr, String(glucoseValueNum), glucoseValueNum);
     db.prepare(
-      `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Glucose')`
+      `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', 'Glucose')`
     ).run(profileId);
     const documentId = Number(
       db

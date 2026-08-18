@@ -1,23 +1,22 @@
-// Adherence-based priority DEMOTION SUGGESTIONS (issue #1505 part 2). Pure and
+// Adherence-based obligation DEMOTION SUGGESTIONS (issue #1505 part 2). Pure and
 // client-safe — no DB, no network. The server builder
 // (buildDemotionSuggestionFindings, lib/rule-findings.ts) assembles the item-level
 // adherence strips from the already profile-scoped intake reads and hands them here.
 //
 // The contract, and the reason this file DETECTS but never writes:
 //
-//   Priority is the user's static, user-owned declaration (#559). Context gates
-//   dueness; it never invents priority. So a high/mandatory supplement the user has
+//   Obligation is the user's static, user-owned declaration (#559). Context gates
+//   dueness; it never invents obligation. So a `must`/`should` supplement the user has
 //   plainly stopped taking does not get quietly demoted — it gets a calm, dismissible
-//   SUGGESTION, and the user's one tap is the priority write. Auto-apply was
+//   SUGGESTION, and the user's one tap is the obligation write. Auto-apply was
 //   considered and rejected (#1505, 2026-07-29); there is no code path here or
 //   downstream that mutates `priority` without a user action.
 //
 // Scope boundaries, each of which is a deliberate exclusion rather than an oversight:
 //
 //   • MEDICATIONS are exempt entirely. Poor med adherence is a missed-dose escalation
-//     concern (safety tier, #449/#942), never a priority question — the same "kind
-//     decides, not priority" rule the push predicate uses (isPushedIntake).
-//   • A `low` item is already where the suggestion would take it, so it is never a
+//     concern (safety tier, #449/#942), never an obligation-demotion question.
+//   • A `may` item is already where the suggestion would take it, so it is never a
 //     candidate (which is also what makes the accept action idempotent).
 //   • ON-DEMAND (`may`) items never count: they are never scheduled-due (#798), so
 //     it has no missed occurrences to measure.
@@ -40,7 +39,7 @@ import type { IntakeItemKind, IntakeObligation } from "./types";
 // that a genuinely abandoned supplement is caught this month rather than next
 // quarter. Deliberately WIDER than the delta classifier's window
 // (INTAKE_DELTA_DAYS, lib/intake-deltas.ts): a single missed run is digest news,
-// a sustained pattern is a priority question — the two must not fire off the same
+// a sustained pattern is an obligation question — the two must not fire off the same
 // evidence, and the nesting is pinned by a test.
 export const DEMOTION_WINDOW_DAYS = 30;
 
@@ -51,7 +50,7 @@ export const DEMOTION_MIN_OCCURRENCES = 10;
 
 // The item is a candidate at or below this follow-through rate — a quarter of its
 // scheduled occurrences. Not zero: "I take it now and then" is exactly the state the
-// `low` tag was designed for, and demanding a perfect zero would miss it.
+// `may` obligation was designed for, and demanding a perfect zero would miss it.
 export const DEMOTION_MAX_TAKEN_RATE = 0.25;
 
 // ---- Signal key (single source of truth) ----------------------------------
@@ -59,7 +58,7 @@ export const DEMOTION_MAX_TAKEN_RATE = 0.25;
 // The dedupeKey namespace, registered in RULE_FINDING_REGISTRY as a COACHING-tier
 // prefix: the suggestion is calm and hideable, it rides the shared findings
 // suppression bus, and it never becomes a notification (the #449 reach policy).
-// Keyed on the ITEM id (AUTOINCREMENT, never recycles — #203), because priority is
+// Keyed on the ITEM id (AUTOINCREMENT, never recycles — #203), because obligation is
 // an item-level tag; a re-timed or re-added dose must not re-attach a stale dismissal.
 export const DEMOTION_PREFIX = "demote-obligation:";
 

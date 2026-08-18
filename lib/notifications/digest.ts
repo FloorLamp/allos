@@ -10,7 +10,7 @@ import type { NotificationAction, NotificationMessage } from "./types";
 import type { ActivityType, IntakeItemKind } from "../types";
 import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
-import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
+import { intakeWindowNoun, intakeItemNoun } from "./intake-format";
 import { situationActivationLine } from "../situations";
 import { heldSummaryLine } from "../intake-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
@@ -119,8 +119,8 @@ export interface DigestInput {
   // The merged "what's due" list (issue #1108): the ALREADY-BANDED collectUpcoming
   // output for today (groupUpcoming) — doses, refills, appointments, planned care,
   // preventive, retests, goals, training, … Replaces the digest's own goals/dose
-  // computation so snooze/dismiss (the findings bus) and training-restriction govern
-  // the whole morning message and the page/push can't disagree (#221). buildDigest
+  // computation so snooze/dismiss (the findings bus) governs the whole morning
+  // message and the page/push can't disagree (#221). buildDigest
   // formats it into the Today section (doses summarized by the count line above, so
   // they're excluded from the banded lines to avoid double-counting).
   todayGroups: BandGroup[];
@@ -246,8 +246,9 @@ export interface DigestInput {
   // Last night's sleep (issue #1117), or null when the sleep summary is off or
   // there's no fresh sleep data. When present the digest gets a calm Sleep section.
   sleep?: DigestSleep | null;
-  // The GUARANTEED access tail (#1505): the collapsed "Log other (N for <slot>)" action
-  // for this profile's `may` items, or null when the profile has none on offer today.
+  // The GUARANTEED access tail (#1505): the collapsed "➕ Doses (N)" action for this
+  // profile's `may` items, or null when the profile has none on offer today. It shares a
+  // keyboard row with the ⚙️ Tune control beside it (#2890).
   // Its presence also lowers the "is there anything to say?" bar to zero — see
   // buildDigest — because for a tap-only user this button IS the digest's job.
   offerTail?: NotificationAction | null;
@@ -257,8 +258,7 @@ export interface DigestInput {
   // Today's recommended workout, preformatted by the SAME formatter the dedicated
   // nudge uses (#1712 §2 / #221) in its BARE variant — the standalone "Today:" prefix
   // is right in the nudge and restates the heading here (#1819 item 3). Null when
-  // there's no recommendation — no routine, a restricted profile, or the presence
-  // gates hold.
+  // there's no recommendation — no routine, or the presence gates hold.
   workoutPreview?: string | null;
   // The weekly-progress phrase for training targets (#1819 item 4) — "2 of 4 training
   // targets on pace — behind on Back", from the SAME paced set the Upcoming training
@@ -490,8 +490,8 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   }
 
   // Today: what's on deck — the MERGED due list (issue #1108). One engine (#221): a
-  // formatter over collectUpcoming (the banded `todayGroups`), so snooze/dismiss and
-  // training-restriction apply to the whole morning message. The dose count is the
+  // formatter over collectUpcoming (the banded `todayGroups`), so snooze/dismiss
+  // applies to the whole morning message. The dose count is the
   // glance headline; the banded lines cover everything else; the "why" highlights
   // (#656) explain the important items.
   const todayLines: MessageBody[] = [];
@@ -836,7 +836,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
   // A tail-only digest still needs a body: an empty message reads as a bug. The
   // count rides the sentence here on EVERY channel — with no other content there is
   // nothing for the Telegram button to be redundant against, and a bare "Nothing
-  // scheduled." beside a "Log other" button would under-describe what is on offer.
+  // scheduled." beside a "➕ Doses" button would under-describe what is on offer.
   if (sections.length === 0) {
     const offered = input.offerCount ?? 0;
     sections.push({

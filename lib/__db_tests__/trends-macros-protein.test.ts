@@ -2,7 +2,7 @@
 //
 // The Trends → Nutrition "Macros & fiber" chart reads BOTH protein sources (#2414).
 // It used to read only tracked `protein_g` metric samples, so a profile that logs
-// protein through the Food tab's quick-add (`protein_log`, #824) saw the empty state
+// protein through the Food tab's quick-add (`protein_daily_totals`, #824) saw the empty state
 // at the app's only long-range nutrition chart.
 //
 // This drives the real gather the section calls — getMacroFiberDays — over one day set
@@ -32,7 +32,7 @@ function seedTracked(
   value: number
 ) {
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health_connect', ?, ?, ?, ?, ?)`
   ).run(
     profileId,

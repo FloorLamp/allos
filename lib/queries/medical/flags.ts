@@ -1,4 +1,4 @@
-// Reconcile each record's flag against our canonical ranges: clinical high/low
+// Reconcile each observation's flag against our canonical ranges: clinical high/low
 // from the reference range (overriding an over-strict or missing lab flag),
 // non-optimal from the optimal band, cleared when optimal — so the stored flag
 // never contradicts the live-computed status. Never touches 'abnormal'
@@ -15,7 +15,7 @@
 // disagreement the issue is about. lib/queries/metric-judgment.ts reads it.
 export function flagReconcileProfileContext(profileId: number) {
   const cbRows = db
-    .prepare("SELECT * FROM canonical_biomarkers")
+    .prepare("SELECT * FROM canonical_result_definitions")
     .all() as CanonicalResultDefinition[];
   const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
   // Alias-aware resolution: the pure core looks a row's canonical_name up by exact
@@ -50,6 +50,31 @@ export function flagReconcileProfileContext(profileId: number) {
 
 // The flag values reconcileFlags is allowed to revisit — a derived/range flag. A
 // qualitative 'abnormal'/'immune' etc. from the numeric pass's view is left alone.
+//
+// #2777 asked whether the NUMERIC pass should acquire the qualitative pass's edit-lock
+// gate, given it has none and `abnormal` is missing from this set. It should not, and
+// the two facts are the same fact seen twice. This set is the numeric pass's OWN
+// vocabulary: high / low / normal / non-optimal* are what it derives from a value and a
+// band, so it may revisit them — and MUST, because #221 requires a corrected value to
+// re-derive its flag (the correction stamps `edited = 1` on the same write, so a lock
+// here would freeze the old "high" on a blood pressure someone just fixed). `abnormal`
+// and `immune` are not in its vocabulary at all: it cannot produce them, so it cannot
+// restate them, so it declines to touch a row carrying one. That is already the edit
+// lock's protection arrived at from the other side — a hand-set `abnormal` on a NUMERIC
+// row has never been at risk from this pass, with or without a lock.
+//
+// Which leaves the QUALITATIVE pass as the only place a hand-set `abnormal` can be
+// deleted, because it is the pass that owns that word. It is the odd one out for a
+// reason, and the gate it carries (lib/reference-range/qualitative.ts, #2712/#2715/
+// #2777) draws the same line this set draws: revisit what you can restate, leave alone
+// what you cannot. Nothing to change here.
+//
+// #2799 adds `reported-high` / `reported-low` for the same reason the rest are here: the
+// numeric pass is the only thing that writes them, so it must be able to revisit them —
+// a value corrected downward, or a re-import carrying a different printed range, has to
+// be able to clear one. Omitting them would freeze a lab-stated flag on its row forever,
+// which is exactly the "permanent per row, no re-reconcile can reach it" defect #2687
+// needed a FLAG_LOGIC_VERSION bump to undo.
 const RECONCILABLE_FLAGS = new Set([
   "normal",
   "non-optimal",
@@ -57,11 +82,13 @@ const RECONCILABLE_FLAGS = new Set([
   "non-optimal-low",
   "high",
   "low",
+  "reported-high",
+  "reported-low",
 ]);
 
 // Preview twin of reconcileFlags: derive the flags the post-commit reconcile WILL
-// write for a NOT-yet-persisted batch of records (the reprocess preview's fresh
-// extraction), mutating each record's `flag` in place. Without this, the preview
+// write for a NOT-yet-persisted batch of observations (the reprocess preview's fresh
+// extraction), mutating each observation's `flag` in place. Without this, the preview
 // diff compares post-follow-up persisted rows against pre-follow-up extraction, so
 // every app-derived flag (age-banded vitals, optimal bands, titer "immune") reads
 // as a phantom "flag → none" change on a byte-identical reprocess. Same
@@ -70,11 +97,11 @@ const RECONCILABLE_FLAGS = new Set([
 // drift.
 export function previewReconcileFlags(
   profileId: number,
-  records: PersistInput["records"]
+  observations: PersistInput["observations"]
 ): void {
-  if (records.length === 0) return;
+  if (observations.length === 0) return;
   const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
-  const numericRows = records.flatMap((r, i) =>
+  const numericRows = observations.flatMap((r, i) =>
     r.canonical?.trim() &&
     r.value_num != null &&
     (r.flag == null || RECONCILABLE_FLAGS.has(r.flag))
@@ -91,8 +118,8 @@ export function previewReconcileFlags(
         ]
       : []
   );
-  const qualRows = records.flatMap((r, i) =>
-    r.value_num == null && (r.category === "lab" || r.category === "biomarker")
+  const qualRows = observations.flatMap((r, i) =>
+    r.value_num == null && r.category === "lab"
       ? [
           {
             id: i,
@@ -110,7 +137,8 @@ export function previewReconcileFlags(
     ...computeFlagReconciliation(numericRows, cbByName, ctx),
     ...computeQualitativeFlagChanges(qualRows),
   ]) {
-    records[c.id].flag = c.flag as PersistInput["records"][number]["flag"];
+    observations[c.id].flag =
+      c.flag as PersistInput["observations"][number]["flag"];
   }
 }
 
@@ -159,12 +187,14 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
   // (#544), clear a blunt "abnormal" on a context-neutral attribute like a blood type
   // (#548 §1) — leaving infection markers + unrecognized values alone. Same profile
   // scoping and optional id filter as the numeric pass.
-  // `edited` rides along for the #2687 no-result clear's hand-edit gate (#2712 R3):
-  // updateResult writes the user's chosen flag AND edited = 1, then calls this on the
-  // very next line, so without it the save silently deletes the flag it just stored.
+  // `edited` rides along for the hand-edit gate on the two flag-DELETING transitions —
+  // the #2687 no-result clear (#2712 R3) and the #548 §1 clear on an identity-class row
+  // (#2715): updateResult writes the user's chosen flag AND edited = 1, then calls this
+  // on the very next line, so without it the save silently deletes the flag it just
+  // stored. The column is already in this SELECT, so the identity gate costs no query.
   let qsql = `SELECT id, canonical_name, name, value, notes, reference_range, flag, loinc, edited
      FROM medical_records
-     WHERE profile_id = ? AND value_num IS NULL AND category IN ('lab','biomarker')`;
+     WHERE profile_id = ? AND value_num IS NULL AND category = 'lab'`;
   const qargs: number[] = [profileId];
   if (ids) {
     qsql += ` AND id IN (${ids.map(() => "?").join(",")})`;

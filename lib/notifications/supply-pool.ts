@@ -129,9 +129,9 @@ export async function runPoolRefills(
     name: p.name,
     daysLeft: p.daysLeft,
     // Tracked, never pushed (#1505): a bottle whose entire ACTIVE membership is
-    // low-priority supplements drops out of the nudge (poolPushes). Any pushable
+    // `may` supplements drops out of the nudge (poolPushes). Any pushable
     // member keeps the pooled signal, so a shared warfarin bottle is never silenced
-    // by someone else's optional-supplement link. Folding it into `low` also means a
+    // by someone else's optional-supplement link. Folding it into the low-supply flag also means a
     // live marker self-heals through planPoolRefillNudges' normal clear path.
     low: p.low && poolPushes(p.members),
   }));

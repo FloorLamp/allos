@@ -18,6 +18,7 @@ import {
   setStepsDailyTarget,
   setTimezone,
   setWeekMode,
+  setStoredAge,
 } from "@/lib/settings";
 import { collectRecentChanges } from "@/lib/queries/recent-changes";
 import { getLightExposureLine } from "@/lib/queries/light-exposure";
@@ -41,6 +42,7 @@ function newProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setStoredAge(id, 30);
   setTimezone(id, "UTC");
   return id;
 }
@@ -96,7 +98,7 @@ function seedSyncArrival(
     db
       .prepare(
         `INSERT INTO integration_sync_events
-           (profile_id, provider, at, ok, inserted, updated, unchanged)
+           (profile_id, source_id, at, ok, inserted, updated, unchanged)
          VALUES (?, ?, ?, 1, ?, 0, 0)`
       )
       .run(profileId, provider, utcInstant(), kinds.length + bareInserted)
@@ -116,7 +118,7 @@ function seedSyncArrival(
         db
           .prepare(
             `INSERT INTO metric_samples
-               (profile_id, source, metric, date, start_time, end_time, value)
+               (profile_id, source, metric, date, started_at, ended_at, value)
              VALUES (?, ?, ?, ?, ?, ?, 1)`
           )
           .run(
@@ -142,7 +144,7 @@ function seedSteps(
 ) {
   db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
   ).run(profileId, date, `${date}T00:00:00Z`, endTime, value);
 }
@@ -682,8 +684,8 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
     // The seeded samples share the natural key with the ones the NEXT seed writes for
     // the same metric, so move them off today the way a real prior night's data is.
     db.prepare(
-      `UPDATE metric_samples SET date = ?, start_time = start_time || '-old',
-              end_time = end_time || '-old'
+      `UPDATE metric_samples SET date = ?, started_at = started_at || '-old',
+              ended_at = ended_at || '-old'
         WHERE profile_id = ?`
     ).run(shiftDateStr(today(profileId), -3), profileId);
   }
@@ -740,6 +742,20 @@ describe("routine arrivals fold into the content lines they describe (#1913)", (
       .filter((c) => c.category === "data")
       .map((c) => c.text);
     expect(texts).toEqual(["📥 First data from Withings: sleep"]);
+  });
+
+  it("says nothing at all about a delivered ARCHIVE (#2999/#2914)", () => {
+    // A portal delivery's provenance rows point at `medical_documents`, which this
+    // category has no kind for — so it fell back to the record dialect's default noun and
+    // produced "First data from Patient portals: records", a line that existed on no
+    // prior version of the digest and uses the exact noun #2914 ruled out for portal
+    // deliveries. A document has its own surfaces; what the bundle extracts arrives here
+    // later as real records with real kinds.
+    const pid = newProfile("Archive Arden");
+    seedSyncArrival(pid, "patient-portals", [{ table: "medical_documents" }]);
+
+    const out = collectRecentChanges(pid, { sinceDays: 1, today: today(pid) });
+    expect(out.changes.filter((c) => c.category === "data")).toEqual([]);
   });
 
   it("the digest's activity line carries the source instead", () => {

@@ -8,6 +8,7 @@ import {
   IconBrain,
   IconCalendarEvent,
   IconChevronDown,
+  IconConfetti,
   IconChartLine,
   IconFileText,
   IconFlag,
@@ -29,14 +30,15 @@ import {
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { today } from "@/lib/db";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
   getHomeLocation,
   getTimezone,
+  getProfileAge,
 } from "@/lib/settings";
+import { isTrainingRelevant } from "@/lib/life-stage";
 import DaylightChip from "@/components/DaylightChip";
 import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
 import {
@@ -100,6 +102,11 @@ import {
   TIMELINE_OPEN_PARAM,
   type TimelineFold,
 } from "@/lib/timeline-window";
+import {
+  showTimelineScrubber,
+  timelineScrubberTicks,
+} from "@/lib/timeline-scrubber";
+import TimelineScrubber, { type ScrubberStop } from "./TimelineScrubber";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import IntradayPanel from "@/components/IntradayPanel";
 import { formatLongDate, formatMonthDay } from "@/lib/format-date";
@@ -177,8 +184,6 @@ const DEFAULT_SHOW = 300;
 const SHOW_STEP = 300;
 const MAX_SHOW = 1000;
 
-const TRAINING_CATEGORIES = new Set<TimelineCategory>(["activity", "goal"]);
-
 // The relative-day badge copy for a divergent day (issue #1329). Honest, per member.
 const RELATIVE_LABEL: Record<DayMark["relative"], string> = {
   today: "Today",
@@ -232,9 +237,11 @@ function parseSubjectParam(
 function EventCard({
   event,
   defaultOpen = false,
+  trainingRelevant = true,
 }: {
   event: TimelineEvent;
   defaultOpen?: boolean;
+  trainingRelevant?: boolean;
 }) {
   const Icon = CATEGORY_ICONS[event.category];
   const detailItems = event.detailItems ?? [];
@@ -251,9 +258,15 @@ function EventCard({
     ) : (
       <Icon className="h-4 w-4" stroke={1.75} />
     );
-  const title = event.href ? (
+  const href =
+    !trainingRelevant &&
+    event.href?.startsWith("/training") &&
+    !event.href.startsWith("/training/activity/")
+      ? null
+      : event.href;
+  const title = href ? (
     <Link
-      href={event.href}
+      href={href}
       className="transition hover:text-brand-700 hover:underline dark:hover:text-brand-300"
     >
       {event.title}
@@ -306,13 +319,17 @@ function EventCard({
               ))}
             </div>
           )}
-          {/* Linked context (#662): non-causal deep-links to the OTHER records this
-              event's import document produced. Informational reference — labeled
-              "From this visit's document" so it never reads as a causal claim. */}
+          {/* Linked context (#662): non-causal deep-links to OTHER records. The
+              heading names the lineage the gather actually had (#2920) — the whole
+              import document only where that document stands for ONE visit, else the
+              rows genuinely linked to this visit. Informational reference either way,
+              never a causal claim. */}
           {event.linkedRefs && event.linkedRefs.length > 0 && (
             <div className="mt-2" data-testid="timeline-linked-refs">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                From this visit’s document
+                {event.linkedRefsScope === "visit"
+                  ? "From this visit"
+                  : "From this visit’s document"}
               </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {event.linkedRefs.map((ref, index) => (
@@ -367,9 +384,9 @@ function EventCard({
             </div>
           ))}
         </dl>
-        {event.href && (
+        {href && (
           <Link
-            href={event.href}
+            href={href}
             className="mt-3 inline-flex text-xs font-semibold text-brand-700 transition hover:underline dark:text-brand-300"
           >
             Open source record
@@ -432,10 +449,12 @@ function TimelineEventRow({
   event,
   defaultOpen,
   subject,
+  trainingRelevant,
 }: {
   event: TimelineEvent;
   defaultOpen: boolean;
   subject: SubjectInfo | null;
+  trainingRelevant: boolean;
 }) {
   return (
     <div className="relative" data-testid="timeline-event">
@@ -446,7 +465,11 @@ function TimelineEventRow({
           <SubjectChip subject={subject} />
         </div>
       )}
-      <EventCard event={event} defaultOpen={defaultOpen} />
+      <EventCard
+        event={event}
+        defaultOpen={defaultOpen}
+        trainingRelevant={trainingRelevant}
+      />
     </div>
   );
 }
@@ -487,6 +510,7 @@ function TimelineFoldCard({
       <TimelineFilterLink
         href={href}
         testId={`${testId}-toggle`}
+        label={fold.label}
         ariaExpanded={fold.open}
         className={`flex items-center gap-3 rounded-lg border px-4 py-3 shadow-xs transition hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`}
       >
@@ -566,20 +590,12 @@ export default async function TimelinePage(props: {
 
   const units = getUnitPrefs(loginId);
   const formatPrefs = getDisplayFormatPrefs(loginId);
-  // Category pills + the training-category drop follow the ACTING profile's restriction
-  // (the viewer's anchor); each in-view member's own restriction is applied inside the
-  // per-member gather, so a restricted member simply contributes no training events.
-  const actingRestricted = isTrainingRestricted(actingProfileId);
-  const visibleCategories = actingRestricted
-    ? TIMELINE_CATEGORIES.filter((c) => !TRAINING_CATEGORIES.has(c))
-    : TIMELINE_CATEGORIES;
+  const trainingRelevant = isTrainingRelevant(getProfileAge(actingProfileId));
+  // Timeline is a profile-owned data surface. Training categories and every
+  // activity type remain visible at every life stage.
+  const visibleCategories = TIMELINE_CATEGORIES;
   const requestedCategory = timelineCategoryFromParam(searchParams.category);
-  const category =
-    actingRestricted && requestedCategory
-      ? TRAINING_CATEGORIES.has(requestedCategory)
-        ? undefined
-        : requestedCategory
-      : requestedCategory;
+  const category = requestedCategory;
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
   const show = parseShow(searchParams.show);
@@ -618,7 +634,6 @@ export default async function TimelinePage(props: {
 
   // Per-subject context (the single-subject branch): home/timezone/cycle/today all key
   // on the subject whose day we're rendering (acting in the common case).
-  const trainingRestricted = isTrainingRestricted(daySubjectId);
   const home = getHomeLocation(daySubjectId);
   const profileTimezone = getTimezone(daySubjectId);
   const todayStr = today(daySubjectId);
@@ -633,7 +648,6 @@ export default async function TimelinePage(props: {
         endDate: range.to,
         limit: show,
         units,
-        restricted: trainingRestricted,
       });
   const days = groupTimelineDays(singlePage.events);
 
@@ -745,8 +759,8 @@ export default async function TimelinePage(props: {
 
   // The intraday panel (#1068) — the SINGLE-day view only. It is the day rotated
   // 90°, so it reads the SAME resolved event list the feed below renders (never a
-  // second gather): whatever the category filter and the age restriction dropped
-  // is already gone, which makes "a hidden feed event can never appear as a tick"
+  // second gather): whatever the category filter dropped is already gone, which
+  // makes "a hidden feed event can never appear as a tick"
   // true by construction. Null when nothing on the day is intraday.
   const intraday =
     singleDaySelected && range.from && days.length > 0
@@ -802,6 +816,32 @@ export default async function TimelinePage(props: {
       show,
       toggledTimelineOpen(openFolds, key, fold)
     );
+
+  // THE JUMP RAIL (#2657 item 4). The stops are derived from the WINDOWED feed, so
+  // they name exactly the periods this render put in the document — a month sealed
+  // inside a collapsed year card is not among them, because a tick for content no
+  // scroll can reach is a promise the rail cannot keep.
+  //
+  // A stop whose period is folded away carries the href that toggles it open and lands
+  // on it ("a tap jumps to that month and expands it on arrival"); a stop whose days
+  // are already rendered carries none, and the rail scrolls to the anchor instead. The
+  // href is built HERE, with the same `filterHref` every other control on the page
+  // uses, so a jump inside "Medical · last year" stays inside it.
+  const scrubberTicks = windowed ? timelineScrubberTicks(windowed) : [];
+  const scrubberStops: ScrubberStop[] = showTimelineScrubber(scrubberTicks)
+    ? scrubberTicks.map((tick) => ({
+        ...tick,
+        href: tick.openKey
+          ? filterHref(
+              category,
+              range,
+              show,
+              toggledTimelineOpen(openFolds, tick.openKey),
+              tick.anchorId
+            )
+          : null,
+      }))
+    : [];
 
   // ONE day group, rendered identically wherever it sits — the recent band, an
   // expanded month, or the unwindowed single-day feed. Extracted so the bands cannot
@@ -879,7 +919,11 @@ export default async function TimelinePage(props: {
           >
             <span className="absolute left-0 top-7.5 h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
             <span className="absolute left-0 top-6.25 h-2.5 w-2.5 -translate-x-5.25 rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
-            <EventCard event={event} defaultOpen={singleDaySelected} />
+            <EventCard
+              event={event}
+              defaultOpen={singleDaySelected}
+              trainingRelevant={trainingRelevant}
+            />
           </div>
         ))}
       </div>
@@ -900,6 +944,16 @@ export default async function TimelinePage(props: {
       <PageHeader
         title="Timeline"
         subtitle="A chronological view of workouts, labs, documents, medications, visits, goals, and other health events."
+        action={
+          <Link
+            href="/retrospective"
+            data-testid="timeline-retrospective-link"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            <IconConfetti className="h-4 w-4" stroke={1.75} />
+            Year in review
+          </Link>
+        }
       />
 
       <TimelineScrollRestorer
@@ -920,78 +974,90 @@ export default async function TimelinePage(props: {
         id="timeline-controls"
         className="mb-5 md:sticky md:top-0 md:z-20 md:-mx-2 md:bg-slate-50/50 md:px-2 md:py-3 md:backdrop-blur-md md:dark:bg-ink-950/50"
       >
-        <ContextBar
-          idPrefix="timeline-filters"
-          label={contextLabel(
-            category ? timelineCategoryLabel(category) : "All",
-            throughLabel
-          )}
-          controls={
-            <div className="space-y-2 sm:space-y-4">
-              <DateRangeControl
-                basePath="/timeline"
-                range={range}
-                todayStr={todayStr}
-                hiddenParams={{ category }}
-                buildHref={(r) =>
-                  filterHref(category, r, undefined, [...openFolds])
-                }
-                LinkComponent={TimelineFilterLink}
-                idPrefix="timeline"
-                rightSlot={
-                  <>
-                    <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
-                      {throughLabel}
-                    </span>
-                    {latestDay && oldestDay && latestDay !== oldestDay && (
-                      <>
-                        <JumpLink
-                          date={latestDay}
-                          openHref={jumpHref(latestDay)}
-                          label="Latest"
-                        />
-                        <JumpLink
-                          date={oldestDay}
-                          openHref={jumpHref(oldestDay)}
-                          label="Oldest"
-                        />
-                      </>
-                    )}
-                  </>
-                }
-              />
+        {/* The jump rail's gutter, again (#2657 item 4). Its 44px hit strip is fixed
+            to the viewport and overlaps THIS block too — at the top of the page, and
+            at every scroll position below `md` where this block is not sticky. The
+            Latest/Oldest jumps sit at the far right of it (`ml-auto`), so without the
+            gutter an invisible strip would be parked on top of them. An inner wrapper
+            rather than a class on the block itself: this one already sets `md:px-2`,
+            and two padding utilities racing for the same edge is not a thing to leave
+            to stylesheet order. */}
+        <div className={scrubberStops.length > 0 ? "pr-11" : ""}>
+          <ContextBar
+            idPrefix="timeline-filters"
+            label={contextLabel(
+              category ? timelineCategoryLabel(category) : "All",
+              throughLabel
+            )}
+            controls={
+              <div className="space-y-2 sm:space-y-4">
+                <DateRangeControl
+                  basePath="/timeline"
+                  range={range}
+                  todayStr={todayStr}
+                  hiddenParams={{ category }}
+                  buildHref={(r) =>
+                    filterHref(category, r, undefined, [...openFolds])
+                  }
+                  LinkComponent={TimelineFilterLink}
+                  idPrefix="timeline"
+                  rightSlot={
+                    <>
+                      <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+                        {throughLabel}
+                      </span>
+                      {latestDay && oldestDay && latestDay !== oldestDay && (
+                        <>
+                          <JumpLink
+                            date={latestDay}
+                            openHref={jumpHref(latestDay)}
+                            label="Latest"
+                          />
+                          <JumpLink
+                            date={oldestDay}
+                            openHref={jumpHref(oldestDay)}
+                            label="Oldest"
+                          />
+                        </>
+                      )}
+                    </>
+                  }
+                />
 
-              <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-                <TimelineFilterLink
-                  href={filterHref(undefined, range, undefined, [...openFolds])}
-                  className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                    !category
-                      ? "bg-brand-500 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                  }`}
-                >
-                  All
-                </TimelineFilterLink>
-                {visibleCategories.map((c) => {
-                  const active = c === category;
-                  return (
-                    <TimelineFilterLink
-                      key={c}
-                      href={filterHref(c, range, undefined, [...openFolds])}
-                      className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
-                        active
-                          ? "bg-brand-500 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                      }`}
-                    >
-                      {timelineCategoryLabel(c)}
-                    </TimelineFilterLink>
-                  );
-                })}
+                <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+                  <TimelineFilterLink
+                    href={filterHref(undefined, range, undefined, [
+                      ...openFolds,
+                    ])}
+                    className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
+                      !category
+                        ? "bg-brand-500 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+                    }`}
+                  >
+                    All
+                  </TimelineFilterLink>
+                  {visibleCategories.map((c) => {
+                    const active = c === category;
+                    return (
+                      <TimelineFilterLink
+                        key={c}
+                        href={filterHref(c, range, undefined, [...openFolds])}
+                        className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium transition ${
+                          active
+                            ? "bg-brand-500 text-white"
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
+                        }`}
+                      >
+                        {timelineCategoryLabel(c)}
+                      </TimelineFilterLink>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          }
-        />
+            }
+          />
+        </div>
       </div>
 
       {/* Multi-view merged feed: the interleaved | by-person toggle (issue #1327 fix 2,
@@ -1073,7 +1139,10 @@ export default async function TimelinePage(props: {
           <EmptyState
             testId="timeline-empty"
             message="No timeline events yet. Logged and imported entries build the day-by-day history."
-            actions={TIMELINE_EMPTY_ACTIONS}
+            actions={TIMELINE_EMPTY_ACTIONS.filter(
+              (action) =>
+                trainingRelevant || !action.href.startsWith("/training")
+            )}
           />
         ) : (
           <EmptyState
@@ -1136,6 +1205,7 @@ export default async function TimelinePage(props: {
                               event={event}
                               defaultOpen={false}
                               subject={null}
+                              trainingRelevant={trainingRelevant}
                             />
                           ))}
                         </div>
@@ -1198,6 +1268,7 @@ export default async function TimelinePage(props: {
                         key={`${event.profileId}:${event.id}`}
                         event={event}
                         defaultOpen={false}
+                        trainingRelevant={trainingRelevant}
                         subject={
                           showChip
                             ? (subjectByProfile.get(event.profileId) ?? null)
@@ -1229,7 +1300,18 @@ export default async function TimelinePage(props: {
             ))}
         </div>
       ) : (
-        <div id="timeline-feed" className="relative">
+        /* The rail's 44px hit strip is fixed to the viewport's right edge, and its
+           whole point is that the touch target is far wider than the ~5px visual. That
+           makes it overlap the feed's own right edge, where event-card links live — so
+           the feed gives up a gutter of exactly the rail's width whenever the rail
+           renders. The rail owns that column; it never squats on a tap target. */
+        <div
+          id="timeline-feed"
+          className={`relative ${scrubberStops.length > 0 ? "pr-11" : ""}`}
+        >
+          {scrubberStops.length > 0 && (
+            <TimelineScrubber stops={scrubberStops} />
+          )}
           <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-59 md:block dark:bg-white/10" />
           <div className="space-y-0">
             {windowed ? (

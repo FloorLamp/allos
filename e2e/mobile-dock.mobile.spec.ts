@@ -28,6 +28,14 @@ import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // `openMobileDrawer` documents it: re-tap until the surface mounts. Safe to
 // repeat because both triggers only ever set TRUE, so a late tap cannot close
 // what an earlier one opened.
+//
+// #2729 retired ten sibling re-click loops for hydratedClick and deliberately left
+// this one. The set-TRUE-only property is what that sweep was testing FOR — it is
+// the same property that makes `openMobileDrawer` a blessed loop — and it holds
+// here by inspection of both handlers (`setLogSheetOpen(true)`, and the More slot's
+// drawer open). The loops that had to go were the ones whose control TOGGLED
+// (`setOpen((v) => !v)`, a native `<details>`) or whose second request CANCELLED
+// the first (`useConfirm`); a re-tap here can do neither.
 async function tapUntilOpen(
   page: Page,
   trigger: Locator,
@@ -98,14 +106,13 @@ test("a route in the long tail lights no slot, and More opens the drawer that ho
   });
   await tapUntilOpen(page, dock.getByTestId("dock-slot-more"), drawer);
 
-  // It is the SAME drawer the hamburger opens — the shared <SidebarContent>,
-  // demoted to the long tail rather than removed. ^-anchored because the Data
+  // It is the shared <SidebarContent>, demoted to the long tail rather than
+  // removed. ^-anchored because the Data
   // entry carries the import-review badge in its accessible name (#1801).
   await expect(drawer.getByRole("link", { name: /^Data/ })).toBeVisible();
   await expect(drawer.getByTestId("signed-in-as")).toBeVisible();
-  // One drawer, not two: the dock's More and the top bar's hamburger share the
-  // provider's boolean, so there can never be a second copy of the whole
-  // navigation in the tree.
+  // One drawer: More owns the visible trigger and the edge gesture opens this
+  // same provider-backed overlay, never a second copy of the navigation.
   await expect(drawer).toHaveCount(1);
   // …and while it is open, the button that opened it says so.
   await expect(dock.getByTestId("dock-slot-more")).toHaveAttribute(
@@ -169,13 +176,9 @@ test("the sheet opens on the segment the current route is about", async ({
   await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
 });
 
-test("an age-restricted profile gets the puck, and a sheet with no Train segment", async ({
-  browser,
-}) => {
-  // #2651's owner ruling (2026-08-13). The dock shipped with the puck hidden for a
-  // restricted profile, mirroring the top bar; that was reversed. Every entry the
-  // sheet offers such a profile has already been through `quickLogMenu(true)`, so
-  // hiding the door removed one-tap logging without adding a gate.
+test("a toddler gets Timeline and no Train segment", async ({ browser }) => {
+  // The puck stays because food, body, and care logging still apply. Only the
+  // workout-product destination and Train segment stand down.
   //
   // A raw context from loginAs does NOT inherit the `mobile` project's `use`
   // block, so the phone viewport is restated or this silently runs at desktop
@@ -190,15 +193,12 @@ test("an age-restricted profile gets the puck, and a sheet with no Train segment
     const dock = child.getByTestId("mobile-dock");
     await expect(dock).toBeVisible();
     await expect(dock.getByTestId("dock-log-puck")).toBeVisible();
-    // The slot substitution is unchanged: Timeline stands in for Training.
-    await expect(dock.getByTestId("dock-slot-timeline")).toBeVisible();
     await expect(dock.getByTestId("dock-slot-training")).toHaveCount(0);
+    await expect(dock.getByTestId("dock-slot-timeline")).toBeVisible();
 
     const sheet = child.getByTestId("quick-log-sheet");
     await tapUntilOpen(child, child.getByTestId("dock-log-puck"), sheet);
 
-    // What the ruling did NOT change: the activity entry is still gated away, so
-    // the track carries no Train segment at all rather than an empty one.
     const track = sheet.getByTestId("log-sheet-segments");
     await expect(track).toBeVisible();
     await expect(track.getByTestId("log-sheet-segment-train")).toHaveCount(0);

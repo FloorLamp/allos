@@ -1,0 +1,100 @@
+import { test, expect } from "./fixtures";
+import { followLink } from "./helpers";
+
+// #1076: the biomarker surfaces scope to labs, and the physiologic vitals gain a
+// Trends → Vitals home. These specs prove (a) the Clinical results catalog lists labs and
+// excludes the re-homed classes with a dedicated home (a bio-age composite belongs on
+// the Longevity hero, not the general catalog), (b) #2365's per-analyte refinement of
+// the vitals half — a vitals analyte with a body-metric chart is gone, one without a
+// chart is still there — and (c) the Trends Body vitals block renders its charts.
+// (The DB tier pins the lab-only trajectory + flagged-hero scoping.)
+//
+// Fixture hygiene (#868): read-only against the shared seeded admin profile 1, which
+// owns labs (Total Cholesterol, …), a seeded AUDIT-C instrument score, seeded blood
+// pressure vitals and seeded audiogram thresholds via scripts/seed.ts. Presence-only
+// assertions bounded by the `?q=` filter — never exact counts.
+
+test("the Clinical results catalog lists labs but not a re-homed instrument score (#1076)", async ({
+  page,
+}) => {
+  // A lab is present.
+  await page.goto("/results/clinical-results?q=Cholesterol");
+  const section = page.getByTestId("results-clinical-results");
+  const cholesterol = section.getByText("Total Cholesterol").first(); // first-ok: read-only presence check; shared seed may hold several Total Cholesterol readings
+  await expect(cholesterol).toBeVisible();
+
+  // A screening instrument (the seeded AUDIT-C substance-use score) is NOT browsable
+  // here — the SENSITIVITY case: a substance/depression score belongs on its own
+  // surface, never the general biomarker catalog.
+  await page.goto(
+    "/results/clinical-results?q=" + encodeURIComponent("AUDIT-C")
+  );
+  await expect(
+    page
+      .getByTestId("results-clinical-results")
+      .getByText("AUDIT-C", { exact: true })
+  ).toHaveCount(0);
+});
+
+test("the browser drops a vitals analyte with a metric home, keeps one without (#2365)", async ({
+  page,
+}) => {
+  const section = page.getByTestId("results-clinical-results");
+
+  // Blood pressure is a TrendMetricSlug quantity charted at /trends/metric/systolic, so
+  // the flat catalog no longer duplicates it — the 131-of-145 population #1076's
+  // per-category decision dragged along.
+  await page.goto(
+    "/results/clinical-results?q=" +
+      encodeURIComponent("Blood Pressure Systolic")
+  );
+  await expect(
+    section.getByText("Blood Pressure Systolic", { exact: true })
+  ).toHaveCount(0);
+
+  // An audiogram threshold has no chart anywhere, so the catalog is still its home —
+  // the "nothing stranded" rule, kept and applied per analyte instead of per category.
+  await page.goto(
+    "/results/clinical-results?q=" + encodeURIComponent("Hearing Threshold")
+  );
+  await expect(
+    section.getByText("Hearing Threshold", { exact: false }).first() // first-ok: read-only presence check; the seed holds several ear/frequency series
+  ).toBeVisible();
+});
+
+test("the browser lists a bare `BMI%` a chart cannot plot (#2700)", async ({
+  page,
+}) => {
+  // #2699 stopped DELETING the paediatric percentile spellings at ingest, but a bare
+  // `BMI%` was still filed under the `bmi` slug — so it was stored and then hidden from
+  // the one browser that would have shown it, behind a chart of raw BMI that cannot
+  // plot a percentile. Raw BMI is close to meaningless for a child, so the percentile is
+  // the number worth finding; saved-but-unfindable is not the same as found.
+  //
+  // Read-only against the rows document 912 (e2e/seed/imports.ts) already stores on the
+  // shared profile — the same two spellings e2e/derived-result-drop.spec.ts asserts
+  // survive ingest, asked one surface further on. `%` is escaped by the search's own
+  // LIKE builder, so the query matches the literal spelling.
+  await page.goto("/results/clinical-results?q=" + encodeURIComponent("BMI%"));
+  const table = page.getByTestId("clinical-results-table");
+
+  // Exact, because the parenthesised spelling below contains this one as a substring.
+  await expect(table.getByText("BMI%", { exact: true })).toHaveCount(1);
+  // The spelling that has been listed since #2699, so the two agree on one surface.
+  await expect(
+    table.getByText("Body Mass Index Percentile (BMI%)")
+  ).toHaveCount(1);
+});
+
+test("the Trends Body section's vitals block renders the physiologic vitals (#1076/#1486)", async ({
+  page,
+}) => {
+  // Reachable at its anchor — the Vitals tab retired into Body (#1486) and Body
+  // itself into the Overview landing surface (#1644), so the census is a section of
+  // the default view and its FIRST chart block is the vitals.
+  await page.goto("/trends#body");
+  const body = page.getByTestId("trends-body");
+  await expect(body).toBeVisible();
+  // The seeded blood-pressure readings render their chart card.
+  await expect(body.getByTestId("vitals-systolic")).toBeVisible();
+});

@@ -8,6 +8,7 @@ import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import RecordEncounterLink from "@/components/RecordEncounterLink";
+import EpisodeLinks from "@/components/EpisodeLinks";
 import { formatRecordDate } from "@/lib/record-format";
 import {
   conditionDisplayLabel,
@@ -15,7 +16,7 @@ import {
 } from "@/lib/condition-attributes";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
-import type { LinkedEncounterRef } from "@/lib/queries";
+import type { EpisodeLinkRef, LinkedEncounterRef } from "@/lib/queries";
 import type { Condition } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
@@ -23,7 +24,8 @@ import type { ListMultiView } from "@/lib/multi-view";
 function buildColumns(
   fmt: DisplayFormatPrefs,
   treatedWith: Record<number, string[]>,
-  diagnosedAt: Record<number, LinkedEncounterRef>
+  diagnosedAt: Record<number, LinkedEncounterRef>,
+  illnessEpisodes: Record<number, EpisodeLinkRef[]>
 ): RecordColumn<Condition>[] {
   return [
     {
@@ -55,6 +57,11 @@ function buildColumns(
               testid={`condition-diagnosed-at-${c.id}`}
             />
           ) : null}
+          <EpisodeLinks
+            episodes={illnessEpisodes[c.id] ?? []}
+            label="From illness episode"
+            testId={`condition-illness-episode-${c.id}`}
+          />
           {/* Med → indication inverse view (#1052): the medications recorded as
               treating this condition. A formatter over the ONE link, no inference. */}
           {treatedWith[c.id]?.length ? (
@@ -117,14 +124,21 @@ export default function ConditionList({
   items,
   treatedWith = {},
   diagnosedAt = {},
+  illnessEpisodes = {},
   multiView,
 }: {
   items: Stamped<Condition>[];
   treatedWith?: Record<number, string[]>;
   diagnosedAt?: Record<number, LinkedEncounterRef>;
+  illnessEpisodes?: Record<number, EpisodeLinkRef[]>;
   multiView?: ListMultiView;
 }) {
-  const columns = buildColumns(useFormatPrefs(), treatedWith, diagnosedAt);
+  const columns = buildColumns(
+    useFormatPrefs(),
+    treatedWith,
+    diagnosedAt,
+    illnessEpisodes
+  );
   // Undoable since #1847 — the capture carries the row's `edited` edit lock, so a
   // restored hand-corrected condition is not re-derived by the next episode sync.
   const undoable = useUndoableDelete();

@@ -6,6 +6,8 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
+import ScheduledAppointmentLine from "@/components/ScheduledAppointmentLine";
+import type { ScheduledAppointmentRef } from "@/lib/care-plan-appointment";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
@@ -13,7 +15,10 @@ import type { CareGoal } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
 
-const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
+const buildColumns = (
+  fmt: DisplayFormatPrefs,
+  appointments: Record<number, ScheduledAppointmentRef>
+): RecordColumn<CareGoal>[] => [
   {
     header: "Goal",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -24,6 +29,9 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
           notes={g.notes}
           className="ml-2 text-xs font-normal text-slate-400"
         />
+        {appointments[g.id] ? (
+          <ScheduledAppointmentLine appointment={appointments[g.id]} />
+        ) : null}
       </>
     ),
   },
@@ -52,14 +60,16 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
 export default function CareGoalList({
   items,
   multiView,
+  appointments = {},
 }: {
   items: Stamped<CareGoal>[];
   multiView?: ListMultiView;
+  appointments?: Record<number, ScheduledAppointmentRef>;
 }) {
   return (
     <RecordTable
       items={items}
-      columns={buildColumns(useFormatPrefs())}
+      columns={buildColumns(useFormatPrefs(), appointments)}
       emptyMessage="No health goals yet. Add one, or import a MyChart / CCD health record to populate goals set in your records."
       multiView={
         multiView

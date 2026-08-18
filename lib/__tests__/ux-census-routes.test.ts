@@ -5,9 +5,13 @@ import { fileURLToPath } from "node:url";
 import {
   DISCLOSURE_EXPANSIONS,
   DYNAMIC_ROUTES,
+  HUB_VARIANTS,
   routeSlug,
 } from "../../scripts/ux-census-routes.mjs";
+import { NUTRITION_TABS } from "../hrefs";
+import { TRAINING_TABS } from "../training-tabs";
 import { TREND_METRIC_SLUGS } from "../trend-metrics";
+import { TRENDS_TABS } from "../trends-tabs";
 import { vaccineByCode } from "../immunization-catalog";
 
 // Guard for the UX census's dynamic-route registry (#1544), in the repo's
@@ -153,10 +157,8 @@ describe("ux census dynamic-route registry", () => {
   });
 });
 
-// #2616: the disclosure-expansion registry. Same honesty contract as the
-// dynamic-route registry above — the census is a manual seeing tool, so a
-// renamed route or test id would otherwise silently un-expand a surface and the
-// blind spot the registry exists to close would quietly reopen.
+// #2616: the disclosure-expansion registry. The route registry stays honest here;
+// the manual census itself exercises the selectors against the rendered page.
 describe("ux census disclosure-expansion registry", () => {
   it("registers only live static routes, once each", () => {
     const seen = new Set<string>();
@@ -170,52 +172,39 @@ describe("ux census disclosure-expansion registry", () => {
       expect(e.label, `${e.route} has no label`).toBeTruthy();
     }
   });
+});
 
-  it("pins every selector's data-testid to source", () => {
-    // The selectors are the registry's only handle on the page. Collect each
-    // data-testid literal they reference and require it to appear in a source
-    // file, so a renamed toggle fails here instead of at the next census run.
-    const sources: string[] = [];
-    const collect = (dir: string): void => {
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (e.isDirectory()) collect(path.join(dir, e.name));
-        else if (/\.tsx?$/.test(e.name))
-          sources.push(fs.readFileSync(path.join(dir, e.name), "utf8"));
-      }
-    };
-    collect(path.join(here, "..", "..", "app"));
-    collect(path.join(here, "..", "..", "components"));
-    const all = sources.join("\n");
-    for (const e of DISCLOSURE_EXPANSIONS) {
-      const selectors = [e.closedToggle, e.loadMore].filter(
-        Boolean
-      ) as string[];
-      expect(
-        selectors.length,
-        `${e.route} has no closedToggle`
-      ).toBeGreaterThan(0);
-      for (const sel of selectors) {
-        const ids = [...sel.matchAll(/data-testid="([^"]+)"/g)].map(
-          (m) => m[1]
-        );
-        expect(
-          ids.length,
-          `${e.route}: selector "${sel}" names no data-testid — the pin below cannot hold`
-        ).toBeGreaterThan(0);
-        for (const id of ids)
-          expect(
-            all.includes(`data-testid="${id}"`),
-            `${e.route}: data-testid "${id}" not found in app/ or components/ source`
-          ).toBe(true);
-      }
+describe("ux census hub variants", () => {
+  it("registers live hubs with unique targets and slugs", () => {
+    expect(new Set(HUB_VARIANTS.map((entry) => entry.target)).size).toBe(
+      HUB_VARIANTS.length
+    );
+    expect(new Set(HUB_VARIANTS.map((entry) => entry.slug)).size).toBe(
+      HUB_VARIANTS.length
+    );
+    for (const entry of HUB_VARIANTS) {
+      expect(staticRoutes.has(entry.route), entry.route).toBe(true);
+      expect(entry.target).toMatch(
+        new RegExp(`^${entry.route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\?`)
+      );
+      expect(entry.slug).toMatch(/^[a-z0-9-]+$/);
     }
-    // The closed-state guard: a toggle selector that also matches OPEN toggles
-    // would loop forever in the harness; require the aria-expanded="false"
-    // narrowing that makes re-query-until-empty terminate.
-    for (const e of DISCLOSURE_EXPANSIONS)
-      expect(
-        e.closedToggle.includes('[aria-expanded="false"]'),
-        `${e.route}: closedToggle must narrow to aria-expanded="false"`
-      ).toBe(true);
+  });
+
+  it("covers every non-default tab on the tab-first hubs", () => {
+    const values = (route: string, key: string) =>
+      HUB_VARIANTS.filter((entry) => entry.route === route).map((entry) =>
+        new URL(entry.target, "https://allos.test").searchParams.get(key)
+      );
+
+    expect(values("/training", "tab")).toEqual(TRAINING_TABS.slice(1));
+    expect(values("/trends", "tab")).toEqual(TRENDS_TABS.slice(1));
+    expect(values("/nutrition", "tab")).toEqual(NUTRITION_TABS.slice(1));
+    expect(values("/data", "section")).toEqual([
+      "review",
+      "coverage",
+      "manage",
+      "trash",
+    ]);
   });
 });

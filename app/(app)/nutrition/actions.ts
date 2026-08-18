@@ -28,6 +28,8 @@ import {
   undoProteinGramsCore,
 } from "@/lib/protein-daily-totals-write";
 import { getFoodLimitTapNote } from "@/lib/queries/food-limit";
+import { getActiveFastCached } from "@/lib/queries/fasting";
+import { promptsEndOfFast } from "@/lib/fasting";
 import type { FoodLimitTapNote } from "@/lib/food-limit-note";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
@@ -53,6 +55,17 @@ export type FoodLogResult =
       // serializable. It is a NOTE on a successful write: the serving is already on the
       // counter, and #559's rule is that context gates order, never what can be logged.
       limitNote?: FoodLimitTapNote;
+      // "End your fast?" (#2756) — a FOLLOW-UP OFFER beside a successful log, never a
+      // confirm-before-write and never a gate. The serving is already on the counter by
+      // the time this is resolved: dueness gates nudging, never logging. Present only
+      // when a fast is active AND this serving is attributed to TODAY — a backdated
+      // serving for yesterday says nothing about the fast running right now, and
+      // prompting on it would invite a tap that ends a fast the user never meant to
+      // touch. Declining is doing nothing, and the app never auto-ends a fast: the TAP
+      // is the write. A bare `true` so the record stays serializable — the surface
+      // already knows the copy, and the ID would be a stale claim by the time it is
+      // tapped anyway (the end core re-derives the active fast under its own lock).
+      endFastOffer?: true;
     }
   | { ok: false; error: string };
 
@@ -74,7 +87,7 @@ const CORRECTION_TIME_ERROR: Record<StatedTimeRefusal, string> = {
 const MAX_PER_WEEK = 21;
 
 // Server write-path for the food-group serving log (issue #579). One-tap logging: a day
-// keeps ONE food_log row per (profile, date, group_key) whose `servings` count the bar
+// keeps ONE food_daily_totals row per (profile, date, group_key) whose `servings` count the bar
 // increments; undo decrements it and drops the row at zero. Both are profile-scoped
 // through requireWriteAccess and idempotent-friendly (the keyed upsert). group_key is
 // validated against the curated catalog so a bad slug can't land.
@@ -156,6 +169,16 @@ export async function logFoodServing(
     fields.date,
     Math.max(0, outcome.servings - 1)
   );
+  // The "End your fast?" follow-up (#2756), resolved AFTER the write for exactly the
+  // reasons the limit note above is: nothing in this decision may influence whether the
+  // serving lands. One pure predicate over (active fast, the log's attributed day,
+  // today) — `promptsEndOfFast` — so the web bar, the quick-entry overlay and a future
+  // Telegram rider cannot answer the same question three ways.
+  const endFastOffer = promptsEndOfFast(
+    getActiveFastCached(profile.id),
+    fields.date,
+    today(profile.id)
+  );
   revalidateRoute("/nutrition");
   revalidateRoute("/trends");
   revalidateRoute("/");
@@ -170,6 +193,7 @@ export async function logFoodServing(
       ? { statedTimeRefused: verdict.reason }
       : {}),
     ...(limitNote ? { limitNote } : {}),
+    ...(endFastOffer ? { endFastOffer: true as const } : {}),
   };
 }
 
@@ -215,6 +239,12 @@ export type UsualFoodResult =
       ok: true;
       window: FoodSlot;
       groups: { groupKey: string; servings: number; mealServings: number }[];
+      // ONE "End your fast?" offer for the whole bundle (#2756) — a bundled write
+      // prompts ONCE, however many servings it landed. This path has no `date` field
+      // and always writes the profile's today, so the pure predicate's day test is
+      // satisfied by construction; it is still asked through `promptsEndOfFast` so
+      // there is exactly one rule for when a food write prompts.
+      endFastOffer?: true;
     }
   | { ok: false; error: string };
 
@@ -241,10 +271,21 @@ export async function logUsualFood(
   const outcome = logUsualFoodCore(profile.id, rawWindow, named);
   if (outcome.kind === "nothing-to-log")
     return formError("Those servings are already logged.");
+  const day = today(profile.id);
+  const endFastOffer = promptsEndOfFast(
+    getActiveFastCached(profile.id),
+    day,
+    day
+  );
   revalidateRoute("/nutrition");
   revalidateRoute("/trends");
   revalidateRoute("/");
-  return { ok: true, window: outcome.window, groups: outcome.groups };
+  return {
+    ok: true,
+    window: outcome.window,
+    groups: outcome.groups,
+    ...(endFastOffer ? { endFastOffer: true as const } : {}),
+  };
 }
 
 // The correction's answer (issue #1934): the placement the serving LEFT and the one it
@@ -396,7 +437,7 @@ function parseProteinFields(
   return { grams, date };
 }
 
-// Add N grams of protein on a day (default today). Upserts the day's protein_log row,
+// Add N grams of protein on a day (default today). Upserts the day's protein_daily_totals row,
 // summing the grams, and records the amount as the last-used preset. The write is the
 // auth-blind lib core (addProteinGramsCore); this action owns the auth gate + validation
 // + revalidation and returns the day's new total for optimistic reconciliation.

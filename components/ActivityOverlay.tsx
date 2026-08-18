@@ -43,16 +43,20 @@ export default function ActivityOverlay({
   equipment,
   recentActivityEquipment = [],
   bodyweightKg,
+  strengthTrainingAvailable,
   editData,
   prefill = null,
   initialDate,
   live = false,
+  adoptRowId = null,
+  onRowOwned,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
   hidden = false,
   onMinimize,
   onClose,
+  onDeleted,
 }: {
   units: UnitPrefs;
   suggestions: ActivitySuggestions;
@@ -60,10 +64,15 @@ export default function ActivityOverlay({
   equipment: Equipment[];
   recentActivityEquipment?: number[];
   bodyweightKg: number | null;
+  strengthTrainingAvailable: boolean;
   editData: ActivityEditData | null;
   prefill?: ActivityEditData | null;
   initialDate?: string;
   live?: boolean;
+  // Create-at-start row + first-ownership callback for a live session (#2870
+  // step 3), forwarded whole.
+  adoptRowId?: number | null;
+  onRowOwned?: (id: number) => void;
   deloadContext: FormDeloadContext;
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
@@ -75,6 +84,7 @@ export default function ActivityOverlay({
   // dock instead of unmounting. Absent ⇒ the overlay closes normally.
   onMinimize?: () => void;
   onClose: () => void;
+  onDeleted?: (id: number) => void;
 }) {
   // Lock the page behind only while the overlay is actually visible; a minimized
   // (hidden) overlay must not trap scroll on the page the user is now browsing.
@@ -116,6 +126,9 @@ export default function ActivityOverlay({
     onOutcome: () => onMinimize?.(),
     // The panel is PARKED by a minimize, not unmounted — it comes straight back
     // with the session still live, so it must return to its resting transform.
+    // Which is also why it passes no `panelMounted` (#2725): this element has no
+    // unmount for the motion latch to expire on, and it needs none — the commit
+    // clears the latch itself, and the dock renders no motion class anyway.
     commitSettle: "rest",
     enabled: Boolean(onMinimize) && !hidden,
   });
@@ -168,14 +181,18 @@ export default function ActivityOverlay({
           equipment={equipment}
           recentActivityEquipment={recentActivityEquipment}
           bodyweightKg={bodyweightKg}
+          strengthTrainingAvailable={strengthTrainingAvailable}
           editData={editData}
           prefill={prefill}
           initialDate={initialDate}
           live={live}
+          adoptRowId={adoptRowId}
+          onRowOwned={onRowOwned}
           deloadContext={deloadContext}
           recoveringContext={recoveringContext}
           plateauHints={plateauHints}
           onClose={onClose}
+          onDeleted={onDeleted}
           stickyFooter
         />
       </div>

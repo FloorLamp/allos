@@ -28,7 +28,7 @@
     "backup": "tsx scripts/backup.ts",
     "photo:backfill": "tsx scripts/photo-backfill.ts",
     "restore": "tsx scripts/restore.ts",
-    "gen:biomarkers": "tsx scripts/gen-canonical-biomarkers.ts",
+    "gen:canonical-results": "tsx scripts/gen-canonical-result-definitions.ts",
     "gen:exercise-guides": "tsx scripts/gen-exercise-guides.ts",
     "gen:mets": "tsx scripts/gen-mets.ts",
     "gen:dri": "tsx scripts/gen-dri.ts",
@@ -101,7 +101,7 @@
     "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
-    "tsx": "^4.23.11",
+    "tsx": "^4.23.12",
     "typescript": "^5.5.3",
     "vitest": "^4.1.10"
   },

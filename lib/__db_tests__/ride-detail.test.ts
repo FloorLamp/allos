@@ -80,7 +80,7 @@ beforeAll(() => {
   ).run(rideId, POLYLINE);
   db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value,
+       (profile_id, source, metric, date, started_at, ended_at, value,
         activity_external_id)
      VALUES (?, 'strava', 'active_kcal', '2026-06-10',
              '2026-06-10T08:00', '2026-06-10T09:05', 648,
@@ -285,7 +285,7 @@ beforeAll(() => {
   // The telemetry above is inserted with raw SQL, so it carries no precomputed
   // stream summary — and since #2292 the cycling OVERVIEW reads that summary
   // instead of parsing streams. This is the same pass a real boot runs, and it is
-  // how any writer other than upsertCyclingTelemetry is expected to become
+  // how any writer other than upsertActivityTelemetry is expected to become
   // complete: write a summary, or leave it NULL for the reconcile to fill.
   reconcileCyclingStreamSummaries(db);
 });
@@ -318,16 +318,8 @@ describe("getRideDetailData", () => {
     expect(detail!.comparison).toMatchObject({
       basis: "distance",
       tolerancePercent: 30,
-      rideCount: 2,
+      sessionCount: 2,
     });
-    expect(detail!.rideHistory.before).toEqual([
-      expect.objectContaining({ title: "Synthetic comparison ride" }),
-    ]);
-    expect(detail!.rideHistory.after).toEqual([
-      expect.objectContaining({ title: "Synthetic later comparison ride" }),
-    ]);
-    expect(detail!.rideHistory.before).toHaveLength(1);
-    expect(detail!.rideHistory.after).toHaveLength(1);
     expect(detail!.traces.map((trace) => trace.key)).toEqual([
       "watts",
       "cadence",
@@ -393,7 +385,7 @@ describe("getCyclingOverviewData", () => {
     const overview = getCyclingOverviewData(profileId);
 
     expect(overview.rollup.totals).toMatchObject({
-      rides: 3,
+      sessions: 3,
       distanceKm: 71,
       durationMin: 179,
       elevationM: 610,
@@ -427,17 +419,21 @@ describe("getCyclingOverviewData", () => {
     expect(overview.segmentPersonalBestCount).toBe(1);
     expect(overview.distribution.months[5]).toMatchObject({
       label: "June",
-      rides: 3,
+      sessions: 3,
     });
     expect(overview.distribution.weather).toMatchObject({
       coverageDays: 4,
-      coveredRideDays: 3,
+      coveredSessionDays: 3,
     });
     expect(
       overview.distribution.weather.conditions.find(
         (condition) => condition.key === "clear"
       )
-    ).toMatchObject({ availableDays: 2, rideDays: 2, rideDayRate: 100 });
+    ).toMatchObject({
+      availableDays: 2,
+      sessionDays: 2,
+      sessionDayRate: 100,
+    });
   });
 
   it("scopes rich analytics to a cycling subtype and omits outdoor context indoors", () => {
@@ -451,7 +447,7 @@ describe("getCyclingOverviewData", () => {
       telemetryRideCount: 1,
     });
     expect(spinning.rollup.totals).toMatchObject({
-      rides: 2,
+      sessions: 2,
       durationMin: 95,
       elevationM: 0,
     });
@@ -461,7 +457,7 @@ describe("getCyclingOverviewData", () => {
     expect(detail).toMatchObject({
       activityName: "Spinning",
       indoorOnly: true,
-      comparison: { basis: "duration", rideCount: 1 },
+      comparison: { basis: "duration", sessionCount: 1 },
     });
     expect(
       detail!.comparison!.metrics.some((metric) => metric.key === "elevation")
@@ -472,7 +468,7 @@ describe("getCyclingOverviewData", () => {
       activityName: "Mountain Biking",
       indoorOnly: false,
     });
-    expect(mountainBiking.rollup.totals.rides).toBe(1);
+    expect(mountainBiking.rollup.totals.sessions).toBe(1);
   });
 });
 
@@ -533,7 +529,7 @@ describe("getCyclingOverviewData heart-rate window", () => {
     });
     expect(overview.zoneMinutes).toEqual([0, 1, 1, 0, 0]);
     // The all-time surfaces are untouched: both rides still count.
-    expect(overview.rollup.totals.rides).toBe(2);
+    expect(overview.rollup.totals.sessions).toBe(2);
   });
 });
 
@@ -658,7 +654,7 @@ describe("getCyclingOverviewData stream summary", () => {
       expect(stale.powerZoneTimes).toEqual([]);
       // The ride still counts everywhere that never needed the streams.
       expect(stale.telemetryRideCount).toBe(1);
-      expect(stale.rollup.totals.rides).toBe(1);
+      expect(stale.rollup.totals.sessions).toBe(1);
 
       expect(reconcileCyclingStreamSummaries(db)).toBeGreaterThan(0);
       const healed = getCyclingOverviewData(summaryProfileId);

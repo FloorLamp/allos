@@ -4,7 +4,7 @@
 // picker). A protocol declares a set of outcome-metric KEYS; a key is an opaque,
 // namespaced string that names WHERE the series comes from:
 //
-//   biomarker:<canonical name>  — a canonical biomarker (medical_records value_num)
+//   result:<canonical name>  — a numeric clinical result (medical_records value_num)
 //   metric:resting_hr | weight | body_fat  — a body_metrics column
 //   index:phenoage | sri        — a derived longevity index (PhenoAge / SRI)
 //
@@ -20,7 +20,7 @@ import { preferredOutcomeKeyForBiomarker } from "./outcome-identity";
 export type OutcomeDirection =
   "higher_better" | "lower_better" | "in_range" | "neutral";
 
-export type OutcomeKind = "biomarker" | "body" | "index";
+export type OutcomeKind = "result" | "body" | "index";
 
 export interface OutcomeMetricDef {
   key: string;
@@ -82,7 +82,7 @@ export interface ParsedOutcomeKey {
 }
 
 // Split a namespaced outcome key into its kind + identifier, or null when the key
-// is malformed / unknown. `biomarker:` ids keep their full (possibly colon-free)
+// is malformed / unknown. `result:` ids keep their full (possibly colon-free)
 // remainder so canonical names are preserved verbatim.
 export function parseOutcomeKey(key: string): ParsedOutcomeKey | null {
   const idx = key.indexOf(":");
@@ -90,7 +90,7 @@ export function parseOutcomeKey(key: string): ParsedOutcomeKey | null {
   const ns = key.slice(0, idx);
   const id = key.slice(idx + 1).trim();
   if (!id) return null;
-  if (ns === "biomarker") return { kind: "biomarker", id };
+  if (ns === "result") return { kind: "result", id };
   if (ns === "metric") {
     if (id === "resting_hr" || id === "weight" || id === "body_fat")
       return { kind: "body", id };
@@ -104,12 +104,12 @@ export function parseOutcomeKey(key: string): ParsedOutcomeKey | null {
 }
 
 // The display label for an outcome key. Fixed metrics use their catalog label; a
-// biomarker key falls back to its canonical name (the part after "biomarker:").
+// result key falls back to its canonical name (the part after "result:").
 export function outcomeMetricLabel(key: string): string {
   const fixed = FIXED_BY_KEY.get(key);
   if (fixed) return fixed.label;
   const parsed = parseOutcomeKey(key);
-  if (parsed?.kind === "biomarker") return parsed.id;
+  if (parsed?.kind === "result") return parsed.id;
   return key;
 }
 
@@ -124,8 +124,8 @@ export function fixedMetricDef(key: string): OutcomeMetricDef | null {
 export function preferredOutcomeKey(key: string): string | null {
   const parsed = parseOutcomeKey(key.trim());
   if (!parsed) return null;
-  if (parsed.kind !== "biomarker") return key.trim();
-  return preferredOutcomeKeyForBiomarker(parsed.id) ?? `biomarker:${parsed.id}`;
+  if (parsed.kind !== "result") return key.trim();
+  return preferredOutcomeKeyForBiomarker(parsed.id) ?? `result:${parsed.id}`;
 }
 
 // Normalize + dedupe a user-selected set of outcome keys, dropping blanks and

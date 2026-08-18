@@ -2,15 +2,15 @@
 // status). The shared observation mapper plus the result/vitals/functional-status
 // section extractors.
 import {
-  canonicalBiomarkerForLoinc,
+  canonicalResultNameForLoinc,
   isDerivedPercentileLoinc,
   isNonAnalyteLoinc,
   isVitalLoinc,
-} from "../../biomarker-loinc";
+} from "../../canonical-result-loinc";
 import type {
   ImportedImagingStudy,
   ImportedProvider,
-  ImportedRecord,
+  ImportedClinicalObservation,
 } from "../../health-import";
 import type { MedicalFlag } from "../../types";
 import {
@@ -58,7 +58,7 @@ import type { ImportDrop } from "../../import-report";
 
 // ── Source-stated reference range + abnormal flag (CDA labs) ────────────────
 // A CCD lab observation carries its OWN normal range (<referenceRange>) and the lab's
-// H/L/N/A interpretation (<interpretationCode>). We capture both on `lab` records so an
+// H/L/N/A interpretation (<interpretationCode>). We capture both on `lab` observations so an
 // analyte the app has no canonical band for still shows the lab's range and flag —
 // previously discarded (import-shape hard-coded them null). Scoped to labs: vitals keep
 // their dedicated flag engines (BP percentiles #150, temp red-flag #859), and the flag
@@ -134,7 +134,7 @@ export function isAssessmentScaleObs(obs: any): boolean {
 // into it (see the routing block in mapObservation).
 export type ObservationClass = "lab" | "vitals" | "assessment";
 
-// Map a lab / vital-sign / assessment <observation> to an ImportedRecord.
+// Map a lab / vital-sign / assessment <observation> to an ImportedClinicalObservation.
 // `narrativeIds` is the section's <text> id→text index (built once per section),
 // so an observation whose printed name lives only in the narrative table — reached
 // via <text><reference value="#id"/> — resolves instead of falling back to
@@ -146,7 +146,7 @@ export function mapObservation(
   // The performing org resolved off the parent organizer, used when the
   // observation itself carries no <performer> (Epic puts it at either level).
   fallbackProvider: ImportedProvider | null = null
-): ImportedRecord | null {
+): ImportedClinicalObservation | null {
   if (!obs || truthyNegation(obs["@_negationInd"])) return null;
   // The source time at ITS OWN grain (#2243): `date` is the day the document stated
   // (never shifted by the offset — #94), `occurred_at` the absolute moment, which is
@@ -165,7 +165,7 @@ export function mapObservation(
   // (BMI/weight-for-length/head-circ percentile), which the app recomputes from the
   // raw measurements rather than importing as range-less lab rows.
   if (isNonAnalyteLoinc(loinc) || isDerivedPercentileLoinc(loinc)) return null;
-  const canonicalName = canonicalBiomarkerForLoinc(loinc);
+  const canonicalName = canonicalResultNameForLoinc(loinc);
   // Name resolution order:
   //   1. structured @_displayName on the code, then
   //   2. the code's <originalText> — for Epic MyChart the analyte name is inline
@@ -189,7 +189,7 @@ export function mapObservation(
   // A vaccine's LOT NUMBER or EXPIRY filed as a free-standing observation (#2318):
   // it is an attribute of the immunization ENTRY, which has its own store and
   // already carries the lot as provenance. Refused outright — emitting a
-  // `ccda:obs:` record for it is what let a manufacturer string coin an analyte
+  // `ccda:obs:` observation for it is what let a manufacturer string coin an analyte
   // name. Checked on the printed label, which is all these rows carry.
   if (isImmunizationAttributeLabel(name)) return null;
   const { value, value_num, unit: valueUnit } = readValue(obs.value);
@@ -219,7 +219,7 @@ export function mapObservation(
         }
       : { value, value_num, unit };
   // Drop noise: an observation with no productive value carries nothing to
-  // record — whether it's a nameless "Result.Type" marker or a named-but-empty
+  // observation — whether it's a nameless "Result.Type" marker or a named-but-empty
   // row like Epic's "Comment(s)" (LOINC 8251-1, <value nullFlavor="NA"/>, which
   // the app would otherwise surface as an empty "—"). Qualitative results keep a
   // string value, so "Positive"/"Detected"/etc. survive.
@@ -249,7 +249,7 @@ export function mapObservation(
         referenceRange: sourceRange,
         assessmentScale: isAssessmentScaleObs(obs),
       }));
-  const recordCategory: ObservationClass = isAssessment
+  const observationCategory: ObservationClass = isAssessment
     ? "assessment"
     : isVitalLoinc(loinc)
       ? "vitals"
@@ -268,7 +268,7 @@ export function mapObservation(
   // (The raw PQ text is the last fallback so a duration the door just recovered gets a
   // distinguishing key — before #2322 such a row had no value at all and was dropped,
   // so no already-stored external_id can shift under this.)
-  const external_id = `ccda:${recordCategory === "vitals" ? "vital" : "obs"}:${String(
+  const external_id = `ccda:${observationCategory === "vitals" ? "vital" : "obs"}:${String(
     loinc || name
   ).toLowerCase()}:${date}:${value_num ?? value ?? rawPq.text ?? ""}`;
   // Body Temperature converts to canonical °F at the import boundary (#1018), the
@@ -286,10 +286,10 @@ export function mapObservation(
   // vitals keep their dedicated flag engines, and an assessment has no band to be
   // in or out of (the Functional Status section can print one; it describes the
   // instrument, not a measurement).
-  const reference_range = recordCategory === "lab" ? sourceRange : null;
-  const flag = recordCategory === "lab" ? interpretationFlag(obs) : null;
+  const reference_range = observationCategory === "lab" ? sourceRange : null;
+  const flag = observationCategory === "lab" ? interpretationFlag(obs) : null;
   return {
-    category: recordCategory,
+    category: observationCategory,
     name: String(name),
     canonical,
     value: stored.value,
@@ -365,8 +365,8 @@ function observationsFromEntries(
   entries: any[],
   category: ObservationClass,
   narrativeIds: Record<string, string> = {}
-): ImportedRecord[] {
-  const out: ImportedRecord[] = [];
+): ImportedClinicalObservation[] {
+  const out: ImportedClinicalObservation[] = [];
   for (const entry of entries) {
     // Usually organizer → component → observation; sometimes a bare observation.
     // The performing org often rides the organizer (once per panel) rather than
@@ -377,10 +377,10 @@ function observationsFromEntries(
     );
     for (const o of [...nested, ...asArray(entry?.observation)]) {
       // A radiology-study observation carries no lab value (its structured
-      // modality/site route to imaging_studies below) — never a lab record.
+      // modality/site route to imaging_studies below) — never a lab observation.
       if (isRadiologyStudyObs(o)) continue;
       // A narrative report observation (ED-valued culture/gram-stain/cytology) routes
-      // to a `report` record below — never a (null-value) lab.
+      // to a `report` observation below — never a (null-value) lab.
       if (isReportNarrativeObs(o)) continue;
       const rec = mapObservation(o, category, narrativeIds, orgProvider);
       if (rec) out.push(rec);
@@ -513,7 +513,7 @@ function mapImagingStudy(obs: any): ImportedImagingStudy | null {
 // observation's own <value> is nullFlavor, so its impression is recovered from these
 // siblings, preferring the radiologist's IMPRESSION, then the fuller narrative. (Each
 // radiology organizer holds exactly one study + its prose, so the impression can't
-// cross-assign.) These siblings are NOT captured as `report` records — they have no
+// cross-assign.) These siblings are NOT captured as `report` observations — they have no
 // real report LOINC — so this is their one home.
 const EPIC_RESULT_TEXT_OID = "1.2.840.114350.1.72.1.5220";
 const IMPRESSION_CODE_PRIORITY = ["IMP", "NAR", "PXN", "ADD"];
@@ -578,7 +578,7 @@ function imagingStudiesFromEntries(
   return out;
 }
 
-// ── Narrative diagnostic reports → `report` records (CDA, #708) ──────────────
+// ── Narrative diagnostic reports → `report` observations (CDA, #708) ──────────────
 // A microbiology culture / gram stain / cytopathology report ships as a Result
 // Observation whose <value> is encapsulated data — `xsi:type="ED"` (→ @_type after
 // removeNSPrefix) — pointing at the report body in the section's narrative <table>
@@ -608,13 +608,13 @@ function mapClinicalReport(
   names: Record<string, string>,
   blocks: Record<string, string>,
   fallbackProvider: ImportedProvider | null
-): ImportedRecord | null {
+): ImportedClinicalObservation | null {
   const val = edValue(obs);
   if (!val || truthyNegation(obs?.["@_negationInd"])) return null;
   if (!isReportNarrativeObs(obs)) return null;
   const time = effTime(obs.effectiveTime);
   const date = sourceDay(time);
-  // A record row is date-anchored (medical_records.date is NOT NULL) and a report with
+  // An observation row is date-anchored (medical_records.date is NOT NULL) and a report with
   // no body carries nothing to store — drop rather than mint an empty row.
   if (!date) return null;
   const body = resolveNarrativeText(val, blocks);
@@ -634,7 +634,7 @@ function mapClinicalReport(
     name: String(name),
     // Report rows don't group as analytes; keep the printed name as the canonical
     // (never registered as a biomarker — the persist layer filters registration to
-    // `lab` records only).
+    // `lab` observations only).
     canonical: String(name),
     value: null,
     value_num: null,
@@ -654,12 +654,12 @@ function mapClinicalReport(
 // organizer→component / bare-observation shape observationsFromEntries reads). The
 // performing lab/pathologist often rides the organizer, so resolve it once as the
 // fallback, exactly like the lab walker.
-function reportRecordsFromEntries(
+function reportObservationsFromEntries(
   entries: any[],
   names: Record<string, string>,
   blocks: Record<string, string>
-): ImportedRecord[] {
-  const out: ImportedRecord[] = [];
+): ImportedClinicalObservation[] {
+  const out: ImportedClinicalObservation[] = [];
   for (const entry of entries) {
     const orgProvider = providerFromPerformer(entry?.organizer);
     const nested = asArray(entry?.organizer?.component).map(
@@ -686,11 +686,11 @@ function reportRecordsFromEntries(
 // document is not a single-patient one (#2558).
 function withInstrumentScores(
   section: CdaSection,
-  records: ImportedRecord[],
+  observations: ImportedClinicalObservation[],
   doc?: CdaDocumentFacts
-): { records: ImportedRecord[]; drops: ImportDrop[] } {
+): { observations: ImportedClinicalObservation[]; drops: ImportDrop[] } {
   return foldInstrumentScores(
-    records,
+    observations,
     {
       stated: statedInstrumentSubject(section.raw, section.entries),
       scope: doc?.subjectScope ?? "multiple-subjects",
@@ -720,12 +720,16 @@ export const labResultsExtractor: SectionExtractor = {
       s,
       [
         ...observationsFromEntries(s.entries, "lab", narrativeIds),
-        ...reportRecordsFromEntries(s.entries, narrativeIds, narrativeBlocks),
+        ...reportObservationsFromEntries(
+          s.entries,
+          narrativeIds,
+          narrativeBlocks
+        ),
       ],
       doc
     );
     return {
-      records: folded.records,
+      observations: folded.observations,
       drops: folded.drops,
       imagingStudies: imagingStudiesFromEntries(s.entries, narrativeBlocks),
     };
@@ -736,7 +740,7 @@ export const vitalSignsExtractor: SectionExtractor = {
   key: "vitals",
   matches: (s) => sectionIs(s, SECTIONS.vitals),
   extract: (s) => ({
-    records: observationsFromEntries(
+    observations: observationsFromEntries(
       s.entries,
       "vitals",
       buildNarrativeIdMap(s.raw?.text)
@@ -750,7 +754,7 @@ export const vitalSignsExtractor: SectionExtractor = {
 // walker reads, with coded (qualitative) or numeric values, so they route through
 // the shared observation mapper.
 //
-// The assessment LOINC is stripped from the STORED record (after the mapper has
+// The assessment LOINC is stripped from the STORED observation (after the mapper has
 // used it for the name fallback and the stable external_id): these are assessment
 // instruments, not lab analytes, so carrying the code forward would list every
 // functional-status code in the "Unmapped lab codes" report — inviting canonical

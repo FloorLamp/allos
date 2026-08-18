@@ -10,7 +10,7 @@
 //   • #1463 (unlanded): which recent-changes lines a Household member card leads
 //     with, from TRANSIENT context (open episode, loop-closing lab, adherence
 //     regression) under a flagged-lab / out-of-range-vital floor.
-//   • #1413's `rankNowCards` (landed, lib/now-strip.ts): which dashboard card the
+//   • #1413's `rankNowCards` (now owned by lib/dashboard-relevance.ts): which dashboard card the
 //     moment deserves. Left alone on purpose — it also CAPS and gates on
 //     eligibility, and re-plumbing a shipped ranker buys nothing; it is named here
 //     so the third tenant looks here first.

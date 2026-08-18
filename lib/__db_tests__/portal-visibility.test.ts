@@ -37,6 +37,7 @@ import {
   listVisiblePortalRunReports,
 } from "@/lib/portal-visibility";
 import { portalLoginStatus } from "@/lib/portal-status";
+import { testAuthorizedIds as authorized } from "../__tests__/authorized-ids";
 
 // Household B's secrets — the strings that must never reach household A.
 const B_PORTAL = "Leak Test Portal B";
@@ -140,7 +141,7 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
   it("hides an account bound only to a profile the viewer cannot reach", () => {
     // Household A's login: access to profile A only, and write access there, so it is
     // in the canManagePending population — the widest a non-admin member can be.
-    const visible = listVisiblePortalRunReports([profileA], true);
+    const visible = listVisiblePortalRunReports(authorized([profileA]), true);
     const serialized = JSON.stringify(visible);
 
     expect(visible.some((r) => r.accountId === accountB.id)).toBe(false);
@@ -166,7 +167,7 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
     expect(portalLoginStatus(bReport).text).toContain(B_MESSAGE);
 
     // …while the scoped read hands household A no report that could ever format it.
-    const sentences = listVisiblePortalRunReports([profileA], true)
+    const sentences = listVisiblePortalRunReports(authorized([profileA]), true)
       .map((r) => portalLoginStatus(r).text)
       .join("\n");
     expect(sentences).not.toContain(B_MESSAGE);
@@ -175,7 +176,7 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
   });
 
   it("shows a household its own account, from either side", () => {
-    const forB = listVisiblePortalRunReports([profileB], true);
+    const forB = listVisiblePortalRunReports(authorized([profileB]), true);
     expect(forB.some((r) => r.accountId === accountB.id)).toBe(true);
     expect(JSON.stringify(forB)).toContain(B_MESSAGE);
     // …and B does not get A's.
@@ -185,10 +186,10 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
   it("gives a login with no accessible profile nothing but the unclaimed case", () => {
     // The reader the bug exposed most: zero accessible profiles. profileIdsIn([])
     // renders `(NULL)`, so clause (a) matches nothing rather than everything.
-    const none = listVisiblePortalRunReports([], false);
+    const none = listVisiblePortalRunReports(authorized([]), false);
     expect(none).toEqual([]);
     const noneSerialized = JSON.stringify(
-      listVisiblePortalRunReports([], true)
+      listVisiblePortalRunReports(authorized([]), true)
     );
     expect(noneSerialized).not.toContain(B_MESSAGE);
     expect(noneSerialized).not.toContain(A_MESSAGE);
@@ -199,11 +200,14 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
     // yet, and hiding its failure would restore the dead zone that issue removed. It is
     // shown to exactly the canManagePending population — the same one that already sees
     // pending's portal-spelled patient labels.
-    const canManage = listVisiblePortalRunReports([profileA], true);
+    const canManage = listVisiblePortalRunReports(authorized([profileA]), true);
     expect(canManage.some((r) => r.accountId === unclaimedAccount.id)).toBe(
       true
     );
-    const cannotManage = listVisiblePortalRunReports([profileA], false);
+    const cannotManage = listVisiblePortalRunReports(
+      authorized([profileA]),
+      false
+    );
     expect(cannotManage.some((r) => r.accountId === unclaimedAccount.id)).toBe(
       false
     );
@@ -219,7 +223,7 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
       true
     );
     expect(
-      listVisiblePortalRunReports([profileA], true).some(
+      listVisiblePortalRunReports(authorized([profileA]), true).some(
         (r) => r.accountId === accountB.id
       )
     ).toBe(true);
@@ -228,7 +232,7 @@ describe("listVisiblePortalRunReports — the #1787 disclosure boundary", () => 
       "DELETE FROM portal_identities WHERE account_id = ? AND profile_id = ?"
     ).run(accountB.id, profileA);
     expect(
-      listVisiblePortalRunReports([profileA], true).some(
+      listVisiblePortalRunReports(authorized([profileA]), true).some(
         (r) => r.accountId === accountB.id
       )
     ).toBe(false);
@@ -257,7 +261,7 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
   });
 
   it("omits a portal whose accounts are all claimed by an unreachable household", () => {
-    const visible = listVisiblePortalRegistry([profileA], true);
+    const visible = listVisiblePortalRegistry(authorized([profileA]), true);
     const serialized = JSON.stringify(visible);
 
     expect(visible.portals.some((p) => p.id === bPortalId)).toBe(false);
@@ -279,7 +283,7 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
     expect(bindPortalIdentity(accountB.id, "Shared Patient", profileA).ok).toBe(
       true
     );
-    const shared = listVisiblePortalRegistry([profileA], true);
+    const shared = listVisiblePortalRegistry(authorized([profileA]), true);
     expect(shared.portals.some((p) => p.id === bPortalId)).toBe(true);
     const bAccounts = shared.accounts.filter(
       (acc) => acc.portalId === bPortalId
@@ -292,14 +296,14 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
       "DELETE FROM portal_identities WHERE account_id = ? AND profile_id = ?"
     ).run(accountB.id, profileA);
     expect(
-      listVisiblePortalRegistry([profileA], true).portals.some(
+      listVisiblePortalRegistry(authorized([profileA]), true).portals.some(
         (p) => p.id === bPortalId
       )
     ).toBe(false);
   });
 
   it("shows a household its own portal and login, from either side", () => {
-    const forB = listVisiblePortalRegistry([profileB], true);
+    const forB = listVisiblePortalRegistry(authorized([profileB]), true);
     expect(forB.portals.some((p) => p.id === bPortalId)).toBe(true);
     expect(forB.accounts.some((acc) => acc.id === accountB.id)).toBe(true);
     // …and B does not get A's.
@@ -311,7 +315,10 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
     // No admin branch exists in the reader: an admin reaches every profile, so the same
     // clause (a) admits every claimed account. "Admin sees everything" stays a property
     // of the accessible set rather than a second rule that could disagree with it.
-    const forAdmin = listVisiblePortalRegistry([profileA, profileB], true);
+    const forAdmin = listVisiblePortalRegistry(
+      authorized([profileA, profileB]),
+      true
+    );
     for (const portalId of [aPortalId, bPortalId, unclaimedPortalId]) {
       expect(forAdmin.portals.some((p) => p.id === portalId)).toBe(true);
     }
@@ -320,7 +327,7 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
   });
 
   it("keeps an unclaimed account visible only to the population that can set it up", () => {
-    const canManage = listVisiblePortalRegistry([profileA], true);
+    const canManage = listVisiblePortalRegistry(authorized([profileA]), true);
     expect(
       canManage.accounts.some((acc) => acc.id === unclaimedAccount.id)
     ).toBe(true);
@@ -328,7 +335,10 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
       true
     );
 
-    const cannotManage = listVisiblePortalRegistry([profileA], false);
+    const cannotManage = listVisiblePortalRegistry(
+      authorized([profileA]),
+      false
+    );
     expect(
       cannotManage.accounts.some((acc) => acc.id === unclaimedAccount.id)
     ).toBe(false);
@@ -342,7 +352,7 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
   });
 
   it("returns nothing of this fixture to a login with no accessible profile", () => {
-    const none = listVisiblePortalRegistry([], false);
+    const none = listVisiblePortalRegistry(authorized([]), false);
     const serialized = JSON.stringify(none);
     expect(serialized).not.toContain(A_PORTAL);
     expect(serialized).not.toContain(B_PORTAL);
@@ -355,7 +365,7 @@ describe("listVisiblePortalRegistry — the #1796 registry boundary", () => {
   it("never returns an account whose portal it withheld", () => {
     // The grouping invariant: a portal appears only BECAUSE one of its accounts did, so
     // an account can never arrive orphaned from the portal it names.
-    const visible = listVisiblePortalRegistry([profileA], true);
+    const visible = listVisiblePortalRegistry(authorized([profileA]), true);
     const portalIds = new Set(visible.portals.map((p) => p.id));
     for (const acc of visible.accounts) {
       expect(portalIds.has(acc.portalId)).toBe(true);
@@ -393,7 +403,7 @@ describe("listVisiblePendingIdentities — the #1875 disclosure boundary", () =>
   });
 
   it("shows a member only pendings on logins claimed by a profile they can reach", () => {
-    const visible = listVisiblePendingIdentities([profileA], false);
+    const visible = listVisiblePendingIdentities(authorized([profileA]), false);
     const serialized = JSON.stringify(visible);
 
     expect(visible.some((p) => p.patientLabel === A_PENDING)).toBe(true);
@@ -407,12 +417,18 @@ describe("listVisiblePendingIdentities — the #1875 disclosure boundary", () =>
   });
 
   it("keeps the unclaimed first-contact case for the flagged (admin) population only", () => {
-    const admin = listVisiblePendingIdentities([profileA, profileB], true);
+    const admin = listVisiblePendingIdentities(
+      authorized([profileA, profileB]),
+      true
+    );
     for (const label of [A_PENDING, B_PENDING, U_PENDING]) {
       expect(admin.some((p) => p.patientLabel === label)).toBe(true);
     }
     // The flag never widens visibility of a CLAIMED foreign account's pendings.
-    const memberWithFlag = listVisiblePendingIdentities([profileA], true);
+    const memberWithFlag = listVisiblePendingIdentities(
+      authorized([profileA]),
+      true
+    );
     expect(memberWithFlag.some((p) => p.patientLabel === U_PENDING)).toBe(true);
     expect(memberWithFlag.some((p) => p.patientLabel === B_PENDING)).toBe(
       false
@@ -420,6 +436,6 @@ describe("listVisiblePendingIdentities — the #1875 disclosure boundary", () =>
   });
 
   it("gives a login with no accessible profile nothing", () => {
-    expect(listVisiblePendingIdentities([], false)).toEqual([]);
+    expect(listVisiblePendingIdentities(authorized([]), false)).toEqual([]);
   });
 });

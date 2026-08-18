@@ -4,8 +4,9 @@
 // /training), and the one thing that made it an 8,798px wall was the findings
 // block: the per-muscle volume-band engine (#742) can fire once per MuscleId, so a
 // normal week unrolled ~17 sibling cards above everything the page is actually for.
-// The dashboard already treats coaching-tier findings as a calm, capped rollup
-// (#449/#1219); this applies that posture to the page that GENERATES them.
+// The dashboard already treats coaching-tier findings as a calm rollup (#449);
+// this applies that posture to the page that GENERATES them while retaining this
+// page's own compact disclosure.
 //
 // RENDERING ONLY. This module never touches identity: each per-muscle Finding keeps
 // its own `dedupeKey`, and the rollup carries the Finding objects through unchanged

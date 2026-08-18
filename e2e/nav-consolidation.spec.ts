@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
+import { openMobileDrawer } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_NAV_FEMALE,
@@ -25,9 +26,9 @@ import {
 
 // The #1042 frequency order. Household appears for the admin session (it reaches
 // 2+ profiles); Longevity took over Protocols' slot in phase 4 (the Protocols
-// hub folded into /longevity#protocols). "Year in review" (#2179) sits beside
-// Timeline and Trends — the same "what happened over time" cluster at the longest
-// horizon — and is ungated, so it is present for every session.
+// hub folded into /longevity#protocols). #2762 removes the once-a-year
+// retrospective from permanent nav chrome; Timeline and the recap card carry its
+// in-context links instead.
 //
 // UNCHANGED by #1522 on purpose: the medicine-cabinet row this repo just deleted was
 // a child of the Medical GROUP, not a top-level entry, so it never appeared in this
@@ -39,7 +40,6 @@ const TOP_LEVEL_ORDER: (string | RegExp)[] = [
   "Nutrition",
   "Timeline",
   "Trends",
-  "Year in review",
   "Sleep",
   "Upcoming",
   "Household",
@@ -70,16 +70,8 @@ test("mobile drawer renders the same order through the shared content (#1042)", 
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  // Re-tap until the drawer is open — a pre-hydration tap on the hamburger is
-  // swallowed (#500-class), and no single expect can both re-click and await the
-  // drawer; opening is idempotent (the button only opens).
-  const drawerNav = page.locator("div.fixed nav");
-  await expect(async () => {
-    if (!(await drawerNav.isVisible())) {
-      await page.getByRole("button", { name: "Open menu" }).click();
-    }
-    await expect(drawerNav).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the hamburger until the drawer opens past the pre-hydration swallow (#500) — opening is idempotent, no single re-click+await event
+  const drawer = await openMobileDrawer(page);
+  const drawerNav = drawer.locator("nav");
   await expect(drawerNav.locator("> *")).toHaveText(TOP_LEVEL_ORDER);
 });
 

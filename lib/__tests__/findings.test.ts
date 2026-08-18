@@ -23,11 +23,11 @@ describe("dedupe-key builders", () => {
   });
 
   it("keys digest chips by series + direction (a reversal is a new key)", () => {
-    expect(digestDedupeKey({ key: "bio:LDL", direction: "up" })).toBe(
-      "digest:bio:LDL:up"
+    expect(digestDedupeKey({ key: "result:LDL", direction: "up" })).toBe(
+      "digest:result:LDL:up"
     );
-    expect(digestDedupeKey({ key: "bio:LDL", direction: "down" })).toBe(
-      "digest:bio:LDL:down"
+    expect(digestDedupeKey({ key: "result:LDL", direction: "down" })).toBe(
+      "digest:result:LDL:down"
     );
   });
 });
@@ -109,7 +109,7 @@ describe("recommendationToFinding", () => {
 
 describe("trendItemToFinding", () => {
   const base: Omit<TrendItem, "rangeShift" | "lastStatus"> = {
-    key: "bio:LDL",
+    key: "result:LDL",
     label: "LDL",
     direction: "up",
     first: 100,
@@ -130,7 +130,7 @@ describe("trendItemToFinding", () => {
     });
     expect(f).toMatchObject({
       domain: "digest",
-      dedupeKey: "digest:bio:LDL:up",
+      dedupeKey: "digest:result:LDL:up",
       title: "LDL",
       tone: "caution",
     });

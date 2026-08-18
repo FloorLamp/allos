@@ -15,7 +15,7 @@ import {
   buildIntakeReminderForSlots,
   collectWindowDoses,
   getPreWorkoutSlotMinute,
-} from "@/lib/notifications/supplements";
+} from "@/lib/notifications/intake";
 import { inferWorkoutSchedule } from "@/lib/queries";
 
 function createProfile(name: string): number {
@@ -94,10 +94,10 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
 
     const td = today(p);
     const pre = collectWindowDoses(p, "PreWorkout", td);
-    expect(pre.map((e) => e.supp.name)).toContain("Creatine (test)");
+    expect(pre.map((e) => e.item.name)).toContain("Creatine (test)");
     // No double-listing: it left the Morning fold.
     const morning = collectWindowDoses(p, "Morning", td);
-    expect(morning.map((e) => e.supp.name)).not.toContain("Creatine (test)");
+    expect(morning.map((e) => e.item.name)).not.toContain("Creatine (test)");
   });
 
   it("an EXPLICIT Morning bucket is honored even with an inferred cadence", () => {
@@ -107,10 +107,10 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
 
     const td = today(p);
     expect(
-      collectWindowDoses(p, "Morning", td).map((e) => e.supp.name)
+      collectWindowDoses(p, "Morning", td).map((e) => e.item.name)
     ).toContain("Beta-Alanine (test)");
     expect(
-      collectWindowDoses(p, "PreWorkout", td).map((e) => e.supp.name)
+      collectWindowDoses(p, "PreWorkout", td).map((e) => e.item.name)
     ).not.toContain("Beta-Alanine (test)");
     // No anytime pre_workout dose → the pseudo-slot has no time.
     expect(getPreWorkoutSlotMinute(p)).toBeNull();
@@ -127,7 +127,7 @@ describe("#1154 Fix A — the PreWorkout pseudo-slot", () => {
 
     expect(getPreWorkoutSlotMinute(p)).toBeNull();
     expect(
-      collectWindowDoses(p, "Morning", today(p)).map((e) => e.supp.name)
+      collectWindowDoses(p, "Morning", today(p)).map((e) => e.item.name)
     ).toContain("Creatine (test)");
   });
 });
@@ -166,5 +166,55 @@ describe("#1154 — same-hour sends coalesce into ONE message", () => {
     const built = buildIntakeReminderForSlots(p, ["Morning", "Bedtime"]);
     expect(built).not.toBeNull();
     expect(built!.slots).toEqual(["Morning"]);
+  });
+});
+
+// ---- The ride-along tail on a DOSE REMINDER keyboard (#1505 / #2890) ----
+//
+// SAFETY TIER. The dose reminder is the message that says what is still due, and its
+// keyboard already carries "✅ All (N)" over exactly that set. #2890 renamed the digest's
+// offer tail to a bare "➕ Doses (N)" — and on this message that put TWO dose counts side
+// by side that mean different things and cannot be added up: "2 still due here" beside
+// "3 you may log any time". The reminder therefore keeps the word "other", whose
+// referent — unlike on the digest — is the message it is attached to.
+describe("the reminder's ride-along names what it is other THAN (#2890)", () => {
+  // A `may` item with no slot hint is offered in every slot, so this is deterministic
+  // whatever hour the suite runs at.
+  function seedMayItem(profileId: number, name: string): void {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, ?, 1, 'supplement', 'daily', 'may')`
+        )
+        .run(profileId, name).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '1 cap', NULL, 'any', 0)`
+    ).run(itemId);
+  }
+
+  it("does not put a second bare dose count beside ✅ All", () => {
+    const p = createProfile("RideAlong Rhea (test)");
+    // Two due doses in one slot, which is what mints "✅ All (2)"…
+    seedDaily(p, "Levothyroxine (test)", "morning");
+    seedDaily(p, "Vitamin D (test)", "morning");
+    // …and three `may` items the tail offers.
+    for (const n of ["Magnesium", "Zinc", "Iron"]) {
+      seedMayItem(p, `${n} (test)`);
+    }
+
+    const labels = (
+      buildIntakeReminderForSlots(p, ["Morning"])?.message.actions ?? []
+    ).map((a) => a.label);
+
+    expect(labels).toContain("✅ All (2)");
+    expect(labels).toContain("➕ Log other (3)");
+    // The regression this pins: "➕ Doses (3)" beside "✅ All (2)".
+    expect(labels).not.toContain("➕ Doses (3)");
+    // Exactly one label carries a count that is ABOUT what is due here.
+    expect(labels.filter((l) => l.startsWith("✅ All"))).toHaveLength(1);
   });
 });

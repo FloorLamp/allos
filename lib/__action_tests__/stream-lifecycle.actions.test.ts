@@ -44,7 +44,7 @@ function nowInstant(): Date {
 
 function connect(profileId: number): void {
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status, config)
+    `INSERT INTO integration_connections (profile_id, source_id, status, config)
      VALUES (?, ?, 'connected', NULL)`
   ).run(profileId, PROVIDER);
 }

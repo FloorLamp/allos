@@ -487,6 +487,17 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+      # The same per-file durations, printed. The artifact below is the richer
+      # source, but downloading one means reaching *.blob.core.windows.net, which
+      # an agent sandbox behind a filtering proxy cannot do — the artifact LIST
+      # returns 200 and the download returns 403 CONNECT, so it reads as a
+      # permissions problem and is not. Job logs are plain API reads. One tagged
+      # line per spec file is a few hundred bytes and makes the manifest
+      # refreshable from anywhere that can read a log.
+      - name: Print per-file durations (sharding manifest source)
+        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
+        run: npx tsx scripts/gen-e2e-durations.ts --emit-log test-results/e2e-results.json
+
       # The raw JSON report, so e2e/spec-durations.json can be refreshed from a
       # RUNNER rather than from someone's laptop. Twelve of these cover the whole
       # suite, which is what the manifest needs — see the refresh recipe in

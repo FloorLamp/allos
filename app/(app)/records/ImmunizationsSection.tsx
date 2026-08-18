@@ -25,7 +25,7 @@ import {
   type ImmunizationFilter,
 } from "@/lib/immunization-status";
 import { EmptyState } from "@/components/ui";
-import { dataSectionHref, readingDetailHref } from "@/lib/hrefs";
+import { dataSectionHref, clinicalResultDetailHref } from "@/lib/hrefs";
 import { Notice } from "@/components/Notice";
 import { parseSortColumn, parseSortDir, sortRows } from "@/lib/table-sort";
 import SortableHeader from "@/components/SortableHeader";
@@ -367,8 +367,8 @@ export default function ImmunizationsSection({
                   No antibody/titer results yet. They appear here automatically
                   when a lab report with immunity markers (e.g. Hepatitis B
                   Surface Antibody, Measles IgG) is added under{" "}
-                  <Link href="/results/readings" className="underline">
-                    Biomarkers
+                  <Link href="/results/clinical-results" className="underline">
+                    Clinical results
                   </Link>
                   .
                 </p>
@@ -381,7 +381,7 @@ export default function ImmunizationsSection({
                     >
                       <div className="min-w-0">
                         <Link
-                          href={readingDetailHref(t.marker)}
+                          href={clinicalResultDetailHref(t.marker)}
                           className="truncate text-sm font-medium text-slate-800 hover:underline dark:text-slate-100"
                         >
                           {t.marker}

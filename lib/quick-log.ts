@@ -1,17 +1,15 @@
-// The mobile top bar's contextual primary action + the quick-log sheet's menu
-// (issue #1416, sections B and E).
+// The quick-log sheet's menu and its route-aware opening segment (issue #1416,
+// sections B and E; consolidated into the dock in #2745).
 //
 // The phone bar used to carry ONE hard-coded create action — "log activity" —
 // so logging food, a dose, or a weight meant a full nav through the drawer even
 // while standing on the very page that owns that form. This module is the pure
 // registry behind both halves of the fix:
 //
-//   * `primaryQuickLog(pathname, tab)` — the route → primary-action map. The
-//     bar's **+** does the CURRENT page's obvious thing, falling back to the
-//     historical "log activity" everywhere else (so nothing regresses on the ~60
-//     routes with no opinion).
-//   * `QUICK_LOG_ITEMS` — the caret-opened sheet's full menu, so the actions the
-//     current route DOESN'T promote are still one tap away.
+//   * `primaryQuickLog(pathname, tab)` — the route → promoted-log map. The sheet
+//     opens on the segment containing the current page's obvious log, falling
+//     back to activity everywhere else.
+//   * `QUICK_LOG_ITEMS` — the dock-puck sheet's full menu.
 //
 // No new write paths: every entry opens an EXISTING form — the shared activity
 // editor through the ActivityEditor context (the same `openCreate` the bar
@@ -45,6 +43,7 @@ import { DEFAULT_TRENDS_TAB, parseTab } from "./trends-tabs";
 // registry stays pure/serializable, like PALETTE_ACTIONS).
 export type QuickLogIcon =
   | "barbell"
+  | "bolt"
   | "salad"
   | "pill"
   | "scale"
@@ -85,10 +84,13 @@ export interface QuickEntryPrefill {
 }
 
 export type QuickLogTarget =
-  // Open the shared activity editor in place (the DOCK — a live workout is a
-  // SESSION lifecycle, not a transactional one, so it deliberately stays off the
-  // bottom sheet; see the #1428 decision rule).
+  // Open the shared one-off activity editor in place. This remains distinct from
+  // the live SESSION lifecycle below; both reuse their existing editor seams.
   | { kind: "activity" }
+  // Open (or resume) the existing live-workout session. The sheet renders the
+  // dynamic `workoutOffer.label`, so a live session can never be reset by a
+  // stale static "Start workout" promise (#2745/#1893).
+  | { kind: "live" }
   // Open the existing form in the shared quick-entry overlay, in place.
   | { kind: "overlay"; form: QuickEntryForm }
   // Navigate to the existing create surface. Retained for the CommandPalette;
@@ -103,6 +105,7 @@ export type QuickLogTarget =
 // pins the reverse — every id here is carried by exactly one entry.)
 export const QUICK_LOG_IDS = [
   "log-activity",
+  "live-workout",
   "log-food",
   "log-dose",
   "log-measurements",
@@ -123,9 +126,8 @@ export interface QuickLogItem {
   hint: string;
   icon: QuickLogIcon;
   target: QuickLogTarget;
-  // True for the entries only a training-capable profile should see. An
-  // age-restricted profile (lib/age-gate.ts) has no training surface at all, so
-  // the bar hides its create actions entirely there — same posture as today.
+  // Marks workout-product entries so the shell can remove them when Training is
+  // not relevant for the active profile.
   training?: boolean;
   // True for the entries only a CYCLE-RELEVANT profile should see (#1892). Gated on
   // the SAME `cycle` relevance bit as the Cycle nav entry and the dashboard phase
@@ -145,6 +147,16 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     hint: "Strength, cardio, or sport",
     icon: "barbell",
     target: { kind: "activity" },
+    training: true,
+  },
+  {
+    id: "live-workout",
+    // The rendered row substitutes workoutOffer.label (Start / Resume). This
+    // registry label is the static fallback used by pure consumers.
+    label: "Start workout",
+    hint: "Live sets, rest timer, and workout tracking",
+    icon: "bolt",
+    target: { kind: "live" },
     training: true,
   },
   {
@@ -253,15 +265,14 @@ function under(pathname: string, route: string): boolean {
 // so this stays a pure function of its inputs.
 //
 // Deliberately SHORT: an entry earns its place only when the page has one
-// obvious primary log. Everything else falls back to "Log activity" — the bar's
-// behavior before this issue — so an unlisted route is never a regression.
+// obvious promoted log. Everything else falls back to "Log activity", so an
+// unlisted route opens the Train segment.
 export function primaryQuickLog(
   pathname: string,
   tab?: string | null
 ): QuickLogItem {
   // Nutrition promotes food on BOTH tabs: the Supplements tab's own add form is
-  // right there on screen, so spending the bar's one slot on it buys nothing,
-  // while food logging is what people reach the phone for.
+  // right there on screen, while food logging is what people reach the phone for.
   if (under(pathname, "/nutrition")) return quickLogItem("log-food");
   if (under(pathname, MEDICATIONS_HREF)) return quickLogItem("log-dose");
   // Body metrics live in the Trends body census, which #1644 moved onto the DEFAULT
@@ -280,33 +291,14 @@ export function primaryQuickLog(
   return quickLogItem(LOG_ACTIVITY_ID);
 }
 
-// The bar shows the activity-specific shortcut — since #1509 that is the
-// live-workout button ALONE (the ⟳ repeat-last twin left the bar; repeat-last
-// keeps exactly two homes, the command palette and the Training Log card's ⋯ menu) —
-// ONLY where the primary action is itself the activity editor. On Nutrition or
-// Medications it would be noise competing for a 390px-wide bar.
-export function showsActivityShortcuts(primary: QuickLogItem): boolean {
-  return primary.target.kind === "activity";
-}
-
-// The sheet's menu for a given profile. Two per-entry gates, both mirroring a gate the
-// app already applies elsewhere:
-//
-//   • `restricted` — an age-restricted profile has no training surface, so the
-//     training-only entries drop (the gate the bar's create actions have always
-//     carried).
-//   • `cycleRelevant` — the #1042 `cycle` relevance bit, the SAME one gating the Cycle
+// The sheet's menu for a given profile. `cycleRelevant` is the #1042 `cycle`
+// relevance bit, the SAME one gating the Cycle
 //     nav entry and the dashboard phase widget (#1892). Defaults TRUE for the same
 //     reason DEFAULT_NAV_RELEVANCE does: a caller that hasn't threaded the bitset must
 //     never over-hide. The overlay re-checks it server-side, so a deep link cannot
 //     reach the offer on a profile the domain does not apply to either.
-export function quickLogMenu(
-  restricted: boolean,
-  cycleRelevant = true
-): QuickLogItem[] {
-  return QUICK_LOG_ITEMS.filter(
-    (i) => !(i.training && restricted) && !(i.cycle && !cycleRelevant)
-  );
+export function quickLogMenu(cycleRelevant = true): QuickLogItem[] {
+  return QUICK_LOG_ITEMS.filter((i) => !(i.cycle && !cycleRelevant));
 }
 
 // ── THE DOMAIN CENSUS (#2130) ────────────────────────────────────────────────

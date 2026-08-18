@@ -372,6 +372,7 @@ function hhmmToMinuteOfDay(hhmm: string): number {
 export default function NotificationPrefs({
   schedule,
   workoutSummary,
+  trainingRelevant = true,
   foodTelegramEnabled,
   foodLoggingRelevant,
   moodCheckinEnabled,
@@ -395,6 +396,7 @@ export default function NotificationPrefs({
 }: {
   schedule: NotifySchedule;
   workoutSummary: string;
+  trainingRelevant?: boolean;
   foodTelegramEnabled: boolean;
   foodLoggingRelevant: boolean;
   moodCheckinEnabled: boolean;
@@ -565,7 +567,9 @@ export default function NotificationPrefs({
   // `followup` since #1873) never reaches this list, so it is invisible to the matrix
   // AND to the column sweep below — both read this one filtered set.
   const rows = NOTIFICATION_KIND_REGISTRY.filter(
-    (e) => !e.requiresFoodLogging || foodLoggingRelevant
+    (e) =>
+      (!e.requiresFoodLogging || foodLoggingRelevant) &&
+      (!e.requiresTraining || trainingRelevant)
   );
 
   // A cell is a real toggle unless the channel inherently can't deliver the kind
@@ -714,7 +718,9 @@ export default function NotificationPrefs({
                       seed={SLOT_SEED[field]}
                       stepMinutes={gridMinutes}
                       label={`${w} reminder`}
-                      testId={w === "Morning" ? "supp-morning-hour" : undefined}
+                      testId={
+                        w === "Morning" ? "intake-morning-hour" : undefined
+                      }
                     />
                   </div>
                 </div>

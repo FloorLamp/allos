@@ -18,6 +18,7 @@ import { upsertWeatherDays } from "@/lib/integrations/weather-cache";
 import type { DailyWeatherRow } from "@/lib/integrations/open-meteo";
 import { collectUpcoming } from "@/lib/queries";
 import { getOutdoorPlans } from "@/lib/queries/weather-training";
+import { pageRowDetail } from "@/lib/upcoming-aggregate";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest } from "@/lib/notifications/digest";
 import { plainBody } from "@/lib/notifications/rich-text";
@@ -152,6 +153,15 @@ describe("outdoor planning — one computation, two surfaces (#1724 part 5)", ()
     const items = upcomingPlanItems(p);
     expect(items).toHaveLength(1);
     expect(items[0].detail).toBe(plans[0].line);
+    // …and the Upcoming page PRINTS that line (#2579-E). This row shares the
+    // `training` domain with the weekly floor targets, whose detail the page drops as
+    // a restatement of their own status column — but here the detail IS the row, and
+    // the parenthesised "cycling 0/2" it embeds belongs to the sentence, not to a pace
+    // column beside it. Keying that density rule on the DOMAIN deleted this whole
+    // line; the row declares no `weeklyTarget`, so the rule now leaves it alone.
+    expect(items[0].weeklyTarget).toBeUndefined();
+    expect(pageRowDetail(items[0])).toBe(plans[0].line);
+    expect(pageRowDetail(items[0])).toContain("cycling 0/2");
     expect(items[0].band).toBe("week");
     expect(items[0].dueDate).toBeNull();
 

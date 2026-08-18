@@ -194,7 +194,7 @@ for each m in MIGRATIONS where m.id > version:
 - **Determinism rule:** a migration may read only the DB and its own constants —
   no env vars, no `Date.now()`-dependent branching, no imports of live
   registries that evolve (`ENUM_CHECKS`, `lib/owned-tables.ts`,
-  `canonical-biomarkers.json`). Baseline is grandfathered (it already imports
+  `canonical-result-definitions.json`). Baseline is grandfathered (it already imports
   the registries); the rule applies from 002 on, enforced by review + the hash
   manifest making any drift-by-imported-value visible as a behavior bug rather
   than a silent one. Where a new migration needs a table list or enum set, it
@@ -374,6 +374,60 @@ and the harness would then read as total while covering nothing, which is the
 #2444 defect the guard exists to avoid. Resident fixture rows would also collide
 with the data migrations that legitimately delete and re-home rows (177, 180,
 185), turning correct behaviour into failures.
+
+### The delete that succeeded: a pre-flight snapshot (#2702)
+
+Both guards above are about a delete's **side effects**. Neither addresses the
+delete itself, and the two halves of that story are different problems. A
+migration that **fails** loses nothing — the per-migration `BEGIN IMMEDIATE`
+rolls back, the pragma is restored in `finally`, and no ledger row is written.
+A migration that **succeeds** and deleted the wrong rows was unrecoverable:
+`createDb()` took no copy first, so the deletion happened at boot with nothing
+behind it. #2699 open question 6 records rows already lost that way.
+
+So `runMigrations` copies the database aside before it applies anything. It sits
+after both downgrade guards (a refused boot must still write nothing, and those
+are the cheaper refusal) and before the foreign-key toggle — in autocommit, which
+`VACUUM INTO` requires, and disturbing neither the `foreign_keys = OFF` posture
+nor the transaction structure the rollback correctness depends on.
+
+Three decisions carry it, and the first is the one this document's own history
+argues for:
+
+- **The trigger is "an upgrade is happening", not "a delete is pending".** A
+  declaration on the migration is what #2444 was; a lexical scan is what #2703
+  proved cannot be complete, and it is unavailable at runtime anyway; a
+  behavioural check is what #2703 became, and cannot work here because the
+  evidence a delete happened only exists after the delete. So the trigger asks a
+  question the runner already answers exactly — is the pending set non-empty — and
+  a new migration inherits the protection with nothing to declare or misspell. The
+  cost is a snapshot before an upgrade that only added a column; the skips
+  (nothing pending, a fresh install, `:memory:`, an operator opt-out) remove every
+  boot with nothing to protect, and retention (2 copies, 30 days) bounds the rest.
+- **`VACUUM INTO`, the same call `performBackup` makes.** A plain file copy is
+  wrong under WAL, and better-sqlite3's online backup API returns a Promise this
+  synchronous boot path cannot await. `VACUUM INTO` also preserves
+  `user_version`, so the snapshot's version is the applied count _before_ the
+  pending set and the #472 restore gate — which refuses only a snapshot **newer**
+  than the build — accepts it.
+- **This refusal is a refusal, unlike the one above.** `reportOrphansIntroduced`
+  reports because its migration has already committed and a throw would leave the
+  database half-upgraded. Here nothing has been applied: refusing is reversible
+  (the previous image still boots this database unchanged) while the delete it
+  prevents is not. The message names the pending migrations and the
+  `ALLOS_MIGRATION_SNAPSHOT` override, so proceeding uncovered is a decision
+  rather than a silence.
+- **The override can name the upgrade it covers.**
+  `ALLOS_MIGRATION_SNAPSHOT=off:<migration name>` applies to one pending set and
+  stops mattering once that migration has applied, so a workaround taken under
+  pressure during one upgrade does not silently disable the protection forever.
+  Bare `off` still means every upgrade, and says so in its own warning.
+
+See [`docs/internals/migration-snapshot.md`](internals/migration-snapshot.md) for
+the retention policy, the crash-loop reuse, the discovery surfaces, the opt-out's
+expiry, the boot-task enumeration and the restore caveat (a restored pre-migration
+database has the same pending set it had before, so the same image re-applies the
+same migrations).
 
 ### Downgrade guard
 

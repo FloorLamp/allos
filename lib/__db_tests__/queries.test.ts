@@ -26,7 +26,7 @@ import {
   getMetricDailyTotals,
   getClinicalObservations,
   getLatestClinicalObservationByCanonical,
-  getSavedBiomarkers,
+  getSavedClinicalResults,
   getMedicalDocuments,
   reconcileFlags,
   getImmunizations,
@@ -141,7 +141,7 @@ describe("medical / biomarker reads", () => {
       `${fx.tag}-labs.pdf`
     );
     expect(
-      getSavedBiomarkers(fx.profileId).map((s) => s.canonical_name)
+      getSavedClinicalResults(fx.profileId).map((s) => s.canonical_name)
     ).toContain("Glucose");
   });
 
@@ -290,7 +290,7 @@ describe("health-record import: height → metric_samples, weight → body_metri
   // body_metrics(weight_kg) — the split the growth chart height + BMI paths read.
   const anthro: ImportResult = {
     immunizations: [],
-    records: [
+    observations: [
       {
         category: "vitals",
         name: "Body Height",
@@ -408,7 +408,7 @@ describe("health-record import: encounters → encounters table", () => {
   // reprocess is idempotent (no duplicate encounter, no duplicate provider).
   const visit: ImportResult = {
     immunizations: [],
-    records: [],
+    observations: [],
     encounters: [
       {
         date: "2026-06-08",
@@ -527,7 +527,7 @@ describe("health-record import: smoking status supersede", () => {
   function smokingDoc(smoking: { name: string; code: string }): ImportResult {
     return {
       immunizations: [],
-      records: [],
+      observations: [],
       conditions: [
         {
           name: smoking.name,

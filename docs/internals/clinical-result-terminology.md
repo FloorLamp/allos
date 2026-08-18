@@ -4,7 +4,7 @@ Status: shipped (#2479 part 1 — the vocabulary and the type and predicate rena
 part 2 — the persisted `"biomarker"` catch-all retirement, migration 185)
 
 One word, "biomarker", used to name four unrelated things: the canonical
-definition registry, the identity a dated reading is keyed on, the flat catalog
+definition registry, the identity a dated result is keyed on, the flat catalog
 at Medical → Results, and a legacy `medical_records.category` value that means
 "nothing else fit". This file is the contract that separates them. Each term
 below states what it covers, what it does **not** cover, and which axis it lives
@@ -42,13 +42,13 @@ report a word.
 ### `CanonicalResultDefinition`
 
 **Axis: none — it is the registry entry itself.** The row shape of the
-`canonical_biomarkers` table and of the committed `lib/canonical-biomarkers.json`
+`canonical_result_definitions` table and of the committed `lib/canonical-result-definitions.json`
 that seeds it: a **definition of a reportable clinical result plus the knowledge
 needed to interpret it** — `unit`, `ref_low/high` with sex, age-band, reproductive
 status and cycle-phase overrides, `optimal_low/high`, `direction`, `retest_days`,
 `panel`, `note`, `source`.
 
-It does **not** cover: a stored reading (that is a `Reading` or a
+It does **not** cover: a dated result (that is a `Reading` or a
 `ClinicalObservation`), and it is not a claim that the entry is a laboratory
 analyte or even a quantity — 68 of its 324 entries are not lab, 63 carry no unit
 and 98 carry no reference range.
@@ -61,6 +61,18 @@ already a category **value** inside the registry, held by those same three
 blood-type entries — an umbrella cannot share a name with one of its members),
 `CanonicalClinicalConcept` (says nothing about ranges or a retest clock, and
 invites anything clinical to be filed there).
+
+### `Clinical result`
+
+**Axis: presentation.** The umbrella for the mixed Results catalog and its broad
+APIs, components, filters, sort vocabulary, routes and copy. It includes numeric
+quantities and qualitative identity-bearing observations; the catalog row shape is
+therefore a `ClinicalObservation` plus presentation context, not a `Reading`.
+
+It does **not** mean every `ClinicalObservation` is catalog-browsable: category and
+per-analyte catalog rules still decide that axis. It also does not replace
+`Biomarker` / `Analyte` where the subject genuinely is one, or `Reading` where the
+subject is specifically a quantity.
 
 ### `Reading`
 
@@ -84,7 +96,7 @@ Does **not** imply identity: an `assessment` row is a `ClinicalObservation` too.
 ### `Assessment`
 
 **Axis: identity.** A dated observation the app **deliberately denies biomarker
-identity**: no `canonical_biomarkers` registration, absent from
+identity**: no `canonical_result_definitions` registration, absent from
 `getUsedCanonicalNames`, never a Coverage candidate, never a series, no backing
 reading for the ★ / retest de-orphan sweeps. Viewable on its own document, which
 is the point — the observation is not hidden, only refused an identity.
@@ -149,8 +161,54 @@ only inside its recognized classes, so an unrecognized analyte's narrative was b
 discarded by the very clear that claims to follow the pointer. And the **row** must
 not be edit-locked (`isEditLocked`, #133): `updateResult` writes the user's chosen
 flag and `edited = 1` and then reconciles on the next line, so without the lock the
-save deletes the flag it just stored. The lock gates this clear only; the older
-#544/#548 transitions are unchanged.
+save deletes the flag it just stored.
+
+That lock reaches a **second** clear, and only a second one (#2715, #2777).
+`qualitativeFlagResolution` deletes a stored flag in exactly two places: the no-result
+clear above, and the #548 §1 clear of a blunt `abnormal` on a context-neutral attribute.
+Both exist to remove an **extractor guess** on a value that cannot be abnormal, and on an
+edit-locked row the flag is not a guess but the one thing in the row a human is known to
+have chosen.
+
+Where the second clear's gate stops is decided by **`valueIndependent`** on the
+classification, and the reason it is not `immutable` is worth stating. #2715 gated the
+identity class by reading `immutable`, which happened to name exactly that set — but
+`immutable` answers the **retest** question (#548 §2: does this value change over time?),
+and whether a value changes over time says nothing about whether someone meant what they
+typed. The question the gate is actually asking is whether the verdict is a statement about
+the **analyte** rather than about this reading's **value**. "A blood type is never
+abnormal", "a urine colour is never abnormal" and "fetal fraction is a run-quality number,
+not a health signal" are analyte facts, and no correction to the value revises them — so
+withholding the clear strands nothing, because the app was never holding back a flag it
+could later produce. Those three classes are gated. "This HIV antibody reads Non-Reactive,
+therefore reassuring" (#544) and "this screen reads Low Risk" (#687) are read off the
+value, and gating them would leave someone who corrected `Reactive` to `Non-Reactive`
+looking at `abnormal` forever — the same argument #221 makes for re-deriving a corrected
+numeric row's flag. Those still clear on a locked row, as does an indeterminate screen,
+which is polarity-`neutral` but value-dependent. Neither PROMOTION moves either: #544's
+immune titer and #629's bad-polarity positive still resolve while locked, because the lock
+protects what a person wrote and is not a licence to leave an infection-positive
+displaying as `Normal`.
+
+The honest cost of the wider gate is that an edit lock stamps the **row**, not the flag
+field, so someone who corrects a urinalysis row's value and never touches its flag also
+protects whatever flag is sitting there. That population is small by construction:
+`applyImportFollowups` reconciles every inserted record at import, when no row is
+edit-locked, so a colour row's blunt `abnormal` is already gone before any human opens it
+— the gate's population and #548 §1's are disjoint at the door. What survives is a row the
+classifier could not read at import and can now (a rename, a widened vocabulary), and the
+record editor shows the flag in a visible select on the same form, so it is one tap from
+being corrected, which a silently deleted flag is not. Nothing strips what is already
+stored, and the two axes stay independent: an identity row keeping its hand-set flag is
+still exempt from the retest clock (#548 §2 reads `immutable`, now that field's only job).
+
+The **numeric** reconcile has no such gate and needs none. `RECONCILABLE_FLAGS`
+(`lib/queries/medical/flags.ts`) is that pass's own vocabulary — high / low / normal /
+non-optimal\* — which it may revisit because it can re-derive those, and must revisit
+because #221 says a corrected value re-derives its flag. `abnormal` and `immune` are not
+in it: the numeric pass cannot produce them, so it never touches a row carrying one, which
+is the edit lock's protection reached from the other side. The qualitative pass is the only
+place a hand-set `abnormal` was ever at risk, because it is the pass that owns the word.
 
 It sits on a **different axis from `Assessment`**, and the map says so explicitly
 because conflating the two is the mistake #2479's body made. A `QualitativeResult`
@@ -161,9 +219,10 @@ is registered, browsable where its category allows, and carries full identity; a
 
 **Retained only where clinically accurate.** #2479 is a de-conflation, not a purge:
 `biomarkerFamily()` (the #482 identity function), `biomarker_family()` in SQL,
-`biomarker_panels`, `biomarkerRetestStatus`, the lab-scoped trajectory grammar and
-the user-facing **Results › Biomarkers** section all keep the word, because those
-genuinely are about biomarkers. What was retired is the word standing in for
+`biomarker_panels`, `biomarkerRetestStatus`, and the lab-scoped trajectory grammar
+all keep the word, because those genuinely are about biomarkers. The mixed
+user-facing catalog is **Results › Clinical results**. What was retired is the
+word standing in for
 "clinical result of any kind".
 
 `Analyte` already existed (47 files) and already meant what it should: the
@@ -188,7 +247,7 @@ Category membership does **not** settle catalog browsability on its own: within
 (audiogram thresholds, intraocular pressure, visual acuity, periodontal depth).
 Browsability is the **conjunction** of the two — the category class, then the
 per-analyte refinement — which is how both the row gather
-(`app/(app)/results/reading-index.ts`) and the panel facet
+(`app/(app)/results/clinical-result-index.ts`) and the panel facet
 (`lib/biomarker-panel-reach.ts`) compose it. Asked alone, the predicate answers
 `true` for a PHQ-9: it refines `vitals` and says nothing about a category the
 catalog already excludes.
@@ -196,44 +255,44 @@ catalog already excludes.
 `lib/__tests__/clinical-result-terminology.test.ts` is this file's ratchet, over
 the real registry and the real predicates, one representative concept per class.
 
-## Not renamed, on purpose
+## Canonical registry name (#2737)
 
-- **`canonical_biomarkers`, the table**, and the accessors that name it —
-  `seedCanonicalBiomarkers`, `getCanonicalBiomarker`, `canonicalBiomarkerForName`,
-  `CANONICAL_BIOMARKERS`, `CanonicalBiomarkerEntry`, the `canonical-biomarkers`
-  dataset id and the committed JSON. Part 1 ships **no persisted change**; a
-  function named for the table it reads is honest, and renaming it away from that
-  table would make the code say less, not more.
+The registry spans every result that carries identity, including vital signs,
+instruments, scans, genomics, derived quantities, and immutable reference facts. Its
+current umbrella name is therefore **canonical result definition**:
+`canonical_result_definitions`, `CanonicalResultDefinition`,
+`seedCanonicalResultDefinitions`, `getCanonicalResultDefinition`,
+`canonicalResultDefinitionForName`, and the `canonical-result-definitions` dataset.
+The LOINC vocabulary lives in `lib/canonical-result-loinc.ts` and resolves through
+`canonicalResultNameForLoinc` for the same reason.
+
+Migration `20260814-canonical-result-definitions` renames the established table in
+place. SQLite preserves its rows, columns, constraints, indexes, source values, and
+foreign-key targets. This is a clean namespace change: current code exposes no legacy
+view, dual write, module alias, dataset-id alias, JSON `biomarkers` property, or
+`gen:biomarkers` command. Repository consumers move atomically; existing databases
+move through the forward migration. Frozen earlier migrations and their historical
+shape fixtures retain `canonical_biomarkers`, because that is the table those versions
+actually ran against.
+
+Still retained on purpose:
+
 - **`biomarkerFamily`, `getBiomarkerSeries`, `biomarker_panels`, `biomarkerRetestStatus`**
   and the rest of the genuinely-biomarker surface (see above).
 - **`ClinicalObservation` and `Analyte`** — already correct, already shipped.
 
 ## The retired catch-all (part 2)
 
-`biomarker` was never a class of clinical thing. It is the pre-#1076 bucket, and it
-meant **"this is a result and nothing narrower was picked"** — which is why the flat
-catalog excludes it (nothing browsable can be defined by the absence of a decision),
-why the retest clock reached it only by falling through the `biomarkerRetestStatus`
-exemptions, and why several SQL sites still read it as a synonym for `lab`.
-
-It is now a **fourth question** this vocabulary answers, and the only one about TIME
-rather than about a row:
-
-| name                            | question                                       |
-| ------------------------------- | ---------------------------------------------- |
-| `RETIRED_MEDICAL_CATEGORIES`    | may anything still be FILED under this?        |
-| `ASSIGNABLE_MEDICAL_CATEGORIES` | the derived complement — what a write may pick |
-
-The retirement is deliberately **one-sided**. Reading, filtering and storing the value
-all stay legal, and `MEDICAL_CATEGORIES` still lists it; what no longer exists is a way
-to CREATE one.
+`biomarker` was never a class of clinical thing. It was the pre-#1076 bucket meaning
+**"this is a result and nothing narrower was picked"**. No current type, schema,
+reader, writer, or category picker accepts it as a `medical_records.category`.
 
 ### The rows: migration 185
 
 `reclassifyLegacyBiomarkerCategory` (`lib/legacy-category-reclass-db.ts`) re-files each
 legacy row using the canonical registry's own `category`, matched on the row's identity
 — its `canonical_name`, else the printed `name` — by exact NOCASE name against
-`canonical_biomarkers`.
+`canonical_result_definitions`.
 
 That is **not a new policy**. It is the rule the AI ingest path has followed since
 #1076 (`lib/medical-extract/normalize.ts`: "the canonical dataset owns the
@@ -241,7 +300,8 @@ classification … its category WINS over the model's guess"), applied retroacti
 the rows that predate it, and it generalises migration 090's hand-list of seven names
 to the whole registry so the answer cannot drift from the vocabulary.
 
-Three properties make the pass small:
+Migration 185 was the evidence pass that made final retirement possible. Three
+properties made it small:
 
 - **Nothing is deleted and no id moves.** It is a single-column UPDATE, so the #2444
   child-link hazard cannot arise — `care_plan_items.source_medical_record_id`,
@@ -254,17 +314,23 @@ Three properties make the pass small:
   `getUsedCanonicalNames`, its ★, its dismissals, its coverage entry and its series —
   and there is no side-state sweep to get right, unlike #2318's pass. `assessment` is
   excluded from the targets for precisely that reason.
-- **Unclassifiable is a real answer.** A row whose identity the registry does not
-  recognise, or whose entry states no category (an ai-coined vocabulary row states
-  none), stays exactly where it is and is counted in the pass's `residue`. Nothing is
-  guessed, so the `medical_records` CHECK keeps admitting the value — a rebuild that
-  dropped it would only be honest if the pass were total, and it is not meant to be.
+- **Unclassifiable was measured, not guessed.** A row whose identity the registry did
+  not recognise stayed in the residue for the final migration to present for review.
 
 What the move changes on purpose: the rows the registry calls `lab` / `vitals` /
 `genomics` / `scan` **enter the flat Results catalog**, which the bucket had been
 hiding them from; and a row re-filed as `vitals` / `instrument` / `derived` /
 `reference` stops carrying a lab retest clock it never earned. Nothing else — value,
 flag, name, canonical name, document link and provenance are untouched.
+
+### Final retirement: migration `20260814-medical-category-residue`
+
+The final migration runs the same canonical-registry pass once more, rebuilds
+`medical_records` without `biomarker` in its CHECK, and copies any unresolved residue
+as `category = NULL`. `NULL` is not a replacement catch-all: it is an explicit review
+state shown on Results, where a user chooses one supported category. All row ids,
+revisions, care-plan links, source-record links, saved identity, dismissals, and series
+identity remain attached while review is pending.
 
 ### The writers
 
@@ -277,25 +343,35 @@ itself, so the same change closes every path:
 | the extractor's tool enum and accept-list                | `ASSIGNABLE_MEDICAL_CATEGORIES`                                |
 | VO₂ Max from Health Connect, Withings, the fitness check | `vitals` — the registry's own category for it                  |
 | `NormVital.category`, `FitnessStore`'s vital arm         | the string is **out of the type**: a writer no longer compiles |
-| the manual category picker (`ResultForm`)                | offers the assignable set, plus the row's own retired value    |
+| the manual category picker (`ResultForm`)                | requires one supported category                                |
 | `scripts/seed.ts`                                        | its three legacy analytes file as `lab`                        |
 
-The picker's exception matters: a residue row must keep its category through an
-unrelated edit, so the form unions in whatever the row already carries rather than
-silently re-filing it onto the first option.
+The final migration test proves the evidence-backed and review-state outcomes while
+preserving linked behavior. The category action test proves that a pending row is
+surfaced, cannot take an unsupported category, and keeps its identity when classified.
+Migration 185's tests remain as history for the preliminary evidence pass.
 
-`lib/__tests__/retired-medical-category.test.ts` is the ratchet — a source scan for a
-category ASSIGNMENT of a retired value (reads and filters are deliberately not matched)
-plus the prompt and enum assertions. `lib/__db_tests__/migration-185-legacy-biomarker-category.test.ts`
-covers the pass.
+## Normalized reading provenance (#2735)
 
-## Still open (#2479)
-
-Proposed by the issue and settled by neither part: `ReadingSource = "lab"` standing in
-for broadly clinical document provenance (`lib/reading-model.ts`).
+`ReadingSource = "clinical"` names any reading linked to a clinical document,
+encounter, or provider. It deliberately does not say `"lab"`: a clinic-recorded
+intraocular pressure or pulse has the same provenance without being a laboratory
+result. Raw provider/import source strings and genuinely laboratory-specific copy
+keep their own terminology.
 
 Deliberately NOT renamed by part 2, on the owner's ruling that `Biomarker` and
 `Analyte` are retained where clinically accurate: `biomarkerFamily()` and
 `getBiomarkerSeries()` are the #482 biomarker identity function and the series drawn
 over it. The `Reading` model delegating to them is the word being used correctly, not a
 misdescription — renaming them for uniformity would make the code say less.
+
+## Persisted vocabulary audit (#2740)
+
+The follow-up audit includes schema names, stored discriminators, portable-export
+keys, undo payloads, JSON namespaces, and replay-only compatibility shells. Its
+decisions and removal conditions are recorded in
+`docs/internals/persisted-vocabulary.md`. Migration
+`20260814-persisted-vocabulary` moves established databases atomically; current
+readers and writers expose only the resulting vocabulary. There are no route shims or
+portable-export aliases: retired routes are allowed to stop resolving, and exported
+dataset keys describe the current data model.

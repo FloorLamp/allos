@@ -1,21 +1,26 @@
 import { expect, test } from "./fixtures";
 import type { Locator } from "@playwright/test";
+import Database from "better-sqlite3";
 import { shiftDateStr } from "@/lib/date";
 import { formatDateWithYear } from "@/lib/format-date";
-import { frozenNow } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
+import { hydratedClick } from "./helpers";
 
 async function expectEmptyDayAddLink(
   section: Locator,
   unitMany: string,
-  href: RegExp
+  href: RegExp,
+  expectedDate?: string
 ) {
-  const emptyDay = section
-    .locator(`button[aria-label*=" — no ${unitMany}"]`)
-    .first(); // first-ok: any empty calendar day has the same close-the-loop contract
+  const emptyDay = expectedDate
+    ? section.locator(
+        `button[data-date="${expectedDate}"][aria-label*=" — no ${unitMany}"]`
+      )
+    : section.locator(`button[aria-label*=" — no ${unitMany}"]`).first(); // first-ok: any in-range empty calendar day has the same close-the-loop contract
   await expect(emptyDay).toBeVisible();
   const date = await emptyDay.getAttribute("data-date");
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  await emptyDay.click();
+  await hydratedClick(emptyDay.page(), emptyDay);
   const panel = section.getByTestId("day-history-daypanel");
   await expect(panel).toContainText("Nothing logged this day.");
   const add = panel.getByTestId("day-history-add-link");
@@ -27,11 +32,28 @@ async function expectEmptyDayAddLink(
 test("every day-history domain closes an empty-day gap with a dated log link (#2420)", async ({
   page,
 }) => {
+  // The general seed may legitimately have food on every day in the default window.
+  // Make one actual gap so this test exercises the empty-day action deterministically.
+  const db = new Database(workerDbPath());
+  const foodDate = db
+    .prepare(
+      `SELECT date FROM food_daily_totals
+        WHERE profile_id = 1 AND servings > 0
+        ORDER BY date DESC LIMIT 1`
+    )
+    .pluck()
+    .get() as string;
+  db.prepare(
+    "DELETE FROM food_daily_totals WHERE profile_id = 1 AND date = ?"
+  ).run(foodDate);
+  db.close();
+
   await page.goto("/trends?tab=nutrition");
   await expectEmptyDayAddLink(
     page.getByTestId("intake-history"),
     "servings",
-    /\/nutrition\?tab=food&date=/
+    /\/nutrition\?tab=food&date=/,
+    foodDate
   );
   await expectEmptyDayAddLink(
     page.getByTestId("dose-history"),

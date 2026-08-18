@@ -56,15 +56,11 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   await expect(sleep).toBeVisible();
   await expect(sleep.getByRole("application")).toBeVisible();
 
-  // The biomarkers browser renders as the collapsed panel index, whole — the #114
-  // pager this used to assert was retired in #1581 (the index is bounded by the
-  // closed panel taxonomy instead), so the cheap proof the table surfaced is a
-  // panel group header, matching results-page.spec.ts.
+  // The clinical results catalog renders as the collapsed panel index.
   await page.goto("/results");
-  const biomarkers = page.getByTestId("results-readings");
-  await expect(biomarkers.getByTestId("biomarkers-table")).toBeVisible();
+  const clinicalResults = page.getByTestId("results-clinical-results");
   await expect(
-    biomarkers.getByTestId("biomarker-panel-header").first() // first-ok: presence-only proof the index rendered — order-agnostic, no count asserted
+    clinicalResults.getByTestId("clinical-results-table")
   ).toBeVisible();
 });
 

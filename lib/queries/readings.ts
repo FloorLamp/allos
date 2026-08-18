@@ -87,16 +87,16 @@ export function getStreamReadings(
   }
   const rows = db
     .prepare(
-      `SELECT id, date, value, source, start_time, edited FROM metric_samples
+      `SELECT id, date, value, source, started_at, edited FROM metric_samples
         WHERE profile_id = ? AND metric = ?
-        ORDER BY date ASC, start_time ASC, id ASC`
+        ORDER BY date ASC, started_at ASC, id ASC`
     )
     .all(profileId, src.key) as {
     id: number;
     date: string;
     value: number;
     source: string | null;
-    start_time: string | null;
+    started_at: string | null;
     edited: number;
   }[];
   return rows.map((r) => readingFromMetricSample(r, src));

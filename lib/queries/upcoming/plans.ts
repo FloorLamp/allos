@@ -3,8 +3,16 @@
 // Today/This week/Later. Goals live on the Training hub's Goals tab — the old
 // standalone /goals route has no page (issue #283 found the dead link).
 export function goalItems(profileId: number): UpcomingItem[] {
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
   return getOutcomeGoals(profileId)
-    .filter((g) => isGoalLive(g) && g.target_date)
+    .filter(
+      (g) =>
+        isGoalLive(g) &&
+        g.target_date &&
+        (strengthTrainingRelevant || g.kind !== "exercise")
+    )
     .map((g) => ({
       key: `goal:${g.id}`,
       domain: "goal" as const,
@@ -25,7 +33,7 @@ export function goalItems(profileId: number): UpcomingItem[] {
 // a barbell glyph and a /training link. The scope is what the row is ABOUT, so the
 // scope decides the identity: the domain (which picks the row's glyph), the honest
 // detail line, and a destination that actually holds the target. Identity, not
-// filtering — every one of these targets belongs on the page.
+// filtering — life-stage filtering is applied once by the Upcoming aggregator.
 //
 // Two scope kinds declare `null` — this builder renders no row for them — and
 // neither is an omission:
@@ -43,9 +51,13 @@ export function goalItems(profileId: number): UpcomingItem[] {
 // id, is shared with the workout nudge's suppression bus (#245), and every stored
 // dismissal in `upcoming_dismissals` uses it. Identity is what was wrong; the key was
 // never wrong, so re-keying would only orphan dismissals.
-const WEEKLY_TARGET_IDENTITY: Record<
+export const WEEKLY_TARGET_IDENTITY: Record<
   FrequencyScopeKind,
-  { domain: UpcomingDomain; detail: string; href: AppRoute } | null
+  {
+    domain: UpcomingDomain;
+    detail: string;
+    href: AppRoute;
+  } | null
 > = {
   region: {
     domain: "training",
@@ -117,9 +129,35 @@ function weeklyTargetIdentity(p: FrequencyTargetProgress) {
   return WEEKLY_TARGET_IDENTITY[p.target.scope_kind as FrequencyScopeKind];
 }
 
+// UNMET, for the planning ledger — ONE predicate, both weekly-target builders
+// (owner ruling, #2579).
+//
+// `trainingItems` filtered `!met`; `practiceItems` filtered `!met && !atCeiling &&
+// pace === "behind"`. The asymmetry was real and undecided: "not met" and "behind
+// pace" are different questions, and nothing said which one the ledger asks. The
+// owner ruled SURFACE ALL UNMET for both, and practice aligns UP to training.
+//
+// The reasoning is the goal fold's, applied consistently: /upcoming is the planning
+// LEDGER and completeness is its charter, so a target that is silently absent because
+// it happens to be on pace reads as missing — the same lie a goal horizon would have
+// told. Rendering it is not nagging: it is a row on a page the user opened.
+//
+// `atCeiling` stays excluded, because met-by-another-name is not unmet: a 3–5×/week
+// range target at 5 is done for the week (#1259's calm "that's plenty"), never a red
+// state. It is implied by `!met` for any well-formed range (ceiling ≥ floor), and
+// stated anyway so the rule reads as one sentence instead of relying on the data.
+//
+// NOT a change to any SEND. #1259's anti-nudge rationale still governs the pace-aware
+// practice reminder, which does its own behind/ceiling gather in
+// lib/notifications/practices.ts and is untouched; `practice` is deliberately absent
+// from the digest's DOMAIN_SEQ, so nothing here is counted into a push either.
+function isUnmetWeeklyTarget(p: FrequencyTargetProgress): boolean {
+  return !p.met && !p.atCeiling;
+}
+
 // The morning digest's weekly-progress line (#1819 item 4): "2 of 3 training targets
 // on pace — behind on Back, Chest", or null for a profile with no weekly TRAINING
-// targets (and for an age-restricted one, mirroring the items).
+// targets.
 //
 // Scoped to the `training` domain's own targets since #2578, and that is what keeps
 // the invariant rather than breaking it. The digest applies this phrase in place of a
@@ -130,9 +168,16 @@ function weeklyTargetIdentity(p: FrequencyTargetProgress) {
 // are counted plainly by their own domains in the same band, which is honest and
 // costs no new digest surface.
 export function trainingPaceLine(profileId: number): string | null {
-  if (isTrainingRestricted(profileId)) return null;
+  if (!isTrainingRelevant(getProfileAge(profileId))) return null;
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
   return weeklyTargetPaceLine(
     weeklyFloorTargets(profileId)
+      .filter(
+        ({ target }) =>
+          strengthTrainingRelevant || !isStrengthProgrammingScope(target)
+      )
       .filter((p) => weeklyTargetIdentity(p)?.domain === "training")
       .map((p) => ({
         label: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
@@ -141,15 +186,21 @@ export function trainingPaceLine(profileId: number): string | null {
   );
 }
 
-// Unmet weekly frequency targets (reuses getFrequencyTargetProgress). Hidden for
-// age-restricted profiles, mirroring the Training surface. A weekly concern, so
+// Unmet weekly frequency targets (reuses getFrequencyTargetProgress). The
+// aggregator applies each domain's life-stage policy. A weekly concern, so
 // each unmet target sits in This week with a progress due-text. The row's domain,
 // detail and destination come from its SCOPE (WEEKLY_TARGET_IDENTITY, #2578) — a
 // food-group target is not a training target with a barbell on it.
 export function trainingItems(profileId: number): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
   return weeklyFloorTargets(profileId)
-    .filter((p) => !p.met)
+    .filter(
+      ({ target }) =>
+        strengthTrainingRelevant || !isStrengthProgrammingScope(target)
+    )
+    .filter(isUnmetWeeklyTarget)
     .map((p) => {
       const identity = weeklyTargetIdentity(p)!;
       return {
@@ -161,6 +212,11 @@ export function trainingItems(profileId: number): UpcomingItem[] {
         dueDate: null,
         band: "week" as const,
         dueText: `${p.count}/${p.per_week} this week`,
+        // This IS a weekly floor target, said out loud (#2579-E). The `training`
+        // domain is a bucket the three builders below also emit into, so no reader can
+        // tell a pace row from an event day by domain alone — see the field's contract
+        // in lib/upcoming.ts.
+        weeklyTarget: true,
       };
     });
 }
@@ -179,7 +235,6 @@ export function trainingItems(profileId: number): UpcomingItem[] {
 // Dismissible through the shared bus, keyed per (activity, week start), so declining
 // this week's plan never silences next week's.
 export function outdoorPlanItems(profileId: number): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   return getOutdoorPlans(profileId, today(profileId)).map((plan) => ({
     key: plan.dedupeKey,
     domain: "training" as const,
@@ -192,18 +247,23 @@ export function outdoorPlanItems(profileId: number): UpcomingItem[] {
   }));
 }
 
-// Wellness-practice weekly targets running BEHIND their floor (#1259). The calm,
-// coaching-tier twin of the Telegram practice nudge — SAME `practice:<id>` key so a
-// dismissal here silences the push (the #227 workout-nudge bus pattern). Only surfaces a
-// target that is behind pace AND not at/above its ceiling: on-track or "that's plenty"
-// weeks stay quiet. A weekly concern, so it sits in the This-week band with a progress
-// due-text (a range shows the ceiling: "2/3–5 this week"). Reuses getFrequencyTargetProgress
-// (one computation); hidden for age-restricted profiles, mirroring the Training surface.
+// Wellness-practice weekly targets that are UNMET (#1259, re-ruled by #2579). The
+// calm, coaching-tier twin of the Telegram practice nudge — SAME `practice:<id>` key
+// so a dismissal here silences the push (the #227 workout-nudge bus pattern).
+//
+// The pace gate is GONE: every unmet practice target renders, exactly as every unmet
+// training target does, through the one shared isUnmetWeeklyTarget above (owner
+// ruling, #2579). An at-or-above-ceiling week is still silent — that is "plenty", not
+// a shortfall. The PUSH is unaffected: the pace-aware reminder keeps its own behind
+// gate in lib/notifications/practices.ts.
+//
+// A weekly concern, so it sits in the This-week band with a progress due-text (a range
+// shows the ceiling: "2/3–5 this week"). Reuses getFrequencyTargetProgress (one
+// computation); age-neutral like the underlying practice log.
 export function practiceItems(profileId: number): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   return getFrequencyTargetProgress(profileId)
     .filter((p) => p.target.scope_kind === "practice")
-    .filter((p) => !p.met && !p.atCeiling && p.pace === "behind")
+    .filter(isUnmetWeeklyTarget)
     .map((p) => ({
       key: practiceSignalKey(p.target.id),
       domain: "practice" as const,
@@ -213,6 +273,9 @@ export function practiceItems(profileId: number): UpcomingItem[] {
       dueDate: null,
       band: "week" as const,
       practiceTargetId: p.target.id,
+      // The practice scope's own weekly floor target (#2579-E), declared like its
+      // trainingItems twin — one rule, one property, both builders.
+      weeklyTarget: true,
       dueText:
         p.per_week_max != null && p.per_week_max > p.per_week
           ? `${p.count}/${p.per_week}–${p.per_week_max} this week`
@@ -236,7 +299,6 @@ export function stepsPaceItems(
   profileId: number,
   today: string
 ): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   const obs = getStepsPaceObservation(profileId, today);
   if (!obs) return [];
   return [
@@ -255,7 +317,7 @@ export function stepsPaceItems(
 
 // Endurance event days (#839): each active plan's event as a dated forward-looking item,
 // so the EVENT DAY rides the Upcoming page + the calendar feed (domain "training" is a
-// FeedCategory). Hidden for age-restricted profiles, mirroring the Training surface. The
+// FeedCategory). It is age-neutral like the plan record itself. The
 // key namespace is DISTINCT from the coaching long-session finding prefix ("endurance:"),
 // so the event marker and the calm long-session nudge never collide. Not suppressible — a
 // dated event is a hard commitment, not a dismissable nudge.
@@ -267,7 +329,6 @@ export function enduranceEventItems(
   today: string,
   distanceUnit: DistanceUnit = "km"
 ): UpcomingItem[] {
-  if (isTrainingRestricted(profileId)) return [];
   return getActiveEndurancePlans(profileId)
     .filter((p) => p.eventDate >= today)
     .map((p) => {
@@ -347,7 +408,6 @@ export function markCarePlanItemDone(
     return { kind: "completed" };
   });
 }
-import { isTrainingRestricted } from "../../age-gate";
 import {
   carePlanUpcomingItems,
   isCarePlanItemOpen,
@@ -359,6 +419,7 @@ import { getActiveEndurancePlans } from "../../endurance-plans";
 import { goalUpcomingDetail, isGoalLive } from "../../outcome-goals";
 import {
   frequencyScopeLabel,
+  isStrengthProgrammingScope,
   weeklyTargetPaceLine,
   type FrequencyScopeKind,
 } from "../../frequency-targets";
@@ -379,3 +440,8 @@ import { getOutcomeGoals } from "../training";
 import { getStepsPaceObservation } from "../steps-target";
 import { stepsPaceKey } from "../../steps-target";
 import { trendsSectionHref } from "../../trends-sections";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "../../life-stage";
+import { getProfileAge } from "../../settings/profile-attrs";

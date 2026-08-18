@@ -16,10 +16,13 @@ import { familyDeathLabel, familyRelativeLabel } from "./family-relation";
 import {
   getLatestMetricSample,
   getLatestBodyMetricDated,
+  getGrowthMeasurementSeries,
 } from "./queries/metrics";
+import { buildGrowthProfile, growthBadge } from "./growth-series";
+import { MAX_AGE_MONTHS } from "./growth";
 import {
   getClinicalObservations,
-  getSavedBiomarkers,
+  getSavedClinicalResults,
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
@@ -106,24 +109,26 @@ export function getProfileSummary(
     starred: false,
   }));
 
-  // THE SAVE→PASSPORT CONTRACT (#1456). A saved biomarker (the ★ star gesture, now
-  // one row in `saved_items` where kind='biomarker') is the user's answer to "this one
+  // THE SAVE→PASSPORT CONTRACT (#1456). A saved clinical result (the ★ star gesture, now
+  // one row in `saved_items` where kind='clinical-result') is the user's answer to "this one
   // matters to me" — and that answer is deliberately load-bearing HERE: every saved
   // biomarker's latest reading is included in the passport summary's vitals, flagged or
   // not. This was an undocumented side effect of the old starred_biomarkers store;
   // unifying the store promoted it to a stated contract, pinned by
-  // lib/__db_tests__/saved-items.test.ts ("a saved biomarker enters the summary vitals").
+  // lib/__db_tests__/saved-items.test.ts ("a saved clinical result enters the summary vitals").
   // Changing what `saved` means to this function changes what a shared passport shows.
-  const starred: SummaryVital[] = getSavedBiomarkers(profileId).map((s) => ({
-    name: s.canonical_name,
-    value:
-      s.latest_value ??
-      (s.latest_value_num != null ? String(s.latest_value_num) : null),
-    unit: s.latest_unit,
-    flag: s.latest_flag,
-    date: s.latest_date,
-    starred: true,
-  }));
+  const starred: SummaryVital[] = getSavedClinicalResults(profileId).map(
+    (s) => ({
+      name: s.canonical_name,
+      value:
+        s.latest_value ??
+        (s.latest_value_num != null ? String(s.latest_value_num) : null),
+      unit: s.latest_unit,
+      flag: s.latest_flag,
+      date: s.latest_date,
+      starred: true,
+    })
+  );
 
   // Medications: structured medication rows
   // (kind='medication') are the primary source — including the ones now
@@ -216,6 +221,7 @@ export function getProfileSummary(
     sort: "date",
     dir: "desc",
   })
+    .filter((r) => r.category !== null)
     .slice(0, MAX_HISTORY)
     .map((r) => ({
       name: recordName(r),
@@ -223,7 +229,7 @@ export function getProfileSummary(
       unit: r.unit,
       flag: r.flag,
       date: r.date,
-      category: r.category,
+      category: r.category!,
     }));
 
   // Allergies: documented allergies merged with positive lab-derived IgE
@@ -281,10 +287,32 @@ export function getProfileSummary(
   const bodyFat = getLatestBodyMetricDated(profileId, "body_fat");
   const restingHr = getLatestBodyMetricDated(profileId, "resting_hr");
 
+  // Pediatric growth percentiles — the SAME derivation /trends/growth charts
+  // (#2802): every measurement scored at the age on its own date, BMI date-paired.
+  // The passport once scored the latest scalars at the age TODAY and printed a
+  // different percentile for the same reading. The guard is buildGrowthProfile's
+  // own precondition, restated here only so an adult passport doesn't pay for three
+  // unbounded series reads that can produce nothing.
+  const inGrowthRange =
+    sex != null &&
+    birthdate != null &&
+    ageMonths != null &&
+    ageMonths >= 0 &&
+    ageMonths <= MAX_AGE_MONTHS;
+  const growth = inGrowthRange
+    ? growthBadge(
+        buildGrowthProfile({
+          sex,
+          birthdate,
+          today: now,
+          ...getGrowthMeasurementSeries(profileId),
+        })
+      )
+    : null;
+
   return buildProfileSummary({
     name: getProfileFullName(profileId) ?? fallbackName,
     age: getProfileAge(profileId),
-    ageMonths,
     sex,
     hasBirthdate: birthdate != null,
     birthdate,
@@ -299,6 +327,7 @@ export function getProfileSummary(
     weightDate: weight?.date ?? null,
     bodyFatDate: bodyFat?.date ?? null,
     restingHrDate: restingHr?.date ?? null,
+    growth,
     flagged,
     starred,
     allergies,

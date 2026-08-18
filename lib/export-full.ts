@@ -6,8 +6,7 @@ import { photoDomainRoot } from "./photo/store";
 import { videoDomainRoot } from "./video/store";
 import { LESION_PHOTO_DIR } from "./skin-photo-write";
 import { SYMPTOM_PHOTO_DIR } from "./symptom-photo-write";
-import { DATASETS, RESTRICTED_DATASETS } from "./export";
-import { isTrainingRestricted } from "./age-gate";
+import { DATASETS } from "./export";
 import { decodeDiagnosisRanks } from "./visit-diagnosis-rank";
 import {
   getProfileSex,
@@ -231,17 +230,10 @@ function mediaDomainRootFor(domain: MediaDomain): string {
 // Posters and thumbnails are DERIVED artifacts and are deliberately not bundled —
 // the original capture is the record, and a viewer re-derives the rest.
 //
-// `trainingRestricted` gates the activity-videos domain out for an age-restricted
-// profile, because form-check clips hang off `activities` and that dataset is
-// already gated out of the ZIP (#471) — the clips must not be the way around it.
-export function listProfileMediaFiles(
-  profileId: number,
-  opts: { trainingRestricted?: boolean } = {}
-): MediaExportFile[] {
+export function listProfileMediaFiles(profileId: number): MediaExportFile[] {
   const out: MediaExportFile[] = [];
   const seenNames = new Set<string>();
   for (const domain of MEDIA_DOMAINS) {
-    if (opts.trainingRestricted && domain === "activity-videos") continue;
     const profileRoot = path.resolve(
       mediaDomainRootFor(domain),
       String(profileId)
@@ -378,13 +370,14 @@ export function collectFhirExportInput(
     )
     .all(profileId) as FhirExportImmunization[];
 
-  // Labs/vitals/biomarkers as Observations — NOT prescriptions (medications come
-  // from the structured intake_items rows below, the passport's primary med source).
+  // Clinical observations — including rows awaiting category review — but NOT
+  // prescriptions (medications come from the structured intake_items rows below,
+  // the passport's primary med source).
   const observations = db
     .prepare(
       `SELECT name, value, value_num, unit, date
          FROM medical_records
-        WHERE profile_id = ? AND category != 'prescription'
+        WHERE profile_id = ? AND (category IS NULL OR category != 'prescription')
         ORDER BY date DESC, id DESC`
     )
     .all(profileId) as FhirExportObservation[];
@@ -545,14 +538,10 @@ export function collectExportSnapshot(
   profileName: string,
   opts: { includeMedia?: boolean } = {}
 ): ExportSnapshot {
-  // A training-restricted profile's fitness datasets (activities/goals) are gated
-  // out of the ZIP too, not just the export UI (issue #471) — same authoritative
-  // enforcement as the per-dataset CSV route. Gate off by default (min age unset).
-  const restricted = isTrainingRestricted(profileId);
   return readTx((): ExportSnapshot => ({
-    datasets: DATASETS.filter(
-      (ds) => !(restricted && RESTRICTED_DATASETS.has(ds.key))
-    ).map((ds) => ({
+    // Export is a data-access surface: every profile can retrieve its own
+    // activities and goals regardless of age.
+    datasets: DATASETS.map((ds) => ({
       key: ds.key,
       columns: ds.columns,
       rows: ds.rows(profileId),
@@ -560,10 +549,7 @@ export function collectExportSnapshot(
     fhirInput: collectFhirExportInput(profileId, profileName),
     files: listProfileMedicalFiles(profileId),
     profilePhoto: getProfilePhotoFile(profileId),
-    // Media stays OUT unless this download explicitly opted in (#1846), and the
-    // same age gate that drops the fitness datasets drops the form-check clips.
-    media: opts.includeMedia
-      ? listProfileMediaFiles(profileId, { trainingRestricted: restricted })
-      : null,
+    // Media stays OUT unless this download explicitly opted in (#1846).
+    media: opts.includeMedia ? listProfileMediaFiles(profileId) : null,
   }));
 }

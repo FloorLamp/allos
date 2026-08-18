@@ -44,6 +44,7 @@ import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
+import { logPracticeSessionForDay } from "@/lib/practice-log";
 import { recordReading, resolveStatedOccurredAt } from "@/lib/reading-writes";
 import {
   classifyDoseReplay,
@@ -59,6 +60,7 @@ import {
   type SetPayload,
   type FoodPayload,
   type MobilityPayload,
+  type PracticePayload,
 } from "@/lib/offline/queue";
 
 // ── dose confirm / skip ───────────────────────────────────────────────────────
@@ -263,7 +265,7 @@ function upsertManualSample(
 ): void {
   const ts = `${date}T00:00:00`;
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
        value = excluded.value, date = excluded.date`
@@ -292,7 +294,7 @@ function upsertManualSample(
 // same `recordReading` call the observation half does — which is the point: the caller
 // names "Peak Expiratory Flow" and the policy routes it to `metric_samples`, exactly as
 // it routes a blood pressure to `medical_records`. Its "HH:MM" becomes the row's
-// `start_time`, so a second blow the same day is a second reading rather than a
+// `started_at`, so a second blow the same day is a second reading rather than a
 // correction of the first (the natural key includes the instant).
 //
 // THE SITTING'S STATED TIME (#2154). `occurredAt` is the one WhenControl statement
@@ -302,7 +304,7 @@ function upsertManualSample(
 // (BP, glucose, SpO₂, temperature) carries it into `medical_records.occurred_at`
 // through `recordReading`'s acceptance gate — a refused statement (future, or off
 // the row's day) costs the statement, never the reading — and the peak-flow blow
-// derives its profile-local `start_time` from the SAME accepted instant, so one
+// derives its profile-local `started_at` from the SAME accepted instant, so one
 // sitting states one "when" everywhere it lands.
 //
 // LEGACY per-measure times: an intent queued before the fold carries
@@ -425,7 +427,7 @@ export function insertVitals(
 // writers land them — so a manually entered value feeds the WHO/CDC growth charts
 // and the height/head-circ Body charts identically to an imported reading. A point
 // metric uses a fixed midnight start, so the natural key (profile_id, metric,
-// source='manual', origin=NULL, start_time) is stable across re-entries: logging
+// source='manual', origin=NULL, started_at) is stable across re-entries: logging
 // the same date again CORRECTS that day rather than stacking a second point.
 // Returns false on a rejected/empty input, true on a successful write.
 export function insertGrowth(
@@ -457,7 +459,7 @@ export function insertGrowth(
 // (lib/waist-circ-extract.ts) — so a tape reading typed at home feeds the
 // `waist-circ` chart identically to an imported one. A point metric uses a fixed
 // midnight start, so the natural key (profile_id, metric, source='manual',
-// origin=NULL, start_time) is stable across re-entries: logging the same date again
+// origin=NULL, started_at) is stable across re-entries: logging the same date again
 // CORRECTS that day rather than stacking a second point. Auth-blind + profileId-first
 // like its neighbours. Returns false on a rejected/empty input, true on a write.
 export function insertWaistCirc(
@@ -640,13 +642,13 @@ const SET_FIELDS = [
 
 // Apply a queued offline-logged workout session through the SHARED activity write
 // core — the same implementation the live form's auto-save posts to, so a replay
-// runs the identical age-gate, title/date guard, captured-unit conversion (#630),
+// runs the identical title/date guard, captured-unit conversion (#630),
 // composite rollup, per-set canonicalization, routine crediting (#740), and
 // post-workout dispatch (#1154). The captured `date` on the intent is
 // authoritative (issue #28 point 5): it overwrites whatever the fields carry, so
 // the session lands on the day the user logged it. The core's typed
-// SaveActivityOutcome is honored via classifySetReplay, so a refusal (restricted
-// profile, invalid payload) dead-letters with its reason instead of vanishing.
+// SaveActivityOutcome is honored via classifySetReplay, so an invalid payload
+// dead-letters with its reason instead of vanishing.
 function applySetIntent(
   profileId: number,
   payload: SetPayload,
@@ -982,6 +984,41 @@ export function applyIntent(
           status: "rejected",
           reason:
             "This mobility move is no longer in the catalog, so it wasn't logged.",
+        };
+        return;
+      }
+      ok = true;
+    } else if (intent.flow === "practice") {
+      // A queued practice tap (#2908) replays DAY-IDEMPOTENTLY: the core inserts only
+      // when that (practice-identity, day) holds no session, so a day already logged
+      // from another device between capture and replay is a NO-OP, not a second
+      // session. That is the amendment to #2130's argued exclusion, and the reason the
+      // #2007 same-day confirm never needs asking here.
+      //
+      // "already-logged" settles as DONE, not rejected, for the same reason a dose
+      // confirm that finds the dose already taken is done: a set-to intent's whole
+      // point is that the state it wanted is the state that stands. Reporting it as a
+      // failure would put a red "couldn't be applied" card in front of someone whose
+      // practice day is recorded exactly as they meant it.
+      const p = intent.payload as PracticePayload;
+      const name = typeof p?.practice === "string" ? p.practice.trim() : "";
+      if (!name) {
+        outcome = { status: "rejected" };
+        return;
+      }
+      const applied = logPracticeSessionForDay(profileId, name, intent.date, {
+        durationMin: p.durationMin ?? null,
+        // No stated time: the capture happened offline on a device clock, and the write
+        // core's own tap stamp is the profile's clock (#450). A replay landing the next
+        // morning must not stamp the session with the reconnect minute, so this path
+        // states nothing rather than stating something false.
+        time: null,
+      });
+      if (applied.kind === "invalid-date") {
+        outcome = {
+          status: "rejected",
+          reason:
+            "This practice entry is too old to log automatically. Re-enter it from the practice's history.",
         };
         return;
       }

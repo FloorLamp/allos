@@ -213,7 +213,7 @@ describe("row operations carry the lineage", () => {
     );
     expect(getObservationRevisions(subject.profileId, id)).toHaveLength(1);
 
-    const undoId = captureDelete("biomarker-record", subject.profileId, id);
+    const undoId = captureDelete("clinical-observation", subject.profileId, id);
     db.prepare(
       "DELETE FROM medical_records WHERE id = ? AND profile_id = ?"
     ).run(id, subject.profileId);

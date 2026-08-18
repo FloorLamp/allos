@@ -22,7 +22,7 @@ const revalidate = vi.mocked(revalidatePath);
 function servings(profileId: number, date: string) {
   return db
     .prepare(
-      `SELECT group_key, servings FROM food_log
+      `SELECT group_key, servings FROM food_daily_totals
         WHERE profile_id = ? AND date = ? ORDER BY group_key`
     )
     .all(profileId, date) as { group_key: string; servings: number }[];
@@ -41,7 +41,7 @@ function doseLogs(profileId: number, date: string) {
 
 function tap(profileId: number, group: string, date: string, hhmmss: string) {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT(profile_id, date, group_key)
        DO UPDATE SET servings = servings + 1`
   ).run(profileId, date, group);
@@ -226,7 +226,7 @@ describe("logUsualRoutine", () => {
     // longer in the standing bundle, so it drops out of the write entirely — the
     // servings still land and the answer names only what it actually did.
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, date, status, taken_at, recorded_at)
+      `INSERT INTO intake_item_logs (dose_id, date, status, recorded_at, occurred_at)
        VALUES (?, ?, 'taken', ?, ?)`
     ).run(doses.collagen, anchor, `${anchor}T07:00:00Z`, `${anchor}T07:00:00Z`);
 

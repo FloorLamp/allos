@@ -1,6 +1,6 @@
 // Adherence over a rolling window of daily states, ordered oldest-first (the
-// last element is today). Consumed by the supplements page to summarize each
-// supplement's recent adherence as a percentage + day counts instead of a per-day
+// last element is today). Consumed by the intake surfaces to summarize each
+// item's recent adherence as a percentage + day counts instead of a per-day
 // dot strip.
 //
 // THERE IS NO STREAK HERE ANY MORE (#1936, owner-decided). The "🔥 Nd" figure this
@@ -16,7 +16,7 @@ import { isDueOn } from "./intake-schedule";
 import { doseOnDay, type DoseCadence } from "./intake-cadence";
 import { dateStrInTz, parseUtcSql } from "./date";
 
-// How many days the per-supplement adherence strip spans (the medicine page and
+// How many days the per-item adherence strip spans (the intake surfaces and
 // any windowed-history consumer share the window length).
 export const STRIP_DAYS = 14;
 
@@ -89,7 +89,7 @@ export function adherenceSummaryVisibility(
   };
 }
 
-// Roll one supplement-day's per-dose outcomes into a single strip state (#232).
+// Roll one item-day's per-dose outcomes into a single strip state (#232).
 // `total` is the number of doses due that day; `takenN`/`skippedN` how many were
 // taken / deliberately skipped. A day where every due dose is resolved as a skip
 // (and none missed) is itself "skipped"; any taken dose makes it taken/partial;
@@ -108,7 +108,7 @@ export function aggregateDoseDay(
 }
 
 // A per-dose lookup of which dates were taken vs deliberately skipped (#232),
-// keyed by dose id. Both the supplements page and the notifier build these from
+// keyed by dose id. Both intake surfaces and the notifier build these from
 // getIntakeLogsInRange and feed them into doseStrip.
 export interface DoseDateStatus {
   taken: Set<string>;
@@ -138,7 +138,7 @@ export function indexTakenByDose(
 // dose wasn't due, "taken" when it was logged taken, "skipped" on a deliberate
 // skip (#232), otherwise "missed". `skippedDates` is optional so older callers
 // (taken-only) keep working. Pure so the notifier can summarize a single dose's
-// streak/percentage without the page's per-supplement aggregation.
+// streak/percentage without the page's per-item aggregation.
 export function doseStrip(
   dates: string[],
   isDue: (date: string) => boolean,
@@ -233,17 +233,17 @@ export interface AdherenceStripDose extends DoseCadence {
   created_at?: string | null;
 }
 
-// Per-supplement windowed adherence strip (issue #313, extracted from the medicine
-// page). Over `dates` (oldest-first), aggregate a supplement's doses into one state
+// Per-item windowed adherence strip (issue #313, extracted from the intake
+// page). Over `dates` (oldest-first), aggregate an item's doses into one state
 // per day: "na" on days it isn't due (its condition + that date's workout context),
 // else `aggregateDoseDay` over how many of its doses were taken vs deliberately
 // skipped on that date. The per-day workout context comes from `workoutDays` (a set
-// of the dates that had activity) so a workout/rest-day supplement's due-ness varies
+// of the dates that had activity) so a workout/rest-day item's due-ness varies
 // across the window. `situationsOn` resolves which situations were active ON EACH
 // PAST DAY (#654) — NOT one snapshot of "now" — so a situational item scores "na" on
 // days its situation was inactive and only "due" once it actually turned on (see
 // situationHistoryResolver). `takenByDose` is the per-dose taken/skipped index from
-// `indexTakenByDose`. `lib/household.supplementAdherenceToday` is the today-only
+// `indexTakenByDose`. `lib/household.intakeAdherenceToday` is the today-only
 // sibling; this is the windowed version a weekly recap or history surface wants.
 //
 // The window is clamped to each dose's LIFETIME (#430/#1442): a day is scored only
@@ -254,7 +254,7 @@ export interface AdherenceStripDose extends DoseCadence {
 // maximally-wrong 0%. `tz` resolves the UTC creation timestamps onto the same
 // profile-local calendar the `dates` window is built from.
 export function intakeAdherenceStrip(
-  supp: IntakeItem,
+  item: IntakeItem,
   doses: readonly AdherenceStripDose[],
   dates: string[],
   workoutDays: ReadonlySet<string>,
@@ -266,7 +266,7 @@ export function intakeAdherenceStrip(
     id: d.id,
     dose: d,
     since: doseWindowSince(
-      supp.created_at,
+      item.created_at,
       d.created_at,
       takenByDose.get(d.id),
       tz
@@ -289,7 +289,7 @@ export function intakeAdherenceStrip(
     if (live.length === 0) return { date, state: "na" };
     // "na", not "missed", on an off-cadence day: nothing was expected, so there is no
     // follow-through to measure. A weekly med taken on its one day reads 100%, not 1/7.
-    const applicable = isDueOn(supp, {
+    const applicable = isDueOn(item, {
       date,
       isWorkoutDay: workoutDays.has(date),
       activeSituations: situationsOn(date),
@@ -311,15 +311,29 @@ export function intakeAdherenceStrip(
 // should penalize neither the percentage (adherenceSummary) nor the pattern
 // detectors (#430.3). A day still in progress reads as "missed" all day otherwise,
 // which can tip a boundary (a false Friday miss viewed Friday morning). Both the
-// medicine page's summary and the pattern builder share this ONE guard so the
+// intake summary and the pattern builder share this ONE guard so the
 // pattern window and the strip it summarizes can't disagree about "today". Pure.
 export function stripWithoutTrailingPending(
   strip: AdherenceDot[]
 ): AdherenceDot[] {
+  const i = trailingPendingIndex(strip);
+  return i < 0 ? strip : strip.slice(0, i);
+}
+
+// The index of that still-pending trailing day, or -1 when the strip has none. The
+// EXTRACTED core of the guard above (#2796), for the consumer that must not drop the
+// day but must not score it either: a month calendar has a cell for today, and
+// removing it makes today vanish from the grid while the page beside it is still
+// offering "Mark taken". The calendar renders this index as its own neutral "pending"
+// state instead. Both readings come from this ONE rule, so the summary's denominator
+// and the calendar's legend cannot disagree about which day is unsettled.
+//
+// Positional, like the guard it came from: the caller's window must END at the
+// profile's today (`lastNDates(today(profileId), n)` builds exactly that), which is
+// the same contract adherenceSummary already relies on.
+export function trailingPendingIndex(strip: readonly AdherenceDot[]): number {
   const n = strip.length;
-  return n > 0 && strip[n - 1].state === "missed"
-    ? strip.slice(0, n - 1)
-    : strip;
+  return n > 0 && strip[n - 1].state === "missed" ? n - 1 : -1;
 }
 
 export function adherenceSummary(strip: AdherenceDot[]): AdherenceSummary {

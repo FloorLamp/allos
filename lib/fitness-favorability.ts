@@ -8,7 +8,7 @@
 // too-low AND a too-high value both redden — symmetric); the `evidence` tier grades by
 // signed distance from a CITED threshold (greener further into "good", redder into "risk",
 // amber near the line). The reference numbers mirror the canonical biomarker ranges the
-// app already ships (Resting Heart Rate / Body Fat Percentage in lib/canonical-biomarkers)
+// app already ships (Resting Heart Rate / Body Fat Percentage in lib/canonical-result-definitions)
 // and the cited single-test scales the evidence-tier tests document — kept here as small,
 // self-contained constants so the pure grid VM needs no DB read.
 
@@ -25,7 +25,7 @@ interface HealthyBand {
 
 // Body-fat % healthy bands (a "fitness/healthy" core, reddening either side). Sex-keyed:
 // canonical is male-oriented (optimal 10–20%); women carry ~8–10% more essential fat.
-// Refs: ACE body-fat categories (fitness/acceptable ranges); lib/canonical-biomarkers
+// Refs: ACE body-fat categories (fitness/acceptable ranges); lib/canonical-result-definitions
 // "Body Fat Percentage" (optimal 10–20, male-oriented). Rough, informational.
 const BODY_FAT_BAND: Record<Sex, HealthyBand> = {
   male: { lo: 8, hi: 20, spread: 1.4 },
@@ -34,7 +34,7 @@ const BODY_FAT_BAND: Record<Sex, HealthyBand> = {
 
 // Resting-HR healthy band (bpm). Canonical optimal is 50–65 with a reference ceiling of
 // 100; a below-50 resting HR is elite-endurance territory (still fine), so the low edge is
-// generous. Ref: lib/canonical-biomarkers "Resting Heart Rate" (optimal 50–65, ref 50–100,
+// generous. Ref: lib/canonical-result-definitions "Resting Heart Rate" (optimal 50–65, ref 50–100,
 // lower_better). Symmetric grading past the band edges.
 const RESTING_HR_BAND: HealthyBand = { lo: 45, hi: 65, spread: 1.8 };
 

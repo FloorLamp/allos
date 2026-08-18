@@ -10,7 +10,6 @@ import {
   IconTrendingUp,
   IconMoon,
   IconHourglass,
-  IconConfetti,
   IconCalendarClock,
   IconUsersGroup,
   IconBarbell,
@@ -52,6 +51,9 @@ type Leaf = {
   // adult food-group serving catalog is meaningless there (issue #591). Cosmetic;
   // the page re-checks isFoodLoggingRelevant server-side. Eligible on unknown age.
   requiresFoodLogging?: boolean;
+  // Workout-oriented Training stands down through early childhood. Existing
+  // activity facts remain reachable from their record links.
+  requiresTraining?: boolean;
   // Entries carrying a `relevanceKey` are dropped when the server-resolved
   // relevance bitset (lib/nav-relevance.ts, issue #1042) reads false for that
   // key. Cycle, Sleep, Progress photos, and Wellness use it in nav; the
@@ -112,11 +114,12 @@ const RECORDS: Group = {
     // Vision/Dental panes are data-gated (getNavRelevance) — a hidden sub-tab's route
     // re-gates server-side; Skin/Mental health always render.
     { href: "/records", label: "Health record", icon: IconReportMedical },
-    // Results (#1042 phase 5, retabbed #1079): the Biomarkers / Imaging / Genomics
+    // Results (#1042 phase 5, retabbed #1079): the Clinical results / Imaging /
+    // Reports / Genomics
     // index pages merged into ONE surface, now route-per-tab under /results
-    // (/results/readings|/imaging|/genomics) — one leaf replaces the three; bare
-    // /results lands on /results/readings. The per-biomarker detail route
-    // (/results/readings/view) survives at its own URL; like other unlinked detail pages it
+    // (/results/clinical-results|/imaging|/genomics) — one leaf replaces the three; bare
+    // /results lands on /results/clinical-results. The per-analyte detail route
+    // (/results/clinical-results/view) survives at its own URL; like other unlinked detail pages it
     // highlights no nav entry.
     { href: "/results", label: "Results", icon: IconChartLine },
     // Supplements left this group for the Nutrition → Supplements tab (#746);
@@ -181,7 +184,12 @@ const RECORDS: Group = {
 // sit at the bottom regardless of how important their content is.
 const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
-  { href: "/training", label: "Training", icon: IconBarbell },
+  {
+    href: "/training",
+    label: "Training",
+    icon: IconBarbell,
+    requiresTraining: true,
+  },
   {
     href: "/nutrition",
     label: "Nutrition",
@@ -191,13 +199,10 @@ const entries: Entry[] = [
   },
   { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
   { href: "/trends", label: "Trends", icon: IconTrendingUp },
-  // Year in review (#2179): the annual retrospective, beside Timeline and Trends
-  // because it is the same "what happened over time" cluster at the longest horizon.
-  // UNGATED and permanent, deliberately. It is a USER-INITIATED surface with no send
-  // behind it, so a nav row is the ONLY way it is reachable at all — a data gate here
-  // would hide the page in exactly the state (a first sparse year) where its empty
-  // state is the honest thing to show, and there is no notification to fail over to.
-  { href: "/retrospective", label: "Year in review", icon: IconConfetti },
+  // Year in review (#2179/#2762) remains user-initiated and ungated, but a
+  // once-a-year commemorative page does not spend permanent nav chrome. Timeline
+  // and the recap card link it in context, while recent-pages keeps it searchable;
+  // sparse first years therefore remain reachable without a standing sidebar row.
   // Sleep (#1066): a data-gated READING surface between Trends and Upcoming — it
   // heads the reading cluster (a one-morning-glance page), and its adjacency to
   // Trends fails-soft the old muscle-memory path (sleep is being extracted FROM
@@ -243,9 +248,8 @@ const entries: Entry[] = [
     icon: IconSparkles,
     relevanceKey: "wellness",
   },
-  // Longevity took over Protocols' slot in #1042 phase 4: the healthspan-pillar
-  // page whose #protocols section absorbed the old Protocols hub (the /protocols
-  // URL 308-redirects there). Ungated, exactly as Protocols was.
+  // Longevity and its protocols are adult-only content. The route independently
+  // enforces the same life-stage predicate.
   { href: "/longevity", label: "Longevity", icon: IconHourglass },
   RECORDS,
   // One "Data" umbrella covering both halves — bringing data in (upload/paste/
@@ -255,15 +259,9 @@ const entries: Entry[] = [
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];
 
-// Nav entries FULLY hidden for age-restricted profiles (see lib/age-gate.ts).
-// Empty since #489: Training is no longer all-or-nothing — a restricted profile
-// keeps a lightweight sport/cardio activity log there (the page swaps in
-// RestrictedActivityView and gates only the adult strength/analytics content), so
-// the nav link must stay reachable. AI Insights already folded into the Trends
-// "Insights" tab (server-gated), and no other top-level route is age-gated. The
-// mechanism is retained (and group children are still filtered against it) so a
-// future genuinely-gated route is one array entry away.
-const RESTRICTED_HREFS = new Set<string>([]);
+// Whole-route adult content. Activity, Timeline, Trends, and Equipment stay
+// reachable; only the longevity/protocol content class is hidden here.
+const ADULT_ONLY_HREFS = new Set<string>(["/longevity"]);
 
 const leafClass = (active: boolean, nested: boolean) =>
   // Active = accent text on the accent-soft fill, per the palette doctrine
@@ -322,38 +320,41 @@ function NavLink({
 
 function NavGroup({
   group,
-  restricted,
+  adultContentAvailable,
   isAdmin,
   multiProfile,
   foodLoggingRelevant,
   hasIntakeItems,
+  trainingRelevant,
   relevance,
   badges,
 }: {
   group: Group;
-  restricted: boolean;
+  adultContentAvailable: boolean;
   isAdmin: boolean;
   multiProfile: boolean;
   foodLoggingRelevant: boolean;
   hasIntakeItems: boolean;
+  trainingRelevant: boolean;
   relevance: NavRelevance;
   badges: NavBadges;
 }) {
   const pathname = usePathname();
   // Reuse the same visibility predicate as the top-level entries so a group
-  // child honors the age-gate (RESTRICTED_HREFS), `adminOnly`,
+  // child honors the adult-content boundary (ADULT_ONLY_HREFS), `adminOnly`,
   // `requiresMultiProfile`, `requiresFoodLogging`, and the relevance bitset
   // identically — otherwise appending a gated leaf to a group's children (which
   // the array shape invites) would leak it in the sidebar.
   const children = group.children.filter((c) =>
     isNavLeafVisible(c, {
       isAdmin,
-      restricted,
+      adultContentAvailable,
       multiProfile,
       foodLoggingRelevant,
       hasIntakeItems,
+      trainingRelevant,
       relevance,
-      restrictedHrefs: RESTRICTED_HREFS,
+      adultOnlyHrefs: ADULT_ONLY_HREFS,
     })
   );
   // Force-expanded whenever a child route is active so the active item is always
@@ -404,15 +405,16 @@ function NavGroup({
 }
 
 export default function Nav({
-  restricted = false,
+  adultContentAvailable = true,
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
   hasIntakeItems = false,
+  trainingRelevant = true,
   relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
 }: {
-  restricted?: boolean;
+  adultContentAvailable?: boolean;
   isAdmin?: boolean;
   // True when the caller has more than one ACCESSIBLE profile; gates entries
   // flagged `requiresMultiProfile` (e.g. the Household cross-profile overview).
@@ -426,6 +428,8 @@ export default function Nav({
   // supplement even though food-group logging isn't relevant. Defaults false so
   // the Food-logging gate stands on its own when a caller doesn't thread it.
   hasIntakeItems?: boolean;
+  // False through early childhood; hides the workout-oriented Training leaf.
+  trainingRelevant?: boolean;
   // The server-resolved relevance bitset (issue #1042) gating entries flagged
   // with a `relevanceKey` (Cycle/Sleep/Progress/Wellness in nav; the
   // Vision/Dental bits gate the /records specialty sections). Defaults all-true
@@ -442,12 +446,13 @@ export default function Nav({
       ? true
       : isNavLeafVisible(e, {
           isAdmin,
-          restricted,
+          adultContentAvailable,
           multiProfile,
           foodLoggingRelevant,
           hasIntakeItems,
+          trainingRelevant,
           relevance,
-          restrictedHrefs: RESTRICTED_HREFS,
+          adultOnlyHrefs: ADULT_ONLY_HREFS,
         })
   );
   return (
@@ -457,11 +462,12 @@ export default function Nav({
           <NavGroup
             key={e.group}
             group={e}
-            restricted={restricted}
+            adultContentAvailable={adultContentAvailable}
             isAdmin={isAdmin}
             multiProfile={multiProfile}
             foodLoggingRelevant={foodLoggingRelevant}
             hasIntakeItems={hasIntakeItems}
+            trainingRelevant={trainingRelevant}
             relevance={relevance}
             badges={badges}
           />

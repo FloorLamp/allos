@@ -1,6 +1,6 @@
 // DOES THIS ANALYTE ALREADY HAVE A BODY-METRIC HOME? (issue #2365)
 //
-// THE DEFECT. #1076 re-homed six medical-record CLASSES out of the flat Biomarkers
+// THE DEFECT. #1076 re-homed six medical-record CLASSES out of the Clinical results
 // browser and deliberately kept `vitals`, for a reason that is still right: the
 // DOMAIN vitals catalogued there — audiogram thresholds (#713), intraocular pressure
 // and visual acuity (#697), periodontal probing depth (#705) — have no dedicated
@@ -600,7 +600,7 @@ export function hasTrendMetricHome(name: string | null | undefined): boolean {
  * point), `observation-fold` keeps it (folded onto the stream by identity), and
  * `import-projection` DROPS it, because a `withoutCaptured*` helper wrote the stream
  * row instead. `derived-inputs` did nothing at all: no projector, no destination, no
- * drop — so the row survived, an AI import coined a `canonical_biomarkers` name for
+ * drop — so the row survived, an AI import coined a `canonical_result_definitions` name for
  * it, and `getUsedCanonicalNames` returned it forever as a Coverage candidate for a
  * quantity the app already answers on a chart.
  *
@@ -644,8 +644,8 @@ export function derivedInputsMetricFor(
 }
 
 /**
- * Whether the flat Results catalog (/results/readings, rendered as Results ›
- * Biomarkers) lists this analyte — the ONE place the question is asked, so the rows
+ * Whether the Clinical results catalog (/results/clinical-results) lists this analyte —
+ * the ONE place the question is asked, so the rows
  * the gather returns and the panels the facet offers can never disagree about what
  * "listed" means. The CATALOG axis, one level finer than
  * RESULTS_CATALOG_CATEGORIES; it says nothing about the row's identity (#2479).

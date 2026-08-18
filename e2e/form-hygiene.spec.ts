@@ -119,15 +119,15 @@ test("the notification schedule select renders its default label unclipped (#145
 }) => {
   await page.goto("/settings/notifications");
 
-  const select = page.getByTestId("supp-morning-hour");
+  const select = page.getByTestId("intake-morning-hour");
   await expect(select).toBeVisible();
 
   // The wake-aware "Auto" option is the long one — it used to read "Auto — fi…"
   // in this 4-up grid. Select it so it becomes the rendered label, then measure.
   await select.selectOption("auto");
   expect(
-    await textFitsControl(page, '[data-testid="supp-morning-hour"]'),
-    "the Morning supps select clips its own selected label"
+    await textFitsControl(page, '[data-testid="intake-morning-hour"]'),
+    "the Morning intake select clips its own selected label"
   ).toBe(true);
 
   // Restore the shared admin profile's setting so the preference doesn't bleed

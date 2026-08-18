@@ -48,7 +48,7 @@ regions its logged sets map to.
 
 `SESSION_ADVANCE_RULES` is `Record<FrequencyScopeKind, rule | null>`, total by the
 same construction as `CADENCE_SCOPES`. A `null` is a DECLARATION, not a "no": it
-says the question is unanswerable from an activity row — mobility reads a recovery
+says the question is unanswerable from an activity row — mobility reads a mobility
 session's moves (#840), food and practice count their own ledgers, and a `cap` is
 never advanced at all (#998; asking would be asking for a to-go number on alcohol).
 `SESSION_ADVANCEABLE_SCOPE_KINDS` derives the workout-affectable set from those

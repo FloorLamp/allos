@@ -1,6 +1,5 @@
 import { revalidateRoute } from "@/lib/revalidate";
-import { accessForProfile, accessibleProfilesForLogin } from "@/lib/auth";
-import { isDemoMode, isDemoRestricted } from "@/lib/demo";
+import { writableProfileIdsForLogin } from "@/lib/auth";
 import { authenticateApiToken } from "@/lib/api-tokens";
 import { apiTokenRateLimitKey } from "@/lib/api-token-format";
 import {
@@ -14,6 +13,7 @@ import {
 import {
   applyIdentityOutcomes,
   clearIdentityDeclined,
+  claimDeliveredDocuments,
   recordDiscoveredIdentities,
   recordPendingIdentity,
   recordPortalRunReport,
@@ -202,13 +202,10 @@ export async function POST(req: Request): Promise<Response> {
   // several household members — so a caregiver token that may write only one of them must
   // not be able to change standing state on another's binding. Reach first, then access,
   // the order every gate here uses.
-  const writableProfileIds = accessibleProfilesForLogin(login.id)
-    .filter(
-      (p) =>
-        !isDemoRestricted(isDemoMode(), login.role) &&
-        accessForProfile(login.id, login.role, p.id) === "write"
-    )
-    .map((p) => p.id);
+  // Reach first, then access, then demo-restriction — one derivation, shared with the
+  // registry endpoint's gate (#2898), which also mints the authorized-set capability
+  // the account gate below demands.
+  const writableProfileIds = writableProfileIdsForLogin(login.id);
 
   const counts = parseSyncReportCounts({
     inserted: body.inserted,
@@ -307,6 +304,10 @@ export async function POST(req: Request): Promise<Response> {
     portalId: number;
     accountId: number;
     patientLabel: string;
+    // The registry row for the pair above (#2999) — what a delivered document is stamped
+    // with, and therefore what this run claims by. Not part of the event's own identity
+    // columns, which store the three names.
+    identityId: number;
   } | null = null;
   // The LOGIN this run came from, once resolved — what the account-level run report is
   // keyed to. Null for a `profile=<id>` report from a human debugging with curl, which
@@ -403,6 +404,7 @@ export async function POST(req: Request): Promise<Response> {
       portalId: resolved.portalId,
       accountId: resolved.accountId,
       patientLabel: resolved.patientLabel,
+      identityId: resolved.identityId,
     };
     // A SUCCESSFUL DOWNLOAD IS ITSELF A COLLECTION (#1889), so it clears any standing
     // "the portal declines this person" without the client having to spell the outcome
@@ -425,14 +427,12 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  const reachable = accessibleProfilesForLogin(login.id).some(
-    (p) => p.id === profileId
-  );
-  if (
-    isDemoRestricted(isDemoMode(), login.role) ||
-    !reachable ||
-    accessForProfile(login.id, login.role, profileId) !== "write"
-  ) {
+  // The SAME question the write set above already answers: reach, then access, then
+  // demo-restriction, for this one profile. It used to be spelled out a fourth time
+  // five lines below the value that answers it (#2935 review) — and a fourth copy is
+  // a fourth thing to keep in step, on a gate where drifting means writing another
+  // household's records.
+  if (!writableProfileIds.includes(profileId)) {
     return jsonError("no write access to that profile", 403);
   }
 
@@ -440,7 +440,7 @@ export async function POST(req: Request): Promise<Response> {
     // The append-only event history: this is what Data → Review reads and what the
     // failure badge keys off. recordSyncEvent is best-effort by contract (it never throws
     // into its caller), so a reporting hiccup can't fail an otherwise-good run.
-    recordSyncEvent(profileId, SOURCE_ID, {
+    const eventId = recordSyncEvent(profileId, SOURCE_ID, {
       ok: ev.ok,
       received: ev.received,
       written: ev.inserted + ev.updated,
@@ -458,6 +458,27 @@ export async function POST(req: Request): Promise<Response> {
       // shows a per-identity line only where there is an identity to show.
       identity,
     });
+    // WHAT THIS RUN DELIVERED (#2999). A portal run's product is DOCUMENTS, not records,
+    // so the run's provenance rows point at `medical_documents` — the drill-in in Data →
+    // Review then lists the archives this run actually pushed, each opening its own
+    // import page, instead of promising a count over a table that could hold nothing.
+    //
+    // Keyed to the IDENTITY this report is about, which is what the upload route stamped
+    // on each archive: the tool files one report per patient, so a claim keyed to the
+    // login would credit one patient's run with another's archives — and, when a clock
+    // was used to separate them, would leave the later patient's documents claimed by
+    // nobody at all. There is no clock here; see claimDeliveredDocuments, which also owns
+    // why the guard it reads outlives the #388 retention sweep.
+    //
+    // ONLY A SUCCESSFUL RUN CLAIMS. A failed report delivered nothing, and claiming into
+    // a failing event would consume the documents the next good run should have listed.
+    // They stay unclaimed and wait — nothing here moves a boundary.
+    //
+    // Best-effort by contract: it never throws into ingest, and on failure it writes
+    // nothing at all, so the next successful run claims the same archives.
+    if (ev.ok && identity) {
+      claimDeliveredDocuments(eventId, profileId, identity.identityId);
+    }
     // "Last synced" on the card. Only a SUCCESSFUL run advances it — including a
     // nothing-new one, which is the whole point: a quiet check is still a check, and the
     // connection is demonstrably alive. A failed run deliberately leaves the previous

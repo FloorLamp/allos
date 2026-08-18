@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page, type Locator } from "@playwright/test";
-import { expectNoClippedContent, followLink } from "./helpers";
+import { expectNoClippedContent, followLink, settledBoxes } from "./helpers";
 import {
   medicationList,
   pastMedications,
@@ -35,7 +35,7 @@ async function openRowMenuItemAndFollow(
   const item = page.getByRole("menuitem", { name: itemName });
   await expect(async () => {
     if (!(await item.isVisible().catch(() => false))) {
-      await row.getByRole("button", { name: "Medication actions" }).click();
+      await row.getByRole("button", { name: "Medication actions" }).click(); // hydrated-ok: inside the reviewed reopen-if-closed toPass below — the loop already tolerates a swallowed tap, and it re-opens ONLY when the item is not visible, so it can never toggle the menu shut
       await expect(item).toBeVisible({ timeout: 2_000 });
     }
     await item.click();
@@ -207,13 +207,11 @@ test("Add medication opens one inline quick-add and full-details workspace", asy
   // Before a catalog medication is selected there is no description preview in
   // the second column, so the identity controls should use the available width
   // instead of leaving half the form blank.
-  const [detailsGridBox, nameInputBox] = await Promise.all([
-    panel.getByTestId("medication-details-grid").boundingBox(),
-    nameInput.boundingBox(),
+  const [detailsGridBox, nameInputBox] = await settledBoxes([
+    panel.getByTestId("medication-details-grid"),
+    nameInput,
   ]);
-  expect(detailsGridBox).not.toBeNull();
-  expect(nameInputBox).not.toBeNull();
-  expect(nameInputBox!.width / detailsGridBox!.width).toBeGreaterThan(0.9);
+  expect(nameInputBox.width / detailsGridBox.width).toBeGreaterThan(0.9);
   const scheduledStart = panel.getByLabel("Started on");
   const scheduledStartDisplay = await scheduledStart.inputValue();
   expect(scheduledStartDisplay).not.toBe("");
@@ -253,14 +251,12 @@ test("the medication workspace stays usable without horizontal overflow on mobil
   await expect(page.getByTestId("medication-add-toggle")).toBeVisible();
   await expect(medicationList(page)).toBeVisible();
   const scheduled = scheduledTodayItem(page, "Adherence Refill Med (e2e)");
-  const [scheduledLinkBox, scheduledActionBox] = await Promise.all([
-    scheduled.getByRole("link").boundingBox(),
-    scheduled.getByTestId("dose-take").boundingBox(),
+  const [scheduledLinkBox, scheduledActionBox] = await settledBoxes([
+    scheduled.getByRole("link"),
+    scheduled.getByTestId("dose-take"),
   ]);
-  expect(scheduledLinkBox).not.toBeNull();
-  expect(scheduledActionBox).not.toBeNull();
   expect(
-    Math.abs(scheduledLinkBox!.y - scheduledActionBox!.y)
+    Math.abs(scheduledLinkBox.y - scheduledActionBox.y)
   ).toBeLessThanOrEqual(4);
   // Element-level containment (#1543): the app shell clips horizontal overflow, so
   // a page-level width comparison is unconditionally true here and would assert
@@ -292,22 +288,19 @@ test("a medication row links to its clinical-record detail page", async ({
   const overview = medicationOverview(detail);
   const guidance = medicationGuidance(detail);
   const adherence = detail.getByTestId("medication-adherence-month");
-  const [overviewBox, guidanceBox, adherenceBox] = await Promise.all([
-    overview.boundingBox(),
-    guidance.boundingBox(),
-    adherence.boundingBox(),
+  const [overviewBox, guidanceBox, adherenceBox] = await settledBoxes([
+    overview,
+    guidance,
+    adherence,
   ]);
-  expect(overviewBox).not.toBeNull();
-  expect(guidanceBox).not.toBeNull();
-  expect(adherenceBox).not.toBeNull();
-  expect(Math.abs(overviewBox!.y - guidanceBox!.y)).toBeLessThanOrEqual(2);
-  expect(Math.abs(overviewBox!.width - guidanceBox!.width)).toBeLessThanOrEqual(
+  expect(Math.abs(overviewBox.y - guidanceBox.y)).toBeLessThanOrEqual(2);
+  expect(Math.abs(overviewBox.width - guidanceBox.width)).toBeLessThanOrEqual(
     2
   );
-  expect(
-    Math.abs(overviewBox!.height - guidanceBox!.height)
-  ).toBeLessThanOrEqual(2);
-  expect(adherenceBox!.y).toBeGreaterThan(overviewBox!.y + overviewBox!.height);
+  expect(Math.abs(overviewBox.height - guidanceBox.height)).toBeLessThanOrEqual(
+    2
+  );
+  expect(adherenceBox.y).toBeGreaterThan(overviewBox.y + overviewBox.height);
 
   // At the same 1024px breakpoint, the compact calendar uses the card's width by
   // stacking its legend in a right-hand column instead of leaving dead space.
@@ -315,22 +308,15 @@ test("a medication row links to its clinical-record detail page", async ({
   const calendarDays = adherence.getByTestId("adherence-calendar-days");
   const calendarLegend = adherence.getByTestId("adherence-calendar-legend");
   const [calendarGridBox, calendarDaysBox, calendarLegendBox] =
-    await Promise.all([
-      calendarGrid.boundingBox(),
-      calendarDays.boundingBox(),
-      calendarLegend.boundingBox(),
-    ]);
-  expect(calendarGridBox).not.toBeNull();
-  expect(calendarDaysBox).not.toBeNull();
-  expect(calendarLegendBox).not.toBeNull();
-  expect(calendarGridBox!.width).toBeLessThanOrEqual(260);
-  expect(calendarLegendBox!.x).toBeGreaterThan(
-    calendarGridBox!.x + calendarGridBox!.width
+    await settledBoxes([calendarGrid, calendarDays, calendarLegend]);
+  expect(calendarGridBox.width).toBeLessThanOrEqual(260);
+  expect(calendarLegendBox.x).toBeGreaterThan(
+    calendarGridBox.x + calendarGridBox.width
   );
-  expect(calendarLegendBox!.width).toBeLessThanOrEqual(132);
-  expect(
-    Math.abs(calendarDaysBox!.y - calendarLegendBox!.y)
-  ).toBeLessThanOrEqual(2);
+  expect(calendarLegendBox.width).toBeLessThanOrEqual(132);
+  expect(Math.abs(calendarDaysBox.y - calendarLegendBox.y)).toBeLessThanOrEqual(
+    2
+  );
 
   const doseHistory = detail.getByTestId("dose-history");
   // The newest seeded dose is from yesterday. Its database insertion timestamp is

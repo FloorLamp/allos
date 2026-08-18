@@ -7,11 +7,11 @@
 //   • migration 174 — the ONE-SHOT data move. The drift already on disk is repaired
 //     once, at a known schema version, inside the runner's IMMEDIATE transaction,
 //     with a replay test. AGENTS.md: "Put one-shot data moves in a migration."
-//   • bootTasks (after seedCanonicalBiomarkers) — the RECURRING guard. CANONICAL_ALIASES
+//   • bootTasks (after seedCanonicalResultDefinitions) — the RECURRING guard. CANONICAL_ALIASES
 //     grows in releases with NO schema change, and any import between two boots can
 //     mint a fresh blocking ai row, so a migration alone could never satisfy the
 //     issue's acceptance criterion ("… after ONE boot, with no manual DB edit and no
-//     re-import"). Exactly the reasoning seedCanonicalBiomarkers itself is a boot task
+//     re-import"). Exactly the reasoning seedCanonicalResultDefinitions itself is a boot task
 //     for: the data can change without the schema changing.
 //
 // It takes an explicit handle rather than the lib/db singleton because a migration
@@ -20,13 +20,14 @@
 // when the plan is non-empty, so the every-5-minutes notify-tick boot does not take
 // the write lock for a no-op.
 //
-// PROFILE SCOPING. The vocabulary (canonical_biomarkers) is a global table, but every
+// PROFILE SCOPING. The vocabulary (canonical_result_definitions) is a global table, but every
 // row this pass rewrites is profile-owned, so the whole rename runs per profile and
 // every statement filters by profile_id. The side-state carries are per-profile for a
 // second reason too: a collision (the profile already stars/snoozes/tracks the target)
 // is a per-profile fact.
 
 import type Database from "better-sqlite3";
+import { canonicalResultDefinitionTableForSchema } from "./canonical-result-definition-table";
 import { buildCanonicalIndex } from "./canonical-name";
 import {
   biomarkerDismissalKey,
@@ -34,7 +35,7 @@ import {
 } from "./dismissal-keys";
 import { biomarkerCoverageKey } from "./coverage-gaps";
 import {
-  rewriteBiomarkerOutcomeKeys,
+  rewriteResultOutcomeKeys,
   supersededStoredNames,
   supersededVocabularyRows,
   type CanonicalMerge,
@@ -56,11 +57,12 @@ interface Plan {
 // READ-ONLY. Works out what would change, so the caller can skip the transaction
 // entirely on the (overwhelmingly common) boot where nothing has drifted.
 function planMerges(db: Database.Database): Plan {
+  const definitionTable = canonicalResultDefinitionTableForSchema(db);
   // The SAME order getCanonicalVocabulary reads in — seeded/curated names ahead of
   // ai-coined ones — because that order decides which spelling wins a shared key.
   const rows = db
     .prepare(
-      "SELECT name, source FROM canonical_biomarkers ORDER BY (source = 'ai'), name COLLATE NOCASE"
+      `SELECT name, source FROM ${definitionTable} ORDER BY (source = 'ai'), name COLLATE NOCASE`
     )
     .all() as { name: string; source: string | null }[];
   const vocabulary = supersededVocabularyRows(rows);
@@ -103,7 +105,7 @@ function planMerges(db: Database.Database): Plan {
 //
 //   1. medical_records.canonical_name — the readings themselves. `name` (the printed
 //      lab spelling) is PROVENANCE and is deliberately left alone.
-//   2. saved_items (kind='biomarker') — the ★ pin, keyed by canonical name.
+//   2. saved_items (kind='clinical-result') — the ★ pin, keyed by canonical name.
 //   3. upcoming_dismissals — the retest snooze `biomarker:<retest identity>` and the
 //      flagged-result/trajectory acknowledgment `biomarker-flag:<family>`. Both are
 //      DERIVED keys, so they only move when the derivation actually differs.
@@ -111,7 +113,7 @@ function planMerges(db: Database.Database): Plan {
 //   5. coverage_gaps (kind='biomarker') — the tracked "not in the catalog" gap, keyed
 //      by family. Left behind it would be a phantom gap forever: the covered-check
 //      re-derives from the key, and the old key names an analyte nobody now has.
-//   6. protocols.outcome_keys — the JSON `biomarker:<canonical>` outcome links.
+//   6. protocols.outcome_keys — the JSON `result:<canonical>` outcome links.
 //
 // Deliberately NOT carried, with reasons:
 //   • medical_records.name / panel / notes / source — provenance, not identity.
@@ -132,6 +134,9 @@ export function applyCanonicalRename(
   profileId: number,
   { from, to }: CanonicalMerge
 ): number {
+  const definitionTable = canonicalResultDefinitionTableForSchema(db);
+  const historicalSchema = definitionTable === "canonical_biomarkers";
+  const savedResultKind = historicalSchema ? "biomarker" : "clinical-result";
   const records = db
     .prepare(
       `UPDATE medical_records SET canonical_name = ?
@@ -141,12 +146,12 @@ export function applyCanonicalRename(
 
   db.prepare(
     `UPDATE OR IGNORE saved_items SET key = ?
-      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
-  ).run(to, profileId, from);
+      WHERE profile_id = ? AND kind = ? AND key = ? COLLATE NOCASE`
+  ).run(to, profileId, savedResultKind, from);
   db.prepare(
     `DELETE FROM saved_items
-      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
-  ).run(profileId, from);
+      WHERE profile_id = ? AND kind = ? AND key = ? COLLATE NOCASE`
+  ).run(profileId, savedResultKind, from);
 
   for (const keyOf of [biomarkerDismissalKey, biomarkerFlagDismissalKey]) {
     const oldKey = keyOf(from);
@@ -186,7 +191,12 @@ export function applyCanonicalRename(
     .prepare("SELECT id, outcome_keys FROM protocols WHERE profile_id = ?")
     .all(profileId) as { id: number; outcome_keys: string }[];
   for (const p of protocols) {
-    const next = rewriteBiomarkerOutcomeKeys(p.outcome_keys, from, to);
+    const next = rewriteResultOutcomeKeys(
+      p.outcome_keys,
+      from,
+      to,
+      historicalSchema ? "biomarker:" : "result:"
+    );
     if (next === null) continue;
     db.prepare(
       "UPDATE protocols SET outcome_keys = ? WHERE id = ? AND profile_id = ?"
@@ -199,14 +209,22 @@ export function applyCanonicalRename(
 export function mergeSupersededCanonicalNames(
   db: Database.Database
 ): CanonicalMergeReport {
+  const definitionTable = canonicalResultDefinitionTableForSchema(db);
   const probe = planMerges(db);
   const report: CanonicalMergeReport = { vocabulary: [], renames: [] };
   if (probe.vocabulary.length === 0 && probe.stored.length === 0) return report;
 
   // `source = 'ai'` is the whole safety property: a curated row is untouchable.
-  const drop = db.prepare(
-    "DELETE FROM canonical_biomarkers WHERE name = ? AND source = 'ai'"
-  );
+  // Keep both schema-era statements literal: the boot-task delete census must be
+  // able to classify them, while frozen migration 174 still needs its old table.
+  const drop =
+    definitionTable === "canonical_result_definitions"
+      ? db.prepare(
+          "DELETE FROM canonical_result_definitions WHERE name = ? AND source = 'ai'"
+        )
+      : db.prepare(
+          "DELETE FROM canonical_biomarkers WHERE name = ? AND source = 'ai'"
+        );
   runBootTx(
     db.transaction(() => {
       // runBootTx re-runs the whole callback on a SQLITE_BUSY retry, so the report is

@@ -1,5 +1,5 @@
 // Channel-agnostic notification core. A message is built by a feature (e.g. the
-// supplement reminder) and dispatched to every configured channel; the core
+// intake reminder) and dispatched to every configured channel; the core
 // knows nothing about supplements and channels know nothing about features.
 
 import type { MessageBody } from "./rich-text";
@@ -48,7 +48,7 @@ export type NotificationKind =
 
 // An interactive action attached to a message. Either a callback action — `data`
 // is an opaque token the inbound webhook decodes to perform the action (e.g.
-// "take:<doseId>:<suppId>:<date>") — OR a deep-link action, where `url` opens a
+// "take:<doseId>:<itemId>:<date>") — OR a deep-link action, where `url` opens a
 // page in the app instead of firing a callback (issue #233's refill "Open form").
 // Exactly one of `data`/`url` is set. Channels that support buttons render it;
 // channels that don't (push) ignore actions entirely.
@@ -63,6 +63,19 @@ export interface NotificationAction {
   // an action with no `row` gets its own row. Channels without buttons ignore it.
   row?: string;
 }
+
+// The row key the digest's two COLLAPSED tail controls share, so the ➕ offer tail and
+// the ⚙️ Tune button sit side by side instead of stacking (#2890). It lives here rather
+// than in either builder because it belongs to NEITHER of them alone: `offer-tail.ts`
+// and `digest-tune.ts` know nothing about each other, and a literal copied into both is
+// the pairing that drifts apart the next time one of them is edited.
+//
+// It groups the COLLAPSED pair only. Each control's EXPANDED keyboard is its own layout
+// with its own keys (`offer-<itemId>` plus `offer-tail` for the list, `tune-<n>` plus
+// `digest-tune` for the toggles), and neither is grouped with anything here. Grouping is
+// by ADJACENCY (#232), so either control still renders as a single button when its
+// partner is absent.
+export const DIGEST_TAIL_ROW = "digest-tail";
 
 export interface NotificationMessage {
   title: string;

@@ -54,6 +54,9 @@ function sessionFor(profileId: number, loginId: number): CurrentSession {
       photo_version: 0,
     },
     access: "write",
+    // Not a real session key — these harnesses never reach the device write gate,
+    // which is browser-side. It only has to satisfy CurrentSession (#2908).
+    deviceSessionKey: "test session key",
   };
 }
 
@@ -82,7 +85,7 @@ beforeAll(() => {
     "INSERT INTO import_jobs (profile_id, type, status, summary) VALUES (?, 'workouts', 'ready', '3 workouts')"
   ).run(profileA);
   db.prepare(
-    "INSERT INTO import_jobs (profile_id, type, status, error) VALUES (?, 'biomarkers', 'failed', 'no rows')"
+    "INSERT INTO import_jobs (profile_id, type, status, error) VALUES (?, 'clinical-results', 'failed', 'no rows')"
   ).run(profileA);
   db.prepare(
     "INSERT INTO import_jobs (profile_id, type, status) VALUES (?, 'workouts', 'processing')"

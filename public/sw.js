@@ -186,7 +186,7 @@ const OFFLINE_SYNC_TAG = "allos-offline-replay";
 const OFFLINE_DB = "allos-offline";
 const OFFLINE_STORE = "intents";
 // Opened WITHOUT a version on purpose: the page owns the schema
-// (lib/offline/idb.ts, currently v3 — intents + rejected + drafts) and a worker
+// (lib/offline/idb.ts, currently v5 — intents + rejected + drafts + snapshots + meta) and a worker
 // naming a lower version would fail the open with a VersionError instead of
 // replaying. No version means "whatever exists"; a database that does not exist yet
 // has no queue to replay either way.

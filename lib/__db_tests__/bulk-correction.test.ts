@@ -244,7 +244,7 @@ describe("metric_samples and activities stores", () => {
     const id = Number(
       db
         .prepare(
-          `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+          `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, 'oura', 'hrv_ms', '2026-03-02', '2026-03-01T23:00:00Z', '2026-03-02T07:00:00Z', 48)`
         )
         .run(pid).lastInsertRowid
@@ -253,7 +253,7 @@ describe("metric_samples and activities stores", () => {
     const otherMetric = Number(
       db
         .prepare(
-          `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+          `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
            VALUES (?, 'oura', 'steps', '2026-03-02', '2026-03-02T00:00:00Z', '2026-03-03T00:00:00Z', 9000)`
         )
         .run(pid).lastInsertRowid

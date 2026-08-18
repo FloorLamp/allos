@@ -3,6 +3,7 @@ import {
   getPickerProviders,
   getContrastSafetyWarnings,
   getFindingSuppressions,
+  getScheduledAppointments,
 } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { contrastTitle, contrastDetail } from "@/lib/contrast-safety";
@@ -14,6 +15,7 @@ import { Notice } from "@/components/Notice";
 import CarePlanForm from "@/app/(app)/records/care/overview/CarePlanForm";
 import CarePlanList from "@/app/(app)/records/care/overview/CarePlanList";
 import { addCarePlanItem } from "@/app/(app)/records/care/overview/care-plan-actions";
+import { scheduledAppointmentsForCareItems } from "@/lib/care-plan-appointment";
 
 // Care plan (former /care-plan index, #1042 phase 6): the profile's planned /
 // ordered future care, soonest first — now the #care-plan section of /records.
@@ -29,9 +31,19 @@ import { addCarePlanItem } from "@/app/(app)/records/care/overview/care-plan-act
 export default function CarePlanSection({ scope }: { scope: ProfileScope }) {
   const profileId = scope.actingProfileId;
   const multi = scope.viewIds.length > 1;
-  const items = stampSubjects(
-    scope,
-    readForProfiles(scope.viewIds, (pid) => getCarePlanItems(pid))
+  const rawItems = readForProfiles(scope.viewIds, (pid) =>
+    getCarePlanItems(pid)
+  );
+  const items = stampSubjects(scope, rawItems);
+  const appointments = Object.fromEntries(
+    scope.viewIds.flatMap((pid) =>
+      Object.entries(
+        scheduledAppointmentsForCareItems(
+          getScheduledAppointments(pid),
+          rawItems.filter((item) => item.profileId === pid)
+        )
+      )
+    )
   );
 
   // Contrast-safety notes (issue #701): a planned contrast imaging study meeting a
@@ -74,6 +86,7 @@ export default function CarePlanSection({ scope }: { scope: ProfileScope }) {
         </AddEntryPanel>
         <CarePlanList
           items={items}
+          appointments={appointments}
           multiView={
             multi ? { actingProfileId: scope.actingProfileId } : undefined
           }

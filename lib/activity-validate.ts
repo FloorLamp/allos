@@ -81,7 +81,7 @@ const setPartial = (name: string, s: StoredSet) =>
   );
 
 /**
- * The HABIT-TIER mobility session (#840): one `recovery` activity per
+ * The HABIT-TIER mobility session (#840): one `mobility` activity per
  * (profile, date) whose components are the tapped moves, each deliberately
  * carrying no distance and no duration — "one move = one tap", the
  * false-precision trap the mobility bar exists to avoid. Its editing surface is
@@ -89,22 +89,22 @@ const setPartial = (name: string, s: StoredSet) =>
  * carries no exercise sets.
  *
  * Identified exactly the way lib/mobility-log-write identifies it — a
- * `recovery`-typed row whose recovery components ARE the move set — plus the
+ * `mobility`-typed row whose mobility components ARE the move set — plus the
  * absence of sets, which the bar never writes and which would make the row an
  * editor-shaped thing again. A components list that is present but EMPTY counts:
  * that is the duration-only session `setMobilityDurationCore` writes. A legacy
  * row with no components list at all does not — nothing states it is a move set.
  *
- * Imported recovery sessions are unaffected: they carry a per-component
+ * Imported mobility sessions are unaffected: they carry a per-component
  * `duration_min` (Fitbit yoga, migration 117), so they never faulted anyway.
  */
-export function isHabitTierRecovery(
+export function isHabitTierMobility(
   a: StoredActivity,
   sets: StoredSet[]
 ): boolean {
-  if (a.type !== "recovery" || sets.length > 0) return false;
+  if (a.type !== "mobility" || sets.length > 0) return false;
   if (!a.components) return false;
-  return parseComponents(a.components).every((c) => c.type === "recovery");
+  return parseComponents(a.components).every((c) => c.type === "mobility");
 }
 
 /**
@@ -134,7 +134,7 @@ export function storedActivityFault(
   a: StoredActivity,
   sets: StoredSet[]
 ): string | null {
-  if (isHabitTierRecovery(a, sets)) return null;
+  if (isHabitTierMobility(a, sets)) return null;
   const timeError = !!a.start_time && !!a.end_time && a.end_time < a.start_time;
 
   // Group sets by exercise, case-insensitively like the editor, keeping the

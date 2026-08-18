@@ -86,7 +86,7 @@ export default function ProfileIdentityBar({
   profiles: SessionProfile[];
   actingProfileId: number;
   // The persisted, access-validated view-set (#1096).
-  viewIds: number[];
+  viewIds: readonly number[];
   // Profiles held READ-only by this login (#33) — the per-row hint in the panel.
   readOnlyIds: number[];
   // The ACTING profile is read-only for this login (#33). The hint rides the bar
@@ -137,6 +137,9 @@ export default function ProfileIdentityBar({
     grabRef: handleRef,
     direction: "up",
     onOutcome: () => setOpen(false),
+    // The latch expires with the panel it protects (#2725): this drawer's panel
+    // unmounts between opens, so a remounted one is owed its slide again.
+    panelMounted: drawer.mounted,
     enabled: isMobile && open,
   });
 
@@ -153,8 +156,8 @@ export default function ProfileIdentityBar({
   if (!view) return null;
 
   // Two homes for one component means two stable hooks for the ROOT — the same
-  // `-mobile` suffix convention the bar's other phone-only controls use
-  // (search-mobile, start-workout-mobile). Both mounts exist in the DOM at every
+  // `-mobile` suffix convention the bar's other phone-only control uses
+  // (search-mobile). Both mounts exist in the DOM at every
   // width (one is `md:hidden`, the other `hidden md:flex`), so a shared testid on
   // the root would be ambiguous rather than convenient. Everything INSIDE the bar
   // is reached by scoping to the root instead of by suffixing again — except the

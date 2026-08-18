@@ -48,15 +48,15 @@ const ROUTES = [
 // (issue #1420 — this spec now runs in the `mobile` project too): the desktop
 // sidebar is `hidden md:flex` (app/(app)/layout.tsx) and MobileNav's top bar is
 // `md:hidden`, and the drawer holding the sidebar's links isn't even mounted
-// until the hamburger is tapped. Below the Tailwind `md` breakpoint (768px) the
-// anchor is that hamburger; at desktop widths it stays the sidebar's Data link.
+// until dock More is tapped. Below the Tailwind `md` breakpoint (768px) the
+// anchor is that slot; at desktop widths it stays the sidebar's Data link.
 // A ^-anchored regex, not exact text: the Import tab's provider links also contain
 // "Data", and since #1801 the sidebar entry itself carries the review-count badge,
 // so its accessible name is "Data <n>" whenever an import needs attention.
 function appShellAnchor(page: Page): Locator {
   const width = page.viewportSize()?.width ?? Number.POSITIVE_INFINITY;
   return width < 768
-    ? page.getByRole("button", { name: "Open menu" })
+    ? page.getByTestId("dock-slot-more")
     : page.locator("aside nav").getByRole("link", { name: /^Data/ });
 }
 
@@ -127,10 +127,10 @@ test("dashboard coaching 'Snooze' snoozes the top recommendation (#39)", async (
 });
 
 // #40: derived clinical indices are computed at read time from the seeded lipid /
-// metabolic / kidney panels and surfaced on the Biomarkers page like normal
+// metabolic / kidney panels and surfaced on the Clinical results page like normal
 // analytes — Non-HDL Cholesterol (Total − HDL) appears with a "Derived" badge, and
 // its detail page explains the derivation instead of a source document.
-test("biomarkers page surfaces a derived clinical index (#40)", async ({
+test("Clinical results surfaces a derived clinical index (#40)", async ({
   page,
 }) => {
   // Filter to the analyte via the server-side ?q= search: the table now ships
@@ -142,7 +142,7 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
   await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // first-ok: asserts a Derived badge renders — order-agnostic presence
   // Non-HDL Cholesterol is derived from the seeded Total + HDL readings.
   const link = page.getByRole("link", { name: "Non-HDL Cholesterol" }).first(); // first-ok: the seeded Non-HDL Cholesterol result link — order-agnostic
-  await followLink(page, link, /\/results\/readings\/view/);
+  await followLink(page, link, /\/results\/clinical-results\/view/);
 
   const note = page.getByTestId("derived-note");
   await expect(note).toBeVisible();
@@ -153,9 +153,9 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
 // #157: PhenoAge (Levine 2018) is a derived biological-age index computed at read
 // time from the seeded nine-analyte panel (albumin, creatinine, glucose, hs-CRP,
 // lymphocyte %, MCV, RDW, ALP, WBC) + the adult profile's age. It surfaces on the
-// Biomarkers page like any other derived analyte, and its detail page explains the
+// Clinical results page like any other derived analyte, and its detail page explains the
 // derivation and cites the formula.
-test("biomarkers page surfaces the derived PhenoAge biological age (#157)", async ({
+test("Clinical results surfaces the derived PhenoAge biological age (#157)", async ({
   page,
 }) => {
   await page.goto("/results?q=phenoage");
@@ -163,10 +163,10 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
   await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // first-ok: asserts a Derived badge renders — order-agnostic presence
 
   const link = page.getByRole("link", { name: "PhenoAge" }).first(); // first-ok: the seeded PhenoAge result link — order-agnostic
-  await followLink(page, link, /\/results\/readings\/view/);
+  await followLink(page, link, /\/results\/clinical-results\/view/);
 
   const note = page.getByTestId("derived-note");
-  // The biomarkers/view page derives PhenoAge (Levine 2018) from the nine-analyte panel
+  // The clinical-result detail page derives PhenoAge (Levine 2018) from the nine-analyte panel
   // at read time — a first-visit compute burst that a degraded whole-suite single-worker
   // runner can push past the default 5s (#1306). Give the first render the heavy-page
   // budget; the follow-up content asserts inherit the now-rendered note.
@@ -177,11 +177,11 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
 
 // #209 as split by #2367: PhenoAge is surfaced as a headline biological-age HERO —
 // on EXACTLY ONE page. Biological age is a longevity index, so the hero is Longevity
-// §1; Results › Biomarkers keeps the part of it that is about the analyte catalog (the
+// §1; Results › Clinical results keeps the part of it that is about the analyte catalog (the
 // input panel and its link to the hero) because that is the page where the missing
 // analytes are added. For the seeded ADULT profile (a full nine-analyte panel + a
 // known age) both halves render. Read-only — no mutation.
-test("the biological-age hero renders on Longevity, and Biomarkers keeps the inputs (#209/#2367)", async ({
+test("the biological-age hero renders on Longevity, and Clinical results keeps the inputs (#209/#2367)", async ({
   page,
 }) => {
   await page.goto("/results");
@@ -219,7 +219,7 @@ test("the biological-age hero renders on Longevity, and Biomarkers keeps the inp
 test("biological-age hero is absent for a child profile (#209)", async ({
   browser,
 }) => {
-  // Four server renders on this one path — login, the dashboard, Biomarkers and now
+  // Four server renders on this one path — login, the dashboard, Clinical results and now
   // Longevity, since #2367 put the two halves of the gate on two pages — each a
   // first hit for this context. That is past the default budget on a loaded runner.
   test.slow();
@@ -257,7 +257,7 @@ test("biological-age hero is absent for a child profile (#209)", async ({
       { timeout: 15_000 }
     );
 
-    // On the child's Biomarkers page NOTHING bio-age renders — not the hero (which
+    // On the child's Clinical results page NOTHING bio-age renders — not the hero (which
     // now lives on Longevity) and not the input panel that replaced it here.
     await page.goto("/results");
     await expect(

@@ -39,7 +39,7 @@ describe("parseTakeCallback", () => {
     expect(parseTakeCallback("take:2:12:34:2026-07-03")).toEqual({
       profileId: 2,
       doseId: 12,
-      suppId: 34,
+      itemId: 34,
       date: "2026-07-03",
     });
   });
@@ -48,13 +48,13 @@ describe("parseTakeCallback", () => {
     expect(parseTakeCallback("take:1:12:0:2026-07-03")).toEqual({
       profileId: 1,
       doseId: 12,
-      suppId: null,
+      itemId: null,
       date: "2026-07-03",
     });
     expect(parseTakeCallback("take:1:12::2026-07-03")).toEqual({
       profileId: 1,
       doseId: 12,
-      suppId: null,
+      itemId: null,
       date: "2026-07-03",
     });
   });
@@ -100,7 +100,7 @@ describe("parseAllCallback", () => {
 });
 
 describe("takeMatchesProfile", () => {
-  const take = { profileId: 2, doseId: 12, suppId: 34, date: "2026-07-03" };
+  const take = { profileId: 2, doseId: 12, itemId: 34, date: "2026-07-03" };
   it("is true only when the payload profile equals the resolved profile", () => {
     expect(takeMatchesProfile(take, 2)).toBe(true);
     expect(takeMatchesProfile(take, 1)).toBe(false);
@@ -108,7 +108,7 @@ describe("takeMatchesProfile", () => {
 });
 
 describe("resolveTapProfile", () => {
-  const take = { profileId: 2, doseId: 12, suppId: 34, date: "2026-07-03" };
+  const take = { profileId: 2, doseId: 12, itemId: 34, date: "2026-07-03" };
 
   it("returns the token's profile when it shares the chat", () => {
     expect(resolveTapProfile(take, [2])).toBe(2);
@@ -171,16 +171,16 @@ describe("parseSkipCallback", () => {
     expect(parseSkipCallback("skip:2:12:34:2026-07-03")).toEqual({
       profileId: 2,
       doseId: 12,
-      suppId: 34,
+      itemId: 34,
       date: "2026-07-03",
     });
   });
 
-  it("nulls a zero suppId (unlinked dose) like take", () => {
+  it("nulls a zero itemId (unlinked dose) like take", () => {
     expect(parseSkipCallback("skip:1:12:0:2026-07-03")).toEqual({
       profileId: 1,
       doseId: 12,
-      suppId: null,
+      itemId: null,
       date: "2026-07-03",
     });
   });
@@ -362,7 +362,7 @@ describe("parseRefillCallback", () => {
   it("parses a well-formed snooze token", () => {
     expect(parseRefillCallback("rfsnooze:2:7")).toEqual({
       profileId: 2,
-      suppId: 7,
+      itemId: 7,
     });
   });
 
@@ -388,14 +388,14 @@ describe("parseEscalationCallback", () => {
     expect(parseEscalationCallback("esctake:3:7:10:2026-07-11")).toEqual({
       profileId: 3,
       doseId: 7,
-      suppId: 10,
+      itemId: 10,
       date: "2026-07-11",
       action: "take",
     });
     expect(parseEscalationCallback("escack:3:7:10:2026-07-11")).toEqual({
       profileId: 3,
       doseId: 7,
-      suppId: 10,
+      itemId: 10,
       date: "2026-07-11",
       action: "ack",
     });
@@ -403,7 +403,7 @@ describe("parseEscalationCallback", () => {
 
   it("nulls a zero supp id and rejects malformed/foreign tokens", () => {
     expect(
-      parseEscalationCallback("escack:3:7:0:2026-07-11")?.suppId
+      parseEscalationCallback("escack:3:7:0:2026-07-11")?.itemId
     ).toBeNull();
     expect(parseEscalationCallback("esctake:3:0:10:2026-07-11")).toBeNull();
     expect(parseEscalationCallback("esctake:3:7:10")).toBeNull(); // no date

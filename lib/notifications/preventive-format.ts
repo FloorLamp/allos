@@ -1,10 +1,10 @@
 // Pure rendering for the preventive-care nudge — kept DB-free so it's unit-tested
-// (lib/__tests__), mirroring supplement-format.ts. The DB gather + send loop lives
+// (lib/__tests__), mirroring intake-format.ts. The DB gather + send loop lives
 // in ./preventive.
 //
 // One message PER screening: each nudge names its screening in the title and
 // carries exactly one ✅ Done / 🚫 Not applicable / ⏰ Remind later row, so the
-// buttons are unambiguously attached to the named item (the supplement reminder's
+// buttons are unambiguously attached to the named item (the intake reminder's
 // per-dose "✅ {name}" discipline, applied at message granularity — with several
 // screenings in one message the identical unlabeled rows couldn't be told apart).
 // The dedup stays per rule (once per due episode), so splitting the message does

@@ -12,6 +12,8 @@
 
 import { db, today } from "../db";
 import { queuePostWorkoutDispatch } from "./post-workout-queue";
+import { getProfileAge } from "../settings/profile-attrs";
+import { isTrainingRelevant } from "../life-stage";
 
 // How far back a just-synced import row still counts as "fresh". Generous
 // relative to a sync run's duration; the per-activity one-shot marker makes
@@ -20,6 +22,7 @@ import { queuePostWorkoutDispatch } from "./post-workout-queue";
 const IMPORT_ARM_WINDOW_MIN = 10;
 
 export function queuePostWorkoutForFreshImports(profileId: number): void {
+  if (!isTrainingRelevant(getProfileAge(profileId))) return;
   const date = today(profileId);
   const rows = db
     .prepare(

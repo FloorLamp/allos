@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
-import { settledClick, settledFill } from "./helpers";
+import { type Locator, type Page } from "@playwright/test";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 
 // Issue #743: the optional per-set RPE selector round-trips through the activity
 // form — log a set with a rating, reload the page, reopen the stored session, and
@@ -18,12 +18,25 @@ import { settledClick, settledFill } from "./helpers";
 const PROBE_PREFIX = "RPE round-trip probe";
 let probeSeq = 0;
 
-// Training Log card(s) whose title contains `text`, scoped to the main content.
+// Training Log row(s) whose title contains `text`, scoped to the main content.
+// The feed renders slim rows (#2897); the row button owns the #activity-N anchor.
 function cardsByTitle(page: Page, text: string | RegExp) {
   return page
     .getByRole("main")
     .locator('[id^="activity-"]')
     .filter({ hasText: text });
+}
+
+// Open the stored session for edit: select the row into the reading pane
+// (a pure client toggle — hydratedClick closes the pre-hydration window),
+// then the pane header's Edit opens the docked editor. The old
+// click-the-card-title edit path is gone (#2897).
+async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
+  await hydratedClick(page, row);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
+    .click();
 }
 
 // Pick an activity in the editor's exercise combobox (same shape-tolerant matcher
@@ -54,13 +67,13 @@ async function confirmDelete(page: Page): Promise<void> {
 // this spec's own fixture, so deleting them all is safe and order-agnostic.
 async function sweepProbes(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   const probes = cardsByTitle(page, PROBE_PREFIX);
   for (let guard = 0; guard < 12; guard++) {
     const n = await probes.count();
     if (n === 0) break;
-    const card = probes.first(); // first-ok: every PROBE_PREFIX card is this spec's own leftover; cleanup is order-agnostic
-    await card.getByRole("button", { name: new RegExp(PROBE_PREFIX) }).click();
+    const row = probes.first(); // first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
+    await openEditorFromRow(page, row);
     await confirmDelete(page);
     await expect(probes).toHaveCount(n - 1);
   }
@@ -73,7 +86,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   await sweepProbes(page);
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // Open a fresh CREATE editor from the training log actions toolbar.
   await page
@@ -152,11 +165,11 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // guard against a slow reopen render, not the persistence race the await closed).
   await page.keyboard.press("Escape");
   await expect(async () => {
-    await page.goto("/training");
-    const card = cardsByTitle(page, title);
-    await expect(card).toBeVisible();
-    // Reopen the stored session for edit by clicking its title.
-    await card.getByRole("button", { name: title }).click();
+    await page.goto("/training?tab=log");
+    const row = cardsByTitle(page, title);
+    await expect(row).toBeVisible();
+    // Reopen the stored session for edit via its row → the pane's Edit.
+    await openEditorFromRow(page, row);
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     // The RPE selector reloaded the persisted half-point value — the round-trip.
     await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");

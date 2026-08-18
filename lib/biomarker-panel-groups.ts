@@ -1,7 +1,7 @@
-// The Results › Biomarkers PANEL-GROUP model (issue #1499, section A). Pure — no
+// The Results › Clinical results PANEL-GROUP model (issue #1499, section A). Pure — no
 // DB, no auth, no React.
 //
-// WHY. The Biomarkers browser was the tallest page in the app (13.4k px at
+// WHY. The Clinical results catalog was the tallest page in the app (13.4k px at
 // 390×844): the #1482 card mode faithfully renders the unbounded master list, one
 // ~90px card per reading, so the first row landed 4.8k px down. A master list of
 // analytes is a REFERENCE surface — you arrive knowing which one you want — so it

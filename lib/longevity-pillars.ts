@@ -105,7 +105,7 @@ export interface BiomarkerReading {
 }
 
 // A reading carrying its display + canonical names, for the expanded Longevity
-// breakdown (#1042 phase 4) — the canonical name feeds readingDetailHref.
+// breakdown (#1042 phase 4) — the canonical name feeds clinicalResultDetailHref.
 export interface NamedBiomarkerReading extends BiomarkerReading {
   name: string;
   canonicalName: string | null;
@@ -129,7 +129,7 @@ function judgeReading(
 }
 
 // The retest-clock state for one gathered reading (#2023), from the EXISTING biomarker
-// retest computation — the same `biomarkerRetestStatus` the Biomarkers table, the Upcoming
+// retest computation — the same `biomarkerRetestStatus` the Clinical results table, the Upcoming
 // retest generator and the staleness chips read, now over the shared freshness vocabulary.
 // Longevity mints no clock of its own. Without a `today` (terse pure fixtures) or a date,
 // there is nothing to judge and the state is "not-applicable" — unknown freshness, never

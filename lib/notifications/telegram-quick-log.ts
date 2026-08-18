@@ -97,7 +97,7 @@ export async function handleDoseCommand(
 // ── WHEN THE TAP CAME FROM THE DIGEST'S OFFER LIST (#2418 part 2) ────────────
 //
 // A dose confirmed from a REMINDER gets the 🕐 correction chips; one logged through the
-// expanded "Log other" list got none anywhere — so stating WHEN was impossible for
+// expanded "➕ Doses" list got none anywhere — so stating WHEN was impossible for
 // exactly the taps most likely to be late, a `may` item logged from a digest hours
 // after the fact. The chips are keyboard assembly over a ledger read that already
 // exists, so this rebuilds the offer list WITH the correction row for the tap that just
@@ -214,7 +214,7 @@ async function rebuildOfferListWithChips(
   // what a re-expand would show anyway.
   const actions = offered.length
     ? expandedOfferActions(profileId, date, offered, prnLogToken)
-    : [collapsedOfferAction(profileId, date, nowHhmm, 0)];
+    : [collapsedOfferAction(profileId, date, 0)];
   // The chips, from the SAME ledger read and the SAME binding the reminder flow uses —
   // `doseAnchor`'s lookup one level up (#2443): the keyboard cannot supply the dose or
   // the day, so the ledger does.
@@ -334,13 +334,62 @@ export async function handlePracticeDoneTap(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
-  const outcome = logPracticeByTargetId(profileId, token.targetId);
+  const messageId = cq.message?.message_id;
+  // The originating message (#2264/#2875), stamped onto the session row so the burst it
+  // creates renders on THIS message and never on a sibling — a `/practice` list from
+  // this morning must not grow chips that restamp a sauna tapped from the pace nudge.
+  const notifyMessageId =
+    chatId != null && messageId != null
+      ? messagePointerIdAt(profileId, chatId, messageId)
+      : null;
+  const outcome = logPracticeByTargetId(
+    profileId,
+    token.targetId,
+    notifyMessageId
+  );
   await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
 
-  const messageId = cq.message?.message_id;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (chatId == null || messageId == null || rows.length === 0) return;
   const remaining = removeButton(rows, cq.data as string);
+
+  // THE PACE NUDGE REBUILDS RATHER THAN CLOSING (#2875), and the rebuild is handed
+  // `remaining` — the post-consume keyboard — as the set of ✓ buttons it may still show.
+  // Re-deriving from live pace alone does NOT consume the button this handler's own
+  // contract says it consumes: a practice at 1 of 3 is still behind after the session
+  // lands, so the ✓ came back with a fresh nonce and the tap looked like it did nothing.
+  // The keyboard the chat is holding is the record of what was consumed; the rebuild
+  // reads it rather than guessing.
+  //
+  // What the rebuild ADDS is the correction row for the burst this tap just created.
+  // Closing here would take that row down in exactly the case the feature exists for:
+  // the single-practice nudge, where logging the one behind practice clears the
+  // shortfall that justified the message, and the tap that just happened is the tap
+  // whose time might be wrong. A null rebuild means nothing is left to show AND nothing
+  // left to say, and falls through to the close/strip path below unchanged.
+  //
+  // "Nothing left to say" is load-bearing, and it is the builder that has to guarantee
+  // it. When the day bound first landed, the builder answered null as soon as no chip
+  // was OFFERABLE — so at 00:20 local, the single-practice nudge (this path's common
+  // case) fell straight through to the close: the message went, the pointer went, and
+  // the sentence explaining why the chips could not be shown had nowhere left to land.
+  // A confirmation carrying only that sentence is a message, so the builder returns one
+  // and this branch takes it.
+  //
+  // Scoped to the NUDGE (`pdone`). The `/practice` list keeps its existing lifecycle —
+  // see the note on PRACTICE_TIME_PREFIXES in lib/notifications/reconcile-registry.ts
+  // for why its chips need a family of their own first.
+  if (outcome.kind === "logged" && messageKindIsPracticeNudge(cq.data)) {
+    const rebuilt = buildPracticeCorrectionRebuild(profileId, {
+      ref: { chatId, messageId },
+      offered: offeredPracticeTargets(remaining),
+    });
+    if (rebuilt) {
+      await rebuildMessage(profileId, chatId, messageId, rebuilt);
+      return;
+    }
+  }
+
   if (remaining.length === 0) {
     await closeMessage(
       profileId,
@@ -356,6 +405,13 @@ export async function handlePracticeDoneTap(
   } else {
     await updateMessageKeyboard(profileId, chatId, messageId, remaining);
   }
+}
+
+// Did this tap come from the pace NUDGE (`pdone`) rather than the on-demand `/practice`
+// list (`plog`)? Both taps run through this one handler, and only the nudge carries the
+// correction ride-along.
+function messageKindIsPracticeNudge(data: unknown): boolean {
+  return typeof data === "string" && data.startsWith("pdone:");
 }
 
 // The profile's top symptoms for the quick-log grid: its recency-ranked logged
@@ -1192,12 +1248,11 @@ import {
 import { getDoseCorrectionBursts } from "../queries";
 import { correctionActions, DOSE_TIME_PREFIXES } from "./correction-rows";
 import {
-  collapsedTuneAction,
   expandedTuneActions,
   tunableCategoriesFor,
   tuneToggleAnswer,
 } from "./digest-tune";
-import { digestTunableCategories } from "./digest-data";
+import { collapsedDigestActions, digestTunableCategories } from "./digest-data";
 import {
   getLoginDigestDemotions,
   loginIdsForTelegramChat,
@@ -1267,7 +1322,11 @@ import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
 import { buildFoodNudge } from "./food";
 import { currentFoodSlot } from "../queries";
-import { buildPracticeList } from "./practices";
+import {
+  buildPracticeCorrectionRebuild,
+  buildPracticeList,
+  offeredPracticeTargets,
+} from "./practices";
 import { plainBody } from "./rich-text";
 import { parseWeightEntry } from "../palette-quick-log";
 import { insertBodyMetric } from "../offline/writes";
@@ -1347,7 +1406,7 @@ import type { TelegramMessage } from "./telegram-api";
 import { prefixMessage, type NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
 
-// An offer-tail tap (#1505): expand the digest's "Log other…" button IN PLACE into
+// An offer-tail tap (#1505): expand the digest's "➕ Doses" button IN PLACE into
 // one-tap log buttons for the `may` items on offer RIGHT NOW, or collapse it back.
 //
 // Nothing is sent and nothing is written — both directions are a single
@@ -1391,9 +1450,12 @@ export async function handleOfferTailTap(
     // to hear had been decided, and making them watch a spinner through a Bot API
     // round-trip was a latency cost with nothing behind it.
     await answerCallbackQuery(cq.id);
-    // Collapsing restores the digest's WHOLE collapsed keyboard, not just this
-    // control: the ⚙️ Tune button (#1714) shares the message and would otherwise be
-    // destroyed by the first expand/collapse round-trip.
+    // Collapsing restores the digest's WHOLE collapsed keyboard, not just this control —
+    // the ⚙️ Tune button (#1714) and the #2217 time exits share the message and would
+    // otherwise be destroyed by the first expand/collapse round-trip. Through
+    // `collapsedDigestActions`, which is the ONE answer to "what is this digest's
+    // collapsed keyboard" that the boundary refresh and the ⚙️ collapse also use (#2890):
+    // three hand-rolled variants of this list disagreed about every control on it.
     //
     // The ack moved ahead of the edit; the POINTER SYNC did not (#2443). It lives
     // inside `updateMessageKeyboard`, after a SUCCESSFUL Bot API call, so a failed
@@ -1405,12 +1467,7 @@ export async function handleOfferTailTap(
       messageKeyboard({
         title: "",
         body: "",
-        actions: [
-          collapsedOfferAction(profileId, date, nowHhmm, offered.length),
-          ...(digestTunableCategories(profileId, date).length
-            ? [collapsedTuneAction(profileId, date)]
-            : []),
-        ],
+        actions: collapsedDigestActions(profileId, date, nowHhmm),
       })
     );
     return;
@@ -1658,8 +1715,10 @@ export async function handleTuneTap(
   if (token.action === "collapse") {
     // Pure keyboard edit, so the ack goes first (#2418).
     await answerCallbackQuery(cq.id);
+    // The same ONE rebuild the ➕ collapse and the boundary refresh use (#2890). This
+    // path used to emit ⚙️ Tune unconditionally and the offer tail only when something
+    // was on offer — the mirror image of the other two, on the same keyboard.
     const nowHhmm = zonedDateParts(getTimezone(profileId), clockNow()).hhmm;
-    const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
     await updateMessageKeyboard(
       profileId,
       chatId,
@@ -1667,12 +1726,7 @@ export async function handleTuneTap(
       messageKeyboard({
         title: "",
         body: "",
-        actions: [
-          ...(offered.length
-            ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
-            : []),
-          collapsedTuneAction(profileId, date),
-        ],
+        actions: collapsedDigestActions(profileId, date, nowHhmm),
       })
     );
     return;

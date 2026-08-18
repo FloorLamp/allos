@@ -39,7 +39,7 @@ export const IOP_FOLLOWUP_TITLE = "Recheck IOP / glaucoma workup";
 // so the adapter reuses that shape for both the source finding and the candidates.
 export type IopFollowUpObservation = LabFollowUpObservation;
 
-// The canonical IOP entries (lib/curated-biomarkers). The finite SQL preimage the
+// The canonical IOP entries (lib/curated-result-definitions). The finite SQL preimage the
 // query layer needs (#394 — SQL can't call the JS matcher), and the anchor for the JS
 // matcher below.
 export const IOP_CANONICAL_NAMES = [

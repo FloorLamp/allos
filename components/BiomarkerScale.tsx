@@ -1,4 +1,4 @@
-import type { SavedBiomarker } from "@/lib/queries";
+import type { SavedClinicalResult } from "@/lib/queries";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 import {
   rangeBadge,
@@ -40,7 +40,7 @@ function fmt(n: number): string {
   return String(r);
 }
 
-// Bottom region of a starred-biomarker tile. For a numeric value with known
+// Bottom region of a starred clinical-result tile. For a numeric value with known
 // reference/optimal ranges it draws a horizontal scale: the reference band, the
 // optimal band, and a marker for the latest value. For a qualitative value (or
 // one we can't scale) it shows the value in a large font instead, keeping every
@@ -51,7 +51,7 @@ export default function BiomarkerScale({
   age,
   status,
 }: {
-  b: SavedBiomarker;
+  b: SavedClinicalResult;
   sex?: Sex | null;
   // The subject's age on the latest reading's date, so an age-banded biomarker
   // scales against the band that applied to the reading (not today's age).

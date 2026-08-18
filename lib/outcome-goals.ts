@@ -261,9 +261,11 @@ export function goalsForExercise(
   );
 }
 
-// Human-readable target for an exercise-linked goal, e.g. "Barbell Bench Press
-// 100 kg", "Squat 5×5 @ 100 kg", "Pull Up × 12", "Plank 2:00". Null for freeform.
-export function goalTargetText(
+// The target VALUE of an exercise-linked goal, without the exercise name —
+// "100 kg", "5×5 @ 100 kg", "× 12", "2:00". For surfaces already scoped to the
+// exercise (the Analyze detail panel, #2895), where repeating the name is
+// noise. Null for freeform goals or a weight goal with nothing to say.
+export function goalTargetValueText(
   goal: OutcomeGoal,
   wu: WeightUnit
 ): string | null {
@@ -271,15 +273,31 @@ export function goalTargetText(
   const w =
     goal.target_weight_kg != null ? fmtWeight(goal.target_weight_kg, wu) : null;
   switch (goal.metric) {
-    case "weight":
-      return `${goal.exercise} ${w ?? ""}${goal.target_reps ? ` × ${goal.target_reps}` : ""}`.trim();
+    case "weight": {
+      const v =
+        `${w ?? ""}${goal.target_reps ? ` × ${goal.target_reps}` : ""}`.trim();
+      return v || null;
+    }
     case "reps":
-      return `${goal.exercise} × ${goal.target_reps ?? "?"}${w ? ` @ ${w}` : ""}`;
+      return `× ${goal.target_reps ?? "?"}${w ? ` @ ${w}` : ""}`;
     case "sets":
-      return `${goal.exercise} ${goal.target_sets ?? "?"}×${goal.target_reps ?? "?"}${w ? ` @ ${w}` : ""}`;
+      return `${goal.target_sets ?? "?"}×${goal.target_reps ?? "?"}${w ? ` @ ${w}` : ""}`;
     case "hold":
-      return `${goal.exercise} ${formatSeconds(goal.target_duration_sec)}`;
+      return formatSeconds(goal.target_duration_sec);
     default:
-      return goal.exercise;
+      return null;
   }
+}
+
+// Human-readable target for an exercise-linked goal, e.g. "Barbell Bench Press
+// 100 kg", "Squat 5×5 @ 100 kg", "Pull Up × 12", "Plank 2:00". Null for freeform.
+// The exercise-name prefix does real work on cross-exercise surfaces (the Plan
+// goal cards); composed from goalTargetValueText so the two can never disagree.
+export function goalTargetText(
+  goal: OutcomeGoal,
+  wu: WeightUnit
+): string | null {
+  if (!goal.exercise || !goal.metric) return null;
+  const value = goalTargetValueText(goal, wu);
+  return value ? `${goal.exercise} ${value}` : goal.exercise;
 }

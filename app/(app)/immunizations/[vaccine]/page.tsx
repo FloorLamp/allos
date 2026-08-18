@@ -8,6 +8,7 @@ import {
   getImmunizationOverrides,
   getImmunizationOverride,
   getRankedPickerProviders,
+  encountersForRecords,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { getProfileSex, profileAgeMonths } from "@/lib/settings";
@@ -84,6 +85,7 @@ export default async function VaccineDetailPage(props: {
   const doses = records.filter((r) =>
     expandToComponents(r.vaccine).includes(code)
   );
+  const doseEncounters = encountersForRecords(profile.id, "immunization");
 
   // Titer readings that bear on this vaccine's antigen (case-insensitive against
   // the catalog's antibody markers).
@@ -184,6 +186,7 @@ export default async function VaccineDetailPage(props: {
                   code={code}
                   doses={doses}
                   defaultDate={now}
+                  encounters={doseEncounters}
                 />
               )}
             </div>
@@ -199,8 +202,11 @@ export default async function VaccineDetailPage(props: {
                     No antibody/titer results on file for this vaccine (
                     {entry.antibodyMarkers.join(", ")}). They appear
                     automatically when a matching lab result is added under{" "}
-                    <Link href="/results/readings" className="underline">
-                      Biomarkers
+                    <Link
+                      href="/results/clinical-results"
+                      className="underline"
+                    >
+                      Clinical results
                     </Link>
                     .
                   </p>

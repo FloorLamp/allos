@@ -62,7 +62,6 @@ import {
 } from "@/lib/medication-list";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, zonedDateParts, parseUtcSql } from "@/lib/date";
 import {
   getActiveSituations,
@@ -173,7 +172,6 @@ export interface MedicationsData {
   // The profile's local wall clock (HH:MM) at load, so the Today panel can flag a
   // past-bucket unresolved dose in the profile's timezone (#852 item 1).
   nowHhmm: string;
-  trainingRestricted: boolean;
   // The profile's age in whole years (issue #851 item 4), threaded to FoodGuidance so a
   // child never sees an age-gated food note (alcohol → adult). Null when unknown.
   age: number | null;
@@ -270,8 +268,6 @@ export function loadMedicationsData(
     predictedWorkoutDay,
     postWorkoutReady,
   };
-  const trainingRestricted = isTrainingRestricted(profileId);
-
   // Adherence strip inputs (shared with the supplement row via the pure
   // intakeAdherenceStrip — #313/#747 parity).
   const workoutDays = new Set(getActivityDates(profileId));
@@ -298,8 +294,8 @@ export function loadMedicationsData(
   const refillRates = getRefillRates(profileId);
   const poolChips = getPoolChips(profileId);
   const pairs = getIntakePairs(profileId);
-  const pairsFor = (suppId: number) =>
-    pairs.filter((p) => p.a_id === suppId || p.b_id === suppId);
+  const pairsFor = (itemId: number) =>
+    pairs.filter((p) => p.a_id === itemId || p.b_id === itemId);
 
   // Per-PRN-med day summary + redose-window line (#797/#798), profile-tz aware and
   // formatted by the SAME redoseCardLabel/administrationDayLabel the dashboard uses.
@@ -344,7 +340,7 @@ export function loadMedicationsData(
       id: a.id,
       label: formatGivenAtClockWithRelativeAge(
         tz,
-        a.recorded_at ?? a.taken_at,
+        a.occurred_at ?? a.recorded_at,
         timeFormat,
         nowInstant
       ),
@@ -352,7 +348,7 @@ export function loadMedicationsData(
       product: a.product,
     }));
     const last = admins[0]
-      ? (admins[0].recorded_at ?? admins[0].taken_at)
+      ? (admins[0].occurred_at ?? admins[0].recorded_at)
       : null;
     const fam = familyStates.get(s.id);
     const famLast = fam?.latestGivenAt ?? last;
@@ -581,7 +577,6 @@ export function loadMedicationsData(
     tz,
     nowIso: nowInstant.toISOString(),
     nowHhmm: hhmm,
-    trainingRestricted,
     age: getProfileAge(profileId),
     taken,
     skipped,

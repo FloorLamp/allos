@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import type { NowCardId } from "@/lib/now-strip";
 
-// The dashboard "Now" strip (issue #1413, section A) — the one or two cards the
-// moment makes most relevant, repeated above the user's own grid.
+// The dashboard "Now" strip (issue #1413, section A) — the cards the moment makes
+// most relevant, moved above the user's own grid. Ordinary relevance is capped at
+// two; safety surfaces are deliberately uncapped.
 //
 // This component is a PLACER, not a renderer. Each entry's `node` is the SAME
 // server-rendered widget node the grid would have used; the strip never builds a
@@ -16,16 +16,16 @@ import type { NowCardId } from "@/lib/now-strip";
 // wide enough to hold both — but on a phone a half-width column is the NARROWEST
 // column the dashboard has, while the very same widgets render full width in the grid
 // below. That inverted the strip's own claim: the moment's most relevant card got the
-// least room. `NOW_STRIP_CAP` is 2, so the added mobile height is bounded at exactly
-// one card. A lone card takes the full width at every width (a half-width card beside
-// dead space reads as a broken grid, not as emphasis). The promoted cards are all
-// half-span widgets already, so they are built for the `sm`-and-up column too.
+// least room. A lone card takes the full width at every width (a half-width card
+// beside dead space reads as a broken grid, not as emphasis). Existing contextual
+// cards are half-span widgets already; generic placement entries use the same
+// responsive column contract.
 //
 // Renders NOTHING (not even a wrapper) when nothing is firing — the strip's zero
-// state is zero height, never a filler card. See lib/now-strip.ts for why.
+// state is zero height, never a filler card. See lib/dashboard-relevance.ts for why.
 
 export interface NowStripCard {
-  id: NowCardId;
+  id: string;
   node: ReactNode;
 }
 

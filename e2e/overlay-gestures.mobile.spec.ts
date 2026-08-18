@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { centerOf, hydratedClick, touchSwipe } from "./helpers";
+import { hydratedClick, touchSwipe, touchSwipeFrom } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_PRESENCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -13,10 +13,18 @@ import { E2E_LOGIN_PRESENCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // A regression that unified those outcomes would look like a cleanup and would
 // lose people's workouts, so it is asserted directly.
 //
-// Every gesture here is driven through real Chromium touch input (`touchSwipe`
-// in helpers.ts). That matters: the recognizer relies on the browser's own
-// scroll arbitration — including the `pointercancel` it fires when it decides a
-// drag is a scroll — and synthesised DOM events would bypass exactly that.
+// Every gesture here is driven through real Chromium touch input (helpers.ts).
+// That matters: the recognizer relies on the browser's own scroll arbitration —
+// including the `pointercancel` it fires when it decides a drag is a scroll —
+// and synthesised DOM events would bypass exactly that.
+//
+// A gesture that must START ON SOMETHING names that element: `touchSwipeFrom`
+// re-aims at it and proves the finger landed inside it before moving (#2714 — a
+// coordinate measured a moment earlier is a fact about the past, and this
+// sheet's lazily gathered context row moves the handle out from under it). The
+// point-taking `touchSwipe` is for the two gestures anchored to the document
+// instead: the drawer's edge swipe, and a mid-screen swipe that must open
+// nothing.
 
 const PHONE_CONTEXT = {
   viewport: { width: 390, height: 844 },
@@ -37,9 +45,54 @@ async function hydrated(page: Page): Promise<void> {
 
 async function openQuickLogSheet(page: Page) {
   const sheet = page.getByTestId("quick-log-sheet");
-  await hydratedClick(page, page.getByTestId("quick-log-more"));
+  await hydratedClick(page, page.getByTestId("dock-log-puck"));
   await expect(sheet).toBeVisible();
   return sheet;
+}
+
+// Every class string the quick-log sheet's scrim and panel wear from now on,
+// recorded rather than sampled (#2725).
+//
+// A polled assertion cannot answer "did the scrim carry its fade class": the
+// whole exit is 240ms and both elements are REMOVED at the end of it, so by the
+// time `expect.poll` looks a second time the window it is asking about has
+// closed — and a green run would then mean "we were too slow", the worst
+// possible reading of a motion assertion. A MutationObserver sees every state
+// either element passes through, so the question becomes a fact about the
+// recording instead of a race with it.
+//
+// Calling this again resets the buffer, which is how the "…and the NEXT open"
+// half of these tests is stated separately from the close that preceded it.
+async function recordOverlayClasses(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const store = window as unknown as { __overlayClasses?: string[] };
+    store.__overlayClasses = [];
+    const record = () => {
+      for (const el of document.querySelectorAll(
+        '[data-testid="quick-log-sheet-backdrop"],[data-sheet-panel]'
+      )) {
+        store.__overlayClasses?.push(el.className);
+      }
+    };
+    // The mount itself is a childList mutation, so a panel that arrives with its
+    // enter class already on it is caught; the initial call covers whatever is
+    // already on screen when recording starts.
+    record();
+    new MutationObserver(record).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  });
+}
+
+async function recordedClasses(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      (window as unknown as { __overlayClasses?: string[] }).__overlayClasses ??
+      []
+  );
 }
 
 test.describe("bottom sheet: swipe down discards", () => {
@@ -50,12 +103,95 @@ test.describe("bottom sheet: swipe down discards", () => {
     await hydrated(page);
     const sheet = await openQuickLogSheet(page);
 
-    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
-    await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
+    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+      dy: 240,
+    });
 
     // The sheet is transactional: dismissal means discard, and the panel is gone
     // from the tree (not merely hidden) once its exit finishes.
     await expect(sheet).toHaveCount(0);
+  });
+
+  test("the scrim FADES on the drag path — the close is visibly progressing", async ({
+    page,
+  }) => {
+    // #2725's first defect. The sheet leaving the tree was already asserted
+    // above, and it kept passing while the screen held solid dark: the panel
+    // flicked away under its inline settle and the backdrop sat at full opacity
+    // — `dark:bg-black/70` over the whole viewport — until the presence timer
+    // blinked it out. The fade is the only signal that a close is under way, so
+    // it is asserted as its own fact rather than inferred from the unmount.
+    await page.goto("/");
+    await hydrated(page);
+    const sheet = await openQuickLogSheet(page);
+
+    await recordOverlayClasses(page);
+    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+      dy: 240,
+    });
+    await expect(sheet).toHaveCount(0);
+
+    const worn = await recordedClasses(page);
+    expect(
+      worn.some((c) => c.includes("overlay-exit-scrim")),
+      "a drag-dismissed sheet must still fade its backdrop out"
+    ).toBe(true);
+    // …and the handshake the latch exists for is untouched: the PANEL owns its
+    // transform for the rest of its life, so no keyframe is emitted over it. A
+    // fix that simply stopped suppressing everything would fail here.
+    expect(
+      worn.every((c) => !c.includes("overlay-exit-bottom")),
+      "a hand-dragged panel must keep its inline transform, not gain a keyframe"
+    ).toBe(true);
+  });
+
+  test("a cancelled drag does not mute the sheet for the rest of the page's life", async ({
+    page,
+  }) => {
+    // #2725's third defect, in its sharpest form: the drag below dismisses
+    // NOTHING. It used to leave the motion latch set forever anyway, because
+    // this sheet's component is rendered unconditionally by MobileNav and never
+    // unmounts — so from then on every close of it ended in the dark hold and
+    // every open snapped in with no slide. The latch belongs to the PANEL, which
+    // usePresence does unmount.
+    await page.goto("/");
+    await hydrated(page);
+    const sheet = await openQuickLogSheet(page);
+
+    // Under the commit distance and far under a flick — the sheet stays open.
+    await touchSwipeFrom(
+      page,
+      sheet.getByTestId("sheet-drag-handle"),
+      { dy: 30 },
+      { stepDelayMs: 40 }
+    );
+    await expect(sheet).toBeVisible();
+
+    // Close it by an entirely different route. The drag is over and resolved to
+    // nothing, so this close is owed its ordinary animation.
+    await recordOverlayClasses(page);
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+    expect(
+      (await recordedClasses(page)).some((c) =>
+        c.includes("overlay-exit-scrim")
+      ),
+      "a cancelled drag must not silence the NEXT close's scrim fade"
+    ).toBe(true);
+
+    // And the panel that comes back is a fresh element with no transform to
+    // protect, so it arrives on its slide again.
+    await recordOverlayClasses(page);
+    await openQuickLogSheet(page);
+    const reopened = await recordedClasses(page);
+    expect(
+      reopened.some((c) => c.includes("overlay-enter-bottom")),
+      "a remounted panel must animate in again"
+    ).toBe(true);
+    expect(
+      reopened.some((c) => c.includes("overlay-enter-scrim")),
+      "…and so must its backdrop"
+    ).toBe(true);
   });
 
   test("a short, slow drag leaves the sheet open", async ({ page }) => {
@@ -63,14 +199,13 @@ test.describe("bottom sheet: swipe down discards", () => {
     await hydrated(page);
     const sheet = await openQuickLogSheet(page);
 
-    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
     // 24px, deliberately slow: under the commit distance and far under a flick.
     // A gesture this cheap must never dismiss anything — the whole reason the
     // recognizer has a threshold at all.
-    await touchSwipe(
+    await touchSwipeFrom(
       page,
-      grip,
-      { x: grip.x, y: grip.y + 24 },
+      sheet.getByTestId("sheet-drag-handle"),
+      { dy: 24 },
       { stepDelayMs: 40 }
     );
 
@@ -92,10 +227,11 @@ test.describe("bottom sheet: swipe down discards", () => {
     await hydrated(page);
     const sheet = await openQuickLogSheet(page);
 
-    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
     // Travel the wrong way is not negative travel, it is no travel: a
     // bottom-anchored sheet cannot be dragged up off its resting edge.
-    await touchSwipe(page, grip, { x: grip.x, y: grip.y - 200 });
+    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+      dy: -200,
+    });
 
     await expect(sheet).toBeVisible();
   });
@@ -116,8 +252,7 @@ test.describe("nav drawer: edge-swipe opens, swipe-left closes", () => {
     await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });
     await expect(drawer).toBeVisible();
 
-    const grip = await centerOf(drawer);
-    await touchSwipe(page, grip, { x: grip.x - 260, y: grip.y });
+    await touchSwipeFrom(page, drawer, { dx: -260 });
     await expect(drawer).toHaveCount(0);
   });
 
@@ -154,8 +289,9 @@ test.describe("the activity dock: the same swipe MINIMIZES", () => {
       const panel = page.getByTestId("activity-overlay-panel");
       await expect(panel).toBeVisible();
 
-      const grip = await centerOf(page.getByTestId("workout-drag-handle"));
-      await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
+      await touchSwipeFrom(page, page.getByTestId("workout-drag-handle"), {
+        dy: 240,
+      });
 
       // THE DIVERGENCE. The identical gesture that discards a sheet collapses
       // this to the bar — the workout is still running, and the bar is proof.
@@ -246,18 +382,15 @@ test.describe("reduced motion", () => {
     await hydrated(page);
 
     const sheet = await openQuickLogSheet(page);
-    const grip = await centerOf(sheet.getByTestId("sheet-drag-handle"));
-    await touchSwipe(page, grip, { x: grip.x, y: grip.y + 240 });
+    await touchSwipeFrom(page, sheet.getByTestId("sheet-drag-handle"), {
+      dy: 240,
+    });
     await expect(sheet).toHaveCount(0);
 
     const drawer = page.getByTestId("mobile-drawer");
     await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });
     await expect(drawer).toBeVisible();
-    const drawerGrip = await centerOf(drawer);
-    await touchSwipe(page, drawerGrip, {
-      x: drawerGrip.x - 260,
-      y: drawerGrip.y,
-    });
+    await touchSwipeFrom(page, drawer, { dx: -260 });
     await expect(drawer).toHaveCount(0);
   });
 });

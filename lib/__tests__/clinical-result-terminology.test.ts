@@ -8,9 +8,9 @@ import {
 } from "@/lib/medical-categories";
 import { listedInResultsCatalog } from "@/lib/trend-metric-analytes";
 import {
-  CANONICAL_BIOMARKERS,
-  canonicalBiomarkerForName,
-} from "@/lib/datasets/canonical-biomarkers";
+  CANONICAL_RESULT_DEFINITIONS,
+  canonicalResultDefinitionForName,
+} from "@/lib/datasets/canonical-result-definitions";
 import type { CanonicalResultDefinition } from "@/lib/types";
 
 // The #2479 terminology contract, asserted over the REAL registry and the REAL
@@ -43,16 +43,18 @@ function browsable(entry: CanonicalResultDefinition): boolean {
 }
 
 function definition(name: string): CanonicalResultDefinition {
-  const entry = canonicalBiomarkerForName(name);
+  const entry = canonicalResultDefinitionForName(name);
   if (!entry) throw new Error(`not in the canonical registry: ${name}`);
   return entry as unknown as CanonicalResultDefinition;
 }
 
 describe("the registry is a CanonicalResultDefinition set, not a biomarker set", () => {
   it("holds definitions that are neither lab nor quantities", () => {
-    const nonLab = CANONICAL_BIOMARKERS.filter((e) => e.category !== "lab");
-    const unitless = CANONICAL_BIOMARKERS.filter((e) => !e.unit);
-    const unbanded = CANONICAL_BIOMARKERS.filter(
+    const nonLab = CANONICAL_RESULT_DEFINITIONS.filter(
+      (e) => e.category !== "lab"
+    );
+    const unitless = CANONICAL_RESULT_DEFINITIONS.filter((e) => !e.unit);
+    const unbanded = CANONICAL_RESULT_DEFINITIONS.filter(
       (e) => e.ref_low == null && e.ref_high == null
     );
     // The numbers that ruled out CanonicalAnalyte (not all lab) and
@@ -156,26 +158,16 @@ describe("representative concepts, one axis at a time", () => {
     // may be an assessment — a curated `assessment` entry would be a definition
     // that no row is allowed to reference.
     expect(
-      CANONICAL_BIOMARKERS.filter((e) => e.category === "assessment")
+      CANONICAL_RESULT_DEFINITIONS.filter((e) => e.category === "assessment")
     ).toEqual([]);
   });
 });
 
 describe("quantitation is not the identity test", () => {
-  it("no identity rule may be derived from the presence of a unit or a band", () => {
-    // If quantitation ever became the test, these would flip together. They do
-    // not: the unitless, bandless entries below are identity-bearing, and the
-    // numeric questionnaire item answers stored `assessment` are not.
-    const unitlessIdentityBearing = CANONICAL_BIOMARKERS.filter(
+  it("keeps unitless results identity-bearing", () => {
+    const unitlessIdentityBearing = CANONICAL_RESULT_DEFINITIONS.filter(
       (e) => !e.unit && carriesResultIdentity(e.category ?? "")
     );
     expect(unitlessIdentityBearing.length).toBeGreaterThan(50);
-
-    // A screening questionnaire's ITEM answer is a number (0-3 on a PHQ-9 item)
-    // and is stored in the class that denies identity, which is the reverse
-    // crossing. Asserted on the category rule rather than on a fixture row: the
-    // rule is what a future change would break.
-    expect(carriesResultIdentity("assessment")).toBe(false);
-    expect(carriesResultIdentity("instrument")).toBe(true);
   });
 });

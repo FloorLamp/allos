@@ -33,13 +33,10 @@ export const TRENDS_CURATE_PROFILE = "Trends Curate (e2e)";
 export const TRENDS_CURATE_EMPTY_ANALYTE = "Ferritin";
 
 // ── Compare folds into Insights (issue #1489) ────────────────────────────────
-// A dedicated, TRAINING-RESTRICTED profile (birthdate ~10y ago, under the
-// instance gate of 13 seeded by e2e/seed/coverage-gaps.ts) carrying weight +
-// resting-HR readings on shared dates, so the compare overlay actually draws for a
-// minor. It proves the #1489 gate move: the Insights tab is now offered to a
-// restricted profile, carrying ONLY its age-neutral compare section.
+// A dedicated minor profile carrying weight + resting-HR readings on shared dates,
+// so the compare overlay actually draws for a minor.
 //
-// Dedicated ON PURPOSE (#868): the other restricted profile — the seeded ~18-month
+// Dedicated ON PURPOSE (#868): the seeded ~18-month
 // "Riley (child)" — has no second metric to overlay. Read-only in its spec
 // (navigation only), so --repeat-each stays clean.
 export const E2E_LOGIN_TRENDS_COMPARE = "e2e_trends_compare";
@@ -135,7 +132,7 @@ export const TRENDS_PIN_PROFILE = "Trends Pin (e2e)";
 // state no shared fixture can be in for long — one neighbour's weigh-in destroys
 // it — and the spec deliberately drives the profile THROUGH the states either
 // side of day one (a stale reading, then a full week), so it owns every
-// body_metrics / protein_log row on it and re-seeds them at test start.
+// body_metrics / protein_daily_totals row on it and re-seeds them at test start.
 //
 // The same profile carries the nutrition half: every COMPLETE day in the trailing
 // window logs the same protein, so the dashboard card's "7-day average" is one

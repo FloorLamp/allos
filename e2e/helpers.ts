@@ -1,5 +1,6 @@
 import {
   expect,
+  type CDPSession,
   type Locator,
   type Page,
   type Request,
@@ -87,9 +88,41 @@ import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 //        → hydratedClick(page, locator) when the CLICK ITSELF can be lost — a
 //          disclosure/chip/menu whose handler React may not have attached yet, and
 //          which a retry loop would toggle back. Then assert what it revealed.
+//        → openConfirm(page, trigger) for the specific case where that handler calls
+//          `useConfirm()`. Same primitive, named for the thing it returns, and the
+//          one home for why a confirm may NEVER be re-clicked: the hook settles an
+//          in-flight request as CANCELLED when a second replaces it, so the retry
+//          can cancel the dialog it is waiting for (#2729).
 //    Do NOT reach for settledClick here. A client toggle posts nothing, so there is
 //    nothing to settle on; before #1952 it appeared to work only because it accepted
 //    a bystander's POST, which is the silent-green failure that issue is about.
+//
+// 3b. …but the write you just made TOASTED, and the next thing you click is in the
+//    viewport's BOTTOM-RIGHT (a row's ⋯ trigger, a right-aligned actions cell):
+//        → dismissToast(page, "…") first.
+//    The toast stack is `fixed` down there and intercepts that click for its whole
+//    auto-dismiss window — silently before #2859, as a named 15s timeout since
+//    (#2861). Waiting it out is not a fix and neither is a bigger budget.
+//
+// 3c. The route draws LAZY CHARTS (`next/dynamic(ssr:false)`) above what you are
+//    about to measure or drive:
+//        → chartsSettled(scope, card, …) after the goto, before the first
+//          boundingBox()/drag or the first portaled ⋯ menu round trip.
+//    Chunk evaluation grows the layout under a test that already started; that is
+//    #2839's hang (a fixed menu panel stranded off-viewport) and #2714's stale
+//    coordinates, from one cause (#2862). settledBoxes is NOT this: it makes a
+//    measurement atomic, it does not decide WHICH layout gets measured.
+//
+// 3d. The control is a row's ⋯ OVERFLOW MENU TRIGGER (`overflow-menu-trigger`, or
+//    an "… actions" / "Actions for …" accessible name):
+//        → hydratedClick(page, trigger), always — never a bare `.click()`.
+//    The trigger is a pure client TOGGLE with no POST and no URL to watch, and it
+//    is very often the first interaction after a navigation, so a tap that lands
+//    pre-hydration is discarded in silence and the failure surfaces later as the
+//    MENU ITEM not being found — which reads as "the menu is broken" rather than
+//    "the trigger was never pressed" (#2942). The menu ITEM needs no such gate:
+//    the panel only renders while `open` is true, so an item exists only because a
+//    trigger click already landed, which is itself the proof that React attached.
 //
 // 4. toPass() is the LAST resort — only for a genuinely non-atomic condition that
 //    none of the above expresses (e.g. re-open a flaky palette until its input
@@ -148,6 +181,25 @@ async function awaitAutosaveSettled(scope: Locator): Promise<void> {
   await expect(scope.getByLabel("Saving")).toHaveCount(0);
 }
 
+// Wait until React has ATTACHED to this node — the one hydration probe, shared.
+//
+// React tags every host node it owns with `__reactFiber$…`/`__reactProps$…`. Their
+// presence is the difference between server HTML that merely looks right and a live
+// tree with handlers on it, and it is the signal `hydratedClick` gates on. Kept in
+// one place so a second caller cannot invent a slightly different probe — this is a
+// TRUTH about React's DOM, and two spellings of it would drift.
+async function awaitHydrated(el: Locator, timeout: number): Promise<void> {
+  await expect(el).toBeVisible();
+  await expect(async () => {
+    const hydrated = await el.evaluate((node) =>
+      Object.keys(node).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    expect(hydrated, "element not hydrated yet").toBe(true);
+  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; nothing is dispatched inside the loop
+}
+
 // Tap a <PhotoCapture> trigger and hand the native file chooser its bytes.
 //
 // ONE tap, no retry loop — and the reason is the whole of issue #2662.
@@ -194,9 +246,15 @@ export async function capturePhotoFile(
 // some other element entirely (a heading, the backdrop) with no error — the test
 // just fails to do anything. Polling until two consecutive reads agree costs a
 // few frames and removes the whole class.
-export async function centerOf(
-  locator: Locator
-): Promise<{ x: number; y: number }> {
+//
+// NOT EXPORTED, since #2714 — and that is the ratchet, not tidiness. Settling
+// proves the element held still across ONE 50ms window; it cannot prove the
+// element will not move AGAIN, so the point it returns is a fact about the past
+// from the instant it is returned. A spec holding such a point and handing it to
+// `touchSwipe` owns that staleness silently. The point therefore never leaves
+// this file: an element-anchored gesture goes through `touchSwipeFrom`, which
+// re-aims and then PROVES where the finger landed before it moves.
+async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
   let previous: string | null = null;
   for (let attempt = 0; attempt < 40; attempt++) {
     const box = await locator.boundingBox();
@@ -210,6 +268,131 @@ export async function centerOf(
     await locator.page().waitForTimeout(50);
   }
   throw new Error("element never settled into a stable position");
+}
+
+// The chart-mount GATE: return only once a lazy-chart route's layout is done growing.
+//
+// SETTLING A READ IS NOT GATING A MOUNT, and #2862 exists because the two look alike.
+// `settledBoxes` repeats a group of boxes until two consecutive reads AGREE — that
+// makes every box come from one layout, which is the right cure for a torn relative
+// measurement (#2437). It says nothing about WHICH layout. A lazy chart card sitting
+// in its Suspense fallback is perfectly still: two reads 50 ms apart agree, the helper
+// returns, and the caller measures a page that is still one card short. Quiescence is
+// not the terminal state, and on a loaded worker the gap between them is tens of
+// seconds. sleep-page already spells the division out at its own call site — the mount
+// is behind `gotoSleepLogSettled`, and `settledBoxes` only keeps the measurement atomic.
+// This is that gate, lifted out of sleep-page so every other lazy-chart route can have it.
+//
+// Every chart in the app is `next/dynamic(ssr: false)` behind a Suspense fallback
+// (components/ChartLoading.tsx, "Loading chart…"). That is THREE renders of the same
+// box, not one: nothing at SSR, the fallback at hydration, the chart itself at chunk
+// evaluation. Each step changes the height of everything below it. Two different tests
+// get hurt by that, and this is the one gate for both:
+//
+//   • A GEOMETRY read — a boundingBox() pair fed to a drag, an adjacency claim, a
+//     height comparison — measures a layout that is still one card short. #2714's
+//     class with a chart-mount trigger: the coordinates were true when they were read.
+//   • A portaled ⋯ MENU round trip. OverflowMenu's panel is `position: fixed` and
+//     glued to its trigger's rect; growth above the trigger slides it off-viewport,
+//     `scrollIntoViewIfNeeded` cannot move a fixed element, and the pending click on
+//     the menu item retries against `<html>` until the budget dies (#2839's hang; with
+//     #2859's 15s actionTimeout it now fails NAMED instead, which is not the same as
+//     fixed).
+//
+// WHY A POSITIVE SIGNAL PER CARD, and not just "no fallback on the page". The
+// fallback's absence is true BEFORE hydration too — the server renders NOTHING in an
+// `ssr:false` box — so an absence-only gate settles on the pre-hydration paint, which
+// is the bystander false-settle (#1437) wearing a chart costume. So the caller NAMES
+// at least one card this route really does draw, and `.recharts-wrapper` (the element
+// recharts mounts around every chart it renders, and the signal sleep-page's own gate
+// used) is waited for INSIDE it. That one positive proof establishes that hydration
+// AND chunk evaluation happened; the scope-wide sweep for a remaining fallback
+// afterwards then covers the route's OTHER lazy boxes without making the caller
+// enumerate them.
+//
+// Name a card that DRAWS. A chart card with no data in the fixture renders an empty
+// state and never mounts a wrapper, so naming it gates on something that will not
+// happen and burns the full budget; pick a populated one — which is also the card
+// whose mount moves the layout.
+//
+// A GRID of sparklines is one card for this purpose: pass the grid as BOTH the scope
+// and the named card (`chartsSettled(grid, grid)`). One mounted wrapper anywhere in it
+// proves the chunk evaluated, and the sweep then covers every remaining tile — which
+// is what a grid whose populated members are fixture-dependent actually needs.
+//
+// WHEN NO CARD IS NAMEABLE — a route whose only chart widget draws or doesn't
+// depending on the fixture's data — pass a LOCATOR scope and no cards. The helper
+// then establishes the same precondition directly, by waiting for React's hydration
+// markers on the scope element (the shared probe every settled interaction uses)
+// before believing an absent fallback. What it will NOT accept is a Page scope with
+// no card: there would be nothing to probe and nothing to wait for, and the call would
+// return true against the server's first paint.
+//
+// The 20s budget is declared per hygiene pitfall 17: chunk evaluation under
+// contention is exactly the latency the 5s default loses.
+const CHART_MOUNT_TIMEOUT = 20_000;
+
+export async function chartsSettled(
+  scope: Page | Locator,
+  ...cards: Locator[]
+): Promise<void> {
+  if (cards.length === 0) {
+    if (!("first" in scope)) {
+      throw new Error(
+        "chartsSettled: a Page scope needs at least one named chart card — the " +
+          "absence of a loading fallback is also true before hydration. Pass a " +
+          "Locator scope instead to gate on that element's hydration."
+      );
+    }
+    await awaitHydrated(scope, CHART_MOUNT_TIMEOUT);
+  }
+  for (const c of cards) {
+    await expect(
+      c.locator(".recharts-wrapper").first() // first-ok: proves THIS card mounted its chart at all; a card that draws two still takes one mount step
+    ).toBeVisible({ timeout: CHART_MOUNT_TIMEOUT });
+  }
+  // The precondition above (a mounted chart, or a hydrated scope) is what makes this
+  // an answer rather than a pre-hydration coincidence: any box still loading is still
+  // showing ChartLoading's text.
+  await expect(scope.getByText(/Loading chart/)).toHaveCount(0, {
+    timeout: CHART_MOUNT_TIMEOUT,
+  });
+}
+
+// Take a toast down before the next round trip, and prove it is gone (#2861).
+//
+// The toast stack is `fixed` at the viewport's bottom-right (components/Toast.tsx —
+// `w-72` cards, auto-dismiss at 6s for a success and 10s for an error). That quadrant
+// is where a table's right-aligned actions cell lives and where an OverflowMenu panel
+// opens, so the very next click after a write that toasted lands UNDER a card that is
+// still up. Playwright's actionability then blocks on it — before #2859 the unbounded
+// click simply absorbed the whole auto-dismiss window in silence (the sleep-page
+// delete test was losing ~10s of every run, green CI included), and with the run-wide
+// 15s actionTimeout the same collision fails NAMED:
+//
+//   locator.click: Timeout 15000ms exceeded … <p>…deleted.</p> from
+//   <div class="fixed bottom-…"> subtree intercepts pointer events
+//
+// Never wait it out and never widen the budget: a click blocked by
+// `<div class="fixed bottom-…">` is the toast, and the fix is to dismiss it.
+//
+// SCOPED BY TEXT, always. Toasts stack, so "the toast" is not a thing — dismissing by
+// testid alone would take down whichever card happened to be on top, which on an undo
+// path is the one the NEXT assertion is about. The filter also documents at the call
+// site which write the test just made.
+//
+// The Dismiss button is a pure client control: it posts nothing, so this is
+// `hydratedClick` and not `settledClick` (decision-tree case 3). The count assertion
+// afterwards is the actual guarantee — the card is out of the DOM, not merely on its
+// way out — and it is what makes this safe to call before a geometry read too.
+export async function dismissToast(
+  page: Page,
+  text: string | RegExp
+): Promise<void> {
+  const toast = page.getByTestId("toast").filter({ hasText: text });
+  await expect(toast).toBeVisible();
+  await hydratedClick(page, toast.getByRole("button", { name: "Dismiss" }));
+  await expect(toast).toHaveCount(0);
 }
 
 // Open the Upcoming page's display aggregates (issue #1504).
@@ -598,7 +781,7 @@ export async function followLink(
 // following `expect` just times out.
 //
 // openMobileDrawer solves that by RE-TAPPING until the drawer mounts, which is
-// only safe because its hamburger sets `open` TRUE and never toggles. A real
+// only safe because its More slot sets `open` TRUE and never toggles. A real
 // TOGGLE (the #1455 "Custom…" pill, the digest's "Show all N") flips state, so a
 // second tap UNDOES the first — a retry loop there is a coin flip. Instead: wait
 // for the hydration markers React attaches to the DOM node, then click ONCE.
@@ -612,17 +795,9 @@ export async function hydratedClick(
   opts: { timeout?: number } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 10_000;
-  await expect(button).toBeVisible();
-  await expect(async () => {
-    const hydrated = await button.evaluate((el) =>
-      Object.keys(el).some(
-        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
-      )
-    );
-    // Not hydrated yet → toPass retries the PROBE only; the click below runs once,
-    // after the handler is attached, so the toggle can never be double-fired.
-    expect(hydrated, "button not hydrated yet").toBe(true);
-  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; the click stays outside the loop so a toggle is never fired twice
+  // The probe retries; the click below runs ONCE, after the handler is attached, so
+  // the toggle can never be double-fired.
+  await awaitHydrated(button, timeout);
   await button.click();
 }
 
@@ -670,10 +845,86 @@ export async function openCareOverviewSection(
   return section;
 }
 
+// Tap a control whose handler calls `useConfirm()`, and return the confirm dialog
+// (issue #2729).
+//
+// A confirm is opened by a DISCRETE onClick with nothing to settle on: no Server
+// Action POST, no navigation, no URL. So a tap that lands in the #500/#830
+// pre-hydration window is swallowed in silence — Playwright's actionability checks
+// all pass, because the ELEMENT is fine — and the `expect(dialog).toBeVisible()`
+// below it fails as `element(s) not found`.
+//
+// Five call sites answered that with a `toPass` loop that re-clicked the trigger
+// until the dialog appeared. The premise was right and the repair was not. What is
+// wrong with it was MEASURED, under a CDP CPU throttle (docs/internals/e2e-hygiene.md,
+// "slow the CPU, not the neighbours"), and it is not what #2729 assumed:
+//
+//   • The loop spends its whole BUDGET on the window it exists to survive. A
+//     pre-hydration click is swallowed, so it changes nothing — which also means it
+//     cannot converge and cannot be retried into working. Every iteration before
+//     hydration is therefore a click into the void plus the inner guard's 2 s wait,
+//     and the 15 s ceiling is consumed by attempts that could not have worked. At a
+//     60× throttle on `/import/908` that loop failed 5/5; given a 60 s ceiling and
+//     nothing else changed it passed 5/5, converging in 10.8–23.9 s. Its failure is
+//     the CEILING. Waiting for a STATE spends the budget on the thing being waited
+//     for, which is why this helper converges where the loop cannot.
+//   • The destructive branch is a HAZARD, not the observed cause, and the difference
+//     matters. `useConfirm` settles an in-flight request as CANCELLED when a second
+//     replaces it (`prev?.resolve(false)`, components/ConfirmDialog.tsx) and remounts
+//     the panel on a fresh `retained.nonce`; the disclosure twins of this loop are
+//     `setOpen((v) => !v)` and a native `<details>`. So a click that LANDS and then
+//     renders slower than the inner guard is torn down by the iteration waiting for
+//     it. That is real by inspection — but across 15 throttled trials it was never
+//     observed: a MutationObserver on the disclosure's `aria-expanded` recorded a
+//     single `false → true` transition every time, never a flip back. It is a live
+//     hazard because it needs only a landed click and a slow render, and it is not
+//     the thing that has been failing.
+//
+// A third reason is not about the race at all: the loop SWALLOWS its own diagnosis.
+// Whatever goes wrong inside the predicate — the trigger missing, a backdrop
+// intercepting the tap, the click throwing — is reported as one line, `Timeout
+// 15000ms exceeded while waiting on the predicate`, naming neither the click nor the
+// dialog. That is the causeless-timeout shape #890 is about, and it is what the two
+// failures in #2729 were read through. Clicking once lets the click's own error, or
+// the dialog locator, name the failure.
+//
+// So: hydratedClick — poll for React's markers on the node, click ONCE — then wait
+// for the dialog on its own ceiling. No re-click, at any point. The marker probe is a
+// reliable enough hydration signal to make that single click safe and a fallback
+// unnecessary, on two separate pieces of evidence. The direct one is this issue's own
+// measurement: the disclosure twin of this helper passed 5/5 at a 60× CPU throttle at
+// its shipped budget, where the loop it replaced passed 1/5. The precedent — a
+// DIFFERENT spec, not one of these call sites — is #2742's tap, which the same probe
+// carried from a deterministic throttled failure to 5/5.
+//
+// The two ceilings are separate because they are separate waits, and 15 + 15 is
+// deliberately the whole per-test budget: `playwright.config.ts` sets no `timeout`,
+// so a test gets Playwright's default 30 s unless it declares `test.slow()`. Past
+// that the test dies whatever this helper says, so a bigger number here would only
+// look generous. The one real lever is `test.slow()` at the call site, which triples
+// the budget — declined for the four long portal tests, because all it buys is a
+// better cell in a rate-60 table that is already past CI-realistic (the table is in
+// docs/internals/e2e-hygiene.md). Do not re-derive this: the ceiling IS the budget.
+//
+// Returns the dialog by its `confirm-dialog` testid rather than `getByRole("dialog")`
+// — a page may carry another modal, and this helper promises THE confirm.
+export async function openConfirm(
+  page: Page,
+  trigger: Locator,
+  opts: { hydrationTimeout?: number; dialogTimeout?: number } = {}
+): Promise<Locator> {
+  await hydratedClick(page, trigger, {
+    timeout: opts.hydrationTimeout ?? 15_000,
+  });
+  const dialog = page.getByTestId("confirm-dialog");
+  await expect(dialog).toBeVisible({ timeout: opts.dialogTimeout ?? 15_000 });
+  return dialog;
+}
+
 // Open MobileNav's slide-in drawer and return it (issue #1420 — the `mobile`
 // Playwright project's one shared interaction). The drawer is the phone shell's
 // only route to the app's navigation: below `md` the desktop sidebar is hidden and
-// the drawer's <aside> isn't even MOUNTED until the hamburger is tapped
+// the drawer's <aside> isn't even MOUNTED until the dock's More slot is tapped
 // (components/MobileNav.tsx renders it behind `{open && …}`), so a mobile spec that
 // needs a nav link has to open it first.
 //
@@ -681,7 +932,7 @@ export async function openCareOverviewSection(
 // client toggle — so neither settledClick nor followLink applies, and a tap landing
 // in the pre-hydration window (#500/#830) is silently swallowed with nothing to
 // await. This is decision-tree case 4: re-tap until the drawer mounts, guarded on
-// its visibility. Re-tapping is safe because the hamburger only ever sets `open`
+// its visibility. Re-tapping is safe because More only ever sets `open`
 // TRUE (it never toggles), so a late tap can't close what a prior one opened.
 export async function openMobileDrawer(page: Page): Promise<Locator> {
   // The drawer <aside> is identified by the close (✕) button that ONLY it renders
@@ -692,10 +943,10 @@ export async function openMobileDrawer(page: Page): Promise<Locator> {
   });
   await expect(async () => {
     if (!(await drawer.isVisible())) {
-      await page.getByRole("button", { name: "Open menu" }).click();
+      await page.getByTestId("dock-slot-more").click();
     }
     await expect(drawer).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the hamburger past the pre-hydration swallow — a pure client toggle with no POST/navigation to settle on; set-true-only, so a late tap can't re-close it
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap More past the pre-hydration swallow — a pure client toggle with no POST/navigation to settle on; set-true-only, so a late tap can't re-close it
   return drawer;
 }
 
@@ -813,7 +1064,23 @@ export async function settledBoxes(
   const page = locators[0].page();
   let previous: string | null = null;
   for (;;) {
-    const boxes = await Promise.all(locators.map((l) => l.boundingBox()));
+    // Each read is bounded by THIS helper's remaining budget and a never-attaching
+    // locator degrades to null instead of throwing, so the deadline below stays
+    // authoritative: without the bound, `boundingBox()` on a locator that resolves
+    // to nothing waits at the action default and the named diagnosis under it is
+    // never reached (#2839 — the deadline check only ran between reads, so a read
+    // that never returned made the "deadline" a fiction).
+    const remaining = Math.max(100, deadline - Date.now());
+    const boxes = await Promise.all(
+      locators.map((l) =>
+        l.boundingBox({ timeout: remaining }).catch((err: Error) => {
+          // Only the never-attached shape becomes null (the deadline check below
+          // names it); a closed page or crashed target keeps its own error.
+          if (err.name === "TimeoutError") return null;
+          throw err;
+        })
+      )
+    );
     const key = boxes
       .map((b) =>
         b
@@ -1423,35 +1690,162 @@ export async function settledUpload(
 // `stepDelayMs` is how a spec chooses between the two commit paths in
 // lib/gesture.ts: 0 (the default) is a fast flick, a delay makes the same
 // distance a slow drag that must clear `commitPx` on distance alone.
+//
+// TWO ENTRY POINTS, and the choice is about WHERE THE GESTURE MUST START:
+//
+//   * `touchSwipe(page, from, to)` — a gesture anchored to the DOCUMENT. The
+//     drawer's edge swipe and the Timeline's day swipe are these: they name a
+//     screen coordinate ("2px from the left edge", "mid-page"), no element has to
+//     be under it, and the recognizer runs with no `targetRef` to satisfy.
+//   * `touchSwipeFrom(page, locator, delta)` — a gesture that must start INSIDE
+//     an element: a drag handle, a panel. The recognizer tests containment at
+//     touch-start, so where the finger lands is not a detail of the gesture, it
+//     IS the gesture.
+//
+// Only the second can be made safe, and it has to be (#2714). See below.
+type SwipeOptions = { steps?: number; stepDelayMs?: number };
+
 export async function touchSwipe(
   page: Page,
   from: { x: number; y: number },
   to: { x: number; y: number },
-  opts: { steps?: number; stepDelayMs?: number } = {}
+  opts: SwipeOptions = {}
 ): Promise<void> {
-  const steps = Math.max(2, opts.steps ?? 10);
   const cdp = await page.context().newCDPSession(page);
   try {
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [{ x: from.x, y: from.y }],
     });
-    for (let i = 1; i <= steps; i++) {
-      if (opts.stepDelayMs) await page.waitForTimeout(opts.stepDelayMs);
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [
-          {
-            x: from.x + ((to.x - from.x) * i) / steps,
-            y: from.y + ((to.y - from.y) * i) / steps,
+    await dragToEnd(page, cdp, from, to, opts);
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// The moves and the lift, shared by both entry points so the two cannot drift
+// into two ideas of what a swipe is. The touch is already down when this runs.
+async function dragToEnd(
+  page: Page,
+  cdp: CDPSession,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  opts: SwipeOptions
+): Promise<void> {
+  const steps = Math.max(2, opts.steps ?? 10);
+  for (let i = 1; i <= steps; i++) {
+    if (opts.stepDelayMs) await page.waitForTimeout(opts.stepDelayMs);
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        {
+          x: from.x + ((to.x - from.x) * i) / steps,
+          y: from.y + ((to.y - from.y) * i) / steps,
+        },
+      ],
+    });
+  }
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+}
+
+// ── An element-anchored swipe PROVES where the finger landed (#2714) ─────────
+//
+// A point measured from an element is stale the instant it is measured, and
+// `centerOf`'s settling cannot fix that: it proves the element held still across
+// one 50ms window, never that it will hold still for the next one. On a
+// BOTTOM-ANCHORED surface that gap is not theoretical. The quick-log sheet
+// gathers its "Due & usual now" row lazily on every open (#1468 — the offers
+// must be fresher than the page), and when that Server Action lands the sheet
+// grows; a bottom-anchored panel grows UPWARD, so the drag handle leaves the
+// coordinate a settled measurement had just certified.
+//
+// What happens next is the reason this helper exists rather than a longer wait:
+// the touch lands on whatever slid into that coordinate, the recognizer's
+// containment test (components/overlay/useDragGesture.ts) rejects it, and the
+// gesture is never claimed — so NOTHING HAPPENS, silently. #2714 is that:
+// `expect(sheet).toHaveCount(0)` did not miss a deadline, it waited five seconds
+// for an exit that was never going to begin. No budget and no arrival signal
+// would have helped, because the end state was not on its way.
+//
+// So the finger is not committed until it is proven to be on the element. The
+// touch starts, the helper reads the target of the touchstart the browser
+// actually dispatched — the same `contains()` fact the recognizer keys on, not a
+// re-hit-test that could disagree with it — and only then moves. A landing that
+// misses is cancelled before a single move, and the aim is re-taken against the
+// element's new position.
+//
+// That is a PROBE, not a retry of an attempt, and the distinction is exact
+// rather than a hopeful reading: every recognizer in the app requires a claimed
+// axis before it calls anything, claiming requires MOVEMENT, and nothing has
+// moved. The #2437 rule against re-driving a non-idempotent interaction — and
+// this file's own "a swipe cannot be retried, a re-fired day-swipe skips a day"
+// — are both untouched, because no gesture was driven.
+//
+// The re-aim is bounded, and running out is a LOUD failure naming the cause. A
+// surface still relaying out after four settled measurements is a defect in the
+// surface, and quietly swiping at it forever would be the timeout raise this
+// issue refused.
+const GESTURE_AIM_ATTEMPTS = 4;
+const TOUCH_START_TARGET = "__e2eTouchStartTarget";
+
+export async function touchSwipeFrom(
+  page: Page,
+  target: Locator,
+  delta: { dx?: number; dy?: number },
+  opts: SwipeOptions = {}
+): Promise<void> {
+  const dx = delta.dx ?? 0;
+  const dy = delta.dy ?? 0;
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    for (let attempt = 1; attempt <= GESTURE_AIM_ATTEMPTS; attempt++) {
+      const from = await centerOf(target);
+      // Armed BEFORE the touch, read AFTER it: the browser's own dispatch is
+      // what decides the target, so that is what gets asked.
+      await page.evaluate((key) => {
+        const store = window as unknown as Record<string, unknown>;
+        store[key] = null;
+        document.addEventListener(
+          "touchstart",
+          (e) => {
+            store[key] = e.target;
           },
-        ],
+          { capture: true, once: true, passive: true }
+        );
+      }, TOUCH_START_TARGET);
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x: from.x, y: from.y }],
+      });
+      const landed = await target.evaluate((el, key) => {
+        const origin = (window as unknown as Record<string, unknown>)[key];
+        return origin instanceof Node && el.contains(origin);
+      }, TOUCH_START_TARGET);
+      if (landed) {
+        await dragToEnd(
+          page,
+          cdp,
+          from,
+          { x: from.x + dx, y: from.y + dy },
+          opts
+        );
+        return;
+      }
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchCancel",
+        touchPoints: [],
       });
     }
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: [],
-    });
+    throw new Error(
+      `touchSwipeFrom: the target moved out from under the gesture on all ` +
+        `${GESTURE_AIM_ATTEMPTS} attempts, each aimed at a settled measurement. ` +
+        `Something is still relaying the surface out after it comes to rest — ` +
+        `find what arrives late (a lazily gathered section is the usual answer, ` +
+        `see #2714) rather than widening a wait.`
+    );
   } finally {
     await cdp.detach();
   }
@@ -1601,4 +1995,93 @@ export async function spendAutoReloadRation(page: Page): Promise<void> {
       refreshMs: 5_000,
     }
   );
+}
+
+// ── Going offline honestly ───────────────────────────────────────────────────
+//
+// PLAYWRIGHT'S OFFLINE EMULATION IS PER-BROWSER-CONTEXT AND DOES NOT COVER REQUESTS
+// THE SERVICE WORKER MAKES. In Chromium `context.setOffline(true)` cuts the page's
+// own fetches; the worker's `fetch()` inside `public/sw.js`'s `cacheFirst` handler
+// still reaches the server. So a spec can go offline, navigate, render and pass while
+// the assets it rendered from were pulled over the network during the "offline"
+// navigation. A real device has no such escape hatch (#3002).
+//
+// Measured on this tree, because the obvious test is a lie here. Take away the one
+// thing that warms the /offline shell (emergency-card's own online visit to it) and the
+// counter below reads 13/15 for a full 30s poll and never climbs — two chunks the
+// /offline document needs are simply not cached. The block that navigates offline PASSES
+// ANYWAY, and the counter reads `warm` immediately afterwards: both missing chunks were
+// fetched during the supposedly offline navigation. That is the direct proof of the
+// bypass, not an inference from it.
+//
+// So an "it renders offline" assertion cannot see a missing chunk at all: on a real
+// device that chunk is a blank page, and in the harness it is a green test. What CAN
+// be asserted faithfully is the precondition — the chunk is in the cache BEFORE the
+// network goes away. Assert that alongside the render, and the offline block measures
+// the app instead of the harness.
+//
+// Blocks that only go offline on an ALREADY-LOADED page (the offline write queue:
+// tap → queued → reconnect → replayed) are not exposed to this: they never navigate,
+// so no shell has to come from anywhere, and the page's own POST is exactly what
+// setOffline does block. The hazard is specific to navigating while offline.
+
+/**
+ * Whether every `/_next/static` asset the /offline document declares AND THIS BROWSER
+ * ACTUALLY LOADS is in the service worker's cache — "warm", or a `cached/total` count
+ * plus the missing URLs, to read on failure.
+ *
+ * Reads the cache only: the HTML fetch here populates nothing, because the worker never
+ * caches rendered HTML and this is not a navigation. So a poll on this cannot be
+ * self-fulfilling — with the shell un-warmed it sits at its count and never climbs.
+ *
+ * The `noModule` SKIP is load-bearing, not tidying. Next emits its legacy polyfill
+ * bundle as `<script src="…" noModule>`, which a module-supporting browser — every
+ * browser this suite runs — deliberately never requests. It is declared in the document
+ * and is not part of what the page needs, so a scan that matched raw `/_next/static`
+ * URLs counted an asset that can NEVER be cached however well the shell is warmed, and
+ * reported a permanent shortfall. Measured on this build: 15/16 with the polyfill
+ * counted, warm without it.
+ */
+export async function offlineChunksWarm(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const res = await fetch("/offline", { headers: { Accept: "text/html" } });
+    const html = await res.text();
+    const urls = [
+      ...new Set(
+        (html.match(/<(?:script|link)\b[^>]*>/g) ?? []).flatMap((tag) => {
+          if (/\bnomodule\b/i.test(tag)) return [];
+          const href = tag.match(
+            /(?:src|href)="([^"]*\/_next\/static\/[^"]+)"/
+          )?.[1];
+          return href && (href.endsWith(".js") || href.endsWith(".css"))
+            ? [href]
+            : [];
+        })
+      ),
+    ];
+    const missing: string[] = [];
+    for (const u of urls) {
+      if (!(await caches.match(new URL(u, location.origin).href))) {
+        missing.push(u);
+      }
+    }
+    return urls.length > 0 && missing.length === 0
+      ? "warm"
+      : `${urls.length - missing.length}/${urls.length} cached (missing: ${missing.join(", ") || "none — the document declared no assets"})`;
+  });
+}
+
+/**
+ * The precondition every offline block that NAVIGATES shares: a live controlling
+ * worker, and the offline shell's own code already in its cache. Call this before
+ * `context.setOffline(true)` — it is what makes the offline render an assertion about
+ * the app rather than about the harness's leaky emulation.
+ */
+export async function readyForOffline(page: Page): Promise<void> {
+  await page.waitForFunction(() => !!navigator.serviceWorker?.controller, {
+    timeout: 15_000,
+  });
+  await expect
+    .poll(() => offlineChunksWarm(page), { timeout: 30_000 })
+    .toBe("warm");
 }

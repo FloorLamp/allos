@@ -20,6 +20,7 @@ import {
   chartAnnotationLabel,
   chartAxisProps,
   chartDash,
+  chartFittedAnnotationLabel,
   chartFullMargin,
   chartGridProps,
   chartLineDot,
@@ -33,7 +34,10 @@ import {
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand, chartSeries } from "@/lib/chart-colors";
-import { formatLongDate } from "@/lib/format-date";
+import Link from "next/link";
+import SingleReadingMark from "./SingleReadingMark";
+import { formatLongDate, formatMonthDay } from "@/lib/format-date";
+import { dataSectionHref } from "@/lib/hrefs";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
 import {
@@ -51,9 +55,17 @@ import {
 } from "@/lib/long-range-series";
 import {
   applyDayFill,
+  gapBreaksPastLimit,
+  gapLimitDaysForSeriesKey,
+  loneReading,
+  overLimitHoles,
+  seriesGapForSeriesKey,
   sparseSeriesCaption,
   sparseSeriesVerdict,
+  trailingOutageCaption,
+  unloggedGapLabel,
   type DayFillSpec,
+  type SeriesHole,
 } from "@/lib/trend-sparkline";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
@@ -92,6 +104,7 @@ export default function LineChartCard({
   sparklineDots = false,
   animateTooltip = true,
   gapFill,
+  singleReadingAsChart = false,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
@@ -159,6 +172,13 @@ export default function LineChartCard({
   // Show resting points in sparkline mode. The shared density limit still removes
   // them when they would fuse into a heavy line.
   sparklineDots?: boolean;
+  // Keep a ONE-READING series chart-shaped, opting out of the single-reading mark
+  // below (#2653 state 1). A declared policy, not a styling preference: the sleep
+  // surface is a chart at every range, including a one-day one, and TrendMiniCard
+  // has carried this same per-caller opt-out since before the degrade moved into
+  // this component. Threading it here is what keeps a tile and the card it taps
+  // through to agreeing — which is the whole reason the degrade lives in one place.
+  singleReadingAsChart?: boolean;
   // Recharts animates tooltip transforms between points. A chart with labeled
   // horizontal bands can force a left/right edge flip; callers may disable that
   // transform so the tooltip snaps inside the plot instead of crossing the card.
@@ -264,6 +284,62 @@ export default function LineChartCard({
     isoDates && key === "value" && gapFill && !longRange
       ? sparseSeriesVerdict(gapFill.seriesKey, data)
       : null;
+  // THE UNLOGGED RUNS (#2653 states 2, 3 and 4). Asked of the DENSIFIED series,
+  // which is what makes a run of nulls a count of calendar days rather than a
+  // count of missing rows — and only of a gapFill caller, because the series key
+  // is what carries the declared limit. An aggregated plot is excluded: a bucket
+  // is not a day, so "4 days unlogged" is not a sentence about one.
+  const holes: SeriesHole[] =
+    isoDates && key === "value" && gapFill && !longRange
+      ? overLimitHoles(series, gapLimitDaysForSeriesKey(gapFill.seriesKey))
+      : [];
+  // Only a series that OPTED IN has its stroke cut (owner call 2). For every
+  // other policy the hole is named and the stroke stays exactly as declared.
+  const breaksPastLimit =
+    gapFill != null &&
+    holes.length > 0 &&
+    gapBreaksPastLimit(seriesGapForSeriesKey(gapFill.seriesKey));
+  const interiorHoles = holes.filter((h) => !h.trailing);
+  const trailingHole = holes.find((h) => h.trailing) ?? null;
+  // The last day that actually carries a reading — the "since" in the live
+  // outage's caption. Read off the plotted series rather than recomputed, so the
+  // sentence and the drawing can never name different days.
+  const lastReadingDate = trailingHole
+    ? (series
+        .filter((d) => d.value != null && d.date < trailingHole.from)
+        .at(-1)?.date ?? null)
+    : null;
+  // THE BROKEN STROKE (#2653 state 3). recharts' `connectNulls` is all-or-nothing
+  // — true bridges every hole, false breaks at every one — and the declared
+  // policy is neither: short holes bridge, over-limit holes do not. So the series
+  // is cut into RUNS at the over-limit holes and each run is drawn as its own
+  // bridged stroke, with the marks and the tooltip staying on one strokeless
+  // line above them. Nothing is hidden, no point moves, and no value is invented
+  // to span anything.
+  const strokeRuns: number[][] = [];
+  if (breaksPastLimit && interiorHoles.length > 0) {
+    const cutAt = new Set<string>();
+    for (const hole of interiorHoles) cutAt.add(hole.from);
+    let runStart = 0;
+    plotData.forEach((row, i) => {
+      if (!cutAt.has(row.date)) return;
+      if (i > runStart) strokeRuns.push([runStart, i - 1]);
+      runStart = i;
+    });
+    if (runStart < plotData.length) {
+      strokeRuns.push([runStart, plotData.length - 1]);
+    }
+  }
+  const runData =
+    strokeRuns.length > 1
+      ? plotData.map((row, i) => {
+          const out: Record<string, unknown> = { ...row };
+          strokeRuns.forEach(([from, to], r) => {
+            out[`run${r}`] = i >= from && i <= to ? row.value : null;
+          });
+          return out;
+        })
+      : plotData;
   const tickFmt =
     tickFormatter ??
     (isoDates
@@ -314,6 +390,46 @@ export default function LineChartCard({
       </div>
     );
   }
+  // ONE READING IS A MARKER, NOT A PLOT (#2653 state 1).
+  //
+  // The Overview tiles have degraded a one-reading series to a dot-on-a-rule
+  // since #1485 G, and #2671 taught the trend metric CARDS the same thing — but
+  // it taught the call site, so every other consumer of this chart (sleep,
+  // nutrition, longevity) kept drawing a 30-day band empty apart from one marker
+  // half-clipped against the y-axis. That reads as a rendering failure rather
+  // than as the true statement, and the reason it survived one fix is that the
+  // decision was being made ABOVE the chart instead of inside it.
+  //
+  // So it moves here, into the one funnel every line chart renders through. The
+  // gate is the same one the other honesty states use — a dated day-grain series
+  // plotted on `value` — because a per-event or intraday x is not a calendar day
+  // and "one reading on Jul 13" is not a sentence about it. A caller that has
+  // already drawn its own mark never reaches this branch, so the two cannot
+  // double up.
+  const lone =
+    isoDates && key === "value" && !singleReadingAsChart
+      ? loneReading(data)
+      : null;
+  if (lone && lone.value != null) {
+    return (
+      <div className={`${heightClass} min-w-0 max-w-full`}>
+        <SingleReadingMark
+          fill
+          color={color}
+          testid="chart-single-reading"
+          readingScope="inside"
+          caption={
+            <>
+              Single reading ·{" "}
+              <time dateTime={lone.date}>
+                {formatMonthDay(lone.date, formatPrefs)}
+              </time>
+            </>
+          }
+        />
+      </div>
+    );
+  }
   // The value formatter the tooltip shares between the mean line and (aggregated
   // charts only) the band's low–high pair — one number shape per chart.
   const fmtValue = (n: number) =>
@@ -322,7 +438,7 @@ export default function LineChartCard({
     <div className={`${heightClass} min-w-0 max-w-full`}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
-          data={plotData}
+          data={runData}
           syncId={syncId}
           syncMethod={syncMethod}
           onMouseMove={(state: MouseHandlerDataParam) =>
@@ -448,6 +564,43 @@ export default function LineChartCard({
               }
             />
           )}
+          {/* THE UNLOGGED RUN, DRAWN (#2653 states 2 and 3). A hole earns a band
+              the exact width of the days it covers, in the neutral grid token at
+              a fraction of its weight — the absence of plot made visible, never a
+              second series. The interior hole carries its own count; the live one
+              at the end is the "quiet span visibly quiet" and takes its words
+              from the caption below, which is where the route to the fix can be a
+              real link. Static in every state: nothing here animates, so there is
+              no end state to arrive at. */}
+          {holes.map((hole) => (
+            <ReferenceArea
+              key={`hole-${hole.from}-${hole.to}`}
+              x1={hole.from}
+              x2={hole.to}
+              fill={c.grid}
+              fillOpacity={0.45}
+              stroke="none"
+              // A plot can now be shaded by two unrelated things — a protocol
+              // window the reader toggled on, and a silence in the data. Both are
+              // recharts reference areas, so the unlogged run carries its own
+              // class: "is a protocol shaded here?" must never be answered by a
+              // gap.
+              className="chart-unlogged-band"
+              // The count is stated only where the band is wide enough to hold
+              // it (#2871). A narrow hole still draws — the shading IS the
+              // absence made visible, and hovering it still answers "No data" —
+              // it just stops printing its label through its neighbours'.
+              label={
+                hole.trailing
+                  ? undefined
+                  : chartFittedAnnotationLabel(
+                      unloggedGapLabel(hole.days),
+                      c.tick,
+                      "insideTop"
+                    )
+              }
+            />
+          ))}
           {snapped.map((a, i) => (
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}
@@ -472,10 +625,37 @@ export default function LineChartCard({
               connectNulls={bridges}
             />
           )}
+          {/* THE PER-RUN STROKES (#2653 state 3). One bridged line per run of the
+              series that survives its over-limit holes, so a skipped Tuesday is
+              still crossed and a skipped week is not. They carry stroke only —
+              the marks, the hover dot and the tooltip all stay on the single line
+              below, so a reader still gets one value per day and the legend still
+              sees one series. */}
+          {strokeRuns.length > 1 &&
+            strokeRuns.map(([from], r) => (
+              <Line
+                key={`run-${from}`}
+                type="monotone"
+                dataKey={`run${r}`}
+                stroke={color}
+                {...(sparse
+                  ? chartSparseLineProps()
+                  : { strokeWidth: CHART_LINE_STROKE_WIDTH })}
+                dot={false}
+                activeDot={false}
+                legendType="none"
+                tooltipType="none"
+                {...chartMarkMotion(motion)}
+                connectNulls
+              />
+            ))}
           <Line
             type="monotone"
             dataKey={key}
-            stroke={color}
+            // A cut series draws its strokes per run, above; this line keeps the
+            // marks and the tooltip and paints no stroke of its own, so the two
+            // cannot disagree about where a reading is.
+            stroke={strokeRuns.length > 1 ? "none" : color}
             // A stroke across readings further apart than the series' declared
             // continuity span is mostly assertion, so it demotes to a hint and
             // the dots take the lead (#2653 state 5). Nothing is hidden and no
@@ -490,7 +670,7 @@ export default function LineChartCard({
               // the caller's hard override still wins, and a series dense enough
               // to need it can never be sparse.
               sparse && showDots
-                ? chartSparseDot(color)
+                ? chartSparseDot(c, color)
                 : chartLineDot(c, {
                     color,
                     // REAL readings, never calendar days (#2258 §5): the
@@ -514,9 +694,10 @@ export default function LineChartCard({
       </ResponsiveContainer>
     </div>
   );
-  // Both captions are honesty notes ABOUT THE MARK, and a sparkline takes
-  // neither: a tile has no room for a sentence, and its numbers are the caller's.
-  if (sparkline || (!longRange && !sparse)) return chart;
+  // Every caption here is an honesty note ABOUT THE MARK, and a sparkline takes
+  // none of them: a tile has no room for a sentence, and its numbers are the
+  // caller's.
+  if (sparkline || (!longRange && !sparse && !trailingHole)) return chart;
   return (
     <div className="min-w-0 max-w-full">
       {chart}
@@ -540,6 +721,27 @@ export default function LineChartCard({
           data-testid="chart-sparse-note"
         >
           {sparseSeriesCaption(sparse)}
+        </p>
+      )}
+      {/* THE LIVE OUTAGE, NAMED (#2653 state 4). The chart already drew the hole;
+          this says when it started and routes to where the diagnosis lives. It is
+          deliberately NOT a verdict — #2146's quiet-stream judgement stays on
+          Data → Review, and this annotation only explains a gap the reader can
+          already see and offers the one door that leads somewhere about it. */}
+      {trailingHole && lastReadingDate && (
+        <p
+          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="chart-trailing-outage-note"
+        >
+          {trailingOutageCaption(formatMonthDay(lastReadingDate, formatPrefs))}{" "}
+          ·{" "}
+          <Link
+            href={dataSectionHref("review")}
+            className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+            data-testid="chart-trailing-outage-link"
+          >
+            Data → Review
+          </Link>
         </p>
       )}
     </div>

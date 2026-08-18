@@ -12,7 +12,7 @@ import { formatOutcomeDelta } from "./protocol-compare";
 export interface OutcomeOption {
   key: string;
   label: string;
-  group: "Body & indices" | "Biomarkers";
+  group: "Body & indices" | "Clinical results";
   panel: PanelId | null;
   searchTerms: string[];
   preview?: {
@@ -36,11 +36,11 @@ export function outcomeSearchTerms(label: string): string[] {
   return [...biomarkerSearchTerms(label)];
 }
 
-export function biomarkerOutcomeOption(name: string): OutcomeOption {
+export function clinicalResultOutcomeOption(name: string): OutcomeOption {
   return {
-    key: `biomarker:${name}`,
+    key: `result:${name}`,
     label: name,
-    group: "Biomarkers",
+    group: "Clinical results",
     panel: tablePanelId({ name, canonical_name: name }),
     searchTerms: outcomeSearchTerms(name),
   };
@@ -121,8 +121,8 @@ export function protocolRelevantPanels(
 ): Set<PanelId> {
   const panels = new Set<PanelId>();
   for (const key of signals.templateOutcomeKeys ?? []) {
-    if (!key.startsWith("biomarker:")) continue;
-    const name = key.slice("biomarker:".length);
+    if (!key.startsWith("result:")) continue;
+    const name = key.slice("result:".length);
     panels.add(tablePanelId({ name, canonical_name: name }));
   }
   const intervention =

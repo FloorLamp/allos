@@ -1,7 +1,7 @@
 # The temporal-column index
 
-Status: shipped (issue #2205 phase 3 — the declared index and the row-level readers.
-Phase 2's column renames are still open, so the names below are today's names.)
+Status: shipped (issue #2205 phases 2 and 3 — the persisted naming vocabulary,
+declared index, and row-level readers.)
 
 Every temporal column in the schema, with what it MEANS, what SHAPE is in it, and how
 it is SERIALIZED. `docs/internals/time-model.md` is the companion: it owns the stored
@@ -35,9 +35,9 @@ Every reader returns a discriminated union, never a nullable string. `known: fal
 carries a reason, and the reasons are different facts:
 
 - `not-declared` — the table has no column with that semantic, for every row, forever.
-  `substance_log` records when a drink was logged and nothing about when it was drunk.
+  `substance_daily_totals` records when a use was stored and nothing about when it happened.
 - `not-recorded` — the column exists and this row is NULL. Nobody stated an eating time
-  (`food_log_events.eaten_at`); the quick practice path recorded no clock
+  (`food_log_events.occurred_at`); an explicitly untimed practice records no clock
   (`practice_logs.time`). **A real answer, not a gap to fill.**
 - `needs-zone` — the value is a local wall clock and no timezone was supplied.
 - `day-only` — the column is a day. `allergies.onset_date` and
@@ -86,14 +86,14 @@ substitution stays available and stops being invisible.
 | `unverified` | not settled by a DEFAULT or a writer that was read               |
 | `n/a`        | not instant-grained, so there is no instant convention           |
 
-`unverified` is not a shrug. It is the phase-2 worklist: the scan requires a note on
+`unverified` is not a shrug. It is the remaining convention worklist: the scan requires a note on
 every one and freezes the count, so it can only shrink. Readers do not depend on it —
 `eventInstant` normalizes whatever it finds to the canonical shape on the way out, which
 is what makes a caller immune both to phase 2's renames and to a later convention change.
 
 ## The entries worth reading before writing SQL
 
-- **`metric_samples.start_time`** holds vendor ISO-with-milliseconds for an imported
+- **`metric_samples.started_at`** holds vendor ISO-with-milliseconds for an imported
   sample AND `${date}T00:00:00` — a profile-local day midnight, not an instant — for a
   reading whose author stated only a day. It is also the natural key that makes a
   re-entry a correction rather than a duplicate, so neither shape can be normalized
@@ -110,28 +110,29 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
   column at all**, so `eventInstant("intake_item_logs", row)` answered `not-declared`
   for every row; today it answers `not-recorded` for a row nobody timed. Those are
   different facts and neither one is the record instant. What remains of the ruling is
-  the **rename** of `given_at` to `recorded_at` — a rebuild plus a dozen COALESCE
-  readers, on its own slot.
+  the rename of `given_at` to `recorded_at`, shipped in migration 173.
 - **`occurred_at` means one thing in all three observation stores** (`medical_records`,
   `body_metrics`, `intake_item_logs`, migration 165): the instant the reading or intake
   actually happened, canonical shape, and **NULL means day-grain** — absence, not empty
   apparatus. The asymmetry with `metric_samples` is deliberate: that table files an
-  untimed reading at `${date}T00:00:00` because `start_time` is part of its natural key
+  untimed reading at `${date}T00:00:00` because `started_at` is part of its natural key
   and a re-entry has to be a correction rather than a duplicate. These three carry a
   real `date` column and key on it, so they can afford honest absence. Two stores spell
   "not stated" as NULL, one spells it as midnight; that is a real thing an eventual
   readings merge has to resolve, and naming it is worth more than a uniform-looking
   anchor that would change what a row's key means.
-- **`given_at` → `taken_at` is a record CHAIN, not an event/record pair.** The dozen
-  hand-rolled `COALESCE(given_at, taken_at)` readers were falling back within one
-  question all along — right value, wrong name. `recordInstant` walks the chain;
-  `bestKnownInstant` is for the fall that crosses questions, like
-  `eaten_at` → `logged_at`.
+- **The dose ledger now matches the food ledger (#2876).** `recorded_at` is immutable
+  capture and `occurred_at` is the administration event. `recordInstant` answers the
+  former; `eventInstant` answers the latter; `bestKnownInstant` makes any cross-question
+  fallback explicit.
 - **`food_log_events.eaten_at`** is NULL whenever nobody stated an eating time, and
   `time_source` records whether a present value was a tap contract or a stated one. The
   web bar never defaults it to now (#2019/#2053).
 - **`practice_logs.time`** is a bare local `HH:MM` and often NULL. It is not an instant;
   resolving it needs the row's `date` and the profile timezone.
+- **`activities.start_time` / `end_time`** are likewise profile-local `HH:MM` clock
+  values. They remain `_time` deliberately because training-rhythm inference reads
+  the stated local hour; they are not unconverted instants.
 - **`notify_lifecycle.at`** was `new Date().toISOString()` — milliseconds and a `Z`, a
   third serialization phase 1's rule C did not see because the module that builds the
   string writes no SQL of its own. Migration 167 (#2233) normalized it onto the
@@ -169,7 +170,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `audit_events` | `ts` | record | instant | bare |  |
 | `body_metrics` | `date` | day | day | n/a |  |
 | `body_metrics` | `occurred_at` | event | instant | canonical | Migration 165 (#2235, #2205 phase 2 wave 1). When the day's weigh-in was actually taken. Body weight moves a kilogram across a day, so morning-fasted and evening-fed are different measurements of one quantity and an unlabelled mix carries that swing as unattributable noise. NULL means DAY-GRAIN. Descriptive only — the natural key stays (profile_id, date, source), and one row per day is unchanged, so this records WHEN the day's reading was taken and does not enable two weigh-ins in one day. This table has no record stamp at all, so there is nothing here for an event column to be laundered from. |
-| `canonical_biomarkers` | `created_at` | bookkeeping | instant | bare |  |
+| `canonical_result_definitions` | `created_at` | bookkeeping | instant | bare |  |
 | `care_goals` | `target_date` | planned | day | n/a |  |
 | `care_goals` | `created_at` | bookkeeping | instant | bare |  |
 | `care_plan_items` | `planned_date` | planned | day | n/a |  |
@@ -198,16 +199,19 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `episode_stopped_meds` | `created_at` | record | instant | bare |  |
 | `equipment` | `created_at` | bookkeeping | instant | bare |  |
 | `family_history` | `created_at` | record | instant | bare |  |
+| `fasts` | `started_at` | window-start | instant | canonical | Migration 20260816-fasts (#2756). The instant the user CLAIMS the fast began — a claim, never a sensor reading, and never inferred from the food log (whose instants are tap times). BORN canonical, so the first writer is bound to utcInstant() by CANONICAL_INSTANT_COLUMNS rather than choosing a shape at the call site. An INSTANT and not a day on purpose: a fast spans a profile-local day boundary by nature, so a day column would be wrong on the majority of rows. Accepts a backdated value (forgot-to-tap is the common failure); the write core refuses a future one and one further back than FAST_MAX_HOURS. No column DEFAULT, deliberately: SQLite's own SQL clock writes the BARE shape, which is exactly how a canonical column ends up holding two serializations. |
+| `fasts` | `ended_at` | window-end | instant | canonical | The claimed end, and NULL is load-bearing: `ended_at IS NULL` IS the active state (there is no status enum), which the partial unique index makes at-most-one-per-profile and every derivation downstream assumes. EXCLUSIVE as an interval end — ending one fast and starting the next at the same instant is a legitimate back-to-back pair, not an overlap. The profile-local DAY a completed fast counts for (#94) is derived from this column at read time (fastAttributedDay: a fast counts for the day it ENDS) and deliberately not stored, because storing it would freeze one timezone's answer. |
+| `fasts` | `end_written_at` | lifecycle | instant | canonical | When the row's CURRENT end was WRITTEN — a transition in the record's own life, never a claim about the subject, and the pair of `ended_at` rather than a second opinion about it. NULL exactly while `ended_at` is NULL: the two are one argument at the store (`FastEnd`, lib/fast-store.ts) and are set and cleared together. It exists because the Undo window has to be measured from the ACTION, and `ended_at` is a claim the surface invites the user to backdate — an end backdated past the window was `too-old` the microsecond it landed. `created_at` cannot answer this either: it is the INSERT stamp and an end is an UPDATE. Read by lib/fast-write.ts's `reopenFast` and by nothing else; no reader surface sees it. |
+| `fasts` | `created_at` | record | instant | bare | The ordinary bookkeeping stamp, on the schema's bare convention like every other one — NOT claimed canonical, and never a substitute for `started_at`: when the row reached the app says nothing about when the fast began, which is the whole point of accepting a backdated start. Nor for `end_written_at`: this is stamped once at INSERT, when the fast is still open, and no writer restamps it when the end lands. |
 | `fitness_assessment_entries` | `created_at` | record | instant | bare |  |
 | `fitness_assessments` | `date` | day | day | n/a |  |
 | `fitness_assessments` | `created_at` | record | instant | bare |  |
-| `food_log` | `date` | day | day | n/a |  |
-| `food_log` | `created_at` | record | instant | bare |  |
+| `food_daily_totals` | `date` | day | day | n/a |  |
+| `food_daily_totals` | `created_at` | record | instant | bare |  |
 | `food_log_events` | `date` | day | day | n/a |  |
 | `food_log_events` | `recorded_at` | record | instant | canonical | The TAP instant, `logged_at` until migration 183 (#2205 phase 2, the food wave). Migration 056 froze what it means — never backfilled, because the ranking predicts the next TAP — which is the `recorded_at` semantic under a name the table had coined for itself. The same migration normalized the millisecond-shaped values the offline replay had been writing (#2370) and bound every writer to lib/date.ts. |
 | `food_log_events` | `created_at` | bookkeeping | instant | bare |  |
 | `food_log_events` | `occurred_at` | event | instant | canonical | NULL means nobody stated an eating time, and that stays a real answer (#2019/#2053) rather than being filled in from the tap. `time_source` records whether a present value was a tap contract or a stated one. Named `eaten_at` until migration 183; nothing was backfilled into it then either, because food REFUSES to infer an eating instant where intake infers one, and that divergence is deliberate. |
-| `food_log_events` | `eaten_at` | bookkeeping | instant | bare | VESTIGIAL and always NULL — migration 183 renamed it to `occurred_at` and kept an inert shell only because the frozen migration 154 re-adds the column unless its PRAGMA guard finds it, and migrate() replays every migration. Declared `bookkeeping`, never `event`, so a dead column cannot join the chain lib/row-instants.ts walks; the convention is moot for a column that never holds a value. |
 | `frequency_targets` | `created_at` | bookkeeping | instant | bare |  |
 | `genomic_variants` | `report_date` | event | day | n/a |  |
 | `genomic_variants` | `created_at` | record | instant | bare |  |
@@ -217,8 +221,6 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `hr_minutes` | `ts` | event | instant | canonical | Minute-truncated (lib/date.ts utcMinute) and the row's primary key. Migration 164 converted it from a profile-local wall clock; the local day is now derived at read time. |
 | `illness_episodes` | `start_date` | window-start | day | n/a | The inclusive first active day, NULL when the episode predates the log. Renamed from `started_at` by migration 169 (#2232). |
 | `illness_episodes` | `end_date` | window-end | day | n/a | The INCLUSIVE last active day, NULL while ongoing — the house day-window convention. Migration 169 (#2232) renamed it from `ended_at` AND rewrote the stored value (the old column held the exclusive first inactive day). |
-| `illness_episodes` | `started_at` | window-start | day | n/a | VESTIGIAL, always NULL (#2232, the migration-124 pattern): survives only so the frozen 046/062 statements still prepare under migrate()'s replay. A compat trigger translates a legacy insert onto start_date; the illness-window-collapse-guard scan keeps it out of application code. |
-| `illness_episodes` | `ended_at` | window-end | day | n/a | VESTIGIAL, always NULL (#2232): the legacy EXCLUSIVE end's dead storage, kept for frozen-migration prepares only. The compat trigger converts a legacy insert's value onto the inclusive end_date. |
 | `imaging_studies` | `study_date` | event | day | n/a |  |
 | `imaging_studies` | `created_at` | record | instant | bare |  |
 | `immunization_overrides` | `created_at` | record | instant | bare |  |
@@ -245,10 +247,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `intake_item_doses` | `start_date` | window-start | day | n/a |  |
 | `intake_item_doses` | `end_date` | window-end | day | n/a |  |
 | `intake_item_logs` | `date` | day | day | n/a |  |
-| `intake_item_logs` | `occurred_at` | event | instant | canonical | Migration 165 (#2229's owner ruling, #2205 phase 2 wave 1). This table's FIRST event instant: when the dose was actually taken, populated only when somebody states a time. NULL — every row today — means not-recorded, which is a different and more informative fact than the not-declared `eventInstant` answered before the column existed. It is deliberately NOT filled from `recorded_at`: that stamp is the tap, and copying it here would be the inferred-for-observed substitution #2205 exists to close. |
-| `intake_item_logs` | `recorded_at` | record | instant | bare | RECORD, by owner ruling — it is INFERRED. A scheduled confirm writes the tap moment here, standing in for an intake the app never observed. Named `given_at` until migration 173 (#2205 phase 2 wave 2), which is the whole of that wave: it was a record instant wearing an event's name. It is FIRST in the record chain because it is the more precise of the two: an offline replay carries the client's real tap instant into it, while taken_at is only when the row reached the database. Neither link is the event instant, and that is the whole point. |
-| `intake_item_logs` | `taken_at` | record | instant | bare | The row's insert stamp (a SQLite clock column DEFAULT, which is what puts it on the bare convention), and the SECOND link of the record chain: a row that wrote no `recorded_at` — a SKIP, or anything written before the column existed (pre-migration-041) — falls through to it. The `COALESCE(recorded_at, taken_at)` a dozen readers hand-roll is this chain — a fallback WITHIN the record question, not a substitution of a record instant for an event one. It kept its name through migration 173 deliberately; see the note above this table for why. |
-| `intake_item_logs` | `given_at` | bookkeeping | instant | bare | VESTIGIAL, always NULL (#2205 phase 2 wave 2, the migration-124/169 pattern): migration 173 renamed the live column to `recorded_at` and kept this empty shell so the frozen migrations still work under migrate()'s unconditional replay — 041 guards its whole rebuild on `given_at` being present, and 156 re-creates its index over it. Declared `bookkeeping` rather than `record` on purpose: a dead column must not join the record chain the row readers walk. No application code names it (the SQL orderings all moved to `recorded_at` in the same change). |
+| `intake_item_logs` | `occurred_at` | event | instant | canonical | The stored administration instant. Issue #2876 moved administration writers and corrections here and migrated the old overloaded recorded_at value into it. |
+| `intake_item_logs` | `recorded_at` | record | instant | canonical | The immutable capture/insert stamp. Issue #2876 renamed the old taken_at column to this vocabulary and converted it to canonical UTC+Z, matching food_log_events.recorded_at. |
 | `intake_item_side_effects` | `noted_on` | event | day | n/a |  |
 | `intake_item_side_effects` | `created_at` | record | instant | bare |  |
 | `intake_item_suggestions` | `time_of_day` | planned | time-of-day | n/a |  |
@@ -285,6 +285,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `medical_documents` | `uploaded_at` | record | instant | bare |  |
 | `medical_documents` | `processing_started_at` | lifecycle | instant | bare |  |
 | `medical_documents` | `extraction_completed_at` | lifecycle | instant | bare |  |
+| `medical_documents` | `delivered_at` | lifecycle | instant | bare |  |
 | `medical_record_revisions` | `date` | day | day | n/a |  |
 | `medical_record_revisions` | `superseded_at` | lifecycle | instant | bare |  |
 | `medical_records` | `date` | day | day | n/a |  |
@@ -294,8 +295,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `medication_courses` | `stopped_on` | window-end | day | n/a |  |
 | `medication_courses` | `created_at` | record | instant | bare |  |
 | `metric_samples` | `date` | day | day | n/a |  |
-| `metric_samples` | `start_time` | window-start | instant | mixed | THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, start_time) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe. |
-| `metric_samples` | `end_time` | window-end | instant | mixed | The same two shapes as start_time, and equal to it for an instantaneous reading. |
+| `metric_samples` | `started_at` | window-start | instant | mixed | THE column that most rewards reading this table before writing SQL. It holds vendor ISO-with-milliseconds for an imported sample AND `${date}T00:00:00` — a profile-local DAY midnight, not an instant — for a reading whose author stated only a day. It is also the natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction, so neither shape can be normalized without changing dedupe. |
+| `metric_samples` | `ended_at` | window-end | instant | mixed | The same two shapes as started_at, and equal to it for an instantaneous reading. |
 | `milestones` | `achieved_on` | event | day | n/a |  |
 | `milestones` | `created_at` | record | instant | bare |  |
 | `mood_logs` | `date` | day | day | n/a |  |
@@ -336,8 +337,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `profiles` | `created_at` | bookkeeping | instant | bare |  |
 | `progress_photos` | `date` | day | day | n/a |  |
 | `progress_photos` | `created_at` | record | instant | bare |  |
-| `protein_log` | `date` | day | day | n/a |  |
-| `protein_log` | `created_at` | record | instant | bare |  |
+| `protein_daily_totals` | `date` | day | day | n/a |  |
+| `protein_daily_totals` | `created_at` | record | instant | bare |  |
 | `protocols` | `start_date` | window-start | day | n/a |  |
 | `protocols` | `end_date` | window-end | day | n/a |  |
 | `protocols` | `created_at` | bookkeeping | instant | bare |  |
@@ -361,9 +362,9 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `stream_frontiers` | `frontier_at` | event | instant | canonical | The newest EVENT instant the stream had reached when ingest last looked — a watermark copied from the stream table's own event column (hr_minutes.ts today), so it carries that column's semantic. NULL while the stream has never delivered a row. Migration 179 (#2341), born canonical. |
 | `stream_frontiers` | `advanced_at` | lifecycle | instant | canonical | When the frontier was last observed to MOVE. A transition in this watermark row's own life, not in the subject's: it is the instant the observation was made, never the instant the data carries. Migration 179 (#2341), born canonical. |
 | `stream_frontiers` | `observed_at` | record | instant | canonical | When ingest last looked at all, advancing or not — the stamp that makes `syncs_since_advance` auditable. Migration 179 (#2341), born canonical. |
-| `substance_log` | `date` | day | day | n/a |  |
-| `substance_log` | `logged_at` | record | instant | canonical |  |
-| `substance_log` | `created_at` | bookkeeping | instant | bare |  |
+| `substance_daily_totals` | `date` | day | day | n/a |  |
+| `substance_daily_totals` | `recorded_at` | record | instant | canonical |  |
+| `substance_daily_totals` | `created_at` | bookkeeping | instant | bare |  |
 | `symptom_logs` | `date` | day | day | n/a |  |
 | `symptom_logs` | `created_at` | record | instant | bare |  |
 | `symptom_photos` | `date` | day | day | n/a |  |

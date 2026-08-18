@@ -21,18 +21,12 @@ import { timeColumn, type TimeColumn } from "@/lib/time-columns";
 const NY = "America/New_York";
 
 describe("pattern 1 — the event/record pair", () => {
-  // intake_item_logs is the pattern's harder half after the owner's #2205 ruling:
-  // `recorded_at` is INFERRED from the tap, so it is a RECORD instant, and `taken_at` is
-  // the row's insert stamp behind it. The dozen hand-rolled
-  // `COALESCE(recorded_at, taken_at)` readers were falling WITHIN one question, not
-  // substituting a record instant for an event one. Phase 2 wave 1 (migration 165)
-  // added the event column this chain never had: a nullable `occurred_at`, filled only
-  // when somebody states a time.
+  // intake_item_logs now matches food_log_events: `recorded_at` is immutable capture
+  // and nullable `occurred_at` is the event instant, filled when somebody states one.
   const dose = {
     date: "2026-03-10",
     occurred_at: null,
-    recorded_at: "2026-03-10 13:05:00",
-    taken_at: "2026-03-10 18:40:00",
+    recorded_at: "2026-03-10T13:05:00Z",
   };
 
   it("says nobody stated when an untimed dose confirm happened", () => {
@@ -62,9 +56,7 @@ describe("pattern 1 — the event/record pair", () => {
     });
   });
 
-  it("reads the record instant from the more precise link of the chain", () => {
-    // recorded_at first: an offline replay carries the client's real tap instant into it,
-    // while taken_at is only when the row reached the database.
+  it("reads the immutable record instant", () => {
     expect(recordInstant("intake_item_logs", dose)).toEqual({
       known: true,
       at: "2026-03-10T13:05:00Z",
@@ -73,20 +65,7 @@ describe("pattern 1 — the event/record pair", () => {
     });
   });
 
-  it("falls through the record chain for a row written before recorded_at existed", () => {
-    expect(
-      recordInstant("intake_item_logs", { ...dose, recorded_at: null })
-    ).toEqual({
-      known: true,
-      at: "2026-03-10T18:40:00Z",
-      column: "taken_at",
-      derived: false,
-    });
-  });
-
-  it("normalizes a bare stored value to the canonical shape", () => {
-    // The caller never learns which convention the column is on — that is what makes
-    // it immune to a later conversion migration as well as to phase 2's renames.
+  it("keeps the canonical stored value", () => {
     const r = recordInstant("intake_item_logs", dose);
     expect(r.known && r.at.endsWith("Z")).toBe(true);
   });
@@ -148,30 +127,32 @@ describe("pattern 2 — record-only", () => {
   it("has no event instant for any row, ever", () => {
     const drink = {
       date: "2026-03-10",
-      logged_at: "2026-03-10T23:10:00Z",
+      recorded_at: "2026-03-10T23:10:00Z",
       created_at: "2026-03-10 23:10:00",
     };
     // Not "this row is missing one" — the schema records when a drink was LOGGED and
     // nothing about when it was drunk.
-    expect(eventInstant("substance_log", drink)).toEqual({
+    expect(eventInstant("substance_daily_totals", drink)).toEqual({
       known: false,
       why: "not-declared",
       column: null,
     });
-    expect(recordInstant("substance_log", drink)).toMatchObject({
+    expect(recordInstant("substance_daily_totals", drink)).toMatchObject({
       at: "2026-03-10T23:10:00Z",
-      column: "logged_at",
+      column: "recorded_at",
     });
-    expect(bestKnownInstant("substance_log", drink)).toMatchObject({
+    expect(bestKnownInstant("substance_daily_totals", drink)).toMatchObject({
       semantic: "record",
     });
   });
 
   it("reports the record's absence when the table has no event column at all", () => {
-    expect(bestKnownInstant("substance_log", { logged_at: null })).toEqual({
+    expect(
+      bestKnownInstant("substance_daily_totals", { recorded_at: null })
+    ).toEqual({
       known: false,
       why: "not-recorded",
-      column: "logged_at",
+      column: "recorded_at",
     });
   });
 
@@ -243,7 +224,7 @@ describe("pattern 4 — windows", () => {
     // activities/metric_samples declare start/end, not event/record-of-the-subject, so
     // asking the event question of them is answered rather than approximated.
     expect(
-      eventInstant("metric_samples", { start_time: "2026-03-10T11:00:00Z" })
+      eventInstant("metric_samples", { started_at: "2026-03-10T11:00:00Z" })
     ).toEqual({ known: false, why: "not-declared", column: null });
   });
 

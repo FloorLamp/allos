@@ -26,7 +26,7 @@ import { buildFoodNudge } from "@/lib/notifications/food";
 import {
   buildIntakeReminderForSlots,
   withDoseCorrections,
-} from "@/lib/notifications/supplements";
+} from "@/lib/notifications/intake";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { reconcileProfileMessages } from "@/lib/notifications/reconcile";
 import {
@@ -322,13 +322,16 @@ function seedDose(
   return { itemId, doseId };
 }
 
-// `taken_at` is written by SQL's real clock (the ALLOS_TEST_NOW freeze deliberately
+// `recorded_at` is written by SQL's real clock (the ALLOS_TEST_NOW freeze deliberately
 // does not reach it), so burst freshness is pinned by stamping it explicitly after the
 // real write path has created the row.
 function stampTap(logId: number, sqlUtc: string): void {
+  const canonical = sqlUtc.includes("T")
+    ? sqlUtc
+    : `${sqlUtc.replace(" ", "T")}Z`;
   db.prepare(
-    `UPDATE intake_item_logs SET taken_at = ?, recorded_at = ? WHERE id = ?`
-  ).run(sqlUtc, sqlUtc, logId);
+    `UPDATE intake_item_logs SET recorded_at = ?, occurred_at = ? WHERE id = ?`
+  ).run(canonical, canonical, logId);
 }
 
 function doseLogs(profileId: number) {

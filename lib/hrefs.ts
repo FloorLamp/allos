@@ -31,7 +31,7 @@
 //    Static/one-off links stay plain literals, now compile-checked and greppable.
 //
 // Two flavors of helper:
-//   - QUERY-RULE helpers (readingDetailHref, timelineDayHref, dataSectionHref):
+//   - QUERY-RULE helpers (clinicalResultDetailHref, timelineDayHref, dataSectionHref):
 //     encode a canonical-gating / param-shape rule shared by ≥2 surfaces.
 //   - DYNAMIC-ROUTE helpers (importHref, encounterHref, protocolHref,
 //     immunizationHref): a dynamic route like `/import/5` is NOT assignable to
@@ -73,6 +73,7 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 // The standalone Medications page (#746) — medications left the old combined
 // intake surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
+export const RECORDS_CONDITIONS_HREF: AppRoute = "/records/problems/conditions";
 
 // The annual retrospective (#2179). A QUERY-RULE helper: the year lives in `?year=`,
 // the newest year is the bare path (a link with no year means "the latest one"), and
@@ -186,26 +187,26 @@ export function addItemFromPoolHref(
 // Query-rule helpers
 // --------------------------------------------------------------------------
 
-// The clinical-readings LIST route: where `readingDetailHref` falls back when there is
+// The Clinical results LIST route: where `clinicalResultDetailHref` falls back when there is
 // no canonical name to chart, and (since #1447) where a PARAMLESS
-// /results/readings/view redirects — that route can only render a degenerate empty
+// /results/clinical-results/view redirects — that route can only render a degenerate empty
 // page, and this helper already owns "no name ⇒ the list". One constant so the
 // link rule and the redirect can never point at different places.
-export const READINGS_LIST_HREF: AppRoute = "/results/readings";
+export const CLINICAL_RESULTS_LIST_HREF: AppRoute = "/results/clinical-results";
 
-// PRIVATE destination builder: the EPISODIC reading's page (/results/readings/view), or
+// PRIVATE destination builder: the EPISODIC result's page (/results/clinical-results/view), or
 // the list when there's nothing to chart. The RULE (was duplicated, wrong in one
 // place — #283 bug 5): the view page resolves `?name=` as the CANONICAL name, so
-// only a canonicalized reading has a series to link to. Gate on `canonicalName`;
+// only a canonicalized result has a series to link to. Gate on `canonicalName`;
 // when present, encode the CANONICAL name (NOT the raw display name — the bug
 // flaggedToAttention shipped); when absent, fall back to the list.
 //
 // Not exported since #1932: it names ONE of the two detail surfaces, and a call
 // site that could pick between them would be free to disagree with the routing
-// rule. Everything outside this module asks `readingDetailHref` for "the detail
-// page for this reading" and gets whichever surface that reading belongs on —
+// rule. Everything outside this module asks `clinicalResultDetailHref` for "the detail
+// page for this result" and gets whichever surface that result belongs on —
 // exactly as `metricDetailHref` stays honest about being only the metric surface.
-function episodicReadingHref(
+function episodicClinicalResultHref(
   canonicalName: string | null | undefined,
   rawName?: string | null
 ): AppRoute {
@@ -216,12 +217,12 @@ function episodicReadingHref(
   // present `canonical` always wins.
   const name = canonical || rawName?.trim();
   return canonical && name
-    ? `/results/readings/view?name=${encodeURIComponent(name)}`
-    : READINGS_LIST_HREF;
+    ? `/results/clinical-results/view?name=${encodeURIComponent(name)}`
+    : CLINICAL_RESULTS_LIST_HREF;
 }
 
-// THE detail page for a clinical reading, wherever that reading's surface lives
-// (issue #1932). One helper for all eleven-plus link sites — the biomarkers table,
+// THE detail page for a clinical result, wherever that result's surface lives
+// (issue #1932). One helper for all eleven-plus link sites — the clinical results table,
 // Recent labs, Timeline, search, findings, the import "what this wrote" produced-rows
 // drilldown, the panel strip on the detail page itself — so none of them can decide
 // for itself which renderer a reading deserves.
@@ -229,40 +230,40 @@ function episodicReadingHref(
 // The rule is CADENCE, and it lives in lib/reading-cadence.ts: a continuous reading
 // (SpO2, blood pressure, respiratory rate, body temperature) resolves to its metric
 // detail surface, which charts it as the trend it is; every episodic reading resolves
-// to the reference-range renderer at /results/readings/view. Named for its SUBJECT rather
+// to the reference-range renderer at /results/clinical-results/view. Named for its SUBJECT rather
 // than either destination, because a helper named after one destination invites a
 // caller to reason "this one is different, so I should use something else" — the
 // drift the centralization exists to prevent.
-export function readingDetailHref(
+export function clinicalResultDetailHref(
   canonicalName: string | null | undefined,
   rawName?: string | null
 ): AppRoute {
   const slug = continuousReadingSlug(canonicalName);
   return slug
     ? metricDetailHref(slug)
-    : episodicReadingHref(canonicalName, rawName);
+    : episodicClinicalResultHref(canonicalName, rawName);
 }
 
-// The biomarkers list FILTERED to one normalized panel (#1502). A rule-carrying
+// The Clinical results list FILTERED to one normalized panel (#1502). A rule-carrying
 // helper because the `?panel=` facet now encodes a controlled SLUG (not the old
 // free-text heading) on the post-#1079 list route, and two lanes emit it — the
-// Panel cell in ReadingsTable and the "see the whole panel" link on biomarker
+// Panel cell in ClinicalResultsTable and the "see the whole panel" link on biomarker
 // detail. One encoding so they can't drift onto different routes or param shapes.
-export function panelFilterHref(panel: PanelId): AppRoute {
-  return `/results/readings?panel=${encodeURIComponent(panel)}`;
+export function clinicalResultPanelHref(panel: PanelId): AppRoute {
+  return `/results/clinical-results?panel=${encodeURIComponent(panel)}`;
 }
 
-// The reading ADD-FORM deep link: Results › Readings with the add form
+// The result ADD-FORM deep link: Results › Clinical results with the add form
 // focused (?new=1) and optionally name-prefilled (#662). This is the ONE encoding
 // of the lab-record deep-link shape (#1083) shared by the preventive screening
 // rows/nudges (lib/preventive-upcoming) and the data-quality PhenoAge gap
 // (#1146), so the two lanes can't diverge (#221). The base is the post-#1079
-// tabbed route — never `/results#biomarkers`, which only survives via redirect.
-export function readingAddHref(name?: string | null): AppRoute {
+// tabbed route — never the retired `/results#biomarkers` bookmark.
+export function clinicalResultAddHref(name?: string | null): AppRoute {
   const n = name?.trim();
   return n
-    ? `/results/readings?new=1&name=${encodeURIComponent(n)}`
-    : "/results/readings?new=1";
+    ? `/results/clinical-results?new=1&name=${encodeURIComponent(n)}`
+    : "/results/clinical-results?new=1";
 }
 
 // The Medications list filtered to a maintenance slice (#1146). Source of truth
@@ -276,6 +277,13 @@ export type MedicationFilter = (typeof MEDICATION_FILTERS)[number];
 
 export function medicationsFilterHref(filter: MedicationFilter): AppRoute {
   return `/medications?filter=${filter}`;
+}
+
+// One activity's canonical page (#2870): every activity type uses this route;
+// callers preserve optional browsing context with typed query helpers below.
+export function trainingActivityPageHref(activityId: number): AppRoute {
+  const href: Route<`/training/activity/${number}`> = `/training/activity/${activityId}`;
+  return href as AppRoute;
 }
 
 // The Timeline "jump to this day" link: filter the feed to a single day AND
@@ -454,13 +462,6 @@ export function protocolHref(id: number): AppRoute {
   return href as AppRoute;
 }
 
-// A read-first cycling activity detail page. The dynamic route remains scoped by
-// the active profile at its query boundary; this helper only owns its URL shape.
-export function rideHref(id: number): AppRoute {
-  const href: Route<`/training/rides/${number}`> = `/training/rides/${id}`;
-  return href as AppRoute;
-}
-
 export interface CyclingLens {
   metric: CardioMetric;
   range: RangeId;
@@ -472,7 +473,7 @@ export interface CyclingLens {
 // overview link, so opening a Power · 6m ride never silently returns to
 // Distance · All.
 export function cyclingRideHref(id: number, lens: CyclingLens): AppRoute {
-  const path: Route<`/training/rides/${number}`> = `/training/rides/${id}`;
+  const path = trainingActivityPageHref(id);
   const params = new URLSearchParams({
     metric: lens.metric,
     range: lens.range,

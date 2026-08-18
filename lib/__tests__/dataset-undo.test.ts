@@ -12,7 +12,6 @@ describe("dataset table → undo kind mapping", () => {
   it("each mapped kind is rooted at exactly the table it is keyed by", () => {
     for (const [table, kind] of Object.entries(DATASET_UNDO_KIND)) {
       const spec = UNDO_KINDS[kind];
-      expect(spec, `kind for ${table}`).toBeDefined();
       expect(spec.ownedTable, `root of ${kind}`).toBe(table);
       // The root entity's table is the owned table the capture ownership-checks.
       expect(spec.entities[0].table).toBe(spec.ownedTable);
@@ -59,15 +58,16 @@ describe("dataset table → undo kind mapping", () => {
     expect(undoKindForTable("nonexistent")).toBeNull();
     // The argued exclusions stay plain bulk deletes.
     expect(undoKindForTable("frequency_targets")).toBeNull();
-    expect(undoKindForTable("food_log")).toBeNull();
+    expect(undoKindForTable("food_daily_totals")).toBeNull();
     expect(undoKindForTable("food_log_events")).toBeNull();
     expect(undoKindForTable("activities")).toBe("activity");
-    // The supplements dataset resolves through its physical table.
+    // The mixed intake dataset resolves through its physical table.
     expect(undoKindForTable("intake_items")).toBe("intake-item");
-    expect(undoKindForTable("supplements")).toBeNull();
     // #2038's kinds, mapped by #2125.
     expect(undoKindForTable("practice_logs")).toBe("practice-session");
-    expect(undoKindForTable("substance_log")).toBe("substance-history");
+    expect(undoKindForTable("substance_daily_totals")).toBe(
+      "substance-history"
+    );
     // #2127: one period row, same single-entity shape.
     expect(undoKindForTable("cycles")).toBe("cycle");
     // #1847: the clinical passport datasets. `immunizations` had a dedicated

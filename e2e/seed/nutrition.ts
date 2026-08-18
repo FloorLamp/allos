@@ -44,7 +44,12 @@ import {
 } from "../fixture-logins";
 import { getTimezone } from "../../lib/settings";
 import { setFixtureTimezone } from "../fixture-timezones";
-import { ins, seedMemberLogin, fixtureProfileId } from "./common";
+import {
+  ins,
+  seedMemberLogin,
+  adultFixtureProfileId,
+  fixtureProfileId,
+} from "./common";
 
 // ── Nutrition trio (protein gauge / preferences / fiber) ──
 export function seedNutritionTrio(): void {
@@ -61,7 +66,9 @@ export function seedNutritionTrio(): void {
   {
     const nToday = today(nutritionId);
     // Clear prior fixture data so a reused dev server re-seeds cleanly.
-    db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(nutritionId);
+    db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
+      nutritionId
+    );
     db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(
       nutritionId
     );
@@ -96,7 +103,7 @@ export function seedNutritionTrio(): void {
     const logFood = (date: string, slug: string, servings: number) =>
       db
         .prepare(
-          `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
+          `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
         )
         .run(nutritionId, date, slug, servings);
     for (const [dayOffset, rows] of [
@@ -170,7 +177,7 @@ export function seedNutritionTrio(): void {
   // A dedicated ADULT profile that owns NO equipment (issue #592) so the activity
   // form's equipment picker renders its empty-state "Add equipment" bootstrap door.
   // It owns nothing else either — the spec only opens the log form and reads the door.
-  const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
+  const noGearId = adultFixtureProfileId(NO_GEAR_PROFILE);
   db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(noGearId);
   seedMemberLogin(E2E_LOGIN_NOGEAR, noGearId);
 
@@ -216,7 +223,7 @@ export function seedNutritionTrio(): void {
   db.prepare(
     `INSERT INTO medical_records
      (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
-   VALUES (?, ?, 'biomarker', 'VO2 Max', '48', 48, 'mL/kg/min', 'VO2 Max', 'oura')`
+   VALUES (?, ?, 'vitals', 'VO2 Max', '48', 48, 'mL/kg/min', 'VO2 Max', 'oura')`
   ).run(fitnessId, fitnessRecent);
   reconcileFlags(fitnessId);
   db.prepare(
@@ -261,9 +268,9 @@ export function seedNutritionTrio(): void {
   // A dedicated ADULT profile for the mobility spec (#840): sex + birthdate so the
   // fitness-norms percentile gate opens, plus a LOW sit-and-reach vital so the Training
   // overview's Mobility section renders a deficit→habit SUGGESTION (a Legs mobility habit).
-  // NO seeded recovery session / mobility_region target — the log bar starts empty and the
+  // NO seeded mobility session / mobility_region target — the log bar starts empty and the
   // suggestion is present; the spec owns its own move toggles. Idempotent: clear the
-  // profile's recovery activities + mobility_region targets so a reused server re-plants a
+  // profile's mobility activities + mobility_region targets so a reused server re-plants a
   // clean slate.
   const mobilityId = fixtureProfileId(MOBILITY_PROFILE);
   db.prepare(
@@ -273,7 +280,7 @@ export function seedNutritionTrio(): void {
     `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-01-01')`
   ).run(mobilityId);
   db.prepare(
-    `DELETE FROM activities WHERE profile_id = ? AND type = 'recovery'`
+    `DELETE FROM activities WHERE profile_id = ? AND type = 'mobility'`
   ).run(mobilityId);
   db.prepare(
     `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'mobility_region'`
@@ -292,7 +299,7 @@ export function seedNutritionTrio(): void {
   // updated_at (auto-save timestamp) — so getWorkoutPresence reads `active`. Drives
   // the workout dock hydration/reopen and the household presence chip. Idempotent:
   // clear the profile's activities first so a reused server re-plants exactly one.
-  const presenceId = fixtureProfileId(PRESENCE_PROFILE);
+  const presenceId = adultFixtureProfileId(PRESENCE_PROFILE);
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(presenceId);
   {
     const now = clockNow();
@@ -320,7 +327,7 @@ export function seedNutritionTrio(): void {
   // sets that hit their rep target, plus a prior session of the same lift a week
   // earlier so the recap flags a PR. So getWorkoutPresence reads `finished` and the
   // dashboard renders the finished-window recap card. Idempotent: clear activities first.
-  const recapId = fixtureProfileId(RECAP_PROFILE);
+  const recapId = adultFixtureProfileId(RECAP_PROFILE);
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(recapId);
   {
     const now = clockNow();
@@ -380,7 +387,7 @@ export function seedFoodSlots(): void {
   // the default slot boundaries are 11:00/15:00, so the 08:00Z / 12:00Z / 18:00Z taps
   // land in Morning / Midday / Evening — whatever slot the e2e wall clock is in, the
   // one-tap bar's lead matches the slot chip. Idempotent: hard-clear the profile's
-  // food_log + food_log_events + food_group targets so a reused server always starts from
+  // food_daily_totals + food_log_events + food_group targets so a reused server always starts from
   // this exact skew.
   const foodSlotId = fixtureProfileId(FOOD_SLOT_PROFILE);
   // Opt this profile OUT of the pinned instance timezone (top of file): its taps
@@ -390,7 +397,9 @@ export function seedFoodSlots(): void {
   // the tap→slot mapping instead of stabilizing anything.
   setFixtureTimezone(db, foodSlotId, "food-slot", "UTC");
   const foodSlotAnchor = today(foodSlotId);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(foodSlotId);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
+    foodSlotId
+  );
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(
     foodSlotId
   );
@@ -399,7 +408,7 @@ export function seedFoodSlots(): void {
   ).run(foodSlotId);
   {
     const fLog = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
     );
     const fEvent = db.prepare(
@@ -456,11 +465,11 @@ export function seedFoodUsual(): void {
   const usualId = fixtureProfileId(FOOD_USUAL_PROFILE);
   setFixtureTimezone(db, usualId, "food-usual", "UTC");
   const usualAnchor = today(usualId);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(usualId);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(usualId);
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(usualId);
   {
     const fLog = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
     );
     const fEvent = db.prepare(
@@ -502,10 +511,12 @@ export function seedRoutineUsual(): void {
   //
   // UTC with the default 11:00/15:00 boundaries, so 08:00Z is Morning, 12:00Z Midday and
   // 19:00Z Evening. Idempotent: every fixture-owned row is cleared first.
-  const routineId = fixtureProfileId(ROUTINE_USUAL_PROFILE);
+  const routineId = adultFixtureProfileId(ROUTINE_USUAL_PROFILE);
   setFixtureTimezone(db, routineId, "routine-usual", "UTC");
   const routineAnchor = today(routineId);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(routineId);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
+    routineId
+  );
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(routineId);
   db.prepare(
     `DELETE FROM intake_item_logs WHERE dose_id IN
@@ -519,7 +530,7 @@ export function seedRoutineUsual(): void {
   db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(routineId);
   {
     const fLog = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
     );
     const fEvent = db.prepare(
@@ -590,11 +601,13 @@ export function seedFoodPinSplit(): void {
   // quick rows, which is the only way the rendered order stops matching the ranked one.
   // Idempotent: every fixture-owned row is cleared first, so a reused server re-seeds
   // into exactly this state.
-  const pinId = fixtureProfileId(FOOD_PIN_PROFILE);
+  const pinId = adultFixtureProfileId(FOOD_PIN_PROFILE);
   const pinAnchor = today(pinId);
-  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(pinId);
+  db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(pinId);
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(pinId);
-  db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(pinId);
+  db.prepare(`DELETE FROM protein_daily_totals WHERE profile_id = ?`).run(
+    pinId
+  );
   db.prepare(`DELETE FROM protocols WHERE profile_id = ?`).run(pinId);
   db.prepare(`DELETE FROM frequency_targets WHERE profile_id = ?`).run(pinId);
   // The preset the bar re-offers, and the tracker bit the ranking reads.

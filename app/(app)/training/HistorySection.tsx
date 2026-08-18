@@ -4,22 +4,25 @@ import {
   getSportByActivity,
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
-  getFrequencyTargetProgress,
   getLatestBodyMetric,
   getTrainingLogWeekSummary,
   getRecentByExercise,
   getActiveDaysStrip,
 } from "@/lib/queries";
-import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import {
   getUnitPrefs,
   getProfileSex,
+  getProfileAge,
   getDisplayFormatPrefs,
 } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { EMPTY_TRAINING_LOG_FILTERS } from "@/lib/training-log-filters";
 import { resolveTrainingLogFeedContext } from "./training-log-feed-resolve";
 import TrainingLogView from "./TrainingLogView";
+import {
+  isAdultForClinical,
+  isStrengthTrainingRelevant,
+} from "@/lib/life-stage";
 
 export default async function HistorySection({
   initialCreateDate,
@@ -54,19 +57,15 @@ export default async function HistorySection({
   );
 
   const summary = getTrainingLogWeekSummary(profile.id);
-  const goals = getOutcomeGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id).filter(
+    (goal) =>
+      isStrengthTrainingRelevant(getProfileAge(profile.id)) ||
+      goal.kind !== "exercise"
+  );
   // Map → plain object so it can cross the server/client boundary.
   const goalProgress = Object.fromEntries(
     getOutcomeGoalProgressMap(profile.id, goals)
   );
-  const targets = getFrequencyTargetProgress(profile.id).map((t) => ({
-    label: frequencyScopeLabel(t.target.scope_kind, t.target.scope_value),
-    count: t.count,
-    perWeek: t.per_week,
-    met: t.met,
-    pace: t.pace,
-  }));
-
   return (
     <TrainingLogView
       initialCreateDate={initialCreateDate}
@@ -92,11 +91,11 @@ export default async function HistorySection({
       weekSummary={{
         sessions: summary.sessions,
         activeDays: summary.activeDays,
-        targets,
       }}
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}
       sex={getProfileSex(profile.id)}
+      adultClinicalContent={isAdultForClinical(getProfileAge(profile.id))}
       canWriteVideos={feed.canWriteVideos}
       multiView={
         feed.multi ? { actingProfileId: feed.actingProfileId } : undefined

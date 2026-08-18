@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { followLink } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_MEMBER_PASSWORD,
@@ -83,13 +84,13 @@ test.describe("Training Log first-run empty state (#809)", () => {
     ).toBeVisible();
 
     // The desktop action row is `hidden` below md; the mobile entry point is
-    // MobileNav's always-mounted quick-log chrome (the responsive shared-content
-    // rule — the first-run empty state must not strand mobile users either). Both
-    // the "Log activity" (+) and "Start workout" (bolt) controls are present, and
-    // "Log activity" opens the editor overlay.
+    // the dock's always-mounted log puck (the responsive shared-content rule —
+    // the first-run empty state must not strand mobile users either). Both Train
+    // rows are present in its sheet, and Log activity opens the editor overlay.
     await expect(page.getByTestId("training-log-actions")).toBeHidden();
-    await expect(page.getByTestId("start-workout-mobile")).toBeVisible();
-    const mobileLog = page.getByRole("button", { name: "Log activity" });
+    const sheet = await openLogSheet(page);
+    await expect(await showLogRow(sheet, "live-workout")).toBeVisible();
+    const mobileLog = await showLogRow(sheet, "log-activity");
     await expect(mobileLog).toBeVisible();
     await mobileLog.click();
     await expect(page.getByPlaceholder(/What did you do/)).toBeVisible();

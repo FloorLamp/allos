@@ -39,7 +39,7 @@ function newDocument(profileId: number, filename: string): number {
 
 function emptyInput(): PersistInput {
   return {
-    records: [],
+    observations: [],
     immunizations: [],
     allergies: [],
     conditions: [],

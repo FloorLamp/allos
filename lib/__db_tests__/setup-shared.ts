@@ -20,6 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { templateDbPath } from "./shared-template";
 import { resetTelegramSpies } from "./telegram-spies";
+import { installFixtureProfileSpace } from "./fixture-profile-space";
 
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 
@@ -101,10 +102,18 @@ beforeAll(async () => {
   // below. Widening that window with a dynamic import is enough to make unrelated
   // specs read a database they did not write to.
   resetTelegramSpies();
-  const { reopenDatabaseForTests } = await import("../db");
+  // The MODULE NAMESPACE, not a destructure: `db` is an `export let` that
+  // `reopenDatabaseForTests()` reassigns, and a destructured copy would still
+  // point at the handle on the PREVIOUS file's database.
+  const dbModule = await import("../db");
   // Closes the handle still held on previousDir, which is what makes the
   // directory removable on Windows (an open file cannot be unlinked there).
-  reopenDatabaseForTests();
+  dbModule.reopenDatabaseForTests();
+  // The DATABASE is private per file; `data/uploads/**` is NOT — every media
+  // store resolves its root from the shared cwd, so a per-profile fixture
+  // directory belongs to this file only if the profile id does. See
+  // ./fixture-profile-space.ts (#2670).
+  installFixtureProfileSpace(dbModule.db);
   await resetCarriedState();
   if (previousDir !== activeDir) discard(previousDir);
 });

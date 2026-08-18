@@ -5,7 +5,7 @@
 // lib/biomarker-trajectory engine over them.
 //
 // Every read goes through an already PROFILE-SCOPED query (getUsedCanonicalNames /
-// getBiomarkerSeries / getCanonicalBiomarker) or the per-profile settings helpers,
+// getBiomarkerSeries / getCanonicalResultDefinition) or the per-profile settings helpers,
 // so no owned SQL is added here and the profile-scoping guard is unaffected. The
 // series is the WHOLE history (not windowed to the Trends date control): a
 // trajectory is a property of the analyte over time, independent of the chart's
@@ -15,7 +15,7 @@ import {
   getUsedCanonicalNames,
   getBiomarkerSeries,
   getAllBiomarkerSeries,
-  getCanonicalBiomarker,
+  getCanonicalResultDefinition,
 } from "./queries";
 import {
   getProfileSex,
@@ -23,7 +23,7 @@ import {
   getProfileReproductiveStatus,
 } from "./settings";
 import { canonicalGroupKey, groupByCanonicalName } from "./biomarker-group";
-import { readingDetailHref } from "./hrefs";
+import { clinicalResultDetailHref } from "./hrefs";
 import type { ClinicalObservation, ReproductiveStatus, Sex } from "./types";
 import {
   referenceRange,
@@ -75,7 +75,7 @@ function buildInputFromSeries(
   status: ReproductiveStatus | null
 ): TrajectoryInput | null {
   if (series.length === 0) return null;
-  const cb = getCanonicalBiomarker(canonical);
+  const cb = getCanonicalResultDefinition(canonical);
   const latestDate = series[series.length - 1]?.date ?? null;
   const age = getProfileAgeOn(profileId, latestDate);
 
@@ -141,7 +141,7 @@ function buildInputFromSeries(
       reference
     ),
     today,
-    href: readingDetailHref(canonical),
+    href: clinicalResultDetailHref(canonical),
   };
 }
 

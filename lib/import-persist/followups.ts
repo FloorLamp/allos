@@ -1,5 +1,5 @@
 import {
-  adoptBloodTypeFromRecords,
+  adoptBloodTypeFromObservations,
   adoptProfileFromExtraction,
   type ProfileAdoption,
 } from "../settings";
@@ -9,8 +9,8 @@ import type { PersistInput } from "../import-shape";
 export interface ImportFollowupOptions {
   demographics: PersistInput["demographics"];
   canonicalNames: string[];
-  insertedRecordIds: number[];
-  records?: PersistInput["records"];
+  insertedObservationIds: number[];
+  observations?: PersistInput["observations"];
 }
 
 // Best-effort work performed after imported rows have committed. Keeping this out
@@ -21,12 +21,15 @@ export function applyImportFollowups(
   opts: ImportFollowupOptions
 ): ProfileAdoption {
   const adopted = adoptProfileFromExtraction(profileId, opts.demographics);
-  adopted.bloodType = adoptBloodTypeFromRecords(profileId, opts.records);
+  adopted.bloodType = adoptBloodTypeFromObservations(
+    profileId,
+    opts.observations
+  );
   if (adopted.bloodType) adopted.changed = true;
 
   addCanonicalNames(opts.canonicalNames);
   if (adopted.sexAdopted) reconcileFlags(profileId);
-  else reconcileFlags(profileId, opts.insertedRecordIds);
+  else reconcileFlags(profileId, opts.insertedObservationIds);
 
   return adopted;
 }

@@ -39,10 +39,12 @@ import type {
 } from "./types";
 import {
   CONDITIONS,
+  WORKOUT_CONDITIONS,
   OBLIGATIONS,
   TIME_BUCKETS,
   FOOD_TIMINGS,
 } from "./intake-schedule";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "./life-stage";
 import { isNonOptimal, isOutOfRange } from "./reference-range";
 import {
   screenSuggestionSafety,
@@ -55,7 +57,7 @@ import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { strOrNull } from "./parse";
 import { biomarkerSuggestionSource } from "./supplement-suggestion-source";
-import { isCuratedSupplementBiomarker } from "./supplement-suggest-curated";
+import { curatedSupplementAnswersReading } from "./supplement-suggest-curated";
 
 const log = createLogger("supplement-suggest");
 
@@ -169,8 +171,20 @@ function buildContext(
     getClinicalObservations(profileId, { range: "nonoptimal" }).slice(0, 30);
   const recentLabs = getClinicalObservations(profileId).slice(0, 12);
   const supplements = getIntakeItems(profileId).filter((s) => s.active);
-  const goals = getOutcomeGoals(profileId).filter((g) => isGoalLive(g));
-  const activities = getActivities(profileId, 10);
+  const age = getProfileAge(profileId);
+  const trainingRelevant = isTrainingRelevant(age);
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
+  const goals = trainingRelevant
+    ? getOutcomeGoals(profileId).filter(
+        (g) =>
+          isGoalLive(g) && (strengthTrainingRelevant || g.kind !== "exercise")
+      )
+    : [];
+  const activities = trainingRelevant
+    ? getActivities(profileId, 10).filter(
+        (activity) => strengthTrainingRelevant || activity.type !== "strength"
+      )
+    : [];
 
   // Safety context (issue #413): allergies, active conditions, sex/age, and the
   // active MEDICATIONS distinguished from supplements. All one profile-scoped
@@ -190,7 +204,6 @@ function buildContext(
   const meds = supplements.filter((s) => s.kind === "medication");
   const plainSupps = supplements.filter((s) => s.kind !== "medication");
   const sex = getProfileSex(profileId);
-  const age = getProfileAge(profileId);
 
   // Out-of-range LOW labs anchor the "must" (deficiency) safeguard below.
   const lowLabNames = oorLabs
@@ -202,6 +215,11 @@ function buildContext(
   lines.push("## Profile");
   lines.push(`- Sex: ${sex ?? "not recorded"}`);
   lines.push(`- Age: ${age != null ? `${age}` : "not recorded"}`);
+  if (!trainingRelevant) {
+    lines.push("- Do not make activity- or workout-related suggestions.");
+  } else if (!strengthTrainingRelevant) {
+    lines.push("- Do not make strength-training or weightlifting suggestions.");
+  }
 
   lines.push("\n## Out-of-range / non-optimal labs");
   if (oorLabs.length === 0) lines.push("None.");
@@ -267,12 +285,17 @@ function buildContext(
   // and the user is already looking at those answers. This route is the FALLBACK for
   // what the map does not cover, so name the covered labs and tell the model not to
   // restate them: a generated duplicate of a curated claim is exactly the output that
-  // would blur the distinction the two surfaces exist to keep.
+  // would blur the distinction the two surfaces exist to keep. The question is asked
+  // per READING (name + flag side, #2754), never per name: a reading the curated
+  // engine will not answer — a LOW LDL, a HIGH ferritin — must stay open to this
+  // route, or no engine answers it at all.
   const coveredLabs = [
     ...new Set(
       oorLabs
+        .filter((r) =>
+          curatedSupplementAnswersReading(r.canonical_name || r.name, r.flag)
+        )
         .map((r) => r.canonical_name || r.name)
-        .filter((n) => isCuratedSupplementBiomarker(n))
     ),
   ];
   if (coveredLabs.length > 0) {
@@ -308,7 +331,8 @@ const str = strOrNull;
 function normalizeDrafts(
   raw: any,
   lowLabNames: string[],
-  safety: SafetyContext
+  safety: SafetyContext,
+  activityScheduleAvailable: boolean
 ): { drafts: SuggestionDraft[]; dropped: string[] } {
   const arr = Array.isArray(raw?.suggestions) ? raw.suggestions : [];
   const out: SuggestionDraft[] = [];
@@ -334,6 +358,12 @@ function normalizeDrafts(
     const condition: IntakeCondition = CONDITIONS.includes(s?.condition)
       ? s.condition
       : "daily";
+    if (!activityScheduleAvailable && WORKOUT_CONDITIONS.includes(condition)) {
+      dropped.push(
+        "workout-relative schedule unavailable for this profile age"
+      );
+      continue;
+    }
     let obligation: IntakeObligation = OBLIGATIONS.includes(s?.obligation)
       ? s.obligation
       : "should";
@@ -451,7 +481,8 @@ async function runModel(
       ? normalizeDrafts(
           toolUse.input as any,
           context.lowLabNames,
-          context.safety
+          context.safety,
+          isTrainingRelevant(getProfileAge(profileId))
         )
       : { drafts: [], dropped: [] };
     log.info("done", { suggestions: drafts.length, dropped: dropped.length });
@@ -601,7 +632,7 @@ export async function autoSuggestFromBiomarkers(
     isOutOfRange(r.flag) || isNonOptimal(r.flag);
 
   // "New" = this biomarker FAMILY has only one reading total (this one). Count by
-  // the #482 family identity — the SAME key the biomarkers table partitions on
+  // the #482 family identity — the SAME key the clinical results table partitions on
   // (biomarkerFamilyKey / biomarkerFamily) — NOT the raw name, so a fresh reading
   // under a different family member's spelling (e.g. "Vitamin D, 25-Hydroxy Total"
   // when the profile already has a "Vitamin D2" history) is correctly seen as a prior

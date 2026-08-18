@@ -56,6 +56,7 @@ import {
 } from "../fixture-logins";
 import {
   seedMemberLogin,
+  adultFixtureProfileId,
   fixtureProfileId,
   grantProfile,
   rileyProfileId,
@@ -207,7 +208,7 @@ export function seedIllness(): void {
   // not the empty state) and the Nutrition → Supplements situations bar shows the
   // "1 situational item now active" activation acknowledgment. Read-only in the specs, so
   // it stays repeat-safe and never perturbs the other sick fixtures' cockpit assertions.
-  const sitCoachId = fixtureProfileId(SITCOACH_PROFILE);
+  const sitCoachId = adultFixtureProfileId(SITCOACH_PROFILE);
   seedSickEpisode(sitCoachId, { activateSituation: true });
   {
     const on = today(sitCoachId);
@@ -579,12 +580,12 @@ export function seedIllness(): void {
   // PROTEIN_QUICKADD_PROFILE (#824): a dedicated adult profile for the protein-grams
   // quick-add spec. Seeds a bodyweight (so the adequacy target scales) + a couple of
   // protein-bearing food-group servings today (so the card renders over the ESTIMATED
-  // basis), with NO tracked protein_g and NO protein_log rows — the spec OWNS the grams
-  // writes. Idempotent: hard-clear any protein_log rows so a reused server always starts
+  // basis), with NO tracked protein_g and NO protein_daily_totals rows — the spec OWNS the grams
+  // writes. Idempotent: hard-clear any protein_daily_totals rows so a reused server always starts
   // the day from the estimated-only basis the spec's transition asserts.
   const proteinProfileId = fixtureProfileId(PROTEIN_QUICKADD_PROFILE);
   const proteinAnchor = today(proteinProfileId);
-  db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(
+  db.prepare(`DELETE FROM protein_daily_totals WHERE profile_id = ?`).run(
     proteinProfileId
   );
   db.prepare(
@@ -598,7 +599,7 @@ export function seedIllness(): void {
     ["eggs", 1],
   ] as const) {
     db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
        ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
     ).run(proteinProfileId, proteinAnchor, slug, servings);
   }

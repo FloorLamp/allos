@@ -9,6 +9,7 @@ import {
   goalPct,
   goalsForExercise,
   goalTargetText,
+  goalTargetValueText,
   goalUpcomingDetail,
   isOutcomeGoalStatus,
   outcomeGoalKind,
@@ -324,6 +325,38 @@ describe("frequencyScopeLabel", () => {
     expect(frequencyScopeLabel("region", "Chest")).toBe("Chest");
     expect(frequencyScopeLabel("group", "Mystery")).toBe("Mystery");
     expect(frequencyScopeLabel("type", "")).toBe("");
+  });
+});
+
+// The exercise-scoped value (#2895): what the Analyze detail panel shows,
+// where repeating the exercise name is noise. goalTargetText composes FROM it,
+// so the two phrasings cannot drift.
+describe("goalTargetValueText", () => {
+  it("is the target without the exercise-name prefix", () => {
+    const weight = makeGoal({
+      exercise: "Barbell Bench Press",
+      metric: "weight",
+      target_weight_kg: 100,
+    });
+    expect(goalTargetValueText(weight, "kg")).toBe("100 kg");
+    const sets = makeGoal({
+      exercise: "Back Squat",
+      metric: "sets",
+      target_sets: 5,
+      target_reps: 5,
+      target_weight_kg: 100,
+    });
+    expect(goalTargetValueText(sets, "kg")).toBe("5×5 @ 100 kg");
+  });
+
+  it("is null when there is no value to show (never an empty string)", () => {
+    const bare = makeGoal({
+      exercise: "Barbell Bench Press",
+      metric: "weight",
+    });
+    expect(goalTargetValueText(bare, "kg")).toBeNull();
+    // The prefixed form still degrades to the exercise name alone.
+    expect(goalTargetText(bare, "kg")).toBe("Barbell Bench Press");
   });
 });
 

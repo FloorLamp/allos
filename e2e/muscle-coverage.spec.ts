@@ -19,8 +19,11 @@ test("weekly muscle coverage renders list-first on Training → Overview (#736)"
   // The seeded recent Leg day (Back Squat, daysAgo 1) credits quads, so at least
   // one per-muscle row renders with a set count.
   const rows = coverage.getByTestId("muscle-coverage-row");
-  await expect(rows.first()).toBeVisible(); // first-ok: asserts a muscle-coverage row renders — order-agnostic presence
-  await expect(coverage).toContainText("Quads");
+  const quadsRow = rows.filter({ hasText: "Quads" });
+  await expect(quadsRow).toHaveCount(1);
+  await expect(quadsRow).toBeVisible();
   // Every row states a set count (whole or half credit).
-  await expect(rows.first()).toContainText(/\bsets?\b/); // first-ok: asserts any coverage row shows a set count — order-agnostic structure check
+  await expect(quadsRow.getByTestId("muscle-coverage-count")).toContainText(
+    /\bsets?$/
+  );
 });

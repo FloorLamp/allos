@@ -14,6 +14,9 @@ test.describe("Weekly recap + milestones (#32)", () => {
     await expect(
       recap.getByRole("heading", { name: "Weekly recap" })
     ).toBeVisible();
+    await expect(
+      recap.getByTestId("weekly-recap-retrospective-link")
+    ).toHaveAttribute("href", "/retrospective");
     // The seeded profile has recent activity, so the card renders summary rows
     // (not the empty-state nudge) — Workouts is always present when any workout
     // fell in the window.
@@ -122,7 +125,8 @@ test.describe("recap cadence (#2178)", () => {
 
     const cadence = page.getByTestId("kind-scale-weekly-recap");
     // Three cadences, no fourth: the annual retrospective is a different artifact
-    // (#2179), deliberately not a tier of this control.
+    // (#2179), deliberately not a tier of this control. Its card link above is a
+    // user-initiated route, not another scheduled cadence.
     await expect(cadence.getByRole("option")).toHaveText([
       "Weekly recap",
       "Monthly recap",

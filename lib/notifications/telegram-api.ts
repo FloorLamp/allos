@@ -70,6 +70,13 @@ export interface TelegramUpdate {
 
 const apiBase = (token: string) => `https://api.telegram.org/bot${token}`;
 
+// The default per-call cap on a Bot API request. Exported so the post-workout
+// queue's whole-dispatch deadline can be asserted against every channel cap at
+// once — raising this above that deadline reds the notification tier. (The
+// long-poll caller passes its own, larger, timeout: that call is inbound, not part
+// of a dispatch.)
+export const TELEGRAM_CALL_TIMEOUT_MS = 30_000;
+
 // POST to a Bot API method; throw on transport or API error (Telegram returns
 // 200 with { ok:false, description } for logical errors too). timeoutMs guards
 // the fetch itself — long-poll calls need it above the server-side poll window.
@@ -82,7 +89,7 @@ const apiBase = (token: string) => `https://api.telegram.org/bot${token}`;
 async function call(
   method: string,
   body: unknown,
-  timeoutMs = 30_000
+  timeoutMs = TELEGRAM_CALL_TIMEOUT_MS
 ): Promise<{ ok?: boolean; description?: string; result?: unknown }> {
   const { telegramBotToken } = getTelegramBotConfig();
   if (!telegramBotToken)

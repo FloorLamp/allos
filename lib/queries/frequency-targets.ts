@@ -1,3 +1,4 @@
+import { isCadenceHome, type CadenceHome } from "../cadence";
 import type { FrequencyPace } from "../frequency-targets";
 import { frequencyRangeState } from "../practice";
 import type { FrequencyTarget } from "../types";
@@ -84,6 +85,30 @@ export function getFrequencyTargetProgress(
       daysLeftInWindow: Math.max(0, 7 - week.elapsedDays),
     };
   });
+}
+
+// The same rollup, narrowed to the targets that LIVE on one domain page (#2888).
+//
+// The rollup above is scope-GENERIC — it returns every floor target a profile has,
+// across training, nutrition, mobility and wellness. /training read it whole and
+// captioned a fatty-fish habit and a red-light-therapy practice as "the weekly
+// routine"; /nutrition and /wellness each carried their own inline scope check instead.
+// Membership is a property of the SCOPE, not of the caller, so it is declared once in
+// `CADENCE_SCOPES.home` and applied here — a page asks for its own targets and cannot
+// forget to filter, and a new scope kind must name a home rather than defaulting onto
+// whichever page happens to read the generic list.
+//
+// Counting is untouched: this filters the rows the rollup already computed, so a target
+// that still renders has a byte-identical count, pace, ceiling and verdict. Cross-domain
+// surfaces (/upcoming, the digest, the dashboard's goals-habits widget) deliberately
+// keep calling `getFrequencyTargetProgress` — completeness is their charter (#2578).
+export function getFrequencyTargetProgressForHome(
+  profileId: number,
+  home: CadenceHome
+): FrequencyTargetProgress[] {
+  return getFrequencyTargetProgress(profileId).filter((row) =>
+    isCadenceHome(home, row.target.scope_kind)
+  );
 }
 
 // ---- Completed-week history (#1670) ---------------------------------------

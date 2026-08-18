@@ -190,8 +190,8 @@ describe("mapWithingsMeasureGroup", () => {
     // Point samples: start == end == the group's instant (the dedup key).
     for (const s of res!.samples) {
       expect(s.date).toBe("2023-11-14");
-      expect(s.start_time).toBe("2023-11-14T22:13:20.000Z");
-      expect(s.end_time).toBe(s.start_time);
+      expect(s.started_at).toBe("2023-11-14T22:13:20.000Z");
+      expect(s.ended_at).toBe(s.started_at);
     }
     // Weight still lands in body_metrics; composition never touches it.
     expect(res!.bodyMetric).toMatchObject({ weight_kg: 70.5 });
@@ -269,8 +269,8 @@ describe("mapWithingsSleep", () => {
     // Every sample shares the same absolute window (the dedup key) + wake day.
     for (const s of res!.samples) {
       expect(s.date).toBe("2023-11-14");
-      expect(s.start_time).toBe(new Date(SLEEP_START * 1000).toISOString());
-      expect(s.end_time).toBe(new Date(SLEEP_END * 1000).toISOString());
+      expect(s.started_at).toBe(new Date(SLEEP_START * 1000).toISOString());
+      expect(s.ended_at).toBe(new Date(SLEEP_END * 1000).toISOString());
     }
   });
 

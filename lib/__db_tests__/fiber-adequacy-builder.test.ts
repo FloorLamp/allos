@@ -39,7 +39,7 @@ function logFood(
   servings: number
 ) {
   db.prepare(
-    "INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
+    "INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
   ).run(profileId, date, slug, servings);
 }
 
@@ -68,7 +68,7 @@ function seedDose(
       .run(itemId, amount).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, taken_at, status)
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, recorded_at, status)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     doseId,
@@ -82,7 +82,7 @@ function seedDose(
 
 function seedTrackedFiber(profileId: number, date: string, grams: number) {
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health_connect', 'fiber_g', ?, ?, ?, ?)`
   ).run(profileId, date, `${date}T08:00:00Z`, `${date}T08:00:00Z`, grams);
 }

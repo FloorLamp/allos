@@ -4,7 +4,7 @@ import {
   powerCurve,
   powerCurveLabel,
   powerZoneTimes,
-  parseCyclingStreams,
+  parseActivityStreams,
 } from "../cycling-analytics";
 import {
   parseCyclingStreamSummary,
@@ -29,7 +29,7 @@ const ZONES = JSON.stringify([
 describe("summarizeCyclingStreams", () => {
   it("carries exactly what the overview derives, and agrees with the direct computation", () => {
     const summary = summarizeCyclingStreams(STREAMS, ZONES);
-    const streams = parseCyclingStreams(STREAMS);
+    const streams = parseActivityStreams(STREAMS);
 
     // The summary is the SAME answer as parsing the blob — the point of #2292 is
     // that the overview stops paying for the parse, not that it learns less.

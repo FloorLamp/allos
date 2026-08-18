@@ -116,17 +116,17 @@ describe("Health Connect exporter v1.9 shapes", () => {
     expect(
       db
         .prepare(
-          `SELECT end_time, value FROM metric_samples
+          `SELECT ended_at, value FROM metric_samples
             WHERE profile_id = ? AND metric = 'steps'`
         )
         .all(profileId)
-    ).toEqual([{ end_time: `${DATE}T20:00:00Z`, value: 8000 }]);
+    ).toEqual([{ ended_at: `${DATE}T20:00:00Z`, value: 8000 }]);
 
     const event = db
       .prepare(
         `SELECT inserted, updated, unchanged, skipped, details
            FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'health-connect'
+          WHERE profile_id = ? AND source_id = 'health-connect'
           ORDER BY id DESC LIMIT 1`
       )
       .get(profileId) as {

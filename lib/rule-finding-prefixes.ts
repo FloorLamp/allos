@@ -116,14 +116,14 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     reasons: [],
   },
   {
-    // Adherence-based priority DEMOTION suggestions (#1505 part 2): a high/mandatory
-    // SUPPLEMENT the user has effectively stopped taking is SUGGESTED for the `low`
-    // tag — never auto-demoted (#559: priority is declared, not inferred). COACHING
+    // Adherence-based obligation DEMOTION suggestions (#1505 part 2): a `must`/`should`
+    // SUPPLEMENT the user has effectively stopped taking is SUGGESTED for `may` —
+    // never auto-demoted (#559: obligation is declared, not inferred). COACHING
     // tier by hard product contract: calm, hideable, and NEVER a notification —
     // nagging about a supplement someone has chosen not to take is the exact failure
     // this issue removes. Medications are excluded at the detector (kind decides, the
     // same boundary isPushedIntake draws), so poor med adherence stays a missed-dose
-    // escalation question and never a priority one.
+    // escalation question and never an obligation-demotion one.
     prefix: DEMOTION_PREFIX,
     tier: "coaching",
     builder: "buildDemotionSuggestionFindings",
@@ -352,7 +352,7 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     // RECORDS-RECENCY asks (#2164 + #2176) — the other two legs of the #1757 pattern,
     // under ONE namespace because they are one question about two person-operated
     // sources: an archive whose exclusive streams have aged past their declared horizon,
-    // and a manual-upload profile whose lab/biomarker frontier has aged past the
+    // and a manual-upload profile whose lab frontier has aged past the
     // preventive catalog's check-up cadence.
     //
     // COACHING tier, and the ceiling is the same hard contract the portal request has:

@@ -13,7 +13,7 @@
 //     and leaving a dead row for a later name to inherit.
 //
 // These pins FAIL on the pre-#1931 raw-name key. The fix is the same one #1399/#1610
-// applied to the plateau/stale findings: key on the canonical identity function, and
+// applied to plateau findings: key on the canonical identity function, and
 // carry the old shape as `supersedes` so a stored dismissal keeps working.
 
 import { describe, it, expect } from "vitest";

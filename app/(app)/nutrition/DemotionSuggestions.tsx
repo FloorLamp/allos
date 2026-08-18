@@ -6,9 +6,9 @@ import {
 } from "./intake-actions";
 import DemotionSuggestionRow from "./DemotionSuggestionRow";
 
-// Priority DEMOTION SUGGESTIONS (issue #1505 part 2) on the Supplements page: a
-// high/mandatory supplement whose scheduled doses have gone sustainedly untaken,
-// offered — never applied — for the `low` tag.
+// Obligation DEMOTION SUGGESTIONS (issue #1505 part 2) on the Supplements page: a
+// `must`/`should` supplement whose scheduled doses have gone sustainedly untaken,
+// offered — never applied — for the `may` obligation.
 //
 // Deliberately NOT rendered through the shared FindingsList: every other coaching
 // card is dismiss-only, and this one carries a second, CONSEQUENTIAL affordance (the
@@ -31,12 +31,12 @@ export default function DemotionSuggestions({
           stroke={2}
           aria-hidden="true"
         />
-        Priority check
+        Obligation check
       </h2>
       <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
         Items you&rsquo;ve stopped taking that you&rsquo;re still on the hook
-        for. Marking one low keeps its schedule and its tracking — it just stops
-        pushing.
+        for. Moving one to May keeps its schedule and tracking — it just stops
+        reminding you.
       </p>
       <ul className="space-y-3">
         {findings.map((f) => (

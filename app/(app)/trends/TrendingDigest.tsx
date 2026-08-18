@@ -6,7 +6,6 @@ import {
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   buildDigestSeries,
   buildPracticeDigestSeries,
@@ -18,7 +17,7 @@ import type { DateRange } from "@/lib/timeline-format";
 import { dismissDigest } from "./actions";
 import DigestOverflow from "./DigestOverflow";
 import { PRACTICE_DIGEST_PREFIX } from "@/lib/trends-practices";
-import { readingDetailHref, type AppRoute } from "@/lib/hrefs";
+import { clinicalResultDetailHref, type AppRoute } from "@/lib/hrefs";
 
 // How many ranked movers render inline before the "show all N" disclosure (#1455).
 const LEAD_CHIPS = 3;
@@ -39,14 +38,13 @@ const LEAD_CHIPS = 3;
 // band repeating "over this window" only delayed the charts.
 export default async function TrendingDigest({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
-  const restricted = isTrainingRestricted(profile.id);
   const todayStr = today(profile.id);
   // Metrics + biomarkers, plus wellness-practice CADENCE (#1632): a practice whose
   // days-per-week really moved is a mover like any other. Its series carries no
   // reference range on purpose, so the chip stays neutral — a coaching-tier signal
   // does not get a crossing colour (see buildPracticeDigestSeries).
   const series = [
-    ...buildDigestSeries(profile.id, login.id, range, restricted),
+    ...buildDigestSeries(profile.id, login.id, range),
     ...buildPracticeDigestSeries(profile.id, range, todayStr),
   ];
   // Drop chips the user has dismissed (findings bus, #39) — a dismissal keyed by
@@ -60,8 +58,8 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
   if (items.length === 0) return null;
 
   const hrefFor = (item: TrendItem): AppRoute | null => {
-    if (item.key.startsWith("bio:"))
-      return readingDetailHref(item.key.slice("bio:".length));
+    if (item.key.startsWith("result:"))
+      return clinicalResultDetailHref(item.key.slice("result:".length));
     // A practice chip taps through to the page that owns the habit (#1620).
     if (item.key.startsWith(PRACTICE_DIGEST_PREFIX)) return "/wellness";
     return null;

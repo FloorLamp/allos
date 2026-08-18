@@ -1,12 +1,15 @@
 // Curated biomarker reference DATA — the pediatric AGE_BANDS + the static
-// CURATED_LABS table. Split out of lib/curated-biomarkers.ts (which keeps the
-// policy tables + the curateBiomarkers transform + the shared types and re-exports
+// CURATED_LABS table. Split out of lib/curated-result-definitions.ts (which keeps the
+// policy tables + the curateResultDefinitions transform + the shared types and re-exports
 // these) so the ~2,000 lines of clinical reference data live on their own and a
 // name/policy edit doesn't churn the whole file. Pure data; the transform that folds
-// it into the committed JSON stays in curated-biomarkers.ts. INFORMATIONAL, NOT
+// it into the committed JSON stays in curated-result-definitions.ts. INFORMATIONAL, NOT
 // MEDICAL ADVICE — human-review the committed JSON before it is trusted.
 
-import type { AgeBandedRange, Biomarker } from "../curated-biomarkers";
+import type {
+  AgeBandedRange,
+  CanonicalResultDefinitionSeed,
+} from "../curated-result-definitions";
 
 // Curated pediatric (and adolescent) reference bands for the highest-impact
 // age-dependent markers. These REPLACE the adult top-level fields
@@ -383,7 +386,7 @@ export const AGE_BANDS: Record<string, AgeBandedRange[]> = {
 //  - Total T4/T3, Direct Bilirubin, LDH, CK (sex-specific), ESR (sex-specific),
 //    Anion Gap, Reticulocytes: Mayo Clinic Laboratories & ARUP Consult adult
 //    reference intervals (MedlinePlus for corroboration).
-export const CURATED_LABS: Biomarker[] = [
+export const CURATED_LABS: CanonicalResultDefinitionSeed[] = [
   // ── Derived biological-age index (issue #157) ──────────────────────────────
   // PhenoAge — Levine's Phenotypic Age (2018): a "biological age" in YEARS
   // computed (not measured) from nine routine analytes + chronological age via a
@@ -496,7 +499,7 @@ export const CURATED_LABS: Biomarker[] = [
   // entries — a count (×10^3/uL) and a fraction (%) are NOT interconvertible
   // without the WBC, the same #482 identity discipline as the WBC differential
   // above — and the alternate LOINCs of each form route to its ONE entry
-  // (lib/biomarker-loinc). Nucleated RBC and immature granulocytes are normally
+  // (lib/canonical-result-loinc). Nucleated RBC and immature granulocytes are normally
   // ABSENT (≈0) in child/adult peripheral blood, so direction is lower_better
   // (only a high bound matters; a low/zero reading is normal). They run HIGH in
   // neonates, so each carries a coarse infancy age band (see AGE_BANDS) that keeps
@@ -1493,7 +1496,7 @@ export const CURATED_LABS: Biomarker[] = [
   // Periodontal analytes (#705) — the dental analogue of the vision analytes above:
   // measurable, flaggable, trendable dental-exam readings that reuse the biomarker
   // substrate (medical_records) rather than a parallel dental-readings table (#860/
-  // #944), so a worsening perio trend is visible on the Biomarkers surface (the "is
+  // #944), so a worsening perio trend is visible on the Clinical results surface (the "is
   // it getting worse" question). Captured from a dental exam record via AI extraction
   // (into `results`), or entered manually. INFORMATIONAL, NOT MEDICAL ADVICE.
   {
@@ -1536,7 +1539,7 @@ export const CURATED_LABS: Biomarker[] = [
   // (IOP/acuity, #698) and periodontal (#705) analytes above, these reuse the
   // biomarker substrate (medical_records) rather than a parallel audiogram table
   // (#860/#944 observation-substrate), so each series trends + flags on the
-  // Biomarkers surface for free ("is my hearing getting worse at 4 kHz?"). Normal
+  // Clinical results surface for free ("is my hearing getting worse at 4 kHz?"). Normal
   // hearing is ≤25 dB HL (WHO), so the band flags an elevated threshold; LOWER is
   // better. Each ear × frequency is its OWN trendable series that flags independently
   // — deliberately NOT collapsed into one biomarker family (see canonical-name.ts:
@@ -1846,7 +1849,7 @@ export const CURATED_LABS: Biomarker[] = [
   // ── Fasting glucose (issue #1195) ─────────────────────────────────────────
   // Fasting glucose has its OWN diagnostic thresholds (70–99 normal / 100–125 pre-DM /
   // ≥126 DM) distinct from a random "Glucose", so it is a distinct entry (LOINC 1558-6
-  // maps to it in lib/biomarker-loinc). Its own identity — NOT the A1c/eAG family and
+  // maps to it in lib/canonical-result-loinc). Its own identity — NOT the A1c/eAG family and
   // NOT the random-glucose series. Source: ADA Standards of Care fasting-glucose
   // diagnostic thresholds. INFORMATIONAL, NOT MEDICAL ADVICE.
   {
@@ -1869,7 +1872,7 @@ export const CURATED_LABS: Biomarker[] = [
   // Positive/Negative), so they carry NO numeric reference band — curated for
   // RECOGNITION + canonical grouping, exactly like the ABO/dipstick entries above,
   // NOT for a range. Their flag polarity (a POSITIVE is bad) is already settled by
-  // the LOINC → 'infection' class table in lib/biomarker-loinc (qualitativeClassForLoinc)
+  // the LOINC → 'infection' class table in lib/canonical-result-loinc (qualitativeClassForLoinc)
   // and the qualitative classifier — this just gives each a stable identity so a
   // result stacks under one series and dedups by LOINC instead of coining an ad-hoc
   // name. `direction: "in_range"` + null bounds = never a numeric flag. Category
@@ -2196,7 +2199,7 @@ export const CURATED_LABS: Biomarker[] = [
   // The fourth specialty domain on the biomarker substrate, after the vision (#697),
   // periodontal (#705) and audiogram (#713) analytes above: peak flow and spirometry
   // reuse `medical_records` / `metric_samples` rather than a parallel table, so each
-  // series trends and (where a band exists) flags on the Biomarkers surface for free.
+  // series trends and (where a band exists) flags on the Clinical results surface for free.
   //
   // THE BANDS ARE WHERE THIS DOMAIN DIFFERS, and the difference is deliberate — see
   // lib/peak-flow.ts and the `personal-best` declaration in lib/metric-judgment.ts:

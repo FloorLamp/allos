@@ -146,14 +146,14 @@ export function buildWeekSpine(input: {
 
 // The band's word for each activity type. Exhaustive over `ActivityType` by the
 // #2272 tuple discipline, and it borrows the restraint the workout-recap title map
-// already shows: `recovery` is the app's MOBILITY work, not training load (#840/#482),
+// already shows: `mobility` is mobility work, not training load (#840/#482),
 // and `unclassified` means the source did not say — so it gets a word that states the
 // absence rather than guessing a discipline.
 export const WEEK_SPINE_TYPE_LABEL: Record<ActivityType, string> = {
   strength: "strength",
   cardio: "cardio",
   sport: "sport",
-  recovery: "mobility",
+  mobility: "mobility",
   unclassified: "unspecified",
 };
 

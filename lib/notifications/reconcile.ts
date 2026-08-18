@@ -55,6 +55,7 @@ import {
   getIntakeDoses,
   getTakenDoseIds,
   getSkippedDoseIds,
+  getTakenDoseTimes,
   getFrequencyTargetProgress,
   redoseWindowState,
 } from "../queries";
@@ -77,25 +78,31 @@ import {
   setProfileSetting,
 } from "../settings";
 import { getWorkoutPresence } from "../queries/presence";
+import { getTimezone } from "../settings";
+import { parseUtcSql } from "../date";
 import {
   collectWindowDoses,
   slotSessionForKeyboard,
   withDoseCorrections,
-} from "./supplements";
+} from "./intake";
 import {
   renderMergedIntakeMessage,
   type IntakeSendSlot,
-} from "./supplement-format";
+} from "./intake-format";
 import { buildFoodNudge } from "./food";
 import { now as clockNow } from "../clock";
 import { correctionTokenAnchor } from "../correction-time";
 import {
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
+  PRACTICE_TIME_PREFIXES,
   openPickerAnchor,
   type CorrectionPrefixes,
 } from "./correction-rows";
-import { getFoodCorrectionBursts } from "../queries";
+import {
+  getFoodCorrectionBursts,
+  getPracticeCorrectionBursts,
+} from "../queries";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
 import {
   countVisibleFoodButtons,
@@ -106,6 +113,7 @@ import { getIntakeItemObligation } from "../queries/intake/adherence";
 import { buildDigest, renderDigestMessage } from "./digest";
 import { gatherDigestInput } from "./digest-data";
 import { digestDependencyStamp, DIGEST_REGATHER_FLOOR_MS } from "./digest-deps";
+import { rebuildWearReminder } from "./wear-reminder";
 import {
   closingTallyDetail,
   decideProseGather,
@@ -117,6 +125,7 @@ import {
   type CloseDetail,
   type CloseGroup,
   type ClosingTally,
+  type TakenDose,
   type ReconcileDecision,
   reconcileClosingText,
   stripTokens,
@@ -252,12 +261,27 @@ function fields(token: string): string[] {
   return token.split(":");
 }
 
-// ── The time-correction ride-along, for BOTH families (#2019/#2020) ──────────
+// ── The time-correction ride-along, for ALL THREE families (#2019/#2020/#2875) ──
 //
 // A correction chip claims "these entries are still correctable here", and that stops
-// being true an hour after the burst was tapped. Both families ask the SAME question of
-// their own ledger, through the same freshness predicate the renderer used — so a chat
-// can never show a chip the handler would refuse, and never refuse one it is showing.
+// being true an hour after the burst was tapped. All three families ask the SAME question
+// of their own ledger, through the same freshness predicate the renderer used.
+//
+// FRESHNESS IS ONLY ONE OF THE TWO BOUNDS, which is what #2875 cost to learn. An offer
+// can also be dead because of WHERE it lands rather than WHEN it was made: the practice
+// domain is DAY-KEYED, so its write core refuses an answer that crosses local midnight,
+// and THE DAY RULE re-dates most of what the picker offers in the hours after it. That
+// bound lives in the renderer (`chipOffers` and `offeredHours` read `dayKeyed` off the
+// prefixes) and each handler admits an hour through the same computation. Between the
+// two bounds a chat can never show a chip the handler would refuse, and never refuse one
+// it is showing.
+//
+// A FAMILY THAT DOES NOT CALL THIS HAS NO CLOCK. That is not a theoretical gap: the
+// practice chips shipped without it, and two sweeps at 2h and 4h after a burst edited
+// nothing — the chips stood until the 3-day pointer prune and then answered "Couldn't
+// find those entries any more", and a nudge whose only remaining claims were chips was
+// never closed at all. Every family carrying a `CorrectionPrefixes` pair must reach this
+// function; `lib/__tests__/reconcile-registry.test.ts` is what says so.
 //
 // A dead correction token is what produces the ONE trailing edit per logging burst: the
 // tick after the hour, the rows come off, and the next tick is back to zero calls.
@@ -295,10 +319,19 @@ function resolvedDoseIds(profileId: number, date: string): Set<number> {
 // the take/skip pair beside them.
 //
 // NAMES, in the order the keyboard showed them (#2274). The token carries the item id
-// (`take:<profileId>:<doseId>:<suppId>:<date>`), so the lookup is one profile-scoped
+// (`take:<profileId>:<doseId>:<itemId>:<date>`), so the lookup is one profile-scoped
 // read of that profile's item names — never a name from another profile's ledger, even
 // in a shared chat. An item whose name cannot be resolved is named as neither, the same
 // posture as a dose in neither ledger set.
+//
+// AND WHEN EACH WAS TAKEN (#2867). `getTakenDoseTimes` returns the administration
+// instant per dose for a date, memoized per date beside the two id sets — one extra read
+// of rows this pass has already resolved, never a second adherence computation (#221).
+// The instant is stored UTC and rendered in the PROFILE's timezone here, which is the
+// canonical-storage posture the rest of the app takes, and rendered as "HH:MM" through
+// the same `zonedDateParts(...).hhmm` seam the correction rows already use for this
+// exact fact on this exact channel — so a chat cannot end up showing two clock
+// conventions for one administration time.
 function doseClosingTally(
   profileId: number,
   tokens: readonly string[],
@@ -306,10 +339,14 @@ function doseClosingTally(
 ): ClosingTally | null {
   const byDate = new Map<
     string,
-    { taken: Set<number>; skipped: Set<number> }
+    {
+      taken: Set<number>;
+      skipped: Set<number>;
+      times: Map<number, string>;
+    }
   >();
   const seen = new Set<string>();
-  const taken: string[] = [];
+  const taken: TakenDose[] = [];
   const skipped: string[] = [];
   let names: Map<number, string> | null = null;
   for (const t of tokens) {
@@ -327,6 +364,7 @@ function doseClosingTally(
       ledger = {
         taken: new Set(getTakenDoseIds(profileId, date)),
         skipped: new Set(getSkippedDoseIds(profileId, date)),
+        times: getTakenDoseTimes(profileId, date),
       };
       byDate.set(date, ledger);
     }
@@ -339,9 +377,21 @@ function doseClosingTally(
     names ??= getIntakeItemNames(profileId);
     const name = itemId ? names.get(itemId) : undefined;
     if (!name) continue;
-    (isTaken ? taken : skipped).push(name);
+    if (!isTaken) {
+      skipped.push(name);
+      continue;
+    }
+    // The INSTANT, handed on as stored. The rendering — which clock, which date, which
+    // bucket — belongs to the pure formatter, which derives all three from this one
+    // value so they cannot disagree (see `TakenDose`). An unparseable or absent stored
+    // instant yields no time at all rather than a guessed one, the same
+    // stated-not-inferred rule as the ledger sets above.
+    const at = parseUtcSql(ledger.times.get(doseId));
+    taken.push({ name, at: at ? at.toISOString() : null });
   }
-  return taken.length + skipped.length > 0 ? { taken, skipped } : null;
+  return taken.length + skipped.length > 0
+    ? { taken, skipped, tz: getTimezone(profileId) }
+    : null;
 }
 
 // Both dose families' `detail()`, unchanged between them.
@@ -355,7 +405,7 @@ function doseCloseDetail(
 }
 
 // ── intake-dose ──────────────────────────────────────────────────────────────
-// take/skip: `take:<profileId>:<doseId>:<suppId>:<date>`
+// take/skip: `take:<profileId>:<doseId>:<itemId>:<date>`
 // all:       `all:<profileId>:<slot>:<date>`
 // demote:    `demote:<profileId>:<itemId>:<date>`
 const intakeDose: FamilyReconciler = {
@@ -509,7 +559,7 @@ const redoseWindow: FamilyReconciler = {
 };
 
 // ── escalation ───────────────────────────────────────────────────────────────
-// `esctake|escskip|escack:<profileId>:<doseId>:<suppId>:<date>`
+// `esctake|escskip|escack:<profileId>:<doseId>:<itemId>:<date>`
 // The safety tier's sharpest case: a caregiver's chat must not keep claiming a dose
 // was missed after it was confirmed anywhere.
 const escalation: FamilyReconciler = {
@@ -1025,15 +1075,35 @@ const workoutDraft: FamilyReconciler = {
 // nudge is composed from. Deliberately NOT `behindPractices`, which also applies the
 // suppression bus: a DISMISSAL must never close a message, only real progress may.
 const practice: FamilyReconciler = {
-  dead(profileId, tokens) {
+  dead(profileId, tokens, p) {
+    // The correction chips riding beside the ✓ buttons (#2875), on the same hour-long
+    // clock and the same message binding (#2264) as their food and dose siblings. This
+    // half was missing when the third domain shipped, which left the chips with NO
+    // clock: nothing aged them out, so the sweep edited nothing and the message they
+    // rode was never closed once the ✓ buttons were consumed.
+    const dead = deadCorrectionTokens(
+      tokens,
+      PRACTICE_TIME_PREFIXES,
+      new Set(
+        getPracticeCorrectionBursts(
+          profileId,
+          clockNow(),
+          correctionMessageBinding(profileId, "practice", {
+            chatId: p.chatId,
+            messageId: p.messageId,
+          })
+        ).map((b) => b.fromId)
+      )
+    );
     const wanted = tokens.filter((t) => fields(t)[0] === "pdone");
-    if (wanted.length === 0) return new Set<string>();
+    if (wanted.length === 0) return dead;
     const behind = new Set(
       getFrequencyTargetProgress(profileId)
-        .filter((p) => !p.met && !p.atCeiling && p.pace === "behind")
-        .map((p) => p.target.id)
+        .filter((row) => !row.met && !row.atCeiling && row.pace === "behind")
+        .map((row) => row.target.id)
     );
-    return new Set(wanted.filter((t) => !behind.has(Number(fields(t)[2]))));
+    for (const t of wanted) if (!behind.has(Number(fields(t)[2]))) dead.add(t);
+    return dead;
   },
   // WHICH PRACTICE CAUGHT UP (#2275), from the SAME progress read `dead` just made. The
   // nudge carries one `✓ <name>` button per behind practice, so which of them the
@@ -1043,24 +1113,31 @@ const practice: FamilyReconciler = {
   // (or its ceiling reached, the calm "that's plenty" state), versus merely back on pace
   // with the week still running. Never "logged": the shortfall can also end because the
   // window moved, and the close states the STATE, not a write it did not witness.
+  //
+  // READ OFF THE DELIVERED KEYBOARD, not the live one — the dose family's rule (#2875
+  // made it matter here too). Since the correction ride-along shipped, a tapped nudge is
+  // REBUILT rather than closed, so by the time the chips lapse and this close fires the
+  // live keyboard holds only chips and the `pdone` tokens naming what the message claimed
+  // are gone. Reading the live keyboard would collapse every such close to the bare
+  // sentence, which is exactly the #2275 loss this `detail` exists to prevent.
   closeStates: "outcome-detail",
-  detail(profileId, tokens) {
+  detail(profileId, _tokens, p) {
     const byId = new Map(
-      getFrequencyTargetProgress(profileId).map((p) => [p.target.id, p])
+      getFrequencyTargetProgress(profileId).map((row) => [row.target.id, row])
     );
     const done: string[] = [];
     const onPace: string[] = [];
     const seen = new Set<number>();
-    for (const t of tokens) {
+    for (const t of keyboardTokens(p.receiptKeyboard)) {
       const f = fields(t);
       if (f[0] !== "pdone") continue;
       const targetId = Number(f[2]);
       if (!targetId || seen.has(targetId)) continue;
       seen.add(targetId);
-      const p = byId.get(targetId);
-      if (!p) continue;
-      if (p.met || p.atCeiling) done.push(p.target.scope_value);
-      else if (p.pace !== "behind") onPace.push(p.target.scope_value);
+      const row = byId.get(targetId);
+      if (!row) continue;
+      if (row.met || row.atCeiling) done.push(row.target.scope_value);
+      else if (row.pace !== "behind") onPace.push(row.target.scope_value);
     }
     const total = done.length + onPace.length;
     if (total === 0) return null;
@@ -1101,7 +1178,11 @@ interface ProseClaim {
   // The profile_settings key holding the last gather's record. A LITERAL per kind, never
   // composed from a variable: the send-marker scan (#2036) can only resolve literals, and
   // an unresolvable `notify_…` key is exactly the hole that registry exists to close.
-  gatherKey: string;
+  //
+  // Required only for a kind that declares a `stamp` — the record exists to remember what
+  // the stamp said, so a kind whose pre-check IS its rebuild (#3027's wear reminder) has
+  // nothing to record and must not mint a key nobody reads.
+  gatherKey?: string;
 }
 
 const PROSE: Record<ProseReconciler, ProseClaim> = {
@@ -1119,6 +1200,18 @@ const PROSE: Record<ProseReconciler, ProseClaim> = {
     stamp: digestDependencyStamp,
     floorMs: DIGEST_REGATHER_FLOOR_MS,
     gatherKey: "notify_digest_recon",
+  },
+  // The bedtime wear reminder (#3027). Unlike the digest, THE PRE-CHECK IS THE REBUILD:
+  // the whole decision is two comparisons over one read — the stream's
+  // frontier now against the instant the delivered message named, and against the clock —
+  // and `rebuildWearReminder` answers null when the claim still stands, so an unfalsified message costs two reads and no
+  // Telegram call. There is nothing a stamp could make cheaper and nothing for a floor to
+  // bound, so it declares neither, and `decideProseGather` runs it every tick by its own
+  // "no pre-check declared ⇒ rebuild every tick" rule.
+  "wear-reminder": {
+    rebuild: (profileId, p) => rebuildWearReminder(profileId, p.date),
+    stamp: null,
+    floorMs: 0,
   },
 };
 
@@ -1425,7 +1518,9 @@ async function reconcileProse(
   const gate = decideProseGather({
     date: pointer.date,
     stamp,
-    last: parseProseGatherRecord(getProfileSetting(profileId, claim.gatherKey)),
+    last: claim.gatherKey
+      ? parseProseGatherRecord(getProfileSetting(profileId, claim.gatherKey))
+      : null,
     nowMs: clockNow().getTime(),
     floorMs: claim.floorMs,
   });
@@ -1436,7 +1531,7 @@ async function reconcileProse(
   // BEFORE it: a write that lands mid-rebuild is either already in this render or still
   // ahead of the recorded stamp, so it can never be skipped as "already seen". A rebuild
   // that throws records nothing and is retried next tick (#2070).
-  if (stamp != null)
+  if (stamp != null && claim.gatherKey)
     setProfileSetting(
       profileId,
       claim.gatherKey,

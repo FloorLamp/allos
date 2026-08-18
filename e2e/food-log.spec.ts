@@ -23,7 +23,7 @@ async function revealFoodGroup(page: Page, slug: string) {
 // Food-group serving log (issue #579): one-tap logging on /nutrition, the day-view
 // count, and the weekly rollup. Idempotent — logs a serving, asserts it appears in both
 // the day count and the weekly rollup, then undoes it so the fixture is left as found.
-// Uses the shared authenticated storageState (the seeded profile already has food_log
+// Uses the shared authenticated storageState (the seeded profile already has food_daily_totals
 // rows from scripts/seed.ts).
 
 test("logging a serving shows in the day count and the weekly rollup, undo decrements (#579)", async ({
@@ -661,7 +661,10 @@ function eatingTimeOf(eventId: string): {
 
 async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
   const row = page.getByTestId(`food-logged-${eventId}`);
-  await row.getByRole("button", { name: /^Actions for the/ }).click();
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: /^Actions for the/ })
+  );
   await settledClick(page, page.getByTestId(`food-logged-remove-${eventId}`));
   await expect(row).toHaveCount(0);
 }
@@ -678,7 +681,7 @@ test("a serving logged with no stated time records no eating time (#2053)", asyn
     "false"
   );
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
-    "record no eating time"
+    "recorded with no eating time"
   );
 
   await revealFoodGroup(page, "nuts_seeds");

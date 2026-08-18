@@ -44,16 +44,16 @@ const WINDOW = ["2026-06-25", "2026-07-09"] as const;
 function seedEvents(events: { hoursAgo: number; ok: boolean }[]): void {
   withDb((db) => {
     db.prepare(
-      `INSERT INTO integration_connections (profile_id, provider, status)
+      `INSERT INTO integration_connections (profile_id, source_id, status)
        VALUES (?, ?, 'connected')
-       ON CONFLICT (profile_id, provider) DO UPDATE SET status = 'connected'`
+       ON CONFLICT (profile_id, source_id) DO UPDATE SET status = 'connected'`
     ).run(PROFILE_ID, PROVIDER);
     db.prepare(
-      `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = ?`
+      `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = ?`
     ).run(PROFILE_ID, PROVIDER);
     const ins = db.prepare(
       `INSERT INTO integration_sync_events
-         (profile_id, provider, at, ok, window_start, window_end,
+         (profile_id, source_id, at, ok, window_start, window_end,
           inserted, updated, unchanged, error)
        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     );
@@ -101,10 +101,10 @@ function seedEscalated(): void {
 function clearFixture(): void {
   withDb((db) => {
     db.prepare(
-      `DELETE FROM integration_sync_events WHERE profile_id = ? AND provider = ?`
+      `DELETE FROM integration_sync_events WHERE profile_id = ? AND source_id = ?`
     ).run(PROFILE_ID, PROVIDER);
     db.prepare(
-      `DELETE FROM integration_connections WHERE profile_id = ? AND provider = ?`
+      `DELETE FROM integration_connections WHERE profile_id = ? AND source_id = ?`
     ).run(PROFILE_ID, PROVIDER);
   });
 }
@@ -269,11 +269,10 @@ test("the grid pitches what you don't own and reports on what you do, attention 
     );
   expect(states.length).toBeGreaterThanOrEqual(2);
   // Every attention card precedes every plain connected card.
+  expect(states).toEqual(expect.arrayContaining(["attention", "connected"]));
   const lastAttention = states.lastIndexOf("attention");
   const firstConnected = states.indexOf("connected");
-  if (lastAttention !== -1 && firstConnected !== -1) {
-    expect(lastAttention).toBeLessThan(firstConnected);
-  }
+  expect(lastAttention).toBeLessThan(firstConnected);
 
   // An unconnected source keeps the pitch: blurb, a few chips, Set up →. Health
   // Connect is never set up on profile 1.

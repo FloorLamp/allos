@@ -1,4 +1,4 @@
-import { classifyLoinc, isUnmappedLabLoinc } from "../biomarker-loinc";
+import { classifyLoinc, isUnmappedLabLoinc } from "../canonical-result-loinc";
 import { isNoKnownAllergyText } from "../clinical-parse";
 import { codeFromVaccineCode } from "../cvx-map";
 import type {
@@ -15,7 +15,7 @@ import type {
   ImportedImmunization,
   ImportedOpticalPrescription,
   ImportedProcedure,
-  ImportedRecord,
+  ImportedClinicalObservation,
 } from "../health-import";
 import type {
   CoverageEntry,
@@ -65,24 +65,24 @@ interface MapperOutput {
   // NOTHING). Pushed verbatim into the report, so each counts into `considered`.
   drops?: ImportDrop[];
   immunization?: ImportedImmunization | null;
-  record?: ImportedRecord | null;
-  records?: ImportedRecord[];
+  observation?: ImportedClinicalObservation | null;
+  observations?: ImportedClinicalObservation[];
   allergy?: ImportedAllergy | null;
   condition?: ImportedCondition | null;
   encounter?: ImportedEncounter | null;
   procedure?: ImportedProcedure | null;
   // FamilyMemberHistory yields one row PER condition — a container shape (like
-  // DiagnosticReport's records) whose empty array is not itself a dropped row.
+  // DiagnosticReport's observations) whose empty array is not itself a dropped row.
   familyHistory?: ImportedFamilyHistory[];
   // CarePlan yields one row PER planned activity (container shape); Goal yields one.
   carePlanItems?: ImportedCarePlanItem[];
   careGoal?: ImportedCareGoal | null;
   appointment?: ImportedAppointment | null;
-  // Imaging studies — a container shape (like records): an ImagingStudy yields one,
-  // an imaging DiagnosticReport yields one alongside its records, a DocumentReference
+  // Imaging studies — a container shape (like observations): an ImagingStudy yields one,
+  // an imaging DiagnosticReport yields one alongside its observations, a DocumentReference
   // yields zero-or-one. An empty array is a dropped row ONLY for a resource whose
   // whole output is imaging (ImagingStudy); on a DiagnosticReport it just means the
-  // report wasn't imaging (its records/narrative-record channel carried the value).
+  // report wasn't imaging (its observation channels carried the value).
   imagingStudies?: ImportedImagingStudy[];
   // A VisionPrescription yields one optical prescription (or null → dropped) — a
   // single primary shape, like appointment (folds both eyes into one row).
@@ -103,22 +103,26 @@ const RESOURCE_MAPPERS: Record<
   Observation: (r, ctx) => {
     // Zero readings AND zero component refusals → an explicit null primary shape so
     // the drop path classifies the RESOURCE (no_value / undated / non-analyte / …).
-    // One-or-more (scalar, or a BP's component readings) → the container `records`
-    // path, which pushRec-dedups each.
+    // One-or-more (scalar, or a BP's component readings) → the container `observations`
+    // path, which pushObservation deduplicates.
     //
     // A resource that kept nothing but REFUSED components takes the container path
     // too (#2411): the components are the candidates, so N component drops are the
     // honest accounting and a single resource-level "no value" on top of them would
     // count one candidate twice.
-    const { records, drops } = observationOutcome(r, ctx.idPrefix, ctx);
-    return records.length > 0 || drops.length > 0
-      ? { records, drops }
-      : { record: null };
+    const { observations, drops } = observationOutcome(r, ctx.idPrefix, ctx);
+    return observations.length > 0 || drops.length > 0
+      ? { observations, drops }
+      : { observation: null };
   },
   Condition: (r) => ({ condition: mapConditionResource(r) }),
   AllergyIntolerance: (r, ctx) => ({ allergy: mapAllergyResource(r, ctx) }),
-  MedicationRequest: (r, ctx) => ({ record: mapMedicationResource(r, ctx) }),
-  MedicationStatement: (r, ctx) => ({ record: mapMedicationResource(r, ctx) }),
+  MedicationRequest: (r, ctx) => ({
+    observation: mapMedicationResource(r, ctx),
+  }),
+  MedicationStatement: (r, ctx) => ({
+    observation: mapMedicationResource(r, ctx),
+  }),
   Encounter: (r, ctx) => ({ encounter: mapEncounterResource(r, ctx) }),
   Procedure: (r, ctx) => ({ procedure: mapProcedureResource(r, ctx) }),
   FamilyMemberHistory: (r) => ({
@@ -309,7 +313,7 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
     )
       return "other";
     // A non-analyte administrative code or a derived anthropometric percentile is
-    // dropped by observationRecords (mirroring the CDA mapper, #681/#684/#722) — so
+    // dropped by observationsFromResource (mirroring the CDA mapper, #681/#684/#722) — so
     // classify it precisely, not as generic no_value (#693).
     const disposition = classifyLoinc(loincFromFhirCode(r?.code)).disposition;
     if (disposition === "non-analyte") return "non_analyte";
@@ -400,11 +404,11 @@ function fhirCoverage(entries: FhirEntry[]): CoverageEntry[] {
 // The bundle-aware core: entries carry fullUrl so references resolve. Beyond
 // Patient/Observation/Immunization it now maps Condition → ImportedCondition,
 // AllergyIntolerance → ImportedAllergy, MedicationRequest/MedicationStatement →
-// medication ImportedRecord, Encounter → ImportedEncounter, Procedure →
+// medication ImportedClinicalObservation, Encounter → ImportedEncounter, Procedure →
 // ImportedProcedure, FamilyMemberHistory → ImportedFamilyHistory rows,
 // DiagnosticReport → its contained/referenced lab Observations PLUS its narrative
 // (an imaging report → an ImportedImagingStudy impression; any other report's
-// conclusion → a value-less lab record), ImagingStudy → an ImportedImagingStudy, and
+// conclusion → a value-less lab observation), ImagingStudy → an ImportedImagingStudy, and
 // DocumentReference → an ImportedImagingStudy ONLY for an inline-text imaging report
 // (a binary/remote document is never fetched; #708). Provider provenance rides on
 // each shape and is resolved into the shared registry by the persist layer.
@@ -416,7 +420,7 @@ export function entriesToImportResult(
   const ctx: FhirBundleCtx = { idPrefix, resolve };
 
   const immunizations: ImportedImmunization[] = [];
-  const records: ImportedRecord[] = [];
+  const observations: ImportedClinicalObservation[] = [];
   const allergies: ImportedAllergy[] = [];
   const conditions: ImportedCondition[] = [];
   const encounters: ImportedEncounter[] = [];
@@ -430,7 +434,7 @@ export function entriesToImportResult(
   let demographics: ImportDemographics | null = null;
 
   const seenImm = new Set<string>();
-  const seenRec = new Set<string>();
+  const seenObservation = new Set<string>();
   const seenAlg = new Set<string>();
   const seenCond = new Set<string>();
   const seenEnc = new Set<string>();
@@ -450,21 +454,24 @@ export function entriesToImportResult(
     reason: fhirDropReason(r.resourceType, r),
     section: r.resourceType,
   });
-  // Record a `deduped` drop when a mapped reading's key was already imported.
-  const pushRec = (rec: ImportedRecord | null | undefined, r?: any) => {
-    if (!rec) return;
-    if (seenRec.has(rec.external_id)) {
+  // Record a `deduped` drop when a mapped observation's key was already imported.
+  const pushObservation = (
+    observation: ImportedClinicalObservation | null | undefined,
+    r?: any
+  ) => {
+    if (!observation) return;
+    if (seenObservation.has(observation.external_id)) {
       if (r)
         drops.push({
           kind: fhirDropKind(r.resourceType),
-          label: rec.name,
+          label: observation.name,
           reason: "deduped",
           section: r.resourceType,
         });
       return;
     }
-    seenRec.add(rec.external_id);
-    records.push(rec);
+    seenObservation.add(observation.external_id);
+    observations.push(observation);
   };
 
   for (const e of entries) {
@@ -476,10 +483,10 @@ export function entriesToImportResult(
     const mapper = RESOURCE_MAPPERS[r.resourceType];
     if (!mapper) continue;
     const out = mapper(r, ctx);
-    // A DiagnosticReport is a container (out.records) — never itself a dropped row;
-    // its readings are recorded via pushRec. Every other mapper yields one primary
+    // A DiagnosticReport is a container (out.observations) — never itself a dropped row;
+    // its readings are recorded via pushObservation. Every other mapper yields one primary
     // shape whose explicit null means "dropped" — classify it.
-    const isContainer = out.records !== undefined;
+    const isContainer = out.observations !== undefined;
     // Mapper-classified refusals (#2411) join the report before anything else, so a
     // partially-valued panel's kept and dropped candidates land together.
     if (out.drops) drops.push(...out.drops);
@@ -496,9 +503,11 @@ export function entriesToImportResult(
         immunizations.push(out.immunization);
       }
     } else if (out.immunization === null) drops.push(dropFor(r));
-    pushRec(out.record, r);
-    if (out.record === null && !isContainer) drops.push(dropFor(r));
-    if (out.records) for (const rec of out.records) pushRec(rec, r);
+    pushObservation(out.observation, r);
+    if (out.observation === null && !isContainer) drops.push(dropFor(r));
+    if (out.observations)
+      for (const observation of out.observations)
+        pushObservation(observation, r);
     if (out.allergy) {
       if (seenAlg.has(out.allergy.external_id))
         drops.push({
@@ -614,9 +623,9 @@ export function entriesToImportResult(
       }
     } else if (out.appointment === null) drops.push(dropFor(r));
     // Imaging studies (#708) — a container shape. An empty array is a dropped row
-    // ONLY for a resource whose whole output is imaging (ImagingStudy — no records
+    // ONLY for a resource whose whole output is imaging (ImagingStudy — no observations
     // channel); on a DiagnosticReport the empty array just means "not imaging" and
-    // its value went to the records channel, so it never drops here. A
+    // its value went to the observations channel, so it never drops here. A
     // DocumentReference that isn't an inline-text imaging report yields empty too and
     // is deliberately NOT dropped (it's out of scope, not a lost reading).
     if (out.imagingStudies !== undefined) {
@@ -688,7 +697,7 @@ export function entriesToImportResult(
   }
 
   immunizations.sort((a, b) => a.date.localeCompare(b.date));
-  records.sort((a, b) => a.date.localeCompare(b.date));
+  observations.sort((a, b) => a.date.localeCompare(b.date));
   allergies.sort((a, b) => a.substance.localeCompare(b.substance));
   conditions.sort((a, b) => a.name.localeCompare(b.name));
   encounters.sort((a, b) => b.date.localeCompare(a.date));
@@ -712,7 +721,7 @@ export function entriesToImportResult(
   // the AI adapter count through, so a new mapped resource type lands in a single
   // place. persistDocumentImport rebinds these to the post-persist footprint tally.
   const imported = keptRowCount({
-    records,
+    observations,
     immunizations,
     allergies,
     conditions,
@@ -729,7 +738,7 @@ export function entriesToImportResult(
   // Labs that imported but carry a LOINC with no canonical mapping (Fix 3): a
   // non-fatal "add these to LOINC_TO_CANONICAL" annotation surfaced in the debugger.
   const unmappedLoincs = tallyUnmappedLoincs(
-    records
+    observations
       .filter((rec) => isUnmappedLabLoinc(rec.loinc))
       // unit is catalog identity (it rides into the "Report unmapped code"
       // prefill) — never the measured value itself.
@@ -745,7 +754,7 @@ export function entriesToImportResult(
 
   return {
     immunizations,
-    records,
+    observations,
     allergies,
     conditions,
     encounters,

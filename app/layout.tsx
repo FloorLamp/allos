@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
@@ -7,8 +8,10 @@ import DemoBanner from "@/components/DemoBanner";
 import { getAppVersion } from "@/lib/version";
 import { isDemoMode } from "@/lib/demo";
 import ThemeReassert from "@/components/ThemeReassert";
+import NavProgress from "@/components/NavProgress";
 import UpdateTakenToast from "@/components/UpdateTakenToast";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
+import { DISCLOSURE_BOOT_SCRIPT } from "@/lib/disclosure-memory";
 
 export const metadata: Metadata = {
   title: "Allos",
@@ -80,12 +83,31 @@ export default async function RootLayout({
           nonce={nonce}
           dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
         />
+        {/* Restores per-device disclosure state before first paint (#2652). Same
+            reason as the theme script: a fold that opens only once the bundle has
+            landed has a window in which a tap is aimed at the state the reader can
+            see and lands on the state that replaced it, so it shuts what they asked
+            to open. The source lives in lib/disclosure-memory.ts beside the rule it
+            transcribes, and a pure test executes it against `disclosureOpen` over a
+            real DOM so the two cannot drift. */}
+        <script
+          nonce={nonce}
+          dangerouslySetInnerHTML={{ __html: DISCLOSURE_BOOT_SCRIPT }}
+        />
       </head>
       <body>
         {/* The boot script's safety net (#2183): re-asserts the theme class
             post-hydration and on route changes, so one hard navigation whose
             boot script never ran cannot poison the whole SPA session. */}
         <ThemeReassert />
+        {/* The slow-navigation floor and the failed-navigation ask (#2869).
+            Here rather than in app/(app)/layout.tsx because a navigation that
+            has not committed yet is exactly the moment its destination's layout
+            does not exist — and because /login navigates too. Inside Suspense
+            because it reads useSearchParams to see the destination commit. */}
+        <Suspense fallback={null}>
+          <NavProgress />
+        </Suspense>
         <ServiceWorkerRegister sha={sha} />
         {isDemoMode() && <DemoBanner />}
         <ToastProvider>

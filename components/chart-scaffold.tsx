@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { LabelProps } from "recharts";
+import { Label, type LabelProps } from "recharts";
+import { textWidth } from "@/lib/chart-svg";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useHydrated } from "./useHydrated";
 import type { ChartColors } from "./useChartColors";
@@ -195,6 +196,15 @@ export function chartTooltipSurfaceStyle(c: ChartColors) {
  *  hover motion (Part 3c). */
 export function chartTooltipProps(c: ChartColors, motion: ChartMotion) {
   return {
+    // RENDER ORDER, not alphabetical (#2804). recharts 3 defaults `itemSorter` to
+    // `'name'` and LEXICALLY sorts the payload before any formatter runs, which is
+    // never what a chart means: percentile bands came out 10th, 25th, 3th, 5th, 50th,
+    // a stacked bar's rows stopped matching its stack, and StackedBarCardInner's
+    // "only the first entry speaks" formatter keyed on a post-sort index. The series
+    // are declared in the order the reader should read them, so that is the order.
+    // recharts sorts stably, so a constant key leaves the payload as it arrives; a
+    // chart wanting a different order passes its own itemSorter AFTER this spread.
+    itemSorter: () => 0,
     contentStyle: {
       fontSize: 12,
       borderRadius: 8,
@@ -228,10 +238,55 @@ export function chartBarCursorProps(c: ChartColors) {
  *  being noise; hover carries the value instead, via a larger `activeDot`. */
 export const DENSE_SERIES_POINTS = 30;
 
+// ── THE FILL CHANNEL (#2653, owner call 3) ──────────────────────────────────
+//
+// A dot's FILL means ONE thing app-wide: whether the reading is EXACT.
+//
+//   • SOLID  — an exact reading. The ordinary case, and the default.
+//   • HOLLOW — an inexact BOUNDED reading ("<0.10", ">5"): the assay reported a
+//     side of the number, not the number, so the mark is drawn as an outline of
+//     a value rather than as one.
+//
+// It was carrying three meanings by 2026-08. `BiomarkerChartInner` had the one
+// above; the scaffold's own default dot was hollow and meant nothing; and #2689's
+// sparse demotion had just taken SOLID to mean "the readings are the content".
+// Two of those coexisted by accident because they rarely shared a chart. Three
+// could not, and the failure would have been silent — a reader seeing a hollow
+// dot with no way to know which claim it was making. So the channel was assigned
+// once, to inexactness, which is the meaning with clinical stakes.
+//
+// The two evictees moved to the channel each actually meant:
+//   • sparse emphasis → MARK SIZE (`CHART_SPARSE_DOT_R`, below): it was always
+//     about mark-vs-stroke prominence, not about the reading being exact.
+//   • two sources on one day (#2653 state 6) → paired OFFSET marks.
+//
+// `lib/__tests__/chart-fill-channel.test.ts` fails on a surface-filled dot
+// anywhere but `chartInexactDot`, so the channel cannot silently re-fork.
+//
+// AND SIZE MEANS PROMINENCE, only prominence (#2831). Three steps, no more:
+// ordinary (`CHART_DOT_R`), emphasised (`CHART_SPARSE_DOT_R`), hover
+// (`CHART_ACTIVE_DOT_R`). The hollow mark used to sit between the first two on an
+// `r: 3` literal it had inherited from the meaningless hollow default it
+// replaced — so inexactness rode size as well as fill, on the channel the move
+// above had just assigned to prominence. It is drawn at the ordinary radius now:
+// hollow is the whole of what it says. The same test file pins that, because the
+// lesson of the fill fork is that a meaning rides a channel unnoticed for exactly
+// as long as nothing looks.
+
+/** The resting dot's radius, and the size an unemphasised mark is drawn at
+ *  whatever else it is saying. */
+export const CHART_DOT_R = 2.5;
+/** The hover dot's radius. Strictly above every resting radius below. */
+export const CHART_ACTIVE_DOT_R = 5;
+
 /**
- * Per-point dots for a line. Off for dense series; hollow (surface fill,
- * colored stroke) where they stay, so overlapping points stay countable and a
- * dot never reads as a heavier mark than the line it sits on.
+ * Per-point dots for a line. Off for dense series.
+ *
+ * SOLID in the series' colour — an ordinary reading is an exact one, and fill is
+ * the exactness channel. The 1px SURFACE-COLOURED ring is what keeps overlapping
+ * points countable (the same separator trick `chartStackSegmentProps` uses
+ * between stacked segments), and the small radius keeps the mark from out-weighing
+ * the stroke it sits on.
  *
  * `enabled: false` is the caller's hard override (an intraday series with ~1440
  * points already passes it).
@@ -245,27 +300,64 @@ export function chartLineDot(
   }: { color: string; pointCount: number; enabled?: boolean }
 ) {
   if (!enabled || pointCount > DENSE_SERIES_POINTS) return false as const;
+  return chartExactDot(c, color);
+}
+
+/** The resting mark for an EXACT reading, unconditionally — for the two cards
+ *  that draw their own `<circle>` per point and so cannot take a prop bag that
+ *  may be `false`. `chartLineDot` is this plus the density threshold. */
+export function chartExactDot(c: ChartColors, color: string) {
   return {
-    r: 3,
+    r: CHART_DOT_R,
+    fill: color,
+    stroke: c.surface,
+    strokeWidth: 1,
+  } as const;
+}
+
+/**
+ * The ONE hollow dot. An inexact bounded reading — the value is known only to lie
+ * on one side of the number plotted, so the mark is an outline rather than a
+ * filled fact. Nothing else in the app may render a surface-filled dot.
+ *
+ * At the ORDINARY radius. An inexact reading is not a prominent one, and size is
+ * the prominence channel — drawing it bigger said "look at this" alongside the
+ * outline, and half a pixel of radius is not a distinction a reader can make
+ * without both marks in view at once anyway. Hollow carries the whole claim.
+ */
+export function chartInexactDot(c: ChartColors, color: string) {
+  return {
+    r: CHART_DOT_R,
     fill: c.surface,
     stroke: color,
     strokeWidth: 1.5,
   } as const;
 }
 
-/** The hover dot. Bigger than the resting dot (and present even when resting
- *  dots are off) so a dense line still has a hit target. */
+/** The hover dot. Bigger than every resting dot (and present even when resting
+ *  dots are off) so a dense line still has a hit target, and so hover stays a
+ *  visible state change on a series whose resting marks are already emphasised. */
 export function chartActiveDot(color: string) {
-  return { r: 4, fill: color, stroke: color, strokeWidth: 1 } as const;
+  return {
+    r: CHART_ACTIVE_DOT_R,
+    fill: color,
+    stroke: color,
+    strokeWidth: 1,
+  } as const;
 }
 
 // ── the demoted stroke (#2653 state 5) ──────────────────────────────────────
 //
 // A series whose readings sit further apart than its declared continuity span
 // (lib/trend-sparkline.ts) is drawn with the DOTS leading and the stroke demoted
-// to a hint. Both halves matter: filled dots make the facts the heaviest ink on
+// to a hint. Both halves matter: LARGER dots make the facts the heaviest ink on
 // the plot, and a thinner, dashed, part-transparent stroke makes the
 // interpolation visibly lighter than the facts it joins.
+//
+// Larger, not filled: the emphasis rides MARK SIZE because fill belongs to
+// exactness alone (see the fill channel above). Prominence was what this state
+// meant all along — the readings out-weighing the interpolation between them —
+// and size says exactly that without borrowing a word that means something else.
 //
 // THE DEMOTION MUST BE A DEMOTION. The failure mode of a state treatment is that
 // it makes the treated chart look deliberate, and therefore MORE trustworthy than
@@ -281,6 +373,10 @@ export const CHART_LINE_STROKE_WIDTH = 2;
 export const CHART_SPARSE_STROKE_WIDTH = 1;
 /** The demoted stroke's opacity. Strictly below the normal line's implicit 1. */
 export const CHART_SPARSE_STROKE_OPACITY = 0.4;
+/** The demoted line's resting dot radius. Strictly ABOVE `CHART_DOT_R` (that is
+ *  the demotion — the marks out-weigh the hint joining them) and strictly BELOW
+ *  `CHART_ACTIVE_DOT_R`, so hover still reads as a state change. */
+export const CHART_SPARSE_DOT_R = 4;
 
 /** Spread onto a `<Line>` whose series is too thin for a confident stroke. */
 export function chartSparseLineProps() {
@@ -292,13 +388,19 @@ export function chartSparseLineProps() {
 }
 
 /**
- * The resting dot on a demoted line. FILLED, unlike `chartLineDot`'s hollow
- * default: on a thin series the readings are the whole content, so they carry
- * the series' colour solid while the stroke between them fades. Deliberately
- * not larger than the hover dot, so hover still reads as a state change.
+ * The resting dot on a demoted line. Same solid fill as any exact reading — it
+ * says nothing about exactness, because it may not — and LARGER than the ordinary
+ * resting dot, which is the whole claim: on a thin series the readings are the
+ * content and the stroke between them is mostly assertion, so the marks carry
+ * more ink than the hint does. Still smaller than the hover dot.
  */
-export function chartSparseDot(color: string) {
-  return { r: 3, fill: color, stroke: color, strokeWidth: 1 } as const;
+export function chartSparseDot(c: ChartColors, color: string) {
+  return {
+    r: CHART_SPARSE_DOT_R,
+    fill: color,
+    stroke: c.surface,
+    strokeWidth: 1,
+  } as const;
 }
 
 /** A `ReferenceLine` / `ReferenceArea` label, at or above the legibility floor. */
@@ -315,6 +417,84 @@ export function chartAnnotationLabel(
     fill: color,
     ...rest,
   };
+}
+
+// ── THE FIT RULE (issue #2871) ──────────────────────────────────────────────
+//
+// THE DEFECT. A `ReferenceArea` label is drawn whatever the area is worth in
+// pixels. On the Sun card an ordinary logging rhythm produced eleven unlogged-run
+// bands across a 77-day window, each one narrower than the "N days unlogged" it
+// carried, and every one of them centred on the same baseline: the labels printed
+// through each other into "10 days unlog3gday3 unlogge7 days unlogged…".
+//
+// THE RULE (owner decision). A band labels itself only when it can hold the text.
+// Below that width the band draws exactly as before and the label is simply
+// omitted — no abbreviation, no truncation, no second vocabulary. The fact is not
+// lost: the shading IS the absence made visible, and `filterNull={false}` on the
+// tooltip means hovering a gap day still answers "No data" (#2258). Only the run
+// LENGTH goes unstated, and only where stating it would have been illegible.
+//
+// WHY IT LIVES HERE and not in the funnel: every annotation that sits INSIDE a
+// bounded box has the same question, so the next one inherits the answer.
+//
+// WHY AN ESTIMATE. SVG text cannot be measured without a DOM, and the decision has
+// to be pure to be testable. `textWidth` (lib/chart-svg.ts) is the app's existing
+// answer — glyph count × a deliberately generous per-character advance — and it is
+// already the width model behind the hand-drawn panels' label placement. Reusing
+// it means one estimate app-wide rather than a second, subtly different one.
+//
+// WHY IT SELF-SCALES. The width compared against is the band's REAL pixel width,
+// read from the viewBox recharts computed for that reference area. The same chart
+// therefore labels a hole on a wide monitor and stays quiet on a phone, with no
+// breakpoint anywhere.
+
+/** Estimated painted width of annotation text, in px at `CHART_LABEL_FONT_SIZE`. */
+export function chartAnnotationLabelWidth(value: string): number {
+  return textWidth(value, CHART_LABEL_FONT_SIZE);
+}
+
+/**
+ * Whether a band `bandWidth` px wide can hold `value` as an annotation.
+ *
+ * An unknown width keeps today's render: a label is dropped because it provably
+ * does not fit, never because the geometry could not be read.
+ */
+export function chartAnnotationLabelFits(
+  value: string,
+  bandWidth: number | null | undefined
+): boolean {
+  if (bandWidth == null || !Number.isFinite(bandWidth)) return true;
+  return chartAnnotationLabelWidth(value) <= bandWidth;
+}
+
+/** The band width recharts computed for this label, when it has one. A polar
+ *  viewBox has no width, and neither has a label recharts could not place. */
+function labelBandWidth(viewBox: LabelProps["viewBox"]): number | null {
+  if (viewBox == null || !("width" in viewBox)) return null;
+  return typeof viewBox.width === "number" ? viewBox.width : null;
+}
+
+/**
+ * `chartAnnotationLabel`, drawn only when the box it sits in can hold it.
+ *
+ * The band is unaffected — this decides the TEXT alone. `content` is recharts'
+ * own hook for a label that needs to see its own geometry: it receives the
+ * computed viewBox, and returning null there paints nothing at all (rather than
+ * an empty `<text>`), while the fitting case hands straight back to the default
+ * label render so a fitted annotation is pixel-identical to an unfitted one.
+ */
+export function chartFittedAnnotationLabel(
+  value: string,
+  color: string,
+  position: ChartLabelPosition,
+  rest: LabelProps = {}
+): LabelProps {
+  const base = chartAnnotationLabel(value, color, position, rest);
+  const FittedAnnotation = (props: LabelProps) =>
+    chartAnnotationLabelFits(value, labelBandWidth(props.viewBox)) ? (
+      <Label {...props} content={undefined} />
+    ) : null;
+  return { ...base, content: FittedAnnotation };
 }
 
 /**

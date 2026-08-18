@@ -68,6 +68,7 @@ import {
   aggregateLabel,
   aggregateNearestDueDate,
   bandShowsDoseProgress,
+  pageRowDetail,
   planBandRender,
   sumDoseProgress,
   EMPTY_DOSE_PROGRESS,
@@ -828,13 +829,31 @@ function SubjectChip({ subject }: { subject: SubjectInfo }) {
 //
 // Deliberately NOT banded, NOT dated, and NOT part of the page total.
 //
-// Each row now carries the same one-tap "Mark taken" chip the due rows render
-// (#2419) — the collapsed half of the model was look-but-don't-log, which made a
+// Each offer carries the same one-tap "Mark taken" write the due rows render (#2419)
+// — the collapsed half of the model was look-but-don't-log, which made a
 // situation-bound item reachable only by first flipping its situation active just to
-// make a button exist. Dueness gates NUDGING, never LOGGING. The chip is the SHARED
+// make a button exist. Dueness gates NUDGING, never LOGGING. It is the SHARED
 // RowAction descriptor over the SAME markTaken action, so a refusal (dose retired by
 // an edit, item since paused) still speaks in the write's own words, and the write
 // stays additive ledger truth: nothing here becomes due, owed, or pushed.
+//
+// #2579-F — AVAILABILITY IS NOT WORK, SO IT STOPS WEARING WORK'S UNIFORM. Each offer
+// is now ONE CHIP in a wrapped run instead of a full-height row: the item's name, its
+// slot hint beside it, and the tap IS the log. Deliberately the same chip grammar as
+// the due rows' actions (one `RowAction[]`, one `RowActionChips`), because a due dose
+// and an offered one should share a single supplement-logging language.
+//
+// What the full-height row was spending that height on: a leading pill glyph
+// identical on every row in a section named after pills, and a subtitle whose first
+// word was "Available" — the section heading, restated once per offer. The facts that
+// were NOT redundant (the name, the slot, the cadence) are all on the chip, so nothing
+// legible was compacted away.
+//
+// The one thing the chip drops is the row's title link to /medications or
+// /nutrition?tab=supplements — a per-KIND index page, the same destination for every
+// offer of that kind, which the sidebar already reaches. An offer with no write
+// affordance (no dose to log, or a read-only-granted member's) renders as a LINK chip
+// to exactly that page instead, so no offer is ever a dead chip and none is hidden.
 function AvailableSection({
   items,
   actingProfileId,
@@ -854,19 +873,29 @@ function AvailableSection({
           ({items.length})
         </span>
       </summary>
-      <div className="card mt-2 space-y-1 p-2">
+      <div
+        data-testid="available-chips"
+        className="card mt-2 flex flex-wrap items-center gap-1.5 p-2"
+      >
         {items.map((item) => {
           const subject = subjectByProfile.get(item.profileId) ?? null;
           const actionVisible = itemAffordanceVisible(item.writeTarget, {
             isActing: item.profileId === actingProfileId,
             subjectCanWrite: subject == null || subject.access === "write",
           });
+          // The chip's text: the item's own name, and the availability qualifier the
+          // builder composed beside it ("Magnesium · Bedtime · Mondays"). Both come
+          // off the item — this never re-splits `dueText`, which is the same two
+          // pieces written for a sentence.
+          const label = [item.title, item.offerHint]
+            .filter(Boolean)
+            .join(" · ");
           const actions: RowAction[] = [];
           if (actionVisible && item.doseId != null) {
             actions.push({
               id: "mark-taken",
               kind: "submit",
-              label: "Mark taken",
+              label,
               toast: "Marked taken",
               testId: "available-mark-taken",
               fields: { dose_id: item.doseId, profile_id: item.profileId },
@@ -887,30 +916,23 @@ function AvailableSection({
               },
             });
           }
+          // No write affordance ⇒ the offer is still PRESENT and still one tap from
+          // its item. A chip that logs nothing and goes nowhere would make an
+          // accepted demotion look like a deletion, which is the whole thing #1505
+          // built this disclosure to avoid.
+          if (actions.length === 0) {
+            actions.push({
+              id: "open",
+              kind: "link",
+              label,
+              href: item.href ?? "/medications",
+            });
+          }
           return (
             <div
               key={`${item.profileId}:${item.key}`}
               data-testid="available-row"
-              className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-ink-750"
             >
-              <Link
-                href={item.href ?? "/medications"}
-                className="flex min-w-0 flex-1 items-center gap-3"
-              >
-                <IconPill
-                  className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"
-                  stroke={1.75}
-                  aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium text-slate-600 dark:text-slate-300">
-                    {item.title}
-                  </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {item.dueText ?? "Available"}
-                  </div>
-                </div>
-              </Link>
               <RowActionChips actions={actions} fold={false} />
             </div>
           );
@@ -1068,6 +1090,11 @@ function Row({
   // member header instead).
   const showChip = chipRow && subjectChipVisible({ multi, isActing });
   const dueText = upcomingDueText(item, now, formatPrefs);
+  // The row's second line, or nothing (#2579-E). A weekly pace target's detail only
+  // restates what the status column, the title and the glyph already say, so on this
+  // page it costs a line and adds no fact — the shared decision, never a local
+  // `domain === …` test here.
+  const detail = pageRowDetail(item);
 
   // The row's SECONDARY actions, built ONCE (issue #1446). RowActionChips renders
   // them inline at `sm`+; below `sm` the very same descriptors render as items in
@@ -1288,9 +1315,9 @@ function Row({
             >
               {item.title}
             </Link>
-            {item.detail && (
+            {detail && (
               <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                {item.detail}
+                {detail}
               </div>
             )}
           </div>

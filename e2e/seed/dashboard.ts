@@ -97,6 +97,7 @@ import {
   PROFILE_ID,
   ins,
   seedMemberLogin,
+  adultFixtureProfileId,
   fixtureProfileId,
   grantProfile,
 } from "./common";
@@ -192,7 +193,7 @@ export function seedNowStrip(): void {
   // signal is time-of-day independent (a 60-minute window off the frozen clock), so
   // it is the one the spec can assert without depending on the run's start hour.
   // Idempotent: clear activities + appointments first.
-  const nowStripId = fixtureProfileId(NOW_STRIP_PROFILE);
+  const nowStripId = adultFixtureProfileId(NOW_STRIP_PROFILE);
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(nowStripId);
   db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(nowStripId);
   {
@@ -246,7 +247,7 @@ export function seedNowStrip(): void {
       ["eggs", 1],
     ] as const) {
       db.prepare(
-        `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+        `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
          ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
       ).run(nowStripId, nowStripDay, slug, servings);
     }
@@ -259,7 +260,7 @@ export function seedNowStrip(): void {
   // mentalHealthCrisisItems emit a `suppressionPolicy: "safety-ungated"` attention
   // item, which attentionHeroState must refuse to collapse (#449/#942).
   // Synthetic score on a fictional profile — no PHI. Idempotent.
-  const nowSafetyId = fixtureProfileId(NOW_SAFETY_PROFILE);
+  const nowSafetyId = adultFixtureProfileId(NOW_SAFETY_PROFILE);
   db.prepare(
     `DELETE FROM medical_records WHERE profile_id = ? AND category = 'instrument'`
   ).run(nowSafetyId);
@@ -349,7 +350,9 @@ export function seedNowStrip(): void {
   // clean slate — no routines — plus two training-scope frequency targets so the
   // activate-confirm dialog (which only appears when there ARE targets to replace) is
   // exercised. Idempotent.
-  const routineBuilderProfileId = fixtureProfileId(ROUTINE_BUILDER_PROFILE);
+  const routineBuilderProfileId = adultFixtureProfileId(
+    ROUTINE_BUILDER_PROFILE
+  );
   seedMemberLogin(E2E_LOGIN_ROUTINE_BUILDER, routineBuilderProfileId);
   db.prepare(
     `DELETE FROM routine_slots WHERE routine_day_id IN (
@@ -382,7 +385,7 @@ export function seedNowStrip(): void {
   // action row (Start workout + New activity, no Repeat last). Idempotent: hard-clear any
   // activities (and their sets) on a reused server so the profile can never drift out of
   // its empty contract.
-  const emptyTrainingId = fixtureProfileId(EMPTY_TRAINING_PROFILE);
+  const emptyTrainingId = adultFixtureProfileId(EMPTY_TRAINING_PROFILE);
   db.prepare(
     `DELETE FROM exercise_sets WHERE activity_id IN (
      SELECT id FROM activities WHERE profile_id = ?)`
@@ -422,7 +425,7 @@ export function seedNowStrip(): void {
   const daytimeSleepDate = shiftDateStr(sleepPhaseToday, -2);
   const insertSleepPhase = db.prepare(
     `INSERT INTO metric_samples
-     (profile_id, source, metric, date, start_time, end_time, value)
+     (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'oura', 'sleep_min', ?, ?, ?, ?)`
   );
   insertSleepPhase.run(
@@ -459,7 +462,7 @@ export function seedNowStrip(): void {
   const sleepSegmentedToday = today(sleepSegmentedId);
   const insertSegmentedSleep = db.prepare(
     `INSERT INTO metric_samples
-     (profile_id, source, metric, date, start_time, end_time, value)
+     (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, 'health-connect', 'sleep_min', ?, ?, ?, 240)`
   );
   for (let offset = 14; offset >= 0; offset--) {
@@ -519,11 +522,13 @@ export function seedNowStrip(): void {
     `DELETE FROM food_log_events WHERE profile_id = ? AND group_key = 'alcohol'`
   ).run(substanceId);
   db.prepare(
-    `DELETE FROM food_log WHERE profile_id = ? AND group_key = 'alcohol'`
+    `DELETE FROM food_daily_totals WHERE profile_id = ? AND group_key = 'alcohol'`
   ).run(substanceId);
   // The non-food ledger (#1078: nicotine/cannabis one-tap counts) — same empty
   // contract as the alcohol food-log rows above.
-  db.prepare(`DELETE FROM substance_log WHERE profile_id = ?`).run(substanceId);
+  db.prepare(`DELETE FROM substance_daily_totals WHERE profile_id = ?`).run(
+    substanceId
+  );
   db.prepare(
     `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'substance'`
   ).run(substanceId);
@@ -613,7 +618,7 @@ export function seedNowStrip(): void {
   // today's routine session and renders the "Today's session" card without a rest
   // override. Idempotent: reset the routine tables for this profile, then adopt +
   // activate the PPL template fresh (activate resets position to 0 → Push day).
-  const routineProfileId = fixtureProfileId(ROUTINE_PROFILE);
+  const routineProfileId = adultFixtureProfileId(ROUTINE_PROFILE);
   db.prepare(
     `DELETE FROM routine_slots WHERE routine_day_id IN (
      SELECT rd.id FROM routine_days rd
@@ -639,7 +644,7 @@ export function seedNowStrip(): void {
   // (weekInCycle = floor(7/7) % 2 = 1 = the last, deload week). No credited sessions in
   // that 7-day span, so the pause re-anchor never trips (gap 7 < 21). SEPARATE from
   // ROUTINE_PROFILE so the #740 recommendation spec's non-deload copy stays intact.
-  const deloadProfileId = fixtureProfileId(ROUTINE_DELOAD_PROFILE);
+  const deloadProfileId = adultFixtureProfileId(ROUTINE_DELOAD_PROFILE);
   db.prepare(
     `DELETE FROM routine_slots WHERE routine_day_id IN (
      SELECT rd.id FROM routine_days rd
@@ -701,7 +706,7 @@ export function seedDailyLoop(): void {
       `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'steps'`
     ).run(dailyId);
     const insSteps = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
     );
     for (const [ago, steps] of [
@@ -755,9 +760,11 @@ export function seedDailyLoop(): void {
 
     // Food today: a few protein-bearing food-group servings so getProteinToday reads a
     // non-zero floor against the goal band (the Nutrition-today card).
-    db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(dailyId);
+    db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
+      dailyId
+    );
     const insFood = db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
     );
     for (const [ago, group, servings] of [
       [0, "legumes", 2],
@@ -1121,7 +1128,7 @@ export function seedDormantDomains(): void {
   // Sleep: a week of nights, the newest exactly 150 days back.
   const insSleep = db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'oura', 'sleep_min', ?, ?, ?, 450)`
   );
   for (let offset = 156; offset >= 150; offset--) {

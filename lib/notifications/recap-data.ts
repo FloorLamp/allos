@@ -84,7 +84,14 @@ import {
   setProfileSetting,
   getPublicUrl,
   getRecapScale,
+  getProfileAge,
 } from "../settings";
+import {
+  isAdultForClinical,
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "../life-stage";
+import { isTrainingFrequencyScope } from "../frequency-targets";
 import { situationHistoryResolver } from "../trend-annotations";
 import { illnessDaysInWindow } from "../illness-episode-store";
 import { getLatestFitnessAssessmentDate } from "../fitness-assessment";
@@ -109,7 +116,7 @@ const RECAP_WORKOUT_BUCKET: Record<ActivityType, WorkoutType | null> = {
   // Pre-#2272 behavior, preserved deliberately: a mobility session has counted in the
   // strength bucket since the recap shipped, and re-cutting that line is its own
   // decision, not a side effect of adding a type.
-  recovery: "strength",
+  mobility: "strength",
   unclassified: null,
 };
 
@@ -132,9 +139,9 @@ function windowAdherence(
 } | null {
   const active = getIntakeItems(profileId).filter((s) => s.active);
   if (active.length === 0) return null;
-  const suppById = new Map(active.map((s) => [s.id, s]));
+  const itemById = new Map(active.map((item) => [item.id, item]));
   const doses = getIntakeDoses(profileId).filter((d) =>
-    suppById.has(d.item_id)
+    itemById.has(d.item_id)
   );
   if (doses.length === 0) return null;
   // Per-day situation resolver (#654): each past day in the recap window is scored
@@ -154,7 +161,7 @@ function windowAdherence(
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
     const dueIds = doses
       .filter((dose) =>
-        doseDueOn(suppById.get(dose.item_id)!, dose, {
+        doseDueOn(itemById.get(dose.item_id)!, dose, {
           date: d,
           isWorkoutDay,
           activeSituations: situationsOn(d),
@@ -183,7 +190,7 @@ function windowAdherence(
 // many of the days that could be POSITIONED landed on their protein and fibre targets.
 //
 // NOT A RE-TOTAL, by construction: nothing here sums servings or grams. Days-logged and
-// variety come from one ranged read of the same `food_log` rows the nutrition card and
+// variety come from one ranged read of the same `food_daily_totals` rows the nutrition card and
 // the Trends rollup use; the nutrient half asks the SAME per-day question the morning
 // digest asks of one day (`getNutritionDay` → `nutritionShortfalls`), so a day the recap
 // counts as short and a day the digest called short can never be different days.
@@ -258,14 +265,24 @@ export function gatherRecapInput(
   const weekStart = getWeekStart(profileId);
   const win = periodFor(scale, td, weekMode, weekStart, completed);
   const speaks = (key: RecapLineKey) => lineSpeaksAt(key, scale);
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
 
   // Only the recap's two windows (current + previous) reduce these, and win.prevStart
   // is the earliest bound of either, so bound the load there (issue #389) instead of
   // pulling all history (SELECT *, incl. the components TEXT) to discard all but ~14
   // days. Nothing in the recap walks back past that bound any more — the streak
   // lines that needed full activity history were retired (#1935/#1937).
-  const allActivities = getActivitiesSince(profileId, win.prevStart);
-  const activities = allActivities.map(asWorkout);
+  const allActivities = trainingRelevant
+    ? getActivitiesSince(profileId, win.prevStart)
+    : [];
+  const activities = allActivities
+    .filter(
+      (activity) => strengthTrainingRelevant || activity.type !== "strength"
+    )
+    .map(asWorkout);
   const workouts = activities.filter((w) =>
     inWindow(w.date, win.start, win.end)
   );
@@ -287,12 +304,18 @@ export function gatherRecapInput(
     daysBetweenDateStr(win.start, win.end) ?? recapScaleEntry(scale).approxDays;
   // byLoadContext (#1610): two machines' records are two records, and the label
   // below names the implement so the recap doesn't repeat one bare lift name twice.
-  const strengthPRs = speaks("prs")
-    ? recentPRs(getStrengthByExercise(profileId, true), win.end, withinDays)
-    : [];
-  const cardioPRs = speaks("prs")
-    ? recentCardioPRs(getCardioByActivity(profileId, "km"), win.end, withinDays)
-    : [];
+  const strengthPRs =
+    strengthTrainingRelevant && speaks("prs")
+      ? recentPRs(getStrengthByExercise(profileId, true), win.end, withinDays)
+      : [];
+  const cardioPRs =
+    trainingRelevant && speaks("prs")
+      ? recentCardioPRs(
+          getCardioByActivity(profileId, "km"),
+          win.end,
+          withinDays
+        )
+      : [];
   const prLabels: string[] = [];
   const seen = new Set<string>();
   for (const p of strengthPRs) {
@@ -340,7 +363,12 @@ export function gatherRecapInput(
   //
   // A goal achieved before migration 182 has no instant and is simply absent: silence,
   // not a retroactive announcement in whatever week the deploy landed in.
-  const goals = getOutcomeGoals(profileId).filter((g) => !g.archived);
+  const goals = trainingRelevant
+    ? getOutcomeGoals(profileId).filter(
+        (g) =>
+          !g.archived && (strengthTrainingRelevant || g.kind !== "exercise")
+      )
+    : [];
   const tz = getTimezone(profileId);
   const goalsCompleted = goals
     .filter((g) => {
@@ -406,7 +434,11 @@ export function gatherRecapInput(
     // distinction, so nothing new decides it here.
     targetVerdicts:
       speaks("targets") && completed
-        ? getCadenceWeekVerdicts(profileId, win.end)
+        ? getCadenceWeekVerdicts(profileId, win.end, {
+            includeTarget: trainingRelevant
+              ? undefined
+              : (target) => !isTrainingFrequencyScope(target),
+          })
         : [],
     // THE PERIOD'S FOOD HABITS (#2397): a share of the days food was logged at all, with
     // the curated nutrient rationale. One bounded rollup read over the period, skipped
@@ -424,6 +456,9 @@ export function gatherRecapInput(
           weeks: Math.floor(
             ((daysBetweenDateStr(win.start, win.end) ?? 0) + 1) / 7
           ),
+          includeTarget: trainingRelevant
+            ? undefined
+            : (target) => !isTrainingFrequencyScope(target),
         })
       : [],
     // The window's per-night MAIN sleep minutes and the previous window's (#2396) — the
@@ -455,10 +490,14 @@ export function gatherRecapInput(
       : 0,
     // Zone 2 aerobic-base minutes over the SAME window (win is a days-1 inclusive
     // range, #190) — null when no HR zone model exists (line then omitted).
-    zone2Min: speaks("zone2")
-      ? getZone2MinutesInWindow(profileId, win.start, win.end)
-      : null,
-    zone2Target: speaks("zone2") ? getZone2WeeklyTargetMin(profileId) : null,
+    zone2Min:
+      trainingRelevant && speaks("zone2")
+        ? getZone2MinutesInWindow(profileId, win.start, win.end)
+        : null,
+    zone2Target:
+      trainingRelevant && speaks("zone2")
+        ? getZone2WeeklyTargetMin(profileId)
+        : null,
     // Sleep Regularity Index (#160) over the trailing 28-night window — the SAME
     // pure computeSleepRegularity the Trends sleep card renders (one computation).
     // Null (line omitted) below the minimum-nights gate.
@@ -488,7 +527,11 @@ export function gatherRecapInput(
     // the check page's finale uses). Reports the completed check's fitness age; null when
     // no check completed in the window (line omitted).
     fitnessCheck: (() => {
-      if (!speaks("fitness-check")) return null;
+      if (
+        !speaks("fitness-check") ||
+        !isAdultForClinical(getProfileAge(profileId))
+      )
+        return null;
       const lastCheck = getLatestFitnessAssessmentDate(profileId);
       if (!lastCheck || !inWindow(lastCheck, win.start, win.end)) return null;
       const { model, equipmentMissingKeys } =

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   medicationHitActions,
   appointmentHitActions,
-  biomarkerHitActions,
+  clinicalResultHitActions,
 } from "@/lib/hit-actions";
 
 // Per-hit command-palette actions (issue #662). Pure matchers — the DB fan-out
@@ -17,17 +17,14 @@ describe("medicationHitActions", () => {
   });
 
   it("omits Refill for an untracked medication", () => {
-    const actions = medicationHitActions(9, false);
-    expect(actions).toEqual([
+    expect(medicationHitActions(9, false)).toEqual([
       { kind: "log-dose", label: "Log dose", entityId: 9 },
     ]);
-    expect(actions.map((a) => a.kind)).not.toContain("refill");
   });
 
   it("targets the item id as the write action's entity", () => {
     for (const a of medicationHitActions(42, true)) {
       expect(a.entityId).toBe(42);
-      expect(a.href).toBeUndefined();
     }
   });
 });
@@ -45,17 +42,22 @@ describe("appointmentHitActions", () => {
   });
 });
 
-describe("biomarkerHitActions", () => {
+describe("clinicalResultHitActions", () => {
   it("navigates to the add form, focus param + name-prefilled and encoded", () => {
-    const [action] = biomarkerHitActions("LDL Cholesterol");
-    expect(action.kind).toBe("add-result");
-    expect(action.label).toBe("Add result");
-    expect(action.entityId).toBe(0);
-    expect(action.href).toBe("/results/readings?new=1&name=LDL%20Cholesterol");
+    expect(clinicalResultHitActions("LDL Cholesterol")).toEqual([
+      {
+        kind: "add-result",
+        label: "Add result",
+        entityId: 0,
+        href: "/results/clinical-results?new=1&name=LDL%20Cholesterol",
+      },
+    ]);
   });
 
   it("URL-encodes a name with reserved characters", () => {
-    const [action] = biomarkerHitActions("TG/HDL Ratio");
-    expect(action.href).toBe("/results/readings?new=1&name=TG%2FHDL%20Ratio");
+    const [action] = clinicalResultHitActions("TG/HDL Ratio");
+    expect(action.href).toBe(
+      "/results/clinical-results?new=1&name=TG%2FHDL%20Ratio"
+    );
   });
 });

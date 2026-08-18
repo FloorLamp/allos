@@ -39,7 +39,7 @@ function logFood(
   servings: number
 ) {
   db.prepare(
-    "INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
+    "INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)"
   ).run(profileId, date, slug, servings);
 }
 
@@ -50,7 +50,7 @@ function seedTracked(
   grams: number
 ) {
   db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health_connect', ?, ?, ?, ?, ?)`
   ).run(
     profileId,

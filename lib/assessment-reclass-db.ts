@@ -4,7 +4,7 @@
 // Forward-only would not be enough. The parse fix stops the next import from minting
 // these rows, but every database that already imported a CCD keeps its
 // "Functional status" / questionnaire-item / "Lot Number" / "Expiration Date" rows
-// forever — each with an ai-coined `canonical_biomarkers` entry, a permanent slot
+// forever — each with an ai-coined `canonical_result_definitions` entry, a permanent slot
 // under Data → Coverage → Uncatalogued items, and a bandless series. So this is a
 // one-shot data move, run from migration 177 (AGENTS.md: "Put one-shot data moves in
 // a migration, not a settings flag"), the same shape #2306's pass took.
@@ -46,10 +46,10 @@
 //      mapper no longer derives for an assessment (a non-measurement is not in or out
 //      of a band). `name`/`canonical_name` are PROVENANCE and stay: the row still
 //      says what the document called it, and the category is what withholds identity.
-//   2. canonical_biomarkers — the ai-coined vocabulary row. Checked GLOBALLY (the
+//   2. canonical_result_definitions — the ai-coined vocabulary row. Checked GLOBALLY (the
 //      table is a global reference table) and only ever `source = 'ai'`; a curated
 //      row is untouchable, exactly as in the #2306 pass.
-//   3. saved_items (kind='biomarker') — the ★ pin on a name that can no longer chart.
+//   3. saved_items (kind='clinical-result') — the ★ pin on a name that can no longer chart.
 //   4. upcoming_dismissals — the retest snooze `biomarker:<family>` and the
 //      flagged-result acknowledgment `biomarker-flag:<family>`. Both are FAMILY keys,
 //      so one is dropped only when no surviving identity-carrying name of that
@@ -71,6 +71,7 @@
 //     exactly what was deleted (the #2306 reasoning, unchanged).
 
 import type Database from "better-sqlite3";
+import { canonicalResultDefinitionTableForSchema } from "./canonical-result-definition-table";
 import { biomarkerCoverageKey } from "./coverage-gaps";
 import {
   biomarkerDismissalKey,
@@ -82,7 +83,7 @@ import { isNonAnalyteObservation } from "./non-analyte-observations";
 export interface AssessmentReclassReport {
   // medical_records rows moved from `lab` to `assessment`.
   records: number;
-  // canonical_biomarkers ai-coined names deleted (global).
+  // canonical_result_definitions ai-coined names deleted (global).
   vocabulary: string[];
   // Name-keyed side-state rows dropped.
   savedItems: number;
@@ -152,7 +153,7 @@ function survivingNames(db: Database.Database, profileId: number): string[] {
 // are no longer `lab`) and writes nothing.
 //
 // PROFILE SCOPING follows the #2306 pass exactly: the vocabulary
-// (canonical_biomarkers) is a global table, but every row this touches is
+// (canonical_result_definitions) is a global table, but every row this touches is
 // profile-owned, so the whole pass runs per profile and every statement filters by
 // profile_id. The one genuinely cross-profile question — "may this vocabulary row
 // go?" — is answered by UNIONING each profile's own surviving names rather than by
@@ -160,6 +161,11 @@ function survivingNames(db: Database.Database, profileId: number): string[] {
 export function reclassifyNonAnalyteObservations(
   db: Database.Database
 ): AssessmentReclassReport {
+  const definitionTable = canonicalResultDefinitionTableForSchema(db);
+  const savedResultKind =
+    definitionTable === "canonical_biomarkers"
+      ? "biomarker"
+      : "clinical-result";
   const report: AssessmentReclassReport = {
     records: 0,
     vocabulary: [],
@@ -174,7 +180,7 @@ export function reclassifyNonAnalyteObservations(
   );
   const dropSaved = db.prepare(
     `DELETE FROM saved_items
-      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
+      WHERE profile_id = ? AND kind = ? AND key = ? COLLATE NOCASE`
   );
   const dropGap = db.prepare(
     `DELETE FROM coverage_gaps
@@ -228,7 +234,11 @@ export function reclassifyNonAnalyteObservations(
     for (const name of names) {
       if (survivingLower.has(name.toLowerCase())) continue;
       orphaned.add(name);
-      report.savedItems += dropSaved.run(profileId, name).changes;
+      report.savedItems += dropSaved.run(
+        profileId,
+        savedResultKind,
+        name
+      ).changes;
       const gapKey = biomarkerCoverageKey(name);
       if (gapKey && !liveGapKeys.has(gapKey))
         report.coverageGaps += dropGap.run(profileId, gapKey).changes;
@@ -246,7 +256,7 @@ export function reclassifyNonAnalyteObservations(
   // has an identity-carrying record using it — and only when it was ai-coined. A
   // `seed`/`curated` row is untouchable, exactly as in the #2306 pass.
   const dropName = db.prepare(
-    "DELETE FROM canonical_biomarkers WHERE name = ? COLLATE NOCASE AND source = 'ai'"
+    `DELETE FROM ${definitionTable} WHERE name = ? COLLATE NOCASE AND source = 'ai'`
   );
   for (const name of orphaned) {
     if (liveAnywhere.has(name.toLowerCase())) continue;

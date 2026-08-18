@@ -75,7 +75,17 @@ export default function SyncTimestamp({
       ) : (
         <>
           {absolute}
-          <span className="text-slate-500 dark:text-slate-400">
+          {/* suppressHydrationWarning does NOT cascade: the <time>'s own flag
+              cannot cover text inside this child, so the relative half — whose
+              value moves with the real clock between server render and
+              hydration — needs its own. Without it a minute boundary crossed
+              in that gap is an uncaught React #418 that regenerates the whole
+              tree client-side (seen in #2839's CI browser logs on the
+              integrations surfaces, exactly where this component renders). */}
+          <span
+            className="text-slate-500 dark:text-slate-400"
+            suppressHydrationWarning
+          >
             {" · "}
             {relative}
           </span>

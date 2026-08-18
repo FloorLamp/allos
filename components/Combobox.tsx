@@ -182,13 +182,16 @@ export default function Combobox({
           <IconSearch className="h-4 w-4" stroke={2} aria-hidden="true" />
         </span>
       )}
+      {/* inset-0 bounds the overlay so a long name TRUNCATES on one line
+          (#2895) — left/inset-y alone left it unbounded, wrapping over the
+          single-line input beneath and colliding with whatever followed. */}
       {titleAppearance && (
         <span
           aria-hidden="true"
           data-testid="combobox-title-text"
-          className="pointer-events-none absolute inset-y-0 left-0 z-20 flex items-center pr-7 text-2xl leading-tight font-semibold tracking-tight text-slate-900 transition group-hover:text-brand-700 md:text-3xl dark:text-slate-50 dark:group-hover:text-brand-300"
+          className="pointer-events-none absolute inset-0 z-20 flex items-center pr-7 text-2xl leading-tight font-semibold tracking-tight text-slate-900 transition group-hover:text-brand-700 md:text-3xl dark:text-slate-50 dark:group-hover:text-brand-300"
         >
-          {value || placeholder}
+          <span className="truncate">{value || placeholder}</span>
         </span>
       )}
       <input

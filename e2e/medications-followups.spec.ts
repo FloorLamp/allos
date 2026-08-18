@@ -1,6 +1,12 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import {
+  dismissToast,
+  followLink,
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
@@ -85,7 +91,7 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   const row = page
     .getByTestId("medication-row")
     .filter({ hasText: "Ibuprofen" })
-    .first(); // first-ok: filtered to the Ibuprofen med this spec just added — one match
+    .filter({ hasText: "Generic" });
   await expect(row).toBeVisible();
   await expect(row.getByTestId("otc-badge")).toBeVisible();
   await expect(row.getByTestId("rx-badge")).toHaveCount(0);
@@ -129,13 +135,11 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
   const prnRow = page
     .locator('[data-testid="quick-log-prn-item"][data-today-row="1"]')
     .first(); // first-ok: a today-PRN row — asserts the name/summary layout, order-agnostic
-  const [nameBox, summaryBox] = await Promise.all([
-    prnRow.getByRole("link").boundingBox(),
-    prnRow.getByTestId("prn-day-label").boundingBox(),
+  const [nameBox, summaryBox] = await settledBoxes([
+    prnRow.getByRole("link"),
+    prnRow.getByTestId("prn-day-label"),
   ]);
-  expect(nameBox).not.toBeNull();
-  expect(summaryBox).not.toBeNull();
-  expect(summaryBox!.y - (nameBox!.y + nameBox!.height)).toBeLessThanOrEqual(4);
+  expect(summaryBox.y - (nameBox.y + nameBox.height)).toBeLessThanOrEqual(4);
 
   const scheduledRow = page.getByTestId("today-scheduled-med").first(); // first-ok: asserts a scheduled-med row renders today — order-agnostic presence
   const actionButtons = [
@@ -273,6 +277,10 @@ test("logs, edits, and deletes a historical medication dose", async ({
     .getByTestId("dose-history-row")
     .filter({ hasText: updatedAmount });
   await expect(restoredRow).toBeVisible();
+  // The undo posts its own "Restored." toast into the bottom-right stack, and the
+  // dose table is the BOTTOM section of this page — so the row menu re-opened below
+  // sits under it for the full 6s auto-dismiss window (#2861).
+  await dismissToast(page, "Restored.");
 
   // Undo is part of the behavior under test; remove the restored fixture again
   // so --repeat-each starts from the same dose history instead of accumulating
@@ -286,6 +294,9 @@ test("logs, edits, and deletes a historical medication dose", async ({
       .getByRole("button", { name: "Delete dose" })
   );
   await expect(restoredRow).toHaveCount(0);
+  // Second delete, second toast — and the Medication actions menu opened next is in
+  // the same quadrant (#2861).
+  await dismissToast(page, "Dose deleted.");
 
   // The administration and course correction are one write: editing immediately
   // afterward must show the selected dose date as the new PRN start.

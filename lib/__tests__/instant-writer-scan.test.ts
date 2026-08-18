@@ -87,8 +87,8 @@ const CANONICAL_INSTANT_COLUMNS: Record<
     why: "migration 165 (#2235) — BORN canonical: the day's weigh-in instant. Same rule as medical_records, and the table's only instant column.",
   },
   intake_item_logs: {
-    columns: ["occurred_at"],
-    why: "migration 165 (#2229's owner ruling) — BORN canonical: this table's first event instant, filled only when a user states when a dose was actually taken. `recorded_at` and `taken_at` beside it are the bare-shaped RECORD chain and are NOT claimed here; the rename that settles their names is a later slot.",
+    columns: ["occurred_at", "recorded_at"],
+    why: "migration 165 made `occurred_at` canonical; #2876 completed the event/record split, moved administration time there, renamed the immutable capture to `recorded_at`, and converted both columns to canonical UTC+Z. Writers now bind utcInstant()/instantNow().",
   },
   integration_sync_events: {
     columns: ["at", "created_at"],
@@ -100,7 +100,7 @@ const CANONICAL_INSTANT_COLUMNS: Record<
   },
   food_log_events: {
     columns: ["recorded_at", "occurred_at"],
-    why: "migration 183 (#2370) — the food event ledger's tap and eating instants. lib/time-columns.ts had DECLARED both canonical since the #2205 phase 3 census while this registry did not claim them, so nothing bound the writers and one drifted: the offline replay's `resolveCapturedInstant` (lib/offline/queue.ts) returned `new Date().toISOString()`, and the column ended up holding two serializations at once. The same failure as notify_lifecycle below, invisible for the same reason — the module that built the string writes no SQL of its own, so rule C saw no literal to object to. Migration 183 truncated the millisecond values in the same rebuild that renamed the columns from `logged_at`/`eaten_at` (#2205 phase 2), and the writers now bind instantNow()/utcInstant(). The DEFAULT on `recorded_at` is migration 056's `strftime('%Y-%m-%dT%H:%M:%SZ','now')`, which already writes the canonical shape rather than SQLite's bare one. `created_at` beside them stays bare and is NOT claimed here; neither is the vestigial `eaten_at` shell, which never holds a value.",
+    why: "migration 183 (#2370) — the food event ledger's tap and eating instants. lib/time-columns.ts had DECLARED both canonical since the #2205 phase 3 census while this registry did not claim them, so nothing bound the writers and one drifted: the offline replay's `resolveCapturedInstant` (lib/offline/queue.ts) returned `new Date().toISOString()`, and the column ended up holding two serializations at once. The same failure as notify_lifecycle below, invisible for the same reason — the module that built the string writes no SQL of its own, so rule C saw no literal to object to. Migration 183 truncated the millisecond values in the same rebuild that renamed the columns from `logged_at`/`eaten_at` (#2205 phase 2), and the writers now bind instantNow()/utcInstant(). The DEFAULT on `recorded_at` is migration 056's `strftime('%Y-%m-%dT%H:%M:%SZ','now')`, which already writes the canonical shape rather than SQLite's bare one. `created_at` beside them stays bare and is NOT claimed here.",
   },
   schema_migrations: {
     columns: ["applied_at"],
@@ -113,6 +113,10 @@ const CANONICAL_INSTANT_COLUMNS: Record<
   goals: {
     columns: ["achieved_at"],
     why: "migration 182 (#2394) — BORN canonical: the instant a goal was marked achieved, the column the recap's reached-line windows on. The table is old but the column is new and carries no DEFAULT, so the claim cannot be false, and the entry is what binds its only writer (setStatus in app/(app)/training/goal-actions.ts) to instantNow() rather than to SQLite's own bare-shaped clock — a bare value in a column the recap compares against a canonical one would answer wrong while the query still looked right. `created_at` beside it stays bare and is NOT claimed here.",
+  },
+  fasts: {
+    columns: ["started_at", "ended_at", "end_written_at"],
+    why: "migration 20260816-fasts (#2756) — BORN canonical: the fasting lifecycle's claimed start and end, plus the instant that end was WRITTEN. The table is new, so the claim cannot be false, and the entry is what binds its first writer (lib/fast-store.ts, reached only through lib/fast-write.ts) to utcInstant() instead of letting the call site pick a shape. The first two are compared in SQL — the active-fast lookup, the range read the history and the annotation ride, and the overlap scan — so a bare value beside a canonical one would sort wrong while the query still looked right. `end_written_at` is compared in TS rather than SQL (the Undo's age bound), which is the same hazard one tier over: parseUtcSql reads it beside `ended_at`, so a bare shape there would be judged against canonical ones. No DEFAULT on any of the three. `created_at` beside them stays bare and is NOT claimed here.",
   },
   notify_lifecycle: {
     columns: ["at"],
@@ -130,11 +134,11 @@ const CANONICAL_INSTANT_COLUMNS: Record<
 const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
     count: 4,
-    why: "the dose-burst reader and the restamp core each re-serialize ALREADY-STORED stamps (parseUtcSql → toISOString) into the in-memory `tapAt` / `statedAt` the pure burst grouping compares — `taken_at` for identity and freshness, `recorded_at` for the instant the row stands at (#2206). Nothing writes them: the values never reach a bind parameter, the write itself re-serializes through utcSqlString, and the burst's own output is ids plus a label.",
+    why: "the dose-burst reader and restamp core re-serialize already-stored stamps (parseUtcSql → toISOString) into the in-memory `tapAt` / `statedAt` values the pure burst grouping compares — immutable `recorded_at` for identity and freshness, mutable `occurred_at` for the administration instant (#2206, #2876). The write itself serializes through utcInstant.",
   },
   "lib/reading-writes.ts": {
     count: 1,
-    why: "`${date}T00:00:00` — the DAY, not an instant. A reading with no stated time is filed at its profile-local day's midnight, and that string is the metric_samples natural key (profile, metric, source, origin, start_time) that makes a re-entry a correction instead of a duplicate. Moving it onto a UTC instant would change a day attribution, which #2205 constraint 4 puts out of scope by definition, AND would break the dedupe.",
+    why: "`${date}T00:00:00` — the DAY, not an instant. A reading with no stated time is filed at its profile-local day's midnight, and that string is the metric_samples natural key (profile, metric, source, origin, started_at) that makes a re-entry a correction instead of a duplicate. Moving it onto a UTC instant would change a day attribution, which #2205 constraint 4 puts out of scope by definition, AND would break the dedupe.",
   },
   "lib/ttc-store.ts": {
     count: 1,
@@ -146,7 +150,11 @@ const HANDBUILT_ALLOW: Record<string, { count: number; why: string }> = {
   },
   "scripts/seed.ts": {
     count: 24,
-    why: "the sample-data generator, whose job is to reproduce what each column's PRODUCTION writer actually stores — including the shapes phase 1 has not converted. Two are the Health Connect 5k session's start/end in the live normalizer's millisecond ISO shape (metric_samples' natural-key dedupe is keyed on that exact string, so a different serialization of the same session would make a real re-push insert a duplicate instead of being free); four are the #1850 peak-flow stream's morning/evening `${date}T07:30:00` / `${date}T20:00:00` start_time+end_time pairs, the same profile-local wall-clock instants recordReading writes for a timed reading and the same natural key it dedupes on; two more are the #2322 waist-circumference stream's `${date}T07:00:00` start_time+end_time pair, the same wall-clock shape and the same natural key one metric over; the rest are per-column bare/`Z` stamps and day-midnight anchors matching their writers. Frozen: seeding a NEW shape fails here, and each migration that converts a column lowers this count in the same change.",
+    why: "the sample-data generator, whose job is to reproduce what each column's PRODUCTION writer actually stores — including the shapes phase 1 has not converted. Two are the Health Connect 5k session's start/end in the live normalizer's millisecond ISO shape (metric_samples' natural-key dedupe is keyed on that exact string, so a different serialization of the same session would make a real re-push insert a duplicate instead of being free); four are the #1850 peak-flow stream's morning/evening `${date}T07:30:00` / `${date}T20:00:00` started_at+ended_at pairs, the same profile-local wall-clock instants recordReading writes for a timed reading and the same natural key it dedupes on; two more are the #2322 waist-circumference stream's `${date}T07:00:00` started_at+ended_at pair, the same wall-clock shape and the same natural key one metric over; the rest are per-column bare/`Z` stamps and day-midnight anchors matching their writers. Frozen: seeding a NEW shape fails here, and each migration that converts a column lowers this count in the same change.",
+  },
+  "scripts/seed-personas.ts": {
+    count: 3,
+    why: "the persona sample-data generator (scripts/seed.ts's SEED_PERSONA sibling), reproducing the same production-writer shapes the baseline seed's entry freezes: two are a macro day-window start/end pair in the Health Connect ingest's shape (metric_samples natural-key dedupe is keyed on the exact string), and one is a frequency-target created_at in SQLite's bare `${day} HH:MM:SS` shape matching the baseline red-light target. (The wearable-sourced sleep windows go through the ctx.occurredAt minter instead.) Frozen: a NEW hand-built shape here fails, same contract as scripts/seed.ts.",
   },
   "lib/photo/metadata-backfill.ts": {
     count: 3,
@@ -546,7 +554,7 @@ describe("the SQL extraction the scan relies on", () => {
   it("aligns INSERT columns with their value expressions", () => {
     const w = writesIn(
       `INSERT INTO integration_sync_events
-         (profile_id, provider, at, ok)
+         (profile_id, source_id, at, ok)
        VALUES (?, ?, datetime('now'), ?)`
     );
     expect(w).toContainEqual({

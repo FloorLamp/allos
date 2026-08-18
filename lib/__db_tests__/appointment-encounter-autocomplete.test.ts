@@ -89,7 +89,7 @@ function visitInput(
     external_id: "encounter:1",
   };
   return {
-    records: [],
+    observations: [],
     immunizations: [],
     allergies: [],
     conditions: [],

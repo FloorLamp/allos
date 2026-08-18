@@ -188,5 +188,19 @@
   "20260813-bmi-derived-rows.ts": "352f1e8d004c23c8deaec908aced49673e80bc0bdb06b38c417be5e8a372dd87",
   "20260813-cascade-orphan-sweep.ts": "fd38b4d4e77f200d266e5d4de0dc069c05150d2bd39b139864ec5c591ddc5c4a",
   "20260813-encounter-diagnosis-ranks.ts": "4d8969ec00eb72a7cf5616fe38ee880788773865ae2bf097546f74e68d76ccf9",
-  "20260813-saved-backed-identity-repair.ts": "3d274702d6fa4696937a8f7ee1e816c9420132ef01865e17a5e28989527c6dcc"
+  "20260813-saved-backed-identity-repair.ts": "3d274702d6fa4696937a8f7ee1e816c9420132ef01865e17a5e28989527c6dcc",
+  "20260814-canonical-result-definitions.ts": "1e7c35b98004fe319c667268608b2d91fb8dfedb83f3c944eeb504e4daf2a5d3",
+  "20260814-saved-clinical-result-namespace.ts": "5752cc4e337853f387a1a21a7620fe3fc3f60a6b47485638b1a9645b6573cbd6",
+  "20260814-persisted-vocabulary.ts": "5acf3774cdc945fa49d22e5e64296a0f7fe825572518e680977b934b558bcbe2",
+  "20260814-intake-log-time-vocabulary.ts": "f6df11c2229f4f9186305bfb93c2e37a86494c152fda2e8922aa32b03ec5db79",
+  "20260814-remove-legacy-schema-shells.ts": "a3e1fad6e35425fc332cfdf0af2b1fc1c87188fe5df75ad7bb3ae233a917f99f",
+  "20260814-mobility-activity-type.ts": "5c12b95a049af94f60a04c0af0207cb645328fd35f6c43dc9ada945470a1034a",
+  "20260814-medical-category-residue.ts": "80e55e0c102901a906ad67ce0388a8339df4fd18e238efde3f367336acb28b80",
+  "20260814-integration-source-id.ts": "678ab055ccbe9ef834bd1fb1968a59d9ca118a887229fde7e9dbd4299970ca41",
+  "20260815-substance-recorded-at.ts": "8f1c9902a11e567bc60f0b2f3cc90aa396a06efd0390084f1312aaba914543e0",
+  "20260815-metric-sample-instants.ts": "985f2f0b9e7596df46c12dee9301b1acbc51335b771ef14fc42e1d1830cfcbbf",
+  "20260816-practice-tap-message-provenance.ts": "8c1690445d3109dc1ccd53093414fe989e91464d3cfda70ac57e4b9cfb542d53",
+  "20260816-fasts.ts": "c3392fadcd5bc1d2fa5172c22dde5d626a3092722fe9a123f36ebb39941f5407",
+  "20260816-document-sync-provenance.ts": "749c96e610f0a61014d07b7373275dc448d245c64b2b4b1b7937d9617030c5f2",
+  "20260817-retire-training-age-setting.ts": "8b6ab1e3882d28636b0d55cf3e107aa121087983d16dcbfdd63956684ef35a17"
 }

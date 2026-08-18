@@ -42,6 +42,8 @@ export interface AnatomyCoverageEntry {
 interface AnatomyDisplayProps {
   className?: string;
   showCaptions?: boolean;
+  /** Optional in-page drill-in destinations for interactive coverage hosts. */
+  muscleHrefs?: Partial<Record<MuscleId, string>>;
 }
 
 type MuscleAnatomyModeProps =
@@ -181,9 +183,11 @@ const CAPTION_SIZE = viewBoxFontSize(CAPTION_SCALE);
 function BodyView({
   view,
   plan,
+  muscleHrefs,
 }: {
   view: AnatomyView;
   plan: Map<MuscleId, MuscleRender>;
+  muscleHrefs?: Partial<Record<MuscleId, string>>;
 }) {
   const outline = BODY_OUTLINE[view];
   return (
@@ -195,7 +199,7 @@ function BodyView({
         const shapes = MUSCLE_PATHS[m].filter((s) => s.view === view);
         if (shapes.length === 0) return null;
         const r = plan.get(m)!;
-        return (
+        const group = (
           <g
             key={m}
             data-muscle={m}
@@ -218,6 +222,14 @@ function BodyView({
               </g>
             ))}
           </g>
+        );
+        const href = muscleHrefs?.[m];
+        return href ? (
+          <a key={m} href={href} aria-label={`Open ${r.title}`}>
+            {group}
+          </a>
+        ) : (
+          group
         );
       })}
     </>
@@ -244,10 +256,10 @@ export default function MuscleAnatomy(props: MuscleAnatomyProps) {
       className={props.className}
     >
       <g>
-        <BodyView view="front" plan={plan} />
+        <BodyView view="front" plan={plan} muscleHrefs={props.muscleHrefs} />
       </g>
       <g transform={`translate(${VIEW_W + VIEW_GAP},0)`}>
-        <BodyView view="back" plan={plan} />
+        <BodyView view="back" plan={plan} muscleHrefs={props.muscleHrefs} />
       </g>
       {showCaptions && (
         <>

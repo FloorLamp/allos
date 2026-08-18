@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyPull,
   indicatorPresentation,
+  overlayOwnsViewport,
   shouldRefresh,
   PTR_MAX_PX,
   PTR_RESISTANCE,
@@ -15,7 +16,14 @@ import {
 const ARMING_TRAVEL = PTR_TRIGGER_PX / PTR_RESISTANCE;
 
 function pull(over: Partial<PullInput> = {}): PullInput {
-  return { startScrollY: 0, scrollY: 0, deltaY: 0, deltaX: 0, ...over };
+  return {
+    overlayOpen: false,
+    startScrollY: 0,
+    scrollY: 0,
+    deltaY: 0,
+    deltaX: 0,
+    ...over,
+  };
 }
 
 describe("classifyPull", () => {
@@ -29,6 +37,61 @@ describe("classifyPull", () => {
     const state = classifyPull(pull({ deltaY: ARMING_TRAVEL - 2 }));
     expect(state.kind).toBe("pulling");
     expect(shouldRefresh(state)).toBe(false);
+  });
+
+  it("ignores a textbook-perfect pull while an overlay owns the drag", () => {
+    // #2725. A bottom sheet's drag-dismiss satisfies every other clause — it is
+    // downward, it starts and stays at the top of the page behind, and it
+    // travels far past the arming distance — so without this one the gesture
+    // that CLOSES a sheet also refreshed the whole page underneath it.
+    const state = classifyPull(
+      pull({
+        overlayOpen: overlayOwnsViewport({ bodyScrollLocked: true }),
+        deltaY: 400,
+      })
+    );
+    expect(state.kind).toBe("idle");
+    expect(shouldRefresh(state)).toBe(false);
+  });
+
+  it("refuses on the overlay alone — every other clause held", () => {
+    // The control: the same gesture with nothing over the page DOES arm, so the
+    // clause above is what refused it and not some incidental input.
+    expect(classifyPull(pull({ deltaY: 400 })).kind).toBe("armed");
+  });
+
+  it("STILL arms under a modal that does not own the drag — #1878's contract", () => {
+    // The counter-example, stated at the classifier so it cannot be lost again.
+    // A record form open in a ModalShell is `aria-modal` and has no touch
+    // gesture at all, so it cannot produce the drag clause 1 refuses; and per
+    // #1878 a refresh the USER asked for is never deferred — installed, a pull
+    // is the only way to ask. Swallowing it leaves someone pulling with no
+    // recourse, which is the regression e2e/dirty-form-refresh.mobile.spec.ts
+    // caught when this clause also asked "is a modal open".
+    const overlayOpen = overlayOwnsViewport({ bodyScrollLocked: false });
+    expect(classifyPull(pull({ overlayOpen, deltaY: 400 })).kind).toBe("armed");
+  });
+});
+
+describe("overlayOwnsViewport", () => {
+  // Clause 1's reading, pinned in BOTH directions. The first version of it had
+  // no test at all — it lived in the component, over the DOM — and shipped a
+  // false positive that only CI caught.
+
+  it("a locked body means an overlay owns the drag", () => {
+    // Every downward-capable recognizer in the app runs under a locked body —
+    // the sheet, both drawers, the dock, the cropper — so the lock IS the
+    // discriminator, and it is a document-level fact, which is what makes it
+    // cover a drag begun on a sheet's scrim.
+    expect(overlayOwnsViewport({ bodyScrollLocked: true })).toBe(true);
+  });
+
+  it("a modal that never locked the body does NOT own the drag", () => {
+    // ModalShell and its consumers, MergeConflictDialog, PhotoGallery,
+    // FitnessTestTimer. None has a touch gesture, so none can produce the
+    // drag-dismiss this refuses — and a pull under one is legitimate (#1878).
+    // Asking "is a modal open" here answered true and swallowed it.
+    expect(overlayOwnsViewport({ bodyScrollLocked: false })).toBe(false);
   });
 
   it("ignores a pull that did not START at the top of the page", () => {

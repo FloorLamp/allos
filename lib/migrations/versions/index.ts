@@ -189,6 +189,20 @@ import { migration as mEncounterDiagnosisRanks } from "./20260813-encounter-diag
 import { migration as mBmiDerived } from "./20260813-bmi-derived-rows";
 import { migration as mCascadeOrphanSweep } from "./20260813-cascade-orphan-sweep";
 import { migration as mSavedBackedRepair } from "./20260813-saved-backed-identity-repair";
+import { migration as mCanonicalResultDefinitions } from "./20260814-canonical-result-definitions";
+import { migration as mSavedClinicalResultNamespace } from "./20260814-saved-clinical-result-namespace";
+import { migration as mPersistedVocabulary } from "./20260814-persisted-vocabulary";
+import { migration as mIntakeLogTimeVocabulary } from "./20260814-intake-log-time-vocabulary";
+import { migration as mRemoveLegacySchemaShells } from "./20260814-remove-legacy-schema-shells";
+import { migration as mMobilityActivityType } from "./20260814-mobility-activity-type";
+import { migration as mMedicalCategoryResidue } from "./20260814-medical-category-residue";
+import { migration as mIntegrationSourceId } from "./20260814-integration-source-id";
+import { migration as mSubstanceRecordedAt } from "./20260815-substance-recorded-at";
+import { migration as mMetricSampleInstants } from "./20260815-metric-sample-instants";
+import { migration as mPracticeTapMessageProvenance } from "./20260816-practice-tap-message-provenance";
+import { migration as mFasts } from "./20260816-fasts";
+import { migration as mDocumentSyncProvenance } from "./20260816-document-sync-provenance";
+import { migration as mRetireTrainingAgeSetting } from "./20260817-retire-training-age-setting";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -387,6 +401,20 @@ export const MIGRATIONS: Migration[] = [
   mBmiDerived,
   mCascadeOrphanSweep,
   mSavedBackedRepair,
+  mCanonicalResultDefinitions,
+  mSavedClinicalResultNamespace,
+  mPersistedVocabulary,
+  mIntakeLogTimeVocabulary,
+  mRemoveLegacySchemaShells,
+  mMobilityActivityType,
+  mMedicalCategoryResidue,
+  mIntegrationSourceId,
+  mSubstanceRecordedAt,
+  mMetricSampleInstants,
+  mPracticeTapMessageProvenance,
+  mFasts,
+  mDocumentSyncProvenance,
+  mRetireTrainingAgeSetting,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

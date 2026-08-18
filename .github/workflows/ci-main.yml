@@ -15,10 +15,34 @@ name: CI (main)
 # directly within minutes, instead of masquerading as a failure on whichever
 # branch pushed next.
 #
-# The browser matrix is deliberately NOT here: eight shards per merge at this
-# merge rate would dwarf the rest of CI combined, and the documented
-# two-green-PRs breakage class (type errors, unit failures) is exactly what the
-# three cheap tiers see. e2e-full.yml remains the on-demand full-suite census.
+# The browser matrix is NOT here, and that is still right for THIS workflow —
+# these three tiers return a verdict in ~3.5 min and a matrix would stretch that
+# to triple. But "not here" turned out to mean "nowhere": main had no e2e
+# coverage at all, so an e2e regression on main was unobservable from main's own
+# pipeline and surfaced instead as a red matrix on four innocent PRs, each
+# checking `CI (main)` and reading this workflow's green as covering it (#2791).
+# e2e-main.yml now carries that half — post-merge, debounced, four shards — and
+# is a separate check for exactly this reason: a green here means the cheap tiers
+# passed, and nothing more. e2e-full.yml remains the on-demand full-suite census.
+#
+# THE OBJECTION ABOVE IS SUPERSEDED FOR A DETECTOR, AND ONLY FOR A DETECTOR
+# (#2969, ruled 2026-08-16). This header used to argue against a per-merge
+# browser matrix while e2e-main.yml quietly ran one, which reads as a mistake to
+# anyone who finds the workflow before this paragraph. It is not one: it is
+# authorized.
+#
+# The reason is #2791's receipt, which is live and specific — two PRs, each green
+# on its own head, merged into a red main. That is what a per-merge detector
+# catches and what a per-PR gate cannot, however good the per-PR gate is. Four
+# shards give a ~3.6 min verdict at ~13 CI-min, and about a fifth of merges take
+# the runtime-surface skip at 1.4 CI-min, so the standing cost is modest.
+#
+# The SCOPE is narrow and stays narrow. The objection still stands against
+# anything that makes the browser matrix a per-merge GATE — that is the trade
+# this header was written about, and nothing has superseded it. What is
+# authorized is a detector at its current shape. Shard count is not ruled either
+# way: twelve (~4 min, ~39.6 CI-min) against four (~3.6 min, ~13 CI-min) stays
+# ordinary tuning.
 #
 # This is a detector, not a gate — deploy.yml runs independently on the same
 # push (gated by its own `next build`). A red here means: stop merging, fix
@@ -66,3 +90,33 @@ jobs:
       - uses: ./.github/actions/node-setup
       - name: Test (DB) + coverage
         run: npm run test:db:coverage
+
+  # Is the weekly drift census still firing? (#2968)
+  #
+  # e2e-full.yml's census went red three Sundays running, and while nobody was
+  # reading those reds the more expensive question went unasked: had it stopped?
+  # Nothing could answer it, because "has it run lately" was only ever answerable
+  # by someone remembering to open the Actions tab — the canary failure
+  # docs/orchestration-incidents.md has already billed this repo for three times.
+  #
+  # It lives HERE, on every push to main, and NOT on a schedule of its own,
+  # because a scheduled canary watching a schedule shares the failure mode it is
+  # watching for. Merge activity is the right clock: the detector is alive exactly
+  # while somebody cares about the answer, and it costs one API call.
+  #
+  # 9 days = one full weekly period plus a two-day grace. GitHub delays scheduled
+  # runs (the census's own history shows 1–2 h of slip) and a run that merely
+  # slipped must not alarm — but a whole SKIPPED week must. Keep this in step with
+  # e2e-full.yml's `cron:` if the cadence ever changes.
+  #
+  # Its own job, not a step bolted onto `check`: a red here means "the census is
+  # not running", which is a different instruction from "main is broken", and
+  # merging them would make one check name two problems.
+  census-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Weekly e2e census is still firing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/scheduled-run-freshness.mjs e2e-full.yml --max-age-days 9

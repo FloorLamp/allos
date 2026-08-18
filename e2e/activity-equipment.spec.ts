@@ -10,12 +10,19 @@ import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 test("a cardio session shows its gear chip and preloads the equipment picker (#342)", async ({
   page,
 }) => {
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  const card = page
+  // The feed renders slim rows (#2897); the full record card — gear included —
+  // lives in the reading pane once the row is selected.
+  const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "Zone 2 bike" })
-    .first(); // first-ok: the seeded "Zone 2 bike" activity card (filtered by its unique title)
+    .first(); // first-ok: the seeded "Zone 2 bike" activity row (filtered by its unique title)
+  await expect(row).toBeVisible();
+  await hydratedClick(page, row);
+  const card = page
+    .getByTestId("training-log-reading-pane")
+    .locator(".card", { hasText: "Zone 2 bike" });
   await expect(card).toBeVisible();
 
   // Session gear is quiet metadata in the card's third row, not a standalone
@@ -30,7 +37,7 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
     )
   ).toBe(true);
 
-  // Cycling titles now lead to the dedicated ride detail. The card's separate Edit
+  // Cycling titles lead to the canonical activity detail. The card's separate Edit
   // action still opens the legacy editor with the linked gear preloaded — a real
   // equipment id is selected, labelled "Road Bike".
   await card.getByRole("button", { name: "Activity actions" }).click();
@@ -55,15 +62,20 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
 test("a run offers shoes (not the bike) in the equipment picker (#339)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
-  const card = page
+  // Select the run's slim row into the reading pane (#2897), then open the
+  // editor from the pane's Edit — the old click-the-card-title path is gone.
+  const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "5k run" })
-    .first(); // first-ok: the seeded "5k run" activity card (filtered by its unique title)
-  await expect(card).toBeVisible();
-
-  await card.getByRole("button", { name: "5k run" }).click();
+    .first(); // first-ok: the seeded "5k run" activity row (filtered by its unique title)
+  await expect(row).toBeVisible();
+  await hydratedClick(page, row);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
+    .click();
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   // Shoes present, bike absent — the run narrows to footwear.
@@ -90,7 +102,7 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    await page.goto("/training"); // default "Log" tab
+    await page.goto("/training?tab=log"); // default "Log" tab
 
     // Open a fresh create form (the seeded activity makes the Training Log — and its
     // "New activity" button — render instead of the empty state).
@@ -144,7 +156,7 @@ test("the strength picker creates and selects a travel machine without losing th
   const title = `${GEAR_PREFIX} session ${stamp}`;
   const gearName = `${GEAR_PREFIX} ${stamp}`;
 
-  await page.goto("/training"); // default "Log" tab renders the Training Log feed
+  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
   await page
     .getByTestId("training-log-actions")
     .getByRole("button", { name: "New activity" })
@@ -269,7 +281,7 @@ test("the strength form shows an equipment door with no gear on file (#1611)", a
   });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto("/training");
+    await page.goto("/training?tab=log");
     await page
       .getByRole("main")
       .getByRole("button", { name: "New activity" })

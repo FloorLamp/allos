@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER (issue #591): the frequency/recency-ranked food-group log order.
 // getFoodBarOrder (over rankFoodGroups) reuses the activity-picker machinery (#195) — a profile-scoped
-// scan over the trailing food_log window, each row weighted by servings × decayedWeight
+// scan over the trailing food_daily_totals window, each row weighted by servings × decayedWeight
 // (60-day half-life), ranked by rankByFrequency over the curated catalog. Proves a
 // profile's staples lead WITHIN their tier while the tier sectioning (encourage →
 // neutral → limit, applied by FoodLogBar) is preserved, and that a fresh profile keeps
@@ -27,7 +27,7 @@ function logServing(
   servings = 1
 ) {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
   ).run(profileId, date, group, servings);
 }

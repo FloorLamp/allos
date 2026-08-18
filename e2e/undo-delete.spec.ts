@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Issue #30: deleting a row keeps it in a short-lived holding table and offers an
@@ -21,12 +21,25 @@ import { workerDbPath } from "./worker-env";
 const PROBE_PREFIX = "Undo delete probe";
 let probeSeq = 0;
 
-// Training Log card(s) whose title contains `text`, scoped to the main content.
+// Training Log row(s) whose title contains `text`, scoped to the main content.
+// The feed renders slim rows (#2897); the row button owns the #activity-N anchor.
 function cardsByTitle(page: Page, text: string | RegExp) {
   return page
     .getByRole("main")
     .locator('[id^="activity-"]')
     .filter({ hasText: text });
+}
+
+// Open the stored activity for EDIT: select its row into the reading pane
+// (a pure client toggle — hydratedClick closes the pre-hydration window), then
+// the pane header's Edit opens the editor with its Delete button. The old
+// click-the-card-title path is gone (#2897).
+async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
+  await hydratedClick(page, row);
+  await page
+    .getByTestId("training-log-reading-pane")
+    .getByTestId("activity-page-edit")
+    .click();
 }
 
 // Confirm the dialog-scoped Delete and await the captureDelete Server Action POST.
@@ -45,25 +58,25 @@ async function confirmDelete(page: Page): Promise<void> {
 // this spec's own fixture, so deleting them all is safe and order-agnostic.
 async function sweepProbes(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   const probes = cardsByTitle(page, PROBE_PREFIX);
   for (let guard = 0; guard < 12; guard++) {
     const n = await probes.count();
     if (n === 0) break;
-    const card = probes.first(); // first-ok: every PROBE_PREFIX card is this spec's own leftover; cleanup is order-agnostic
-    await card.getByRole("button", { name: new RegExp(PROBE_PREFIX) }).click();
+    const row = probes.first(); // first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
+    await openEditorFromRow(page, row);
     await confirmDelete(page);
     await expect(probes).toHaveCount(n - 1);
   }
 }
 
 // Create a uniquely-titled cardio probe that auto-saves, then close the editor so
-// the delete is driven from the CARD (the #30 path). Cardio + a duration auto-saves
+// the delete is driven from the FEED (the #30 path). Cardio + a duration auto-saves
 // without the per-set equipment pick a bare strength variant needs (#342). Returns
 // the unique title.
 async function createProbe(page: Page): Promise<string> {
   const title = `${PROBE_PREFIX} ${Date.now()}-${++probeSeq}`; // clock-ok: unique probe-name suffix, never a stored timestamp
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
   await page
     .getByRole("main")
     .getByRole("button", { name: "New activity" })
@@ -90,10 +103,10 @@ test("delete an activity, then Undo restores it (#30)", async ({ page }) => {
   await sweepProbes(page);
 
   const title = await createProbe(page);
-  const card = cardsByTitle(page, title);
+  const row = cardsByTitle(page, title);
 
-  // Open the editor from the card's title button, then Delete (dialog-scoped).
-  await card.getByRole("button", { name: title }).click();
+  // Open the editor via row → reading pane → Edit, then Delete (dialog-scoped).
+  await openEditorFromRow(page, row);
   await confirmDelete(page);
 
   // The specific probe row is gone and the Undo toast appears.
@@ -108,7 +121,7 @@ test("delete an activity, then Undo restores it (#30)", async ({ page }) => {
 
   // Clean up: delete the restored probe for good (no undo) so the shared seed DB is
   // left exactly as the harness seeded it — order-independent for sibling specs.
-  await cardsByTitle(page, title).getByRole("button", { name: title }).click();
+  await openEditorFromRow(page, cardsByTitle(page, title));
   await confirmDelete(page);
   await expect(cardsByTitle(page, title)).toHaveCount(0);
 });
@@ -165,7 +178,7 @@ test.describe("a metric_samples reading is undoable too (#2123)", () => {
     withProbeDb((db) => {
       db.prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, metric, date, start_time, end_time, value)
+           (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (1, 'manual', 'hrv_ms', ?, ?, ?, ?)`
       ).run(HRV_PROBE_DATE, HRV_PROBE_AT, HRV_PROBE_AT, HRV_PROBE_VALUE);
     });

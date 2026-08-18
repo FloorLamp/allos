@@ -109,7 +109,7 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
 
     // Add a height reading → the gap clears (structural, gone-for-good).
     db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', 'height_cm', '2026-01-01', '2026-01-01T00:00:00', '2026-01-01T00:00:00', 95)`
     ).run(profileId);
     expect(
@@ -167,7 +167,9 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
     const gap = buildDataQualityFindings(profileId).find(
       (f) => f.dedupeKey === dataQualityDedupeKey("phenoage-inputs")
     );
-    expect(gap?.actionHref).toBe("/results/readings?new=1&name=Creatinine");
+    expect(gap?.actionHref).toBe(
+      "/results/clinical-results?new=1&name=Creatinine"
+    );
   });
 
   it("risk/smoking CTAs land on the anchored Care › Overview forms (#1146)", () => {

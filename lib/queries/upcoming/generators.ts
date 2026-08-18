@@ -8,6 +8,8 @@
 // in lib/__db_tests__/upcoming.scoping.test.ts.
 
 import { cache } from "../../request-cache";
+import { isTrainingRelevant } from "../../life-stage";
+import { getProfileAge } from "../../settings/profile-attrs";
 import { syncRequestItems } from "./portal-sync";
 import { recordsRecencyItems } from "./records-recency";
 import { shiftDateStr } from "../../date";
@@ -25,7 +27,7 @@ import {
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../../refill";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   intakeHref,
   nutritionTabHref,
   timelineDayHref,
@@ -38,7 +40,7 @@ import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
 import { crisisFindingLine } from "../../crisis-resources";
 import { getResolvedCrisisResources } from "../../settings";
 import { refillSignalKey, poolRefillSignalKey } from "../../refill-nudge";
-import { getPoolView, poolIdsForProfiles } from "../intake/supply-pool";
+import { getPoolView } from "../intake/supply-pool";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";
@@ -158,10 +160,12 @@ import {
 } from "./plans";
 export { markCarePlanItemDone } from "./plans";
 import {
+  type DueDoseNowItem,
   contrastItems,
   dentalSafetyItems,
   dietaryLimitItems,
   doseItems,
+  doseItemsNow,
   drugAllergyItems,
   interactionItems,
   medMonitoringItems,
@@ -498,7 +502,7 @@ const biomarkerRetestSignals = cache(function biomarkerRetestSignals(
         riskReasonsFrom(mod.sourced),
         isFlaggedForRetest(r.flag) ? [flaggedReason(r.flag)] : []
       ),
-      href: readingDetailHref(r.canonical_name, r.name),
+      href: clinicalResultDetailHref(r.canonical_name, r.name),
       dueDate,
       priority,
     };
@@ -643,6 +647,23 @@ const rawUpcoming = cache(function rawUpcoming(
   ];
 });
 
+function isTrainingProductItem(item: UpcomingItem): boolean {
+  return (
+    item.domain === "training" ||
+    item.domain === "goal" ||
+    item.domain === "mobility-target"
+  );
+}
+
+function isLifeStageRelevantUpcoming(
+  profileId: number,
+  item: UpcomingItem
+): boolean {
+  return (
+    isTrainingRelevant(getProfileAge(profileId)) || !isTrainingProductItem(item)
+  );
+}
+
 // Whether an item is currently hidden by a snooze/dismiss row in `map`. Routes
 // through the shared persistence-aware dispatcher (isItemHiddenBySuppression) so a
 // care-persistent item (an overdue #700 follow-up) resists an indefinite dismiss but
@@ -674,7 +695,11 @@ export function collectUpcoming(
     today,
     units.temperatureUnit,
     units.distanceUnit
-  ).filter((item) => !isItemSuppressed(map, item, today));
+  ).filter(
+    (item) =>
+      isLifeStageRelevantUpcoming(profileId, item) &&
+      !isItemSuppressed(map, item, today)
+  );
 }
 
 // The actionable household rollup for ONE profile (issue #31): the subset of the
@@ -694,6 +719,20 @@ export interface HouseholdRollup {
   dueDoses: UpcomingItem[];
   lowRefills: UpcomingItem[];
   nextAppointment: UpcomingItem | null;
+}
+
+// Pending scheduled doses whose declared slot has arrived in the profile-local
+// wall clock. This is the one "due right now" collection used by compact logging
+// offers; Household and Upcoming deliberately keep their whole-day views.
+export function collectDueDosesNow(
+  profileId: number,
+  today: string,
+  nowHhmm: string
+): DueDoseNowItem[] {
+  const map = getFindingSuppressions(profileId);
+  return doseItemsNow(profileId, today, nowHhmm).filter(
+    (item) => !isItemSuppressed(map, item, today)
+  );
 }
 
 export function collectHouseholdRollup(
@@ -739,6 +778,7 @@ export function collectSuppressedUpcoming(
     units.temperatureUnit,
     units.distanceUnit
   )) {
+    if (!isLifeStageRelevantUpcoming(profileId, item)) continue;
     const rec = map.get(signalKey(item));
     // Same persistence-aware decision as the live filter, so a care-persistent
     // follow-up whose only suppression is a resisted dismiss is NOT listed here as

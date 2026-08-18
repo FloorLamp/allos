@@ -8,22 +8,22 @@ import { bodyweightAsOf } from "../../bodyweight";
 import {
   cyclingLoad,
   distanceSplits,
-  parseCyclingStreams,
+  parseActivityStreams,
   powerCurve,
   powerCurveLabel,
   powerZoneTimes,
   rideDynamics,
-  rideTimedRoutePoints,
-  rideTraces,
+  sessionTimedRoutePoints,
+  sessionTraces,
   routeFingerprint,
   type CyclingLoad,
   type PowerCurvePoint,
   type PowerZoneRange,
   type PowerZoneTime,
-  type RideDistanceSplit,
+  type SessionDistanceSplit,
   type RideDynamics,
-  type RideTrace,
-  type RideTimedRoutePoint,
+  type SessionTrace,
+  type SessionTimedRoutePoint,
 } from "../../cycling-analytics";
 import {
   parseCyclingStreamSummary,
@@ -35,9 +35,9 @@ import {
   type CyclingOverviewRollup,
 } from "../../cycling-overview";
 import {
-  cyclingDistribution,
-  type CyclingDistribution,
-} from "../../cycling-distribution";
+  sessionDistribution,
+  type SessionDistribution,
+} from "../../session-distribution";
 import { shiftDateStr } from "../../date";
 import { db, readTx, today } from "../../db";
 import { getEquipmentById } from "../../equipment";
@@ -49,10 +49,8 @@ import {
 import {
   isCyclingActivity,
   rideComparison,
-  rideHistoryNeighbors,
-  type RideComparison,
-  type RideHistoryNeighbors,
-} from "../../ride-detail";
+  type SessionComparison,
+} from "../../session-detail";
 import {
   activityWindows,
   scopeBucketsToWindows,
@@ -64,6 +62,7 @@ import {
   type ZoneModel,
 } from "../../training-zones";
 import type { Activity, Equipment } from "../../types";
+import type { ActivityStreams } from "../../integrations/activity-telemetry";
 import { getHrMinutesInRange } from "../metrics";
 import { getProfileZoneModel } from "../zones";
 import { getWeatherDaysForProfile } from "../weather-situations";
@@ -74,6 +73,11 @@ import {
   getRoutePolylinesForActivities,
 } from "./activities";
 import { loadWeightsAsc } from "./common";
+import {
+  getSessionCourseData,
+  type SessionLap,
+  type SessionSegmentEffort,
+} from "./session-course";
 
 export interface RideDetailData {
   row: Activity;
@@ -88,44 +92,36 @@ export interface RideDetailData {
   heartRateWindow: ActivityWindow | null;
   zoneMinutes: number[] | null;
   zoneModel: ZoneModel | null;
-  comparison: RideComparison | null;
-  rideHistory: RideHistoryNeighbors;
-  traces: RideTrace[];
-  timedRoute: RideTimedRoutePoint[];
+  comparison: SessionComparison | null;
+  traces: SessionTrace[];
+  timedRoute: SessionTimedRoutePoint[];
   powerCurve: PowerCurvePoint[];
   cyclingLoad: CyclingLoad | null;
   powerZones: PowerZoneRange[];
   powerZoneTimes: PowerZoneTime[];
   dynamics: RideDynamics | null;
-  distanceSplits: RideDistanceSplit[];
+  distanceSplits: SessionDistanceSplit[];
   splitDistanceM: number;
-  laps: RideLap[];
-  segmentEfforts: RideSegmentEffort[];
+  laps: SessionLap[];
+  segmentEfforts: SessionSegmentEffort[];
   routeHistory: RideRouteHistory | null;
 }
 
-export interface RideLap {
-  id: number;
-  lapIndex: number;
-  name: string | null;
-  distanceM: number | null;
-  movingTimeSec: number | null;
-  elevationGainM: number | null;
-  averageSpeedMps: number | null;
-  averageCadence: number | null;
-  averageWatts: number | null;
-  averageHeartrate: number | null;
-}
-
-export interface RideSegmentEffort {
-  id: number;
-  name: string;
-  distanceM: number | null;
-  movingTimeSec: number | null;
-  averageWatts: number | null;
-  averageHeartrate: number | null;
-  prRank: number | null;
-  komRank: number | null;
+export interface SharedActivityDetailData {
+  row: Activity;
+  activity: ActivityEditData;
+  routePolyline: string | null;
+  heartRateMinutes: { ts: string; bpm: number }[];
+  heartRateWindow: ActivityWindow | null;
+  zoneMinutes: number[] | null;
+  zoneModel: ZoneModel | null;
+  comparison: SessionComparison | null;
+  streams: ActivityStreams;
+  traces: SessionTrace[];
+  course: {
+    laps: SessionLap[];
+    segmentEfforts: SessionSegmentEffort[];
+  };
 }
 
 export interface RideRouteHistory {
@@ -169,7 +165,7 @@ export interface CyclingOverviewData {
   activityName: string;
   indoorOnly: boolean;
   rollup: CyclingOverviewRollup;
-  distribution: CyclingDistribution;
+  distribution: SessionDistribution;
   zoneModel: ZoneModel | null;
   zoneMinutes: number[] | null;
   zoneWindow: CyclingZoneWindow | null;
@@ -190,15 +186,18 @@ export interface CyclingOverviewData {
 export function getRideDetailData(
   profileId: number,
   activityId: number,
-  splitDistanceM = 5000
+  splitDistanceM = 5000,
+  shared?: SharedActivityDetailData
 ): RideDetailData | null {
-  const row = getActivityById(profileId, activityId);
+  const row = shared?.row ?? getActivityById(profileId, activityId);
   if (!row || !isCyclingActivity(row)) return null;
   const activityName = cyclingActivityName(row)!;
   const { indoorOnly } = cyclingActivityPresentation(activityName);
 
   const routePolyline =
-    getRoutePolylinesForActivities(profileId, [row.id]).get(row.id) ?? null;
+    shared?.routePolyline ??
+    getRoutePolylinesForActivities(profileId, [row.id]).get(row.id) ??
+    null;
   const measuredKcal =
     getActiveCaloriesForActivities(profileId, [row]).get(row.id) ?? null;
   const bodyweightKg = bodyweightAsOf(loadWeightsAsc(profileId), row.date);
@@ -207,10 +206,12 @@ export function getRideDetailData(
     bodyweightKg,
     measuredKcal
   );
-  const zoneModel = getProfileZoneModel(profileId);
-  const heartRateWindow = activityWindows([row])[0] ?? null;
-  const heartRateMinutes = (
-    heartRateWindow
+  const zoneModel = shared?.zoneModel ?? getProfileZoneModel(profileId);
+  const heartRateWindow =
+    shared?.heartRateWindow ?? activityWindows([row])[0] ?? null;
+  const heartRateMinutes =
+    shared?.heartRateMinutes ??
+    (heartRateWindow
       ? scopeBucketsToWindows(
           // Include the following date so a ride crossing midnight keeps its
           // post-midnight buckets; the activity window still excludes every
@@ -219,24 +220,27 @@ export function getRideDetailData(
           [heartRateWindow]
         )
       : []
-  ).sort((a, b) => a.ts.localeCompare(b.ts));
-  const zoneMinutes = zoneModel
-    ? zoneMinuteTotals(heartRateMinutes, zoneModel)
-    : null;
+    ).sort((a, b) => a.ts.localeCompare(b.ts));
+  const zoneMinutes =
+    shared?.zoneMinutes ??
+    (zoneModel ? zoneMinuteTotals(heartRateMinutes, zoneModel) : null);
   // The pure comparison model performs the final cycling-identity and similarity
   // checks. Read the full profile-scoped cycling candidate set so a ride can be
   // compared with every similar session, including sessions recorded later.
-  const comparisonCandidates = db
-    .prepare(
-      `SELECT * FROM activities
-        WHERE profile_id = ?
-          AND type IN ('cardio', 'sport')
-          AND id != ?
-        ORDER BY date, id`
-    )
-    .all(profileId, row.id) as Activity[];
-  const comparison = rideComparison(row, comparisonCandidates);
-  const rideHistory = rideHistoryNeighbors(row, comparisonCandidates, 1);
+  const comparison =
+    shared?.comparison ??
+    rideComparison(
+      row,
+      db
+        .prepare(
+          `SELECT * FROM activities
+            WHERE profile_id = ?
+              AND type IN ('cardio', 'sport')
+              AND id != ?
+            ORDER BY date, id`
+        )
+        .all(profileId, row.id) as Activity[]
+    );
   const telemetry = db
     .prepare(
       `SELECT streams_json, ftp_w, power_zones_json
@@ -251,36 +255,13 @@ export function getRideDetailData(
         power_zones_json: string | null;
       }
     | undefined;
-  const streams = parseCyclingStreams(telemetry?.streams_json ?? null);
-  const traces = rideTraces(streams);
+  const streams =
+    shared?.streams ?? parseActivityStreams(telemetry?.streams_json ?? null);
+  const traces = shared?.traces ?? sessionTraces(streams);
   const curve = powerCurve(streams);
   const powerZones = parsePowerZones(telemetry?.power_zones_json ?? null);
-  const laps = db
-    .prepare(
-      `SELECT id, lap_index AS lapIndex, name, distance_m AS distanceM,
-              moving_time_sec AS movingTimeSec,
-              elevation_gain_m AS elevationGainM,
-              average_speed_mps AS averageSpeedMps,
-              average_cadence AS averageCadence,
-              average_watts AS averageWatts,
-              average_heartrate AS averageHeartrate
-         FROM activity_laps
-        WHERE profile_id = ? AND activity_id = ?
-        ORDER BY lap_index, id`
-    )
-    .all(profileId, row.id) as RideLap[];
-  const segmentEfforts = db
-    .prepare(
-      `SELECT id, name, distance_m AS distanceM,
-              moving_time_sec AS movingTimeSec,
-              average_watts AS averageWatts,
-              average_heartrate AS averageHeartrate,
-              pr_rank AS prRank, kom_rank AS komRank
-         FROM activity_segment_efforts
-        WHERE profile_id = ? AND activity_id = ?
-        ORDER BY start_index, id`
-    )
-    .all(profileId, row.id) as RideSegmentEffort[];
+  const { laps, segmentEfforts } =
+    shared?.course ?? getSessionCourseData(profileId, row.id);
 
   const fingerprint = routeFingerprint(routePolyline);
   const routeCandidates = fingerprint
@@ -329,7 +310,9 @@ export function getRideDetailData(
     routeMatches.length > 0
       ? { rideCount: routeMatches.length, fastest: fastest ?? null }
       : null;
-  const activity = activityToEditData(profileId, row);
+  const activity = shared
+    ? { ...shared.activity }
+    : activityToEditData(profileId, row);
   activity.imported_metrics = pickImportedActivityMetrics(row, measuredKcal);
   activity.calorie_kcal = calorieDisplay?.kcal ?? null;
   activity.calorie_estimated = calorieDisplay?.estimated ?? false;
@@ -354,9 +337,8 @@ export function getRideDetailData(
     zoneMinutes,
     zoneModel,
     comparison,
-    rideHistory,
     traces,
-    timedRoute: rideTimedRoutePoints(streams),
+    timedRoute: sessionTimedRoutePoints(streams),
     powerCurve: curve,
     cyclingLoad: cyclingLoad(
       telemetry?.ftp_w ?? null,
@@ -446,9 +428,10 @@ export function getCyclingOverviewData(
             todayStr
           )
         : [];
-    const distribution = cyclingDistribution(rides, weatherDays, todayStr, {
+    const distribution = sessionDistribution(rides, weatherDays, todayStr, {
       singular: presentation.noun,
       plural: presentation.pluralNoun,
+      verb: presentation.indoorOnly ? "train" : "ride",
     });
 
     // #2292: this read deliberately does NOT select `streams_json`. The two things

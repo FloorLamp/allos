@@ -1,5 +1,10 @@
 import { test, expect } from "./fixtures";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  openConfirm,
+  settledClick,
+} from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
@@ -46,7 +51,7 @@ test.describe("Import detail: tabbed records browser", () => {
     // A canonicalized lab row's name still links to its biomarker series view.
     await expect(
       page.getByRole("link", { name: "Ferritin", exact: true })
-    ).toHaveAttribute("href", "/results/readings/view?name=Ferritin");
+    ).toHaveAttribute("href", "/results/clinical-results/view?name=Ferritin");
     // The lab table keeps its editing affordances inside the tab.
     await page.getByRole("button", { name: "Result actions" }).first().click(); // first-ok: any lab row's Result actions menu carries Edit — order-agnostic (asserted next)
     await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
@@ -74,7 +79,9 @@ test.describe("Import detail: tabbed records browser", () => {
       "/medications"
     );
     // Nothing in the medications panel may point at a biomarker series page.
-    const biomarkerLinks = listing.locator('a[href^="/results/readings/view"]');
+    const biomarkerLinks = listing.locator(
+      'a[href^="/results/clinical-results/view"]'
+    );
     await expect(biomarkerLinks).toHaveCount(0);
   });
 
@@ -211,15 +218,13 @@ test.describe("Import detail: tabbed records browser", () => {
     await page.goto("/import/908");
     // The document-level delete (not a per-record row delete) — scoped by testid.
     // Delete opens a CLIENT confirm (no POST to settle on), and this discrete click
-    // can be swallowed pre-hydration — re-click until the dialog opens (same guard
-    // as review-inbox's View-raw). #1340 added a client preview island lower on the
-    // page, widening that window on a cold first load.
-    const del = page.getByTestId("delete-document");
-    const dialog = page.getByRole("dialog");
-    await expect(async () => {
-      if (!(await dialog.isVisible())) await del.click();
-      await expect(dialog).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 15_000 }); // topass-ok: re-open the client confirm until it appears — no Server-Action POST to settle on, and the discrete onClick can be swallowed pre-hydration
+    // can be swallowed pre-hydration; #1340 added a client preview island lower on
+    // the page, widening that window on a cold first load. openConfirm waits for the
+    // hydration marker and clicks ONCE (#2729): the loop this replaced spent its
+    // whole 15 s ceiling on pre-hydration clicks that could not land — 0/5 at a 60×
+    // CPU throttle, and 5/5 once given a 60 s ceiling instead — and, given a landed
+    // click and a slow paint, could cancel the dialog it was waiting for.
+    const dialog = await openConfirm(page, page.getByTestId("delete-document"));
     await expect(dialog).toContainText(/Delete document & its records/);
     await expect(dialog).toContainText(/every record it imported/);
   });

@@ -115,7 +115,9 @@ export interface CareTrailGather {
 // link set + per-member membership window), visits (with provider id for the chain
 // match), and medication courses — flat, ready for buildCareTrail. Bounded per-profile
 // work, the same cost shape as the household dashboard loop.
-export function gatherCareTrail(profileIds: number[]): CareTrailGather {
+export function gatherCareTrail(
+  profileIds: readonly number[]
+): CareTrailGather {
   const episodes: CareTrailEpisodeInput[] = [];
   const visits: CareTrailVisitInput[] = [];
   const courses: CareTrailCourseInput[] = [];

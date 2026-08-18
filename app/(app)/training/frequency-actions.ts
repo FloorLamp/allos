@@ -4,10 +4,19 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
-import type { FrequencyScopeKind } from "@/lib/frequency-targets";
+import {
+  isStrengthProgrammingScope,
+  isTrainingFrequencyScope,
+  type FrequencyScopeKind,
+} from "@/lib/frequency-targets";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { normalizePracticeName, practiceIdentity } from "@/lib/practice";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 // Allowed scope_value strings per scope_kind, used to validate input.
 function isValidScope(kind: FrequencyScopeKind, value: string): boolean {
@@ -18,7 +27,7 @@ function isValidScope(kind: FrequencyScopeKind, value: string): boolean {
   // Food-habit targets (#580): scope_value is a lib/food-groups.json slug.
   if (kind === "food_group") return isValidFoodGroup(value);
   // Mobility-habit targets (#840): scope_value is a MuscleRegion — the SAME vocabulary as
-  // `region`, but counted from recovery sessions (a separate view, #482).
+  // `region`, but counted from mobility sessions (a separate view, #482).
   if (kind === "mobility_region")
     return (REGION_SCOPES as string[]).includes(value);
   // Wellness-practice targets (#1259): scope_value is a free-text practice NAME (curated
@@ -43,13 +52,24 @@ export async function createFrequencyTarget(formData: FormData) {
   const id = Number(formData.get("id")) || null;
   const kind = String(formData.get("scope_kind") ?? "") as FrequencyScopeKind;
   let value = String(formData.get("scope_value") ?? "").trim();
+  const strengthScope = isStrengthProgrammingScope({
+    scope_kind: kind,
+    scope_value: value,
+  });
+  if (
+    isTrainingFrequencyScope({ scope_kind: kind }) &&
+    !isTrainingRelevant(getProfileAge(profile.id))
+  )
+    return;
+  if (strengthScope && !isStrengthTrainingRelevant(getProfileAge(profile.id)))
+    return;
   const perWeek = Math.max(
     1,
     Math.round(Number(formData.get("per_week") ?? 0))
   );
   if (!isValidScope(kind, value) || !Number.isFinite(perWeek)) return;
   // Persist the canonical food-group slug, not the raw input (#883) — downstream habit
-  // progress compares scope_value exactly against the food_log group_key.
+  // progress compares scope_value exactly against the food_daily_totals group_key.
   if (kind === "food_group") {
     const slug = canonicalFoodGroup(value);
     if (!slug) return;

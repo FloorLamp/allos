@@ -34,7 +34,7 @@ export interface KeepApartWarning {
   text: string;
 }
 
-// "Keep apart" bucket warnings (issue #313, extracted from the medicine page).
+// "Keep apart" bucket warnings (issue #313, extracted from the intake surfaces).
 // A `separate`-relation pair is a clinical rule that both supplements should NOT
 // be taken at the same time; this raises the warning when BOTH members have a
 // due dose in the same time bucket (`itemIdsInBucket`). Pure over the pair table

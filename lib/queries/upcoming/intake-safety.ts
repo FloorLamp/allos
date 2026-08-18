@@ -7,14 +7,17 @@ import {
 } from "../../upcoming-suppress";
 import {
   doseDueOn,
+  currentTimeBucket,
   isDueOn,
   isOfferedOn,
   isPushedIntake,
   slotHintBucket,
   timeBucket,
+  timeBucketHasArrived,
   TIME_BUCKET_LABELS,
 } from "../../intake-schedule";
 import { cadenceLabel } from "../../intake-cadence";
+import { intakeItemShortLabel } from "../../intake-short-name";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
@@ -23,7 +26,7 @@ import {
   DEFAULT_LOW_SUPPLY_DAYS,
 } from "../../refill";
 import {
-  readingDetailHref,
+  clinicalResultDetailHref,
   intakeHref,
   nutritionTabHref,
   timelineDayHref,
@@ -42,7 +45,7 @@ import {
 } from "../../refill-nudge";
 import {
   getPoolView,
-  poolIdsForProfiles,
+  poolIdsForProfile,
   poolPushes,
 } from "../intake/supply-pool";
 import { assessSchedule } from "../../immunization-status";
@@ -161,8 +164,8 @@ import { tempRedFlagItems } from "../../temp-red-flag-findings";
 import { followUpItems } from "../../followup-findings";
 import { getUvDoseForDay } from "../weather";
 import { decideUvOverexposure } from "../../uv-overexposure";
-// Doses pending TODAY across active supplements + medications (reuses the
-// supplement schedule's isDueOn with today's workout/situation context, and the
+// Doses pending TODAY across active intake items (reuses the
+// intake schedule's isDueOn with today's workout/situation context, and the
 // per-dose taken-log read). A PRN (as_needed) med is never scheduled-due, so
 // isDueOn already drops it. Only NOT-yet-taken doses are surfaced.
 //
@@ -177,10 +180,39 @@ import { decideUvOverexposure } from "../../uv-overexposure";
 // visible MOVE into a quieter section rather than a disappearance. Obligation, not
 // kind, decides: a medication is here because it is `must`/`should`, not because it
 // is a medication.
+export interface DueDoseNowItem extends UpcomingItem {
+  doseId: number;
+  // Compact CONTROL label only. `title` remains the record's full display name.
+  shortLabel: string;
+}
+
 export function doseItems(profileId: number, today: string): UpcomingItem[] {
   return scheduledDoseRows(profileId, today)
     .filter((row) => !row.taken)
     .map((row) => doseRowToItem(row));
+}
+
+// The pending subset whose declared time bucket has ARRIVED at `nowHhmm` in the
+// profile's local wall clock. Earlier unresolved buckets remain due; later ones do
+// not surface early. The calendar/obligation/situation/taken gates are still the
+// exact scheduledDoseRows evaluation used by the day-wide Upcoming model.
+export function doseItemsNow(
+  profileId: number,
+  today: string,
+  nowHhmm: string
+): DueDoseNowItem[] {
+  const currentBucket = currentTimeBucket(nowHhmm);
+  return scheduledDoseRows(profileId, today)
+    .filter(
+      (row) =>
+        !row.taken &&
+        timeBucketHasArrived(timeBucket(row.dose.time_of_day), currentBucket)
+    )
+    .map((row) => ({
+      ...doseRowToItem(row),
+      doseId: row.dose.id,
+      shortLabel: intakeItemShortLabel(row.item),
+    }));
 }
 
 // One dose the day's schedule asks for, plus whether it is already logged taken.
@@ -188,7 +220,7 @@ export function doseItems(profileId: number, today: string): UpcomingItem[] {
 // the page shows and the denominator it prints come from ONE evaluation, so
 // "9 of 14 taken" can never disagree with the rows behind the disclosure (#1504).
 interface ScheduledDoseRow {
-  supp: ReturnType<typeof getIntakeItems>[number];
+  item: ReturnType<typeof getIntakeItems>[number];
   dose: ReturnType<typeof getIntakeDoses>[number];
   taken: boolean;
 }
@@ -200,7 +232,7 @@ function scheduledDoseRows(
   profileId: number,
   today: string
 ): ScheduledDoseRow[] {
-  const supplements = getIntakeItems(profileId);
+  const intakeItems = getIntakeItems(profileId);
   const doses = getIntakeDoses(profileId);
   const taken = getTakenDoseIds(profileId, today);
   // Derived context (#1292/#1298) widens the active set so a Poor sleep / Period
@@ -218,16 +250,16 @@ function scheduledDoseRows(
     predictedWorkoutDay,
   };
 
-  const byId = new Map(supplements.map((s) => [s.id, s]));
+  const byId = new Map(intakeItems.map((item) => [item.id, item]));
   const rows: ScheduledDoseRow[] = [];
   for (const dose of doses) {
-    const supp = byId.get(dose.item_id);
+    const item = byId.get(dose.item_id);
     // doseDueOn (#1602) folds the CALENDAR into the same gate: the item's cadence
     // (weekly / every-N-days) plus this ROW's own weekday subset and validity window.
     // A weekly methotrexate is simply absent from the due list on its six off-days —
     // which is what lets it stay `must` instead of being demoted to silence it.
-    if (!supp || !supp.active || !doseDueOn(supp, dose, ctx)) continue;
-    rows.push({ supp, dose, taken: taken.has(dose.id) });
+    if (!item || !item.active || !doseDueOn(item, dose, ctx)) continue;
+    rows.push({ item, dose, taken: taken.has(dose.id) });
   }
   return rows;
 }
@@ -246,11 +278,11 @@ export function doseDayProgress(
   };
 }
 
-function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
+function doseRowToItem({ item, dose }: ScheduledDoseRow): UpcomingItem {
   const detail = [
-    supp.kind === "medication" ? "Medication" : null,
-    supp.kind === "medication"
-      ? formatMedicationDoseProduct(dose.amount, supp.product)
+    item.kind === "medication" ? "Medication" : null,
+    item.kind === "medication"
+      ? formatMedicationDoseProduct(dose.amount, item.product)
       : dose.amount,
   ]
     .filter(Boolean)
@@ -260,16 +292,16 @@ function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
   // item 5) so the same "due because Illness is active" explanation the medicine
   // page shows as a bare tag can reach the digest / a reminder, not only the row.
   const reasons: Reason[] =
-    supp.condition === "situational" && supp.situation
-      ? [situationReason(supp.situation)]
+    item.condition === "situational" && item.situation
+      ? [situationReason(item.situation)]
       : [];
   return {
     key: `dose:${dose.id}`,
     domain: "dose",
-    title: supp.name,
+    title: item.name,
     detail: detail || null,
     reasons: reasons.length ? reasons : undefined,
-    href: intakeHref(supp.kind),
+    href: intakeHref(item.kind),
     dueDate: null, // scheduled for today
     // Bucket label as the due-text ("Morning" / "Evening" / "Before sleep"…):
     // informative on its own and it explains the ordering to the user (#297).
@@ -277,7 +309,7 @@ function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
     // a row that appears one day in seven must SAY so, or it reads as an ordinary
     // daily dose the user is somehow only now seeing (#1602). One formatter
     // (cadenceLabel) so the row, the digest and the reminder phrase it identically.
-    dueText: [timeBucket(dose.time_of_day), cadenceLabel(supp)]
+    dueText: [timeBucket(dose.time_of_day), cadenceLabel(item)]
       .filter(Boolean)
       .join(" · "),
     // Shared dose-day sort key (bucket → priority → stack → name) so morning
@@ -285,9 +317,9 @@ function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
     // the SAME ordering the intake surface's due-today section uses (#297).
     sortHint: doseSortKey({
       timeOfDay: dose.time_of_day,
-      obligation: supp.obligation,
-      stack: supp.stack,
-      name: supp.name,
+      obligation: item.obligation,
+      stack: item.stack,
+      name: item.name,
     }),
     doseId: dose.id,
   };
@@ -306,7 +338,7 @@ function doseRowToItem({ supp, dose }: ScheduledDoseRow): UpcomingItem {
 // renderer already speak that shape. The `band` is deliberately absent and `dueDate`
 // null so nothing downstream can mistake one of these for work.
 export function offeredItems(profileId: number, today: string): UpcomingItem[] {
-  const supplements = getIntakeItems(profileId);
+  const intakeItems = getIntakeItems(profileId);
   const doses = getIntakeDoses(profileId);
   const activeSituations = getEffectiveActiveSituations(profileId, today);
   const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
@@ -326,31 +358,34 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
   }
 
   const items: UpcomingItem[] = [];
-  for (const supp of supplements) {
-    if (!supp.active || !isOfferedOn(supp, ctx)) continue;
+  for (const item of intakeItems) {
+    if (!item.active || !isOfferedOn(item, ctx)) continue;
     // ONE row per ITEM, not per dose: a may item's doses are amount shapes, not
     // occurrences, so listing three of them would invent three things to do.
-    const firstDose = dosesByItem.get(supp.id)?.[0] ?? null;
+    const firstDose = dosesByItem.get(item.id)?.[0] ?? null;
     const hint = slotHintBucket(firstDose?.time_of_day ?? null);
+    // The availability QUALIFIER, composed once (#2579-F). `dueText` below is this
+    // fragment behind the word "Available"; the offer CHIP is this fragment behind the
+    // item's own name. Two shapes, one composition — a renderer that split the sentence
+    // back apart would be a second definition of the same phrase.
+    const offerHint =
+      [hint ? TIME_BUCKET_LABELS[hint] : null, cadenceLabel(item)]
+        .filter(Boolean)
+        .join(" · ") || null;
     items.push({
-      key: offeredSignalKey(supp.id),
+      key: offeredSignalKey(item.id),
       domain: "available",
-      title: supp.name,
+      title: item.name,
       detail:
-        supp.kind === "medication" ? "Medication · as needed" : "As needed",
-      href: intakeHref(supp.kind),
+        item.kind === "medication" ? "Medication · as needed" : "As needed",
+      href: intakeHref(item.kind),
       dueDate: null,
       // Cadence on a `may` item is a LABEL, never a gate (#1602): the item stays
       // offered every day (guaranteed access — a collapsed item must never become
       // indistinguishable from a deleted one), and the phrase only tells the user
       // which days it was meant for.
-      dueText: [
-        "Available",
-        hint ? TIME_BUCKET_LABELS[hint] : null,
-        cadenceLabel(supp),
-      ]
-        .filter(Boolean)
-        .join(" · "),
+      dueText: ["Available", offerHint].filter(Boolean).join(" · "),
+      offerHint,
       // The item's FIRST active dose (#2419), so the row can carry the same one-tap
       // "Mark taken" the due rows already render. Dueness gates NUDGING, never
       // LOGGING: an offered item is by definition not due, and the doctrine still
@@ -421,11 +456,15 @@ export function poolRefillItems(
   today: string
 ): UpcomingItem[] {
   const items: UpcomingItem[] = [];
-  for (const supplyId of poolIdsForProfiles([profileId])) {
+  // Single-profile scoping (#2935 review): this generator runs AS `profileId` and every
+  // other read in it is `WHERE profile_id = ?` on the same id, so the pooled-bottle
+  // lookup is too. It used to mint a one-element cross-profile capability here, which
+  // was an unchecked minter dressed up as a narrow one.
+  for (const supplyId of poolIdsForProfile(profileId)) {
     const pool = getPoolView(supplyId);
     if (!pool || !pool.low || pool.daysLeft == null) continue;
     // Tracked, never pushed (#1505), pooled edition: a bottle whose every ACTIVE
-    // member is a low-priority supplement drops out of the nudge. Any pushable
+    // member is a `may` supplement drops out of the nudge. Any pushable
     // member keeps the whole pool's signal alive — see poolPushes.
     if (!poolPushes(pool.members)) continue;
     items.push({

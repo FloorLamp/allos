@@ -67,7 +67,7 @@ function night(
     db
       .prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, origin, metric, date, start_time, end_time, value)
+           (profile_id, source, origin, metric, date, started_at, ended_at, value)
          VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, 420)`
       )
       .run(profileId, PROVIDER, date, utcInstant(start), utcInstant(end))
@@ -76,7 +76,7 @@ function night(
   const eventId = Number(
     db
       .prepare(
-        `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+        `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
          VALUES (?, ?, ?, 1, 1)`
       )
       .run(profileId, PROVIDER, utcInstant(arrivedAt)).lastInsertRowid

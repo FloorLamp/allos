@@ -185,7 +185,7 @@ export function listLhTests(profileId: number, since: string): DatedLhTest[] {
 // ---- BBT → metric_samples ----------------------------------------------------
 
 // One waking temperature per day, canonical °F. source='manual' + a fixed midnight
-// start_time make the natural key (profile_id, metric, source, origin, start_time) stable,
+// started_at make the natural key (profile_id, metric, source, origin, started_at) stable,
 // exactly like the manual sleep/HRV quick-add — a re-entry corrects rather than
 // duplicates, and a tracker push can never match the row.
 export function logBbtCore(
@@ -209,7 +209,7 @@ export function logBbtCore(
       .prepare(
         `SELECT id, value, edited FROM metric_samples
           WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS NULL
-            AND start_time = ?`
+            AND started_at = ?`
       )
       .get(profileId, BBT_METRIC, MANUAL_SOURCE, ts) as
       { id: number; value: number; edited: number } | undefined;
@@ -226,7 +226,7 @@ export function logBbtCore(
     } else {
       db.prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, origin, metric, date, start_time, end_time, value)
+           (profile_id, source, origin, metric, date, started_at, ended_at, value)
          VALUES (?, ?, NULL, ?, ?, ?, ?, ?)`
       ).run(profileId, MANUAL_SOURCE, BBT_METRIC, date, ts, ts, degF);
     }

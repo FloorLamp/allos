@@ -22,18 +22,14 @@ import type { ProvenanceEntry } from "./sync-log";
 // Generic per-source connection state, backed by integration_connections. Holds
 // the push token for Health Connect and OAuth tokens for Strava (Garmin later).
 
-// THE #2487 BOUNDARY, stated once for this module: TypeScript names an integration
-// source `sourceId`, and every SQL statement below binds it against a column still
-// named `provider` — the persisted rename is deferred to its own forward migration
-// (see docs/internals/integrations-sync.md). Reads alias `provider AS source_id` so
-// the row shape carries the TS noun; writes bind the TS value into the old column.
+// TypeScript and SQLite both call an integration registry id a source id.
 export function getConnection(
   profileId: number,
   sourceId: string
 ): IntegrationConnection | undefined {
   return db
     .prepare(
-      "SELECT *, provider AS source_id FROM integration_connections WHERE profile_id = ? AND provider = ?"
+      "SELECT * FROM integration_connections WHERE profile_id = ? AND source_id = ?"
     )
     .get(profileId, sourceId) as IntegrationConnection | undefined;
 }
@@ -50,7 +46,7 @@ export function hasConnectedDataSource(profileId: number): boolean {
              SELECT 1 FROM integration_connections
               WHERE profile_id = ?
                 AND status = 'connected'
-                AND provider IN ('health-connect', 'strava', 'oura', 'withings')
+                AND source_id IN ('health-connect', 'strava', 'oura', 'withings')
            ) AS connected`
         )
         .get(profileId) as { connected: number }
@@ -91,9 +87,9 @@ export function upsertConnection(
         : JSON.stringify(patch.config)
       : (existing?.config ?? null);
   db.prepare(
-    `INSERT INTO integration_connections (profile_id, provider, status, config)
+    `INSERT INTO integration_connections (profile_id, source_id, status, config)
        VALUES (?, ?, ?, ?)
-     ON CONFLICT(profile_id, provider) DO UPDATE SET
+     ON CONFLICT(profile_id, source_id) DO UPDATE SET
        status = excluded.status,
        config = excluded.config,
        updated_at = datetime('now')`
@@ -138,7 +134,7 @@ export function claimTokenRefresh(
     .prepare(
       `UPDATE integration_connections
           SET refresh_claimed_at = datetime('now')
-        WHERE profile_id = ? AND provider = ?
+        WHERE profile_id = ? AND source_id = ?
           AND (refresh_claimed_at IS NULL
                OR refresh_claimed_at < datetime('now','-60 seconds'))`
     )
@@ -169,7 +165,7 @@ export function recordSync(
        SET last_sync_at = datetime('now'),
            last_sync_summary = ?,
            updated_at = datetime('now')
-     WHERE profile_id = ? AND provider = ?`
+     WHERE profile_id = ? AND source_id = ?`
   ).run(JSON.stringify(summary), profileId, sourceId);
 }
 
@@ -228,7 +224,7 @@ export function recordSyncEvent(
     const info = db
       .prepare(
         `INSERT INTO integration_sync_events
-         (profile_id, provider, at, ok, window_start, window_end,
+         (profile_id, source_id, at, ok, window_start, window_end,
           received, written, inserted, updated, unchanged, suppressed, edited, skipped,
           details, raw_ref, error, portal_id, account_id, patient_label)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -284,17 +280,29 @@ export function recordSyncRows(
 ): void {
   if (eventId == null || rows.length === 0) return;
   try {
-    const insert = db.prepare(
-      `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
-       VALUES (?, ?, ?, ?)`
-    );
-    writeTx(() => {
-      for (const r of rows) {
-        insert.run(eventId, r.target_table, r.target_id, r.disposition);
-      }
-    });
+    writeTx(() => insertSyncRows(eventId, rows));
   } catch (err) {
     log.error("recordSyncRows failed", { err: String(err) });
+  }
+}
+
+// The insert itself, WITHOUT the transaction or the swallow — for a caller that must
+// write provenance ATOMICALLY WITH SOMETHING ELSE and therefore owns both.
+//
+// The portal delivery claim (lib/portals.ts) is that caller: it selects the archives no
+// run has claimed, records them, and stamps the durable mark its own guard reads. If the
+// rows were written by `recordSyncRows`, a failure there would be swallowed and the mark
+// would still commit — the documents would be marked delivered with nothing listing them,
+// and no later run could pick them up. Sharing the statement rather than the wrapper is
+// what keeps that one implementation of "a provenance row" while letting the claim
+// succeed or fail as a whole.
+export function insertSyncRows(eventId: number, rows: ProvenanceEntry[]): void {
+  const insert = db.prepare(
+    `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+     VALUES (?, ?, ?, ?)`
+  );
+  for (const r of rows) {
+    insert.run(eventId, r.target_table, r.target_id, r.disposition);
   }
 }
 
@@ -322,7 +330,7 @@ export function pruneSyncEvents(
           WHERE at < ?
             AND id NOT IN (
               SELECT MAX(id) FROM integration_sync_events
-               GROUP BY profile_id, provider
+               GROUP BY profile_id, source_id
             )`
       )
       .run(utcInstant(cutoffDaysAgo(new Date(), maxAgeDays))).changes;
@@ -467,7 +475,7 @@ export function resolveHealthConnectProfile(
 ): number | null {
   const rows = db
     .prepare(
-      "SELECT profile_id, config FROM integration_connections WHERE provider = 'health-connect'"
+      "SELECT profile_id, config FROM integration_connections WHERE source_id = 'health-connect'"
     )
     .all() as { profile_id: number; config: string | null }[];
   const nowMs = Date.now();
@@ -550,7 +558,7 @@ export function recordUnmatchedHealthConnectPush(
   if (!presented) return; // a missing Authorization header isn't a rotated token
   const rows = db
     .prepare(
-      "SELECT profile_id FROM integration_connections WHERE provider = 'health-connect' AND status != 'disconnected'"
+      "SELECT profile_id FROM integration_connections WHERE source_id = 'health-connect' AND status != 'disconnected'"
     )
     .all() as { profile_id: number }[];
   if (rows.length !== 1) return; // can't attribute (0 or many) — skip
@@ -560,7 +568,7 @@ export function recordUnmatchedHealthConnectPush(
   const recent = db
     .prepare(
       `SELECT 1 FROM integration_sync_events
-        WHERE profile_id = ? AND provider = 'health-connect' AND ok = 0
+        WHERE profile_id = ? AND source_id = 'health-connect' AND ok = 0
           AND at > ? LIMIT 1`
     )
     .get(profileId, utcInstant(new Date(Date.now() - 3_600_000)));

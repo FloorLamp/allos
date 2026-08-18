@@ -43,8 +43,15 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // spec fails until someone states why, and removing one fails until the budget is
 // lowered to lock the improvement in. A `<=` would have let the 49 accumulate
 // exactly as it did.
-const DB_ISOLATED = 29;
-const PURE_ISOLATED = 5;
+// dashboard-placement-manifest imports the real async page and needs private
+// request-session/auth substitutions plus a no-op scheduled-AI boundary. Making
+// those substitutions shared would change the behavior exercised by every DB spec.
+const DB_ISOLATED = 30;
+// 7 since #3065: Longevity's server-component FitnessSection is tested directly with
+// controlled session, age, and assembler boundaries. It must prove that minor and unknown
+// profiles return null before assembling adult population data; sharing those module stubs
+// would change the real dependencies exercised by every other pure spec.
+const PURE_ISOLATED = 7;
 
 const ADVICE =
   "\n\nAn isolated spec re-pays the whole module graph — ~259ms against ~26ms " +

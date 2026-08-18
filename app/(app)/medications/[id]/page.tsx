@@ -9,6 +9,7 @@ import {
   resolveMedicationAcrossProfiles,
   encounterForRecord,
   getConditions,
+  episodesForMedication,
 } from "@/lib/queries";
 import { encounterHref } from "@/lib/hrefs";
 import { formatRecordDate } from "@/lib/record-format";
@@ -36,6 +37,9 @@ import {
 } from "../med-data";
 import MedicationCard from "../MedicationCard";
 import { isOnDemand } from "@/lib/intake-schedule";
+import EpisodeLinks from "@/components/EpisodeLinks";
+import IntakeWarnings from "@/components/IntakeWarnings";
+import { intakeWarningsForItem } from "@/lib/intake-warning-surface";
 
 export const dynamic = "force-dynamic";
 
@@ -116,7 +120,7 @@ export default async function MedicationDetailPage(props: {
   ).map((dose) => {
     // The row-level time question, asked once (#2205 phase 3): the stated event
     // instant (`occurred_at`) when somebody named one, else the record chain
-    // (recorded_at → taken_at) — with the answer saying WHICH question it came from.
+    // (recorded_at) — with the answer saying WHICH question it came from.
     const when = bestKnownInstant("intake_item_logs", dose);
     const stored = when.known ? when.at : null;
     // Only attach relative age when the dose's logical date is today; otherwise its
@@ -162,6 +166,7 @@ export default async function MedicationDetailPage(props: {
   // this med's encounter_id. Since #1178 the medication IS the single prescription
   // entity, so its own encounter link is the sole source (no source_record_id chain).
   const prescribedAt = encounterForRecord(profileId, "medication", m.med.id);
+  const illnessEpisodes = episodesForMedication(profileId, m.med.id);
   // Conditions for the "For condition…" indication picker (#1052) on the edit form.
   const medConditions = getConditions(profileId).map((c) => ({
     id: c.id,
@@ -170,6 +175,22 @@ export default async function MedicationDetailPage(props: {
   const situationOptions = mergedSituationOptions(getSituations(profileId)).map(
     (o) => o.name
   );
+
+  // This med's own safety notices (#2795). The findings are already gathered
+  // whole-stack above; this narrows them to the ones this medication is party to, so
+  // the page a person reads before taking a specific drug carries that drug's
+  // interaction/PGx/hearing/allergy notes instead of leaving them on the list page.
+  // No second engine and no second dedupeKey — dismissing here dismisses there.
+  //
+  // `coverage` is deliberately not passed: "checked N of M items" is a statement about
+  // the whole stack, and repeating it under one medication would read as a claim about
+  // that medication's screening.
+  const medWarnings = intakeWarningsForItem(m.med.id, data);
+  const medWarningCount =
+    medWarnings.interactionWarnings.length +
+    medWarnings.pgxWarnings.length +
+    medWarnings.ototoxicWarnings.length +
+    medWarnings.allergyWarnings.length;
 
   return (
     <PageContainer
@@ -227,6 +248,23 @@ export default async function MedicationDetailPage(props: {
                 </Link>
               </p>
             ) : null}
+            <EpisodeLinks
+              episodes={illnessEpisodes}
+              label="Started during illness episode"
+              testId="medication-illness-episodes"
+              className="mb-4"
+            />
+            {medWarningCount > 0 ? (
+              <div className="mb-4">
+                <IntakeWarnings
+                  interactionWarnings={medWarnings.interactionWarnings}
+                  pgxWarnings={medWarnings.pgxWarnings}
+                  ototoxicWarnings={medWarnings.ototoxicWarnings}
+                  allergyWarnings={medWarnings.allergyWarnings}
+                  dismissable={canWrite}
+                />
+              </div>
+            ) : null}
             <MedicationCard
               medication={m.med}
               doses={m.doses}
@@ -245,7 +283,6 @@ export default async function MedicationDetailPage(props: {
               poolChip={m.poolChip}
               todayStr={data.todayStr}
               nowIso={data.nowIso}
-              trainingRestricted={data.trainingRestricted}
               suppressedFoodKeys={data.suppressedFoodKeys}
               prnDayLabel={m.prnDayLabel}
               prnAdministrations={m.prnAdministrations}

@@ -79,7 +79,7 @@ describe("CDA radiology-study extractor", () => {
       external_id: "ccda:imaging:IMG-1",
     });
     // It must NOT also become a (null-value) lab record.
-    expect(r.records.some((x) => /radiology/i.test(x.name))).toBe(false);
+    expect(r.observations.some((x) => /radiology/i.test(x.name))).toBe(false);
   });
 
   it("normalizes a mammogram to x-ray and reads bilateral", () => {
@@ -207,7 +207,7 @@ describe("CDA radiology impression fold (#708 follow-up)", () => {
       "IMPRESSION: Left breast abscess. Recommend follow-up."
     );
     // The prose sibling is NOT also a `report` record (no real report LOINC).
-    expect(r.records.some((x) => x.category === "report")).toBe(false);
+    expect(r.observations.some((x) => x.category === "report")).toBe(false);
   });
 
   it("prefers the IMPRESSION over the fuller narrative", () => {

@@ -12,8 +12,9 @@ import { EPISODES_HREF } from "@/lib/hrefs";
 import { today } from "@/lib/db";
 import {
   getActivities,
+  getActivitiesSince,
   getActivitiesByDate,
-  getDashboardStats,
+  getLatestBodyMetricDated,
   getOutcomeGoals,
   getOutcomeGoalProgressMap,
   countClinicalObservations,
@@ -36,20 +37,26 @@ import { activeByKey } from "@/lib/findings";
 import {
   getActiveSituations,
   getDisplayFormatPrefs,
+  getProfileAge,
   getUnitPrefs,
 } from "@/lib/settings";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 import { currentEpisodeForProfile } from "@/lib/illness-episode";
 import { householdSickLine } from "@/lib/illness-episode-format";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
 import {
   goalHighlights,
-  supplementAdherenceToday,
+  intakeAdherenceToday,
   weightTrend,
 } from "@/lib/household";
 import { fmtWeight } from "@/lib/units";
 import { householdPresenceChip } from "@/lib/workout-presence";
 import { formatRelativeDate } from "@/lib/format-date";
+import { shiftDateStr } from "@/lib/date";
 import { PageHeader, EmptyState } from "@/components/ui";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import { getIntakeDeltaLine } from "@/lib/intake-history";
@@ -88,16 +95,19 @@ export default async function HouseholdPage() {
   const cards: HouseholdCardData[] = profiles.map((profile) => {
     const pid = profile.id;
     const day = today(pid);
+    const age = getProfileAge(pid);
+    const trainingRelevant = isTrainingRelevant(age);
+    const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
 
-    // Today's supplement adherence (x/y): due doses honored via isDueOn.
-    const activeSuppById = new Map(
+    // Today's intake adherence (x/y): due doses honored via isDueOn.
+    const activeItemById = new Map(
       getIntakeItems(pid)
         .filter((s) => s.active)
         .map((s) => [s.id, s])
     );
-    const adherence = supplementAdherenceToday(
+    const adherence = intakeAdherenceToday(
       getIntakeDoses(pid),
-      activeSuppById,
+      activeItemById,
       {
         date: day,
         isWorkoutDay: getActivitiesByDate(pid, day).length > 0,
@@ -106,8 +116,16 @@ export default async function HouseholdPage() {
       getTakenDoseIds(pid, day)
     );
 
-    const recent = getActivities(pid, 1)[0];
-    const stats = getDashboardStats(pid);
+    const relevantRecent = trainingRelevant
+      ? getActivities(pid, 10).find(
+          (activity) => strengthTrainingRelevant || activity.type !== "strength"
+        )
+      : undefined;
+    const activities7d = trainingRelevant
+      ? getActivitiesSince(pid, shiftDateStr(day, -6)).filter(
+          (activity) => strengthTrainingRelevant || activity.type !== "strength"
+        ).length
+      : 0;
 
     // Current weight = the primary-source-aware value the dashboard QuickStats
     // shows (getLatestBodyMetricDated, #302/#396) — never a raw newest row, which
@@ -119,7 +137,7 @@ export default async function HouseholdPage() {
     // getLatestBodyMetricDailyPoints — the bound the dashboard has used since it hit
     // this exact cost). The full series defaults to 365 raw rows, and this loop runs
     // once per accessible profile.
-    const latestWeight = stats.latestWeight;
+    const latestWeight = getLatestBodyMetricDated(pid, "weight");
     const dailyWeights = getLatestBodyMetricDailyPoints(pid, "weight");
     const dwLen = dailyWeights.length;
     const trend = weightTrend(
@@ -135,7 +153,11 @@ export default async function HouseholdPage() {
       range: "oor",
     });
 
-    const goals = getOutcomeGoals(pid);
+    const goals = trainingRelevant
+      ? getOutcomeGoals(pid).filter(
+          (goal) => strengthTrainingRelevant || goal.kind !== "exercise"
+        )
+      : [];
     const goalProgress = getOutcomeGoalProgressMap(pid, goals);
 
     // The actionable rollup — today's attention items (due doses, low refills,
@@ -177,10 +199,13 @@ export default async function HouseholdPage() {
       // household card and the Telegram digest sees one story. Null on a quiet
       // window: the card then shows the x/y fraction alone, as before.
       intakeDeltaLine: getIntakeDeltaLine(pid, day),
-      lastActivity: recent
-        ? { title: recent.title, when: formatRelativeDate(recent.date, day) }
+      lastActivity: relevantRecent
+        ? {
+            title: relevantRecent.title,
+            when: formatRelativeDate(relevantRecent.date, day),
+          }
         : null,
-      activities7d: stats.last7,
+      activities7d,
       weightLabel: latestWeight
         ? fmtWeight(latestWeight.value, weightUnit)
         : null,
@@ -209,7 +234,9 @@ export default async function HouseholdPage() {
       // live-only "mid-workout · N min" glance. Unlinked (trainingLogActivityHref anchors
       // the viewer's OWN log, so a cross-profile link would land on a dead anchor,
       // #879) — a plain chip, not a button.
-      presence: householdPresenceChip(getWorkoutPresence(pid)),
+      presence: trainingRelevant
+        ? householdPresenceChip(getWorkoutPresence(pid))
+        : null,
       dataQuality,
       // Per-member SETUP HEALTH (#2173). Five checks derived at read time from facts
       // that already exist — the send-source scan × the notification edge set × per-login

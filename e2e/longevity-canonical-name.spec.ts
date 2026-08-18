@@ -100,7 +100,7 @@ test("the biomarker detail page still reports the raw name in its provenance col
 }) => {
   test.slow();
   await page.goto(
-    `/results/readings/view?name=${encodeURIComponent(CANONICAL_NAME)}`
+    `/results/clinical-results/view?name=${encodeURIComponent(CANONICAL_NAME)}`
   );
   const main = page.getByRole("main");
   // The heading is the canonical analyte…

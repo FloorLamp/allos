@@ -8,10 +8,8 @@ import {
   setWithingsTokens,
   parseWithingsTokenResponse,
 } from "@/lib/integrations/connections";
-import {
-  appUrl,
-  withingsCallbackUrl,
-} from "@/app/(app)/integrations/withings/url";
+import { withingsCallbackUrl } from "@/app/(app)/integrations/withings/url";
+import { appUrl } from "@/lib/external-url-server";
 
 // OAuth 2.0 authorization-code callback for Withings. The user is redirected here
 // from Withings after approving access; we validate the CSRF `state`, exchange the

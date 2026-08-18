@@ -22,7 +22,7 @@
 //     while breakfast was logged from Telegram writes the remainder, or refuses.
 //
 // That is the stateful-affordance contract (docs/internals/stateful-affordances.md)
-// applied to an offer over an ADDITIVE store: `food_log` is deliberately not a gated
+// applied to an offer over an ADDITIVE store: `food_daily_totals` is deliberately not a gated
 // stateful table (a second serving is a second serving), so the discipline lives in
 // the offer rather than in the counter, and a stale tap lands on an honest typed
 // refusal instead of a silent second breakfast.

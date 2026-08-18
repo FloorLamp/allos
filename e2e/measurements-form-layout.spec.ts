@@ -278,7 +278,7 @@ test("the one Time drives temperature and peak flow — the folded per-measure i
 
     // Server truth: the ONE statement landed on BOTH stores, each on its own
     // convention — the observation's occurred_at in the canonical UTC shape, and
-    // the peak-flow sample's start_time as the same instant's profile-local wall
+    // the peak-flow sample's started_at as the same instant's profile-local wall
     // clock (its natural key).
     const { zone } = pinnedTimezone(frozenNow().toISOString());
     const statedInstant = utcInstant(
@@ -296,12 +296,12 @@ test("the one Time drives temperature and peak flow — the folded per-measure i
       expect(temp).toEqual([{ occurred_at: statedInstant, notes: null }]);
       const blow = handle
         .prepare(
-          `SELECT start_time FROM metric_samples
+          `SELECT started_at FROM metric_samples
             WHERE profile_id = 1 AND date = ? AND source = 'manual'
               AND metric = 'peak_flow_lmin'`
         )
-        .all(TODAY) as { start_time: string }[];
-      expect(blow).toEqual([{ start_time: `${TODAY}T${statedHhmm}:00` }]);
+        .all(TODAY) as { started_at: string }[];
+      expect(blow).toEqual([{ started_at: `${TODAY}T${statedHhmm}:00` }]);
     } finally {
       handle.close();
     }

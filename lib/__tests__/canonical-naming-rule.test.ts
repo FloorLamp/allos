@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import canonicalSeed from "@/lib/canonical-biomarkers.json";
+import canonicalSeed from "@/lib/canonical-result-definitions.json";
 import { normalizeCanonicalKey } from "@/lib/canonical-name";
 
 // THE NAMING RULE AS A SCAN (#2335).
@@ -129,8 +129,8 @@ function bareQualifiedPairs(names: readonly string[]): Pair[] {
 }
 
 const NAMES = (
-  canonicalSeed as { biomarkers: { name: string }[] }
-).biomarkers.map((b) => b.name);
+  canonicalSeed as { definitions: { name: string }[] }
+).definitions.map((b) => b.name);
 
 describe("canonical naming rule — a name states what it measures (#2335)", () => {
   it("declares an axis for every qualifier that sits beside a bare sibling", () => {

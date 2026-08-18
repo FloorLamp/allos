@@ -115,8 +115,8 @@ export const SECTIONS = {
   // observations (organizer→component or bare observation — the SAME node shapes
   // the Results/Vitals walker reads), typically with coded (qualitative) values
   // ("Independent", "Uses walker", …). Routed through the shared observation
-  // mapper as qualitative `lab` records; the assessment LOINC is deliberately NOT
-  // carried onto the stored record — see functionalStatusExtractor.
+  // mapper as qualitative `lab` observations; the assessment LOINC is deliberately NOT
+  // carried onto the stored observation — see functionalStatusExtractor.
   functionalStatus: {
     loinc: "47420-5",
     templates: ["2.16.840.1.113883.10.20.22.2.14"],
@@ -335,7 +335,7 @@ export interface SectionExtractor {
   // as the fallback date for an undated med-list entry (#Fix 2). The visit date is
   // preferred because a per-visit document (the eCW shape) is generated — and
   // effectiveTime-stamped — possibly days after the visit it describes; anchoring
-  // to the visit keeps the med's record date/stop date clinically honest and its
+  // to the visit keeps the med's observation date/stop date clinically honest and its
   // date-keyed rx external_id stable across re-downloads of the same visit.
   // `doc` carries the header facts an extractor can only learn from the DOCUMENT.
   // Optional so a test can drive one extractor directly; an absent value is read as
@@ -367,7 +367,7 @@ export type SectionExtractorOutput = Partial<ImportResult> & {
 
 // A resolved value string that is empty or a bare placeholder ("—", "-", "N/A",
 // …) carries no result. Normalize it to null so the observation is dropped
-// rather than surfacing as an empty record the app renders as "—".
+// rather than surfacing as an empty observation the app renders as "—".
 export const VALUE_PLACEHOLDERS = new Set([
   "",
   "-",

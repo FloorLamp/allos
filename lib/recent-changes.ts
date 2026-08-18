@@ -112,6 +112,7 @@ const RECENT_CHANGE_TABLE = defineRankTable<string, RecentChangeContext>({
         if (!change || change.category !== "growth") return 0;
         const minor =
           ctx.lifeStage === "infant" ||
+          ctx.lifeStage === "early-childhood" ||
           ctx.lifeStage === "child" ||
           ctx.lifeStage === "adolescent";
         if (!minor) return 0;

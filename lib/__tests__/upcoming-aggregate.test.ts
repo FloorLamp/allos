@@ -17,6 +17,7 @@ import {
   goalAggregateLabel,
   isSafetyPinnedItem,
   medSafetyAggregateLabel,
+  pageRowDetail,
   planBandRender,
   sumDoseProgress,
   type BandNode,
@@ -493,5 +494,108 @@ describe("dose progress", () => {
       ])
     ).toEqual({ scheduled: 14, taken: 9 });
     expect(sumDoseProgress([])).toEqual({ scheduled: 0, taken: 0 });
+  });
+});
+
+// #2579-E — the weekly pace rows come down to one line on this page.
+describe("one-line weekly targets (#2579-E)", () => {
+  const target = (domain: UpcomingDomain, detail: string) =>
+    item(`target:${domain}`, domain, {
+      detail,
+      band: "week",
+      dueText: "1/2 this week",
+      weeklyTarget: true,
+    });
+
+  it("drops the detail line on a declared weekly target, whatever its scope", () => {
+    // #2578 gave each scope its own honest detail; the row also carries the pace in
+    // its status column, the scope in its title and the domain in its glyph — so on
+    // THIS page the line is the heading, restated.
+    expect(
+      pageRowDetail(target("training", "Weekly training target"))
+    ).toBeNull();
+    expect(
+      pageRowDetail(target("nutrition-target", "Weekly nutrition target"))
+    ).toBeNull();
+    expect(
+      pageRowDetail(target("mobility-target", "Weekly mobility target"))
+    ).toBeNull();
+    expect(
+      pageRowDetail(target("practice", "Weekly practice target"))
+    ).toBeNull();
+  });
+
+  it("keeps the detail of every OTHER row in the `training` bucket", () => {
+    // THE REGRESSION THIS FUNCTION SHIPPED WITH, pinned by example. `training` is a
+    // bucket four builders emit into, and for three of them the detail IS the row —
+    // an event's distance, a whole planning sentence, the day's step observation. A
+    // domain-keyed rule deleted all three, which is #2578's defect one level up.
+    const notATarget = (key: string, detail: string) =>
+      item(key, "training", { detail });
+    expect(
+      pageRowDetail(notATarget("endurance-event:1", "Run · 6.21 mi"))
+    ).toBe("Run · 6.21 mi");
+    expect(
+      pageRowDetail(
+        notATarget(
+          "outdoor-plan:cycling",
+          "This week: Thursday looks like the best window for your cycling (cycling 1/2)."
+        )
+      )
+    ).toBe(
+      "This week: Thursday looks like the best window for your cycling (cycling 1/2)."
+    );
+    expect(pageRowDetail(notATarget("steps:2026-03-10", "3,100 so far"))).toBe(
+      "3,100 so far"
+    );
+  });
+
+  it("reads the declaration, never the domain", () => {
+    // Stated as the rule rather than as the three examples above: across the FULL
+    // domain union, an undeclared row keeps its detail and a declared one loses it.
+    // No domain is privileged, so a new builder in an existing bucket cannot inherit
+    // a treatment it never asked for.
+    for (const domain of UPCOMING_DOMAINS) {
+      expect(pageRowDetail(item("x", domain, { detail: "a fact" }))).toBe(
+        "a fact"
+      );
+      expect(
+        pageRowDetail(
+          item("x", domain, { detail: "a fact", weeklyTarget: true })
+        )
+      ).toBeNull();
+    }
+  });
+
+  it("leaves an ordinary row's detail alone", () => {
+    // A dose's amount, a goal's kind, a screening's reason: none of these is
+    // restating anything on the row, so the density rule has nothing to say about them.
+    expect(pageRowDetail(item("dose:1", "dose", { detail: "500 mg" }))).toBe(
+      "500 mg"
+    );
+    expect(
+      pageRowDetail(item("goal:1", "goal", { detail: "Strength goal" }))
+    ).toBe("Strength goal");
+    expect(
+      pageRowDetail(
+        item("screening:colon", "screening", { detail: "Due at 45" })
+      )
+    ).toBe("Due at 45");
+  });
+
+  it("answers null for a row that carried no detail at all", () => {
+    expect(pageRowDetail(item("review:1", "review", {}))).toBeNull();
+    expect(
+      pageRowDetail(item("review:1", "review", { detail: null }))
+    ).toBeNull();
+  });
+
+  it("is a PAGE decision — the item keeps its detail for the other surfaces", () => {
+    // The hero, the digest and the calendar feed read the same items and are
+    // untouched by construction (the #2579 charter's own list), which is only true
+    // because this is a read-time decision and not a builder change.
+    const row = target("training", "Weekly training target");
+    expect(pageRowDetail(row)).toBeNull();
+    expect(row.detail).toBe("Weekly training target");
   });
 });

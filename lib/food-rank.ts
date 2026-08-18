@@ -1,7 +1,7 @@
 // Pure slot-aware food-group ranking (issue #950) — DB-free so it's unit-tested
 // (lib/__tests__). Blends two recency-decayed signals into ONE order used by BOTH
 // surfaces (the web one-tap bar and the Telegram nudge — #221):
-//   • OVERALL frecency, from the food_log daily counter (servings × recency decay) —
+//   • OVERALL frecency, from the food_daily_totals daily counter (servings × recency decay) —
 //     exactly the pre-#950 ranking, so a profile with no ledger data (pre-migration
 //     history, a fresh profile) degrades to the old order with NO cliff.
 //   • SLOT frecency, from the food_log_events ledger, counting only the taps whose

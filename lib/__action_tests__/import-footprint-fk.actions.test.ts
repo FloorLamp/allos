@@ -37,7 +37,7 @@ const DATE = "2020-07-01";
 // source='extracted' intake_items row — the footprint table this issue is about.
 function makeInput(medName: string): PersistInput {
   return {
-    records: [
+    observations: [
       {
         category: "prescription",
         name: medName,

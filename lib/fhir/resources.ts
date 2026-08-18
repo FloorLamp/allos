@@ -1,4 +1,4 @@
-import { classifyLoinc } from "../biomarker-loinc";
+import { classifyLoinc } from "../canonical-result-loinc";
 import { sourceDay, sourceInstant } from "../source-time";
 import {
   toConditionLaterality,
@@ -39,7 +39,7 @@ import type {
   ImportedImmunization,
   ImportedOpticalPrescription,
   ImportedProcedure,
-  ImportedRecord,
+  ImportedClinicalObservation,
 } from "../health-import";
 import type {
   AppointmentKind,
@@ -174,7 +174,7 @@ export function mapImmunizationResource(
 // component's OWN printed label and its own reason, and (via `drops`) counts into
 // `considered`, so kept-vs-considered stays true for a partially-valued panel.
 export interface ObservationOutcome {
-  records: ImportedRecord[];
+  observations: ImportedClinicalObservation[];
   drops: ImportDrop[];
 }
 
@@ -227,12 +227,12 @@ function componentDrop(comp: any, reason: DropReason, parent: any): ImportDrop {
 // Back-compat accessor over `observationOutcome` for callers that only want the kept
 // readings. A caller that reports an import (the bundle walk) must use the outcome —
 // discarding `.drops` here is exactly the silence #2411 fixed.
-export function observationRecords(
+export function observationsFromResource(
   r: any,
   idPrefix: string,
   ctx?: FhirBundleCtx
-): ImportedRecord[] {
-  return observationOutcome(r, idPrefix, ctx).records;
+): ImportedClinicalObservation[] {
+  return observationOutcome(r, idPrefix, ctx).observations;
 }
 
 export function observationOutcome(
@@ -244,7 +244,7 @@ export function observationOutcome(
   // entered-in-error or cancelled Observation is not real data. Classified at the
   // RESOURCE level (`negated`), so no component drops are emitted for it: the whole
   // resource is one refusal, not N.
-  const none: ObservationOutcome = { records: [], drops: [] };
+  const none: ObservationOutcome = { observations: [], drops: [] };
   if (r?.status === "entered-in-error" || r?.status === "cancelled")
     return none;
   // Keep the prior `effectiveDateTime ?? issued` order so no already-stored key
@@ -268,7 +268,7 @@ export function observationOutcome(
   // Tier-1 visit link (#1050): the Encounter this Observation was drawn at.
   const encExt = encounterRefExternalId(r, ctx);
 
-  const out: ImportedRecord[] = [];
+  const out: ImportedClinicalObservation[] = [];
   const drops: ImportDrop[] = [];
   // A component-bearing Observation carries its numbers in the components (BP), so
   // emit one reading per valued component. A rare top-level value alongside
@@ -339,7 +339,7 @@ export function observationOutcome(
     return false;
   });
   return {
-    records: kept.map((rec) => ({
+    observations: kept.map((rec) => ({
       ...rec,
       occurred_at: sourceInstant(time),
       encounter_external_id: encExt,
@@ -351,13 +351,13 @@ export function observationOutcome(
 
 // Back-compat single-reading accessor: the FIRST reading an Observation yields, or
 // null when it yields none (valueless / retracted / undated). Callers that need the
-// full set (BP components) use observationRecords.
+// full set (BP components) use observationsFromResource.
 export function mapObservationResource(
   r: any,
   idPrefix: string,
   ctx?: FhirBundleCtx
-): ImportedRecord | null {
-  return observationRecords(r, idPrefix, ctx)[0] ?? null;
+): ImportedClinicalObservation | null {
+  return observationsFromResource(r, idPrefix, ctx)[0] ?? null;
 }
 
 // ---- Condition ----
@@ -540,7 +540,7 @@ export function mapAllergyResource(
 // ---- MedicationRequest / MedicationStatement ----
 
 // The dosage/instruction free text (MedicationRequest.dosageInstruction[].text or
-// MedicationStatement.dosage[].text), stored as the record's value like the CDA
+// MedicationStatement.dosage[].text), stored as the observation's value like the CDA
 // dose string.
 function dosageText(r: any): string | null {
   const arr = Array.isArray(r?.dosageInstruction)
@@ -621,7 +621,7 @@ function firstIdentifierValue(identifier: any): string | null {
 export function mapMedicationResource(
   r: any,
   ctx: FhirBundleCtx
-): ImportedRecord | null {
+): ImportedClinicalObservation | null {
   if (r?.status === "entered-in-error") return null;
   // The drug: an inline medicationCodeableConcept (R4) / medication.concept (R5),
   // else a medicationReference / medication reference resolved to a Medication.
@@ -1362,16 +1362,16 @@ export function mapGoalResource(r: any): ImportedCareGoal | null {
 // one. Overlap with a top-level Observation collapses on the shared external_id.
 // Returns the same ObservationOutcome shape its members do: a component refused inside
 // a report-only Observation is reported exactly like one refused at top level (#2411).
-export function recordsFromDiagnosticReport(
+export function observationsFromDiagnosticReport(
   r: any,
   idPrefix: string,
   ctx: FhirBundleCtx
 ): ObservationOutcome {
-  const out: ObservationOutcome = { records: [], drops: [] };
+  const out: ObservationOutcome = { observations: [], drops: [] };
   if (r?.status === "entered-in-error" || r?.status === "cancelled") return out;
   const take = (obs: any) => {
     const o = observationOutcome(obs, idPrefix, ctx);
-    out.records.push(...o.records);
+    out.observations.push(...o.observations);
     out.drops.push(...o.drops);
   };
   const contained = Array.isArray(r?.contained) ? r.contained : [];
@@ -1594,7 +1594,7 @@ function imagingExternalId(
 // Does a DiagnosticReport / DocumentReference classify as imaging/radiology? Coded
 // (v2-0074 service codes on category) or by free-text title (code/type/category
 // display). Non-imaging reports (pathology, labs) return false so their narrative is
-// routed to the fallback record instead of fabricating an imaging study.
+// routed to the fallback observation instead of fabricating an imaging study.
 function looksLikeImagingReport(r: any): boolean {
   const categories = Array.isArray(r?.category)
     ? r.category
@@ -1673,13 +1673,13 @@ export function mapImagingStudyResource(
   };
 }
 
-// A FHIR DiagnosticReport → its inner Observation records PLUS its narrative:
+// A FHIR DiagnosticReport → its inner clinical observations PLUS its narrative:
 //  - an IMAGING report → a structured imaging study whose impression is the
 //    conclusion (+ conclusionCode terms + any inline-decodable presentedForm text);
 //  - any OTHER report (pathology, cardiology, …) with a conclusion → a value-less
 //    `lab` medical_records row carrying the narrative in `value` (the least-surprising
 //    existing home — a qualitative/narrative lab reading; imaging has no dedicated
-//    non-radiology record type yet). Both destinations are import-footprint-covered
+//    non-radiology observation type yet). Both destinations are import-footprint-covered
 //    (imaging_studies / medical_records key on document_id).
 // presentedForm attachments are captured ONLY when inline-decodable text; binary/
 // remote rendered reports are NOT fetched (no auto-egress) — the deferred item-4 tail.
@@ -1688,13 +1688,17 @@ export function mapDiagnosticReport(
   idPrefix: string,
   ctx: FhirBundleCtx
 ): {
-  records: ImportedRecord[];
+  observations: ImportedClinicalObservation[];
   imagingStudies: ImportedImagingStudy[];
   drops: ImportDrop[];
 } {
-  const { records, drops } = recordsFromDiagnosticReport(r, idPrefix, ctx);
+  const { observations, drops } = observationsFromDiagnosticReport(
+    r,
+    idPrefix,
+    ctx
+  );
   if (r?.status === "entered-in-error" || r?.status === "cancelled")
-    return { records, imagingStudies: [], drops };
+    return { observations, imagingStudies: [], drops };
   const conclusion =
     typeof r?.conclusion === "string" && r.conclusion.trim()
       ? r.conclusion.trim()
@@ -1704,7 +1708,7 @@ export function mapDiagnosticReport(
   const narrative =
     [conclusion, conclusionCodeText, formText].filter(Boolean).join("\n\n") ||
     null;
-  if (!narrative) return { records, imagingStudies: [], drops };
+  if (!narrative) return { observations, imagingStudies: [], drops };
   const date = sourceDay(
     fhirTime(r?.effectiveDateTime ?? r?.issued ?? r?.effectivePeriod?.start)
   );
@@ -1717,7 +1721,7 @@ export function mapDiagnosticReport(
       conceptName(r?.code)
     );
     return {
-      records,
+      observations,
       drops,
       imagingStudies: [
         {
@@ -1739,16 +1743,16 @@ export function mapDiagnosticReport(
       ],
     };
   }
-  // Non-imaging report narrative → a value-less lab record. A record needs a date to
+  // Non-imaging report narrative → a value-less lab observation. An observation needs a date to
   // place it on the timeline/series; a dateless report narrative is dropped.
-  if (!date) return { records, imagingStudies: [], drops };
+  if (!date) return { observations, imagingStudies: [], drops };
   const name = conceptName(r?.code) ?? "Diagnostic Report";
   const loinc = loincFromFhirCode(r?.code);
   const drId =
     r?.id != null && String(r.id).trim()
       ? String(r.id).trim()
       : `${name}-${date}`;
-  const narrativeRecord: ImportedRecord = {
+  const narrativeObservation: ImportedClinicalObservation = {
     category: "lab",
     name,
     canonical: name,
@@ -1760,7 +1764,11 @@ export function mapDiagnosticReport(
     loinc: loinc ?? null,
     provider: null,
   };
-  return { records: [...records, narrativeRecord], imagingStudies: [], drops };
+  return {
+    observations: [...observations, narrativeObservation],
+    imagingStudies: [],
+    drops,
+  };
 }
 
 // A FHIR DocumentReference → a structured imaging study, ONLY when it is an

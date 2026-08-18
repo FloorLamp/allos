@@ -137,7 +137,7 @@ server→client boundary.
 
 ## Identity per domain
 
-- **Food** rows key on the catalog slug (`food_log.group_key`); labels, icons
+- **Food** rows key on the catalog slug (`food_daily_totals.group_key`); labels, icons
   (`FoodGroupIcon` + tier tint), and the chip abbreviations
   (`foodGroupShortName`, the curated `FOOD_GROUP_SHORT` map beside the emoji
   map — the SAME vocabulary the Telegram food nudge's buttons and tally use)

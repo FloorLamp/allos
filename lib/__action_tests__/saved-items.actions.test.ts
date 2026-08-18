@@ -31,22 +31,24 @@ describe("toggleSavedItem", () => {
   it("stars a biomarker from its series key and revalidates every save surface", async () => {
     const { profile } = seedActor();
 
-    const res = await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    const res = await toggleSavedItem(fd({ key: "result:ApoB" }));
 
     expect(res.ok).toBe(true);
-    expect(saved(profile.id)).toEqual([{ kind: "biomarker", key: "ApoB" }]);
+    expect(saved(profile.id)).toEqual([
+      { kind: "clinical-result", key: "ApoB" },
+    ]);
     // A save is membership on three surfaces at once — that IS the issue.
     const paths = revalidate.mock.calls.map((c) => c[0]);
     expect(paths).toContain("/trends");
     expect(paths).toContain("/results");
-    expect(paths).toContain("/results/readings/view");
+    expect(paths).toContain("/results/clinical-results/view");
     expect(paths).toContain("/trends/metric/[kind]");
   });
 
   it("un-stars on a second submit (the same gesture both ways)", async () => {
     const { profile } = seedActor();
-    await toggleSavedItem(fd({ key: "bio:ApoB" }));
-    await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
     expect(saved(profile.id)).toEqual([]);
   });
 
@@ -54,10 +56,10 @@ describe("toggleSavedItem", () => {
     // Star one spelling of the 25-OH total, then submit a SIBLING spelling: the
     // family already reads as saved, so this must CLEAR it rather than add a row.
     const { profile } = seedActor();
-    await toggleSavedItem(fd({ key: "bio:Vitamin D, Total" }));
+    await toggleSavedItem(fd({ key: "result:Vitamin D, Total" }));
     expect(saved(profile.id).length).toBe(1);
 
-    await toggleSavedItem(fd({ key: "bio:25-OH Vitamin D" }));
+    await toggleSavedItem(fd({ key: "result:25-OH Vitamin D" }));
 
     expect(saved(profile.id)).toEqual([]);
   });
@@ -95,16 +97,16 @@ describe("toggleSavedItem", () => {
   it("keeps a biomarker and a metric of the same name apart", async () => {
     const { profile } = seedActor();
     await toggleSavedItem(fd({ key: "metric:weight" }));
-    await toggleSavedItem(fd({ key: "bio:weight" }));
+    await toggleSavedItem(fd({ key: "result:weight" }));
     // Two rows, same key, different kinds — `kind` is what keeps them apart.
     expect(new Set(saved(profile.id).map((r) => `${r.kind}:${r.key}`))).toEqual(
-      new Set(["trend-metric:weight", "biomarker:weight"])
+      new Set(["trend-metric:weight", "clinical-result:weight"])
     );
   });
 
   it("refuses an unparseable key instead of writing a junk row", async () => {
     const { profile } = seedActor();
-    for (const key of ["", "ApoB", "provider:12", "bio:"]) {
+    for (const key of ["", "ApoB", "provider:12", "result:"]) {
       const res = await toggleSavedItem(fd({ key }));
       expect(res.ok).toBe(false);
     }
@@ -117,9 +119,9 @@ describe("toggleSavedItem", () => {
     const other = createProfile("Other", login.id);
     actAs(login, mine);
 
-    await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
 
-    expect(saved(mine.id)).toEqual([{ kind: "biomarker", key: "ApoB" }]);
+    expect(saved(mine.id)).toEqual([{ kind: "clinical-result", key: "ApoB" }]);
     expect(saved(other.id)).toEqual([]);
   });
 
@@ -128,7 +130,7 @@ describe("toggleSavedItem", () => {
     const profile = createProfile("Read Only", login.id);
     actAs(login, profile, "read");
 
-    await expect(toggleSavedItem(fd({ key: "bio:ApoB" }))).rejects.toThrow();
+    await expect(toggleSavedItem(fd({ key: "result:ApoB" }))).rejects.toThrow();
     expect(saved(profile.id)).toEqual([]);
   });
 });
@@ -141,13 +143,13 @@ describe("reorderSaved", () => {
 
   it("sets the saved order outright and revalidates /trends", async () => {
     const { profile } = seedActor();
-    await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
     await toggleSavedItem(fd({ key: "metric:weight" }));
-    await toggleSavedItem(fd({ key: "bio:Ferritin" }));
+    await toggleSavedItem(fd({ key: "result:Ferritin" }));
     revalidate.mockClear();
 
     const res = await reorderSaved(
-      order(["metric:weight", "bio:Ferritin", "bio:ApoB"])
+      order(["metric:weight", "result:Ferritin", "result:ApoB"])
     );
 
     expect(res.ok).toBe(true);
@@ -163,13 +165,13 @@ describe("reorderSaved", () => {
     // The stale-client case: another device starred something since this grid
     // rendered. Omitting it must not delete it.
     const { profile } = seedActor();
-    await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
     await toggleSavedItem(fd({ key: "metric:weight" }));
 
     await reorderSaved(order(["metric:weight"]));
 
     expect(new Set(saved(profile.id).map((r) => `${r.kind}:${r.key}`))).toEqual(
-      new Set(["biomarker:ApoB", "trend-metric:weight"])
+      new Set(["clinical-result:ApoB", "trend-metric:weight"])
     );
     // The named row leads; the unnamed one keeps its place behind it.
     expect(saved(profile.id)[0].key).toBe("weight");
@@ -180,13 +182,17 @@ describe("reorderSaved", () => {
     // stored order in a write of their own. The grid computes the stepped list
     // (moveInOrder, pure) and submits it HERE, exactly as a drag does.
     const { profile } = seedActor();
-    await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
     await toggleSavedItem(fd({ key: "metric:weight" }));
-    await toggleSavedItem(fd({ key: "bio:Ferritin" }));
+    await toggleSavedItem(fd({ key: "result:Ferritin" }));
 
-    await reorderSaved(order(["bio:ApoB", "bio:Ferritin", "metric:weight"]));
+    await reorderSaved(
+      order(["result:ApoB", "result:Ferritin", "metric:weight"])
+    );
     // "Move earlier" on the last tile, as the grid sends it.
-    await reorderSaved(order(["bio:ApoB", "metric:weight", "bio:Ferritin"]));
+    await reorderSaved(
+      order(["result:ApoB", "metric:weight", "result:Ferritin"])
+    );
 
     expect(saved(profile.id).map((r) => r.key)).toEqual([
       "ApoB",
@@ -197,7 +203,7 @@ describe("reorderSaved", () => {
 
   it("refuses unreadable input and drops keys that name nothing savable", async () => {
     const { profile } = seedActor();
-    await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
 
     expect((await reorderSaved(fd({ keys: "not json" }))).ok).toBe(false);
     expect((await reorderSaved(fd({ keys: JSON.stringify({}) }))).ok).toBe(
@@ -208,16 +214,18 @@ describe("reorderSaved", () => {
     expect((await reorderSaved(order(["nonsense", "also:nonsense"]))).ok).toBe(
       false
     );
-    expect(saved(profile.id)).toEqual([{ kind: "biomarker", key: "ApoB" }]);
+    expect(saved(profile.id)).toEqual([
+      { kind: "clinical-result", key: "ApoB" },
+    ]);
   });
 
   it("refuses a read-only actor (the auth gate)", async () => {
     const login = createLogin({ role: "member" });
     const profile = createProfile("Read Only Drag", login.id);
     actAs(login, profile, "write");
-    await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    await toggleSavedItem(fd({ key: "result:ApoB" }));
     actAs(login, profile, "read");
 
-    await expect(reorderSaved(order(["bio:ApoB"]))).rejects.toThrow();
+    await expect(reorderSaved(order(["result:ApoB"]))).rejects.toThrow();
   });
 });

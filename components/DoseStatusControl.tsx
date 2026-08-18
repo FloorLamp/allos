@@ -130,10 +130,21 @@ export default function DoseStatusControl({
     tappedAt: Date
   ) {
     setOptimistic(next);
-    await enqueue(kind, localDate(tappedAt), {
+    const kept = await enqueue(kind, localDate(tappedAt), {
       doseId,
       ...(kind === "dose" ? { clientTakenAt: tappedAt.toISOString() } : {}),
     });
+    // READ THE ANSWER. The queue can refuse — this device is logged out, or has no
+    // IndexedDB to queue into — and the toast below promises the tap will sync. Claiming
+    // a save that did not happen is worse than the missing save, because nothing later
+    // contradicts it: there is no badge, no dead-letter entry and no replay.
+    if (!kept) {
+      setOptimistic(null);
+      toast("This tap wasn't saved. Try again once you're back online.", {
+        tone: "error",
+      });
+      return;
+    }
     toast(
       next === "taken"
         ? "Dose saved offline — will sync when you reconnect."

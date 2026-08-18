@@ -294,7 +294,7 @@ export function allInstrumentDefs(): readonly InstrumentDef[] {
   return INSTRUMENTS.map((k) => DEFS[k]);
 }
 
-// The canonical_name → instrument lookup, for reading a stored biomarker record back as an
+// The canonical_name → instrument lookup, for reading a stored clinical observation back as an
 // instrument score (#482: the canonical_name IS the instrument identity).
 export function instrumentForCanonicalName(
   name: string | null | undefined

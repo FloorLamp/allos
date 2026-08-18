@@ -37,7 +37,7 @@ import type { IntakeObligation } from "@/lib/types";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
-  availableConditions,
+  availableIntakeConditions,
   CONDITION_LABELS,
   OBLIGATIONS,
   OBLIGATION_HINTS,
@@ -61,7 +61,7 @@ const CATALOG_BY_NAME = new Map(
 
 // The supplement add/edit form (#846, real split from the former shared
 // IntakeItemForm). Owns the supplement-shaped surface — catalog/brand suggestions,
-// priority, stack, and workout/rest/situational condition scheduling — and composes
+// obligation, stack, and workout/rest/situational condition scheduling — and composes
 // the genuinely-shared subcomponents (RxNorm confirm, cross-kind interaction notices,
 // dose rows, keep-apart pairs, critical escalation, refill, notes). It renders NONE
 // of the medication concepts (no prescriber/Rx, no PRN, no med catalog); the
@@ -77,8 +77,8 @@ export default function SupplementForm({
   pgxVariants = [],
   pairs: initialPairs = [],
   onDone,
-  trainingRestricted = false,
   initialSupply = null,
+  activityScheduleAvailable = true,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: IntakeItem;
@@ -90,14 +90,16 @@ export default function SupplementForm({
   pgxVariants?: PgxVariantInput[];
   pairs?: IntakePair[];
   onDone?: () => void;
-  trainingRestricted?: boolean;
   // Opened FROM a shared bottle (#1705) — the cabinet's "Add for another person". The
   // product fields are seeded from it and it links on save.
   initialSupply?: SupplyOption | null;
+  // Under early childhood the workout logger stands down, so new workout-relative
+  // schedules do too. Existing values remain selectable while editing.
+  activityScheduleAvailable?: boolean;
 }) {
   const s = supplement;
-  const conditionOptions = availableConditions(
-    trainingRestricted,
+  const conditionOptions = availableIntakeConditions(
+    activityScheduleAvailable,
     s?.condition
   );
   const toast = useToast();
@@ -270,7 +272,7 @@ export default function SupplementForm({
     formData.set("cadence_anchor_date", cadence.anchorDate);
     formData.set("pairs", JSON.stringify(pairRows));
     const label = name.trim() || "Supplement";
-    // Consent gate (#1296): a situational hold on a mandatory-priority item silences
+    // Consent gate (#1296): a situational hold on a `must` item silences
     // its reminders while the situation is active — confirm before linking it.
     const pause = pauseSituation.trim();
     if (
@@ -556,7 +558,7 @@ export default function SupplementForm({
           <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750">
             <span>More options</span>
             <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-              Priority, brand, supply, interactions, notes
+              Obligation, brand, supply, interactions, notes
             </span>
           </summary>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">{advancedFields}</div>

@@ -5,7 +5,7 @@
 // lib/refill; this file is the DB gather + dedup + send, mirroring ./escalate.
 //
 // Dedup semantics — "once per low-supply EPISODE", not once per day:
-//   - notify_last_refill_<supplementId> is set (to the send date) once a nudge
+//   - notify_last_refill_<itemId> is set (to the send date) once a nudge
 //     goes out, and suppresses further nudges while the item stays low.
 //   - The marker is CLEARED the moment the item is no longer low (refilled above
 //     the threshold, or quantity tracking turned off / the item paused), so the next
@@ -112,8 +112,8 @@ export async function runRefills(
   // Only active items that opted into quantity tracking — and only ones that may ride
   // a PUSH surface at all (#1505). A refill nudge IS a push, so the SAME shared
   // predicate the Upcoming refill items and the dose reminders consult gates it here:
-  // a LOW-priority supplement's supply state stays visible on the Supplements page,
-  // it just never nudges. Kind decides for medications, so a low med still nudges.
+  // a `may` supplement's supply state stays visible on the Supplements page,
+  // it just never nudges. Medications remain in the safety tier regardless.
   const tracked = getIntakeItems(profileId).filter(
     (s) => s.active && s.quantity_on_hand != null && isPushedIntake(s)
   );
@@ -188,7 +188,7 @@ export async function runRefills(
       setProfileSetting(profileId, refillMarkerKey(it.id), date);
       log.info("refill nudge sent", {
         profile: profileId,
-        supp: it.name,
+        item: it.name,
         daysLeft: it.daysLeft,
       });
     }

@@ -1,0 +1,73 @@
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
+
+// #2870 step 3 — ONE URL. Starting a workout creates its row up front
+// (create-at-start) and stands the tab on the session's canonical page; the
+// live overlay opens above that URL, so checking off work, finishing, and
+// reading the settled record all happen at one address. This drives the arc
+// end-to-end: start → the page URL → a logged set → finish → the record.
+
+// Same shape-tolerant combobox pick the live-workout spec documents.
+async function pickActivity(page: Page, name: string) {
+  await page.getByPlaceholder(/What did you do/).fill(name);
+  await page
+    .getByRole("listbox")
+    .getByRole("button")
+    .filter({ hasText: name })
+    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+    .click();
+}
+
+test("live start → set → finish: the record settles at the session's own URL", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/training?tab=log");
+  await page.getByRole("main").getByTestId("start-workout").click();
+
+  // The in-gym layout is up…
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  // …and the tab has moved to the session's canonical page: the row exists
+  // BEFORE the first set (create-at-start), so the session has an address.
+  await page.waitForURL(/\/training\/activity\/\d+$/);
+  const sessionUrl = page.url();
+
+  // Log one set through the live form (the coached "Use" seeds set 1).
+  await pickActivity(page, "Barbell Bench Press");
+  await page
+    .getByTestId("next-set-card")
+    .getByRole("button", { name: "Use" })
+    .click();
+  await expect(page.getByTestId("set1-weight")).toHaveValue(/^\d/);
+  // The auto-save UPDATEs the created-at-start row — the Delete affordance
+  // appearing proves a persisted row backs the form.
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+
+  // Finish: recap step, save, and the live strip collapses.
+  await page.getByTestId("finish-workout").click();
+  await expect(page.getByTestId("session-complete-step")).toBeVisible();
+  await page.getByTestId("recap-save").click();
+  await expect(page.getByTestId("live-workout-panel")).toHaveCount(0);
+
+  // Close the editor (the header button — Escape can be swallowed by a
+  // focused combobox) — beneath it is the SAME URL, now the settled record.
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  expect(page.url()).toBe(sessionUrl);
+  const record = page.getByTestId("training-activity-page");
+  await expect(record).toBeVisible();
+  await expect(record.getByText("Barbell Bench Press").first()).toBeVisible(); // first-ok: the logged exercise renders on the record
+
+  // Clean up the row this test created (shared seed DB): edit on the page and
+  // delete through the form — the same machinery the log card uses.
+  await page.getByTestId("activity-page-edit").click();
+  await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
+  await expect(page.getByTestId("activity-form")).toBeVisible();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+});

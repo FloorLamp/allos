@@ -263,6 +263,6 @@ describe("migration 172 — activities.type admits `unclassified` (#2272)", () =
         .get() as { sql: string }
     ).sql;
     expect(sql).toContain("'unclassified'");
-    expect(sql).toContain("'recovery'");
+    expect(sql).toContain("'mobility'");
   });
 });

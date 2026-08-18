@@ -2,7 +2,7 @@ export { FhirError, fhirTime } from "./fhir/common";
 export type { FhirEntry } from "./fhir/common";
 export {
   mapImmunizationResource,
-  observationRecords,
+  observationsFromResource,
   mapObservationResource,
   mapConditionResource,
   mapAllergyResource,

@@ -74,7 +74,7 @@ export function seedMultiSourceMetric(): void {
   // (source is part of the metric_samples unique key), slightly offset like real
   // devices.
   const insHrv = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
    VALUES (?, ?, 'hrv_ms', ?, ?, ?, ?)`
   );
   for (let i = 1; i <= 5; i++) {
@@ -490,7 +490,7 @@ export function seedSunOutdoor(): void {
     setFixtureTimezone(db, skinId, "skin-temperature", sunTz);
     const insSkinTemp = db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, metric, date, start_time, end_time, value)
+         (profile_id, source, metric, date, started_at, ended_at, value)
        SELECT ?, 'health-connect', 'skin_temp_delta_c', ?, ?, ?, ?
         WHERE NOT EXISTS (
           SELECT 1 FROM metric_samples
@@ -592,7 +592,7 @@ export function seedIntradayPanel(): void {
 
     // Layer 2 — the overnight session (23:20 → 06:35) plus one windowed deep stage.
     const insIdSample = db.prepare(
-      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', ?, ?, ?, ?, ?)`
     );
     insIdSample.run(
@@ -862,7 +862,7 @@ export function seedVitalsToday(): void {
     );
     db.prepare(
       `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value)
+       (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
     ).run(
       vdId,

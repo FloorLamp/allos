@@ -89,7 +89,7 @@ test.describe("Import detail: type-appropriate produced panels (#1182)", () => {
     const detail = page.getByTestId("provider-detail");
     await expect(detail.getByRole("link", { name: /^Sodium/ })).toHaveAttribute(
       "href",
-      "/results/readings/view?name=Sodium"
+      "/results/clinical-results/view?name=Sodium"
     );
   });
 });

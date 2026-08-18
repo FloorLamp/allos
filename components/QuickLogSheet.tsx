@@ -26,6 +26,7 @@ import {
   type LogSheetContext,
 } from "@/app/(app)/log-sheet-actions";
 import {
+  dueDoseChipLabel,
   logSheetSegments,
   openingLogSegment,
   type LogSegmentId,
@@ -33,10 +34,9 @@ import {
 } from "@/lib/log-sheet";
 import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 
-// The log sheet — what the dock's raised puck opens (issue #2651), and still
-// what the top bar's caret opens (issue #1416, section E1). ONE sheet with two
-// triggers, deliberately: a second "quick log" surface reachable from the same
-// screen is how two menus start disagreeing about what can be logged.
+// The log sheet — what the dock's raised puck opens (issue #2651). Since #2745
+// the puck is the one phone-chrome route here; the duplicate top-bar cluster is
+// gone, so there is one menu and one membership list.
 //
 // Since #2651 it has two SECTIONS.
 //
@@ -49,12 +49,12 @@ import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 //   • the composed morning one-tap (#2458) — the SAME <UsualRoutineControl> the
 //     dashboard's nutrition widget renders, over the SAME server-resolved offer.
 //     Not a copy: the component, the props and the write core are one each.
-//   • today's due doses — a count over `collectHouseholdRollup(...).dueDoses`,
-//     the app's one "what's due" computation. The chip OPENS the existing dose
-//     overlay; it confirms nothing itself.
+//   • doses due now — names from `collectDueDosesNow`, the arrived-slot slice of
+//     the app's shared scheduled-dose computation. The chip OPENS the existing
+//     dose overlay; it confirms nothing itself.
 //   • an active or likely session — `workoutOffer` from the activity editor
-//     context (lib/workout-offer.ts), the same derivation the top bar's ⚡ and
-//     the workout dock read. Its LABEL is the offer, so a live session reads
+//     context (lib/workout-offer.ts), the same derivation the workout dock and
+//     command palette read. Its LABEL is the offer, so a live session reads
 //     "Resume workout" rather than silently restarting the clock.
 //
 // Every one of them is an OFFER (#1505): the tap is the write, the app logs
@@ -89,6 +89,7 @@ import { type QuickLogIcon, type QuickLogItem } from "@/lib/quick-log";
 
 const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   barbell: IconBarbell,
+  bolt: IconBolt,
   salad: IconSalad,
   pill: IconPill,
   scale: IconScale,
@@ -102,19 +103,11 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
 export default function QuickLogSheet({
   open,
   onClose,
-  restricted = false,
   cycleRelevant = true,
   logHabitDays = null,
 }: {
   open: boolean;
   onClose: () => void;
-  // An age-restricted profile has no training surface, so the activity entry is
-  // dropped (lib/quick-log.ts owns that rule) and its whole segment with it. It
-  // still gets the sheet and the puck that opens it (#2651, owner ruling
-  // 2026-08-13) — every entry that survives `quickLogMenu(true)` is one a
-  // restricted profile may log, and hiding the door removed one-tap logging
-  // without adding any protection the per-entry gates were not already giving.
-  restricted?: boolean;
   // The #1042 `cycle` relevance bit, resolved once by the app layout — the SAME bit
   // gating the Cycle nav entry and the dashboard phase widget (#1892).
   cycleRelevant?: boolean;
@@ -124,10 +117,25 @@ export default function QuickLogSheet({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { openCreate, openLive, workoutOffer } = useActivityEditor();
+  const {
+    openCreate,
+    openLive,
+    workoutOffer,
+    canStartWorkout,
+    trainingRelevant,
+  } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
 
-  const segments = logSheetSegments(restricted, cycleRelevant);
+  const segments = logSheetSegments(cycleRelevant)
+    .map((entry) => ({
+      ...entry,
+      items: entry.items.filter(
+        (item) =>
+          !item.training ||
+          (item.target.kind === "live" ? canStartWorkout : trainingRelevant)
+      ),
+    }))
+    .filter((entry) => entry.items.length > 0);
   // Reset to the route's own segment on every OPEN, not only on navigation: the
   // sheet is opened repeatedly from the same page and should always lead with
   // what that page is for.
@@ -145,11 +153,15 @@ export default function QuickLogSheet({
   const shown = segments.find((s) => s.id === segment) ?? segments[0];
 
   function run(item: QuickLogItem) {
-    // Close first: whatever opens next is its own overlay, and stacking a second
-    // one under this sheet would leave a locked body scroll behind when the
-    // inner surface closes.
+    // Close first: whatever opens next is its own overlay and should stand
+    // alone, not stack over a sheet that has finished its job. (This close and
+    // the open land in one tick while the sheet's exit animation keeps it
+    // mounted, so the two surfaces' body-scroll locks OVERLAP and release in
+    // FIFO order — which is exactly why useLockBodyScroll is reference-counted
+    // rather than save/restore. See the note there before changing either.)
     onClose();
     if (item.target.kind === "activity") openCreate();
+    else if (item.target.kind === "live") openLive();
     else if (item.target.kind === "overlay") openQuickEntry(item.target.form);
     // No `navigate` branch: the registry guarantees no sheet row carries one
     // (#1468), and the exhaustive union makes a future one a compile error here
@@ -161,10 +173,9 @@ export default function QuickLogSheet({
       open={open}
       onClose={onClose}
       title="Log"
-      description="Log it right here — you'll stay on this page."
       testId="quick-log-sheet"
     >
-      {context && (context.routine || context.dueDoses > 0) && (
+      {context && (context.routine || context.dueDoses.count > 0) && (
         <section
           data-testid="log-sheet-context"
           className="mb-4 border-b border-black/5 pb-3 dark:border-white/5"
@@ -176,18 +187,13 @@ export default function QuickLogSheet({
           every dose the tap will write, and answers from the typed outcome. */}
           {context.routine && <UsualRoutineControl {...context.routine} />}
           <div className="flex flex-wrap gap-2">
-            {context.dueDoses > 0 && (
+            {context.dueDoses.count > 0 && (
               <ContextChip
                 testId="log-sheet-chip-doses"
                 icon={<IconPill className="h-4 w-4" stroke={1.75} />}
-                // Named by COUNT, not by verdict: it is a fact about today's
-                // ledger, and the chip opens the list where each dose keeps its
-                // own confirm control. It never confirms anything itself.
-                label={
-                  context.dueDoses === 1
-                    ? "1 dose due"
-                    : `${context.dueDoses} doses due`
-                }
+                // Names come from the SAME due items the count used to summarize;
+                // the chip still opens the list and confirms nothing itself.
+                label={dueDoseChipLabel(context.dueDoses)!}
                 onClick={() => {
                   onClose();
                   openQuickEntry("dose");
@@ -200,7 +206,7 @@ export default function QuickLogSheet({
             exactly the campaigning this chrome refuses. A live or just-abandoned
             session genuinely is now, and "Log activity" stays one segment away
             regardless (#2419: dueness gates nudging, never logging). */}
-            {!restricted && workoutOffer.kind === "resume" && (
+            {workoutOffer.kind === "resume" && (
               <ContextChip
                 testId="log-sheet-chip-session"
                 workoutOffer={workoutOffer.kind}
@@ -237,11 +243,16 @@ export default function QuickLogSheet({
       <ul className="flex flex-col gap-1 pb-1" data-testid="log-sheet-items">
         {(shown?.items ?? []).map((item) => {
           const Icon = ICONS[item.icon];
+          const label =
+            item.target.kind === "live" ? workoutOffer.label : item.label;
           return (
             <li key={item.id}>
               <button
                 type="button"
                 data-testid={`quick-log-${item.id}`}
+                data-workout-offer={
+                  item.target.kind === "live" ? workoutOffer.kind : undefined
+                }
                 onClick={() => run(item)}
                 className="tap-target press flex w-full items-center gap-3 rounded-xl border border-black/10 bg-white/70 px-3 py-3 text-left transition hover:bg-slate-100 dark:border-white/10 dark:bg-ink-850 dark:hover:bg-ink-750"
               >
@@ -250,7 +261,7 @@ export default function QuickLogSheet({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">
-                    {item.label}
+                    {label}
                   </span>
                   <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
                     {item.hint}

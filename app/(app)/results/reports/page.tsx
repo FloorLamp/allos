@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // Results › Reports (#708): the narrative diagnostic report bodies — microbiology
 // culture, gram stain, and cytopathology reports — captured from imported CCD/XDM
 // health records. Text-only documents that don't trend; the structured results
-// (analytes, organisms) live on Biomarkers.
+// (analytes, organisms) live under Clinical results.
 export default async function ResultsReportsPage() {
   const { profile, login } = await requireSession();
   const fmt = getDisplayFormatPrefs(login.id);

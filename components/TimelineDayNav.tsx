@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { useDragGesture } from "@/components/overlay";
 import { useShellChrome } from "@/components/useShellChrome";
+import PendingLink, { PendingIconSlot } from "@/components/PendingLink";
 import type { AppRoute } from "@/lib/hrefs";
 
 // Adjacent-day navigation for the Timeline's single-day view (issue #1425).
@@ -84,18 +84,47 @@ export default function TimelineDayNav({
     ignoreEdgeStart: true,
   } as const;
 
+  // ── The swipe answers too (issue #2869) ─────────────────────────────────────
+  //
+  // The arrows get their pending state from `useLinkStatus` inside PendingLink,
+  // but the swipe is a `router.push` and has no link to report it. It was the
+  // most-repeated navigation on a phone with the least feedback: the finger
+  // leaves the screen and nothing at all happens until the next day commits.
+  //
+  // So the push runs inside this component's own transition, and the direction
+  // it went is remembered — that lets the SAME chevron slot the arrow would use
+  // carry the spinner, rather than the swipe inventing a second pending style
+  // somewhere else in the bar. A swipe while one is already running is dropped
+  // for the same reason a repeat tap is (lib/nav-click.ts): a second push
+  // discards the render already in flight, and the gesture has no modifier keys,
+  // so "already navigating" is the whole rule here.
+  const [swiping, startSwipe] = useTransition();
+  const [swipeDirection, setSwipeDirection] = useState<"prev" | "next" | null>(
+    null
+  );
+  const swipeTo = (direction: "prev" | "next", href: AppRoute) => {
+    if (swiping) return;
+    setSwipeDirection(direction);
+    startSwipe(() => {
+      router.push(href);
+    });
+  };
+
   // Swipe left: the day slides away to the left, the NEXT one arrives — the
   // direction every paged calendar on a phone already teaches.
   useDragGesture({
     ...shared,
     direction: "left",
-    onCommit: () => router.push(nextHref),
+    onCommit: () => swipeTo("next", nextHref),
   });
   useDragGesture({
     ...shared,
     direction: "right",
-    onCommit: () => router.push(prevHref),
+    onCommit: () => swipeTo("prev", prevHref),
   });
+
+  const swipePending = (direction: "prev" | "next") =>
+    swiping && swipeDirection === direction;
 
   return (
     <nav
@@ -111,22 +140,59 @@ export default function TimelineDayNav({
       // block in the reading column, exactly as before.
       className="sub-chrome sticky top-(--shell-chrome-h) z-20 -mx-4 mb-5 flex items-center justify-between gap-2 border-b border-black/10 bg-white/85 px-4 py-2 backdrop-blur-xl sm:static sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none dark:border-white/10 dark:bg-ink-950/85 sm:dark:bg-transparent"
     >
-      <Link
+      <PendingLink
         href={prevHref}
-        data-testid="timeline-day-prev"
+        label={prevLabel}
+        testId="timeline-day-prev"
         className="btn-ghost text-xs"
       >
-        <IconChevronLeft className="h-4 w-4" stroke={2} aria-hidden="true" />
-        {prevLabel}
-      </Link>
-      <Link
+        {(pending) => (
+          <>
+            <PendingIconSlot
+              pending={pending || swipePending("prev")}
+              size="h-4 w-4"
+              icon={
+                <IconChevronLeft
+                  className="h-4 w-4"
+                  stroke={2}
+                  aria-hidden="true"
+                />
+              }
+            />
+            {prevLabel}
+          </>
+        )}
+      </PendingLink>
+      <PendingLink
         href={nextHref}
-        data-testid="timeline-day-next"
+        label={nextLabel}
+        testId="timeline-day-next"
         className="btn-ghost text-xs"
       >
-        {nextLabel}
-        <IconChevronRight className="h-4 w-4" stroke={2} aria-hidden="true" />
-      </Link>
+        {(pending) => (
+          <>
+            {nextLabel}
+            <PendingIconSlot
+              pending={pending || swipePending("next")}
+              size="h-4 w-4"
+              icon={
+                <IconChevronRight
+                  className="h-4 w-4"
+                  stroke={2}
+                  aria-hidden="true"
+                />
+              }
+            />
+          </>
+        )}
+      </PendingLink>
+      {/* The arrows announce themselves from inside PendingLink; a swipe has no
+          link to do that, so the bar names the day it is opening. */}
+      {swiping && (
+        <span role="status" className="sr-only">
+          Opening {swipeDirection === "next" ? nextLabel : prevLabel}
+        </span>
+      )}
     </nav>
   );
 }

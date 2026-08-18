@@ -4,7 +4,7 @@ import { shiftDateStr } from "@/lib/date";
 import type { ClinicalObservation } from "@/lib/types";
 
 // The dashboard's recent-labs highlight selection (issue #313): of the current
-// lab/biomarker readings, out-of-range floats to the top, then newest-first, then
+// lab readings, out-of-range floats to the top, then newest-first, then
 // take the first `limit`, flattened to display rows.
 
 type LabInput = Parameters<typeof recentLabHighlights>[0][number];
@@ -27,8 +27,8 @@ describe("recentLabHighlights", () => {
     const rows = recentLabHighlights([
       rec({ category: "lab", name: "A" }),
       // Vitals, screening instruments, derived bio-age, immutable facts, and the
-      // emptied legacy `biomarker` bucket are NOT recent labs — each has its own home.
-      rec({ category: "biomarker", name: "B" }),
+      // Pending classification and dedicated categories are NOT recent labs.
+      rec({ category: null, name: "B" }),
       rec({ category: "vitals", name: "C" }),
       rec({ category: "scan", name: "D" }),
       rec({ category: "prescription", name: "E" }),
@@ -77,15 +77,17 @@ describe("recentLabHighlights", () => {
       rec({ name: "raw name", canonical_name: "  LDL Cholesterol  " }),
     ]);
     expect(row.name).toBe("LDL Cholesterol");
-    expect(row.href).toBe("/results/readings/view?name=LDL%20Cholesterol");
+    expect(row.href).toBe(
+      "/results/clinical-results/view?name=LDL%20Cholesterol"
+    );
   });
 
-  it("links to the biomarkers index when there is no canonical name", () => {
+  it("links to the Clinical results index when there is no canonical name", () => {
     const [row] = recentLabHighlights([
       rec({ name: "Glucose", canonical_name: null }),
     ]);
     expect(row.name).toBe("Glucose");
-    expect(row.href).toBe("/results/readings");
+    expect(row.href).toBe("/results/clinical-results");
   });
 
   it("does not mutate the input array order", () => {

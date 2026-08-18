@@ -73,6 +73,7 @@ import type * as M26 from "@/app/(app)/medical/substance-use/actions";
 import type * as M27 from "@/app/(app)/medications/actions";
 import type * as M28 from "@/app/(app)/mood-actions";
 import type * as M29 from "@/app/(app)/nutrition/actions";
+import type * as M96 from "@/app/(app)/nutrition/fast-actions";
 import type * as M30 from "@/app/(app)/nutrition/intake-actions";
 import type * as M31 from "@/app/(app)/onboarding/actions";
 import type * as M32 from "@/app/(app)/palette-actions";
@@ -93,10 +94,10 @@ import type * as M46 from "@/app/(app)/records/specialty/hearing/actions";
 import type * as M47 from "@/app/(app)/records/specialty/skin/actions";
 import type * as M48 from "@/app/(app)/records/specialty/vision/actions";
 import type * as M49 from "@/app/(app)/results/actions";
-import type * as M50 from "@/app/(app)/results/genomics/actions";
-import type * as M51 from "@/app/(app)/results/imaging/actions";
-import type * as M52 from "@/app/(app)/results/reading-actions";
-import type * as M53 from "@/app/(app)/results/readings/biomarker-actions";
+import type * as M50 from "@/app/(app)/results/clinical-result-actions";
+import type * as M51 from "@/app/(app)/results/clinical-results/followup-actions";
+import type * as M52 from "@/app/(app)/results/genomics/actions";
+import type * as M53 from "@/app/(app)/results/imaging/actions";
 import type * as M54 from "@/app/(app)/rightsize-actions";
 import type * as M55 from "@/app/(app)/saved-actions";
 import type * as M56 from "@/app/(app)/search-actions";
@@ -223,6 +224,9 @@ type Census = {
   >;
   "app/(app)/mood-actions.ts": Expect<ActionsAreSerializable<typeof M28>>;
   "app/(app)/nutrition/actions.ts": Expect<ActionsAreSerializable<typeof M29>>;
+  "app/(app)/nutrition/fast-actions.ts": Expect<
+    ActionsAreSerializable<typeof M96>
+  >;
   "app/(app)/nutrition/intake-actions.ts": Expect<
     ActionsAreSerializable<typeof M30>
   >;
@@ -269,16 +273,16 @@ type Census = {
     ActionsAreSerializable<typeof M48>
   >;
   "app/(app)/results/actions.ts": Expect<ActionsAreSerializable<typeof M49>>;
-  "app/(app)/results/genomics/actions.ts": Expect<
+  "app/(app)/results/clinical-result-actions.ts": Expect<
     ActionsAreSerializable<typeof M50>
   >;
-  "app/(app)/results/imaging/actions.ts": Expect<
+  "app/(app)/results/clinical-results/followup-actions.ts": Expect<
     ActionsAreSerializable<typeof M51>
   >;
-  "app/(app)/results/reading-actions.ts": Expect<
+  "app/(app)/results/genomics/actions.ts": Expect<
     ActionsAreSerializable<typeof M52>
   >;
-  "app/(app)/results/readings/biomarker-actions.ts": Expect<
+  "app/(app)/results/imaging/actions.ts": Expect<
     ActionsAreSerializable<typeof M53>
   >;
   "app/(app)/rightsize-actions.ts": Expect<ActionsAreSerializable<typeof M54>>;
@@ -409,6 +413,7 @@ const CENSUSED_MODULES = [
   "app/(app)/medications/actions.ts",
   "app/(app)/mood-actions.ts",
   "app/(app)/nutrition/actions.ts",
+  "app/(app)/nutrition/fast-actions.ts",
   "app/(app)/nutrition/intake-actions.ts",
   "app/(app)/onboarding/actions.ts",
   "app/(app)/palette-actions.ts",
@@ -429,10 +434,10 @@ const CENSUSED_MODULES = [
   "app/(app)/records/specialty/skin/actions.ts",
   "app/(app)/records/specialty/vision/actions.ts",
   "app/(app)/results/actions.ts",
+  "app/(app)/results/clinical-result-actions.ts",
+  "app/(app)/results/clinical-results/followup-actions.ts",
   "app/(app)/results/genomics/actions.ts",
   "app/(app)/results/imaging/actions.ts",
-  "app/(app)/results/reading-actions.ts",
-  "app/(app)/results/readings/biomarker-actions.ts",
   "app/(app)/rightsize-actions.ts",
   "app/(app)/saved-actions.ts",
   "app/(app)/search-actions.ts",

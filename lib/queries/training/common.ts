@@ -6,8 +6,7 @@ import { RECENT_WINDOW_DAYS } from "../../exercise-window";
 import type { ActivityComponent } from "../../types";
 import { parseComponents } from "../../types";
 import { cache } from "../../request-cache";
-import { activityDetailHref } from "../../ride-detail";
-import type { AppRoute } from "../../hrefs";
+import { trainingActivityPageHref, type AppRoute } from "../../hrefs";
 
 // Re-export the shared request-scoped cache() shim (lib/request-cache) so the
 // training submodules keep importing `cache` from this common module unchanged.
@@ -127,7 +126,7 @@ export const effortEntries = cache(function effortEntries(
       for (const c of matching) {
         out.push({
           activityId: r.id,
-          href: activityDetailHref(r),
+          href: trainingActivityPageHref(r.id),
           date: r.date,
           name: c.name.trim(),
           distanceKm: c.distance_km ?? 0,
@@ -151,7 +150,7 @@ export const effortEntries = cache(function effortEntries(
     } else if (r.type === targetType && r.title.trim()) {
       out.push({
         activityId: r.id,
-        href: activityDetailHref(r),
+        href: trainingActivityPageHref(r.id),
         date: r.date,
         name: r.title.trim(),
         distanceKm: r.distance_km ?? 0,

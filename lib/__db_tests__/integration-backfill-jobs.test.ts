@@ -11,7 +11,7 @@ import {
   setStravaCredentials,
   setStravaTokens,
 } from "@/lib/integrations/connections";
-import { countMissingStravaRideDetails } from "@/lib/integrations/strava-sync";
+import { countMissingStravaSessionDetails } from "@/lib/integrations/strava-sync";
 import { resetStravaRateLimitState } from "@/lib/integrations/strava-rate-limit";
 import { resetInterruptedWork } from "@/lib/migrations/boot-tasks";
 
@@ -162,7 +162,7 @@ describe("integration backfill jobs", () => {
       failed_items: 1,
       retry_after_at: null,
     });
-    expect(failed?.error).toContain("1 ride could not be completed");
+    expect(failed?.error).toContain("1 session could not be completed");
 
     const requests = fetchMock.mock.calls.length;
     await resumeDueIntegrationBackfills(
@@ -233,7 +233,7 @@ describe("integration backfill jobs", () => {
     // details, and a later run that finds streams — an upload Strava has since
     // processed, a re-authorized token — backfills it normally. That reversibility is
     // what buys the two requests an explicit retry spends.
-    expect(countMissingStravaRideDetails(profileId)).toBe(1);
+    expect(countMissingStravaSessionDetails(profileId)).toBe(1);
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: unknown) => {
@@ -256,7 +256,7 @@ describe("integration backfill jobs", () => {
     expect(
       await runIntegrationBackfillJob(profileId, "strava", "ride-details")
     ).toMatchObject({ status: "completed", completed_items: 1 });
-    expect(countMissingStravaRideDetails(profileId)).toBe(0);
+    expect(countMissingStravaSessionDetails(profileId)).toBe(0);
   });
 
   it("resumes a failed job's counters on a manual re-queue (#2195)", async () => {
@@ -356,7 +356,7 @@ describe("integration backfill jobs", () => {
 
     // Both rides still match the raw candidate predicate: 901 was never stored, and
     // no give-up marker is persisted for it on purpose (#2196).
-    expect(countMissingStravaRideDetails(profileId)).toBe(2);
+    expect(countMissingStravaSessionDetails(profileId)).toBe(2);
     const perRunRequests = fetchMock.mock.calls.length;
 
     // Three retry cycles, each of which re-asks about BOTH rides and resolves neither.
@@ -390,6 +390,49 @@ describe("integration backfill jobs", () => {
     }
   });
 
+  it("stores a REDACTED error when the runner throws (#2820)", async () => {
+    // The catch-all is for an UNEXPECTED exception escaping the runner. The token
+    // refresh is the one un-wrapped fetch on this path, so an expired token plus a
+    // throwing fetch reproduces it faithfully rather than by stubbing internals.
+    setStravaTokens(profileId, {
+      accessToken: "fake-access",
+      refreshToken: "fake-refresh",
+      expiresAt: Math.floor(Date.now() / 1000) - 60,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error(
+          "POST https://strava.test/oauth/token?access_token=word7digit3 failed"
+        );
+      })
+    );
+
+    const queued = queueIntegrationBackfill(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+    expect("job" in queued && queued.job.status).toBe("queued");
+    const job = await runIntegrationBackfillJob(
+      profileId,
+      "strava",
+      "ride-details"
+    );
+
+    expect(job).toMatchObject({ status: "failed" });
+    // The COLUMN is what a browser renders, so the redaction has to have happened on
+    // the way IN — reading the row back is the assertion, not the render.
+    const stored = db
+      .prepare(
+        `SELECT error FROM integration_backfill_jobs
+          WHERE profile_id = ? AND source_id = 'strava' AND kind = 'ride-details'`
+      )
+      .get(profileId) as { error: string | null };
+    expect(stored.error).not.toContain("word7digit3");
+    expect(stored.error).toContain("access_token=***");
+  });
+
   it("pauses only crash-stranded jobs for automatic recovery", () => {
     // The fixture ages `updated_at` through the SAME writer production uses
     // (utcInstant → 'YYYY-MM-DDTHH:MM:SSZ', #2205). It used to seed SQLite's bare
@@ -400,7 +443,7 @@ describe("integration backfill jobs", () => {
     // serialization the fixture happened to pick.
     const insert = db.prepare(
       `INSERT INTO integration_backfill_jobs
-         (profile_id, provider, kind, label, item_noun, status, total_items,
+         (profile_id, source_id, kind, label, item_noun, status, total_items,
           updated_at)
        VALUES (?, 'strava', ?, 'Test backfill', 'ride', 'running', 2, ?)`
     );

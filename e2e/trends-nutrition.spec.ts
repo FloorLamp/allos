@@ -291,6 +291,19 @@ test("filtering to one row selects it temporarily and keeps one keyboard entry p
 const YEAR_AGO = new Date(frozenNow().getTime() - 364 * 24 * 3600 * 1000)
   .toISOString()
   .slice(0, 10);
+// A window end that is deliberately INSIDE a week, because the partial-bucket
+// assertion below is about exactly that. "Two days ago" is not: the buckets are
+// Sunday-start, so on a Monday run it lands on a Saturday — a week's last day —
+// and the trailing bucket is complete, failing an assertion that has nothing to
+// do with what changed. The freeze instant is the run's own start (and #1464
+// nudges it FORWARD across midnight), so which weekday "today" is is a property
+// of when CI happened to fire. Backing up to the most recent Wednesday is
+// stable: every Sunday–Saturday week has its Wednesday strictly inside it.
+const MIDWEEK_TO = (() => {
+  const d = frozenNow();
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() - 3 + 7) % 7));
+  return d.toISOString().slice(0, 10);
+})();
 
 test("a year-scale range re-grains the intake history to weeks (#2413)", async ({
   page,
@@ -332,10 +345,10 @@ test("a year-scale range re-grains the intake history to weeks (#2413)", async (
   ).toBeVisible();
 });
 
-test("selecting a week opens the WEEK panel, and the live week says how far it got (#2413)", async ({
+test("selecting a week opens the WEEK panel, and a partial week says how far it got (#2413)", async ({
   page,
 }) => {
-  await page.goto(`/trends?tab=nutrition&from=${YEAR_AGO}`);
+  await page.goto(`/trends?tab=nutrition&from=${YEAR_AGO}&to=${MIDWEEK_TO}`);
   const history = page.getByTestId("intake-history");
   const weeks = history.getByTestId("day-history-week");
   await expect(weeks.first()).toBeVisible(); // first-ok: read-only presence before selecting
@@ -359,7 +372,7 @@ test("selecting a week opens the WEEK panel, and the live week says how far it g
   expect(match).not.toBeNull();
   expect(match![2] > match![1]).toBe(true);
 
-  // The trailing week is PARTIAL — kept (it is the live week) and declared, so
+  // The trailing week is PARTIAL — kept and declared, so
   // its smaller total never reads as a decline.
   await expect(weeks.last()).toHaveAttribute("data-partial", "true");
 });

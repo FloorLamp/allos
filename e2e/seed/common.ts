@@ -14,7 +14,7 @@ export const PROFILE_ID = 1;
 
 export const ins = db.prepare(
   `INSERT INTO integration_sync_events
-     (profile_id, provider, at, ok, window_start, window_end,
+     (profile_id, source_id, at, ok, window_start, window_end,
       received, written, inserted, updated, unchanged, skipped, raw_ref, error)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
@@ -75,6 +75,19 @@ export function fixtureProfileId(name: string): number {
     .get(name) as { id: number } | undefined;
   if (existing) return existing.id;
   return createFixtureProfile(db, name);
+}
+
+// Adult fixture contracts must store the fact explicitly. Unknown age is
+// intentionally not eligible for age-gated adult experiences, so a descriptive
+// profile name or test comment is not enough to enable them.
+export function adultFixtureProfileId(name: string): number {
+  const profileId = fixtureProfileId(name);
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'birthdate', '1988-01-01')
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(profileId);
+  return profileId;
 }
 
 // Grant an EXISTING login access to an additional profile (seedMemberLogin creates a

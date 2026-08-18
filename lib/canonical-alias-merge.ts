@@ -8,7 +8,7 @@
 // an ai-COINED row counts as a real entry. So:
 //
 //   1. a document spells an analyte its own way;
-//   2. the same import registers that spelling as an `ai` row in canonical_biomarkers;
+//   2. the same import registers that spelling as an `ai` row in canonical_result_definitions;
 //   3. someone adds the CANONICAL_ALIASES route for it;
 //   4. the route is dead on arrival — step 2 already claimed its key.
 //
@@ -124,21 +124,23 @@ export function supersededStoredNames(
 
 // ---- Protocol outcome keys -------------------------------------------------
 //
-// `protocols.outcome_keys` is a JSON array of namespaced metric ids, and a biomarker
-// outcome is stored as the literal `biomarker:<canonical name>` (lib/protocol-metrics
-// parses it, lib/protocol-outcome-picker mints it, and getProtocolWindowsForOutcome
-// matches the whole string EXACTLY). So a canonical rename that skipped this column
-// would silently unlink every protocol whose outcome was the renamed analyte.
+// `protocols.outcome_keys` is a JSON array of namespaced metric ids, and a current
+// clinical result outcome is stored as the literal `result:<canonical name>`
+// (lib/protocol-metrics parses it, lib/protocol-outcome-picker mints it, and
+// getProtocolWindowsForOutcome matches the whole string EXACTLY). Frozen migrations
+// 174 and 178 pass their historical prefix explicitly while applying against their
+// own historical schema. Runtime callers use the current prefix by default.
 //
 // Returns the rewritten JSON, or null when nothing in this row referenced `from`
 // (so the caller can skip the UPDATE). Order-preserving, and a rewrite that collides
 // with a key the row ALREADY carries collapses onto it rather than duplicating.
-const BIOMARKER_OUTCOME_PREFIX = "biomarker:";
+const RESULT_OUTCOME_PREFIX = "result:";
 
-export function rewriteBiomarkerOutcomeKeys(
+export function rewriteResultOutcomeKeys(
   outcomeKeysJson: string,
   from: string,
-  to: string
+  to: string,
+  prefix = RESULT_OUTCOME_PREFIX
 ): string | null {
   let parsed: unknown;
   try {
@@ -147,17 +149,16 @@ export function rewriteBiomarkerOutcomeKeys(
     return null; // a corrupt column is somebody else's problem, never this pass's
   }
   if (!Array.isArray(parsed)) return null;
-  const target = `${BIOMARKER_OUTCOME_PREFIX}${to}`;
   let changed = false;
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of parsed) {
     if (typeof raw !== "string") continue;
     const isMatch =
-      raw.startsWith(BIOMARKER_OUTCOME_PREFIX) &&
-      raw.slice(BIOMARKER_OUTCOME_PREFIX.length).trim().toLowerCase() ===
+      raw.startsWith(prefix) &&
+      raw.slice(prefix.length).trim().toLowerCase() ===
         from.trim().toLowerCase();
-    const next = isMatch ? target : raw;
+    const next = isMatch ? `${prefix}${to}` : raw;
     if (isMatch) changed = true;
     // The target was already selected — collapse onto it, never duplicate. Only a
     // MATCH counts as a change here, so a row that merely repeats a key it already

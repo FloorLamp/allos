@@ -14,11 +14,12 @@ import type { UnitPrefs } from "@/lib/settings";
 import { musclesWorked } from "@/lib/muscle-coverage";
 import { SET_STATUS_TITLES } from "@/lib/training-log-format";
 import { activityComponentSportNames } from "@/lib/activity-icon";
-import { rideDetailHref as resolveRideDetailHref } from "@/lib/ride-detail";
+import { trainingActivityPageHref } from "@/lib/hrefs";
 import { zonePresentation } from "@/lib/training-zones";
 // DisplayPart moved to lib/training-log-card.ts (issue #334); re-exported here so the
 // existing `./TrainingLogCard` import path keeps working.
 import type { DisplayPart } from "@/lib/training-log-card";
+import type { ProgressDelta } from "@/lib/progress-delta";
 import ActivityVideoStrip from "@/components/activity/ActivityVideoStrip";
 import Avatar from "@/components/Avatar";
 import type {
@@ -63,6 +64,10 @@ export default function TrainingLogCard({
   units,
   videos = [],
   canWrite = false,
+  withAnchor = true,
+  detailView = false,
+  partDeltas = [],
+  openMergeSignal,
   subject,
   actingProfileId,
   onSelectExercise,
@@ -113,6 +118,23 @@ export default function TrainingLogCard({
   // Whether the acting login can write to this activity's profile — gates the
   // clip upload/delete affordances (the server actions re-gate regardless).
   canWrite?: boolean;
+  // Whether this card carries the #activity-N anchor id. True everywhere the
+  // card IS the activity's list presence; false when a host (the browse
+  // surface's slim row, #2897) already owns the anchor.
+  withAnchor?: boolean;
+  // The canonical activity page supplies the activity identity in its page
+  // header. In that host the card becomes the session body: no duplicate title,
+  // self-link, menu, or metadata that the shared page shell already owns.
+  detailView?: boolean;
+  // "vs last" per part, INDEX-ALIGNED with `parts` (#2870). Only the canonical
+  // activity page supplies these: the feed and the reading pane build cards from
+  // one bulk query (#2897), and a per-exercise history scan per card is not a
+  // price a browse surface should pay. Empty everywhere else, so those hosts
+  // render byte-identically.
+  partDeltas?: (ProgressDelta | null)[];
+  // Passed straight to the card menu: the overlap banner (#2870) opens the
+  // menu's existing picker rather than forking a second merge flow.
+  openMergeSignal?: number;
   // Subject identity for a merged multi-view card (issue #1330); absent in single
   // view. A NON-acting subject's card renders a subject chip; a read-only-granted
   // subject's card renders view-only (no edit/merge/clip affordances — the server
@@ -142,10 +164,18 @@ export default function TrainingLogCard({
   const isActing =
     subject == null ||
     (actingProfileId != null && subject.profileId === actingProfileId);
-  const subjectCanWrite = subject == null ? true : subject.canWrite;
+  // In MULTI view the subject's own grant decides. In single view the HOST's
+  // decision decides — and it is already here, in `canWrite`, which every call
+  // site derives from `accessForProfile(...) === "write"`. This used to be a
+  // bare `true`, so a read-only viewer opening a household member's activity
+  // page got the title as an edit button and a menu offering Merge and Resume
+  // sync: writes the server correctly rejected AFTER they were attempted. A
+  // component must not re-derive authorization — it must not discard it either.
+  const subjectCanWrite = subject == null ? canWrite : subject.canWrite;
   const videoCanWrite = subject == null ? canWrite : subject.canWrite;
   const showChip = subject != null && !isActing;
-  const rideDetailHref = isActing ? resolveRideDetailHref(activity) : null;
+  const detailHref =
+    isActing && !detailView ? trainingActivityPageHref(activity.id) : null;
   // Highlight the card whose activity is open in the docked editor, so it's
   // clear which feed row the right-column form belongs to. (On mobile the
   // editor is a full-screen overlay, so the ring is only ever seen on desktop.)
@@ -188,7 +218,14 @@ export default function TrainingLogCard({
     if (sets.length === 0) return [];
     return [
       ...musclesWorked(
-        sets.map((s) => ({ exercise: s.exercise, date: activity.date }))
+        // Warm-up flags ride along so this figure and the Overview coverage
+        // card (warm-ups excluded, #2891) read the SAME attribution — a
+        // warm-up-only exercise paints nothing here, matching its zero credit.
+        sets.map((s) => ({
+          exercise: s.exercise,
+          date: activity.date,
+          warmup: s.warmup,
+        }))
       ),
     ];
   }, [activity.sets, activity.date]);
@@ -197,7 +234,11 @@ export default function TrainingLogCard({
     Boolean(routePolyline) && workedMuscles.length > 0;
   return (
     <div
-      id={`activity-${activity.id}`}
+      // The #activity-N anchor (Telegram history is immutable — old deep links
+      // must keep resolving). Suppressed when a HOST already carries the
+      // anchor: the browse surface's slim row owns it there (#2897), and two
+      // ids on one page would break the jump.
+      id={withAnchor ? `activity-${activity.id}` : undefined}
       className={`card scroll-mt-[calc(6rem+env(safe-area-inset-top))] transition ${
         selected ? "ring-2 ring-brand-500 dark:ring-brand-400" : ""
       }`}
@@ -213,16 +254,22 @@ export default function TrainingLogCard({
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
-              <ActivityTypeIcon
-                type={activity.type}
-                title={activity.title}
-                sportNames={activityComponentSportNames(activity.components)}
-              />
+              {!detailView && (
+                <ActivityTypeIcon
+                  type={activity.type}
+                  title={activity.title}
+                  sportNames={activityComponentSportNames(activity.components)}
+                />
+              )}
               <div className="min-w-0">
-                {rideDetailHref ? (
+                {detailView ? (
+                  <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                    Session
+                  </h3>
+                ) : detailHref ? (
                   <Link
-                    href={rideDetailHref}
-                    data-testid="ride-detail-link"
+                    href={detailHref}
+                    data-testid="activity-detail-link"
                     className="block font-semibold text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
                   >
                     {activity.title}
@@ -261,14 +308,6 @@ export default function TrainingLogCard({
                         title={item.title}
                         className="inline-flex items-center whitespace-nowrap"
                       >
-                        {i > 0 && (
-                          <span
-                            aria-hidden
-                            className="mx-1.5 text-slate-500 dark:text-slate-400"
-                          >
-                            ·
-                          </span>
-                        )}
                         {item.intensity && INTENSITY_DOT[item.intensity] && (
                           <span
                             aria-hidden
@@ -293,6 +332,18 @@ export default function TrainingLogCard({
                           </>
                         ) : (
                           item.value
+                        )}
+                        {/* The separator rides INSIDE the preceding item's
+                            no-wrap span: when the line wraps, it stays at the
+                            end of the line above instead of leading the next
+                            one as a stray bullet. */}
+                        {i < summary.length - 1 && (
+                          <span
+                            aria-hidden
+                            className="mx-1.5 text-slate-500 dark:text-slate-400"
+                          >
+                            ·
+                          </span>
                         )}
                       </span>
                     ))}
@@ -326,16 +377,19 @@ export default function TrainingLogCard({
                   )}
                 </span>
               )}
-              <ActivityCardMenu
-                activity={activity}
-                siblings={mergeSiblings}
-                keeperLabel={keeperLabel}
-                foldValues={foldValues}
-                editLocked={provenance.editLocked}
-                units={units}
-                detailHref={rideDetailHref}
-                canWrite={subjectCanWrite}
-              />
+              {!detailView && (
+                <ActivityCardMenu
+                  activity={activity}
+                  siblings={mergeSiblings}
+                  keeperLabel={keeperLabel}
+                  foldValues={foldValues}
+                  editLocked={provenance.editLocked}
+                  units={units}
+                  detailHref={detailHref}
+                  canWrite={subjectCanWrite}
+                  openMergeSignal={openMergeSignal}
+                />
+              )}
             </div>
           </div>
 
@@ -343,7 +397,8 @@ export default function TrainingLogCard({
               and make the whole line open the editor where the same blocker and
               field highlights point at the fix. Rose, to stand apart from the
               amber missed-target markers. */}
-          {fault &&
+          {!detailView &&
+            fault &&
             (subjectCanWrite ? (
               <button
                 type="button"
@@ -482,6 +537,29 @@ export default function TrainingLogCard({
                           >
                             {p.text}
                           </span>
+                          {partDeltas[i] && (
+                            // "vs last" (#2870): the same lift's previous session
+                            // on the same implement. Tone carries direction, and
+                            // the arrow repeats it so it is never colour-alone.
+                            <span
+                              data-testid="exercise-vs-last"
+                              title={partDeltas[i]!.title}
+                              className={`whitespace-nowrap text-xs tabular-nums ${
+                                partDeltas[i]!.direction === "up"
+                                  ? "text-brand-600 dark:text-brand-400"
+                                  : partDeltas[i]!.direction === "down"
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-slate-500 dark:text-slate-400"
+                              }`}
+                            >
+                              {partDeltas[i]!.direction === "up"
+                                ? "▲ "
+                                : partDeltas[i]!.direction === "down"
+                                  ? "▼ "
+                                  : ""}
+                              {partDeltas[i]!.label}
+                            </span>
+                          )}
                           {p.status === "met" && (
                             <span
                               role="img"
@@ -505,32 +583,42 @@ export default function TrainingLogCard({
                               />
                             </span>
                           )}
-                          {p.muscle &&
-                            (onFilterTag ? (
-                              <button
-                                type="button"
-                                onClick={() => onFilterTag("muscle", p.muscle!)}
-                                title={`Show ${p.muscle} activities`}
-                                className="text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-                              >
-                                {p.muscle}
-                              </button>
-                            ) : (
-                              <span className="text-xs text-slate-500 dark:text-slate-400">
-                                {p.muscle}
-                              </span>
-                            ))}
-                          {p.muscle && p.equipment && (
-                            <span
-                              aria-hidden
-                              className="text-xs text-slate-500 dark:text-slate-400"
-                            >
-                              ·
-                            </span>
-                          )}
-                          {p.equipment && (
-                            <span className="text-xs text-slate-500 dark:text-slate-400">
-                              {p.equipment}
+                          {(p.muscle || p.equipment) && (
+                            // One no-wrap group: when the row runs out of
+                            // room, "muscle · equipment" moves to the next
+                            // line whole instead of orphaning the gear name
+                            // flush-left under the exercise.
+                            <span className="inline-flex items-center gap-x-1 whitespace-nowrap">
+                              {p.muscle &&
+                                (onFilterTag ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onFilterTag("muscle", p.muscle!)
+                                    }
+                                    title={`Show ${p.muscle} activities`}
+                                    className="text-xs text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                                  >
+                                    {p.muscle}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    {p.muscle}
+                                  </span>
+                                ))}
+                              {p.muscle && p.equipment && (
+                                <span
+                                  aria-hidden
+                                  className="text-xs text-slate-500 dark:text-slate-400"
+                                >
+                                  ·
+                                </span>
+                              )}
+                              {p.equipment && (
+                                <span className="text-xs text-slate-500 dark:text-slate-400">
+                                  {p.equipment}
+                                </span>
+                              )}
                             </span>
                           )}
                         </div>
@@ -586,7 +674,7 @@ export default function TrainingLogCard({
         )}
       </div>
 
-      {activity.notes && (
+      {!detailView && activity.notes && (
         <div className="mt-3">
           <NotesText
             as="p"
@@ -613,27 +701,31 @@ export default function TrainingLogCard({
           exist — the "Add form clip" entry point lives in the activity editor's
           More-details block now. `canWrite` still gates per-clip caption edit and
           delete, which stay on the card. */}
-      <ActivityVideoStrip
-        activityId={activity.id}
-        videos={videos.map((v) => ({
-          id: v.id,
-          exercise: v.exercise,
-          caption: v.caption,
-          kind: v.kind,
-          hasLocation: v.hasLocation,
-          durationSec: v.durationSec,
-        }))}
-        canWrite={videoCanWrite}
-      />
+      {!detailView && (
+        <ActivityVideoStrip
+          activityId={activity.id}
+          videos={videos.map((v) => ({
+            id: v.id,
+            exercise: v.exercise,
+            caption: v.caption,
+            kind: v.kind,
+            hasLocation: v.hasLocation,
+            durationSec: v.durationSec,
+          }))}
+          canWrite={videoCanWrite}
+        />
+      )}
 
-      <ActivityProvenance
-        label={provenance.label}
-        createdAt={provenance.createdAt}
-        updatedAt={provenance.updatedAt}
-        editLockId={provenance.editLocked ? activity.id : undefined}
-        variant="quiet"
-        className="mt-3"
-      />
+      {!detailView && (
+        <ActivityProvenance
+          label={provenance.label}
+          createdAt={provenance.createdAt}
+          updatedAt={provenance.updatedAt}
+          editLockId={provenance.editLocked ? activity.id : undefined}
+          variant="quiet"
+          className="mt-3"
+        />
+      )}
     </div>
   );
 }

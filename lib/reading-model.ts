@@ -52,14 +52,14 @@ export type ReadingStore =
 // which table it landed in — the whole point of the model is that those are
 // different questions:
 //
-//   • "lab"      — an observation carrying clinical provenance: a document, an
+//   • "clinical" — an observation carrying clinical provenance: a document, an
 //                  encounter, or a performing provider. A clinic-measured value.
 //   • "import"   — a row a bulk/document import produced without any of those
 //                  links (a `document:<id>` source stamp on a stream row).
 //   • "wearable" — a device/integration sync (the row's `source` is an
 //                  integration id).
 //   • "manual"   — the user typed it (no source, or the literal 'manual').
-export type ReadingSource = "wearable" | "manual" | "import" | "lab";
+export type ReadingSource = "wearable" | "manual" | "import" | "clinical";
 
 // The observation-only half. ABSENT (not null) on a stream reading: a wearable
 // reading has no document, no encounter, no reporting lab and no lab-stated range,
@@ -92,7 +92,7 @@ export interface Reading {
   /** The profile-local day. */
   date: string;
   /**
-   * The absolute instant, where the row records one: `metric_samples.start_time`,
+   * The absolute instant, where the row records one: `metric_samples.started_at`,
    * or the stated `occurred_at` on `body_metrics` (#2235) and `medical_records`
    * (#2154). Null means the reading is day-grain — honest absence, one meaning
    * across all three stores.
@@ -185,7 +185,7 @@ export function readingSourceFor(input: {
     input.encounterId != null ||
     input.providerId != null
   ) {
-    return "lab";
+    return "clinical";
   }
   const key = (input.sourceKey ?? "").trim();
   if (!key || key.toLowerCase() === "manual") return "manual";
@@ -215,7 +215,7 @@ export interface MetricSampleReadingRow {
   date: string;
   value: number;
   source: string | null;
-  start_time?: string | null;
+  started_at?: string | null;
   edited?: number | null;
 }
 
@@ -271,7 +271,7 @@ export function readingFromMetricSample(
     value: row.value,
     unit: src.unit,
     date: row.date,
-    measuredAt: row.start_time ?? null,
+    measuredAt: row.started_at ?? null,
     source: readingSourceFor({ sourceKey: row.source }),
     store: "metric_samples",
     rowId: row.id,

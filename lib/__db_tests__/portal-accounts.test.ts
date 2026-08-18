@@ -1093,7 +1093,7 @@ describe("POST /api/documents/sync-report", () => {
                 portal_id AS portalId, account_id AS accountId,
                 patient_label AS patientLabel
            FROM integration_sync_events
-          WHERE profile_id = ? AND provider = 'patient-portals'
+          WHERE profile_id = ? AND source_id = 'patient-portals'
           ORDER BY id DESC`
       )
       .all(profileId) as {
@@ -1160,7 +1160,7 @@ describe("POST /api/documents/sync-report", () => {
     expect(rows[0].error).toBeNull();
     const conn = db
       .prepare(
-        "SELECT status, last_sync_at AS at FROM integration_connections WHERE profile_id = ? AND provider = 'patient-portals'"
+        "SELECT status, last_sync_at AS at FROM integration_connections WHERE profile_id = ? AND source_id = 'patient-portals'"
       )
       .get(mineProfile) as { status: string; at: string | null } | undefined;
     expect(conn?.status).toBe("connected");
@@ -1220,7 +1220,7 @@ describe("POST /api/documents/sync-report", () => {
     expect(rows[0].skipped).toBe(2);
     const conn = db
       .prepare(
-        "SELECT last_sync_at AS at FROM integration_connections WHERE profile_id = ? AND provider = 'patient-portals'"
+        "SELECT last_sync_at AS at FROM integration_connections WHERE profile_id = ? AND source_id = 'patient-portals'"
       )
       .get(mineProfile) as { at: string | null } | undefined;
     expect(conn?.at ?? null).toBeNull();

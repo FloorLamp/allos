@@ -1,6 +1,6 @@
 // The phone-fold CAPS (issue #1578). Pure — no DB, no React.
 //
-// Results › Biomarkers is an index, and the confirmed #1499 design put its first
+// Results › Clinical results is an index, and the confirmed #1499 design put its first
 // panel header inside the first viewport-height on a phone. The grouping got the
 // list there; the two cards above it did not, because both render one full-width
 // element per item at 390px with no ceiling — the starred lens grows with every star
@@ -18,7 +18,7 @@
 export const PHONE_STARRED_TILE_CAP = 3;
 
 // ---------------------------------------------------------------------------
-// The phone READING ORDER of Results › Biomarkers (issue #1647).
+// The phone READING ORDER of Results › Clinical results (issue #1647).
 //
 // #1646 capped the two tallest cards and measured the result: the first panel header
 // moved from 2651px to 1912px at 390×844 — a real lift, and still 2.3 viewports down.
@@ -56,7 +56,7 @@ export const PHONE_STARRED_TILE_CAP = 3;
 // added without it.
 //
 // `min-w-0` on every slot: a flex item defaults to `min-width: auto`, which would let
-// the wide biomarkers table push the column past the viewport instead of scrolling
+// the wide clinical results table push the column past the viewport instead of scrolling
 // inside its own `overflow-auto` frame.
 //
 // NO `gap-*` on the container, deliberately. Each card carries its own `mb-6`, and

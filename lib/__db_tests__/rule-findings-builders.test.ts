@@ -37,7 +37,7 @@ import {
   mobilitySuggestSignalKey,
   FLEXIBILITY_REGION,
 } from "@/lib/mobility-suggest";
-import { setFitnessRetestCadenceDays } from "@/lib/settings";
+import { setFitnessRetestCadenceDays, setStoredAge } from "@/lib/settings";
 import {
   muscleVolumeSignalKey,
   MIN_BAND_HISTORY_WEEKS,
@@ -50,7 +50,10 @@ import {
   weekdayMissSignalKey,
   ADHERENCE_PREFIX,
 } from "@/lib/adherence-patterns";
-import { TRAINING_OBS_PREFIX } from "@/lib/training-observations";
+import {
+  TRAINING_OBS_PREFIX,
+  staleExerciseGroupSignalKey,
+} from "@/lib/training-observations";
 import {
   weightAnomalySignalKey,
   detectWeightAnomalies,
@@ -205,6 +208,120 @@ describe("buildTrainingObservationFindings — merged plateau series (#432)", ()
       plateaus[0].dedupeKey.startsWith(`${TRAINING_OBS_PREFIX}plateau:`)
     ).toBe(true);
     expect(plateaus[0].title.toLowerCase()).toContain("curl");
+  });
+});
+
+describe("buildTrainingObservationFindings — bounded stale family (#3090)", () => {
+  it("collapses a 24-exercise, four-session-week profile's three lapsed lifts into one finding", () => {
+    const { profileId, anchor } = makeProfile("training-3090-reporting");
+    const insertActivity = db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min)
+       VALUES (?, ?, 'strength', 'Library session', 60)`
+    );
+    const insertSet = db.prepare(
+      `INSERT INTO exercise_sets
+         (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, ?, 1, 20, 8)`
+    );
+
+    // Twenty-one current exercises spread across four sessions per week for three
+    // weeks. Each is established and recent, so none belongs in the lapsed family.
+    const current = Array.from(
+      { length: 21 },
+      (_, index) => `Library exercise ${String(index + 1).padStart(2, "0")}`
+    );
+    for (const day of [0, -2, -4, -6, -7, -9, -11, -13, -14, -16, -18, -20]) {
+      const activityId = Number(
+        insertActivity.run(profileId, shiftDateStr(anchor, day)).lastInsertRowid
+      );
+      for (const exercise of current) insertSet.run(activityId, exercise);
+    }
+
+    // Three established lifts have each crossed the 21-day lapse floor. Their
+    // different last dates also pin the collapsed row's name order.
+    for (const [exercise, lastDay] of [
+      ["Deadlift", -28],
+      ["Pull Up", -30],
+      ["Hack Squat", -32],
+    ] as const) {
+      for (let session = 0; session < 3; session++) {
+        const activityId = Number(
+          insertActivity.run(
+            profileId,
+            shiftDateStr(anchor, lastDay - session * 7)
+          ).lastInsertRowid
+        );
+        insertSet.run(activityId, exercise);
+      }
+    }
+
+    const exerciseCount = db
+      .prepare(
+        `SELECT COUNT(DISTINCT s.exercise) AS n
+           FROM exercise_sets s
+           JOIN activities a ON a.id = s.activity_id
+          WHERE a.profile_id = ?`
+      )
+      .get(profileId) as { n: number };
+    expect(exerciseCount.n).toBe(24);
+
+    const stale = buildTrainingObservationFindings(profileId, anchor).filter(
+      (finding) => finding.domain === "training-stale"
+    );
+    expect(stale).toHaveLength(1);
+    const firstEpisodeKey = staleExerciseGroupSignalKey(
+      shiftDateStr(anchor, -11)
+    );
+    expect(stale[0]).toMatchObject({
+      dedupeKey: firstEpisodeKey,
+      title: "3 lifts have lapsed — Deadlift, Pull Up, and Hack Squat",
+      dashboardRelevance: 2,
+    });
+
+    // Dismiss the family, then train one member. The membership changes while the
+    // other two keep the family continuously nonempty, so no replacement row appears.
+    dismissFinding(profileId, stale[0].dedupeKey);
+    const partialRecoveryId = Number(
+      insertActivity.run(profileId, anchor).lastInsertRowid
+    );
+    insertSet.run(partialRecoveryId, "Deadlift");
+    const continuedEpisode = buildTrainingObservationFindings(
+      profileId,
+      anchor
+    ).filter((finding) => finding.domain === "training-stale");
+    expect(continuedEpisode).toHaveLength(1);
+    expect(continuedEpisode[0].dedupeKey).toBe(firstEpisodeKey);
+    const afterDismissal = activeFindings(
+      continuedEpisode,
+      getFindingSuppressions(profileId),
+      anchor
+    ).filter((finding) => finding.domain === "training-stale");
+    expect(afterDismissal).toEqual([]);
+
+    // Once every member recovers, the family is empty. A later lapse is a new
+    // episode and must not inherit the old episode's dismissal.
+    const fullRecoveryId = Number(
+      insertActivity.run(profileId, anchor).lastInsertRowid
+    );
+    insertSet.run(fullRecoveryId, "Pull Up");
+    insertSet.run(fullRecoveryId, "Hack Squat");
+    expect(
+      buildTrainingObservationFindings(profileId, anchor).filter(
+        (finding) => finding.domain === "training-stale"
+      )
+    ).toEqual([]);
+
+    const laterDay = shiftDateStr(anchor, 40);
+    const recurring = activeFindings(
+      buildTrainingObservationFindings(profileId, laterDay),
+      getFindingSuppressions(profileId),
+      laterDay
+    ).filter((finding) => finding.domain === "training-stale");
+    expect(recurring).toHaveLength(1);
+    expect(recurring[0].dedupeKey).toBe(
+      staleExerciseGroupSignalKey(shiftDateStr(anchor, 21))
+    );
+    expect(recurring[0].dedupeKey).not.toBe(firstEpisodeKey);
   });
 });
 
@@ -712,6 +829,26 @@ describe("buildFoodSuggestionFindings (#577)", () => {
     expect(keys).toContain(foodSuggestSignalKey("iron"));
     expect(keys).toContain(foodReduceSignalKey("urate"));
   });
+
+  // #2754: the add-on-high route. A HIGH lipid reading yields BOTH the soluble-fiber
+  // ADD finding and the ldl-apob REDUCE finding, under independent dismissal keys, and
+  // the add finding's copy states the flag's real side.
+  it("high LDL → food-suggest:soluble-fiber AND food-reduce:ldl-apob, independently keyed — #2754", () => {
+    const { profileId, anchor } = makeProfile("food-soluble-fiber");
+    insertReading(profileId, "LDL Cholesterol", "high", anchor);
+
+    const findings = buildFoodSuggestionFindings(profileId);
+    expect(findings.map((f) => f.dedupeKey)).toEqual([
+      foodSuggestSignalKey("soluble-fiber"),
+      foodReduceSignalKey("ldl-apob"),
+    ]);
+    const add = findings[0];
+    expect(add.title?.toLowerCase()).toContain("food for");
+    // The copy names the HIGH side even though the verb is "eat more".
+    expect(add.detail?.toLowerCase()).toContain("ldl cholesterol is high");
+    expect(add.detail?.toLowerCase()).toContain("oats");
+    expect(add.tone).toBe("info");
+  });
 });
 
 // ---- #580: behind-target food-habit findings --------------------------------
@@ -724,7 +861,7 @@ describe("buildFoodHabitFindings (#580)", () => {
   }
   function logServing(profileId: number, group: string, date: string) {
     db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
        ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + 1`
     ).run(profileId, date, group);
   }
@@ -1020,6 +1157,12 @@ describe("buildOralHealthFindings — diabetes↔periodontitis note (#706)", () 
 // Fitness-check retest nudge (#834) — coaching tier. Seeds a fitness_assessments session
 // row at a chosen age and asserts the end-to-end due decision + the exact dedupeKey/tier.
 describe("buildFitnessCheckFindings — fitness-check retest cadence", () => {
+  function adultProfile(name: string) {
+    const profile = makeProfile(name);
+    setStoredAge(profile.profileId, 40);
+    return profile;
+  }
+
   function seedCheck(profileId: number, date: string) {
     db.prepare(
       "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, ?)"
@@ -1027,7 +1170,7 @@ describe("buildFitnessCheckFindings — fitness-check retest cadence", () => {
   }
 
   it("nudges once a prior check ages past the default cadence", () => {
-    const { profileId, anchor } = makeProfile("fitness-due");
+    const { profileId, anchor } = adultProfile("fitness-due");
     const last = shiftDateStr(anchor, -120); // > 90-day default
     seedCheck(profileId, last);
     const findings = buildFitnessCheckFindings(profileId, anchor);
@@ -1047,23 +1190,43 @@ describe("buildFitnessCheckFindings — fitness-check retest cadence", () => {
   });
 
   it("stays quiet inside the cadence window", () => {
-    const { profileId, anchor } = makeProfile("fitness-recent");
+    const { profileId, anchor } = adultProfile("fitness-recent");
     seedCheck(profileId, shiftDateStr(anchor, -30));
     expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]);
   });
 
   it("never nags a subject who has never done a check", () => {
-    const { profileId, anchor } = makeProfile("fitness-never");
+    const { profileId, anchor } = adultProfile("fitness-never");
     expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]);
   });
 
   it("respects a shortened per-profile cadence", () => {
-    const { profileId, anchor } = makeProfile("fitness-cadence");
+    const { profileId, anchor } = adultProfile("fitness-cadence");
     seedCheck(profileId, shiftDateStr(anchor, -40));
     expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]); // 40 < 90 default
     setFitnessRetestCadenceDays(profileId, 30);
     expect(buildFitnessCheckFindings(profileId, anchor)).toHaveLength(1); // 40 > 30
   });
+
+  it.each([
+    ["minor", 15],
+    ["unknown", null],
+  ])(
+    "keeps historical rows but emits no adult-percentile reminder for a %s",
+    (_label, age) => {
+      const { profileId, anchor } = makeProfile(`fitness-${_label}`);
+      if (age != null) setStoredAge(profileId, age);
+      const last = shiftDateStr(anchor, -120);
+      seedCheck(profileId, last);
+
+      expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]);
+      expect(
+        db
+          .prepare("SELECT date FROM fitness_assessments WHERE profile_id = ?")
+          .get(profileId)
+      ).toEqual({ date: last });
+    }
+  );
 });
 
 // ---- #840 phase 2: mobility deficit → habit suggestions ---------------------
@@ -1193,6 +1356,7 @@ describe("finding-text date pref threading (#1020)", () => {
 
   it("fitness-check: prefs reshape the detail date but never the dedupeKey", () => {
     const { profileId, anchor } = makeProfile("fitness-1020");
+    setStoredAge(profileId, 40);
     const lastCheck = shiftDateStr(anchor, -400);
     db.prepare(
       "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, ?)"

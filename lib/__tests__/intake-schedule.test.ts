@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  availableConditions,
+  availableIntakeConditions,
   CONDITIONS,
   contributesToDailyLimit,
   defaultFoodTiming,
@@ -11,29 +11,29 @@ import {
   obligationClass,
   spreadDoseTimes,
   timeBucket,
+  timeBucketHasArrived,
   TIME_BUCKET_LABELS,
   workoutDaySubtitleLabel,
-  WORKOUT_CONDITIONS,
 } from "@/lib/intake-schedule";
 
-describe("availableConditions", () => {
-  it("returns every condition when training is not restricted", () => {
-    expect(availableConditions(false)).toEqual(CONDITIONS);
+describe("CONDITIONS", () => {
+  it("offers every schedule when activity scheduling is available", () => {
+    expect(CONDITIONS).toEqual([
+      "daily",
+      "pre_workout",
+      "post_workout",
+      "rest_day",
+      "situational",
+    ]);
   });
 
-  it("drops the workout/rest-day conditions when training is restricted", () => {
-    const got = availableConditions(true);
-    for (const c of WORKOUT_CONDITIONS) expect(got).not.toContain(c);
-    expect(got).toContain("daily");
-    expect(got).toContain("situational");
-  });
-
-  it("keeps an already-stored workout condition so an edit select stays valid", () => {
-    const got = availableConditions(true, "rest_day");
-    expect(got).toContain("rest_day");
-    // Only the stored one is kept; the other workout conditions stay hidden.
-    expect(got).not.toContain("pre_workout");
-    expect(got).not.toContain("post_workout");
+  it("hides workout schedules while preserving an existing selection", () => {
+    expect(availableIntakeConditions(false)).toEqual(["daily", "situational"]);
+    expect(availableIntakeConditions(false, "pre_workout")).toEqual([
+      "daily",
+      "pre_workout",
+      "situational",
+    ]);
   });
 });
 
@@ -71,6 +71,20 @@ describe("timeBucket", () => {
     expect(timeBucket("with food")).toBe("Anytime");
     expect(timeBucket("")).toBe("Anytime");
     expect(timeBucket(null)).toBe("Anytime");
+  });
+});
+
+describe("timeBucketHasArrived", () => {
+  it("keeps future slots ahead while retaining earlier unresolved slots", () => {
+    expect(timeBucketHasArrived("Morning", "Morning")).toBe(true);
+    expect(timeBucketHasArrived("Midday", "Morning")).toBe(false);
+    expect(timeBucketHasArrived("Evening", "Midday")).toBe(false);
+    expect(timeBucketHasArrived("Morning", "Evening")).toBe(true);
+  });
+
+  it("treats Anytime as arrived for the whole day", () => {
+    expect(timeBucketHasArrived("Anytime", "Morning")).toBe(true);
+    expect(timeBucketHasArrived("Anytime", "Before sleep")).toBe(true);
   });
 });
 

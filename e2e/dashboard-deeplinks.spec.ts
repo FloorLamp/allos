@@ -20,7 +20,8 @@ import { workerDbPath } from "./worker-env";
 //   • data-quality CTAs land on the anchored smoking/risk forms, the prefilled
 //     biomarker add form, and the sole unconfirmed med's edit form / the filtered
 //     med list (#1146);
-//   • the capped rollup widgets reveal their overflow via "Show N more" (#1219);
+//   • capped list widgets reveal their overflow via "Show N more" (#1219), while
+//     Coaching observations renders its complete threshold-clearing set (#3090);
 //   • coaching's secondary rec renders as a link, a target-less goal row links to
 //     the goals surface, and the active-protocols widget caps + overflows (#1219).
 // Fixtures: the dedicated DQ_ADULT_PROFILE / DQ_GAPPY_PROFILE / REST_CARD_PROFILE
@@ -102,7 +103,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
       // Partial panel (Albumin present) → first missing analyte is Creatinine.
       await expect(ctaFor("Complete the PhenoAge panel")).toHaveAttribute(
         "href",
-        "/results/readings?new=1&name=Creatinine"
+        "/results/clinical-results?new=1&name=Creatinine"
       );
 
       // Follow the smoking CTA: it lands ON the smoking-history form. The hash
@@ -121,7 +122,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
       await followLink(
         page,
         ctaFor("Complete the PhenoAge panel"),
-        /\/results\/readings\?new=1&name=Creatinine$/
+        /\/results\/clinical-results\?new=1&name=Creatinine$/
       );
       await expect(
         page
@@ -210,7 +211,7 @@ test("the measurements form honors ?focus=height (#1146 pediatric-height CTA)", 
   }
 });
 
-test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
+test.describe("dashboard list reach (#1219, #3090)", () => {
   test("the Data quality widget reveals gaps beyond the cap via 'Show N more'", async ({
     browser,
   }) => {
@@ -244,7 +245,7 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
     }
   });
 
-  test("the Coaching observations rollup reveals findings beyond its cap of 2", async ({
+  test("Coaching observations renders every relevant finding without a withheld count", async ({
     browser,
   }) => {
     test.slow();
@@ -259,7 +260,7 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
       // This fixture's only coaching findings are its four structural gaps, and since
       // #1533 those live in their dedicated Data quality widget rather than doubling
       // into the rollup. Hiding that widget hands them back to the rollup (the
-      // catch-all), which gives this #1219 disclosure test a deterministic, spec-owned
+      // catch-all), which gives this relevance-floor test a deterministic, spec-owned
       // set of four rows instead of an exact count of shared seed findings.
       await main.getByRole("button", { name: "Edit dashboard" }).click();
       await main.getByRole("button", { name: "Hide Data quality" }).click();
@@ -273,14 +274,17 @@ test.describe("capped dashboard widgets surface their overflow (#1219)", () => {
       await expect(rollup).toBeVisible();
       await expect(
         rollup.getByTestId("coaching-observations-item")
-      ).toHaveCount(2);
-      const more = rollup.getByTestId("coaching-observations-more");
-      await more.getByText("Show 2 more").click();
+      ).toHaveCount(4);
       await expect(
         rollup
-          .getByTestId("coaching-observations-more-item")
+          .getByTestId("coaching-observations-item")
           .filter({ hasText: "Set a biological sex" })
       ).toBeVisible();
+      await expect(
+        rollup.getByTestId("coaching-observations-more")
+      ).toHaveCount(0);
+      await expect(rollup).toContainText("Patterns worth reviewing.");
+      await expect(rollup).not.toContainText(/\d+ of \d+/);
 
       // Restore the default layout for neighboring specs on this fixture profile.
       await main.getByRole("button", { name: "Edit dashboard" }).click();
@@ -357,7 +361,9 @@ test("a target-less goal row links to the goals surface (#1219)", async ({
       .getByTestId("goal-title-link")
       .filter({ hasText: "Feel better all around" });
     await expect(goalLink).toHaveAttribute("href", "/training?tab=goals");
-    await followLink(page, goalLink, /\/training\?tab=goals$/);
+    // The retired name redirects to its canonical Plan URL (#2892): the href
+    // keeps its historic value, the landing carries the goals anchor.
+    await followLink(page, goalLink, /\/training\?tab=plan#goals$/);
   } finally {
     await page.context().close();
   }

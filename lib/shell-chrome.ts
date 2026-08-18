@@ -3,8 +3,8 @@
 //
 // The phone's top bar plus the multi-profile view banner ride together as ONE
 // sticky unit: it slides out of the way while you scroll DOWN through a long
-// page and comes straight back on ANY scroll-up or at the top, so the hamburger,
-// search, and "whose data am I looking at?" are always one flick away without
+// page and comes straight back on ANY scroll-up or at the top, so search and
+// "whose data am I looking at?" are always one flick away without
 // permanently spending 56px of a 844px-tall screen.
 //
 // The decision is extracted here because it is exactly the kind of thing that

@@ -140,15 +140,17 @@ describe("timeline event helpers", () => {
       "/import/42"
     );
     expect(clinicalObservationHref(null, ["LDL"], "LDL")).toBe(
-      "/results/readings/view?name=LDL"
+      "/results/clinical-results/view?name=LDL"
     );
     expect(clinicalObservationHref(null, ["A B"], "A B")).toBe(
-      "/results/readings/view?name=A%20B"
+      "/results/clinical-results/view?name=A%20B"
     );
     expect(clinicalObservationHref(null, ["LDL", "HDL"], "LDL")).toBe(
-      "/results/readings"
+      "/results/clinical-results"
     );
-    expect(clinicalObservationHref(null, [], null)).toBe("/results/readings");
+    expect(clinicalObservationHref(null, [], null)).toBe(
+      "/results/clinical-results"
+    );
   });
 
   it("parses pipe-delimited detail-item payloads", () => {

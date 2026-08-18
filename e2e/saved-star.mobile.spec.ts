@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { settledClick, settledPickOption } from "./helpers";
+import {
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+  settledPickOption,
+} from "./helpers";
 
 // The unified save gesture (#1456) end-to-end: ONE star, membership everywhere.
 //
@@ -30,12 +35,12 @@ import { settledClick, settledPickOption } from "./helpers";
 
 // A seeded biomarker WITH readings that the seed does not star.
 const ANALYTE = "HDL Cholesterol";
-const DETAIL_URL = `/results/readings/view?name=${encodeURIComponent(ANALYTE)}`;
+const DETAIL_URL = `/results/clinical-results/view?name=${encodeURIComponent(ANALYTE)}`;
 
 // A tile's controls live in its corner ⋯ menu since #1485 B, and the panel is
 // PORTALED to <body> — so it is located on the page, never inside the card.
 async function tileMenu(page: Page, tile: Locator): Promise<Locator> {
-  await tile.getByTestId("overflow-menu-trigger").click();
+  await hydratedClick(page, tile.getByTestId("overflow-menu-trigger"));
   const menu = page.getByTestId("trend-tile-menu");
   await expect(menu).toBeVisible();
   return menu;
@@ -110,22 +115,18 @@ test("starring a biomarker gives it a Trends chart tile with no second gesture",
     .getByTestId("trend-mini-card")
     .filter({ hasText: "Weight" });
   const [outsideBox, latestCaptionBox, plottedBox, rangeBox] =
-    await Promise.all([
-      outsideCard.boundingBox(),
-      outsideCard.getByText(/Latest recorded ·/).boundingBox(),
-      plottedCard.boundingBox(),
-      plottedCard.getByTestId("trend-mini-range").boundingBox(),
+    await settledBoxes([
+      outsideCard,
+      outsideCard.getByText(/Latest recorded ·/),
+      plottedCard,
+      plottedCard.getByTestId("trend-mini-range"),
     ]);
-  expect(outsideBox).not.toBeNull();
-  expect(latestCaptionBox).not.toBeNull();
-  expect(plottedBox).not.toBeNull();
-  expect(rangeBox).not.toBeNull();
   const latestBottomGap =
-    outsideBox!.y +
-    outsideBox!.height -
-    (latestCaptionBox!.y + latestCaptionBox!.height);
+    outsideBox.y +
+    outsideBox.height -
+    (latestCaptionBox.y + latestCaptionBox.height);
   const rangeBottomGap =
-    plottedBox!.y + plottedBox!.height - (rangeBox!.y + rangeBox!.height);
+    plottedBox.y + plottedBox.height - (rangeBox.y + rangeBox.height);
   expect(Math.abs(latestBottomGap - rangeBottomGap)).toBeLessThan(2);
   const [latestTypography, rangeTypography] = await Promise.all([
     outsideCard.getByText(/Latest recorded ·/).evaluate((element) => {

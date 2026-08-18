@@ -1,6 +1,6 @@
 // DB INTEGRATION TIER (issue #954): the food-habit N-week consistency trend.
 //
-// Seeds a food_group frequency target created mid-window plus multi-week food_log
+// Seeds a food_group frequency target created mid-window plus multi-week food_daily_totals
 // servings (met / short / empty / pre-target weeks) and asserts getFoodHabitTrends
 // classifies each trailing week correctly, with weeks before the target existed
 // rendered not-applicable (honest cold start), not misses. The #221 pin: the trend's
@@ -28,7 +28,7 @@ function logServings(
   servings: number
 ) {
   db.prepare(
-    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+    `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
      ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
   ).run(profileId, date, group, servings);
 }

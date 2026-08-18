@@ -211,8 +211,8 @@ describe("finishCreditsTrackedScope — the scope→credit rules", () => {
 
   it("mobility_region scope matches a mobilized region only", () => {
     const mob: FinishedActivityCredit = {
-      type: "recovery",
-      componentTypes: ["recovery"],
+      type: "mobility",
+      componentTypes: ["mobility"],
       regions: [],
       mobilityRegions: ["Glutes"],
     };

@@ -8,7 +8,7 @@
 //
 // The fixture is a database in the state the issue describes: it imported the
 // drifted spelling BEFORE the curated route shipped, so the spelling sits in
-// canonical_biomarkers as an `ai` row and buildCanonicalIndex drops the route that
+// canonical_result_definitions as an `ai` row and buildCanonicalIndex drops the route that
 // exists to retire it. The "before" assertions PIN that defect; the "after" ones pin
 // the repair. Both use the routes that actually ship:
 //
@@ -49,7 +49,7 @@ function newProfile(name: string): number {
 // ai-coined vocabulary row (addCanonicalNames' INSERT OR IGNORE, verbatim).
 function coinVocabulary(name: string): void {
   db.prepare(
-    "INSERT OR IGNORE INTO canonical_biomarkers (name, source) VALUES (?, 'ai')"
+    "INSERT OR IGNORE INTO canonical_result_definitions (name, source) VALUES (?, 'ai')"
   ).run(name);
 }
 
@@ -74,7 +74,7 @@ function storedNames(profileId: number): string[] {
 function vocabularyHas(name: string): boolean {
   return Boolean(
     db
-      .prepare("SELECT 1 FROM canonical_biomarkers WHERE name = ?")
+      .prepare("SELECT 1 FROM canonical_result_definitions WHERE name = ?")
       .get(name) as unknown
   );
 }
@@ -83,7 +83,7 @@ function stars(profileId: number): string[] {
   return (
     db
       .prepare(
-        "SELECT key FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' ORDER BY key"
+        "SELECT key FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result' ORDER BY key"
       )
       .all(profileId) as { key: string }[]
   ).map((r) => r.key);
@@ -168,7 +168,7 @@ describe("one boot resolves an alias its own database had blocked (#2306)", () =
     const curatedBefore = (
       db
         .prepare(
-          "SELECT COUNT(*) AS c FROM canonical_biomarkers WHERE source = 'seed'"
+          "SELECT COUNT(*) AS c FROM canonical_result_definitions WHERE source = 'seed'"
         )
         .get() as { c: number }
     ).c;
@@ -177,7 +177,7 @@ describe("one boot resolves an alias its own database had blocked (#2306)", () =
       (
         db
           .prepare(
-            "SELECT COUNT(*) AS c FROM canonical_biomarkers WHERE source = 'seed'"
+            "SELECT COUNT(*) AS c FROM canonical_result_definitions WHERE source = 'seed'"
           )
           .get() as { c: number }
       ).c
@@ -196,7 +196,7 @@ describe("the rename carries every piece of name-keyed side-state", () => {
 
   it("moves the ★ save onto the target and drops a redundant old pin", () => {
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
     ).run(profileId, BLOCKED);
     mergeSupersededCanonicalNames(db);
     expect(stars(profileId)).toEqual([BLOCKED_TARGET]);
@@ -205,7 +205,7 @@ describe("the rename carries every piece of name-keyed side-state", () => {
   it("collapses onto an existing pin rather than leaving the profile two", () => {
     for (const key of [BLOCKED, BLOCKED_TARGET])
       db.prepare(
-        "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+        "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
       ).run(profileId, key);
     mergeSupersededCanonicalNames(db);
     expect(stars(profileId)).toEqual([BLOCKED_TARGET]);
@@ -266,7 +266,7 @@ describe("the rename carries every piece of name-keyed side-state", () => {
     db.prepare(
       `INSERT INTO protocols (profile_id, name, start_date, outcome_keys)
        VALUES (?, 'Fictional protocol', ?, ?)`
-    ).run(profileId, DATE, JSON.stringify([`biomarker:${BLOCKED}`]));
+    ).run(profileId, DATE, JSON.stringify([`result:${BLOCKED}`]));
     mergeSupersededCanonicalNames(db);
     expect(
       (
@@ -276,17 +276,17 @@ describe("the rename carries every piece of name-keyed side-state", () => {
           )
           .get(profileId) as { k: string }
       ).k
-    ).toBe(JSON.stringify([`biomarker:${BLOCKED_TARGET}`]));
+    ).toBe(JSON.stringify([`result:${BLOCKED_TARGET}`]));
   });
 
   it("never crosses the profile boundary", () => {
     const other = newProfile("ALIAS-OTHER");
     addReading(other, BLOCKED, "negative");
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
     ).run(profileId, BLOCKED);
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
     ).run(other, BLOCKED_TARGET);
     mergeSupersededCanonicalNames(db);
     // Each profile's rows moved under its OWN id; neither inherited the other's pin.
@@ -402,7 +402,7 @@ describe("the singular cast spellings resolve retroactively (#2319)", () => {
     coinVocabulary(singular);
     addReading(profileId, singular, "0-2");
     db.prepare(
-      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
     ).run(profileId, singular);
     db.prepare(
       "INSERT INTO coverage_gaps (profile_id, kind, item_key, label) VALUES (?, 'biomarker', ?, ?)"

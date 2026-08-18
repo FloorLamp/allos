@@ -448,7 +448,7 @@ describe("renderFoodNudge corrected-burst body statement (#2264)", () => {
       tz: TZ,
     });
     const body = plainBody(msg.body);
-    expect(body).toContain(correctionBodyStatement(bursts, TZ)!);
+    expect(body).toContain(correctionBodyStatement(bursts, TZ, NOW)!);
     expect(body).toContain("🕐 Recorded: Salmon 18:02 (corrected)");
     // The instruction line stays — the statement is in addition, not a replacement,
     // because the chips are still on the keyboard and still compose.

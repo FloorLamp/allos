@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   suggestCuratedSupplements,
   curatedSupplementBiomarkers,
+  curatedSupplementAnswersReading,
   isCuratedSupplementBiomarker,
   type CuratedSupplementInput,
 } from "@/lib/supplement-suggest-curated";
@@ -62,7 +63,7 @@ describe("coverage — what the curated map answers and what falls through", () 
     ).toEqual(["iron"]);
   });
 
-  it("only answers the LOW side — a high reading is a different question", () => {
+  it("a repletion entry answers only its declared LOW side — a high reading is a different question", () => {
     const out = suggestCuratedSupplements(
       baseInput({ flagged: [{ name: "Ferritin", flag: "high" }] })
     );
@@ -96,6 +97,92 @@ describe("coverage — what the curated map answers and what falls through", () 
     expect(names).toContain("Ferritin");
     expect(isCuratedSupplementBiomarker("vitamin d, 25-hydroxy")).toBe(true);
     expect(isCuratedSupplementBiomarker("")).toBe(false);
+  });
+});
+
+// ── #2754: the lipids entry — the one add-on-high route ───────────────────────
+describe("the lipids entry (#2754) — high LDL/ApoB → soluble-fiber supplements", () => {
+  it("a HIGH LDL triggers psyllium + oat beta-glucan, side 'high', no dose anywhere", () => {
+    const out = suggestCuratedSupplements(
+      baseInput({ flagged: [{ name: "LDL Cholesterol", flag: "high" }] })
+    );
+    expect(out.map((s) => s.key)).toEqual(["lipids"]);
+    const s = out[0];
+    expect(s.side).toBe("high");
+    expect(s.origin).toBe("curated");
+    expect(s.triggeredBy).toEqual(["LDL Cholesterol"]);
+    expect(s.supplements.map((x) => x.name.toLowerCase())).toEqual([
+      "psyllium husk",
+      "oat beta-glucan",
+    ]);
+  });
+
+  it("a LOW LDL produces nothing — the trigger direction is declared, not symmetric", () => {
+    expect(
+      suggestCuratedSupplements(
+        baseInput({ flagged: [{ name: "LDL Cholesterol", flag: "low" }] })
+      )
+    ).toEqual([]);
+  });
+
+  it("collapses LDL + ApoB both high into ONE suggestion (#482)", () => {
+    const out = suggestCuratedSupplements(
+      baseInput({
+        flagged: [
+          { name: "LDL Cholesterol", flag: "high" },
+          { name: "Apolipoprotein B (ApoB)", flag: "non-optimal-high" },
+        ],
+      })
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].triggeredBy).toEqual([
+      "LDL Cholesterol",
+      "Apolipoprotein B (ApoB)",
+    ]);
+  });
+
+  it("says nothing when the profile already takes a fiber supplement (Metamucil)", () => {
+    expect(
+      suggestCuratedSupplements(
+        baseInput({
+          flagged: [{ name: "LDL Cholesterol", flag: "high" }],
+          alreadyTaking: ["Metamucil"],
+        })
+      )
+    ).toEqual([]);
+  });
+
+  it("hard-drops bulk fiber for a bowel obstruction via the map's own drop tag", () => {
+    expect(
+      suggestCuratedSupplements(
+        baseInput({
+          flagged: [{ name: "LDL Cholesterol", flag: "high" }],
+          conditions: ["Small bowel obstruction"],
+        })
+      )
+    ).toEqual([]);
+  });
+
+  it("repletion suggestions carry side 'low'", () => {
+    const out = suggestCuratedSupplements(
+      baseInput({ flagged: [{ name: "Ferritin", flag: "low" }] })
+    );
+    expect(out[0].side).toBe("low");
+  });
+
+  it("the AI-route muzzle question is per READING — a covered name answers only its declared side", () => {
+    // Muzzling a reading the curated engine will not answer (a LOW LDL, a HIGH
+    // ferritin) would leave that family with no answer from either engine.
+    expect(curatedSupplementAnswersReading("LDL Cholesterol", "high")).toBe(
+      true
+    );
+    expect(curatedSupplementAnswersReading("LDL Cholesterol", "low")).toBe(
+      false
+    );
+    expect(curatedSupplementAnswersReading("Ferritin", "low")).toBe(true);
+    expect(curatedSupplementAnswersReading("Ferritin", "high")).toBe(false);
+    expect(curatedSupplementAnswersReading("Zinc", "low")).toBe(false);
+    expect(curatedSupplementAnswersReading("Ferritin", "normal")).toBe(false);
   });
 });
 

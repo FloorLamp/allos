@@ -63,13 +63,12 @@ export function observeStreamFrontiers(
   );
   if (streams.length === 0) return {};
   return writeTx(() => {
-    // #2487 boundary: `sourceId` in TS, the column is still named `provider`.
     const upsert = db.prepare(
       `INSERT INTO stream_frontiers
-         (profile_id, provider, stream, frontier_at, advanced_at, observed_at,
+         (profile_id, source_id, stream, frontier_at, advanced_at, observed_at,
           syncs_since_advance)
        VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(profile_id, provider, stream) DO UPDATE SET
+       ON CONFLICT(profile_id, source_id, stream) DO UPDATE SET
          frontier_at = excluded.frontier_at,
          advanced_at = excluded.advanced_at,
          observed_at = excluded.observed_at,

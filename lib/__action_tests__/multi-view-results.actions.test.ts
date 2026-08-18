@@ -22,7 +22,7 @@ import {
 import {
   updateResult,
   deleteResult,
-} from "@/app/(app)/results/reading-actions";
+} from "@/app/(app)/results/clinical-result-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 function seedRecord(profileId: number, name: string): number {
@@ -155,7 +155,7 @@ describe("Tier-1 multi-view record writes gate the ITEM's profile (#1328)", () =
   });
 });
 
-describe("Multi-view Biomarkers table writes gate the ITEM's profile (#1331)", () => {
+describe("Multi-view Clinical results table writes gate the ITEM's profile (#1331)", () => {
   it("updateResult with posted profile_id edits the ITEM's reading, not the acting one", async () => {
     const login = createLogin({ role: "admin" });
     const acting = createProfile("Acting", login.id);

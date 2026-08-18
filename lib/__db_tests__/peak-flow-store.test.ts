@@ -41,7 +41,7 @@ import {
 import { getMetricReadings } from "@/lib/metric-readings";
 import { trendMetricSeriesFold } from "@/lib/trend-metric-series";
 import { getMetricJudgment } from "@/lib/queries/metric-judgment";
-import { readingDetailHref } from "@/lib/hrefs";
+import { clinicalResultDetailHref } from "@/lib/hrefs";
 
 function makeProfile(name: string): number {
   return Number(
@@ -61,9 +61,9 @@ function importSpirometry(
   const outcome = persistDocumentImport(profileId, docId, input);
   applyImportFollowups(profileId, {
     demographics: input.demographics,
-    records: input.records,
+    observations: input.observations,
     canonicalNames: input.canonicalNamesToRegister,
-    insertedRecordIds: outcome.insertedRecordIds,
+    insertedObservationIds: outcome.insertedObservationIds,
   });
 }
 
@@ -82,12 +82,12 @@ function makeDocument(profileId: number, filename: string): number {
 function peakFlowRows(profileId: number) {
   return db
     .prepare(
-      `SELECT date, start_time, value, source, metric FROM metric_samples
-        WHERE profile_id = ? AND metric = ? ORDER BY start_time`
+      `SELECT date, started_at, value, source, metric FROM metric_samples
+        WHERE profile_id = ? AND metric = ? ORDER BY started_at`
     )
     .all(profileId, PEAK_FLOW_METRIC) as {
     date: string;
-    start_time: string;
+    started_at: string;
     value: number;
     source: string;
     metric: string;
@@ -132,7 +132,7 @@ describe("the home half — a blow through the measurements quick-add", () => {
 
     const rows = peakFlowRows(profileId);
     expect(rows.map((r) => r.value)).toEqual([520, 430]);
-    expect(rows.map((r) => r.start_time)).toEqual([
+    expect(rows.map((r) => r.started_at)).toEqual([
       "2026-04-03T07:30:00",
       "2026-04-03T20:00:00",
     ]);
@@ -185,7 +185,7 @@ describe("the home half — a blow through the measurements quick-add", () => {
   });
 
   it("routes a reading of this identity to the metric surface, not the lab page", () => {
-    expect(readingDetailHref(PEAK_FLOW_CANONICAL)).toBe(
+    expect(clinicalResultDetailHref(PEAK_FLOW_CANONICAL)).toBe(
       "/trends/metric/peak-flow"
     );
   });
@@ -226,7 +226,7 @@ describe("the clinic half — a spirometry report through the document pipeline"
       provider: null,
     });
     return {
-      records: [
+      observations: [
         row("FEV1", FEV1, 2.9, "L", "pft:fev1"),
         row("FVC", FVC, 4.4, "L", "pft:fvc"),
         row("FEV1/FVC Ratio", "FEV1/FVC Ratio", 66, "%", "pft:ratio"),

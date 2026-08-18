@@ -1,5 +1,5 @@
 // Mobility read layer (issue #840): the day's mobility session (for the tap-the-moves
-// bar) and the recent recovery sessions (for the coverage strip + region habit counting).
+// bar) and the recent mobility sessions (for the coverage strip + region habit counting).
 // Every statement filters by profile_id (the scoping rule). Reads only — the write core
 // is lib/mobility-log-write.ts.
 
@@ -34,7 +34,7 @@ export function getMobilitySession(
   return readMobilitySession(profileId, date);
 }
 
-// Recent recovery sessions as coverage inputs (date + move slugs); the caller applies the
+// Recent mobility sessions as coverage inputs (date + move slugs); the caller applies the
 // exact rolling window (mobilityCoverageStrip). The 400-row cap bounds the scan for a
 // long history. Profile-scoped.
 export function getRecentMobilitySessions(
@@ -43,14 +43,14 @@ export function getRecentMobilitySessions(
   const rows = db
     .prepare(
       `SELECT date, components FROM activities
-         WHERE profile_id = ? AND type = 'recovery'
+         WHERE profile_id = ? AND type = 'mobility'
          ORDER BY date DESC LIMIT 400`
     )
     .all(profileId) as { date: string; components: string | null }[];
   return rows.map((r) => ({
     date: r.date,
     moves: parseComponents(r.components)
-      .filter((c) => c?.type === "recovery" && typeof c.name === "string")
+      .filter((c) => c?.type === "mobility" && typeof c.name === "string")
       .map((c) => c.name),
   }));
 }

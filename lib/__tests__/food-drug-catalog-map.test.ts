@@ -15,10 +15,9 @@ import { isValidFoodGroup } from "@/lib/food-groups";
 // that decides neither way; this test is the dataset-side half of the same gate.
 
 describe("every food–drug entry declares a catalog mapping (#2021)", () => {
-  it("is mapped with a firing rule, or excluded with a written reason", () => {
+  it("gives each mapping a firing rule or a written exclusion", () => {
     for (const e of FOOD_DRUG_INTERACTIONS) {
       const c = e.catalog;
-      expect(c, `${e.key} has no catalog mapping`).toBeDefined();
       if (c.rule === "none") {
         expect(
           (c.reason ?? "").trim().length,

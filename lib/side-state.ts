@@ -125,10 +125,10 @@ export const SIDE_STATE_FAMILIES: readonly SideStateFamily[] = [
     registryModule: "lib/saved-items.ts",
     registrySymbol: "SAVED_KINDS",
     keyGrammar:
-      "(kind, key): `biomarker` → #482 canonical name, `trend-metric` → metric id (#1456)",
+      "(kind, key): `clinical-result` → #482 canonical name, `trend-metric` → metric id (#1456)",
     sweep:
       "kind-scoped deletes in the row merge/delete flows (lib/queries/medical.ts)",
-    guard: "lib/__tests__/saved-items.test.ts",
+    guard: "lib/__db_tests__/migration-saved-clinical-result-namespace.test.ts",
   },
 ];
 

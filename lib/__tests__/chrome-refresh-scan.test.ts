@@ -66,6 +66,8 @@ const USER_CALL_SITES: Record<string, string> = {
     "follows the user's own 'Send test email', which persists the form without revalidating",
   "app/(app)/integrations/fitbit-takeout/TakeoutUpload.tsx":
     "follows the user's own upload",
+  "app/(app)/training/activity/DiscardDraftButton.tsx":
+    "follows the user's own Discard tap when the server KEPT the row (a save raced the tap) — the page must repaint into its real record state right now",
   // The registry itself: the drain it owes, and the no-provider fallback.
   "components/DirtyFormRegistry.tsx":
     "the registry IS the chokepoint — this is the deferred repaint finally landing",

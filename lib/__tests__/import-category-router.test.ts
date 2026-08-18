@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { normalizeResults } from "@/lib/medical-extract/normalize";
-import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import { canonicalResultDefinitionForName } from "@/lib/datasets/canonical-result-definitions";
 
 // #1076: the import router honors the canonical dataset's category. When an
 // extracted reading resolves to a name in the controlled vocabulary, that entry's
 // category WINS over the model's guess — so a re-homed analyte reaches its own
-// surface, not /results/readings. A name outside the vocabulary keeps the model's
+// surface, not /results/clinical-results. A name outside the vocabulary keeps the model's
 // category. These are pure (no DB): normalizeResults over a synthetic tool payload.
 
 function one(result: Record<string, unknown>) {
@@ -72,7 +72,9 @@ describe("import category router honors the canonical category (#1076)", () => {
   });
 
   it("keeps the model's category for a name outside the vocabulary", () => {
-    expect(canonicalBiomarkerForName("Totally Made Up Analyte")).toBeNull();
+    expect(
+      canonicalResultDefinitionForName("Totally Made Up Analyte")
+    ).toBeNull();
     const r = one({
       name: "Totally Made Up Analyte",
       canonical_name: "Totally Made Up Analyte",

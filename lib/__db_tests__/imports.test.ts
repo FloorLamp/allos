@@ -27,6 +27,7 @@ import {
   getDocumentBodyRows,
   getDocumentProviders,
   getDocumentTriageRows,
+  getObservationsForDocument,
 } from "@/lib/queries";
 import {
   persistDocumentImport,
@@ -49,7 +50,7 @@ const DATE = "2020-05-01";
 // writes, so the produced-breakdown counts have something to find in each kind.
 function makeInput(): PersistInput {
   return {
-    records: [
+    observations: [
       {
         category: "lab",
         name: "Glucose",
@@ -354,6 +355,31 @@ describe("getDocumentProduced", () => {
     expect(p.providers).toBe(1);
   });
 
+  it("counts and selects rows awaiting category review", () => {
+    const reviewProfile = newProfile("IMPORT-REVIEW");
+    const reviewDoc = newDocument(reviewProfile, "review.pdf");
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, document_id)
+       VALUES (?, ?, NULL, 'Unresolved result', 'present', ?),
+              (?, ?, 'lab', 'Resolved result', '42', ?)`
+    ).run(reviewProfile, DATE, reviewDoc, reviewProfile, DATE, reviewDoc);
+
+    expect(
+      getDocumentProduced(reviewProfile, reviewDoc).recordsByCategory
+    ).toEqual(
+      expect.arrayContaining([
+        { category: null, count: 1 },
+        { category: "lab", count: 1 },
+      ])
+    );
+    expect(
+      getObservationsForDocument(reviewProfile, reviewDoc, {
+        category: null,
+      }).map((row) => row.name)
+    ).toEqual(["Unresolved result"]);
+  });
+
   it("agrees with extracted_count: the tab counts and the toast tally share one total (#271/#212)", () => {
     // producedTotal over getDocumentProduced (what the tab strip shows) must
     // equal BOTH the live footprint count and the stored extracted_count for a
@@ -516,7 +542,7 @@ describe("extracted_count (toast + Review-feed tally)", () => {
     const profile = newProfile("ENCOUNTER-ONLY");
     const doc = newDocument(profile, "visit-only.ccd");
     const outcome = persistDocumentImport(profile, doc, {
-      records: [],
+      observations: [],
       immunizations: [],
       allergies: [],
       conditions: [],

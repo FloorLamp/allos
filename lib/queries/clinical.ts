@@ -160,6 +160,18 @@ export const ALLERGY_REPRESENTATIVE_IDS = representativeIds(
   REPRESENTATIVE_SPECS.allergies
 );
 
+// #2919: imaging_studies and care_plan_items joined the import footprint AFTER
+// #134's sweep and #2035's consolidation, so both read flat until three overlapping
+// portal exports showed every study and every plan item in triplicate. They collapse
+// like their siblings now — see the registry for each identity's rationale.
+export const IMAGING_REPRESENTATIVE_IDS = representativeIds(
+  REPRESENTATIVE_SPECS.imaging_studies
+);
+
+export const CARE_PLAN_REPRESENTATIVE_IDS = representativeIds(
+  REPRESENTATIVE_SPECS.care_plan_items
+);
+
 // ---- Hoisted clinical-list statements (#2110) -------------------------------
 //
 // These are the profile's DURABLE clinical facts — conditions, allergies, family
@@ -257,7 +269,7 @@ const IMAGING_STUDIES_STMT = hoistedStatement(
           notes,
           source, document_id, external_id, created_at
      FROM imaging_studies
-    WHERE profile_id = ?
+    WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
     ORDER BY COALESCE(study_date, '') DESC, id DESC`
 );
 
@@ -300,7 +312,7 @@ const CARE_PLAN_ITEMS_STMT = hoistedStatement(
           cp.settled_disposition, cp.settled_on, cp.settled_reason
      FROM care_plan_items cp
      LEFT JOIN providers p ON p.id = cp.provider_id
-    WHERE cp.profile_id = ?
+    WHERE cp.profile_id = ? AND cp.id IN (${CARE_PLAN_REPRESENTATIVE_IDS})
     ORDER BY (cp.planned_date IS NULL) ASC, cp.planned_date ASC,
              cp.description COLLATE NOCASE ASC, cp.id DESC`
 );
@@ -369,13 +381,15 @@ export function getGenomicVariants(profileId: number): GenomicVariant[] {
   return GENOMIC_VARIANTS_STMT.all(profileId) as GenomicVariant[];
 }
 
-// Structured imaging studies (#702), newest study first. Read straight from the
-// table — a study is a durable narrative fact (it never nags for retest or flags
-// abnormal), so there is no representative-id dedup here. `contrast` is stored 0/1
-// and surfaced as a boolean. The impression is the radiologist's report body; the
-// indication is captured but not gated on (screening-vs-diagnostic is deferred).
+// Structured imaging studies (#702), newest study first. De-duplicated across
+// documents via IMAGING_REPRESENTATIVE_IDS (#2919): three overlapping portal exports
+// each carry the whole radiology history, so the same study is stored once per
+// document and the list showed it three times. The subquery's profile_id bind comes
+// after the main WHERE's. `contrast` is stored 0/1 and surfaced as a boolean. The
+// impression is the radiologist's report body; the indication is captured but not
+// gated on (screening-vs-diagnostic is deferred).
 export function getImagingStudies(profileId: number): ImagingStudy[] {
-  const rows = IMAGING_STUDIES_STMT.all(profileId) as (Omit<
+  const rows = IMAGING_STUDIES_STMT.all(profileId, profileId) as (Omit<
     ImagingStudy,
     "contrast"
   > & {
@@ -536,7 +550,7 @@ export function getLabFollowUpObservations(
 // One row per care_plan_items follow-up linked to a medical_records source, newest
 // first, carrying the source reading's display name so the caller can group by #482
 // family in JS. Profile-scoped (the JOIN carries medical_records' profile_id too).
-export interface LabFollowUpSummary {
+export interface ReadingFollowUpSummary {
   carePlanItemId: number;
   sourceRecordId: number;
   sourceName: string;
@@ -546,7 +560,7 @@ export interface LabFollowUpSummary {
   settledDisposition: string | null; // the #1866 terminator ('done'|'declined'), or null
 }
 
-export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
+export function getLabFollowUps(profileId: number): ReadingFollowUpSummary[] {
   return db
     .prepare(
       `SELECT cp.id AS carePlanItemId,
@@ -561,7 +575,7 @@ export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
           AND cp.source_medical_record_id IS NOT NULL
         ORDER BY cp.id DESC`
     )
-    .all(profileId) as LabFollowUpSummary[];
+    .all(profileId) as ReadingFollowUpSummary[];
 }
 
 // Every intraocular-pressure reading an IOP follow-up could link (#698 §6) — the pool
@@ -589,9 +603,9 @@ export function getIopFollowUpObservations(
 // The tracked IOP follow-ups (#698 §6), the labs mirror for the glaucoma-workup chain.
 // One row per source_kind='iop' care_plan_items follow-up joined to its source reading,
 // newest first, so the biomarker detail page can show the (single, bilateral) IOP
-// follow-up's state or offer to track one. Reuses LabFollowUpSummary (identical shape).
+// follow-up's state or offer to track one. Reuses the shared reading-follow-up shape.
 // Profile-scoped (the JOIN carries medical_records' profile_id too).
-export function getIopFollowUps(profileId: number): LabFollowUpSummary[] {
+export function getIopFollowUps(profileId: number): ReadingFollowUpSummary[] {
   return db
     .prepare(
       `SELECT cp.id AS carePlanItemId,
@@ -606,7 +620,7 @@ export function getIopFollowUps(profileId: number): LabFollowUpSummary[] {
           AND cp.source_medical_record_id IS NOT NULL
         ORDER BY cp.id DESC`
     )
-    .all(profileId) as LabFollowUpSummary[];
+    .all(profileId) as ReadingFollowUpSummary[];
 }
 
 // Family history, grouped by relative (relation) then condition. Rows with an
@@ -619,9 +633,14 @@ export function getFamilyHistory(profileId: number): FamilyHistory[] {
 
 // Care plan items — planned / ordered future care, soonest planned date first
 // (undated last). The ordering clinician's name is joined from the shared providers
-// registry for display. NB: distinct from the user's own fitness `goals`.
+// registry for display. De-duplicated across documents via
+// CARE_PLAN_REPRESENTATIVE_IDS (#2919) — overlapping portal exports each re-carry the
+// whole plan, so the standing vaccine/screening reminders showed once per export
+// here, in Upcoming, and everywhere else that counts open plan items. Follow-up chain
+// nodes never collapse (see the registry). The subquery's profile_id bind comes after
+// the main WHERE's. NB: distinct from the user's own fitness `goals`.
 export function getCarePlanItems(profileId: number): CarePlanItem[] {
-  return CARE_PLAN_ITEMS_STMT.all(profileId) as CarePlanItem[];
+  return CARE_PLAN_ITEMS_STMT.all(profileId, profileId) as CarePlanItem[];
 }
 
 // Care goals — clinical targets from the record, soonest target date first
@@ -638,7 +657,7 @@ export function getCareGoals(profileId: number): CareGoal[] {
 }
 
 // Derive the positive allergen-specific IgE sensitizations from the profile's
-// current lab/biomarker readings (RAST / ImmunoCAP). Total serum IgE is excluded;
+// current lab readings (RAST / ImmunoCAP). Total serum IgE is excluded;
 // only above-range / class≥1 results become sensitizations. Read-time only.
 export function getAllergenSensitizations(
   profileId: number

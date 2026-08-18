@@ -88,9 +88,16 @@ describe("sniffMime", () => {
     expect(sniffMime(Buffer.from(""))).toBeNull();
     expect(sniffMime(Buffer.from("name,value\nGlucose,95\n"))).toBeNull();
     // A bare compact JWS (SMART Health Card) is base64url text with no magic.
-    expect(
-      sniffMime(Buffer.from("eyJhbGciOiJFUzI1NiJ9.eyJ4Ijoi.sig"))
-    ).toBeNull();
+    // Encoded here rather than pasted: a JWT-shaped LITERAL in a fixture reds
+    // `gitleaks` on every push of the branch carrying it, and on any PR whose
+    // scan falls back to reading every ref, until it is rebased out (#2949,
+    // #2969). This one passes today only because its payload
+    // segment is a few characters under the rule's length floor, which is not a
+    // property worth depending on. Encoding also says what the bytes are, which
+    // the literal did not.
+    const b64url = (s: string) => Buffer.from(s).toString("base64url");
+    const compactJws = `${b64url('{"alg":"ES256"}')}.${b64url('{"x":"y"}')}.sig`;
+    expect(sniffMime(Buffer.from(compactJws))).toBeNull();
     expect(sniffMime(Buffer.from("just some plain text"))).toBeNull();
   });
 });

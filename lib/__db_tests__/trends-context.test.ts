@@ -43,7 +43,7 @@ function seedSamples(
   endOffset = 0
 ): void {
   const stmt = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'test-device', ?, ?, ?, ?, ?)`
   );
   for (let i = 0; i < count; i++) {
@@ -336,7 +336,7 @@ describe("getBodyCardPins — the body census ★ arrangement", () => {
   it("skips saved refs that name no Body card", () => {
     const { profileId } = makeProfile("pins-non-body");
     star(profileId, "volume"); // training volume — a saved metric, not a Body card
-    saveItem(profileId, "biomarker", "ApoB");
+    saveItem(profileId, "clinical-result", "ApoB");
     star(profileId, "steps");
     expect(getBodyCardPins(profileId)).toEqual(["steps"]);
   });

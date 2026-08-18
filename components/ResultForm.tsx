@@ -26,8 +26,8 @@ import type { FormResult, ClinicalObservation } from "@/lib/types";
 // canonical optimal band, so it's not offered here.
 const FLAGS = ["normal", "high", "low", "abnormal"] as const;
 
-// The shared clinical-result form, for both the add slot (Readings page) and the
-// inline observation editor (document view + Readings rows). `mode` toggles which fields
+// The shared clinical-result form, for both the add slot (Clinical results page) and the
+// inline observation editor (document view + Clinical results rows). `mode` toggles which fields
 // show and the submit label: add mode carries the manual-entry field set (the
 // columns addResult reads); edit mode additionally exposes panel / flag / provider
 // (the columns updateResult writes). `action` is the server action to call —
@@ -60,7 +60,7 @@ export default function ResultForm({
   writeProfileId?: number;
   // Called after a successful submit — the row editor closes on it.
   onDone?: () => void;
-  // Category <select> options. Defaults to the full enum; the Readings page
+  // Category <select> options. Defaults to the full enum; the Clinical results page
   // passes its prescription-less list so a med can't be added/relabelled there.
   categories?: readonly string[];
   // Add mode: the initial date (today in the profile's tz) and category.
@@ -76,25 +76,11 @@ export default function ResultForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = mode === "edit";
   const uid = observation?.id ?? "new";
-  // The offered categories, plus the row's OWN category when it is one nothing may be
-  // filed under any more (#2479 part 2: the retired `biomarker` catch-all, on a row
-  // migration 185 could not classify). Without this the picker would silently
-  // re-file such a row onto whatever option happens to be first the next time anyone
-  // edits an unrelated field — the residue is meant to stay put until a human decides
-  // what it is, and this form is exactly where that decision gets made.
-  const current = observation?.category ?? null;
-  const categoryOptions = useMemo(
-    () =>
-      current && !categories.includes(current)
-        ? [current, ...categories]
-        : categories,
-    [categories, current]
-  );
   const [error, setError] = useState<string | null>(null);
   // The canonical-name field is a controlled Combobox (#1177), so form.reset() can't
   // clear it — the add path resets this state explicitly on a successful save.
   // Relevance-ranked, group-tagged canonical names (#1675) — same list, same order,
-  // in the Biomarkers add slot, the inline row editor, and the import mapping field.
+  // in the Clinical results add slot, the inline row editor, and the import mapping field.
   const canonicalOptions = useCanonicalNames();
   const canonicalNames = useMemo(
     () => canonicalOptions.map((option) => option.name),
@@ -199,9 +185,13 @@ export default function ResultForm({
           id={`rec-${uid}-category`}
           name="category"
           className="input capitalize"
-          defaultValue={observation?.category ?? defaultCategory ?? "lab"}
+          defaultValue={observation?.category ?? defaultCategory ?? ""}
+          required
         >
-          {categoryOptions.map((c) => (
+          {!observation?.category && !defaultCategory && (
+            <option value="">Choose category</option>
+          )}
+          {categories.map((c) => (
             <option key={c} value={c} className="capitalize">
               {c}
             </option>

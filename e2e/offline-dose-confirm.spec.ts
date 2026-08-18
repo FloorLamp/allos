@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { workerAuthPath } from "./worker-env";
+import { hydratedClick } from "./helpers";
 // #1427: a dose confirm tapped with no signal is queued and replayed through the
 // SAME write core every other confirm path uses (markDoseTaken), which answers with
 // a typed outcome. Two ends of that contract are driven here in the real app:
@@ -53,7 +54,10 @@ function morningRow(page: Page, name: string) {
 
 async function deleteIntakeItem(page: Page, name: string) {
   const row = morningRow(page, name);
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Supplement actions" })
+  );
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.locator("div.card").filter({ hasText: name })).toHaveCount(
@@ -127,6 +131,9 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
   // change racing the queued write, not a mocked response.
   const other = await browser.newContext({ storageState: AUTH_STATE });
   const otherPage = await other.newPage();
+  // offline-nav-ok: this navigation is the SECOND context's, which was never taken
+  // offline — the offline half of this test (the tap above) loads no shell at all, so
+  // the #3002 service-worker bypass has nothing to fake here.
   await otherPage.goto(`${origin}/nutrition?tab=supplements`);
   const otherRow = morningRow(otherPage, name);
   await otherRow.getByRole("button", { name: "Skip this dose" }).click();

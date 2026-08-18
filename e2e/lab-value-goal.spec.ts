@@ -100,7 +100,7 @@ test.describe("goals can target a lab value (#1853)", () => {
     });
     try {
       await page.goto(
-        `/results/readings/view?name=${encodeURIComponent(LAB_GOAL_TRACKED)}`
+        `/results/clinical-results/view?name=${encodeURIComponent(LAB_GOAL_TRACKED)}`
       );
       const goal = page.getByTestId("biomarker-goal");
       await expect(goal).toHaveCount(1);
@@ -171,9 +171,9 @@ test.describe("goals can target a lab value (#1853)", () => {
       // The unit label and the reference hint follow the picked analyte, so the
       // number is typed beside the thresholds the app already holds rather than
       // blind next to them.
-      await expect(page.getByTestId("goal-biomarker-reference")).toContainText(
-        /Reference/
-      );
+      await expect(
+        page.getByTestId("goal-clinical-result-reference")
+      ).toContainText(/Reference/);
 
       await hydratedClick(page, page.getByTestId("goal-direction-below"));
       await settledFill(page, page.getByLabel(/Target value/), "6.5");

@@ -53,7 +53,7 @@ export function seedImportFeed(): void {
   db.prepare(
     `INSERT INTO import_jobs
      (profile_id, type, status, summary, created_at, updated_at)
-   VALUES (?, 'biomarkers', 'ready', 'e2e: 4 readings',
+   VALUES (?, 'clinical-results', 'ready', 'e2e: 4 readings',
            '2026-07-08 11:00:00', '2026-07-08 11:00:00')`
   ).run(PROFILE_ID);
 
@@ -283,7 +283,7 @@ export function seedDerivedResultDrops(): void {
   ).run(
     DERIVED_DOC_ID,
     PROFILE_ID,
-    shaped.records.length,
+    shaped.observations.length,
     shaped.meta.importReport
   );
   const insertRecord = db.prepare(
@@ -291,7 +291,7 @@ export function seedDerivedResultDrops(): void {
      (profile_id, document_id, date, category, name, value, canonical_name, source)
    VALUES (?, ?, ?, ?, ?, ?, ?, 'upload')`
   );
-  for (const r of shaped.records)
+  for (const r of shaped.observations)
     insertRecord.run(
       PROFILE_ID,
       DERIVED_DOC_ID,
@@ -303,7 +303,7 @@ export function seedDerivedResultDrops(): void {
     );
 
   console.log(
-    `e2e: seeded import document ${DERIVED_DOC_ID} — ${shaped.records.length} kept rows and the derived-result drops the real shape pipeline produced (#2678)`
+    `e2e: seeded import document ${DERIVED_DOC_ID} — ${shaped.observations.length} kept rows and the derived-result drops the real shape pipeline produced (#2678)`
   );
 }
 

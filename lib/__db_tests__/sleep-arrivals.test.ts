@@ -67,7 +67,7 @@ function night(
     db
       .prepare(
         `INSERT INTO metric_samples
-           (profile_id, source, origin, metric, date, start_time, end_time, value)
+           (profile_id, source, origin, metric, date, started_at, ended_at, value)
          VALUES (?, ?, NULL, 'sleep_min', ?, ?, ?, ?)`
       )
       .run(
@@ -88,7 +88,7 @@ function syncRow(sampleId: number, at: Date): void {
   const eventId = Number(
     db
       .prepare(
-        `INSERT INTO integration_sync_events (profile_id, provider, at, ok, inserted)
+        `INSERT INTO integration_sync_events (profile_id, source_id, at, ok, inserted)
          VALUES (?, ?, ?, 1, 1)`
       )
       .run(profileId, PROVIDER, utcInstant(at)).lastInsertRowid
@@ -149,7 +149,7 @@ describe("getSleepArrivals — the rows, in the profile's own clock", () => {
     // A manually logged night has no arrival to measure. Absent is the right answer.
     db.prepare(
       `INSERT INTO metric_samples
-         (profile_id, source, origin, metric, date, start_time, end_time, value)
+         (profile_id, source, origin, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', NULL, 'sleep_min', '2026-07-24',
                '2026-07-23T23:00:00Z', '2026-07-24T06:00:00Z', 420)`
     ).run(profileId);

@@ -75,10 +75,10 @@ export function seedPassportSmalls(): void {
   // synthetic. Layered on profile 1 for the medical-smalls specs.
 
   // #381 — a STARRED genomics biomarker whose only reading is ~2 years old. The
-  // canonical name has no canonical_biomarkers row, so before the fix the pinned
+  // canonical name has no canonical_result_definitions row, so before the fix the pinned
   // tile judged staleness on the (null) canonical category and mislabelled a
   // genotype "stale"; after the fix it judges on the RECORD's 'genomics' category
-  // (never stale). The starred-biomarker-stale spec asserts the tile shows no
+  // (never stale). The starred-result-stale spec asserts the tile shows no
   // "stale" note.
   const APOE_MARKER = "E2E APOE Genotype";
   db.prepare(
@@ -90,10 +90,10 @@ export function seedPassportSmalls(): void {
    VALUES (?, '2023-05-01', 'genomics', ?, 'e3/e4', ?, 'manual')`
   ).run(PROFILE_ID, APOE_MARKER, APOE_MARKER);
   db.prepare(
-    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' AND key = ?`
+    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result' AND key = ?`
   ).run(PROFILE_ID, APOE_MARKER);
   db.prepare(
-    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)`
   ).run(PROFILE_ID, APOE_MARKER);
 
   // #516 — a positive durable-immunity antibody titer whose only reading is ~2 years
@@ -820,6 +820,57 @@ export function seedRecordsEnrichment(): void {
         `INSERT INTO procedures (profile_id, name, date, encounter_id, source)
        VALUES (?, ?, '2026-04-12', ?, 'manual')`
       ).run(reId, RECS_ENRICH_PROCEDURE, encId);
+      db.prepare(
+        `INSERT INTO conditions (profile_id, name, status, encounter_id, source)
+         VALUES (?, 'Meniscus tear (e2e)', 'active', ?, 'manual')`
+      ).run(reId, encId);
+      db.prepare(
+        `INSERT INTO family_history
+           (profile_id, relation, condition, onset_age, source)
+         VALUES (?, 'mother', 'Breast cancer', 42, 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO care_plan_items
+           (profile_id, description, planned_date, status, source)
+         VALUES (?, 'Colonoscopy screening (e2e)', '2026-09-10', 'planned', 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO care_goals
+           (profile_id, description, code, target_date, status, source)
+         VALUES (?, 'Preventive target (e2e)', 'colonoscopy', '2026-09-10', 'active', 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO care_goals
+           (profile_id, description, target_date, status, source)
+         VALUES (?, 'Colonoscopy completed goal (e2e)', '2026-09-10', 'achieved', 'manual')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO appointments
+           (profile_id, date, title, status, kind)
+         VALUES (?, '2026-09-10', 'Colonoscopy screening', 'scheduled', 'screening')`
+      ).run(reId);
+      db.prepare(
+        `INSERT INTO imaging_studies
+           (profile_id, modality, body_region, study_date, encounter_id, source)
+         VALUES (?, 'mri', 'Knee (e2e)', '2026-04-12', ?, 'manual')`
+      ).run(reId, encId);
+      db.prepare(
+        `INSERT INTO immunizations
+           (profile_id, vaccine, date, encounter_id, source)
+         VALUES (?, 'influenza', '2026-04-12', ?, 'manual')`
+      ).run(reId, encId);
+      const episodeId = Number(
+        db
+          .prepare(
+            `INSERT INTO illness_episodes (profile_id, situation, start_date)
+             VALUES (?, 'Knee recovery (e2e)', '2026-04-12')`
+          )
+          .run(reId).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO episode_encounters (profile_id, episode_id, encounter_id)
+         VALUES (?, ?, ?)`
+      ).run(reId, episodeId, encId);
     }
     seedMemberLogin(E2E_LOGIN_RECS_ENRICH, reId, "write");
     console.log(
@@ -1024,7 +1075,7 @@ export function seedPanelIndex(): void {
   const pid = fixtureProfileId(PANEL_INDEX_PROFILE);
   db.prepare(`DELETE FROM medical_records WHERE profile_id = ?`).run(pid);
   db.prepare(
-    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'`
+    `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'clinical-result'`
   ).run(pid);
   db.prepare(
     `DELETE FROM profile_settings WHERE profile_id = ? AND key IN ('sex', 'birthdate')`
@@ -1115,7 +1166,7 @@ export function seedPanelIndex(): void {
     "Thyroid-Stimulating Hormone (TSH)",
   ];
   const star = db.prepare(
-    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+    `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)`
   );
   for (const name of starred) star.run(pid, name);
 

@@ -10,6 +10,10 @@ export function saveOutcomeMessage(
   reason: Extract<SaveActivityOutcome, { ok: false }>["reason"]
 ): string {
   switch (reason) {
+    case "training-unavailable":
+      return "Workout logging isn’t available for this profile’s age.";
+    case "strength-unavailable":
+      return "Strength workouts aren’t available for this profile’s age.";
     case "not-owned":
       // The untrusted form id isn't the active profile's — e.g. an auto-save
       // fired after a profile switch or from a stale tab. Reopening reloads a
@@ -19,10 +23,5 @@ export function saveOutcomeMessage(
       // Title/date failed the server-side guard (the client gate normally
       // prevents this; belt-and-suspenders if a bad value slips through).
       return "Couldn’t save — check the title and date.";
-    case "restricted":
-      // The active profile is below the instance's minimum training age (#488) —
-      // activity logging is unavailable for it (the view/edit surfaces are hidden),
-      // so the create path refuses rather than persisting an unreachable row.
-      return "Couldn’t save — activity logging isn’t available for this profile.";
   }
 }

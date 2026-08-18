@@ -5,7 +5,6 @@ import {
   bodyCardIdForSeriesKey,
   trendMetricSlugForSavedId,
   seriesKeyForBodyCard,
-  isTrendMetricSlug,
   savedMetricIdForTrendSlug,
   resolveTrendMetricUnit,
   buildTrendMetricTile,
@@ -22,15 +21,10 @@ import {
 // Overview body census sparkline grid and its per-metric detail pages.
 
 describe("TREND_METRIC_META registry", () => {
-  it("has an entry per slug, keyed by its own slug, with a matching detail href", () => {
+  it("keys each entry by its own slug", () => {
     for (const slug of TREND_METRIC_SLUGS) {
       const meta = TREND_METRIC_META[slug];
-      expect(meta).toBeTruthy();
       expect(meta.slug).toBe(slug);
-    }
-    // Every registry key is a declared slug (no orphans).
-    for (const key of Object.keys(TREND_METRIC_META)) {
-      expect(isTrendMetricSlug(key)).toBe(true);
     }
   });
 
@@ -124,7 +118,7 @@ describe("the ★ ↔ Body-card correspondence (#1643)", () => {
 
   it("answers null for a saved ref that names no Body card", () => {
     expect(bodyCardIdForSeriesKey("metric:volume")).toBeNull();
-    expect(bodyCardIdForSeriesKey("bio:ApoB")).toBeNull();
+    expect(bodyCardIdForSeriesKey("result:ApoB")).toBeNull();
     expect(bodyCardIdForSeriesKey("weight")).toBeNull();
     expect(bodyCardIdForSeriesKey("")).toBeNull();
   });

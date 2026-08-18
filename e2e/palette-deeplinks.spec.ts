@@ -173,13 +173,13 @@ test.beforeAll(() => {
 
 test.afterAll(cleanup);
 
-test("a ride hit picked FROM /training navigates to its ride detail", async ({
+test("a ride hit picked FROM /training navigates to its activity detail", async ({
   page,
 }) => {
   test.slow();
   // Starting on /training is load-bearing: it is the one surface where the old
   // constant `/training` href made the bug invisible.
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
   const input = await openCommandPalette(page);
   await input.fill(ACTIVITY_MARKER);
@@ -191,10 +191,10 @@ test("a ride hit picked FROM /training navigates to its ride detail", async ({
     .first(); // first-ok: filtered to a marker THIS spec planted — exactly one activity carries it
   await expect(hit).toBeVisible();
 
-  // The destination, not merely "the palette closed": the per-record ride URL.
-  await followLink(page, hit, new RegExp(`/training/rides/${activityId}$`));
+  // The destination, not merely "the palette closed": the canonical record URL.
+  await followLink(page, hit, new RegExp(`/training/activity/${activityId}$`));
 
-  await expect(page.getByTestId("ride-detail")).toBeVisible();
+  await expect(page.getByTestId("training-activity-page")).toBeVisible();
   await expect(page.getByRole("main")).toContainText(ACTIVITY_MARKER);
 });
 

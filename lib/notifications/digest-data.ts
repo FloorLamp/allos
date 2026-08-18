@@ -5,6 +5,7 @@
 // profile from the notify tick; hard-deduped to one send per profile per day.
 
 import { db, today } from "../db";
+import { now } from "../clock";
 import { shiftDateStr, zonedDateParts } from "../date";
 import {
   getIntakeItems,
@@ -39,6 +40,8 @@ import { dismissedSignalKeys, findingProminence } from "../dismissal-fatigue";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { getOutdoorPlans } from "../queries/weather-training";
 import { trainingPaceLine } from "../queries/upcoming/plans";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "../life-stage";
+import { getProfileAge } from "../settings/profile-attrs";
 import { collectRecentChanges } from "../queries/recent-changes";
 import { getLightExposureLine } from "../queries/light-exposure";
 import { getStepsDigestLines } from "../queries/steps-target";
@@ -250,9 +253,15 @@ export function gatherDigestSleep(
 // the weekly recap and the Trends fitness lens read (#221), asked at a one-day window:
 // their `within` is inclusive at both ends, so `withinDays = 0` means exactly `date`.
 // Strength records are read per LOAD CONTEXT (#1610), matching the recap.
-export function personalRecordsOn(profileId: number, date: string): number {
+export function personalRecordsOn(
+  profileId: number,
+  date: string,
+  strengthTrainingRelevant = true
+): number {
   return (
-    recentPRs(getStrengthByExercise(profileId, true), date, 0).length +
+    (strengthTrainingRelevant
+      ? recentPRs(getStrengthByExercise(profileId, true), date, 0).length
+      : 0) +
     recentCardioPRs(getCardioByActivity(profileId, "km"), date, 0).length
   );
 }
@@ -305,6 +314,9 @@ export function gatherDigestInput(
 ): DigestInput {
   const td = today(profileId);
   const yd = shiftDateStr(td, -1);
+  const age = getProfileAge(profileId);
+  const trainingRelevant = isTrainingRelevant(age);
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
 
   // Per-category demotion (#1714). One message, N readers: the preference is stored
   // per LOGIN, so what applies to this profile's single digest is the conservative
@@ -316,9 +328,9 @@ export function gatherDigestInput(
   const sleep = gatherDigestSleep(profileId, demoted);
 
   const active = getIntakeItems(profileId).filter((s) => s.active);
-  const suppById = new Map(active.map((s) => [s.id, s]));
+  const itemById = new Map(active.map((item) => [item.id, item]));
   const doses = getIntakeDoses(profileId).filter((d) =>
-    suppById.has(d.item_id)
+    itemById.has(d.item_id)
   );
   // Per-day situation resolver (#654): "today" sees the current set (no events after
   // today), while yesterday's adherence is scored against the situations active THAT
@@ -334,7 +346,7 @@ export function gatherDigestInput(
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
     return doses
       .filter((d) =>
-        doseDueOn(suppById.get(d.item_id)!, d, {
+        doseDueOn(itemById.get(d.item_id)!, d, {
           date,
           isWorkoutDay,
           activeSituations: situationsOn(date),
@@ -345,8 +357,8 @@ export function gatherDigestInput(
   };
 
   // Today: the MERGED "what's due" list (issue #1108). ONE engine (#221) — the
-  // banded collectUpcoming, which already drops snoozed/dismissed items and
-  // training items for an age-restricted profile, and whose dose items carry the
+  // banded collectUpcoming, which already drops snoozed/dismissed items and whose
+  // dose items carry the
   // #558 predicted-training-day dueness. This REPLACES the digest's own dueDoseIds /
   // frequency-target computation, so the morning message and the Upcoming page/hero
   // can't disagree, and a page dismissal finally silences the digest too.
@@ -419,7 +431,11 @@ export function gatherDigestInput(
   const doseCount = todayDoseIds.length;
 
   // Yesterday: activities, supplement adherence x/y, weight if logged.
-  const loggedActivities = getActivitiesByDate(profileId, yd);
+  const loggedActivities = trainingRelevant
+    ? getActivitiesByDate(profileId, yd).filter(
+        (activity) => strengthTrainingRelevant || activity.type !== "strength"
+      )
+    : [];
   // Per-category demotion (#1714/#1797): a demoted Activities section survives only on
   // a day that set a personal record — the SAME recentPRs/recentCardioPRs
   // classification the weekly recap renders, never a second threshold. The PR reads
@@ -427,7 +443,7 @@ export function gatherDigestInput(
   // filter, so an undemoted digest costs exactly what it did before.
   const prCount =
     demoted.includes("activities") && loggedActivities.length > 0
-      ? personalRecordsOn(profileId, yd)
+      ? personalRecordsOn(profileId, yd, strengthTrainingRelevant)
       : 0;
   const activities: DigestActivity[] = activitiesSurviveDemotion(
     demoted,
@@ -454,7 +470,7 @@ export function gatherDigestInput(
       [...todayDoseIds, ...yDue]
         .map((id) => doseById.get(id))
         .filter((d): d is (typeof doses)[number] => d != null)
-        .map((d) => suppById.get(d.item_id)!.kind)
+        .map((d) => itemById.get(d.item_id)!.kind)
     ),
   ];
 
@@ -630,13 +646,13 @@ export function gatherDigestInput(
     // the tick re-labels it at each boundary and the expansion re-scopes at tap, so a
     // morning-born keyboard never offers breakfast items at bedtime.
     ...(() => {
-      const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+      const nowHhmm = zonedDateParts(getTimezone(profileId), now()).hhmm;
       const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
       return {
         offerCount: offered.length,
         offerTail:
           offered.length > 0
-            ? collapsedOfferAction(profileId, td, nowHhmm, offered.length)
+            ? collapsedOfferAction(profileId, td, offered.length)
             : null,
       };
     })(),
@@ -696,29 +712,92 @@ export function gatherDigestInput(
     // row reads (`getDigestTimeSuggestion`), so the two surfaces are one finding under
     // one episode key: a tap on either exit silences both. Null on every ordinary
     // morning, and null the moment the episode is dismissed.
-    ...(() => {
-      const timing = getDigestTimeSuggestion(profileId);
-      // …and dropped from THIS message once its topic has been declined across separate
-      // raisings (#2543). The family is the CONFIGURED minute, so the count only grows
-      // when the ratchet re-armed and the person said no to a materially later proposal
-      // a second time — at which point asking again on the morning message is the exact
-      // behaviour #2386 exists to stop. The Settings row is unaffected and keeps
-      // offering the same three exits: this reduces where the question is asked, never
-      // whether it can be answered.
-      const quieted =
-        timing != null &&
-        findingProminence(
-          digestTimeSuggestionFinding(timing),
-          dismissedSignalKeys(getFindingSuppressions(profileId))
-        ) !== "routine";
-      return timing && !quieted
-        ? {
-            timeSuggestionLine: digestTimeSuggestionLine(timing),
-            timeActions: digestTimeActions(profileId, td, timing),
-          }
-        : {};
-    })(),
+    ...digestTimeTail(profileId, td),
   };
+}
+
+// The digest TIME suggestion's line and its three exits (#2217), or {} when there is no
+// live suggestion to raise.
+//
+// EXTRACTED so the SEND and the collapsed keyboard REBUILD are one computation (#221,
+// #2890). The rebuild has to re-emit these buttons — they ride the same keyboard as the
+// two tail controls — and deriving them beside a second copy of this gate is exactly how
+// the two would drift.
+export function digestTimeTail(
+  profileId: number,
+  date: string
+): Pick<DigestInput, "timeSuggestionLine" | "timeActions"> {
+  const timing = getDigestTimeSuggestion(profileId);
+  // …and dropped from THIS message once its topic has been declined across separate
+  // raisings (#2543). The family is the CONFIGURED minute, so the count only grows
+  // when the ratchet re-armed and the person said no to a materially later proposal
+  // a second time — at which point asking again on the morning message is the exact
+  // behaviour #2386 exists to stop. The Settings row is unaffected and keeps
+  // offering the same three exits: this reduces where the question is asked, never
+  // whether it can be answered.
+  const quieted =
+    timing != null &&
+    findingProminence(
+      digestTimeSuggestionFinding(timing),
+      dismissedSignalKeys(getFindingSuppressions(profileId))
+    ) !== "routine";
+  return timing && !quieted
+    ? {
+        timeSuggestionLine: digestTimeSuggestionLine(timing),
+        timeActions: digestTimeActions(profileId, date, timing),
+      }
+    : {};
+}
+
+// ---- THE DIGEST'S COLLAPSED KEYBOARD, IN ONE PLACE (#2890) ------------------
+//
+// The digest ships `[offerTail, tuneTail, ...timeActions]`. THREE separate paths rebuild
+// that keyboard — the slot-boundary refresh, the ➕ collapse tap and the ⚙️ collapse tap —
+// and they disagreed with each other and with the send:
+//
+//   • the refresh emitted the offer tail only when something was on offer and Tune only
+//     when something was tunable, so an ordinary quiet profile got `[]` — the WHOLE
+//     keyboard stripped off a message that shipped with buttons. That is the same defect
+//     #2890 decision 3 set out to fix, surviving in the state neither guard covered;
+//   • the ➕ collapse emitted the offer tail unconditionally and Tune conditionally;
+//   • the ⚙️ collapse emitted Tune unconditionally and the offer tail conditionally;
+//   • and ALL THREE dropped the #2217 time exits, because they rebuilt two thirds of a
+//     three-part keyboard. `updateMessageKeyboard` is a wholesale replace that also
+//     rewrites the stored pointer, so those buttons died in the chat AND in the record.
+//
+// ONE FUNCTION now answers "what is this digest's collapsed keyboard, right now", and
+// every rebuild calls it. The rule:
+//
+//   1. THE OFFER TAIL IS UNCONDITIONAL. It is the GUARANTEED access path (#1505) — the
+//      one affordance always correct to offer — and its zero arm ("➕ Doses", no count)
+//      exists for exactly this. Unconditional is also what makes an empty keyboard
+//      structurally impossible, which is the invariant the per-control guards could not
+//      hold. This governs the REBUILD only; what a digest SENDS is untouched, so no
+//      message's existence or timing changes.
+//   2. ⚙️ Tune appears while the digest has something to tune (#1714) — a control with no
+//      subject is not offered. Recomputed here, which is what the collapse path already
+//      did.
+//   3. The #2217 time exits ride along from `digestTimeTail` — the same computation the
+//      send used, never a second copy.
+//
+// It always resets to COLLAPSED: an expanded list from a previous slot offers items that
+// are no longer on offer, so closing it is more honest than leaving it open.
+export function collapsedDigestActions(
+  profileId: number,
+  date: string,
+  nowHhmm: string
+): NotificationAction[] {
+  return [
+    collapsedOfferAction(
+      profileId,
+      date,
+      getOfferedIntakeForSlot(profileId, nowHhmm).length
+    ),
+    ...(digestTunableCategories(profileId, date).length > 0
+      ? [collapsedTuneAction(profileId, date)]
+      : []),
+    ...(digestTimeTail(profileId, date).timeActions ?? []),
+  ];
 }
 
 // The collapsed ⚙️ Tune action for today's message, or null when the message carries
@@ -773,10 +852,18 @@ export function digestTunableCategories(
     exclude: ["labs"],
   });
   const yesterday = shiftDateStr(date, -1);
+  const age = getProfileAge(profileId);
+  const trainingRelevant = isTrainingRelevant(age);
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
+  const hasActivities =
+    trainingRelevant &&
+    getActivitiesByDate(profileId, yesterday).some(
+      (activity) => strengthTrainingRelevant || activity.type !== "strength"
+    );
   return tunableFrom(
     recent.presentCategories,
     gatherDigestSleep(profileId),
-    getActivitiesByDate(profileId, yesterday).length > 0,
+    hasActivities,
     gatherDigestNutrition(profileId, yesterday).shortfalls.length > 0
   );
 }
@@ -1088,7 +1175,7 @@ export async function refreshDigestOfferTail(profileId: number): Promise<void> {
   const pointer = getDigestTailPointer(profileId);
   if (!pointer) return;
   const date = today(profileId);
-  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+  const nowHhmm = zonedDateParts(getTimezone(profileId), now()).hhmm;
 
   if (pointer.date !== date) {
     // Day rollover: yesterday's keyboard must not stay tappable, because its tokens
@@ -1110,11 +1197,11 @@ export async function refreshDigestOfferTail(profileId: number): Promise<void> {
   }
   if (!offerTailNeedsRefresh(pointer.renderedAt, nowHhmm)) return;
 
-  const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
-  const actions =
-    offered.length > 0
-      ? [collapsedOfferAction(profileId, date, nowHhmm, offered.length)]
-      : [];
+  // IT REBUILDS THE DIGEST'S WHOLE COLLAPSED KEYBOARD (#2890 decision 3), through the
+  // one function every other rebuild path calls — offer tail, ⚙️ Tune and the #2217 time
+  // exits. `updateMessageKeyboard` is a wholesale replace that also rewrites the stored
+  // pointer, so anything this omits dies in the chat and in the record alike.
+  const actions = collapsedDigestActions(profileId, date, nowHhmm);
   try {
     await updateMessageKeyboard(
       profileId,

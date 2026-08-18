@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
-import canonicalSeed from "./canonical-biomarkers.json";
+import canonicalSeed from "./canonical-result-definitions.json";
 
 // Bump when reconciledFlag's derivation LOGIC changes (e.g. how it maps a value
 // to high/low/non-optimal), so existing records are re-flagged on the next boot
 // even when the canonical dataset itself is unchanged.
-// v2: seedCanonicalBiomarkers now promotes AI-discovered rows to curated ranges
+// v2: seedCanonicalResultDefinitions now promotes AI-discovered rows to curated ranges
 // when the JSON lists them, and count/enzyme unit equivalence was fixed — both
 // change which readings convert and flag, so force one re-reconcile.
 // v3: age-banded reference ranges (ranges_by_age) — flags are now derived against
@@ -50,7 +50,19 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // per row today — no re-reconcile can reach it — so every stored qualitative row must
 // re-reconcile once for the guesses already on disk to clear. The pass MUTATES stored
 // clinical flags and reports what it touched (see reconcileNonOptimalFlags's audit line).
-export const FLAG_LOGIC_VERSION = 10;
+// v11: two derivation-LOGIC changes in one pass, with the dataset held still.
+// (a) Pediatric blood pressure (#2794) — reconciledFlag now DECLINES to judge a BP
+// component for a subject under PEDIATRIC_BP_MAX_AGE, deferring to the AAP 2017
+// age/sex/height percentile the biomarker page already renders, and CLEARS the
+// adult-band high/low/non-optimal-* it used to store. Every pediatric BP row already on
+// disk carries that wrong claim — a toddler's normal 54 mmHg diastolic reads "low" on
+// the passport, the readings table and the timeline's out-of-range count — and nothing
+// else would re-derive it, because no curated range moved. (b) The lab-stated flag
+// (#2799) — the "unknown" branch now emits `reported-high` / `reported-low` from the
+// row's OWN printed reference range, for an analyte the catalog publishes no band for,
+// so a microalbumin 44 mg/g beside a printed `<30` stops rendering unmarked everywhere.
+// One pass covers both; the signature's dataset half would not move for either.
+export const FLAG_LOGIC_VERSION = 11;
 
 // The canonical fields that can change a record's derived flag: the reference and
 // optimal ranges (incl. sex-specific and age-banded variants), the unit +
@@ -94,11 +106,11 @@ type RangeRow = Record<string, unknown>;
 // so the signature is stable across boots and insensitive to key order or
 // cosmetic edits.
 export function canonicalFlagsSignature(
-  biomarkers: RangeRow[] = (canonicalSeed as { biomarkers?: RangeRow[] })
-    .biomarkers ?? [],
+  definitions: RangeRow[] = (canonicalSeed as { definitions?: RangeRow[] })
+    .definitions ?? [],
   logicVersion: number = FLAG_LOGIC_VERSION
 ): string {
-  const rows = biomarkers
+  const rows = definitions
     .map((b) =>
       FLAG_RELEVANT_FIELDS.map((f) => (b[f] === undefined ? null : b[f]))
     )

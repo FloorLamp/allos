@@ -7,7 +7,7 @@
 // reserved-key discipline: `__protein__` is EXCLUDED from every food-GROUP code path —
 //   • the catalog (FOOD_GROUPS / foodGroupSlugs): it's not in the dataset JSON, and
 //     canonicalFoodGroup() rejects it, so a forged food-log token for it lands nothing;
-//   • the food_log day counter + the serving tally line (its contribution is the day's
+//   • the food_daily_totals day counter + the serving tally line (its contribution is the day's
 //     protein GRAMS, shown on its own line, never mixed into "✅ Today: Leafy greens ×2");
 //   • dietary-exclusion demotion (#975) and any group-semantics — it has no group.
 // The double-underscore form cannot collide with a catalog slug (snake_case, no leading
@@ -15,7 +15,7 @@
 
 import { GLYPH } from "./notifications/glyphs";
 
-// The reserved key written to food_log_events (never to food_log) for a protein log.
+// The reserved key written to food_log_events (never to food_daily_totals) for a protein log.
 export const PROTEIN_NUDGE_KEY = "__protein__";
 
 // True for the reserved protein pseudo-group key. The one predicate every food-group

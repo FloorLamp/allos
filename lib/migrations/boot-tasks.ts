@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import crypto from "node:crypto";
-import canonicalSeed from "../canonical-biomarkers.json";
+import canonicalSeed from "../canonical-result-definitions.json";
 import {
   computeFlagReconciliation,
   computeQualitativeFlagChanges,
@@ -33,7 +33,7 @@ import { createLogger } from "../log";
 //                                  creates the bootstrap admin/profile only when
 //                                  missing. Env-dependent => never deterministic,
 //                                  so it can't be a frozen migration.
-//   • seedCanonicalBiomarkers    — re-UPSERTs canonical_biomarkers from the
+//   • seedCanonicalResultDefinitions    — re-UPSERTs canonical_result_definitions from the
 //                                  committed JSON so a range edit shipped in a
 //                                  release with NO schema change still propagates
 //                                  to existing DBs on the next boot. Same
@@ -90,8 +90,8 @@ import { createLogger } from "../log";
 // born profile_id NOT NULL and every write path supplies it, so NULL rows cannot
 // exist and the task was dropped with the rest of the legacy upgrade machinery.)
 //
-// Order matters only in that bootstrapAuth (profile 1) and seedCanonicalBiomarkers
-// (the canonical_biomarkers rows) must precede the flag reconcile, which reads
+// Order matters only in that bootstrapAuth (profile 1) and seedCanonicalResultDefinitions
+// (the canonical_result_definitions rows) must precede the flag reconcile, which reads
 // both. This mirrors the relative order these calls had in the pre-runner
 // migrate() tail.
 export function bootTasks(db: Database.Database): void {
@@ -111,9 +111,9 @@ export function bootTasks(db: Database.Database): void {
   // before the flag reconcile references it.
   bootstrapAuth(db);
 
-  // Re-sync the canonical_biomarkers table from the committed JSON so range edits
+  // Re-sync the canonical_result_definitions table from the committed JSON so range edits
   // propagate to existing DBs on boot (see the module header).
-  seedCanonicalBiomarkers(db);
+  seedCanonicalResultDefinitions(db);
 
   // Retire ai-coined vocabulary rows the dataset has since superseded — a spelling
   // another entry already outranks, or one whose key a curated CANONICAL_ALIASES
@@ -128,7 +128,7 @@ export function bootTasks(db: Database.Database): void {
 
   // Re-derive every record's flag against the canonical ranges, but only when
   // those ranges (or the flag-derivation logic) have actually changed since the
-  // last run — so editing lib/canonical-biomarkers.json propagates to existing
+  // last run — so editing lib/canonical-result-definitions.json propagates to existing
   // records on the next boot, without a full re-scan on every startup.
   reconcileFlagsIfCanonicalChanged(db);
 
@@ -530,15 +530,15 @@ export function seedSmtpFromEnv(db: Database.Database) {
   );
 }
 
-// Seed the canonical_biomarkers table from the committed JSON dataset. The JSON
+// Seed the canonical_result_definitions table from the committed JSON dataset. The JSON
 // is the source of truth for any name it lists, so this UPSERTs: a missing row is
 // inserted, and an existing row is refreshed to match the JSON (so edits to
 // ranges — including the sex-specific bands — propagate to existing DBs on
 // startup). A name present in the JSON also promotes the row to source='seed',
 // so a biomarker first discovered by AI (source='ai') adopts curated ranges
 // once the JSON gains an entry for it. Idempotent.
-export function seedCanonicalBiomarkers(db: Database.Database) {
-  const rows = (canonicalSeed as { biomarkers?: any[] }).biomarkers ?? [];
+export function seedCanonicalResultDefinitions(db: Database.Database) {
+  const rows = (canonicalSeed as { definitions?: any[] }).definitions ?? [];
   if (rows.length === 0) return;
   // bootTasks is version-agnostic and can run against a schema that predates the
   // migration 068 `ranges_by_cycle_phase` column (an early-revision migration test
@@ -546,12 +546,12 @@ export function seedCanonicalBiomarkers(db: Database.Database) {
   // exists, mirroring the qual-pass loinc guard (#684); otherwise fall back to the
   // pre-#718 column set so the older schema still seeds.
   const hasCyclePhase = (
-    db.prepare(`PRAGMA table_info(canonical_biomarkers)`).all() as {
+    db.prepare(`PRAGMA table_info(canonical_result_definitions)`).all() as {
       name: string;
     }[]
   ).some((c) => c.name === "ranges_by_cycle_phase");
   const insert = db.prepare(
-    `INSERT INTO canonical_biomarkers
+    `INSERT INTO canonical_result_definitions
        (name, category, unit, ref_low, ref_high,
         ref_low_male, ref_high_male, ref_low_female, ref_high_female,
         optimal_low, optimal_high,
@@ -665,7 +665,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   // is version-agnostic and can run against an earlier-revision schema (a migration
   // test that boots a subset). Mirrors the loinc guard below.
   const hasCyclePhase = (
-    db.prepare(`PRAGMA table_info(canonical_biomarkers)`).all() as {
+    db.prepare(`PRAGMA table_info(canonical_result_definitions)`).all() as {
       name: string;
     }[]
   ).some((c) => c.name === "ranges_by_cycle_phase");
@@ -677,7 +677,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
               optimal_low_male, optimal_high_male, optimal_low_female, optimal_high_female,
               direction, ranges_by_age, ranges_by_status
               ${hasCyclePhase ? ", ranges_by_cycle_phase" : ""}
-       FROM canonical_biomarkers`
+       FROM canonical_result_definitions`
     )
     .all() as Record<string, unknown>[];
   const byName = new Map(cbs.map((c) => [String(c.name).toLowerCase(), c]));
@@ -707,10 +707,26 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   };
   const readBirthdate = (profileId: number) =>
     readProfileOrLegacy(profileId, "birthdate") ?? null;
+  // MUST MATCH getStoredAge (lib/settings/profile-attrs.ts) EXACTLY. This is the
+  // boot-time twin of that read, and its value feeds the SAME pure
+  // computeFlagReconciliation the request path uses — so any disagreement between the
+  // two makes a row's stored `flag` a function of which pass ran last, which is the
+  // one thing the comment on that call promises cannot happen.
+  //
+  // Issue #2992 fixed the bound in one of the two and this copy was missed, which is
+  // worse than the original defect: while both readers were equally blind a newborn
+  // simply kept its adult-band flags, but a half-fixed pair has request-time CLEARING
+  // an adult ALP/BP claim off an infant's row and the next boot reconcile writing it
+  // straight back. Both halves are here for the same reason they are in getStoredAge:
+  //   • `n >= 0` — an infant's age in whole years IS 0, and 0 must not read as "unknown".
+  //   • the blank/trim guard BEFORE Number() — `Number("")` and `Number("   ")` are
+  //     both 0, so the bound alone would make an empty value read as an infant. The
+  //     old `n > 0` masked that by accident; porting only the bound reintroduces it.
   const readAge = (profileId: number) => {
-    const v = readProfileOrLegacy(profileId, "age");
-    const n = v != null ? Number(v) : NaN;
-    return Number.isInteger(n) && n > 0 && n < 150 ? n : null;
+    const v = readProfileOrLegacy(profileId, "age")?.trim();
+    if (!v) return null;
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 0 && n < 150 ? n : null;
   };
   // Reproductive (menopausal) status: female physiology only, overrides the age
   // proxy for the reproductive hormones. Per-profile; no legacy global fallback.
@@ -766,7 +782,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
   const rowsStmt = db.prepare(
     `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
        WHERE profile_id = ? AND canonical_name IS NOT NULL AND value_num IS NOT NULL
-         AND (flag IS NULL OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low'))`
+         AND (flag IS NULL OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low','reported-high','reported-low'))`
   );
   const setFlag = db.prepare(
     "UPDATE medical_records SET flag = ? WHERE id = ?"
@@ -800,7 +816,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
             ${hasLoinc ? "loinc" : "NULL AS loinc"},
             ${hasEdited ? "edited" : "0 AS edited"}
        FROM medical_records
-      WHERE value_num IS NULL AND category IN ('lab','biomarker')`
+      WHERE value_num IS NULL AND category = 'lab'`
   );
 
   // What this pass TOUCHED. It rewrites stored clinical flags on every profile's

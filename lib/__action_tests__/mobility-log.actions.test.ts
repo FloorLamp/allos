@@ -1,5 +1,5 @@
 // SERVER-ACTION TIER — the mobility tap-the-moves log (issue #840). A mobility session is
-// ONE `activities` row of type `recovery` per (profile, date); toggling a move updates its
+// ONE `activities` row of type `mobility` per (profile, date); toggling a move updates its
 // `components`, and the row is deleted when the session empties. Asserts the auth-gated
 // action write path end-to-end against the real temp DB.
 
@@ -12,6 +12,7 @@ import {
   setMobilityDuration,
 } from "@/app/(app)/training/mobility-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
 
 const DATE = "2026-07-10";
 
@@ -19,7 +20,7 @@ function recoveryRows(profileId: number) {
   return db
     .prepare(
       `SELECT id, type, title, components, duration_min FROM activities
-         WHERE profile_id = ? AND type = 'recovery' ORDER BY id`
+         WHERE profile_id = ? AND type = 'mobility' ORDER BY id`
     )
     .all(profileId) as {
     id: number;
@@ -31,7 +32,20 @@ function recoveryRows(profileId: number) {
 }
 
 describe("mobility log actions", () => {
-  it("logs a move into one recovery activity row, idempotently", async () => {
+  it("refuses a new mobility session through early childhood", async () => {
+    const login = createLogin();
+    const profile = createProfile("toddler-mobility", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 2);
+
+    const result = await logMobilityMove(
+      fd({ move: "pigeon_pose", date: DATE })
+    );
+    expect(result.ok).toBe(false);
+    expect(recoveryRows(profile.id)).toEqual([]);
+  });
+
+  it("logs a move into one mobility activity row, idempotently", async () => {
     const login = createLogin();
     const profile = createProfile("mobility-log", login.id);
     actAs(login, profile);
@@ -42,14 +56,14 @@ describe("mobility log actions", () => {
 
     const rows = recoveryRows(profile.id);
     expect(rows.length).toBe(1);
-    expect(rows[0].type).toBe("recovery");
+    expect(rows[0].type).toBe("mobility");
     // Components store the DISPLAY name (so the training log renders "Pigeon pose"); the slug
     // identity is recovered on read (session.moves is the canonical slug).
     const comps = JSON.parse(rows[0].components ?? "[]");
     expect(comps).toEqual([
       {
         name: "Pigeon pose",
-        type: "recovery",
+        type: "mobility",
         distance_km: null,
         duration_min: null,
       },

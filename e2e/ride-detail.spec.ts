@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, hydratedClick } from "./helpers";
+import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 import {
@@ -7,19 +8,29 @@ import {
   summarizeCyclingStreams,
 } from "@/lib/cycling-stream-summary";
 
+// The Log feed renders slim rows (#2897): a ride's ROW is a button that opens
+// the reading pane (desktop) or expands in place (phones), and the ride's
+// title link — activity-detail-link — lives on the full record card there. Select
+// the titled ride's row (hydratedClick: a pure client toggle whose first
+// post-goto click can land pre-hydration) and return the record card that
+// mounted, so the detail link is read from where it now renders.
+async function openRideRecord(page: Page, title: string) {
+  const row = page.getByTestId("training-log-row").filter({ hasText: title });
+  await hydratedClick(page, row);
+  return page.locator(".card", { hasText: title });
+}
+
 test("a Training Log ride opens a read-first detail with the stored ride measurements", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
-  const stravaCard = page.locator(".card", {
-    hasText: "Strava morning ride",
-  });
-  const detailLink = stravaCard.getByTestId("ride-detail-link");
-  await expect(detailLink).toHaveAttribute("href", /\/training\/rides\/\d+/);
-  await followLink(page, detailLink, /\/training\/rides\/\d+$/);
+  const stravaCard = await openRideRecord(page, "Strava morning ride");
+  const detailLink = stravaCard.getByTestId("activity-detail-link");
+  await expect(detailLink).toHaveAttribute("href", /\/training\/activity\/\d+/);
+  await followLink(page, detailLink, /\/training\/activity\/\d+$/);
 
-  const rideDetail = page.getByTestId("ride-detail");
+  const rideDetail = page.getByTestId("training-activity-page");
   await expect(rideDetail).toBeVisible();
   await expect(rideDetail).toHaveClass(/mx-auto/);
   const detailBox = await rideDetail.boundingBox();
@@ -36,7 +47,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
     )
   ).toBeLessThanOrEqual(2);
   await expect(page.getByTestId("ride-summary")).toHaveClass(/card/);
-  const sectionNavigation = page.getByTestId("ride-section-navigation");
+  const sectionNavigation = page.getByTestId("activity-section-navigation");
   await expect(sectionNavigation).toBeVisible();
   for (const section of ["Overview", "Effort", "Course", "Details"]) {
     await expect(
@@ -47,7 +58,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
     await page
       .getByTestId("ride-summary")
       .evaluate(
-        (element) => element.closest('[data-testid^="ride-section-"]')?.id
+        (element) => element.closest('[data-testid^="activity-section-"]')?.id
       )
   ).toBe("overview");
   await expect(page.getByTestId("ride-recorded-measurements")).toBeVisible();
@@ -101,22 +112,22 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
     "648 kcal"
   );
   await expect(page.getByTestId("ride-stat-bike")).toContainText("Road Bike");
-  const highlights = page.getByTestId("ride-highlights");
+  const highlights = page.getByTestId("session-highlights");
   await expect(highlights).toBeVisible();
-  await expect(page.getByTestId("ride-highlight-comparison")).toHaveCount(0);
+  await expect(page.getByTestId("session-highlight-comparison")).toHaveCount(0);
   await expect(
-    page.getByTestId("ride-highlight-heart-rate-zone")
+    page.getByTestId("session-highlight-heart-rate-zone")
   ).toContainText("Most time in HR zone");
   await expect(
-    page.getByTestId("ride-highlight-heart-rate-zone")
+    page.getByTestId("session-highlight-heart-rate-zone")
   ).toContainText("Zone 2");
   await expect(page.getByTestId("ride-stat-heart-rate")).toContainText(
     "Average falls in Zone"
   );
   await expect(
-    page.getByTestId("ride-highlight-segment-results")
+    page.getByTestId("session-highlight-segment-results")
   ).toContainText("1 personal best");
-  await expect(page.getByTestId("ride-highlight-efficiency")).toContainText(
+  await expect(page.getByTestId("session-highlight-efficiency")).toContainText(
     "drift"
   );
   const comparison = page.getByTestId("ride-comparison");
@@ -166,7 +177,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   expect(
     await comparisonRideLinks.evaluateAll((links) =>
       links.every((link) =>
-        /^\/training\/rides\/\d+$/.test(link.getAttribute("href") ?? "")
+        /^\/training\/activity\/\d+$/.test(link.getAttribute("href") ?? "")
       )
     )
   ).toBe(true);
@@ -196,34 +207,26 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   ).toHaveCount(0);
   await expect(page.getByTestId("ride-comparison-table")).toHaveCount(0);
   await expect(page.getByTestId("ride-history")).toHaveCount(0);
-  const previousRideLink = page.getByTestId("ride-previous-link");
-  const nextRideLink = page.getByTestId("ride-next-link");
-  await expect(previousRideLink).toHaveAttribute(
+  const olderActivityLink = page.getByTestId("activity-older-link");
+  const newerActivityLink = page.getByTestId("activity-newer-link");
+  await expect(olderActivityLink).toHaveAttribute(
     "href",
-    /\/training\/rides\/\d+$/
+    /\/training\/activity\/\d+$/
   );
-  await expect(nextRideLink).toHaveAttribute("href", /\/training\/rides\/\d+$/);
-  await expect(previousRideLink).toHaveAttribute(
-    "aria-label",
-    /^Previous ride: .+\. \w+, \w+ \d{1,2}, 2026 · \d+ min · .+ km$/
+  await expect(newerActivityLink).toHaveAttribute(
+    "href",
+    /\/training\/activity\/\d+$/
   );
-  await expect(nextRideLink).toHaveAttribute(
-    "aria-label",
-    /^Next ride: .+\. \w+, \w+ \d{1,2}, 2026 · \d+ min · .+ km$/
-  );
-  await expect(previousRideLink).toContainText("Previous ride");
-  await expect(previousRideLink).toContainText("min");
-  await expect(previousRideLink).toContainText("km");
-  await expect(nextRideLink).toContainText("Next ride");
-  await expect(nextRideLink).toContainText("min");
-  await expect(nextRideLink).toContainText("km");
+  await expect(olderActivityLink).toContainText("Older");
+  await expect(newerActivityLink).toContainText("Newer");
+  await expect(page.getByTestId("activity-ledger-navigation")).toHaveCount(1);
   const route = page.getByTestId("ride-route");
   await expect(route.getByRole("heading", { name: "Route" })).toHaveClass(
     /text-base/
   );
   expect(
     await route.evaluate(
-      (element) => element.closest('[data-testid^="ride-section-"]')?.id
+      (element) => element.closest('[data-testid^="activity-section-"]')?.id
     )
   ).toBe("course");
   await expect(route.getByTestId("route-map")).toBeVisible();
@@ -233,17 +236,17 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   const traces = page.getByTestId("ride-traces");
   expect(
     await traces.evaluate(
-      (element) => element.closest('[data-testid^="ride-section-"]')?.id
+      (element) => element.closest('[data-testid^="activity-section-"]')?.id
     )
   ).toBe("effort");
   await expect(traces.getByRole("button", { name: "Power" })).toHaveAttribute(
     "aria-pressed",
     "true"
   );
-  const telemetryChart = page.getByTestId("ride-telemetry-chart");
+  const telemetryChart = page.getByTestId("session-telemetry-chart");
   const telemetrySvg = telemetryChart.locator("svg");
   await expect(telemetrySvg).toBeVisible();
-  await expect(page.getByTestId("ride-heart-rate-chart")).toBeVisible();
+  await expect(page.getByTestId("session-heart-rate-chart")).toBeVisible();
   await expect(route.getByTestId("route-active-point")).toHaveCount(0);
   const telemetryBox = await telemetrySvg.boundingBox();
   expect(telemetryBox).not.toBeNull();
@@ -259,7 +262,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   ).toBeVisible();
   await expect(
     page
-      .getByTestId("ride-heart-rate-chart")
+      .getByTestId("session-heart-rate-chart")
       .locator(".recharts-tooltip-wrapper")
   ).toBeVisible();
   await traces.getByRole("button", { name: "Cadence" }).click();
@@ -285,32 +288,32 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
     "5:00"
   );
   await expect(page.getByTestId("ride-distance-splits")).toContainText("5 km");
-  await expect(page.getByTestId("ride-laps")).toContainText("Lap 2");
-  await expect(page.getByTestId("ride-segments")).toContainText(
+  await expect(page.getByTestId("session-laps")).toContainText("Lap 2");
+  await expect(page.getByTestId("session-segments")).toContainText(
     "Fictional park climb"
   );
-  await expect(page.getByTestId("ride-segments")).toContainText("PR #1");
+  await expect(page.getByTestId("session-segments")).toContainText("PR #1");
   expect(
     await page
-      .getByTestId("ride-segments")
+      .getByTestId("session-segments")
       .evaluate(
-        (element) => element.closest('[data-testid^="ride-section-"]')?.id
+        (element) => element.closest('[data-testid^="activity-section-"]')?.id
       )
   ).toBe("course");
-  await expect(page.getByTestId("ride-notes")).toContainText(
+  await expect(page.getByTestId("activity-notes-card")).toContainText(
     "steady endurance work"
   );
   expect(
     await page
       .getByTestId("activity-provenance")
       .evaluate(
-        (element) => element.closest('[data-testid^="ride-section-"]')?.id
+        (element) => element.closest('[data-testid^="activity-section-"]')?.id
       )
   ).toBe("details");
   await expect(page.getByTestId("activity-provenance")).toContainText("Strava");
   await expect(page.getByTestId("activity-provenance")).toContainText("edited");
 
-  await page.getByRole("button", { name: "Edit ride" }).click();
+  await page.getByTestId("activity-page-edit").click();
   await expect(page.getByTestId("activity-form-header")).toBeVisible();
   await expect(page.getByTestId("imported-activity-details")).toContainText(
     "Recorded measurements"
@@ -398,12 +401,19 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     "Cadence",
     "Effort",
   ]) {
+    // The metric picker is a compact select since #2895 — the offered set is
+    // its options rather than a row of links. Exact text: "Power" must not
+    // count "Weighted power".
     await expect(
-      progression.getByRole("link", { name: metric, exact: true })
-    ).toBeVisible();
+      progression
+        .getByRole("combobox", { name: "Metric" })
+        .getByRole("option", { name: metric, exact: true })
+    ).toHaveCount(1);
   }
   await expect(
-    cyclingShell.getByRole("link", { name: "Distance", exact: true })
+    cyclingShell
+      .getByRole("combobox", { name: "Metric" })
+      .getByRole("option", { name: "Distance", exact: true })
   ).toHaveCount(0);
   await expect(page.getByTestId("cycling-totals")).toContainText(
     "Personal records"
@@ -470,17 +480,17 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   );
   await expect(analyze.getByTestId("analyze-sessions")).toContainText("Power");
 
-  await followLink(
-    page,
-    analyze.getByRole("link", { name: "Power", exact: true }),
-    /metric=power/
-  );
+  // The metric/range pickers are compact selects since #2895; choosing an
+  // option navigates exactly as the old segmented links did.
+  await progression.getByRole("combobox", { name: "Metric" }).selectOption({
+    label: "Power",
+  });
+  await page.waitForURL(/metric=power/);
   await expect(analyze).toContainText("Avg power across logged rides");
-  await followLink(
-    page,
-    progression.getByRole("link", { name: "6m", exact: true }),
-    /range=6m/
-  );
+  await progression.getByRole("combobox", { name: "Range" }).selectOption({
+    label: "6m",
+  });
+  await page.waitForURL(/range=6m/);
   await expect(
     analyze.getByTestId("analyze-sessions").locator("th").nth(1)
   ).toHaveText("Power");
@@ -497,7 +507,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   });
   await expect(latestRide).toHaveAttribute(
     "href",
-    /^\/training\/rides\/\d+\?metric=power&range=6m$/
+    /^\/training\/activity\/\d+\?metric=power&range=6m$/
   );
   const powerProfileRide = page
     .getByTestId("cycling-power-profile")
@@ -505,7 +515,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     .first(); // first-ok: seeded power records are a deterministic duration-ordered set
   await expect(powerProfileRide).toHaveAttribute(
     "href",
-    /^\/training\/rides\/\d+\?metric=power&range=6m$/
+    /^\/training\/activity\/\d+\?metric=power&range=6m$/
   );
   const analyzedSessions = analyze
     .getByTestId("analyze-sessions")
@@ -514,7 +524,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   expect(
     await analyzedSessions.evaluateAll((links) =>
       links.every((link) =>
-        /^\/training\/rides\/\d+\?metric=power&range=6m$/.test(
+        /^\/training\/activity\/\d+\?metric=power&range=6m$/.test(
           link.getAttribute("href") ?? ""
         )
       )
@@ -524,9 +534,9 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   await followLink(
     page,
     powerProfileRide,
-    /\/training\/rides\/\d+\?metric=power&range=6m$/
+    /\/training\/activity\/\d+\?metric=power&range=6m$/
   );
-  await expect(page.getByTestId("ride-detail")).toBeVisible();
+  await expect(page.getByTestId("training-activity-page")).toBeVisible();
   await expect(
     page
       .getByTestId("ride-comparison")
@@ -540,12 +550,12 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
   await expect(
     page.getByTestId("ride-comparison-link").first() // first-ok: every comparison link must retain the lens
   ).toHaveAttribute("href", /\?metric=power&range=6m$/);
-  const adjacentRideLinks = page
-    .getByTestId("ride-header-navigation")
-    .getByRole("link");
-  expect(await adjacentRideLinks.count()).toBeGreaterThan(0);
+  const adjacentActivityLinks = page.locator(
+    '[data-testid="activity-older-link"], [data-testid="activity-newer-link"]'
+  );
+  expect(await adjacentActivityLinks.count()).toBeGreaterThan(0);
   expect(
-    await adjacentRideLinks.evaluateAll((links) =>
+    await adjacentActivityLinks.evaluateAll((links) =>
       links.every((link) =>
         /\?metric=power&range=6m$/.test(link.getAttribute("href") ?? "")
       )
@@ -562,11 +572,12 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
     /\/training\?tab=analyze&kind=cardio&item=Cycling&metric=power&range=6m$/
   );
   await expect(page.getByTestId("cycling-overview")).toBeVisible();
+  // Selected state on the #2895 select is its VALUE, not a highlighted link.
   await expect(
     page
       .getByTestId("cycling-progression")
-      .getByRole("link", { name: "Power", exact: true })
-  ).toHaveClass(/bg-brand-600/);
+      .getByRole("combobox", { name: "Metric" })
+  ).toHaveValue("power");
 
   await page.goto("/timeline?category=activity");
   await expect(
@@ -574,7 +585,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
       name: "Strava morning ride",
       exact: true,
     })
-  ).toHaveAttribute("href", /^\/training\/rides\/\d+$/);
+  ).toHaveAttribute("href", /^\/training\/activity\/\d+$/);
 });
 
 test("cycling-family activities reuse rich analysis with indoor-aware surfaces", async ({
@@ -694,19 +705,19 @@ test("cycling-family activities reuse rich analysis with indoor-aware surfaces",
   });
   await expect(latestSession).toHaveAttribute(
     "href",
-    /\/training\/rides\/\d+\?metric=duration&range=all&item=Spinning$/
+    /\/training\/activity\/\d+\?metric=duration&range=all&item=Spinning$/
   );
   await followLink(
     page,
     latestSession,
-    /\/training\/rides\/\d+\?metric=duration&range=all&item=Spinning$/
+    /\/training\/activity\/\d+\?metric=duration&range=all&item=Spinning$/
   );
   await expect(page.getByTestId("ride-cycling-overview-link")).toHaveText(
     "Spinning overview"
   );
-  await expect(page.getByTestId("ride-section-navigation")).not.toContainText(
-    "Course"
-  );
+  await expect(
+    page.getByTestId("activity-section-navigation")
+  ).not.toContainText("Course");
   await expect(page.getByTestId("ride-summary")).not.toContainText(
     "Elevation gain"
   );
@@ -733,27 +744,25 @@ test("cycling-family activities reuse rich analysis with indoor-aware surfaces",
 test("a ride detail scopes wearable HR minutes to that ride's clock window", async ({
   page,
 }) => {
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
-  const zoneRide = page.locator(".card", {
-    hasText: "Zone 2 base ride",
-  });
+  const zoneRide = await openRideRecord(page, "Zone 2 base ride");
   await followLink(
     page,
-    zoneRide.getByTestId("ride-detail-link"),
-    /\/training\/rides\/\d+$/
+    zoneRide.getByTestId("activity-detail-link"),
+    /\/training\/activity\/\d+$/
   );
 
-  const heartRate = page.getByTestId("ride-heart-rate");
-  const chart = page.getByTestId("ride-heart-rate-chart");
-  const zones = page.getByTestId("ride-heart-rate-zones");
+  const heartRate = page.getByTestId("session-heart-rate");
+  const chart = page.getByTestId("session-heart-rate-chart");
+  const zones = page.getByTestId("session-heart-rate-zones");
   await expect(page.getByTestId("ride-stat-intensity")).toContainText(
     "Moderate"
   );
   await expect(heartRate).toContainText("60 recorded min");
   expect(
     await heartRate.evaluate(
-      (element) => element.closest('[data-testid^="ride-section-"]')?.id
+      (element) => element.closest('[data-testid^="activity-section-"]')?.id
     )
   ).toBe("effort");
   await expect(heartRate).toContainText(
@@ -782,29 +791,27 @@ test("a ride detail scopes wearable HR minutes to that ride's clock window", asy
   await expect(page.getByTestId("ride-zone-1")).toContainText("0 min · 0%");
 });
 
-test("adjacent ride navigation stays compact in the mobile header", async ({
+test("canonical activity navigation stays compact on a ride", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/training");
+  await page.goto("/training?tab=log");
 
-  const stravaCard = page.locator(".card", {
-    hasText: "Strava morning ride",
-  });
+  // On phones the row expands the record in place (#2897); the title link is
+  // on that expanded card.
+  const stravaCard = await openRideRecord(page, "Strava morning ride");
   await followLink(
     page,
-    stravaCard.getByTestId("ride-detail-link"),
-    /\/training\/rides\/\d+$/
+    stravaCard.getByTestId("activity-detail-link"),
+    /\/training\/activity\/\d+$/
   );
 
-  const navigation = page.getByTestId("ride-header-navigation");
-  const previous = page.getByTestId("ride-previous-link");
-  const next = page.getByTestId("ride-next-link");
+  const navigation = page.getByTestId("activity-ledger-navigation");
+  const previous = page.getByTestId("activity-older-link");
+  const next = page.getByTestId("activity-newer-link");
   await expect(navigation).toBeVisible();
   await expect(previous).toBeVisible();
   await expect(next).toBeVisible();
-  await expect(next).toHaveAttribute("title", /^Next ride:/);
-  await expect(previous).toHaveAttribute("title", /^Previous ride:/);
   const navigationBox = await navigation.boundingBox();
   const previousBox = await previous.boundingBox();
   const nextBox = await next.boundingBox();
@@ -814,20 +821,13 @@ test("adjacent ride navigation stays compact in the mobile header", async ({
   expect(navigationBox!.width).toBeGreaterThan(300);
   expect(navigationBox!.x + navigationBox!.width).toBeLessThanOrEqual(390);
   expect(Math.abs(previousBox!.y - nextBox!.y)).toBeLessThanOrEqual(1);
-  expect(Math.abs(previousBox!.x - navigationBox!.x)).toBeLessThanOrEqual(1);
+  expect(previousBox!.x).toBeGreaterThan(navigationBox!.x);
   expect(
     Math.abs(
       nextBox!.x + nextBox!.width - (navigationBox!.x + navigationBox!.width)
     )
   ).toBeLessThanOrEqual(1);
-  await expect(page.getByTestId("ride-previous-meta")).toHaveCSS(
-    "flex-wrap",
-    "wrap"
-  );
-  await expect(page.getByTestId("ride-next-meta")).toHaveCSS(
-    "flex-wrap",
-    "wrap"
-  );
+  await expect(page.getByTestId("activity-ledger-navigation")).toHaveCount(1);
   await expect(page.getByTestId("ride-history")).toHaveCount(0);
   const comparisonChart = page.getByTestId("ride-comparison-chart");
   expect(
@@ -835,7 +835,7 @@ test("adjacent ride navigation stays compact in the mobile header", async ({
       (element) => element.scrollWidth <= element.clientWidth + 1
     )
   ).toBe(true);
-  const sectionNavigation = page.getByTestId("ride-section-navigation");
+  const sectionNavigation = page.getByTestId("activity-section-navigation");
   expect(
     await sectionNavigation.evaluate(
       (element) => element.scrollWidth <= element.clientWidth + 1

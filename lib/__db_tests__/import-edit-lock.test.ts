@@ -109,20 +109,20 @@ const LOCKED: {
       const row = {
         metric: "steps",
         date: DATE,
-        start_time: "2026-03-04T00:00:00Z",
-        end_time: "2026-03-04T23:59:00Z",
+        started_at: "2026-03-04T00:00:00Z",
+        ended_at: "2026-03-04T23:59:00Z",
         value: 9000,
       };
       upsertMetricSamples(p, [row], SOURCE);
       db.prepare(
-        "UPDATE metric_samples SET value = 9500, edited = 1 WHERE profile_id = ? AND metric = ? AND source = ? AND start_time = ?"
-      ).run(p, row.metric, SOURCE, row.start_time);
+        "UPDATE metric_samples SET value = 9500, edited = 1 WHERE profile_id = ? AND metric = ? AND source = ? AND started_at = ?"
+      ).run(p, row.metric, SOURCE, row.started_at);
       const counts = upsertMetricSamples(p, [{ ...row, value: 12000 }], SOURCE);
       const stored = db
         .prepare(
-          "SELECT value FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND start_time = ?"
+          "SELECT value FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND started_at = ?"
         )
-        .get(p, row.metric, SOURCE, row.start_time) as { value: number };
+        .get(p, row.metric, SOURCE, row.started_at) as { value: number };
       return { stored: stored.value, manual: 9500, counts };
     },
   },

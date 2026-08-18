@@ -4,15 +4,15 @@
 // kind/key vocabulary and the ordering math; lib/queries/saved.ts owns the SQL.
 //
 // It replaces lib/trend-pins.ts, whose list math served a per-profile JSON KV
-// (`trend_pins`) that has been folded into the table. The "metric:" / "bio:" PREFIXES
+// (`trend_pins`) that has been folded into the table. The "metric:" / "result:" PREFIXES
 // survive here because they are ALSO the Trends series-key vocabulary (TrendSeries.key,
 // the compare controls, and the digest's `digest:<series-key>:<direction>` dedupe keys
 // all speak it) — but they are now just a rendering vocabulary that maps onto a
 // (kind, key) pair, not a storage format.
 //
 // KIND SEMANTICS (kind-specific meaning is the whole point of a generic store):
-//   • `biomarker` — key is the #482 canonical analyte name. Saved = it appears in the
-//     Results → Biomarkers status card, earns a chart tile on Trends Overview, AND is
+//   • `clinical-result` — key is the canonical result name. Saved = it appears in the
+//     Results status card, earns a chart tile on Trends Overview, AND is
 //     included in the profile passport summary. Membership, not position, drives all
 //     three (the passport contract: lib/profile-summary-load.ts).
 //   • `trend-metric` — key is a standard body/training metric id ("weight"). A save is
@@ -23,7 +23,7 @@
 //     sampler, which is what made the two kinds mean the same thing. Before that, a
 //     metric save was PROMOTION only — every metric tile rendered either way.
 
-export const SAVED_KINDS = ["biomarker", "trend-metric"] as const;
+export const SAVED_KINDS = ["clinical-result", "trend-metric"] as const;
 export type SavedKind = (typeof SAVED_KINDS)[number];
 
 export function isSavedKind(value: string): value is SavedKind {
@@ -37,34 +37,34 @@ export interface SavedRef {
   key: string;
 }
 
-// The Trends series-key prefixes. A biomarker named "weight" can never collide with
+// The Trends series-key prefixes. A clinical result named "weight" can never collide with
 // the weight metric tile because each carries its namespace.
 export const METRIC_KEY_PREFIX = "metric:";
-export const BIO_KEY_PREFIX = "bio:";
+export const RESULT_KEY_PREFIX = "result:";
 
 export function metricSeriesKey(id: string): string {
   return `${METRIC_KEY_PREFIX}${id}`;
 }
 
-export function bioSeriesKey(canonicalName: string): string {
-  return `${BIO_KEY_PREFIX}${canonicalName}`;
+export function resultSeriesKey(canonicalName: string): string {
+  return `${RESULT_KEY_PREFIX}${canonicalName}`;
 }
 
-// The canonical biomarker name a "bio:" series key points at, or null for other keys.
-export function bioSeriesName(key: string): string | null {
-  return key.startsWith(BIO_KEY_PREFIX)
-    ? key.slice(BIO_KEY_PREFIX.length)
+// The canonical result name a "result:" series key points at, or null for other keys.
+export function resultSeriesName(key: string): string | null {
+  return key.startsWith(RESULT_KEY_PREFIX)
+    ? key.slice(RESULT_KEY_PREFIX.length)
     : null;
 }
 
-// A Trends series key ("metric:weight" | "bio:LDL Cholesterol") → the saved-store ref
+// A Trends series key ("metric:weight" | "result:LDL Cholesterol") → the saved-store ref
 // it saves as, or null when the key names nothing savable (an unknown namespace, or an
 // empty name after the prefix). This is the ONE place the two vocabularies meet.
 export function savedRefFromSeriesKey(seriesKey: string): SavedRef | null {
   const trimmed = seriesKey.trim();
-  if (trimmed.startsWith(BIO_KEY_PREFIX)) {
-    const key = trimmed.slice(BIO_KEY_PREFIX.length).trim();
-    return key ? { kind: "biomarker", key } : null;
+  if (trimmed.startsWith(RESULT_KEY_PREFIX)) {
+    const key = trimmed.slice(RESULT_KEY_PREFIX.length).trim();
+    return key ? { kind: "clinical-result", key } : null;
   }
   if (trimmed.startsWith(METRIC_KEY_PREFIX)) {
     const key = trimmed.slice(METRIC_KEY_PREFIX.length).trim();
@@ -75,8 +75,8 @@ export function savedRefFromSeriesKey(seriesKey: string): SavedRef | null {
 
 // The inverse: a saved ref → the Trends series key that renders it.
 export function seriesKeyOfSavedRef(ref: SavedRef): string {
-  return ref.kind === "biomarker"
-    ? bioSeriesKey(ref.key)
+  return ref.kind === "clinical-result"
+    ? resultSeriesKey(ref.key)
     : metricSeriesKey(ref.key);
 }
 

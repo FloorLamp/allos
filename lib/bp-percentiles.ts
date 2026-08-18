@@ -25,8 +25,14 @@
 import type { Sex } from "@/lib/types";
 import { BP_META, BP_SEXES_MAP } from "@/lib/datasets/bp-percentiles";
 import { PEDIATRIC_BP_MAX_AGE, isAdultBpRegime } from "@/lib/life-stage";
+import type { BpComponent } from "@/lib/bp-markers";
 
-export type BpComponent = "systolic" | "diastolic";
+// The marker-name lookup lives in the leaf lib/bp-markers (#2794) so the flag core can
+// ask "is this a BP component?" without importing this dataset; re-exported here so
+// every existing `from "@/lib/bp-percentiles"` import keeps working, and there is still
+// ONE marker list.
+export { bpComponentFor } from "@/lib/bp-markers";
+export type { BpComponent } from "@/lib/bp-markers";
 export type BpCategory = "normal" | "elevated" | "stage1" | "stage2";
 
 // The domain view of the dataset: the dataset-level scalars (from the framework `meta`)
@@ -47,19 +53,6 @@ export const BP_PERCENTILE_SOURCE = DATA.source;
 // lib/life-stage) — the BP regime is a NAMED member of that model, not a private
 // magic number, so it can't drift from the rest of the age axes.
 export const ADULT_BP_AGE = PEDIATRIC_BP_MAX_AGE;
-
-// The canonical biomarker names carrying pediatric BP interpretation. Must match
-// the canonical_biomarkers rows / vitals-input canonical names byte-for-byte.
-const MARKER_COMPONENT: Record<string, BpComponent> = {
-  "Blood Pressure Systolic": "systolic",
-  "Blood Pressure Diastolic": "diastolic",
-};
-
-// Which BP component a canonical biomarker name is, or null when it isn't a BP
-// marker. Drives whether a detail surface shows the pediatric BP card.
-export function bpComponentFor(name: string): BpComponent | null {
-  return MARKER_COMPONENT[name] ?? null;
-}
 
 // The three threshold values (at the 50th/90th/95th BP percentiles) for one
 // component at an exact height percentile — the row vectors interpolated across the
@@ -193,6 +186,18 @@ export interface PediatricBpContext {
 // window). Height percentile is optional: when the child has no tracked height it
 // defaults to the 50th percentile (flagged via `heightAssumed`) so the category
 // still computes rather than silently falling back to the adult thresholds.
+//
+// AN INFANT (age 0) GETS NO BP JUDGMENT AT ALL, AND THAT IS DELIBERATE — read this
+// before "fixing" it. The AAP percentile tables start at 1 y and there is no
+// normative table beneath them, so this returns null below `DATA.minAge`; #2794's
+// carve-out then keeps the ADULT band off the row as well, because an adult 60–80
+// diastolic interval is not a defensible claim about a newborn either. The visible
+// effect since #2992 — which made a stored age of 0 resolve as 0 rather than as
+// "unknown" — is that an infant's BP reading now carries NO flag where it previously
+// carried an adult-band one. That is the correct answer absent infant normative
+// data: an absent judgment, not a lost one, and NOT a regression. Giving infants a
+// real answer means sourcing infant BP norms — a new dataset and its own issue, not
+// a relaxation of this guard.
 export function pediatricBpContext(
   component: BpComponent,
   value: number | null | undefined,

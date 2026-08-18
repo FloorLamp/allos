@@ -1,8 +1,9 @@
 // The DETERMINISTIC biomarker→supplement suggestion engine (issue #2378) — the twin of
 // the biomarker→food engine (lib/food-suggest.ts, #577), built to the same contract.
 //
-// When a profile's CURRENT reading for a covered biomarker family is flagged low, this
-// proposes the curated supplement that repletes it
+// When a profile's CURRENT reading for a covered biomarker family is flagged in the
+// direction the entry DECLARES (low for the repletion routes; high for the #2754
+// `lipids` soluble-fiber entry), this proposes the curated supplement that answers it
 // (lib/datasets/data/biomarker-supplement-map.json) — safety-screened against the
 // profile's allergies, medications, and conditions/situations BEFORE it renders.
 //
@@ -50,7 +51,7 @@ import {
 import { conditionOrSituationMatches } from "./condition-nutrient";
 import { stackFoodDrugHits } from "./food-drug-interactions";
 import type { ConditionInput } from "./condition-codes";
-import { isLowFlag, type FlaggedReading } from "./food-suggest";
+import { isLowFlag, isHighFlag, type FlaggedReading } from "./food-suggest";
 import type { FoodTiming } from "./types";
 
 const ENTRIES: BiomarkerSupplementEntry[] = BIOMARKER_SUPPLEMENT_ENTRIES;
@@ -71,7 +72,7 @@ export interface CuratedSupplementInput {
   // getCurrentFlaggedBiomarkers emits
   // `COALESCE(NULLIF(TRIM(canonical_name), ''), name)` — the reading's CANONICAL name
   // when it has been reconciled to one, else the raw document name. So a map entry's
-  // `biomarkers` must be spelled exactly as lib/canonical-biomarkers.json spells it
+  // `biomarkers` must be spelled exactly as lib/canonical-result-definitions.json spells it
   // ("Ferritin", not "Ferritin, Serum"; "Vitamin D, 25-Hydroxy", not "Vitamin D"). The
   // dataset test enforces that every referenced name resolves there, so a wrong guess
   // fails CI rather than silently never matching.
@@ -123,6 +124,9 @@ export interface CuratedSupplementSuggestion {
   // WHERE THIS CAME FROM. Always "curated" here; it is on the record so a surface
   // cannot render a curated claim and a generated one identically by accident.
   origin: "curated";
+  // Which flag SIDE triggered it — the entry's declared direction (#2754). The lipids
+  // entry is high-triggered, so the "is LOW"/"is HIGH" copy reads this, never a default.
+  side: "low" | "high";
   // The flagged biomarker names that triggered it (the "Vitamin D is LOW" rationale).
   triggeredBy: string[];
   supplements: SuggestedSupplement[];
@@ -245,6 +249,7 @@ function buildSuggestion(
     key: entry.key,
     label: entry.label,
     origin: "curated",
+    side: entry.direction,
     triggeredBy,
     supplements: rendered.map((s) => toSuggested(s, isAlternative)),
     evidence: entry.evidence,
@@ -261,10 +266,13 @@ export function suggestCuratedSupplements(
   input: CuratedSupplementInput
 ): CuratedSupplementSuggestion[] {
   const flaggedLow = new Map<string, string>(); // lower(name) -> original name
+  const flaggedHigh = new Map<string, string>();
   for (const r of input.flagged) {
-    if (isLowFlag(r.flag)) flaggedLow.set(r.name.trim().toLowerCase(), r.name);
+    const lower = r.name.trim().toLowerCase();
+    if (isLowFlag(r.flag)) flaggedLow.set(lower, r.name);
+    else if (isHighFlag(r.flag)) flaggedHigh.set(lower, r.name);
   }
-  if (flaggedLow.size === 0) return [];
+  if (flaggedLow.size === 0 && flaggedHigh.size === 0) return [];
 
   // The belt's facts, in the shape screenSuggestionSafety consumes — assembled once.
   const safety: SafetyContext = {
@@ -277,9 +285,12 @@ export function suggestCuratedSupplements(
 
   const out: CuratedSupplementSuggestion[] = [];
   for (const entry of ENTRIES) {
+    // The entry's DECLARED trigger side (#2754): low for the repletion routes, high
+    // for the lipids soluble-fiber entry.
+    const flaggedOnSide = entry.direction === "high" ? flaggedHigh : flaggedLow;
     const triggeredBy: string[] = [];
     for (const bm of entry.biomarkers) {
-      const original = flaggedLow.get(bm.trim().toLowerCase());
+      const original = flaggedOnSide.get(bm.trim().toLowerCase());
       if (original) triggeredBy.push(original);
     }
     if (triggeredBy.length === 0) continue;
@@ -309,6 +320,35 @@ export function isCuratedSupplementBiomarker(name: string): boolean {
   const needle = (name ?? "").trim().toLowerCase();
   if (!needle) return false;
   return COVERED_NAMES.has(needle);
+}
+
+// name (lowercased) → the trigger SIDES its entries declare. Coverage became per-side
+// with #2754: the lipids entry answers LDL/ApoB only when they read HIGH, so "does the
+// curated map cover this name" and "does it answer THIS reading" are different
+// questions once direction is a per-entry axis.
+const COVERED_SIDES = new Map<string, Set<"low" | "high">>();
+for (const e of ENTRIES) {
+  for (const b of e.biomarkers) {
+    const key = b.trim().toLowerCase();
+    const sides = COVERED_SIDES.get(key) ?? new Set<"low" | "high">();
+    sides.add(e.direction);
+    COVERED_SIDES.set(key, sides);
+  }
+}
+
+// Whether the curated map answers THIS READING — name AND flag side. The AI route's
+// "already answered, do not duplicate" muzzle must ask this rather than the name-only
+// question above: muzzling a reading the curated engine will not answer (a LOW LDL,
+// a HIGH ferritin) would leave that family with no answer from either engine.
+export function curatedSupplementAnswersReading(
+  name: string,
+  flag: string | null | undefined
+): boolean {
+  const sides = COVERED_SIDES.get((name ?? "").trim().toLowerCase());
+  if (!sides) return false;
+  if (isLowFlag(flag)) return sides.has("low");
+  if (isHighFlag(flag)) return sides.has("high");
+  return false;
 }
 
 export { BIOMARKER_SUPPLEMENT_ENTRIES } from "./datasets/biomarker-supplement-map";

@@ -234,7 +234,7 @@ export function cadenceCounts(
   const needs = new Set<CadenceSource>(
     scopes.map((s) => CADENCE_SCOPES[s.kind].source)
   );
-  // Alcohol rides the food_log ledger (a standard drink IS one serving of the
+  // Alcohol rides the food_daily_totals ledger (a standard drink IS one serving of the
   // curated `alcohol` food group, #860/#944), so a substance scope may need the
   // food gather even when no food_group target exists.
   const substanceValues = scopes
@@ -271,7 +271,7 @@ export function cadenceCounts(
     }
   }
 
-  // ---- activities → types, and the recovery sessions mobility reads -------------
+  // ---- activities → types, and the mobility sessions' component regions ---------
   const typeWeeks = new Map<string, Set<string>[]>();
   const mobilityWeeks = new Map<MuscleRegion, Set<string>[]>();
   if (needs.has("activity-type") || needs.has("mobility-moves")) {
@@ -306,11 +306,11 @@ export function cadenceCounts(
       // SAME mobilityRegionDays the coverage strip uses. The span is already SQL-
       // bounded, so the helper's own window filter is off (0).
       const sessions: MobilitySessionInput[] = rows
-        .filter((a) => a.type === "recovery")
+        .filter((a) => a.type === "mobility")
         .map((a) => ({
           date: a.date,
           moves: parseComponents(a.components)
-            .filter((c) => c?.type === "recovery" && typeof c.name === "string")
+            .filter((c) => c?.type === "mobility" && typeof c.name === "string")
             .map((c) => c.name),
         }));
       for (const [region, dates] of mobilityRegionDays(sessions, lastEnd, 0)) {
@@ -324,12 +324,12 @@ export function cadenceCounts(
     }
   }
 
-  // ---- food_log → servings (food groups, and the alcohol substance ledger) ------
+  // ---- food_daily_totals → servings (food groups, and the alcohol substance ledger) ------
   const foodWeeks = new Map<string, number[]>();
   if (needs.has("food-servings") || foodLedgerSubstances.length > 0) {
     for (const r of db
       .prepare(
-        `SELECT group_key, date, COALESCE(SUM(servings), 0) AS n FROM food_log
+        `SELECT group_key, date, COALESCE(SUM(servings), 0) AS n FROM food_daily_totals
           WHERE profile_id = ? AND date >= ? AND date <= ?
           GROUP BY group_key, date`
       )
@@ -367,13 +367,13 @@ export function cadenceCounts(
     }
   }
 
-  // ---- substance_log → units (nicotine / cannabis) -----------------------------
+  // ---- substance_daily_totals → units (nicotine / cannabis) -----------------------------
   const substanceWeeks = new Map<string, number[]>();
   if (counterLedgerSubstances.length > 0) {
     const values = [...new Set(counterLedgerSubstances)];
     for (const r of db
       .prepare(
-        `SELECT substance, date, COALESCE(SUM(units), 0) AS n FROM substance_log
+        `SELECT substance, date, COALESCE(SUM(units), 0) AS n FROM substance_daily_totals
           WHERE profile_id = ? AND date >= ? AND date <= ?
             AND substance IN (${values.map(() => "?").join(",")})
           GROUP BY substance, date`
@@ -593,11 +593,16 @@ function weekEndingOn(
 // a week the user had not yet declared anything about.
 export function getCadenceWeekVerdicts(
   profileId: number,
-  weekEnd: string
+  weekEnd: string,
+  options: {
+    includeTarget?: (target: FrequencyTarget) => boolean;
+  } = {}
 ): CadenceTargetVerdict[] {
   const out: CadenceTargetVerdict[] = [];
   for (const direction of ["floor", "cap"] as const) {
     for (const entry of weekEndingOn(profileId, weekEnd, direction)) {
+      if (options.includeTarget && !options.includeTarget(entry.target))
+        continue;
       if (!entry.existedWholeWindow) continue;
       const week = entry.weeks[0];
       if (!week) continue;
@@ -635,7 +640,11 @@ export const CAP_PERIOD_MIN_WEEKS = 2;
 
 export function getCadenceCapWeeks(
   profileId: number,
-  opts: { asOf: string; weeks: number }
+  opts: {
+    asOf: string;
+    weeks: number;
+    includeTarget?: (target: FrequencyTarget) => boolean;
+  }
 ): CadenceCapWeeks[] {
   if (opts.weeks < CAP_PERIOD_MIN_WEEKS) return [];
   const entries = getCadenceLedger(profileId, {
@@ -646,6 +655,7 @@ export function getCadenceCapWeeks(
   });
   const out: CadenceCapWeeks[] = [];
   for (const entry of entries) {
+    if (opts.includeTarget && !opts.includeTarget(entry.target)) continue;
     // Only the weeks that began after the cap was declared. The ledger's
     // `existedWholeWindow` answers this for its OLDEST window; a multi-week read needs
     // it per week, off the same `created_at` day the flag compares.

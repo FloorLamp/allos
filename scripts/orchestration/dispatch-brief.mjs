@@ -18,14 +18,21 @@
 //     [--worktree wt-<name>] [--issues 123,456] [--task "one line"] \
 //     [--e2e] [--port-base N]
 //   node scripts/orchestration/dispatch-brief.mjs list
+//   node scripts/orchestration/dispatch-brief.mjs brief <branch>
 //   node scripts/orchestration/dispatch-brief.mjs done <branch> [--keep]
 //   node scripts/orchestration/dispatch-brief.mjs resume <branch>
 //   node scripts/orchestration/dispatch-brief.mjs adopt <branch> \
 //     [--issues 123,456] [--task "one line"] [--e2e] [--port-base N]
 //
 // `new` prints a complete brief block (stdout) and appends a ledger entry.
-// `list` shows active dispatches with ages, flagging anything past 3x the
-//   median completed-dispatch duration (the runbook's stall threshold).
+// `list` shows active dispatches with ages, flagging anything that has not
+//   MOVED in 3x the median completed-dispatch duration (the runbook's stall
+//   threshold, applied to idleness rather than to age — see cmdList).
+// `brief` REPRINTS a live dispatch's brief and writes nothing. The ledger keeps
+//   parameters, not brief text, and `new` prints the text exactly once; an
+//   orchestrator that lost it (restart, compaction, a truncated tail) used to
+//   re-run `new`, which forked the ledger AND the roster for one live agent
+//   (2026-08-15). `new` now refuses an active branch and points here.
 // `done` closes a dispatch, frees its port range, and CLEANS UP: removes the
 //   worktree (located by BRANCH via `git worktree list`, wherever it was
 //   built), prunes stale remote refs, and deletes the local branch once its
@@ -60,7 +67,7 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -111,7 +118,19 @@ function appendLedger(entry) {
 // The ledger is history and measurement; the roster is the live view — both
 // are written here so they cannot fork. Live entries are lines beginning
 // "Cluster" whose THIRD field is the branch (the check-in script's contract).
-const rosterPath = path.join(STATE_DIR, ".roster");
+//
+// THE ROSTER FOLLOWS THE LEDGER. `ALLOS_DISPATCH_LEDGER` redirects the ledger,
+// but the roster used to be pinned to STATE_DIR regardless — so anything that
+// redirected one wrote the other into LIVE coordination state. Testing the
+// arrival warning above did exactly that: three fake dispatches landed in the
+// real `.roster`, and the next check-in reported eight clusters for five agents.
+// That is the 2026-08-15 roster-fork incident again, arriving through the test
+// harness instead of through a re-run of `new`.
+//
+// The header above already says the two must not fork. An override that moves
+// one and not the other is a fork by construction, so the roster now derives
+// from wherever the ledger actually lives.
+const rosterPath = path.join(path.dirname(ledgerPath), ".roster");
 
 function rosterAdd(entry) {
   if (!fs.existsSync(path.dirname(rosterPath))) return false;
@@ -300,6 +319,15 @@ ${nodeLine}
   a failure it did not have.
 - FETCH AND READ ALL ISSUE BODIES AND ALL ISSUE COMMENTS FIRST — a comment overrides
   the body when they conflict. Trust symbol names over line numbers.
+- A PR's REVIEWS AND ITS COMMENTS ARE TWO DIFFERENT ENDPOINTS, and a review you were
+  told to read may be in either. \`/pulls/<n>/reviews\` returns only what was
+  submitted through the review API; anything posted as ordinary prose on the PR is an
+  ISSUE COMMENT and appears solely in \`/issues/<n>/comments\`. Read BOTH, always, and
+  reconcile them by timestamp. This is not hypothetical: a fix round on #2981 was
+  briefed to read \`/pulls/2981/reviews\`, which returned ONE of its two blocking
+  reviews — the earlier one, carrying findings D1 through D8, was an issue comment and
+  would have been invisible. If the count you get back is smaller than the brief
+  implies, you are on the wrong endpoint; say so rather than working from half a spec.
 - PREMISE-AUDIT AGAINST main BEFORE WRITING ANYTHING. An issue describes the tree it
   was FILED against; the brief was written from the issue. Grep for the modules and
   symbols it says are missing and confirm they still are. If the work is already done
@@ -310,6 +338,18 @@ ${nodeLine}
 - $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
   this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
   from another cluster's worktree, and do not write to /tmp instead.
+- NAME EVERY LOG FILE AFTER YOUR BRANCH: \`$SCRATCH/gates-<branch>.log\`, never a bare
+  \`gates.log\`, \`e2e.log\` or \`db.log\`. Sibling agents share one scratchpad, and they
+  all reach for the same obvious names, so a generic filename is a COLLISION and the
+  collision is SILENT. Measured on this box: one \`e2e.log\` held output from two
+  different clusters, and a \`gates.log\` held a third's — one agent's run was
+  NUL-padded and carried another worktree's path and test counts.
+  This is the worst shape a wrong number can take, because the usual defence does not
+  work: you ran the gate, you redirected it yourself, and you grepped the file you
+  named — and the count you read belongs to somebody else's tree. Nothing inside the
+  agent can tell. If a log you wrote contains a worktree path that is not yours, or
+  NUL bytes, DISCARD IT and re-run into a branch-named file; do not reconcile it, and
+  do not quote gates out of it.
 - CI ARTIFACTS ARE UNREACHABLE from this container: \`*.blob.core.windows.net\` returns
   403 CONNECT through the agent proxy, so a playwright-report zip or an
   error-context.md from a real CI run CANNOT be downloaded. Job LOGS are fine via the
@@ -328,10 +368,19 @@ ${MIGRATION_LINES}
 - Immediately before opening the PR: git merge origin/main && npm run typecheck.
   A signature that widened while you worked is not a textual conflict.
 - Gates: run bash scripts/orchestration/agent-gates.sh from the worktree root — it
-  runs lint, typecheck, both test tiers, the e2e-hygiene scan when specs changed,
-  phi-scan, and format LAST, in the mandated order. Report its output verbatim.
+  runs lint, typecheck, the pure tests, the DB tier when your diff touches anything
+  it imports, the e2e-hygiene scan when specs changed, phi-scan, and format LAST, in
+  the mandated order. A gate that prints SKIPPED names its reason — that is the
+  script scoping itself to your diff, not a gate you missed. Report its output verbatim.
   Give that Bash call an explicit long timeout; if it cannot fit one tool call
   under contention, run the same gates individually in the same order.
+- A FAILURE IN CODE YOU DID NOT TOUCH IS CONTENTION UNTIL PROVEN OTHERWISE. Up to
+  five agents share four cores here, and measured load has reached 22 — a starved
+  tier fails in specs nobody edited and reads exactly like a regression. Before
+  reporting one, RE-RUN THAT FILE ALONE, and if it still fails build an
+  origin/main control worktree and show it failing there too. Report the
+  comparison, not the first red. Two agents were saved from a false regression
+  report this way on 2026-08-15 only because they thought of it themselves.
 - Run YOUR changed e2e specs at CI parity on your assigned port range:
   E2E_PORT=${portBase} ... --repeat-each=3 --retries=0. The variable is E2E_PORT, never PORT.
   Do NOT run the full suite — the orchestrator owns full-suite runs.
@@ -371,6 +420,12 @@ ${MIGRATION_LINES}
     Claude-Session: <session URL>
 - No model identifiers in commits/PR/code
 - Open the PR READY (not draft) via REST, base main
+- NEVER run \`dispatch-brief.mjs done\` — retiring a dispatch is the ORCHESTRATOR's,
+  after the PR merges. Opening the PR is not the end of your dispatch: review
+  findings, CI reds and adversarial refutations all come back to you afterwards, and
+  a retired dispatch drops you off the roster that a restart reads to find unrescued
+  work. If you see a "Close with:" line anywhere near this brief, it is addressed to
+  the orchestrator, not to you.
 - Return: PR number/URL, per-issue fix summary, VERBATIM gate results (say plainly if
   something failed — never report a green you did not see), surprises, and OPEN
   QUESTIONS as their own labelled list — every decision you made provisionally and
@@ -424,12 +479,74 @@ function cmdNew(argv) {
 
   const rows = readLedger();
   const active = activeDispatches(rows);
+  // An already-active branch must not be re-dispatched. Re-running `new` to get
+  // the brief text back (the transcript is gone, the ledger stores metadata) used
+  // to append a SECOND ledger row and a second roster cluster for one live agent
+  // — a roster that double-counts is a roster that lies about what to rescue, and
+  // it is read after a restart when nothing else survives. Reprinting is what the
+  // caller actually wanted, so `brief` does that and this refuses (2026-08-15).
+  if (active.some((d) => d.branch === opts.branch)) {
+    console.error(
+      `REFUSED: ${opts.branch} is already an active dispatch — re-running \`new\` would ` +
+        "duplicate its ledger row and its roster cluster. To reprint the brief for a live " +
+        `agent, use \`dispatch-brief.mjs brief ${opts.branch}\`; to retire it, \`done ${opts.branch}\`.`
+    );
+    process.exit(1);
+  }
   if (opts.e2e && active.filter((d) => d.e2e).length >= 2) {
     console.error(
       "REFUSED: two e2e-touching dispatches are already active (the runbook's cap). " +
         "Close one with `done <branch>` or drop --e2e if this work touches no spec."
     );
     process.exit(1);
+  }
+
+  // ARRIVAL CLUSTERING. The concurrency cap counts agents RUNNING, which is a
+  // machine-load limit. It says nothing about the other queue — PRs waiting on
+  // the orchestrator's review — and that one is where a session actually jams,
+  // because review is serial and cannot be parallelised the way dispatch can.
+  //
+  // Dispatching several at once reliably lands them together, and the ledger is
+  // what proves it rather than intuition: measured over the first ten completed
+  // dispatches, seven finished inside an 85±5 minute band (42/73/79/85/86/86/
+  // 88/89/106/122). Durations here are PREDICTABLE, so simultaneous starts are
+  // simultaneous arrivals, and three at once is three full diffs plus any
+  // mandatory falsifiers landing in one window.
+  //
+  // A warning, not a refusal: a P0 preempts everything and must not be argued
+  // with by a script. It fires only when a sibling actually started inside the
+  // window, so it stays rare enough to keep meaning something.
+  const STAGGER_MIN = 25;
+  const recent = active
+    .map((d) => ({
+      branch: d.branch,
+      ageMin: (Date.now() - Date.parse(d.at)) / 60000,
+    }))
+    .filter((d) => d.ageMin < STAGGER_MIN)
+    .sort((a, b) => a.ageMin - b.ageMin);
+  if (recent.length) {
+    const durations = completedDurationsMs(rows).sort((a, b) => a - b);
+    const median = durations.length
+      ? durations[Math.floor(durations.length / 2)] / 60000
+      : null;
+    console.error(
+      `\n*** ARRIVAL CLUSTERING: ${recent.length} dispatch(es) started within ${STAGGER_MIN}m ***`
+    );
+    for (const d of recent) {
+      console.error(
+        `      ${d.branch} started ${d.ageMin.toFixed(0)}m ago` +
+          (median ? ` — due in ~${(median - d.ageMin).toFixed(0)}m` : "")
+      );
+    }
+    console.error(
+      median
+        ? `      this one is due in ~${median.toFixed(0)}m, so expect ${recent.length + 1} PRs in one review window.`
+        : "      expect their PRs to land in one review window."
+    );
+    console.error(
+      "      Not a refusal — a P0 preempts. Otherwise consider waiting: the cap that\n" +
+        "      binds first is REVIEW depth, not agent count (docs/orchestration/dispatch.md).\n"
+    );
   }
 
   const { brief, portBase } = buildBrief(opts);
@@ -454,7 +571,8 @@ function cmdNew(argv) {
   console.log(brief);
   console.error(
     `\n[ledger] recorded in ${ledgerPath} — port base ${portBase}` +
-      `. Close with: dispatch-brief.mjs done ${opts.branch}`
+      `\n[ledger] ORCHESTRATOR ONLY, after the PR merges — not part of the brief above:` +
+      `\n[ledger]   dispatch-brief.mjs done ${opts.branch}`
   );
 }
 
@@ -489,43 +607,74 @@ function cmdList() {
   const fmt = (ms) =>
     `${Math.floor(ms / 3_600_000)}h${String(Math.floor(ms / 60_000) % 60).padStart(2, "0")}m`;
 
+  // THE THRESHOLD IS UNCHANGED; WHAT IT MEASURES IS NOT. 3x the median and the
+  // under-5m filter are both sound (#2988 says so explicitly) — the defect was
+  // comparing them against a dispatch's AGE. Applied to idleness instead, the
+  // same number can only ever fire LATER than it did, because idle <= age always:
+  // this change removes alarms and adds none, which is the property that makes it
+  // safe to land under live agents.
+  //
+  // A dedicated idle constant was the tempting alternative and it is wrong at
+  // both ends. RECENT_WRITE_MS (10m) is calibrated for a REFUSAL at the moment of
+  // destruction, where the cost of waiting is nothing; as a warning threshold it
+  // would fire on any agent whose gate run writes its log to $SCRATCH — which the
+  // brief mandates — and go quiet for twenty minutes. Any other number would be
+  // invented. 3x median is the one the ledger measures.
+  const threshold = median === null ? null : 3 * median;
   if (!active.length) {
     console.log("No active dispatches.");
   } else {
     console.log(`Active dispatches (ledger: ${ledgerPath}):`);
+    const worktrees = worktreePathsByBranch();
     for (const d of active) {
       const age = Date.now() - Date.parse(d.at);
-      const stalled = median !== null && age > 3 * median;
+      const wt = worktrees.get(d.branch);
+      const idle = idleMsFrom({
+        worktreeIdleMs: wt ? worktreeIdleMs(wt) : null,
+        branchIdleMs: branchIdleMs(d.branch),
+      });
+      const verdict = stallVerdict({
+        ageMs: age,
+        idleMs: idle,
+        thresholdMs: threshold,
+      });
+      const flag =
+        verdict.kind === "stalled"
+          ? `  << nothing has moved in ${fmt(idle)} (past 3x median) — STALL until` +
+            " proven otherwise (check worktree + transcript bytes)"
+          : verdict.kind === "no-trace"
+            ? "  << NO WORKTREE AND NO BRANCH after " +
+              `${fmt(age)} — the agent never started (a DENIED tool call looks` +
+              " exactly like this) or its dispatch is stale: `done` it"
+            : "";
       console.log(
-        `  ${d.branch}  age=${fmt(age)}  port=${d.portBase}` +
+        `  ${d.branch}  age=${fmt(age)}  idle=${idle === null ? "(no trace)" : fmt(idle)}` +
+          `  port=${d.portBase}` +
           `${d.e2e ? "  [e2e]" : ""}${d.issues?.length ? `  issues=${d.issues.join(",")}` : ""}` +
-          (stalled
-            ? "  << past 3x median — STALL until proven otherwise (check worktree + transcript bytes)"
-            : "")
+          flag
       );
     }
   }
   const note = discarded
     ? ` (${discarded} completion(s) under ${MIN_REAL_DISPATCH_MS / 60_000}m ignored as not-real-work)`
     : "";
-  if (median !== null) {
+  if (threshold !== null) {
     console.log(
-      `Completed: ${durations.length}, median ${fmt(median)} (stall threshold ${fmt(3 * median)})${note}.`
+      `Completed: ${durations.length}, median ${fmt(median)} — a dispatch is flagged ` +
+        `after ${fmt(threshold)} with NOTHING MOVING (newest of: branch tip, worktree ` +
+        `write), not after ${fmt(threshold)} of age${note}.`
     );
   } else {
     // Say WHY it is unavailable — "no completions yet" was reported even when
     // five existed and were all discarded, which reads as a broken ledger.
     console.log(
       `Stall threshold unavailable: ${durations.length} real completion(s), need ` +
-        `${MIN_COMPLETIONS_FOR_MEDIAN}${note}. Ages above are informational only.`
+        `${MIN_COMPLETIONS_FOR_MEDIAN}${note}. Ages and idles above are ` +
+        "informational; a no-trace dispatch is still flagged."
     );
   }
 }
 
-// Locate a branch's worktree by asking git, not by guessing a path — two live
-// clusters once built theirs OUTSIDE $SCRATCH and were invisible to every
-// path-glob check. `git worktree list --porcelain` knows every worktree this
-// repo has, wherever it is.
 // "Has anybody touched this tree lately?" — the question the dirty check cannot
 // ask. Ten minutes is chosen to be longer than a gate run's quiet stretch (a
 // `next build` writes continuously; the pure tier does not) and far shorter than
@@ -536,7 +685,7 @@ function cmdList() {
 // worktree's commits, which would make every tree look permanently busy.
 const RECENT_WRITE_MS = 10 * 60_000;
 
-function worktreeIdleMs(dir) {
+export function worktreeIdleMs(dir) {
   let newest = 0;
   const walk = (d, depth) => {
     if (depth > 4) return;
@@ -562,15 +711,153 @@ function worktreeIdleMs(dir) {
   return newest === 0 ? null : Date.now() - newest;
 }
 
-function worktreeForBranch(branch) {
+// Locate a branch's worktree by asking git, not by guessing a path — two live
+// clusters once built theirs OUTSIDE $SCRATCH and were invisible to every
+// path-glob check. `git worktree list --porcelain` knows every worktree this
+// repo has, wherever it is.
+//
+// Read ONCE into a map: `list` wants this for every active dispatch, and asking
+// git per branch would re-parse the same output five times a check-in.
+function worktreePathsByBranch() {
+  const byBranch = new Map();
   const out = git("worktree list --porcelain", { allowFail: true });
-  if (!out) return null;
+  if (!out) return byBranch;
   let current = null;
   for (const line of out.split("\n")) {
     if (line.startsWith("worktree ")) current = line.slice("worktree ".length);
-    else if (line === `branch refs/heads/${branch}` && current) return current;
+    else if (line.startsWith("branch refs/heads/") && current) {
+      byBranch.set(line.slice("branch refs/heads/".length), current);
+    }
   }
-  return null;
+  return byBranch;
+}
+
+function worktreeForBranch(branch) {
+  return worktreePathsByBranch().get(branch) ?? null;
+}
+
+// --- progress ---------------------------------------------------------------
+//
+// THE STALL DETECTOR ASKS THE QUESTION AGE WAS STANDING IN FOR (#2988).
+//
+// `list` flagged a dispatch on ELAPSED TIME SINCE ITS LEDGER ENTRY, which cannot
+// tell "one agent wedged for five hours" from "four agents in sequence on one
+// branch across two restarts and three review rounds" — the normal life of any
+// PR that gets blocked and fixed, i.e. most of the hard ones. On 2026-08-16 it
+// branded the two hardest dispatches in the session STALL twice in one session
+// while their agents were demonstrably working: at 06:39Z the same two trees had
+// 18 and 170 files written in the preceding fifteen minutes. That is the
+// ignorable-alarm failure the check-in tooling exists to avoid — an alarm that
+// fires when nothing is wrong teaches its reader to skim it, and the one time it
+// is right it gets skimmed too.
+//
+// THE SIGNAL WAS ALREADY IN THIS FILE. `worktreeIdleMs` above was written for
+// `done`, which refuses to remove a tree written in the last ten minutes because
+// "a clean tree means everything is pushed, not that nobody is here". So one
+// command in this file already knew how to tell a live agent from a dead one and
+// the other did not: `done` would refuse to touch a tree written nine minutes ago
+// while `list` called the same dispatch stalled. The fix is to stop asking two
+// different questions about one fact.
+//
+// This is #2984's move exactly. The rescue alarm stopped guessing which NAMES a
+// read-only lane might be spelled with and asked what the name stood for — "was
+// anything authored here?". Same shape: stop timing the dispatch and ask what the
+// clock stood for — "has anything moved here?".
+//
+// SO NO RE-STAMPING. The alternative was to have a dispatch that changes hands
+// re-stamp its ledger entry, and it is worse in three ways. It is bookkeeping
+// nobody performs at the one moment it matters (an agent has just died). It
+// cannot be verified — a missed re-stamp is indistinguishable from a real stall,
+// which is the drift #2984 removed. And it would corrode the very threshold it
+// feeds: `completedDurationsMs` measures a dispatch from its LAST `active` row,
+// so re-stamping shortens every completed duration, shrinks the median, and
+// lowers 3x it — the false alarms would arrive SOONER. Progress detection needs
+// no bookkeeping and cannot drift.
+
+/**
+ * Idle milliseconds implied by a git committer timestamp (`%cI`).
+ *
+ * Separated from the `git log` call so the arithmetic is testable without a
+ * fixture repo. Anything git could not answer — a branch with no ref, an empty
+ * string, an unparseable date — is `null`, meaning "no signal", never `0`.
+ */
+export function commitIdleMs(isoCommitterDate, now = Date.now()) {
+  if (!isoCommitterDate) return null;
+  const at = Date.parse(isoCommitterDate);
+  if (Number.isNaN(at)) return null;
+  return Math.max(0, now - at);
+}
+
+/**
+ * How long ago this branch's tip was written.
+ *
+ * The LOCAL ref first, and the remote-tracking ref only as a fallback. #2988
+ * proposed the remote ref, but `list` does not fetch, so `refs/remotes/origin/*`
+ * is only as fresh as the last `fetch` anyone happened to run — and the brief
+ * lets an agent go ~45 minutes or ~10 files between pushes by design, so a remote
+ * ref would manufacture idleness on an agent committing steadily. Every worktree
+ * shares this checkout's `.git`, so an agent's commit is visible in
+ * `refs/heads/<branch>` the instant it lands, with no network.
+ */
+function branchIdleMs(branch) {
+  const local = git(`log -1 --format=%cI refs/heads/${branch}`, {
+    allowFail: true,
+  });
+  if (local) return commitIdleMs(local);
+  const remote = git(`log -1 --format=%cI refs/remotes/origin/${branch}`, {
+    allowFail: true,
+  });
+  return commitIdleMs(remote);
+}
+
+/**
+ * The most recent movement across every signal that has one.
+ *
+ * EITHER witness silences the warning, because either one is proof the dispatch
+ * is alive: a fresh commit without recent writes is an agent that just banked and
+ * is reading; fresh writes without a commit is an agent mid-edit. Requiring both
+ * would reintroduce a false alarm on each.
+ */
+export function idleMsFrom({ worktreeIdleMs: wt, branchIdleMs: br }) {
+  const seen = [wt, br].filter((n) => typeof n === "number");
+  return seen.length ? Math.min(...seen) : null;
+}
+
+// A dispatch with NO worktree and NO branch has left no trace at all, and that is
+// the shape of the one stall this runbook has actually measured: the 12.9-hour
+// "denied-and-idle" agent of 2026-08-10 (docs/orchestration-incidents.md) had its
+// first `git worktree add` refused by the permission system, correctly did not
+// retry, and sat — four tool calls, no worktree, thirteen hours, "visible from
+// minute five, if anyone had looked".
+//
+// So the progress signals #2988 proposes are BOTH absent in the only real stall
+// on record, and shipping them alone would trade a noisy detector for a blind
+// one. Absence of a trace is itself the alarm.
+//
+// Age is what qualifies it — the one job age is honest for. The brief makes the
+// worktree the FIRST action, before reading any source, so fifteen minutes is
+// several times a slow `cp -al` under contention and still catches the failure
+// inside one check-in.
+export const NO_TRACE_GRACE_MS = 15 * 60_000;
+
+/**
+ * What `list` should say about one dispatch.
+ *
+ * Pure: it takes the measurements, not the disk. `thresholdMs` is null when the
+ * ledger has too few real completions to have a median.
+ *
+ * @returns {{ kind: "moving" | "stalled" | "starting" | "no-trace", alarm: boolean }}
+ */
+export function stallVerdict({ ageMs, idleMs, thresholdMs }) {
+  if (idleMs === null) {
+    return ageMs >= NO_TRACE_GRACE_MS
+      ? { kind: "no-trace", alarm: true }
+      : { kind: "starting", alarm: false };
+  }
+  if (thresholdMs !== null && idleMs > thresholdMs) {
+    return { kind: "stalled", alarm: true };
+  }
+  return { kind: "moving", alarm: false };
 }
 
 function cmdDone(argv) {
@@ -689,6 +976,39 @@ to close the ledger entry and leave the tree alone.`
       );
     }
   }
+}
+
+// Reprint a live dispatch's brief, writing nothing.
+//
+// The ledger stores a dispatch's PARAMETERS, not its brief text, and the brief
+// is only ever printed once — at `new`. An orchestrator that loses the text
+// (restart, compaction, a tail that cut it off) has no way back to it, and the
+// obvious move, re-running `new`, silently forked the ledger and the roster.
+// Rebuilding from the recorded parameters is exact: `buildBrief` is a pure
+// function of them, so this prints the same bytes the agent was given.
+function cmdBrief(argv) {
+  const branch = argv[0];
+  if (!branch) {
+    console.error("usage: dispatch-brief.mjs brief <branch>");
+    process.exit(2);
+  }
+  const entry = activeDispatches(readLedger()).find((d) => d.branch === branch);
+  if (!entry) {
+    console.error(
+      `no ACTIVE dispatch for ${branch}. \`list\` shows what is live; a retired ` +
+        "dispatch has no brief to reprint."
+    );
+    process.exit(1);
+  }
+  const { brief } = buildBrief({
+    branch: entry.branch,
+    worktree: entry.worktree,
+    issues: entry.issues,
+    task: entry.task,
+    e2e: entry.e2e,
+    portBase: entry.portBase,
+  });
+  console.log(brief);
 }
 
 function cmdResume(argv) {
@@ -842,20 +1162,35 @@ function cmdAdopt(argv) {
   );
 }
 
-const [cmd = "new", ...rest] = process.argv.slice(2);
-try {
-  if (cmd === "new") cmdNew(rest);
-  else if (cmd === "list") cmdList();
-  else if (cmd === "done") cmdDone(rest);
-  else if (cmd === "resume") cmdResume(rest);
-  else if (cmd === "adopt") cmdAdopt(rest);
-  else {
-    console.error(
-      `unknown command: ${cmd} (expected new | list | done | resume | adopt)`
-    );
-    process.exit(2);
+function main(argv) {
+  const [cmd = "new", ...rest] = argv;
+  try {
+    if (cmd === "new") cmdNew(rest);
+    else if (cmd === "list") cmdList();
+    else if (cmd === "brief") cmdBrief(rest);
+    else if (cmd === "done") cmdDone(rest);
+    else if (cmd === "resume") cmdResume(rest);
+    else if (cmd === "adopt") cmdAdopt(rest);
+    else {
+      console.error(
+        `unknown command: ${cmd} (expected new | list | brief | done | resume | adopt)`
+      );
+      process.exit(2);
+    }
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
   }
-} catch (err) {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
+}
+
+// Run as a script, importable as a module — the same shape seed-next-build.mjs
+// uses so its exit codes can be asserted. Without this guard, importing the file
+// to test one pure function would RUN `new` (the default command) against the
+// live ledger and the live roster, which is the 2026-08-15 roster-fork incident
+// arriving through the test harness.
+if (
+  process.argv[1] &&
+  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
+) {
+  main(process.argv.slice(2));
 }

@@ -67,8 +67,12 @@ export default function FoodSuggestions({
                       : "font-semibold text-emerald-900 dark:text-emerald-100"
                   }
                 >
+                  {/* The flag side comes from the suggestion's declared trigger
+                      (#2754): the soluble-fiber ADD fires on a HIGH flag, so the
+                      side word may not be derived from the eat-more/eat-less verb. */}
                   {reasons.join(", ")} {reasons.length > 1 ? "are" : "is"}{" "}
-                  {reduce ? "HIGH. Eat less:" : "LOW. Eat more:"}
+                  {s.side === "high" ? "HIGH." : "LOW."}{" "}
+                  {reduce ? "Eat less:" : "Eat more:"}
                 </p>
                 <ul
                   data-testid={`food-suggestion-foods-${s.key}`}

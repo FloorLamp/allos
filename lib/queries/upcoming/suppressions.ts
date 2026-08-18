@@ -19,7 +19,10 @@ import {
 } from "../../dismissal-keys";
 import { movementLoadKey } from "../../lifts";
 import { activityHistoryKey } from "../../activities-catalog";
-import { cleanupOrphanSavedBiomarkers, biomarkerFamilyKey } from "../medical";
+import {
+  cleanupOrphanSavedClinicalResults,
+  biomarkerFamilyKey,
+} from "../medical";
 import { NON_IDENTITY_CATEGORIES } from "../../medical-categories";
 
 // The profile's snooze/dismiss rows, keyed by signal_key (a Finding's dedupeKey)
@@ -128,7 +131,7 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
 // a vaccine code), so a dismissal left behind after its subject is deleted/renamed
 // silently re-attaches to a later subject that reuses the same key (AGENTS.md #224:
 // "names and codes DO recycle"). These helpers clear/re-key those rows at the
-// delete/rename seams, mirroring cleanupOrphanSavedBiomarkers on the save store. Each is
+// delete/rename seams, mirroring cleanupOrphanSavedClinicalResults on the save store. Each is
 // profile-scoped.
 
 // Drop biomarker retest dismissals (`biomarker:<family>`) AND flagged-result
@@ -140,7 +143,7 @@ export function restoreFinding(profileId: number, dedupeKey: string): void {
 // is de-orphaned only when NO family member has a reading left, and a stale
 // legacy per-name flag row (from before #564) is de-orphaned here too (its suffix
 // isn't in the family-key set). A dismissal with no matching reading can never fire
-// again, so removing it is a pure de-orphan (mirrors cleanupOrphanSavedBiomarkers).
+// again, so removing it is a pure de-orphan (mirrors cleanupOrphanSavedClinicalResults).
 // 11 = length('biomarker:') + 1; 16 = length('biomarker-flag:') + 1.
 export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
   // A row in a NON_IDENTITY category is not a backing reading (#2318): an
@@ -169,8 +172,8 @@ export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
   ).run(profileId, profileId, ...NON_IDENTITY_CATEGORIES);
 }
 
-// One call that sweeps BOTH name-keyed biomarker side-stores — the biomarker SAVES
-// (saved_items where kind='biomarker', #1456) and the retest/flag dismissals
+// One call that sweeps BOTH name-keyed result side-stores — the clinical-result SAVES
+// (saved_items where kind='clinical-result', #1456) and the retest/flag dismissals
 // (upcoming_dismissals) — of any row whose backing readings are all gone. Both stores
 // key on a REUSABLE canonical name, so every operation that removes readings (a record
 // delete, a document delete/reprocess/reassign) can orphan either one, and a name that
@@ -180,7 +183,7 @@ export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
 // two here means the next document-level operation can't clean one and forget the
 // other (same disease as the import-footprint two-lists rule). Profile-scoped.
 export function cleanupOrphanBiomarkerKeyedState(profileId: number): void {
-  cleanupOrphanSavedBiomarkers(profileId);
+  cleanupOrphanSavedClinicalResults(profileId);
   cleanupOrphanBiomarkerDismissals(profileId);
 }
 
@@ -307,7 +310,7 @@ function cardioActivityIdentities(profileId: number): string[] {
 // dismissal keys are already lowercased. The `biomarker-flag:` key (the hero's
 // flagged-result dismissal, issue #283) rides the same lifecycle.
 //
-// Scoped to kind='biomarker' (#1456): the unified store also holds `trend-metric`
+// Scoped to kind='clinical-result' (#1456): the unified store also holds `trend-metric`
 // saves keyed by metric id, and a biomarker rename must never touch those.
 export function migrateRenamedBiomarker(
   profileId: number,
@@ -317,7 +320,7 @@ export function migrateRenamedBiomarker(
   db.prepare(
     `UPDATE OR IGNORE saved_items
         SET key = ?
-      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
+      WHERE profile_id = ? AND kind = 'clinical-result' AND key = ? COLLATE NOCASE`
   ).run(newName, profileId, oldName);
   // If the rename COLLIDED with an existing save under the new name (UPDATE OR
   // IGNORE left the old row), drop the now-redundant old save. Before #482 the
@@ -326,7 +329,7 @@ export function migrateRenamedBiomarker(
   // to be explicit here — a rename must never leave two saves on one family.
   db.prepare(
     `DELETE FROM saved_items
-      WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE`
+      WHERE profile_id = ? AND kind = 'clinical-result' AND key = ? COLLATE NOCASE`
   ).run(profileId, oldName);
   const rekey = db.prepare(
     `UPDATE OR IGNORE upcoming_dismissals

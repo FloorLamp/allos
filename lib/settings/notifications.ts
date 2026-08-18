@@ -452,10 +452,11 @@ export function setHouseholdRoundPointer(
 
 // ---- The digest's live offer-tail keyboard (issue #1505) -------------------
 //
-// The digest carries the guaranteed offer tail, and that button's LABEL names the
-// slot it opens into ("Log other (2 for bedtime)"). A morning-sent digest whose label
-// still says "morning" at 10pm is a promise the expansion won't keep, so the tick
-// re-labels it at each slot boundary.
+// The digest carries the guaranteed offer tail, and that button's LABEL states how many
+// doses the expansion will show ("➕ Doses (2)"). That COUNT is slot-scoped even though
+// the label no longer names the slot (#2890): a morning-sent digest still claiming two
+// at 10pm is a promise the expansion won't keep, so the tick re-labels it at each slot
+// boundary — and the same pass restores the ⚙️ Tune button sharing that row.
 //
 // Doing that needs the sent message's id — the same thing the #947 food-nudge pointer
 // keeps, for the same class of reason (a live keyboard outliving its context). One

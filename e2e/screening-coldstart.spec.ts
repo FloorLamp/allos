@@ -120,7 +120,7 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
     );
     await expect(dental).toBeVisible();
     await expect(dental).toContainText("No record yet");
-    await expect(dental).not.toContainText("Overdue");
+    await expect(dental).not.toContainText(/overdue/i);
     await expect(dental.getByRole("link", { name: "Book" })).toBeVisible();
     await expect(
       dental.getByRole("button", { name: "Mark done" })
@@ -133,11 +133,16 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
     const main = lapsed.getByRole("main");
 
     // The seeded 2011 cleaning is real evidence that a 6-month interval elapsed.
+    // Since #2805 the row carries the assessor's own due date instead of a hard-set
+    // band, so it says how far past it is ("N days overdue") rather than the bare word
+    // the status fallback used to supply. The band is what this test is about, and the
+    // row still has to say overdue in its own text — case-insensitively, because the
+    // date-derived phrasing is a sentence fragment rather than a label.
     const dental = main
       .locator("section#overdue")
       .getByTestId("upcoming-item-visit:dental_cleaning");
     await expect(dental).toBeVisible();
-    await expect(dental).toContainText("Overdue");
+    await expect(dental).toContainText(/overdue/i);
     await expect(dental).not.toContainText("No record yet");
 
     // The other seeded rule is the same story on the screening side.

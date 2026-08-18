@@ -9,6 +9,10 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # Explicit labels override Dependabot's defaults ("dependencies" + the
+    # ecosystem label) — `javascript` was retired from the vocabulary 2026-08-15.
+    labels:
+      - "dependencies"
     groups:
       npm-minor-and-patch:
         update-types:
@@ -20,6 +24,9 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # Same rule as npm: keep `dependencies`, drop the auto ecosystem label.
+    labels:
+      - "dependencies"
     groups:
       github-actions:
         update-types:

@@ -37,7 +37,7 @@ function newDocument(profileId: number, filename: string): number {
 // A PersistInput carrying only the two new domains (everything else empty).
 function makeInput(tag: string): PersistInput {
   return {
-    records: [],
+    observations: [],
     immunizations: [],
     allergies: [],
     conditions: [],

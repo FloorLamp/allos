@@ -38,9 +38,11 @@ function FocusIcon({ focus }: { focus: OnboardingFocus }) {
 export default function FocusChoices({
   selected,
   readOnly,
+  trainingRelevant = true,
 }: {
   selected: OnboardingFocus[];
   readOnly: boolean;
+  trainingRelevant?: boolean;
 }) {
   const [choices, setChoices] = useState(() => new Set(selected));
   const atLimit = choices.size >= 2;
@@ -63,7 +65,9 @@ export default function FocusChoices({
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        {ONBOARDING_FOCUS_DEFS.map((focus) => {
+        {ONBOARDING_FOCUS_DEFS.filter(
+          (focus) => trainingRelevant || focus.id !== "fitness"
+        ).map((focus) => {
           const checked = choices.has(focus.id);
           const disabled =
             readOnly || (!checked && focus.id !== "explore" && atLimit);

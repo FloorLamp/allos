@@ -17,6 +17,7 @@ import {
 } from "@/app/(app)/training/endurance-actions";
 import { getEndurancePlans } from "@/lib/endurance-plans";
 import { seedActor } from "./harness";
+import { setStoredAge } from "@/lib/settings";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -29,6 +30,16 @@ function fd(fields: Record<string, string>): FormData {
 beforeEach(() => revalidate.mockClear());
 
 describe("createEndurancePlan (#839)", () => {
+  it("refuses a plan through early childhood", async () => {
+    const { profile } = seedActor();
+    setStoredAge(profile.id, 2);
+    const res = await createEndurancePlan(
+      fd({ discipline: "run", event_date: "2026-10-05" })
+    );
+    expect(res.ok).toBe(false);
+    expect(getEndurancePlans(profile.id)).toEqual([]);
+  });
+
   it("creates an active plan and revalidates", async () => {
     const { profile } = seedActor();
     const res = await createEndurancePlan(

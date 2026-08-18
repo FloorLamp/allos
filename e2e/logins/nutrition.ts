@@ -16,7 +16,8 @@ export const DUP_REVIEW_PROFILE = "Dup Review (e2e)";
 // "Add equipment" bootstrap door to /equipment. Dedicated on purpose — profile 1
 // (and every other fixture profile that a spec logs a non-strength activity on)
 // owns gear, so the door only appears where the inventory is provably empty. No
-// birthdate → adult → never training-restricted, so /training renders the full log.
+// birthdate → unknown age, so /training keeps its generic logger while
+// strength-only tools remain unavailable.
 export const E2E_LOGIN_NOGEAR = "e2e_nogear";
 export const NO_GEAR_PROFILE = "No Gear (e2e)";
 
@@ -32,7 +33,7 @@ export const PRESENCE_PROFILE = "Workout Presence (e2e)";
 // A dedicated ADULT profile for the protein-grams quick-add spec (#824): a bodyweight
 // (so the adequacy target scales) plus a couple of protein-bearing food-group servings
 // today (so the adequacy card renders over the ESTIMATED basis), and NO integration
-// protein_g and NO protein_log rows. Isolated on purpose — the spec OWNS the protein_log
+// protein_g and NO protein_daily_totals rows. Isolated on purpose — the spec OWNS the protein_daily_totals
 // writes on it, and logging grams flips the adequacy card to the COMBINED basis, which
 // would race protein-adequacy.spec's shared-profile estimated-basis assertions if it ran
 // on profile 1. No birthdate → adult → the food logger + adequacy card render.
@@ -52,7 +53,7 @@ export const RECAP_PROFILE = "Session Recap (e2e)";
 // vital, and set rows on an assessment activity), which would perturb profile 1's seeded
 // fitness sessions / pillar coverage under --repeat-each. Both carry sex + birthdate so
 // the norms percentiles resolve; FITNESS also carries a PRIOR check so a re-record shows a
-// check-over-check delta. FITNESS_SENIOR is age 72 so /training?tab=fitness renders the
+// check-over-check delta. FITNESS_SENIOR is age 72 so /training/fitness-check renders the
 // older-adult battery variant (arm curl, timed up-and-go, 4-stage balance — never a
 // Cooper run or dead hang).
 export const E2E_LOGIN_FITNESS = "e2e_fitness";
@@ -62,8 +63,8 @@ export const FITNESS_SENIOR_PROFILE = "Fitness Senior (e2e)";
 // A dedicated ADULT profile for the mobility spec (#840). Carries sex + birthdate (so the
 // fitness-norms percentile gate opens) and a LOW sit-and-reach vital, so the Training
 // overview's Mobility section renders a deficit→habit SUGGESTION (a Legs mobility habit).
-// Isolated on purpose: the spec TAPS moves (writing a recovery activity) and the fixture
-// keeps NO seeded recovery session / mobility_region target, so the log bar starts empty
+// Isolated on purpose: the spec TAPS moves (writing a mobility activity) and the fixture
+// keeps NO seeded mobility session / mobility_region target, so the log bar starts empty
 // and the suggestion is present — state a shared profile couldn't guarantee under
 // --repeat-each. The spec owns + cleans up its own toggles; it never clicks Accept (which
 // would create a persistent target and hide the suggestion on the next repeat).

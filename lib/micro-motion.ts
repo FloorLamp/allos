@@ -92,6 +92,24 @@ export const MICRO_MOTIONS = {
     reducedEndState:
       "the row is simply gone from the list on the frame the page re-renders, and the fold below already holds it.",
   },
+  // The fifth tenant, and the first that is not feedback on a WRITE (#2657 item 4). It
+  // answers the same question — "did that register?" — for a GESTURE instead of a save:
+  // the jump rail's bubble beats once as the finger crosses out of one month and into
+  // the next. It belongs in this vocabulary rather than the overlay family because it
+  // is a beat IN PLACE rather than a panel arriving, and it is held to all four rules
+  // including the band. It is also the rule-4 case at its starkest: the platform half
+  // of the same feedback (one 8 ms haptic, `HAPTIC_PATTERNS["scrubber-tick"]`) does not
+  // exist on iOS at all, which is exactly why the #2657 ruling makes the VISUAL pulse
+  // the universal carrier — and why this row is not optional.
+  tick: {
+    ms: 180,
+    conveys:
+      "the finger crossed a month boundary — the period under it just became a different one, which is the difference between scrubbing THROUGH history and sliding around inside one month.",
+    carriedBy:
+      "the bubble's own text, which names the period on every frame it is shown, and the rail's `aria-valuetext`, which announces the same change to a reader who sees no bubble at all.",
+    reducedEndState:
+      "the bubble simply reads the new period on the next frame, with no beat — and the haptic is suppressed by the same preference (lib/haptics), so the text is the whole feedback.",
+  },
   fold: {
     ms: 500,
     conveys:

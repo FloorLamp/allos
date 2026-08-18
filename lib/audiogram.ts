@@ -11,7 +11,7 @@
 //     "Hearing Threshold, Right Ear 4 kHz"   value_num 40   unit "dB HL"
 //
 // Twelve of these (2 ears × 6 frequencies) are already curated in
-// lib/canonical-biomarkers.json with unit `dB HL`, `ref_high: 25` (the WHO/ASHA normal
+// lib/canonical-result-definitions.json with unit `dB HL`, `ref_high: 25` (the WHO/ASHA normal
 // band) and `direction: lower_better`; lib/biomarker-panels.ts already groups them as
 // the `hearing` panel; lib/canonical-name.ts already argues (at length, #713) why each
 // ear/frequency keeps its OWN singleton identity rather than collapsing into a
@@ -28,7 +28,7 @@
 //     numeric value, unit, reference range, flag, notes, provenance (document_id /
 //     external_id / provider_id), and the edit lock are all already there.
 //   • it would STRAND the readings. Every observation surface in this app — the
-//     Biomarkers catalog, the trend series, the flagged hero, star/retest side-state,
+//     Clinical results catalog, the trend series, the flagged hero, star/retest side-state,
 //     document reassignment, imported-row cleanup, undo-delete, search projections —
 //     reads `medical_records`. A private table would have to re-earn every one of them,
 //     and #713's readings (already seeded and already trending) would split in two.
@@ -55,7 +55,7 @@ export const AUDIOGRAM_EARS = ["right", "left"] as const;
 export type AudiogramEar = (typeof AUDIOGRAM_EARS)[number];
 
 // The six standard pure-tone air-conduction test frequencies, low → high. This is
-// exactly the set lib/canonical-biomarkers.json curates for the `hearing` panel; the
+// exactly the set lib/canonical-result-definitions.json curates for the `hearing` panel; the
 // ORDER is load-bearing (the "adjacent frequencies" shift criterion below walks it).
 export const AUDIOGRAM_FREQUENCIES_HZ = [
   250, 500, 1000, 2000, 4000, 8000,
@@ -341,7 +341,7 @@ export function groupAudiogramReadings(
 
 // THE latest-per-group answer for this domain: which threshold is CURRENT for each
 // ear/frequency series. Routes through the shared `latestByGroup` (issue #944) keyed on
-// the domain identity, so "current" here can never disagree with the Biomarkers
+// the domain identity, so "current" here can never disagree with the Clinical results
 // is_latest marker. A partial re-test (say 4 kHz only) correctly refreshes just that
 // series and leaves the rest standing — which is why this is not "the newest date's
 // rows".
@@ -624,7 +624,7 @@ export interface HearingBaseline {
 // comparable baseline, and the ototoxic crosscheck correctly says nothing extra.
 // The "current" side uses
 // currentThresholds() — the shared latest-per-group answer — so the citation and the
-// Biomarkers is_latest marker are the same computation; the comparison side is the
+// Clinical results is_latest marker are the same computation; the comparison side is the
 // EARLIEST dated audiogram, which is what "since your baseline" means clinically.
 // Returns null when the profile has no audiogram at all (the crosscheck then says
 // nothing extra — it must not nag for a test the user never had).

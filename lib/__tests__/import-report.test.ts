@@ -133,13 +133,13 @@ describe("unmappedCodeIssueUrl", () => {
     // provider strings.
     expect(parsed.searchParams.get("body")).toBe(
       [
-        "A health-record import surfaced a lab code with no canonical mapping, so its readings don't group with a canonical biomarker or pick up its reference band.",
+        "A health-record import surfaced a lab code with no canonical mapping, so its readings don't group with a canonical result or pick up its reference band.",
         "",
         "- LOINC: `55555-5`",
         "- Display name: Novel Marker",
         "- Unit: `ng/mL`",
         "",
-        "Please consider adding this code to the canonical biomarker map (`scripts/gen-canonical-biomarkers.ts` / `lib/biomarker-loinc.ts`).",
+        "Please consider adding this code to the canonical result map (`scripts/gen-canonical-result-definitions.ts` / `lib/canonical-result-loinc.ts`).",
       ].join("\n")
     );
   });
@@ -169,12 +169,12 @@ describe("unresolvedNameIssueUrl", () => {
     // Pin the FULL body: only the name and unit — never values/dates/ranges/patient.
     expect(parsed.searchParams.get("body")).toBe(
       [
-        "An AI-extracted health record surfaced a lab analyte whose name matched no canonical biomarker, so its readings don't group with a canonical biomarker or pick up its reference band. (The AI path has no LOINC to fall back on — identity is the name alone.)",
+        "An AI-extracted health record surfaced a lab analyte whose name matched no canonical result definition, so its readings don't group with a canonical result or pick up its reference band. (The AI path has no LOINC to fall back on — identity is the name alone.)",
         "",
         "- Analyte name: Urobilinogen",
         "- Unit: `mg/dL`",
         "",
-        "Please consider adding an alias (`lib/canonical-name.ts` `CANONICAL_ALIASES`) if this is a known analyte named differently, or curating a new entry (`lib/curated-biomarkers.ts`) if it isn't modeled yet.",
+        "Please consider adding an alias (`lib/canonical-name.ts` `CANONICAL_ALIASES`) if this is a known analyte named differently, or curating a new entry (`lib/curated-result-definitions.ts`) if it isn't modeled yet.",
       ].join("\n")
     );
   });
@@ -350,7 +350,7 @@ describe("keptRowCount", () => {
   it("sums every row-bearing kept list, ignoring absent ones", () => {
     expect(
       keptRowCount({
-        records: [1, 2],
+        observations: [1, 2],
         immunizations: [1],
         allergies: [1],
         conditions: [1],
@@ -617,7 +617,7 @@ describe("parseCcda → import report", () => {
   it("attaches a report with kept-vs-considered counts", () => {
     expect(report).toBeDefined();
     // Only the Cholesterol lab imports.
-    expect(parsed.records.map((r) => r.name)).toEqual(["Cholesterol"]);
+    expect(parsed.observations.map((r) => r.name)).toEqual(["Cholesterol"]);
     // Exact, independently-derived counts (NOT `imported + rowDropCount`, which is
     // how `considered` is defined and so can never fail): one kept lab, exactly
     // three row drops — Comment(s) (null_flavor), value-less Result (no_value), and
@@ -715,7 +715,7 @@ describe("parseFhirBundle → import report", () => {
   const report = parsed.report!;
 
   it("keeps the good observation and drops the retracted one as negated", () => {
-    expect(parsed.records.map((r) => r.name)).toEqual(["Glucose"]);
+    expect(parsed.observations.map((r) => r.name)).toEqual(["Glucose"]);
     expect(
       report.drops.some(
         (d) => d.reason === "negated" && d.label === "Bad Reading"
@@ -734,7 +734,7 @@ describe("parseFhirBundle → import report", () => {
   // drop label — if the instrumentation double-counted a kept row as dropped, this
   // fails.
   it("never reports a kept reading as a genuine drop", () => {
-    const keptNames = new Set(parsed.records.map((r) => r.name));
+    const keptNames = new Set(parsed.observations.map((r) => r.name));
     const genuineDropLabels = report.drops
       .filter((d) => d.reason !== "deduped")
       .map((d) => d.label);
@@ -838,7 +838,7 @@ describe("parseFhirBundle → dedupe fidelity (c)", () => {
   const report = parsed.report!;
 
   it("keeps one copy and records exactly one deduped drop", () => {
-    expect(parsed.records).toHaveLength(1);
+    expect(parsed.observations).toHaveLength(1);
     const deduped = report.drops.filter((d) => d.reason === "deduped");
     expect(deduped).toHaveLength(1);
     expect(deduped[0].label).toBe("Heart rate");
@@ -906,7 +906,7 @@ describe("parseCcda → unmapped lab LOINC surfacing (Fix 3)", () => {
   const report = parsed.report!;
 
   it("imports both labs", () => {
-    expect(parsed.records.map((r) => r.name).sort()).toEqual([
+    expect(parsed.observations.map((r) => r.name).sort()).toEqual([
       "Cholesterol",
       "Novel Marker",
     ]);
@@ -955,7 +955,7 @@ describe("parseCcda → a kept imaging study counts as imported", () => {
 
   it("counts the study the parser kept (it used to report zero)", () => {
     expect(parsed.imagingStudies).toHaveLength(1);
-    expect(parsed.records).toHaveLength(0);
+    expect(parsed.observations).toHaveLength(0);
     expect(parsed.report!.imported).toBe(1);
   });
 });

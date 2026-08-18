@@ -1,19 +1,19 @@
 // Read-time computation of DERIVED clinical indices (issue #40) as virtual
-// biomarker records. This is the DB-facing seam over the pure lib/derived-biomarkers
+// clinical-result rows. This is the DB-facing seam over the pure lib/derived-biomarkers
 // math: it reads the stored component series (through the already profile-scoped
 // getBiomarkerSeries), resolves demographics from settings, computes the indices,
-// and shapes each result as a read-only ClinicalObservation the biomarkers table, the
+// and shapes each result as a read-only ClinicalObservation the clinical results table, the
 // biomarker detail page, and the Trends surfaces render like any other analyte.
 //
 // No raw SQL lives here — every read goes through an already-scoped query
-// (getAllBiomarkerSeries / getBiomarkerSeries / getCanonicalBiomarker) or
+// (getAllBiomarkerSeries / getBiomarkerSeries / getCanonicalResultDefinition) or
 // lib/settings — so the profile-scoping guard is unaffected. Nothing is written;
 // the records are ephemeral.
 
 import {
   getAllBiomarkerSeries,
   getBiomarkerSeriesFor,
-  getCanonicalBiomarker,
+  getCanonicalResultDefinition,
   getUsedCanonicalNames,
 } from "./medical";
 import { canonicalGroupKey, groupByCanonicalName } from "../biomarker-group";
@@ -77,9 +77,13 @@ function phenoAgeReferenceResolver(
   status: ReturnType<typeof getProfileReproductiveStatus>
 ): PhenoAgeReferenceResolver {
   const units = derivedInputUnitsFor("PhenoAge");
-  const cbCache = new Map<string, ReturnType<typeof getCanonicalBiomarker>>();
+  const cbCache = new Map<
+    string,
+    ReturnType<typeof getCanonicalResultDefinition>
+  >();
   return ({ key, name, date }) => {
-    if (!cbCache.has(name)) cbCache.set(name, getCanonicalBiomarker(name));
+    if (!cbCache.has(name))
+      cbCache.set(name, getCanonicalResultDefinition(name));
     const cb = cbCache.get(name);
     const ref = phenoAgeReferenceValue(
       cb,
@@ -229,9 +233,13 @@ export function getDerivedBiomarkerReadings(
   const { readings, sex, status } = getDerivedComputation(profileId);
 
   // Cache canonical entries so each analyte's ranges are looked up once for flags.
-  const cbCache = new Map<string, ReturnType<typeof getCanonicalBiomarker>>();
+  const cbCache = new Map<
+    string,
+    ReturnType<typeof getCanonicalResultDefinition>
+  >();
   const cbFor = (name: string) => {
-    if (!cbCache.has(name)) cbCache.set(name, getCanonicalBiomarker(name));
+    if (!cbCache.has(name))
+      cbCache.set(name, getCanonicalResultDefinition(name));
     return cbCache.get(name);
   };
 
@@ -248,7 +256,7 @@ export function getDerivedBiomarkerReadings(
 }
 
 // The derived analytes that actually have ≥1 computed reading for this profile —
-// the names the Trends digest/compare and the biomarkers table should include
+// the names the Trends digest/compare and the clinical results table should include
 // alongside the stored analytes.
 export function getDerivedCanonicalNames(profileId: number): string[] {
   const present = new Set(

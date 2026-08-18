@@ -76,7 +76,7 @@ function parseStringList(raw: FormDataEntryValue | null): string[] {
 const EDIT_LOCK_REVALIDATE: Record<string, readonly RevalidateTarget[]> = {
   activities: ["/data", "/training", "/trends", "/"],
   body_metrics: ["/data", "/trends", "/"],
-  medical_records: ["/data", "/results", "/results/readings/view", "/"],
+  medical_records: ["/data", "/results", "/results/clinical-results/view", "/"],
 };
 
 // Read the per-row provenance for one sync event (issue #1333): the records that sync
@@ -108,8 +108,9 @@ export async function clearEditLock(formData: FormData): Promise<FormResult> {
     .run(id, profile.id);
   if (info.changes === 0) return formError("Record not found.");
   revalidateRoute(paths);
-  if (table === "activities")
-    revalidateRoute("/training/rides/[id]", "page");
+  if (table === "activities") {
+    revalidateRoute("/training/activity/[id]", "page");
+  }
   return formOk();
 }
 
@@ -125,7 +126,7 @@ export async function clearEditLock(formData: FormData): Promise<FormResult> {
 function revalidateActivitySurfaces() {
   revalidateRoute("/data");
   revalidateRoute("/training");
-  revalidateRoute("/training/rides/[id]", "page");
+  revalidateRoute("/training/activity/[id]", "page");
   revalidateRoute("/trends");
   revalidateRoute("/");
 }
@@ -378,7 +379,7 @@ export async function resolveActivityCluster(formData: FormData) {
 const MISLABEL_REVALIDATE: readonly RevalidateTarget[] = [
   "/data",
   "/results",
-  "/results/readings/view",
+  "/results/clinical-results/view",
   "/trends",
   "/",
 ];

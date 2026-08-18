@@ -1,22 +1,18 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledBoxes, settledClick } from "./helpers";
+import { followLink, settledBoxes } from "./helpers";
 import {
   E2E_LOGIN_TRAINING_ROLLUP,
   E2E_MEMBER_PASSWORD,
-  TRAINING_ROLLUP_PROFILE,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
 
 // Issue #1496 — Training → Overview becomes the DOING surface (the other half of
 // #1492's rule: analyze on Trends, do on /training). On a 390×844 phone the tab was
 // an 8,798px wall whose first chart sat at 7,973px, led by ~17 uncapped per-muscle
 // finding cards with today's session buried mid-page. This spec pins the recomposed
-// order, the ONE findings rollup (with its item-wise dismiss still working through
-// the shared bus), the departed charts, the capped PR lists, and the #105
-// build-only-the-active-tab structure.
+// order, the coverage-owned volume status, the departed charts, the standards
+// ladder, and the #105 build-only-the-active-tab structure.
 //
 // Runs on the MOBILE project (the viewport the audit measured).
 
@@ -29,30 +25,31 @@ async function topOf(page: Page, testid: string): Promise<number> {
     .evaluate((el) => Math.round(el.getBoundingClientRect().top + scrollY));
 }
 
-test("Overview leads with today's session, then the week, then the findings rollup", async ({
+test("Overview leads with today's session, then the week, then depth", async ({
   page,
 }) => {
   await page.goto("/training?tab=overview");
 
   // On phones the six-tab navigation IS the page identity: the visible
   // Training title/subtitle leave the content flow and the one-row strip joins
-  // the auto-hiding app shell. Unlike the compact equal-column pages, six tabs
-  // scroll horizontally instead of becoming two tall rows.
+  // the auto-hiding app shell. Four tabs since #2892/#2894 — the strip keeps its
+  // scroll layout but now fits a phone row without overflowing.
   await expect(page.getByTestId("training-page-title")).toBeHidden();
   const shell = page.getByTestId("shell-chrome");
   const shellTabs = shell.getByTestId("shell-tab-strip");
   const tabs = shellTabs.getByTestId("training-tabs");
   await expect(tabs).toBeVisible();
   await expect(tabs).toHaveCSS("overflow-y", "hidden");
-  await expect(tabs.getByRole("tab")).toHaveCount(6);
+  await expect(tabs.getByRole("tab")).toHaveCount(4);
   await expect(tabs.getByRole("tab", { name: "Overview" })).toHaveAttribute(
     "aria-selected",
     "true"
   );
+  // The four-tab bar's win (#2893): no horizontal scroll left to do.
   const stripOverflow = await tabs.evaluate(
     (el) => el.scrollWidth > el.clientWidth
   );
-  expect(stripOverflow).toBe(true);
+  expect(stripOverflow).toBe(false);
 
   const today = page.getByTestId("training-today");
   await expect(today).toBeVisible();
@@ -91,9 +88,11 @@ test("Overview leads with today's session, then the week, then the findings roll
 test("a later deep-linked Training tab is brought into the visible tab row", async ({
   page,
 }) => {
+  // The retired goals deep link resolves to Plan (#2892) — the LAST tab, which
+  // is exactly what this scroll-into-view assertion needs.
   await page.goto("/training?tab=goals");
   const tabs = page.getByTestId("training-tabs");
-  const goals = tabs.getByRole("tab", { name: "Goals" });
+  const goals = tabs.getByRole("tab", { name: "Plan" });
   await expect(goals).toHaveAttribute("aria-selected", "true");
 
   await expect
@@ -119,19 +118,16 @@ test("the Training tabs fill the strip at 640px instead of clustering left", asy
 
   const tabs = page.getByTestId("shell-tab-strip").getByTestId("training-tabs");
   const items = tabs.getByRole("tab");
-  await expect(items).toHaveCount(6);
+  await expect(items).toHaveCount(4);
 
-  const [stripBox, firstBox, lastBox] = await Promise.all([
-    tabs.boundingBox(),
-    items.first().boundingBox(), // first-ok: the six-tab strip's first edge is the assertion
-    items.last().boundingBox(),
+  const [stripBox, firstBox, lastBox] = await settledBoxes([
+    tabs,
+    items.first(), // first-ok: the strip's first edge is the assertion
+    items.last(),
   ]);
-  expect(stripBox).not.toBeNull();
-  expect(firstBox).not.toBeNull();
-  expect(lastBox).not.toBeNull();
-  expect(Math.abs(firstBox!.x - stripBox!.x)).toBeLessThan(2);
+  expect(Math.abs(firstBox.x - stripBox.x)).toBeLessThan(2);
   expect(
-    Math.abs(lastBox!.x + lastBox!.width - (stripBox!.x + stripBox!.width))
+    Math.abs(lastBox.x + lastBox.width - (stripBox.x + stripBox.width))
   ).toBeLessThan(2);
   expect(
     await tabs.evaluate((element) => element.scrollWidth <= element.clientWidth)
@@ -146,19 +142,16 @@ test("the desktop Training tabs remain a compact left-aligned strip", async ({
 
   const tabs = page.getByTestId("training-page").getByTestId("training-tabs");
   const items = tabs.getByRole("tab");
-  await expect(items).toHaveCount(6);
+  await expect(items).toHaveCount(4);
 
-  const [stripBox, firstBox, lastBox] = await Promise.all([
-    tabs.boundingBox(),
-    items.first().boundingBox(), // first-ok: the six-tab strip's first edge is the assertion
-    items.last().boundingBox(),
+  const [stripBox, firstBox, lastBox] = await settledBoxes([
+    tabs,
+    items.first(), // first-ok: the strip's first edge is the assertion
+    items.last(),
   ]);
-  expect(stripBox).not.toBeNull();
-  expect(firstBox).not.toBeNull();
-  expect(lastBox).not.toBeNull();
-  expect(Math.abs(firstBox!.x - stripBox!.x)).toBeLessThan(2);
-  expect(lastBox!.x + lastBox!.width).toBeLessThan(
-    stripBox!.x + stripBox!.width - 100
+  expect(Math.abs(firstBox.x - stripBox.x)).toBeLessThan(2);
+  expect(lastBox.x + lastBox.width).toBeLessThan(
+    stripBox.x + stripBox.width - 100
   );
 });
 
@@ -168,28 +161,21 @@ test("the desktop Training tabs remain a compact left-aligned strip", async ({
 // from Training to the equipment registry below `md`. The action is now its own
 // cell beside the heading band rather than inside it, so it survives the band's
 // disappearance — ONE node, right-aligned above the tab panel on a phone.
-test("Training's Equipment door is reachable on a phone (#1661)", async ({
+test("Training's Equipment door is reachable on a phone (#1661) — via Plan since #2892", async ({
   page,
 }) => {
+  // The header action is desktop-only now: on phones it rendered as a
+  // full-width row above every tab, so the Plan tab's Equipment card is the
+  // phone door. #1661's guarantee — gear reachable on a phone — holds; only
+  // the door moved.
   await page.goto("/training?tab=overview");
-
-  // The heading band itself is still gone below `md` — the action is not part of it.
   await expect(page.getByTestId("training-page-title")).toBeHidden();
+  await expect(page.getByTestId("training-equipment-link")).toBeHidden();
 
-  const action = page.getByTestId("training-page-action");
-  await expect(action).toBeVisible();
-  const door = action.getByTestId("training-equipment-link");
+  await page.goto("/training?tab=plan");
+  const door = page.getByTestId("plan-equipment-link");
   await expect(door).toBeVisible();
   await expect(door).toHaveAttribute("href", "/equipment");
-
-  // It sits above the tab panel's content rather than overlapping it, and is a
-  // real tap target rather than a bare line of text.
-  const [doorBox, todayBox] = await Promise.all([
-    door.boundingBox(),
-    page.getByTestId("training-today").boundingBox(),
-  ]);
-  expect(doorBox!.height).toBeGreaterThanOrEqual(24);
-  expect(doorBox!.y + doorBox!.height).toBeLessThanOrEqual(todayBox!.y);
 
   await followLink(page, door, /\/equipment$/);
   await expect(
@@ -211,12 +197,9 @@ test("the desktop Training header keeps the Equipment door beside the title (#16
   await expect(door).toBeVisible();
 
   // Same row as the heading, to its right — where #1616 put it.
-  const [titleBox, doorBox] = await Promise.all([
-    title.boundingBox(),
-    door.boundingBox(),
-  ]);
-  expect(doorBox!.x).toBeGreaterThan(titleBox!.x);
-  expect(doorBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
+  const [titleBox, doorBox] = await settledBoxes([title, door]);
+  expect(doorBox.x).toBeGreaterThan(titleBox.x);
+  expect(doorBox.y).toBeLessThan(titleBox.y + titleBox.height);
 });
 
 test("no chart card renders on Overview — the volume/intensity block moved to Trends → Fitness", async ({
@@ -238,20 +221,22 @@ test("no chart card renders on Overview — the volume/intensity block moved to 
   await expect(main.locator(".recharts-wrapper")).toHaveCount(0);
 });
 
-test("recent PRs render top-3 with a show-all hand-off to Analyze", async ({
+test("strength progress is folded into the standards ladder", async ({
   page,
 }) => {
   await page.goto("/training?tab=overview");
-  const card = page.getByTestId("overview-strength-prs");
-  await expect(card).toBeVisible();
+  const ladder = page.getByTestId("strength-standards-ladder");
+  await expect(ladder).toBeVisible();
+  expect(
+    await ladder.getByTestId("strength-ladder-row").count()
+  ).toBeLessThanOrEqual(3);
+  await expect(page.getByTestId("overview-strength-prs")).toHaveCount(0);
 
-  // The seeded profile has more than three recent strength PRs, so the hand-off link
-  // renders — and exactly three rows are drawn (the 14-row list is gone).
-  const showAll = card.getByTestId("overview-strength-prs-all");
-  await expect(showAll).toBeVisible();
-  await expect(card.getByRole("listitem")).toHaveCount(3);
-
-  await followLink(page, showAll, /tab=analyze/);
+  await followLink(
+    page,
+    ladder.getByRole("link", { name: "Full standards →" }),
+    /tab=analyze/
+  );
   await expect(page.getByTestId("analyze-section")).toBeVisible();
 });
 
@@ -269,43 +254,19 @@ test("a tab renders only its own section (#105)", async ({ page }) => {
   await expect(page.getByTestId("analyze-section")).toBeVisible();
   await expect(page.getByTestId("training-today")).toHaveCount(0);
 
-  // The default (paramless) tab is still the Training Log.
+  // The default (paramless) tab is OVERVIEW since #2893 — the headline shell
+  // change, pinned here so a quiet regression to log-as-default cannot pass.
   await page.goto("/training");
-  await expect(page.getByTestId("training-today")).toHaveCount(0);
+  await expect(page.getByTestId("training-today")).toBeVisible();
   await expect(page.getByTestId("analyze-section")).toHaveCount(0);
 });
 
-// ── The findings rollup + its item-wise dismiss ───────────────────────────────
+// ── Volume status belongs to coverage, not a second findings presentation ─────
 
-// SPEC-OWNED FIXTURE (#868): the dismiss below writes a suppression row, so it runs
-// as a dedicated login on a dedicated profile whose light accessory log fires several
-// per-muscle volume-band shortfalls. Clearing that profile's volume-band dismissals
-// before AND after keeps the test self-contained under --repeat-each and leaves the
-// DB as it found it.
-function clearRollupDismissals(): void {
-  const dbPath = workerDbPath();
-  const db = new Database(dbPath);
-  try {
-    db.pragma("busy_timeout = 5000");
-    db.prepare(
-      `DELETE FROM upcoming_dismissals
-        WHERE signal_key LIKE 'muscle-volume:%'
-          AND profile_id = (SELECT id FROM profiles WHERE name = ?)`
-    ).run(TRAINING_ROLLUP_PROFILE);
-  } finally {
-    db.close();
-  }
-}
-
-test.describe("the coaching findings render as ONE rollup card", () => {
-  test.beforeAll(() => clearRollupDismissals());
-  test.afterAll(() => clearRollupDismissals());
-
-  test("expanding the rollup dismisses item-wise and the rollup survives with N−1", async ({
+test.describe("weekly volume has one presentation", () => {
+  test("coverage owns the under-target count and findings do not repeat it", async ({
     browser,
   }) => {
-    test.slow(); // local `next dev` compiles /training on first hit
-    clearRollupDismissals();
     const page = await loginAs(browser, {
       username: E2E_LOGIN_TRAINING_ROLLUP,
       password: E2E_MEMBER_PASSWORD,
@@ -313,39 +274,15 @@ test.describe("the coaching findings render as ONE rollup card", () => {
     try {
       await page.goto("/training?tab=overview");
 
-      // ONE card, ONE rollup row — never N sibling cards.
-      const card = page.getByTestId("training-findings");
-      await expect(card).toBeVisible();
-      const rollup = card.getByTestId("training-findings-rollup");
-      await expect(rollup).toHaveCount(1);
       await expect(
-        rollup.getByTestId("training-findings-rollup-title")
+        page.getByTestId("muscle-coverage-below-target")
       ).toContainText(/\d+ muscle groups under weekly target/);
-
-      // The per-muscle findings live INSIDE it, revealed by the disclosure — each
-      // with its own dismiss button (a pure client toggle, no POST).
-      const items = rollup.getByTestId("training-findings-rollup-item");
-      await rollup.locator("summary").click();
-      await expect(items.first()).toBeVisible(); // first-ok: this spec owns the fixture; the rollup's first item
-      const before = await items.count();
-      expect(before).toBeGreaterThan(1);
-
-      // Dismiss ONE of them: the identities/dedupeKeys are untouched by the
-      // aggregation, so this is the same shared-bus write a flat card always made.
-      const victim = items.nth(0);
-      const victimTitle = (await victim.innerText()).split("\n")[0];
-      await settledClick(
-        page,
-        victim.getByTestId("training-findings-rollup-dismiss")
-      );
-
-      // That ONE finding is gone; the rollup itself survives with N−1 and re-counts.
-      await expect(items).toHaveCount(before - 1);
-      await expect(rollup).toHaveCount(1);
-      await expect(items.filter({ hasText: victimTitle })).toHaveCount(0);
+      await expect(page.getByTestId("training-findings-rollup")).toHaveCount(0);
       await expect(
-        rollup.getByTestId("training-findings-rollup-title")
-      ).toContainText(`${before - 1} muscle group`);
+        page
+          .getByTestId("training-findings")
+          .getByText(/muscle groups under weekly target/)
+      ).toHaveCount(0);
     } finally {
       await page.close();
     }

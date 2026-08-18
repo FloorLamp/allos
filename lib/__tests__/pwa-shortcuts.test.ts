@@ -76,17 +76,6 @@ describe("shortcutAction", () => {
     expect(shortcutAction(undefined)).toBeNull();
   });
 
-  it("drops training-only entries for an age-restricted profile", () => {
-    // Same gate quickLogMenu applies: a restricted profile has no training
-    // surface at all.
-    expect(shortcutAction(LOG_ACTIVITY_ID, true)).toBeNull();
-    // Non-training entries are unaffected.
-    expect(shortcutAction("log-dose", true)).not.toBeNull();
-    expect(shortcutAction(SEARCH_SHORTCUT_ID, true)).toEqual({
-      kind: "search",
-    });
-  });
-
   it("only ever yields targets the shell can already open", () => {
     // The handler dispatches the QuickLogTarget union exactly as QuickLogSheet
     // does. No shortcut resolves to a `navigate` row today; if one ever does,
@@ -95,7 +84,9 @@ describe("shortcutAction", () => {
       const action = shortcutAction(s.id);
       expect(action).not.toBeNull();
       if (action!.kind === "quick-log") {
-        expect(["activity", "overlay"]).toContain(action!.item.target.kind);
+        expect(["activity", "live", "overlay"]).toContain(
+          action!.item.target.kind
+        );
       }
     }
   });

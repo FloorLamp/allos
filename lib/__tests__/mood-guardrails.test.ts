@@ -9,7 +9,7 @@ import {
   sleepMoodSignalKey,
 } from "@/lib/mood-observation";
 import { tierForDedupeKey } from "@/lib/rule-finding-prefixes";
-import canonical from "@/lib/canonical-biomarkers.json";
+import canonical from "@/lib/canonical-result-definitions.json";
 
 // The #992 sensitivity guardrails, pinned STRUCTURALLY (the source-scan pattern of
 // profile-scoping / telegram-chokepoint / e2e-hygiene):
@@ -117,8 +117,8 @@ describe("mood guardrails (#992) — never flagged, never retested", () => {
 
   it("the canonical biomarker catalog carries no mood-scale entry (no ranges → no flags, no retest)", () => {
     const names = (
-      canonical as { biomarkers: { name: string }[] }
-    ).biomarkers.map((c) => c.name.toLowerCase());
+      canonical as { definitions: { name: string }[] }
+    ).definitions.map((c) => c.name.toLowerCase());
     for (const banned of ["mood", "valence", "wellbeing"]) {
       expect(
         names.filter((n) => n.includes(banned)),

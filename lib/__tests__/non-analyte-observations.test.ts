@@ -256,7 +256,7 @@ describe("the CCD mapper's refusals and routing (#2318)", () => {
   const parsed = extractFromCcda(
     doc(RESULTS, VITALS_WITH_SITE, FUNCTIONAL_STATUS_SITE)
   );
-  const byName = new Map(parsed.records.map((r) => [r.name, r]));
+  const byName = new Map(parsed.observations.map((r) => [r.name, r]));
 
   it("emits NO record for a vaccine lot number or expiry", () => {
     expect(byName.has("Lot Number")).toBe(false);
@@ -310,7 +310,7 @@ describe("the CCD mapper's refusals and routing (#2318)", () => {
   });
 
   it("every emitted `assessment` is declared identity-less", () => {
-    for (const r of parsed.records) {
+    for (const r of parsed.observations) {
       if (r.category !== "assessment") continue;
       expect(carriesResultIdentity(r.category)).toBe(false);
     }

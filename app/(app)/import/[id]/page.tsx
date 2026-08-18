@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
 import {
   getMedicalDocument,
@@ -25,6 +26,7 @@ import {
   getDocumentProviders,
   getDocumentTriageRows,
   createVisitOffers,
+  episodesForDocument,
 } from "@/lib/queries";
 import { today } from "@/lib/db";
 import { getProfileFullName, getUnitPrefs } from "@/lib/settings";
@@ -91,7 +93,11 @@ import {
   triageFocus,
   triageRowId,
 } from "@/lib/confidence-triage";
-import { importTabHref, readingDetailHref } from "@/lib/hrefs";
+import {
+  importTabHref,
+  clinicalResultDetailHref,
+  episodeHref,
+} from "@/lib/hrefs";
 import {
   parseImportReport,
   summarizeCoverage,
@@ -172,7 +178,7 @@ function ProvenanceRow({
   testId,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   testId?: string;
 }) {
   return (
@@ -190,7 +196,7 @@ function ProvenanceRow({
 
 // Import detail: for one uploaded document — provenance, a tabbed per-category
 // records browser (#271: one tab per produced type, ?tab=-selected; record tabs
-// render the analyte grid for lab/biomarker/genomics and a read-only value/date
+// render the analyte grid for lab/genomics and a read-only value/date
 // table for vitals/scan/instrument/derived/reference (#1182), the rest read-only
 // deep-linking listings, providers their own per-document listing (#1182/#275)),
 // basic debug (error + raw extraction), reprocess/delete.
@@ -235,6 +241,7 @@ export default async function ImportDetailPage(props: {
   const acquiredVia = doc.acquired_portal_id
     ? (portalById(doc.acquired_portal_id)?.name ?? null)
     : null;
+  const illnessEpisodes = episodesForDocument(profile.id, id);
   const raw = formatRawExtraction(doc.raw_extraction);
   // Import DEBUGGER report: what the parse DROPPED + why, and
   // which sections/resource types it did/didn't consume. Null for AI-extracted docs
@@ -293,7 +300,7 @@ export default async function ImportDetailPage(props: {
         : undefined;
   const q = searchParams.q?.trim() || undefined;
   // Name/panel/date sort, whitelisted via the shared parser (matching the
-  // biomarkers table); name is the default so the table opens grouped by name.
+  // clinical results table); name is the default so the table opens grouped by name.
   const sort = parseSortColumn(
     searchParams.sort,
     ["name", "panel", "date"] as const,
@@ -375,7 +382,7 @@ export default async function ImportDetailPage(props: {
       ? items.filter((it) => focusFilter.has(triageRowId(activeKey, it.id)))
       : items;
   // The mapping field's canonical-name picker (#1675): relevance-ranked over the
-  // same shared builder the Biomarkers page uses, so re-mapping an import row offers
+  // same shared builder the Clinical results page uses, so re-mapping an import row offers
   // the analytes that matter before the A–Z body of ~200.
   const canonicalOptions = getRankedBiomarkerOptions(
     profile.id,
@@ -457,6 +464,27 @@ export default async function ImportDetailPage(props: {
                   testId="doc-acquired-via"
                 />
               )}
+              {illnessEpisodes.length > 0 && (
+                <ProvenanceRow
+                  label={
+                    illnessEpisodes.length === 1
+                      ? "During illness episode"
+                      : "During illness episodes"
+                  }
+                  testId="document-illness-episodes"
+                  value={illnessEpisodes.map((episode, index) => (
+                    <span key={episode.id}>
+                      {index > 0 ? ", " : null}
+                      <Link
+                        href={episodeHref(episode.id)}
+                        className="text-brand-700 hover:underline dark:text-brand-300"
+                      >
+                        {episode.situation}
+                      </Link>
+                    </span>
+                  ))}
+                />
+              )}
               {doc.patient_name && (
                 <ProvenanceRow
                   label="Patient named in document"
@@ -509,7 +537,7 @@ export default async function ImportDetailPage(props: {
             </div>
 
             {/* The active tab's panel: the records table for a medical_records
-            category tab (the analyte grid for lab/biomarker/genomics, a read-only
+            category tab (the analyte grid for lab/genomics, a read-only
             value/date table for the rest — #1182), the per-document Providers
             listing, or a read-only deep-linking listing for every other type. */}
             {/* A "Check these first" link that resolved to SEVERAL rows, or to none
@@ -680,7 +708,7 @@ export default async function ImportDetailPage(props: {
                   canonical map, so they don’t trend with the matching biomarker
                   or pick up its reference band. Add the code to{" "}
                   <code className="rounded-sm bg-slate-100 px-1 dark:bg-ink-800">
-                    lib/biomarker-loinc.ts
+                    lib/canonical-result-loinc.ts
                   </code>{" "}
                   to canonicalize them, or report it below.{" "}
                   <strong>Report unmapped code</strong> opens a{" "}
@@ -821,7 +849,7 @@ export default async function ImportDetailPage(props: {
                       </p>
                       {d.declaration.kind === "covered-elsewhere" && (
                         <Link
-                          href={readingDetailHref(d.declaration.instead)}
+                          href={clinicalResultDetailHref(d.declaration.instead)}
                           data-testid="declined-name-instead"
                           className="mt-0.5 inline-block text-xs text-brand-700 hover:underline dark:text-brand-400"
                         >

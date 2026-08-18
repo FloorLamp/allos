@@ -7,6 +7,9 @@ import {
   IconTestPipe,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { isLongevityRelevant } from "@/lib/life-stage";
+import { getProfileAge } from "@/lib/settings";
 import { getHealthspanPillars } from "@/lib/queries";
 import { longevitySections } from "@/lib/longevity";
 import { protocolTemplateById } from "@/lib/protocol-templates";
@@ -40,6 +43,7 @@ export default async function LongevityPage({
   searchParams: Promise<{ template?: string }>;
 }) {
   const { profile } = await requireSession();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) redirect("/");
   const pillars = getHealthspanPillars(profile.id);
   const sections = longevitySections(pillars);
   const byAnchor = new Map(sections.map((s) => [s.anchor, s]));
@@ -125,7 +129,7 @@ export default async function LongevityPage({
                 Add sleep data
               </Link>
               <Link
-                href="/training?tab=fitness"
+                href="/training/fitness-check"
                 className="flex items-center gap-3 rounded-lg border border-black/5 bg-white/45 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/5 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-ink-800"
               >
                 <IconRun

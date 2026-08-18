@@ -25,6 +25,7 @@ import { mobilityMoveName } from "../lib/mobility-moves";
 import {
   completeOnboardingState,
   initialOnboardingState,
+  normalizeOnboardingFocuses,
   serializeOnboardingState,
 } from "../lib/onboarding";
 import {
@@ -33,6 +34,7 @@ import {
   sampleDials,
   seedFromEnv,
 } from "./seed-rng";
+import { personaFromEnv } from "./seed-personas";
 
 // The seed populates the bootstrap profile. Owned-table
 // rows are born NOT NULL on a fresh DB, so every insert carries profile_id = 1.
@@ -52,7 +54,24 @@ function daysAgo(n: number): string {
 const SEED_ENTROPY = seedFromEnv(process.env);
 const DIALS = sampleDials(SEED_ENTROPY);
 const rand = jitterStream(SEED_ENTROPY);
-console.log(`seed entropy: SEED_RNG=${SEED_ENTROPY} — ${describeDials(DIALS)}`);
+// Persona axis (SEED_PERSONA, scripts/seed-personas.ts): WHO the profile is,
+// orthogonal to the dial vector's HOW-the-baseline-varies. A persona run
+// replaces the baseline story wholesale (dials do not apply), so the entropy
+// line only prints for baseline runs. An unknown name fails loudly: the census
+// records the persona it asked for, so the data must be that persona or
+// nothing — never a silently different look under the requested label.
+const PERSONA_SELECTION = personaFromEnv(process.env);
+if (PERSONA_SELECTION.kind === "unknown") {
+  console.error(
+    `Unknown SEED_PERSONA "${PERSONA_SELECTION.raw}". Known personas: ${PERSONA_SELECTION.known.join(", ")}`
+  );
+  process.exit(1);
+}
+if (PERSONA_SELECTION.kind === "none") {
+  console.log(
+    `seed entropy: SEED_RNG=${SEED_ENTROPY} — ${describeDials(DIALS)}`
+  );
+}
 // The current illness episode's day offset (#2594 dial: illnessNow). "active"
 // keeps the episode overlapping today (the baseline); "past" slides the whole
 // thing — situation run, symptom days, fever curve, illness-tagged moods — two
@@ -75,14 +94,75 @@ if (!profileOne) {
 }
 
 const count = db
-  .prepare("SELECT COUNT(*) c FROM activities WHERE profile_id = ?")
-  .get(SEED_PROFILE_ID) as {
+  .prepare(
+    `SELECT (SELECT COUNT(*) FROM activities WHERE profile_id = ?)
+          + (SELECT COUNT(*) FROM medical_records WHERE profile_id = ?) c`
+  )
+  .get(SEED_PROFILE_ID, SEED_PROFILE_ID) as {
   c: number;
 };
 if (count.c > 0) {
   console.log(
     "Database already has data — skipping seed. (Delete data/allos.db to reseed.)"
   );
+  process.exit(0);
+}
+
+// A persona run replaces the entire baseline story below: it seeds its own
+// character for profile 1 through scripts/seed-personas.ts and exits. The
+// medical_records leg of the guard above matters here — some personas (the
+// toddler) write no activities at all, and a rerun must still no-op.
+if (PERSONA_SELECTION.kind === "found") {
+  const persona = PERSONA_SELECTION.persona;
+  console.log(`seed persona: ${persona.name} — ${persona.title}`);
+  persona.apply({
+    db,
+    profileId: SEED_PROFILE_ID,
+    daysAgo,
+    shiftDateStr,
+    occurredAt: (day, hhmm) => {
+      const [y, m, d] = day.split("-").map(Number);
+      const [h, min] = hhmm.split(":").map(Number);
+      return utcInstant(
+        zonedWallTimeToUtc(y, m, d, h, min, getTimezone(SEED_PROFILE_ID))
+      );
+    },
+    reconcileFlags,
+    saveFitnessEntry,
+    seedStandardMetricSaves: (profileId) =>
+      seedStandardMetricSaves(db, profileId),
+    diffSituations,
+    serializeSituationEvents,
+    episodesForSituation,
+    onboardingStateJson: (profilePath, focuses) =>
+      serializeOnboardingState(
+        completeOnboardingState(
+          {
+            ...initialOnboardingState(),
+            profilePath,
+            focuses: normalizeOnboardingFocuses(focuses),
+            basicsComplete: true,
+            layoutReviewed: true,
+            notificationIntent: "later",
+            notificationsReviewed: true,
+            checklistDismissed: true,
+          },
+          utcInstant(clockNow())
+        )
+      ),
+  });
+  // Own-profile link, mirroring the baseline tail: the seeded persona IS the
+  // admin's profile, so not-self write affordances stay demoable.
+  const personaAdminLogin = db
+    .prepare("SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1")
+    .get() as { id: number } | undefined;
+  if (personaAdminLogin) {
+    db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+      SEED_PROFILE_ID,
+      personaAdminLogin.id
+    );
+  }
+  console.log(`✅ Seeded persona "${persona.name}" (${persona.title}).`);
   process.exit(0);
 }
 
@@ -213,19 +293,19 @@ logEffort(
   "hard"
 );
 
-// A few recovery / mobility sessions (issue #840): one activity row of type `recovery`
+// A few mobility sessions (issue #840): one activity row of type `mobility`
 // per day whose components are the tapped moves (no per-move sets/weights — the habit
 // tier). Populates the mobility log, the region-coverage strip, and the mobility_region
 // weekly target below. Move slugs match lib/datasets/data/mobility-moves.json.
 const insertMobility = db.prepare(
   `INSERT INTO activities (profile_id, date, type, title, duration_min, components)
-   VALUES (1, ?, 'recovery', 'Mobility', ?, ?)`
+   VALUES (1, ?, 'mobility', 'Mobility', ?, ?)`
 );
 function logMobility(ago: number, durationMin: number | null, moves: string[]) {
   const components = JSON.stringify(
     moves.map((slug) => ({
       name: mobilityMoveName(slug), // DISPLAY name so the training log renders sanely
-      type: "recovery",
+      type: "mobility",
       distance_km: null,
       duration_min: null,
     }))
@@ -268,7 +348,7 @@ db.prepare(
 // re-ingest dedups exactly as the real normalization path does.
 db.prepare(
   `INSERT INTO metric_samples
-     (profile_id, source, metric, date, start_time, end_time, value,
+     (profile_id, source, metric, date, started_at, ended_at, value,
       activity_external_id)
    VALUES (1, 'health-connect', 'active_kcal', ?, ?, ?, ?, ?)`
 ).run(
@@ -291,7 +371,7 @@ logEffort(
 
 // Session-level equipment (issue #342): a couple of pieces of gear + a linked
 // cardio session, so the Training Log renders the gear chip and the Settings → Equipment
-// page has cardio/recovery categories to show. Distinct from strength implements
+// page has cardio and recovery-device categories to show. Distinct from strength implements
 // (which live per-set on exercise_sets).
 const insertEquipment = db.prepare(
   `INSERT INTO equipment (profile_id, name, weight_kg, category) VALUES (1,?,?,?)`
@@ -363,7 +443,7 @@ const stravaRideId = Number(
 // activity estimate stored in activities.est_calories.
 db.prepare(
   `INSERT INTO metric_samples
-     (profile_id, source, metric, date, start_time, end_time, value,
+     (profile_id, source, metric, date, started_at, ended_at, value,
       activity_external_id)
    VALUES (1, 'strava', 'active_kcal', ?, ?, ?, ?, 'strava:seed-ride-1')`
 ).run(
@@ -578,7 +658,7 @@ freq.run("group", "Upper", 2); // push + pull days → met
 freq.run("group", "Lower", 1); // leg day → met
 freq.run("region", "Chest", 2); // one push day → partial
 freq.run("type", "cardio", 2); // one recent run → partial
-freq.run("mobility_region", "Legs", 3); // seeded recovery sessions → partial (#840)
+freq.run("mobility_region", "Legs", 3); // seeded mobility sessions → partial (#840)
 
 // A sample ACTIVE routine (#738) so the routine-aware surfaces (#740/#742) render on
 // a fresh seed. Adopt the PPL template (copies it into the routine tables), then mark
@@ -624,7 +704,7 @@ db.prepare(
 ).run();
 
 // Medical records — comprehensive biomarker panels measured over the past ~3
-// years. Every canonical_name matches a canonical_biomarkers row that HAS an
+// years. Every canonical_name matches a canonical_result_definitions row that HAS an
 // optimal range, so trends render and the optimal-band ("non-optimal") flagging
 // is demoable. Flags are derived from the canonical ranges via reconcileFlags
 // below (not hand-set), so high/low/non-optimal stay consistent with the data.
@@ -634,7 +714,7 @@ type MedCategory = "lab" | "vitals" | "scan";
 interface Panel {
   category: MedCategory;
   name: string; // display name (also the canonical name unless noted)
-  canonical: string; // must match a canonical_biomarkers entry
+  canonical: string; // must match a canonical_result_definitions entry
   unit: string | null;
   ref: string | null; // reference range, as shown on a lab report
   values: number[]; // one per LAB_DATES entry, oldest → newest
@@ -982,7 +1062,7 @@ const PANELS: Panel[] = [
   },
   // Not retested recently: these panels supply only the oldest few draws, so
   // their latest reading maps to an early LAB_DATES slot (>1 year ago) and the
-  // biomarkers table flags them stale (⏳). A short trend keeps grouping demoable.
+  // clinical results table flags them stale (⏳). A short trend keeps grouping demoable.
   {
     category: "lab",
     name: "Ferritin",
@@ -1034,7 +1114,7 @@ for (const p of PANELS) {
 // Periodontal analytes (#705) — the dental analogue of vision analytes: dated,
 // trendable perio measurements stored as biomarker readings (medical_records) rather
 // than a parallel table (#860 observation-substrate), so a WORSENING trend is visible
-// on the Biomarkers surface. A gently worsening probing depth (2.5 → 3.5 → 5 mm, the
+// on the Clinical results surface. A gently worsening probing depth (2.5 → 3.5 → 5 mm, the
 // last flagging above the 3 mm band) + a bleeding-on-probing reading.
 for (const [days, depth] of [
   [400, 2.5],
@@ -1147,7 +1227,7 @@ reconcileFlags(SEED_PROFILE_ID, medIds);
 // has something to judge against: 620 L/min, which puts the flare's 430 in the yellow
 // zone (69%) and leaves the normal days green.
 const insPeakFlow = db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (1, 'manual', 'peak_flow_lmin', ?, ?, ?, ?)`
 );
 for (let d = 20; d >= 0; d--) {
@@ -1178,7 +1258,7 @@ db.prepare(
 // the weight trend. One point per date (a point measure averages, never sums), in
 // the same metric_samples store the import projection writes.
 const insWaist = db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (1, 'manual', 'waist_circumference_cm', ?, ?, ?, ?)`
 );
 for (let i = 0; i < 8; i++) {
@@ -1186,7 +1266,7 @@ for (let i = 0; i < 8; i++) {
   insWaist.run(date, `${date}T07:00:00`, `${date}T07:00:00`, 88 + i * 0.7);
 }
 
-// Non-biomarker records (no optimal range; kept for category variety).
+// Non-analyte clinical observations (no optimal range; kept for category variety).
 const med = db.prepare(
   `INSERT INTO medical_records (profile_id, date, category, name, value, unit, reference_range, notes) VALUES (1,?,?,?,?,?,?,?)`
 );
@@ -1219,7 +1299,7 @@ med.run(
 // schedule grid, status buckets, and titer aggregation all render populated.
 db.prepare(
   `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'birthdate', ?)
-   ON CONFLICT(profile_id, key) DO NOTHING`
+   ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
 ).run("1986-04-12");
 
 const imm = db.prepare(
@@ -1470,10 +1550,11 @@ courseIns.run(
 
 // A KNOWN-INTERACTING pair (issue #144): Warfarin (anticoagulant) + Ibuprofen (an
 // NSAID) — a MAJOR bleeding-risk interaction that surfaces on the intake surfaces, the
-// create/edit notice, and a dismissible Upcoming finding. Synthetic prescriber
-// ("Dr. Test Provider") — no real PHI. Warfarin carries its RxNorm ingredient CUI
-// (11289) to demo rxcui-KEYED matching; ibuprofen has none, demoing NAME-fallback
-// matching — both resolve, so the pair is detected.
+// create/edit notice, and a dismissible Upcoming finding. Warfarin's synthetic
+// prescriber ("Dr. Test Provider") is no real PHI. It carries its RxNorm ingredient
+// CUI (11289) to demo rxcui-KEYED matching; the self-directed OTC ibuprofen has
+// neither prescriber nor CUI, demoing NAME-fallback matching — both resolve, so the
+// pair is detected.
 const warfarinId = Number(
   medIns.run(
     "Warfarin",
@@ -1499,7 +1580,7 @@ const ibuprofenId = Number(
     "OTC NSAID — as needed for pain",
     "daily",
     "may",
-    "Dr. Test Provider",
+    null,
     1
   ).lastInsertRowid
 );
@@ -1606,6 +1687,16 @@ const klorConId = Number(
 );
 medDose.run(klorConId, "10 mEq", "Anytime", "with_food", 0);
 courseIns.run(klorConId, daysAgo(40), null, null, "Ongoing potassium support");
+
+// Derive the Rx flag the way migration 045 backfilled it: a prescriber-bearing
+// med is a prescription. The seed's inserts predate the column, so without this
+// every seeded med — Warfarin included — wore an "OTC" chip on /medications and
+// the printable med list (found by the 2026-08 persona census).
+db.prepare(
+  `UPDATE intake_items SET rx = 1
+   WHERE profile_id = 1 AND kind = 'medication'
+     AND prescriber IS NOT NULL AND TRIM(prescriber) != ''`
+).run();
 
 // Log adherence per dose over the last week.
 const allDoses = db
@@ -2471,7 +2562,7 @@ for (let d = 34; d >= 0; d--) {
 // data, and so a food-habit target (#580) has progress. group_key values are the
 // stable slugs from lib/food-groups.json. Synthetic.
 const foodLog = db.prepare(
-  `INSERT INTO food_log (profile_id, date, group_key, servings)
+  `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
    VALUES (1, ?, ?, ?)
    ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
 );
@@ -2508,6 +2599,7 @@ for (let d = 55; d >= 0; d--) {
   if (d % 7 === 1 || d % 7 === 4) logFood(date, "fatty_fish", 1, "12:45:00"); // midday
   if (d % 5 === 0) logFood(date, "red_meat", 1, "19:00:00"); // evening
   if (d % 4 === 0) logFood(date, "nuts_seeds", 1, "15:30:00"); // midday/afternoon
+  if (d % 3 === 1) logFood(date, "olive_oil_avocado", 1, "12:35:00"); // midday
   if (d % 6 === 2) logFood(date, "alcohol", 2, "20:30:00"); // evening
   if (d % 6 === 4) logFood(date, "added_sugar", 1, "21:00:00"); // evening
 }
@@ -2530,7 +2622,7 @@ db.prepare(
 // protein-adequacy spec pins. Synthetic full-day totals with a small deterministic
 // jitter so the stacked bars vary day to day.
 const insMacro = db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (1, 'health-connect', ?, ?, ?, ?, ?)`
 );
 for (let d = 30; d >= 8; d--) {
@@ -2551,7 +2643,7 @@ for (let d = 30; d >= 8; d--) {
 // rollup). The alcohol servings the food log above already records are the
 // consumption ledger — a standard drink IS one `alcohol` food-group serving.
 // category 'instrument' (#1076): a screening score files on its own class, off the
-// general lab/biomarker surfaces (and the flagged hero).
+// general lab surfaces (and the flagged hero).
 {
   const suScore = db
     .prepare(
@@ -2577,7 +2669,7 @@ for (let d = 30; d >= 8; d--) {
   // Nicotine intake section + trend render with data. Cannabis stays empty
   // (sections render regardless — logging starts in-app).
   const suNic = db.prepare(
-    `INSERT INTO substance_log (profile_id, date, substance, units, logged_at)
+    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, recorded_at)
      VALUES (1, ?, 'nicotine', ?, ?)`
   );
   for (let d = 20; d >= 0; d -= 1) {
@@ -2696,6 +2788,11 @@ const seededSymptoms: [number, string, number, string | null][] = [
   // Past episode.
   [58, "headache", 2, null],
   [57, "nausea", 3, null],
+  // Standalone GI days (no episode), inside the fiber × GI panel's 4-week window
+  // (#2788) so /nutrition's read-together strip has both series to show.
+  [6, "bloating", 2, null],
+  [12, "diarrhea", 3, null],
+  [12, "abdominal_pain", 2, null],
 ];
 for (const [ago, symptom, severity, note] of seededSymptoms) {
   // The current episode's rows (ago ≤ 3) slide with the illnessNow dial
@@ -2878,7 +2975,7 @@ upsertProfileSetting.run(
 // ONE store behind the ★ star gesture (migration 113 folded the old
 // starred_biomarkers table and trend_pins KV into it). Seeding both kinds keeps every
 // save surface exercised:
-//   • kind='biomarker' — name-keyed (saved_items.key COLLATE NOCASE); each name here
+//   • kind='clinical-result' — name-keyed (saved_items.key COLLATE NOCASE); each name here
 //     matches a seeded biomarker that HAS backing medical_records, so the Results
 //     status card renders real tiles, Trends Overview renders their chart tiles, the
 //     passport summary includes them, and the #203/#327 orphan sweep has real saves to
@@ -2889,9 +2986,9 @@ const saveItem = db.prepare(
   `INSERT OR IGNORE INTO saved_items (profile_id, kind, key, position) VALUES (1, ?, ?, ?)`
 );
 saveItem.run("trend-metric", "weight", 0);
-saveItem.run("biomarker", "LDL Cholesterol", 1);
+saveItem.run("clinical-result", "LDL Cholesterol", 1);
 for (const name of ["ApoB", "hs-CRP", "Lipoprotein(a)"])
-  saveItem.run("biomarker", name, null);
+  saveItem.run("clinical-result", name, null);
 // bootstrapAuth already seeded "weight" as a #1487 standard-metric row when it
 // created profile 1, so the INSERT above was IGNORED and the fixture's curated
 // position never landed. Set it explicitly — this fixture's whole point is that a
@@ -3041,7 +3138,7 @@ if (!existingChild) {
   // growth charts + Body height/head-circ charts read (source 'manual', a fixed
   // midnight point window per date, mirroring the manual quick-add writer).
   const insChildSample = db.prepare(
-    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+    `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)`
   );
   const point = (metric: string, ago: number, value: number) => {
@@ -3097,21 +3194,17 @@ if (!existingChild) {
         panel
       ).lastInsertRowid
     );
-  const alpId = childLab(
-    "Alkaline Phosphatase",
-    300,
-    "U/L",
-    "40-129",
-    "lab",
-    "Metabolic"
-  );
+  childLab("Alkaline Phosphatase", 300, "U/L", "40-129", "lab", "Metabolic");
   childLab("Blood Pressure Systolic", 101, "mmHg", "90-120", "vitals", null);
   childLab("Blood Pressure Diastolic", 52, "mmHg", "60-80", "vitals", null);
-  // Derive the ALP flag against the child's age band (300 → normal-for-age),
-  // exactly like a real import would after boot's flag reconcile. BP is left
-  // unflagged: a child's blood pressure is judged by the AAP 2017 age/sex/height
-  // percentile (rendered on the biomarker page), NOT the adult reference flags.
-  reconcileFlags(childId, [alpId]);
+  // Reconcile ALL of the child's rows, exactly as a real import would. The ALP resolves
+  // against the age band (300 → normal-for-age, so no flag), and the BP rows resolve in
+  // the same shared decision: since #2794 reconciledFlag declines to judge a BP
+  // component under 13 and defers to the AAP 2017 age/sex/height percentile the
+  // biomarker page renders. This call used to pass `[alpId]` to hold the BP rows OUT,
+  // because reconciling them stamped a red "low" on a normal toddler — a workaround
+  // that documented the gap and covered only the seed. The ruling is in the core now.
+  reconcileFlags(childId);
 }
 
 // ── Sleep sessions → Sleep Regularity Index (#160) ────────────────────────────
@@ -3126,7 +3219,7 @@ if (!existingChild) {
 // dates rather than calling "Last night". Seeding a night nobody woke from would
 // make the sleep surfaces demo their own not-synced-yet path.
 const insSleep = db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
 );
 for (let i = 0; i <= 29; i++) {

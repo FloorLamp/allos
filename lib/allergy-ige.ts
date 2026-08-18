@@ -8,7 +8,7 @@ import { isNonOptimal } from "./reference-range";
 // section. A positive/elevated result indicates a sensitization to that allergen
 // and should surface as an allergy. We derive this at READ TIME (no stored rows),
 // so editing/deleting the underlying lab automatically updates the allergies view —
-// mirroring how the passport merges flagged + starred biomarkers. Everything here
+// mirroring how the passport merges flagged + starred clinical results. Everything here
 // is pure + unit-tested (no DB/network).
 
 // Total serum IgE — a single whole-body measure, NOT an allergen sensitization —

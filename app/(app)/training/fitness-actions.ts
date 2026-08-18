@@ -20,7 +20,12 @@ import { heartRateRecovery, sittingRisingResult } from "@/lib/vo2-field-tests";
 import { estimate1RM } from "@/lib/strength";
 import { liftInfo } from "@/lib/lifts";
 import { toKg, kgTo } from "@/lib/units";
-import { getProfileSex, getProfileAgeOn, getUnitPrefs } from "@/lib/settings";
+import {
+  getProfileAge,
+  getProfileSex,
+  getProfileAgeOn,
+  getUnitPrefs,
+} from "@/lib/settings";
 import { setFitnessRetestCadenceDays } from "@/lib/settings";
 import { getLatestBodyMetric } from "@/lib/queries";
 import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
@@ -35,6 +40,9 @@ import {
 import { withFindingClosure, formatClosureToast } from "@/lib/finding-closure";
 import { closureFindingSnapshot } from "@/lib/rule-findings";
 import { FITNESS_CHECK_PREFIX } from "@/lib/fitness-retest";
+import { isAdultForClinical } from "@/lib/life-stage";
+
+const ADULT_FITNESS_CHECK_ERROR = "fitness check is available for adults";
 
 // The per-test outcome moment (#1307) + finding-closure toast (#1305) ride back on the
 // typed success result: `outcome` is the just-saved test's percentile/band/delta (null if
@@ -67,6 +75,9 @@ export async function saveFitnessTest(
   fd: FormData
 ): Promise<SaveFitnessTestResult> {
   const { login, profile } = await requireWriteAccess();
+  if (!isAdultForClinical(getProfileAge(profile.id))) {
+    return { ok: false, error: ADULT_FITNESS_CHECK_ERROR };
+  }
 
   const testKey = String(fd.get("testKey") ?? "");
   const def = fitnessTest(testKey);
@@ -238,6 +249,9 @@ function methodInputs(
 // nudge. Profile-scoped write.
 export async function setFitnessCadence(fd: FormData): Promise<SaveResult> {
   const { profile } = await requireWriteAccess();
+  if (!isAdultForClinical(getProfileAge(profile.id))) {
+    return { ok: false, error: ADULT_FITNESS_CHECK_ERROR };
+  }
   const days = num(fd, "days");
   if (days == null || days <= 0)
     return { ok: false, error: "enter a cadence in days" };

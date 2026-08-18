@@ -1,6 +1,6 @@
 // SERVER-ACTION TIER — the flagged-labs follow-up chain write paths (#700).
 //
-// Drives the real trackLabFollowUp (biomarkers) + resolveFollowUp (upcoming) actions
+// Drives the real trackLabFollowUp + resolveFollowUp (upcoming) actions
 // against the REAL throwaway temp DB, with the auth boundary mocked by setup.ts.
 // Asserts: the create writes a linked, dated care_plan_item with source_kind='labs';
 // the resolve records the outcome + closes the loop confirm-first through the SAME
@@ -12,9 +12,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { trackLabFollowUp } from "@/app/(app)/results/readings/biomarker-actions";
+import { trackLabFollowUp } from "@/app/(app)/results/clinical-results/followup-actions";
 import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
-import { deleteResult } from "@/app/(app)/results/reading-actions";
+import { deleteResult } from "@/app/(app)/results/clinical-result-actions";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);

@@ -15,10 +15,11 @@ import {
   paceOfAgingPhrase,
   inputCompleteness,
   completenessChecklistMessage,
+  bioAgeSurface,
   isBioAgeHiddenForAge,
 } from "../bio-age";
 import { AGE_INPUT_KEY, type PhenoAgeInputEffect } from "../derived-biomarkers";
-import canonicalSeed from "../canonical-biomarkers.json";
+import canonicalSeed from "../canonical-result-definitions.json";
 import type { CanonicalResultDefinition } from "../types";
 
 describe("PhenoAge input catalogue", () => {
@@ -281,8 +282,9 @@ describe("isBioAgeHiddenForAge", () => {
     expect(isBioAgeHiddenForAge(50)).toBe(false);
   });
 
-  it("never hides on unknown age", () => {
+  it("keeps the input checklist eligible on unknown age without exposing a number", () => {
     expect(isBioAgeHiddenForAge(null)).toBe(false);
+    expect(bioAgeSurface(isBioAgeHiddenForAge(null), 0, 3)).toBe("checklist");
   });
 });
 
@@ -363,8 +365,8 @@ describe("phenoAgeReferenceValue", () => {
   it("answers for every curated PhenoAge input except the band-less glucose", () => {
     // The seed JSON carries the curated FIELDS; the stored-row columns (source,
     // created_at) are added at seed time and are irrelevant to a band lookup.
-    const seed = (canonicalSeed as { biomarkers: { name: string }[] })
-      .biomarkers;
+    const seed = (canonicalSeed as { definitions: { name: string }[] })
+      .definitions;
     const byName = new Map(
       seed.map((b) => [b.name, b as Partial<CanonicalResultDefinition>])
     );

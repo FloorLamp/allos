@@ -23,6 +23,7 @@ import {
   movementLoadKey,
   type MovementPattern,
 } from "./lifts";
+import { shiftDateStr } from "./date";
 import { theilSenSlopePerDay, median, type DatedPoint } from "./robust-stats";
 import {
   plateauFindingDetail,
@@ -37,7 +38,7 @@ export type { UpcomingDeload };
 // ---- Shared finding shape -------------------------------------------------
 
 // The kinds of observation this module emits — each maps to one Upcoming domain.
-export type TrainingObservationKind = "balance" | "stale" | "plateau";
+export type TrainingObservationKind = "balance" | "plateau";
 
 export interface TrainingObservation {
   kind: TrainingObservationKind;
@@ -53,12 +54,12 @@ export interface TrainingObservation {
   legacyKey: string;
   title: string;
   detail: string;
-  // The exercise a stale/plateau finding is about (null for the push/pull balance
+  // The exercise a plateau finding is about (null for the push/pull balance
   // finding, which spans the whole rotation). Used for the deep link + re-key.
   exercise: string | null;
   // The LOAD CONTEXT a plateau finding is about (#1610): the registry equipment the
-  // stalled series was measured on. null for the unassigned lane, for stale (a
-  // movement-wide signal) and for the balance finding. Carried so downstream
+  // stalled series was measured on. null for the unassigned lane and for the
+  // balance finding. Carried so downstream
   // surfaces — notably the activity form's inline hint — can match a finding to the
   // implement actually selected on the part rather than to any implement.
   equipmentId: number | null;
@@ -89,8 +90,6 @@ export const PLATEAU_LEVEL_BUCKET_KG = 5;
 // "Curl" (#482's "must not drift as which member is newest"; #203's recycled-name
 // wrong-suppression). Each key now follows exactly the identity ITS series groups on:
 //
-//   • stale   → exerciseHistoryKey — a MOVEMENT going quiet. Which implement it was
-//               last done on is irrelevant to "you stopped doing it".
 //   • plateau → movementLoadKey — the same variant-collapsed movement PLUS the
 //               equipment lane, because that is how the e1RM series is grouped once
 //               load contexts exist (#1610). Two machines stall independently and
@@ -103,10 +102,6 @@ export const PLATEAU_LEVEL_BUCKET_KG = 5;
 
 export function trainingBalanceLegacyKey(): string {
   return `${TRAINING_OBS_PREFIX}balance:push-pull`;
-}
-
-export function staleExerciseLegacyKey(exercise: string): string {
-  return `${TRAINING_OBS_PREFIX}stale:${exerciseHistoryKey(exercise)}`;
 }
 
 export function plateauLegacyKey(
@@ -125,14 +120,16 @@ export function trainingBalanceSignalKey(heavier: "push" | "pull"): string {
   return `${trainingBalanceLegacyKey()}:${heavier}`;
 }
 
-// A stale finding keyed by the exercise AND the lapse anchor (the YYYY-MM of the last
-// session before it went quiet): training it again then letting it lapse afresh moves
-// the anchor forward → a new episode re-fires; the same lapse keeps one anchor.
-export function staleExerciseSignalKey(
-  exercise: string,
-  lapseAnchor: string
-): string {
-  return `${staleExerciseLegacyKey(exercise)}:${lapseAnchor}`;
+// The collapsed stale family is episodic. Its family stem is stable, while each key
+// is anchored to the first day of the continuous period during which at least one
+// established lift was stale. Overlapping member intervals therefore keep one key;
+// after the family fully clears, a later lapse gets a fresh key.
+export function staleExerciseGroupFamily(): string {
+  return `${TRAINING_OBS_PREFIX}stale-group`;
+}
+
+export function staleExerciseGroupSignalKey(episodeStart: string): string {
+  return `${staleExerciseGroupFamily()}:${episodeStart}`;
 }
 
 // A plateau finding keyed by the exercise AND the e1RM level bucket: a NEW plateau at
@@ -251,14 +248,92 @@ export interface StaleExerciseInput {
   lastDate: string;
 }
 
+export interface StaleExerciseObservation {
+  kind: "stale";
+  title: string;
+  detail: string;
+  exercise: string;
+  equipmentId: null;
+}
+
+// One dated session in the all-history strength scan. The episode calculation needs
+// the history, not only each lift's current lastDate: only history can distinguish a
+// member swap inside one continuous family lapse from a later recurrence after the
+// family reached zero members.
+export interface StaleExerciseSession {
+  exercise: string;
+  date: string;
+}
+
+interface DateInterval {
+  start: string;
+  end: string;
+}
+
+// Start of the current collapsed stale-family episode, or null when the family is
+// clear. Each established lift contributes its historical 21…56-day stale periods;
+// a subsequent session ends the preceding period the day before that session.
+// Overlapping or adjacent periods are merged because the family never became empty.
+export function staleExerciseGroupEpisodeStart(
+  sessions: readonly StaleExerciseSession[],
+  today: string
+): string | null {
+  const datesByExercise = new Map<string, Set<string>>();
+  for (const session of sessions) {
+    const key = exerciseHistoryKey(session.exercise);
+    const dates = datesByExercise.get(key) ?? new Set<string>();
+    dates.add(session.date);
+    datesByExercise.set(key, dates);
+  }
+
+  const intervals: DateInterval[] = [];
+  for (const dates of datesByExercise.values()) {
+    const ordered = [...dates].sort();
+    for (let i = STALE_MIN_SESSIONS - 1; i < ordered.length; i++) {
+      const start = shiftDateStr(ordered[i], STALE_MIN_DAYS);
+      const naturalEnd = shiftDateStr(ordered[i], STALE_MAX_DAYS);
+      const nextSession = ordered[i + 1];
+      const end = nextSession
+        ? [naturalEnd, shiftDateStr(nextSession, -1)].sort()[0]
+        : naturalEnd;
+      if (start <= end) intervals.push({ start, end });
+    }
+  }
+
+  intervals.sort((a, b) =>
+    a.start === b.start
+      ? a.end < b.end
+        ? -1
+        : a.end > b.end
+          ? 1
+          : 0
+      : a.start < b.start
+        ? -1
+        : 1
+  );
+  let merged: DateInterval | null = null;
+  for (const interval of intervals) {
+    if (!merged || interval.start > shiftDateStr(merged.end, 1)) {
+      if (merged && merged.start <= today && today <= merged.end)
+        return merged.start;
+      merged = { ...interval };
+    } else if (interval.end > merged.end) {
+      merged.end = interval.end;
+    }
+  }
+  return merged && merged.start <= today && today <= merged.end
+    ? merged.start
+    : null;
+}
+
 // Established exercises last trained STALE_MIN_DAYS…STALE_MAX_DAYS ago — recently
 // enough to still be "your routine", long enough that they've lapsed. Newest-lapse
 // first (most recently trained → most likely still intended).
 export function detectStaleExercises(
   stats: readonly StaleExerciseInput[],
   today: string
-): TrainingObservation[] {
-  const out: { obs: TrainingObservation; ago: number }[] = [];
+): StaleExerciseObservation[] {
+  const out: { obs: StaleExerciseObservation; ago: number }[] = [];
   for (const s of stats) {
     if (s.sessions < STALE_MIN_SESSIONS) continue;
     const ago = daysSince(s.lastDate, today);
@@ -268,9 +343,6 @@ export function detectStaleExercises(
       ago,
       obs: {
         kind: "stale",
-        // Episode anchor = the YYYY-MM of the last session before the lapse.
-        key: staleExerciseSignalKey(s.exercise, s.lastDate.slice(0, 7)),
-        legacyKey: staleExerciseLegacyKey(s.exercise),
         title: `${s.exercise} has gone quiet`,
         detail:
           `You trained ${s.exercise} regularly but haven't in about ${weeks} ` +

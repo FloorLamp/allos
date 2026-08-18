@@ -3,13 +3,14 @@ import {
   getImagingStudyFollowUps,
   getPickerProviders,
   createVisitOffers,
+  encountersForRecords,
 } from "@/lib/queries";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
-import { getProfileAge } from "@/lib/settings";
+import { getProfileAge, getDisplayFormatPrefs } from "@/lib/settings";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import { today } from "@/lib/db";
-import { cumulativeDose } from "@/lib/radiation-dose";
+import { doseContributions } from "@/lib/radiation-dose";
 import ImagingStudyForm from "@/app/(app)/results/imaging/ImagingStudyForm";
 import AddEntryPanel from "@/components/AddEntryPanel";
 import ImagingStudyList from "@/app/(app)/results/imaging/ImagingStudyList";
@@ -38,11 +39,12 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
     getImagingStudiesForProfiles(scope.viewIds)
   );
   const followUps = getImagingStudyFollowUps(profileId);
-  // Cumulative radiation dose (#703): ONE pure computation over the ACTING profile's
-  // studies (a per-profile dose window is never mixed across members), rendered as a
-  // calm, informational trailing-window total. A child profile (age < 18) carries the
-  // age-appropriate framing the app already applies to pediatric surfaces.
-  const dose = cumulativeDose(
+  // Cumulative radiation dose (#703/#2970): ONE pure computation over the ACTING
+  // profile's studies (a per-profile dose figure is never mixed across members),
+  // rendered as a calm, informational all-records total with its contributing and
+  // excluded studies. A child profile (age < 18) carries the age-appropriate framing
+  // the app already applies to pediatric surfaces.
+  const dose = doseContributions(
     studies.filter((s) => s.profileId === profileId),
     today(profileId)
   );
@@ -51,6 +53,11 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
   // "Create a visit from this record?" (#1099): a study dated D with no encounter that
   // day.
   const createVisitOffersList = createVisitOffers(profileId, "imaging");
+  const encounters = Object.fromEntries(
+    scope.viewIds.flatMap((pid) =>
+      Object.entries(encountersForRecords(pid, "imaging"))
+    )
+  );
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
@@ -69,10 +76,15 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
           profileId={profileId}
           offers={createVisitOffersList}
         />
-        <RadiationDoseCard cum={dose} pediatric={pediatric} />
+        <RadiationDoseCard
+          breakdown={dose}
+          pediatric={pediatric}
+          fmt={getDisplayFormatPrefs(scope.loginId)}
+        />
         <ImagingStudyList
           items={studies}
           followUps={followUps}
+          encounters={encounters}
           multiView={
             multi ? { actingProfileId: scope.actingProfileId } : undefined
           }

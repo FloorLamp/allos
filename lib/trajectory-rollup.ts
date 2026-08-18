@@ -1,4 +1,4 @@
-// The Results › Biomarkers "Trajectory watch" ROLLUP (issue #1499, section B).
+// The Results › Clinical results "Trajectory watch" ROLLUP (issue #1499, section B).
 // Pure — no DB, no auth, no React.
 //
 // WHY. The trajectory engine (#41) fires up to three rules per analyte, over every

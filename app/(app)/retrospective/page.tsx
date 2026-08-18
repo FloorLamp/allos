@@ -122,12 +122,6 @@ export default async function RetrospectivePage({
           <RetrospectiveLines recap={recap} />
         )}
       </div>
-
-      <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-        Counts on this page are kept as a record, not as a verdict — nothing
-        here is compared against another year&rsquo;s tally. Trajectories carry
-        the comparisons.
-      </p>
     </PageContainer>
   );
 }

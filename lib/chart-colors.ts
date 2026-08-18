@@ -403,6 +403,17 @@ export const chartAdherenceState = {
     light: "#e11d48", // rose-600
     dark: "#f43f5e", // rose-500
   },
+  // Today, still unresolved (#2796). Deliberately UNFILLED: a pending day has no
+  // outcome to color, and giving it a fill would put it back in the same visual class
+  // as the settled states it is precisely not one of. The ring keeps it legible as a
+  // real day of the month, which is what separates it from `na`'s off-cadence blank.
+  // No light/dark hex because there is no fill for the palette test to separate.
+  pending: {
+    class:
+      "bg-transparent text-slate-600 ring-1 ring-inset ring-slate-400 dark:text-slate-300 dark:ring-slate-600",
+    light: null,
+    dark: null,
+  },
   na: {
     class: "bg-transparent text-slate-500 dark:text-slate-400",
     light: null,
@@ -444,6 +455,21 @@ export const chartActivityTypeBlock: Record<
   strength: { blockClass: "bg-violet-500", hex: chartSeries.violet },
   cardio: { blockClass: "bg-rose-600", hex: chartSeries.rose },
   sport: { blockClass: "bg-sky-600", hex: chartSeries.sky },
-  recovery: { blockClass: "bg-brand-600", hex: chartSeries.brand },
+  mobility: { blockClass: "bg-brand-600", hex: chartSeries.brand },
   unclassified: { blockClass: "bg-slate-500", hex: chartNeutral },
 };
+
+// ── Fiber × GI read-together strip (#2788) ───────────────────────────────────
+//
+// The strip's two marks, declared here so the classes the DOM renders and the hexes
+// the validation reads cannot drift (the chartActivityTypeBlock pattern — the class
+// scan cannot see a Tailwind class, which is exactly how hand-rolled emerald bars
+// would dodge every guard). The BAR takes `chartSeries.sky` — the same hue the
+// Macros & fiber chart plots its fiber series in, so the app's two fiber surfaces
+// speak one color — and the DOT takes `chartSeries.amber` (amber-600; the amber-500
+// step failed #1445's 3:1 contrast check, and emerald was folded out of the palette
+// entirely).
+export const chartFiberPanelMarks = {
+  bar: { class: "bg-sky-600", hex: chartSeries.sky },
+  symptomDot: { class: "bg-amber-600", hex: chartSeries.amber },
+} as const;

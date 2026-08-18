@@ -88,7 +88,7 @@ export function addProteinGramsCore(
     setProfileSetting(profileId, PROTEIN_QUICKADD_LAST_KEY, String(grams));
     // Append the per-tap ranking event under the reserved __protein__ pseudo-group (#1073),
     // in the SAME tx. It rides food_log_events purely for blendFoodOrder's slot frecency —
-    // reserved-key discipline (lib/protein-nudge.ts) keeps __protein__ out of the food_log
+    // reserved-key discipline (lib/protein-nudge.ts) keeps __protein__ out of the food_daily_totals
     // day counter and every food-GROUP path, so it never becomes a serving.
     db.prepare(
       `INSERT INTO food_log_events

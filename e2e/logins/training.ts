@@ -32,7 +32,7 @@ export const FORM_INJURY_PROFILE = "Form Injury (e2e)";
 // trajectory has a real base + this-week actuals), and NO endurance_plans row — the
 // spec OWNS the create/complete/delete lifecycle on it (create-and-clean, #868), so
 // its writes never race the shared seed's seeded plan. No birthdate → adult → never
-// training-restricted, so /training renders the full hub with the Event-plans bar.
+// activity surfaces are age-neutral, so /training renders the full hub with the Event-plans bar.
 export const E2E_LOGIN_ENDURANCE = "e2e_endurance";
 export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
 
@@ -41,10 +41,9 @@ export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
 // several small muscles (2 sets each of curls / skullcrushers / lateral raises /
 // crunches / calf raises inside the trailing 7-day window, plus earlier weeks so the
 // #719 cold-start gate is satisfied), so the per-muscle volume-band engine (#742)
-// fires SEVERAL shortfalls at once — exactly the pile the Overview rollup folds into
-// one card. Dedicated on purpose (#868): the spec DISMISSES one of those findings, and
-// a suppression write on a shared profile would silence a neighbor's finding. NO
-// routine and NO injury, so nothing gates the observations (deload / injured region).
+// fires SEVERAL shortfalls at once. The Overview coverage badge owns their aggregate;
+// the fixture proves Training watch does not repeat it. NO routine and NO injury, so
+// nothing gates the coverage answer (deload / injured region).
 export const E2E_LOGIN_TRAINING_ROLLUP = "e2e_training_rollup";
 export const TRAINING_ROLLUP_PROFILE = "Training Rollup (e2e)";
 
@@ -105,3 +104,51 @@ export const LAB_GOAL_TARGET = 100;
 // relative, so the fixture never goes stale.
 export const E2E_LOGIN_WEEK_SPINE = "e2e_week_spine";
 export const WEEK_SPINE_PROFILE = "Week Spine (e2e)";
+
+// ── The worn NON-CYCLING session (#3008) ──────────────────────────────────────
+// Seeded beside the HR-zone ride, on the same day that fixture already owns: a
+// walk with per-minute HR inside its own window. Cycling always had a place to
+// draw a chart — its ride page — so every HR-carrying fixture here was a ride,
+// and the canonical activity page's heart-rate block had no subject at all. It
+// renders only when hr_minutes fall inside the activity's window, which is why
+// a crash in it survived CI until a real walk was opened.
+export const ZONE_WALK_TITLE = "Worn walk (e2e)";
+export const ZONE_WALK_EXTERNAL_ID = "e2e:zone-walk";
+
+// A session the source answered about with NOTHING (#3009): an empty telemetry
+// row and no wear minutes in its window. "Totals only" is a fact the page may
+// state only when the source has actually answered, so the fixture has to carry
+// the answer, not merely the absence.
+export const TOTALS_ONLY_TITLE = "Totals-only walk (e2e)";
+export const TOTALS_ONLY_EXTERNAL_ID = "e2e:totals-only";
+
+// The overlapping same-day pair (#2870): two sessions covering the same clock
+// time, which is what the record's discovery banner exists to point out once the
+// log's adjacency is gone.
+//
+// On its OWN profile, deliberately. The shared profile-1 feed is what the
+// Timeline's windowing spec measures against, and `getTimeline` takes the newest
+// 250 events across every source — so two more activities on profile 1 push its
+// 100-day-old fixture past that cut and fail a spec in another domain. A
+// dedicated profile cannot do that to anyone.
+export const E2E_LOGIN_OVERLAP = "e2e_overlap";
+export const OVERLAP_PROFILE = "Overlap Pair (e2e)";
+export const OVERLAP_KEEPER_TITLE = "Overlap keeper (e2e)";
+export const OVERLAP_TWIN_TITLE = "Overlap twin (e2e)";
+
+// Like-for-like peers (#3009): several sessions of ONE kind at comparable
+// distances, so the record can render a median that means something. Its own
+// profile — see the overlap fixture's note on what adding rows to the shared
+// feed did to the Timeline's 250-event page.
+export const E2E_LOGIN_SESSION_PEERS = "e2e_session_peers";
+export const SESSION_PEERS_PROFILE = "Session Peers (e2e)";
+export const SESSION_PEERS_TITLE = "Riverside loop (e2e)";
+
+// ── Training Overview standing actions (#3062) ──────────────────────────────
+// Two dedicated ADULT profiles make both generic-card branches visible without
+// mutating a shared seed: one has no routine plus an active knee constraint, and
+// one has a short-night recovery signal that forces the rest recommendation.
+export const E2E_LOGIN_OVERVIEW_NO_ROUTINE = "e2e_overview_no_routine";
+export const OVERVIEW_NO_ROUTINE_PROFILE = "Overview No Routine (e2e)";
+export const E2E_LOGIN_OVERVIEW_REST = "e2e_overview_rest";
+export const OVERVIEW_REST_PROFILE = "Overview Rest (e2e)";

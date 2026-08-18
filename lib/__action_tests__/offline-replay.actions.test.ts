@@ -23,7 +23,7 @@ import {
   zonedDateParts,
   zonedWallTimeToUtc,
 } from "@/lib/date";
-import { getTimezone } from "@/lib/settings";
+import { getTimezone, setStoredAge } from "@/lib/settings";
 import { isCompletedSessionRow } from "@/lib/workout-presence";
 import {
   STALE_QUEUED_DOSE_REASON,
@@ -294,10 +294,15 @@ describe("offline replay — dose confirms (issue #1427)", () => {
   function logFor(doseId: number, date: string) {
     return db
       .prepare(
-        "SELECT status, amount, recorded_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        "SELECT status, amount, recorded_at, occurred_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
       )
       .get(doseId, date) as
-      | { status: string; amount: string | null; recorded_at: string | null }
+      | {
+          status: string;
+          amount: string | null;
+          recorded_at: string;
+          occurred_at: string | null;
+        }
       | undefined;
   }
 
@@ -321,7 +326,7 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     const log = logFor(doseId, date);
     expect(log?.status).toBe("taken");
     expect(log?.amount).toBe("1 tab"); // amount snapshotted from the dose row at replay
-    expect(log?.recorded_at).toBe(utcSqlString(tapped));
+    expect(log?.occurred_at).toBe(utcInstant(tapped));
     // Supply moved through the same core, exactly once.
     expect(
       (
@@ -361,7 +366,7 @@ describe("offline replay — dose confirms (issue #1427)", () => {
         doseIntent(doseId, profile.id, date, tapped.toISOString()),
       ]);
       expect(body.results?.[0].status).toBe("done");
-      expect(logFor(doseId, date)?.recorded_at).toBe(utcSqlString(tapped));
+      expect(logFor(doseId, date)?.occurred_at).toBe(utcInstant(tapped));
     } finally {
       if (previous === undefined) delete process.env.ALLOS_TEST_NOW;
       else process.env.ALLOS_TEST_NOW = previous;
@@ -566,6 +571,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetReplay ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     const title = `Offline squats ${uniqueKey()}`;
     const date = today(profile.id);
 
@@ -600,6 +606,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetCreateOnly ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     const date = today(profile.id);
     const victimTitle = `Victim session ${uniqueKey()}`;
     const victimId = Number(
@@ -624,6 +631,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetDate ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     const captured = shiftDateStr(today(profile.id), -2);
     const title = `Two days ago ${uniqueKey()}`;
     const intent = setIntent(profile.id, title, captured, {
@@ -645,6 +653,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetCompleted ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     // Yesterday, so the intent's capturedAt (`${date}T18:05:00.000Z`) is always
     // in the past — resolveCapturedInstant refuses a future capture instant.
     const date = shiftDateStr(today(profile.id), -1);
@@ -679,6 +688,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetEndKept ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     const date = today(profile.id);
 
     // An explicit end survives verbatim.
@@ -785,7 +795,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
   function servingsFor(profileId: number, date: string, group: string): number {
     const row = db
       .prepare(
-        "SELECT servings FROM food_log WHERE profile_id = ? AND date = ? AND group_key = ?"
+        "SELECT servings FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = ?"
       )
       .get(profileId, date, group) as { servings: number } | undefined;
     return row?.servings ?? 0;
@@ -1100,7 +1110,7 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
       (
         db
           .prepare(
-            "SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?"
+            "SELECT grams FROM protein_daily_totals WHERE profile_id = ? AND date = ?"
           )
           .get(profile.id, date) as { grams: number } | undefined
       )?.grams ?? 0;

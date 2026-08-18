@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   burstFrom,
   burstLabel,
+  burstLocalDay,
   burstSubject,
   chipInstant,
   collapseBursts,
@@ -11,11 +12,17 @@ import {
   chipLabel,
   chipOffers,
   chipTarget,
+  correctionAtToken,
+  correctionDayDate,
+  offeredHourInstant,
+  pickerHourLabel,
+  pickerPrevDayHourOptions,
   CHIP_FLOOR_HOURS_BACK,
   CORRECTION_CHIP_MINUTES,
   isBurstFresh,
   isOfferedHour,
   MAX_CORRECTION_ROWS,
+  offeredHours,
   parseCorrectionAtToken,
   parseCorrectionChipToken,
   PICKER_FIRST_HOURS_BACK,
@@ -25,15 +32,20 @@ import {
   type TapEvent,
 } from "@/lib/correction-time";
 import {
+  correctableBursts,
   correctionActions,
   correctionBodyStatement,
+  correctionOffScopeStatement,
   correctionPickerActions,
+  correctionPickerTitle,
   FOOD_TIME_PREFIXES,
   DOSE_TIME_PREFIXES,
+  PRACTICE_TIME_PREFIXES,
   openPickerAnchor,
 } from "@/lib/notifications/correction-rows";
 import { burstsForMessage, FRESH_SEND_BINDING } from "@/lib/correction-time";
 import { zonedDateParts } from "@/lib/date";
+import { statedHoursOnDate } from "@/lib/stated-time";
 
 // The pure model behind #2019's eating-time chips and #2020's dose-time twin. No DB, no
 // clock: every function takes its `now`, so the burst window, the cross-midnight day rule
@@ -102,7 +114,9 @@ describe("collapseBursts — burst-mates share one error, so they share one row"
   it("names a lone tap by what it was and a burst by its span", () => {
     const [lone] = collapseBursts([tap(1, "2026-08-05T18:11:00Z", "Salmon")]);
     expect(lone.label).toBe("Salmon");
-    expect(burstLabel(lone, TZ)).toBe("Salmon 20:11");
+    expect(burstLabel(lone, TZ, new Date("2026-08-05T19:30:00Z"))).toBe(
+      "Salmon 20:11"
+    );
 
     const [many] = collapseBursts([
       tap(1, "2026-08-05T19:02:00Z", "Salmon"),
@@ -110,7 +124,9 @@ describe("collapseBursts — burst-mates share one error, so they share one row"
     ]);
     // Four groups will not fit on a button; the span is what identifies the burst.
     expect(many.label).toBe("");
-    expect(burstLabel(many, TZ)).toBe("×2 21:02–21:08");
+    expect(burstLabel(many, TZ, new Date("2026-08-05T19:30:00Z"))).toBe(
+      "×2 21:02–21:08"
+    );
     expect(burstSubject(many, TZ)).toBe("these 2 (21:02–21:08)");
   });
 });
@@ -223,7 +239,7 @@ describe("chips — the label IS the stored value (#2206)", () => {
     // fall-back and 02:10 CET is the same wall time as 02:10 CEST an hour earlier. So
     // "−1h" is a claim the clock on the wall flatly contradicts, and only the absolute
     // label lets the user see which 02:10 they are choosing.
-    expect(burstLabel(burst, TZ)).toBe("Salmon 02:10");
+    expect(burstLabel(burst, TZ, now)).toBe("Salmon 02:10");
   });
 
   it("composes: a second tap counts back from the STORED instant, not the tap", () => {
@@ -365,11 +381,13 @@ describe("the picker — absolute hours, the past twelve, never the future", () 
   });
 
   it("refuses an hour that is no longer on offer", () => {
-    expect(isOfferedHour("20:00", NOW, TZ)).toBe(true);
+    // An instant-keyed domain: the burst bounds nothing, only the clock does.
+    const burst = collapseBursts([tap(1, "2026-08-05T22:20:00Z")])[0];
+    expect(isOfferedHour("20:00", burst, NOW, TZ)).toBe(true);
     // 00:00 is the hour just gone at 00:30 local — never offered, because the chips
     // cover the first hour. 11:00 is past the twelve-hour ceiling.
-    expect(isOfferedHour("00:00", NOW, TZ)).toBe(false);
-    expect(isOfferedHour("11:00", NOW, TZ)).toBe(false);
+    expect(isOfferedHour("00:00", burst, NOW, TZ)).toBe(false);
+    expect(isOfferedHour("11:00", burst, NOW, TZ)).toBe(false);
   });
 });
 
@@ -399,7 +417,7 @@ describe("tokens — ids only, and the shapes both domains share", () => {
     expect(parseCorrectionChipToken(t, DOSE_TIME_PREFIXES.chip)).toBeNull();
   });
 
-  it("round-trips the picker's three steps, HH:MM colons included", () => {
+  it("round-trips the picker's steps, HH:MM colons and the day marker included", () => {
     const at = DOSE_TIME_PREFIXES.at;
     expect(parseCorrectionAtToken(`${at}:3:412:open`, at)).toEqual({
       profileId: 3,
@@ -415,9 +433,35 @@ describe("tokens — ids only, and the shapes both domains share", () => {
     expect(parseCorrectionAtToken(`${at}:3:412:19:00`, at)).toEqual({
       profileId: 3,
       fromId: 412,
-      step: { kind: "at", hhmm: "19:00" },
+      step: { kind: "at", hhmm: "19:00", day: "today" },
+    });
+    // The day level's own step, and an hour QUALIFIED by the previous day (#3010) — the
+    // marker rides the tail in front of the hour, which the rejoin already handles.
+    expect(parseCorrectionAtToken(`${at}:3:412:prev`, at)).toEqual({
+      profileId: 3,
+      fromId: 412,
+      step: { kind: "prev" },
+    });
+    expect(
+      parseCorrectionAtToken(`${at}:3:412:p:2026-08-05:19:00`, at)
+    ).toEqual({
+      profileId: 3,
+      fromId: 412,
+      step: {
+        kind: "at",
+        hhmm: "19:00",
+        day: "prev",
+        date: "2026-08-05",
+      },
     });
     expect(parseCorrectionAtToken(`${at}:3:412:29:00`, at)).toBeNull();
+    expect(
+      parseCorrectionAtToken(`${at}:3:412:p:2026-08-05:29:00`, at)
+    ).toBeNull();
+    // A day marker with no day is not a shape this grammar knows (#3010): the day is
+    // spelled out so it can be COMPARED at tap time rather than re-resolved.
+    expect(parseCorrectionAtToken(`${at}:3:412:p:19:00`, at)).toBeNull();
+    expect(parseCorrectionAtToken(`${at}:3:412:q:19:00`, at)).toBeNull();
     expect(parseCorrectionAtToken(`${at}:3:0:19:00`, at)).toBeNull();
   });
 
@@ -646,7 +690,7 @@ describe("correctionBodyStatement (#2264)", () => {
 
   it("says nothing while no burst is corrected — today's copy stands", () => {
     const bursts = correctionBursts([tap(1, "2026-08-05T19:02:00Z")], NOW);
-    expect(correctionBodyStatement(bursts, TZ)).toBeNull();
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBeNull();
   });
 
   it("names the stored instant of a corrected lone tap, via burstLabel", () => {
@@ -654,10 +698,10 @@ describe("correctionBodyStatement (#2264)", () => {
       [corrected(1, "2026-08-05T19:02:00Z", "2026-08-05T18:02:00Z", "Salmon")],
       NOW
     );
-    const statement = correctionBodyStatement(bursts, TZ);
+    const statement = correctionBodyStatement(bursts, TZ, NOW);
     expect(statement).toBe("🕐 Recorded: Salmon 20:02 (corrected)");
     // One computation: the sentence embeds exactly what the label button states.
-    expect(statement).toContain(burstLabel(bursts[0], TZ));
+    expect(statement).toContain(burstLabel(bursts[0], TZ, NOW));
   });
 
   it("covers the multi-burst case and skips the uncorrected sibling", () => {
@@ -670,7 +714,7 @@ describe("correctionBodyStatement (#2264)", () => {
       NOW
     );
     expect(bursts).toHaveLength(2);
-    expect(correctionBodyStatement(bursts, TZ)).toBe(
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBe(
       "🕐 Recorded: Salmon 19:50 (corrected)"
     );
   });
@@ -684,8 +728,52 @@ describe("correctionBodyStatement (#2264)", () => {
       NOW
     );
     expect(bursts).toHaveLength(MAX_CORRECTION_ROWS);
-    expect(correctionBodyStatement(bursts, TZ)).toBe(
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBe(
       "🕐 Recorded: Nuts 20:45 (corrected) · Salmon 19:50 (corrected)"
+    );
+  });
+
+  it("states the DAY when the corrected instant is not today's (#3010)", () => {
+    // A burst corrected to 18:00 YESTERDAY read `Leafy greens 18:00 (corrected)` on both
+    // surfaces, which is this evening to anyone reading it. The day level makes a
+    // day-crossing correction the normal case rather than a post-midnight edge, so the
+    // half of the result that was unstated has to be stated (#2206).
+    const bursts = correctionBursts(
+      [
+        corrected(
+          1,
+          "2026-08-05T19:02:00Z",
+          "2026-08-04T16:00:00Z",
+          "Leafy greens"
+        ),
+      ],
+      NOW
+    );
+    expect(burstLabel(bursts[0], TZ, NOW)).toBe(
+      "Leafy greens 18:00 yest (corrected)"
+    );
+    // And the #2264 statement of record says it too, from the same computation.
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBe(
+      "🕐 Recorded: Leafy greens 18:00 yest (corrected)"
+    );
+  });
+
+  it("marks a day further back by its date rather than calling it yesterday", () => {
+    // A domain whose reach exceeds one day (a dose's `occurred_at` can move as much as
+    // 47h59m back) must not be told "yest" about the day before that.
+    const bursts = correctionBursts(
+      [
+        corrected(
+          1,
+          "2026-08-05T19:02:00Z",
+          "2026-08-03T16:00:00Z",
+          "Ibuprofen"
+        ),
+      ],
+      NOW
+    );
+    expect(burstLabel(bursts[0], TZ, NOW)).toBe(
+      "Ibuprofen 18:00 08-03 (corrected)"
     );
   });
 
@@ -703,8 +791,545 @@ describe("correctionBodyStatement (#2264)", () => {
       ],
       NOW
     );
-    expect(correctionBodyStatement(bursts, TZ)).toBe(
-      `🕐 Recorded: ${burstLabel(bursts[0], TZ)}`
+    expect(correctionBodyStatement(bursts, TZ, NOW)).toBe(
+      `🕐 Recorded: ${burstLabel(bursts[0], TZ, NOW)}`
     );
+  });
+});
+
+// ---- #2875: a DAY-KEYED domain may only be offered answers its own core accepts ----
+//
+// THE RENDER HALF of the cross-midnight refusal. `restampPracticeLogsCore` refuses an
+// answer that lands on another profile-local day; the chips and the picker are shared,
+// and THE DAY RULE they are built on does the opposite — "an offered hour LATER than the
+// current local time is yesterday's". Left domain-blind, that combination shipped a
+// keyboard whose buttons the write core was guaranteed to refuse: at 00:20 local BOTH
+// chips ("23:50 · −30m", "23:20 · −1h") and every one of the eleven picker hours resolve
+// to yesterday, which is 100% of the affordance dead in exactly the hour the stored time
+// is most wrong. The write half was pinned when it shipped; this is the half that was not.
+describe("a day-keyed domain's offers stay on the burst's own day (#2875)", () => {
+  // A Berlin LOCAL wall time as an instant (UTC+2 in August), so the fixtures read as
+  // the clock the user is looking at rather than as an offset done by hand.
+  const local = (hhmm: string, day = 6) =>
+    new Date(
+      Date.UTC(2026, 7, day, Number(hhmm.slice(0, 2)), Number(hhmm.slice(3))) -
+        2 * 60 * 60_000
+    );
+
+  // A practice tap, which is a DAY-KEYED row: it carries the profile-local day the
+  // ledger files it under, exactly as `getRecentPracticeTaps` reads it off
+  // `practice_logs.date`. `day` defaults to the day the instant composes back to, which
+  // is what an ordinary zone gives; the DST-at-midnight case below passes its own,
+  // because that is precisely where the two stop agreeing.
+  function practiceTap(
+    id: number,
+    at: Date,
+    label = "Sauna",
+    day = zonedDateParts(TZ, at).date
+  ): TapEvent {
+    return { id, tapAt: at.toISOString(), localDay: day, label };
+  }
+
+  // Resolve every offer a keyboard actually carries, exactly as the handler would.
+  function resolvedDays(
+    burst: ReturnType<typeof collapseBursts>[number],
+    now: Date,
+    prefixes: typeof PRACTICE_TIME_PREFIXES
+  ): string[] {
+    const days: string[] = [];
+    for (const a of correctionActions(prefixes, 3, [burst], TZ, now)) {
+      const chip = parseCorrectionChipToken(a.data, prefixes.chip);
+      if (!chip) continue;
+      const at = chipTarget({ tapAt: burst.atStartAt }, chip.minutesBack, now);
+      expect(at, `chip ${a.label} resolved to nothing`).not.toBeNull();
+      days.push(zonedDateParts(TZ, at!).date);
+    }
+    for (const a of correctionPickerActions(prefixes, 3, burst, now, TZ)) {
+      const parsed = parseCorrectionAtToken(a.data, prefixes.at);
+      if (parsed?.step.kind !== "at") continue;
+      const at = statedHourInstant(parsed.step.hhmm, now, TZ);
+      expect(at, `hour ${parsed.step.hhmm} resolved to nothing`).not.toBeNull();
+      days.push(zonedDateParts(TZ, at!).date);
+    }
+    return days;
+  }
+
+  it("offers nothing at all in the hour after local midnight", () => {
+    // The reproduction from the review, to the minute: a sauna tapped at 00:20 local.
+    const now = local("00:25");
+    const burst = collapseBursts([practiceTap(41, local("00:20"))])[0];
+
+    const { shown, offScope } = correctableBursts(
+      PRACTICE_TIME_PREFIXES,
+      [burst],
+      now,
+      TZ
+    );
+    expect(shown).toEqual([]);
+    expect(offScope).toEqual([burst]);
+
+    // No row is drawn — not a label button, not a chip.
+    expect(
+      correctionActions(PRACTICE_TIME_PREFIXES, 3, [burst], TZ, now)
+    ).toEqual([]);
+    // And the body says where the correction belongs instead of staying silent.
+    expect(correctionOffScopeStatement(offScope, TZ)).toBe(
+      "🕐 Sauna — moving this would change its day — correct it in the app"
+    );
+  });
+
+  it("leaves the two instant-keyed domains untouched at the same instant", () => {
+    // The bound is the DOMAIN's, not the clock's: food re-dates the serving and dose
+    // keeps its adherence day, so both still offer the full set here.
+    const now = local("00:25");
+    const burst = collapseBursts([
+      tap(41, local("00:20").toISOString(), "Salmon"),
+    ])[0];
+    for (const prefixes of [FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES]) {
+      expect(correctableBursts(prefixes, [burst], now, TZ).shown).toEqual([
+        burst,
+      ]);
+      expect(
+        correctionActions(prefixes, 3, [burst], TZ, now).map((a) => a.label)
+      ).toEqual(["🕐 Salmon 00:20", "23:50 · −30m", "23:20 · −1h"]);
+      // The recent hours, the `Yesterday →` step (#3010) and `↩︎ Back`.
+      expect(correctionPickerActions(prefixes, 3, burst, now, TZ)).toHaveLength(
+        pickerHourOptions(now, TZ).length + 2
+      );
+    }
+  });
+
+  it("never offers an answer on another day, at any hour of the day", () => {
+    // THE PROPERTY, swept. Every chip and every picker hour a practice keyboard carries,
+    // resolved the way the handler resolves it, lands on the day the row is filed under.
+    for (const h of [0, 1, 2, 3, 6, 9, 12, 15, 18, 21, 23]) {
+      for (const ageMin of [0, 12, 41, 58]) {
+        const now = local(`${String(h).padStart(2, "0")}:37`);
+        const tapAt = new Date(now.getTime() - ageMin * 60_000);
+        const burst = collapseBursts([practiceTap(41, tapAt)])[0];
+        const day = burstLocalDay(burst);
+        expect(day, `burst at ${tapAt.toISOString()}`).not.toBeNull();
+        for (const resolved of resolvedDays(
+          burst,
+          now,
+          PRACTICE_TIME_PREFIXES
+        )) {
+          expect(resolved, `offer at ${now.toISOString()}`).toBe(day);
+        }
+      }
+    }
+  });
+
+  it("offers a burst that straddles midnight nothing, because one instant cannot be two days", () => {
+    // BURST_GAP_MIN collapses a 23:58 tap and a 00:03 tap into one burst, and a burst is
+    // ONE error: the picker writes a single instant onto every row, and no single instant
+    // is on both days.
+    const now = local("00:20");
+    const straddle = collapseBursts([
+      practiceTap(41, local("23:58", 5)),
+      practiceTap(42, local("00:03")),
+    ])[0];
+    expect(burstLocalDay(straddle)).toBeNull();
+    expect(
+      correctableBursts(PRACTICE_TIME_PREFIXES, [straddle], now, TZ).shown
+    ).toEqual([]);
+    expect(offeredHours(straddle, now, TZ, true)).toEqual([]);
+    expect(chipOffers(straddle, now, TZ, true)).toEqual([]);
+  });
+
+  it("asks the picker's question honestly when the day leaves no hour to pick", () => {
+    // Roughly 01:00–02:00 local: a −30m chip still stays on today, but the picker's own
+    // reach starts two hours back and every hour it can name is yesterday's. The title
+    // says so rather than presenting a grid of nothing.
+    const now = local("01:40");
+    const burst = collapseBursts([practiceTap(41, local("01:35"))])[0];
+    expect(chipOffers(burst, now, TZ, true).map((o) => o.minutesBack)).toEqual([
+      30, 60,
+    ]);
+    expect(offeredHours(burst, now, TZ, true)).toEqual([]);
+    const picker = correctionPickerActions(
+      PRACTICE_TIME_PREFIXES,
+      3,
+      burst,
+      now,
+      TZ
+    );
+    expect(picker.map((a) => a.label)).toEqual(["↩︎ Back"]);
+    expect(correctionPickerTitle("when was this", burst, TZ, [])).toBe(
+      "🕐 Sauna — no earlier hour left on this day — correct it in the app"
+    );
+    // A domain that always has hours passes none and asks its ordinary question.
+    expect(correctionPickerTitle("when did you eat", burst, TZ)).toBe(
+      "🕐 Sauna — when did you eat?"
+    );
+  });
+
+  // ---- the bound reads the day the WRITE CORE enforces ----------------------
+  //
+  // `restampPracticeLogsCore` refuses on `zonedDateParts(tz, resolved).date !== row.date`
+  // — the STORED COLUMN. Deriving the bound's day from the composed instant instead looks
+  // equivalent and is not: `zonedWallTimeToUtc` cannot round-trip the day in a zone whose
+  // DST starts at local midnight, because the first hour of that day never happens. Swept
+  // across every IANA zone × 2024–2027, five zones do this — America/Havana,
+  // America/Santiago, America/Asuncion, America/Coyhaique and Atlantic/Azores — and there
+  // the composed day is YESTERDAY's while the core still enforces the column. Bounding by
+  // the composed day therefore offers chips whose every tap answers "crosses-day": the
+  // defect the bound exists to prevent, one derivation over.
+
+  it("takes the burst's day from the stored column, not from the composed instant", () => {
+    // Havana, 2026-03-08: the clock jumps 00:00 → 01:00, so "00:30" is a wall time that
+    // date does not contain. The ledger still files the session under 2026-03-08 — the
+    // string the core compares against — while the composed instant reads back as
+    // 2026-03-07 23:30.
+    const HAV = "America/Havana";
+    const at = new Date("2026-03-08T04:30:00Z");
+    expect(zonedDateParts(HAV, at).date).toBe("2026-03-07");
+
+    const burst = collapseBursts([
+      {
+        id: 41,
+        tapAt: at.toISOString(),
+        localDay: "2026-03-08",
+        label: "Sauna",
+      },
+    ])[0];
+    expect(burstLocalDay(burst)).toBe("2026-03-08");
+
+    // So every offer is dropped before it is drawn, because every one of them resolves
+    // onto 2026-03-07 and the core would answer `crosses-day`.
+    const now = new Date("2026-03-08T05:00:00Z");
+    expect(chipOffers(burst, now, HAV, true)).toEqual([]);
+    expect(offeredHours(burst, now, HAV, true)).toEqual([]);
+    expect(
+      correctionActions(PRACTICE_TIME_PREFIXES, 3, [burst], HAV, now)
+    ).toEqual([]);
+    expect(
+      correctableBursts(PRACTICE_TIME_PREFIXES, [burst], now, HAV).offScope
+    ).toEqual([burst]);
+  });
+
+  it("gives a burst whose members are filed under different days no day at all", () => {
+    // Two stored days inside one BURST_GAP_MIN window — what `logPracticeSession`'s
+    // backdated write produces. One correction cannot be two answers.
+    const spread = collapseBursts([
+      practiceTap(41, local("12:00")),
+      practiceTap(42, local("12:05"), "Sauna", "2026-08-05"),
+    ])[0];
+    expect(spread.count).toBe(2);
+    expect(burstLocalDay(spread)).toBeNull();
+    expect(chipOffers(spread, local("12:10"), TZ, true)).toEqual([]);
+  });
+
+  it("refuses a burst that mixes an affected row with an ordinary one on the same filed day", () => {
+    // The case that keeps ONE test against the earliest row exact. Both sessions are
+    // filed under 2026-03-08; the first is filed at "00:45", an hour Havana skips, so it
+    // composes to 03-07 23:45 while the second composes cleanly to 03-08 01:00. The
+    // affected row is therefore the EARLIER instant, which is the row `chipStaysOnDay`
+    // already tests — and the core refuses the whole burst for it.
+    const HAV = "America/Havana";
+    const burst = collapseBursts([
+      {
+        id: 41,
+        tapAt: "2026-03-08T04:45:00Z",
+        localDay: "2026-03-08",
+        label: "",
+      },
+      {
+        id: 42,
+        tapAt: "2026-03-08T05:00:00Z",
+        localDay: "2026-03-08",
+        label: "",
+      },
+    ])[0];
+    expect(burst.count).toBe(2);
+    expect(burstLocalDay(burst)).toBe("2026-03-08");
+    expect(zonedDateParts(HAV, new Date(burst.atStartAt)).date).toBe(
+      "2026-03-07"
+    );
+    expect(
+      chipOffers(burst, new Date("2026-03-08T05:30:00Z"), HAV, true)
+    ).toEqual([]);
+  });
+
+  it("leaves an instant-keyed burst with no day, and offers it everything anyway", () => {
+    // Food and dose file under no day at all, so the bound has nothing to read — and is
+    // never consulted for them. `dayKeyed: false` is what guarantees that; a missing day
+    // fails CLOSED, which would be the wrong answer for these two.
+    const now = local("00:25");
+    const burst = collapseBursts([
+      tap(41, local("00:20").toISOString(), "Salmon"),
+    ])[0];
+    expect(burstLocalDay(burst)).toBeNull();
+    expect(chipOffers(burst, now, TZ).map((o) => o.minutesBack)).toEqual([
+      30, 60,
+    ]);
+    expect(chipOffers(burst, now, TZ, true)).toEqual([]);
+  });
+});
+
+// ---- The DAY LEVEL (issue #3010) -------------------------------------------
+//
+// The picker was eleven hours measured from NOW, at every hour of the day, so at 08:00
+// its floor was 20:00 yesterday and an 18:00 dinner could not be corrected the next
+// morning at all. These are the pure half of the day + hour pair that fixes it.
+
+describe("the picker's day level (#3010)", () => {
+  // 08:00 local on 2026-08-06 — the owner's own instant: the morning after an 18:00
+  // dinner, with the picker's old floor two hours short of it.
+  const MORNING = new Date("2026-08-06T06:00:00Z");
+  const morningBurst = collapseBursts([
+    tap(41, "2026-08-06T05:55:00Z", "Salmon"),
+  ])[0];
+
+  it("THE REPORT: 18:00 yesterday is reachable at 08:00, and was not before", () => {
+    // Level one is where it always was — eleven hours, floor 20:00 yesterday.
+    expect(pickerHourOptions(MORNING, TZ)).toHaveLength(11);
+    expect(pickerHourOptions(MORNING, TZ)).not.toContain("18:00");
+    // Level two reaches it, and resolves it to the instant the dinner actually happened.
+    expect(offeredHours(morningBurst, MORNING, TZ, false, "prev")).toContain(
+      "18:00"
+    );
+    expect(
+      offeredHourInstant("18:00", "prev", MORNING, TZ)?.toISOString()
+    ).toBe("2026-08-05T16:00:00.000Z");
+  });
+
+  it("level one is unchanged and carries the step down to yesterday", () => {
+    const actions = correctionPickerActions(
+      FOOD_TIME_PREFIXES,
+      3,
+      morningBurst,
+      MORNING,
+      TZ
+    );
+    const hourTokens = actions
+      .map((a) => a.data)
+      .filter((d) => /:\d\d:00$/.test(String(d)) && !String(d).includes(":p:"));
+    // Exactly the hours it offered before, in the same order.
+    expect(
+      actions.slice(0, 11).map((a) => String(a.label).replace(" yest", ""))
+    ).toEqual(pickerHourOptions(MORNING, TZ));
+    expect(hourTokens).toHaveLength(11);
+    // Plus one Yesterday step, and Back last.
+    expect(actions.map((a) => a.data)).toContain(
+      `${FOOD_TIME_PREFIXES.at}:3:41:prev`
+    );
+    expect(actions[actions.length - 1].label).toContain("Back");
+  });
+
+  it("level two is `statedHoursOnDate` for yesterday — the web sheet's own enumeration", () => {
+    const yesterday = statedHoursOnDate("2026-08-05", TZ, MORNING).map(
+      (o) => o.hhmm
+    );
+    expect(yesterday).toHaveLength(24);
+    // Same set, newest first, which is the order every other picker offer uses.
+    expect(pickerPrevDayHourOptions(MORNING, TZ)).toEqual(
+      [...yesterday].reverse()
+    );
+    expect(offeredHours(morningBurst, MORNING, TZ, false, "prev")).toEqual(
+      [...yesterday].reverse()
+    );
+  });
+
+  it("labels the hours that fall on a previous day, and only those", () => {
+    const labelled = pickerHourOptions(MORNING, TZ).map((h) => ({
+      h,
+      label: pickerHourLabel(h, "today", MORNING, TZ),
+    }));
+    // At 08:00 the grid runs 06:00…02:00 (today) then 23:00…20:00 (YESTERDAY), and the
+    // two halves used to be formatted identically.
+    for (const { h, label } of labelled) {
+      const today = Number(h.slice(0, 2)) <= 6;
+      expect(label, h).toBe(today ? h : `${h} yest`);
+    }
+    // Level two's buttons say it too — each button states its own result (#2206).
+    expect(pickerHourLabel("18:00", "prev", MORNING, TZ)).toBe("18:00 yest");
+  });
+
+  it("a day-qualified hour round-trips through the encoder and the parser", () => {
+    const at = FOOD_TIME_PREFIXES.at;
+    const token = correctionAtToken(at, 3, 41, {
+      kind: "at",
+      hhmm: "18:00",
+      day: "prev",
+      date: "2026-08-05",
+    });
+    expect(token).toBe(`${at}:3:41:p:2026-08-05:18:00`);
+    expect(parseCorrectionAtToken(token, at)).toEqual({
+      profileId: 3,
+      fromId: 41,
+      step: { kind: "at", hhmm: "18:00", day: "prev", date: "2026-08-05" },
+    });
+    // Still inside Telegram's 64-byte callback budget at realistic ids.
+    expect(
+      Buffer.byteLength(`${at}:999999:99999999:p:2026-08-05:18:00`, "utf8")
+    ).toBeLessThanOrEqual(64);
+    // A day marker with no date is not a shape this grammar knows.
+    expect(parseCorrectionAtToken(`${at}:3:41:p:18:00`, at)).toBeNull();
+    expect(
+      parseCorrectionAtToken(`${at}:3:41:p:2026-8-5:18:00`, at)
+    ).toBeNull();
+  });
+
+  it("a `p:` token whose LOCAL DAY HAS ROLLED is refused — the 24-hour drift (#3010)", () => {
+    // Level two means "the day before now". A token minted at 23:55 for 20:00 yesterday
+    // named 2026-08-04; ten minutes later it is a new local day, and a marker carrying
+    // no date would re-resolve onto 2026-08-05 — a FULL 24 HOURS on, in the PAST, so
+    // `judgeStatedAt`'s no-future refusal cannot catch it.
+    const beforeMidnight = new Date("2026-08-05T21:55:00Z"); // 23:55 local
+    const afterMidnight = new Date("2026-08-05T22:05:00Z"); // 00:05 local, next day
+    const lateBurst = collapseBursts([
+      {
+        id: 41,
+        tapAt: "2026-08-05T21:50:00Z",
+        localDay: "2026-08-05",
+        label: "Berries",
+      },
+    ])[0];
+
+    // The instants the same wall time resolves to on either side of midnight: exactly
+    // 24 hours apart, which is the size of the drift.
+    const named = offeredHourInstant("20:00", "prev", beforeMidnight, TZ)!;
+    const rolled = offeredHourInstant("20:00", "prev", afterMidnight, TZ)!;
+    expect(rolled.getTime() - named.getTime()).toBe(24 * 60 * 60 * 1000);
+    expect(rolled.getTime()).toBeLessThan(afterMidnight.getTime());
+
+    // Offered when the token was minted…
+    expect(
+      isOfferedHour(
+        "20:00",
+        lateBurst,
+        beforeMidnight,
+        TZ,
+        false,
+        "prev",
+        "2026-08-04"
+      )
+    ).toBe(true);
+    // …and refused ten minutes later, because level two is no longer showing that day.
+    expect(
+      isOfferedHour(
+        "20:00",
+        lateBurst,
+        afterMidnight,
+        TZ,
+        false,
+        "prev",
+        "2026-08-04"
+      )
+    ).toBe(false);
+    // The day it IS showing is accepted, so the refusal is about the roll and not about
+    // the hour.
+    expect(
+      isOfferedHour(
+        "20:00",
+        lateBurst,
+        afterMidnight,
+        TZ,
+        false,
+        "prev",
+        "2026-08-05"
+      )
+    ).toBe(true);
+  });
+
+  it("the handler admits exactly the day-qualified set the keyboard rendered", () => {
+    // Every rendered button, re-derived the way the handler re-derives it — including
+    // the day each level-two button was stamped with.
+    const prevDate = correctionDayDate("prev", MORNING, TZ);
+    for (const level of ["today", "prev"] as const) {
+      for (const hhmm of offeredHours(
+        morningBurst,
+        MORNING,
+        TZ,
+        false,
+        level
+      )) {
+        expect(
+          isOfferedHour(
+            hhmm,
+            morningBurst,
+            MORNING,
+            TZ,
+            false,
+            level,
+            level === "prev" ? prevDate : null
+          ),
+          `${level} ${hhmm}`
+        ).toBe(true);
+      }
+    }
+    // An hour legal on the OTHER level is refused on this one: 07:00 is in the future
+    // today (so level one never offered it) and legal yesterday.
+    expect(isOfferedHour("07:00", morningBurst, MORNING, TZ, false)).toBe(
+      false
+    );
+    expect(
+      isOfferedHour("07:00", morningBurst, MORNING, TZ, false, "prev", prevDate)
+    ).toBe(true);
+    // And a day marker cannot smuggle an hour past the FUTURE bound: level two is a
+    // complete past day, so there is no hour it can reach that has not happened.
+    for (const hhmm of offeredHours(morningBurst, MORNING, TZ, false, "prev")) {
+      const at = offeredHourInstant(hhmm, "prev", MORNING, TZ);
+      expect(at, hhmm).not.toBeNull();
+      expect(at!.getTime(), hhmm).toBeLessThan(MORNING.getTime());
+    }
+  });
+
+  it("both instant-keyed prefix families get the level together (#2020)", () => {
+    for (const prefixes of [FOOD_TIME_PREFIXES, DOSE_TIME_PREFIXES]) {
+      const tokens = correctionPickerActions(
+        prefixes,
+        3,
+        morningBurst,
+        MORNING,
+        TZ
+      ).map((a) => String(a.data));
+      expect(tokens, prefixes.at).toContain(`${prefixes.at}:3:41:prev`);
+      expect(
+        correctionPickerActions(prefixes, 3, morningBurst, MORNING, TZ, "prev")
+          .map((a) => String(a.data))
+          .filter((d) => d.includes(":p:")),
+        prefixes.at
+      ).toHaveLength(24);
+    }
+  });
+
+  it("a DAY-KEYED domain is offered no yesterday step for a burst filed today (#2875)", () => {
+    // The practice write core refuses an answer on another day, so level two has nothing
+    // to give a session filed under today — and the step is simply not drawn. No special
+    // case: the domain bound already answered.
+    const practiceBurst = collapseBursts([
+      {
+        id: 41,
+        tapAt: "2026-08-06T05:55:00Z",
+        localDay: "2026-08-06",
+        label: "Sauna",
+      },
+    ])[0];
+    expect(offeredHours(practiceBurst, MORNING, TZ, true, "prev")).toHaveLength(
+      0
+    );
+    expect(
+      correctionPickerActions(
+        PRACTICE_TIME_PREFIXES,
+        3,
+        practiceBurst,
+        MORNING,
+        TZ
+      ).map((a) => String(a.data))
+    ).not.toContain(`${PRACTICE_TIME_PREFIXES.at}:3:41:prev`);
+
+    // The instant-keyed domains at the same instant, for contrast: they ABSORB the
+    // crossing, so the same burst does get the step.
+    expect(
+      correctionPickerActions(
+        FOOD_TIME_PREFIXES,
+        3,
+        practiceBurst,
+        MORNING,
+        TZ
+      ).map((a) => String(a.data))
+    ).toContain(`${FOOD_TIME_PREFIXES.at}:3:41:prev`);
   });
 });

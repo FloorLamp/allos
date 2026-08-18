@@ -72,7 +72,7 @@ function insertActivity(
 describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => {
   beforeEach(() => {
     db.prepare("DELETE FROM practice_logs WHERE profile_id = 1").run();
-    db.prepare("DELETE FROM food_log WHERE profile_id = 1").run();
+    db.prepare("DELETE FROM food_daily_totals WHERE profile_id = 1").run();
     db.prepare("DELETE FROM activities WHERE profile_id = 1").run();
     db.prepare("DELETE FROM protocols WHERE profile_id = 1").run();
     db.prepare("DELETE FROM frequency_targets WHERE profile_id = 1").run();
@@ -176,7 +176,7 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
       frequency_target_id: tid,
     });
     db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
        VALUES (1, '2026-06-08', 'fatty_fish', 2),
               (1, '2026-06-09', 'fatty_fish', 1),
               (1, '2026-06-10', 'fatty_fish', 0),
@@ -251,7 +251,7 @@ describe("the protocol list's batched heatmap gather (#1655)", () => {
 
   beforeEach(() => {
     db.prepare("DELETE FROM practice_logs WHERE profile_id = 1").run();
-    db.prepare("DELETE FROM food_log WHERE profile_id = 1").run();
+    db.prepare("DELETE FROM food_daily_totals WHERE profile_id = 1").run();
     db.prepare("DELETE FROM activities WHERE profile_id = 1").run();
     db.prepare("DELETE FROM protocols WHERE profile_id = 1").run();
     db.prepare("DELETE FROM frequency_targets WHERE profile_id = 1").run();
@@ -299,7 +299,7 @@ describe("the protocol list's batched heatmap gather (#1655)", () => {
               (1, 'Sauna', '2026-07-06')`
     ).run();
     db.prepare(
-      `INSERT INTO food_log (profile_id, date, group_key, servings)
+      `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
        VALUES (1, '2020-03-06', 'fatty_fish', 2),
               (1, '2026-06-12', 'fatty_fish', 3),
               (1, '2026-06-12', 'other_group', 9),

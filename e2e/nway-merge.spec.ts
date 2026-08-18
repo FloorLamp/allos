@@ -94,7 +94,7 @@ test.describe("N-way activity merge (#1081)", () => {
 
       // Only the chosen keeper survives on the feed; the other two are actually gone
       // (rollups count the session once).
-      await page.goto("/training");
+      await page.goto("/training?tab=log");
       await expect(page.getByText("NW review manual").first()).toBeVisible(); // first-ok: the chosen keeper after the merge THIS test performed on its own fixture profile — deterministic
       await expect(page.getByText("NW review strava")).toHaveCount(0);
       await expect(page.getByText("NW review hc")).toHaveCount(0);
@@ -189,18 +189,25 @@ test.describe("N-way activity merge (#1081)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/training"); // default "Log" tab renders the Training Log feed
+      await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-      const cardEl = page
+      const rowEl = page
         .locator('[id^="activity-"]')
         .filter({ hasText: "NW card" });
-      await expect(cardEl).toHaveCount(1);
+      await expect(rowEl).toHaveCount(1);
       await expect(page.getByText("NW sib A")).toBeVisible();
       await expect(page.getByText("NW sib B")).toBeVisible();
 
-      // Scroll the card to the top so the (taller) downward overflow menu — checkboxes
-      // + keeper select + Merge button — has full room below the trigger.
-      await cardEl.evaluate((el) => el.scrollIntoView({ block: "start" }));
+      // Select the originating row into the reading pane (#2897 slim feed — a
+      // pure client toggle, so hydratedClick); the full record card with its
+      // overflow menu renders there. The pane sits at the top of the aside, so
+      // the (taller) downward menu — checkboxes + keeper select + Merge button —
+      // has full room below the trigger.
+      await hydratedClick(page, rowEl);
+      const cardEl = page
+        .getByTestId("training-log-reading-pane")
+        .locator(".card", { hasText: "NW card" });
+      await expect(cardEl).toBeVisible();
       // Open the originating card's overflow menu → "Merge with…" → switch to the
       // multi-select / keeper-select mode.
       await cardEl.getByRole("button", { name: "Activity actions" }).click();

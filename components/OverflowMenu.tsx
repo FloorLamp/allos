@@ -137,14 +137,23 @@ export default function OverflowMenu({
     [reposition]
   );
 
-  // Track scroll (in any ancestor, hence capture) and resize while open.
+  // Track scroll (in any ancestor, hence capture) and resize while open — and
+  // LAYOUT SHIFT, which fires neither: content growing above the trigger (a
+  // lazily-loaded chart bundle mounting is the #2839 sighting) moves the trigger
+  // without any scroll or resize event, leaving the fixed-position panel
+  // floating where the trigger used to be. Document height is a proxy that
+  // covers exactly that class, and ResizeObserver only fires on actual size
+  // change, so this is quiet while the page is still.
   useLayoutEffect(() => {
     if (!open) return;
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
+    const ro = new ResizeObserver(reposition);
+    ro.observe(document.documentElement);
     return () => {
       window.removeEventListener("scroll", reposition, true);
       window.removeEventListener("resize", reposition);
+      ro.disconnect();
     };
   }, [open, reposition]);
 
