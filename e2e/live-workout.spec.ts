@@ -117,6 +117,10 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
+  // The next test shares this worker database. Wait for the delete action's
+  // redirect so its active-presence cleanup cannot leak a Resume offer forward.
+  await page.waitForURL(/\/training(\?.*)?$/);
+  await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 });
 
 // Issue #1893 — THE EPOCH PIN. `openLive()` used to clear the editor and re-stamp

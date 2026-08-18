@@ -242,7 +242,7 @@ export function seedCuratedOverview(): void {
   // analyte with no readings anywhere (the never-measured case #1485 A compacts).
   // Idempotent: its own fixture rows are cleared first.
   {
-    const curateId = fixtureProfileId(TRENDS_CURATE_PROFILE);
+    const curateId = adultFixtureProfileId(TRENDS_CURATE_PROFILE);
     const curateToday = today(curateId);
     db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(curateId);
     const insCurate = db.prepare(
