@@ -145,8 +145,12 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   practice: IconSparkles,
 };
 
+// Timeline rows are the quiet card tier: they share Botanical's card surface and
+// semantic border, but a dense chronological feed does not give every row its own
+// shadow. Only rows whose whole shell is interactive receive the hover fill.
 const CARD_CLASS =
-  "border-black/10 bg-white text-slate-700 dark:border-white/10 dark:bg-ink-900 dark:text-slate-200";
+  "border-(--border) bg-surface text-slate-700 dark:text-slate-200";
+const CARD_HOVER_CLASS = "transition duration-150 hover:bg-(--ghost-hover)";
 
 const BADGE_CLASS: Record<TimelineCategory, string> = {
   activity:
@@ -349,7 +353,7 @@ function EventCard({
     </>
   );
 
-  const shellClass = `rounded-lg border px-4 py-3 shadow-xs transition duration-150 hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`;
+  const shellClass = `rounded-lg border px-4 py-3 ${canExpand ? CARD_HOVER_CLASS : ""} ${CARD_CLASS}`;
 
   if (!canExpand) {
     return <div className={`group block ${shellClass}`}>{collapsed}</div>;
@@ -512,7 +516,7 @@ function TimelineFoldCard({
         testId={`${testId}-toggle`}
         label={fold.label}
         ariaExpanded={fold.open}
-        className={`flex items-center gap-3 rounded-lg border px-4 py-3 shadow-xs transition hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`}
+        className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${CARD_HOVER_CLASS} ${CARD_CLASS}`}
       >
         <span
           className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition dark:text-slate-400 ${
