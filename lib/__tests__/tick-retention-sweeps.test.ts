@@ -9,16 +9,15 @@
 // accumulated with nothing anywhere to remove them. The functions being present
 // looked exactly like the functions being run.
 //
-// This is a source scan rather than an execution test because scripts/notify.ts is
-// a tsx entrypoint, not an importable module: what can be checked below the browser
-// is that the tick names each sweep. The sweeps' own behaviour (what they delete,
+// This source census reads the import-safe tick module so it can check that the tick
+// names each sweep. The sweeps' own behaviour (what they delete,
 // what they spare, the counts they report) is proven in lib/__db_tests__/auth.test.ts.
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const TICK = fs.readFileSync(
-  path.join(process.cwd(), "scripts", "notify.ts"),
+  path.join(process.cwd(), "lib", "notifications", "tick.ts"),
   "utf8"
 );
 

@@ -31,6 +31,7 @@ import {
   setFoodNudgePointer,
 } from "../settings";
 import { today } from "../db";
+import { now } from "../clock";
 import { zonedDateParts } from "../date";
 import { createLogger } from "../log";
 import type {
@@ -480,7 +481,7 @@ function recordDigestTailPointer(
       chatId,
       messageId,
       date: today(profileId),
-      renderedAt: zonedDateParts(getTimezone(profileId), new Date()).hhmm,
+      renderedAt: zonedDateParts(getTimezone(profileId), now()).hhmm,
     });
   } catch (e) {
     log.info("digest tail: pointer store failed (ignored)", {

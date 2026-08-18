@@ -14,10 +14,8 @@
 //   STATIC  — same time every day. Complete or not. TODAY'S BEHAVIOR, UNCHANGED.
 //   DYNAMIC — as soon as it's ready. Not before the floor, and by the deadline.
 //
-// `tickDigest` below mirrors scripts/notify.ts's digest block exactly (the same
-// terms in the same order) — the pattern workout-presence-gate.test established for
-// the tick's slot loop, since scripts/notify.ts runs main() on import and cannot be
-// imported by a test.
+// The cases call the production digest gate exported by the import-safe tick module,
+// so scheduling and delivery cannot drift away from this suite.
 //
 // The two halves stay separate on purpose: this decides WHEN the digest sends,
 // #2099 decides WHAT it prints. A digest that reaches its deadline with no sleep in
@@ -40,12 +38,8 @@ import {
   setTimezone,
   setStoredAge,
 } from "@/lib/settings";
-import {
-  digestSleepPending,
-  planProfileDigestTick,
-  recordDigestAttempt,
-  runDigest,
-} from "@/lib/notifications/digest-data";
+import { digestSleepPending } from "@/lib/notifications/digest-data";
+import { runDigestTick } from "@/lib/notifications/tick";
 import {
   DIGEST_ATTEMPT_KEY,
   DIGEST_MARKER_KEY,
@@ -207,47 +201,20 @@ function stubFetch(ok = true): ReturnType<typeof vi.fn> {
 const sentBody = (mock: ReturnType<typeof vi.fn>, n = 0): string =>
   String(JSON.parse(mock.mock.calls[n][1].body as string).text);
 
-type TickOutcome = "already-sent" | "idle" | "declined" | "sent" | "failed";
-
-// scripts/notify.ts's digest block, term for term:
-//
-//   if (getProfileSetting(profile.id, DIGEST_MARKER_KEY) !== date) {
-//     if (planProfileDigestTick(...) === "send") {
-//       const dg = await runDigest(...);
-//       if (dg.failed) {
-//         if (sched.digestMode === "dynamic") recordDigestAttempt(...);
-//         ...
-//       }
-//     }
-//   }
 async function tickDigest(
   profileId: number,
   name: string
-): Promise<TickOutcome> {
+): ReturnType<typeof runDigestTick> {
   const minute = minuteOfDayInTz(TZ, new Date());
   const date = today(profileId);
-  if (getProfileSetting(profileId, DIGEST_MARKER_KEY) === date)
-    return "already-sent";
-  const sched = getNotifySchedule(profileId);
-  const action = planProfileDigestTick(
+  return runDigestTick(
     profileId,
-    sched,
+    name,
+    getNotifySchedule(profileId),
     minute,
     TICK_MINUTES,
     date
   );
-  if (action === "wait") return "declined";
-  if (action === "idle") return "idle";
-  const dg = await runDigest(profileId, name, date);
-  if (dg.failed) {
-    // ONLY Dynamic anchors its retry to the attempt, so only Dynamic writes the
-    // record. Static's two attempts are `slotAttempt`'s slot-anchored bands and it
-    // never reads this key.
-    if (sched.digestMode === "dynamic")
-      recordDigestAttempt(profileId, date, minute);
-    return "failed";
-  }
-  return "sent";
 }
 
 /**
