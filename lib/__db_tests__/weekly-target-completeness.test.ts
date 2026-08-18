@@ -16,7 +16,12 @@ import { db, today } from "@/lib/db";
 import { practiceItems, trainingItems } from "@/lib/queries/upcoming/plans";
 import { getFrequencyTargetProgress } from "@/lib/queries";
 import { practiceIdentity, practiceSignalKey } from "@/lib/practice";
-import { setWeekMode, setWeekStart, type WeekStart } from "@/lib/settings";
+import {
+  setStoredAge,
+  setWeekMode,
+  setWeekStart,
+  type WeekStart,
+} from "@/lib/settings";
 import { pageRowDetail } from "@/lib/upcoming-aggregate";
 import { trainingSignalKey } from "@/lib/workout-nudge";
 
@@ -31,6 +36,7 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setStoredAge(profileId, 30);
   setWeekMode(profileId, "calendar");
   const anchor = today(profileId);
   setWeekStart(profileId, weekdayOfDateStr(anchor) as WeekStart);

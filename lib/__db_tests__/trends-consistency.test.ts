@@ -46,6 +46,7 @@ import {
   setMetricSourcePriorityEntry,
   setMaxHrOverride,
   setZone2WeeklyTargetMin,
+  setStoredAge,
   type WeekStart,
 } from "@/lib/settings";
 
@@ -61,6 +62,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
       db.prepare("INSERT INTO profiles (name) VALUES ('WeightDedup')").run()
         .lastInsertRowid
     );
+    setStoredAge(profileId, 30);
     // Manual weigh-ins are the primary source here (issue's failure scenario).
     setMetricSourcePriorityEntry(profileId, "weight", "manual");
     // DAY1: single manual reading.
@@ -150,6 +152,7 @@ describe("logical outcome identity", () => {
       db.prepare("INSERT INTO profiles (name) VALUES ('LogicalOutcomes')").run()
         .lastInsertRowid
     );
+    setStoredAge(profileId, 30);
     db.prepare(
       `INSERT INTO medical_records
          (profile_id, date, category, name, canonical_name, value_num, unit)
@@ -187,8 +190,8 @@ describe("#397 — Trends zone card 'this week' Zone 2 honors week_mode", () => 
       db.prepare("INSERT INTO profiles (name) VALUES ('ZoneWeek')").run()
         .lastInsertRowid
     );
-    // A resolvable zone model without needing an age: max HR 200 → Zone 2 is
-    // [120,140) bpm on the percent-max model.
+    setStoredAge(profileId, 30);
+    // Max HR 200 resolves Zone 2 to [120,140) bpm on the percent-max model.
     setMaxHrOverride(profileId, 200);
     setZone2WeeklyTargetMin(profileId, 60);
 

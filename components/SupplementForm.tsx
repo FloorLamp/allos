@@ -37,7 +37,7 @@ import type { IntakeObligation } from "@/lib/types";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
 import {
-  CONDITIONS,
+  availableIntakeConditions,
   CONDITION_LABELS,
   OBLIGATIONS,
   OBLIGATION_HINTS,
@@ -78,6 +78,7 @@ export default function SupplementForm({
   pairs: initialPairs = [],
   onDone,
   initialSupply = null,
+  activityScheduleAvailable = true,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: IntakeItem;
@@ -92,9 +93,15 @@ export default function SupplementForm({
   // Opened FROM a shared bottle (#1705) — the cabinet's "Add for another person". The
   // product fields are seeded from it and it links on save.
   initialSupply?: SupplyOption | null;
+  // Under early childhood the workout logger stands down, so new workout-relative
+  // schedules do too. Existing values remain selectable while editing.
+  activityScheduleAvailable?: boolean;
 }) {
   const s = supplement;
-  const conditionOptions = CONDITIONS;
+  const conditionOptions = availableIntakeConditions(
+    activityScheduleAvailable,
+    s?.condition
+  );
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const fid = s?.id ?? "new";

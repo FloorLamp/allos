@@ -11,15 +11,10 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import {
-  trainingItems,
-  trainingPaceLine,
-  WEEKLY_TARGET_IDENTITY,
-} from "@/lib/queries/upcoming/plans";
+import { trainingItems, trainingPaceLine } from "@/lib/queries/upcoming/plans";
 import { practiceIdentity } from "@/lib/practice";
 import { setStoredAge, setWeekMode } from "@/lib/settings";
 import { trainingSignalKey } from "@/lib/workout-nudge";
-import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -59,23 +54,6 @@ function addTarget(
 }
 
 describe("weekly floor targets carry their SCOPE's identity (#2578)", () => {
-  it("declares a life-stage policy for every scope that emits a weekly row", () => {
-    expect(
-      FREQUENCY_SCOPE_KINDS.map((kind) => [
-        kind,
-        WEEKLY_TARGET_IDENTITY[kind]?.lifeStage ?? null,
-      ])
-    ).toEqual([
-      ["region", "age-neutral"],
-      ["group", "age-neutral"],
-      ["type", "age-neutral"],
-      ["food_group", "age-neutral"],
-      ["mobility_region", "age-neutral"],
-      ["substance", null],
-      ["practice", null],
-    ]);
-  });
-
   it("a food_group target is a nutrition target, on the Nutrition food tab", () => {
     const { profileId } = makeProfile("wti-food");
     const id = addTarget(profileId, "food_group", "berries", 4);
@@ -123,6 +101,22 @@ describe("weekly floor targets carry their SCOPE's identity (#2578)", () => {
       expect(item!.detail).toBe("Weekly training target");
       expect(item!.href).toBe("/training");
     }
+  });
+
+  it("hides strength targets but retains cardio, food, and mobility at school age", () => {
+    const { profileId } = makeProfile("wti-school-age");
+    setStoredAge(profileId, 10);
+    const strength = addTarget(profileId, "region", "Back", 2);
+    const cardio = addTarget(profileId, "type", "cardio", 3);
+    const food = addTarget(profileId, "food_group", "berries", 4);
+    const mobility = addTarget(profileId, "mobility_region", "Glutes", 3);
+
+    const keys = new Set(trainingItems(profileId).map((item) => item.key));
+    expect(keys.has(trainingSignalKey(strength))).toBe(false);
+    expect(keys.has(trainingSignalKey(cardio))).toBe(true);
+    expect(keys.has(trainingSignalKey(food))).toBe(true);
+    expect(keys.has(trainingSignalKey(mobility))).toBe(true);
+    expect(trainingPaceLine(profileId)).toContain("of 1 training target");
   });
 
   it("the key namespace is UNCHANGED for every scope, so stored dismissals still bind", () => {

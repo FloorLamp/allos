@@ -120,7 +120,9 @@ export default async function AnalyzeSection({
   const sports = getSportByActivity(profile.id, formatPrefs);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const recentByExercise = getRecentByExercise(profile.id, wu, formatPrefs);
-  const goals = getOutcomeGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id).filter(
+    (goal) => strengthTrainingAvailable || goal.kind !== "exercise"
+  );
   const goalProgress = Object.fromEntries(
     getOutcomeGoalProgressMap(profile.id, goals)
   );

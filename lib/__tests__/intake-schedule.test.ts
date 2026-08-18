@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  availableIntakeConditions,
   CONDITIONS,
   contributesToDailyLimit,
   defaultFoodTiming,
@@ -16,12 +17,21 @@ import {
 } from "@/lib/intake-schedule";
 
 describe("CONDITIONS", () => {
-  it("keeps workout and rest-day schedules age-neutral", () => {
+  it("offers every schedule when activity scheduling is available", () => {
     expect(CONDITIONS).toEqual([
       "daily",
       "pre_workout",
       "post_workout",
       "rest_day",
+      "situational",
+    ]);
+  });
+
+  it("hides workout schedules while preserving an existing selection", () => {
+    expect(availableIntakeConditions(false)).toEqual(["daily", "situational"]);
+    expect(availableIntakeConditions(false, "pre_workout")).toEqual([
+      "daily",
+      "pre_workout",
       "situational",
     ]);
   });

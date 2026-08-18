@@ -14,7 +14,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { endProtocol, resumeProtocol } from "@/app/(app)/protocols/actions";
-import { getActiveSituations } from "@/lib/settings";
+import { getActiveSituations, setStoredAge } from "@/lib/settings";
 import { PROTOCOL_REOPEN_WINDOW_DAYS } from "@/lib/protocol-reopen";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -23,6 +23,7 @@ const SITUATION = "Fictional block";
 function seed(): { profileId: number } {
   const admin = createLogin({ role: "admin" });
   const profile = createProfile("Test Patient");
+  setStoredAge(profile.id, 30);
   actAs(admin, profile);
   return { profileId: profile.id };
 }

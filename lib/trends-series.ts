@@ -22,7 +22,11 @@ import type { BiomarkerPickerGroup } from "./biomarker-rank";
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import { getUnitPrefs, getProfileAge, getSituationEvents } from "./settings";
 import { showBodyFat } from "./growth-metrics";
-import { isTrainingRelevant } from "./life-stage";
+import {
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "./life-stage";
 import {
   buildAnnotations,
   buildProtocolWindows,
@@ -175,8 +179,9 @@ const METRIC_DEFS: MetricDef[] = [
 ];
 
 // Build the standard body/training metric series (weight, body fat, resting HR,
-// training volume) windowed to `range`, in the login's display units. These are
-// all the profile's own readings and are age-neutral.
+// training volume) windowed to `range`, in the login's display units. Strength
+// volume follows the shared adolescent content boundary; the underlying activity
+// records remain available from Timeline, search, and their detail pages.
 export function buildMetricSeries(
   profileId: number,
   loginId: number,
@@ -188,6 +193,9 @@ export function buildMetricSeries(
   // drop its tile for a minor, matching the body census age-aware layout.
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
   const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
@@ -227,7 +235,8 @@ export function buildMetricSeries(
   return METRIC_DEFS.filter(
     (d) =>
       !(d.id === "bodyfat" && hideBodyFat) &&
-      (trainingRelevant || d.id !== "volume")
+      (trainingRelevant || d.id !== "volume") &&
+      (strengthTrainingRelevant || d.id !== "volume")
   ).map((d) => ({
     key: metricSeriesKey(d.id),
     label: d.label,
@@ -420,10 +429,14 @@ export function listCompareOptions(profileId: number): {
 } {
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
   const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
   const metrics = METRIC_DEFS.filter(
     (d) =>
       !(d.id === "bodyfat" && hideBodyFat) &&
-      (trainingRelevant || d.id !== "volume")
+      (trainingRelevant || d.id !== "volume") &&
+      (strengthTrainingRelevant || d.id !== "volume")
   ).map((d) => ({
     key: metricSeriesKey(d.id),
     label: d.label,
@@ -502,6 +515,7 @@ export function buildProtocolTrendWindows(
   profileId: number,
   range: DateRange
 ): TrendWindow[] {
+  if (!isLongevityRelevant(getProfileAge(profileId))) return [];
   return buildProtocolWindows(getProtocolWindows(profileId), range);
 }
 

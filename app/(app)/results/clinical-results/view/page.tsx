@@ -59,6 +59,7 @@ import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
   getUnitPrefs,
+  getProfileAge,
   getProfileAgeOn,
   getProfileReproductiveStatus,
   getProfileSex,
@@ -76,7 +77,7 @@ import {
 import { goalPaceTone, goalPct } from "@/lib/outcome-goals";
 import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
-import { isAdultForClinical } from "@/lib/life-stage";
+import { isAdultForClinical, isLongevityRelevant } from "@/lib/life-stage";
 import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { type BiomarkerBands } from "@/components/BiomarkerChart";
@@ -365,10 +366,12 @@ export default async function ClinicalResultDetailPage(props: {
   // the protocols that DECLARE this biomarker as an outcome (not every protocol).
   const openRange = { from: undefined, to: undefined };
   const chartAnnotations = buildTrendAnnotations(profile.id, openRange);
-  const protocolWindows = buildProtocolWindows(
-    getProtocolWindowsForOutcome(profile.id, `result:${canonical}`),
-    openRange
-  );
+  const protocolWindows = isLongevityRelevant(getProfileAge(profile.id))
+    ? buildProtocolWindows(
+        getProtocolWindowsForOutcome(profile.id, `result:${canonical}`),
+        openRange
+      )
+    : [];
 
   const refRange = cb ? formatRange(ref.low, ref.high, cb.unit) : null;
   const optimalRange = cb ? formatRange(opt.low, opt.high, cb.unit) : null;

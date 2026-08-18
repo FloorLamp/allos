@@ -63,6 +63,7 @@ export default function EditableSupplementRow({
   historyMaxDate,
   defaultHistoryTime,
   historyWindowDays,
+  activityScheduleAvailable = true,
 }: {
   supplement: IntakeItem;
   dose: IntakeDose;
@@ -93,6 +94,7 @@ export default function EditableSupplementRow({
   historyMaxDate: string;
   defaultHistoryTime: string;
   historyWindowDays: number;
+  activityScheduleAvailable?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -405,6 +407,7 @@ export default function EditableSupplementRow({
               stackItems={stackItems}
               pgxVariants={pgxVariants}
               pairs={pairs}
+              activityScheduleAvailable={activityScheduleAvailable}
               onDone={() => setEditing(false)}
             />
           </div>

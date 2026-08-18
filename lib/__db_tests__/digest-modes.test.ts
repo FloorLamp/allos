@@ -38,6 +38,7 @@ import {
   setProfileSetting,
   setTelegramBotConfig,
   setTimezone,
+  setStoredAge,
 } from "@/lib/settings";
 import {
   digestSleepPending,
@@ -105,6 +106,7 @@ function newProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(`${name}${++seq}`)
       .lastInsertRowid
   );
+  setStoredAge(id, 30);
   setTimezone(id, TZ);
   return id;
 }

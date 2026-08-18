@@ -19,7 +19,10 @@ import { requireSession } from "@/lib/auth";
 import { EMPTY_TRAINING_LOG_FILTERS } from "@/lib/training-log-filters";
 import { resolveTrainingLogFeedContext } from "./training-log-feed-resolve";
 import TrainingLogView from "./TrainingLogView";
-import { isAdultForClinical } from "@/lib/life-stage";
+import {
+  isAdultForClinical,
+  isStrengthTrainingRelevant,
+} from "@/lib/life-stage";
 
 export default async function HistorySection({
   initialCreateDate,
@@ -54,7 +57,11 @@ export default async function HistorySection({
   );
 
   const summary = getTrainingLogWeekSummary(profile.id);
-  const goals = getOutcomeGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id).filter(
+    (goal) =>
+      isStrengthTrainingRelevant(getProfileAge(profile.id)) ||
+      goal.kind !== "exercise"
+  );
   // Map → plain object so it can cross the server/client boundary.
   const goalProgress = Object.fromEntries(
     getOutcomeGoalProgressMap(profile.id, goals)

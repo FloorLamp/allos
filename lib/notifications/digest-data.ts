@@ -39,6 +39,8 @@ import { dismissedSignalKeys, findingProminence } from "../dismissal-fatigue";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { getOutdoorPlans } from "../queries/weather-training";
 import { trainingPaceLine } from "../queries/upcoming/plans";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "../life-stage";
+import { getProfileAge } from "../settings/profile-attrs";
 import { collectRecentChanges } from "../queries/recent-changes";
 import { getLightExposureLine } from "../queries/light-exposure";
 import { getStepsDigestLines } from "../queries/steps-target";
@@ -250,9 +252,15 @@ export function gatherDigestSleep(
 // the weekly recap and the Trends fitness lens read (#221), asked at a one-day window:
 // their `within` is inclusive at both ends, so `withinDays = 0` means exactly `date`.
 // Strength records are read per LOAD CONTEXT (#1610), matching the recap.
-export function personalRecordsOn(profileId: number, date: string): number {
+export function personalRecordsOn(
+  profileId: number,
+  date: string,
+  strengthTrainingRelevant = true
+): number {
   return (
-    recentPRs(getStrengthByExercise(profileId, true), date, 0).length +
+    (strengthTrainingRelevant
+      ? recentPRs(getStrengthByExercise(profileId, true), date, 0).length
+      : 0) +
     recentCardioPRs(getCardioByActivity(profileId, "km"), date, 0).length
   );
 }
@@ -305,6 +313,9 @@ export function gatherDigestInput(
 ): DigestInput {
   const td = today(profileId);
   const yd = shiftDateStr(td, -1);
+  const age = getProfileAge(profileId);
+  const trainingRelevant = isTrainingRelevant(age);
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
 
   // Per-category demotion (#1714). One message, N readers: the preference is stored
   // per LOGIN, so what applies to this profile's single digest is the conservative
@@ -419,7 +430,11 @@ export function gatherDigestInput(
   const doseCount = todayDoseIds.length;
 
   // Yesterday: activities, supplement adherence x/y, weight if logged.
-  const loggedActivities = getActivitiesByDate(profileId, yd);
+  const loggedActivities = trainingRelevant
+    ? getActivitiesByDate(profileId, yd).filter(
+        (activity) => strengthTrainingRelevant || activity.type !== "strength"
+      )
+    : [];
   // Per-category demotion (#1714/#1797): a demoted Activities section survives only on
   // a day that set a personal record — the SAME recentPRs/recentCardioPRs
   // classification the weekly recap renders, never a second threshold. The PR reads
@@ -427,7 +442,7 @@ export function gatherDigestInput(
   // filter, so an undemoted digest costs exactly what it did before.
   const prCount =
     demoted.includes("activities") && loggedActivities.length > 0
-      ? personalRecordsOn(profileId, yd)
+      ? personalRecordsOn(profileId, yd, strengthTrainingRelevant)
       : 0;
   const activities: DigestActivity[] = activitiesSurviveDemotion(
     demoted,
@@ -836,10 +851,18 @@ export function digestTunableCategories(
     exclude: ["labs"],
   });
   const yesterday = shiftDateStr(date, -1);
+  const age = getProfileAge(profileId);
+  const trainingRelevant = isTrainingRelevant(age);
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
+  const hasActivities =
+    trainingRelevant &&
+    getActivitiesByDate(profileId, yesterday).some(
+      (activity) => strengthTrainingRelevant || activity.type !== "strength"
+    );
   return tunableFrom(
     recent.presentCategories,
     gatherDigestSleep(profileId),
-    getActivitiesByDate(profileId, yesterday).length > 0,
+    hasActivities,
     gatherDigestNutrition(profileId, yesterday).shortfalls.length > 0
   );
 }

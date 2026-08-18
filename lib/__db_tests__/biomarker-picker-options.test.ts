@@ -158,13 +158,13 @@ describe("listCompareOptions after #1675", () => {
     expect(options.metrics.every((o) => o.group == null)).toBe(true);
   });
 
-  it("keeps body fat gated while a school-age profile retains training volume", () => {
+  it("keeps body fat and strength volume gated for a school-age profile", () => {
     const child = makeProfile("PICKER CHILD");
     setProfileBirthdate(child, shiftDateStr(todayStr, -3650));
     const gated = listCompareOptions(child);
     const keys = gated.metrics.map((o) => o.key);
     expect(keys).not.toContain("metric:bodyfat");
-    expect(keys).toContain("metric:volume");
+    expect(keys).not.toContain("metric:volume");
     expect(gated.biomarkers).toEqual([]);
   });
 

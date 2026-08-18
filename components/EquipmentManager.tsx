@@ -75,12 +75,16 @@ export default function EquipmentManager({
   equipment,
   unit,
   usage = {},
+  creationAvailable = true,
   strengthTrainingAvailable = true,
 }: {
   equipment: Equipment[];
   unit: WeightUnit;
   // equipment id → usage badge; a missing id means "never used" (no badge).
   usage?: Record<number, EquipmentUsageBadge>;
+  // Existing registry rows stay readable and editable when the workout product
+  // stands down, but no new activity gear is offered through early childhood.
+  creationAvailable?: boolean;
   strengthTrainingAvailable?: boolean;
 }) {
   const toast = useToast();
@@ -302,7 +306,7 @@ export default function EquipmentManager({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Your equipment
         </h2>
-        {!adding && editingId == null && (
+        {creationAvailable && !adding && editingId == null && (
           <button
             type="button"
             onClick={startAdd}
@@ -314,9 +318,11 @@ export default function EquipmentManager({
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        {strengthTrainingAvailable
-          ? "Name a bar, implement, or recovery device to tag your sessions with it. Logged weights are always the total load; equipment weight here is only a reference."
-          : "Name cardio gear or a recovery device to tag activities with it."}
+        {!creationAvailable
+          ? "Existing equipment stays here with its activity history."
+          : strengthTrainingAvailable
+            ? "Name a bar, implement, or recovery device to tag your sessions with it. Logged weights are always the total load; equipment weight here is only a reference."
+            : "Name cardio gear or a recovery device to tag activities with it."}
       </p>
 
       {(adding || editingId != null) && (
@@ -335,9 +341,11 @@ export default function EquipmentManager({
       {equipment.length === 0 && !adding ? (
         <EmptyState
           message={
-            strengthTrainingAvailable
-              ? "No equipment defined yet. Add a trap bar, a bike, a pair of shoes, or a sauna."
-              : "No equipment defined yet. Add a bike, a pair of shoes, or recovery gear."
+            !creationAvailable
+              ? "No equipment on file."
+              : strengthTrainingAvailable
+                ? "No equipment defined yet. Add a trap bar, a bike, a pair of shoes, or a sauna."
+                : "No equipment defined yet. Add a bike, a pair of shoes, or recovery gear."
           }
         />
       ) : (

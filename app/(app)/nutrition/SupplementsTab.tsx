@@ -71,7 +71,9 @@ import {
   getExcludedFoodGroups,
   getWeekMode,
   getWeekStart,
+  getProfileAge,
 } from "@/lib/settings";
+import { isTrainingRelevant } from "@/lib/life-stage";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { weekWindow } from "@/lib/week-window";
 import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
@@ -97,6 +99,7 @@ import {
   OBLIGATION_ORDER,
   OBLIGATION_LABELS,
   CONDITION_LABELS,
+  WORKOUT_CONDITIONS,
   obligationClass,
   workoutDaySubtitleLabel,
   heldBySituation,
@@ -165,6 +168,9 @@ export default async function SupplementsTab({
   backfillDate?: string;
 }) {
   const { login, profile } = await requireSession();
+  const activityScheduleAvailable = isTrainingRelevant(
+    getProfileAge(profile.id)
+  );
   // The medicine-cabinet door (#1522) counts over the caller's WHOLE accessible set,
   // not the acting profile: a shared bottle is household-scoped and has no kind of
   // its own, so this tab and Medications show the same number and land on the same
@@ -526,7 +532,11 @@ export default async function SupplementsTab({
   // per-procedure. The chip carries the actual held-count from the #1296 links.
   const surgeryBridge = getSurgeryBridgeSuggestions(profile.id);
 
-  const suggestions = getPendingSuggestions(profile.id);
+  const suggestions = getPendingSuggestions(profile.id).filter(
+    (suggestion) =>
+      activityScheduleAvailable ||
+      !WORKOUT_CONDITIONS.includes(suggestion.condition)
+  );
   // The DETERMINISTIC half of biomarker→supplement (#2378): the curated map's answers
   // for this profile's currently-flagged families, screened by the same belt the AI
   // route's output goes through. Rendered ABOVE the generated panel and badged
@@ -664,11 +674,14 @@ export default async function SupplementsTab({
         historyMaxDate={todayStr}
         defaultHistoryTime={hhmm}
         historyWindowDays={DOSE_HISTORY_DAYS}
+        activityScheduleAvailable={activityScheduleAvailable}
       />
     );
   };
 
-  const dayContext = workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay);
+  const dayContext = activityScheduleAvailable
+    ? workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay)
+    : null;
   const scheduleBucketsFor = (date: string, dayItems: Item[]) => {
     const grouped = date === todayStr ? byBucket : byBucketFor(dayItems);
     return TIME_BUCKETS.map((bucket) => {
@@ -1214,6 +1227,7 @@ export default async function SupplementsTab({
                         allIntakeItems={intakeItems}
                         stackItems={stackItems}
                         pgxVariants={pgxVariants}
+                        activityScheduleAvailable={activityScheduleAvailable}
                       />
                       <SharedSuppliesLink count={cabinetCount} />
                       <DoseLedgerLink kind="supplement" />
@@ -1240,6 +1254,7 @@ export default async function SupplementsTab({
                       allIntakeItems={intakeItems}
                       stackItems={stackItems}
                       pgxVariants={pgxVariants}
+                      activityScheduleAvailable={activityScheduleAvailable}
                     />
                   }
                 />

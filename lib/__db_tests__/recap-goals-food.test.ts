@@ -48,13 +48,15 @@ function addGoal(
     target_date?: string | null;
     achieved_at?: string | null;
     archived?: 0 | 1;
+    exercise?: string | null;
   }
 ): number {
   return Number(
     db
       .prepare(
-        `INSERT INTO goals (profile_id, title, status, target_date, achieved_at, archived)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO goals
+           (profile_id, title, status, target_date, achieved_at, archived, exercise, metric)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
@@ -62,7 +64,9 @@ function addGoal(
         fields.status ?? "active",
         fields.target_date ?? null,
         fields.achieved_at ?? null,
-        fields.archived ?? 0
+        fields.archived ?? 0,
+        fields.exercise ?? null,
+        fields.exercise ? "weight" : null
       ).lastInsertRowid
   );
 }
@@ -88,6 +92,33 @@ describe("recap goal lines key on the achievement, not the deadline (#2394)", ()
     expect(input.prLabels).toEqual([]);
     expect(input.goalsCompleted).toEqual([]);
     expect(input.goalsMissed).toEqual([]);
+  });
+
+  it("keeps cardio but omits legacy strength content for a school-age profile", () => {
+    const p = newProfile("recap-school-age");
+    const td = today(p);
+    setStoredAge(p, 10);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title)
+       VALUES (?, ?, 'cardio', 'Playground run'),
+              (?, ?, 'strength', 'Imported squats')`
+    ).run(p, td, p, td);
+    addGoal(p, {
+      title: "Legacy squat goal",
+      status: "achieved",
+      achieved_at: localMiddayInstant(p, td),
+      exercise: "Squat",
+    });
+    addGoal(p, {
+      title: "Run around the playground",
+      status: "achieved",
+      achieved_at: localMiddayInstant(p, td),
+    });
+
+    const input = gatherRecapInput(p);
+    expect(input.workouts).toEqual([{ date: td, type: "cardio" }]);
+    expect(input.prLabels).toEqual([]);
+    expect(input.goalsCompleted).toEqual(["Run around the playground"]);
   });
 
   it("reports a goal achieved this week that has NO target date at all", () => {

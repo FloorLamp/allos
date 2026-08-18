@@ -26,7 +26,7 @@ import {
 import { buildDigestSeries } from "./trends-series";
 import { summarizeTrends } from "./trends-digest";
 import { getUnitPrefs, getProfileSex, getProfileAge } from "./settings";
-import { isTrainingRelevant } from "./life-stage";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "./life-stage";
 import { quickRanges } from "./timeline-format";
 import {
   composeOfflineNarrative,
@@ -68,6 +68,9 @@ function gatherInsightContext(
       ? getUnitPrefs(loginId)
       : { weightUnit: "kg" as const, distanceUnit: "km" as const };
   const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
 
   const activities = trainingRelevant
     ? getActivitiesByDate(profileId, date)
@@ -76,7 +79,7 @@ function gatherInsightContext(
   // PRs set ON the day (withinDays = 0), as celebratory findings.
   // byLoadContext (#1610): a record belongs to the implement it was set on, and
   // prToFinding names that implement and keys on its lane.
-  const strengthPrs = trainingRelevant
+  const strengthPrs = strengthTrainingRelevant
     ? recentPRs(getStrengthByExercise(profileId, true), date, 0).map((pr) =>
         prToFinding(pr, units.weightUnit)
       )
@@ -112,7 +115,10 @@ function gatherInsightContext(
   ).flatMap((g) => g.items);
 
   const goalCount = trainingRelevant
-    ? getOutcomeGoals(profileId).filter((g) => isGoalLive(g)).length
+    ? getOutcomeGoals(profileId).filter(
+        (g) =>
+          isGoalLive(g) && (strengthTrainingRelevant || g.kind !== "exercise")
+      ).length
     : 0;
 
   // Clinical/demographic context (issue #415): active conditions, active intake

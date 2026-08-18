@@ -86,7 +86,11 @@ import {
   getRecapScale,
   getProfileAge,
 } from "../settings";
-import { isAdultForClinical, isTrainingRelevant } from "../life-stage";
+import {
+  isAdultForClinical,
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "../life-stage";
 import { isTrainingFrequencyScope } from "../frequency-targets";
 import { situationHistoryResolver } from "../trend-annotations";
 import { illnessDaysInWindow } from "../illness-episode-store";
@@ -262,6 +266,9 @@ export function gatherRecapInput(
   const win = periodFor(scale, td, weekMode, weekStart, completed);
   const speaks = (key: RecapLineKey) => lineSpeaksAt(key, scale);
   const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
 
   // Only the recap's two windows (current + previous) reduce these, and win.prevStart
   // is the earliest bound of either, so bound the load there (issue #389) instead of
@@ -271,7 +278,11 @@ export function gatherRecapInput(
   const allActivities = trainingRelevant
     ? getActivitiesSince(profileId, win.prevStart)
     : [];
-  const activities = allActivities.map(asWorkout);
+  const activities = allActivities
+    .filter(
+      (activity) => strengthTrainingRelevant || activity.type !== "strength"
+    )
+    .map(asWorkout);
   const workouts = activities.filter((w) =>
     inWindow(w.date, win.start, win.end)
   );
@@ -294,7 +305,7 @@ export function gatherRecapInput(
   // byLoadContext (#1610): two machines' records are two records, and the label
   // below names the implement so the recap doesn't repeat one bare lift name twice.
   const strengthPRs =
-    trainingRelevant && speaks("prs")
+    strengthTrainingRelevant && speaks("prs")
       ? recentPRs(getStrengthByExercise(profileId, true), win.end, withinDays)
       : [];
   const cardioPRs =
@@ -353,7 +364,10 @@ export function gatherRecapInput(
   // A goal achieved before migration 182 has no instant and is simply absent: silence,
   // not a retroactive announcement in whatever week the deploy landed in.
   const goals = trainingRelevant
-    ? getOutcomeGoals(profileId).filter((g) => !g.archived)
+    ? getOutcomeGoals(profileId).filter(
+        (g) =>
+          !g.archived && (strengthTrainingRelevant || g.kind !== "exercise")
+      )
     : [];
   const tz = getTimezone(profileId);
   const goalsCompleted = goals

@@ -6,7 +6,10 @@ import { PageHeader } from "@/components/ui";
 import EquipmentManager, {
   type EquipmentUsageBadge,
 } from "@/components/EquipmentManager";
-import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 import { kindOf } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +25,7 @@ export default async function EquipmentPage() {
   const strengthTrainingAvailable = isStrengthTrainingRelevant(
     getProfileAge(profile.id)
   );
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
   // includeRetired: the registry lists retired gear too (with an Unretire action).
   const equipment = getEquipment(profile.id, { includeRetired: true }).filter(
     (item) => strengthTrainingAvailable || kindOf(item.category) !== "strength"
@@ -40,15 +44,18 @@ export default async function EquipmentPage() {
       <PageHeader
         title="Equipment"
         subtitle={
-          strengthTrainingAvailable
-            ? "Your bars, implements, cardio gear, and recovery devices — with how much each has been used. Tag sessions with them to build usage history."
-            : "Your cardio gear and recovery devices — with how much each has been used. Tag activities with them to build usage history."
+          !trainingRelevant
+            ? "Equipment already linked to activity history stays available here."
+            : strengthTrainingAvailable
+              ? "Your bars, implements, cardio gear, and recovery devices — with how much each has been used. Tag sessions with them to build usage history."
+              : "Your cardio gear and recovery devices — with how much each has been used. Tag activities with them to build usage history."
         }
       />
       <EquipmentManager
         equipment={equipment}
         unit={units.weightUnit}
         usage={usage}
+        creationAvailable={trainingRelevant}
         strengthTrainingAvailable={strengthTrainingAvailable}
       />
     </div>

@@ -175,7 +175,8 @@ birthdate/sex gaps cluster and the caregiver is who can fix them.
 ## Timeline
 
 Day-by-day health history across activity, body metrics, labs, medications,
-documents, visits, goals, protocol start/end, and milestones; each day header
+documents, visits, goals, milestones, and — for adult profiles — protocol
+start/end; each day header
 also shows **sunrise/sunset daylight chips** once a home location is set
 (**Settings → Health profile → Home location** — optional coarse coordinates
 you enter or detect, stored rounded to ~11 km and used only for on-device sun
@@ -339,6 +340,9 @@ to improve.
 ## Longevity
 
 Route: `/longevity`.
+
+Longevity analysis and protocol experiments are available to profiles with a
+known adult life stage.
 
 The healthspan pillars expand into one page of anchored sections: **biological
 age** (the PhenoAge hero, its pace-of-aging, and the per-input breakdown below —
@@ -657,8 +661,10 @@ and drops back to the normal form for notes and intensity. While a session is
 running, every one of those entry points — including "Log this session" on
 Today's session — reads **Resume workout** and reopens the session you already
 have going, with its clock and its logged sets intact; you can never restart a
-workout you're in the middle of by tapping the wrong thing. It's a
-strength-focused surface, so it's hidden for age-restricted profiles. A
+workout you're in the middle of by tapping the wrong thing. The workout product
+stands down through early childhood, and strength-specific logging, routines,
+live workouts, and analysis start at age 13. Existing and imported activity facts
+remain available from Timeline, search, export, and their detail pages. A
 non-strength session can also be tagged with the **gear** it used — a bike for a
 ride, shoes for a run — picked from your **Equipment** registry, with the picker
 filtered to what fits the activity (only bikes for a ride, only shoes for a run)

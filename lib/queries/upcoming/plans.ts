@@ -3,8 +3,16 @@
 // Today/This week/Later. Goals live on the Training hub's Goals tab — the old
 // standalone /goals route has no page (issue #283 found the dead link).
 export function goalItems(profileId: number): UpcomingItem[] {
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
   return getOutcomeGoals(profileId)
-    .filter((g) => isGoalLive(g) && g.target_date)
+    .filter(
+      (g) =>
+        isGoalLive(g) &&
+        g.target_date &&
+        (strengthTrainingRelevant || g.kind !== "exercise")
+    )
     .map((g) => ({
       key: `goal:${g.id}`,
       domain: "goal" as const,
@@ -24,8 +32,8 @@ export function goalItems(profileId: number): UpcomingItem[] {
 // as "a training target" put "Berries — Weekly training target" on the live page with
 // a barbell glyph and a /training link. The scope is what the row is ABOUT, so the
 // scope decides the identity: the domain (which picks the row's glyph), the honest
-// detail line, a destination that actually holds the target, and its life-stage
-// policy. Identity, not filtering — every one of these targets belongs on the page.
+// detail line, and a destination that actually holds the target. Identity, not
+// filtering — life-stage filtering is applied once by the Upcoming aggregator.
 //
 // Two scope kinds declare `null` — this builder renders no row for them — and
 // neither is an omission:
@@ -49,26 +57,22 @@ export const WEEKLY_TARGET_IDENTITY: Record<
     domain: UpcomingDomain;
     detail: string;
     href: AppRoute;
-    lifeStage: "age-neutral";
   } | null
 > = {
   region: {
     domain: "training",
     detail: "Weekly training target",
     href: "/training",
-    lifeStage: "age-neutral",
   },
   group: {
     domain: "training",
     detail: "Weekly training target",
     href: "/training",
-    lifeStage: "age-neutral",
   },
   type: {
     domain: "training",
     detail: "Weekly training target",
     href: "/training",
-    lifeStage: "age-neutral",
   },
   // A food-group serving target (#579/#580). It lives on the Nutrition Food tab's
   // weekly-habits card, which is where its progress, its trend strip and its untrack
@@ -77,7 +81,6 @@ export const WEEKLY_TARGET_IDENTITY: Record<
     domain: "nutrition-target",
     detail: "Weekly nutrition target",
     href: nutritionTabHref("food"),
-    lifeStage: "age-neutral",
   },
   // A mobility-region habit (#840). It DOES live on the Training hub (the mobility
   // card), so the href is right and only the identity was wrong: mobilizing a region
@@ -87,7 +90,6 @@ export const WEEKLY_TARGET_IDENTITY: Record<
     domain: "mobility-target",
     detail: "Weekly mobility target",
     href: "/training",
-    lifeStage: "age-neutral",
   },
   practice: null,
   substance: null,
@@ -167,8 +169,15 @@ function isUnmetWeeklyTarget(p: FrequencyTargetProgress): boolean {
 // costs no new digest surface.
 export function trainingPaceLine(profileId: number): string | null {
   if (!isTrainingRelevant(getProfileAge(profileId))) return null;
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
   return weeklyTargetPaceLine(
     weeklyFloorTargets(profileId)
+      .filter(
+        ({ target }) =>
+          strengthTrainingRelevant || !isStrengthProgrammingScope(target)
+      )
       .filter((p) => weeklyTargetIdentity(p)?.domain === "training")
       .map((p) => ({
         label: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
@@ -177,13 +186,20 @@ export function trainingPaceLine(profileId: number): string | null {
   );
 }
 
-// Unmet weekly frequency targets (reuses getFrequencyTargetProgress). These are
-// age-neutral planning rows. A weekly concern, so
+// Unmet weekly frequency targets (reuses getFrequencyTargetProgress). The
+// aggregator applies each domain's life-stage policy. A weekly concern, so
 // each unmet target sits in This week with a progress due-text. The row's domain,
 // detail and destination come from its SCOPE (WEEKLY_TARGET_IDENTITY, #2578) — a
 // food-group target is not a training target with a barbell on it.
 export function trainingItems(profileId: number): UpcomingItem[] {
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
   return weeklyFloorTargets(profileId)
+    .filter(
+      ({ target }) =>
+        strengthTrainingRelevant || !isStrengthProgrammingScope(target)
+    )
     .filter(isUnmetWeeklyTarget)
     .map((p) => {
       const identity = weeklyTargetIdentity(p)!;
@@ -403,6 +419,7 @@ import { getActiveEndurancePlans } from "../../endurance-plans";
 import { goalUpcomingDetail, isGoalLive } from "../../outcome-goals";
 import {
   frequencyScopeLabel,
+  isStrengthProgrammingScope,
   weeklyTargetPaceLine,
   type FrequencyScopeKind,
 } from "../../frequency-targets";
@@ -423,5 +440,8 @@ import { getOutcomeGoals } from "../training";
 import { getStepsPaceObservation } from "../steps-target";
 import { stepsPaceKey } from "../../steps-target";
 import { trendsSectionHref } from "../../trends-sections";
-import { isTrainingRelevant } from "../../life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "../../life-stage";
 import { getProfileAge } from "../../settings/profile-attrs";

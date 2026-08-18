@@ -16,6 +16,7 @@ export default function AddSupplementModal({
   stackItems,
   pgxVariants,
   initialSupply = null,
+  activityScheduleAvailable = true,
 }: {
   allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
@@ -23,6 +24,7 @@ export default function AddSupplementModal({
   // Arrived from the cabinet's "Add for another person" (#1705): the modal opens
   // already showing the seeded form rather than making the user find Add again.
   initialSupply?: SupplyOption | null;
+  activityScheduleAvailable?: boolean;
 }) {
   const [open, setOpen] = useState(initialSupply != null);
 
@@ -54,6 +56,7 @@ export default function AddSupplementModal({
               stackItems={stackItems}
               pgxVariants={pgxVariants}
               initialSupply={initialSupply}
+              activityScheduleAvailable={activityScheduleAvailable}
               onDone={() => setOpen(false)}
             />
           </div>

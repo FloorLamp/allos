@@ -25,7 +25,9 @@ export default async function GoalsSection() {
     getProfileAge(profile.id)
   );
   const wu = units.weightUnit;
-  const goals = getOutcomeGoals(profile.id);
+  const goals = getOutcomeGoals(profile.id).filter(
+    (goal) => strengthTrainingAvailable || goal.kind !== "exercise"
+  );
   // Map → plain object so it can cross into the client GoalsManager.
   const goalProgress = Object.fromEntries(
     getOutcomeGoalProgressMap(profile.id, goals)

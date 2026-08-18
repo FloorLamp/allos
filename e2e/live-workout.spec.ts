@@ -36,7 +36,7 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The training log aside header carries a "Start workout" button (strength-centric,
-  // shown for non-restricted profiles). It opens the create editor in live mode.
+  // shown when strength training is relevant). It opens the create editor in live mode.
   await page.getByRole("main").getByTestId("start-workout").click();
 
   // The live control strip + rest timer render (addressed by testid; the editor

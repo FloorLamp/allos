@@ -276,6 +276,29 @@ describe("goal deadlines through the fold (#2579-A)", () => {
     ).toEqual([]);
   });
 
+  it("keeps general goals but omits strength goals below adolescence", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    setStoredAge(profileId, 10);
+    const general = mkGoal(
+      profileId,
+      "Aggregate goal — play outside",
+      shiftDateStr(day, 20)
+    );
+    const strength = mkGoal(
+      profileId,
+      "Aggregate goal — squat 40 kg",
+      shiftDateStr(day, 20)
+    );
+    db.prepare(
+      "UPDATE goals SET exercise = 'Back Squat', metric = 'weight' WHERE id = ? AND profile_id = ?"
+    ).run(strength, profileId);
+
+    expect(goalItems(profileId).map((item) => item.key)).toEqual([
+      `goal:${general}`,
+    ]);
+  });
+
   it("folds a real profile's Later goals and keeps every one present and counted", () => {
     const profileId = mkProfile();
     const day = today(profileId);

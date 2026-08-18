@@ -42,7 +42,7 @@ import {
   buildSavedClinicalResultTile,
   type TrendSeries,
 } from "@/lib/trends-series";
-import { setProfileSetting } from "@/lib/settings";
+import { setProfileSetting, setStoredAge } from "@/lib/settings";
 import { shiftDateStr } from "@/lib/date";
 import { defaultTrendsRange } from "@/lib/timeline-format";
 import type { DateRange } from "@/lib/timeline-format";
@@ -123,10 +123,12 @@ function legacyOverviewTileKeys(
 
 let seq = 0;
 function newProfile(name: string): number {
-  return Number(
+  const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(`${name}-${seq++}`)
       .lastInsertRowid
   );
+  setStoredAge(id, 30);
+  return id;
 }
 
 function star(profileId: number, kind: string, key: string): void {

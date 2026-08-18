@@ -32,7 +32,7 @@ const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
 
 describe("createEquipmentAction", () => {
-  it("keeps strength equipment out of a child's registry", async () => {
+  it("keeps all new activity equipment out of early childhood", async () => {
     const login = createLogin();
     const profile = createProfile("child-equipment", login.id);
     actAs(login, profile);
@@ -44,6 +44,13 @@ describe("createEquipmentAction", () => {
       category: "Barbell",
     });
     expect(result).toMatchObject({ ok: false });
+    expect(
+      await createEquipmentAction({
+        name: "Balance Bike",
+        weight_kg: null,
+        category: "Bike",
+      })
+    ).toMatchObject({ ok: false });
     expect(getEquipment(profile.id)).toHaveLength(0);
   });
 

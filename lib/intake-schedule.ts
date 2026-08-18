@@ -94,6 +94,19 @@ export const WORKOUT_CONDITIONS: IntakeCondition[] = [
   "rest_day",
 ];
 
+// Workout-relative schedules only make sense when the Training product is available
+// for this profile. Keep an already-stored value in the edit picker so standing down
+// the affordance never makes historical configuration impossible to inspect or save.
+export function availableIntakeConditions(
+  activityScheduleAvailable: boolean,
+  keep?: IntakeCondition | null
+): IntakeCondition[] {
+  if (activityScheduleAvailable) return CONDITIONS;
+  return CONDITIONS.filter(
+    (condition) => !WORKOUT_CONDITIONS.includes(condition) || condition === keep
+  );
+}
+
 // Whether an intake item applies given today's context. An on-demand (`may`) item is
 // never scheduled-due, so it generates no
 // reminders/escalation/adherence-due and can never be "missed".

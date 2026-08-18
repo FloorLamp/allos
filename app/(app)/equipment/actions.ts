@@ -12,7 +12,10 @@ import {
 } from "@/lib/equipment";
 import { kindOf, type Equipment } from "@/lib/types";
 import { getProfileAge } from "@/lib/settings";
-import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 // Weight arrives already converted to kg by the client (it knows the display
 // unit). null means the implement's own weight is unknown / not tracked.
@@ -48,6 +51,11 @@ export async function createEquipmentAction(
 ): Promise<{ ok: true; equipment: Equipment } | { ok: false; error: string }> {
   const { profile } = await requireWriteAccess();
   const c = clean(input);
+  if (!isTrainingRelevant(getProfileAge(profile.id)))
+    return {
+      ok: false,
+      error: "Equipment isn’t available for this profile’s age.",
+    };
   if (
     kindOf(c.category) === "strength" &&
     !isStrengthTrainingRelevant(getProfileAge(profile.id))

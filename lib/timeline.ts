@@ -23,7 +23,8 @@ import {
 } from "./reference-range";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./training-log-format";
-import { getTimezone, type UnitPrefs } from "./settings";
+import { getProfileAge, getTimezone, type UnitPrefs } from "./settings";
+import { isLongevityRelevant } from "./life-stage";
 import {
   compactList,
   countTone,
@@ -723,22 +724,24 @@ function collectEvents(
   // Ended event on end_date. Two-sided like medication courses, so no date-bound
   // clause here — the pure shaper emits both dates and pushLimited filters each
   // against the window. Ordered by the freshest boundary.
-  const protocolRows = db
-    .prepare(
-      `SELECT id, name, start_date, end_date
-         FROM protocols
-        WHERE profile_id = ?
-        ORDER BY COALESCE(end_date, start_date) DESC, id DESC
-        LIMIT ?`
-    )
-    .all(profileId, perTableLimit) as {
-    id: number;
-    name: string;
-    start_date: string;
-    end_date: string | null;
-  }[];
-  for (const event of protocolTimelineEvents(protocolRows)) {
-    pushLimited(events, event, options);
+  if (isLongevityRelevant(getProfileAge(profileId))) {
+    const protocolRows = db
+      .prepare(
+        `SELECT id, name, start_date, end_date
+           FROM protocols
+          WHERE profile_id = ?
+          ORDER BY COALESCE(end_date, start_date) DESC, id DESC
+          LIMIT ?`
+      )
+      .all(profileId, perTableLimit) as {
+      id: number;
+      name: string;
+      start_date: string;
+      end_date: string | null;
+    }[];
+    for (const event of protocolTimelineEvents(protocolRows)) {
+      pushLimited(events, event, options);
+    }
   }
 
   const immunizationBounds = exact("date");

@@ -19,8 +19,12 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 import { createLogger } from "@/lib/log";
 import { protocolReopenEligibility } from "@/lib/protocol-reopen";
 import { practiceIdentity } from "@/lib/practice";
+import { getProfileAge } from "@/lib/settings";
+import { isLongevityRelevant } from "@/lib/life-stage";
 
 const log = createLogger("protocols");
+const unavailable = () =>
+  formError("Protocols aren’t available for this profile’s age.");
 
 export type CreateProtocolResult =
   | { ok: true; redirectTo: `/protocols/${number}` }
@@ -198,6 +202,7 @@ export async function createProtocol(
   formData: FormData
 ): Promise<CreateProtocolResult> {
   const { profile } = await requireWriteAccess();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Name your protocol.");
   const startRaw = str(formData, "start_date");
@@ -264,6 +269,7 @@ export async function createProtocol(
 
 export async function updateProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
@@ -335,6 +341,7 @@ export async function updateProtocolOutcomes(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   if (!getProtocol(profile.id, id))
@@ -360,6 +367,7 @@ export async function updateProtocolOutcomes(
 // would only re-open the window the core exists to close.
 export async function endProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const outcome = endProtocolCore(profile.id, id, today(profile.id));
@@ -376,6 +384,7 @@ export async function endProtocol(formData: FormData): Promise<FormResult> {
 
 export async function resumeProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const outcome = resumeProtocolCore(profile.id, id, today(profile.id));
@@ -399,6 +408,7 @@ export async function runProtocolAgain(
   formData: FormData
 ): Promise<CreateProtocolResult> {
   const { profile } = await requireWriteAccess();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
@@ -524,6 +534,7 @@ export async function deleteProtocol(
   formData: FormData
 ): Promise<DeleteProtocolResult> {
   const { profile } = await requireWriteAccess();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
