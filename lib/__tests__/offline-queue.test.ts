@@ -442,6 +442,13 @@ describe("classifySetReplay (honoring the typed outcome, #1596)", () => {
     const notOwned = classifySetReplay({ ok: false, reason: "not-owned" });
     expect(notOwned.status).toBe("rejected");
     expect(notOwned.reason).toBeTruthy();
+
+    const ageGated = classifySetReplay({
+      ok: false,
+      reason: "strength-unavailable",
+    });
+    expect(ageGated.status).toBe("rejected");
+    expect(ageGated.reason).toMatch(/profile's age/i);
   });
 });
 

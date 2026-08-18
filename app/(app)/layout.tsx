@@ -36,7 +36,11 @@ import {
 } from "@/lib/settings";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
-import { isFoodLoggingRelevant, isLongevityRelevant } from "@/lib/life-stage";
+import {
+  isFoodLoggingRelevant,
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+} from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
@@ -123,6 +127,7 @@ export default async function AppLayout({
   const weekStart = getWeekStart(profile.id);
   const profileAge = getProfileAge(profile.id);
   const adultContentAvailable = isLongevityRelevant(profileAge);
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const suggestions = getActivitySuggestions(profile.id);
   const timelineDates = getTimelineDates(profile.id);
   // One extra session per exercise: the editor filters out the activity being
@@ -270,6 +275,7 @@ export default async function AppLayout({
                       equipment={equipment}
                       recentActivityEquipment={recentActivityEquipment}
                       bodyweightKg={bodyweightKg}
+                      strengthTrainingAvailable={strengthTrainingAvailable}
                       lastActivity={lastActivity}
                       deloadContext={deloadContext}
                       recoveringContext={recoveringContext}

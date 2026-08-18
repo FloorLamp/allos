@@ -34,6 +34,8 @@ import {
   biomarkerTargetUnit,
 } from "@/lib/queries/biomarker-plot";
 import { GOAL_PACE_PREFIX, goalPaceSignalKey } from "@/lib/goal-pacing";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 
 // Dismiss a goal-pacing finding (issue #45, domain 6): an off-pace goal or the safe-
 // rate weight-loss caution. Hides it through the shared findings-bus suppression
@@ -85,6 +87,7 @@ interface StoredWeights {
   target_weight_kg: number | null;
   target_value: number | null;
   target_date: string | null;
+  exercise: string | null;
 }
 
 function goalColsFromForm(
@@ -309,6 +312,11 @@ function goalValues(c: GoalCols) {
 
 export async function createGoal(formData: FormData): Promise<FormResult> {
   const { login, profile } = await requireWriteAccess();
+  if (
+    formData.get("kind") === "exercise" &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  )
+    return formError("Strength goals aren’t available for this profile’s age.");
   const c = goalColsFromForm(formData, login.id, profile.id);
   if (!c) return formError("Check the goal's required fields and try again.");
   // Measured goals capture their metric's current value as the baseline, so progress
@@ -342,9 +350,15 @@ export async function updateGoal(formData: FormData): Promise<FormResult> {
   // (issue #194) instead of a kg↔lb round-trip drift on every save.
   const stored = db
     .prepare(
-      "SELECT target_weight_kg, target_value, target_date FROM goals WHERE id = ? AND profile_id = ?"
+      "SELECT exercise, target_weight_kg, target_value, target_date FROM goals WHERE id = ? AND profile_id = ?"
     )
     .get(id, profile.id) as StoredWeights | undefined;
+  if (
+    formData.get("kind") === "exercise" &&
+    stored?.exercise == null &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  )
+    return formError("Strength goals aren’t available for this profile’s age.");
   const c = goalColsFromForm(formData, login.id, profile.id, stored);
   if (!c) return formError("Check the goal's required fields and try again.");
   // baseline_value is intentionally left untouched on edit — the starting point

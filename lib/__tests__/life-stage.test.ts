@@ -3,6 +3,7 @@ import {
   lifeStage,
   isAdultForClinical,
   isLongevityRelevant,
+  isStrengthTrainingRelevant,
   isMinor,
   isAdultBpRegime,
   isGrowthTracked,
@@ -69,6 +70,18 @@ describe("isLongevityRelevant — adult-only route/content class", () => {
     expect(isLongevityRelevant(0)).toBe(false);
     expect(isLongevityRelevant(null)).toBe(false);
     expect(isLongevityRelevant(undefined)).toBe(false);
+  });
+});
+
+describe("isStrengthTrainingRelevant — adolescent strength floor (13)", () => {
+  it("allows known adolescents and adults, but hides children and unknown ages", () => {
+    expect(isStrengthTrainingRelevant(13)).toBe(true);
+    expect(isStrengthTrainingRelevant(17)).toBe(true);
+    expect(isStrengthTrainingRelevant(18)).toBe(true);
+    expect(isStrengthTrainingRelevant(12)).toBe(false);
+    expect(isStrengthTrainingRelevant(4)).toBe(false);
+    expect(isStrengthTrainingRelevant(null)).toBe(false);
+    expect(isStrengthTrainingRelevant(undefined)).toBe(false);
   });
 });
 

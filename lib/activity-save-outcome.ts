@@ -10,6 +10,8 @@ export function saveOutcomeMessage(
   reason: Extract<SaveActivityOutcome, { ok: false }>["reason"]
 ): string {
   switch (reason) {
+    case "strength-unavailable":
+      return "Strength workouts aren’t available for this profile’s age.";
     case "not-owned":
       // The untrusted form id isn't the active profile's — e.g. an auto-save
       // fired after a profile switch or from a stale tab. Reopening reloads a

@@ -5,8 +5,13 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getEquipmentById } from "@/lib/equipment";
 import { getEquipmentUsageById, getEquipmentSessions } from "@/lib/queries";
-import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getDisplayFormatPrefs,
+  getProfileAge,
+} from "@/lib/settings";
 import { kindOf } from "@/lib/types";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import { kgTo, kmTo, round } from "@/lib/units";
 import { formatLastUsed } from "@/lib/usage-format";
 import { formatRecordDate } from "@/lib/record-format";
@@ -60,11 +65,17 @@ export default async function EquipmentDetailPage(props: {
   const equipment = id ? getEquipmentById(profile.id, id) : undefined;
   if (!equipment) notFound();
 
+  const kind = kindOf(equipment.category);
+  if (
+    kind === "strength" &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  )
+    notFound();
+
   const units = getUnitPrefs(login.id);
   const fmt = getDisplayFormatPrefs(login.id);
   const usage = getEquipmentUsageById(profile.id, id);
   const sessions = getEquipmentSessions(profile.id, id);
-  const kind = kindOf(equipment.category);
 
   const sessionCount = usage?.sessions ?? 0;
   const lastUsed = usage?.lastUsed ?? null;

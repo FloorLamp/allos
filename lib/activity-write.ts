@@ -35,6 +35,8 @@ import { regionForExercise, type MuscleRegion } from "@/lib/lifts";
 import { creditRoutineSession } from "@/lib/routines";
 import { cleanupOrphanPrDismissals } from "@/lib/queries/upcoming/suppressions";
 import { canonicalRpe } from "@/lib/rpe";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 
 interface SetInput {
   exercise: string;
@@ -238,6 +240,58 @@ export function saveActivityCore(
     clockDurationMin ?? enteredDurationMin,
     clockDurationMin
   );
+
+  // Strength creation is an adolescent-and-up affordance. Preserve the user's
+  // history: an existing strength row can always be corrected, but a child or
+  // unknown-age profile cannot create a new strength row or turn a non-strength
+  // row into one. The scoped lookup also resolves ownership before the policy
+  // check, so an untrusted foreign id still reports `not-owned`.
+  const existing = id
+    ? (db
+        .prepare(
+          `SELECT a.type, a.components,
+                  EXISTS(SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id) AS has_sets
+             FROM activities a
+            WHERE a.id = ? AND a.profile_id = ?`
+        )
+        .get(id, profile.id) as
+        | { type: ActivityType; components: string | null; has_sets: number }
+        | undefined)
+    : undefined;
+  if (id && !existing) return { ok: false, reason: "not-owned" };
+  const existingHasStrength =
+    existing?.type === "strength" ||
+    existing?.has_sets === 1 ||
+    (() => {
+      if (!existing?.components) return false;
+      try {
+        const parsed = JSON.parse(existing.components) as { type?: unknown }[];
+        return (
+          Array.isArray(parsed) && parsed.some((c) => c.type === "strength")
+        );
+      } catch {
+        return false;
+      }
+    })();
+  let submittedSetCount = 0;
+  try {
+    const parsedSets = JSON.parse(String(formData.get("sets") ?? "[]"));
+    submittedSetCount = Array.isArray(parsedSets) ? parsedSets.length : 0;
+  } catch {
+    submittedSetCount = 0;
+  }
+  const submitsStrength =
+    type === "strength" ||
+    hasStrength ||
+    submittedSetCount > 0 ||
+    components.some((component) => regionForExercise(component.name) != null);
+  if (
+    submitsStrength &&
+    !existingHasStrength &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  ) {
+    return { ok: false, reason: "strength-unavailable" };
+  }
   // Σ of the legs' kilometres is kilometres — but ARITHMETIC erases the brand, since
   // TypeScript cannot know that km + km is km while km × km is not. So the rollup's
   // total is re-minted here through the identity conversion (free at runtime) to keep

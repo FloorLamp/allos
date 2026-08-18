@@ -23,6 +23,7 @@ import {
   getProfileSex,
   setOnboardingState,
   setProfileBirthdate,
+  setStoredAge,
 } from "@/lib/settings";
 import { initialOnboardingState } from "@/lib/onboarding";
 import { getActiveRoutine, getRoutines } from "@/lib/routines";
@@ -189,6 +190,7 @@ describe("onboarding actions", () => {
     const login = createLogin({ username: "onboarding-routine" });
     const profile = createTestProfile("Routine Starter", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
     setOnboardingState(profile.id, {
       ...initialOnboardingState(),
       status: "in_progress",

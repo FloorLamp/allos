@@ -117,10 +117,18 @@ export default function QuickLogSheet({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { openCreate, openLive, workoutOffer } = useActivityEditor();
+  const { openCreate, openLive, workoutOffer, canStartWorkout } =
+    useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
 
-  const segments = logSheetSegments(cycleRelevant);
+  const segments = logSheetSegments(cycleRelevant)
+    .map((entry) => ({
+      ...entry,
+      items: entry.items.filter(
+        (item) => item.target.kind !== "live" || canStartWorkout
+      ),
+    }))
+    .filter((entry) => entry.items.length > 0);
   // Reset to the route's own segment on every OPEN, not only on navigation: the
   // sheet is opened repeatedly from the same page and should always lead with
   // what that page is for.

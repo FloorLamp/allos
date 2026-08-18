@@ -14,7 +14,10 @@ import {
   restartRoutineCycle,
   updateRoutine,
   validateRoutineInput,
+  getRoutineWithDays,
 } from "@/lib/routines";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 
 // Dismiss a Training-watch observation: a training-balance finding (issue #45, domain
 // 4 — a push/pull volume imbalance, a stale exercise, or a plateaued lift) OR a
@@ -52,6 +55,21 @@ function routineIdFrom(formData: FormData): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+function strengthUnavailable(profileId: number): RoutineActionResult | null {
+  return isStrengthTrainingRelevant(getProfileAge(profileId))
+    ? null
+    : { ok: false, error: "strength unavailable" };
+}
+
+function routineStrengthGate(
+  profileId: number,
+  routineId: number
+): RoutineActionResult | null {
+  if (!getRoutineWithDays(profileId, routineId))
+    return { ok: false, error: "not found" };
+  return strengthUnavailable(profileId);
+}
+
 // Adopt a catalog template — COPIES it into the profile's routine tables (inactive).
 // Does not touch frequency targets (that's activation). #719 onboarding and the
 // Training page call the same core.
@@ -59,6 +77,8 @@ export async function adoptRoutineTemplateAction(
   formData: FormData
 ): Promise<RoutineActionResult> {
   const { profile } = await requireWriteAccess();
+  const unavailable = strengthUnavailable(profile.id);
+  if (unavailable) return unavailable;
   const templateId = String(formData.get("template_id") ?? "").trim();
   if (!templateId) return { ok: false, error: "missing template" };
   try {
@@ -76,6 +96,8 @@ export async function createRoutineAction(
   formData: FormData
 ): Promise<RoutineActionResult> {
   const { profile } = await requireWriteAccess();
+  const unavailable = strengthUnavailable(profile.id);
+  if (unavailable) return unavailable;
   const input = parseRoutinePayload(formData);
   if (!input) return { ok: false, error: "invalid routine" };
   const routineId = createCustomRoutine(profile.id, input);
@@ -91,6 +113,8 @@ export async function updateRoutineAction(
   const { profile } = await requireWriteAccess();
   const routineId = routineIdFrom(formData);
   if (routineId === null) return { ok: false, error: "missing routine" };
+  const unavailable = routineStrengthGate(profile.id, routineId);
+  if (unavailable) return unavailable;
   const input = parseRoutinePayload(formData);
   if (!input) return { ok: false, error: "invalid routine" };
   const ok = updateRoutine(profile.id, routineId, input);
@@ -107,6 +131,8 @@ export async function activateRoutineAction(
   const { profile } = await requireWriteAccess();
   const routineId = routineIdFrom(formData);
   if (routineId === null) return { ok: false, error: "missing routine" };
+  const unavailable = routineStrengthGate(profile.id, routineId);
+  if (unavailable) return unavailable;
   const ok = activateRoutine(profile.id, routineId);
   if (!ok) return { ok: false, error: "not found" };
   revalidateRoute("/training");
@@ -136,6 +162,8 @@ export async function restartRoutineCycleAction(
   const { profile } = await requireWriteAccess();
   const routineId = routineIdFrom(formData);
   if (routineId === null) return { ok: false, error: "missing routine" };
+  const unavailable = routineStrengthGate(profile.id, routineId);
+  if (unavailable) return unavailable;
   const ok = restartRoutineCycle(profile.id, routineId);
   if (!ok) return { ok: false, error: "not found" };
   revalidateRoute("/training");

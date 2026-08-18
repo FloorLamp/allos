@@ -100,13 +100,18 @@ const count = (profileId: number, table: string): number =>
 const seeded = new Map<string, number>();
 
 describe("persona seeds against a live schema", () => {
-  beforeAll(() => {
-    for (const persona of PERSONAS) {
-      const profileId = newProfile(`persona:${persona.name}`);
-      persona.apply(ctxFor(profileId));
-      seeded.set(persona.name, profileId);
-    }
-  });
+  beforeAll(
+    () => {
+      for (const persona of PERSONAS) {
+        const profileId = newProfile(`persona:${persona.name}`);
+        persona.apply(ctxFor(profileId));
+        seeded.set(persona.name, profileId);
+      }
+    },
+    // This intentionally seeds every persona through the real schema. Shared CI
+    // disks can take longer than Vitest's generic hook default under full-suite load.
+    30_000
+  );
 
   for (const persona of PERSONAS) {
     it(`${persona.name}: attributes, onboarding, and records land`, () => {

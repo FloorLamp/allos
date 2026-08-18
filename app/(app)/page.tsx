@@ -57,12 +57,20 @@ import {
 } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday } from "@/lib/steps-today";
-import { isFoodLoggingRelevant, isLongevityRelevant } from "@/lib/life-stage";
+import {
+  isFoodLoggingRelevant,
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+} from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
-import { recommendCoaching } from "@/lib/coaching";
+import {
+  recommendCoaching,
+  strengthAppropriateCoachingInput,
+} from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
 import { isGoalLive } from "@/lib/outcome-goals";
+import { isStrengthProgrammingScope } from "@/lib/frequency-targets";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import { routineOrder } from "@/lib/dismissal-fatigue";
 import {
@@ -210,9 +218,9 @@ export default async function Dashboard() {
   if (access === "write" && storedOnboarding?.status === "not_started") {
     redirect("/onboarding");
   }
-  // Dashboard coaching, goals, and recaps are based on the profile's own
-  // history, so they are age-neutral. Adult population statistics gate inside
-  // their own model/surface.
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(
+    getProfileAge(profile.id)
+  );
   const on = today(profile.id);
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -231,7 +239,9 @@ export default async function Dashboard() {
       ? getSessionRecap(profile.id, finishedPresence.activityId)
       : null;
   const showRecapCard =
-    finishedRecap != null && finishedRecap.totalWorkingSets > 0;
+    strengthTrainingAvailable &&
+    finishedRecap != null &&
+    finishedRecap.totalWorkingSets > 0;
 
   // Lazy scheduled AI recommendation run (issue #424). The dashboard is the
   // natural landing surface, so it's where a due scheduled run kicks off —
@@ -643,24 +653,33 @@ export default async function Dashboard() {
     : new Map();
 
   const freqTargets = has("goals-habits")
-    ? getFrequencyTargetProgress(profile.id)
+    ? getFrequencyTargetProgress(profile.id).filter(
+        ({ target }) =>
+          strengthTrainingAvailable || !isStrengthProgrammingScope(target)
+      )
     : [];
 
   // coaching: ranked, rule-based recommendations from the profile's own history
-  // (deterministic, no AI), available at every life stage.
+  // (deterministic, no AI), filtered to age-appropriate guidance at every life stage.
   // Snoozed recommendations (findings bus, #39) drop out here, so a "Not today"
   // on the top rec surfaces the next-ranked one until the snooze expires.
   const coachingRecs = has("coaching")
     ? activeByKey(
         recommendCoaching(
-          gatherCoachingInput(
-            profile.id,
-            units.weightUnit,
-            units.distanceUnit,
-            // The login's temperature scale (#1967): a °F reader sees the weather-parking
-            // figure in °F here. The notification path keeps canonical °C.
-            units.temperatureUnit
+          strengthAppropriateCoachingInput(
+            gatherCoachingInput(
+              profile.id,
+              units.weightUnit,
+              units.distanceUnit,
+              // The login's temperature scale (#1967): a °F reader sees the weather-parking
+              // figure in °F here. The notification path keeps canonical °C.
+              units.temperatureUnit
+            ),
+            strengthTrainingAvailable
           )
+        ).filter(
+          (recommendation) =>
+            strengthTrainingAvailable || recommendation.kind !== "strength"
         ),
         (r) => coachingDedupeKey(r.id),
         getFindingSuppressions(profile.id),
@@ -703,6 +722,13 @@ export default async function Dashboard() {
             ),
             coachingSuppressions,
             on
+          ).filter(
+            (finding) =>
+              strengthTrainingAvailable ||
+              (finding.domain !== "training-strength" &&
+                finding.domain !== "training-obs" &&
+                finding.domain !== "muscle-volume" &&
+                finding.domain !== "fitness-check")
           ),
           coachingSuppressions
         )

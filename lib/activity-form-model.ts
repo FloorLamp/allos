@@ -87,6 +87,15 @@ export interface ActivityEditData {
   }[];
 }
 
+// Whether a stored/editor seed carries strength content. Shared by every repeat/live
+// affordance so the age gate cannot drift between the menu, palette, and provider.
+// Malformed legacy components do not manufacture strength; top-level type and sets
+// still preserve the historical record's editability.
+export function activityEditDataHasStrength(data: ActivityEditData): boolean {
+  if (data.type === "strength" || data.sets.length > 0) return true;
+  return parseComponents(data.components).some((c) => c.type === "strength");
+}
+
 // Minimal create prefill for a protocol's activity-type action (#1584). This is
 // deliberately a complete ActivityEditData value because ActivityForm already has
 // one tested prefill path; the provider passes it as `prefill` (never `editData`),

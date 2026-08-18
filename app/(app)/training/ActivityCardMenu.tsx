@@ -18,6 +18,7 @@ import {
 } from "@/lib/import-review/conflicts";
 import type { AppRoute } from "@/lib/hrefs";
 import { mergeActivities } from "./activity-actions";
+import { activityEditDataHasStrength } from "@/lib/activity-form-model";
 
 // A same-day sibling this card can absorb: id + label, plus its fold-field values
 // (from TrainingLogView's unfiltered scope group) so the shared conflict picker
@@ -127,7 +128,8 @@ export default function ActivityCardMenu({
   const [pendingConflict, setPendingConflict] =
     useState<PendingConflictMerge | null>(null);
   const undoable = useUndoableDelete();
-  const { openEdit, openRepeat } = useActivityEditor();
+  const { openEdit, openRepeat, strengthTrainingAvailable } =
+    useActivityEditor();
   const { busy: resumingSync, resumeSyncUpdates } = useResumeSyncUpdates(
     "activities",
     activity.id
@@ -372,18 +374,21 @@ export default function ActivityCardMenu({
                   Edit
                 </button>
               ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="log-again"
-                className={MENU_ITEM}
-                onClick={() => {
-                  setOpen(false);
-                  openRepeat(activity);
-                }}
-              >
-                Log again
-              </button>
+              {(strengthTrainingAvailable ||
+                !activityEditDataHasStrength(activity)) && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="log-again"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    setOpen(false);
+                    openRepeat(activity);
+                  }}
+                >
+                  Log again
+                </button>
+              )}
               {canWrite && siblings.length > 0 && (
                 <button
                   type="button"

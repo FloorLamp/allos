@@ -43,6 +43,7 @@ import { buildPracticeReminder } from "@/lib/notifications/practices";
 import { digestWorkoutLine } from "@/lib/notifications/workout-format";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { recommendCoaching } from "@/lib/coaching";
+import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
 
 // A login reading canonical units, matching what the notification path assumes.
 const CELSIUS_UNITS: UnitPrefs = {
@@ -61,6 +62,7 @@ function makeProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(`${name}-${seq++}`)
       .lastInsertRowid
   );
+  setProfileBirthdate(id, "1990-01-01");
   setTimezone(id, "UTC");
   // Rolling weeks: the window is always the trailing 7 days, so the fixture's counts
   // don't depend on which weekday the run lands on.

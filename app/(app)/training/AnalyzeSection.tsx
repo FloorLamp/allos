@@ -33,7 +33,10 @@ import {
   getProfileSex,
   getProfileAge,
 } from "@/lib/settings";
-import { isAdultForClinical } from "@/lib/life-stage";
+import {
+  isAdultForClinical,
+  isStrengthTrainingRelevant,
+} from "@/lib/life-stage";
 import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -106,7 +109,13 @@ export default async function AnalyzeSection({
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const wu = units.weightUnit;
   const du = units.distanceUnit;
-  const strength = getStrengthByExercise(profile.id);
+  const profileAge = getProfileAge(profile.id);
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
+  // Strength history remains in the Log and detail pages. Analyze is specialized
+  // lifting content, so it excludes that lane below the adolescent boundary.
+  const strength = strengthTrainingAvailable
+    ? getStrengthByExercise(profile.id)
+    : [];
   const cardio = getCardioByActivity(profile.id, du, formatPrefs);
   const sports = getSportByActivity(profile.id, formatPrefs);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
@@ -116,7 +125,7 @@ export default async function AnalyzeSection({
     getOutcomeGoalProgressMap(profile.id, goals)
   );
   const sex = getProfileSex(profile.id);
-  const adultClinicalContent = isAdultForClinical(getProfileAge(profile.id));
+  const adultClinicalContent = isAdultForClinical(profileAge);
 
   if (strength.length === 0 && cardio.length === 0 && sports.length === 0) {
     return (

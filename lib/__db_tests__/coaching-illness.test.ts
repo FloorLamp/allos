@@ -18,14 +18,17 @@ import { gatherCoachingInput } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
 import { recommendWorkout } from "@/lib/notifications/recommend";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
+import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
 
 const GO_TRAIN = new Set(["strength", "cardio", "ontrack"]);
 
 function newProfile(name: string): number {
-  return Number(
+  const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setProfileBirthdate(id, "1990-01-01");
+  return id;
 }
 
 // Seed a strength session (with sets) on `date` so the profile has recent training

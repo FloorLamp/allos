@@ -169,6 +169,8 @@ export default function TrainingLogView({
     openCreate,
     openLive,
     openRepeat,
+    hasLastActivity,
+    strengthTrainingAvailable,
     close,
     canStartWorkout,
     workoutOffer,
@@ -797,7 +799,9 @@ export default function TrainingLogView({
         subject={c.subject}
         actingProfileId={multiView?.actingProfileId}
         onSelectExercise={
-          fitness ? (name) => showDetail("exercise", name) : undefined
+          fitness && strengthTrainingAvailable
+            ? (name) => showDetail("exercise", name)
+            : undefined
         }
         onSelectCardio={
           fitness ? (name) => showDetail("cardio", name) : undefined
@@ -869,7 +873,7 @@ export default function TrainingLogView({
   // mobile entry point is MobileNav's always-mounted quick-log chrome.
   const actionButtons = (
     <>
-      {lastActivity && (
+      {lastActivity && hasLastActivity && (
         <button
           type="button"
           onClick={() => openRepeat(lastActivity)}

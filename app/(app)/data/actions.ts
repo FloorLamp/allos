@@ -5,7 +5,8 @@ import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
-import { getUnitPrefs } from "@/lib/settings";
+import { getProfileAge, getUnitPrefs } from "@/lib/settings";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import {
   applyImportFollowups,
   persistDocumentlessImport,
@@ -202,6 +203,14 @@ export async function startImport(
     return { ok: false, error: "Paste or upload some data first." };
   if (type !== "workouts" && type !== "clinical-results")
     return { ok: false, error: "Unknown import type." };
+  if (
+    type === "workouts" &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  )
+    return {
+      ok: false,
+      error: "Strength workout imports aren’t available for this profile’s age.",
+    };
 
   const info = db
     .prepare(
@@ -438,6 +447,11 @@ export async function commitWorkouts(
   workouts: ExtractedWorkout[]
 ): Promise<{ ok: true; workouts: number; sets: number } | { ok: false; error: string }> {
   const { login, profile } = await requireWriteAccess();
+  if (!isStrengthTrainingRelevant(getProfileAge(profile.id)))
+    return {
+      ok: false,
+      error: "Strength workout imports aren’t available for this profile’s age.",
+    };
   if (!Array.isArray(workouts) || workouts.length === 0)
     return { ok: false, error: "Nothing to import." };
 

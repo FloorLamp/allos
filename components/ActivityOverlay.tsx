@@ -43,6 +43,7 @@ export default function ActivityOverlay({
   equipment,
   recentActivityEquipment = [],
   bodyweightKg,
+  strengthTrainingAvailable,
   editData,
   prefill = null,
   initialDate,
@@ -62,6 +63,7 @@ export default function ActivityOverlay({
   equipment: Equipment[];
   recentActivityEquipment?: number[];
   bodyweightKg: number | null;
+  strengthTrainingAvailable: boolean;
   editData: ActivityEditData | null;
   prefill?: ActivityEditData | null;
   initialDate?: string;
@@ -177,6 +179,7 @@ export default function ActivityOverlay({
           equipment={equipment}
           recentActivityEquipment={recentActivityEquipment}
           bodyweightKg={bodyweightKg}
+          strengthTrainingAvailable={strengthTrainingAvailable}
           editData={editData}
           prefill={prefill}
           initialDate={initialDate}

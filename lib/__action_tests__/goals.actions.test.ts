@@ -20,7 +20,20 @@ import {
 } from "@/lib/queries";
 import { goalPaceSignalKey } from "@/lib/goal-pacing";
 import { LB_PER_KG } from "@/lib/units";
-import { createLogin, createProfile, actAs, seedActor, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
+import {
+  createLogin,
+  createProfile,
+  actAs,
+  seedActor as seedActorWithoutAge,
+  fd,
+} from "./harness";
+
+function seedActor() {
+  const actor = seedActorWithoutAge();
+  setStoredAge(actor.profile.id, 30);
+  return actor;
+}
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -35,6 +48,24 @@ function goalRows(profileId: number) {
 beforeEach(() => revalidate.mockClear());
 
 describe("createGoal", () => {
+  it("refuses a new strength goal for a child", async () => {
+    const login = createLogin();
+    const profile = createProfile("child-strength-goal", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 4);
+
+    const result = await createGoal(
+      fd({
+        kind: "exercise",
+        exercise: "Deadlift",
+        metric: "weight",
+        target_weight: 50,
+      })
+    );
+    expect(result.ok).toBe(false);
+    expect(goalRows(profile.id)).toHaveLength(0);
+  });
+
   it("stores a freeform goal with title/category/status", async () => {
     const { profile } = seedActor();
     await createGoal(
@@ -59,6 +90,7 @@ describe("createGoal", () => {
     const login = createLogin({ weightUnit: "lb" });
     const profile = createProfile("lifter", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     await createGoal(
       fd({

@@ -25,8 +25,8 @@ export default async function TrainingPage(props: {
 }) {
   const searchParams = await props.searchParams;
   const { profile } = await requireSession();
-  // The activity hub itself is age-neutral. Adult-population statistics are
-  // gated inside the sections that render them.
+  // Activity history and ordinary movement logging stay age-neutral. Each section
+  // applies the shared life-stage policy to strength programming and adult norms.
 
   // Retired tab names redirect to their canonical URLs (#2892/#2894) — an
   // explicit mapping, not the unknown-tab fallback, because these links live on

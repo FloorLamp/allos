@@ -31,7 +31,10 @@ import {
   getProfileSex,
   getProfileAge,
 } from "@/lib/settings";
-import { isLongevityRelevant } from "@/lib/life-stage";
+import {
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+} from "@/lib/life-stage";
 import {
   completeOnboarding,
   continueOnboardingData,
@@ -209,6 +212,9 @@ export default async function OnboardingPage({
   const unlockedStep = nextOnboardingStep(state, hasFirstValue);
   const activeStep = resolveOnboardingStep(params.step, state, hasFirstValue);
   const readOnly = access === "read";
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(
+    getProfileAge(profile.id)
+  );
   const layout = getDashboardLayout(profile.id);
   const dashboardWidgetList = resolveWidgetList(layout, undefined, {
     adultContent: isLongevityRelevant(getProfileAge(profile.id)),
@@ -471,7 +477,7 @@ export default async function OnboardingPage({
               <IconArrowRight className="h-5 w-5 shrink-0 text-brand-600 transition group-hover:translate-x-0.5 dark:text-brand-400" />
             </Link>
 
-            {state.focuses.includes("fitness") && (
+            {state.focuses.includes("fitness") && strengthTrainingAvailable && (
               <RoutineStarter
                 templates={starterRoutineTemplates}
                 replaceTargets={replaceTargets}

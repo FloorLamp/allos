@@ -36,7 +36,11 @@ interface Draft {
 
 // New equipment defaults to Barbell (the common case + only type with a plate
 // builder); the user can switch it.
-const EMPTY: Draft = { name: "", weight: "", category: "Barbell" };
+const emptyDraft = (strengthTrainingAvailable: boolean): Draft => ({
+  name: "",
+  weight: "",
+  category: strengthTrainingAvailable ? "Barbell" : "Bike",
+});
 
 // The <select> option groups, in kind order. The DB CHECK (migration 018) is the
 // source of truth for the value set; kindOf() places each into its group.
@@ -46,10 +50,15 @@ const KIND_LABELS: { kind: EquipmentKind; label: string }[] = [
   { kind: "recovery", label: "Recovery" },
   { kind: "other", label: "Other" },
 ];
-const CATEGORY_GROUPS = KIND_LABELS.map(({ kind, label }) => ({
-  label,
-  options: EQUIPMENT_CATEGORIES.filter((c) => kindOf(c) === kind),
-})).filter((g) => g.options.length > 0);
+const categoryGroups = (strengthTrainingAvailable: boolean) =>
+  KIND_LABELS.filter(
+    ({ kind }) => strengthTrainingAvailable || kind !== "strength"
+  )
+    .map(({ kind, label }) => ({
+      label,
+      options: EQUIPMENT_CATEGORIES.filter((c) => kindOf(c) === kind),
+    }))
+    .filter((g) => g.options.length > 0);
 
 function toDraft(e: Equipment, unit: WeightUnit): Draft {
   return {
@@ -66,25 +75,29 @@ export default function EquipmentManager({
   equipment,
   unit,
   usage = {},
+  strengthTrainingAvailable = true,
 }: {
   equipment: Equipment[];
   unit: WeightUnit;
   // equipment id → usage badge; a missing id means "never used" (no badge).
   usage?: Record<number, EquipmentUsageBadge>;
+  strengthTrainingAvailable?: boolean;
 }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [draft, setDraft] = useState<Draft>(() =>
+    emptyDraft(strengthTrainingAvailable)
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function startAdd() {
     setError(null);
     setEditingId(null);
-    setDraft(EMPTY);
+    setDraft(emptyDraft(strengthTrainingAvailable));
     setAdding(true);
   }
 
@@ -165,10 +178,14 @@ export default function EquipmentManager({
   // to its own trailing section (still listed — it labels old history).
   const active = equipment.filter((e) => !e.retired);
   const retired = equipment.filter((e) => e.retired);
-  const activeGroups = KIND_LABELS.map(({ kind, label }) => ({
-    label,
-    rows: active.filter((e) => kindOf(e.category) === kind),
-  })).filter((g) => g.rows.length > 0);
+  const activeGroups = KIND_LABELS.filter(
+    ({ kind }) => strengthTrainingAvailable || kind !== "strength"
+  )
+    .map(({ kind, label }) => ({
+      label,
+      rows: active.filter((e) => kindOf(e.category) === kind),
+    }))
+    .filter((g) => g.rows.length > 0);
 
   const row = (e: Equipment) => (
     <li
@@ -297,10 +314,9 @@ export default function EquipmentManager({
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Name a bar, implement, or recovery device to tag your sessions with it.
-        Logged weights are always the <strong>total</strong> load; the bar
-        weight here is for reference only and never changes your recorded
-        numbers.
+        {strengthTrainingAvailable
+          ? "Name a bar, implement, or recovery device to tag your sessions with it. Logged weights are always the total load; equipment weight here is only a reference."
+          : "Name cardio gear or a recovery device to tag activities with it."}
       </p>
 
       {(adding || editingId != null) && (
@@ -312,11 +328,18 @@ export default function EquipmentManager({
           onCancel={cancel}
           pending={pending}
           error={error}
+          strengthTrainingAvailable={strengthTrainingAvailable}
         />
       )}
 
       {equipment.length === 0 && !adding ? (
-        <EmptyState message="No equipment defined yet. Add a trap bar, a bike, a pair of shoes, or a sauna." />
+        <EmptyState
+          message={
+            strengthTrainingAvailable
+              ? "No equipment defined yet. Add a trap bar, a bike, a pair of shoes, or a sauna."
+              : "No equipment defined yet. Add a bike, a pair of shoes, or recovery gear."
+          }
+        />
       ) : (
         <div className="space-y-4">
           {activeGroups.map((g) => (
@@ -349,6 +372,7 @@ function EquipmentForm({
   onCancel,
   pending,
   error,
+  strengthTrainingAvailable,
 }: {
   draft: Draft;
   setDraft: (d: Draft) => void;
@@ -357,6 +381,7 @@ function EquipmentForm({
   onCancel: () => void;
   pending: boolean;
   error: string | null;
+  strengthTrainingAvailable: boolean;
 }) {
   // The form renders for add AND per-row edit, so label association needs
   // instance-unique ids (getByLabel in the e2e spec, screen readers generally).
@@ -372,14 +397,14 @@ function EquipmentForm({
             id={`${uid}-name`}
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            placeholder="Trap bar"
+            placeholder={strengthTrainingAvailable ? "Trap bar" : "Bike"}
             className="input"
             autoFocus
           />
         </div>
         <div>
           <label className="label" htmlFor={`${uid}-weight`}>
-            Bar weight ({unit})
+            Equipment weight ({unit})
           </label>
           <input
             id={`${uid}-weight`}
@@ -402,7 +427,7 @@ function EquipmentForm({
             onChange={(e) => setDraft({ ...draft, category: e.target.value })}
             className="input"
           >
-            {CATEGORY_GROUPS.map((g) => (
+            {categoryGroups(strengthTrainingAvailable).map((g) => (
               <optgroup key={g.label} label={g.label}>
                 {g.options.map((c) => (
                   <option key={c} value={c}>

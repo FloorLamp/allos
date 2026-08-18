@@ -39,7 +39,7 @@ export default function QuickShortcutHandler({
 }) {
   const params = useSearchParams();
   const router = useRouter();
-  const { openCreate, openLive } = useActivityEditor();
+  const { openCreate, openLive, canStartWorkout } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
   const handled = useRef<string | null>(null);
   const [consumed, setConsumed] = useState<string | null>(null);
@@ -76,14 +76,23 @@ export default function QuickShortcutHandler({
     }
     const target = action.item.target;
     if (target.kind === "activity") openCreate();
-    else if (target.kind === "live") openLive();
-    else if (target.kind === "overlay") openQuickEntry(target.form);
+    else if (target.kind === "live") {
+      if (canStartWorkout) openLive();
+    } else if (target.kind === "overlay") openQuickEntry(target.form);
     // `navigate` is unreachable from a shortcut (no registry row carries one, and
     // a shortcut URL that navigates would be a plain href instead) — but the
     // union stays exhaustive so a future one is a compile error here, not a
     // silently dead deep link.
     else router.push(target.href);
-  }, [raw, router, cycleRelevant, openCreate, openLive, openQuickEntry]);
+  }, [
+    raw,
+    router,
+    cycleRelevant,
+    openCreate,
+    openLive,
+    canStartWorkout,
+    openQuickEntry,
+  ]);
 
   return (
     <span

@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { getStrengthByExercise } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
@@ -29,6 +30,7 @@ describe("saveActivity warmup flag (issue #338)", () => {
     const login = createLogin({ weightUnit: "kg" });
     const profile = createProfile("warmup-lifter", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     const res = await saveActivity(
       fd({
@@ -90,6 +92,7 @@ describe("saveActivity warmup flag (issue #338)", () => {
     const login = createLogin({ weightUnit: "kg" });
     const profile = createProfile("warmup-stats", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     await saveActivity(
       fd({

@@ -58,7 +58,10 @@ import {
   type DistanceUnit,
   type WeightUnit,
 } from "@/lib/settings";
-import { isLongevityRelevant } from "@/lib/life-stage";
+import {
+  isLongevityRelevant,
+  isStrengthTrainingRelevant,
+} from "@/lib/life-stage";
 import { DEFAULT_PROTEIN_GOAL_LEVEL } from "@/lib/protein";
 import type { Sex } from "@/lib/types";
 
@@ -77,6 +80,12 @@ export async function startOnboardingRoutine(
   formData: FormData
 ): Promise<OnboardingRoutineResult> {
   const { profile } = await requireWriteAccess();
+  if (!isStrengthTrainingRelevant(getProfileAge(profile.id))) {
+    return {
+      ok: false,
+      error: "Strength routines aren’t available for this profile’s age.",
+    };
+  }
   const state = getOnboardingState(profile.id);
   if (!state?.focuses.includes("fitness")) {
     return { ok: false, error: "Choose fitness as a priority first." };

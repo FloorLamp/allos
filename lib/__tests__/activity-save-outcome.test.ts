@@ -15,8 +15,18 @@ describe("saveOutcomeMessage", () => {
     expect(msg).toMatch(/title|date/i);
   });
 
+  it("explains the profile-age strength gate", () => {
+    const msg = saveOutcomeMessage("strength-unavailable");
+    expect(msg).toMatch(/strength/i);
+    expect(msg).toMatch(/profile.s age/i);
+  });
+
   it("never reports a failure as saved", () => {
-    for (const reason of ["not-owned", "invalid"] as const) {
+    for (const reason of [
+      "not-owned",
+      "invalid",
+      "strength-unavailable",
+    ] as const) {
       expect(saveOutcomeMessage(reason).toLowerCase()).not.toContain("saved");
     }
   });

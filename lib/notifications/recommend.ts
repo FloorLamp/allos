@@ -8,7 +8,11 @@
 // boundaries follow the configured app timezone (via gatherCoachingInput).
 
 import { now as clockNow } from "../clock";
-import { illnessCoachingMode, recommendCoaching } from "../coaching";
+import {
+  illnessCoachingMode,
+  recommendCoaching,
+  strengthAppropriateCoachingInput,
+} from "../coaching";
 import {
   orderBehindTargets,
   recommendNextWorkout,
@@ -32,6 +36,8 @@ import {
 import { getFindingSuppressions } from "../queries/upcoming";
 import type { CoachingInput } from "../coaching";
 import type { WorkoutRecommendation } from "./workout-format";
+import { getProfileAge } from "../settings/profile-attrs";
+import { isStrengthTrainingRelevant } from "../life-stage";
 
 export type { WorkoutRecommendation };
 
@@ -46,7 +52,10 @@ export function recommendWorkout(
 ): WorkoutRecommendation | null {
   // One gather, one core — the dashboard, the overview, and this reminder all
   // read the same computation, so they can't drift.
-  const input = gathered ?? gatherCoachingInput(profileId, "kg", "km");
+  const input = strengthAppropriateCoachingInput(
+    gathered ?? gatherCoachingInput(profileId, "kg", "km"),
+    isStrengthTrainingRelevant(getProfileAge(profileId))
+  );
 
   // Situation-aware hold (issue #837): the workout-reminder slot goes QUIET during an
   // open flagged-illness episode and through the post-close ease-back ramp — a fever

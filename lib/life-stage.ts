@@ -12,9 +12,9 @@
 // instead of scattered constants a new surface can silently re-invent.
 //
 // This module owns CONTENT-FRAMING lines (adult fitness science vs
-// child-appropriate presentation). Activity records and ordinary training tools
-// are age-neutral; only content validated for adult populations uses the adult
-// predicate below.
+// child-appropriate presentation). Activity records and ordinary movement logging
+// are age-neutral. Strength-specific creation/programming starts in adolescence;
+// adult-population statistics still use the stricter adult predicate below.
 //
 // NULL-AGE POLICY (documented once, here): `lifeStage(null)` is `null` — "unknown".
 // Each predicate then states its own unknown-age default, and those defaults are
@@ -106,6 +106,18 @@ export function isLongevityRelevant(
   age: number | null | undefined
 ): age is number {
   return isAdultForClinical(age);
+}
+
+// Strength-specific creation and programming (exercise catalog, sets/reps/load,
+// routines, live lifting, and muscle targets) starts at the named adolescent
+// boundary (age >= 13). This is a CONTENT/AFFORDANCE gate, not a data-retention
+// rule: existing and imported activity records remain readable, and an existing
+// strength record may still be corrected. Unknown age -> hidden, because missing
+// profile data is not a reason to offer a child-inappropriate lifting program.
+export function isStrengthTrainingRelevant(
+  age: number | null | undefined
+): age is number {
+  return known(age) && age >= PEDIATRIC_BP_MAX_AGE;
 }
 
 // Legal minor for a KNOWN age. Unknown → false because "unknown" is not evidence

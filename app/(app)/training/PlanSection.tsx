@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { getFrequencyTargetProgressForHome } from "@/lib/queries";
-import { getWeekMode } from "@/lib/settings";
-import { frequencyScopeLabel } from "@/lib/frequency-targets";
+import { getProfileAge, getWeekMode } from "@/lib/settings";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  frequencyScopeLabel,
+  isStrengthProgrammingScope,
+} from "@/lib/frequency-targets";
 import FrequencyTargets from "./FrequencyTargets";
 import RoutinesSection from "./RoutinesSection";
 import GoalsSection from "./GoalsSection";
@@ -17,13 +21,22 @@ import GoalsSection from "./GoalsSection";
 // section it always meant, via the #routines / #goals anchors.
 export default async function PlanSection() {
   const { profile } = await requireSession();
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(
+    getProfileAge(profile.id)
+  );
   // The SAME scoped read Overview renders (#2888): the editing home and the rendering
   // home must show one set. This card used to subtract `practice` and keep everything
   // else, which is how food habits got an edit control here that could not save them —
   // the Scope select below has no food option, so the submitted scope_kind was blank
   // and the action returned without writing. Membership is declared per scope in
   // CADENCE_SCOPES.home now, so no surface carries its own list.
-  const targets = getFrequencyTargetProgressForHome(profile.id, "training");
+  const targets = getFrequencyTargetProgressForHome(
+    profile.id,
+    "training"
+  ).filter(
+    ({ target }) =>
+      strengthTrainingAvailable || !isStrengthProgrammingScope(target)
+  );
   const weekMode = getWeekMode(profile.id);
 
   return (
@@ -43,6 +56,7 @@ export default async function PlanSection() {
           . Click a routine to edit it.
         </p>
         <FrequencyTargets
+          strengthTrainingAvailable={strengthTrainingAvailable}
           items={targets.map((t) => ({
             id: t.target.id,
             scopeKind: t.target.scope_kind,
@@ -61,7 +75,7 @@ export default async function PlanSection() {
 
       {/* RoutinesManager's own root carries id="routines" + the scroll margin —
           no wrapper anchor here, or the page would emit a duplicate id. */}
-      <RoutinesSection />
+      {strengthTrainingAvailable && <RoutinesSection />}
 
       <GoalsSection />
 
@@ -75,8 +89,9 @@ export default async function PlanSection() {
               Equipment
             </h3>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Bikes, bars, and machines — the registry keeps usage history and
-              per-gear defaults.
+              {strengthTrainingAvailable
+                ? "Bikes, bars, and machines — the registry keeps usage history and per-gear defaults."
+                : "Bikes, shoes, and recovery gear — the registry keeps usage history and per-gear defaults."}
             </p>
           </div>
           <Link

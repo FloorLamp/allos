@@ -9,6 +9,7 @@ import {
   finishWorkout,
 } from "@/app/(app)/training/activity-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
+import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
 
 function row(id: number): {
   duration_min: number | null;
@@ -132,6 +133,7 @@ describe("finishWorkout action (#1124/#1205)", () => {
   it("stamps end = now on a live draft and returns finished", async () => {
     const login = createLogin();
     const profile = createProfile("finish-ok", login.id);
+    setProfileBirthdate(profile.id, "1990-01-01");
     actAs(login, profile);
     const id = await seedLiveDraft(today(profile.id));
     expect(row(id).end_time).toBeNull();
@@ -144,6 +146,7 @@ describe("finishWorkout action (#1124/#1205)", () => {
   it("a second finish is idempotent (already-finished, no re-stamp)", async () => {
     const login = createLogin();
     const profile = createProfile("finish-twice", login.id);
+    setProfileBirthdate(profile.id, "1990-01-01");
     actAs(login, profile);
     const id = await seedLiveDraft(today(profile.id));
 

@@ -495,4 +495,7 @@ export interface RoutineWithDays extends Routine {
 // unconditionally confirm; report what really happened.
 export type SaveActivityOutcome =
   | { ok: true; id: number } // row inserted/updated; `id` is its row id
-  | { ok: false; reason: "invalid" | "not-owned" };
+  | {
+      ok: false;
+      reason: "invalid" | "not-owned" | "strength-unavailable";
+    };

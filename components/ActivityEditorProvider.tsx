@@ -31,6 +31,7 @@ import WorkoutDock from "./WorkoutDock";
 import {
   buildActivityTypePrefill,
   buildRepeatPrefill,
+  activityEditDataHasStrength,
   todayStr,
 } from "./activity-form/model";
 import { useTimezone } from "./TimezoneProvider";
@@ -57,6 +58,9 @@ interface ActivityEditorApi {
   openLive: () => void;
   // Whether live workout mode is available.
   canStartWorkout: boolean;
+  // Strength-specific creation/programming eligibility for the acting profile.
+  // Existing strength records remain editable and a running session resumable.
+  strengthTrainingAvailable: boolean;
   // The ONE start-vs-resume derivation every workout entry point renders (#1893/#221):
   // the bolt, the palette's live action, the Training Log aside, and the routine card all
   // take their LABEL from here, and the open* calls above enforce the same state. See
@@ -119,6 +123,7 @@ export default function ActivityEditorProvider({
   equipment,
   recentActivityEquipment = [],
   bodyweightKg,
+  strengthTrainingAvailable,
   lastActivity = null,
   deloadContext,
   recoveringContext = { temperedRegions: [], constraints: [] },
@@ -137,6 +142,7 @@ export default function ActivityEditorProvider({
   // form's activity-level equipment picker, narrowed per-activity by the form.
   recentActivityEquipment?: number[];
   bodyweightKg: number | null;
+  strengthTrainingAvailable: boolean;
   // The single most recent activity (issue #337), seeding the "Repeat last
   // activity" palette command / mobile quick action. null when nothing's logged.
   lastActivity?: ActivityEditData | null;
@@ -450,6 +456,8 @@ export default function ActivityEditorProvider({
   const api: ActivityEditorApi = useMemo(
     () => ({
       openCreate: (createPrefill) => {
+        if (createPrefill?.type === "strength" && !strengthTrainingAvailable)
+          return;
         setEditData(null);
         setCreateDate(createPrefill?.date ?? null);
         setPrefill(
@@ -477,9 +485,11 @@ export default function ActivityEditorProvider({
           resumeOffer();
           return;
         }
+        if (!strengthTrainingAvailable) return;
         startLiveSession({ type: "strength", title: "" }, null);
       },
-      canStartWorkout: true,
+      canStartWorkout: strengthTrainingAvailable || offer.kind === "resume",
+      strengthTrainingAvailable,
       workoutOffer: offer,
       openSession: (prefillData) => {
         // Same guard as openLive (#1893): the routine card's "Log this session" must
@@ -489,6 +499,7 @@ export default function ActivityEditorProvider({
           resumeOffer();
           return;
         }
+        if (prefillData.type !== "cardio" && !strengthTrainingAvailable) return;
         startLiveSession(
           {
             type: prefillData.type === "cardio" ? "cardio" : "strength",
@@ -512,6 +523,8 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       openRepeat: (data) => {
+        if (activityEditDataHasStrength(data) && !strengthTrainingAvailable)
+          return;
         setEditData(null);
         setCreateDate(null);
         setPrefill(buildRepeatPrefill(data, todayStr(tz)));
@@ -524,6 +537,11 @@ export default function ActivityEditorProvider({
       },
       openRepeatLast: () => {
         if (!lastActivity) return;
+        if (
+          activityEditDataHasStrength(lastActivity) &&
+          !strengthTrainingAvailable
+        )
+          return;
         setEditData(null);
         setCreateDate(null);
         setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
@@ -534,7 +552,10 @@ export default function ActivityEditorProvider({
         updateDocked(dockElRef.current != null && dockScopeRef.current == null);
         setOpen(true);
       },
-      hasLastActivity: lastActivity != null,
+      hasLastActivity:
+        lastActivity != null &&
+        (strengthTrainingAvailable ||
+          !activityEditDataHasStrength(lastActivity)),
       subjectName,
       close: () => {
         setMinimized(false);
@@ -553,6 +574,7 @@ export default function ActivityEditorProvider({
       registerDock,
       tz,
       lastActivity,
+      strengthTrainingAvailable,
       subjectName,
       offer,
       resumeOffer,
@@ -622,6 +644,7 @@ export default function ActivityEditorProvider({
               equipment={equipment}
               recentActivityEquipment={recentActivityEquipment}
               bodyweightKg={bodyweightKg}
+              strengthTrainingAvailable={strengthTrainingAvailable}
               editData={editData}
               prefill={prefill}
               initialDate={createDate ?? undefined}
@@ -644,6 +667,7 @@ export default function ActivityEditorProvider({
             equipment={equipment}
             recentActivityEquipment={recentActivityEquipment}
             bodyweightKg={bodyweightKg}
+            strengthTrainingAvailable={strengthTrainingAvailable}
             editData={editData}
             prefill={prefill}
             initialDate={createDate ?? undefined}

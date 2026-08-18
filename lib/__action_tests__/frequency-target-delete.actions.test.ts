@@ -20,6 +20,7 @@ import {
 } from "@/app/(app)/training/frequency-actions";
 import { activateRoutine, createCustomRoutine } from "@/lib/routines";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
 
 function newTarget(
   profileId: number,
@@ -72,6 +73,7 @@ function targetExists(id: number): boolean {
 describe("deleteFrequencyTarget with a protocol referencing the goal (#1809)", () => {
   it("deletes the goal, and the protocol survives with no intervention linked", async () => {
     const { profile } = seedActor();
+    setStoredAge(profile.id, 30);
     const targetId = newTarget(profile.id, "type", "strength");
     const protocolId = newProtocol(profile.id, targetId);
 
@@ -116,6 +118,7 @@ describe("deleteFrequencyTarget with a protocol referencing the goal (#1809)", (
 describe("the goals-upsert collision delete (#1809)", () => {
   it("re-scoping an edit onto an occupied scope completes, freeing the collided-with goal's protocol", async () => {
     const { profile } = seedActor();
+    setStoredAge(profile.id, 30);
     // The row being edited, and the row already occupying the scope it moves onto.
     const edited = newTarget(profile.id, "type", "cardio", 2);
     const collided = newTarget(profile.id, "type", "strength", 4);

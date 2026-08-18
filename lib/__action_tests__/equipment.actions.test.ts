@@ -13,13 +13,40 @@ import {
   deleteEquipmentAction,
 } from "@/app/(app)/equipment/actions";
 import { getEquipment } from "@/lib/equipment";
-import { seedActor } from "./harness";
+import { setStoredAge } from "@/lib/settings";
+import {
+  actAs,
+  createLogin,
+  createProfile,
+  seedActor as seedActorWithoutAge,
+} from "./harness";
+
+function seedActor() {
+  const actor = seedActorWithoutAge();
+  setStoredAge(actor.profile.id, 30);
+  return actor;
+}
 
 const revalidate = vi.mocked(revalidatePath);
 
 beforeEach(() => revalidate.mockClear());
 
 describe("createEquipmentAction", () => {
+  it("keeps strength equipment out of a child's registry", async () => {
+    const login = createLogin();
+    const profile = createProfile("child-equipment", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 4);
+
+    const result = await createEquipmentAction({
+      name: "Trap Bar",
+      weight_kg: 25,
+      category: "Barbell",
+    });
+    expect(result).toMatchObject({ ok: false });
+    expect(getEquipment(profile.id)).toHaveLength(0);
+  });
+
   it("stores a row with category and retired=0, and revalidates", async () => {
     const { profile } = seedActor();
     const res = await createEquipmentAction({
