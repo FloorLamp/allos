@@ -28,10 +28,6 @@ import {
 } from "../lifecycle";
 import type { SuppressionRecord } from "../upcoming-suppress";
 import type { Finding } from "../findings";
-import {
-  staleExerciseLegacyKey,
-  staleExerciseSignalKey,
-} from "../training-observations";
 import { digestDedupeKey } from "../findings";
 import { syncRequestDedupeKey, syncRequestFamily } from "../sync-requests";
 import {
@@ -44,6 +40,10 @@ import {
 } from "../digest-time-suggestion";
 
 const DAY = "2026-08-12";
+
+const episodeFamily = (topic: string): string => `test-finding:${topic}`;
+const episodeKey = (topic: string, anchor: string): string =>
+  `${episodeFamily(topic)}:${anchor}`;
 
 function dismissed(
   at: string | null = "2026-08-01 09:00:00"
@@ -117,10 +117,10 @@ describe("the safety floor", () => {
 
 describe("findingEpisodeFamily", () => {
   it("reads the topic stem off a declared episode anchor", () => {
-    const stem = staleExerciseLegacyKey("Bench Press");
+    const stem = episodeFamily("bench-press");
     expect(
       findingEpisodeFamily({
-        dedupeKey: staleExerciseSignalKey("Bench Press", "2026-01"),
+        dedupeKey: episodeKey("bench-press", "2026-01"),
         supersedes: stem,
       })
     ).toBe(stem);
@@ -304,14 +304,14 @@ describe("countsAsDismissal", () => {
 });
 
 describe("dismissedRaisings", () => {
-  const stem = staleExerciseLegacyKey("Bench Press");
+  const stem = episodeFamily("bench-press");
 
   it("counts the stem and each anchored episode once", () => {
     const keys = dismissedSignalKeys(
       mapOf([
         [stem, dismissed()],
-        [staleExerciseSignalKey("Bench Press", "2026-01"), dismissed()],
-        [staleExerciseSignalKey("Bench Press", "2026-05"), dismissed()],
+        [episodeKey("bench-press", "2026-01"), dismissed()],
+        [episodeKey("bench-press", "2026-05"), dismissed()],
       ])
     );
     expect(dismissedRaisings(stem, keys)).toBe(3);
@@ -320,9 +320,9 @@ describe("dismissedRaisings", () => {
   it("does not count another topic's episodes", () => {
     const keys = dismissedSignalKeys(
       mapOf([
-        [staleExerciseSignalKey("Bench Press", "2026-01"), dismissed()],
-        [staleExerciseSignalKey("Deadlift", "2026-01"), dismissed()],
-        [staleExerciseSignalKey("Deadlift", "2026-05"), dismissed()],
+        [episodeKey("bench-press", "2026-01"), dismissed()],
+        [episodeKey("deadlift", "2026-01"), dismissed()],
+        [episodeKey("deadlift", "2026-05"), dismissed()],
       ])
     );
     expect(dismissedRaisings(stem, keys)).toBe(1);
@@ -331,11 +331,8 @@ describe("dismissedRaisings", () => {
   it("does not count snoozes", () => {
     const keys = dismissedSignalKeys(
       mapOf([
-        [staleExerciseSignalKey("Bench Press", "2026-01"), dismissed()],
-        [
-          staleExerciseSignalKey("Bench Press", "2026-05"),
-          snoozed("2026-09-01"),
-        ],
+        [episodeKey("bench-press", "2026-01"), dismissed()],
+        [episodeKey("bench-press", "2026-05"), snoozed("2026-09-01")],
       ])
     );
     expect(dismissedRaisings(stem, keys)).toBe(1);
@@ -373,14 +370,14 @@ describe("the escalation", () => {
 });
 
 describe("rankByDismissalFatigue", () => {
-  const stem = staleExerciseLegacyKey("Bench Press");
+  const stem = episodeFamily("bench-press");
   const current = finding({
-    dedupeKey: staleExerciseSignalKey("Bench Press", "2026-08"),
+    dedupeKey: episodeKey("bench-press", "2026-08"),
     supersedes: stem,
   });
   const fresh = finding({
-    dedupeKey: staleExerciseSignalKey("Deadlift", "2026-08"),
-    supersedes: staleExerciseLegacyKey("Deadlift"),
+    dedupeKey: episodeKey("deadlift", "2026-08"),
+    supersedes: episodeFamily("deadlift"),
   });
 
   function declines(n: number): Map<string, SuppressionRecord> {
@@ -388,10 +385,7 @@ describe("rankByDismissalFatigue", () => {
     return mapOf(
       months
         .slice(0, n)
-        .map(
-          (m) =>
-            [staleExerciseSignalKey("Bench Press", m), dismissed()] as const
-        )
+        .map((m) => [episodeKey("bench-press", m), dismissed()] as const)
     );
   }
 
@@ -447,8 +441,8 @@ describe("rankByDismissalFatigue", () => {
 
   it("preserves the caller's own order within each band", () => {
     const a = finding({
-      dedupeKey: staleExerciseSignalKey("Row", "2026-08"),
-      supersedes: staleExerciseLegacyKey("Row"),
+      dedupeKey: episodeKey("row", "2026-08"),
+      supersedes: episodeFamily("row"),
     });
     const ranked = rankByDismissalFatigue([fresh, a], declines(4));
     expect(ranked.routine.map((f) => f.dedupeKey)).toEqual([

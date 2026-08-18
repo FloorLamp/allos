@@ -294,7 +294,7 @@ export function prToFinding(pr: PR, weightUnit: WeightUnit): Finding {
   // spelling — so keying the raw name split ONE record across two keys ("Curl" vs
   // "Barbell Curl") and re-spelled a key when the oldest session was deleted. The
   // key now follows exactly the identity the stats group on, as #1399/#1610 already
-  // did for the plateau/stale findings. `supersedes` carries the pre-#1931 shape so
+  // did for plateau findings. `supersedes` carries the pre-#1931 shape so
   // a dismissal stored under the raw name keeps suppressing (#436 dual-read).
   const dedupeKey = prStrengthDismissalKey(
     pr.exercise,

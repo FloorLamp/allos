@@ -174,9 +174,12 @@ import {
   detectPushPullImbalance,
   detectStaleExercises,
   detectPlateaus,
+  staleExerciseGroupEpisodeStart,
+  staleExerciseGroupFamily,
   staleExerciseGroupSignalKey,
   BALANCE_WINDOW_DAYS,
   PLATEAU_WINDOW_DAYS,
+  type StaleExerciseObservation,
   type TrainingObservation,
 } from "./training-observations";
 
@@ -998,9 +1001,7 @@ function trainingObservationToFinding(o: TrainingObservation): Finding {
     supersedes: o.legacyKey,
     title: o.title,
     detail: o.detail,
-    // Stale is a neutral FYI (slate); an imbalance/plateau is worth acting on
-    // (amber caution) — but all stay calm and observational.
-    tone: o.kind === "stale" ? "info" : "caution",
+    tone: "caution",
     actionHref: o.exercise
       ? exerciseHref(o.exercise)
       : "/training?tab=overview",
@@ -1015,7 +1016,8 @@ function listNames(names: readonly string[]): string {
 }
 
 function staleExerciseGroupFinding(
-  observations: readonly TrainingObservation[]
+  observations: readonly StaleExerciseObservation[],
+  episodeStart: string
 ): Finding | null {
   if (observations.length === 0) return null;
   const names = observations
@@ -1037,7 +1039,8 @@ function staleExerciseGroupFinding(
         "If they are still part of your plan, work them back into the rotation.";
   return {
     domain: "training-stale",
-    dedupeKey: staleExerciseGroupSignalKey(),
+    dedupeKey: staleExerciseGroupSignalKey(episodeStart),
+    episodeFamily: staleExerciseGroupFamily(),
     title,
     detail,
     tone: "info",
@@ -1074,17 +1077,27 @@ export function buildTrainingObservationFindings(
   const findings: Finding[] = [];
   const imbalance = detectPushPullImbalance(setCounts);
   if (imbalance) findings.push(trainingObservationToFinding(imbalance));
-  const stale = staleExerciseGroupFinding(
-    detectStaleExercises(
-      stats.map((s) => ({
-        exercise: s.exercise,
-        sessions: s.sessions,
-        lastDate: s.lastDate,
-      })),
-      today
-    )
+  const staleObservations = detectStaleExercises(
+    stats.map((s) => ({
+      exercise: s.exercise,
+      sessions: s.sessions,
+      lastDate: s.lastDate,
+    })),
+    today
   );
-  if (stale) findings.push(stale);
+  const staleEpisodeStart = staleExerciseGroupEpisodeStart(
+    stats.flatMap((stat) =>
+      stat.volume.map(({ date }) => ({ exercise: stat.exercise, date }))
+    ),
+    today
+  );
+  if (staleEpisodeStart) {
+    const stale = staleExerciseGroupFinding(
+      staleObservations,
+      staleEpisodeStart
+    );
+    if (stale) findings.push(stale);
+  }
   // Cross-reference the routine's mesocycle (#741): when its deload week is ≤2 weeks
   // away, the plateau finding points at that built-in light week instead of advising
   // an ad-hoc deload. Same ONE gather every deload surface reads.

@@ -7,9 +7,9 @@ import {
   detectPlateaus,
   trainingBalanceSignalKey,
   trainingBalanceLegacyKey,
-  staleExerciseSignalKey,
+  staleExerciseGroupEpisodeStart,
+  staleExerciseGroupFamily,
   staleExerciseGroupSignalKey,
-  staleExerciseLegacyKey,
   plateauSignalKey,
   plateauLegacyKey,
   plateauLevelAnchor,
@@ -90,8 +90,7 @@ describe("detectStaleExercises", () => {
     );
     expect(out).toHaveLength(1);
     expect(out[0].kind).toBe("stale");
-    // Episode anchor = the YYYY-MM of the last session (daysAgo(28) → 2026-02); #436.
-    expect(out[0].key).toBe(staleExerciseSignalKey("Deadlift", "2026-02"));
+    expect(out[0].exercise).toBe("Deadlift");
   });
 
   it("ignores a lift with too few sessions", () => {
@@ -113,6 +112,43 @@ describe("detectStaleExercises", () => {
     expect(at(21)).toBe(1); // just stale
     expect(at(56)).toBe(1); // last stale day
     expect(at(57)).toBe(0); // dropped, not merely stale
+  });
+});
+
+describe("staleExerciseGroupEpisodeStart", () => {
+  const sessions = [
+    ...["2026-01-01", "2026-01-08", "2026-01-15"].map((date) => ({
+      exercise: "Bench Press",
+      date,
+    })),
+    ...["2026-01-20", "2026-01-27", "2026-02-03"].map((date) => ({
+      exercise: "Deadlift",
+      date,
+    })),
+  ];
+
+  it("keeps one identity while overlapping lifts enter and leave the family", () => {
+    // Bench is the only stale member on Feb 20; both are stale on Mar 1; only
+    // Deadlift remains by Mar 20. Their intervals overlap, so the family never clears.
+    for (const day of ["2026-02-20", "2026-03-01", "2026-03-20"]) {
+      expect(staleExerciseGroupEpisodeStart(sessions, day)).toBe("2026-02-05");
+    }
+  });
+
+  it("mints a new identity after the family clears and later recurs", () => {
+    const later = ["2026-04-01", "2026-04-08", "2026-04-15"].map((date) => ({
+      exercise: "Pull Up",
+      date,
+    }));
+    expect(staleExerciseGroupEpisodeStart(sessions, "2026-04-15")).toBeNull();
+    const nextStart = staleExerciseGroupEpisodeStart(
+      [...sessions, ...later],
+      "2026-05-20"
+    );
+    expect(nextStart).toBe("2026-05-06");
+    expect(staleExerciseGroupSignalKey(nextStart!)).not.toBe(
+      staleExerciseGroupSignalKey("2026-02-05")
+    );
   });
 });
 
@@ -212,23 +248,25 @@ describe("isPlateau / detectPlateaus", () => {
   it("all observation keys share the training-obs namespace", () => {
     for (const k of [
       trainingBalanceSignalKey("push"),
-      staleExerciseSignalKey("Deadlift", "2026-02"),
-      staleExerciseGroupSignalKey(),
+      staleExerciseGroupSignalKey("2026-02-05"),
       plateauSignalKey("Bench Press", "20"),
     ]) {
       expect(k.startsWith(TRAINING_OBS_PREFIX)).toBe(true);
     }
   });
 
-  it("gives the collapsed stale family one stable identity", () => {
-    expect(staleExerciseGroupSignalKey()).toBe("training-obs:stale-group");
+  it("separates the stale family stem from an episode key", () => {
+    expect(staleExerciseGroupFamily()).toBe("training-obs:stale-group");
+    expect(staleExerciseGroupSignalKey("2026-02-05")).toBe(
+      "training-obs:stale-group:2026-02-05"
+    );
   });
 });
 
 // ---- Dismissal-key identity (#1399 + #1610) --------------------------------
 //
-// The plateau/stale finding SERIES has grouped on exerciseHistoryKey since #432, but
-// the dedupeKey that SUPPRESSES the finding was built from the raw display name
+// The plateau finding SERIES has grouped on exerciseHistoryKey since #432, but
+// the dedupeKey that SUPPRESSES it was built from the raw display name
 // (`exercise.trim().toLowerCase()`). Two consequences #482/#203 warn about:
 // dismissing "Barbell Curl"'s plateau did not silence the same lift logged as
 // "Curl", and the key drifted as which variant spelling was the group's newest
@@ -257,21 +295,9 @@ describe("observation dismissal keys follow the series identity (#1399)", () => 
     expect(plateauLegacyKey("Barbell Curl")).not.toContain("barbell curl");
   });
 
-  it("keys a stale exercise on the movement too", () => {
-    expect(staleExerciseSignalKey("Barbell Curl", "2026-02")).toBe(
-      staleExerciseSignalKey("Curl", "2026-02")
-    );
-    expect(staleExerciseLegacyKey("Barbell Curl")).not.toContain(
-      "barbell curl"
-    );
-  });
-
   it("still separates two genuinely different movements", () => {
     expect(plateauSignalKey("Bench Press", "20")).not.toBe(
       plateauSignalKey("Deadlift", "20")
-    );
-    expect(staleExerciseLegacyKey("Bench Press")).not.toBe(
-      staleExerciseLegacyKey("Deadlift")
     );
   });
 

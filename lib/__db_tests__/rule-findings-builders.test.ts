@@ -269,28 +269,59 @@ describe("buildTrainingObservationFindings — bounded stale family (#3090)", ()
       (finding) => finding.domain === "training-stale"
     );
     expect(stale).toHaveLength(1);
+    const firstEpisodeKey = staleExerciseGroupSignalKey(
+      shiftDateStr(anchor, -11)
+    );
     expect(stale[0]).toMatchObject({
-      dedupeKey: staleExerciseGroupSignalKey(),
+      dedupeKey: firstEpisodeKey,
       title: "3 lifts have lapsed — Deadlift, Pull Up, and Hack Squat",
       dashboardRelevance: 2,
     });
 
-    // Dismiss the family, then add another qualifying member. The family keeps the
-    // same monthly identity, so the new lift cannot become a fresh replacement row.
+    // Dismiss the family, then train one member. The membership changes while the
+    // other two keep the family continuously nonempty, so no replacement row appears.
     dismissFinding(profileId, stale[0].dedupeKey);
-    for (let session = 0; session < 3; session++) {
-      const activityId = Number(
-        insertActivity.run(profileId, shiftDateStr(anchor, -34 - session * 7))
-          .lastInsertRowid
-      );
-      insertSet.run(activityId, "Lat Pulldown");
-    }
+    const partialRecoveryId = Number(
+      insertActivity.run(profileId, anchor).lastInsertRowid
+    );
+    insertSet.run(partialRecoveryId, "Deadlift");
+    const continuedEpisode = buildTrainingObservationFindings(
+      profileId,
+      anchor
+    ).filter((finding) => finding.domain === "training-stale");
+    expect(continuedEpisode).toHaveLength(1);
+    expect(continuedEpisode[0].dedupeKey).toBe(firstEpisodeKey);
     const afterDismissal = activeFindings(
-      buildTrainingObservationFindings(profileId, anchor),
+      continuedEpisode,
       getFindingSuppressions(profileId),
       anchor
     ).filter((finding) => finding.domain === "training-stale");
     expect(afterDismissal).toEqual([]);
+
+    // Once every member recovers, the family is empty. A later lapse is a new
+    // episode and must not inherit the old episode's dismissal.
+    const fullRecoveryId = Number(
+      insertActivity.run(profileId, anchor).lastInsertRowid
+    );
+    insertSet.run(fullRecoveryId, "Pull Up");
+    insertSet.run(fullRecoveryId, "Hack Squat");
+    expect(
+      buildTrainingObservationFindings(profileId, anchor).filter(
+        (finding) => finding.domain === "training-stale"
+      )
+    ).toEqual([]);
+
+    const laterDay = shiftDateStr(anchor, 40);
+    const recurring = activeFindings(
+      buildTrainingObservationFindings(profileId, laterDay),
+      getFindingSuppressions(profileId),
+      laterDay
+    ).filter((finding) => finding.domain === "training-stale");
+    expect(recurring).toHaveLength(1);
+    expect(recurring[0].dedupeKey).toBe(
+      staleExerciseGroupSignalKey(shiftDateStr(anchor, 21))
+    );
+    expect(recurring[0].dedupeKey).not.toBe(firstEpisodeKey);
   });
 });
 

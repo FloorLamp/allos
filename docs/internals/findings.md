@@ -76,10 +76,12 @@ Profile-entity fan-out is bounded before suppression, per family, in
 `COACHING_ENTITY_FINDING_LIMITS` (and the food–drug variance family's adjacent
 declaration). That ordering means dismissing the generated set cannot promote the
 next rows from the same family. Closed catalogs remain bounded by their registries.
-Stale exercises collapse further into one stable family finding: it names at most
-three newest-lapsed lifts, says “several” rather than exposing a hidden count when
-the tail is longer, and keeps the same dismissible identity as members or months
-change.
+Stale exercises collapse further into one episodic family finding: it names at most
+three newest-lapsed lifts and says “several” rather than exposing a hidden count when
+the tail is longer. Its key is anchored to the first day of the continuous interval
+where at least one established lift is stale. Member changes cannot mint replacement
+rows while that interval remains nonempty; after every member clears, a later lapse
+starts a new episode and can appear again.
 
 **The same contract governs the Upcoming page's display aggregation (#1504).**
 The planning page folds a band's scheduled `dose` rows into one disclosure, its
@@ -227,12 +229,12 @@ declaring how far it reaches.
 **Dedupe keys follow their series' identity, not display names.** Two
 consequences worth knowing when touching identity code:
 
-- Training plateau/stale keys are built from the shared identity builders
-  (`plateauSignalKey` on `movementLoadKey` — variant-collapsed movement + the
-  equipment load lane; `staleExerciseSignalKey` on `exerciseHistoryKey`), never
-  from a raw display name (#1399/#1610). The old raw-name keys were re-keyed the
-  #482 way: a dismissal stored before the change goes inert and its finding
-  resurfaces once.
+- Training plateau keys use `plateauSignalKey` on `movementLoadKey` — the
+  variant-collapsed movement plus equipment load lane — never a raw display name
+  (#1399/#1610). The collapsed stale row instead uses one declared family stem and
+  the start of its continuous family episode; individual exercise names are copy,
+  not identity. The old raw-name plateau keys were re-keyed the #482 way: a dismissal
+  stored before the change goes inert and its finding resurfaces once.
 - The biomarker family key is no longer a finite SQL preimage: SQL calls the one
   pure `biomarkerFamily()` through the `biomarker_family()` user function
   (#1401), so a family's freeform `match` regex is load-bearing on the
