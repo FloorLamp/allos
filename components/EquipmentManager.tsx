@@ -133,7 +133,7 @@ export default function EquipmentManager({
     }
     const w = draft.weight.trim();
     if (w !== "" && (!Number.isFinite(Number(w)) || Number(w) < 0)) {
-      setError("Bar weight must be 0 or more.");
+      setError("Equipment weight must be 0 or more.");
       return;
     }
     setError(null);

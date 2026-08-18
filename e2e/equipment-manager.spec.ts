@@ -25,8 +25,9 @@ test.describe("Equipment manager (#391)", () => {
     const name = `E2E Own Weight Bar ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
     await page.getByRole("button", { name: "Add equipment" }).click();
     await page.getByLabel("Name").fill(name);
-    // The bar-weight label carries the login's unit — match it unit-agnostically.
-    await page.getByLabel(/Bar weight/).fill("15");
+    // The equipment-weight label carries the login's unit — match it
+    // unit-agnostically.
+    await page.getByLabel(/Equipment weight/).fill("15");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Equipment added")).toBeVisible();
 
