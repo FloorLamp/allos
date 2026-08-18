@@ -555,7 +555,7 @@ export default function SupplementForm({
           open={initialSupply != null}
           className="group sm:col-span-2"
         >
-          <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750">
+          <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200">
             <span>More options</span>
             <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
               Obligation, brand, supply, interactions, notes

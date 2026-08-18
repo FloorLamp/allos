@@ -80,7 +80,7 @@ export default function ProviderAffiliations({
           {affiliates.map((a) => (
             <li
               key={a.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-black/5 bg-white/60 px-3 py-2 text-sm dark:border-white/10 dark:bg-black/10"
+              className="flex items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm"
             >
               <Link
                 href={`/providers/${a.id}`}

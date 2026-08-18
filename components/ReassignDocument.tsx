@@ -76,7 +76,7 @@ export default function ReassignDocument({
           onChange={(e) => setDest(Number(e.target.value))}
           disabled={pending}
           data-testid="reassign-dest"
-          className="rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm text-slate-800 disabled:opacity-50 dark:border-white/10 dark:bg-ink-850 dark:text-slate-100"
+          className="rounded-lg border border-(--field-bd) bg-field px-2 py-1.5 text-sm text-slate-800 disabled:opacity-50 dark:text-slate-100"
         >
           <option value={0}>Choose profile…</option>
           {destinations.map((d) => (

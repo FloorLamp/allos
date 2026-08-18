@@ -260,7 +260,7 @@ export default function ScheduleGrid({
       <table className="w-full min-w-184 border-collapse text-xs">
         <thead>
           <tr>
-            <th className="sticky left-0 z-10 bg-white px-3 py-2 text-left font-semibold text-slate-600 dark:bg-ink-900 dark:text-slate-300">
+            <th className="sticky left-0 z-10 bg-surface px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-300">
               Vaccine
             </th>
             {BANDS.map((b, i) => (
@@ -387,7 +387,7 @@ export default function ScheduleGrid({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-50 max-w-xs rounded-lg border border-black/10 bg-white px-3 py-2 text-xs shadow-lg dark:border-white/10 dark:bg-ink-900"
+            className="pointer-events-none fixed z-50 max-w-xs rounded-lg border border-(--border) bg-surface px-3 py-2 text-xs shadow-lg"
             style={{
               left: Math.min(tip.x + 14, window.innerWidth - 250),
               top: tip.y + 14,

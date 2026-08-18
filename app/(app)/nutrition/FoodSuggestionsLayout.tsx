@@ -184,7 +184,7 @@ export default function FoodSuggestionsLayout({
           <div data-testid="nutrition-sidebar" className="min-w-0 self-start">
             <div
               data-testid="nutrition-sidebar-surface"
-              className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-xs dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
+              className="divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
             >
               {activeDate === today ? (
                 todaySidebar && (
@@ -221,7 +221,7 @@ export default function FoodSuggestionsLayout({
           <ModalShell
             title="Lab suggestions"
             onClose={() => setOpen(false)}
-            className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
+            className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
           >
             <div
               id="nutrition-suggestions-panel"

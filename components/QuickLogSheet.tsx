@@ -254,7 +254,7 @@ export default function QuickLogSheet({
                   item.target.kind === "live" ? workoutOffer.kind : undefined
                 }
                 onClick={() => run(item)}
-                className="tap-target press flex w-full items-center gap-3 rounded-xl border border-black/10 bg-white/70 px-3 py-3 text-left transition hover:bg-slate-100 dark:border-white/10 dark:bg-ink-850 dark:hover:bg-ink-750"
+                className="tap-target press flex w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-3 text-left transition hover:bg-(--ghost-hover)"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
                   <Icon className="h-5 w-5" stroke={1.75} />

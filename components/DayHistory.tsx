@@ -91,8 +91,7 @@ const SCROLLER = "-mx-1 overflow-x-auto px-1 pb-1 pt-2";
 // by scrolling — but a 70%-opacity gradient over them made those cells DIMLY VISIBLE,
 // i.e. showing a level they do not have. Hidden is honest; washed out is not. The
 // blur went with it, for the same reason.
-const MATRIX_LABEL_BG =
-  "bg-white dark:bg-ink-950 border-r border-black/5 dark:border-white/10";
+const MATRIX_LABEL_BG = "border-r border-(--border) bg-surface";
 const PANE_TITLE = "text-sm font-semibold text-slate-800 dark:text-slate-100";
 const PANE_META = "text-xs text-slate-500 dark:text-slate-400";
 const PANE_ROW = "text-xs text-slate-700 dark:text-slate-200";
@@ -1516,7 +1515,7 @@ export default function DayHistory({
                       key={date}
                       data-testid="day-history-date-marker"
                       data-date={date}
-                      className="absolute top-0 z-2 whitespace-nowrap rounded-sm bg-white px-0.5 text-[11px] font-semibold tabular-nums text-slate-800 shadow-sm dark:bg-ink-950 dark:text-slate-100"
+                      className="absolute top-0 z-2 whitespace-nowrap rounded-sm bg-surface px-0.5 text-[11px] font-semibold tabular-nums text-slate-800 shadow-sm dark:text-slate-100"
                       style={{
                         left: `calc(var(--day-history-label-w) + ${
                           i * MTX_STEP + Math.floor(i / 7) * weekGap

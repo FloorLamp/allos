@@ -64,7 +64,7 @@ export default function MetricMeasurementPanel({
         <ModalShell
           title={`Log ${label}`}
           onClose={() => setOpen(false)}
-          className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:max-h-[calc(100dvh-4rem)] sm:p-5 dark:bg-ink-900"
+          className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:max-h-[calc(100dvh-4rem)] sm:p-5"
         >
           <div
             className="mt-4 min-h-0 overflow-y-auto px-1 pb-1"

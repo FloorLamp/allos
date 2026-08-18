@@ -325,7 +325,7 @@ export default function RoutineBuilder({
                       className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
                         active
                           ? "border-brand-500 bg-brand-500 text-white"
-                          : "border-black/10 bg-white text-slate-500 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 dark:hover:bg-ink-800"
+                          : "border-(--border) bg-surface text-slate-500 hover:bg-(--ghost-hover) dark:text-slate-400"
                       }`}
                     >
                       {r}

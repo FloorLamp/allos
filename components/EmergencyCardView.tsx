@@ -51,7 +51,7 @@ function Section({
   return (
     <section
       data-testid={testid}
-      className="rounded-xl border border-black/10 bg-white/80 p-4 print:border-black dark:border-white/10 dark:bg-ink-900/60 print:dark:bg-white"
+      className="rounded-xl border border-(--border) bg-surface/80 p-4 print:border-black print:bg-white"
     >
       <h2
         className={`mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide ${accent} print:text-black`}
@@ -103,7 +103,7 @@ export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
           {card.bloodType && (
             <div
               data-testid="emergency-blood-type"
-              className="flex shrink-0 flex-col items-center rounded-lg border-2 border-rose-500/60 bg-white px-3 py-1.5 print:border-black dark:bg-ink-900"
+              className="flex shrink-0 flex-col items-center rounded-lg border-2 border-rose-500/60 bg-surface px-3 py-1.5 print:border-black print:bg-white"
             >
               <IconDroplet
                 className="h-4 w-4 text-rose-600 dark:text-rose-400 print:hidden"
@@ -263,7 +263,7 @@ export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
       {empty && (
         <p
           data-testid="emergency-empty"
-          className="rounded-xl border border-black/10 bg-white/80 p-4 text-sm text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400"
+          className="rounded-xl border border-(--border) bg-surface/80 p-4 text-sm text-slate-500 dark:text-slate-400"
         >
           No allergies, medications, conditions, blood type, emergency contact,
           code status, healthcare proxy, or organ-donor status are recorded yet.

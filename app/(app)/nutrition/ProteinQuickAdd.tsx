@@ -143,7 +143,7 @@ export default function ProteinQuickAdd({
   return (
     <div
       data-testid="protein-quickadd"
-      className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2 dark:border-white/10 dark:bg-ink-900"
+      className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2"
     >
       <FoodGroupIcon
         slug="__protein__"
@@ -193,7 +193,7 @@ export default function ProteinQuickAdd({
           onChange={(e) => setAmount(e.target.value)}
           placeholder="0"
           aria-label="Protein grams to add"
-          className="w-full rounded-lg border border-black/10 bg-white py-1.5 pl-2 pr-5 text-center text-sm tabular-nums text-slate-800 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
+          className="w-full rounded-lg border border-(--field-bd) bg-field py-1.5 pl-2 pr-5 text-center text-sm tabular-nums text-slate-800 dark:text-slate-100"
         />
         <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500 dark:text-slate-400">
           g

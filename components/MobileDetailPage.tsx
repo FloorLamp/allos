@@ -68,7 +68,7 @@ export default function MobileDetailPage({
     <div
       role="dialog"
       aria-modal="true"
-      className={`fixed inset-0 z-50 flex flex-col bg-white pt-[env(safe-area-inset-top)] dark:bg-ink-900 ${
+      className={`fixed inset-0 z-50 flex flex-col bg-surface pt-[env(safe-area-inset-top)] ${
         desktopAt === "xl" ? "xl:hidden" : "lg:hidden"
       }`}
     >

@@ -36,7 +36,7 @@ export default function CareTrailStatsStrip({
         return (
           <div
             key={s.profileId}
-            className="flex items-center gap-2 rounded-lg border border-black/10 bg-white/60 px-3 py-1.5 text-xs dark:border-white/10 dark:bg-ink-850"
+            className="flex items-center gap-2 rounded-lg border border-(--border) bg-surface px-3 py-1.5 text-xs"
             data-testid="care-trail-stat"
             data-profile-id={s.profileId}
           >

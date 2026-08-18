@@ -75,7 +75,7 @@ export default async function MobilitySection({
                 key={s.dedupeKey}
                 data-testid="mobility-suggestion"
                 data-region={s.region}
-                className="rounded-lg border border-black/10 bg-white p-3 dark:border-white/10 dark:bg-ink-900"
+                className="rounded-lg border border-(--border) bg-surface p-3"
               >
                 <p className="font-medium text-slate-800 dark:text-slate-100">
                   {s.title}

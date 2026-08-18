@@ -365,7 +365,7 @@ export default function PlateBuilderModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl sm:p-5 dark:bg-ink-900"
+        className="w-full max-w-md rounded-xl bg-surface p-4 shadow-xl sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
@@ -473,7 +473,7 @@ export default function PlateBuilderModal({
                 type="button"
                 onClick={() => addPlate(p)}
                 disabled={atPlateLimit}
-                className="rounded-full border border-black/10 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-ink-900 dark:text-slate-200 dark:hover:bg-brand-950"
+                className="rounded-full border border-(--border) bg-surface px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-200 dark:hover:bg-brand-950"
               >
                 +{p}
               </button>

@@ -165,7 +165,7 @@ function OrganizationGroup({
 }) {
   return (
     <div
-      className="overflow-hidden rounded-xl border border-black/5 bg-white/60 dark:border-white/10 dark:bg-black/10"
+      className="overflow-hidden rounded-xl border border-(--border) bg-surface"
       data-testid="provider-org-card"
     >
       <ProviderRow p={group.org} heading />

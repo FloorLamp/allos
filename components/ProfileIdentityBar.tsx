@@ -303,7 +303,7 @@ export default function ProfileIdentityBar({
           data-testid="profile-switcher-panel"
           className={`${
             open ? "flex" : "hidden"
-          } absolute inset-x-0 top-full z-20 mt-1 max-h-[50vh] flex-col overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-white p-2 shadow-lg dark:border-white/10 dark:bg-ink-850`}
+          } absolute inset-x-0 top-full z-20 mt-1 max-h-[50vh] flex-col overflow-y-auto overscroll-contain rounded-lg border border-(--border) bg-surface p-2 shadow-lg`}
         >
           {panel}
         </div>
@@ -330,7 +330,7 @@ export default function ProfileIdentityBar({
               role="dialog"
               aria-modal="true"
               aria-label="Switch profile"
-              className={`absolute inset-x-0 top-0 flex max-h-[85vh] flex-col rounded-b-2xl border-b bg-white pt-[max(0.5rem,env(safe-area-inset-top))] dark:bg-ink-950 ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelMotion}`}
+              className={`absolute inset-x-0 top-0 flex max-h-[85vh] flex-col rounded-b-2xl border-b bg-surface pt-[max(0.5rem,env(safe-area-inset-top))] ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelMotion}`}
             >
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1">
                 {panel}

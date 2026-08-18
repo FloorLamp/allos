@@ -1065,7 +1065,7 @@ export default function TrainingLogView({
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
                   activeFilters.faultOnly
                     ? "border-rose-500 bg-rose-500 text-white"
-                    : "border-rose-300 bg-white text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:bg-ink-900 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                    : "border-rose-300 bg-surface text-rose-600 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-400 dark:hover:bg-rose-950/40"
                 }`}
               >
                 <IconAlertTriangle className="h-4 w-4" stroke={2} />

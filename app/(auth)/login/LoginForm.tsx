@@ -61,7 +61,7 @@ function TotpStep() {
           autoFocus
           required
           data-testid="totp-code"
-          className="rounded-lg border border-black/10 bg-white px-3 py-2 tracking-widest text-slate-900 outline-hidden focus:border-brand-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
+          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 tracking-widest text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
         />
       </label>
       <ErrorAlert message={state.error} />
@@ -104,7 +104,7 @@ export default function LoginForm({
           defaultValue={username}
           autoFocus
           required
-          className="rounded-lg border border-black/10 bg-white px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
+          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
         />
       </label>
       <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">
@@ -114,7 +114,7 @@ export default function LoginForm({
           type="password"
           autoComplete="current-password"
           required
-          className="rounded-lg border border-black/10 bg-white px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
+          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
         />
       </label>
       <ErrorAlert message={state.error} />

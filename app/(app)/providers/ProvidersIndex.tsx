@@ -81,7 +81,7 @@ export default function ProvidersIndex({
               <li key={p.id}>
                 <Link
                   href={`/providers/${p.id}`}
-                  className="flex items-center justify-between gap-3 bg-white/60 px-4 py-3 transition hover:bg-slate-50 dark:bg-black/10 dark:hover:bg-ink-800"
+                  className="flex items-center justify-between gap-3 bg-surface px-4 py-3 transition hover:bg-(--ghost-hover)"
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
                     <Icon

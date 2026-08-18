@@ -126,7 +126,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
                   optionRefs.current[items.length - 1]?.focus();
                 }
               }}
-              className="absolute top-full left-0 z-50 mt-1 min-w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900"
+              className="absolute top-full left-0 z-50 mt-1 min-w-44 overflow-hidden rounded-xl border border-(--border) bg-surface py-1 shadow-lg"
             >
               {items.map((item, index) => {
                 const selected = item.id === active;

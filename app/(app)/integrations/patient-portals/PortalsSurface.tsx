@@ -180,7 +180,7 @@ function ProfileChip({
       className={`inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2.5 text-sm transition ${
         pressed
           ? "border-brand-500 bg-brand-50 text-brand-800 ring-1 ring-brand-500 dark:bg-brand-500/15 dark:text-brand-200"
-          : "border-black/10 bg-white/70 text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200 dark:hover:bg-ink-850"
+          : "border-(--border) bg-surface text-slate-700 hover:bg-(--ghost-hover) dark:text-slate-200"
       }`}
     >
       <Avatar
@@ -202,7 +202,7 @@ function ProfileChip({
 // The read-only face of a mapping: the same chip shape, not pressable.
 function StaticChip({ profile }: { profile: ProfileChoice }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-black/10 bg-white/70 py-0.5 pl-0.5 pr-2.5 text-sm text-slate-700 dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-(--border) bg-surface py-0.5 pl-0.5 pr-2.5 text-sm text-slate-700 dark:text-slate-200">
       <Avatar
         profile={{
           id: profile.id,

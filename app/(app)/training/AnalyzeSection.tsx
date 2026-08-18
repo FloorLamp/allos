@@ -366,7 +366,7 @@ export default async function AnalyzeSection({
                     className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
                       current
                         ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500 dark:text-white"
-                        : "border-black/10 bg-white text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:border-brand-700 dark:hover:bg-brand-950 dark:hover:text-brand-300"
+                        : "border-(--border) bg-surface text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 dark:text-slate-300 dark:hover:border-brand-700 dark:hover:bg-brand-950 dark:hover:text-brand-300"
                     }`}
                   >
                     <ActivityIcon
@@ -406,7 +406,7 @@ export default async function AnalyzeSection({
                     className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
                       c.lane === view.activeLane
                         ? "border-brand-500 bg-brand-500 text-white"
-                        : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                        : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
                     }`}
                   >
                     {c.label}

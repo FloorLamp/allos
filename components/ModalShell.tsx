@@ -19,7 +19,7 @@ export default function ModalShell({
   title,
   onClose,
   children,
-  className = "w-full max-w-2xl rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900",
+  className = "w-full max-w-2xl rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5",
   initialFocusRef,
 }: {
   title: string;

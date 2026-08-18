@@ -46,7 +46,7 @@ export default function ForgotPasswordForm() {
           autoFocus
           required
           data-testid="reset-email"
-          className="rounded-lg border border-black/10 bg-white px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
+          className="rounded-lg border border-(--field-bd) bg-field px-3 py-2 text-slate-900 outline-hidden focus:border-brand-500 dark:text-slate-100"
         />
       </label>
       <SubmitButton />

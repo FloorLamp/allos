@@ -41,7 +41,7 @@ export default function QuickPracticeList({
         <li
           key={practice.identity}
           data-testid={`quick-entry-practice-${practice.identity}`}
-          className="rounded-lg border border-black/10 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-ink-900"
+          className="rounded-lg border border-(--border) bg-surface px-3 py-2.5"
         >
           <PracticeWeeklyProgress
             label={practice.name}

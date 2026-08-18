@@ -278,7 +278,7 @@ export default function ExtractedObservations({
         )}
 
         {processing && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-ink-900/70">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-surface/70">
             <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
               Processing…
             </span>

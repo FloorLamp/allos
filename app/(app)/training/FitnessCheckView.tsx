@@ -508,7 +508,7 @@ function EntryModal({
         aria-label={def.label}
         data-testid={`fitness-entry-${def.key}`}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-black/10 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900 sm:rounded-2xl"
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-(--border) bg-surface p-4 shadow-xl sm:rounded-2xl"
       >
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
