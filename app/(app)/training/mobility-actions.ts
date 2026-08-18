@@ -9,6 +9,8 @@ import {
   setMobilityDurationCore,
   type MobilitySession,
 } from "@/lib/mobility-log-write";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 // Server write-path for the mobility log (issue #840) — the tap-the-moves bar. A mobility
 // session is ONE `activities` row of type `mobility` per (profile, date) whose components
@@ -35,6 +37,8 @@ export async function logMobilityMove(
   formData: FormData
 ): Promise<MobilityLogResult> {
   const { profile } = await requireWriteAccess();
+  if (!isTrainingRelevant(getProfileAge(profile.id)))
+    return { ok: false, error: "Workout logging is unavailable." };
   const slug = String(formData.get("move") ?? "").trim();
   const date = resolveDate(formData, profile.id);
   const outcome = logMobilityMoveCore(profile.id, slug, date);
@@ -63,6 +67,8 @@ export async function setMobilityDuration(
   formData: FormData
 ): Promise<MobilityLogResult> {
   const { profile } = await requireWriteAccess();
+  if (!isTrainingRelevant(getProfileAge(profile.id)))
+    return { ok: false, error: "Workout logging is unavailable." };
   const date = resolveDate(formData, profile.id);
   const raw = String(formData.get("minutes") ?? "").trim();
   const minutes = raw === "" ? null : Math.round(Number(raw));

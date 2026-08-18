@@ -113,6 +113,14 @@ describe("registry rows are well-formed", () => {
     expect(notificationKindEntry("digest")?.label).toBe("Morning digest");
     expect(notificationKindEntry("test")).toBeUndefined();
   });
+
+  it("marks workout offers as Training-only but keeps stale-session cleanup", () => {
+    expect(notificationKindEntry("workout")?.requiresTraining).toBe(true);
+    expect(notificationKindEntry("workout-recap")?.requiresTraining).toBe(true);
+    expect(notificationKindEntry("workout-stale")?.requiresTraining).not.toBe(
+      true
+    );
+  });
 });
 
 describe("safety classification is unchanged by the consolidation", () => {

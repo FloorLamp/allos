@@ -378,7 +378,7 @@ describe("actual dashboard placement manifests", () => {
   it("pins the real gather's query count and statement set", () => {
     const statements = statementRuns.get("bodybuilder")!;
     const statementSet = [...new Set(statements)].sort();
-    expect(statements).toHaveLength(735);
+    expect(statements).toHaveLength(761);
     expect(statementSet).toHaveLength(137);
     // The digest pins every normalized SQL statement, not only the cardinality.
     // A changed statement with the same count therefore still fails the budget.

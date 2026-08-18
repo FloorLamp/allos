@@ -6,7 +6,7 @@
 // profile per hourly tick from scripts/notify.ts, next to the refill/digest runs.
 
 import { db, writeTx } from "./db";
-import { getPublicUrl } from "./settings";
+import { getProfileAge, getPublicUrl } from "./settings";
 import { getOutcomeGoals } from "./queries";
 import {
   detectMilestones,
@@ -18,6 +18,7 @@ import { dispatch } from "./notifications";
 import type { NotificationMessage } from "./notifications/types";
 import { createLogger } from "./log";
 import { GLYPH } from "./notifications/glyphs";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "./life-stage";
 
 const log = createLogger("notify");
 
@@ -31,20 +32,35 @@ export function getFiredMilestoneKeys(profileId: number): Set<string> {
 }
 
 // Count of every activity ever logged (the "Nth workout" basis). Profile-scoped.
-function totalWorkouts(profileId: number): number {
+function totalWorkouts(profileId: number, includeStrength: boolean): number {
   const row = db
-    .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")
-    .get(profileId) as { n: number };
+    .prepare(
+      `SELECT COUNT(*) AS n FROM activities
+        WHERE profile_id = ? AND (? = 1 OR type != 'strength')`
+    )
+    .get(profileId, includeStrength ? 1 : 0) as { n: number };
   return row.n;
 }
 
 // Gather the cumulative stats the pure engine needs for one profile.
 export function gatherMilestoneInput(profileId: number): MilestoneInput {
+  const age = getProfileAge(profileId);
+  const trainingRelevant = isTrainingRelevant(age);
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(age);
   return {
-    totalWorkouts: totalWorkouts(profileId),
-    completedGoals: getOutcomeGoals(profileId)
-      .filter((g) => g.status === "achieved" && !g.archived)
-      .map((g) => ({ id: g.id, title: g.title })),
+    totalWorkouts: trainingRelevant
+      ? totalWorkouts(profileId, strengthTrainingRelevant)
+      : 0,
+    completedGoals: trainingRelevant
+      ? getOutcomeGoals(profileId)
+          .filter(
+            (g) =>
+              g.status === "achieved" &&
+              !g.archived &&
+              (strengthTrainingRelevant || g.kind !== "exercise")
+          )
+          .map((g) => ({ id: g.id, title: g.title }))
+      : [],
     fired: getFiredMilestoneKeys(profileId),
   };
 }

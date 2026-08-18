@@ -17,6 +17,7 @@ import {
 } from "@/app/(app)/training/activity-actions";
 import { createGoal } from "@/app/(app)/training/goal-actions";
 import { LB_PER_KG } from "@/lib/units";
+import { setStoredAge } from "@/lib/settings";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -38,6 +39,7 @@ describe("saveActivity honors the submitted weight/distance unit (issue #630)", 
     const login = createLogin({ weightUnit: "lb" });
     const profile = createProfile("carry-kg", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     await saveActivity(
       fd({
@@ -113,6 +115,7 @@ describe("saveActivity honors the submitted weight/distance unit (issue #630)", 
     const login = createLogin({ weightUnit: "lb" });
     const profile = createProfile("carry-fallback", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     await saveActivity(
       fd({
@@ -217,6 +220,7 @@ describe("createGoal honors the submitted weight unit (issue #630)", () => {
     const login = createLogin({ weightUnit: "lb" });
     const profile = createProfile("goal-ex-kg", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     const res = await createGoal(
       fd({

@@ -14,6 +14,7 @@ import {
   getActiveRoutine,
 } from "@/lib/routines";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
 
 function position(profileId: number): number {
   return getActiveRoutine(profileId)!.position;
@@ -57,6 +58,7 @@ function cardioFd(date: string): FormData {
 function setupActiveRoutine() {
   const login = createLogin({ weightUnit: "kg" });
   const profile = createProfile("routine-lifter", login.id);
+  setProfileBirthdate(profile.id, "1990-01-01");
   actAs(login, profile);
   const routineId = adoptTemplate(profile.id, "push-pull-legs-6x");
   activateRoutine(profile.id, routineId); // position reset to 0 (day 0 = Push)

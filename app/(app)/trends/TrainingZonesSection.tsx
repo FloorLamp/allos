@@ -7,6 +7,8 @@ import ZoneMinutesCard, {
   type ZoneWeekDatum,
 } from "@/components/ZoneMinutesCard";
 import ChartCard from "@/components/ChartCard";
+import { getProfileAge } from "@/lib/settings";
+import { isLongevityRelevant } from "@/lib/life-stage";
 
 // The bpm range label for a zone id (1..5): "[lower]–[nextLower−1] bpm", open at
 // the top for Zone 5.
@@ -37,6 +39,7 @@ export default async function TrainingZonesSection({
   includesToday?: boolean;
 }) {
   const { profile } = await requireSession();
+  const adultContentAvailable = isLongevityRelevant(getProfileAge(profile.id));
   const data = getTrainingZoneData(profile.id, weeks, end);
   const { model } = data;
 
@@ -46,9 +49,13 @@ export default async function TrainingZonesSection({
           / 80-20 targets this chart is measured against are set and explained. */}
       <ChartCard
         title="Training intensity (HR zones)"
-        detailHref="/longevity"
+        detailHref={adultContentAvailable ? "/longevity" : "/settings/training"}
         detailTitle="training intensity"
-        description="Weekly minutes per heart-rate zone in this window, from per-minute HR during your logged workouts. Longevity training tracks weekly Zone 2 volume and the easy/hard (80/20) split."
+        description={
+          adultContentAvailable
+            ? "Weekly minutes per heart-rate zone in this window, from per-minute HR during your logged workouts. Longevity training tracks weekly Zone 2 volume and the easy/hard (80/20) split."
+            : "Weekly minutes per heart-rate zone in this window, from per-minute HR during logged activities."
+        }
         footer={
           model ? (
             <>
@@ -60,7 +67,8 @@ export default async function TrainingZonesSection({
               )}
 
               {/* Current-week Zone 2 volume vs target. */}
-              {includesToday &&
+              {adultContentAvailable &&
+                includesToday &&
                 data.currentWeekZone2 &&
                 data.zone2Target > 0 && (
                   <p
@@ -83,7 +91,7 @@ export default async function TrainingZonesSection({
                 )}
 
               {/* Easy/hard polarization split. */}
-              {data.split.totalMin > 0 && (
+              {adultContentAvailable && data.split.totalMin > 0 && (
                 <div className="mt-4" data-testid="polarization-split">
                   <div className="mb-1 flex items-center justify-between text-sm">
                     <span className="font-semibold text-slate-700 dark:text-slate-200">
@@ -177,7 +185,7 @@ export default async function TrainingZonesSection({
               z4: w.minutes[3],
               z5: w.minutes[4],
             }))}
-            zone2Target={data.zone2Target}
+            zone2Target={adultContentAvailable ? data.zone2Target : 0}
           />
         )}
       </ChartCard>

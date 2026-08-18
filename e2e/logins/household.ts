@@ -92,7 +92,7 @@ export const TL_WEST_TZ = "Etc/GMT+12"; // UTC−12
 // household cards render dose-confirm buttons and the dashboard weight widget renders.
 // Acting as SELF → affordances stay plain; switching to the OTHER (not the login's
 // own) → they NAME the subject ("Confirm — Own Other (e2e)", "Finish workout — …").
-// Both profiles are adults (no birthdate → never training-restricted), so the live
+// Both profiles have unknown ages; activity surfaces remain available while adult-only
 // workout editor is available. Dedicated + isolated so this spec's weigh-in / workout
 // writes never race the shared household specs; SELF is created first so it holds the
 // lower id and is the caregiver's ACTING profile on login (createSession picks

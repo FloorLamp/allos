@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { IconActivityHeartbeat } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { getProfileAge, getDisplayFormatPrefs } from "@/lib/settings";
 import { getBioAgeReadings } from "@/lib/queries";
 import {
@@ -12,13 +11,13 @@ import {
   bioAgeSurface,
   inputCompleteness,
   isBioAgeAgeInput,
-  isBioAgeHiddenForAge,
   paceOfAging,
   paceOfAgingPhrase,
   phenoAgeReferenceBasisLabel,
   censoredInputNote,
   type BioAgeDirection,
 } from "@/lib/bio-age";
+import { isLongevityRelevant } from "@/lib/life-stage";
 import { formatLongDate } from "@/lib/format-date";
 import { clinicalResultDetailHref } from "@/lib/hrefs";
 import CardFootnote from "@/components/CardFootnote";
@@ -35,8 +34,9 @@ import PhoneFold from "@/components/PhoneFold";
 // section. The computation is untouched and unforked — both surfaces still read the
 // ONE bioAgeSurface decision (lib/bio-age.ts) over the ONE getBioAgeReadings gather.
 //
-// ADULT-GATED exactly as the computation is: hidden for child profiles (PhenoAge is
-// an adult population model).
+// ADULT-GATED exactly as the computation is: hidden for minor and unknown-age
+// profiles (PhenoAge is an adult population model). The Results checklist uses a
+// deliberately looser predicate because it renders no estimate.
 //
 // PHONE FOLD (#1578): the headline — the number, the delta, the pace — is the answer.
 // The per-input list below it is ten more lines, which at 390px is most of the card's
@@ -68,13 +68,12 @@ function EstimateNote() {
 
 export default async function BioAgeSection() {
   const { login, profile } = await requireSession();
-  const formatPrefs = getDisplayFormatPrefs(login.id);
   const age = getProfileAge(profile.id);
-  const hiddenForProfile =
-    isBioAgeHiddenForAge(age) || isTrainingRestricted(profile.id);
+  if (!isLongevityRelevant(age)) return null;
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const { draws, presentInputs } = getBioAgeReadings(profile.id);
   const surface = bioAgeSurface(
-    hiddenForProfile,
+    false,
     draws.length,
     inputCompleteness(presentInputs).presentCount
   );

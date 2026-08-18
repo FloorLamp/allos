@@ -102,6 +102,19 @@ describe("frequentPages", () => {
     ).toEqual(["/timeline", "/nutrition"]);
   });
 
+  it("excludes unavailable destinations left in stored history", () => {
+    const stored = {
+      ...visits,
+      "/longevity": { n: 20, t: 200 },
+    };
+
+    expect(
+      frequentPages(stored, { excludedHrefs: ["/longevity"] }).map(
+        (page) => page.href
+      )
+    ).not.toContain("/longevity");
+  });
+
   // A section anchor is a position on a page, not a different page (#1644): the
   // Trends hub's own deep links carry one, so the fragment has to be cut before the
   // match — otherwise the hub is untrackable and shortcuts point at where you are.

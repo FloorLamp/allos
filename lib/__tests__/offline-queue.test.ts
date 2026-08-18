@@ -433,10 +433,6 @@ describe("classifySetReplay (honoring the typed outcome, #1596)", () => {
   });
 
   it("rejects every refusal with a human reason — never a silent drop", () => {
-    const restricted = classifySetReplay({ ok: false, reason: "restricted" });
-    expect(restricted.status).toBe("rejected");
-    expect(restricted.reason).toMatch(/isn't available for this profile/i);
-
     const invalid = classifySetReplay({ ok: false, reason: "invalid" });
     expect(invalid.status).toBe("rejected");
     expect(invalid.reason).toMatch(/couldn't be validated/i);
@@ -446,6 +442,13 @@ describe("classifySetReplay (honoring the typed outcome, #1596)", () => {
     const notOwned = classifySetReplay({ ok: false, reason: "not-owned" });
     expect(notOwned.status).toBe("rejected");
     expect(notOwned.reason).toBeTruthy();
+
+    const ageGated = classifySetReplay({
+      ok: false,
+      reason: "strength-unavailable",
+    });
+    expect(ageGated.status).toBe("rejected");
+    expect(ageGated.reason).toMatch(/profile's age/i);
   });
 });
 

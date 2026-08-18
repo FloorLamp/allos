@@ -5,7 +5,7 @@
 // second drift-prone copy of the rules). Takes profileId first and never imports
 // lib/auth: the saveActivity Server Action owns the auth gate (requireSession +
 // gateItemProfile) and the cache revalidation; the replay route owns its own
-// session + per-intent write-access check. Everything else — the age-gate, the
+// session + per-intent write-access check. Everything else — the
 // title/date guard, unit conversion honoring the CAPTURED unit (#630), the
 // composite rollup (#313/#1202), the ownership re-check on an untrusted id, the
 // #194 stored-kg snapshot, routine crediting (#740), and the post-workout dose
@@ -31,11 +31,15 @@ import {
 } from "@/lib/units";
 import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
 import { isRealIsoDate } from "@/lib/date";
-import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 import { regionForExercise, type MuscleRegion } from "@/lib/lifts";
 import { creditRoutineSession } from "@/lib/routines";
 import { cleanupOrphanPrDismissals } from "@/lib/queries/upcoming/suppressions";
 import { canonicalRpe } from "@/lib/rpe";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 interface SetInput {
   exercise: string;
@@ -146,14 +150,9 @@ export function saveActivityCore(
   const profile = { id: profileId };
   const id = formData.get("id") ? Number(formData.get("id")) : null;
   const type = String(formData.get("type")) as ActivityType;
-  // Training-restriction gate — TYPE-AWARE (#489, evolving #488). A profile below
-  // the instance min_training_age keeps duration-based SPORT/CARDIO logging but
-  // still cannot log a STRENGTH session. Authoritative HERE at the write boundary
-  // so the create and view paths agree regardless of what the UI offers (a stale
-  // editor / command palette / queued offline intent can't slip a strength row
-  // past the restriction, nor lose a legitimate sport log).
-  if (!isActivityTypeAllowed(type, isTrainingRestricted(profile.id)))
-    return { ok: false, reason: "restricted" };
+  // Existing/imported activity facts are age-neutral. New manual logging is
+  // checked after the scoped existing-row lookup below, so corrections remain
+  // possible even when the workout product is not relevant.
   const title = String(formData.get("title") ?? "").trim();
   const date = String(formData.get("date") ?? "").trim();
   // Reject non-ISO dates server-side too: the client gates on this, but the
@@ -245,6 +244,65 @@ export function saveActivityCore(
     clockDurationMin ?? enteredDurationMin,
     clockDurationMin
   );
+
+  // Strength creation is an adolescent-and-up affordance. Preserve the user's
+  // history: an existing strength row can always be corrected, but a child or
+  // unknown-age profile cannot create a new strength row or turn a non-strength
+  // row into one. The scoped lookup also resolves ownership before the policy
+  // check, so an untrusted foreign id still reports `not-owned`.
+  const existing = id
+    ? (db
+        .prepare(
+          `SELECT a.type, a.components,
+                  EXISTS(SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id) AS has_sets
+             FROM activities a
+            WHERE a.id = ? AND a.profile_id = ?`
+        )
+        .get(id, profile.id) as
+        | { type: ActivityType; components: string | null; has_sets: number }
+        | undefined)
+    : undefined;
+  if (id && !existing) return { ok: false, reason: "not-owned" };
+  // Early-childhood profiles keep every activity fact already on their record,
+  // and those rows remain correctable. They cannot create a new workout through
+  // the manual or offline form path. External integration ingestion is a record
+  // boundary rather than a workout-product affordance and remains age-neutral.
+  if (!existing && !isTrainingRelevant(getProfileAge(profile.id))) {
+    return { ok: false, reason: "training-unavailable" };
+  }
+  const existingHasStrength =
+    existing?.type === "strength" ||
+    existing?.has_sets === 1 ||
+    (() => {
+      if (!existing?.components) return false;
+      try {
+        const parsed = JSON.parse(existing.components) as { type?: unknown }[];
+        return (
+          Array.isArray(parsed) && parsed.some((c) => c.type === "strength")
+        );
+      } catch {
+        return false;
+      }
+    })();
+  let submittedSetCount = 0;
+  try {
+    const parsedSets = JSON.parse(String(formData.get("sets") ?? "[]"));
+    submittedSetCount = Array.isArray(parsedSets) ? parsedSets.length : 0;
+  } catch {
+    submittedSetCount = 0;
+  }
+  const submitsStrength =
+    type === "strength" ||
+    hasStrength ||
+    submittedSetCount > 0 ||
+    components.some((component) => regionForExercise(component.name) != null);
+  if (
+    submitsStrength &&
+    !existingHasStrength &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  ) {
+    return { ok: false, reason: "strength-unavailable" };
+  }
   // Σ of the legs' kilometres is kilometres — but ARITHMETIC erases the brand, since
   // TypeScript cannot know that km + km is km while km × km is not. So the rollup's
   // total is re-minted here through the identity conversion (free at runtime) to keep

@@ -642,13 +642,13 @@ const SET_FIELDS = [
 
 // Apply a queued offline-logged workout session through the SHARED activity write
 // core — the same implementation the live form's auto-save posts to, so a replay
-// runs the identical age-gate, title/date guard, captured-unit conversion (#630),
+// runs the identical title/date guard, captured-unit conversion (#630),
 // composite rollup, per-set canonicalization, routine crediting (#740), and
 // post-workout dispatch (#1154). The captured `date` on the intent is
 // authoritative (issue #28 point 5): it overwrites whatever the fields carry, so
 // the session lands on the day the user logged it. The core's typed
-// SaveActivityOutcome is honored via classifySetReplay, so a refusal (restricted
-// profile, invalid payload) dead-letters with its reason instead of vanishing.
+// SaveActivityOutcome is honored via classifySetReplay, so an invalid payload
+// dead-letters with its reason instead of vanishing.
 function applySetIntent(
   profileId: number,
   payload: SetPayload,

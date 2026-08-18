@@ -58,7 +58,8 @@ export default function SidebarContent({
   viewIds = [],
   readOnlyIds = [],
   showIdentityBar = true,
-  restricted = false,
+  adultContentAvailable = true,
+  trainingRelevant = true,
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
@@ -89,7 +90,10 @@ export default function SidebarContent({
   // See the note above: true for the desktop sidebar, false for the mobile
   // drawer (whose identity bar lives in the phone top bar).
   showIdentityBar?: boolean;
-  restricted?: boolean;
+  // Known-adult predicate for the Longevity nav entry. Logging stays available.
+  adultContentAvailable?: boolean;
+  // Workout product relevance for the active profile (false below age 5).
+  trainingRelevant?: boolean;
   // Reveals any admin-only nav entries; the pages themselves still call
   // requireAdmin().
   isAdmin?: boolean;
@@ -297,16 +301,21 @@ export default function SidebarContent({
           ⌘K
         </kbd>
       </button>
-      {!restricted && <LogActivityButton onClick={onNavigate} />}
+      <LogActivityButton onClick={onNavigate} />
       {/* Most-visited shortcuts (issue #1416, section E3). Client-side visit
       counts in localStorage — no schema change, no server round-trip — and it
       lives in the SHARED content, so the desktop sidebar and the mobile drawer
       offer the same jumps. Renders nothing until a page clears the "this is a
       habit" floor, so a fresh login sees no empty section. */}
-      <FrequentPages onNavigate={onNavigate} />
-      <TrainingLogCalendar activeDates={activityDates} />
+      <FrequentPages
+        onNavigate={onNavigate}
+        adultContentAvailable={adultContentAvailable}
+        trainingRelevant={trainingRelevant}
+      />
+      {trainingRelevant && <TrainingLogCalendar activeDates={activityDates} />}
       <Nav
-        restricted={restricted}
+        adultContentAvailable={adultContentAvailable}
+        trainingRelevant={trainingRelevant}
         isAdmin={isAdmin}
         multiProfile={multiProfile}
         foodLoggingRelevant={foodLoggingRelevant}

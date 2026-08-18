@@ -6,8 +6,8 @@
 //
 // The event set is NOT re-queried: the caller passes the feed's already-resolved
 // day events in, so the panel and the list below are literally the same rows — the
-// "one visibility predicate" rule holds BY CONSTRUCTION (an age-restricted training
-// event, or one dropped by the category filter, never reaches this function, so it
+// "one visibility predicate" rule holds BY CONSTRUCTION (an event dropped by the
+// category filter never reaches this function, so it
 // can't appear as a block or a tick). The only additional reads are the chart's own
 // data layers, which have no feed representation at all: the day's per-minute HR
 // (one index-supported day scan through the shared one-source-per-day reader) and

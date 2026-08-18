@@ -20,6 +20,8 @@ import {
 } from "./actions";
 import StravaBackfillButton from "./StravaBackfillButton";
 import { countMissingStravaSessionDetails } from "@/lib/integrations/strava-sync";
+import { getProfileAge } from "@/lib/settings";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,7 @@ export default async function StravaPage(props: {
   const cfg = getStravaConfig(profile.id);
   const hasCreds = !!(cfg.clientId && cfg.clientSecret);
   const connected = conn?.status === "connected" && !!cfg.accessToken;
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
   const missingRideDetails = connected
     ? countMissingStravaSessionDetails(profile.id)
     : 0;
@@ -122,6 +125,7 @@ export default async function StravaPage(props: {
           <SetupCard
             callbackUrl={callbackUrl}
             callbackDomain={callbackDomain}
+            trainingRelevant={trainingRelevant}
           />
 
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
@@ -205,6 +209,7 @@ export default async function StravaPage(props: {
           <SetupCard
             callbackUrl={callbackUrl}
             callbackDomain={callbackDomain}
+            trainingRelevant={trainingRelevant}
           />
         </div>
       )}
@@ -215,9 +220,11 @@ export default async function StravaPage(props: {
 function SetupCard({
   callbackUrl,
   callbackDomain,
+  trainingRelevant,
 }: {
   callbackUrl: string;
   callbackDomain: string;
+  trainingRelevant: boolean;
 }) {
   return (
     <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
@@ -249,10 +256,10 @@ function SetupCard({
         <li>
           Imported runs, rides, and workouts appear under{" "}
           <Link
-            href="/training?tab=log"
+            href={trainingRelevant ? "/training?tab=log" : "/timeline"}
             className="text-brand-700 underline dark:text-brand-400"
           >
-            Training history
+            {trainingRelevant ? "Training history" : "Timeline"}
           </Link>
           ; calories feed the{" "}
           <Link

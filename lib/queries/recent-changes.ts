@@ -368,7 +368,10 @@ export function collectRecentChanges(
   // series every pediatric surface reads (`height_cm` metric samples).
   const stage = lifeStage(getProfileAge(profileId));
   const minor =
-    stage === "infant" || stage === "child" || stage === "adolescent";
+    stage === "infant" ||
+    stage === "early-childhood" ||
+    stage === "child" ||
+    stage === "adolescent";
   if (on("growth") && minor) {
     const rows = db
       .prepare(

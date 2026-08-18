@@ -18,6 +18,7 @@ import {
 } from "@/lib/import-review/conflicts";
 import type { AppRoute } from "@/lib/hrefs";
 import { mergeActivities } from "./activity-actions";
+import { activityEditDataHasStrength } from "@/lib/activity-form-model";
 
 // A same-day sibling this card can absorb: id + label, plus its fold-field values
 // (from TrainingLogView's unfiltered scope group) so the shared conflict picker
@@ -52,7 +53,7 @@ interface PendingConflictMerge {
 //    itself an edit affordance.
 //  • "Log again" (issue #29) — opens a CREATE form pre-filled from this activity
 //    (title, exercises, sets) with the date reset to today, so repeating a
-//    session is one tap + a save. Always available.
+//    session is one tap + a save when the workout product and activity type apply.
 //  • "Merge with…" (issue #64) — reveals a picker of the OTHER activities logged
 //    the SAME day and folds the chosen one into this card (this card is the
 //    keeper) via mergeActivities, wired through useUndoableDelete so the delete
@@ -127,7 +128,8 @@ export default function ActivityCardMenu({
   const [pendingConflict, setPendingConflict] =
     useState<PendingConflictMerge | null>(null);
   const undoable = useUndoableDelete();
-  const { openEdit, openRepeat } = useActivityEditor();
+  const { openEdit, openRepeat, trainingRelevant, strengthTrainingAvailable } =
+    useActivityEditor();
   const { busy: resumingSync, resumeSyncUpdates } = useResumeSyncUpdates(
     "activities",
     activity.id
@@ -372,18 +374,22 @@ export default function ActivityCardMenu({
                   Edit
                 </button>
               ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="log-again"
-                className={MENU_ITEM}
-                onClick={() => {
-                  setOpen(false);
-                  openRepeat(activity);
-                }}
-              >
-                Log again
-              </button>
+              {trainingRelevant &&
+                (strengthTrainingAvailable ||
+                  !activityEditDataHasStrength(activity)) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="log-again"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      setOpen(false);
+                      openRepeat(activity);
+                    }}
+                  >
+                    Log again
+                  </button>
+                )}
               {canWrite && siblings.length > 0 && (
                 <button
                   type="button"

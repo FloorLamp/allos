@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { discardWorkout } from "../activity-actions";
+import { useActivityEditor } from "@/components/ActivityEditorProvider";
 
 // The draft banner's one action (#2870 step 3): remove the never-logged
-// session and return to the training hub. `if_empty` rides along so a save
+// session and return to Training or Timeline, whichever is relevant. `if_empty` rides along so a save
 // landing between render and tap keeps the row — the server re-checks, and a
 // "kept" outcome simply refreshes the page into its real record state.
 export default function DiscardDraftButton({
@@ -14,6 +15,7 @@ export default function DiscardDraftButton({
   activityId: number;
 }) {
   const router = useRouter();
+  const { trainingRelevant } = useActivityEditor();
   const [busy, setBusy] = useState(false);
   return (
     <button
@@ -28,7 +30,8 @@ export default function DiscardDraftButton({
           fd.set("activity_id", String(activityId));
           fd.set("if_empty", "1");
           const out = await discardWorkout(fd);
-          if (out.kind === "discarded") router.replace("/training");
+          if (out.kind === "discarded")
+            router.replace(trainingRelevant ? "/training" : "/timeline");
           else router.refresh();
         } finally {
           setBusy(false);

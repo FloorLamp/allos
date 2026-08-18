@@ -48,11 +48,9 @@ export const SETTINGS_GROUP_IDS = [
 export type SettingsGroupId = (typeof SETTINGS_GROUP_IDS)[number];
 
 // A group whose relevance depends on the active profile, not on the login's role:
-// Training is hidden for an age-restricted profile and Nutrition for a profile too
-// young for food-group logging — the same predicates the old Profile tab used to drop
-// those sections. The group's PAGE still exists (it renders an explanatory empty
-// state); only the nav entry is dropped, so no link can 404.
-export type SettingsGroupRelevance = "training" | "nutrition";
+// Nutrition is hidden for a profile too young for food-group logging. The group's
+// page still exists; only the nav entry is dropped, so no link can 404.
+export type SettingsGroupRelevance = "nutrition" | "training";
 
 export type SettingsGroupPage = {
   href: AppRoute;
@@ -225,10 +223,10 @@ export function settingsGroup(id: SettingsGroupId): SettingsGroup {
 
 export type SettingsGroupContext = {
   isAdmin: boolean;
-  // Whether the active profile is old enough for the training surfaces (the
-  // age-gate predicate) and for food-group logging.
-  trainingRelevant: boolean;
+  // Whether food-group logging is relevant for the active profile.
   nutritionRelevant: boolean;
+  // Whether the workout product is relevant for the active profile.
+  trainingRelevant?: boolean;
 };
 
 // The groups a given viewer should SEE in navigation. Member logins never see an
@@ -239,8 +237,9 @@ export function visibleSettingsGroups(
 ): SettingsGroup[] {
   return SETTINGS_GROUPS.filter((g) => {
     if (g.adminOnly && !ctx.isAdmin) return false;
-    if (g.relevance === "training" && !ctx.trainingRelevant) return false;
     if (g.relevance === "nutrition" && !ctx.nutritionRelevant) return false;
+    if (g.relevance === "training" && ctx.trainingRelevant === false)
+      return false;
     return true;
   });
 }

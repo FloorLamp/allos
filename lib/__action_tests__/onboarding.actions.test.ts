@@ -12,7 +12,6 @@ import {
   startOnboardingRoutine,
 } from "@/app/(app)/onboarding/actions";
 import { createProfile as createProfileAction } from "@/app/(app)/settings/family/actions";
-import { setMinTrainingAge } from "@/lib/age-gate";
 import { db } from "@/lib/db";
 import {
   getDashboardLayout,
@@ -24,6 +23,7 @@ import {
   getProfileSex,
   setOnboardingState,
   setProfileBirthdate,
+  setStoredAge,
 } from "@/lib/settings";
 import { initialOnboardingState } from "@/lib/onboarding";
 import { getActiveRoutine, getRoutines } from "@/lib/routines";
@@ -42,7 +42,6 @@ async function redirected(action: Promise<unknown>) {
 }
 
 beforeEach(() => revalidate.mockClear());
-afterEach(() => setMinTrainingAge(null));
 
 describe("onboarding actions", () => {
   it("defers setup without inventing who the profile represents", async () => {
@@ -94,6 +93,24 @@ describe("onboarding actions", () => {
     expect(getDashboardLayout(profile.id)?.hidden).toContain(
       "next-appointment"
     );
+  });
+
+  it("does not store a fitness focus through early childhood", async () => {
+    const login = createLogin({ username: "onboarding-toddler-focus" });
+    const profile = createTestProfile("Toddler", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 2);
+    setOnboardingState(profile.id, {
+      ...initialOnboardingState(),
+      profilePath: "caregiving",
+    });
+
+    const focuses = new FormData();
+    focuses.append("focus", "fitness");
+    focuses.append("focus", "metrics-labs");
+    await redirected(saveOnboardingFocuses(focuses));
+
+    expect(getOnboardingState(profile.id)?.focuses).toEqual(["metrics-labs"]);
   });
 
   it("writes profile facts at profile tier and units at login tier", async () => {
@@ -191,6 +208,7 @@ describe("onboarding actions", () => {
     const login = createLogin({ username: "onboarding-routine" });
     const profile = createTestProfile("Routine Starter", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
     setOnboardingState(profile.id, {
       ...initialOnboardingState(),
       status: "in_progress",
@@ -313,11 +331,10 @@ describe("onboarding actions", () => {
     });
   });
 
-  it("does not persist fitness widgets hidden by the dashboard age gate", async () => {
+  it("persists age-neutral fitness widgets for a minor", async () => {
     const login = createLogin({ username: "onboarding-restricted-layout" });
     const profile = createTestProfile("Restricted Layout", login.id);
     actAs(login, profile);
-    setMinTrainingAge(18);
     setProfileBirthdate(profile.id, "2018-01-01");
     setOnboardingState(profile.id, {
       ...initialOnboardingState(),
@@ -334,8 +351,8 @@ describe("onboarding actions", () => {
     layout.append("widget", "goals-habits");
     await redirected(saveOnboardingDashboard(layout));
 
-    expect(getDashboardLayout(profile.id)?.order).not.toContain("coaching");
-    expect(getDashboardLayout(profile.id)?.order).not.toContain("goals-habits");
+    expect(getDashboardLayout(profile.id)?.order).toContain("coaching");
+    expect(getDashboardLayout(profile.id)?.order).toContain("goals-habits");
     expect(getDashboardLayout(profile.id)?.order).toContain("recent-labs");
   });
 

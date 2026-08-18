@@ -22,7 +22,6 @@ import { formatBytes } from "@/lib/format-bytes";
 import { requireAdmin } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { formatTimestamp } from "@/lib/format-date";
-import { minTrainingAge } from "@/lib/age-gate";
 import AppVersion from "@/components/AppVersion";
 import PageContainer from "@/components/PageContainer";
 import SettingsGroupLayout from "../SettingsGroupLayout";
@@ -31,7 +30,6 @@ import PublicUrlSettings from "../PublicUrlSettings";
 import ServerTelegramSettings from "../notifications/ServerTelegramSettings";
 import SmtpSettings from "./SmtpSettings";
 import InstanceTimezoneSettings from "./InstanceTimezoneSettings";
-import AgeGateSettings from "./AgeGateSettings";
 import BackupSettings from "./BackupSettings";
 import AuditRetentionSettings from "./AuditRetentionSettings";
 import TrashRetentionSettings from "./TrashRetentionSettings";
@@ -127,9 +125,8 @@ export default async function ServerSettingsPage() {
             the cards an admin actually revisits stay above it. */}
         <SettingsAdvanced
           testId="server-advanced"
-          hint="age gate, audit + trash retention"
+          hint="audit + trash retention"
         >
-          <AgeGateSettings minTrainingAge={minTrainingAge()} />
           <AuditRetentionSettings months={getAuditRetentionMonths()} />
           {/* How long a deleted row (and any clip captured with it) stays
               restorable under Data → Trash (#2013). */}

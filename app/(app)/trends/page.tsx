@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   ALL_TIME_RANGE_PARAM,
   ALL_TIME_RANGE_VALUE,
@@ -37,12 +36,10 @@ import TrendsSectionShell, {
   TrendsSectionSkeleton,
 } from "./TrendsSectionShell";
 import type { AppRoute } from "@/lib/hrefs";
-import {
-  isTabRestricted,
-  parseTab,
-  trendsTabStrip,
-  type TrendsTab,
-} from "@/lib/trends-tabs";
+import { parseTab, trendsTabStrip, type TrendsTab } from "@/lib/trends-tabs";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isTrainingRelevant } from "@/lib/life-stage";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -117,8 +114,6 @@ export default async function TrendsPage(props: {
   const searchParams = await props.searchParams;
   const { profile } = await requireSession();
   const todayStr = today(profile.id);
-  const restricted = isTrainingRestricted(profile.id);
-
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
   // #1485 G: no-param loads open on 90D, not all time. An explicit window still
@@ -131,19 +126,15 @@ export default async function TrendsPage(props: {
     firstParam(searchParams.range)
   );
   const allTime = isAllTimeRange(range);
-  // Fitness is spliced out below for restricted profiles; if it is requested via
-  // ?tab=, fall back to the default so the URL doesn't advertise a tab that isn't
-  // there (the tab strip already can't select it). Insights is NOT in that set
-  // since #1489 — a restricted profile gets the tab with only its compare section.
   // parseTab also maps the RETIRED `?tab=compare` onto insights (#1489) — a
   // vocabulary mapping in lib/trends-tabs.ts — and lets `?tab=body` / `?tab=vitals`
   // fall through to the default, which is the surface that absorbed them (#1644).
   // The retired NESTED `?ftab=` (#1492) maps the same way: it names Fitness when no
   // live `?tab=` is present, and its value is then ignored.
   const requestedTab = parseTab(searchParams.tab, searchParams.ftab);
-  const activeTab = isTabRestricted(requestedTab, restricted)
-    ? "overview"
-    : requestedTab;
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
+  if (requestedTab === "fitness" && !trainingRelevant) redirect("/trends");
+  const activeTab = requestedTab;
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
   const cmpNormalized = firstParam(searchParams.cmpn) === "1";
@@ -220,10 +211,8 @@ export default async function TrendsPage(props: {
   // Tab-strip spec: labels only, built by the pure registry (lib/trends-tabs.ts).
   // FOUR entries since #1644 — Vitals merged into Body (#1486), Compare into
   // Insights (#1489), and Body into Overview — in frequency order (Overview |
-  // Fitness | Nutrition | Insights). Fitness is the one age-gated surface omitted
-  // entirely for training-restricted profiles, so it's never in the strip or
-  // reachable via ?tab= for them (the activeTab fallback above enforces the latter).
-  const tabStrip = trendsTabStrip(restricted);
+  // Fitness | Nutrition | Insights).
+  const tabStrip = trendsTabStrip(trainingRelevant);
 
   // The phone range trigger is built from the SAME predicates the pills light
   // themselves with, so its compact label can never disagree with the expanded
@@ -243,9 +232,8 @@ export default async function TrendsPage(props: {
       case "fitness":
         return <FitnessSection range={range} />;
       case "insights":
-        // The hub's "derived views" tab: AI insights + situation analytics (both
-        // age-gated INSIDE the section) plus the compare overlay, which is
-        // age-neutral and therefore the only thing a restricted profile sees here.
+        // The hub's "derived views" tab: AI insights + situation analytics plus
+        // the compare overlay.
         return (
           <InsightsSection
             range={range}

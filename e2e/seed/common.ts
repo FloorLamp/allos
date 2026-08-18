@@ -77,6 +77,19 @@ export function fixtureProfileId(name: string): number {
   return createFixtureProfile(db, name);
 }
 
+// Adult fixture contracts must store the fact explicitly. Unknown age is
+// intentionally not eligible for age-gated adult experiences, so a descriptive
+// profile name or test comment is not enough to enable them.
+export function adultFixtureProfileId(name: string): number {
+  const profileId = fixtureProfileId(name);
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value)
+       VALUES (?, 'birthdate', '1988-01-01')
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(profileId);
+  return profileId;
+}
+
 // Grant an EXISTING login access to an additional profile (seedMemberLogin creates a
 // login with exactly one grant; this adds the rest). Idempotent.
 export function grantProfile(

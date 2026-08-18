@@ -13,11 +13,6 @@
 import { describe, it, expect } from "vitest";
 import { ACTIVITY_TYPES, type ActivityType } from "@/lib/types";
 import { pickActivityIconKey } from "@/lib/activity-icon";
-import {
-  DURATION_ACTIVITY_TYPES,
-  isDurationActivityType,
-  restrictedActivityTypeClause,
-} from "@/lib/age-gate";
 import { normalizeTrainingLogFilters } from "@/lib/training-log-filters";
 import { equipmentKindsForActivityType } from "@/lib/activity-equipment";
 import { metsForActivity } from "@/lib/calorie-estimate";
@@ -103,22 +98,6 @@ describe("the training log filter vocabulary is the declared tuple", () => {
 
   it("still refuses a type that is not in the vocabulary", () => {
     expect(normalizeTrainingLogFilters({ type: "sleeping" }).type).toBeNull();
-  });
-});
-
-describe("the age gate's SQL list includes the unspecified session (#489/#2272)", () => {
-  it("keeps an unclassified import visible to a restricted profile", () => {
-    // This list RENDERS SQL shared by Timeline, the sidebar calendar and Search, so
-    // omitting a type removes a restricted profile's own workout from three surfaces
-    // at once with no error anywhere.
-    expect(isDurationActivityType("unclassified")).toBe(true);
-    expect(DURATION_ACTIVITY_TYPES).toEqual([
-      "cardio",
-      "sport",
-      "unclassified",
-    ]);
-    expect(restrictedActivityTypeClause(true)).toContain("'unclassified'");
-    expect(restrictedActivityTypeClause(true)).not.toContain("'strength'");
   });
 });
 

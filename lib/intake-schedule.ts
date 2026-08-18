@@ -87,26 +87,23 @@ export const CONDITION_LABELS: Record<IntakeCondition, string> = {
 
 export const CONDITIONS = Object.keys(CONDITION_LABELS) as IntakeCondition[];
 
-// Conditions whose meaning depends on fitness/training tracking (workout vs rest
-// day). They're hidden from the schedule dropdown when training is restricted for
-// the profile, mirroring how the Training surfaces vanish (see age-gate.ts).
+// Conditions whose meaning depends on fitness/training tracking (workout vs rest day).
 export const WORKOUT_CONDITIONS: IntakeCondition[] = [
   "pre_workout",
   "post_workout",
   "rest_day",
 ];
 
-// Conditions offered in the add/edit form. When training is restricted the
-// workout/rest-day options are dropped (meaningless without fitness tracking),
-// except one already stored on the item being edited (`keep`), so its select
-// value stays valid rather than silently blanking.
-export function availableConditions(
-  trainingRestricted: boolean,
+// Workout-relative schedules only make sense when the Training product is available
+// for this profile. Keep an already-stored value in the edit picker so standing down
+// the affordance never makes historical configuration impossible to inspect or save.
+export function availableIntakeConditions(
+  activityScheduleAvailable: boolean,
   keep?: IntakeCondition | null
 ): IntakeCondition[] {
-  if (!trainingRestricted) return CONDITIONS;
+  if (activityScheduleAvailable) return CONDITIONS;
   return CONDITIONS.filter(
-    (c) => !WORKOUT_CONDITIONS.includes(c) || c === keep
+    (condition) => !WORKOUT_CONDITIONS.includes(condition) || condition === keep
   );
 }
 

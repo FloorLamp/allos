@@ -82,6 +82,28 @@ test.describe("a recorded pregnancy suspends the cycle state (#2801)", () => {
 });
 
 test.describe("life-stage gates past substance use (#2807)", () => {
+  test("a toddler cannot reach Longevity or a protocol by direct URL (#3065)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_CHILD,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/longevity");
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByTestId("longevity-fitness")).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Longevity" })).toHaveCount(
+        0
+      );
+
+      await page.goto("/protocols/999999");
+      await expect(page).toHaveURL(/\/$/);
+    } finally {
+      await page.context().close();
+    }
+  });
+
   test("a toddler is not offered PHQ-9/GAD-7 — the route re-gates like substance use", async ({
     browser,
   }) => {

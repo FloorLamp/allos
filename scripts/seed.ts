@@ -1299,7 +1299,7 @@ med.run(
 // schedule grid, status buckets, and titer aggregation all render populated.
 db.prepare(
   `INSERT INTO profile_settings (profile_id, key, value) VALUES (1, 'birthdate', ?)
-   ON CONFLICT(profile_id, key) DO NOTHING`
+   ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
 ).run("1986-04-12");
 
 const imm = db.prepare(

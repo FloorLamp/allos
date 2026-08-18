@@ -1,6 +1,9 @@
 // Rule-based coaching engine: the deterministic "one clear thing to do today"
 // recommender. Pure and client-safe — no DB/network.
-import { frequencyScopeLabel } from "../frequency-targets";
+import {
+  frequencyScopeLabel,
+  isStrengthProgrammingScope,
+} from "../frequency-targets";
 import { formatRelativeDate } from "../format-date";
 import { shiftDateStr } from "../date";
 import { currentStreak } from "../streak";
@@ -321,6 +324,28 @@ export interface CoachingInput {
   // °F. Absent ⇒ canonical "C", which is what the notification path deliberately emits.
   temperatureUnit?: TemperatureUnit;
   thresholds?: Partial<CoachingThresholds>;
+}
+
+// Remove strength-specific programming inputs while retaining cardio, recovery,
+// and ordinary activity history. Presentation and notification boundaries call
+// this with the shared life-stage predicate; keeping it pure avoids baking profile
+// I/O into the coaching engine and gives every formatter the same filtered model.
+export function strengthAppropriateCoachingInput(
+  input: CoachingInput,
+  strengthTrainingAvailable: boolean
+): CoachingInput {
+  if (strengthTrainingAvailable) return input;
+  return {
+    ...input,
+    routine: input.routine.filter(
+      ({ target }) => !isStrengthProgrammingScope(target)
+    ),
+    strength: [],
+    datedExercises: [],
+    availableEquipment: { hasAny: false, categories: [] },
+    activeRoutine: null,
+    deloadWeek: false,
+  };
 }
 
 // ---- Situation-aware coaching (issue #837) ----

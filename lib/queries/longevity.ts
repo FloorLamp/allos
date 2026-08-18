@@ -31,8 +31,8 @@ import { getStrengthByExercise } from "./training";
 import { fitnessContext } from "../fitness-norms";
 import { bestStanding } from "../strength-standards";
 import { strengthLadderPlacement } from "../strength-ladder";
-import { bioAgeDelta, isBioAgeHiddenForAge } from "../bio-age";
-import { isAdultForClinical } from "../life-stage";
+import { bioAgeDelta } from "../bio-age";
+import { isAdultForClinical, isLongevityRelevant } from "../life-stage";
 import {
   buildPillars,
   optimalRangeHitRate,
@@ -128,8 +128,10 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
     inputs.sleep = { sri: sri.sri, trend: sriTrendArrow(profileId) };
   }
 
-  // Biological age (#157/#209, PhenoAge) — adult-gated like its hero card.
-  if (!isBioAgeHiddenForAge(age)) {
+  // Biological age (#157/#209, PhenoAge) — the healthspan model requires a known
+  // adult. This is deliberately stricter than the Results input checklist, which
+  // remains useful when age is unknown and renders no biological-age number.
+  if (isLongevityRelevant(age)) {
     const draws = getBioAgeReadings(profileId).draws.filter(
       (d) => d.chronoAge != null
     );

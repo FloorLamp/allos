@@ -15,7 +15,6 @@ import {
   ALLERGY_REPRESENTATIVE_IDS,
   IMAGING_REPRESENTATIVE_IDS,
 } from "./queries/clinical";
-import { restrictedActivityTypeClause, isTrainingRestricted } from "./age-gate";
 import {
   flagInSql,
   LAB_STATED_FLAGS,
@@ -24,7 +23,8 @@ import {
 } from "./reference-range";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./training-log-format";
-import { getTimezone, type UnitPrefs } from "./settings";
+import { getProfileAge, getTimezone, type UnitPrefs } from "./settings";
+import { isLongevityRelevant } from "./life-stage";
 import {
   compactList,
   countTone,
@@ -79,12 +79,6 @@ export interface TimelineOptions {
   limit?: number;
   units?: UnitPrefs;
   includeTrainingEvents?: boolean;
-  // Age-restricted profile (#489/#618): the FULL training domain (strength
-  // activities + goals) is hidden, but the age-neutral duration activities
-  // (sport/cardio) that /training's RestrictedActivityView still shows remain
-  // visible — the type-aware successor to the old all-or-nothing
-  // includeTrainingEvents=false. Ignored when includeTrainingEvents is false.
-  restricted?: boolean;
   // Multi-view Timeline (#1329): the profile whose day a per-day deep-link
   // (`timelineDayHref` on symptom/practice events) should land on. Set ONLY by the
   // cross-profile gather (getMultiProfileTimeline) to the member being gathered, so a
@@ -337,7 +331,6 @@ function collectEvents(
     temperatureUnit: "F",
   };
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
-  const restricted = options.restricted ?? false;
   const tz = getTimezone(profileId);
   const events: TimelineEvent[] = [];
 
@@ -363,9 +356,7 @@ function collectEvents(
       .prepare(
         `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, end_time, notes, source, components
            FROM activities
-          WHERE profile_id = ?${restrictedActivityTypeClause(
-            restricted
-          )}${activityBounds.clause}
+          WHERE profile_id = ?${activityBounds.clause}
           ORDER BY date DESC, id DESC
           LIMIT ?`
       )
@@ -733,22 +724,24 @@ function collectEvents(
   // Ended event on end_date. Two-sided like medication courses, so no date-bound
   // clause here — the pure shaper emits both dates and pushLimited filters each
   // against the window. Ordered by the freshest boundary.
-  const protocolRows = db
-    .prepare(
-      `SELECT id, name, start_date, end_date
-         FROM protocols
-        WHERE profile_id = ?
-        ORDER BY COALESCE(end_date, start_date) DESC, id DESC
-        LIMIT ?`
-    )
-    .all(profileId, perTableLimit) as {
-    id: number;
-    name: string;
-    start_date: string;
-    end_date: string | null;
-  }[];
-  for (const event of protocolTimelineEvents(protocolRows)) {
-    pushLimited(events, event, options);
+  if (isLongevityRelevant(getProfileAge(profileId))) {
+    const protocolRows = db
+      .prepare(
+        `SELECT id, name, start_date, end_date
+           FROM protocols
+          WHERE profile_id = ?
+          ORDER BY COALESCE(end_date, start_date) DESC, id DESC
+          LIMIT ?`
+      )
+      .all(profileId, perTableLimit) as {
+      id: number;
+      name: string;
+      start_date: string;
+      end_date: string | null;
+    }[];
+    for (const event of protocolTimelineEvents(protocolRows)) {
+      pushLimited(events, event, options);
+    }
   }
 
   const immunizationBounds = exact("date");
@@ -1002,7 +995,7 @@ function collectEvents(
     );
   }
 
-  if (includeTrainingEvents && !restricted) {
+  if (includeTrainingEvents) {
     const goalBounds = loose(
       "COALESCE(target_date, substr(created_at, 1, 10))"
     );
@@ -1420,14 +1413,13 @@ export function getTimelinePage(
 // SUBJECT's day context. `hasMore` is true when ANY member has more history.
 export function getMultiProfileTimeline(
   viewIds: readonly number[],
-  options: Omit<TimelineOptions, "restricted" | "dayLinkProfileId"> = {}
+  options: Omit<TimelineOptions, "dayLinkProfileId"> = {}
 ): { members: MemberTimeline[]; hasMore: boolean } {
   const members: MemberTimeline[] = [];
   let hasMore = false;
   for (const pid of viewIds) {
     const page = getTimelinePage(pid, {
       ...options,
-      restricted: isTrainingRestricted(pid),
       dayLinkProfileId: pid,
     });
     if (page.hasMore) hasMore = true;
@@ -1442,10 +1434,9 @@ export function getMultiProfileTimeline(
 
 export function getTimelineDates(
   profileId: number,
-  options: Pick<TimelineOptions, "includeTrainingEvents" | "restricted"> = {}
+  options: Pick<TimelineOptions, "includeTrainingEvents"> = {}
 ): string[] {
   const includeTrainingEvents = options.includeTrainingEvents ?? true;
-  const restricted = options.restricted ?? false;
   const tz = getTimezone(profileId);
   const dates = new Set<string>();
   const add = (d: string | null | undefined) => {
@@ -1453,9 +1444,8 @@ export function getTimelineDates(
   };
 
   // Explicit-date tables: the event date IS a stored calendar column, so the raw
-  // slice matches where the timeline places the event. Activities are type-aware
-  // for a restricted profile (#618, same set RestrictedActivityView shows); goals
-  // stay gated. `date`-column selects go straight into this UNION.
+  // slice matches where the timeline places the event. Activities and goals are
+  // age-neutral profile-owned data. `date`-column selects go straight into this UNION.
   const explicitSelects: string[] = [
     "SELECT date FROM body_metrics WHERE profile_id = @profileId",
     "SELECT date FROM medical_records WHERE profile_id = @profileId",
@@ -1475,8 +1465,7 @@ export function getTimelineDates(
   ];
   if (includeTrainingEvents) {
     explicitSelects.push(
-      `SELECT date FROM activities
-        WHERE profile_id = @profileId${restrictedActivityTypeClause(restricted)}`,
+      `SELECT date FROM activities WHERE profile_id = @profileId`,
       "SELECT since AS date FROM injuries WHERE profile_id = @profileId AND since IS NOT NULL",
       `SELECT resolved_date AS date FROM injuries
         WHERE profile_id = @profileId AND resolved_date IS NOT NULL`,
@@ -1536,7 +1525,7 @@ export function getTimelineDates(
       )
       .all(profileId) as { explicit: string | null; stamp: string | null }[]
   );
-  if (includeTrainingEvents && !restricted) {
+  if (includeTrainingEvents) {
     resolveFallback(
       db
         .prepare(

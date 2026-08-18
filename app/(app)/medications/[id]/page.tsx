@@ -283,7 +283,6 @@ export default async function MedicationDetailPage(props: {
               poolChip={m.poolChip}
               todayStr={data.todayStr}
               nowIso={data.nowIso}
-              trainingRestricted={data.trainingRestricted}
               suppressedFoodKeys={data.suppressedFoodKeys}
               prnDayLabel={m.prnDayLabel}
               prnAdministrations={m.prnAdministrations}

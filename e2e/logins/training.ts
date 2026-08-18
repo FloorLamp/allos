@@ -32,7 +32,7 @@ export const FORM_INJURY_PROFILE = "Form Injury (e2e)";
 // trajectory has a real base + this-week actuals), and NO endurance_plans row — the
 // spec OWNS the create/complete/delete lifecycle on it (create-and-clean, #868), so
 // its writes never race the shared seed's seeded plan. No birthdate → adult → never
-// training-restricted, so /training renders the full hub with the Event-plans bar.
+// activity surfaces are age-neutral, so /training renders the full hub with the Event-plans bar.
 export const E2E_LOGIN_ENDURANCE = "e2e_endurance";
 export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
 

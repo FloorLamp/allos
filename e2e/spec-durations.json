@@ -354,7 +354,7 @@
   "e2e/training-log-provenance.spec.ts": 12.574,
   "e2e/training-log-search-depth.spec.ts": 7.631,
   "e2e/training-overview-doing.mobile.spec.ts": 11.104,
-  "e2e/training-restriction.spec.ts": 1.304,
+  "e2e/training-age-neutral.spec.ts": 1.304,
   "e2e/training-week-spine.spec.ts": 2.666,
   "e2e/training-zones.spec.ts": 4.599,
   "e2e/trash.spec.ts": 18.271,

@@ -36,7 +36,7 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
   // The training log aside header carries a "Start workout" button (strength-centric,
-  // shown for non-restricted profiles). It opens the create editor in live mode.
+  // shown when strength training is relevant). It opens the create editor in live mode.
   await page.getByRole("main").getByTestId("start-workout").click();
 
   // The live control strip + rest timer render (addressed by testid; the editor
@@ -117,6 +117,10 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
+  // Deleting the activity from its canonical page leaves that now-dead URL and
+  // clears its live presence before the next test shares this worker database.
+  await page.waitForURL(/\/training(\?.*)?$/);
+  await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 });
 
 // Issue #1893 — THE EPOCH PIN. `openLive()` used to clear the editor and re-stamp
@@ -169,17 +173,18 @@ test("mid-session, the workout entry point resumes and the session clock survive
   // The pin: the same start instant, so the same elapsed time continues.
   await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
 
-  // Restore from the bar and close: nothing was logged, so the close ABANDONS
-  // the created-at-start row (server-side if-empty discard) — the bar must not
-  // come back offering a session with nothing in it.
+  // Restore from the bar and explicitly delete this test's session. Escape's
+  // if-empty abandonment is covered above; an explicit delete is deterministic
+  // here even if a late live-form autosave has touched the draft.
   await page.getByTestId("workout-dock-open").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(dock).toHaveCount(0);
-  // Wait out the abandonment redirect: ending here can tear the page down
-  // with the empty session's discard still in flight, leaking an active row
-  // into the next (repeat) iteration.
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
   await page.waitForURL(/\/training(\?.*)?$/);
+  await expect(dock).toHaveCount(0);
 });
 
 test("the command palette offers 'Start workout' (#340)", async ({ page }) => {

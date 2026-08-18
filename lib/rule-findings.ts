@@ -52,7 +52,7 @@ import {
   getRiskAttributesReviewed,
   getTimezone,
 } from "./settings";
-import { isMinor } from "./life-stage";
+import { isAdultForClinical, isMinor } from "./life-stage";
 import {
   decidePairedObservation,
   pairedObservationsFor,
@@ -256,6 +256,10 @@ export function buildFitnessCheckFindings(
   today: string,
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): Finding[] {
+  // The check's call to action and copy are explicitly about adult-population
+  // percentiles. Historical rows stay preserved, but a minor or unknown-age
+  // profile must not get a dead-end reminder for an adult-only route.
+  if (!isAdultForClinical(getProfileAge(profileId))) return [];
   const lastDate = getLatestFitnessAssessmentDate(profileId);
   const cadence = getFitnessRetestCadenceDays(profileId);
   const d = fitnessRetestDue(lastDate, cadence, today);

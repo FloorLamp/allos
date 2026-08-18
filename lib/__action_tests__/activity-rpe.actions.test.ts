@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
@@ -62,6 +63,7 @@ describe("saveActivity RPE (issue #743)", () => {
     const login = createLogin({ weightUnit: "kg" });
     const profile = createProfile("rpe-lifter", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     const res = await logBench([
       { rpe: 8 },
@@ -78,6 +80,7 @@ describe("saveActivity RPE (issue #743)", () => {
     const login = createLogin({ weightUnit: "kg" });
     const profile = createProfile("rpe-target", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     const res = await logBench([{ reps: 5, rpe: 8, targetReps: 5 }]);
     expect(res.ok).toBe(true);
@@ -95,6 +98,7 @@ describe("saveActivity RPE (issue #743)", () => {
       const login = createLogin({ weightUnit: "kg" });
       const profile = createProfile("rpe-snap", login.id);
       actAs(login, profile);
+      setStoredAge(profile.id, 30);
 
       // 8.2 → 8.0, 8.3 → 8.5 (canonicalRpe rounds to the 0.5 grid).
       const res = await logBench([{ rpe: 8.2 }, { rpe: 8.3 }]);
@@ -107,6 +111,7 @@ describe("saveActivity RPE (issue #743)", () => {
       const login = createLogin({ weightUnit: "kg" });
       const profile = createProfile("rpe-range", login.id);
       actAs(login, profile);
+      setStoredAge(profile.id, 30);
 
       // 4 is below the 5 floor, 11 above the 10 ceiling — both dropped to NULL,
       // and the set itself still saves.

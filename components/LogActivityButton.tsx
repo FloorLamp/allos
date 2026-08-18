@@ -13,7 +13,8 @@ export default function LogActivityButton({
   onClick?: () => void;
   testId?: string;
 }) {
-  const { openCreate } = useActivityEditor();
+  const { openCreate, trainingRelevant } = useActivityEditor();
+  if (!trainingRelevant) return null;
   return (
     <button
       type="button"

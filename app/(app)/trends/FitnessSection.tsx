@@ -14,6 +14,8 @@ import FitnessVolumeSection from "./FitnessVolumeSection";
 import FitnessZonesSection from "./FitnessZonesSection";
 import FitnessStrengthSection from "./FitnessStrengthSection";
 import FitnessSportSection from "./FitnessSportSection";
+import { getProfileAge } from "@/lib/settings";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 
 // Trends → Fitness: the WINDOWED ANALYTICS LENS (issue #1492).
 //
@@ -51,10 +53,14 @@ import FitnessSportSection from "./FitnessSportSection";
 // ftab=cardio` from a Telegram nudge or a bookmark still lands here, now on a page
 // where the zone content it wanted is simply a section.
 //
-// The whole tab stays TAB-level age-gated (RESTRICTED_TRENDS_TABS): a
-// training-restricted profile never sees the chip and never reaches the section.
+// Existing activity history remains an age-neutral record. This workout-oriented
+// tab starts at age 5, and strength-specific analytics wait for the shared
+// adolescent threshold.
 export default async function FitnessSection({ range }: { range: DateRange }) {
   const { profile } = await requireSession();
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(
+    getProfileAge(profile.id)
+  );
   const todayStr = today(profile.id);
   const window = fitnessWindow(range, todayStr);
   // ONE week-count decision, shared by every weekly-grain builder on the tab (the
@@ -68,23 +74,35 @@ export default async function FitnessSection({ range }: { range: DateRange }) {
           layer on phones. Keep the optional long-page shortcut as the same compact
           desktop chart menu used by Body. */}
       <div className="hidden justify-end md:flex">
-        <ChartJumpMenu items={FITNESS_SECTIONS.map((s) => ({ ...s }))} />
+        <ChartJumpMenu
+          items={FITNESS_SECTIONS.filter(
+            (section) =>
+              strengthTrainingAvailable ||
+              (section.id !== "volume" && section.id !== "strength")
+          ).map((s) => ({ ...s }))}
+        />
       </div>
 
       <WorkoutHistorySection window={window} />
 
       <hr className="border-black/5 dark:border-white/10" />
 
-      <FitnessPRs window={window} />
+      <FitnessPRs
+        window={window}
+        strengthTrainingAvailable={strengthTrainingAvailable}
+      />
 
-      <FitnessVolumeSection window={window} />
+      {strengthTrainingAvailable && <FitnessVolumeSection window={window} />}
       <FitnessZonesSection window={window} weeks={weeks} />
-      <FitnessStrengthSection window={window} weeks={weeks} />
+      {strengthTrainingAvailable && (
+        <FitnessStrengthSection window={window} weeks={weeks} />
+      )}
       <FitnessSportSection window={window} />
 
       <p className="text-sm text-slate-500 dark:text-slate-400">
-        Logging, live workouts, routines, the full-history explorers and the
-        fitness check live on{" "}
+        {strengthTrainingAvailable
+          ? "Logging, live workouts, routines, the full-history explorers and the fitness check live on "
+          : "Activity logging and full history live on "}
         <Link
           href="/training"
           className="font-medium text-brand-700 hover:underline dark:text-brand-300"

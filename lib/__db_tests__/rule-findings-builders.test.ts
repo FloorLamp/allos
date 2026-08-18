@@ -37,7 +37,7 @@ import {
   mobilitySuggestSignalKey,
   FLEXIBILITY_REGION,
 } from "@/lib/mobility-suggest";
-import { setFitnessRetestCadenceDays } from "@/lib/settings";
+import { setFitnessRetestCadenceDays, setStoredAge } from "@/lib/settings";
 import {
   muscleVolumeSignalKey,
   MIN_BAND_HISTORY_WEEKS,
@@ -1040,6 +1040,12 @@ describe("buildOralHealthFindings — diabetes↔periodontitis note (#706)", () 
 // Fitness-check retest nudge (#834) — coaching tier. Seeds a fitness_assessments session
 // row at a chosen age and asserts the end-to-end due decision + the exact dedupeKey/tier.
 describe("buildFitnessCheckFindings — fitness-check retest cadence", () => {
+  function adultProfile(name: string) {
+    const profile = makeProfile(name);
+    setStoredAge(profile.profileId, 40);
+    return profile;
+  }
+
   function seedCheck(profileId: number, date: string) {
     db.prepare(
       "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, ?)"
@@ -1047,7 +1053,7 @@ describe("buildFitnessCheckFindings — fitness-check retest cadence", () => {
   }
 
   it("nudges once a prior check ages past the default cadence", () => {
-    const { profileId, anchor } = makeProfile("fitness-due");
+    const { profileId, anchor } = adultProfile("fitness-due");
     const last = shiftDateStr(anchor, -120); // > 90-day default
     seedCheck(profileId, last);
     const findings = buildFitnessCheckFindings(profileId, anchor);
@@ -1067,23 +1073,43 @@ describe("buildFitnessCheckFindings — fitness-check retest cadence", () => {
   });
 
   it("stays quiet inside the cadence window", () => {
-    const { profileId, anchor } = makeProfile("fitness-recent");
+    const { profileId, anchor } = adultProfile("fitness-recent");
     seedCheck(profileId, shiftDateStr(anchor, -30));
     expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]);
   });
 
   it("never nags a subject who has never done a check", () => {
-    const { profileId, anchor } = makeProfile("fitness-never");
+    const { profileId, anchor } = adultProfile("fitness-never");
     expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]);
   });
 
   it("respects a shortened per-profile cadence", () => {
-    const { profileId, anchor } = makeProfile("fitness-cadence");
+    const { profileId, anchor } = adultProfile("fitness-cadence");
     seedCheck(profileId, shiftDateStr(anchor, -40));
     expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]); // 40 < 90 default
     setFitnessRetestCadenceDays(profileId, 30);
     expect(buildFitnessCheckFindings(profileId, anchor)).toHaveLength(1); // 40 > 30
   });
+
+  it.each([
+    ["minor", 15],
+    ["unknown", null],
+  ])(
+    "keeps historical rows but emits no adult-percentile reminder for a %s",
+    (_label, age) => {
+      const { profileId, anchor } = makeProfile(`fitness-${_label}`);
+      if (age != null) setStoredAge(profileId, age);
+      const last = shiftDateStr(anchor, -120);
+      seedCheck(profileId, last);
+
+      expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]);
+      expect(
+        db
+          .prepare("SELECT date FROM fitness_assessments WHERE profile_id = ?")
+          .get(profileId)
+      ).toEqual({ date: last });
+    }
+  );
 });
 
 // ---- #840 phase 2: mobility deficit → habit suggestions ---------------------
@@ -1213,6 +1239,7 @@ describe("finding-text date pref threading (#1020)", () => {
 
   it("fitness-check: prefs reshape the detail date but never the dedupeKey", () => {
     const { profileId, anchor } = makeProfile("fitness-1020");
+    setStoredAge(profileId, 40);
     const lastCheck = shiftDateStr(anchor, -400);
     db.prepare(
       "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, ?)"

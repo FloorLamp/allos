@@ -44,7 +44,12 @@ import {
 } from "../fixture-logins";
 import { getTimezone } from "../../lib/settings";
 import { setFixtureTimezone } from "../fixture-timezones";
-import { ins, seedMemberLogin, fixtureProfileId } from "./common";
+import {
+  ins,
+  seedMemberLogin,
+  adultFixtureProfileId,
+  fixtureProfileId,
+} from "./common";
 
 // ── Nutrition trio (protein gauge / preferences / fiber) ──
 export function seedNutritionTrio(): void {
@@ -172,7 +177,7 @@ export function seedNutritionTrio(): void {
   // A dedicated ADULT profile that owns NO equipment (issue #592) so the activity
   // form's equipment picker renders its empty-state "Add equipment" bootstrap door.
   // It owns nothing else either — the spec only opens the log form and reads the door.
-  const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
+  const noGearId = adultFixtureProfileId(NO_GEAR_PROFILE);
   db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(noGearId);
   seedMemberLogin(E2E_LOGIN_NOGEAR, noGearId);
 
@@ -294,7 +299,7 @@ export function seedNutritionTrio(): void {
   // updated_at (auto-save timestamp) — so getWorkoutPresence reads `active`. Drives
   // the workout dock hydration/reopen and the household presence chip. Idempotent:
   // clear the profile's activities first so a reused server re-plants exactly one.
-  const presenceId = fixtureProfileId(PRESENCE_PROFILE);
+  const presenceId = adultFixtureProfileId(PRESENCE_PROFILE);
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(presenceId);
   {
     const now = clockNow();
@@ -322,7 +327,7 @@ export function seedNutritionTrio(): void {
   // sets that hit their rep target, plus a prior session of the same lift a week
   // earlier so the recap flags a PR. So getWorkoutPresence reads `finished` and the
   // dashboard renders the finished-window recap card. Idempotent: clear activities first.
-  const recapId = fixtureProfileId(RECAP_PROFILE);
+  const recapId = adultFixtureProfileId(RECAP_PROFILE);
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(recapId);
   {
     const now = clockNow();
@@ -506,7 +511,7 @@ export function seedRoutineUsual(): void {
   //
   // UTC with the default 11:00/15:00 boundaries, so 08:00Z is Morning, 12:00Z Midday and
   // 19:00Z Evening. Idempotent: every fixture-owned row is cleared first.
-  const routineId = fixtureProfileId(ROUTINE_USUAL_PROFILE);
+  const routineId = adultFixtureProfileId(ROUTINE_USUAL_PROFILE);
   setFixtureTimezone(db, routineId, "routine-usual", "UTC");
   const routineAnchor = today(routineId);
   db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
@@ -596,7 +601,7 @@ export function seedFoodPinSplit(): void {
   // quick rows, which is the only way the rendered order stops matching the ranked one.
   // Idempotent: every fixture-owned row is cleared first, so a reused server re-seeds
   // into exactly this state.
-  const pinId = fixtureProfileId(FOOD_PIN_PROFILE);
+  const pinId = adultFixtureProfileId(FOOD_PIN_PROFILE);
   const pinAnchor = today(pinId);
   db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(pinId);
   db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(pinId);

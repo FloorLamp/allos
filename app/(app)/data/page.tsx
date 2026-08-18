@@ -4,7 +4,9 @@ import {
   getTrashRetentionDays,
   getUnitPrefs,
   getProfileFullName,
+  getProfileAge,
 } from "@/lib/settings";
+import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { PageHeader } from "@/components/ui";
@@ -66,6 +68,9 @@ export default async function DataPage(
   const searchParams = await props.searchParams;
   const { login, profile, access } = await requireSession();
   const units = getUnitPrefs(login.id);
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(
+    getProfileAge(profile.id)
+  );
   const section = parseSection(searchParams.section);
   // Demo mode (#181): disable the medical-upload input (a PHI-entry vector) with a
   // hint. The write is already blocked server-side; this is the UX on top.
@@ -172,14 +177,21 @@ export default async function DataPage(
                   id: "paste",
                   label: "Paste CSV",
                   content: (
-                    <ImportClient units={{ weightUnit: units.weightUnit }} />
+                    <ImportClient
+                      units={{ weightUnit: units.weightUnit }}
+                      workoutImportAvailable={strengthTrainingAvailable}
+                    />
                   ),
                 },
               ]}
             />
           </div>
 
-          <ImportJobList jobs={importJobs} unit={units.weightUnit} />
+          <ImportJobList
+            jobs={importJobs}
+            unit={units.weightUnit}
+            workoutImportAvailable={strengthTrainingAvailable}
+          />
         </section>
 
         {/* The continuous-stream on/offboarding offer (#2162), directly above the

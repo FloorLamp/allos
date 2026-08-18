@@ -46,6 +46,7 @@ import {
   setMetricSourcePriorityEntry,
   setMaxHrOverride,
   setZone2WeeklyTargetMin,
+  setStoredAge,
   type WeekStart,
 } from "@/lib/settings";
 
@@ -61,6 +62,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
       db.prepare("INSERT INTO profiles (name) VALUES ('WeightDedup')").run()
         .lastInsertRowid
     );
+    setStoredAge(profileId, 30);
     // Manual weigh-ins are the primary source here (issue's failure scenario).
     setMetricSourcePriorityEntry(profileId, "weight", "manual");
     // DAY1: single manual reading.
@@ -79,7 +81,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
   });
 
   it("buildMetricSeries weight is the deduped daily series — one point per day, no zig-zag (#395)", () => {
-    const [weight] = buildMetricSeries(profileId, 1, {}, false);
+    const [weight] = buildMetricSeries(profileId, 1, {});
     expect(weight.key).toBe("metric:weight");
     // One point per DAY (not one per raw row): the two-device DAY2 collapses to one.
     const dates = weight.points.map((p) => p.date);
@@ -97,7 +99,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
   });
 
   it("the tile's latest agrees with the dashboard QuickStats current weight (#395)", () => {
-    const [weight] = buildMetricSeries(profileId, 1, {}, false);
+    const [weight] = buildMetricSeries(profileId, 1, {});
     const tileLatest = weight.points[weight.points.length - 1].value;
     expect(tileLatest).toBe(getDashboardStats(profileId).latestWeight?.value);
     expect(getDashboardStats(profileId).latestWeight).toEqual(
@@ -107,7 +109,7 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
 
   it("routes Overview metrics to their detailed chart surfaces", () => {
     const byKey = new Map(
-      buildMetricSeries(profileId, 1, {}, false).map((series) => [
+      buildMetricSeries(profileId, 1, {}).map((series) => [
         series.key,
         series.href,
       ])
@@ -150,6 +152,7 @@ describe("logical outcome identity", () => {
       db.prepare("INSERT INTO profiles (name) VALUES ('LogicalOutcomes')").run()
         .lastInsertRowid
     );
+    setStoredAge(profileId, 30);
     db.prepare(
       `INSERT INTO medical_records
          (profile_id, date, category, name, canonical_name, value_num, unit)
@@ -157,7 +160,7 @@ describe("logical outcome identity", () => {
                'Resting Heart Rate', 61, 'bpm')`
     ).run(profileId);
 
-    const options = listCompareOptions(profileId, false);
+    const options = listCompareOptions(profileId);
     expect(options.metrics.map((option) => option.key)).toContain(
       "metric:resting_hr"
     );
@@ -165,7 +168,7 @@ describe("logical outcome identity", () => {
       "result:Resting Heart Rate"
     );
 
-    const digest = buildDigestSeries(profileId, 1, {}, false);
+    const digest = buildDigestSeries(profileId, 1, {});
     expect(
       digest.filter(
         (series) => series.label === TREND_METRIC_META["resting-hr"].title
@@ -187,8 +190,8 @@ describe("#397 — Trends zone card 'this week' Zone 2 honors week_mode", () => 
       db.prepare("INSERT INTO profiles (name) VALUES ('ZoneWeek')").run()
         .lastInsertRowid
     );
-    // A resolvable zone model without needing an age: max HR 200 → Zone 2 is
-    // [120,140) bpm on the percent-max model.
+    setStoredAge(profileId, 30);
+    // Max HR 200 resolves Zone 2 to [120,140) bpm on the percent-max model.
     setMaxHrOverride(profileId, 200);
     setZone2WeeklyTargetMin(profileId, 60);
 

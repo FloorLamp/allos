@@ -199,7 +199,7 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
   },
   {
     table: "activity_videos",
-    why: "training form-check video clips (#1224). Same strictest tier and the same #1846 opt-in (media/activity-videos/, with exercise/caption/duration plus the parent activity's date and title in media/index.json) — with one extra gate: a training-restricted profile's clips are held back exactly like its activities/goals datasets (#471), so the clips can't be the way around the age gate. Clips live at data/uploads/activity-videos/<profileId>/ and are unlinked with the profile on delete.",
+    why: "training form-check video clips (#1224). Same strictest tier and the same #1846 opt-in (media/activity-videos/, with exercise/caption/duration plus the parent activity's date and title in media/index.json). Activity data is age-neutral, so its clips follow the same profile-scoped activity opt-in at every life stage. Clips live at data/uploads/activity-videos/<profileId>/ and are unlinked with the profile on delete.",
   },
 ];
 

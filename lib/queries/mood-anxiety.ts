@@ -22,6 +22,8 @@ import { getIntakeSafetyContext } from "./intake";
 import { getProtocols } from "./protocols";
 import { hasPriorAnxietyLog } from "./mood";
 import { getAnxietyScaleOptIn } from "../settings/notifications";
+import { getProfileAge } from "../settings/profile-attrs";
+import { isLongevityRelevant } from "../life-stage";
 
 const ANXIETY_OUTCOME_SET = new Set<string>(ANXIETY_PROTOCOL_OUTCOME_KEYS);
 
@@ -59,11 +61,13 @@ export function isAnxietyScaleRelevant(profileId: number): boolean {
 
   // 5. Protocol outcome — an ONGOING (end_date NULL) protocol whose primary outcome
   //    IS the anxiety series (#1259): its outcome keys include an anxiety instrument.
-  const anxietyProtocolOutcome = getProtocols(profileId).some(
-    (p) =>
-      p.end_date == null &&
-      p.outcomeKeys.some((k) => ANXIETY_OUTCOME_SET.has(k))
-  );
+  const anxietyProtocolOutcome =
+    isLongevityRelevant(getProfileAge(profileId)) &&
+    getProtocols(profileId).some(
+      (p) =>
+        p.end_date == null &&
+        p.outcomeKeys.some((k) => ANXIETY_OUTCOME_SET.has(k))
+    );
 
   // 6. Explicit opt-in — the Settings → Profile toggle.
   const optIn = getAnxietyScaleOptIn(profileId);

@@ -19,6 +19,7 @@ import {
   computeWorkoutPresence,
   type PresenceActivityRow,
 } from "@/lib/workout-presence";
+import { setStoredAge } from "@/lib/settings";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -49,7 +50,51 @@ describe("commitImportJob — save a ready paste import", () => {
 
   beforeEach(() => {
     ({ login, profile } = seedActor({ profileName: "Test Patient" }));
+    setStoredAge(profile.id, 30);
     revalidate.mockClear();
+  });
+
+  it("keeps a ready strength import reviewable but refuses to commit it for a child", async () => {
+    setStoredAge(profile.id, 4);
+    const jobId = seedReadyJob(profile.id, {
+      ok: true,
+      type: "workouts",
+      workouts: [
+        {
+          date: "2026-01-05",
+          title: "Imported lift",
+          notes: null,
+          intensity: null,
+          start_time: null,
+          end_time: null,
+          duration_min: 20,
+          sets: [
+            {
+              exercise: "Bench Press",
+              weight: 20,
+              weight_unit: "kg",
+              reps: 5,
+              duration_sec: null,
+              weight_right: null,
+              reps_right: null,
+              equipment: null,
+              target_reps: null,
+              to_failure: null,
+            },
+          ],
+        },
+      ],
+    });
+
+    const res = await commitImportJob(jobId);
+
+    expect(res).toMatchObject({ ok: false });
+    expect(jobStatus(jobId)).toBe("ready");
+    expect(
+      db
+        .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")
+        .get(profile.id)
+    ).toEqual({ n: 0 });
   });
 
   it("commits a ready workouts job: writes activities + sets, then deletes the job", async () => {

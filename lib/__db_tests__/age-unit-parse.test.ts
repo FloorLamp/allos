@@ -97,7 +97,7 @@ describe("a document stating an age in months records an infant (#3020)", () => 
     // gap between those two readings is the whole bug.
     const p = importDocumentStating("aup eighteen months", "18 months");
     expect(getStoredAge(p)).toBe(1);
-    expect(stageOf(p)).toBe("child");
+    expect(stageOf(p)).toBe("early-childhood");
 
     const control = importDocumentStating("aup eighteen years", "18");
     expect(stageOf(control)).toBe("adult");
@@ -128,7 +128,7 @@ describe("a document stating an age in months records an infant (#3020)", () => 
     for (const [i, stated] of ["12 months", "53 w", "366 days"].entries()) {
       const p = importDocumentStating(`aup a year ${i}`, stated);
       expect([stated, getStoredAge(p)]).toEqual([stated, 1]);
-      expect(stageOf(p)).toBe("child");
+      expect(stageOf(p)).toBe("early-childhood");
     }
   });
 

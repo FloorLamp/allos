@@ -49,7 +49,8 @@ test.describe("Strava integration (#391)", () => {
     test.slow();
 
     // Riley (child) has no Strava connection → the disconnected state. Integration
-    // setup is not age-gated, so the page renders for this restricted profile.
+    // Integration setup remains available when the workout product is not, so
+    // the page still renders for this early-childhood profile.
     const member = await loginAs(browser, {
       username: E2E_LOGIN_CHILD,
       password: E2E_MEMBER_PASSWORD,

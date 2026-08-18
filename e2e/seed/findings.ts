@@ -211,7 +211,7 @@ export function seedGoalPacing(): void {
     `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
        ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
   );
-  // An adult, so /training is never age-gated for this login (lib/age-gate.ts).
+  // Adult demographics also let this fixture exercise population benchmarks.
   setGp.run(gpId, "birthdate", "1988-03-12");
   setGp.run(gpId, "sex", "male");
 

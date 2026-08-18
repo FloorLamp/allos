@@ -20,6 +20,7 @@ import {
 } from "@/app/(app)/training/frequency-actions";
 import { activateRoutine, createCustomRoutine } from "@/lib/routines";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
 
 function newTarget(
   profileId: number,
@@ -69,9 +70,38 @@ function targetExists(id: number): boolean {
   );
 }
 
+describe("createFrequencyTarget life-stage relevance", () => {
+  it("blocks workout targets but preserves food habits through early childhood", async () => {
+    const login = createLogin();
+    const profile = createProfile("FT-TODDLER", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 2);
+
+    await createFrequencyTarget(
+      fd({ scope_kind: "type", scope_value: "cardio", per_week: 2 })
+    );
+    await createFrequencyTarget(
+      fd({
+        scope_kind: "food_group",
+        scope_value: "leafy_greens",
+        per_week: 3,
+      })
+    );
+
+    expect(
+      db
+        .prepare(
+          "SELECT scope_kind, scope_value FROM frequency_targets WHERE profile_id = ? ORDER BY id"
+        )
+        .all(profile.id)
+    ).toEqual([{ scope_kind: "food_group", scope_value: "leafy_greens" }]);
+  });
+});
+
 describe("deleteFrequencyTarget with a protocol referencing the goal (#1809)", () => {
   it("deletes the goal, and the protocol survives with no intervention linked", async () => {
     const { profile } = seedActor();
+    setStoredAge(profile.id, 30);
     const targetId = newTarget(profile.id, "type", "strength");
     const protocolId = newProtocol(profile.id, targetId);
 
@@ -116,6 +146,7 @@ describe("deleteFrequencyTarget with a protocol referencing the goal (#1809)", (
 describe("the goals-upsert collision delete (#1809)", () => {
   it("re-scoping an edit onto an occupied scope completes, freeing the collided-with goal's protocol", async () => {
     const { profile } = seedActor();
+    setStoredAge(profile.id, 30);
     // The row being edited, and the row already occupying the scope it moves onto.
     const edited = newTarget(profile.id, "type", "cardio", 2);
     const collided = newTarget(profile.id, "type", "strength", 4);

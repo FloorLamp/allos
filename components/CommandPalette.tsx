@@ -157,6 +157,7 @@ export default function CommandPalette({
     openRepeatLast,
     hasLastActivity,
     canStartWorkout,
+    trainingRelevant,
     workoutOffer,
   } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
@@ -206,11 +207,12 @@ export default function CommandPalette({
       matchPaletteActions(query).filter(
         (a) =>
           (a.target.kind !== "repeat" || hasLastActivity) &&
-          // Live workout is strength-centric; hidden for age-restricted profiles
-          // (#489/#340).
+          (trainingRelevant ||
+            (a.target.kind !== "activity" && a.target.kind !== "repeat")) &&
+          // The provider can still withhold live mode for a read-only context.
           (a.target.kind !== "live" || canStartWorkout)
       ),
-    [query, hasLastActivity, canStartWorkout]
+    [query, hasLastActivity, canStartWorkout, trainingRelevant]
   );
   const hits = useMemo(() => flattenHits(groups), [groups]);
 

@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { trainingItems, trainingPaceLine } from "@/lib/queries/upcoming/plans";
 import { practiceIdentity } from "@/lib/practice";
-import { setWeekMode } from "@/lib/settings";
+import { setStoredAge, setWeekMode } from "@/lib/settings";
 import { trainingSignalKey } from "@/lib/workout-nudge";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
@@ -24,6 +24,7 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
   // Rolling window, so the week the targets are measured over never depends on which
   // weekday the suite happens to run.
   setWeekMode(profileId, "rolling");
+  setStoredAge(profileId, 15);
   return { profileId, anchor: today(profileId) };
 }
 
@@ -100,6 +101,22 @@ describe("weekly floor targets carry their SCOPE's identity (#2578)", () => {
       expect(item!.detail).toBe("Weekly training target");
       expect(item!.href).toBe("/training");
     }
+  });
+
+  it("hides strength targets but retains cardio, food, and mobility at school age", () => {
+    const { profileId } = makeProfile("wti-school-age");
+    setStoredAge(profileId, 10);
+    const strength = addTarget(profileId, "region", "Back", 2);
+    const cardio = addTarget(profileId, "type", "cardio", 3);
+    const food = addTarget(profileId, "food_group", "berries", 4);
+    const mobility = addTarget(profileId, "mobility_region", "Glutes", 3);
+
+    const keys = new Set(trainingItems(profileId).map((item) => item.key));
+    expect(keys.has(trainingSignalKey(strength))).toBe(false);
+    expect(keys.has(trainingSignalKey(cardio))).toBe(true);
+    expect(keys.has(trainingSignalKey(food))).toBe(true);
+    expect(keys.has(trainingSignalKey(mobility))).toBe(true);
+    expect(trainingPaceLine(profileId)).toContain("of 1 training target");
   });
 
   it("the key namespace is UNCHANGED for every scope, so stored dismissals still bind", () => {

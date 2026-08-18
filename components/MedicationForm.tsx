@@ -137,9 +137,6 @@ export default function MedicationForm({
   pgxVariants?: PgxVariantInput[];
   pairs?: IntakePair[];
   onDone?: () => void;
-  // Accepted for prop symmetry with the supplement form / existing med plumbing, but
-  // unused: a medication has no workout/rest-day scheduling to gate (#846).
-  trainingRestricted?: boolean;
   // Pediatric label-dosing context (#798): the child's age + latest recorded weight,
   // so a PRN medication form can reproduce the OTC weight-band suggestion AND the
   // dose-amount prefill can come from the band for a child. Absent for surfaces that

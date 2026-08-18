@@ -11,6 +11,8 @@ import IntegrationStatusHeader from "@/components/integrations/IntegrationStatus
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import SyncNowButton from "@/components/SyncNowButton";
 import { connectOura, disconnectOuraAction } from "./actions";
+import { getProfileAge } from "@/lib/settings";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,7 @@ export default async function OuraPage(props: {
   const conn = getConnection(profile.id, "oura");
   const cfg = getOuraConfig(profile.id);
   const connected = conn?.status === "connected" && !!cfg.token;
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
   // The personal access token was revoked (issue #326) — surface an actionable notice.
   const needsReauth = conn?.status === "needs_reauth";
   const linkedEmail = cfg.personalInfo?.email ?? null;
@@ -100,7 +103,7 @@ export default async function OuraPage(props: {
             )}
           </div>
 
-          <SetupCard />
+          <SetupCard trainingRelevant={trainingRelevant} />
 
           <SyncHistoryTable state={state} isAdmin={login.role === "admin"} />
         </div>
@@ -144,14 +147,14 @@ export default async function OuraPage(props: {
             </form>
           </div>
 
-          <SetupCard />
+          <SetupCard trainingRelevant={trainingRelevant} />
         </div>
       )}
     </PageContainer>
   );
 }
 
-function SetupCard() {
+function SetupCard({ trainingRelevant }: { trainingRelevant: boolean }) {
   return (
     <div className="card space-y-3 text-sm text-slate-600 dark:text-slate-300">
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -179,10 +182,10 @@ function SetupCard() {
         <li>
           Imported workouts appear under{" "}
           <Link
-            href="/training?tab=log"
+            href={trainingRelevant ? "/training?tab=log" : "/timeline"}
             className="text-brand-700 underline dark:text-brand-400"
           >
-            Training history
+            {trainingRelevant ? "Training history" : "Timeline"}
           </Link>
           ; sleep, HRV, and resting heart rate feed the{" "}
           <Link

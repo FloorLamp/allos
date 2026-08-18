@@ -693,11 +693,12 @@ export function classifySetReplay(outcome: SaveActivityOutcome): {
 } {
   if (outcome.ok) return { status: "done" };
   switch (outcome.reason) {
-    case "restricted":
+    case "strength-unavailable":
+    case "training-unavailable":
       return {
         status: "rejected",
         reason:
-          "Activity logging isn't available for this profile, so the workout wasn't saved.",
+          "Strength workouts aren't available for this profile's age, so it wasn't saved.",
       };
     case "not-owned":
       return {

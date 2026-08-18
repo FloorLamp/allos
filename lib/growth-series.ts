@@ -94,7 +94,7 @@ function latestOnOrBefore(
 //                  month), and well-child length checks in the first year are 2–3
 //                  months apart, so a length older than a quarter predates the last
 //                  scheduled measurement.
-//   • child      — six months. The pediatric growth-monitoring interval; beyond it a
+//   • early-childhood / child — six months. The pediatric growth-monitoring interval; beyond it a
 //                  height is a different child's height.
 //   • adolescent — six months, for the same reason: peak height velocity runs to
 //                  8–9 cm a year and does not announce itself.
@@ -109,6 +109,7 @@ function latestOnOrBefore(
 // `due`: no clock applies, so the pairing stands.
 export const PAIRED_HEIGHT_INTERVAL_DAYS: Record<LifeStage, number | null> = {
   infant: 92,
+  "early-childhood": 183,
   child: 183,
   adolescent: 183,
   adult: null,

@@ -97,6 +97,7 @@ import {
   PROFILE_ID,
   ins,
   seedMemberLogin,
+  adultFixtureProfileId,
   fixtureProfileId,
   grantProfile,
 } from "./common";
@@ -192,7 +193,7 @@ export function seedNowStrip(): void {
   // signal is time-of-day independent (a 60-minute window off the frozen clock), so
   // it is the one the spec can assert without depending on the run's start hour.
   // Idempotent: clear activities + appointments first.
-  const nowStripId = fixtureProfileId(NOW_STRIP_PROFILE);
+  const nowStripId = adultFixtureProfileId(NOW_STRIP_PROFILE);
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(nowStripId);
   db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(nowStripId);
   {
@@ -259,7 +260,7 @@ export function seedNowStrip(): void {
   // mentalHealthCrisisItems emit a `suppressionPolicy: "safety-ungated"` attention
   // item, which attentionHeroState must refuse to collapse (#449/#942).
   // Synthetic score on a fictional profile — no PHI. Idempotent.
-  const nowSafetyId = fixtureProfileId(NOW_SAFETY_PROFILE);
+  const nowSafetyId = adultFixtureProfileId(NOW_SAFETY_PROFILE);
   db.prepare(
     `DELETE FROM medical_records WHERE profile_id = ? AND category = 'instrument'`
   ).run(nowSafetyId);
@@ -349,7 +350,9 @@ export function seedNowStrip(): void {
   // clean slate — no routines — plus two training-scope frequency targets so the
   // activate-confirm dialog (which only appears when there ARE targets to replace) is
   // exercised. Idempotent.
-  const routineBuilderProfileId = fixtureProfileId(ROUTINE_BUILDER_PROFILE);
+  const routineBuilderProfileId = adultFixtureProfileId(
+    ROUTINE_BUILDER_PROFILE
+  );
   seedMemberLogin(E2E_LOGIN_ROUTINE_BUILDER, routineBuilderProfileId);
   db.prepare(
     `DELETE FROM routine_slots WHERE routine_day_id IN (
@@ -382,7 +385,7 @@ export function seedNowStrip(): void {
   // action row (Start workout + New activity, no Repeat last). Idempotent: hard-clear any
   // activities (and their sets) on a reused server so the profile can never drift out of
   // its empty contract.
-  const emptyTrainingId = fixtureProfileId(EMPTY_TRAINING_PROFILE);
+  const emptyTrainingId = adultFixtureProfileId(EMPTY_TRAINING_PROFILE);
   db.prepare(
     `DELETE FROM exercise_sets WHERE activity_id IN (
      SELECT id FROM activities WHERE profile_id = ?)`
@@ -615,7 +618,7 @@ export function seedNowStrip(): void {
   // today's routine session and renders the "Today's session" card without a rest
   // override. Idempotent: reset the routine tables for this profile, then adopt +
   // activate the PPL template fresh (activate resets position to 0 → Push day).
-  const routineProfileId = fixtureProfileId(ROUTINE_PROFILE);
+  const routineProfileId = adultFixtureProfileId(ROUTINE_PROFILE);
   db.prepare(
     `DELETE FROM routine_slots WHERE routine_day_id IN (
      SELECT rd.id FROM routine_days rd
@@ -641,7 +644,7 @@ export function seedNowStrip(): void {
   // (weekInCycle = floor(7/7) % 2 = 1 = the last, deload week). No credited sessions in
   // that 7-day span, so the pause re-anchor never trips (gap 7 < 21). SEPARATE from
   // ROUTINE_PROFILE so the #740 recommendation spec's non-deload copy stays intact.
-  const deloadProfileId = fixtureProfileId(ROUTINE_DELOAD_PROFILE);
+  const deloadProfileId = adultFixtureProfileId(ROUTINE_DELOAD_PROFILE);
   db.prepare(
     `DELETE FROM routine_slots WHERE routine_day_id IN (
      SELECT rd.id FROM routine_days rd

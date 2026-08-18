@@ -28,9 +28,9 @@ export const dynamic = "force-dynamic";
 // one is ~250 MB compressed and Google splits multi-GB accounts into ~2 GB parts. The
 // cap is generous BUT real — an unbounded stream-to-disk is a trivial way to fill an
 // operator's volume. Overridable for an outlier account.
-export const DEFAULT_MAX_TAKEOUT_BYTES = 1024 * 1024 * 1024; // 1 GiB
+const DEFAULT_MAX_TAKEOUT_BYTES = 1024 * 1024 * 1024; // 1 GiB
 
-export function resolveMaxTakeoutBytes(raw: string | undefined): number {
+function resolveMaxTakeoutBytes(raw: string | undefined): number {
   const n = Number(raw);
   return Number.isInteger(n) && n > 0 ? n : DEFAULT_MAX_TAKEOUT_BYTES;
 }

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { IconArrowLeft, IconBarbell, IconPill } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -17,12 +17,12 @@ import {
   isPredictedPracticeDay,
   practiceSpellingsFor,
 } from "@/lib/queries";
-import { getSituations } from "@/lib/settings";
+import { getProfileAge, getSituations, getUnitPrefs } from "@/lib/settings";
 import { mergedSituationOptions } from "@/lib/situations";
 import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { getEquipment, getEquipmentById } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
-import { getUnitPrefs } from "@/lib/settings";
+import { isLongevityRelevant } from "@/lib/life-stage";
 import { intakeHref } from "@/lib/hrefs";
 import { formatUsageSummary } from "@/lib/usage-format";
 import {
@@ -59,6 +59,7 @@ export default async function ProtocolDetailPage(props: {
 }) {
   const params = await props.params;
   const { login, profile } = await requireSession();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) redirect("/");
   const id = Number(params.id);
   const protocol = id ? getProtocol(profile.id, id) : null;
   if (!protocol) notFound();

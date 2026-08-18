@@ -18,6 +18,7 @@ import {
   setStepsDailyTarget,
   setTimezone,
   setWeekMode,
+  setStoredAge,
 } from "@/lib/settings";
 import { collectRecentChanges } from "@/lib/queries/recent-changes";
 import { getLightExposureLine } from "@/lib/queries/light-exposure";
@@ -41,6 +42,7 @@ function newProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setStoredAge(id, 30);
   setTimezone(id, "UTC");
   return id;
 }

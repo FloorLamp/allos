@@ -22,6 +22,7 @@ import { shiftDateStr } from "@/lib/date";
 import {
   digestDemotionsForProfile,
   getLoginDigestDemotions,
+  setStoredAge,
   setLoginDigestDemotions,
   setTimezone,
   toggleLoginDigestDemotion,
@@ -323,6 +324,16 @@ describe("the demoted digest (#1714)", () => {
     const td = today(pid);
     seedCardio(pid, shiftDateStr(td, -1), "Towpath Walk", 4, 50);
     expect(digestTunableCategories(pid, td)).toEqual(["activities"]);
+  });
+
+  it("does not offer activity summaries through early childhood", () => {
+    const pid = newProfile("Toddler Tia");
+    setStoredAge(pid, 2);
+    const td = today(pid);
+    seedCardio(pid, shiftDateStr(td, -1), "Imported stroller walk", 1, 20);
+
+    expect(gatherDigestInput(pid, "Toddler Tia").activities).toEqual([]);
+    expect(digestTunableCategories(pid, td)).not.toContain("activities");
   });
 });
 

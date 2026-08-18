@@ -1,9 +1,7 @@
 import { db } from "../db";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
-import {
-  isTrainingRestricted,
-  restrictedActivityTypeClause,
-} from "../age-gate";
+import { getProfileAge } from "../settings";
+import { isLongevityRelevant, isTrainingRelevant } from "../life-stage";
 import { vaccineDisplayName } from "../immunization-catalog";
 import {
   matchTier,
@@ -180,19 +178,13 @@ function documentHits(profileId: number, like: string): SearchHit[] {
   });
 }
 
-// For a restricted profile only the age-neutral duration activities (sport/cardio)
-// that /training's RestrictedActivityView shows are searchable; strength (and
-// goals, skipped entirely in searchAll) stay gated (#489/#618).
-function activityHits(
-  profileId: number,
-  like: string,
-  restricted: boolean
-): SearchHit[] {
+// Activity search is a profile-owned data surface; every type is age-neutral.
+function activityHits(profileId: number, like: string): SearchHit[] {
   const rows = db
     .prepare(
       `SELECT id, title, type, date, components
          FROM activities
-        WHERE profile_id = ?${restrictedActivityTypeClause(restricted)}
+        WHERE profile_id = ?
           AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
         ORDER BY date DESC
         LIMIT ?`
@@ -1015,13 +1007,10 @@ const SETTINGS_SEARCH_KEYWORDS: Partial<Record<SettingsGroupId, string>> = {
 };
 
 // Static navigation destinations, so the palette doubles as a jump-to-page bar.
-// `restricted` entries are hidden for age-restricted profiles (see age-gate.ts /
-// Nav's RESTRICTED_HREFS).
 const PAGES: {
   title: string;
   href: AppRoute;
   keywords?: string;
-  restricted?: boolean;
 }[] = [
   { title: "Dashboard", href: "/", keywords: "home overview" },
   {
@@ -1042,13 +1031,8 @@ const PAGES: {
   {
     title: "Training history",
     href: "/training?tab=log",
-    restricted: true,
   },
   {
-    // Not restricted: #489 un-gated the Training page for restricted profiles (it
-    // renders RestrictedActivityView with sport/cardio logging), so its palette
-    // entry must stay reachable (#618). The adult "Training history" tab below
-    // stays restricted.
     title: "Training",
     href: "/training",
     keywords: "workouts strength cardio sport exercise lifts",
@@ -1115,7 +1099,6 @@ const PAGES: {
     title: "AI Insights",
     href: "/trends?tab=insights",
     keywords: "insights analysis coaching",
-    restricted: true,
   },
   {
     // The single "Data" umbrella (import + manage/export folded into one hub at
@@ -1155,22 +1138,26 @@ const PAGES: {
   },
 ];
 
-function pageHits(query: string, restricted: boolean): SearchHit[] {
+function pageHits(query: string, trainingRelevant = true): SearchHit[] {
   const q = query.trim().toLowerCase();
-  return PAGES.filter((p) => !(restricted && p.restricted))
-    .filter(
-      (p) =>
-        matchTier(p.title, query) > 0 ||
-        (p.keywords ? p.keywords.includes(q) : false)
-    )
-    .map((p) => ({
-      domain: "page" as const,
-      key: `page:${p.href}:${p.title}`,
-      title: p.title,
-      subtitle: null,
-      href: p.href,
-      date: null,
-    }));
+  return PAGES.filter((p) => {
+    const trainingPage =
+      p.href === "/training" ||
+      p.href.startsWith("/training?") ||
+      p.href === "/settings/training";
+    return (
+      (trainingRelevant || !trainingPage) &&
+      (matchTier(p.title, query) > 0 ||
+        (p.keywords ? p.keywords.includes(q) : false))
+    );
+  }).map((p) => ({
+    domain: "page" as const,
+    key: `page:${p.href}:${p.title}`,
+    title: p.title,
+    subtitle: null,
+    href: p.href,
+    date: null,
+  }));
 }
 
 // Fan out across every domain for the active profile and return ranked, grouped
@@ -1182,8 +1169,9 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
   const query = rawQuery.trim().slice(0, 100);
   if (query.length < 1) return [];
   const like = likePattern(query);
-  const restricted = isTrainingRestricted(profileId);
-
+  const age = getProfileAge(profileId);
+  const longevityRelevant = isLongevityRelevant(age);
+  const trainingRelevant = isTrainingRelevant(age);
   const hits: SearchHit[] = [
     ...clinicalResultHits(profileId, like),
     ...imagingHits(profileId, like),
@@ -1200,21 +1188,16 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...dentalHits(profileId, like),
     ...skinHits(profileId, query),
     ...supplementHits(profileId, like),
-    ...protocolHits(profileId, like),
+    ...(longevityRelevant ? protocolHits(profileId, like) : []),
     ...practiceHits(profileId, query),
     ...equipmentHits(profileId, like),
     ...familyHistoryHits(profileId, like),
     ...carePlanHits(profileId, like),
     ...careGoalHits(profileId, like),
-    ...pageHits(query, restricted),
-    // Type-aware (#489/#618): a restricted profile keeps sport/cardio activities
-    // (the set /training still shows), so activityHits is always included but
-    // filters to those types when restricted. Goals stay fully gated.
-    ...activityHits(profileId, like, restricted),
+    ...pageHits(query, trainingRelevant),
+    ...activityHits(profileId, like),
+    ...(trainingRelevant ? goalHits(profileId, like) : []),
   ];
-  if (!restricted) {
-    hits.push(...goalHits(profileId, like));
-  }
 
   return rankAndGroup(hits, query, PER_DOMAIN_CAP);
 }

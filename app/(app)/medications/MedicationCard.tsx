@@ -108,7 +108,6 @@ export default function MedicationCard({
   poolChip = null,
   todayStr,
   nowIso,
-  trainingRestricted,
   suppressedFoodKeys = [],
   prnDayLabel = null,
   prnAdministrations = [],
@@ -149,7 +148,6 @@ export default function MedicationCard({
   poolChip?: PoolChipData | null;
   todayStr: string;
   nowIso: string;
-  trainingRestricted: boolean;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
   suppressedFoodKeys?: string[];
   // PRN (as-needed) administrations for today (#797): the
@@ -253,7 +251,6 @@ export default function MedicationCard({
             setEditing(false);
             closeInitialAction();
           }}
-          trainingRestricted={trainingRestricted}
           pediatric={pediatric}
           age={age}
           conditions={conditions}

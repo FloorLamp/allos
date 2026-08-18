@@ -19,7 +19,6 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
-import { setMinTrainingAge } from "@/lib/age-gate";
 import { setStoredAge } from "@/lib/settings";
 import { photoDomainRoot } from "@/lib/photo/store";
 import { videoDomainRoot } from "@/lib/video/store";
@@ -156,8 +155,6 @@ beforeAll(() => {
       ).lastInsertRowid
   );
 });
-
-afterEach(() => setMinTrainingAge(null));
 
 afterAll(() => {
   for (const root of Object.values(ROOTS)) {
@@ -353,25 +350,14 @@ describe("the opt-in bundle holds exactly this profile's files (#1846)", () => {
   });
 });
 
-describe("the age gate reaches the media bundle too (#471/#1846)", () => {
-  it("holds back form-check clips for a training-restricted profile", () => {
-    // activity_videos hang off `activities`, whose dataset is already gated out of
-    // the ZIP — the clips must not be the way around it.
-    expect(
-      listProfileMediaFiles(mine, { trainingRestricted: true }).map(
-        (f) => f.domain
-      )
-    ).not.toContain("activity-videos");
-
-    // …and the snapshot applies that gate itself, from the profile's real age.
+describe("activity media is age-neutral (#3067/#1846)", () => {
+  it("includes a minor's own form-check clips", () => {
     setStoredAge(mine, 8);
-    setMinTrainingAge(18);
     try {
       const snap = collectExportSnapshot(mine, "Media Mine", {
         includeMedia: true,
       });
-      expect(snap.media!.map((m) => m.domain)).not.toContain("activity-videos");
-      // Every other domain still exports — the gate is about training, not media.
+      expect(snap.media!.map((m) => m.domain)).toContain("activity-videos");
       expect(snap.media!.map((m) => m.domain)).toContain("lesion-photos");
     } finally {
       setStoredAge(mine, null);

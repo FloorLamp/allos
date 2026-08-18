@@ -72,26 +72,10 @@ import {
 // log would land on the very bar the log was tapped from, which is #1520's
 // defect with a new occupant.
 //
-// ── THE PUCK IS FOR EVERY PROFILE, INCLUDING A RESTRICTED ONE ────────────────
+// ── THE PUCK IS FOR EVERY PROFILE ───────────────────────────────────────
 //
-// #2651 shipped it hidden for an age-restricted profile, mirroring what the top
-// bar has done with its quick-log cluster since #1416. The owner reversed that on
-// 2026-08-13: a restricted profile gets the raised log puck, the same as any
-// other.
-//
-// The reasoning, which is a statement about WHERE the gate lives. Every entry the
-// sheet offers a restricted profile — food, dose, measurements, practice, mood,
-// period, document — has already been through `quickLogMenu(true)`, the one place
-// the sheet's membership is decided, and each of those entries opens a form whose
-// own write core is either age-neutral or independently gated at the core
-// (lib/adult-only-writes.ts). Hiding the door added no protection those gates were
-// not already providing, and removed one-tap logging for a minor.
-//
-// It does not touch `quickLogMenu`'s gates, `adultOnlyRefusal`, or any write core.
-// #2745 later retired the duplicate top-bar cluster entirely, leaving this puck
-// as the one phone-chrome route to the sheet. The activity entries stay gated
-// away for a restricted profile, so its sheet has a three-segment track with no
-// Train on it.
+// The puck remains useful at every life stage for food, body, and care logs. Its
+// Train segment is removed while the workout product is not relevant.
 
 const ICONS: Record<DockIcon, typeof IconPlus> = {
   dashboard: IconLayoutDashboard,
@@ -107,17 +91,14 @@ const SLOT_CLASS =
 const CAPTION_CLASS = "max-w-full truncate text-xs leading-none font-medium";
 
 export default function MobileDock({
-  restricted = false,
+  trainingRelevant = true,
 }: {
-  // The age gate the shell already resolves once (lib/age-gate.ts). A restricted
-  // profile has no training surface, so its second slot is Timeline. It gets the
-  // puck like every other profile — see the ruling above.
-  restricted?: boolean;
+  trainingRelevant?: boolean;
 }) {
   const pathname = usePathname();
   const { drawerOpen, setDrawerOpen, logSheetOpen, setLogSheetOpen } =
     useMobileChrome();
-  const slots = dockSlots(restricted);
+  const slots = dockSlots(trainingRelevant);
   const active = activeDockSlotId(slots, pathname);
   const edgeRef = useBottomEdgeClaim<HTMLElement>();
 
@@ -178,8 +159,7 @@ export default function MobileDock({
       // this bar's height rather than stacked over it (BOTTOM_EDGE_ABOVE_NAV).
       className="fixed inset-x-0 bottom-0 z-30 border-t border-black/10 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden print:hidden dark:border-white/5 dark:bg-ink-950/90"
     >
-      {/* Five columns for every profile — four slots and the puck's own column.
-      The restricted four-column variant went with the hidden puck. */}
+      {/* Five columns for every profile — four slots and the puck's own column. */}
       <div
         className={`grid ${BOTTOM_EDGE_NAV_ROW_HEIGHT} grid-cols-5 items-stretch`}
       >

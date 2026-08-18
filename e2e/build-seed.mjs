@@ -331,8 +331,12 @@ export function seedFrom({
     // build it was handed. Stamp BUILD_ID forward — licensed by the fingerprint
     // equality proven above and by nothing else. Every later edit is newer again,
     // so ordinary staleness detection resumes untouched.
-    const now = new Date();
-    fs.utimesSync(copiedBuildId, now, now);
+    // Rewrite the tiny file instead of calling utimes. On DrvFS/NTFS, Node's
+    // explicit utimes call truncates to whole seconds even though ordinary writes
+    // receive a high-resolution filesystem timestamp. A target source written in
+    // that same second would then remain newer and force an immediate rebuild.
+    const buildIdBytes = fs.readFileSync(copiedBuildId);
+    fs.writeFileSync(copiedBuildId, buildIdBytes);
 
     fs.renameSync(tmp, targetDist);
   } catch (err) {

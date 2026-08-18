@@ -169,7 +169,7 @@ export function buildTrainingLogFeedPage(
 // overview: only the newest page per member is gathered (no cross-member "Load more"
 // cursor), so the page passes initialCursor=null and hides the pager. The server
 // component then stamps subject NAME/photo/access identity (lib/scope stampSubjects)
-// and each member's own restriction onto the cards. In single view the caller uses
+// onto the cards. In single view the caller uses
 // buildTrainingLogFeedPage directly, so nothing here touches the single-profile path.
 //
 // FILTERS (issue #1634) compose with the per-member cursors rather than assuming a
