@@ -114,6 +114,8 @@ describe("semantic Botanical surfaces", () => {
       "These class strings still hard-code a light/dark surface pair. Use " +
         "bg-surface, bg-field, bg-(--nav), or a semantic ghost token."
     ).toEqual([]);
-    expect(indicators).toHaveLength(7);
+    // DashboardGrid's retired customization checkbox was one of these intentional
+    // white indicators; the atomic dashboard has no replacement control.
+    expect(indicators).toHaveLength(6);
   });
 });
