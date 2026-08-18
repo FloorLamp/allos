@@ -138,7 +138,9 @@ test("a profile whose domains are current collapses nothing (#2652)", async ({
   // Sanity that we are looking at a populated dashboard rather than an empty one, so
   // the zero above is an absence of dormancy and not an absence of cards.
   await expect(
-    dashboardCandidatePrefix(page, "labs.latest:").first()
+    dashboardCandidatePrefix(page, "labs.latest:").filter({
+      hasText: "LDL Cholesterol",
+    })
   ).toBeVisible();
 });
 

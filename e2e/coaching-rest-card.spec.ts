@@ -85,7 +85,7 @@ function resetRestCardState(): void {
 function coachingCard(page: Page, text?: string) {
   const recommendations = text
     ? dashboardCandidateWithText(page, "coaching.recommendation:", text)
-    : dashboardCandidatePrefix(page, "coaching.recommendation:").first();
+    : dashboardCandidatePrefix(page, "coaching.recommendation:");
   return recommendations.filter({ has: page.getByTestId("coaching-snooze") });
 }
 

@@ -94,7 +94,9 @@ test("read-only safety facts remain uncapped and actionable", async ({
     await expect(fact.getByTestId("dashboard-attention-atom")).toBeVisible();
     await expect(fact).toHaveAttribute("data-kind", "statement");
     await expect(fact).toHaveAttribute("data-lane", "now");
-    await expect(fact.getByRole("link").first()).toBeVisible();
+    const links = fact.getByRole("link");
+    await expect(links).toHaveCount(1);
+    await expect(links).toBeVisible();
     await expect(fact.getByRole("button")).toHaveCount(0);
   } finally {
     await page.context().close();

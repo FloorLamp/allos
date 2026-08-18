@@ -1,5 +1,4 @@
 import { test, expect } from "./fixtures";
-import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
@@ -10,6 +9,8 @@ import {
   E2E_LOGIN_FOLDREOPEN,
   E2E_LOGIN_FOLDTAIL,
   E2E_LOGIN_FOLDWELL,
+  FOLD_REOPEN_KID_A_SITUATION,
+  FOLD_REOPEN_KID_B_SITUATION,
 } from "./fixture-logins";
 
 // The former composite-fold assertions belonged to the retired dashboard widgets.
@@ -32,29 +33,28 @@ function resetDismissals(username: string): void {
   }
 }
 
-async function openDashboard(
-  browser: Browser,
-  username: string
-): Promise<Page> {
-  const page = await loginAs(
-    browser,
-    { username, password: E2E_MEMBER_PASSWORD },
-    PHONE
-  );
-  await page.goto("/");
-  return page;
-}
-
 test("eligible closed episodes emit independent reopen actions", async ({
   browser,
 }) => {
   resetDismissals(E2E_LOGIN_FOLDREOPEN);
-  const page = await openDashboard(browser, E2E_LOGIN_FOLDREOPEN);
+  const page = await loginAs(
+    browser,
+    {
+      username: E2E_LOGIN_FOLDREOPEN,
+      password: E2E_MEMBER_PASSWORD,
+    },
+    PHONE
+  );
   try {
+    await page.goto("/");
     const reopen = dashboardCandidatePrefix(page, "illness.reopen:");
     await expect(reopen).toHaveCount(2);
-    await expect(reopen.first()).toHaveAttribute("data-kind", "action");
-    await expect(reopen.nth(1)).toHaveAttribute("data-kind", "action");
+    await expect(
+      reopen.filter({ hasText: FOLD_REOPEN_KID_A_SITUATION })
+    ).toHaveAttribute("data-kind", "action");
+    await expect(
+      reopen.filter({ hasText: FOLD_REOPEN_KID_B_SITUATION })
+    ).toHaveAttribute("data-kind", "action");
 
     const history = dashboardCandidatePrefix(page, "household.episode-history");
     await expect(history).toHaveCount(1);
@@ -69,8 +69,13 @@ test("eligible closed episodes emit independent reopen actions", async ({
 test("the household-history action follows its existing 14-day window", async ({
   browser,
 }) => {
-  const tail = await openDashboard(browser, E2E_LOGIN_FOLDTAIL);
+  const tail = await loginAs(
+    browser,
+    { username: E2E_LOGIN_FOLDTAIL, password: E2E_MEMBER_PASSWORD },
+    PHONE
+  );
   try {
+    await tail.goto("/");
     await expect(dashboardCandidatePrefix(tail, "illness.reopen:")).toHaveCount(
       0
     );
@@ -81,8 +86,13 @@ test("the household-history action follows its existing 14-day window", async ({
     await tail.context().close();
   }
 
-  const recovered = await openDashboard(browser, E2E_LOGIN_FOLDWELL);
+  const recovered = await loginAs(
+    browser,
+    { username: E2E_LOGIN_FOLDWELL, password: E2E_MEMBER_PASSWORD },
+    PHONE
+  );
   try {
+    await recovered.goto("/");
     await expect(recovered.getByRole("main")).toBeVisible();
     await expect(
       dashboardCandidatePrefix(recovered, "illness.reopen:")
@@ -99,16 +109,25 @@ test("dismissing one reopen action persists without hiding its sibling", async (
   browser,
 }) => {
   resetDismissals(E2E_LOGIN_FOLDREOPEN);
-  const page = await openDashboard(browser, E2E_LOGIN_FOLDREOPEN);
+  const page = await loginAs(
+    browser,
+    {
+      username: E2E_LOGIN_FOLDREOPEN,
+      password: E2E_MEMBER_PASSWORD,
+    },
+    PHONE
+  );
   try {
+    await page.goto("/");
     const reopen = dashboardCandidatePrefix(page, "illness.reopen:");
     await expect(reopen).toHaveCount(2);
-    const dismissedId = await reopen.first().getAttribute("data-candidate-id");
+    const dismissed = reopen.filter({ hasText: FOLD_REOPEN_KID_A_SITUATION });
+    const dismissedId = await dismissed.getAttribute("data-candidate-id");
     if (!dismissedId) throw new Error("reopen candidate has no identity");
 
     await hydratedClick(
       page,
-      reopen.first().getByTestId("recently-resolved-dismiss")
+      dismissed.getByTestId("recently-resolved-dismiss")
     );
     await expect(reopen).toHaveCount(1);
 
