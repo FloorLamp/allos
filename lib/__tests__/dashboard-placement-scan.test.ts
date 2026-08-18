@@ -54,4 +54,17 @@ describe("atomic dashboard source boundary", () => {
       "candidateNodes.get(placement.candidate.candidateId)"
     );
   });
+
+  it("keeps ranker construction behind the React-free candidate modules", () => {
+    const page = fs.readFileSync(path.join(root, "app/(app)/page.tsx"), "utf8");
+    for (const constructor of [
+      "actionCandidate(",
+      "readingCandidate(",
+      "statementCandidate(",
+      "stateCandidate(",
+    ]) {
+      expect(page).not.toContain(constructor);
+    }
+    expect(page).toContain("buildDashboardCandidate(input)");
+  });
 });

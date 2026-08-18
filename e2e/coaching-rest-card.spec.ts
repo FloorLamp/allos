@@ -12,6 +12,10 @@ import {
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { setFixtureTimezone } from "./fixture-timezones";
+import {
+  dashboardCandidatePrefix,
+  dashboardCandidateWithText,
+} from "./dashboard-candidate";
 
 // #1148 (multi-reason rest card) + #1150 ("Training anyway" acknowledgment + the
 // "Not today" → "Snooze" rename). Driven against the dedicated REST_CARD_PROFILE, which
@@ -78,8 +82,11 @@ function resetRestCardState(): void {
 }
 
 // The dashboard coaching card (the .card wrapping the Snooze control).
-function coachingCard(page: Page) {
-  return page.locator(".card", { has: page.getByTestId("coaching-snooze") });
+function coachingCard(page: Page, text?: string) {
+  const recommendations = text
+    ? dashboardCandidateWithText(page, "coaching.recommendation:", text)
+    : dashboardCandidatePrefix(page, "coaching.recommendation:").first();
+  return recommendations.filter({ has: page.getByTestId("coaching-snooze") });
 }
 
 test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#1150)", () => {
@@ -94,7 +101,7 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
     });
     try {
       await page.goto("/");
-      const card = coachingCard(page);
+      const card = coachingCard(page, "Rest or take it easy today");
       await expect(card).toBeVisible();
       // Headline stays the salience-ordered primary (sleep leads).
       await expect(
@@ -122,13 +129,20 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
     });
     try {
       await page.goto("/");
-      const card = coachingCard(page);
+      const card = coachingCard(page, "Rest or take it easy today");
       await expect(card).toBeVisible();
+      const candidateId = await card.getAttribute("data-candidate-id");
+      expect(candidateId).toBeTruthy();
       await settledClick(page, card.getByTestId("coaching-training-anyway"));
 
-      // The card TRANSFORMS in place — the rest imperative becomes calm training
-      // guidance naming the signal (#1150). It does NOT hide.
-      const acked = coachingCard(page);
+      // The source recommendation changes after acknowledgement, so the old atomic
+      // identity retires and the replacement recommendation gets its own identity.
+      await expect(
+        page.locator(
+          `[data-testid="dashboard-candidate"][data-candidate-id="${candidateId}"]`
+        )
+      ).toHaveCount(0);
+      const acked = coachingCard(page, "Training today — keep it smart");
       await expect(
         acked.getByText("Training today — keep it smart", { exact: true })
       ).toBeVisible();
@@ -152,7 +166,7 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
     });
     try {
       await page.goto("/");
-      const card = coachingCard(page);
+      const card = coachingCard(page, "Rest or take it easy today");
       await expect(
         card.getByText("Rest or take it easy today", { exact: true })
       ).toBeVisible();

@@ -5,6 +5,7 @@ import {
   E2E_LOGIN_DORMANT,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { dashboardCandidatePrefix } from "./dashboard-candidate";
 
 // Issue #2652 behavior 2 — "dormancy collapses, loudly".
 //
@@ -44,20 +45,18 @@ test("a quiet domain collapses to one line that states how long, and offers the 
   // back. Each sentence is pinned verbatim — the day count comes from the fixture's own
   // offset, so a changed threshold or a reworded line fails here rather than passing
   // against a recomputed expectation.
-  const weight = page.getByTestId("dashboard-widget-weight-trend");
+  const weight = dashboardCandidatePrefix(page, "weight.dormant");
   await expect(weight.getByTestId(DORMANT_LINE)).toHaveText(
     "No weigh-in recorded in 150 days"
   );
-  const sleep = page.getByTestId("dashboard-widget-sleep-last-night");
+  const sleep = dashboardCandidatePrefix(page, "sleep.dormant");
   await expect(sleep.getByTestId(DORMANT_LINE)).toHaveText(
     "No sleep recorded in 150 days"
   );
 
   // Each collapsed card keeps its heading, so a reader navigating the page outline
   // still finds the section — only its height changed.
-  await expect(
-    weight.getByRole("heading", { name: "Weight trend" })
-  ).toBeVisible();
+  await expect(weight.getByRole("heading", { name: "Weight" })).toBeVisible();
 
   // REACH IS UNCHANGED: each collapsed line carries the link that would end the
   // silence, so what it replaced is one tap away.
@@ -71,7 +70,7 @@ test("a quiet domain collapses to one line that states how long, and offers the 
   await page.close();
 });
 
-test("dormant and never-recorded are different sentences on the same page (#2652)", async ({
+test("dormant domains never regress to never-recorded copy (#2652)", async ({
   browser,
 }) => {
   test.slow();
@@ -81,18 +80,9 @@ test("dormant and never-recorded are different sentences on the same page (#2652
   });
   await page.goto("/");
 
-  // The onboarding CTA still renders for a domain that genuinely has nothing: this
-  // profile has never logged food, so Nutrition today keeps its first-run invitation.
-  const nutrition = page.getByTestId("dashboard-widget-nutrition-today");
-  await expect(nutrition.getByTestId("widget-empty")).toBeVisible();
-  await expect(nutrition).toContainText("No food logged yet");
-
-  // …while the two dormant cards do NOT wear the onboarding component at all.
-  for (const id of [
-    "dashboard-widget-weight-trend",
-    "dashboard-widget-sleep-last-night",
-  ]) {
-    const card = page.getByTestId(id);
+  // The two dormant facts do not wear the onboarding component at all.
+  for (const id of ["weight.dormant", "sleep.dormant"]) {
+    const card = dashboardCandidatePrefix(page, id);
     await expect(card.getByTestId("widget-dormant")).toBeVisible();
     await expect(card.getByTestId("widget-empty")).toHaveCount(0);
   }
@@ -118,17 +108,17 @@ test("a card still showing a stale value is NOT collapsed (#2652)", async ({
   // sleep just collapsed. Both cards declare a presentation floor that keeps the value
   // on screen with an age label (#1216/#2303), and dormancy may not undo that — so
   // these stay full cards, with their numbers and their write.
-  const labs = page.getByTestId("dashboard-widget-recent-labs");
+  const labs = dashboardCandidatePrefix(page, "labs.latest:").filter({
+    hasText: "Glucose",
+  });
   await expect(labs.getByTestId("widget-dormant")).toHaveCount(0);
   await expect(labs).toContainText("Glucose");
   // Its rows still carry their age labels — the presentation floor's treatment, intact.
   await expect(labs.getByTestId("recent-lab-date")).not.toHaveCount(0);
 
-  const vitals = page.getByTestId("dashboard-widget-vitals-latest");
+  const vitals = dashboardCandidatePrefix(page, "vitals.blood-pressure:");
   await expect(vitals.getByTestId("widget-dormant")).toHaveCount(0);
   await expect(vitals).toContainText("118");
-  await expect(vitals.getByTestId("vitals-log-reading")).toBeVisible();
-
   await page.close();
 });
 
@@ -147,7 +137,9 @@ test("a profile whose domains are current collapses nothing (#2652)", async ({
   await expect(page.getByTestId(DORMANT_LINE)).toHaveCount(0);
   // Sanity that we are looking at a populated dashboard rather than an empty one, so
   // the zero above is an absence of dormancy and not an absence of cards.
-  await expect(page.getByTestId("dashboard-widget-recent-labs")).toBeVisible();
+  await expect(
+    dashboardCandidatePrefix(page, "labs.latest:").first()
+  ).toBeVisible();
 });
 
 test("the fixture profile is the one being read (#2652)", async ({

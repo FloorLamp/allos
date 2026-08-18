@@ -185,6 +185,7 @@ function isActingProfileReading(
   return (
     candidate.kind === "reading" &&
     candidate.relevance.kind === "profile-data" &&
+    candidate.relevance.engagement !== "external" &&
     candidate.defaultPlacement === "standing" &&
     candidate.subject.scope === "profile" &&
     candidate.subject.profileId === activeProfileId
@@ -221,8 +222,11 @@ export function rankDashboardCandidates(
   candidates: readonly DashboardCandidate[],
   signals: DashboardPlacementSignals
 ): DashboardPlacement[] {
+  // Identity belongs to the gathered manifest, not only the visible partition.
+  // Validate before applicability so a latent duplicate cannot become live later
+  // when profile state, access, or life-stage applicability changes.
+  validateCandidates(candidates);
   const applicable = candidates.filter((candidate) => candidate.applicable);
-  validateCandidates(applicable);
 
   const rankedNow = applicable
     .filter(

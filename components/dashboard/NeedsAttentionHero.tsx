@@ -114,7 +114,7 @@ function Row({
   return (
     <div
       data-testid={`attention-item-${item.key}`}
-      className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-lg px-2 py-2 transition hover:bg-slate-50 sm:flex-nowrap sm:items-center dark:hover:bg-ink-850"
+      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-lg px-2 py-2 transition hover:bg-slate-50 sm:flex sm:flex-nowrap sm:items-center dark:hover:bg-ink-850"
     >
       <Icon
         className={`h-5 w-5 shrink-0 ${tone}`}
@@ -139,10 +139,10 @@ function Row({
       </div>
       <div
         data-testid="attention-item-actions"
-        className="ml-8 flex w-[calc(100%-2rem)] items-center justify-between gap-2 sm:ml-0 sm:w-auto sm:justify-end"
+        className="col-span-2 flex min-w-0 items-center justify-between gap-2 pl-8 sm:ml-0 sm:w-auto sm:justify-end sm:pl-0"
       >
         <div
-          className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}
+          className={`min-w-0 flex-1 text-xs font-medium sm:flex-none sm:shrink-0 sm:whitespace-nowrap ${tone}`}
         >
           {upcomingDueText(item, now, formatPrefs)}
         </div>

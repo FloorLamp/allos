@@ -28,8 +28,28 @@ export default function DashboardPlacementCanvas({
   candidateNodes,
   attentionBadgeCount,
 }: DashboardPlacementCanvasProps) {
-  const nodeFor = (placement: DashboardPlacement) =>
-    candidateNodes.get(placement.candidate.candidateId) ?? null;
+  const nodeFor = (placement: DashboardPlacement) => {
+    const node = candidateNodes.get(placement.candidate.candidateId);
+    if (node == null) return null;
+    const { candidate } = placement;
+    const engagement =
+      candidate.relevance.kind === "profile-data"
+        ? candidate.relevance.engagement
+        : undefined;
+    return (
+      <div
+        className="min-w-0"
+        data-testid="dashboard-candidate"
+        data-candidate-id={candidate.candidateId}
+        data-fact-key={candidate.factKey}
+        data-lane={placement.lane}
+        data-kind={candidate.kind}
+        data-engagement={engagement}
+      >
+        {node}
+      </div>
+    );
+  };
   const now = placementsInLane(placements, "now").flatMap((placement) => {
     const node = nodeFor(placement);
     return node == null

@@ -5,7 +5,7 @@ import type {
   DashboardRelevancePolicy,
 } from "../dashboard-relevance";
 
-type CandidateBaseInput = Omit<
+export type CandidateBaseInput = Omit<
   DashboardCandidateBase,
   "relevance" | "rankReasons" | "timing" | "defaultPlacement"
 > & {

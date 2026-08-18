@@ -11,6 +11,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { dashboardCandidateWithText } from "./dashboard-candidate";
 
 // Structural data-quality gaps (issue #1045). One pure gap model, many formatters: a
 // dedicated dashboard widget (top-3 by leverage, no score — a count and a list), the
@@ -54,7 +55,11 @@ test("the dashboard Data quality widget renders top gaps with fix-it CTAs (#1045
   });
   await page.goto("/");
 
-  const widget = page.getByRole("main").getByTestId("data-quality");
+  const widget = dashboardCandidateWithText(
+    page,
+    "data-quality.finding:",
+    "Set a birthdate"
+  );
   await expect(widget).toBeVisible();
   // The highest-leverage gap (no birthdate → age unknown) leads, and each row carries
   // a fix-it CTA link (an EXISTING explicit-entry surface, never an auto-fix).
@@ -100,7 +105,11 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
 
   // The Data quality widget is this family's dedicated dashboard home, so it owns
   // the gap…
-  const widget = main.getByTestId("data-quality");
+  const widget = dashboardCandidateWithText(
+    page,
+    "data-quality.finding:",
+    "Set a birthdate"
+  );
   await expect(widget).toBeVisible();
   await expect(
     widget
@@ -116,9 +125,7 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
   ).toHaveCount(0);
   // One row on the whole dashboard, not two — counted across BOTH cards' rows.
   const gapRows = main
-    .locator(
-      '[data-testid="data-quality-item"], [data-testid="coaching-observations-item"]'
-    )
+    .getByTestId("dashboard-candidate")
     .filter({ hasText: "Set a birthdate" });
   await expect(gapRows).toHaveCount(1);
 

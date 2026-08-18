@@ -16,6 +16,7 @@ import {
   getOutcomeGoalProgressMap,
   getFrequencyTargetProgress,
   getBodyMetricDailySeries,
+  getBodyMetricSeriesBySource,
   getClinicalObservations,
   getScheduledAppointments,
   gatherCoachingInput,
@@ -121,12 +122,11 @@ import {
   type DashboardTiming,
 } from "@/lib/dashboard-relevance";
 import {
-  actionCandidate,
   attentionCandidates,
+  buildDashboardCandidate,
+  engagementFromSource,
   profileDataRelevance,
-  readingCandidate,
-  stateCandidate,
-  statementCandidate,
+  type DashboardCandidateInput,
 } from "@/lib/dashboard-candidates";
 import { attentionCardItems } from "@/lib/attention";
 import { getNotifySchedule } from "@/lib/settings/notifications";
@@ -532,6 +532,17 @@ async function renderDashboard(
   const weightSeries = true
     ? getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS)
     : [];
+  const latestWeightPoint = weightSeries.at(-1) ?? null;
+  const weightSource = latestWeightPoint
+    ? getBodyMetricSeriesBySource(profile.id, "weight", 1).find((series) =>
+        series.data.some(
+          (point) =>
+            point.date === latestWeightPoint.date &&
+            point.value === latestWeightPoint.value
+        )
+      )?.source
+    : null;
+  const weightEngagement = engagementFromSource(weightSource);
   const bodyMetrics = weightSeries
     .filter((p) => p.date >= weightTrendSince)
     .map((p) => ({
@@ -877,7 +888,8 @@ async function renderDashboard(
   const profileSubject = { scope: "profile" as const, profileId: profile.id };
   const candidates: DashboardCandidate[] = [];
   const candidateNodes = new Map<string, ReactNode>();
-  const add = (candidate: DashboardCandidate, node: ReactNode) => {
+  const add = (input: DashboardCandidateInput, node: ReactNode) => {
+    const candidate = buildDashboardCandidate(input);
     candidates.push(candidate);
     candidateNodes.set(candidate.candidateId, node);
   };
@@ -888,8 +900,7 @@ async function renderDashboard(
   for (const candidate of attentionCandidates(
     profileSubject,
     attentionItems,
-    on,
-    canWrite
+    on
   )) {
     const item = attentionItems.find(
       (entry) => `attention.fact:${entry.key}` === candidate.candidateId
@@ -919,7 +930,8 @@ async function renderDashboard(
       .filter(Boolean)
       .join(" · ");
     add(
-      stateCandidate({
+      {
+        kind: "state",
         candidateId: `illness.state:${key}`,
         factKey: `illness.episode:${key}`,
         groupKey: `illness.episode:${key}`,
@@ -933,7 +945,7 @@ async function renderDashboard(
           changed: true,
         },
         sourceOrder: sourceOrder++,
-      }),
+      },
       <DashboardAtomCard
         title={`${cockpit.displayName} is sick`}
         value={cockpit.status.dayLabel}
@@ -943,7 +955,8 @@ async function renderDashboard(
     );
     if (cockpit.status.temperature) {
       add(
-        readingCandidate({
+        {
+          kind: "reading",
           candidateId: `illness.temperature:${key}`,
           factKey: `illness.temperature:${key}`,
           groupKey: `illness.episode:${key}`,
@@ -951,7 +964,7 @@ async function renderDashboard(
           applicable: true,
           relevance: profileDataRelevance("current", "manual"),
           sourceOrder: sourceOrder++,
-        }),
+        },
         <DashboardAtomCard
           title={`${cockpit.displayName}'s latest temperature`}
           value={cockpit.status.temperature.value}
@@ -963,7 +976,8 @@ async function renderDashboard(
     if (cockpit.status.lastMeds) {
       const medication = cockpit.status.lastMeds;
       add(
-        readingCandidate({
+        {
+          kind: "reading",
           candidateId: `illness.medication:${key}`,
           factKey: `illness.medication:${key}`,
           groupKey: `illness.episode:${key}`,
@@ -971,7 +985,7 @@ async function renderDashboard(
           applicable: true,
           relevance: profileDataRelevance("current", "manual"),
           sourceOrder: sourceOrder++,
-        }),
+        },
         <DashboardAtomCard
           title={`${cockpit.displayName}'s latest illness medicine`}
           value={[medication.name, medication.dose].filter(Boolean).join(" · ")}
@@ -981,7 +995,8 @@ async function renderDashboard(
       );
     }
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: `illness.open:${key}`,
         factKey: `illness.care-action:${key}`,
         groupKey: `illness.episode:${key}`,
@@ -990,7 +1005,7 @@ async function renderDashboard(
         relevance: { kind: "event" },
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <DashboardAtomCard
         title={`Update ${cockpit.displayName}'s illness care`}
         href={href}
@@ -1002,7 +1017,8 @@ async function renderDashboard(
   for (const item of recentlyResolved) {
     const key = `${item.profileId}:${item.episodeId}`;
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: `illness.reopen:${key}`,
         factKey: `illness.closed-episode:${key}`,
         groupKey: `illness.episode:${key}`,
@@ -1011,7 +1027,7 @@ async function renderDashboard(
         relevance: { kind: "event" },
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <RecentlyResolvedReopen
         items={[item]}
         showHouseholdPromo={false}
@@ -1021,7 +1037,8 @@ async function renderDashboard(
   }
   if (promoteHouseholdHistory) {
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "household.episode-history",
         factKey: "household.recent-episode-history",
         groupKey: "household.episodes",
@@ -1030,7 +1047,7 @@ async function renderDashboard(
         relevance: { kind: "event" },
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <div className="card">
         <HouseholdHistoryPromoLink />
       </div>
@@ -1039,7 +1056,8 @@ async function renderDashboard(
 
   for (const offer of streamLifecycleOffers) {
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: `stream.offer:${offer.key}`,
         factKey: `stream.lifecycle:${offer.key}`,
         groupKey: null,
@@ -1048,7 +1066,7 @@ async function renderDashboard(
         relevance: { kind: "event" },
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <StreamLifecycleOffers
         profileId={profile.id}
         canWrite={access === "write"}
@@ -1069,7 +1087,8 @@ async function renderDashboard(
     ] as const;
     recapFacts.forEach(([key, value], index) =>
       add(
-        statementCandidate({
+        {
+          kind: "statement",
           candidateId: `session.recap:${finishedPresence!.activityId}:${key}`,
           factKey: `${recapGroup}:${key}`,
           groupKey: recapGroup,
@@ -1088,7 +1107,7 @@ async function renderDashboard(
             changed: true,
           },
           sourceOrder: sourceOrder + index,
-        }),
+        },
         <DashboardAtomCard
           title="Session complete"
           value={value}
@@ -1118,7 +1137,8 @@ async function renderDashboard(
       step += 1
     ) {
       add(
-        actionCandidate({
+        {
+          kind: "action",
           candidateId: `onboarding.step:${step}`,
           factKey: `onboarding.setup-step:${step}`,
           groupKey: "onboarding.setup",
@@ -1127,7 +1147,7 @@ async function renderDashboard(
           relevance: { kind: "setup" },
           obligation: "should",
           sourceOrder: sourceOrder++,
-        }),
+        },
         <DashboardAtomCard
           title={stepLabels[step - 1]}
           detail={`Setup step ${step} of ${ONBOARDING_STEP_COUNT}`}
@@ -1137,7 +1157,8 @@ async function renderDashboard(
       );
     }
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: "onboarding.progress",
         factKey: "onboarding.setup-progress",
         groupKey: "onboarding.setup",
@@ -1146,7 +1167,7 @@ async function renderDashboard(
         relevance: { kind: "setup" },
         defaultPlacement: "everything",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <DashboardAtomCard
         title="Profile setup progress"
         value={`${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`}
@@ -1156,7 +1177,8 @@ async function renderDashboard(
   }
   if (onboardingChecklist && onboardingChecklistCompletion) {
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: "onboarding.progress",
         factKey: "onboarding.checklist-progress",
         groupKey: "onboarding.setup",
@@ -1165,7 +1187,7 @@ async function renderDashboard(
         relevance: { kind: "setup" },
         defaultPlacement: "everything",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <OnboardingChecklist
         focuses={onboardingChecklist.focuses}
         completion={onboardingChecklistCompletion}
@@ -1175,7 +1197,8 @@ async function renderDashboard(
 
   householdAttention.forEach((entry) =>
     add(
-      statementCandidate({
+      {
+        kind: "statement",
         candidateId: `household.attention:${entry.profile.id}`,
         factKey: `household.attention-count:${entry.profile.id}:${entry.count}`,
         groupKey: "household.profiles",
@@ -1183,13 +1206,14 @@ async function renderDashboard(
         applicable: true,
         relevance: { kind: "state" },
         sourceOrder: sourceOrder++,
-      }),
+      },
       <HouseholdStrip entries={[entry]} />
     )
   );
 
   add(
-    actionCandidate({
+    {
+      kind: "action",
       candidateId: "checkin.mood",
       factKey: `mood.checkin:${on}`,
       groupKey: "checkin.daily",
@@ -1208,7 +1232,7 @@ async function renderDashboard(
         changed: false,
       },
       sourceOrder: sourceOrder++,
-    }),
+    },
     <DashboardQuickEntryAction
       title={todayMood ? "Update today's mood" : "Log today's mood"}
       detail={
@@ -1240,7 +1264,8 @@ async function renderDashboard(
     moodReadings.forEach(([key, title, value], index) => {
       if (value == null) return;
       add(
-        readingCandidate({
+        {
+          kind: "reading",
           candidateId: `mood.${key}:${on}`,
           factKey: `mood.${key}:${on}`,
           groupKey: "checkin.daily",
@@ -1248,7 +1273,7 @@ async function renderDashboard(
           applicable: true,
           relevance: profileDataRelevance("current", "manual"),
           sourceOrder: sourceOrder + index,
-        }),
+        },
         <DashboardAtomCard title={title} value={value} href="/trends#body" />
       );
     });
@@ -1257,7 +1282,8 @@ async function renderDashboard(
 
   checkinPrnMeds.forEach((med, index) =>
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: `intake.prn:${med.id}`,
         factKey: `intake.prn-dose:${med.id}`,
         groupKey: "checkin.daily",
@@ -1266,7 +1292,7 @@ async function renderDashboard(
         relevance: { kind: "event" },
         obligation: "may",
         sourceOrder: sourceOrder + index,
-      }),
+      },
       <div className="card">
         <QuickLogPrnContent
           meds={[med]}
@@ -1283,7 +1309,8 @@ async function renderDashboard(
 
   if (showWellSymptoms) {
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "symptom.well-day-log",
         factKey: `symptom.log-offer:${on}`,
         groupKey: "checkin.daily",
@@ -1292,7 +1319,7 @@ async function renderDashboard(
         relevance: { kind: "event" },
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <div className="card">
         <SymptomLogBar
           date={on}
@@ -1311,7 +1338,8 @@ async function renderDashboard(
 
   coachingRecs.forEach((rec, index) =>
     add(
-      statementCandidate({
+      {
+        kind: "statement",
         candidateId: `coaching.recommendation:${rec.id}`,
         factKey: `coaching.${coachingDedupeKey(rec.id)}`,
         groupKey: null,
@@ -1319,7 +1347,7 @@ async function renderDashboard(
         applicable: trainingRelevant,
         relevance: { kind: "event" },
         sourceOrder: sourceOrder + index,
-      }),
+      },
       <CoachingWidget recs={[rec]} />
     )
   );
@@ -1327,7 +1355,8 @@ async function renderDashboard(
 
   goals.forEach((goal, index) =>
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `goal.progress:${goal.id}`,
         factKey: `outcome-goal.progress:${goal.id}`,
         groupKey: `goal:${goal.id}`,
@@ -1335,7 +1364,7 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("current", "manual"),
         sourceOrder: sourceOrder + index,
-      }),
+      },
       <GoalsHabitsWidget
         goals={[goal]}
         goalProgress={goalProgress}
@@ -1350,7 +1379,8 @@ async function renderDashboard(
   freqTargets.forEach((progress, index) => {
     const id = progress.target.id;
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `target.weekly-progress:${id}`,
         factKey: `frequency-target.progress:${id}`,
         groupKey: `target:${id}`,
@@ -1358,7 +1388,7 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("current", "manual"),
         sourceOrder: sourceOrder + index * 2,
-      }),
+      },
       <GoalsHabitsWidget
         goals={[]}
         goalProgress={new Map()}
@@ -1369,7 +1399,8 @@ async function renderDashboard(
       />
     );
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: `target.log:${id}`,
         factKey: `frequency-target.log-offer:${id}:${on}`,
         groupKey: `target:${id}`,
@@ -1384,7 +1415,7 @@ async function renderDashboard(
           changed: false,
         },
         sourceOrder: sourceOrder + index * 2 + 1,
-      }),
+      },
       <DashboardAtomCard
         title={`Log ${progress.target.scope_value}`}
         detail={`${progress.count} of ${progress.per_week} this week`}
@@ -1402,7 +1433,8 @@ async function renderDashboard(
   activeProtocols.forEach((protocol, index) => {
     const groupKey = `protocol:${protocol.id}`;
     add(
-      stateCandidate({
+      {
+        kind: "state",
         candidateId: `protocol.state:${protocol.id}`,
         factKey: `protocol.active:${protocol.id}`,
         groupKey,
@@ -1410,7 +1442,7 @@ async function renderDashboard(
         applicable: adultContentApplicable,
         relevance: { kind: "state" },
         sourceOrder: sourceOrder + index * 4,
-      }),
+      },
       <DashboardAtomCard
         title={protocol.name}
         value={`${protocol.daysElapsed} days`}
@@ -1419,7 +1451,8 @@ async function renderDashboard(
     );
     if (protocol.adherence)
       add(
-        readingCandidate({
+        {
+          kind: "reading",
           candidateId: `protocol.adherence:${protocol.id}`,
           factKey: `protocol.adherence-progress:${protocol.id}`,
           groupKey,
@@ -1427,7 +1460,7 @@ async function renderDashboard(
           applicable: true,
           relevance: profileDataRelevance("current", "manual"),
           sourceOrder: sourceOrder + index * 4 + 1,
-        }),
+        },
         <DashboardAtomCard
           title={`${protocol.name} adherence`}
           value={protocol.adherence.label}
@@ -1436,7 +1469,8 @@ async function renderDashboard(
       );
     if (protocol.primaryOutcome)
       add(
-        readingCandidate({
+        {
+          kind: "reading",
           candidateId: `protocol.outcome:${protocol.id}`,
           factKey: `protocol.primary-outcome:${protocol.id}`,
           groupKey,
@@ -1444,7 +1478,7 @@ async function renderDashboard(
           applicable: true,
           relevance: profileDataRelevance("current", "unknown"),
           sourceOrder: sourceOrder + index * 4 + 2,
-        }),
+        },
         <DashboardAtomCard
           title={protocol.primaryOutcome.label}
           value={protocol.primaryOutcome.framing}
@@ -1453,7 +1487,8 @@ async function renderDashboard(
       );
     if (protocol.practice && protocol.practiceUsuallyToday && canWrite)
       add(
-        actionCandidate({
+        {
+          kind: "action",
           candidateId: `protocol.practice:${protocol.id}`,
           factKey: `protocol.practice-due:${protocol.id}:${on}`,
           groupKey,
@@ -1468,7 +1503,7 @@ async function renderDashboard(
             changed: false,
           },
           sourceOrder: sourceOrder + index * 4 + 3,
-        }),
+        },
         <DashboardAtomCard
           title={`Log ${protocol.practice.value}`}
           href={protocol.href}
@@ -1480,7 +1515,8 @@ async function renderDashboard(
 
   for (const finding of dataQualityFindings) {
     add(
-      statementCandidate({
+      {
+        kind: "statement",
         candidateId: `data-quality.finding:${finding.dedupeKey}`,
         factKey: `finding.${finding.dedupeKey}`,
         groupKey: null,
@@ -1488,14 +1524,15 @@ async function renderDashboard(
         applicable: true,
         relevance: { kind: "event" },
         sourceOrder: sourceOrder++,
-      }),
+      },
       <DataQualityWidget findings={[finding]} />
     );
   }
 
   if (proteinToday)
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `nutrition.protein:${on}`,
         factKey: `nutrition.protein-day:${on}`,
         groupKey: "nutrition.today",
@@ -1507,12 +1544,13 @@ async function renderDashboard(
         ),
         timing: mealTimeWindows(nowMealAnchors),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <NutritionTodayWidget today={proteinToday} routine={null} />
     );
   else if (foodLoggingApplicable)
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "nutrition.bootstrap",
         factKey: "nutrition.first-log-offer",
         groupKey: "nutrition.today",
@@ -1521,7 +1559,7 @@ async function renderDashboard(
         relevance: profileDataRelevance("never"),
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WidgetEmpty
         title="Nutrition"
         icon={IconSalad}
@@ -1532,7 +1570,8 @@ async function renderDashboard(
     );
   if (routineControl)
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: `nutrition.usual-routine:${routineControl.window}`,
         factKey: `nutrition.usual-routine-offer:${routineControl.window}:${on}`,
         groupKey: "nutrition.today",
@@ -1542,13 +1581,14 @@ async function renderDashboard(
         obligation: "may",
         timing: mealTimeWindows(nowMealAnchors),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <NutritionTodayWidget today={null} routine={routineControl} />
     );
 
   if (stepsSummary)
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `activity.steps:${on}`,
         factKey: `metric.steps:${on}`,
         groupKey: null,
@@ -1556,12 +1596,13 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("current", "external"),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <StepsTodayWidget summary={stepsSummary} />
     );
   else
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "activity.steps-bootstrap",
         factKey: "metric.steps-first-source",
         groupKey: null,
@@ -1570,7 +1611,7 @@ async function renderDashboard(
         relevance: profileDataRelevance("never"),
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WidgetEmpty
         title="Steps"
         icon={IconWalk}
@@ -1582,7 +1623,8 @@ async function renderDashboard(
 
   if (vitalsModel?.bp)
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `vitals.blood-pressure:${vitalsModel.bp.date}`,
         factKey: `vitals.blood-pressure:${vitalsModel.bp.date}`,
         groupKey: "vitals.latest",
@@ -1590,7 +1632,7 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("current", "unknown"),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <VitalsLatestWidget
         model={{ bp: vitalsModel.bp, restingHr: null }}
         today={on}
@@ -1599,7 +1641,8 @@ async function renderDashboard(
     );
   if (vitalsModel?.restingHr)
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `vitals.resting-heart-rate:${vitalsModel.restingHr.date}`,
         factKey: `vitals.resting-heart-rate:${vitalsModel.restingHr.date}`,
         groupKey: "vitals.latest",
@@ -1607,7 +1650,7 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("current", "unknown"),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <VitalsLatestWidget
         model={{ bp: null, restingHr: vitalsModel.restingHr }}
         today={on}
@@ -1615,7 +1658,8 @@ async function renderDashboard(
       />
     );
   add(
-    actionCandidate({
+    {
+      kind: "action",
       candidateId: "vitals.manual-log",
       factKey: `vitals.manual-log-offer:${on}`,
       groupKey: "vitals.latest",
@@ -1626,7 +1670,7 @@ async function renderDashboard(
         : profileDataRelevance("never"),
       obligation: "may",
       sourceOrder: sourceOrder++,
-    }),
+    },
     <div className="card">
       <LogReadingButton label="Log a vital" />
     </div>
@@ -1634,7 +1678,8 @@ async function renderDashboard(
 
   if (cycleModel)
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `cycle.phase:${on}`,
         factKey: `cycle.phase-day:${on}`,
         groupKey: "cycle.current",
@@ -1642,7 +1687,7 @@ async function renderDashboard(
         applicable: cycleApplicable,
         relevance: profileDataRelevance("current", "manual"),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <DashboardAtomCard
         title={`Cycle day ${cycleModel.day}`}
         value={cycleModel.phase}
@@ -1651,7 +1696,8 @@ async function renderDashboard(
     );
   if (cycleControl)
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "cycle.control",
         factKey: `cycle.control-offer:${on}`,
         groupKey: "cycle.current",
@@ -1660,7 +1706,7 @@ async function renderDashboard(
         relevance: { kind: "event" },
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <CyclePhaseWidget
         forecast={cycleForecast}
         control={cycleControl}
@@ -1670,7 +1716,8 @@ async function renderDashboard(
 
   if (nextAppt)
     add(
-      statementCandidate({
+      {
+        kind: "statement",
         candidateId: "appointment.next",
         factKey: `appointment.next:${nextAppt.href}`,
         groupKey: null,
@@ -1678,13 +1725,14 @@ async function renderDashboard(
         applicable: hasScheduledAppt,
         relevance: { kind: "event" },
         sourceOrder: sourceOrder++,
-      }),
+      },
       <NextAppointmentWidget appointment={nextAppt} />
     );
 
   labRows.forEach((row, index) =>
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `labs.latest:${row.name}`,
         factKey: `clinical-result.latest:${row.name}`,
         groupKey: null,
@@ -1692,14 +1740,15 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("current", "unknown"),
         sourceOrder: sourceOrder + index,
-      }),
+      },
       <RecentLabsWidget rows={[row]} today={on} />
     )
   );
   sourceOrder += labRows.length;
   if (labRows.length === 0)
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "labs.bootstrap",
         factKey: "clinical-result.first-import",
         groupKey: null,
@@ -1708,7 +1757,7 @@ async function renderDashboard(
         relevance: profileDataRelevance("never"),
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WidgetEmpty
         title="Labs"
         icon={IconFlask}
@@ -1727,7 +1776,8 @@ async function renderDashboard(
     }) === "dormant";
   if (lastWeightRecord == null)
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "weight.bootstrap",
         factKey: "weight.first-reading-offer",
         groupKey: "weight.summary",
@@ -1736,7 +1786,7 @@ async function renderDashboard(
         relevance: profileDataRelevance("never"),
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WidgetEmpty
         title="Weight"
         icon={IconScale}
@@ -1750,7 +1800,8 @@ async function renderDashboard(
       freshnessAgeDays(lastWeightRecord, on) ??
       DORMANCY_DOMAINS.weight.collapseAfterDays;
     add(
-      stateCandidate({
+      {
+        kind: "state",
         candidateId: "weight.dormant",
         factKey: `weight.dormancy:${lastWeightRecord}`,
         groupKey: "weight.summary",
@@ -1758,7 +1809,7 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("dormant"),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WidgetDormant
         title="Weight"
         icon={IconScale}
@@ -1771,15 +1822,16 @@ async function renderDashboard(
     const latestWeight = bodyMetrics.at(-1);
     if (latestWeight)
       add(
-        readingCandidate({
+        {
+          kind: "reading",
           candidateId: `weight.latest:${latestWeight.date}`,
           factKey: `weight.reading:${latestWeight.date}`,
           groupKey: "weight.summary",
           subject: profileSubject,
           applicable: true,
-          relevance: profileDataRelevance("current", "unknown"),
+          relevance: profileDataRelevance("current", weightEngagement),
           sourceOrder: sourceOrder++,
-        }),
+        },
         <DashboardAtomCard
           title="Latest weight"
           value={`${latestWeight.value} ${units.weightUnit}`}
@@ -1787,15 +1839,16 @@ async function renderDashboard(
         />
       );
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: "weight.trend",
         factKey: `weight.trend:${weightTrendSince}:${on}`,
         groupKey: "weight.summary",
         subject: profileSubject,
         applicable: bodyMetrics.length > 1,
-        relevance: profileDataRelevance("current", "unknown"),
+        relevance: profileDataRelevance("current", weightEngagement),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WeightTrendWidget
         data={bodyMetrics}
         weightUnit={units.weightUnit}
@@ -1816,7 +1869,8 @@ async function renderDashboard(
     }) === "dormant";
   if (sleepWaiting)
     add(
-      stateCandidate({
+      {
+        kind: "state",
         candidateId: `sleep.waiting:${on}`,
         factKey: `sleep.waiting-state:${on}`,
         groupKey: "sleep.last-night",
@@ -1834,7 +1888,7 @@ async function renderDashboard(
           changed: true,
         },
         sourceOrder: sourceOrder++,
-      }),
+      },
       <SleepWaitingWidget
         state={sleepWaiting}
         formatPrefs={formatPrefs}
@@ -1843,7 +1897,8 @@ async function renderDashboard(
     );
   else if (lastSleepRecord == null)
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "sleep.bootstrap",
         factKey: "sleep.first-source-offer",
         groupKey: "sleep.last-night",
@@ -1852,7 +1907,7 @@ async function renderDashboard(
         relevance: profileDataRelevance("never"),
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WidgetEmpty
         title="Sleep"
         icon={IconMoon}
@@ -1866,7 +1921,8 @@ async function renderDashboard(
       freshnessAgeDays(lastSleepRecord, on) ??
       DORMANCY_DOMAINS.sleep.collapseAfterDays;
     add(
-      stateCandidate({
+      {
+        kind: "state",
         candidateId: "sleep.dormant",
         factKey: `sleep.dormancy:${lastSleepRecord}`,
         groupKey: "sleep.last-night",
@@ -1874,7 +1930,7 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("dormant"),
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WidgetDormant
         title="Sleep"
         icon={IconMoon}
@@ -1885,7 +1941,8 @@ async function renderDashboard(
     );
   } else if (sleepPresentation?.freshness === "stale") {
     add(
-      actionCandidate({
+      {
+        kind: "action",
         candidateId: "sleep.refresh",
         factKey: `sleep.refresh-offer:${on}`,
         groupKey: "sleep.last-night",
@@ -1894,7 +1951,7 @@ async function renderDashboard(
         relevance: { kind: "event" },
         obligation: "may",
         sourceOrder: sourceOrder++,
-      }),
+      },
       <WidgetEmpty
         title="Sleep"
         icon={IconMoon}
@@ -1935,7 +1992,8 @@ async function renderDashboard(
     ] as const;
     values.forEach(([key, title, value], index) =>
       add(
-        readingCandidate({
+        {
+          kind: "reading",
           candidateId: `sleep.${key}:${sleepSummary.wakeDay}`,
           factKey: `sleep.${key}:${sleepSummary.wakeDay}`,
           groupKey: "sleep.last-night",
@@ -1943,7 +2001,7 @@ async function renderDashboard(
           applicable: true,
           relevance: profileDataRelevance(
             "current",
-            sleepSummary.source ? "external" : "manual"
+            engagementFromSource(sleepSummary.source)
           ),
           timing: sleepTiming,
           rankReasons: {
@@ -1953,7 +2011,7 @@ async function renderDashboard(
             changed: false,
           },
           sourceOrder: sourceOrder + index,
-        }),
+        },
         <DashboardAtomCard title={title} value={value} href="/sleep" />
       )
     );
@@ -1962,7 +2020,8 @@ async function renderDashboard(
 
   todayNaps.forEach((nap, index) =>
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `sleep.nap:${nap.date}:${nap.startMinutes}`,
         factKey: `sleep.nap:${nap.date}:${nap.startMinutes}`,
         groupKey: `sleep.naps:${nap.date}`,
@@ -1970,7 +2029,7 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance(
           "current",
-          nap.source ? "external" : "manual"
+          engagementFromSource(nap.source)
         ),
         timing: {
           kind: "since-event",
@@ -1984,13 +2043,14 @@ async function renderDashboard(
           changed: true,
         },
         sourceOrder: sourceOrder + index,
-      }),
+      },
       <NapsTodayWidget naps={[nap]} timeFormat={formatPrefs.timeFormat} />
     )
   );
   if (todayNaps.length > 1)
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `sleep.nap-total:${on}`,
         factKey: `sleep.nap-total:${on}`,
         groupKey: `sleep.naps:${on}`,
@@ -1998,7 +2058,7 @@ async function renderDashboard(
         applicable: true,
         relevance: profileDataRelevance("current", "unknown"),
         sourceOrder: sourceOrder + todayNaps.length,
-      }),
+      },
       <DashboardAtomCard
         title="Nap total"
         value={formatHm(
@@ -2011,7 +2071,8 @@ async function renderDashboard(
 
   pillars.forEach((pillar, index) =>
     add(
-      readingCandidate({
+      {
+        kind: "reading",
         candidateId: `healthspan.pillar:${pillar.key}`,
         factKey: `healthspan.pillar:${pillar.key}`,
         groupKey: null,
@@ -2019,7 +2080,7 @@ async function renderDashboard(
         applicable: adultContentApplicable,
         relevance: profileDataRelevance("current", "unknown"),
         sourceOrder: sourceOrder + index,
-      }),
+      },
       <HealthspanPillarsWidget pillars={[pillar]} />
     )
   );
@@ -2027,7 +2088,8 @@ async function renderDashboard(
 
   coachingObservations.forEach((finding, index) =>
     add(
-      statementCandidate({
+      {
+        kind: "statement",
         candidateId: `coaching.observation:${finding.dedupeKey}`,
         factKey: `finding.${finding.dedupeKey}`,
         groupKey: null,
@@ -2035,7 +2097,7 @@ async function renderDashboard(
         applicable: true,
         relevance: { kind: "event" },
         sourceOrder: sourceOrder + index,
-      }),
+      },
       <CoachingObservations findings={[finding]} />
     )
   );
@@ -2043,7 +2105,8 @@ async function renderDashboard(
 
   weeklyRecap?.lines.forEach((line, index) =>
     add(
-      statementCandidate({
+      {
+        kind: "statement",
         candidateId: `recap.${line.key}:${weeklyRecap.start}`,
         factKey: `recap.${line.key}:${weeklyRecap.start}:${weeklyRecap.end}`,
         groupKey: `recap:${weeklyRecap.start}:${weeklyRecap.end}`,
@@ -2051,7 +2114,7 @@ async function renderDashboard(
         applicable: trainingRelevant,
         relevance: { kind: "event" },
         sourceOrder: sourceOrder + index,
-      }),
+      },
       <WeeklyRecapWidget
         recap={{ ...weeklyRecap, lines: [line], isEmpty: false }}
         formatPrefs={formatPrefs}

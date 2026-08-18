@@ -4,14 +4,25 @@ import { itemSuppressionPolicy } from "../upcoming-suppress";
 import { actionCandidate, statementCandidate } from "./candidate";
 import type {
   DashboardCandidate,
+  DashboardObligation,
   DashboardSubject,
 } from "../dashboard-relevance";
+
+function attentionObligation(
+  item: UpcomingItem,
+  setup: boolean
+): DashboardObligation {
+  if (item.obligation) return item.obligation;
+  if (setup || item.domain === "available") return "may";
+  // A due date says when a fact matters, not that the source declared it a must.
+  // Non-intake attention models do not carry the three-level obligation field.
+  return "should";
+}
 
 export function attentionCandidates(
   subject: DashboardSubject,
   items: readonly UpcomingItem[],
   today: string,
-  canWrite = true,
   sourceOrder = 0
 ): DashboardCandidate[] {
   return items.map((item, index) => {
@@ -32,7 +43,9 @@ export function attentionCandidates(
         ? `attention.${item.signalGroup}`
         : "attention.due",
       subject,
-      applicable: !actionable || canWrite,
+      // Read access still owns the fact. Write capability controls the atom's
+      // controls in presentation; filtering here erased safety information.
+      applicable: true,
       relevance: setup
         ? ({ kind: "setup" } as const)
         : ({ kind: "event" } as const),
@@ -48,7 +61,7 @@ export function attentionCandidates(
     return actionable
       ? actionCandidate({
           ...common,
-          obligation: setup || item.domain === "available" ? "may" : "must",
+          obligation: attentionObligation(item, setup),
         })
       : statementCandidate(common);
   });

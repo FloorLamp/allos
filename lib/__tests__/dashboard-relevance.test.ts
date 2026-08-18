@@ -171,12 +171,50 @@ describe("atomic dashboard placement", () => {
     ]);
   });
 
+  it("keeps manual readings standing and sends external-only readings to Everything", () => {
+    const manual = reading("manual");
+    const external = {
+      ...reading("external"),
+      relevance: profileDataRelevance("current", "external"),
+    };
+    expect(rank([external, manual]).map((placement) => placement.lane)).toEqual(
+      ["standing", "everything"]
+    );
+  });
+
   it("rejects duplicate presentation and fact identity", () => {
     const one = reading("one");
     expect(() => rank([one, { ...one }])).toThrow(/candidateId/);
     expect(() =>
       rank([one, { ...reading("two"), factKey: one.factKey }])
     ).toThrow(/factKey/);
+  });
+
+  it("rejects duplicate identity even when one candidate is inapplicable", () => {
+    const one = reading("latent");
+    expect(() => rank([one, { ...one, applicable: false }])).toThrow(
+      /candidateId/
+    );
+  });
+
+  it("keeps read-only attention facts and carries source obligation", () => {
+    const item = {
+      key: "dose:42",
+      domain: "dose" as const,
+      title: "Dose",
+      href: "/medications" as const,
+      dueDate: null,
+      doseId: 42,
+      obligation: "should" as const,
+      suppressionPolicy: "safety-ungated" as const,
+    };
+    const [candidate] = attentionCandidates(subject, [item], "2026-08-18");
+    expect(candidate).toMatchObject({
+      applicable: true,
+      kind: "action",
+      obligation: "should",
+      rankReasons: { safety: true },
+    });
   });
 
   it("does not let grouping change rank", () => {

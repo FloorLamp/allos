@@ -79,7 +79,7 @@ test("desktop keeps the page header", async ({ browser }) => {
   }
 });
 
-test("safety facts are uncapped and cannot be collapsed", async ({
+test("read-only safety facts remain uncapped and actionable", async ({
   browser,
 }) => {
   const page = await openDashboard(browser, {
@@ -90,12 +90,12 @@ test("safety facts are uncapped and cannot be collapsed", async ({
       "[data-testid^='now-strip-card-attention.fact:mental-health:crisis']"
     );
     await expect(safety).toHaveCount(1);
-    const fact = safety.getByTestId("needs-attention");
-    await expect(fact).toHaveAttribute("data-locked", "true");
-    await expect(fact).toHaveAttribute("data-collapsed", "false");
-    await expect(
-      fact.getByRole("button", { name: /Collapse|Expand/ })
-    ).toHaveCount(0);
+    const fact = safety.getByTestId("dashboard-candidate");
+    await expect(fact.getByTestId("dashboard-attention-atom")).toBeVisible();
+    await expect(fact).toHaveAttribute("data-kind", "statement");
+    await expect(fact).toHaveAttribute("data-lane", "now");
+    await expect(fact.getByRole("link").first()).toBeVisible();
+    await expect(fact.getByRole("button")).toHaveCount(0);
   } finally {
     await page.context().close();
   }
