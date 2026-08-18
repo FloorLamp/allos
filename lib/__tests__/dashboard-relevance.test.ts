@@ -6,6 +6,7 @@ import {
 import {
   actionCandidate,
   attentionCandidates,
+  engagementFromSource,
   profileDataRelevance,
   readingCandidate,
   stateCandidate,
@@ -59,6 +60,13 @@ const rank = (candidates: DashboardCandidate[]) =>
   });
 
 describe("atomic dashboard placement", () => {
+  it("treats stored null provenance as manual engagement", () => {
+    expect(engagementFromSource(null)).toBe("manual");
+    expect(engagementFromSource("manual")).toBe("manual");
+    expect(engagementFromSource("oura")).toBe("external");
+    expect(engagementFromSource(undefined)).toBe("unknown");
+  });
+
   it("partitions every applicable candidate exactly once", () => {
     const placements = rank([
       action("owed", "must", { owed: true }),

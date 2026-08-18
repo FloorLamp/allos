@@ -55,16 +55,28 @@ describe("atomic dashboard source boundary", () => {
     );
   });
 
-  it("keeps ranker construction behind the React-free candidate modules", () => {
+  it("keeps candidate definitions behind the React-free domain builders", () => {
     const page = fs.readFileSync(path.join(root, "app/(app)/page.tsx"), "utf8");
-    for (const constructor of [
+    for (const definitionToken of [
       "actionCandidate(",
       "readingCandidate(",
       "statementCandidate(",
       "stateCandidate(",
+      "buildDashboardCandidate(",
+      "profileDataRelevance(",
+      "candidateId:",
+      "factKey:",
     ]) {
-      expect(page).not.toContain(constructor);
+      expect(page).not.toContain(definitionToken);
     }
-    expect(page).toContain("buildDashboardCandidate(input)");
+    for (const builder of [
+      "careCandidates.",
+      "dailyCandidates.",
+      "progressCandidates.",
+      "setupCandidates.",
+      "sleepCandidates.",
+    ]) {
+      expect(page).toContain(builder);
+    }
   });
 });
