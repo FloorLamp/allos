@@ -115,7 +115,7 @@ describe("getTimelineEvents", () => {
     const events = getTimelineEvents(imperial.profileId);
     expect(
       events.find((event) => event.id === `activity:${rideId}`)?.href
-    ).toBe(`/training/rides/${rideId}`);
+    ).toBe(`/training/activity/${rideId}`);
     expect(
       events.find(
         (event) => event.id === `activity:${imperial.cardioActivityId}`

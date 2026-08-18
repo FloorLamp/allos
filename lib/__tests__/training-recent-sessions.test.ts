@@ -175,8 +175,8 @@ describe("recentSessionsView (#2566 — Overview's 'what you did')", () => {
   });
 
   it("opens each session at the one destination it has", () => {
-    // The shared resolver (#2870): a ride keeps its performance detail, every
-    // other session opens its canonical page. Never a second href rule.
+    // The shared resolver (#2870/#3061): every session opens its canonical
+    // activity page. Never a second href rule.
     const view = recentSessionsView(
       [
         group("2026-08-16", "Today", [
@@ -192,7 +192,7 @@ describe("recentSessionsView (#2566 — Overview's 'what you did')", () => {
       ],
       WINDOW
     );
-    expect(view.rows[0].href).toBe("/training/rides/11");
+    expect(view.rows[0].href).toBe("/training/activity/11");
     expect(view.rows[1].href).toBe("/training/activity/12");
   });
 });

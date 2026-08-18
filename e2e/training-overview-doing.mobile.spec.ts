@@ -1,22 +1,18 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledBoxes, settledClick } from "./helpers";
+import { followLink, settledBoxes } from "./helpers";
 import {
   E2E_LOGIN_TRAINING_ROLLUP,
   E2E_MEMBER_PASSWORD,
-  TRAINING_ROLLUP_PROFILE,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
 
 // Issue #1496 — Training → Overview becomes the DOING surface (the other half of
 // #1492's rule: analyze on Trends, do on /training). On a 390×844 phone the tab was
 // an 8,798px wall whose first chart sat at 7,973px, led by ~17 uncapped per-muscle
 // finding cards with today's session buried mid-page. This spec pins the recomposed
-// order, the ONE findings rollup (with its item-wise dismiss still working through
-// the shared bus), the departed charts, the capped PR lists, and the #105
-// build-only-the-active-tab structure.
+// order, the coverage-owned volume status, the departed charts, the standards
+// ladder, and the #105 build-only-the-active-tab structure.
 //
 // Runs on the MOBILE project (the viewport the audit measured).
 
@@ -29,7 +25,7 @@ async function topOf(page: Page, testid: string): Promise<number> {
     .evaluate((el) => Math.round(el.getBoundingClientRect().top + scrollY));
 }
 
-test("Overview leads with today's session, then the week, then the findings rollup", async ({
+test("Overview leads with today's session, then the week, then depth", async ({
   page,
 }) => {
   await page.goto("/training?tab=overview");
@@ -225,20 +221,22 @@ test("no chart card renders on Overview — the volume/intensity block moved to 
   await expect(main.locator(".recharts-wrapper")).toHaveCount(0);
 });
 
-test("recent PRs render top-3 with a show-all hand-off to Analyze", async ({
+test("strength progress is folded into the standards ladder", async ({
   page,
 }) => {
   await page.goto("/training?tab=overview");
-  const card = page.getByTestId("overview-strength-prs");
-  await expect(card).toBeVisible();
+  const ladder = page.getByTestId("strength-standards-ladder");
+  await expect(ladder).toBeVisible();
+  expect(
+    await ladder.getByTestId("strength-ladder-row").count()
+  ).toBeLessThanOrEqual(3);
+  await expect(page.getByTestId("overview-strength-prs")).toHaveCount(0);
 
-  // The seeded profile has more than three recent strength PRs, so the hand-off link
-  // renders — and exactly three rows are drawn (the 14-row list is gone).
-  const showAll = card.getByTestId("overview-strength-prs-all");
-  await expect(showAll).toBeVisible();
-  await expect(card.getByRole("listitem")).toHaveCount(3);
-
-  await followLink(page, showAll, /tab=analyze/);
+  await followLink(
+    page,
+    ladder.getByRole("link", { name: "Full standards →" }),
+    /tab=analyze/
+  );
   await expect(page.getByTestId("analyze-section")).toBeVisible();
 });
 
@@ -263,37 +261,12 @@ test("a tab renders only its own section (#105)", async ({ page }) => {
   await expect(page.getByTestId("analyze-section")).toHaveCount(0);
 });
 
-// ── The findings rollup + its item-wise dismiss ───────────────────────────────
+// ── Volume status belongs to coverage, not a second findings presentation ─────
 
-// SPEC-OWNED FIXTURE (#868): the dismiss below writes a suppression row, so it runs
-// as a dedicated login on a dedicated profile whose light accessory log fires several
-// per-muscle volume-band shortfalls. Clearing that profile's volume-band dismissals
-// before AND after keeps the test self-contained under --repeat-each and leaves the
-// DB as it found it.
-function clearRollupDismissals(): void {
-  const dbPath = workerDbPath();
-  const db = new Database(dbPath);
-  try {
-    db.pragma("busy_timeout = 5000");
-    db.prepare(
-      `DELETE FROM upcoming_dismissals
-        WHERE signal_key LIKE 'muscle-volume:%'
-          AND profile_id = (SELECT id FROM profiles WHERE name = ?)`
-    ).run(TRAINING_ROLLUP_PROFILE);
-  } finally {
-    db.close();
-  }
-}
-
-test.describe("the coaching findings render as ONE rollup card", () => {
-  test.beforeAll(() => clearRollupDismissals());
-  test.afterAll(() => clearRollupDismissals());
-
-  test("expanding the rollup dismisses item-wise and the rollup survives with N−1", async ({
+test.describe("weekly volume has one presentation", () => {
+  test("coverage owns the under-target count and findings do not repeat it", async ({
     browser,
   }) => {
-    test.slow(); // local `next dev` compiles /training on first hit
-    clearRollupDismissals();
     const page = await loginAs(browser, {
       username: E2E_LOGIN_TRAINING_ROLLUP,
       password: E2E_MEMBER_PASSWORD,
@@ -301,39 +274,15 @@ test.describe("the coaching findings render as ONE rollup card", () => {
     try {
       await page.goto("/training?tab=overview");
 
-      // ONE card, ONE rollup row — never N sibling cards.
-      const card = page.getByTestId("training-findings");
-      await expect(card).toBeVisible();
-      const rollup = card.getByTestId("training-findings-rollup");
-      await expect(rollup).toHaveCount(1);
       await expect(
-        rollup.getByTestId("training-findings-rollup-title")
+        page.getByTestId("muscle-coverage-below-target")
       ).toContainText(/\d+ muscle groups under weekly target/);
-
-      // The per-muscle findings live INSIDE it, revealed by the disclosure — each
-      // with its own dismiss button (a pure client toggle, no POST).
-      const items = rollup.getByTestId("training-findings-rollup-item");
-      await rollup.locator("summary").click();
-      await expect(items.first()).toBeVisible(); // first-ok: this spec owns the fixture; the rollup's first item
-      const before = await items.count();
-      expect(before).toBeGreaterThan(1);
-
-      // Dismiss ONE of them: the identities/dedupeKeys are untouched by the
-      // aggregation, so this is the same shared-bus write a flat card always made.
-      const victim = items.nth(0);
-      const victimTitle = (await victim.innerText()).split("\n")[0];
-      await settledClick(
-        page,
-        victim.getByTestId("training-findings-rollup-dismiss")
-      );
-
-      // That ONE finding is gone; the rollup itself survives with N−1 and re-counts.
-      await expect(items).toHaveCount(before - 1);
-      await expect(rollup).toHaveCount(1);
-      await expect(items.filter({ hasText: victimTitle })).toHaveCount(0);
+      await expect(page.getByTestId("training-findings-rollup")).toHaveCount(0);
       await expect(
-        rollup.getByTestId("training-findings-rollup-title")
-      ).toContainText(`${before - 1} muscle group`);
+        page
+          .getByTestId("training-findings")
+          .getByText(/muscle groups under weekly target/)
+      ).toHaveCount(0);
     } finally {
       await page.close();
     }

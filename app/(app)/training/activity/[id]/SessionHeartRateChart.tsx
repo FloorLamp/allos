@@ -1,25 +1,30 @@
 "use client";
 
+// Shared heart-rate chart for the canonical activity detail page.
+
 import LineChartCard from "@/components/LineChartCard";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
-import { formatRideElapsed } from "@/lib/cycling-analytics";
+import { formatSessionElapsed } from "@/lib/cycling-analytics";
 import { formatClockValue, formatLongDate } from "@/lib/format-date";
-import type { RideHeartRatePoint } from "@/lib/ride-detail";
+import type { SessionHeartRatePoint } from "@/lib/session-detail";
 import { ZONE_COLORS, type ZoneModel } from "@/lib/training-zones";
-import { rideChartSyncMethod, useRideChartLink } from "./RideChartLink";
+import {
+  sessionChartSyncMethod,
+  useSessionChartLink,
+} from "./SessionChartLink";
 
-export default function RideHeartRateChart({
+export default function SessionHeartRateChart({
   data,
-  rideDate,
+  activityDate,
   zoneModel,
 }: {
-  data: RideHeartRatePoint[];
-  rideDate: string;
+  data: SessionHeartRatePoint[];
+  activityDate: string;
   zoneModel: ZoneModel | null;
 }) {
   const formatPrefs = useFormatPrefs();
-  const { setActiveLabel } = useRideChartLink();
+  const { setActiveLabel } = useSessionChartLink();
   const clock = (value: string) =>
     formatClockValue(value.slice(11, 16), formatPrefs.timeFormat, value);
   const zoneDomain = zoneModel
@@ -41,7 +46,7 @@ export default function RideHeartRateChart({
     : undefined;
   const elapsedData = data.map((point, index) => ({
     ...point,
-    date: formatRideElapsed(index * 60),
+    date: formatSessionElapsed(index * 60),
   }));
   const clockByElapsed = new Map(
     elapsedData.map((point, index) => [point.date, data[index].date])
@@ -67,12 +72,12 @@ export default function RideHeartRateChart({
         if (!stamp) return `${value} elapsed`;
         const date = stamp.slice(0, 10);
         const time = clock(stamp);
-        return date === rideDate
+        return date === activityDate
           ? `${time} · ${value} elapsed`
           : `${formatLongDate(date, formatPrefs)} · ${time} · ${value} elapsed`;
       }}
-      syncId="ride-effort"
-      syncMethod={rideChartSyncMethod}
+      syncId="session-effort"
+      syncMethod={sessionChartSyncMethod}
       onActiveLabelChange={setActiveLabel}
     />
   );

@@ -31,6 +31,41 @@ function withDb<T>(fn: (db: Database.Database) => T): T {
 // RESETS them (Morning back to Auto — profile 1's default, digest off, sleep off)
 // so the shared fixture is left as found.
 test.describe("wake-aware mornings (issue #1117, minute grain #2121)", () => {
+  // Establish the cadence precondition explicitly. Worker databases are isolated
+  // from one another, but files sharing a worker run sequentially against the same
+  // database; an earlier cadence-focused spec may legitimately have used 5 minutes.
+  test.describe.configure({ mode: "serial" });
+  let previousTickInterval: string | undefined;
+
+  test.beforeEach(() => {
+    previousTickInterval = withDb(
+      (db) =>
+        db
+          .prepare("SELECT value FROM settings WHERE key = ?")
+          .get("notify_tick_interval_min") as { value: string } | undefined
+    )?.value;
+    withDb((db) =>
+      db
+        .prepare("DELETE FROM settings WHERE key = ?")
+        .run("notify_tick_interval_min")
+    );
+  });
+
+  test.afterEach(() => {
+    withDb((db) => {
+      if (previousTickInterval === undefined) {
+        db.prepare("DELETE FROM settings WHERE key = ?").run(
+          "notify_tick_interval_min"
+        );
+      } else {
+        db.prepare(
+          `INSERT INTO settings (key, value) VALUES ('notify_tick_interval_min', ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+        ).run(previousTickInterval);
+      }
+    });
+  });
+
   test("Auto option, minute-precise manual time + sleep-summary opt-in round-trip", async ({
     page,
   }) => {

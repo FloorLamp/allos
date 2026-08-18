@@ -44,6 +44,10 @@ import {
   E2E_LOGIN_SESSION_PEERS,
   SESSION_PEERS_PROFILE,
   SESSION_PEERS_TITLE,
+  E2E_LOGIN_OVERVIEW_NO_ROUTINE,
+  OVERVIEW_NO_ROUTINE_PROFILE,
+  E2E_LOGIN_OVERVIEW_REST,
+  OVERVIEW_REST_PROFILE,
 } from "../fixture-logins";
 import {
   getTimezone,
@@ -54,6 +58,7 @@ import {
 import { reconcileFlags } from "../../lib/queries";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
 import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
+import { setFixtureTimezone } from "../fixture-timezones";
 
 // ── Dense Training Log card + met-target fixtures ──
 export function seedTrainingLogCard(): void {
@@ -758,12 +763,12 @@ export function seedEndurancePlans(): void {
   );
 }
 
-// ── Training → Overview rollup fixture (#1496) ──
+// ── Training → Overview coverage aggregate fixture (#1496/#2566) ──
 export function seedTrainingRollup(): void {
   // A dedicated ADULT profile with a LIGHT recent strength log: five small-muscle
   // exercises at 2 sets each inside the trailing 7-day window, so the per-muscle
-  // volume-band engine (#742) fires a HANDFUL of `below` shortfalls at once — the pile
-  // the Overview rollup exists to fold into one card. Earlier sessions in the two
+  // volume-band engine (#742) fires a HANDFUL of `below` shortfalls at once — the count
+  // the coverage card owns without repeating it in Training watch. Earlier sessions in the two
   // preceding weeks clear the #719 cold-start gate (≥2 distinct training weeks). NO
   // routine (so no deload gate) and NO injury (so no excluded region), and every date
   // is RELATIVE so the fixture never goes stale.
@@ -803,7 +808,7 @@ export function seedTrainingRollup(): void {
   });
   seedMemberLogin(E2E_LOGIN_TRAINING_ROLLUP, profileId, "write");
   console.log(
-    `e2e: seeded training-overview rollup fixture — profile ${profileId} (${TRAINING_ROLLUP_PROFILE}) (#1496)`
+    `e2e: seeded training-overview coverage fixture — profile ${profileId} (${TRAINING_ROLLUP_PROFILE}) (#1496/#2566)`
   );
 }
 
@@ -1012,5 +1017,54 @@ export function seedWeekSpine(): void {
   seedMemberLogin(E2E_LOGIN_WEEK_SPINE, profileId, "write");
   console.log(
     `e2e: seeded week-spine fixture — profile ${profileId} (${WEEK_SPINE_PROFILE}) (#2566)`
+  );
+}
+
+// ── Training Overview standing actions (#3062) ──────────────────────────────
+export function seedOverviewActionStates(): void {
+  const noRoutineId = fixtureProfileId(OVERVIEW_NO_ROUTINE_PROFILE);
+  const noRoutineToday = today(noRoutineId);
+  db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(noRoutineId);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(noRoutineId);
+  db.prepare(
+    `INSERT INTO injuries (profile_id, label, regions, status, since)
+     VALUES (?, 'Right knee (e2e)', '["Legs"]', 'active', ?)`
+  ).run(noRoutineId, shiftDateStr(noRoutineToday, -5));
+  seedMemberLogin(E2E_LOGIN_OVERVIEW_NO_ROUTINE, noRoutineId, "write");
+
+  const restId = fixtureProfileId(OVERVIEW_REST_PROFILE);
+  setFixtureTimezone(db, restId, "overview-rest", "UTC");
+  const restToday = today(restId);
+  const restYesterday = shiftDateStr(restToday, -1);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(restId);
+  db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(restId);
+  db.prepare(
+    `INSERT INTO injuries (profile_id, label, regions, status, since)
+     VALUES (?, 'Right knee (e2e)', '["Legs"]', 'active', ?)`
+  ).run(restId, shiftDateStr(restToday, -5));
+  db.prepare(
+    `DELETE FROM metric_samples
+      WHERE profile_id = ? AND metric = 'sleep_min'`
+  ).run(restId);
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, intensity, source, external_id)
+     VALUES (?, ?, 'strength', 'Overview rest context', 40, 'hard', 'manual',
+             'e2e:overview-rest-context')`
+  ).run(restId, shiftDateStr(restToday, -10));
+  db.prepare(
+    `INSERT INTO metric_samples
+       (profile_id, source, metric, date, started_at, ended_at, value)
+     VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
+  ).run(
+    restId,
+    restToday,
+    zonedWallTimeToUtc("UTC", restYesterday, "23:00")!.toISOString(),
+    zonedWallTimeToUtc("UTC", restToday, "04:00")!.toISOString()
+  );
+  seedMemberLogin(E2E_LOGIN_OVERVIEW_REST, restId, "write");
+
+  console.log(
+    `e2e: seeded Overview standing-action fixtures — profiles ${noRoutineId} and ${restId} (#3062)`
   );
 }

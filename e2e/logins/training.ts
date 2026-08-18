@@ -41,10 +41,9 @@ export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
 // several small muscles (2 sets each of curls / skullcrushers / lateral raises /
 // crunches / calf raises inside the trailing 7-day window, plus earlier weeks so the
 // #719 cold-start gate is satisfied), so the per-muscle volume-band engine (#742)
-// fires SEVERAL shortfalls at once — exactly the pile the Overview rollup folds into
-// one card. Dedicated on purpose (#868): the spec DISMISSES one of those findings, and
-// a suppression write on a shared profile would silence a neighbor's finding. NO
-// routine and NO injury, so nothing gates the observations (deload / injured region).
+// fires SEVERAL shortfalls at once. The Overview coverage badge owns their aggregate;
+// the fixture proves Training watch does not repeat it. NO routine and NO injury, so
+// nothing gates the coverage answer (deload / injured region).
 export const E2E_LOGIN_TRAINING_ROLLUP = "e2e_training_rollup";
 export const TRAINING_ROLLUP_PROFILE = "Training Rollup (e2e)";
 
@@ -144,3 +143,12 @@ export const OVERLAP_TWIN_TITLE = "Overlap twin (e2e)";
 export const E2E_LOGIN_SESSION_PEERS = "e2e_session_peers";
 export const SESSION_PEERS_PROFILE = "Session Peers (e2e)";
 export const SESSION_PEERS_TITLE = "Riverside loop (e2e)";
+
+// ── Training Overview standing actions (#3062) ──────────────────────────────
+// Two dedicated ADULT profiles make both generic-card branches visible without
+// mutating a shared seed: one has no routine plus an active knee constraint, and
+// one has a short-night recovery signal that forces the rest recommendation.
+export const E2E_LOGIN_OVERVIEW_NO_ROUTINE = "e2e_overview_no_routine";
+export const OVERVIEW_NO_ROUTINE_PROFILE = "Overview No Routine (e2e)";
+export const E2E_LOGIN_OVERVIEW_REST = "e2e_overview_rest";
+export const OVERVIEW_REST_PROFILE = "Overview Rest (e2e)";

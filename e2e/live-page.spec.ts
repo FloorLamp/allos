@@ -63,9 +63,8 @@ test("live start → set → finish: the record settles at the session's own URL
   // Clean up the row this test created (shared seed DB): edit on the page and
   // delete through the form — the same machinery the log card uses.
   await page.getByTestId("activity-page-edit").click();
-  await expect(
-    page.getByTestId("activity-page-dock").getByTestId("activity-form")
-  ).toBeVisible();
+  await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
+  await expect(page.getByTestId("activity-form")).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
     .getByRole("dialog")

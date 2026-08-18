@@ -55,7 +55,13 @@ test("log an injury → recommendation avoids the region and names why → resol
   await expect(chip).toContainText("Active");
   await expect(chip).toContainText("Chest");
 
-  // The recommendation disclosure NAMES the excluded region — never silent.
+  // The compact chip names the constraint; the full explanation is one tap behind
+  // Why? so the daily answer stays readable without hiding its reasoning.
+  const context = page.getByRole("main").getByTestId("training-context-chips");
+  await expect(context.getByTestId("training-context-chip")).toContainText(
+    "Chest (right shoulder injury)"
+  );
+  await context.getByText("Why?", { exact: true }).click();
   const notes = page.getByRole("main").getByTestId("training-context-notes");
   await expect(notes).toBeVisible();
   await expect(page.getByTestId("injury-exclusion-note")).toContainText(

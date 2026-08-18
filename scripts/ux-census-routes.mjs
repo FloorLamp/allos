@@ -75,16 +75,8 @@ export const DYNAMIC_ROUTES = [
     match: /^\/equipment\/\d+$/,
   },
   {
-    pattern: "/training/rides/[id]",
-    strategy: "follow",
-    from: ["/training?tab=log", "/training"],
-    match: /^\/training\/rides\/\d+(?:\?.*)?$/,
-  },
-  {
-    // The activity's canonical page (#2870): every non-cycling session's
-    // record. Analyze's sessions table and the exercise panel's last-trained
-    // stat link it; the seeded shapes carry strength history, so the follow
-    // resolves there (fresh logs a BLIND SPOT, like the ride entry).
+    // Every session's canonical record. Analyze's sessions table and Log both
+    // link it; the seeded shapes carry enough history to resolve one instance.
     pattern: "/training/activity/[id]",
     strategy: "follow",
     from: ["/training?tab=analyze", "/training?tab=log"],
@@ -168,6 +160,67 @@ export const DISCLOSURE_EXPANSIONS = [
       '[data-testid="clinical-result-panel-toggle"][aria-expanded="false"]',
     loadMore: '[data-testid="clinical-result-panel-load-all"]',
   },
+];
+
+// Query-driven hub panels are not separate page.tsx files, so the filesystem
+// census otherwise sees only their default state. Keep each non-default state
+// explicit: these visits get their own desktop/mobile screenshot and metrics row.
+/**
+ * @typedef {object} HubVariant
+ * @property {string} route static hub route
+ * @property {string} target canonical query-driven panel URL
+ * @property {string} slug filesystem-safe capture key
+ */
+
+/** @type {HubVariant[]} */
+export const HUB_VARIANTS = [
+  { route: "/training", target: "/training?tab=log", slug: "training-tab-log" },
+  {
+    route: "/training",
+    target: "/training?tab=analyze",
+    slug: "training-tab-analyze",
+  },
+  {
+    route: "/training",
+    target: "/training?tab=plan",
+    slug: "training-tab-plan",
+  },
+  {
+    route: "/trends",
+    target: "/trends?tab=fitness",
+    slug: "trends-tab-fitness",
+  },
+  {
+    route: "/trends",
+    target: "/trends?tab=nutrition",
+    slug: "trends-tab-nutrition",
+  },
+  {
+    route: "/trends",
+    target: "/trends?tab=insights",
+    slug: "trends-tab-insights",
+  },
+  {
+    route: "/nutrition",
+    target: "/nutrition?tab=supplements",
+    slug: "nutrition-tab-supplements",
+  },
+  {
+    route: "/data",
+    target: "/data?section=review",
+    slug: "data-section-review",
+  },
+  {
+    route: "/data",
+    target: "/data?section=coverage",
+    slug: "data-section-coverage",
+  },
+  {
+    route: "/data",
+    target: "/data?section=manage",
+    slug: "data-section-manage",
+  },
+  { route: "/data", target: "/data?section=trash", slug: "data-section-trash" },
 ];
 
 // Stable, filesystem-safe capture/metrics key for a route pattern. Detail-page

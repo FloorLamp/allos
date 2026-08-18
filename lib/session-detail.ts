@@ -1,4 +1,4 @@
-import { formatRideElapsed } from "./cycling-analytics";
+import { formatSessionElapsed } from "./cycling-analytics";
 import { speedKmh } from "./coaching/cardio";
 import {
   cyclingActivityName,
@@ -7,34 +7,12 @@ import {
   isSameCyclingActivity,
   type CyclingActivityIdentity,
 } from "./cycling-activity";
-import { rideHref, trainingActivityPageHref, type AppRoute } from "./hrefs";
 import { median } from "./robust-stats";
-import { ZONES, type ActivityWindow } from "./training-zones";
+import { ZONE_COLORS, ZONES, type ActivityWindow } from "./training-zones";
+import type { AppRoute } from "./hrefs";
 
 export { cyclingActivityName, isCyclingActivity } from "./cycling-activity";
 export type { CyclingActivityIdentity } from "./cycling-activity";
-
-// The best read-first destination for one activity. Cycling sessions keep their
-// dedicated performance detail; every other activity's canonical record is its
-// OWN page since #2870 — flipping this one branch is what re-points the
-// timeline, equipment histories, and training surfaces at once. Shared
-// training, Timeline, and equipment surfaces call this one resolver so the
-// same activity never opens two different destinations.
-export function activityDetailHref(
-  activity: CyclingActivityIdentity & { id: number }
-): AppRoute {
-  return rideDetailHref(activity) ?? trainingActivityPageHref(activity.id);
-}
-
-// Some surfaces have a better non-cycling fallback than the Training Log (global
-// search uses the activity's Timeline day so an old row is guaranteed to be
-// present). Expose the ride-only decision without making those callers repeat
-// the cycling classifier.
-export function rideDetailHref(
-  activity: CyclingActivityIdentity & { id: number }
-): AppRoute | null {
-  return isCyclingActivity(activity) ? rideHref(activity.id) : null;
-}
 
 export function wattsPerKg(
   watts: number | null | undefined,
@@ -45,7 +23,7 @@ export function wattsPerKg(
   return Math.round((watts / weightKg) * 100) / 100;
 }
 
-export interface RideZoneRow {
+export interface SessionZoneRow {
   id: number;
   name: string;
   label: string;
@@ -53,34 +31,35 @@ export interface RideZoneRow {
   percent: number;
 }
 
-export type RideHighlight =
-  | {
-      key: "heart_rate_zone";
-      zone: RideZoneRow;
-    }
-  | {
-      key: "segment_results";
-      personalBestCount: number;
-      leaderboardCount: number;
-    }
-  | {
-      key: "efficiency";
-      driftPercent: number;
-    };
+export type SessionHighlightTone = "neutral" | "positive" | "caution";
 
-export interface RideHeartRateBucket {
+// A session's short, presentation-ready recap grammar. Domain derivations own
+// what is notable; every surface owns only layout, so cycling, sport, and future
+// post-workout moments cannot drift into different tile vocabularies.
+export interface SessionHighlight {
+  key: string;
+  label: string;
+  value: string;
+  detail: string;
+  tone: SessionHighlightTone;
+  markerColor?: string;
+  href?: AppRoute;
+}
+
+export interface SessionHeartRateBucket {
   ts: string;
   bpm: number;
 }
 
-export interface RideHeartRatePoint {
+export interface SessionHeartRatePoint {
   date: string;
   value: number | null;
 }
 
-export interface RideComparisonInput extends CyclingActivityIdentity {
+export interface SessionComparisonInput {
   id: number;
   date: string;
+  title: string;
   start_time?: string | null;
   duration_min: number | null;
   distance_km: number | null;
@@ -93,7 +72,10 @@ export interface RideComparisonInput extends CyclingActivityIdentity {
   relative_effort: number | null;
 }
 
-export type RideComparisonMetricKey =
+export interface CyclingComparisonInput
+  extends SessionComparisonInput, CyclingActivityIdentity {}
+
+export type SessionComparisonMetricKey =
   | "speed"
   | "heart_rate"
   | "power"
@@ -102,15 +84,15 @@ export type RideComparisonMetricKey =
   | "elevation"
   | "relative_effort";
 
-export interface RideComparisonMetric {
-  key: RideComparisonMetricKey;
+export interface SessionComparisonMetric {
+  key: SessionComparisonMetricKey;
   current: number;
   median: number;
   difference: number;
-  points: RideProgressPoint[];
+  points: SessionProgressPoint[];
 }
 
-export interface RideProgressPoint {
+export interface SessionProgressPoint {
   id: number;
   date: string;
   title: string;
@@ -118,117 +100,53 @@ export interface RideProgressPoint {
   current: boolean;
 }
 
-export interface RideComparison {
+export interface SessionComparison {
   basis: "distance" | "duration";
   tolerancePercent: number;
-  rideCount: number;
-  metrics: RideComparisonMetric[];
-}
-
-export interface RideHistoryInput extends CyclingActivityIdentity {
-  id: number;
-  date: string;
-  start_time?: string | null;
-  duration_min: number | null;
-  distance_km: number | null;
-}
-
-export interface RideHistoryItem {
-  id: number;
-  date: string;
-  title: string;
-  duration_min: number | null;
-  distance_km: number | null;
-}
-
-export interface RideHistoryNeighbors {
-  before: RideHistoryItem[];
-  after: RideHistoryItem[];
+  sessionCount: number;
+  metrics: SessionComparisonMetric[];
 }
 
 const COMPARABLE_TOLERANCE = 0.3;
-
-function compareRideChronology(
-  left: RideHistoryInput,
-  right: RideHistoryInput
-): number {
-  return (
-    left.date.localeCompare(right.date) ||
-    (left.start_time ?? "").localeCompare(right.start_time ?? "") ||
-    left.id - right.id
-  );
-}
-
-// The nearest chronological cycling sessions around one ride. The stable id
-// tie-break handles same-day imports without start times, while a stored start
-// time takes precedence when both rides provide one.
-export function rideHistoryNeighbors(
-  current: RideHistoryInput,
-  candidates: RideHistoryInput[],
-  limit = 3
-): RideHistoryNeighbors {
-  const rides = candidates.filter(
-    (candidate) =>
-      candidate.id !== current.id && isSameCyclingActivity(current, candidate)
-  );
-  const toItem = (ride: RideHistoryInput): RideHistoryItem => ({
-    id: ride.id,
-    date: ride.date,
-    title: ride.title,
-    duration_min: ride.duration_min,
-    distance_km: ride.distance_km,
-  });
-  return {
-    before: rides
-      .filter((candidate) => compareRideChronology(candidate, current) < 0)
-      .sort((a, b) => compareRideChronology(b, a))
-      .slice(0, limit)
-      .map(toItem),
-    after: rides
-      .filter((candidate) => compareRideChronology(candidate, current) > 0)
-      .sort(compareRideChronology)
-      .slice(0, limit)
-      .map(toItem),
-  };
-}
 
 function positive(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function comparisonValue(
-  ride: RideComparisonInput,
-  key: RideComparisonMetricKey
+  session: SessionComparisonInput,
+  key: SessionComparisonMetricKey
 ): number | null {
   if (key === "speed") {
     return positive(
-      ride.avg_speed_kmh ?? speedKmh(ride.distance_km, ride.duration_min)
+      session.avg_speed_kmh ??
+        speedKmh(session.distance_km, session.duration_min)
     );
   }
-  if (key === "heart_rate") return positive(ride.avg_hr);
-  if (key === "power") return positive(ride.avg_power_w);
-  if (key === "weighted_power") return positive(ride.weighted_avg_power_w);
-  if (key === "cadence") return positive(ride.avg_cadence);
+  if (key === "heart_rate") return positive(session.avg_hr);
+  if (key === "power") return positive(session.avg_power_w);
+  if (key === "weighted_power") return positive(session.weighted_avg_power_w);
+  if (key === "cadence") return positive(session.avg_cadence);
   if (key === "elevation") {
-    return ride.elevation_m != null &&
-      Number.isFinite(ride.elevation_m) &&
-      ride.elevation_m >= 0
-      ? ride.elevation_m
+    return session.elevation_m != null &&
+      Number.isFinite(session.elevation_m) &&
+      session.elevation_m >= 0
+      ? session.elevation_m
       : null;
   }
-  return ride.relative_effort != null &&
-    Number.isFinite(ride.relative_effort) &&
-    ride.relative_effort >= 0
-    ? ride.relative_effort
+  return session.relative_effort != null &&
+    Number.isFinite(session.relative_effort) &&
+    session.relative_effort >= 0
+    ? session.relative_effort
     : null;
 }
 
-// Compare a ride with every other similarly sized cycling session, regardless of
-// when it was recorded. Distance is the stronger like-for-like boundary; duration
-// is the fallback when this ride has no distance. The median resists one unusually
-// hilly, stopped, or sensor-glitched ride. Every metric independently requires a
-// current value and at least one peer value, so sparse imports degrade to the
-// honest overlap instead of fake zeroes.
+// Compare a session with every other similarly sized peer, regardless of when it
+// was recorded. Distance is the stronger like-for-like boundary; duration is the
+// fallback when a session has no distance. The median resists one unusual or
+// sensor-glitched session. Every metric independently requires a current value
+// and at least one peer value, so sparse imports degrade to the honest overlap
+// instead of fake zeroes.
 /**
  * A session against its like-for-like peers: same KIND of session, within a
  * tolerance of the same distance (or duration when it recorded no distance),
@@ -244,24 +162,21 @@ function comparisonValue(
  * does not vote on heart rate, and a metric no peer carries is absent rather
  * than compared against a zero nobody measured.
  */
-export function sessionComparison(
-  current: RideComparisonInput,
-  candidates: RideComparisonInput[],
+export function sessionComparison<T extends SessionComparisonInput>(
+  current: T,
+  candidates: T[],
   opts: {
-    isPeer: (
-      current: RideComparisonInput,
-      candidate: RideComparisonInput
-    ) => boolean;
-    excludeKeys?: RideComparisonMetricKey[];
+    isPeer: (current: T, candidate: T) => boolean;
+    excludeKeys?: SessionComparisonMetricKey[];
   }
-): RideComparison | null {
+): SessionComparison | null {
   const currentDistance = positive(current.distance_km);
   const currentDuration = positive(current.duration_min);
   const basis = currentDistance != null ? "distance" : "duration";
   const currentBasis = currentDistance ?? currentDuration;
   if (currentBasis == null) return null;
 
-  const rides = candidates
+  const sessions = candidates
     .filter(
       (candidate) =>
         candidate.id !== current.id && opts.isPeer(current, candidate)
@@ -276,9 +191,9 @@ export function sessionComparison(
           COMPARABLE_TOLERANCE
       );
     });
-  if (rides.length === 0) return null;
+  if (sessions.length === 0) return null;
 
-  const availableKeys: RideComparisonMetricKey[] = [
+  const availableKeys: SessionComparisonMetricKey[] = [
     "speed",
     "heart_rate",
     "power",
@@ -288,24 +203,24 @@ export function sessionComparison(
     "relative_effort",
   ];
   const keys = availableKeys.filter((key) => !opts.excludeKeys?.includes(key));
-  const metrics = keys.flatMap((key): RideComparisonMetric[] => {
+  const metrics = keys.flatMap((key): SessionComparisonMetric[] => {
     const currentValue = comparisonValue(current, key);
     if (currentValue == null) return [];
-    const peerValues = rides
-      .map((ride) => comparisonValue(ride, key))
+    const peerValues = sessions
+      .map((session) => comparisonValue(session, key))
       .filter((value): value is number => value != null);
     if (peerValues.length === 0) return [];
     const baseline = median(peerValues);
     const points = [
-      ...rides.flatMap((ride): RideProgressPoint[] => {
-        const value = comparisonValue(ride, key);
+      ...sessions.flatMap((session): SessionProgressPoint[] => {
+        const value = comparisonValue(session, key);
         return value == null
           ? []
           : [
               {
-                id: ride.id,
-                date: ride.date,
-                title: ride.title,
+                id: session.id,
+                date: session.date,
+                title: session.title,
                 value,
                 current: false,
               },
@@ -333,7 +248,7 @@ export function sessionComparison(
   return {
     basis,
     tolerancePercent: COMPARABLE_TOLERANCE * 100,
-    rideCount: rides.length,
+    sessionCount: sessions.length,
     metrics,
   };
 }
@@ -341,9 +256,9 @@ export function sessionComparison(
 // The cycling caller: peers are the same cycling subtype, and an indoor-only ride
 // has no elevation worth comparing.
 export function rideComparison(
-  current: RideComparisonInput,
-  candidates: RideComparisonInput[]
-): RideComparison | null {
+  current: CyclingComparisonInput,
+  candidates: CyclingComparisonInput[]
+): SessionComparison | null {
   const indoorOnly = cyclingActivityPresentation(
     cyclingActivityName(current) ?? "Cycling"
   ).indoorOnly;
@@ -372,14 +287,14 @@ function localMinuteStamp(index: number): string {
   return new Date(index * 60_000).toISOString().slice(0, 16);
 }
 
-// A true one-point-per-minute series across the ride window. Empty minutes stay
+// A true one-point-per-minute series across the session window. Empty minutes stay
 // null so the shared line chart breaks over a wear gap instead of drawing a
 // fabricated interpolation. Local timestamps are treated as calendar numerals,
 // never converted through the profile timezone.
-export function rideHeartRateSeries(
+export function sessionHeartRateSeries(
   window: ActivityWindow | null,
-  buckets: RideHeartRateBucket[]
-): RideHeartRatePoint[] {
+  buckets: SessionHeartRateBucket[]
+): SessionHeartRatePoint[] {
   if (!window || buckets.length === 0) return [];
   const start = localMinuteIndex(window.start);
   const end = localMinuteIndex(window.end);
@@ -396,7 +311,7 @@ export function rideHeartRateSeries(
   });
 }
 
-export function rideZoneRows(minutes: number[]): RideZoneRow[] {
+export function sessionZoneRows(minutes: number[]): SessionZoneRow[] {
   const total = minutes.reduce(
     (sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0),
     0
@@ -414,28 +329,35 @@ export function rideZoneRows(minutes: number[]): RideZoneRow[] {
   });
 }
 
-// A short, stable scan of the ride's genuinely notable context. Metric
+// Cycling's derivation into the shared highlight grammar. Metric
 // comparisons already sit in the summary immediately above this row. The HR
 // highlight is retained because a time-dominant zone is not the same thing as
-// the zone containing the ride's average HR value.
-export function rideHighlights({
+// the zone containing the session's average HR value.
+export function cyclingHighlights({
   zones,
   powerHrDriftPercent,
   segments,
 }: {
-  zones: RideZoneRow[];
+  zones: SessionZoneRow[];
   powerHrDriftPercent: number | null;
   segments: { prRank: number | null; komRank: number | null }[];
-}): RideHighlight[] {
-  const highlights: RideHighlight[] = [];
+}): SessionHighlight[] {
+  const highlights: SessionHighlight[] = [];
 
-  const dominantZone = zones.reduce<RideZoneRow | null>(
+  const dominantZone = zones.reduce<SessionZoneRow | null>(
     (best, zone) =>
       zone.minutes > 0 && (!best || zone.minutes > best.minutes) ? zone : best,
     null
   );
   if (dominantZone) {
-    highlights.push({ key: "heart_rate_zone", zone: dominantZone });
+    highlights.push({
+      key: "heart_rate_zone",
+      label: "Most time in HR zone",
+      value: dominantZone.name,
+      detail: `${dominantZone.minutes} min · ${dominantZone.percent}% of recorded HR`,
+      tone: "neutral",
+      markerColor: ZONE_COLORS[dominantZone.id - 1],
+    });
   }
 
   const personalBestCount = segments.filter(
@@ -445,27 +367,46 @@ export function rideHighlights({
     (segment) => segment.komRank != null && segment.komRank <= 10
   ).length;
   if (personalBestCount > 0 || leaderboardCount > 0) {
+    const value =
+      personalBestCount > 0
+        ? `${personalBestCount} personal ${personalBestCount === 1 ? "best" : "bests"}`
+        : `${leaderboardCount} leaderboard ${leaderboardCount === 1 ? "result" : "results"}`;
+    const detail =
+      personalBestCount > 0 && leaderboardCount > 0
+        ? `${leaderboardCount} top-10 leaderboard ${leaderboardCount === 1 ? "result" : "results"}`
+        : "From recorded Strava segments";
     highlights.push({
       key: "segment_results",
-      personalBestCount,
-      leaderboardCount,
+      label: "Best efforts",
+      value,
+      detail,
+      tone: "positive",
     });
   }
 
   if (powerHrDriftPercent != null && Number.isFinite(powerHrDriftPercent)) {
+    const stable = Math.abs(powerHrDriftPercent) < 2;
+    const improved = powerHrDriftPercent < 0;
     highlights.push({
       key: "efficiency",
-      driftPercent: powerHrDriftPercent,
+      label: "Efficiency",
+      value: `${powerHrDriftPercent > 0 ? "+" : ""}${powerHrDriftPercent}% drift`,
+      detail: stable
+        ? "Held steady across both halves"
+        : improved
+          ? "Improved in the second half"
+          : "Fell in the second half",
+      tone: stable ? "neutral" : improved ? "positive" : "caution",
     });
   }
   return highlights;
 }
 
 // Elapsed seconds as a clock reading, or an em dash when there are none. The
-// ride page carried a private copy of this and `formatRideElapsed` already
+// ride page carried a private copy of this and `formatSessionElapsed` already
 // existed beside it in cycling-analytics; rather than move a third one here for
 // the activity page's splits (#3009), this is the null-tolerant wrapper both
 // surfaces call and the arithmetic stays in one place.
 export function formatElapsed(seconds: number | null): string {
-  return seconds == null ? "—" : formatRideElapsed(seconds);
+  return seconds == null ? "—" : formatSessionElapsed(seconds);
 }

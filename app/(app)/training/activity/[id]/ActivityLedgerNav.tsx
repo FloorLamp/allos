@@ -2,7 +2,11 @@
 
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import PendingLink, { PendingIconSlot } from "@/components/PendingLink";
-import { trainingActivityPageHref } from "@/lib/hrefs";
+import {
+  cyclingRideHref,
+  trainingActivityPageHref,
+  type CyclingLens,
+} from "@/lib/hrefs";
 
 // The activity page's ledger bar: back to the log, and ‹ older / newer › walking
 // the ledger in (date, id) order so a review session continues without bouncing
@@ -23,12 +27,20 @@ import { trainingActivityPageHref } from "@/lib/hrefs";
 export default function ActivityLedgerNav({
   olderId,
   newerId,
+  lens = null,
 }: {
   olderId: number | null;
   newerId: number | null;
+  lens?: CyclingLens | null;
 }) {
+  const activityHref = (id: number) =>
+    lens ? cyclingRideHref(id, lens) : trainingActivityPageHref(id);
+
   return (
-    <div className="mb-4 flex items-center gap-3 text-sm">
+    <div
+      className="mb-4 flex items-center gap-3 text-sm"
+      data-testid="activity-ledger-navigation"
+    >
       <PendingLink
         href="/training?tab=log"
         label="training log"
@@ -48,7 +60,7 @@ export default function ActivityLedgerNav({
       <span className="ml-auto flex items-center gap-3">
         {olderId != null && (
           <PendingLink
-            href={trainingActivityPageHref(olderId)}
+            href={activityHref(olderId)}
             label="older activity"
             testId="activity-older-link"
             className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline dark:text-brand-400"
@@ -67,7 +79,7 @@ export default function ActivityLedgerNav({
         )}
         {newerId != null && (
           <PendingLink
-            href={trainingActivityPageHref(newerId)}
+            href={activityHref(newerId)}
             label="newer activity"
             testId="activity-newer-link"
             className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline dark:text-brand-400"

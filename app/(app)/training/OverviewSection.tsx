@@ -14,37 +14,38 @@ import {
   getRestingHrSignal,
   getSleepSignal,
   getStrengthByExercise,
+  getExerciseE1rmSeries,
+  getLatestBodyMetric,
   getWorkoutPresence,
+  getActivitiesSince,
+  getCardioZoneCoverage,
+  getSportByActivity,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatMinutes } from "@/lib/duration";
-import { frequencyScopeLabel } from "@/lib/frequency-targets";
+import { frequencyScopeLabel, isFrequencyScope } from "@/lib/frequency-targets";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
-  getFitnessRetestCadenceDays,
+  getProfileSex,
 } from "@/lib/settings";
-import { fitnessRetestDue } from "@/lib/fitness-retest";
-import { getLatestFitnessAssessmentDate } from "@/lib/fitness-assessment";
 import {
   coverageFromSets,
   coverageList,
-  SECONDARY_CREDIT,
+  coverageContributions,
 } from "@/lib/muscle-coverage";
-import { bandVerdict, bandPresentation } from "@/lib/muscle-volume-bands";
 import {
   contextualNextSet,
   deloadAdjust,
   nextSetText,
   recentCardioPRs,
-  recentPRs,
   recommendCoaching,
   suggestNextSet,
   type CardioPR,
 } from "@/lib/coaching";
-import { loadContextLabel, regionForExercise } from "@/lib/lifts";
+import { regionForExercise } from "@/lib/lifts";
 import { RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
 import { loadingDates } from "@/lib/training-zones";
 import { recommendNextWorkout } from "@/lib/workout-recommendation";
@@ -60,21 +61,13 @@ import {
   sameSituation,
   BUILTIN_POOR_SLEEP_SITUATION,
 } from "@/lib/situations";
-import {
-  excludedRegionLabel,
-  excludedExerciseLabel,
-  temperedExerciseLabel,
-  exerciseInjuryVerdict,
-  injuryReviewDue,
-} from "@/lib/injury-model";
+import { exerciseInjuryVerdict, injuryReviewDue } from "@/lib/injury-model";
 import { getEndurancePlanCards, getEnduranceArm } from "@/lib/queries";
 import TodaysSessionCard from "./TodaysSessionCard";
 import InjuryBar from "./InjuryBar";
 import EndurancePlanBar, { type EndurancePlanView } from "./EndurancePlanBar";
-import MuscleAnatomy from "@/components/MuscleAnatomy";
 import { PendingTextLink } from "@/components/PendingLink";
-import { fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
-import LogActivityButton from "@/components/LogActivityButton";
+import { fmtDistance, fmtKmh } from "@/lib/units";
 import PrCard from "@/components/PrCard";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import TrainingFindings from "./TrainingFindings";
@@ -83,6 +76,24 @@ import RecentSessions from "./RecentSessions";
 import { buildWeekSpine } from "@/lib/training-week-spine";
 import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
 import { recentSessionsView } from "@/lib/training-recent-sessions";
+import TrainingContextChips from "./TrainingContextChips";
+import FitnessCheckStrip from "./FitnessCheckStrip";
+import MuscleCoverageCard from "./MuscleCoverageCard";
+import StrengthStandardsLadder, {
+  type StrengthLadderRow,
+} from "./StrengthStandardsLadder";
+import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
+import { buildMuscleVolumeFindings } from "@/lib/rule-findings";
+import { activeFindings } from "@/lib/findings";
+import { getFindingSuppressions } from "@/lib/queries";
+import { strengthLadderPlacement } from "@/lib/strength-ladder";
+import { exerciseHistoryKey } from "@/lib/lifts";
+import { shiftDateStr } from "@/lib/date";
+import { rankTrainingSuites } from "@/lib/training-suite-rank";
+import { sessionOverviewRollup } from "@/lib/session-overview";
+import EnduranceDepthSuite from "./EnduranceDepthSuite";
+import SportDepthSuite from "./SportDepthSuite";
+import TrainingOverviewActions from "./TrainingOverviewActions";
 
 const KIND_LABEL: Record<CardioPR["kind"], string> = {
   distance: "longest",
@@ -90,16 +101,9 @@ const KIND_LABEL: Record<CardioPR["kind"], string> = {
   duration: "longest time",
 };
 
-// Recent PRs render top-3 + "show all → Analyze" (#1496): the 14-row lists this page
-// used to stack are the analytics lens's job now (Trends → Fitness "PRs this window",
-// #1492) and the per-item history lives on Analyze.
+// Cardio PRs render top-3 + "show all → Analyze" (#1496). Strength progress lives
+// on the standards ladder above, where the current and prior dots explain the gain.
 const PR_CAP = 3;
-
-// Set credit is fractional (secondary muscles count 0.5), so render whole
-// numbers plainly and half-credit with one decimal.
-function fmtSets(n: number): string {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
-}
 
 function prValue(p: CardioPR, du: "km" | "mi"): string {
   if (p.kind === "distance") return fmtDistance(p.distanceKm, du);
@@ -112,10 +116,10 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
 //   1. Today's session (the daily payload leads)
 //   2. This week — the WEEK SPINE (#2566): the seven-day band, captioned by the
 //      week's counts and the weekly routine's cadence chips, as ONE card
-//   3. Training watch — the coaching findings as ONE capped rollup card
+//   3. Training watch — true coaching exceptions in ONE capped card
 //   4. Muscle coverage + mobility
 //   5. Injuries / event plans (the descriptive copy renders only when they're live)
-//   6. Recent PRs — top 3 + "show all → Analyze"
+//   6. Recent cardio PRs — top 3 + "show all → Analyze"
 // The chart block LEFT: strength/cardio volume + intensity mix live windowed on
 // Trends → Fitness (#1492), with no mini duplicates here.
 export default async function OverviewSection() {
@@ -157,22 +161,8 @@ export default async function OverviewSection() {
   // strength regions and groups, activity types, and mobility regions. A food habit or
   // a wellness practice is a real target on a real page; that page is not this one.
   const targets = getFrequencyTargetProgressForHome(profile.id, "training");
-  const fitnessDue = fitnessRetestDue(
-    getLatestFitnessAssessmentDate(profile.id),
-    getFitnessRetestCadenceDays(profile.id),
-    todayStr
-  );
+  const { model: fitnessModel } = assembleFitnessCheckModel(profile.id);
   const strength = getStrengthByExercise(profile.id);
-  // PRs read the LOAD-CONTEXT grouping (#1610) so no record blends two machines;
-  // the card labels each row with its implement (#1610 forbids unlabeled splits).
-  // Both groupings fold the SAME cached all-history scan (#1654) — asking for the
-  // second one costs a regrouping, never a second read.
-  const strengthPrs = recentPRs(
-    getStrengthByExercise(profile.id, true),
-    todayStr,
-    30
-  );
-
   const cardio = getCardioByActivity(profile.id, du, formatPrefs);
   const cardioPrs = recentCardioPRs(cardio, todayStr, 30);
 
@@ -185,7 +175,103 @@ export default async function OverviewSection() {
   const coverage = coverageList(
     coverageFromSets(datedExercises, todayStr, coverageDays)
   );
-  const coverageMax = coverage.reduce((m, r) => Math.max(m, r.sets), 0);
+  const coverageEvidence = coverageContributions(
+    datedExercises,
+    todayStr,
+    coverageDays
+  );
+  const belowTargetCount = activeFindings(
+    buildMuscleVolumeFindings(profile.id, todayStr),
+    getFindingSuppressions(profile.id),
+    todayStr
+  ).length;
+
+  const sex = getProfileSex(profile.id);
+  const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
+  const priorCutoff = shiftDateStr(todayStr, -90);
+  const e1rmSeries = new Map(
+    getExerciseE1rmSeries(profile.id).map((row) => [
+      exerciseHistoryKey(row.exercise),
+      row,
+    ])
+  );
+  const strengthLadderRows: StrengthLadderRow[] = strength
+    .flatMap((stat): StrengthLadderRow[] => {
+      const series = e1rmSeries.get(exerciseHistoryKey(stat.exercise));
+      const prior = series?.points
+        .filter((point) => point.date <= priorCutoff)
+        .at(-1);
+      const placement = strengthLadderPlacement(
+        stat.exercise,
+        stat.freeWeightE1rmKg,
+        prior?.value ?? null,
+        sex,
+        bodyweightKg
+      );
+      return placement
+        ? [
+            {
+              exercise: stat.exercise,
+              placement,
+            },
+          ]
+        : [];
+    })
+    .sort((a, b) => {
+      const aMove =
+        a.placement.current.e1rmKg -
+        (a.placement.prior?.e1rmKg ?? a.placement.current.e1rmKg);
+      const bMove =
+        b.placement.current.e1rmKg -
+        (b.placement.prior?.e1rmKg ?? b.placement.current.e1rmKg);
+      return (
+        Number(b.placement.moved) - Number(a.placement.moved) ||
+        bMove - aMove ||
+        a.exercise.localeCompare(b.exercise)
+      );
+    })
+    .slice(0, 3);
+  const recentActivities = getActivitiesSince(
+    profile.id,
+    shiftDateStr(todayStr, -365)
+  );
+  const suiteRanking = rankTrainingSuites(recentActivities, todayStr);
+  const enduranceOverview = sessionOverviewRollup(
+    recentActivities
+      .filter((activity) => activity.type === "cardio")
+      .map((activity) => ({
+        id: activity.id,
+        title: activity.title,
+        date: activity.date,
+        durationMin: activity.duration_min,
+        distanceKm: activity.distance_km,
+        avgSpeedKmh: activity.avg_speed_kmh,
+      })),
+    todayStr
+  );
+  const cardioZones = getCardioZoneCoverage(
+    profile.id,
+    weekDays.start,
+    weekDays.end
+  );
+  const vo2Percentile =
+    fitnessModel.results.find((result) => result.key === "vo2max")
+      ?.percentile ?? null;
+  const sports = getSportByActivity(
+    profile.id,
+    getDisplayFormatPrefs(login.id)
+  );
+  const sportCadence = targets
+    .filter((target) => isFrequencyScope(target.target, "type", "sport"))
+    .map((target) => ({
+      id: target.target.id,
+      label: frequencyScopeLabel(
+        target.target.scope_kind,
+        target.target.scope_value
+      ),
+      count: target.count,
+      perWeek: target.per_week,
+    }));
 
   // ONE coaching input, shared by the recovery-aware next-workout card engine and
   // the routine-session resolver, so both read the same computation (#221). A
@@ -367,12 +453,6 @@ export default async function OverviewSection() {
           }),
       }
     : null;
-  // The card offers "log/view" actions for actionable nudges; rest/on-track are
-  // informational.
-  const nextActionable =
-    nextWorkout.kind === "strength" ||
-    nextWorkout.kind === "cardio" ||
-    nextWorkout.kind === "setup";
   // Show the routine "Today's session" card as the primary recommendation — EXCEPT
   // when a recovery signal has overridden the top rec to rest (rest still wraps the
   // result, per the spec). The generic "Next workout" card then carries the rest /
@@ -393,98 +473,12 @@ export default async function OverviewSection() {
             slots={sessionCard.slots}
             prefill={sessionCard.prefill}
             deloadWeek={sessionCard.deloadWeek}
+            context={<TrainingContextChips context={nw} />}
           />
         )}
 
-        {/* Injury exclusion disclosure (#838) + condition considerations (#666) — the calm
-            context riding ALONGSIDE the (unchanged) recommendation. NEVER silent: the excluded
-            regions are named so the user sees WHY a region is set aside. */}
-        {(nw.excludedRegions.length > 0 ||
-          nw.temperedRegions.length > 0 ||
-          nw.excludedExercises.length > 0 ||
-          nw.temperedExercises.length > 0 ||
-          nw.considerations.length > 0 ||
-          nw.substitutionSuggested) && (
-          <div
-            className="card border-l-4 border-l-amber-400 bg-amber-50/40 dark:bg-amber-500/5"
-            data-testid="training-context-notes"
-          >
-            {nw.substitutionSuggested && (
-              <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                Today&apos;s routine day works only injured regions — consider a
-                substitution day rather than pushing through.
-              </p>
-            )}
-            {nw.excludedRegions.length > 0 && (
-              <p
-                className="text-sm text-slate-700 dark:text-slate-200"
-                data-testid="injury-exclusion-note"
-              >
-                Avoiding{" "}
-                {nw.excludedRegions
-                  .map((d) => excludedRegionLabel(d))
-                  .join(", ")}
-                .
-              </p>
-            )}
-            {nw.temperedRegions.length > 0 && (
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                Easing back on {nw.temperedRegions.join(", ")} — lighter targets
-                while you recover.
-              </p>
-            )}
-            {/* The finer #2024 disclosures: a constraint declared at exercise or
-                movement level takes out (or eases) THOSE lifts and leaves the rest of
-                the region alone — and says which, at the level it was declared. A
-                limitation the engine could not honor (a one-sided constraint on a
-                bilateral lift) is stated rather than implied away. */}
-            {nw.excludedExercises.length > 0 && (
-              <p
-                className="mt-1 text-sm text-slate-700 dark:text-slate-200"
-                data-testid="injury-exercise-exclusion-note"
-              >
-                Avoiding{" "}
-                {nw.excludedExercises
-                  .map((d) => excludedExerciseLabel(d))
-                  .join(", ")}
-                .
-              </p>
-            )}
-            {nw.temperedExercises.map((d) => (
-              <p
-                key={d.exercise}
-                className="mt-1 text-sm text-slate-600 dark:text-slate-300"
-                data-testid="injury-exercise-temper-note"
-              >
-                {temperedExerciseLabel(d)}.
-              </p>
-            ))}
-            {[
-              ...nw.excludedExercises.flatMap((d) => d.limitations),
-              ...nw.temperedExercises.flatMap((d) => d.limitations),
-            ].map((limitation) => (
-              <p
-                key={limitation}
-                className="mt-1 text-sm text-slate-600 dark:text-slate-300"
-                data-testid="injury-laterality-note"
-              >
-                {limitation}
-              </p>
-            ))}
-            {nw.considerations.map((c) => (
-              <p
-                key={c.key}
-                className="mt-1 text-sm text-slate-600 dark:text-slate-300"
-                data-testid="condition-consideration-note"
-              >
-                {c.note}
-              </p>
-            ))}
-          </div>
-        )}
-
         {!showSessionCard && (
-          <div className="card">
+          <div className="card" data-testid="next-workout-card">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h3 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -513,30 +507,21 @@ export default async function OverviewSection() {
                   </div>
                 </dl>
               </div>
-              {nextActionable && (
-                <div className="flex flex-wrap gap-2">
-                  {nextWorkout.actionHref && (
-                    // A raw <a> here was a FULL DOCUMENT LOAD out of the app
-                    // shell (#2983): the tap threw away the running client, and
-                    // #2869's invariant is that a navigation must not take a
-                    // working page with it. `PendingTextLink` is the soft
-                    // navigation AND the answered tap — this is a text control,
-                    // so its own label is the pending slot.
-                    <PendingTextLink
-                      href={nextWorkout.actionHref}
-                      label="workout details"
-                      testId="next-workout-details"
-                      className="btn-ghost"
-                    >
-                      View details
-                    </PendingTextLink>
-                  )}
-                  <LogActivityButton className="btn">
-                    Log activity
-                  </LogActivityButton>
-                </div>
-              )}
+              <div className="flex flex-col items-start gap-2 md:items-end">
+                <TrainingOverviewActions />
+                {nextWorkout.actionHref && (
+                  <PendingTextLink
+                    href={nextWorkout.actionHref}
+                    label="workout details"
+                    testId="next-workout-details"
+                    className="btn-ghost"
+                  >
+                    View details
+                  </PendingTextLink>
+                )}
+              </div>
             </div>
+            <TrainingContextChips context={nw} />
           </div>
         )}
       </div>
@@ -607,130 +592,48 @@ export default async function OverviewSection() {
         </div>
       </div>
 
-      {/* FITNESS CHECK STRIP (#2894): the battery's standing surface now that
-          its tab retired — one line, current-or-due, the route one tap behind.
-          The dueness read is the SAME trio the retest finding uses
-          (fitnessRetestDue over last date + cadence), so the strip and the
-          finding can never disagree. The per-test dot treatment is #2566 Viz 4;
-          this is the door it decorates. `id` catches old #fitness deep links. */}
-      <div
-        className="card flex flex-wrap items-center gap-x-4 gap-y-1 py-3"
-        id="fitness"
-        data-testid="fitness-check-strip"
-      >
-        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-          Fitness check
-        </h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {fitnessDue.lastDate == null
-            ? "Never run — a 10-minute baseline across strength, endurance, and balance."
-            : fitnessDue.due
-              ? `Last check ${formatRelativeDate(fitnessDue.lastDate, todayStr)} — due for a retest.`
-              : `Last check ${formatRelativeDate(fitnessDue.lastDate, todayStr)}.`}
-        </p>
-        {/* The one door to the fitness-check route, and a CTA rather than a
-            link inside a sentence — so it answers its own tap (#2983). Text
-            control, so the overlay treatment: the label holds its place. */}
-        <PendingTextLink
-          href="/training/fitness-check"
-          label="fitness check"
-          testId="fitness-check-strip-link"
-          className="ml-auto text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-        >
-          {fitnessDue.due || fitnessDue.lastDate == null
-            ? "Start a check →"
-            : "View →"}
-        </PendingTextLink>
-      </div>
+      <FitnessCheckStrip model={fitnessModel} />
 
-      {/* 3. TRAINING WATCH — the observational training-balance findings (issue #45,
-          domain 4) as ONE capped rollup card (#1496), distinct from the
-          recommendation above. Same findings, same dedupeKeys, same bus. */}
+      {/* 3. TRAINING WATCH — true observational exceptions (issue #45, domain 4)
+          in one capped card, distinct from the recommendation and coverage above. */}
       <TrainingFindings />
 
-      {/* 4. MUSCLE COVERAGE + MOBILITY. The `id` is the rollup's anchor target. */}
-      <div className="card" id="muscle-coverage" data-testid="muscle-coverage">
-        <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-          Muscle coverage
-        </h3>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          Working sets per muscle over the last {coverageDays} days; warm-ups
-          are excluded. Primary movers count 1, assisting muscles count{" "}
-          {SECONDARY_CREDIT}. The chip shows each muscle against its weekly
-          volume band.
-        </p>
-        {coverage.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-            No strength sets logged in the last {coverageDays} days.
-          </p>
-        ) : (
-          <div className="mt-4 flex flex-col gap-6 sm:flex-row sm:items-start">
-            {/* The accessible per-muscle list stays permanent (#736 list-first);
-                the anatomy figure (#737) renders ALONGSIDE it, never replacing
-                it. */}
-            <ul className="flex-1 space-y-2">
-              {coverage.map((row) => {
-                // ONE verdict (#221): the shared bandVerdict + palette the
-                // finding engine AND the SVG figure (#737) below also read — no
-                // second computation, so chip, tint, and observation cannot
-                // drift.
-                const pres = bandPresentation(
-                  bandVerdict(row.muscle, row.sets)
-                );
-                return (
-                  <li
-                    key={row.muscle}
-                    data-testid="muscle-coverage-row"
-                    className="flex items-center gap-3 text-sm"
-                  >
-                    <span className="w-28 shrink-0 text-slate-600 dark:text-slate-300">
-                      {row.label}
-                    </span>
-                    <span
-                      className="h-2.5 min-w-1.5 rounded-full bg-emerald-500/80"
-                      style={{
-                        width: `${coverageMax > 0 ? (row.sets / coverageMax) * 100 : 0}%`,
-                      }}
-                      aria-hidden="true"
-                    />
-                    <span
-                      data-testid="muscle-coverage-verdict"
-                      data-verdict={pres.verdict}
-                      className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${pres.badgeClass}`}
-                    >
-                      {pres.label}
-                    </span>
-                    <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
-                      {fmtSets(row.sets)} {row.sets === 1 ? "set" : "sets"}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-            {/* Heat per muscle from the SAME coverageFromSets result the list
-                renders (#221/#482). Each muscle is tinted by the SHARED #742
-                band verdict (bandPresentation(bandVerdict(...)).color), so the
-                figure and the list chips read the same palette — the coordinated
-                outcome #737 designed the per-entry `color` prop for. The
-                component's own intensity ramp stays the fallback for any entry
-                left without a color. */}
-            <MuscleAnatomy
-              mode="coverage"
-              coverage={coverage.map((row) => ({
-                muscle: row.muscle,
-                sets: row.sets,
-                color: bandPresentation(bandVerdict(row.muscle, row.sets))
-                  .color,
-              }))}
-              className="mx-auto w-full max-w-56 shrink-0 sm:mx-0 sm:w-52"
+      {/* The three depth suites never hide. Their order follows the profile's
+          recency-weighted observed mix; an empty domain collapses to its log door. */}
+      {suiteRanking.map(({ suite, share }) => (
+        <div
+          key={suite}
+          className="space-y-6"
+          data-testid={`training-depth-suite-${suite}`}
+          data-share={share.toFixed(3)}
+        >
+          {suite === "strength" ? (
+            <>
+              <MuscleCoverageCard
+                coverage={coverage}
+                contributions={coverageEvidence}
+                days={coverageDays}
+                belowTargetCount={belowTargetCount}
+              />
+              {/* Mobility remains a separate question and view (#482). */}
+              <MobilitySection profileId={profile.id} today={todayStr} />
+              <StrengthStandardsLadder
+                rows={strengthLadderRows}
+                weightUnit={wu}
+              />
+            </>
+          ) : suite === "endurance" ? (
+            <EnduranceDepthSuite
+              zones={cardioZones}
+              form={enduranceOverview}
+              vo2={vo2Percentile}
+              distanceUnit={du}
             />
-          </div>
-        )}
-      </div>
-
-      {/* Mobility (#840): self-contained tap-the-moves log + region-coverage strip,
-          a SEPARATE view next to muscle coverage (never merged — #482). */}
-      <MobilitySection profileId={profile.id} today={todayStr} />
+          ) : (
+            <SportDepthSuite cadence={sportCadence} sports={sports} />
+          )}
+        </div>
+      ))}
 
       {/* 5. INJURIES / EVENT PLANS — conditional cards (#1496): they carry their
           full descriptive block only when something is live. With none logged each
@@ -744,60 +647,30 @@ export default async function OverviewSection() {
 
       <EndurancePlanBar plans={endurancePlans} distanceUnit={du} />
 
-      {/* 6. RECENT PRs — top 3 each, with "show all" handing off to Analyze
-          (per-item history) — the 14-row lists are gone (#1496). */}
-      {(strengthPrs.length > 0 || cardioPrs.length > 0) && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {strengthPrs.length > 0 && (
-            <PrCard
-              title="Recent strength PRs"
-              testId="overview-strength-prs"
-              items={strengthPrs.slice(0, PR_CAP).map((p) => ({
-                name: loadContextLabel(p.exercise, p.equipment),
-                value:
-                  p.kind === "1rm"
-                    ? p.bodyweight
-                      ? `BW x ${p.reps}`
-                      : `${fmtWeight(p.weightKg, wu)} x ${p.reps}`
-                    : `${fmtWeight(p.weightKg, wu)} top`,
-                meta: formatRelativeDate(p.date, todayStr),
-              }))}
-              action={
-                strengthPrs.length > PR_CAP ? (
-                  <Link
-                    href="/training?tab=analyze"
-                    data-testid="overview-strength-prs-all"
-                    className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
-                  >
-                    Show all {strengthPrs.length} →
-                  </Link>
-                ) : undefined
-              }
-            />
-          )}
-
-          {cardioPrs.length > 0 && (
-            <PrCard
-              title="Recent cardio PRs"
-              testId="overview-cardio-prs"
-              items={cardioPrs.slice(0, PR_CAP).map((p) => ({
-                name: p.activity,
-                value: prValue(p, du),
-                meta: `${KIND_LABEL[p.kind]} - ${formatRelativeDate(p.date, todayStr)}`,
-              }))}
-              action={
-                cardioPrs.length > PR_CAP ? (
-                  <Link
-                    href="/training?tab=analyze"
-                    data-testid="overview-cardio-prs-all"
-                    className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
-                  >
-                    Show all {cardioPrs.length} →
-                  </Link>
-                ) : undefined
-              }
-            />
-          )}
+      {/* 6. RECENT CARDIO PRs — strength progress is already visible in the
+          standards ladder; this remains the cardio hand-off to Analyze. */}
+      {cardioPrs.length > 0 && (
+        <div>
+          <PrCard
+            title="Recent cardio PRs"
+            testId="overview-cardio-prs"
+            items={cardioPrs.slice(0, PR_CAP).map((p) => ({
+              name: p.activity,
+              value: prValue(p, du),
+              meta: `${KIND_LABEL[p.kind]} - ${formatRelativeDate(p.date, todayStr)}`,
+            }))}
+            action={
+              cardioPrs.length > PR_CAP ? (
+                <Link
+                  href="/training?tab=analyze"
+                  data-testid="overview-cardio-prs-all"
+                  className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+                >
+                  Show all {cardioPrs.length} →
+                </Link>
+              ) : undefined
+            }
+          />
         </div>
       )}
     </section>

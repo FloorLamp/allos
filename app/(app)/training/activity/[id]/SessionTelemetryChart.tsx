@@ -1,14 +1,19 @@
 "use client";
 
+// Shared telemetry chart for the canonical activity detail page.
+
 import { useState } from "react";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
-import type { RideTrace, RideTraceKey } from "@/lib/cycling-analytics";
+import type { SessionTrace, SessionTraceKey } from "@/lib/cycling-analytics";
 import type { CardioMetric } from "@/lib/analyze-view";
-import { rideChartSyncMethod, useRideChartLink } from "./RideChartLink";
+import {
+  sessionChartSyncMethod,
+  useSessionChartLink,
+} from "./SessionChartLink";
 
-const TRACE_COLORS: Record<RideTraceKey, string> = {
+const TRACE_COLORS: Record<SessionTraceKey, string> = {
   watts: CYCLING_METRICS.power.color,
   cadence: CYCLING_METRICS.cadence.color,
   velocity_smooth: CYCLING_METRICS.speed.color,
@@ -18,15 +23,15 @@ const TRACE_COLORS: Record<RideTraceKey, string> = {
   temp: chartSeries.amber,
 };
 
-export default function RideTelemetryChart({
+export default function SessionTelemetryChart({
   traces,
   initialMetric,
 }: {
-  traces: RideTrace[];
+  traces: SessionTrace[];
   initialMetric?: CardioMetric;
 }) {
-  const { setActiveLabel } = useRideChartLink();
-  const preferredTrace: Partial<Record<CardioMetric, RideTraceKey>> = {
+  const { setActiveLabel } = useSessionChartLink();
+  const preferredTrace: Partial<Record<CardioMetric, SessionTraceKey>> = {
     speed: "velocity_smooth",
     elevation: "altitude",
     heart_rate: "heartrate",
@@ -46,11 +51,11 @@ export default function RideTelemetryChart({
   if (!selected) return null;
 
   return (
-    <div className="mt-4" data-testid="ride-telemetry">
+    <div className="mt-4" data-testid="session-telemetry">
       {traces.length > 1 ? (
         <div
           className="flex flex-wrap gap-1"
-          aria-label="Ride trace"
+          aria-label="Session trace"
           role="group"
         >
           {traces.map((trace) => {
@@ -73,9 +78,9 @@ export default function RideTelemetryChart({
           })}
         </div>
       ) : null}
-      <div className="mt-3" data-testid="ride-telemetry-chart">
+      <div className="mt-3" data-testid="session-telemetry-chart">
         <LineChartCard
-          // gap-exempt: intra-ride telemetry on an elapsed-time axis.
+          // gap-exempt: intra-session telemetry on an elapsed-time axis.
           data={selected.points}
           label={selected.label}
           unit={selected.unit}
@@ -86,8 +91,8 @@ export default function RideTelemetryChart({
           heightClass="h-64"
           tickFormatter={(value) => value.replace(/:00$/, "")}
           labelFormatter={(value) => `${value} elapsed`}
-          syncId="ride-effort"
-          syncMethod={rideChartSyncMethod}
+          syncId="session-effort"
+          syncMethod={sessionChartSyncMethod}
           onActiveLabelChange={setActiveLabel}
         />
       </div>

@@ -1,8 +1,7 @@
 import type { ActivityType } from "./types";
 import type { DayGroup, DisplayPart } from "./training-log-card";
 import { activityComponentSportNames } from "./activity-icon";
-import { activityDetailHref } from "./ride-detail";
-import type { AppRoute } from "./hrefs";
+import { trainingActivityPageHref, type AppRoute } from "./hrefs";
 
 // WHAT YOU DID (#2566) — the Training Overview's missing half.
 //
@@ -115,10 +114,9 @@ function toRow(entry: {
     meta,
     parts: card.parts.slice(0, RECENT_SESSION_PART_LIMIT),
     moreParts: Math.max(0, card.parts.length - RECENT_SESSION_PART_LIMIT),
-    // The SAME resolver every other surface uses (#2870), so a session opens the
-    // one destination it has — a ride its performance detail, everything else its
-    // canonical page.
-    href: activityDetailHref(card.activity),
+    // The SAME resolver every other surface uses (#2870/#3061), so every
+    // session opens the one canonical activity page it has.
+    href: trainingActivityPageHref(card.activity.id),
   };
 }
 

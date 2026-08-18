@@ -32,7 +32,12 @@ import { getProfileZoneModel } from "./queries/zones";
 import { getWeatherDaysForProfile } from "./queries/weather-situations";
 import { getHrMinutesInRange } from "./queries/metrics";
 import { activityWindow, windowsOverlap } from "./import-review/detect";
-import { sessionComparison, type RideComparison } from "./ride-detail";
+import {
+  isCyclingActivity,
+  rideComparison,
+  sessionComparison,
+  type SessionComparison,
+} from "./session-detail";
 import { isSameActivityKind } from "./cycling-activity";
 import { getExerciseComparison } from "./queries/training/strength";
 import { equipmentLoadLane } from "./lifts";
@@ -40,9 +45,9 @@ import { sessionProgressDelta, type ProgressDelta } from "./progress-delta";
 import {
   distanceSplits,
   parseActivityStreams,
-  rideTraces,
-  type RideDistanceSplit,
-  type RideTrace,
+  sessionTraces,
+  type SessionDistanceSplit,
+  type SessionTrace,
 } from "./cycling-analytics";
 import {
   paceHrDecouplingPercent,
@@ -57,6 +62,12 @@ import {
   type ZoneModel,
 } from "./training-zones";
 import type { Activity } from "./types";
+import type { ActivityStreams } from "./integrations/activity-telemetry";
+import {
+  getSessionCourseData,
+  type SessionLap,
+  type SessionSegmentEffort,
+} from "./queries/training/session-course";
 
 // Structurally identical to the card menu's MergeSibling — declared here so lib
 // does not import an app-layer module; the page passes these straight through.
@@ -80,11 +91,14 @@ export interface ActivityDetailHeartRate {
 // page needs is three-way, not two: traces to draw, or a source that answered
 // with nothing ("totals only" — the honest line, #3009), or no answer yet.
 export interface ActivityDetailTelemetry {
-  traces: RideTrace[];
+  // Parsed once at the shared page boundary; cycling enrichment reuses this
+  // instead of reading and parsing the same telemetry row a second time.
+  streams: ActivityStreams;
+  traces: SessionTrace[];
   // Per-unit splits from the recorded distance+time (#3009), cut at the reader's
   // own unit rather than a ride's 5 km. Empty when the session recorded no
   // distance stream, or covered less than a third of one interval.
-  splits: RideDistanceSplit[];
+  splits: SessionDistanceSplit[];
   // The metres one split covers, so the surface can say which unit it cut at.
   splitIntervalM: number;
   // Aerobic decoupling: output-per-heartbeat lost between the halves, over PACE
@@ -105,6 +119,10 @@ export interface ActivityDetailData {
   siblings: ActivityDetailSibling[];
   heartRate: ActivityDetailHeartRate;
   telemetry: ActivityDetailTelemetry;
+  course: {
+    laps: SessionLap[];
+    segmentEfforts: SessionSegmentEffort[];
+  };
   // The same-day siblings whose clock window OVERLAPS this activity's (#2870) —
   // a subset of `siblings`, so the banner and the merge picker are talking about
   // the same rows. Empty when this activity has no clock, which is not evidence
@@ -115,7 +133,7 @@ export interface ActivityDetailData {
   // median of the peers that carry it. Null when there are no comparable peers —
   // for endurance, a personal baseline beats any published standard, and the
   // absence of one is not a zero.
-  comparison: RideComparison | null;
+  comparison: SessionComparison | null;
   // "vs last" per rendered part, INDEX-ALIGNED with `card.parts` (#2870). Null
   // where the part is not a lift, or the lift has no comparable previous session
   // on the same implement. Computed for the canonical PAGE only: the reading
@@ -219,7 +237,7 @@ export function getActivityDetailData(
       : null;
 
   // The source's second-by-second record, through the same pure derivation the
-  // ride page uses — nothing in `rideTraces` is about bicycles.
+  // ride page uses — nothing in `sessionTraces` is about bicycles.
   const telemetryRow = db
     .prepare(
       `SELECT streams_json FROM activity_telemetry
@@ -238,12 +256,14 @@ export function getActivityDetailData(
     units.distanceUnit
   );
   const telemetry: ActivityDetailTelemetry = {
-    traces: rideTraces(streams),
+    streams,
+    traces: sessionTraces(streams),
     splits: distanceSplits(streams, splitIntervalM),
     splitIntervalM,
     decouplingPercent: paceHrDecouplingPercent(streams),
     answered: !!telemetryRow,
   };
+  const course = getSessionCourseData(profileId, row.id);
 
   // The same-day sibling that OVERLAPS this one on the clock (#2870). In the log,
   // a double-logged session announced itself by sitting next to its twin; a page
@@ -271,20 +291,24 @@ export function getActivityDetailData(
   // ride page too, so a run logged as `sport` still peers with runs logged as
   // `cardio`. Only endurance-shaped sessions ask: a strength session's
   // progression question is answered by "vs last" per lift, above.
-  const comparison =
+  const comparisonCandidates =
     row.type === "cardio" || row.type === "sport"
-      ? sessionComparison(
-          row,
-          db
-            .prepare(
-              `SELECT * FROM activities
-                WHERE profile_id = ? AND type IN ('cardio', 'sport') AND id != ?
-                ORDER BY date, id`
-            )
-            .all(profileId, row.id) as Activity[],
-          { isPeer: isSameActivityKind }
-        )
-      : null;
+      ? (db
+          .prepare(
+            `SELECT * FROM activities
+              WHERE profile_id = ? AND type IN ('cardio', 'sport') AND id != ?
+              ORDER BY date, id`
+          )
+          .all(profileId, row.id) as Activity[])
+      : [];
+  const comparison =
+    comparisonCandidates.length === 0
+      ? null
+      : isCyclingActivity(row)
+        ? rideComparison(row, comparisonCandidates)
+        : sessionComparison(row, comparisonCandidates, {
+            isPeer: isSameActivityKind,
+          });
 
   // "vs last" (#2870). One history scan per DISTINCT lift in this session, each
   // narrowed to the implement its sets were performed on — the same
@@ -362,6 +386,7 @@ export function getActivityDetailData(
     siblings,
     heartRate: { window: heartRateWindow, minutes, zoneMinutes, zoneModel },
     telemetry,
+    course,
     overlappingSiblings,
     comparison,
     partDeltas,

@@ -18,8 +18,8 @@ import {
 import { loginAs } from "./nav";
 
 // #2870 step 1 — every non-cycling activity has a canonical page: the Training
-// Log's card rendered whole at its own URL, with ‹ older / newer › ledger
-// navigation and the heart-rate block LAST (owner-ruled order). These pins ride
+// Log's session body at its own URL, with ‹ older / newer › ledger
+// navigation and capability-based effort/course sections. These pins ride
 // the seeded strength history ("Back Squat" sessions from the seed): a sessions
 // row in Analyze deep-links the page, the record renders with its sets, and the
 // back link returns to the log.
@@ -34,6 +34,13 @@ test("an Analyze sessions row opens the activity's canonical page", async ({
 
   const record = page.getByTestId("training-activity-page");
   await expect(record).toBeVisible();
+  // This is a detail PAGE, not a feed card stranded at its own URL: identity
+  // belongs to the page header, while the card below is the session body and
+  // must not link the title back to the URL already open.
+  await expect(record.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(record.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(record.getByRole("heading", { name: "Session" })).toBeVisible();
+  await expect(record.getByTestId("activity-detail-link")).toHaveCount(0);
   // The record IS the log card: its per-exercise details render, sets first.
   await expect(record.getByTestId("activity-details")).toBeVisible();
   await expect(record.getByText("Back Squat").first()).toBeVisible(); // first-ok: asserts the exercise renders on the record — order-agnostic
@@ -104,7 +111,7 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   // its own window, which is the only condition under which the block renders —
   // and rendering it used to take the whole page down through the error
   // boundary, because the chart is shared with the ride page and demanded that
-  // page's chart-link provider (see RideChartLink's UNLINKED).
+  // page's chart-link provider (see SessionChartLink's UNLINKED).
   await page.goto("/training?tab=log");
   const walkRow = page
     .getByTestId("training-log-row")
@@ -130,6 +137,7 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   // sport, so the page draws them beside the wear minutes.
   const traces = page.getByTestId("activity-traces");
   await expect(traces).toBeVisible();
+  await expect(record.getByRole("heading", { name: "Effort" })).toBeVisible();
   await expect(traces.locator("svg")).toBeVisible();
   // A session that HAS detail never claims to be totals-only.
   await expect(page.getByTestId("activity-totals-only")).toHaveCount(0);
@@ -186,7 +194,7 @@ test("the ledger walk: older/newer links traverse adjacent activities", async ({
   await expect(page.getByTestId("activity-newer-link")).toBeVisible();
 });
 
-test("Edit opens the form docked IN the page — the page is the editor's host (#2870 step 2)", async ({
+test("Edit uses the same overlay at desktop and phone widths", async ({
   page,
 }) => {
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
@@ -197,61 +205,49 @@ test("Edit opens the form docked IN the page — the page is the editor's host (
   );
 
   await page.getByTestId("activity-page-edit").click();
-  // The provider portals the full ActivityForm into the page's own dock — no
-  // separate surface, and the autosave/edit-lock machinery rides along.
-  const dock = page.getByTestId("activity-page-dock");
-  await expect(dock.getByTestId("activity-form")).toBeVisible();
-});
+  await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
+  await expect(page.getByTestId("activity-form")).toBeVisible();
+  await expect(page.getByTestId("activity-page-dock")).toHaveCount(0);
+  await page.getByRole("button", { name: "Close", exact: true }).click();
 
-test("‹older› closes a docked edit — it never strands under the next record", async ({
-  page,
-}) => {
-  await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
-  await followLink(
-    page,
-    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: newest session; the nav-close is what's under test
-    /\/training\/activity\/\d+$/
-  );
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByTestId("activity-page-edit").click();
-  await expect(
-    page.getByTestId("activity-page-dock").getByTestId("activity-form")
-  ).toBeVisible();
-
-  // Walking the ledger remounts the record (keyed by activity), which closes
-  // the docked editor for the record we just left — the form must not stay
-  // portaled under an activity it doesn't belong to, where its writes would
-  // target what the reader believes is on screen. Not followLink: its
-  // destination pattern would also match the URL we're leaving, so it can't
-  // tell a landed navigation from a swallowed click. And not the older link's
-  // exact href either — a cycling neighbor canonically redirects to its rides
-  // page — so the pin is simply "we left this record's URL".
-  const startPath = new URL(page.url()).pathname;
-  await page.getByTestId("activity-older-link").click();
-  await page.waitForURL((u) => u.pathname !== startPath);
-  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
+  await expect(page.getByTestId("activity-form")).toBeVisible();
+  await expect(page.getByTestId("activity-page-dock")).toHaveCount(0);
 });
 
-test("a global 'Log activity' on the page opens the overlay, not this record's dock", async ({
+test("the overlay closes back onto the same activity", async ({ page }) => {
+  await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
+  await followLink(
+    page,
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: any session reaches the edit flow under test
+    /\/training\/activity\/\d+$/
+  );
+  const startPath = new URL(page.url()).pathname;
+  await page.getByTestId("activity-page-edit").click();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  expect(new URL(page.url()).pathname).toBe(startPath);
+});
+
+test("a global 'Log activity' on the page uses the same overlay", async ({
   page,
 }) => {
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   await followLink(
     page,
-    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: any session's page hosts the scoped dock under test
+    page.getByTestId("analyze-sessions").getByRole("link").first(), // first-ok: any session's page reaches the overlay under test
     /\/training\/activity\/\d+$/
   );
 
-  // The page dock is SCOPED to this record's edits. A palette create must not
-  // portal a brand-new, unrelated form under the record (below the fold, no
-  // scroll) — it opens the overlay, visible where the tap happened.
+  // The global create action uses the same predictable overlay as Edit.
   const input = await openCommandPalette(page);
   await input.fill("log workout");
   await page.getByTestId("palette-action-log-workout").click();
   const form = page.getByTestId("activity-form");
   await expect(form).toBeVisible();
-  await expect(
-    page.getByTestId("activity-page-dock").getByTestId("activity-form")
-  ).toHaveCount(0);
+  await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
 });
 
 test("a session is measured against its own like-for-like peers (#3009)", async ({
@@ -285,13 +281,26 @@ test("a session is measured against its own like-for-like peers (#3009)", async 
     // It says what it compared against — a median of one would be a comparison
     // in name only.
     await expect(comparison).toContainText(/3 similar sessions/);
-    await expect(comparison).toContainText(/within \d+% of the same distance/);
-    // Speed and heart rate both have peers carrying them, so both are measured.
-    await expect(member.getByTestId("activity-comparison-speed")).toContainText(
-      /median/
+    await expect(comparison).toContainText(
+      /within \d+% of this session’s distance/
     );
+    // Speed and heart rate both have peers carrying them, so both are available
+    // in the converged comparison chart. Selecting either metric updates the one
+    // shared ranking instead of rendering parallel metric blocks.
+    const metrics = comparison.getByRole("group", {
+      name: "Comparison metric",
+    });
+    const speed = metrics.getByRole("button", { name: "Speed" });
+    const heartRate = metrics.getByRole("button", { name: "Heart rate" });
+    await expect(speed).toHaveAttribute("aria-pressed", "true");
+    await expect(heartRate).toBeVisible();
+    await expect(member.getByTestId("activity-comparison-range")).toContainText(
+      /Median/
+    );
+    await heartRate.click();
+    await expect(heartRate).toHaveAttribute("aria-pressed", "true");
     await expect(
-      member.getByTestId("activity-comparison-heart-rate")
+      comparison.getByRole("list", { name: /Average heart rate across/ })
     ).toBeVisible();
   } finally {
     await member.close();

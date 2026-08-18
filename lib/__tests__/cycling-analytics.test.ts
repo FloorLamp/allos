@@ -5,8 +5,8 @@ import {
   powerCurve,
   powerZoneTimes,
   rideDynamics,
-  rideTimedRoutePoints,
-  rideTraces,
+  sessionTimedRoutePoints,
+  sessionTraces,
   routeFingerprint,
 } from "@/lib/cycling-analytics";
 
@@ -16,7 +16,7 @@ function stream(data: unknown[]) {
 
 describe("cycling telemetry analytics", () => {
   it("builds chart traces and converts the Strava speed stream to km/h", () => {
-    const traces = rideTraces({
+    const traces = sessionTraces({
       time: stream([0, 1, 2]),
       velocity_smooth: stream([5, 6, 7]),
       watts: stream([100, 200, 300]),
@@ -30,7 +30,7 @@ describe("cycling telemetry analytics", () => {
 
   it("aligns valid route coordinates with elapsed stream time", () => {
     expect(
-      rideTimedRoutePoints({
+      sessionTimedRoutePoints({
         time: stream([0, 10, 20, 30]),
         latlng: stream([[38.5, -120.2], [38.6, -120.3], null, [38.8, -120.5]]),
       })

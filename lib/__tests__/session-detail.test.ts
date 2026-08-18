@@ -1,21 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
-  activityDetailHref,
   cyclingActivityName,
   isCyclingActivity,
   rideComparison,
-  rideHistoryNeighbors,
-  rideHeartRateSeries,
-  rideHighlights,
-  type RideComparisonInput,
-  rideZoneRows,
+  sessionComparison,
+  sessionHeartRateSeries,
+  cyclingHighlights,
+  type CyclingComparisonInput,
+  sessionZoneRows,
   wattsPerKg,
-} from "@/lib/ride-detail";
+} from "@/lib/session-detail";
 import { cyclingActivityPresentation } from "@/lib/cycling-activity";
 
 function comparisonRide(
-  overrides: Partial<RideComparisonInput> = {}
-): RideComparisonInput {
+  overrides: Partial<CyclingComparisonInput> = {}
+): CyclingComparisonInput {
   return {
     id: 1,
     date: "2026-06-01",
@@ -105,24 +104,26 @@ describe("isCyclingActivity", () => {
   });
 });
 
-describe("activityDetailHref", () => {
-  it("routes rides to their detail and every other activity to its own page (#2870)", () => {
+describe("sessionComparison", () => {
+  it("compares non-cycling sessions with the same sparse-metric rules", () => {
+    const current = comparisonRide({
+      id: 10,
+      title: "Tempo Run",
+      distance_km: 10,
+    });
+    const peer = comparisonRide({
+      id: 11,
+      title: "Tempo Run",
+      distance_km: 9.5,
+    });
+    const result = sessionComparison(current, [current, peer], {
+      isPeer: (a, b) => a.title === b.title,
+    });
+    expect(result?.basis).toBe("distance");
+    expect(result?.sessionCount).toBe(1);
     expect(
-      activityDetailHref({
-        id: 42,
-        type: "cardio",
-        title: "Commute",
-        components: JSON.stringify([{ name: "Cycling", type: "cardio" }]),
-      })
-    ).toBe("/training/rides/42");
-    expect(
-      activityDetailHref({
-        id: 43,
-        type: "cardio",
-        title: "Morning run",
-        components: JSON.stringify([{ name: "Running", type: "cardio" }]),
-      })
-    ).toBe("/training/activity/43");
+      result?.metrics.find((metric) => metric.key === "speed")?.median
+    ).toBe(20);
   });
 });
 
@@ -137,10 +138,10 @@ describe("wattsPerKg", () => {
   });
 });
 
-describe("rideHeartRateSeries", () => {
+describe("sessionHeartRateSeries", () => {
   it("keeps a true one-minute timeline and leaves wear gaps empty", () => {
     expect(
-      rideHeartRateSeries(
+      sessionHeartRateSeries(
         {
           start: "2026-06-10T08:00",
           end: "2026-06-10T08:04",
@@ -212,7 +213,7 @@ describe("rideComparison", () => {
     expect(comparison).toMatchObject({
       basis: "distance",
       tolerancePercent: 30,
-      rideCount: 3,
+      sessionCount: 3,
     });
     expect(
       comparison!.metrics.find((metric) => metric.key === "speed")
@@ -282,7 +283,7 @@ describe("rideComparison", () => {
 
     expect(
       rideComparison(comparisonRide({ id: 10, date: "2026-06-10" }), candidates)
-    ).toMatchObject({ rideCount: 12 });
+    ).toMatchObject({ sessionCount: 12 });
   });
 
   it("falls back to duration and omits metrics without peer overlap", () => {
@@ -310,7 +311,7 @@ describe("rideComparison", () => {
     expect(comparison).not.toBeNull();
     expect(comparison).toMatchObject({
       basis: "duration",
-      rideCount: 1,
+      sessionCount: 1,
     });
     expect(comparison!.metrics.some((metric) => metric.key === "power")).toBe(
       false
@@ -334,42 +335,16 @@ describe("rideComparison", () => {
       }),
     ]);
 
-    expect(comparison).toMatchObject({ rideCount: 1 });
+    expect(comparison).toMatchObject({ sessionCount: 1 });
     expect(
       comparison!.metrics.find((metric) => metric.key === "power")
     ).toMatchObject({ median: 170 });
   });
 });
 
-describe("rideHistoryNeighbors", () => {
-  it("returns the nearest cycling rides before and after the current ride", () => {
-    const current = comparisonRide({
-      id: 10,
-      date: "2026-06-10",
-      start_time: "08:00",
-    });
-    const history = rideHistoryNeighbors(current, [
-      comparisonRide({ id: 5, date: "2026-06-01" }),
-      comparisonRide({ id: 8, date: "2026-06-09" }),
-      comparisonRide({ id: 9, date: "2026-06-10", start_time: "07:00" }),
-      comparisonRide({ id: 11, date: "2026-06-10", start_time: "09:00" }),
-      comparisonRide({ id: 12, date: "2026-06-11" }),
-      comparisonRide({
-        id: 13,
-        date: "2026-06-12",
-        title: "Run",
-        components: JSON.stringify([{ name: "Running", type: "cardio" }]),
-      }),
-    ]);
-
-    expect(history.before.map((ride) => ride.id)).toEqual([9, 8, 5]);
-    expect(history.after.map((ride) => ride.id)).toEqual([11, 12]);
-  });
-});
-
-describe("rideZoneRows", () => {
+describe("sessionZoneRows", () => {
   it("builds the five-zone distribution with stable percentages", () => {
-    const rows = rideZoneRows([0, 50, 0, 10, 0]);
+    const rows = sessionZoneRows([0, 50, 0, 10, 0]);
     expect(rows).toHaveLength(5);
     expect(rows[1]).toMatchObject({
       name: "Zone 2",
@@ -384,11 +359,11 @@ describe("rideZoneRows", () => {
   });
 });
 
-describe("rideHighlights", () => {
+describe("cyclingHighlights", () => {
   it("selects dominant time-in-zone, real segment results, and drift", () => {
     expect(
-      rideHighlights({
-        zones: rideZoneRows([0, 50, 0, 10, 0]),
+      cyclingHighlights({
+        zones: sessionZoneRows([0, 50, 0, 10, 0]),
         powerHrDriftPercent: 4.2,
         segments: [
           { prRank: 1, komRank: null },
@@ -398,21 +373,33 @@ describe("rideHighlights", () => {
     ).toEqual([
       {
         key: "heart_rate_zone",
-        zone: expect.objectContaining({ name: "Zone 2", percent: 83 }),
+        label: "Most time in HR zone",
+        value: "Zone 2",
+        detail: "50 min · 83% of recorded HR",
+        tone: "neutral",
+        markerColor: expect.any(String),
       },
       {
         key: "segment_results",
-        personalBestCount: 1,
-        leaderboardCount: 1,
+        label: "Best efforts",
+        value: "1 personal best",
+        detail: "1 top-10 leaderboard result",
+        tone: "positive",
       },
-      { key: "efficiency", driftPercent: 4.2 },
+      {
+        key: "efficiency",
+        label: "Efficiency",
+        value: "+4.2% drift",
+        detail: "Fell in the second half",
+        tone: "caution",
+      },
     ]);
   });
 
   it("does not invent highlights for sparse rides", () => {
     expect(
-      rideHighlights({
-        zones: rideZoneRows([0, 0, 0, 0, 0]),
+      cyclingHighlights({
+        zones: sessionZoneRows([0, 0, 0, 0, 0]),
         powerHrDriftPercent: null,
         segments: [],
       })

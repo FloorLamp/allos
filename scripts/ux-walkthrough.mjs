@@ -68,6 +68,7 @@ import { chromium } from "@playwright/test";
 import {
   DISCLOSURE_EXPANSIONS,
   DYNAMIC_ROUTES,
+  HUB_VARIANTS,
   routeSlug,
 } from "./ux-census-routes.mjs";
 
@@ -862,12 +863,19 @@ async function pagesJourney(browser) {
     const visits = [
       ...picked.map((route) => ({ route, target: route })),
       ...[...dynamicTargets].map(([route, r]) => ({ route, target: r.target })),
+      ...HUB_VARIANTS.filter((variant) => picked.includes(variant.route)).map(
+        (variant) => ({
+          route: variant.target,
+          target: variant.target,
+          slug: variant.slug,
+        })
+      ),
     ].sort((a, b) => a.route.localeCompare(b.route));
     const expansionByRoute = new Map(
       DISCLOSURE_EXPANSIONS.map((e) => [e.route, e])
     );
-    for (const { route, target } of visits) {
-      const slug = routeSlug(route);
+    for (const { route, target, slug: registeredSlug } of visits) {
+      const slug = registeredSlug ?? routeSlug(route);
       try {
         await page.goto(`${BASE}${target}`);
         await page.waitForTimeout(1200);

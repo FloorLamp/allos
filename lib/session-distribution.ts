@@ -1,69 +1,75 @@
 import type { WeatherDay } from "./weather-situations";
 
-export interface CyclingDistributionRide {
+export interface SessionDistributionInput {
   date: string;
 }
 
-export interface CyclingMonthDistribution {
+export interface SessionMonthDistribution {
   month: number;
   label: string;
   shortLabel: string;
-  rides: number;
+  sessions: number;
   observedMonths: number;
-  ridesPerObservedMonth: number;
+  sessionsPerObservedMonth: number;
 }
 
-export type CyclingSeasonKey = "winter" | "spring" | "summer" | "autumn";
+export type SessionSeasonKey = "winter" | "spring" | "summer" | "autumn";
 
-export interface CyclingSeasonDistribution {
-  key: CyclingSeasonKey;
+export interface SessionSeasonDistribution {
+  key: SessionSeasonKey;
   label: string;
-  rides: number;
+  sessions: number;
   observedMonths: number;
-  ridesPerObservedMonth: number;
+  sessionsPerObservedMonth: number;
   percent: number;
 }
 
-export interface CyclingQuietPeriod {
+export interface SessionQuietPeriod {
   startMonth: string;
   endMonth: string;
   months: number;
 }
 
-export type CyclingWeatherConditionKey = "clear" | "cloudy" | "wet" | "wintry";
+export type SessionWeatherConditionKey = "clear" | "cloudy" | "wet" | "wintry";
 
-export interface CyclingWeatherCondition {
-  key: CyclingWeatherConditionKey;
+export interface SessionWeatherCondition {
+  key: SessionWeatherConditionKey;
   label: string;
   availableDays: number;
-  rideDays: number;
-  rideDayRate: number;
+  sessionDays: number;
+  sessionDayRate: number;
 }
 
-export interface CyclingTemperatureBand {
+export interface SessionTemperatureBand {
   key: "cold" | "cool" | "warm" | "hot";
   label: string;
-  rideDays: number;
+  sessionDays: number;
   percent: number;
 }
 
-export interface CyclingWeatherDistribution {
+export interface SessionWeatherDistribution {
   coverageDays: number;
-  coveredRideDays: number;
-  conditions: CyclingWeatherCondition[];
-  temperatureBands: CyclingTemperatureBand[];
+  coveredSessionDays: number;
+  conditions: SessionWeatherCondition[];
+  temperatureBands: SessionTemperatureBand[];
   insight: string | null;
 }
 
-export interface CyclingDistribution {
-  firstRideDate: string | null;
-  lastRideDate: string | null;
+export interface SessionDistribution {
+  firstSessionDate: string | null;
+  lastSessionDate: string | null;
   observedCalendarMonths: number;
-  months: CyclingMonthDistribution[];
-  seasons: CyclingSeasonDistribution[];
-  longestQuietPeriod: CyclingQuietPeriod | null;
+  months: SessionMonthDistribution[];
+  seasons: SessionSeasonDistribution[];
+  longestQuietPeriod: SessionQuietPeriod | null;
   highlights: string[];
-  weather: CyclingWeatherDistribution;
+  weather: SessionWeatherDistribution;
+}
+
+export interface SessionDistributionLabels {
+  singular: string;
+  plural: string;
+  verb: string;
 }
 
 const MONTHS = [
@@ -81,14 +87,14 @@ const MONTHS = [
   ["December", "D"],
 ] as const;
 
-const SEASONS: { key: CyclingSeasonKey; label: string }[] = [
+const SEASONS: { key: SessionSeasonKey; label: string }[] = [
   { key: "winter", label: "Winter" },
   { key: "spring", label: "Spring" },
   { key: "summer", label: "Summer" },
   { key: "autumn", label: "Autumn" },
 ];
 
-const CONDITION_LABELS: Record<CyclingWeatherConditionKey, string> = {
+const CONDITION_LABELS: Record<SessionWeatherConditionKey, string> = {
   clear: "Clear",
   cloudy: "Cloudy",
   wet: "Wet",
@@ -112,7 +118,7 @@ function monthKeys(start: string, end: string): string[] {
   return keys;
 }
 
-function seasonForMonth(month: number): CyclingSeasonKey {
+function seasonForMonth(month: number): SessionSeasonKey {
   if (month === 12 || month <= 2) return "winter";
   if (month <= 5) return "spring";
   if (month <= 8) return "summer";
@@ -125,7 +131,7 @@ function round1(value: number): number {
 
 function weatherCondition(
   day: Pick<WeatherDay, "weatherCode" | "precipitationMm">
-): CyclingWeatherConditionKey | null {
+): SessionWeatherConditionKey | null {
   const code = day.weatherCode;
   const precipitation = day.precipitationMm;
   if (code == null && precipitation == null) return null;
@@ -145,7 +151,7 @@ function weatherCondition(
   return "cloudy";
 }
 
-function temperatureBand(tempMaxC: number): CyclingTemperatureBand["key"] {
+function temperatureBand(tempMaxC: number): SessionTemperatureBand["key"] {
   if (tempMaxC < 10) return "cold";
   if (tempMaxC < 20) return "cool";
   if (tempMaxC < 30) return "warm";
@@ -153,19 +159,19 @@ function temperatureBand(tempMaxC: number): CyclingTemperatureBand["key"] {
 }
 
 function quietPeriod(
-  ridesByMonth: ReadonlyMap<string, number>,
+  sessionsByMonth: ReadonlyMap<string, number>,
   firstMonth: string,
   todayStr: string
-): CyclingQuietPeriod | null {
+): SessionQuietPeriod | null {
   // A partial current month is not called a quiet month. The user has not had
-  // the whole opportunity to ride yet.
+  // the whole opportunity to log a session yet.
   const completedEnd = addMonths(monthKey(todayStr), -1);
   let currentStart: string | null = null;
   let currentLength = 0;
-  let best: CyclingQuietPeriod | null = null;
+  let best: SessionQuietPeriod | null = null;
 
   for (const key of monthKeys(firstMonth, completedEnd)) {
-    if ((ridesByMonth.get(key) ?? 0) === 0) {
+    if ((sessionsByMonth.get(key) ?? 0) === 0) {
       currentStart ??= key;
       currentLength += 1;
       if (!best || currentLength > best.months) {
@@ -184,71 +190,78 @@ function quietPeriod(
 }
 
 function weatherDistribution(
-  rideDates: ReadonlySet<string>,
-  weatherDays: readonly WeatherDay[]
-): CyclingWeatherDistribution {
+  sessionDates: ReadonlySet<string>,
+  weatherDays: readonly WeatherDay[],
+  labels: SessionDistributionLabels
+): SessionWeatherDistribution {
   const byCondition = new Map<
-    CyclingWeatherConditionKey,
-    { availableDays: number; rideDays: number }
+    SessionWeatherConditionKey,
+    { availableDays: number; sessionDays: number }
   >();
-  const temperatureRideDays = new Map<CyclingTemperatureBand["key"], number>();
-  let coveredRideDays = 0;
+  const temperatureSessionDays = new Map<
+    SessionTemperatureBand["key"],
+    number
+  >();
+  let coveredSessionDays = 0;
   let temperatureTotal = 0;
 
   for (const key of Object.keys(
     CONDITION_LABELS
-  ) as CyclingWeatherConditionKey[]) {
-    byCondition.set(key, { availableDays: 0, rideDays: 0 });
+  ) as SessionWeatherConditionKey[]) {
+    byCondition.set(key, { availableDays: 0, sessionDays: 0 });
   }
 
   for (const day of weatherDays) {
-    const isRideDay = rideDates.has(day.date);
-    if (isRideDay) coveredRideDays += 1;
+    const isSessionDay = sessionDates.has(day.date);
+    if (isSessionDay) coveredSessionDays += 1;
     const condition = weatherCondition(day);
     if (condition) {
       const totals = byCondition.get(condition)!;
       totals.availableDays += 1;
-      if (isRideDay) totals.rideDays += 1;
+      if (isSessionDay) totals.sessionDays += 1;
     }
-    if (isRideDay && day.tempMaxC != null) {
+    if (isSessionDay && day.tempMaxC != null) {
       const band = temperatureBand(day.tempMaxC);
-      temperatureRideDays.set(band, (temperatureRideDays.get(band) ?? 0) + 1);
+      temperatureSessionDays.set(
+        band,
+        (temperatureSessionDays.get(band) ?? 0) + 1
+      );
       temperatureTotal += 1;
     }
   }
 
   const conditions = (
-    Object.keys(CONDITION_LABELS) as CyclingWeatherConditionKey[]
+    Object.keys(CONDITION_LABELS) as SessionWeatherConditionKey[]
   ).map((key) => {
     const totals = byCondition.get(key)!;
     return {
       key,
       label: CONDITION_LABELS[key],
       ...totals,
-      rideDayRate:
+      sessionDayRate:
         totals.availableDays > 0
-          ? round1((totals.rideDays / totals.availableDays) * 100)
+          ? round1((totals.sessionDays / totals.availableDays) * 100)
           : 0,
     };
   });
 
-  const tempLabels: Record<CyclingTemperatureBand["key"], string> = {
+  const tempLabels: Record<SessionTemperatureBand["key"], string> = {
     cold: "Below 10°C",
     cool: "10–19°C",
     warm: "20–29°C",
     hot: "30°C+",
   };
   const temperatureBands = (
-    Object.keys(tempLabels) as CyclingTemperatureBand["key"][]
+    Object.keys(tempLabels) as SessionTemperatureBand["key"][]
   ).map((key) => {
-    const rideDays = temperatureRideDays.get(key) ?? 0;
+    const sessionDays = temperatureSessionDays.get(key) ?? 0;
     return {
       key,
       label: tempLabels[key],
-      rideDays,
+      sessionDays,
       percent:
         temperatureTotal > 0
-          ? Math.round((rideDays / temperatureTotal) * 100)
+          ? Math.round((sessionDays / temperatureTotal) * 100)
           : 0,
     };
   });
@@ -259,18 +272,20 @@ function weatherDistribution(
     .reduce(
       (sum, condition) => ({
         availableDays: sum.availableDays + condition.availableDays,
-        rideDays: sum.rideDays + condition.rideDays,
+        sessionDays: sum.sessionDays + condition.sessionDays,
       }),
-      { availableDays: 0, rideDays: 0 }
+      { availableDays: 0, sessionDays: 0 }
     );
   const clearRate =
-    clear.availableDays > 0 ? clear.rideDays / clear.availableDays : 0;
+    clear.availableDays > 0 ? clear.sessionDays / clear.availableDays : 0;
   const nonClearRate =
-    nonClear.availableDays > 0 ? nonClear.rideDays / nonClear.availableDays : 0;
+    nonClear.availableDays > 0
+      ? nonClear.sessionDays / nonClear.availableDays
+      : 0;
   let insight: string | null = null;
   if (
     weatherDays.length >= 60 &&
-    coveredRideDays >= 3 &&
+    coveredSessionDays >= 3 &&
     clear.availableDays >= 10 &&
     nonClear.availableDays >= 20 &&
     clearRate > 0 &&
@@ -278,50 +293,51 @@ function weatherDistribution(
   ) {
     const ratio = clearRate / nonClearRate;
     if (ratio >= 1.5) {
-      insight = `You ride ${round1(ratio)}× as often on clear days as on other days.`;
+      insight = `You ${labels.verb} ${round1(ratio)}× as often on clear days as on other days.`;
     } else if (ratio <= 2 / 3) {
-      insight = `Your ride rate is ${Math.round((1 - ratio) * 100)}% lower on clear days than on other days.`;
+      insight = `Your ${labels.singular} rate is ${Math.round((1 - ratio) * 100)}% lower on clear days than on other days.`;
     } else {
-      insight = "Your ride rate is similar on clear and non-clear days.";
+      insight = `Your ${labels.singular} rate is similar on clear and non-clear days.`;
     }
   }
 
   return {
     coverageDays: weatherDays.length,
-    coveredRideDays,
+    coveredSessionDays,
     conditions,
     temperatureBands,
     insight,
   };
 }
 
-// One pure answer to “when do I ride?” The month/season rates normalize for
+// One pure answer to “when do I train?” The month/season rates normalize for
 // partial history, while weather uses cached days as its opportunity denominator
 // so a common condition does not masquerade as a preference.
-export function cyclingDistribution(
-  rides: readonly CyclingDistributionRide[],
+export function sessionDistribution(
+  sessions: readonly SessionDistributionInput[],
   weatherDays: readonly WeatherDay[],
   todayStr: string,
-  labels: { singular: string; plural: string } = {
-    singular: "ride",
-    plural: "rides",
+  labels: SessionDistributionLabels = {
+    singular: "session",
+    plural: "sessions",
+    verb: "train",
   }
-): CyclingDistribution {
-  const dates = rides.map((ride) => ride.date).sort();
-  const firstRideDate = dates[0] ?? null;
-  const lastRideDate = dates.at(-1) ?? null;
-  const firstMonth = firstRideDate
-    ? monthKey(firstRideDate)
+): SessionDistribution {
+  const dates = sessions.map((session) => session.date).sort();
+  const firstSessionDate = dates[0] ?? null;
+  const lastSessionDate = dates.at(-1) ?? null;
+  const firstMonth = firstSessionDate
+    ? monthKey(firstSessionDate)
     : monthKey(todayStr);
   const endMonth =
-    lastRideDate && lastRideDate > todayStr
-      ? monthKey(lastRideDate)
+    lastSessionDate && lastSessionDate > todayStr
+      ? monthKey(lastSessionDate)
       : monthKey(todayStr);
-  const observedKeys = firstRideDate ? monthKeys(firstMonth, endMonth) : [];
-  const ridesByMonth = new Map<string, number>();
+  const observedKeys = firstSessionDate ? monthKeys(firstMonth, endMonth) : [];
+  const sessionsByMonth = new Map<string, number>();
   for (const date of dates) {
     const key = monthKey(date);
-    ridesByMonth.set(key, (ridesByMonth.get(key) ?? 0) + 1);
+    sessionsByMonth.set(key, (sessionsByMonth.get(key) ?? 0) + 1);
   }
 
   const months = MONTHS.map(([label, shortLabel], index) => {
@@ -329,32 +345,34 @@ export function cyclingDistribution(
     const matchingKeys = observedKeys.filter(
       (key) => Number(key.slice(5, 7)) === month
     );
-    const rideCount = matchingKeys.reduce(
-      (sum, key) => sum + (ridesByMonth.get(key) ?? 0),
+    const sessionCount = matchingKeys.reduce(
+      (sum, key) => sum + (sessionsByMonth.get(key) ?? 0),
       0
     );
     return {
       month,
       label,
       shortLabel,
-      rides: rideCount,
+      sessions: sessionCount,
       observedMonths: matchingKeys.length,
-      ridesPerObservedMonth:
-        matchingKeys.length > 0 ? round1(rideCount / matchingKeys.length) : 0,
+      sessionsPerObservedMonth:
+        matchingKeys.length > 0
+          ? round1(sessionCount / matchingKeys.length)
+          : 0,
     };
   });
 
   const seasonRows = new Map<
-    CyclingSeasonKey,
-    { rides: number; observedMonths: number }
+    SessionSeasonKey,
+    { sessions: number; observedMonths: number }
   >();
   for (const { key } of SEASONS)
-    seasonRows.set(key, { rides: 0, observedMonths: 0 });
+    seasonRows.set(key, { sessions: 0, observedMonths: 0 });
   for (const key of observedKeys) {
     const season = seasonForMonth(Number(key.slice(5, 7)));
     const row = seasonRows.get(season)!;
     row.observedMonths += 1;
-    row.rides += ridesByMonth.get(key) ?? 0;
+    row.sessions += sessionsByMonth.get(key) ?? 0;
   }
   const seasons = SEASONS.map(({ key, label }) => {
     const row = seasonRows.get(key)!;
@@ -362,45 +380,48 @@ export function cyclingDistribution(
       key,
       label,
       ...row,
-      ridesPerObservedMonth:
-        row.observedMonths > 0 ? round1(row.rides / row.observedMonths) : 0,
+      sessionsPerObservedMonth:
+        row.observedMonths > 0 ? round1(row.sessions / row.observedMonths) : 0,
       percent:
-        rides.length > 0 ? Math.round((row.rides / rides.length) * 100) : 0,
+        sessions.length > 0
+          ? Math.round((row.sessions / sessions.length) * 100)
+          : 0,
     };
   });
 
   const highlights: string[] = [];
   const winter = seasons.find((season) => season.key === "winter")!;
-  if (winter.rides === 0 && winter.observedMonths >= 3) {
+  if (winter.sessions === 0 && winter.observedMonths >= 3) {
     highlights.push(
       `No winter ${labels.plural} across ${winter.observedMonths} observed winter months.`
     );
   }
   const busiest = [...seasons]
-    .filter((season) => season.observedMonths >= 2 && season.rides >= 3)
+    .filter((season) => season.observedMonths >= 2 && season.sessions >= 3)
     .sort(
       (a, b) =>
-        b.ridesPerObservedMonth - a.ridesPerObservedMonth || b.rides - a.rides
+        b.sessionsPerObservedMonth - a.sessionsPerObservedMonth ||
+        b.sessions - a.sessions
     )[0];
   const overallRate =
-    observedKeys.length > 0 ? rides.length / observedKeys.length : 0;
-  if (busiest && busiest.ridesPerObservedMonth >= overallRate * 1.25) {
+    observedKeys.length > 0 ? sessions.length / observedKeys.length : 0;
+  if (busiest && busiest.sessionsPerObservedMonth >= overallRate * 1.25) {
     highlights.push(
-      `${busiest.label} is your busiest season at ${busiest.ridesPerObservedMonth} ${labels.plural} per observed month.`
+      `${busiest.label} is your busiest season at ${busiest.sessionsPerObservedMonth} ${labels.plural} per observed month.`
     );
   }
 
-  const rideDates = new Set(dates);
+  const sessionDates = new Set(dates);
   return {
-    firstRideDate,
-    lastRideDate,
+    firstSessionDate,
+    lastSessionDate,
     observedCalendarMonths: observedKeys.length,
     months,
     seasons,
-    longestQuietPeriod: firstRideDate
-      ? quietPeriod(ridesByMonth, firstMonth, todayStr)
+    longestQuietPeriod: firstSessionDate
+      ? quietPeriod(sessionsByMonth, firstMonth, todayStr)
       : null,
     highlights,
-    weather: weatherDistribution(rideDates, weatherDays),
+    weather: weatherDistribution(sessionDates, weatherDays, labels),
   };
 }

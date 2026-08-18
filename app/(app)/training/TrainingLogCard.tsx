@@ -14,7 +14,7 @@ import type { UnitPrefs } from "@/lib/settings";
 import { musclesWorked } from "@/lib/muscle-coverage";
 import { SET_STATUS_TITLES } from "@/lib/training-log-format";
 import { activityComponentSportNames } from "@/lib/activity-icon";
-import { rideDetailHref as resolveRideDetailHref } from "@/lib/ride-detail";
+import { trainingActivityPageHref } from "@/lib/hrefs";
 import { zonePresentation } from "@/lib/training-zones";
 // DisplayPart moved to lib/training-log-card.ts (issue #334); re-exported here so the
 // existing `./TrainingLogCard` import path keeps working.
@@ -65,6 +65,7 @@ export default function TrainingLogCard({
   videos = [],
   canWrite = false,
   withAnchor = true,
+  detailView = false,
   partDeltas = [],
   openMergeSignal,
   subject,
@@ -121,6 +122,10 @@ export default function TrainingLogCard({
   // card IS the activity's list presence; false when a host (the browse
   // surface's slim row, #2897) already owns the anchor.
   withAnchor?: boolean;
+  // The canonical activity page supplies the activity identity in its page
+  // header. In that host the card becomes the session body: no duplicate title,
+  // self-link, menu, or metadata that the shared page shell already owns.
+  detailView?: boolean;
   // "vs last" per part, INDEX-ALIGNED with `parts` (#2870). Only the canonical
   // activity page supplies these: the feed and the reading pane build cards from
   // one bulk query (#2897), and a per-exercise history scan per card is not a
@@ -169,7 +174,8 @@ export default function TrainingLogCard({
   const subjectCanWrite = subject == null ? canWrite : subject.canWrite;
   const videoCanWrite = subject == null ? canWrite : subject.canWrite;
   const showChip = subject != null && !isActing;
-  const rideDetailHref = isActing ? resolveRideDetailHref(activity) : null;
+  const detailHref =
+    isActing && !detailView ? trainingActivityPageHref(activity.id) : null;
   // Highlight the card whose activity is open in the docked editor, so it's
   // clear which feed row the right-column form belongs to. (On mobile the
   // editor is a full-screen overlay, so the ring is only ever seen on desktop.)
@@ -248,16 +254,22 @@ export default function TrainingLogCard({
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
-              <ActivityTypeIcon
-                type={activity.type}
-                title={activity.title}
-                sportNames={activityComponentSportNames(activity.components)}
-              />
+              {!detailView && (
+                <ActivityTypeIcon
+                  type={activity.type}
+                  title={activity.title}
+                  sportNames={activityComponentSportNames(activity.components)}
+                />
+              )}
               <div className="min-w-0">
-                {rideDetailHref ? (
+                {detailView ? (
+                  <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                    Session
+                  </h3>
+                ) : detailHref ? (
                   <Link
-                    href={rideDetailHref}
-                    data-testid="ride-detail-link"
+                    href={detailHref}
+                    data-testid="activity-detail-link"
                     className="block font-semibold text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
                   >
                     {activity.title}
@@ -365,17 +377,19 @@ export default function TrainingLogCard({
                   )}
                 </span>
               )}
-              <ActivityCardMenu
-                activity={activity}
-                siblings={mergeSiblings}
-                keeperLabel={keeperLabel}
-                foldValues={foldValues}
-                editLocked={provenance.editLocked}
-                units={units}
-                detailHref={rideDetailHref}
-                canWrite={subjectCanWrite}
-                openMergeSignal={openMergeSignal}
-              />
+              {!detailView && (
+                <ActivityCardMenu
+                  activity={activity}
+                  siblings={mergeSiblings}
+                  keeperLabel={keeperLabel}
+                  foldValues={foldValues}
+                  editLocked={provenance.editLocked}
+                  units={units}
+                  detailHref={detailHref}
+                  canWrite={subjectCanWrite}
+                  openMergeSignal={openMergeSignal}
+                />
+              )}
             </div>
           </div>
 
@@ -383,7 +397,8 @@ export default function TrainingLogCard({
               and make the whole line open the editor where the same blocker and
               field highlights point at the fix. Rose, to stand apart from the
               amber missed-target markers. */}
-          {fault &&
+          {!detailView &&
+            fault &&
             (subjectCanWrite ? (
               <button
                 type="button"
@@ -659,7 +674,7 @@ export default function TrainingLogCard({
         )}
       </div>
 
-      {activity.notes && (
+      {!detailView && activity.notes && (
         <div className="mt-3">
           <NotesText
             as="p"
@@ -686,27 +701,31 @@ export default function TrainingLogCard({
           exist — the "Add form clip" entry point lives in the activity editor's
           More-details block now. `canWrite` still gates per-clip caption edit and
           delete, which stay on the card. */}
-      <ActivityVideoStrip
-        activityId={activity.id}
-        videos={videos.map((v) => ({
-          id: v.id,
-          exercise: v.exercise,
-          caption: v.caption,
-          kind: v.kind,
-          hasLocation: v.hasLocation,
-          durationSec: v.durationSec,
-        }))}
-        canWrite={videoCanWrite}
-      />
+      {!detailView && (
+        <ActivityVideoStrip
+          activityId={activity.id}
+          videos={videos.map((v) => ({
+            id: v.id,
+            exercise: v.exercise,
+            caption: v.caption,
+            kind: v.kind,
+            hasLocation: v.hasLocation,
+            durationSec: v.durationSec,
+          }))}
+          canWrite={videoCanWrite}
+        />
+      )}
 
-      <ActivityProvenance
-        label={provenance.label}
-        createdAt={provenance.createdAt}
-        updatedAt={provenance.updatedAt}
-        editLockId={provenance.editLocked ? activity.id : undefined}
-        variant="quiet"
-        className="mt-3"
-      />
+      {!detailView && (
+        <ActivityProvenance
+          label={provenance.label}
+          createdAt={provenance.createdAt}
+          updatedAt={provenance.updatedAt}
+          editLockId={provenance.editLocked ? activity.id : undefined}
+          variant="quiet"
+          className="mt-3"
+        />
+      )}
     </div>
   );
 }

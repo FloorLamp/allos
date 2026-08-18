@@ -5,28 +5,12 @@ import Link from "next/link";
 import { IconChevronRight } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { CYCLING_METRICS } from "@/lib/cycling-metrics";
-import { cyclingRideHref, type CyclingLens } from "@/lib/hrefs";
 import { roundChartValue } from "@/lib/chart-format";
 import { formatLongDate } from "@/lib/format-date";
-import type { RideComparisonMetricKey } from "@/lib/ride-detail";
+import type { SessionComparisonMetricKey } from "@/lib/session-detail";
+import type { SessionComparisonMetricView } from "@/lib/session-comparison-view";
 
-export interface RideComparisonChartMetric {
-  key: RideComparisonMetricKey;
-  label: string;
-  shortLabel: string;
-  unit: string;
-  decimals: number;
-  median: number;
-  points: {
-    id: number;
-    date: string;
-    title: string;
-    value: number;
-    current: boolean;
-  }[];
-}
-
-const METRIC_COLORS: Record<RideComparisonMetricKey, string> = {
+const METRIC_COLORS: Record<SessionComparisonMetricKey, string> = {
   speed: CYCLING_METRICS.speed.color,
   heart_rate: CYCLING_METRICS.heart_rate.color,
   power: CYCLING_METRICS.power.color,
@@ -40,16 +24,22 @@ function formattedValue(value: number, decimals: number, unit: string): string {
   return `${roundChartValue(value, decimals)}${unit}`;
 }
 
-export default function RideComparisonChart({
+export default function SessionComparisonChart({
   metrics,
-  lens,
+  initialMetric,
+  noun = "sessions",
+  singularNoun = "session",
+  testIdPrefix = "session-comparison",
 }: {
-  metrics: RideComparisonChartMetric[];
-  lens: CyclingLens | null;
+  metrics: SessionComparisonMetricView[];
+  initialMetric?: SessionComparisonMetricKey | null;
+  noun?: string;
+  singularNoun?: string;
+  testIdPrefix?: string;
 }) {
   const formatPrefs = useFormatPrefs();
-  const initialKey = metrics.some((metric) => metric.key === lens?.metric)
-    ? (lens?.metric as RideComparisonMetricKey)
+  const initialKey = metrics.some((metric) => metric.key === initialMetric)
+    ? initialMetric
     : metrics[0]?.key;
   const [selectedKey, setSelectedKey] = useState(initialKey);
   const selected =
@@ -78,13 +68,13 @@ export default function RideComparisonChart({
   const color = METRIC_COLORS[selected.key];
 
   return (
-    <div className="mt-4 min-w-0" data-testid="ride-comparison-chart">
-      {metrics.length > 1 ? (
+    <div className="mt-4 min-w-0" data-testid={`${testIdPrefix}-chart`}>
+      {metrics.length > 1 && (
         <div
           className="flex flex-wrap gap-1"
           aria-label="Comparison metric"
           role="group"
-          data-testid="ride-comparison-metrics"
+          data-testid={`${testIdPrefix}-metrics`}
         >
           {metrics.map((metric) => {
             const active = metric.key === selected.key;
@@ -105,22 +95,21 @@ export default function RideComparisonChart({
             );
           })}
         </div>
-      ) : null}
+      )}
 
-      <div className="mt-3" data-testid="ride-comparison-ranking">
+      <div className="mt-3" data-testid={`${testIdPrefix}-ranking`}>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-          <span>Rides ranked highest to lowest</span>
-          <span data-testid="ride-comparison-range">
+          <span>{noun} ranked highest to lowest</span>
+          <span data-testid={`${testIdPrefix}-range`}>
             Peer range{" "}
             {formattedValue(peerMin, selected.decimals, selected.unit)}–
             {formattedValue(peerMax, selected.decimals, selected.unit)} · Median{" "}
             {formattedValue(selected.median, selected.decimals, selected.unit)}
           </span>
         </div>
-
         <ol
           className="max-h-80 space-y-1 overflow-y-auto pr-1"
-          aria-label={`${selected.label} across ${points.length} rides`}
+          aria-label={`${selected.label} across ${points.length} ${noun}`}
         >
           {points.map((point) => {
             const row = (
@@ -140,7 +129,7 @@ export default function RideComparisonChart({
                     }`}
                   >
                     {point.current
-                      ? "This ride"
+                      ? `This ${singularNoun}`
                       : formatLongDate(point.date, formatPrefs, {
                           year: "always",
                         })}
@@ -152,11 +141,10 @@ export default function RideComparisonChart({
                     {point.title}
                   </p>
                 </div>
-
                 <div
                   className="relative col-span-2 row-start-2 h-5 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:h-6"
                   aria-hidden="true"
-                  data-testid="ride-comparison-track"
+                  data-testid={`${testIdPrefix}-track`}
                 >
                   <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-200 dark:bg-ink-700" />
                   <span
@@ -176,7 +164,6 @@ export default function RideComparisonChart({
                     }}
                   />
                 </div>
-
                 <span
                   className={`col-start-2 row-start-1 flex items-center justify-end gap-1 whitespace-nowrap text-right text-xs tabular-nums sm:col-start-3 ${
                     point.current
@@ -189,31 +176,27 @@ export default function RideComparisonChart({
                     selected.decimals,
                     selected.unit
                   )}
-                  {!point.current ? (
+                  {!point.current && (
                     <IconChevronRight
                       className="h-3.5 w-3.5 text-slate-400"
                       aria-hidden="true"
                     />
-                  ) : null}
+                  )}
                 </span>
               </div>
             );
             return (
               <li
                 key={point.id}
-                data-testid="ride-comparison-observation"
+                data-testid={`${testIdPrefix}-observation`}
                 data-current={point.current ? "true" : "false"}
               >
                 {point.current ? (
                   row
                 ) : (
                   <Link
-                    href={
-                      lens
-                        ? cyclingRideHref(point.id, lens)
-                        : `/training/rides/${point.id}`
-                    }
-                    data-testid="ride-comparison-link"
+                    href={point.href}
+                    data-testid={`${testIdPrefix}-link`}
                     className="block rounded-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950"
                     aria-label={`Open ${point.title} from ${formatLongDate(
                       point.date,

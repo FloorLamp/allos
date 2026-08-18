@@ -54,8 +54,8 @@ export function StatBox({
         {href ? (
           // A raw <a> to an INTERNAL route was a full document load out of the
           // app shell (#2983) — the same defect as the training overview's
-          // "next workout" CTA, and this tile is the door into a ride
-          // (`/training/rides/[id]`) and into a session's activity page. The
+          // "next workout" CTA, and this tile is a door into a session's
+          // canonical activity page. The
           // value is the tile's only text, so it is also the pending slot. The
           // announcement names the TILE, lower-cased to match the shipped
           // convention ("Opening 5s best"): the box cannot name what is at the

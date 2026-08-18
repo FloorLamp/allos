@@ -6,6 +6,7 @@
 // different storage, lifecycle, and progress semantics.
 
 import { foodGroupName } from "./food-groups";
+import type { FrequencyTarget } from "./types/training";
 
 const GROUP_LABELS: Record<string, string> = {
   Upper: "Upper body",
@@ -66,6 +67,14 @@ export const FREQUENCY_SCOPE_KINDS = [
 ] as const;
 
 export type FrequencyScopeKind = (typeof FREQUENCY_SCOPE_KINDS)[number];
+
+export function isFrequencyScope(
+  target: Pick<FrequencyTarget, "scope_kind" | "scope_value">,
+  kind: FrequencyScopeKind,
+  value: string
+): boolean {
+  return target.scope_kind === kind && target.scope_value === value;
+}
 
 export function frequencyScopeLabel(kind: string, value: string): string {
   if (!value) return value;

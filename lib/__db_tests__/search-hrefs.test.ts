@@ -41,24 +41,23 @@ function hit(
 }
 
 describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
-  it("an activity hit lands on ITS day of the timeline, not the training hub", () => {
+  it("an activity hit lands on its canonical activity detail", () => {
     const p = newProfile("palette-activity");
-    // Deliberately old: the training log renders one newest window (#451), so an
-    // anchor-into-the-training log href would strand exactly this row.
     const date = "2019-03-14";
-    db.prepare(
-      `INSERT INTO activities (profile_id, date, type, title, duration_min)
-       VALUES (?, ?, 'strength', 'PHREF Bench Press', 45)`
-    ).run(p, date);
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, duration_min)
+           VALUES (?, ?, 'strength', 'PHREF Bench Press', 45)`
+        )
+        .run(p, date).lastInsertRowid
+    );
 
     const h = hit(p, "PHREF Bench", "activity", "PHREF Bench Press");
-    expect(h.href).toBe(
-      `/timeline?from=${date}&to=${date}#timeline-day-${date}`
-    );
-    expect(h.href).not.toBe("/training");
+    expect(h.href).toBe(`/training/activity/${id}`);
   });
 
-  it("a cycling activity hit lands on its dedicated ride detail", () => {
+  it("a cycling activity hit lands on the canonical activity detail", () => {
     const p = newProfile("palette-ride");
     const id = Number(
       db
@@ -72,7 +71,7 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     );
 
     expect(hit(p, "PHREF River", "activity", "PHREF River Loop").href).toBe(
-      `/training/rides/${id}`
+      `/training/activity/${id}`
     );
   });
 

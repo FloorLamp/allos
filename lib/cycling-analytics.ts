@@ -5,7 +5,7 @@ import type {
   TelemetryStream,
 } from "./integrations/activity-telemetry";
 
-export type RideTraceKey =
+export type SessionTraceKey =
   | "watts"
   | "cadence"
   | "velocity_smooth"
@@ -14,8 +14,8 @@ export type RideTraceKey =
   | "grade_smooth"
   | "temp";
 
-export interface RideTrace {
-  key: RideTraceKey;
+export interface SessionTrace {
+  key: SessionTraceKey;
   label: string;
   shortLabel: string;
   unit: string;
@@ -23,7 +23,7 @@ export interface RideTrace {
   points: { date: string; value: number | null }[];
 }
 
-export interface RideTimedRoutePoint {
+export interface SessionTimedRoutePoint {
   elapsedSec: number;
   lat: number;
   lng: number;
@@ -63,7 +63,7 @@ export interface RideDynamics {
   powerHrDriftPercent: number | null;
 }
 
-export interface RideDistanceSplit {
+export interface SessionDistanceSplit {
   index: number;
   distanceM: number;
   timeSec: number;
@@ -74,7 +74,7 @@ export interface RideDistanceSplit {
 }
 
 const TRACE_META: Record<
-  RideTraceKey,
+  SessionTraceKey,
   { label: string; shortLabel: string; unit: string; decimals: number }
 > = {
   watts: { label: "Power", shortLabel: "Power", unit: " W", decimals: 0 },
@@ -121,7 +121,7 @@ export function parseActivityStreams(value: string | null): ActivityStreams {
   try {
     const parsed = JSON.parse(value) as Record<string, unknown>;
     const out: ActivityStreams = {};
-    for (const key of Object.keys(TRACE_META) as RideTraceKey[]) {
+    for (const key of Object.keys(TRACE_META) as SessionTraceKey[]) {
       const stream = parsed[key];
       if (!stream || typeof stream !== "object") continue;
       const data = (stream as Record<string, unknown>).data;
@@ -294,7 +294,7 @@ export function powerZoneTimes(
 export function distanceSplits(
   streams: ActivityStreams,
   intervalM = 5000
-): RideDistanceSplit[] {
+): SessionDistanceSplit[] {
   const times = numeric(streams.time);
   const distance = numeric(streams.distance);
   const moving = booleans(streams.moving);
@@ -317,7 +317,7 @@ export function distanceSplits(
     boundaries.push(finalDistance);
   }
 
-  const splits: RideDistanceSplit[] = [];
+  const splits: SessionDistanceSplit[] = [];
   let start = 0;
   let cursor = 1;
   for (const boundary of boundaries.slice(0, 100)) {
@@ -384,7 +384,7 @@ export function numeric(
   );
 }
 
-export function formatRideElapsed(seconds: number): string {
+export function formatSessionElapsed(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -416,7 +416,7 @@ function downsample(
     const time = times[Math.min(end - 1, length - 1)];
     if (time == null) continue;
     points.push({
-      date: formatRideElapsed(time),
+      date: formatSessionElapsed(time),
       value: count > 0 ? sum / count : null,
     });
   }
@@ -427,10 +427,10 @@ function downsample(
 // be tied to the same elapsed-time axis as power, cadence, speed, and heart rate.
 // Bound the serialized read model: 720 points is smooth at the route card's size
 // without sending a multi-hour one-second stream through a Server Component.
-export function rideTimedRoutePoints(
+export function sessionTimedRoutePoints(
   streams: ActivityStreams,
   maxPoints = 720
-): RideTimedRoutePoint[] {
+): SessionTimedRoutePoint[] {
   const times = numeric(streams.time);
   const locations = streams.latlng?.data ?? [];
   const length = Math.min(times.length, locations.length);
@@ -441,7 +441,7 @@ export function rideTimedRoutePoints(
     (_, index) => index * stride
   );
   if (indexes[indexes.length - 1] !== length - 1) indexes.push(length - 1);
-  return indexes.flatMap((index): RideTimedRoutePoint[] => {
+  return indexes.flatMap((index): SessionTimedRoutePoint[] => {
     const time = times[index];
     const location = locations[index];
     if (
@@ -470,10 +470,10 @@ export function rideTimedRoutePoints(
   });
 }
 
-export function rideTraces(streams: ActivityStreams): RideTrace[] {
+export function sessionTraces(streams: ActivityStreams): SessionTrace[] {
   const times = numeric(streams.time);
   if (times.length === 0) return [];
-  return (Object.keys(TRACE_META) as RideTraceKey[]).flatMap((key) => {
+  return (Object.keys(TRACE_META) as SessionTraceKey[]).flatMap((key) => {
     const values = numeric(streams[key]);
     if (values.filter((value) => value != null).length < 2) return [];
     const meta = TRACE_META[key];

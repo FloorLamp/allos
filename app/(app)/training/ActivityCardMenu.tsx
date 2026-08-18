@@ -47,8 +47,8 @@ interface PendingConflictMerge {
 
 // The kebab (⋯) action menu on a Training Log activity card. Its affordances:
 //
-//  • "View ride details" — read-first navigation for cycling activities.
-//  • "Edit" — opens the existing activity editor without making the ride title
+//  • "View details" — read-first navigation to the canonical activity page.
+//  • "Edit" — opens the existing activity editor without making the title
 //    itself an edit affordance.
 //  • "Log again" (issue #29) — opens a CREATE form pre-filled from this activity
 //    (title, exercises, sets) with the date reset to today, so repeating a
@@ -85,7 +85,8 @@ export default function ActivityCardMenu({
   // the deliberate re-enable action lives here rather than lengthening the card.
   editLocked: boolean;
   units: UnitPrefs;
-  // Read-first destination for activities with a dedicated detail surface.
+  // Read-first destination for this activity's canonical detail surface. Null
+  // when the menu is already rendered on that page.
   detailHref?: AppRoute | null;
   // Whether the acting login may write to THIS card's subject profile (issue #1330).
   // Merge (edits the keeper + deletes the sibling) and resume-sync (clears the edit
@@ -355,7 +356,7 @@ export default function ActivityCardMenu({
                   className={MENU_ITEM}
                   onClick={() => setOpen(false)}
                 >
-                  View ride details
+                  View details
                 </Link>
               ) : null}
               {canWrite && detailHref ? (

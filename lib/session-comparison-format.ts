@@ -17,15 +17,15 @@
 import { kmTo, round } from "./units";
 import type { DistanceUnit } from "./settings";
 import type {
-  RideComparisonMetric,
-  RideComparisonMetricKey,
-} from "./ride-detail";
+  SessionComparisonMetric,
+  SessionComparisonMetricKey,
+} from "./session-detail";
 
 // Metres to feet, for the one metric stored in metres but read in feet.
 const FEET_PER_METRE = 3.28084;
 
 export function comparisonUnitSuffix(
-  key: RideComparisonMetricKey,
+  key: SessionComparisonMetricKey,
   distanceUnit: DistanceUnit
 ): string {
   switch (key) {
@@ -48,7 +48,7 @@ export function comparisonUnitSuffix(
 // The stored value in the reader's units — the number a chart plots and a label
 // formats, so both can never disagree about the conversion.
 export function comparisonDisplayValue(
-  key: RideComparisonMetricKey,
+  key: SessionComparisonMetricKey,
   value: number,
   distanceUnit: DistanceUnit
 ): number {
@@ -60,12 +60,12 @@ export function comparisonDisplayValue(
 
 // How many decimals this metric earns: speed and relative effort are read to a
 // tenth; a heart rate of 152.4 bpm is false precision.
-export function comparisonDecimals(key: RideComparisonMetricKey): number {
+export function comparisonDecimals(key: SessionComparisonMetricKey): number {
   return key === "speed" || key === "relative_effort" ? 1 : 0;
 }
 
 export function formatComparisonValue(
-  key: RideComparisonMetricKey,
+  key: SessionComparisonMetricKey,
   value: number,
   distanceUnit: DistanceUnit
 ): string {
@@ -83,7 +83,7 @@ export interface ComparisonDifference {
 }
 
 export function comparisonDifference(
-  metric: RideComparisonMetric,
+  metric: SessionComparisonMetric,
   distanceUnit: DistanceUnit
 ): ComparisonDifference {
   const shown = comparisonDisplayValue(
@@ -102,7 +102,9 @@ export function comparisonDifference(
 
 // Whether being ABOVE the peer median is an achievement for this metric. Speed
 // alone answers yes. Everything else is context — see the module header.
-export function comparisonHasDirection(key: RideComparisonMetricKey): boolean {
+export function comparisonHasDirection(
+  key: SessionComparisonMetricKey
+): boolean {
   return key === "speed";
 }
 
@@ -111,7 +113,7 @@ export type ComparisonTone = "good" | "watch" | "neutral";
 // The tone a difference earns. A metric with no direction is always neutral, no
 // matter how far from the median it sits.
 export function comparisonTone(
-  metric: RideComparisonMetric,
+  metric: SessionComparisonMetric,
   relation: ComparisonDifference["relation"]
 ): ComparisonTone {
   if (!comparisonHasDirection(metric.key)) return "neutral";

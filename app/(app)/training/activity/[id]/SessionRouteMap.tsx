@@ -1,24 +1,27 @@
 "use client";
 
+// Shared route treatment for the canonical activity detail page. Timed route
+// points are optional; cycling supplies them to link the map and trace cursor.
+
 import RouteMap from "@/components/RouteMap";
 import {
-  formatRideElapsed,
-  type RideTimedRoutePoint,
+  formatSessionElapsed,
+  type SessionTimedRoutePoint,
 } from "@/lib/cycling-analytics";
-import { useRideChartLink } from "./RideChartLink";
+import { useSessionChartLink } from "./SessionChartLink";
 
-export default function RideRouteMap({
+export default function SessionRouteMap({
   polyline,
   timedRoute,
   title,
   className,
 }: {
   polyline: string;
-  timedRoute: RideTimedRoutePoint[];
+  timedRoute: SessionTimedRoutePoint[];
   title: string;
   className: string;
 }) {
-  const { activeElapsedSec } = useRideChartLink();
+  const { activeElapsedSec } = useSessionChartLink();
   let highlightIndex: number | null = null;
   if (activeElapsedSec != null && timedRoute.length > 0) {
     let bestDistance = Infinity;
@@ -40,7 +43,7 @@ export default function RideRouteMap({
       highlightTitle={
         activeElapsedSec == null
           ? undefined
-          : `${formatRideElapsed(activeElapsedSec)} elapsed`
+          : `${formatSessionElapsed(activeElapsedSec)} elapsed`
       }
       width={720}
       height={260}
