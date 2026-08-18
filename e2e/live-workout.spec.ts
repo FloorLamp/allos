@@ -173,17 +173,18 @@ test("mid-session, the workout entry point resumes and the session clock survive
   // The pin: the same start instant, so the same elapsed time continues.
   await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
 
-  // Restore from the bar and close: nothing was logged, so the close ABANDONS
-  // the created-at-start row (server-side if-empty discard) — the bar must not
-  // come back offering a session with nothing in it.
+  // Restore from the bar and explicitly delete this test's session. Escape's
+  // if-empty abandonment is covered above; an explicit delete is deterministic
+  // here even if a late live-form autosave has touched the draft.
   await page.getByTestId("workout-dock-open").click();
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(dock).toHaveCount(0);
-  // Wait out the abandonment redirect: ending here can tear the page down
-  // with the empty session's discard still in flight, leaking an active row
-  // into the next (repeat) iteration.
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
   await page.waitForURL(/\/training(\?.*)?$/);
+  await expect(dock).toHaveCount(0);
 });
 
 test("the command palette offers 'Start workout' (#340)", async ({ page }) => {
