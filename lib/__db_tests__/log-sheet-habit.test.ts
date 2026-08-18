@@ -200,7 +200,7 @@ describe("getSegmentLogDays", () => {
     const { profileId, anchor } = makeProfile("Habit Dashboard");
     // Two weeks of food, one hand-logged walk. Before that history exists the
     // dashboard opens on Train — the historical fallback — and after it, on Food.
-    const segments = logSheetSegments(false, true);
+    const segments = logSheetSegments(true);
     logActivity(profileId, anchor);
     expect(
       openingLogSegment({

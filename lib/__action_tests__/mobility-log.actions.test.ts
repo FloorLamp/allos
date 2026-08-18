@@ -12,6 +12,7 @@ import {
   setMobilityDuration,
 } from "@/app/(app)/training/mobility-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
 
 const DATE = "2026-07-10";
 
@@ -31,6 +32,19 @@ function recoveryRows(profileId: number) {
 }
 
 describe("mobility log actions", () => {
+  it("refuses a new mobility session through early childhood", async () => {
+    const login = createLogin();
+    const profile = createProfile("toddler-mobility", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 2);
+
+    const result = await logMobilityMove(
+      fd({ move: "pigeon_pose", date: DATE })
+    );
+    expect(result.ok).toBe(false);
+    expect(recoveryRows(profile.id)).toEqual([]);
+  });
+
   it("logs a move into one mobility activity row, idempotently", async () => {
     const login = createLogin();
     const profile = createProfile("mobility-log", login.id);

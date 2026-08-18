@@ -70,6 +70,8 @@ import {
   postWorkoutFinishMarkerKey,
 } from "./post-workout-marker";
 import { announcedActivityTwin } from "../queries/integrations";
+import { getProfileAge } from "../settings/profile-attrs";
+import { isTrainingRelevant } from "../life-stage";
 
 const log = createLogger("notify");
 
@@ -239,6 +241,7 @@ export async function runPostWorkoutForActivity(
   activityId: number,
   opts: { verifyCompletedToday?: boolean } = {}
 ): Promise<{ failed: boolean }> {
+  if (!isTrainingRelevant(getProfileAge(profileId))) return { failed: false };
   const date = today(profileId);
   const finishRow = loadFinishRow(profileId, activityId);
   if (opts.verifyCompletedToday) {

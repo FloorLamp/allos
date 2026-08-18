@@ -73,6 +73,7 @@ import {
 } from "@/lib/activity-equipment";
 import { estimateActivityKcal } from "@/lib/calorie-estimate";
 import { activityDisclosureSummary } from "@/lib/activity-import-details";
+import { activityEditDataHasStrength } from "@/lib/activity-form-model";
 
 // Re-exported so existing callers keep importing the edit-payload shape from
 // this module; the definition now lives in ./activity-form/model.
@@ -105,6 +106,7 @@ export default function ActivityForm({
   equipment,
   recentActivityEquipment = [],
   bodyweightKg,
+  strengthTrainingAvailable,
   editData,
   prefill = null,
   initialDate,
@@ -115,6 +117,7 @@ export default function ActivityForm({
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
   onClose,
+  onDeleted,
   stickyFooter = false,
 }: {
   units: UnitPrefs;
@@ -126,6 +129,9 @@ export default function ActivityForm({
   // per-activity (last-used shoes for a run, last-used bike for a ride).
   recentActivityEquipment?: number[];
   bodyweightKg: number | null;
+  // New strength content starts in adolescence. Existing strength records stay
+  // editable, so their vocabulary is retained when editData already carries it.
+  strengthTrainingAvailable: boolean;
   editData: ActivityEditData | null;
   // "Log again" / "Repeat last" seed (issue #29): pre-fills the form's initial
   // state (title, exercises, sets) exactly like editData, but the form still
@@ -158,6 +164,9 @@ export default function ActivityForm({
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
   onClose: () => void;
+  // The provider owns route context. Report a completed delete so it can leave a
+  // canonical detail URL that now points at no record.
+  onDeleted?: (id: number) => void;
   // In the overlay the (often taller-than-viewport) form scrolls, so the action
   // row pins to the bottom of the screen and gains a Done button — otherwise
   // closing means scrolling back up to the ✕. The docked editor keeps the plain
@@ -177,6 +186,9 @@ export default function ActivityForm({
   // seeds state — editData stays null, so isEdit/savableId/hasRow all keep their
   // create semantics and the first save inserts a new activity.
   const seed = editData ?? prefill;
+  const allowStrengthParts =
+    strengthTrainingAvailable ||
+    (editData != null && activityEditDataHasStrength(editData));
 
   // Bodyweight lifts fold the user's bodyweight into their volume/strength stats.
   // If none is on record, prompt for it inline (saved as a body-metrics entry).
@@ -188,16 +200,17 @@ export default function ActivityForm({
     const m = new Map<string, ActivityType>();
     for (const n of suggestions.sports) m.set(n.toLowerCase(), "sport");
     for (const n of suggestions.cardio) m.set(n.toLowerCase(), "cardio");
-    for (const n of suggestions.lifts) m.set(n.toLowerCase(), "strength");
+    if (allowStrengthParts)
+      for (const n of suggestions.lifts) m.set(n.toLowerCase(), "strength");
     const all = [
       ...new Set([
-        ...suggestions.lifts,
+        ...(allowStrengthParts ? suggestions.lifts : []),
         ...suggestions.cardio,
         ...suggestions.sports,
       ]),
     ];
     return { allOptions: all, typeByName: m };
-  }, [suggestions]);
+  }, [suggestions, allowStrengthParts]);
 
   // The evidence the picker's matcher is allowed to weigh (#2384). Built once here
   // beside allOptions and handed down as data; lib/fuzzy owns what it is worth.
@@ -988,6 +1001,7 @@ export default function ActivityForm({
         deletedMessage: "Activity deleted.",
       });
       onClose();
+      onDeleted?.(id);
     } finally {
       setSaving(false);
     }

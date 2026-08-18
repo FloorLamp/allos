@@ -18,11 +18,13 @@ export default function EnduranceDepthSuite({
   form,
   vo2,
   distanceUnit,
+  adultClinicalContent,
 }: {
   zones: CardioZoneCoverage | null;
   form: SessionOverviewRollup;
   vo2: FitnessPercentile | null;
   distanceUnit: DistanceUnit;
+  adultClinicalContent: boolean;
 }) {
   const hasHistory = form.recent.sessions > 0 || form.previous.sessions > 0;
   return (
@@ -44,7 +46,9 @@ export default function EnduranceDepthSuite({
           personal-baseline context.
         </p>
       ) : (
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <div
+          className={`mt-4 grid gap-4 ${adultClinicalContent ? "md:grid-cols-3" : "md:grid-cols-2"}`}
+        >
           <div>
             <p className="section-label">Zone coverage this week</p>
             {zones ? (
@@ -96,18 +100,20 @@ export default function EnduranceDepthSuite({
               )}
             </p>
           </div>
-          <div>
-            <p className="section-label">VO₂ percentile</p>
-            <p className="mt-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
-              {vo2 ? formatPercentile(vo2) : "No current VO₂ result"}
-            </p>
-            <Link
-              href="/training/fitness-check"
-              className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-            >
-              Fitness check →
-            </Link>
-          </div>
+          {adultClinicalContent && (
+            <div>
+              <p className="section-label">VO₂ percentile</p>
+              <p className="mt-2 text-lg font-semibold text-slate-800 dark:text-slate-100">
+                {vo2 ? formatPercentile(vo2) : "No current VO₂ result"}
+              </p>
+              <Link
+                href="/training/fitness-check"
+                className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+              >
+                Fitness check →
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </div>

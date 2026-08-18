@@ -31,6 +31,7 @@ import {
   setProfileSex,
   setWeekMode,
   setWeekStart,
+  setStoredAge,
 } from "@/lib/settings";
 import {
   runRecap,
@@ -109,10 +110,12 @@ function onlyScale(profileId: number, keep: ReviewCadence, td: string): void {
 // ---- fixtures ----
 
 function newProfile(name: string): number {
-  return Number(
+  const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setStoredAge(id, 30);
+  return id;
 }
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-orch";

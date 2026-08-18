@@ -6,7 +6,6 @@ import { hashPasswordSync } from "../lib/password";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import {
   E2E_LOGIN_PRESENCE,
-  E2E_LOGIN_CHILD,
   E2E_MEMBER_PASSWORD,
   PRESENCE_PROFILE,
 } from "./fixture-logins";
@@ -156,23 +155,6 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 });
 
-test("a restricted profile (no live workout mode) never shows the dock", async ({
-  browser,
-}) => {
-  test.slow();
-  // Riley is a child (training-restricted) — presence is never gathered, so no dock.
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_CHILD,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    await expect(page.getByTestId("workout-dock")).toHaveCount(0);
-  } finally {
-    await page.context().close();
-  }
-});
-
 // ── A COMPLETED manual log is never live (#1441) ─────────────────────────────
 //
 // "+ Log activity → Walking → Duration 30 → Done" defaults start_time to now and
@@ -205,6 +187,11 @@ test.beforeAll(() => {
       .prepare("SELECT id FROM profiles WHERE name = ?")
       .get(OWNED_PROFILE) as { id: number } | undefined;
     const profileId = existing?.id ?? createFixtureProfile(db, OWNED_PROFILE);
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+         VALUES (?, 'birthdate', '1988-01-01')
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(profileId);
     db.prepare(
       "INSERT OR IGNORE INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
     ).run(OWNED_LOGIN, hashPasswordSync(E2E_MEMBER_PASSWORD));

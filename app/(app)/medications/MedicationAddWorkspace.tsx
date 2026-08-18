@@ -22,7 +22,6 @@ export default function MedicationAddWorkspace({
   allIntakeItems,
   stackItems,
   pgxVariants,
-  trainingRestricted,
   pediatric,
   age,
   todayStr,
@@ -38,7 +37,6 @@ export default function MedicationAddWorkspace({
   allIntakeItems: { id: number; name: string }[];
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
-  trainingRestricted: boolean;
   pediatric?: PediatricFormContext;
   age: number | null;
   todayStr: string;
@@ -162,7 +160,6 @@ export default function MedicationAddWorkspace({
                   allIntakeItems={allIntakeItems}
                   stackItems={stackItems}
                   pgxVariants={pgxVariants}
-                  trainingRestricted={trainingRestricted}
                   pediatric={pediatric}
                   age={age}
                   todayStr={todayStr}

@@ -1,8 +1,8 @@
 // One age model, many surfaces (issue #494). The app used to carry FOUR decoupled
 // age axes — a fixed-18 "minor" line (body-fat / Body layout / fitness norms /
-// bio-age / PhenoAge), a fixed-13 BP-regime line, a 240-month (20 y) growth-chart
-// ceiling, and the orthogonal admin `min_training_age` access knob — each with its
-// own magic number and null-handling, which drifted (a 14-year-old was an adult for
+// bio-age / PhenoAge), a fixed-13 BP-regime line, and a 240-month (20 y)
+// growth-chart ceiling — each with its own magic number and null-handling, which
+// drifted (a 14-year-old was an adult for
 // BP but a child everywhere else; eGFR had no pediatric floor while PhenoAge beside
 // it did; the growth card demoted itself for 18–19-year-olds). This module is the
 // SINGLE identity computation the biomarker-family (#482) and preventive concept-map
@@ -11,10 +11,11 @@
 // to 20, adult-population models at 18) become NAMED, DOCUMENTED members of one model
 // instead of scattered constants a new surface can silently re-invent.
 //
-// `min_training_age` stays OUT of this module on purpose: it is an admin access
-// policy (does this instance let a young profile reach the training surfaces at
-// all), not a life stage — it lives in lib/age-gate.ts. This module owns the
-// CONTENT-FRAMING lines (adult fitness science vs child-appropriate presentation).
+// This module owns CONTENT-FRAMING lines (adult fitness science vs
+// child-appropriate presentation). Existing and imported activity records remain
+// age-neutral facts, while the workout-oriented Training product starts at age 5.
+// Strength-specific creation/programming starts in adolescence; adult-population
+// statistics still use the stricter adult predicate below.
 //
 // NULL-AGE POLICY (documented once, here): `lifeStage(null)` is `null` — "unknown".
 // Each predicate then states its own unknown-age default, and those defaults are
@@ -27,7 +28,12 @@
 //     adult-validated number without a known adult age.
 
 export type LifeStage =
-  "infant" | "child" | "adolescent" | "adult" | "older-adult";
+  | "infant"
+  | "early-childhood"
+  | "child"
+  | "adolescent"
+  | "adult"
+  | "older-adult";
 
 // ── Named boundaries (whole years) — the members of the one model ───────────────
 // Every age cutoff in the codebase is one of these boundaries (or carries a
@@ -37,6 +43,11 @@ export type LifeStage =
 
 // < 1 y — infant (head-circumference charts, WHO 0–24 mo curves live below here).
 export const INFANT_MAX_AGE = 1;
+
+// < 5 y — early childhood. Allos' Training surface is a workout logger and
+// programming tool, not a general movement diary; it stands down below this
+// boundary while imported/existing activity facts remain part of the record.
+export const EARLY_CHILDHOOD_MAX_AGE = 5;
 
 // < 13 y — AAP uses percentile-based pediatric BP thresholds below this age and
 // switches to adult static thresholds at/after it. The child→adolescent boundary.
@@ -65,14 +76,16 @@ function known(age: number | null | undefined): age is number {
   return age != null && Number.isFinite(age) && age >= 0;
 }
 
-// Ordinal rank of the life stages (infant < child < adolescent < adult < older-adult),
-// so a "minimum life stage" gate is a simple comparison. Only used by meetsMinLifeStage.
+// Ordinal rank of the life stages (infant < early-childhood < child < adolescent <
+// adult < older-adult), so a "minimum life stage" gate is a simple comparison. Only
+// used by meetsMinLifeStage.
 const LIFE_STAGE_RANK: Record<LifeStage, number> = {
   infant: 0,
-  child: 1,
-  adolescent: 2,
-  adult: 3,
-  "older-adult": 4,
+  "early-childhood": 1,
+  child: 2,
+  adolescent: 3,
+  adult: 4,
+  "older-adult": 5,
 };
 
 // The profile's life stage from its age in whole years, or null when the age is
@@ -80,6 +93,7 @@ const LIFE_STAGE_RANK: Record<LifeStage, number> = {
 export function lifeStage(age: number | null | undefined): LifeStage | null {
   if (!known(age)) return null;
   if (age < INFANT_MAX_AGE) return "infant";
+  if (age < EARLY_CHILDHOOD_MAX_AGE) return "early-childhood";
   if (age < PEDIATRIC_BP_MAX_AGE) return "child";
   if (age < ADULT_MIN_AGE) return "adolescent";
   if (age < OLDER_ADULT_MIN_AGE) return "adult";
@@ -98,8 +112,41 @@ export function isAdultForClinical(
   return known(age) && age >= ADULT_MIN_AGE;
 }
 
-// Legal minor — the complement of the adult-clinical floor for a KNOWN age.
-// (age < 18; unknown → false, treated as an adult like the presentations above)
+// Longevity and protocol experiments are an adult-only content class. Unlike a
+// presentation tweak, the whole route stands down for both a known minor and an
+// unknown age, so callers never expose adult-population healthspan claims without
+// a known adult age. This named predicate is the single route/nav/section answer.
+export function isLongevityRelevant(
+  age: number | null | undefined
+): age is number {
+  return isAdultForClinical(age);
+}
+
+// Strength-specific creation and programming (exercise catalog, sets/reps/load,
+// routines, live lifting, and muscle targets) starts at the named adolescent
+// boundary (age >= 13). This is a CONTENT/AFFORDANCE gate, not a data-retention
+// rule: existing and imported activity records remain readable, and an existing
+// strength record may still be corrected. Unknown age -> hidden, because missing
+// profile data is not a reason to offer a child-inappropriate lifting program.
+export function isStrengthTrainingRelevant(
+  age: number | null | undefined
+): age is number {
+  return known(age) && age >= PEDIATRIC_BP_MAX_AGE;
+}
+
+// Workout logging, programming, goals, analytics, and coaching start after
+// early childhood (age >= 5). This does not delete or suppress record facts:
+// existing/imported activities remain readable and existing rows can be
+// corrected. Unknown age stays eligible because missing profile data is not a
+// positive early-childhood match; strength still applies its stricter unknown-
+// age policy independently.
+export function isTrainingRelevant(age: number | null | undefined): boolean {
+  const stage = lifeStage(age);
+  return stage !== "infant" && stage !== "early-childhood";
+}
+
+// Legal minor for a KNOWN age. Unknown → false because "unknown" is not evidence
+// that the profile is a minor; adult-only predicates still reject unknown separately.
 export function isMinor(age: number | null | undefined): boolean {
   return known(age) && age < ADULT_MIN_AGE;
 }

@@ -176,13 +176,9 @@ test("the sheet opens on the segment the current route is about", async ({
   await expect(sheet.getByTestId("quick-log-log-activity")).toHaveCount(0);
 });
 
-test("an age-restricted profile gets the puck, and a sheet with no Train segment", async ({
-  browser,
-}) => {
-  // #2651's owner ruling (2026-08-13). The dock shipped with the puck hidden for a
-  // restricted profile, mirroring the top bar; that was reversed. Every entry the
-  // sheet offers such a profile has already been through `quickLogMenu(true)`, so
-  // hiding the door removed one-tap logging without adding a gate.
+test("a toddler gets Timeline and no Train segment", async ({ browser }) => {
+  // The puck stays because food, body, and care logging still apply. Only the
+  // workout-product destination and Train segment stand down.
   //
   // A raw context from loginAs does NOT inherit the `mobile` project's `use`
   // block, so the phone viewport is restated or this silently runs at desktop
@@ -197,15 +193,12 @@ test("an age-restricted profile gets the puck, and a sheet with no Train segment
     const dock = child.getByTestId("mobile-dock");
     await expect(dock).toBeVisible();
     await expect(dock.getByTestId("dock-log-puck")).toBeVisible();
-    // The slot substitution is unchanged: Timeline stands in for Training.
-    await expect(dock.getByTestId("dock-slot-timeline")).toBeVisible();
     await expect(dock.getByTestId("dock-slot-training")).toHaveCount(0);
+    await expect(dock.getByTestId("dock-slot-timeline")).toBeVisible();
 
     const sheet = child.getByTestId("quick-log-sheet");
     await tapUntilOpen(child, child.getByTestId("dock-log-puck"), sheet);
 
-    // What the ruling did NOT change: the activity entry is still gated away, so
-    // the track carries no Train segment at all rather than an empty one.
     const track = sheet.getByTestId("log-sheet-segments");
     await expect(track).toBeVisible();
     await expect(track.getByTestId("log-sheet-segment-train")).toHaveCount(0);

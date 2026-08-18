@@ -593,11 +593,16 @@ function weekEndingOn(
 // a week the user had not yet declared anything about.
 export function getCadenceWeekVerdicts(
   profileId: number,
-  weekEnd: string
+  weekEnd: string,
+  options: {
+    includeTarget?: (target: FrequencyTarget) => boolean;
+  } = {}
 ): CadenceTargetVerdict[] {
   const out: CadenceTargetVerdict[] = [];
   for (const direction of ["floor", "cap"] as const) {
     for (const entry of weekEndingOn(profileId, weekEnd, direction)) {
+      if (options.includeTarget && !options.includeTarget(entry.target))
+        continue;
       if (!entry.existedWholeWindow) continue;
       const week = entry.weeks[0];
       if (!week) continue;
@@ -635,7 +640,11 @@ export const CAP_PERIOD_MIN_WEEKS = 2;
 
 export function getCadenceCapWeeks(
   profileId: number,
-  opts: { asOf: string; weeks: number }
+  opts: {
+    asOf: string;
+    weeks: number;
+    includeTarget?: (target: FrequencyTarget) => boolean;
+  }
 ): CadenceCapWeeks[] {
   if (opts.weeks < CAP_PERIOD_MIN_WEEKS) return [];
   const entries = getCadenceLedger(profileId, {
@@ -646,6 +655,7 @@ export function getCadenceCapWeeks(
   });
   const out: CadenceCapWeeks[] = [];
   for (const entry of entries) {
+    if (opts.includeTarget && !opts.includeTarget(entry.target)) continue;
     // Only the weeks that began after the cap was declared. The ledger's
     // `existedWholeWindow` answers this for its OLDEST window; a multi-week read needs
     // it per week, off the same `created_at` day the flag compares.

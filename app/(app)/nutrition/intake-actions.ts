@@ -16,6 +16,7 @@ import {
   deleteProfileSetting,
   getSituations,
   getTimezone,
+  getProfileAge,
   setSituationIllnessType,
 } from "@/lib/settings";
 import { generateAndStoreSuggestions } from "@/lib/supplement-suggest";
@@ -66,12 +67,14 @@ import {
 import { withAiLogContext } from "@/lib/ai-log";
 import {
   CONDITIONS,
+  WORKOUT_CONDITIONS,
   OBLIGATIONS,
   FOOD_TIMINGS,
   parseDosage,
   spreadDoseTimes,
   collapseOnDemandDoses,
 } from "@/lib/intake-schedule";
+import { isTrainingRelevant } from "@/lib/life-stage";
 import {
   CADENCE_KINDS,
   doseScheduleDiffers,
@@ -498,6 +501,15 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const f = fields(formData);
+  if (
+    f.kind === "supplement" &&
+    WORKOUT_CONDITIONS.includes(f.condition) &&
+    !isTrainingRelevant(getProfileAge(profile.id))
+  ) {
+    return formError(
+      "Workout-based supplement schedules aren't available for this profile's age."
+    );
+  }
   // Created FROM a shared bottle (#1705): the item form's picker posts the bottle it was
   // seeded from, so "there's a shared bottle of D3 5000 IU; add it for my daughter" is
   // ONE step instead of create-then-find-the-link-control. Validated against the SAME
@@ -723,16 +735,26 @@ export async function updateIntakeItem(
     // quantity tracking off can clear the low-supply episode marker (issue #325).
     const owned = db
       .prepare(
-        "SELECT active, quantity_on_hand, created_at FROM intake_items WHERE id = ? AND profile_id = ?"
+        "SELECT active, quantity_on_hand, created_at, kind, condition FROM intake_items WHERE id = ? AND profile_id = ?"
       )
       .get(id, profile.id) as
       | {
           active: number;
           quantity_on_hand: number | null;
           created_at: string | null;
+          kind: IntakeItemKind;
+          condition: IntakeCondition;
         }
       | undefined;
     if (!owned) return false;
+    if (
+      f.kind === "supplement" &&
+      WORKOUT_CONDITIONS.includes(f.condition) &&
+      !isTrainingRelevant(getProfileAge(profile.id)) &&
+      (owned.kind !== "supplement" || owned.condition !== f.condition)
+    ) {
+      return "workout-schedule-unavailable" as const;
+    }
     // A medication can have several historical courses. The edit form submits the
     // specific current/latest course it displayed, and this scoped lookup prevents a
     // forged id from changing another medication or profile. Validate before any row
@@ -1013,6 +1035,11 @@ export async function updateIntakeItem(
   }
   if (result === "start-after-stop") {
     return formError("The start date must be on or before the stop date.");
+  }
+  if (result === "workout-schedule-unavailable") {
+    return formError(
+      "Workout-based supplement schedules aren't available for this profile's age."
+    );
   }
   if (!result) return formError("Couldn't find that supplement.");
   revalidateIntake();
@@ -1512,7 +1539,7 @@ export async function acceptSuggestion(
   // across a slow response, two devices) produce exactly one medication and one honest
   // refusal — the old guard was a plain read before the transaction, and both racers
   // passed it.
-  const accepted = writeTx((tx): boolean => {
+  const accepted = writeTx((tx): boolean | "workout-schedule-unavailable" => {
     const s = readForUpdate<{
       status: string;
       name: string;
@@ -1534,6 +1561,12 @@ export async function acceptSuggestion(
       profile.id
     );
     if (!s || s.status !== "pending") return false;
+    if (
+      WORKOUT_CONDITIONS.includes(s.condition as IntakeCondition) &&
+      !isTrainingRelevant(getProfileAge(profile.id))
+    ) {
+      return "workout-schedule-unavailable" as const;
+    }
     // Claim the suggestion FIRST: the expectation lives in the WHERE, and only the
     // accept whose UPDATE lands may mint the item.
     const claim = casUpdate(
@@ -1593,6 +1626,11 @@ export async function acceptSuggestion(
     );
     return true;
   });
+  if (accepted === "workout-schedule-unavailable") {
+    return formError(
+      "Workout-based supplement schedules aren't available for this profile's age."
+    );
+  }
   if (!accepted) return formError("That suggestion is no longer available.");
   revalidateIntake();
   return formOk();

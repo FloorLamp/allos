@@ -548,7 +548,7 @@ export function hasOnboardingFirstValue(
 // Outcome selection seeds the dashboard without permanently disabling anything:
 // Customize can restore every hidden widget later. Needs attention is pinned and
 // therefore absent from this saved layout by design.
-const ONBOARDING_WIDGETS = customizableWidgetDefs(false);
+const ONBOARDING_WIDGETS = customizableWidgetDefs();
 const ONBOARDING_WIDGET_ORDER = ONBOARDING_WIDGETS.map((widget) => widget.id);
 const ONBOARDING_DEFAULT_WIDGETS = ONBOARDING_WIDGETS.filter(
   (widget) => widget.defaultOn

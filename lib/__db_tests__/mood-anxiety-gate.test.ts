@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { isAnxietyScaleRelevant } from "@/lib/queries";
-import { setAnxietyScaleOptIn } from "@/lib/settings";
+import { setAnxietyScaleOptIn, setStoredAge } from "@/lib/settings";
 
 function newProfile(name: string): number {
   return Number(
@@ -71,6 +71,7 @@ describe("isAnxietyScaleRelevant (the #1313 gate resolver)", () => {
 
   it("signal 5 — an ongoing protocol whose outcome is the anxiety series reveals it", () => {
     const p = newProfile("Protocol (gate)");
+    setStoredAge(p, 30);
     db.prepare(
       `INSERT INTO protocols (profile_id, name, start_date, end_date, outcome_keys)
        VALUES (?, 'Daily meditation', '2026-06-01', NULL, ?)`

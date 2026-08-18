@@ -21,7 +21,7 @@ import {
 } from "@/lib/fitness-retest";
 import { DATA_QUALITY_PREFIX, dataQualityDedupeKey } from "@/lib/data-quality";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
-import { setProfileBirthdate } from "@/lib/settings";
+import { setProfileBirthdate, setStoredAge } from "@/lib/settings";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -37,9 +37,14 @@ function seedCheck(profileId: number, date: string) {
   ).run(profileId, date);
 }
 
+function markAdult(profileId: number) {
+  setStoredAge(profileId, 40);
+}
+
 describe("withFindingClosure — fitness retest satisfier (#1305)", () => {
   it("clears the overdue fitness-check finding when a new test is recorded", () => {
     const { profileId, anchor } = makeProfile("closure-fitness-due");
+    markAdult(profileId);
     const last = shiftDateStr(anchor, -120); // > 90-day default → retest due
     seedCheck(profileId, last);
 
@@ -62,6 +67,7 @@ describe("withFindingClosure — fitness retest satisfier (#1305)", () => {
 
   it("clears nothing when the check was not overdue (no active finding)", () => {
     const { profileId, anchor } = makeProfile("closure-fitness-recent");
+    markAdult(profileId);
     seedCheck(profileId, shiftDateStr(anchor, -30)); // inside the cadence window
     const { cleared } = withFindingClosure(
       profileId,
@@ -80,6 +86,7 @@ describe("withFindingClosure — fitness retest satisfier (#1305)", () => {
 
   it("does NOT announce a finding that was already dismissed (active-set awareness)", () => {
     const { profileId, anchor } = makeProfile("closure-fitness-dismissed");
+    markAdult(profileId);
     const last = shiftDateStr(anchor, -120);
     seedCheck(profileId, last);
     // Dismiss the retest finding first — it's no longer VISIBLE, so satisfying it must

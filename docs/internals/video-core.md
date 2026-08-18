@@ -189,15 +189,14 @@ download. Everything about it is deliberate:
 - **Scoping is double-locked.** Every domain SELECT filters the exporting
   profile's own `profile_id`, and each `stored_path` must then resolve inside
   `<domainRoot>/<profileId>/` — the domain roots come from the stores' own path
-  helpers, so a corrupt or tampered path is skipped rather than followed. A
-  training-restricted profile's `activity_videos` are held back too, because
-  `activities` is already gated out of the ZIP (#471) and clips must not be the
-  way around it.
+  helpers, so a corrupt or tampered path is skipped rather than followed.
+  Activity rows and their clips remain exportable at every life stage: exports
+  preserve stored facts even when the workout product is not currently relevant.
 - **The bytes still stream.** One clip can be hundreds of megabytes, so the route
   reads and yields one entry at a time exactly as it does for medical uploads.
 
-Covered by `lib/__db_tests__/export-media.test.ts` (scoping, containment, row
-context, the age gate) and `e2e/export-media.spec.ts` (the rendered toggle, the
+Covered by `lib/__db_tests__/export-media.test.ts` (scoping, containment, and row
+context) and `e2e/export-media.spec.ts` (the rendered toggle, the
 default-off archive, the opted-in archive).
 
 ## Deliberately out (phase 2 / follow-ups)

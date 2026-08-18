@@ -57,7 +57,7 @@ import {
 } from "../../lib/settings";
 import { reconcileFlags } from "../../lib/queries";
 import { adoptTemplate, activateRoutine } from "../../lib/routines";
-import { PROFILE_ID, seedMemberLogin, fixtureProfileId } from "./common";
+import { PROFILE_ID, seedMemberLogin, adultFixtureProfileId } from "./common";
 import { setFixtureTimezone } from "../fixture-timezones";
 
 // ── Dense Training Log card + met-target fixtures ──
@@ -440,7 +440,7 @@ export function seedSessionPeers(): void {
   //
   // Its own profile: adding sessions to the shared profile-1 feed moves the
   // Timeline's 250-event page (see e2e/logins/training.ts).
-  const peersId = fixtureProfileId(SESSION_PEERS_PROFILE);
+  const peersId = adultFixtureProfileId(SESSION_PEERS_PROFILE);
   seedMemberLogin(E2E_LOGIN_SESSION_PEERS, peersId);
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(peersId);
   const insPeer = db.prepare(
@@ -486,7 +486,7 @@ export function seedActivityFormPaths(): void {
   // a routine lift is deload-shaved (100 kg progression → ~90 kg + the shared rationale).
   // Dedicated on purpose so a create-and-clean save in the form spec never touches the
   // #741 deload fixture (which asserts an exact slate). Idempotent: reset + re-adopt.
-  const formDeloadProfileId = fixtureProfileId(FORM_DELOAD_PROFILE);
+  const formDeloadProfileId = adultFixtureProfileId(FORM_DELOAD_PROFILE);
   db.prepare(
     `DELETE FROM routine_slots WHERE routine_day_id IN (
      SELECT rd.id FROM routine_days rd
@@ -534,7 +534,7 @@ export function seedActivityFormPaths(): void {
   // plateaued lift — never shaved, since the profile has no cycle. Dedicated so the
   // dismiss test's suppression write stays isolated from profile 1's Skullcrusher plateau
   // (which rule-findings.spec relies on).
-  const formPlateauProfileId = fixtureProfileId(FORM_PLATEAU_PROFILE);
+  const formPlateauProfileId = adultFixtureProfileId(FORM_PLATEAU_PROFILE);
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:form-plateau-%'`
   ).run(formPlateauProfileId);
@@ -565,7 +565,7 @@ export function seedActivityFormPaths(): void {
   // 0.6) OUTSIDE any deload week — the axis #1115 left open. The form now threads the same
   // recovering-region context the Analyze/detail panel reads, so both surfaces seed 60 kg.
   // Dedicated so the recovering injury never tempers a shared profile's coaching surfaces.
-  const formInjuryProfileId = fixtureProfileId(FORM_INJURY_PROFILE);
+  const formInjuryProfileId = adultFixtureProfileId(FORM_INJURY_PROFILE);
   db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(
     formInjuryProfileId
   );
@@ -731,7 +731,7 @@ export function seedEndurancePlans(): void {
   // plan created in the spec has a real weekly-volume base + this-week actuals. The spec
   // OWNS the endurance_plans lifecycle (create-and-clean), so hard-clear any leftover
   // plans on a reused server. Runs seeded across the last three weeks + this week.
-  const enduranceProfileId = fixtureProfileId(ENDURANCE_PROFILE);
+  const enduranceProfileId = adultFixtureProfileId(ENDURANCE_PROFILE);
   db.prepare(`DELETE FROM endurance_plans WHERE profile_id = ?`).run(
     enduranceProfileId
   );
@@ -772,7 +772,7 @@ export function seedTrainingRollup(): void {
   // preceding weeks clear the #719 cold-start gate (≥2 distinct training weeks). NO
   // routine (so no deload gate) and NO injury (so no excluded region), and every date
   // is RELATIVE so the fixture never goes stale.
-  const profileId = fixtureProfileId(TRAINING_ROLLUP_PROFILE);
+  const profileId = adultFixtureProfileId(TRAINING_ROLLUP_PROFILE);
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:training-rollup-%'`
   ).run(profileId);
@@ -828,7 +828,7 @@ export function seedTrainingRollup(): void {
 // them without widening the range. Idempotent: its own rows are cleared and
 // rewritten, children first.
 export function seedLoadContexts(): void {
-  const profileId = fixtureProfileId(LOAD_CONTEXT_PROFILE);
+  const profileId = adultFixtureProfileId(LOAD_CONTEXT_PROFILE);
   const t = today(profileId);
 
   db.prepare(
@@ -897,7 +897,7 @@ export function seedLoadContexts(): void {
 export function seedLabValueGoal(): void {
   // The fixture behind e2e/lab-value-goal.spec.ts (#1853). See the constants' header
   // in e2e/logins/training.ts for why it is a dedicated, write-granted profile.
-  const pid = fixtureProfileId(LAB_GOAL_PROFILE);
+  const pid = adultFixtureProfileId(LAB_GOAL_PROFILE);
   seedMemberLogin(E2E_LOGIN_LAB_GOAL, pid, "write");
   setProfileBirthdate(pid, "1984-02-19");
   setProfileSex(pid, "male");
@@ -984,7 +984,7 @@ export function seedLabValueGoal(): void {
 // ── The week spine (#2566, Viz 1) ─────────────────────────────────────────────
 export function seedWeekSpine(): void {
   // See e2e/logins/training.ts for the shape this pins and why it is dedicated.
-  const profileId = fixtureProfileId(WEEK_SPINE_PROFILE);
+  const profileId = adultFixtureProfileId(WEEK_SPINE_PROFILE);
   setWeekMode(profileId, "rolling");
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:week-spine-%'`
@@ -1022,7 +1022,7 @@ export function seedWeekSpine(): void {
 
 // ── Training Overview standing actions (#3062) ──────────────────────────────
 export function seedOverviewActionStates(): void {
-  const noRoutineId = fixtureProfileId(OVERVIEW_NO_ROUTINE_PROFILE);
+  const noRoutineId = adultFixtureProfileId(OVERVIEW_NO_ROUTINE_PROFILE);
   const noRoutineToday = today(noRoutineId);
   db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(noRoutineId);
   db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(noRoutineId);
@@ -1032,7 +1032,7 @@ export function seedOverviewActionStates(): void {
   ).run(noRoutineId, shiftDateStr(noRoutineToday, -5));
   seedMemberLogin(E2E_LOGIN_OVERVIEW_NO_ROUTINE, noRoutineId, "write");
 
-  const restId = fixtureProfileId(OVERVIEW_REST_PROFILE);
+  const restId = adultFixtureProfileId(OVERVIEW_REST_PROFILE);
   setFixtureTimezone(db, restId, "overview-rest", "UTC");
   const restToday = today(restId);
   const restYesterday = shiftDateStr(restToday, -1);

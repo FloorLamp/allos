@@ -23,7 +23,7 @@ import {
   zonedDateParts,
   zonedWallTimeToUtc,
 } from "@/lib/date";
-import { getTimezone } from "@/lib/settings";
+import { getTimezone, setStoredAge } from "@/lib/settings";
 import { isCompletedSessionRow } from "@/lib/workout-presence";
 import {
   STALE_QUEUED_DOSE_REASON,
@@ -571,6 +571,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetReplay ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     const title = `Offline squats ${uniqueKey()}`;
     const date = today(profile.id);
 
@@ -605,6 +606,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetCreateOnly ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     const date = today(profile.id);
     const victimTitle = `Victim session ${uniqueKey()}`;
     const victimId = Number(
@@ -629,6 +631,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetDate ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     const captured = shiftDateStr(today(profile.id), -2);
     const title = `Two days ago ${uniqueKey()}`;
     const intent = setIntent(profile.id, title, captured, {
@@ -650,6 +653,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetCompleted ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     // Yesterday, so the intent's capturedAt (`${date}T18:05:00.000Z`) is always
     // in the past — resolveCapturedInstant refuses a future capture instant.
     const date = shiftDateStr(today(profile.id), -1);
@@ -684,6 +688,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     const admin = createLogin();
     const profile = createProfile(`SetEndKept ${uniqueKey()}`);
     actAs(admin, profile);
+    setStoredAge(profile.id, 30);
     const date = today(profile.id);
 
     // An explicit end survives verbatim.

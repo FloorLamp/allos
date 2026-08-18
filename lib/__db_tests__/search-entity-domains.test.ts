@@ -36,10 +36,14 @@ let protocolId = 0;
 let equipmentId = 0;
 
 function newProfile(name: string): number {
-  return Number(
+  const profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  db.prepare(
+    "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-01-01')"
+  ).run(profileId);
+  return profileId;
 }
 
 function newProvider(input: {
@@ -433,6 +437,33 @@ describe("protocols are searchable (#344/#1595)", () => {
       `/protocols/${protocolId}`
     );
   });
+
+  it.each([
+    ["minor", "2015-01-01"],
+    ["unknown age", null],
+  ])(
+    "withholds adult-only protocol hits for a profile with %s",
+    (_label, birthdate) => {
+      const profileId = Number(
+        db
+          .prepare("INSERT INTO profiles (name) VALUES (?)")
+          .run(`SEARCHDOM-PROTOCOL-${_label}`).lastInsertRowid
+      );
+      if (birthdate) {
+        db.prepare(
+          "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', ?)"
+        ).run(profileId, birthdate);
+      }
+      db.prepare(
+        `INSERT INTO protocols (profile_id, name, start_date)
+       VALUES (?, 'Hidden protocol fixture', '2026-04-03')`
+      ).run(profileId);
+
+      expect(hits(profileId, "Hidden protocol fixture", "protocol")).toEqual(
+        []
+      );
+    }
+  );
 });
 
 describe("wellness practices are searchable, ONE hit per identity (#1591/#1595)", () => {

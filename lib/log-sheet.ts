@@ -20,8 +20,7 @@
 //
 // They are the four things a phone is actually held up to do, and each has at
 // least one entry for every profile that can see it. Empty segments are dropped
-// rather than disabled: a restricted profile has no training entry at all, so it
-// gets a three-segment track, not a fourth segment that refuses.
+// rather than disabled.
 
 import { arguedExclusion, type ArguedExclusion } from "./loggable-domains";
 import {
@@ -79,16 +78,13 @@ export const LOG_SEGMENT_CENSUS = {
 
 /**
  * The sheet's segments for a given profile: the SAME `quickLogMenu` the flat
- * sheet has always rendered (so both gates — the age gate and the #1042 cycle
- * relevance bit — apply exactly once, where they always did), regrouped.
+ * sheet has always rendered (so the #1042 cycle relevance bit applies exactly
+ * once, where it always did), regrouped.
  *
  * Segments with no surviving entry are dropped entirely.
  */
-export function logSheetSegments(
-  restricted: boolean,
-  cycleRelevant = true
-): LogSegment[] {
-  const items = quickLogMenu(restricted, cycleRelevant);
+export function logSheetSegments(cycleRelevant = true): LogSegment[] {
+  const items = quickLogMenu(cycleRelevant);
   return SEGMENT_ORDER.map((id) => ({
     id,
     label: SEGMENT_LABELS[id],
@@ -252,9 +248,7 @@ export function dueDoseChipLabel({
  * The segment this profile logs in on the most DAYS, or null when no segment
  * clears the evidence floor.
  *
- * Only segments actually on this profile's track can win — a restricted profile
- * has no `train` segment, so activity history predating the gate cannot name a
- * segment the sheet does not render. Exact ties go to track order, which is
+ * Only segments actually on this profile's track can win. Exact ties go to track order, which is
  * deterministic and needs no second opinion about what "most" means.
  */
 export function habitualLogSegment(

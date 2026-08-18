@@ -135,19 +135,15 @@ describe("isGroupActive", () => {
 });
 
 describe("isNavLeafVisible", () => {
-  // The production RESTRICTED_HREFS is EMPTY since #489 (Training is no longer
-  // nav-gated — a restricted profile keeps a lightweight sport/cardio log there),
-  // so this exercises the pure mechanism against a hypothetical gated route to
-  // prove a future gated href would still be hidden.
-  const restrictedHrefs = new Set(["/__gated__"]);
+  const adultOnlyHrefs = new Set(["/__adult_only__"]);
   const ctx = (over: Partial<Parameters<typeof isNavLeafVisible>[1]> = {}) => ({
     isAdmin: true,
-    restricted: false,
+    adultContentAvailable: true,
     multiProfile: true,
     foodLoggingRelevant: true,
     hasIntakeItems: false,
     relevance: DEFAULT_NAV_RELEVANCE,
-    restrictedHrefs,
+    adultOnlyHrefs,
     ...over,
   });
 
@@ -171,6 +167,14 @@ describe("isNavLeafVisible", () => {
     const leaf = { href: "/household", requiresMultiProfile: true };
     expect(isNavLeafVisible(leaf, ctx({ multiProfile: true }))).toBe(true);
     expect(isNavLeafVisible(leaf, ctx({ multiProfile: false }))).toBe(false);
+  });
+
+  it("hides the Training leaf when the workout product is not relevant", () => {
+    const leaf = { href: "/training", requiresTraining: true };
+    expect(isNavLeafVisible(leaf, ctx({ trainingRelevant: true }))).toBe(true);
+    expect(isNavLeafVisible(leaf, ctx({ trainingRelevant: false }))).toBe(
+      false
+    );
   });
 
   it("shows Household to any login with 2+ accessible profiles (issue #31)", () => {
@@ -225,16 +229,24 @@ describe("isNavLeafVisible", () => {
     ).toBe(true);
   });
 
-  it("honors the age-gate only for hrefs in the restricted set", () => {
+  it("hides adult-only hrefs unless the profile is a known adult", () => {
     expect(
-      isNavLeafVisible({ href: "/__gated__" }, ctx({ restricted: true }))
+      isNavLeafVisible(
+        { href: "/__adult_only__" },
+        ctx({ adultContentAvailable: false })
+      )
     ).toBe(false);
     expect(
-      isNavLeafVisible({ href: "/results" }, ctx({ restricted: true }))
+      isNavLeafVisible(
+        { href: "/results" },
+        ctx({ adultContentAvailable: false })
+      )
     ).toBe(true);
-    // Not restricted: even a gated href still shows.
     expect(
-      isNavLeafVisible({ href: "/__gated__" }, ctx({ restricted: false }))
+      isNavLeafVisible(
+        { href: "/__adult_only__" },
+        ctx({ adultContentAvailable: true })
+      )
     ).toBe(true);
   });
 
@@ -284,11 +296,12 @@ describe("isNavLeafVisible", () => {
     expect(isNavLeafVisible(cycle, ctx())).toBe(true);
   });
 
-  it("keeps /training visible to a restricted profile (#489 is type-aware)", () => {
-    // Training is no longer nav-gated — the page adapts (lightweight sport/cardio
-    // log) rather than hiding, so a restricted profile must still see the link.
+  it("does not conflate the Training gate with adult-only content", () => {
     expect(
-      isNavLeafVisible({ href: "/training" }, ctx({ restricted: true }))
+      isNavLeafVisible(
+        { href: "/training", requiresTraining: true },
+        ctx({ adultContentAvailable: false, trainingRelevant: true })
+      )
     ).toBe(true);
   });
 });

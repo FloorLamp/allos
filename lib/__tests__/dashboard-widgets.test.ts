@@ -23,18 +23,17 @@ import {
 const ids = (ws: { id: string }[]) => ws.map((w) => w.id);
 // The customizable catalog excludes pinned widgets (the hero) — those are rendered
 // directly by the page and never appear in the resolve* outputs.
-const customizable = customizableWidgetDefs(false);
+const customizable = customizableWidgetDefs();
 const defaultOnIds = customizable.filter((w) => w.defaultOn).map((w) => w.id);
-const fitnessIds = customizable.filter((w) => w.fitness).map((w) => w.id);
 
 describe("resolveWidgets / resolveWidgetList", () => {
   it("null layout → default-on widgets in registry order", () => {
-    const visible = resolveWidgets(null, false);
+    const visible = resolveWidgets(null);
     expect(ids(visible)).toEqual(defaultOnIds);
   });
 
   it("null layout → full list (visible + hidden) is every customizable widget in registry order", () => {
-    const list = resolveWidgetList(null, false);
+    const list = resolveWidgetList(null);
     expect(list.map((w) => w.def.id)).toEqual(customizable.map((w) => w.id));
     // visibility follows defaultOn for a fresh profile
     for (const item of list) {
@@ -47,7 +46,7 @@ describe("resolveWidgets / resolveWidgetList", () => {
       order: ["weight-trend", "does-not-exist", "recent-labs"],
       hidden: [],
     };
-    const visible = resolveWidgets(layout, false);
+    const visible = resolveWidgets(layout);
     expect(ids(visible)).not.toContain("does-not-exist");
     // stored order honored for the ids it lists
     expect(visible[0].id).toBe("weight-trend");
@@ -73,10 +72,10 @@ describe("resolveWidgets / resolveWidgetList", () => {
       // (#1221) — a stored layout naming it is dropped without a migration.
       "quick-log-prn",
     ];
-    const list = resolveWidgetList(
-      { order: [...retired, "weight-trend"], hidden: retired },
-      false
-    );
+    const list = resolveWidgetList({
+      order: [...retired, "weight-trend"],
+      hidden: retired,
+    });
     expect(list.map((w) => w.def.id)).not.toEqual(
       expect.arrayContaining(retired)
     );
@@ -88,10 +87,10 @@ describe("resolveWidgets / resolveWidgetList", () => {
     // layout that still lists it is dropped defensively and it must not reappear as a
     // customizable widget.
     expect(DASHBOARD_WIDGETS.map((w) => w.id)).not.toContain("quick-log-prn");
-    const list = resolveWidgetList(
-      { order: ["quick-log-prn", "weight-trend"], hidden: [] },
-      false
-    );
+    const list = resolveWidgetList({
+      order: ["quick-log-prn", "weight-trend"],
+      hidden: [],
+    });
     expect(list.map((w) => w.def.id)).not.toContain("quick-log-prn");
     expect(list.map((w) => w.def.id)).toContain("weight-trend");
   });
@@ -100,10 +99,10 @@ describe("resolveWidgets / resolveWidgetList", () => {
     // The illness hero replaced it; a stored layout that still lists it is dropped
     // defensively (above), and it must not reappear as a customizable widget.
     expect(DASHBOARD_WIDGETS.map((w) => w.id)).not.toContain("sick-household");
-    const list = resolveWidgetList(
-      { order: ["sick-household", "weight-trend"], hidden: [] },
-      false
-    );
+    const list = resolveWidgetList({
+      order: ["sick-household", "weight-trend"],
+      hidden: [],
+    });
     expect(list.map((w) => w.def.id)).not.toContain("sick-household");
     expect(list.map((w) => w.def.id)).toContain("weight-trend");
   });
@@ -111,7 +110,7 @@ describe("resolveWidgets / resolveWidgetList", () => {
   it("registry widget missing from stored order → appended honoring defaultOn", () => {
     // A layout that only mentions one widget; everything else is "new" to it.
     const layout: DashboardLayout = { order: ["weight-trend"], hidden: [] };
-    const list = resolveWidgetList(layout, false);
+    const list = resolveWidgetList(layout);
     expect(list[0].def.id).toBe("weight-trend");
     const appended = list.slice(1).map((w) => w.def.id);
     const expectedAppended = customizable
@@ -131,9 +130,9 @@ describe("resolveWidgets / resolveWidgetList", () => {
       order: customizable.map((w) => w.id),
       hidden: ["recent-labs"],
     };
-    const visible = resolveWidgets(layout, false);
+    const visible = resolveWidgets(layout);
     expect(ids(visible)).not.toContain("recent-labs");
-    const list = resolveWidgetList(layout, false);
+    const list = resolveWidgetList(layout);
     const labs = list.find((w) => w.def.id === "recent-labs")!;
     expect(labs.visible).toBe(false);
   });
@@ -143,42 +142,13 @@ describe("resolveWidgets / resolveWidgetList", () => {
       order: ["weekly-recap", "recent-labs"],
       hidden: [],
     };
-    const visible = resolveWidgets(layout, false);
+    const visible = resolveWidgets(layout);
     expect(ids(visible)).toContain("weekly-recap");
   });
 
-  it("restricted → no fitness widget appears in either output", () => {
-    const list = resolveWidgetList(null, true);
-    for (const id of fitnessIds) {
-      expect(list.map((w) => w.def.id)).not.toContain(id);
-    }
-    const visible = resolveWidgets(null, true);
-    for (const id of fitnessIds) {
-      expect(ids(visible)).not.toContain(id);
-    }
-    // non-fitness default widgets survive
-    expect(ids(visible)).toContain("recent-labs");
-    expect(ids(visible)).toContain("weight-trend");
-  });
-
-  it("restricted → a stored order that references a fitness widget still drops it, keeps the rest ordered", () => {
-    const layout: DashboardLayout = {
-      order: ["goals-habits", "weight-trend", "coaching", "recent-labs"],
-      hidden: [],
-    };
-    const visible = resolveWidgets(layout, true);
-    expect(ids(visible)).not.toContain("goals-habits");
-    expect(ids(visible)).not.toContain("coaching");
-    // relative order of the surviving non-fitness ids preserved
-    expect(ids(visible).indexOf("weight-trend")).toBeLessThan(
-      ids(visible).indexOf("recent-labs")
-    );
-  });
-
-  // Issue #1221 — the per-profile WidgetGate (the dashboard twin of the nav's
-  // per-entry gating): requiresFoodLogging + relevanceKey === "cycle".
+  // Per-profile WidgetGate — the dashboard twin of nav relevance.
   it("gate foodLogging:false drops nutrition-today (the infant-profile food gate)", () => {
-    const shown = resolveWidgets(null, false, undefined, {
+    const shown = resolveWidgets(null, new Set(), {
       foodLogging: false,
     });
     expect(ids(shown)).not.toContain("nutrition-today");
@@ -186,19 +156,27 @@ describe("resolveWidgets / resolveWidgetList", () => {
     expect(ids(shown)).toContain("steps-today");
     expect(ids(shown)).toContain("vitals-latest");
     // The full list (Customize) also drops it, so it never renders even in preview.
-    const list = resolveWidgetList(null, false, undefined, {
+    const list = resolveWidgetList(null, new Set(), {
       foodLogging: false,
     });
     expect(list.map((w) => w.def.id)).not.toContain("nutrition-today");
   });
 
   it("gate cycle:false drops cycle-phase (the cycle-relevance gate), default keeps it", () => {
-    const hidden = resolveWidgets(null, false, undefined, { cycle: false });
+    const hidden = resolveWidgets(null, new Set(), { cycle: false });
     expect(ids(hidden)).not.toContain("cycle-phase");
     // Default gate (all-eligible) keeps both gated cards.
-    const shown = resolveWidgets(null, false);
+    const shown = resolveWidgets(null);
     expect(ids(shown)).toContain("cycle-phase");
     expect(ids(shown)).toContain("nutrition-today");
+  });
+
+  it("gate training:false drops workout coaching from the grid and Customize", () => {
+    const visible = resolveWidgets(null, new Set(), { training: false });
+    expect(ids(visible)).not.toContain("coaching");
+    const list = resolveWidgetList(null, new Set(), { training: false });
+    expect(list.map((w) => w.def.id)).not.toContain("coaching");
+    expect(list.map((w) => w.def.id)).toContain("goals-habits");
   });
 
   it("a gated widget in a stored order is still dropped when its gate bit is off", () => {
@@ -206,7 +184,7 @@ describe("resolveWidgets / resolveWidgetList", () => {
       order: ["cycle-phase", "nutrition-today", "weight-trend"],
       hidden: [],
     };
-    const list = resolveWidgetList(layout, false, undefined, {
+    const list = resolveWidgetList(layout, new Set(), {
       foodLogging: false,
       cycle: false,
     });
@@ -220,7 +198,7 @@ describe("resolveWidgets / resolveWidgetList", () => {
       order: ["recent-labs", "recent-labs", "weight-trend"],
       hidden: [],
     };
-    const list = resolveWidgetList(layout, false);
+    const list = resolveWidgetList(layout);
     const occurrences = list.filter((w) => w.def.id === "recent-labs").length;
     expect(occurrences).toBe(1);
   });
@@ -301,17 +279,20 @@ describe("actionable-first default order (#1890)", () => {
     ).toEqual([]);
   });
 
-  it("holds for a restricted profile too (the gated views are subsequences)", () => {
+  it("holds for life-stage and relevance gated views too", () => {
     // Filtering never reorders, so an actionable-first catalog stays actionable-first
     // for a child profile or one with the food/cycle bits off. Asserted rather than
     // argued, since it is the order a real profile sees.
     const exempt = new Set(ACTIONABLE_ORDER_EXCEPTIONS.keys());
     expect(
-      actionableOrderOffenders(customizableWidgetDefs(true), exempt)
+      actionableOrderOffenders(
+        customizableWidgetDefs({ adultContent: false }),
+        exempt
+      )
     ).toEqual([]);
     expect(
       actionableOrderOffenders(
-        customizableWidgetDefs(false, { foodLogging: false, cycle: false }),
+        customizableWidgetDefs({ foodLogging: false, cycle: false }),
         exempt
       )
     ).toEqual([]);
@@ -384,13 +365,9 @@ describe("pinned widgets (the hero)", () => {
       order: ["needs-attention", "recent-labs"],
       hidden: [],
     };
-    for (const restricted of [false, true]) {
-      const list = resolveWidgetList(layout, restricted);
-      expect(list.map((w) => w.def.id)).not.toContain("needs-attention");
-      expect(ids(resolveWidgets(layout, restricted))).not.toContain(
-        "needs-attention"
-      );
-    }
+    const list = resolveWidgetList(layout);
+    expect(list.map((w) => w.def.id)).not.toContain("needs-attention");
+    expect(ids(resolveWidgets(layout))).not.toContain("needs-attention");
   });
 
   it("the pin can't be hidden away — hiding it in the layout is a no-op (it isn't in the grid)", () => {
@@ -400,7 +377,7 @@ describe("pinned widgets (the hero)", () => {
     };
     // The hero is unaffected by the customizable grid entirely.
     expect(pinnedWidgets().map((w) => w.id)).toContain("needs-attention");
-    expect(resolveWidgetList(layout, false).map((w) => w.def.id)).not.toContain(
+    expect(resolveWidgetList(layout).map((w) => w.def.id)).not.toContain(
       "needs-attention"
     );
   });
@@ -410,7 +387,7 @@ describe("pinned widgets (the hero)", () => {
 describe("data-aware empty resolution", () => {
   it("a data-aware widget whose id is in emptyIds resolves empty=true (but stays visible)", () => {
     const empty = new Set(["recent-labs"]);
-    const list = resolveWidgetList(null, false, empty);
+    const list = resolveWidgetList(null, empty);
     const labs = list.find((w) => w.def.id === "recent-labs")!;
     expect(labs.def.dataAware).toBe(true);
     expect(labs.empty).toBe(true);
@@ -419,13 +396,13 @@ describe("data-aware empty resolution", () => {
   });
 
   it("a data-aware widget NOT in emptyIds resolves empty=false", () => {
-    const list = resolveWidgetList(null, false, new Set());
+    const list = resolveWidgetList(null, new Set());
     const labs = list.find((w) => w.def.id === "recent-labs")!;
     expect(labs.empty).toBe(false);
   });
 
   it("a non-data-aware widget is never marked empty, even if its id is in emptyIds", () => {
-    const list = resolveWidgetList(null, false, new Set(["coaching"]));
+    const list = resolveWidgetList(null, new Set(["coaching"]));
     const coaching = list.find((w) => w.def.id === "coaching")!;
     expect(coaching.def.dataAware).toBeFalsy();
     expect(coaching.empty).toBe(false);

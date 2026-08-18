@@ -7,8 +7,7 @@ import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // covers retire/restore; this covers the untested rest: adding an implement WITH
 // its own weight (shown in the login's weight unit), deleting one that a logged
 // set references (the link nulls, no FK 500, history survives — the #342
-// side-state rule), and the age-gate bounce that keeps a restricted profile off
-// the registry even by direct URL.
+// side-state rule), and age-neutral access for a minor profile.
 test.describe("Equipment manager (#391)", () => {
   test("add an implement with its own weight — listed with the weight unit", async ({
     page,
@@ -26,8 +25,9 @@ test.describe("Equipment manager (#391)", () => {
     const name = `E2E Own Weight Bar ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
     await page.getByRole("button", { name: "Add equipment" }).click();
     await page.getByLabel("Name").fill(name);
-    // The bar-weight label carries the login's unit — match it unit-agnostically.
-    await page.getByLabel(/Bar weight/).fill("15");
+    // The equipment-weight label carries the login's unit — match it
+    // unit-agnostically.
+    await page.getByLabel(/Equipment weight/).fill("15");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Equipment added")).toBeVisible();
 
@@ -78,28 +78,22 @@ test.describe("Equipment manager (#391)", () => {
     ).toBeVisible();
   });
 
-  test("an age-restricted profile is bounced off the Equipment registry by direct URL", async ({
+  test("a minor can open the Equipment registry by direct URL", async ({
     browser,
   }) => {
     test.slow();
 
-    // A member whose sole active profile is Riley (child) — under the seeded
-    // min-training-age gate. Navigating straight to /equipment must redirect to
-    // the dashboard: equipment is part of the ADULT fitness layer the restriction
-    // protects, so it stays gated even though /training itself no longer bounces a
-    // restricted profile (it swaps in the lightweight sport/cardio log — #489).
+    // Equipment and activity logging are profile-owned tools, not adult statistics.
     const member = await loginAs(browser, {
       username: E2E_LOGIN_CHILD,
       password: E2E_MEMBER_PASSWORD,
     });
     try {
       await member.goto("/equipment");
-      await member.waitForURL((u) => u.pathname === "/", { timeout: 20_000 });
-      await expect(member).toHaveURL(/\/$/);
-      // The manager heading never renders for the bounced profile.
+      await expect(member).toHaveURL(/\/equipment$/);
       await expect(
         member.getByRole("heading", { name: "Your equipment" })
-      ).toHaveCount(0);
+      ).toBeVisible();
     } finally {
       await member.context().close();
     }

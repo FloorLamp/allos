@@ -21,7 +21,22 @@ import {
 import { today } from "@/lib/db";
 import { getRoutines, getRoutineWithDays } from "@/lib/routines";
 import { getRoutineTemplate } from "@/lib/routine-templates";
-import { createLogin, createProfile, actAs, seedActor, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
+import {
+  createLogin,
+  createProfile,
+  actAs,
+  seedActor as seedActorWithoutAge,
+  fd,
+} from "./harness";
+
+function seedActor(
+  ...args: Parameters<typeof seedActorWithoutAge>
+): ReturnType<typeof seedActorWithoutAge> {
+  const actor = seedActorWithoutAge(...args);
+  setStoredAge(actor.profile.id, 30);
+  return actor;
+}
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
@@ -59,6 +74,24 @@ const customPayload = (name = "My Split") =>
   });
 
 describe("adoptRoutineTemplateAction", () => {
+  it.each([
+    ["early-childhood profile", 4, "training unavailable"],
+    ["unknown-age profile", null, "strength unavailable"],
+  ])(
+    "does not offer strength programming to a %s",
+    async (_label, age, error) => {
+      const login = createLogin();
+      const profile = createProfile(`routine-gated-${age}`, login.id);
+      actAs(login, profile);
+      if (age != null) setStoredAge(profile.id, age);
+
+      expect(
+        await adoptRoutineTemplateAction(fd({ template_id: "full-body-3x" }))
+      ).toEqual({ ok: false, error });
+      expect(getRoutines(profile.id)).toHaveLength(0);
+    }
+  );
+
   it("copies a template into the profile's routine tables and revalidates", async () => {
     const { profile } = seedActor();
     const res = await adoptRoutineTemplateAction(
@@ -220,6 +253,7 @@ describe("deactivate / delete actions", () => {
     const admin = createLogin({ role: "admin" });
     const pA = createProfile("A", admin.id);
     actAs(admin, pA);
+    setStoredAge(pA.id, 30);
     const a = await adoptRoutineTemplateAction(
       fd({ template_id: "full-body-3x" })
     );
@@ -329,6 +363,7 @@ describe("restartRoutineCycleAction (#741)", () => {
     const admin = createLogin({ role: "admin" });
     const pA = createProfile("A", admin.id);
     actAs(admin, pA);
+    setStoredAge(pA.id, 30);
     const a = await createRoutineAction(fd({ routine: cyclePayload("A", 6) }));
     const rid = a.ok ? a.routineId! : 0;
 

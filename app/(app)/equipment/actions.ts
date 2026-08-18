@@ -8,8 +8,14 @@ import {
   deleteEquipment,
   setEquipmentRetired,
   equipmentNameExists,
+  getEquipmentById,
 } from "@/lib/equipment";
-import type { Equipment } from "@/lib/types";
+import { kindOf, type Equipment } from "@/lib/types";
+import { getProfileAge } from "@/lib/settings";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 // Weight arrives already converted to kg by the client (it knows the display
 // unit). null means the implement's own weight is unknown / not tracked.
@@ -45,6 +51,19 @@ export async function createEquipmentAction(
 ): Promise<{ ok: true; equipment: Equipment } | { ok: false; error: string }> {
   const { profile } = await requireWriteAccess();
   const c = clean(input);
+  if (!isTrainingRelevant(getProfileAge(profile.id)))
+    return {
+      ok: false,
+      error: "Equipment isn’t available for this profile’s age.",
+    };
+  if (
+    kindOf(c.category) === "strength" &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  )
+    return {
+      ok: false,
+      error: "Strength equipment isn’t available for this profile’s age.",
+    };
   if (!c.name) return { ok: false, error: "Give the equipment a name." };
   if (equipmentNameExists(profile.id, c.name))
     return {
@@ -62,6 +81,16 @@ export async function updateEquipmentAction(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { profile } = await requireWriteAccess();
   const c = clean(input);
+  const existing = getEquipmentById(profile.id, id);
+  if (
+    kindOf(c.category) === "strength" &&
+    kindOf(existing?.category) !== "strength" &&
+    !isStrengthTrainingRelevant(getProfileAge(profile.id))
+  )
+    return {
+      ok: false,
+      error: "Strength equipment isn’t available for this profile’s age.",
+    };
   if (!c.name) return { ok: false, error: "Give the equipment a name." };
   if (equipmentNameExists(profile.id, c.name, id))
     return {

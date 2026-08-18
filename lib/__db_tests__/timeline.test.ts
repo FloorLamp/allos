@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { getTimelineDates, getTimelineEvents } from "@/lib/timeline";
 import { seedProfile, type SeededProfile } from "./fixtures";
-import { setTimezone } from "@/lib/settings";
+import { setStoredAge, setTimezone } from "@/lib/settings";
 
 let imperial: SeededProfile;
 let other: SeededProfile;
@@ -487,5 +487,32 @@ describe("getTimelineDates — tz-correct created-at fallback (#619)", () => {
        VALUES (?, 'labs.pdf', '', 'done', '2026-07-13', '2026-07-13 01:00:00')`
     ).run(p);
     expect(getTimelineDates(p)).toContain("2026-07-13");
+  });
+});
+
+describe("protocol timeline life-stage boundary", () => {
+  function profileWithProtocol(name: string, age: number): number {
+    const id = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+        .lastInsertRowid
+    );
+    setStoredAge(id, age);
+    db.prepare(
+      `INSERT INTO protocols (profile_id, name, start_date, outcome_keys)
+       VALUES (?, 'Synthetic protocol', '2026-01-01', '[]')`
+    ).run(id);
+    return id;
+  }
+
+  it("shows adult protocol events and hides them for a minor", () => {
+    const adult = profileWithProtocol("timeline-adult-protocol", 30);
+    const minor = profileWithProtocol("timeline-minor-protocol", 10);
+
+    expect(
+      getTimelineEvents(adult).some((event) => event.category === "protocol")
+    ).toBe(true);
+    expect(
+      getTimelineEvents(minor).some((event) => event.category === "protocol")
+    ).toBe(false);
   });
 });

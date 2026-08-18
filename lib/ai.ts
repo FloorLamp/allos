@@ -25,8 +25,8 @@ import {
 } from "./findings";
 import { buildDigestSeries } from "./trends-series";
 import { summarizeTrends } from "./trends-digest";
-import { isTrainingRestricted } from "./age-gate";
 import { getUnitPrefs, getProfileSex, getProfileAge } from "./settings";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "./life-stage";
 import { quickRanges } from "./timeline-format";
 import {
   composeOfflineNarrative,
@@ -67,29 +67,36 @@ function gatherInsightContext(
     loginId != null
       ? getUnitPrefs(loginId)
       : { weightUnit: "kg" as const, distanceUnit: "km" as const };
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
+  const strengthTrainingRelevant = isStrengthTrainingRelevant(
+    getProfileAge(profileId)
+  );
 
-  const activities = getActivitiesByDate(profileId, date);
+  const activities = trainingRelevant
+    ? getActivitiesByDate(profileId, date)
+    : [];
 
   // PRs set ON the day (withinDays = 0), as celebratory findings.
   // byLoadContext (#1610): a record belongs to the implement it was set on, and
   // prToFinding names that implement and keys on its lane.
-  const strengthPrs = recentPRs(
-    getStrengthByExercise(profileId, true),
-    date,
-    0
-  ).map((pr) => prToFinding(pr, units.weightUnit));
-  const cardioPrs = recentCardioPRs(
-    getCardioByActivity(profileId, units.distanceUnit),
-    date,
-    0
-  ).map((pr) => cardioPrToFinding(pr, units.distanceUnit));
+  const strengthPrs = strengthTrainingRelevant
+    ? recentPRs(getStrengthByExercise(profileId, true), date, 0).map((pr) =>
+        prToFinding(pr, units.weightUnit)
+      )
+    : [];
+  const cardioPrs = trainingRelevant
+    ? recentCardioPRs(
+        getCardioByActivity(profileId, units.distanceUnit),
+        date,
+        0
+      ).map((pr) => cardioPrToFinding(pr, units.distanceUnit))
+    : [];
 
   // "What's trending" digest over the trailing 90-day window, adapted to findings.
-  const restricted = isTrainingRestricted(profileId);
   // By LABEL, not index — #1938 grew the shared set to four pills, and this read
   // must keep meaning "the 90D window" whatever the row's length.
   const range = quickRanges(date).find((qr) => qr.label === "90D")!;
-  const series = buildDigestSeries(profileId, loginId ?? 0, range, restricted);
+  const series = buildDigestSeries(profileId, loginId ?? 0, range);
   const trends = summarizeTrends(series, { limit: 5 }).map(trendItemToFinding);
 
   // IntakeItem/med adherence for the day.
@@ -107,9 +114,12 @@ function gatherInsightContext(
     date
   ).flatMap((g) => g.items);
 
-  const goalCount = getOutcomeGoals(profileId).filter((g) =>
-    isGoalLive(g)
-  ).length;
+  const goalCount = trainingRelevant
+    ? getOutcomeGoals(profileId).filter(
+        (g) =>
+          isGoalLive(g) && (strengthTrainingRelevant || g.kind !== "exercise")
+      ).length
+    : 0;
 
   // Clinical/demographic context (issue #415): active conditions, active intake
   // (kind-labelled so the model tells a medication from a supplement), and profile

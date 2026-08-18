@@ -126,9 +126,8 @@ export interface QuickLogItem {
   hint: string;
   icon: QuickLogIcon;
   target: QuickLogTarget;
-  // True for the entries only a training-capable profile should see. An
-  // age-restricted profile (lib/age-gate.ts) has no training surface at all, so
-  // the bar hides its create actions entirely there — same posture as today.
+  // Marks workout-product entries so the shell can remove them when Training is
+  // not relevant for the active profile.
   training?: boolean;
   // True for the entries only a CYCLE-RELEVANT profile should see (#1892). Gated on
   // the SAME `cycle` relevance bit as the Cycle nav entry and the dashboard phase
@@ -292,23 +291,14 @@ export function primaryQuickLog(
   return quickLogItem(LOG_ACTIVITY_ID);
 }
 
-// The sheet's menu for a given profile. Two per-entry gates, both mirroring a gate the
-// app already applies elsewhere:
-//
-//   • `restricted` — an age-restricted profile has no training surface, so the
-//     training-only entries drop with that surface.
-//   • `cycleRelevant` — the #1042 `cycle` relevance bit, the SAME one gating the Cycle
+// The sheet's menu for a given profile. `cycleRelevant` is the #1042 `cycle`
+// relevance bit, the SAME one gating the Cycle
 //     nav entry and the dashboard phase widget (#1892). Defaults TRUE for the same
 //     reason DEFAULT_NAV_RELEVANCE does: a caller that hasn't threaded the bitset must
 //     never over-hide. The overlay re-checks it server-side, so a deep link cannot
 //     reach the offer on a profile the domain does not apply to either.
-export function quickLogMenu(
-  restricted: boolean,
-  cycleRelevant = true
-): QuickLogItem[] {
-  return QUICK_LOG_ITEMS.filter(
-    (i) => !(i.training && restricted) && !(i.cycle && !cycleRelevant)
-  );
+export function quickLogMenu(cycleRelevant = true): QuickLogItem[] {
+  return QUICK_LOG_ITEMS.filter((i) => !(i.cycle && !cycleRelevant));
 }
 
 // ── THE DOMAIN CENSUS (#2130) ────────────────────────────────────────────────

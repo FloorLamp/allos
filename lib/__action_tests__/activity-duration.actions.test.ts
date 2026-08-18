@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { saveActivity } from "@/app/(app)/training/activity-actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
+import { setStoredAge } from "@/lib/settings";
 
 const mixedComponents = JSON.stringify([
   {
@@ -34,6 +35,7 @@ describe("saveActivity session duration", () => {
     const login = createLogin();
     const profile = createProfile("mixed-duration", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     const result = await saveActivity(
       fd({
@@ -53,6 +55,7 @@ describe("saveActivity session duration", () => {
     const login = createLogin();
     const profile = createProfile("clock-duration", login.id);
     actAs(login, profile);
+    setStoredAge(profile.id, 30);
 
     const clock = await saveActivity(
       fd({

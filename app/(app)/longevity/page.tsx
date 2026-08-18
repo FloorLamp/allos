@@ -7,6 +7,9 @@ import {
   IconTestPipe,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { isLongevityRelevant } from "@/lib/life-stage";
+import { getProfileAge } from "@/lib/settings";
 import { getHealthspanPillars } from "@/lib/queries";
 import { longevitySections } from "@/lib/longevity";
 import { protocolTemplateById } from "@/lib/protocol-templates";
@@ -40,6 +43,7 @@ export default async function LongevityPage({
   searchParams: Promise<{ template?: string }>;
 }) {
   const { profile } = await requireSession();
+  if (!isLongevityRelevant(getProfileAge(profile.id))) redirect("/");
   const pillars = getHealthspanPillars(profile.id);
   const sections = longevitySections(pillars);
   const byAnchor = new Map(sections.map((s) => [s.anchor, s]));

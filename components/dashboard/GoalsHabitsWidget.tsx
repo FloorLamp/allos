@@ -21,12 +21,14 @@ export default function GoalsHabitsWidget({
   goalProgress,
   freqTargets,
   today,
+  trainingRelevant = true,
 }: {
   goals: OutcomeGoal[];
   goalProgress: Map<number, GoalProgress>;
   freqTargets: FrequencyTargetProgress[];
   // The active profile's today (YYYY-MM-DD) — the pace clock for goal bars (#780).
   today: string;
+  trainingRelevant?: boolean;
 }) {
   const {
     open: allOpenTargets,
@@ -80,14 +82,20 @@ export default function GoalsHabitsWidget({
 
       {goals.length === 0 && freqTargets.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          No goals or weekly habits yet —{" "}
-          <Link
-            href="/training"
-            className="text-brand-600 hover:underline dark:text-brand-400"
-          >
-            set them up in Training
-          </Link>
-          .
+          {trainingRelevant ? (
+            <>
+              No goals or weekly habits yet —{" "}
+              <Link
+                href="/training"
+                className="text-brand-600 hover:underline dark:text-brand-400"
+              >
+                set them up in Training
+              </Link>
+              .
+            </>
+          ) : (
+            "No weekly habits yet."
+          )}
         </p>
       ) : (
         <div

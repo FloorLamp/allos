@@ -77,17 +77,8 @@ export function mergeTrainingLogDayGroups(
   });
 }
 
-// Per-member fitness-surface gate (issue #1330, #489). A card's adult fitness
-// affordances — the exercise/cardio/sport detail drill-ins (e1RM/standards/trends) —
-// render only for the ACTING profile's own, un-restricted cards: a caregiver viewing
-// a child's cards is NOT the child's restricted session, but the child's own age gate
-// still governs whether those adult surfaces appear on the child's cards, and the
-// analytics loaded are the ACTING profile's (its own detail panel), so a non-acting
-// subject's names stay non-interactive. Pure — the view layer and any test agree on
-// the one rule.
-export function trainingLogFitnessSurfacesVisible(ctx: {
-  isActing: boolean;
-  subjectRestricted: boolean;
-}): boolean {
-  return ctx.isActing && !ctx.subjectRestricted;
+// Detail drill-ins use the acting profile's loaded analytics, so a non-acting
+// subject's names stay non-interactive. Life stage does not hide activity history.
+export function trainingLogDrillInsVisible(isActing: boolean): boolean {
+  return isActing;
 }

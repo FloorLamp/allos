@@ -64,4 +64,18 @@ describe("gatherRecapInput — fitness-check completion line (#1307)", () => {
     const input = gatherRecapInput(profileId);
     expect(input.fitnessCheck ?? null).toBeNull();
   });
+
+  it("omits adult fitness-age numbers for a minor with legacy check data", () => {
+    const profileId = newProfile("recap-fitness-minor");
+    db.prepare(
+      "UPDATE profile_settings SET value = ? WHERE profile_id = ? AND key = 'birthdate'"
+    ).run(shiftDateStr(today(profileId), -15 * 365), profileId);
+    completeBattery(profileId, today(profileId));
+
+    const input = gatherRecapInput(profileId);
+    expect(input.fitnessCheck).toBeNull();
+    expect(
+      buildRecap(input).lines.find((line) => line.key === "fitness-check")
+    ).toBeUndefined();
+  });
 });

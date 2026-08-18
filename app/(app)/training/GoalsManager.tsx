@@ -63,6 +63,7 @@ export default function GoalsManager({
   equipmentByExercise,
   weightUnit,
   biomarkerOptions,
+  strengthTrainingAvailable = true,
 }: {
   goals: OutcomeGoal[];
   goalProgress: Record<number, GoalProgress>;
@@ -75,6 +76,7 @@ export default function GoalsManager({
   equipmentByExercise: Record<string, number[]>;
   weightUnit: WeightUnit;
   biomarkerOptions: GoalBiomarkerOption[];
+  strengthTrainingAvailable?: boolean;
 }) {
   const wu = weightUnit;
   const formatPrefs = useFormatPrefs();
@@ -425,6 +427,7 @@ export default function GoalsManager({
             weightUnit={weightUnit}
             biomarkerOptions={biomarkerOptions}
             editGoal={modal.goal}
+            strengthTrainingAvailable={strengthTrainingAvailable}
             onDone={() => setModal(null)}
           />
         </ModalShell>

@@ -61,8 +61,10 @@ function cardioValue(p: CardioPR, du: DistanceUnit): string {
 // the top-3 cut are the pure `selectWindowPRs`.
 export default async function FitnessPRs({
   window,
+  strengthTrainingAvailable = true,
 }: {
   window: FitnessWindow;
+  strengthTrainingAvailable?: boolean;
 }) {
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
@@ -80,7 +82,9 @@ export default async function FitnessPRs({
     // record set on the hotel machine is its own record, and the home machine's
     // heavier stack neither hides it nor claims it. Rows are labeled below, so the
     // split can't render as two identical-looking "Chest Press" lines.
-    recentPRs(getStrengthByExercise(profile.id, true), window.to, days),
+    strengthTrainingAvailable
+      ? recentPRs(getStrengthByExercise(profile.id, true), window.to, days)
+      : [],
     recentCardioPRs(cardio, window.to, days),
     WINDOW_PR_LIMIT
   );

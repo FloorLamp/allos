@@ -19,8 +19,12 @@ import {
 } from "@/app/(app)/protocols/actions";
 import { getProtocols, getFrequencyTargets } from "@/lib/queries";
 import { createEquipment, deleteEquipment } from "@/lib/equipment";
-import { getActiveSituations } from "@/lib/settings";
-import { seedActor, actAs, createProfile } from "./harness";
+import { getActiveSituations, setStoredAge } from "@/lib/settings";
+import {
+  seedActor as seedActorWithoutAge,
+  actAs,
+  createProfile,
+} from "./harness";
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
@@ -29,6 +33,15 @@ vi.mock("next/navigation", () => ({
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
+
+// Protocols are adult-only. Most tests exercise the ordinary allowed path, so
+// make that demographic explicit and reserve unknown/minor profiles for the gate
+// cases below.
+function seedActor() {
+  const actor = seedActorWithoutAge();
+  setStoredAge(actor.profile.id, 30);
+  return actor;
+}
 
 // FormData builder allowing repeated outcome_keys.
 function protocolForm(fields: {
@@ -79,6 +92,22 @@ function seedIntakeItem(profileId: number, name = "Creatine"): number {
 }
 
 describe("createProtocol", () => {
+  it.each([
+    ["unknown", null],
+    ["minor", 15],
+  ])("rejects an %s-age profile at the write boundary", async (_label, age) => {
+    const { profile } = seedActorWithoutAge();
+    if (age != null) setStoredAge(profile.id, age);
+
+    expect(
+      await createProtocol(protocolForm({ name: "Hidden experiment" }))
+    ).toEqual({
+      ok: false,
+      error: "Protocols aren’t available for this profile’s age.",
+    });
+    expect(getProtocols(profile.id)).toEqual([]);
+  });
+
   it("stores the protocol with a normalized outcome-key set and activates the situation", async () => {
     const { profile } = seedActor();
     const result = await createProtocol(
@@ -112,6 +141,28 @@ describe("createProtocol", () => {
     // The hub revalidates the Longevity page (its #protocols section, #1042
     // phase 4).
     expect(revalidate).toHaveBeenCalledWith("/longevity");
+  });
+});
+
+describe("adult-only protocol lifecycle", () => {
+  it("blocks every direct mutation after an adult profile becomes a minor", async () => {
+    const { profile } = seedActor();
+    await createProtocol(protocolForm({ name: "Existing experiment" }));
+    const protocol = getProtocols(profile.id)[0];
+    setStoredAge(profile.id, 15);
+    const form = protocolForm({ id: protocol.id, name: protocol.name });
+    const unavailable = {
+      ok: false,
+      error: "Protocols aren’t available for this profile’s age.",
+    };
+
+    expect(await updateProtocol(form)).toEqual(unavailable);
+    expect(await updateProtocolOutcomes(form)).toEqual(unavailable);
+    expect(await endProtocol(form)).toEqual(unavailable);
+    expect(await resumeProtocol(form)).toEqual(unavailable);
+    expect(await runProtocolAgain(form)).toEqual(unavailable);
+    expect(await deleteProtocol(form)).toEqual(unavailable);
+    expect(getProtocols(profile.id)).toHaveLength(1);
   });
 });
 
@@ -166,6 +217,7 @@ describe("updateProtocolOutcomes", () => {
     );
     const protocol = getProtocols(owner.id)[0];
     const other = createProfile("Other subject", login.id);
+    setStoredAge(other.id, 30);
 
     actAs(login, other);
     expect(

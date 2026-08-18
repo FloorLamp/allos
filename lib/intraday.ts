@@ -72,7 +72,7 @@ export interface IntradaySpanInput {
 export interface IntradayInput {
   date: string;
   // The feed's OWN event set for this day — already filtered by the feed's
-  // visibility rules (age restriction, category filter). Passing the resolved list
+  // visibility rules (such as the category filter). Passing the resolved list
   // rather than re-querying is what makes the panel's "one visibility predicate"
   // true BY CONSTRUCTION: a hidden feed event can't reach this function at all.
   events: TimelineEvent[];

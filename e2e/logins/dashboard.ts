@@ -21,7 +21,7 @@ export const ROUTINE_PROFILE = "Routine (e2e)";
 // derived ones (profile 1's seeded PPL targets other specs depend on). It's seeded
 // with a couple of training-scope frequency targets so the activate-confirm dialog
 // (which only appears when there ARE targets to replace) is exercised, and NO
-// routines. No birthdate → adult → never training-restricted, so /training renders
+// routines. No birthdate → unknown age; /training still renders
 // the full hub with the Routines tab.
 export const E2E_LOGIN_ROUTINE_BUILDER = "e2e_routine_builder";
 export const ROUTINE_BUILDER_PROFILE = "Routine Builder (e2e)";
@@ -41,7 +41,7 @@ export const ROUTINE_DELOAD_PROFILE = "Routine Deload (e2e)";
 // circuiting the Training Log and hiding "New activity" — was never caught. This profile
 // stays activity-free so the training-first-run spec can assert the first-run empty
 // variant renders the action row (Start workout + New activity, NO Repeat last). No
-// birthdate → adult → never training-restricted, so /training renders the full hub
+// birthdate → adult, and /training renders the full hub
 // (TrainingLogView), not the minor's RestrictedActivityView.
 export const E2E_LOGIN_EMPTY_TRAINING = "e2e_empty_training";
 export const EMPTY_TRAINING_PROFILE = "Empty Training (e2e)";

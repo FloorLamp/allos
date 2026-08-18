@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { IconChevronLeft } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
 import { requireSession } from "@/lib/auth";
-import { isTrainingRestricted } from "@/lib/age-gate";
+import { isAdultForClinical } from "@/lib/life-stage";
+import { getProfileAge } from "@/lib/settings";
 import FitnessCheckSection from "../FitnessCheckSection";
 
 export const dynamic = "force-dynamic";
@@ -16,10 +17,10 @@ export const dynamic = "force-dynamic";
 // finding, old bookmarks, Telegram history) redirect here from the training
 // page, so nothing 404s and nothing lands on the wrong tab.
 export default async function FitnessCheckPage() {
-  // Adult-gated like the rest of the training hub (#489): the tab used to sit
-  // behind /training's own gate, so the route keeps the exact same boundary.
+  // The battery uses adult-population norms. Logging and the rest of Training are
+  // age-neutral; this route alone requires a known adult age.
   const { profile } = await requireSession();
-  if (isTrainingRestricted(profile.id)) redirect("/training");
+  if (!isAdultForClinical(getProfileAge(profile.id))) redirect("/training");
 
   return (
     <PageContainer width="reading" className="mx-auto">

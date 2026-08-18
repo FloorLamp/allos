@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import {
   addIntakeItem,
+  acceptSuggestion,
   updateIntakeItem,
   toggleTaken,
   setDoseStatus,
@@ -30,7 +31,11 @@ import {
   getInteractionWarnings,
   getFindingSuppressions,
 } from "@/lib/queries";
-import { getProfileSetting, setProfileSetting } from "@/lib/settings";
+import {
+  getProfileSetting,
+  setProfileSetting,
+  setStoredAge,
+} from "@/lib/settings";
 import { refillMarkerKey } from "@/lib/refill-nudge";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { seedActor, fd } from "./harness";
@@ -77,6 +82,76 @@ function logStatus(doseId: number, date: string): string | undefined {
 beforeEach(() => revalidate.mockClear());
 
 describe("addIntakeItem", () => {
+  it("rejects a new workout-based supplement schedule in early childhood", async () => {
+    const { profile } = seedActor();
+    setStoredAge(profile.id, 2);
+
+    const result = await addIntakeItem(
+      fd({ name: "Workout powder", condition: "pre_workout" })
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "Workout-based supplement schedules aren't available for this profile's age.",
+    });
+    expect(getIntakeItems(profile.id)).toHaveLength(0);
+  });
+
+  it("lets an early-childhood edit retain an existing workout schedule", async () => {
+    const { profile } = seedActor();
+    setStoredAge(profile.id, 30);
+    await addIntakeItem(
+      fd({ name: "Workout powder", condition: "pre_workout" })
+    );
+    const item = getIntakeItems(profile.id)[0];
+    setStoredAge(profile.id, 2);
+
+    const result = await updateIntakeItem(
+      fd({ id: item.id, name: "Renamed powder", condition: "pre_workout" })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(getIntakeItems(profile.id)[0]).toMatchObject({
+      name: "Renamed powder",
+      condition: "pre_workout",
+    });
+  });
+
+  it("rejects changing an early-childhood supplement to a workout schedule", async () => {
+    const { profile } = seedActor();
+    setStoredAge(profile.id, 2);
+    await addIntakeItem(fd({ name: "Vitamin D", condition: "daily" }));
+    const item = getIntakeItems(profile.id)[0];
+
+    const result = await updateIntakeItem(
+      fd({ id: item.id, name: item.name, condition: "post_workout" })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(getIntakeItems(profile.id)[0].condition).toBe("daily");
+  });
+
+  it("rejects accepting a stored workout suggestion in early childhood", async () => {
+    const { profile } = seedActor();
+    setStoredAge(profile.id, 2);
+    const suggestionId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_suggestions
+             (name, condition, obligation, rationale, status, profile_id)
+           VALUES ('Workout powder', 'pre_workout', 'should',
+                   'Training suggestion', 'pending', ?)`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+
+    const result = await acceptSuggestion(fd({ id: suggestionId }));
+
+    expect(result.ok).toBe(false);
+    expect(getIntakeItems(profile.id)).toHaveLength(0);
+  });
+
   it("creates a manual-source supplement with a dose", async () => {
     const { profile } = seedActor();
     await addIntakeItem(

@@ -58,7 +58,6 @@ import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import DoseLedgerLink from "@/components/intake/DoseLedgerLink";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { lastNDates, shiftDateStr, zonedDateParts } from "@/lib/date";
 import { bestKnownInstant } from "@/lib/row-instants";
 import { formatGivenAtClock } from "@/lib/administration-format";
@@ -72,7 +71,9 @@ import {
   getExcludedFoodGroups,
   getWeekMode,
   getWeekStart,
+  getProfileAge,
 } from "@/lib/settings";
+import { isTrainingRelevant } from "@/lib/life-stage";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { weekWindow } from "@/lib/week-window";
 import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
@@ -98,6 +99,7 @@ import {
   OBLIGATION_ORDER,
   OBLIGATION_LABELS,
   CONDITION_LABELS,
+  WORKOUT_CONDITIONS,
   obligationClass,
   workoutDaySubtitleLabel,
   heldBySituation,
@@ -166,6 +168,9 @@ export default async function SupplementsTab({
   backfillDate?: string;
 }) {
   const { login, profile } = await requireSession();
+  const activityScheduleAvailable = isTrainingRelevant(
+    getProfileAge(profile.id)
+  );
   // The medicine-cabinet door (#1522) counts over the caller's WHOLE accessible set,
   // not the acting profile: a shared bottle is household-scoped and has no kind of
   // its own, so this tab and Medications show the same number and land on the same
@@ -249,11 +254,6 @@ export default async function SupplementsTab({
     getUnitPrefs(login.id).temperatureUnit
   );
   const showPoorSleepOverride = derivedLines.poorSleepOverridable;
-  // When fitness tracking is restricted for this profile the workout/rest-day
-  // concept is meaningless, so we drop the subtitle prefix and the workout/
-  // rest-day schedule options (see lib/age-gate.ts).
-  const trainingRestricted = isTrainingRestricted(profile.id);
-
   // Adherence strip inputs.
   const workoutDays = new Set(getActivityDates(profile.id));
   const dates = lastNDates(todayStr, STRIP_DAYS);
@@ -532,7 +532,11 @@ export default async function SupplementsTab({
   // per-procedure. The chip carries the actual held-count from the #1296 links.
   const surgeryBridge = getSurgeryBridgeSuggestions(profile.id);
 
-  const suggestions = getPendingSuggestions(profile.id);
+  const suggestions = getPendingSuggestions(profile.id).filter(
+    (suggestion) =>
+      activityScheduleAvailable ||
+      !WORKOUT_CONDITIONS.includes(suggestion.condition)
+  );
   // The DETERMINISTIC half of biomarker→supplement (#2378): the curated map's answers
   // for this profile's currently-flagged families, screened by the same belt the AI
   // route's output goes through. Rendered ABOVE the generated panel and badged
@@ -662,7 +666,6 @@ export default async function SupplementsTab({
         isTaken={isTaken}
         isSkipped={isSkipped}
         strip={stripFor(it.supplement)}
-        trainingRestricted={trainingRestricted}
         refillRate={refillRates.get(it.supplement.id) ?? null}
         poolChip={poolChips.get(it.supplement.id) ?? null}
         historicalStatus={historicalStatus}
@@ -671,13 +674,14 @@ export default async function SupplementsTab({
         historyMaxDate={todayStr}
         defaultHistoryTime={hhmm}
         historyWindowDays={DOSE_HISTORY_DAYS}
+        activityScheduleAvailable={activityScheduleAvailable}
       />
     );
   };
 
-  const dayContext = trainingRestricted
-    ? null
-    : workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay);
+  const dayContext = activityScheduleAvailable
+    ? workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay)
+    : null;
   const scheduleBucketsFor = (date: string, dayItems: Item[]) => {
     const grouped = date === todayStr ? byBucket : byBucketFor(dayItems);
     return TIME_BUCKETS.map((bucket) => {
@@ -1223,7 +1227,7 @@ export default async function SupplementsTab({
                         allIntakeItems={intakeItems}
                         stackItems={stackItems}
                         pgxVariants={pgxVariants}
-                        trainingRestricted={trainingRestricted}
+                        activityScheduleAvailable={activityScheduleAvailable}
                       />
                       <SharedSuppliesLink count={cabinetCount} />
                       <DoseLedgerLink kind="supplement" />
@@ -1250,7 +1254,7 @@ export default async function SupplementsTab({
                       allIntakeItems={intakeItems}
                       stackItems={stackItems}
                       pgxVariants={pgxVariants}
-                      trainingRestricted={trainingRestricted}
+                      activityScheduleAvailable={activityScheduleAvailable}
                     />
                   }
                 />

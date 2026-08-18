@@ -365,9 +365,7 @@ describe("onboarding dashboard layout", () => {
 
   it("keeps the onboarding catalog synchronized with dashboard widgets", () => {
     const layout = onboardingDashboardLayout(["metrics-labs"]);
-    const customizableIds = customizableWidgetDefs(false).map(
-      (widget) => widget.id
-    );
+    const customizableIds = customizableWidgetDefs().map((widget) => widget.id);
 
     expect(layout.order).toEqual(expect.arrayContaining(customizableIds));
     expect(layout.order).toHaveLength(customizableIds.length);

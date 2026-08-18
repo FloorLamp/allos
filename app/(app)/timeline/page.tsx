@@ -30,14 +30,15 @@ import {
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
-import { isTrainingRestricted } from "@/lib/age-gate";
 import { today } from "@/lib/db";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
   getHomeLocation,
   getTimezone,
+  getProfileAge,
 } from "@/lib/settings";
+import { isTrainingRelevant } from "@/lib/life-stage";
 import DaylightChip from "@/components/DaylightChip";
 import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
 import {
@@ -183,8 +184,6 @@ const DEFAULT_SHOW = 300;
 const SHOW_STEP = 300;
 const MAX_SHOW = 1000;
 
-const TRAINING_CATEGORIES = new Set<TimelineCategory>(["activity", "goal"]);
-
 // The relative-day badge copy for a divergent day (issue #1329). Honest, per member.
 const RELATIVE_LABEL: Record<DayMark["relative"], string> = {
   today: "Today",
@@ -238,9 +237,11 @@ function parseSubjectParam(
 function EventCard({
   event,
   defaultOpen = false,
+  trainingRelevant = true,
 }: {
   event: TimelineEvent;
   defaultOpen?: boolean;
+  trainingRelevant?: boolean;
 }) {
   const Icon = CATEGORY_ICONS[event.category];
   const detailItems = event.detailItems ?? [];
@@ -257,9 +258,15 @@ function EventCard({
     ) : (
       <Icon className="h-4 w-4" stroke={1.75} />
     );
-  const title = event.href ? (
+  const href =
+    !trainingRelevant &&
+    event.href?.startsWith("/training") &&
+    !event.href.startsWith("/training/activity/")
+      ? null
+      : event.href;
+  const title = href ? (
     <Link
-      href={event.href}
+      href={href}
       className="transition hover:text-brand-700 hover:underline dark:hover:text-brand-300"
     >
       {event.title}
@@ -377,9 +384,9 @@ function EventCard({
             </div>
           ))}
         </dl>
-        {event.href && (
+        {href && (
           <Link
-            href={event.href}
+            href={href}
             className="mt-3 inline-flex text-xs font-semibold text-brand-700 transition hover:underline dark:text-brand-300"
           >
             Open source record
@@ -442,10 +449,12 @@ function TimelineEventRow({
   event,
   defaultOpen,
   subject,
+  trainingRelevant,
 }: {
   event: TimelineEvent;
   defaultOpen: boolean;
   subject: SubjectInfo | null;
+  trainingRelevant: boolean;
 }) {
   return (
     <div className="relative" data-testid="timeline-event">
@@ -456,7 +465,11 @@ function TimelineEventRow({
           <SubjectChip subject={subject} />
         </div>
       )}
-      <EventCard event={event} defaultOpen={defaultOpen} />
+      <EventCard
+        event={event}
+        defaultOpen={defaultOpen}
+        trainingRelevant={trainingRelevant}
+      />
     </div>
   );
 }
@@ -577,20 +590,12 @@ export default async function TimelinePage(props: {
 
   const units = getUnitPrefs(loginId);
   const formatPrefs = getDisplayFormatPrefs(loginId);
-  // Category pills + the training-category drop follow the ACTING profile's restriction
-  // (the viewer's anchor); each in-view member's own restriction is applied inside the
-  // per-member gather, so a restricted member simply contributes no training events.
-  const actingRestricted = isTrainingRestricted(actingProfileId);
-  const visibleCategories = actingRestricted
-    ? TIMELINE_CATEGORIES.filter((c) => !TRAINING_CATEGORIES.has(c))
-    : TIMELINE_CATEGORIES;
+  const trainingRelevant = isTrainingRelevant(getProfileAge(actingProfileId));
+  // Timeline is a profile-owned data surface. Training categories and every
+  // activity type remain visible at every life stage.
+  const visibleCategories = TIMELINE_CATEGORIES;
   const requestedCategory = timelineCategoryFromParam(searchParams.category);
-  const category =
-    actingRestricted && requestedCategory
-      ? TRAINING_CATEGORIES.has(requestedCategory)
-        ? undefined
-        : requestedCategory
-      : requestedCategory;
+  const category = requestedCategory;
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
   const show = parseShow(searchParams.show);
@@ -629,7 +634,6 @@ export default async function TimelinePage(props: {
 
   // Per-subject context (the single-subject branch): home/timezone/cycle/today all key
   // on the subject whose day we're rendering (acting in the common case).
-  const trainingRestricted = isTrainingRestricted(daySubjectId);
   const home = getHomeLocation(daySubjectId);
   const profileTimezone = getTimezone(daySubjectId);
   const todayStr = today(daySubjectId);
@@ -644,7 +648,6 @@ export default async function TimelinePage(props: {
         endDate: range.to,
         limit: show,
         units,
-        restricted: trainingRestricted,
       });
   const days = groupTimelineDays(singlePage.events);
 
@@ -756,8 +759,8 @@ export default async function TimelinePage(props: {
 
   // The intraday panel (#1068) — the SINGLE-day view only. It is the day rotated
   // 90°, so it reads the SAME resolved event list the feed below renders (never a
-  // second gather): whatever the category filter and the age restriction dropped
-  // is already gone, which makes "a hidden feed event can never appear as a tick"
+  // second gather): whatever the category filter dropped is already gone, which
+  // makes "a hidden feed event can never appear as a tick"
   // true by construction. Null when nothing on the day is intraday.
   const intraday =
     singleDaySelected && range.from && days.length > 0
@@ -916,7 +919,11 @@ export default async function TimelinePage(props: {
           >
             <span className="absolute left-0 top-7.5 h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
             <span className="absolute left-0 top-6.25 h-2.5 w-2.5 -translate-x-5.25 rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
-            <EventCard event={event} defaultOpen={singleDaySelected} />
+            <EventCard
+              event={event}
+              defaultOpen={singleDaySelected}
+              trainingRelevant={trainingRelevant}
+            />
           </div>
         ))}
       </div>
@@ -1132,7 +1139,10 @@ export default async function TimelinePage(props: {
           <EmptyState
             testId="timeline-empty"
             message="No timeline events yet. Logged and imported entries build the day-by-day history."
-            actions={TIMELINE_EMPTY_ACTIONS}
+            actions={TIMELINE_EMPTY_ACTIONS.filter(
+              (action) =>
+                trainingRelevant || !action.href.startsWith("/training")
+            )}
           />
         ) : (
           <EmptyState
@@ -1195,6 +1205,7 @@ export default async function TimelinePage(props: {
                               event={event}
                               defaultOpen={false}
                               subject={null}
+                              trainingRelevant={trainingRelevant}
                             />
                           ))}
                         </div>
@@ -1257,6 +1268,7 @@ export default async function TimelinePage(props: {
                         key={`${event.profileId}:${event.id}`}
                         event={event}
                         defaultOpen={false}
+                        trainingRelevant={trainingRelevant}
                         subject={
                           showChip
                             ? (subjectByProfile.get(event.profileId) ?? null)

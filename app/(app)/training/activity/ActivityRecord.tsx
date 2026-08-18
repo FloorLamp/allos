@@ -13,6 +13,7 @@ import type { ActivityDetailSibling } from "@/lib/training-activity-detail";
 import type { ProgressDelta } from "@/lib/progress-delta";
 import type { UnitPrefs } from "@/lib/settings";
 import { trainingActivityPageHref } from "@/lib/hrefs";
+import { activityEditDataHasStrength } from "@/lib/activity-form-model";
 
 // The client host for the record card (#2870/#2897) — ONE component, three
 // hosts. host="page" (default): the canonical activity page, whose edits use
@@ -58,13 +59,14 @@ export default function ActivityRecord({
   onFilterTag?: (kind: "muscle" | "region", value: string) => void;
 }) {
   const router = useRouter();
-  const { openEdit } = useActivityEditor();
+  const { openEdit, strengthTrainingAvailable } = useActivityEditor();
+  const strengthRecord = activityEditDataHasStrength(card.activity);
 
   // The page host's default exercise door: the lift's Analyze page. Pane hosts
   // inject their own handlers (or none, for gated subjects) — never this.
   const selectExercise =
     onSelectExercise ??
-    (host === "page"
+    (host === "page" && (!strengthRecord || strengthTrainingAvailable)
       ? (name: string) =>
           router.push(
             `/training?tab=analyze&kind=strength&item=${encodeURIComponent(name)}`
@@ -137,7 +139,9 @@ export default function ActivityRecord({
         detailView={host === "page"}
         // The pane's host row already owns the #activity-N anchor (#2897).
         withAnchor={host === "page"}
-        partDeltas={partDeltas}
+        partDeltas={
+          strengthRecord && !strengthTrainingAvailable ? undefined : partDeltas
+        }
         onSelectExercise={selectExercise}
         onSelectCardio={onSelectCardio}
         onSelectSport={onSelectSport}

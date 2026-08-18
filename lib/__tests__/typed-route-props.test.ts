@@ -67,8 +67,8 @@ const EXTERNAL_OR_RUNTIME_HREFS = new Map<string, string>([
       "child paths (see lib/nav.ts:href)",
   ],
   [
-    "lib/nav.ts:restrictedHrefs",
-    "the age-gate lookup set isNavLeafVisible probes with a leaf path; a Set " +
+    "lib/nav.ts:adultOnlyHrefs",
+    "the adult-content lookup set isNavLeafVisible probes with a leaf path; a Set " +
       "membership test over path shapes, not a link destination",
   ],
 ]);

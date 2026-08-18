@@ -29,7 +29,7 @@ export type PaletteActionTarget =
   // stays for context-free opens like the sheet's rows.
   | { kind: "overlay"; form: QuickEntryForm; prefill?: QuickEntryPrefill }
   // Start a LIVE workout (issue #340): opens the create form in the in-gym layout
-  // (rest timer + set check-off). Hidden for age-restricted profiles (#489).
+  // (rest timer + set check-off).
   | { kind: "live" }
   // Repeat the most recent activity via the ActivityEditor context (issue #337):
   // opens a create form pre-filled from it. Shown only when one exists.

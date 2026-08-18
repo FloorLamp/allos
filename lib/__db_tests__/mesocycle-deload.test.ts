@@ -19,12 +19,14 @@ import {
 } from "@/lib/routines";
 import { buildMuscleVolumeFindings } from "@/lib/rule-findings";
 import { collectUpcoming } from "@/lib/queries/upcoming";
+import { setStoredAge } from "@/lib/settings";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
+  setStoredAge(profileId, 30);
   return { profileId, anchor: today(profileId) };
 }
 

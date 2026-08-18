@@ -20,10 +20,12 @@ import {
   type CoachingInput,
 } from "../coaching";
 import {
+  getProfileAge,
   getProfileSetting,
   setProfileSetting,
   getPublicUrl,
 } from "../settings";
+import { isTrainingRelevant } from "../life-stage";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
@@ -80,6 +82,7 @@ export async function runEaseBack(
   input: CoachingInput,
   date: string
 ): Promise<{ failed: boolean }> {
+  if (!isTrainingRelevant(getProfileAge(profileId))) return { failed: false };
   const { mode, easeBackEpisodeId, easeBackEpisodeDays } = illnessCoachingMode(
     input.illness,
     input.today

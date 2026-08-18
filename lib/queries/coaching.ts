@@ -23,6 +23,7 @@ import {
   type RestEpisode,
   type RestingHrSignal,
   type SleepSignal,
+  strengthAppropriateCoachingInput,
 } from "../coaching";
 import {
   getEpisodeRowForDate,
@@ -31,12 +32,14 @@ import {
 import {
   deleteProfileSetting,
   getActiveSituations,
+  getProfileAge,
   getProfileSetting,
   setProfileSetting,
   type DistanceUnit,
   type TemperatureUnit,
   type WeightUnit,
 } from "../settings";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "../life-stage";
 import { sameSituation, BUILTIN_POOR_SLEEP_SITUATION } from "../situations";
 import { availableEquipmentKinds } from "../equipment";
 import { getActiveRoutine, getRoutineCycleStatus } from "../routines";
@@ -322,8 +325,15 @@ export function runCoachingEpisode(
   profileId: number,
   input?: CoachingInput
 ): RestEpisode | null {
+  const age = getProfileAge(profileId);
+  if (!isTrainingRelevant(age)) {
+    return reconcileRestEpisode(profileId, [], today(profileId));
+  }
   const recs = recommendCoaching(
-    input ?? gatherCoachingInput(profileId, "kg", "km")
+    strengthAppropriateCoachingInput(
+      input ?? gatherCoachingInput(profileId, "kg", "km"),
+      isStrengthTrainingRelevant(age)
+    )
   );
   return reconcileRestEpisode(profileId, recs, today(profileId));
 }

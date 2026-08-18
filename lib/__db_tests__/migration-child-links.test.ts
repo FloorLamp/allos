@@ -727,7 +727,11 @@ describe("migration 20260813-cascade-orphan-sweep clears what is already orphane
     expect(line).toContain(
       "revision_notes.revision_id → medical_record_revisions: 1"
     );
-    expect(line).toContain("[migrate]");
+    // The logger is JSON in production/test mode and human-readable in local
+    // development. Both formats must retain the migration scope.
+    if (line.startsWith("{"))
+      expect(JSON.parse(line)).toMatchObject({ scope: "migrate" });
+    else expect(line).toContain("[migrate]");
   });
 
   it("logs the empty run too — 'found nothing' is the other half of the trail", () => {

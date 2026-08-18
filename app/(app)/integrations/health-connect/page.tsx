@@ -21,6 +21,8 @@ import { requestNowMs } from "@/lib/request-now";
 // The externally visible address of this deployment — one authority, shared with
 // the calendar feed, Strava and Withings (#2959).
 import { appUrl } from "@/lib/external-url-server";
+import { getProfileAge } from "@/lib/settings";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,7 @@ export default async function HealthConnectPage() {
   const conn = getConnection(profile.id, "health-connect");
   const tokenInfo = getHealthConnectTokenInfo(profile.id);
   const connected = conn?.status === "connected" && tokenInfo.hasToken;
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
   const endpoint = await appUrl(INGEST_PATH);
   // Lifecycle status for the DB-backed token (issue #24); the env fallback carries
   // no lifecycle, so it's always "active".
@@ -130,10 +133,10 @@ export default async function HealthConnectPage() {
                   </Link>
                   ; workouts under{" "}
                   <Link
-                    href="/training?tab=log"
+                    href={trainingRelevant ? "/training?tab=log" : "/timeline"}
                     className="text-brand-700 underline dark:text-brand-400"
                   >
-                    Training history
+                    {trainingRelevant ? "Training history" : "Timeline"}
                   </Link>
                   .
                 </li>
