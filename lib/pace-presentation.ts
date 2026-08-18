@@ -11,8 +11,7 @@ export const PACE_FILL_CLASS: Record<ProgressPaceTone, string> = {
   // The 600 step, not 500 (#2719 review): progress bars and routine-chip
   // squares are the same green as links and the active tab now, so a goals
   // page shows one accent green instead of stacking a brighter "data green"
-  // on top of it. (Under the selectable palettes these re-point with their
-  // ramps — olive/lime — like every other brand/emerald step.)
+  // on top of it.
   met: "bg-emerald-600",
   "on-pace": "bg-brand-600",
   behind: "bg-amber-500",

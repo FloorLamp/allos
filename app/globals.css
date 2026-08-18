@@ -27,18 +27,14 @@
   }
 }
 
-/* ── The palette system (#2701) ────────────────────────────────────────────────
-   The BASE tokens ARE the Botanical palette (the Vitals theme is retired); the
-   `[data-palette="almanac"]` and `[data-palette="floodlight"]` blocks below are
-   the two selectable overrides, stamped on <html> by the theme boot script
-   (lib/theme.ts) and the Appearance picker. Palette is orthogonal to light/dark:
-   every scope lives ON the root element, so var() substitution at :root always
-   sees the winning values.
+/* ── Botanical appearance (#2701) ─────────────────────────────────────────────
+   These tokens define Allos's single visual language; light/dark/system remains
+   the only user-selectable appearance choice.
 
    Tailwind v4 compiles every color utility to a CSS-variable reference
    (`text-slate-800` → `var(--color-slate-800)`), so re-pointing a ramp step
-   under a scope re-themes every call site with no sweep. Three ramps re-point
-   per palette — brand (accent), slate (text/greys), ink (dark surfaces) — plus
+   here updates every call site with no sweep. Three ramps define the system —
+   brand (accent), slate (text/greys), ink (dark surfaces) — plus
    the exact amber/rose/emerald steps the NOTICE_TONE family uses (50/300/800
    light, 950/900/200 dark). Everything structural flows through the semantic
    chokepoint tokens in the `:root` blocks after this one. */
@@ -83,7 +79,7 @@
   --color-ink-950: #070a08;
 
   /* The notice family's exact steps (Notice.tsx / FindingCard tone map), tuned
-     per palette. Only these six steps per hue re-point; the rest of each ramp
+     for Botanical. Only these six steps per hue change; the rest of each ramp
      stays Tailwind's (chart hexes are literals in lib/chart-colors.ts and are
      unaffected). */
   --color-amber-50: #f0e4c0;
@@ -108,7 +104,7 @@
 
 /* Semantic surfaces as utilities (`bg-surface`, `bg-field`): `inline` makes the
    utility emit `var(--surface)` directly, so an elevation surface (toast, popup
-   menu, dialog, sticky header) or a form field follows the palette AND the mode
+   menu, dialog, sticky header) or a form field follows the current mode
    with one class — `bg-white dark:bg-ink-900` pairs were swept to these. */
 @theme inline {
   --color-surface: var(--surface);
@@ -129,8 +125,8 @@
   ::before,
   ::backdrop,
   ::file-selector-button {
-    /* The palette's divider tone (was gray-200): an unqualified `border` follows
-       the palette and the mode instead of staying a cool neutral. */
+    /* The Botanical divider tone (was gray-200): an unqualified `border`
+       follows the mode instead of staying a cool neutral. */
     border-color: var(--divider, currentcolor);
   }
 
@@ -150,13 +146,12 @@
   }
 }
 
-/* ── Semantic chokepoint tokens — light (the values ARE Botanical) ──────────
-   One variable per chokepoint, exactly the census's token spec (#2701). A
-   palette overrides these (and the ramps above) and every structural primitive
-   below — body, .card, .btn family, .input, SegmentedControl — re-themes with
-   no other edit. `--field-bd` is the WCAG 1.4.11 field-boundary token: card
-   borders may be atmospheric, control boundaries hold ≥3:1 in all six
-   palette × mode combinations. */
+/* ── Semantic chokepoint tokens — Botanical light ───────────────────────────
+   One variable per chokepoint, exactly the census's token spec (#2701). Every
+   structural primitive below — body, .card, .btn family, .input,
+   SegmentedControl — reads these rather than restating colors. `--field-bd` is
+   the WCAG 1.4.11 field-boundary token: card borders may be atmospheric, but
+   control boundaries hold ≥3:1 in light and dark. */
 :root {
   --canvas: linear-gradient(180deg, #ecf3e7 0%, #dfeadb 100%);
   /* The canvas gradient's end color as a plain COLOR: `background: var(--canvas)`
@@ -165,9 +160,8 @@
   --canvas-base: #dfeadb;
   /* The navigation ground (#2719 review): the sidebar / mobile chrome panel,
      deliberately a step apart from BOTH the canvas and the card surface so the
-     nav reads as its own zone in every palette × mode. */
+     nav reads as its own zone in both modes. */
   --nav: #e6efe0;
-  --page-texture: none;
   --surface: #f4f8f0;
   --border: #ccdcc4;
   --border-strong: #ccdcc4;
@@ -190,10 +184,9 @@
   --empty-cell: #e6eedd;
   --radius-card: 14px;
   --radius-control: 0.5rem;
-  /* Select chevron, drawn in the palette's muted tone. A data-URI cannot read
-     currentColor, so the chevron is a TOKEN each scope re-points (#2701 sweep). */
+  /* Select chevron, drawn in the muted tone. A data-URI cannot read
+     currentColor, so each mode supplies its own token. */
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234e6354' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  --font-display: inherit;
 }
 
 /* Dark twin ("Conservatory Night"). Scoped `not print` like the dark variant
@@ -203,7 +196,6 @@
     --canvas: linear-gradient(180deg, #090e0b 0%, #060908 100%);
     --canvas-base: #060908;
     --nav: #0d130f;
-    --page-texture: none;
     --surface: #101711;
     --border: #202e24;
     --border-strong: #202e24;
@@ -228,251 +220,6 @@
   }
 }
 
-/* ── Palette: Almanac (#2701) — serif display, warm paper with ruled texture,
-   olive/lime accents, near-black "Midnight Edition" dark. Ramp re-points are
-   mode-agnostic (light reads the low steps, dark the high ones, so one ramp
-   serves both); the semantic tokens split per mode below. `:root[…]` beats the
-   `@theme`-emitted `:root` on specificity; the dark block beats both. */
-:root[data-palette="almanac"] {
-  --color-brand-50: #f7f8e8;
-  --color-brand-100: #eef0da;
-  --color-brand-200: #dde3b8;
-  --color-brand-300: #cbd489;
-  --color-brand-400: #b0c452;
-  --color-brand-500: #8a9c33;
-  --color-brand-600: #647c15;
-  --color-brand-700: #52700f;
-  --color-brand-800: #3f6212;
-  --color-brand-900: #365314;
-  --color-brand-950: #1c2a08;
-  --color-slate-50: #faf8f0;
-  --color-slate-100: #f4f0e4;
-  --color-slate-200: #ece7d8;
-  --color-slate-300: #cdc6b0;
-  --color-slate-400: #a09a84;
-  --color-slate-500: #625d48;
-  --color-slate-600: #4e4a35;
-  --color-slate-700: #3b3726;
-  --color-slate-800: #2b2a20;
-  --color-slate-900: #221f16;
-  --color-slate-950: #12100a;
-  --color-ink-700: #2b2820;
-  --color-ink-750: #1f1c15;
-  --color-ink-800: #191712;
-  --color-ink-850: #131210;
-  --color-ink-900: #100f0c;
-  --color-ink-950: #0a0906;
-  --color-amber-50: #f5e8c4;
-  --color-amber-300: #e0cd90;
-  --color-amber-800: #8a5c0a;
-  --color-amber-200: #e3c877;
-  --color-amber-900: #4a3e1c;
-  --color-amber-950: #1a1810;
-  --color-emerald-50: #e9eed4;
-  --color-emerald-100: #e2eac4;
-  --color-emerald-300: #c6d197;
-  --color-emerald-400: #a3bd48;
-  --color-emerald-500: #7f9c2e;
-  --color-emerald-600: #5d8c15;
-  --color-emerald-700: #4d7c0f;
-  --color-emerald-800: #3a5211;
-  --color-emerald-200: #c9d98c;
-  --color-emerald-900: #333f19;
-  --color-emerald-950: #15180d;
-  --color-rose-50: #f3dcd8;
-  --color-rose-300: #ddb0a9;
-  --color-rose-800: #93303f;
-  --color-rose-200: #e2a3ab;
-  --color-rose-900: #4c2626;
-  --color-rose-950: #1d1312;
-
-  --canvas: linear-gradient(180deg, #f8f5ee 0%, #f1ecdf 100%);
-  --canvas-base: #f1ecdf;
-  --nav: #f4efe2;
-  --page-texture: repeating-linear-gradient(
-    0deg,
-    rgba(95, 82, 48, 0.05) 0 1px,
-    transparent 1px 27px
-  );
-  --surface: #fdfbf5;
-  --border: #ddd6c3;
-  --border-strong: #c9c0a6;
-  --divider: #e9e3d2;
-  --card-shadow: 0 1px 3px rgba(62, 52, 24, 0.08);
-  --accent-soft: #eef0da;
-  --btn: #3f6212;
-  --btn-fg: #faf8ef;
-  --btn-hover: #365314;
-  --danger-btn: #a63d3a;
-  --danger-btn-fg: #faf3ec;
-  --danger-btn-hover: #913432;
-  --ghost: #faf7ee;
-  --ghost-hover: #f2ecdc;
-  --field: #fdfbf5;
-  --field-bd: #94896c;
-  --seg-bg: #f4f0e4;
-  --seg-active-bg: #2b2a20;
-  --seg-active-fg: #faf8ef;
-  --empty-cell: #eee8d7;
-  --radius-card: 8px;
-  --radius-control: 6px;
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236f6a54' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  --font-display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-}
-
-@media not print {
-  :root.dark[data-palette="almanac"] {
-    --canvas: linear-gradient(180deg, #0c0b08 0%, #070705 100%);
-    --canvas-base: #070705;
-    --nav: #100f0b;
-    --page-texture: repeating-linear-gradient(
-      0deg,
-      rgba(240, 225, 180, 0.028) 0 1px,
-      transparent 1px 27px
-    );
-    --surface: #131210;
-    --border: #2b2820;
-    --border-strong: #403a26;
-    --divider: #201e16;
-    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-    --accent-soft: rgba(176, 196, 82, 0.11);
-    --btn: #b0c452;
-    --btn-fg: #171509;
-    --btn-hover: #c0d264;
-    --danger-btn: #9c4442;
-    --danger-btn-fg: #f6e9e2;
-    --danger-btn-hover: #ad5250;
-    --ghost: #1b1912;
-    --ghost-hover: #242118;
-    --field: #161410;
-    --field-bd: #746b4e;
-    --seg-bg: #191712;
-    --seg-active-bg: #ece7d8;
-    --seg-active-fg: #171509;
-    --empty-cell: #1e1c12;
-    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a09a84' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  }
-}
-
-/* ── Palette: Floodlight (#2701) — the fun one: lighting-inspired and graphic.
-   Neutral monochrome grounds, sharp 3px corners, near-black card borders, hard
-   amber offset shadows in LIGHT ONLY (a shadow needs a sun — the dark twin
-   "Night Game" is flat true-neutral black with amber content). The structural
-   half of its doctrine — italic 900 display, the baseline-tucked underline,
-   the one skewed chip — lives in the primitives section below. */
-:root[data-palette="floodlight"] {
-  --color-brand-50: #fffbeb;
-  --color-brand-100: #fdf3d0;
-  --color-brand-200: #fde68a;
-  --color-brand-300: #fcd34d;
-  --color-brand-400: #fbbf24;
-  --color-brand-500: #f59e0b;
-  --color-brand-600: #c2410c;
-  --color-brand-700: #9a3412;
-  --color-brand-800: #7c2d12;
-  --color-brand-900: #571c0a;
-  --color-brand-950: #431407;
-  --color-slate-50: #fafaf6;
-  --color-slate-100: #f0efe8;
-  --color-slate-200: #ebeae2;
-  --color-slate-300: #c9c8bf;
-  --color-slate-400: #a3a299;
-  --color-slate-500: #6b6a62;
-  --color-slate-600: #57564e;
-  --color-slate-700: #403f39;
-  --color-slate-800: #1a1917;
-  --color-slate-900: #141412;
-  --color-slate-950: #0a0a09;
-  --color-ink-700: #2a2a26;
-  --color-ink-750: #1f1f1b;
-  --color-ink-800: #1a1a17;
-  --color-ink-850: #131312;
-  --color-ink-900: #101010;
-  --color-ink-950: #050505;
-  --color-amber-50: #f9ecc0;
-  --color-amber-300: #e5d386;
-  --color-amber-800: #8a5c0a;
-  --color-amber-200: #e8c96f;
-  --color-amber-900: #4f411b;
-  --color-amber-950: #1b1911;
-  --color-emerald-50: #e6efcd;
-  --color-emerald-100: #e0edc2;
-  --color-emerald-300: #c5d596;
-  --color-emerald-400: #b0d060;
-  --color-emerald-500: #84bb26;
-  --color-emerald-600: #65a30d;
-  --color-emerald-700: #4d7c0f;
-  --color-emerald-800: #3f650f;
-  --color-emerald-200: #c9d98c;
-  --color-emerald-900: #353f1c;
-  --color-emerald-950: #17190f;
-  --color-rose-50: #f7dad6;
-  --color-rose-300: #e0b3ac;
-  --color-rose-800: #9c2f38;
-  --color-rose-200: #e2a3ab;
-  --color-rose-900: #4c2626;
-  --color-rose-950: #1d1312;
-
-  --canvas: linear-gradient(180deg, #fdfdfb 0%, #f1f1ec 100%);
-  --canvas-base: #f1f1ec;
-  --nav: #f6f6f1;
-  --page-texture: none;
-  --surface: #ffffff;
-  --border: #1a1917;
-  --border-strong: #1a1917;
-  --divider: #ecebe2;
-  --card-shadow: 3px 3px 0 #fbbf24;
-  --accent-soft: #fdf3d0;
-  --btn: #1a1917;
-  --btn-fg: #fbbf24;
-  --btn-hover: #33322e;
-  --danger-btn: #ad2f45;
-  --danger-btn-fg: #fbeef0;
-  --danger-btn-hover: #97283c;
-  --ghost: #fafaf6;
-  --ghost-hover: #efeee6;
-  --field: #ffffff;
-  --field-bd: #1a1917;
-  --seg-bg: #f0efe8;
-  --seg-active-bg: #1a1917;
-  --seg-active-fg: #fbbf24;
-  --empty-cell: #eeede4;
-  --radius-card: 3px;
-  --radius-control: 3px;
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6a62' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-}
-
-@media not print {
-  :root.dark[data-palette="floodlight"] {
-    --canvas: linear-gradient(180deg, #0a0a09 0%, #050505 100%);
-    --canvas-base: #050505;
-    --nav: #0f0f0e;
-    --page-texture: none;
-    --surface: #131312;
-    --border: #3f3e38;
-    --border-strong: #3f3e38;
-    --divider: #1f1f1b;
-    /* Night Game: no decorative shadows — a hard offset needs a light source. */
-    --card-shadow: none;
-    --accent-soft: rgba(251, 191, 36, 0.12);
-    --btn: #fbbf24;
-    --btn-fg: #191507;
-    --btn-hover: #f5b512;
-    --danger-btn: #9c4442;
-    --danger-btn-fg: #f6e9e2;
-    --danger-btn-hover: #ad5250;
-    --ghost: #1c1c19;
-    --ghost-hover: #262622;
-    --field: #161614;
-    --field-bd: #6e6c62;
-    --seg-bg: #1a1a17;
-    --seg-active-bg: #fbbf24;
-    --seg-active-fg: #191507;
-    --empty-cell: #1e1d16;
-    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a3a299' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  }
-}
-
 @utility card {
   /* Border/fill color language (issue #794 clusters 9a + 10a). Two properties,
      two vocabularies — keep them apart:
@@ -486,8 +233,8 @@
      (Tinted borders — amber/rose/emerald, the Notice family — and focus/selected
      `border-brand-*` borders are their own token set and stay literal.) Guarded by
      border-alpha-language.test.ts and hover-fill-language.test.ts. */
-  /* The STANDARD card tier (#2701): opaque palette surface, 1.5px palette
-     border, the palette's own shadow. The Vitals frosted glass is retired —
+  /* The STANDARD card tier (#2701): opaque Botanical surface, 1.5px border,
+     and a restrained shadow. The Vitals frosted glass is retired —
      `backdrop-filter` was the single biggest paint cost on card-dense pages and
      the blur has nothing left to diffuse over an opaque tone-on-tone canvas. */
   /* Padding is responsive (issue #1416, section A): a phone spends ~11% of a
@@ -540,8 +287,8 @@
 
 @utility input {
   /* Field boundaries are their own token (#2701, WCAG 1.4.11): a control's
-     boundary holds ≥3:1 against the field and the canvas in every palette ×
-     mode — the atmospheric card border may not double as an input edge. The
+     boundary holds ≥3:1 against the field and the canvas in both modes — the
+     atmospheric card border may not double as an input edge. The
      field fill token replaces the old per-call-site `bg-white dark:bg-ink-900`
      overrides, so a field reads as a field on any tinted card. */
   @apply w-full px-3 py-2 text-sm outline-hidden focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:text-slate-100 dark:placeholder:text-slate-500;
@@ -557,8 +304,8 @@
   /* Native <select> draws its dropdown caret hard against the right edge. Swap
      it for a custom chevron with breathing room, and reserve right padding so
      the option text never slides under it. The chevron is the `--chevron`
-     palette token (a data-URI cannot read currentColor), so it follows the
-     muted tone per palette × mode with no per-scope rule here. */
+     token (a data-URI cannot read currentColor), so it follows the muted tone
+     in each mode. */
   &:is(select) {
     @apply appearance-none bg-no-repeat pr-9;
     background-image: var(--chevron);
@@ -592,8 +339,8 @@
     background-size: 0.7rem;
   }
   :root.dark &:is(select) option {
-    /* The palette's dark surface behind the open option list; slate-200 (the
-       palette's own text step) for legibility. Tokens, not literals (#2701). */
+    /* The dark surface behind the open option list; slate-200 supplies legible
+       text. Tokens, not literals (#2701). */
     background-color: var(--surface);
     color: var(--color-slate-200);
   }
@@ -627,7 +374,7 @@
 }
 
 @utility btn {
-  /* Button family. Solid palette fill — the Vitals gradient is retired (#2701:
+  /* Button family. Solid Botanical fill — the Vitals gradient is retired (#2701:
      no gradients on buttons; bold lives in structure, not saturation). A shared
      focus-visible ring (brand-500 with a surface-colored offset) gives every
      keyboard-focused button the same affordance — the app otherwise relied on
@@ -701,10 +448,9 @@
 }
 
 @utility badge {
-  /* Tone-on-tone palettes border their badges (#2701): Botanical's pale tone
-     fills sit ~1.2:1 on its tinted cards, so every badge wears a border mixed
-     from its own text tone — automatically tone-matched, no per-tone rule. The
-     high-contrast palettes zero `--badge-bd` back out below. */
+  /* Botanical's pale badge fills sit ~1.2:1 on its tinted cards, so every badge
+     wears a border mixed from its own text tone — automatically tone-matched,
+     with no per-tone rule. */
   @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
   border: 1px solid
     var(--badge-bd, color-mix(in srgb, currentColor 30%, transparent));
@@ -1040,27 +786,14 @@
      already carry their own hover/active styles. */
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-x: contain;
-    /* The palette's canvas — one rule for every palette × mode, because the
-     token lives on :root and swaps there. The Vitals glow and dot texture are
-     retired with the theme (#2701). */
+    /* The Botanical canvas follows the mode through root tokens. The Vitals
+       glow and dot texture are retired with the theme (#2701). */
     background: var(--canvas);
     /* After the shorthand (which resets it): the gradient is an IMAGE, and a
      body with no background-color shows the UA ground through overscroll. */
     background-color: var(--canvas-base);
     background-attachment: fixed;
     min-height: 100vh;
-  }
-
-  /* Page texture BEHIND content — `none` for Botanical and Floodlight; Almanac's
-   ruled-paper lines. A pseudo-element so the texture never has to be restated
-   inside the canvas gradient. */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background-image: var(--page-texture);
   }
 }
 
@@ -1543,123 +1276,6 @@
   }
 }
 
-/* ── SECTION: Palette structure ── */
-/* The structural half of the two selectable palettes (#2701) — what a token
-   swap cannot carry. Everything here is scoped to a `[data-palette]` attribute
-   on <html>; the base (Botanical) needs no rule in this section at all. */
-
-/* Almanac: the serif display face on headings, and the almanac-rule card top —
-   a 3px double rule in the strong border tone, the palette's one ornament.
-   The serif is a DISPLAY face: an uppercase micro-heading (a day-group label,
-   a section label rendered as an h2/h3) keeps the UI face — small-caps serif
-   tracking reads as a typo, not a headline (#2719 review). */
-[data-palette="almanac"] :is(h1, h2, h3):not(.uppercase, .section-label, .th) {
-  font-family: var(--font-display);
-}
-[data-palette="almanac"] :is(.card, .card-quiet) {
-  border-top: 3px double var(--border-strong);
-}
-
-/* Floodlight: italic 900 display with the chunky amber underline tucked under
-   the baseline — highlighter style: the bar overlaps the bottom of the glyphs
-   and the text paints on top. Still a MARK, not a fill: it may underlap the
-   text, never contain it (#2701 emphasis honesty). */
-[data-palette="floodlight"] h1 {
-  width: fit-content;
-  position: relative;
-  /* Makes the heading its own stacking context, so the negative-z bar stays
-     INSIDE it (under the text) instead of escaping behind the page background
-     — `position: relative` alone creates no stacking context, which is exactly
-     what made the bar vanish in the prototype. */
-  z-index: 0;
-  font-weight: 900;
-  font-style: italic;
-  letter-spacing: -0.02em;
-}
-[data-palette="floodlight"] h1::after {
-  content: "";
-  display: block;
-  height: 8px;
-  margin-top: -9px;
-  background: var(--color-brand-400);
-  transform: skewX(-18deg);
-  position: relative;
-  z-index: -1;
-}
-
-/* The section label is a SUBHEADING, not a CTA — a filled black/amber chip
-   signals interactive/selected in this palette, so labels wear a small slanted
-   amber TICK instead: the slant vocabulary at decoration strength. */
-[data-palette="floodlight"] .section-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  letter-spacing: 0.11em;
-}
-[data-palette="floodlight"] .section-label::before {
-  content: "";
-  width: 10px;
-  height: 8px;
-  background: var(--color-brand-400);
-  transform: skewX(-18deg);
-  flex: none;
-}
-
-/* The segmented control dissolves its container: no track fill, no padding —
-   just a row of text tabs. The SELECTED item is then a standalone chip, which
-   is exactly what the skew doctrine permits: it slants, black with amber text
-   (the seg-active tokens), and nothing straight surrounds it. The ONE skewed
-   chip in the palette; buttons and digits never slant. */
-[data-palette="floodlight"] [data-segmented] {
-  background: transparent;
-  padding: 0;
-  gap: 7px;
-}
-[data-palette="floodlight"] [data-segmented] > [aria-pressed="true"],
-[data-palette="floodlight"] [data-segmented] > [aria-current] {
-  transform: skewX(-8deg);
-}
-
-/* Sharp chips; the high-contrast palettes drop the Botanical badge border. */
-[data-palette="floodlight"] .badge {
-  border-radius: 3px;
-}
-:root[data-palette="almanac"],
-:root[data-palette="floodlight"] {
-  --badge-bd: transparent;
-}
-
-/* Skews are OFF under reduced motion — the preference asks for a still page,
-   and a static slant on a control that also transitions reads as mid-motion. */
-@media (prefers-reduced-motion: reduce) {
-  [data-palette="floodlight"] h1::after,
-  [data-palette="floodlight"] .section-label::before,
-  [data-palette="floodlight"] [data-segmented] > [aria-pressed="true"],
-  [data-palette="floodlight"] [data-segmented] > [aria-current] {
-    transform: none;
-  }
-}
-
-/* In print a palette contributes only its display font (#2701): no texture, no
-   underline, no ticks, no skew — the passport prints as the passport. */
-@media print {
-  body::before {
-    display: none;
-  }
-  [data-palette="floodlight"] h1 {
-    font-style: normal;
-    font-weight: 800;
-  }
-  [data-palette="floodlight"] h1::after,
-  [data-palette="floodlight"] .section-label::before {
-    display: none;
-  }
-  [data-palette="floodlight"] [data-segmented] > [aria-pressed="true"],
-  [data-palette="floodlight"] [data-segmented] > [aria-current] {
-    transform: none;
-  }
-}
-
 /* ── SECTION: Offline shell script-less dark base ── */
 
 /* #2183.
@@ -1675,13 +1291,12 @@
    page under OS dark — for a page whose scripts may not have run, the OS
    preference is the only signal available, and honoring it is the point.
    Colour values restate the `:root.dark` body/card rules above and the ink
-   palette (`@theme` above); they cannot be Tailwind `dark:` variants because
+   colors (`@theme` above); they cannot be Tailwind `dark:` variants because
    those key on the class this page may never receive. */
 @media (prefers-color-scheme: dark) {
-  /* Values restate the BASE dark tokens (Botanical's "Conservatory Night") as
-     literals: this page's scripts may never run, so no palette attribute is
-     ever stamped — a script-less render is always the base palette, by design
-     (#2701) — and `dark:` variants can't key on a class it may never receive. */
+  /* Values restate the Botanical dark tokens as literals. This page's scripts
+     may never run, and `dark:` variants cannot key on a class it may never
+     receive. */
   :root:not(.dark) [data-offline-shell] {
     color-scheme: dark;
     color: #d9e8de; /* slate-200 */
@@ -1719,7 +1334,7 @@
    utilities are neutralized. The hand-written `:root.dark` rules below cover the
    non-Tailwind bits: the dark body background is already beaten by the white
    `html, body` rule here, and `color-scheme` is forced to light so form controls,
-   scrollbars, and any UA-drawn chrome render in the light palette too. */
+   scrollbars, and any UA-drawn chrome render in the light scheme too. */
 @media print {
   @page {
     margin: 14mm;
@@ -1773,7 +1388,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 input[type="time"]::-webkit-datetime-edit-hour-field:focus,
 input[type="time"]::-webkit-datetime-edit-minute-field:focus,
 input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
-  /* The palette's brand step, not a hardcoded Vitals green (#2701 sweep). */
+  /* The shared brand step, not a hardcoded Vitals green (#2701 sweep). */
   background-color: color-mix(in srgb, var(--color-brand-500) 18%, transparent);
   color: inherit;
   border-radius: 0.25rem;

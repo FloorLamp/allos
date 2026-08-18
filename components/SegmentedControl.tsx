@@ -85,16 +85,14 @@ export default function SegmentedControl<T extends string | number>({
       role="group"
       aria-label={ariaLabel}
       data-testid={testId}
-      // data-segmented is the palette hook (#2701): Floodlight's CSS dissolves
-      // the track and skews the selected chip off this attribute — a styling
-      // variant of the ONE primitive, semantics untouched.
+      // Identifies the shared control for styling and tests.
       data-segmented=""
       className={`inline-flex rounded-lg bg-(--seg-bg) p-1 ${className}`}
     >
       {options.map((option) => {
         const active = value === option.value;
-        // The selected segment fills with the palette's seg-active pair (the
-        // Botanical census's accent-filled pill; each palette re-points it).
+        // The selected segment fills with the shared seg-active pair (the
+        // Botanical census's accent-filled pill).
         const segmentClass = `shrink-0 rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
           option.icon ? "inline-flex items-center gap-1.5 " : ""
         }${

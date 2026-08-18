@@ -6,11 +6,7 @@ import {
   errorCardPalette,
   isDarkTheme,
   isHydrationErrorMessage,
-  normalizePaletteChoice,
   normalizeThemeChoice,
-  PALETTE_CHOICES,
-  PALETTE_STORAGE_KEY,
-  paletteAttribute,
   THEME_BOOT_SCRIPT,
   THEME_STORAGE_KEY,
   themeReassertEvent,
@@ -53,70 +49,34 @@ describe("normalizeThemeChoice", () => {
   });
 });
 
-describe("errorCardPalette (#1906, extended to palettes by #2701)", () => {
-  for (const appearance of PALETTE_CHOICES) {
-    const light = errorCardPalette(false, appearance);
-    const dark = errorCardPalette(true, appearance);
+describe("errorCardPalette (#1906)", () => {
+  const light = errorCardPalette(false);
+  const dark = errorCardPalette(true);
 
-    it(`gives the ${appearance} dark scheme a genuinely dark card, not the light one`, () => {
-      // The reported symptom was "the app switches to light mode and things look
-      // broken" — a hard-coded light panel over a dark-mode app. These are the two
-      // colours that produced it.
-      expect(dark.page).not.toBe(light.page);
-      expect(dark.panel).not.toBe(light.panel);
-      expect(dark.heading).not.toBe(light.heading);
-    });
-
-    it(`${appearance} actually inverts, rather than merely differing`, () => {
-      // A palette that differed but stayed bright would pass the test above while
-      // reproducing the bug, so assert the direction: dark surfaces below light
-      // text, light surfaces below dark text.
-      expect(luminance(dark.page)).toBeLessThan(luminance(light.page));
-      expect(luminance(dark.panel)).toBeLessThan(luminance(dark.heading));
-      expect(luminance(light.panel)).toBeGreaterThan(luminance(light.heading));
-    });
-
-    it(`keeps the ${appearance} primary action readable in both schemes`, () => {
-      // The palettes deliberately re-step the primary per mode (Floodlight even
-      // inverts it), so "same hex both modes" stopped being the invariant with
-      // #2701. What must hold instead: the label is legible on the fill.
-      for (const card of [light, dark]) {
-        expect(
-          contrast(card.primaryText, card.primaryBackground)
-        ).toBeGreaterThanOrEqual(4.5);
-      }
-    });
-
-    it(`matches the ${appearance} page backgrounds the stylesheet already uses`, () => {
-      // Not decorative duplication: this card replaces globals.css, so its page
-      // colours have to be the ones the rest of the app paints under this
-      // palette, or an error looks like a different app.
-      const css = fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8");
-      expect(css).toContain(light.page);
-      expect(css).toContain(dark.page);
-    });
-  }
-});
-
-describe("normalizePaletteChoice / paletteAttribute (#2701)", () => {
-  it("keeps the three palettes and collapses everything else to the base", () => {
-    expect(normalizePaletteChoice("botanical")).toBe("botanical");
-    expect(normalizePaletteChoice("almanac")).toBe("almanac");
-    expect(normalizePaletteChoice("floodlight")).toBe("floodlight");
-    expect(normalizePaletteChoice(null)).toBe("botanical");
-    expect(normalizePaletteChoice("")).toBe("botanical");
-    expect(normalizePaletteChoice("vitals")).toBe("botanical");
+  it("gives the dark scheme a genuinely dark card, not the light one", () => {
+    expect(dark.page).not.toBe(light.page);
+    expect(dark.panel).not.toBe(light.panel);
+    expect(dark.heading).not.toBe(light.heading);
   });
 
-  it("answers the base palette as NO attribute, never a third value", () => {
-    // The base tokens carry no [data-palette] scope in globals.css, so a stale
-    // attribute must be REMOVED — an html[data-palette="botanical"] would match
-    // nothing today and silently shadow the base the day someone adds it.
-    expect(paletteAttribute("botanical")).toBeNull();
-    expect(paletteAttribute(null)).toBeNull();
-    expect(paletteAttribute("nonsense")).toBeNull();
-    expect(paletteAttribute("almanac")).toBe("almanac");
-    expect(paletteAttribute("floodlight")).toBe("floodlight");
+  it("actually inverts, rather than merely differing", () => {
+    expect(luminance(dark.page)).toBeLessThan(luminance(light.page));
+    expect(luminance(dark.panel)).toBeLessThan(luminance(dark.heading));
+    expect(luminance(light.panel)).toBeGreaterThan(luminance(light.heading));
+  });
+
+  it("keeps the primary action readable in both schemes", () => {
+    for (const card of [light, dark]) {
+      expect(
+        contrast(card.primaryText, card.primaryBackground)
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("matches the page backgrounds the stylesheet already uses", () => {
+    const css = fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8");
+    expect(css).toContain(light.page);
+    expect(css).toContain(dark.page);
   });
 });
 
@@ -149,13 +109,9 @@ describe("THEME_BOOT_SCRIPT ≡ isDarkTheme (#2183)", () => {
   // is what keeps boot and re-assert answering identically.
   function runBootScript(
     stored: string | null,
-    prefersDark: boolean,
-    storedPalette: string | null = null
-  ): { dark: boolean | null; palette: string | null } {
+    prefersDark: boolean
+  ): boolean | null {
     let applied: boolean | null = null;
-    // Starts non-null so a run that REMOVES the attribute is distinguishable
-    // from one that never touched it.
-    let attribute: string | null = "stale";
     const run = new Function(
       "localStorage",
       "window",
@@ -164,12 +120,7 @@ describe("THEME_BOOT_SCRIPT ≡ isDarkTheme (#2183)", () => {
     );
     run(
       {
-        getItem: (k: string) =>
-          k === THEME_STORAGE_KEY
-            ? stored
-            : k === PALETTE_STORAGE_KEY
-              ? storedPalette
-              : null,
+        getItem: (k: string) => (k === THEME_STORAGE_KEY ? stored : null),
       },
       {
         matchMedia: (q: string) => ({
@@ -183,42 +134,20 @@ describe("THEME_BOOT_SCRIPT ≡ isDarkTheme (#2183)", () => {
               if (cls === "dark") applied = on;
             },
           },
-          setAttribute: (name: string, value: string) => {
-            if (name === "data-palette") attribute = value;
-          },
-          removeAttribute: (name: string) => {
-            if (name === "data-palette") attribute = null;
-          },
         },
       }
     );
-    return { dark: applied, palette: attribute };
+    return applied;
   }
 
   it("decides exactly as isDarkTheme for every stored × prefersDark case", () => {
     for (const stored of [null, "", "light", "dark", "system", "midnight"]) {
       for (const prefersDark of [true, false]) {
         expect(
-          runBootScript(stored, prefersDark).dark,
+          runBootScript(stored, prefersDark),
           `stored=${JSON.stringify(stored)} prefersDark=${prefersDark}`
         ).toBe(isDarkTheme({ stored, prefersDark }));
       }
-    }
-  });
-
-  it("stamps data-palette exactly as paletteAttribute for every stored palette (#2701)", () => {
-    for (const storedPalette of [
-      null,
-      "",
-      "botanical",
-      "almanac",
-      "floodlight",
-      "vitals",
-    ]) {
-      expect(
-        runBootScript("dark", true, storedPalette).palette,
-        `storedPalette=${JSON.stringify(storedPalette)}`
-      ).toBe(paletteAttribute(storedPalette));
     }
   });
 
