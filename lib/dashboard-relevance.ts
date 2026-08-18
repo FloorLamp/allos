@@ -154,6 +154,13 @@ const ZONE_ORDER: Record<DashboardZone, number> = {
   grid: 3,
 };
 
+// JavaScript's relational string comparison is an ordinal UTF-16 code-unit
+// comparison. Unlike localeCompare, it cannot collapse distinct normalized
+// Unicode spellings to equality, so it is safe as the final identity tie-break.
+function compareOrdinal(a: string, b: string): number {
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
 const NOW_TIER: Record<NowCardId, number> = {
   "session-recap": 400,
   "sleep-last-night": 300,
@@ -378,7 +385,7 @@ function compareHome(
   return (
     ZONE_ORDER[a.currentPlacement] - ZONE_ORDER[b.currentPlacement] ||
     a.currentOrder - b.currentOrder ||
-    a.placementId.localeCompare(b.placementId)
+    compareOrdinal(a.placementId, b.placementId)
   );
 }
 
@@ -454,7 +461,7 @@ export function rankDashboard(
       Number(b.safety) - Number(a.safety) ||
       b.score - a.score ||
       a.order - b.order ||
-      idA.localeCompare(idB)
+      compareOrdinal(idA, idB)
   );
   const safetyNow = rankedNow.filter(([, rank]) => rank.safety);
   const ordinaryNow = rankedNow
@@ -493,7 +500,7 @@ export function compareDashboardPlacements(
   return (
     ZONE_ORDER[a.zone] - ZONE_ORDER[b.zone] ||
     a.zoneOrder - b.zoneOrder ||
-    a.placementId.localeCompare(b.placementId)
+    compareOrdinal(a.placementId, b.placementId)
   );
 }
 

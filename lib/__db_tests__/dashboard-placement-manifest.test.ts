@@ -5,7 +5,7 @@
 
 import type { ReactElement } from "react";
 import crypto from "node:crypto";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { utcInstant } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
@@ -176,6 +176,7 @@ function compactManifest(placements: readonly DashboardPlacement[]): string[] {
 
 const manifests = new Map<string, string[]>();
 const statementRuns = new Map<string, string[]>();
+const previousTestNow = process.env.ALLOS_TEST_NOW;
 
 const EXPECTED_PERSONA_MANIFESTS: Record<string, readonly string[]> = {
   bodybuilder: [
@@ -367,6 +368,11 @@ describe("actual dashboard placement manifests", () => {
       statementRuns.set(persona.name, trace.statements());
     }
   }, 120_000);
+
+  afterAll(() => {
+    if (previousTestNow === undefined) delete process.env.ALLOS_TEST_NOW;
+    else process.env.ALLOS_TEST_NOW = previousTestNow;
+  });
 
   for (const persona of PERSONAS) {
     it(`${persona.name}: captures the actual page manifest`, () => {

@@ -360,6 +360,8 @@ describe("orthogonal rank reasons", () => {
 
 describe("manifest integrity", () => {
   it("uses a strict total placement comparator", () => {
+    const decomposed = "e\u0301";
+    const composed = "\u00e9";
     const placements = rankDashboard(
       [
         surface("priority-b", "priority", 1),
@@ -367,6 +369,8 @@ describe("manifest integrity", () => {
         surface("pre-grid", "pre-grid", 0),
         surface("grid-b", "grid", 1),
         surface("grid-a", "grid", 1),
+        surface(decomposed, "grid", 1),
+        surface(composed, "grid", 1),
         surface("safety", "grid", 9, {
           promotable: true,
           rankReasons: {
@@ -398,20 +402,27 @@ describe("manifest integrity", () => {
   });
 
   it("is invariant to input order and terminates ties on placementId", () => {
+    const decomposed = "e\u0301";
+    const composed = "\u00e9";
     const surfaces = [
       surface("charlie", "grid", 0),
       surface("alpha", "grid", 0),
       surface("bravo", "grid", 0),
+      surface(composed, "grid", 0),
+      surface(decomposed, "grid", 0),
     ];
     const forward = rankDashboard(surfaces, { now: now() });
-    const shuffled = rankDashboard([surfaces[2], surfaces[0], surfaces[1]], {
-      now: now(),
-    });
+    const shuffled = rankDashboard(
+      [surfaces[3], surfaces[2], surfaces[4], surfaces[0], surfaces[1]],
+      { now: now() }
+    );
     expect(forward).toEqual(shuffled);
     expect(forward.map((placement) => placement.placementId)).toEqual([
       "alpha",
       "bravo",
       "charlie",
+      decomposed,
+      composed,
     ]);
   });
 
