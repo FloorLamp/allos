@@ -5,37 +5,44 @@
 // marker (so the slot resumes normally next tick), and a later attempt after the draft
 // is discarded fires and marks.
 //
-// The tick (scripts/notify.ts) marks the workout slot ONLY when its build() returns a
-// message that then delivers; a null build (our hold/skip) is nothing-due and never
-// marks. `tickWorkoutSlot` below is a faithful copy of that exact per-slot loop over
-// the REAL buildWorkoutTargetReminder → recommendWorkout → presence gate path, so the
-// marker-neutrality is asserted against the same code the tick runs.
+// The suite calls the production slot runner over the real
+// buildWorkoutTargetReminder → recommendWorkout → presence gate path, so the marker
+// discipline cannot drift away from the tick.
 //
 // Every value is synthetic (a fake profile + a fake cardio "walk"; no PHI).
 
-import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  it,
+  expect,
+  vi,
+} from "vitest";
 import { db, today } from "@/lib/db";
 import {
   setProfileSetting,
   getProfileSetting,
   setWeekMode,
+  setTelegramBotConfig,
 } from "@/lib/settings";
 import { utcSqlString } from "@/lib/date";
 import { buildWorkoutTargetReminder } from "@/lib/notifications/workouts";
-import { seedProfile } from "./fixtures";
+import { runTickSlot, tickProfile } from "@/lib/notifications/tick";
+import { seedLoginTelegram, seedProfile } from "./fixtures";
+import { stubTelegramSends } from "./telegram-spies";
 
 const WORKOUT_MARKER = "notify_last_workout";
 
-// Mirror scripts/notify.ts's dueSlots loop for the "workout" slot: already-marked ⇒
-// skip; build null ⇒ nothing due (NO marker); else deliver ⇒ mark on delivery. Returns
-// what the tick would do this attempt.
-function tickWorkoutSlot(profileId: number, now: Date): "sent" | "nothing-due" {
-  const date = today(profileId);
-  if (getProfileSetting(profileId, WORKOUT_MARKER) === date) return "sent";
-  const built = buildWorkoutTargetReminder(profileId, undefined, now);
-  if (!built) return "nothing-due"; // marker-neutral: nothing built, nothing marked
-  setProfileSetting(profileId, WORKOUT_MARKER, date); // delivered ⇒ mark
-  return "sent";
+function tickWorkoutSlot(profileId: number, now: Date) {
+  return runTickSlot(
+    profileId,
+    "workout",
+    WORKOUT_MARKER,
+    today(profileId),
+    () => buildWorkoutTargetReminder(profileId, undefined, now)
+  );
 }
 
 // A live (manual, un-ended) draft touched `quietMin` ago — reads as `active`.
@@ -84,6 +91,11 @@ function insertFinishedWalk(profileId: number, now: Date, ageMin = 20): number {
 // and carrying a behind cardio ("walk") type target.
 function setup(tag: string): number {
   const { profileId } = seedProfile(tag);
+  setTelegramBotConfig({
+    telegramBotToken: "workout-presence-token",
+    telegramMode: "poll",
+  });
+  seedLoginTelegram(profileId, `981${profileId}`);
   setProfileSetting(profileId, "timezone", "UTC");
   // Rolling mode pins the week window to a mature, deterministic 7 days on every
   // calendar day (daysLeftInWindow = 0: today is always the last day). In calendar
@@ -100,6 +112,7 @@ function setup(tag: string): number {
 }
 
 describe("workout-reminder presence gates through the tick (#981)", () => {
+  beforeAll(() => stubTelegramSends());
   beforeEach(() => {
     // The baseline fixture models a reachable midweek 1/5 cardio target. At the
     // real week's end that target is no longer the same recommendation scenario,
@@ -111,39 +124,48 @@ describe("workout-reminder presence gates through the tick (#981)", () => {
     vi.useRealTimers();
   });
 
-  it("baseline (idle) fires and marks the slot", () => {
+  it("baseline (idle) fires and marks the slot", async () => {
     const p = setup("GateBaseline");
     const now = new Date();
     expect(buildWorkoutTargetReminder(p, undefined, now)).not.toBeNull();
-    expect(tickWorkoutSlot(p, now)).toBe("sent");
+    expect(await tickWorkoutSlot(p, now)).toBe("sent");
     expect(getProfileSetting(p, WORKOUT_MARKER)).toBe(today(p));
   });
 
-  it("a live session HOLDS the reminder and sets NO marker", () => {
+  it("the full per-profile tick drives the same workout slot", async () => {
+    const p = setup("FullTick");
+    vi.setSystemTime(new Date("2026-06-17T18:00:00Z"));
+    const now = new Date();
+
+    expect(await tickProfile(p, "FullTick", 5, now.getTime())).toBe(false);
+    expect(getProfileSetting(p, WORKOUT_MARKER)).toBe(today(p));
+  });
+
+  it("a live session HOLDS the reminder and sets NO marker", async () => {
     const p = setup("GateHold");
     const now = new Date();
     insertActiveDraft(p, now);
     // Held: recommendWorkout returns null → build null → nothing due.
     expect(buildWorkoutTargetReminder(p, undefined, now)).toBeNull();
-    expect(tickWorkoutSlot(p, now)).toBe("nothing-due");
+    expect(await tickWorkoutSlot(p, now)).toBe("nothing-due");
     expect(getProfileSetting(p, WORKOUT_MARKER)).toBeUndefined();
   });
 
-  it("a credit-bearing finish in the window SKIPS the reminder and sets NO marker", () => {
+  it("a credit-bearing finish in the window SKIPS the reminder and sets NO marker", async () => {
     const p = setup("GateSkip");
     const now = new Date();
     insertFinishedWalk(p, now); // cardio finish credits the behind cardio target
     expect(buildWorkoutTargetReminder(p, undefined, now)).toBeNull();
-    expect(tickWorkoutSlot(p, now)).toBe("nothing-due");
+    expect(await tickWorkoutSlot(p, now)).toBe("nothing-due");
     expect(getProfileSetting(p, WORKOUT_MARKER)).toBeUndefined();
   });
 
-  it("a later attempt after the draft is discarded fires and marks (marker untouched by the hold)", () => {
+  it("a later attempt after the draft is discarded fires and marks (marker untouched by the hold)", async () => {
     const p = setup("GateResume");
     const now = new Date();
     const draftId = insertActiveDraft(p, now);
     // First attempt: held, no marker.
-    expect(tickWorkoutSlot(p, now)).toBe("nothing-due");
+    expect(await tickWorkoutSlot(p, now)).toBe("nothing-due");
     expect(getProfileSetting(p, WORKOUT_MARKER)).toBeUndefined();
     // Discard the draft — the false start is gone.
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
@@ -151,7 +173,7 @@ describe("workout-reminder presence gates through the tick (#981)", () => {
       p
     );
     // Next scheduled attempt evaluates fresh → fires and marks.
-    expect(tickWorkoutSlot(p, now)).toBe("sent");
+    expect(await tickWorkoutSlot(p, now)).toBe("sent");
     expect(getProfileSetting(p, WORKOUT_MARKER)).toBe(today(p));
   });
 });

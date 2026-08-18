@@ -149,7 +149,7 @@ const ADHERENCE_DAYS = 14;
 
 // The current profile-local minute-of-day (0–1439), for post_workout timing.
 function currentMinutesOfDay(profileId: number): number {
-  const { hhmm } = zonedDateParts(getTimezone(profileId), new Date());
+  const { hhmm } = zonedDateParts(getTimezone(profileId), clockNow());
   return Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 }
 
@@ -397,7 +397,7 @@ export function buildIntakeReminderForSlots(
   // It costs no send: the message already exists. That is the only reason it is
   // allowed to exist at all ("a suggestion may only decorate a send that exists for
   // its own reasons").
-  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+  const nowHhmm = zonedDateParts(getTimezone(profileId), clockNow()).hhmm;
   const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
   if (offered.length > 0) {
     message.actions = [

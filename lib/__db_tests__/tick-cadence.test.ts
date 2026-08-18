@@ -4,9 +4,8 @@
 // because the tick cadence changed — the cadence decides only how promptly a time
 // is honoured. This drives the tick's REAL observed-cadence machinery — the
 // `notify_tick_last_run_at` watermark and `notify_tick_interval_min` record in the
-// global settings store, exactly the block scripts/notify.ts runs at the top of
-// every tick (its main() runs on import, so the block is mirrored here the way
-// digest-modes.test.ts mirrors the digest block) — through an operator moving the
+// global settings store through the production helper the tick calls, while an
+// operator moves the
 // sidecar 5 → 15 → 5 minutes, with an off-grid 07:35 slot stored throughout.
 //
 // What must hold, and does:
@@ -21,13 +20,13 @@
 //     validation that could strand the stored time.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { deleteSetting, getSetting, setSetting } from "@/lib/settings";
+import { deleteSetting, getSetting } from "@/lib/settings";
 import {
-  observedTickMinutes,
   slotAttempt,
   subHourlySlotsAtRisk,
   type SlotAttempt,
 } from "@/lib/notifications/schedule";
+import { recordNotifyTickStart } from "@/lib/notifications/tick";
 
 // The stored slot: 07:35 — on the 5-minute grid, off the 15-minute one.
 const SLOT_MINUTE = 7 * 60 + 35;
@@ -43,21 +42,13 @@ interface DayRun {
   recordedAtSlot: number;
 }
 
-// One simulated day of ticks at `cadence`, running the SAME watermark block as
-// scripts/notify.ts: read the previous tick's instant from the settings store,
-// derive the observed interval, write the watermark and the observed record back.
+// One simulated day of ticks at `cadence`, calling the production watermark helper.
 function runDay(dayStartMs: number, cadence: number): DayRun {
   const due: DayRun["due"] = [];
   let recordedAtSlot = NaN;
   for (let minute = 0; minute < 1440; minute += cadence) {
     const nowMs = dayStartMs + minute * 60_000;
-    const prevTickMs = Date.parse(getSetting("notify_tick_last_run_at") ?? "");
-    const tickMinutes = observedTickMinutes(
-      Number.isFinite(prevTickMs) ? prevTickMs : null,
-      nowMs
-    );
-    setSetting("notify_tick_last_run_at", new Date(nowMs).toISOString());
-    setSetting("notify_tick_interval_min", String(tickMinutes));
+    const tickMinutes = recordNotifyTickStart(nowMs);
     const band = slotAttempt(SLOT_MINUTE, minute, tickMinutes);
     if (band) {
       if (due.length === 0) recordedAtSlot = tickMinutes;

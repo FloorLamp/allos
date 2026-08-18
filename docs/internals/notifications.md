@@ -240,6 +240,15 @@ duplicates of controls already on it:
   survives rather than being deleted because it is the only way to reverse a
   demotion off-Telegram, which is the whole point of the #1714 mirror.
 
+**The tick is an import-safe library boundary (#3085).**
+`lib/notifications/tick.ts` owns the callable per-profile tick and its slot,
+digest, and observed-cadence gates. The per-profile entry takes `nowMs`; it never
+reads a clock itself. `scripts/notify.ts` is only the environment/CLI boundary,
+process exit, and per-profile fan-out, and passes `now().getTime()`. Tests call the
+same exported gates production calls, so a new send gate cannot drift away behind
+a hand-copied test loop. Day- and time-of-day semantics inside message builders use
+the `lib/clock.ts` seam; duration clocks remain real.
+
 **Two cadences, not one (#2121 step 1).** The tick does two unrelated things, and
 they are now bounded by different constraints. _Evaluating what is due to send_ is
 bounded only by the tick process's ~0.5 s boot, so it may run as often as the
@@ -1990,13 +1999,13 @@ lifetime it can justify.
 nothing in the scope writes the rows after the first read.** For
 `getSleepArrivals` and `getSleepSessions` it is that `syncIntegrations` — the
 only tick step that writes `metric_samples` or `integration_sync_rows` — is the
-FIRST statement of `tickProfile`, so the pull pass has finished before anything
+first side effect of `tickProfile`, so the pull pass has finished before anything
 in the scope reads what it wrote; every other writer of those tables is a Server
 Action or a route handler. For `getIntegrationAttention` the same statement
 carries it: `syncIntegrations` is also the only tick step that appends to
 `integration_sync_events` or moves a connection to `needs_reauth`, no pull runner
 reads the attention list (so the sync cannot seed a memo it then invalidates),
-and the retention sweep `pruneSyncEvents` runs in `tick()` **after** the profile
+and the retention sweep `pruneSyncEvents` runs in `runNotifyTick()` **after** the profile
 loop, outside every scope. Its one non-row input is NOW — `resolveProviderFacts`
 compares `instantNow()` against the last successful run — so the memo pins the
 tick's first clock reading for that profile; sound because the quantity compared

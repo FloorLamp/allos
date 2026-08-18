@@ -5,6 +5,7 @@
 // profile from the notify tick; hard-deduped to one send per profile per day.
 
 import { db, today } from "../db";
+import { now } from "../clock";
 import { shiftDateStr, zonedDateParts } from "../date";
 import {
   getIntakeItems,
@@ -645,7 +646,7 @@ export function gatherDigestInput(
     // the tick re-labels it at each boundary and the expansion re-scopes at tap, so a
     // morning-born keyboard never offers breakfast items at bedtime.
     ...(() => {
-      const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+      const nowHhmm = zonedDateParts(getTimezone(profileId), now()).hhmm;
       const offered = getOfferedIntakeForSlot(profileId, nowHhmm);
       return {
         offerCount: offered.length,
@@ -1174,7 +1175,7 @@ export async function refreshDigestOfferTail(profileId: number): Promise<void> {
   const pointer = getDigestTailPointer(profileId);
   if (!pointer) return;
   const date = today(profileId);
-  const nowHhmm = zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+  const nowHhmm = zonedDateParts(getTimezone(profileId), now()).hhmm;
 
   if (pointer.date !== date) {
     // Day rollover: yesterday's keyboard must not stay tappable, because its tokens
