@@ -14,8 +14,8 @@ import { hydratedClick } from "./helpers";
 test("exercise detail shows the bodyweight-band strength standard line (#152)", async ({
   page,
 }) => {
-  // Training → Log: clicking a lift on a training log record opens the
-  // per-exercise detail panel, which carries the coaching STANDING line. (#1492
+  // Training → Log: clicking a lift on its canonical activity record opens the
+  // Analyze exercise detail, which carries the coaching STANDING line. (#1492
   // moved this host: Trends → Fitness became the WINDOWED analytics lens — four
   // sections of trend charts — so the full-history explorer that used to carry
   // the panel is gone from it; /training owns the "do" surfaces. Analyze renders
@@ -25,9 +25,7 @@ test("exercise detail shows the bodyweight-band strength standard line (#152)", 
   await page.goto("/training?tab=log");
 
   const main = page.getByRole("main");
-  // The feed is slim rows (#2897): the exercise drill-in buttons live on the
-  // full record card in the reading pane, so select a seeded Leg day session
-  // first (hydratedClick — a pure client toggle right after the goto).
+  // The feed is a slim index: open a seeded Leg day session first.
   const legDayRow = main
     .getByTestId("training-log-row")
     .filter({ hasText: "Leg day" })
@@ -36,10 +34,13 @@ test("exercise detail shows the bodyweight-band strength standard line (#152)", 
   // A COVERED core lift (a dataset barbell lift). The seeded Leg day record
   // carries Back Squat; the drill-in button names the lift it opens.
   const squatDrillIn = page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByRole("button", { name: "Back Squat", exact: true })
     .first(); // first-ok: the pane record's Back Squat drill-in — the lift may repeat across sets, and EVERY button opens the same panel
   await squatDrillIn.click();
+  await expect(page).toHaveURL(
+    /tab=analyze&kind=strength&item=Back(%20|\+)Squat/
+  );
   const standard = main.getByTestId("strength-standard").first(); // first-ok: asserts a strength-standard row renders — order-agnostic presence
   await expect(standard).toBeVisible();
   await expect(standard).toContainText("Strength standard");

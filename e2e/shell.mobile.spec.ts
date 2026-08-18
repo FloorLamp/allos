@@ -268,7 +268,7 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
   }) => {
     // Dropping the bar button did not drop the SHORTCUT: it keeps exactly two
     // homes — the command palette (here, reachable on a phone too) and the
-    // Training Log card's ⋯ "Log again" (pinned by entry-ergonomics.spec.ts). It was
+    // Activity record's ⋯ "Duplicate activity" (pinned by entry-ergonomics.spec.ts). It was
     // deliberately NOT added to the quick-log sheet (#1506 keeps that list to
     // logging actions).
     await page.goto("/"); // the seed has plenty of logged activities

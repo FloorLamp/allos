@@ -551,7 +551,7 @@ export default async function OverviewSection() {
                 </dl>
               </div>
               <div className="flex flex-col items-start gap-2 md:items-end">
-                <TrainingOverviewActions />
+                <TrainingOverviewActions stacked />
                 {nextWorkout.actionHref && (
                   <PendingTextLink
                     href={nextWorkout.actionHref}

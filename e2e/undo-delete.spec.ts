@@ -30,14 +30,11 @@ function cardsByTitle(page: Page, text: string | RegExp) {
     .filter({ hasText: text });
 }
 
-// Open the stored activity for EDIT: select its row into the reading pane
-// (a pure client toggle — hydratedClick closes the pre-hydration window), then
-// the pane header's Edit opens the editor with its Delete button. The old
-// click-the-card-title path is gone (#2897).
+// Open the stored activity's canonical page, then launch its shared workspace.
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
   await hydratedClick(page, row);
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
 }
@@ -45,6 +42,21 @@ async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
 // Confirm the dialog-scoped Delete and await the captureDelete Server Action POST.
 async function confirmDelete(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await settledClick(
+    page,
+    page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+  );
+}
+
+async function deleteFromRecordMenu(page: Page, row: Locator): Promise<void> {
+  await hydratedClick(page, row);
+  await page
+    .getByTestId("training-activity-page")
+    .getByRole("button", { name: "Activity actions" })
+    .click();
+  await page.getByTestId("delete-activity").click();
   await settledClick(
     page,
     page
@@ -66,6 +78,7 @@ async function sweepProbes(page: Page): Promise<void> {
     const row = probes.first(); // first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
     await openEditorFromRow(page, row);
     await confirmDelete(page);
+    await page.goto("/training?tab=log");
     await expect(probes).toHaveCount(n - 1);
   }
 }
@@ -105,24 +118,24 @@ test("delete an activity, then Undo restores it (#30)", async ({ page }) => {
   const title = await createProbe(page);
   const row = cardsByTitle(page, title);
 
-  // Open the editor via row → reading pane → Edit, then Delete (dialog-scoped).
-  await openEditorFromRow(page, row);
-  await confirmDelete(page);
+  // Delete directly from the canonical record's overflow menu.
+  await deleteFromRecordMenu(page, row);
 
-  // The specific probe row is gone and the Undo toast appears.
-  await expect(cardsByTitle(page, title)).toHaveCount(0);
+  // Deletion leaves the now-missing record and offers Undo.
   await expect(page.getByText("Activity deleted.")).toBeVisible();
 
   // Undo restores it (under a NEW id, so we match by title, not id): a "Restored."
   // toast, and the probe row is back on the feed.
   await settledClick(page, page.getByRole("button", { name: "Undo" }));
   await expect(page.getByText("Restored.")).toBeVisible();
+  await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(1);
 
   // Clean up: delete the restored probe for good (no undo) so the shared seed DB is
   // left exactly as the harness seeded it — order-independent for sibling specs.
   await openEditorFromRow(page, cardsByTitle(page, title));
   await confirmDelete(page);
+  await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(0);
 });
 

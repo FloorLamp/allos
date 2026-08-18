@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // A page-level card that groups several related pieces of reusable content.
 // Children own their controls and domain copy; this component owns the shared
@@ -7,6 +8,7 @@ import type { ReactNode } from "react";
 export default function CardGroup({
   title,
   description,
+  tooltip,
   action,
   children,
   className,
@@ -14,6 +16,7 @@ export default function CardGroup({
 }: {
   title: string;
   description?: string;
+  tooltip?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -26,9 +29,12 @@ export default function CardGroup({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-            {title}
-          </h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              {title}
+            </h2>
+            {tooltip ? <InfoTooltipIcon label={tooltip} /> : null}
+          </div>
           {description ? (
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {description}

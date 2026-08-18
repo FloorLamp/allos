@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLatestRef } from "./useLatestRef";
 
 // The modal a11y wiring — initial focus, Escape-to-close, and a Tab focus trap —
@@ -42,18 +42,26 @@ export function useFocusTrap({
   // arrow that changes every render; an effect keyed on it would re-run on every
   // keystroke and yank focus back to the first field mid-typing.
   const onCloseRef = useLatestRef(onClose);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
-  // Initial focus — once, on mount. Prefer the consumer's requested element,
-  // then the first focusable (skipping past nothing — it's the Close button by
-  // DOM order), then the panel itself.
+  // Capture and restore the invoking control for every active episode. Some
+  // overlays remain mounted while hidden, so mount-only focus handling would
+  // neither focus on restore nor return focus on minimize.
   useEffect(() => {
     if (!active) return;
     const panel = panelRef.current;
     if (!panel) return;
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     (initialFocusRef?.current ?? focusablesIn(panel)[0] ?? panel).focus();
-    // panelRef/initialFocusRef are stable refs; `active` only flips on close.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      const restore = restoreFocusRef.current;
+      restoreFocusRef.current = null;
+      if (restore?.isConnected) restore.focus();
+    };
+  }, [active, initialFocusRef, panelRef]);
 
   // Escape-to-close + Tab focus trap. Registered once; reads the latest onClose
   // through the ref so a consumer re-render (e.g. typing) never re-runs this.
@@ -75,7 +83,15 @@ export function useFocusTrap({
         ) {
           return;
         }
+        // A portaled dialog can be visually nested while living outside this
+        // panel in the DOM. Let the closest dialog answer Escape; the parent
+        // must not close underneath it.
+        if (target instanceof Element) {
+          const closestDialog = target.closest('[role="dialog"]');
+          if (closestDialog && closestDialog !== panel) return;
+        }
         e.stopPropagation();
+        e.preventDefault();
         onCloseRef.current();
         return;
       }

@@ -27,10 +27,25 @@ test("live start → set → finish: the record settles at the session's own URL
 
   // The in-gym layout is up…
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await expect(page.getByTestId("minimize-workout")).toHaveCount(1);
+  await expect(page.getByTestId("workout-drag-handle")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Close", exact: true })
+  ).toHaveCount(0);
   // …and the tab has moved to the session's canonical page: the row exists
   // BEFORE the first set (create-at-start), so the session has an address.
   await page.waitForURL(/\/training\/activity\/\d+$/);
   const sessionUrl = page.url();
+
+  // Minimize onto the session record. Its in-progress banner is the same
+  // resume affordance as the app-wide bar and reopens the shared workspace.
+  await page.getByTestId("minimize-workout").click();
+  const inProgress = page.getByTestId("session-in-progress");
+  await expect(inProgress).toBeVisible();
+  await expect(inProgress).toContainText("Resume");
+  await inProgress.click();
+  await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 
   // Log one set through the live form (the coached "Use" seeds set 1).
   await pickActivity(page, "Barbell Bench Press");
@@ -51,9 +66,8 @@ test("live start → set → finish: the record settles at the session's own URL
   await page.getByTestId("recap-save").click();
   await expect(page.getByTestId("live-workout-panel")).toHaveCount(0);
 
-  // Close the editor (the header button — Escape can be swallowed by a
-  // focused combobox) — beneath it is the SAME URL, now the settled record.
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  // The settled editor has one persistent dismissal action in its footer.
+  await page.getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.getByTestId("activity-form")).toHaveCount(0);
   expect(page.url()).toBe(sessionUrl);
   const record = page.getByTestId("training-activity-page");

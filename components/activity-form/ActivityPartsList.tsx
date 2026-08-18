@@ -206,7 +206,7 @@ export default function ActivityPartsList({
               data-testid="activity-part"
               className={`border-b border-black/5 py-3 first:pt-0 last:border-b-0 [--set-schema-top:2.75rem] dark:border-white/5 ${
                 hasActions ? "max-sm:[--set-schema-top:6rem]" : ""
-              } ${stickyFooter ? "-mx-4 px-4 sm:-mx-6 sm:px-6" : "-mx-5 px-5"}`}
+              } ${stickyFooter ? "-mx-4 px-4 sm:-mx-8 sm:px-8" : "-mx-5 px-5"}`}
             >
               {/* Below `sm` this is a TWO-ROW sticky header (#1613): the exercise
                   combobox owns the full first row (a canonical name like "Barbell

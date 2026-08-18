@@ -34,14 +34,20 @@ test("an Analyze sessions row opens the activity's canonical page", async ({
 
   const record = page.getByTestId("training-activity-page");
   await expect(record).toBeVisible();
-  // This is a detail PAGE, not a feed card stranded at its own URL: identity
-  // belongs to the page header, while the card below is the session body and
-  // must not link the title back to the URL already open.
+  await expect(record.getByTestId("activity-icon")).toHaveCount(1);
+  // This is a detail PAGE, not feed-card chrome stranded at its own URL.
   await expect(record.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(record.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await expect(record.getByRole("heading", { name: "Session" })).toBeVisible();
+  await expect(record.getByRole("heading", { name: "Overview" })).toHaveCount(
+    0
+  );
+  const summary = record.getByTestId("activity-summary");
+  await expect(summary).toHaveAttribute("data-density", "detail");
+  await expect(summary).toContainText("Duration");
+  await expect(
+    record.getByTestId("activity-record-body").locator(".card")
+  ).toHaveCount(0);
   await expect(record.getByTestId("activity-detail-link")).toHaveCount(0);
-  // The record IS the log card: its per-exercise details render, sets first.
+  // The page-native body still carries the full per-exercise detail, sets first.
   await expect(record.getByTestId("activity-details")).toBeVisible();
   await expect(record.getByText("Back Squat").first()).toBeVisible(); // first-ok: asserts the exercise renders on the record — order-agnostic
 
@@ -73,15 +79,11 @@ test("an overlapping same-day session announces itself, and opens the merge pick
   });
   try {
     await member.goto("/training?tab=log");
-    await hydratedClick(
+    await followLink(
       member,
       member
         .getByTestId("training-log-row")
-        .filter({ hasText: OVERLAP_KEEPER_TITLE })
-    );
-    await followLink(
-      member,
-      member.getByTestId("activity-pane-open"),
+        .filter({ hasText: OVERLAP_KEEPER_TITLE }),
       /\/training\/activity\/\d+$/
     );
 
@@ -116,12 +118,7 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   const walkRow = page
     .getByTestId("training-log-row")
     .filter({ hasText: ZONE_WALK_TITLE });
-  await hydratedClick(page, walkRow);
-  await followLink(
-    page,
-    page.getByTestId("activity-pane-open"),
-    /\/training\/activity\/\d+$/
-  );
+  await followLink(page, walkRow, /\/training\/activity\/\d+$/);
 
   const record = page.getByTestId("training-activity-page");
   await expect(record).toBeVisible();
@@ -159,19 +156,15 @@ test("a summary-only import says so, instead of leaving a silent short page", as
   // to load. Said only where the source actually answered: its empty telemetry
   // row is the answer.
   await page.goto("/training?tab=log");
-  await hydratedClick(
-    page,
-    page.getByTestId("training-log-row").filter({ hasText: TOTALS_ONLY_TITLE })
-  );
   await followLink(
     page,
-    page.getByTestId("activity-pane-open"),
+    page.getByTestId("training-log-row").filter({ hasText: TOTALS_ONLY_TITLE }),
     /\/training\/activity\/\d+$/
   );
 
   await expect(page.getByTestId("training-activity-page")).toBeVisible();
   await expect(page.getByTestId("activity-totals-only")).toContainText(
-    /recorded totals for this session/
+    /recorded session totals/
   );
   await expect(page.getByTestId("activity-traces")).toHaveCount(0);
   await expect(page.getByTestId("activity-hr-chart")).toHaveCount(0);
@@ -194,9 +187,10 @@ test("the ledger walk: older/newer links traverse adjacent activities", async ({
   await expect(page.getByTestId("activity-newer-link")).toBeVisible();
 });
 
-test("Edit uses the same overlay at desktop and phone widths", async ({
+test("Edit uses the same activity workspace at desktop and phone widths", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/training?tab=analyze&kind=strength&item=Back%20Squat");
   await followLink(
     page,
@@ -208,13 +202,37 @@ test("Edit uses the same overlay at desktop and phone widths", async ({
   await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
   await expect(page.getByTestId("activity-form")).toBeVisible();
   await expect(page.getByTestId("activity-page-dock")).toHaveCount(0);
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  const desktopPanel = await page
+    .getByTestId("activity-overlay-panel")
+    .boundingBox();
+  expect(desktopPanel).not.toBeNull();
+  expect(desktopPanel!.x + desktopPanel!.width).toBe(1440);
+  expect(desktopPanel!.width).toBeLessThan(1440);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByTestId("activity-page-edit").click();
   await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
   await expect(page.getByTestId("activity-form")).toBeVisible();
   await expect(page.getByTestId("activity-page-dock")).toHaveCount(0);
+  const phonePanel = await page
+    .getByTestId("activity-overlay-panel")
+    .boundingBox();
+  expect(phonePanel).not.toBeNull();
+  expect(phonePanel!.x).toBe(0);
+  expect(phonePanel!.width).toBe(390);
+
+  // Mobile Back uses the form's save-aware close request. A blocked edit must
+  // ask before it is discarded, and cancelling restores the Back sentinel.
+  await page.getByTestId("set1-weight").first().fill(""); // first-ok: any incomplete stored set blocks this edit; set 1 is always present
+  await page.goBack();
+  const discard = page.getByTestId("confirm-dialog");
+  await expect(discard).toContainText("Discard unsaved changes?");
+  await discard.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("activity-form")).toBeVisible();
+  await page.goBack();
+  await discard.getByRole("button", { name: "Close anyway" }).click();
+  await expect(page.getByTestId("activity-form")).toHaveCount(0);
 });
 
 test("the overlay closes back onto the same activity", async ({ page }) => {
@@ -226,7 +244,7 @@ test("the overlay closes back onto the same activity", async ({ page }) => {
   );
   const startPath = new URL(page.url()).pathname;
   await page.getByTestId("activity-page-edit").click();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.getByTestId("activity-form")).toHaveCount(0);
   expect(new URL(page.url()).pathname).toBe(startPath);
 });
@@ -263,16 +281,12 @@ test("a session is measured against its own like-for-like peers (#3009)", async 
   });
   try {
     await member.goto("/training?tab=log");
-    await hydratedClick(
+    await followLink(
       member,
       member
         .getByTestId("training-log-row")
         .filter({ hasText: SESSION_PEERS_TITLE })
-        .first() // first-ok: the newest of four same-titled fixture sessions — the subject
-    );
-    await followLink(
-      member,
-      member.getByTestId("activity-pane-open"),
+        .first(), // first-ok: the newest of four same-titled fixture sessions — the subject
       /\/training\/activity\/\d+$/
     );
 

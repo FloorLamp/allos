@@ -74,7 +74,7 @@ function card(opts: {
     },
     foldValues: {},
     routePolyline: null,
-    videos: [],
+    media: [],
   } as unknown as TrainingLogCardData;
 }
 

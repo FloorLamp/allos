@@ -74,11 +74,14 @@ test("the workout dock hydrates for an in-progress session, suppressed on the tr
     await expect(page.getByTestId("workout-dock")).toBeVisible();
 
     // Back on the dashboard, tapping the bar reopens the live editor (the minimize
-    // affordance proves the live overlay is up), and minimizing collapses it back.
+    // affordance proves the live overlay is up) without navigating away, and
+    // minimizing collapses it back.
     await page.goto("/");
     await expect(dock).toBeVisible();
+    const dashboardUrl = page.url();
     await page.getByTestId("workout-dock-open").click();
     await expect(page.getByTestId("minimize-workout")).toBeVisible();
+    expect(page.url()).toBe(dashboardUrl);
     await page.getByTestId("minimize-workout").click();
     await expect(page.getByTestId("workout-dock")).toBeVisible();
   } finally {

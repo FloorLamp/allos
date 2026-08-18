@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import EquipmentRegistryLink from "./EquipmentRegistryLink";
 import type { ActivityType, Equipment } from "@/lib/types";
 import { equipmentForActivity } from "@/lib/activity-equipment";
 
@@ -52,14 +52,9 @@ export default function ActivityEquipmentPicker({
         /equipment now, reached from where gear appears rather than top-level nav.
         The empty-state variant is the bootstrap door (#592): with no gear on file
         this is the only path to /equipment, so we render it instead of hiding. */}
-        <Link
-          href="/equipment"
-          target="_blank"
-          data-testid="activity-equipment-link"
-          className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-        >
+        <EquipmentRegistryLink testId="activity-equipment-link">
           {isEmpty ? "Add equipment →" : "Manage equipment"}
-        </Link>
+        </EquipmentRegistryLink>
       </div>
       {isEmpty ? (
         <p

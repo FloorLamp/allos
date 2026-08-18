@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { ActivityTypeIcon } from "@/components/ui";
+import ActivityPartRows from "@/components/activity/ActivityPartRows";
+import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
+import type { RecentSessionsView } from "@/lib/training-recent-sessions";
 import {
-  recentSessionPartText,
-  type RecentSessionsView,
-} from "@/lib/training-recent-sessions";
+  activityComponentSportNames,
+  activityComponentsHaveCompositeIconIdentity,
+} from "@/lib/activity-icon";
 
 // WHAT YOU DID — the sessions half of Training → Overview's "This week" card
-// (#2566). Presentation only: every value is computed by the Training Log's own
-// card derivation and folded by `recentSessionsView`, so this renders the Log's
-// numbers rather than a second opinion of them.
+// (#2566). The fold chooses which sessions and parts fit; the activity summary
+// and part rows are the same components used by the Log and canonical detail
+// page, so compactness cannot turn into a second presentation vocabulary.
 //
 // It sits INSIDE the week card, under the spine, because it is the same week: the
 // band is the shape, this is the content, and the routine chips below are what is
@@ -46,61 +49,44 @@ export default function RecentSessions({ view }: { view: RecentSessionsView }) {
               className="group flex items-start gap-3"
             >
               <ActivityTypeIcon
-                type={row.type}
-                title={row.title}
-                sportNames={row.sportNames}
+                type={row.card.activity.type}
+                title={row.card.activity.title}
+                sportNames={activityComponentSportNames(
+                  row.card.activity.components
+                )}
+                composite={activityComponentsHaveCompositeIconIdentity(
+                  row.card.activity.components
+                )}
               />
-              <span className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="font-medium text-slate-800 group-hover:text-brand-600 dark:text-slate-100 dark:group-hover:text-brand-400">
-                    {row.title}
+                  <span className="font-semibold text-slate-800 group-hover:text-brand-600 dark:text-slate-100 dark:group-hover:text-brand-400">
+                    {row.card.activity.title}
                   </span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {row.dayLabel}
                   </span>
                 </span>
-                {row.meta.length > 0 && (
-                  <span
-                    data-testid="recent-session-meta"
-                    className="mt-0.5 block text-xs tabular-nums text-slate-600 dark:text-slate-300"
-                  >
-                    {row.meta.join(" · ")}
-                  </span>
-                )}
-              </span>
+                <ActivitySummaryLine
+                  timeText={row.card.timeText}
+                  durationText={row.card.durationText}
+                  distanceText={row.card.distanceText}
+                  speedText={row.card.speedText}
+                  heartRateText={row.card.heartRateText}
+                  calorieText={row.card.calorieText}
+                  intensity={row.card.activity.intensity}
+                  heartRateZone={row.card.activity.heart_rate_zone}
+                  testId="recent-session-meta"
+                />
+              </div>
             </Link>
 
-            {row.parts.length > 0 && (
-              <ul className="mt-1 ml-9 space-y-0.5">
-                {row.parts.map((part, i) => (
-                  <li
-                    key={i}
-                    data-testid="recent-session-part"
-                    className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm"
-                  >
-                    <span className="text-slate-700 dark:text-slate-200">
-                      {part.name}
-                    </span>
-                    {/* A single-effort cardio row can carry no detail at all
-                        (the header already states its distance/duration) — an
-                        empty span would leave a stray gap. */}
-                    {recentSessionPartText(part) && (
-                      <span className="tabular-nums text-slate-500 dark:text-slate-400">
-                        {recentSessionPartText(part)}
-                      </span>
-                    )}
-                  </li>
-                ))}
-                {row.moreParts > 0 && (
-                  <li
-                    data-testid="recent-session-more-parts"
-                    className="text-xs text-slate-500 dark:text-slate-400"
-                  >
-                    +{row.moreParts} more
-                  </li>
-                )}
-              </ul>
-            )}
+            <ActivityPartRows
+              parts={row.parts}
+              remainingParts={row.moreParts}
+              density="compact"
+              className="mt-1 ml-9"
+            />
           </li>
         ))}
       </ul>

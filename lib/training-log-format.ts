@@ -168,13 +168,13 @@ export function judgeTargetDetail(
 }
 
 export interface ExerciseSummary {
-  text: string; // e.g. "200lb × 5 × 3", "150lb × 8, 8, 7", or "1:00 × 3" (timed)
+  text: string; // e.g. "200 lb × 5 × 3", "150 lb × 8, 8, 7", or "1:00 × 3" (timed)
   status: SetStatus;
   totalKg: number; // total weight lifted (kg) = Σ weight × reps (0 for timed)
 }
 
 function fmtW(kg: number, unit: WeightUnit): string {
-  return `${round(kgTo(kg, unit), 1)}${unit}`;
+  return `${round(kgTo(kg, unit), 1)} ${unit}`;
 }
 
 // Render a per-set "effort" value: reps as a plain number, hold time as m:ss.
@@ -185,10 +185,10 @@ const timeFmt = (v: number | null) => formatSeconds(v);
  * Build the set text for a single column of (weight, value) pairs, grouping
  * consecutive sets of the same weight. `value` is reps for rep-based lifts or
  * seconds for timed holds, rendered by `fmtVal`:
- *  - uniform value (≥2 sets): "200lb × 5 × 3" / "1:00 × 3"
- *  - varying value:           "150lb × 8, 8, 7"
- *  - changing weight:         "100lb × 6, 5, 95lb × 8"
- * Bodyweight (0/null weight) drops the "0lb ×" prefix.
+ *  - uniform value (≥2 sets): "200 lb × 5 × 3" / "1:00 × 3"
+ *  - varying value:           "150 lb × 8, 8, 7"
+ *  - changing weight:         "100 lb × 6, 5, 95 lb × 8"
+ * Bodyweight (0/null weight) drops the "0 lb ×" prefix.
  */
 function setsText(
   rows: { weight: number | null; value: number | null }[],
@@ -217,8 +217,8 @@ function setsText(
 
 /**
  * Summarize an exercise's sets, grouping consecutive sets of the same weight:
- *  - uniform reps (≥2 sets): "200lb × 5 × 3"
- *  - varying reps:           "150lb × 8, 8, 7"
+ *  - uniform reps (≥2 sets): "200 lb × 5 × 3"
+ *  - varying reps:           "150 lb × 8, 8, 7"
  *  - timed holds:            "1:00 × 3" (reps replaced by m:ss)
  *
  * Status compares actual reps against declared targets (see SetStatus): sets
@@ -274,7 +274,7 @@ export function summarizeExercise(
  * Summarize per-side (asymmetric) sets by summarizing each side independently
  * with the same grouping as the bilateral path, joined with " · " so the L/R
  * difference stays visible and compact:
- * "L 14lb × 10, 10, 9 · R 12lb × 8 × 3", or timed "L 0:45 × 3 · R 0:40 × 3".
+ * "L 14 lb × 10, 10, 9 · R 12 lb × 8 × 3", or timed "L 0:45 × 3 · R 0:40 × 3".
  */
 function summarizePerSide(
   ordered: SetRow[],

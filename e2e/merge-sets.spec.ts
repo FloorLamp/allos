@@ -18,13 +18,9 @@ test("merging re-parents the discarded row's sets onto the keeper, shown in the 
   await expect(keeperRow).toHaveCount(1);
   await expect(page.getByText("Set merge dupe")).toBeVisible();
 
-  // Select the keeper's row into the reading pane (#2897 slim feed — a pure
-  // client toggle, so hydratedClick): the full record card with its exercise
-  // rows and overflow menu renders there, not on the feed.
+  // Open the keeper's canonical record, which owns its exercise rows and menu.
   await hydratedClick(page, keeperRow);
-  const keeperCard = page
-    .getByTestId("training-log-reading-pane")
-    .locator(".card", { hasText: "Set merge keeper" });
+  const keeperCard = page.getByTestId("training-activity-page");
   await expect(keeperCard).toBeVisible();
   // Before the merge the keeper shows only its own exercise. Target the
   // exercise-progression button by its EXACT accessible name — a substring getByText
@@ -34,7 +30,7 @@ test("merging re-parents the discarded row's sets onto the keeper, shown in the 
     keeperCard.getByRole("button", { name: "Bench Press", exact: true })
   ).toBeVisible();
 
-  // Open the pane card's overflow (⋯) menu → "Merge with…" → pick the dupe.
+  // Open the record's overflow (⋯) menu → "Merge with…" → pick the dupe.
   await keeperCard.getByRole("button", { name: "Activity actions" }).click();
   await page.getByTestId("merge-with").click();
   await page
@@ -56,17 +52,11 @@ test("merging re-parents the discarded row's sets onto the keeper, shown in the 
   // The discarded row is merged away; the keeper survives.
   await expect(page.getByText("Set merge dupe")).toHaveCount(0);
 
-  // Reload for a deterministic server render: the keeper now carries ALL three sets —
-  // its own plus the two re-parented from the discarded row (none lost). The reload
-  // drops the pane selection, so re-select the keeper's row first.
+  // Reload the canonical record for a deterministic server render: the keeper now
+  // carries ALL three sets — its own plus the two re-parented from the discarded
+  // row (none lost).
   await page.reload();
-  await hydratedClick(
-    page,
-    page.locator('[id^="activity-"]').filter({ hasText: "Set merge keeper" })
-  );
-  const merged = page
-    .getByTestId("training-log-reading-pane")
-    .locator(".card", { hasText: "Set merge keeper" });
+  const merged = page.getByTestId("training-activity-page");
   // Exact role-name locators again, so the fault badge's echo of an exercise name
   // can't create a strict-mode ambiguity.
   await expect(

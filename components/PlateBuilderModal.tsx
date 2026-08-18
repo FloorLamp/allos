@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconX, IconRotateClockwise } from "@tabler/icons-react";
 import type { Equipment } from "@/lib/types";
@@ -15,6 +15,7 @@ import {
   barbellTotal,
 } from "@/lib/plates";
 import { createEquipmentAction } from "@/app/(app)/equipment/actions";
+import { useFocusTrap } from "@/components/useFocusTrap";
 
 // select() sentinel for the "create a custom barbell" row at the bottom.
 const NEW_BAR = "__new__";
@@ -241,6 +242,9 @@ export default function PlateBuilderModal({
   onCreated: (e: Equipment) => void;
   onClose: () => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useFocusTrap({ panelRef, onClose });
   // Only equipment with a known weight can act as a bar.
   const bars = useMemo(
     () => equipment.filter((e) => e.weight_kg != null),
@@ -365,11 +369,19 @@ export default function PlateBuilderModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-xl bg-surface p-4 shadow-xl sm:p-5"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="w-full max-w-md rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+          <h2
+            id={titleId}
+            className="text-lg font-bold text-slate-900 dark:text-slate-100"
+          >
             Plate builder
           </h2>
           <button

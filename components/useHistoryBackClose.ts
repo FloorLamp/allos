@@ -20,7 +20,7 @@ import { useCallback, useEffect, useRef } from "react";
 // deliberately left behind (one inert Back stop) instead.
 export function useHistoryBackClose(
   active: boolean,
-  onClose: () => void,
+  onClose: () => void | boolean | Promise<void | boolean>,
   enabled?: () => boolean
 ) {
   // Callers pass inline closures; keep the latest without retriggering the
@@ -39,7 +39,14 @@ export function useHistoryBackClose(
     window.history.pushState({ backClose: true }, "");
     const onPop = () => {
       closedByBack = true;
-      onCloseRef.current();
+      void Promise.resolve(onCloseRef.current()).then((closed) => {
+        if (closed !== false) return;
+        // A save-aware close can be cancelled by its confirmation. Restore the
+        // sentinel that this Back consumed so the next Back still belongs to
+        // the open surface rather than unexpectedly leaving the page.
+        closedByBack = false;
+        window.history.pushState({ backClose: true }, "");
+      });
     };
     window.addEventListener("popstate", onPop);
     return () => {

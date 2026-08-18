@@ -1,8 +1,7 @@
 "use client";
 
-import { useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { IconChevronDown } from "@tabler/icons-react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
@@ -11,31 +10,23 @@ import type { PlateauFormHint } from "@/lib/rule-findings";
 import type { Equipment } from "@/lib/types";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
 import { useLockBodyScroll } from "./useLockBodyScroll";
+import { useFocusTrap } from "./useFocusTrap";
 import {
-  OverlayDragHandle,
-  useOverlayDrag,
+  OVERLAY_DRAG_HANDLE_BAR,
+  OVERLAY_DRAG_HANDLE_HIT,
   OVERLAY_SCRIM_TINT_SM,
+  useOverlayDrag,
 } from "./overlay";
 
-// Chrome around the shared ActivityForm. Used everywhere the form isn't docked
-// into a page column (e.g. the dashboard "Log activity" button). Full-page on
-// mobile; a centered modal from the sm breakpoint up.
+// The one activity workspace around the shared ActivityForm. Every create, edit,
+// repeat, and live entry uses it: full-screen on mobile and a right drawer from
+// the sm breakpoint up. Pages never re-parent the form into their own layout.
 //
-// ── This is the DOCK, and it is not a sheet (issue #1428's decision rule) ────
-//
-// It consumes the same overlay primitives as BottomSheet and the nav drawer —
-// one slide token pair, one scrim tint, one drag handle, one recognizer (#1469)
-// — and it resolves the shared swipe-down gesture DIFFERENTLY, which is the
-// whole point of that convergence:
-//
-//   sheet: swipe down ⇒ DISCARD          dock: swipe down ⇒ MINIMIZE
+// ── This is a persistent workspace, not a transient sheet ───────────────────
 //
 // A live workout runs for an hour, survives navigation as the minimized bar, and
-// "away" means STILL RUNNING. So the drag is wired to `onMinimize` and is
-// DISABLED outright when there is no minimize to reach (a retro log/edit): the
-// gesture never falls back to `onClose`, because a swipe that silently discards
-// an in-progress workout is exactly the destructive-gesture class this app
-// refuses. The dock never becomes discardable.
+// "away" means STILL RUNNING. On mobile its minimize bar supports both a click
+// and a downward drag; both park the session instead of closing it.
 export default function ActivityOverlay({
   units,
   suggestions,
@@ -56,6 +47,8 @@ export default function ActivityOverlay({
   hidden = false,
   onMinimize,
   onClose,
+  onCloseRequestReady,
+  onLiveFinished,
   onDeleted,
 }: {
   units: UnitPrefs;
@@ -76,27 +69,49 @@ export default function ActivityOverlay({
   deloadContext: FormDeloadContext;
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
-  // Minimized to the app-wide dock (#921): the overlay stays MOUNTED (so the form's
+  // Minimized to the app-wide bar (#921): the workspace stays MOUNTED (so the form's
   // rest timer / elapsed clock keep running) but is display:none, and the page
   // behind is unlocked. The bar is the restore affordance.
   hidden?: boolean;
-  // When set (a live session), the backdrop tap + the header chevron MINIMIZE to the
-  // dock instead of unmounting. Absent ⇒ the overlay closes normally.
+  // When set (a live session), the backdrop tap and minimize bar park the
+  // workspace instead of unmounting it. Absent ⇒ it closes normally.
   onMinimize?: () => void;
   onClose: () => void;
+  onCloseRequestReady?: (
+    requestClose: ((beforeClose?: () => void) => Promise<boolean>) | null
+  ) => void;
+  onLiveFinished?: () => void;
   onDeleted?: (id: number) => void;
 }) {
+  const [workoutRunning, setWorkoutRunning] = useState(live);
+  const minimizeRunningWorkout = workoutRunning ? onMinimize : undefined;
+  const panelRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLButtonElement>(null);
+  const dismissWorkspace = workoutRunning && onMinimize ? onMinimize : onClose;
+  const closeRequestRef =
+    useRef<(beforeClose?: () => void) => void | Promise<boolean>>(
+      dismissWorkspace
+    );
+  const registerCloseRequest = useCallback(
+    (requestClose: ((beforeClose?: () => void) => Promise<boolean>) | null) => {
+      closeRequestRef.current = requestClose ?? dismissWorkspace;
+      onCloseRequestReady?.(requestClose);
+    },
+    [dismissWorkspace, onCloseRequestReady]
+  );
+
   // Lock the page behind only while the overlay is actually visible; a minimized
   // (hidden) overlay must not trap scroll on the page the user is now browsing.
   useLockBodyScroll(!hidden);
+  useFocusTrap({
+    panelRef,
+    onClose: () => closeRequestRef.current(),
+    active: !hidden,
+  });
 
-  const panelRef = useRef<HTMLDivElement>(null);
-  const handleRef = useRef<HTMLDivElement>(null);
-
-  // ── The one shared primitive this surface deliberately does NOT take ────────
+  // ── The shared motion primitive this surface deliberately does NOT take ─────
   //
-  // The dock consumes the whole overlay set — scrim tint, panel chrome, the drag
-  // handle, the recognizer, the reduced-motion posture — EXCEPT the mount slide,
+  // The workspace consumes the shared scrim and chrome but not the mount slide,
   // and that exception is load-bearing rather than lazy.
   //
   // This panel is a full-height (`min-h-full`) child of its own SCROLL container,
@@ -112,65 +127,57 @@ export default function ActivityOverlay({
   // A mount animation would also be inconsistent here in a way it is not on a
   // sheet: minimizing HIDES this element rather than unmounting it (the rest
   // timer has to keep running), so restoring it could never replay the slide.
-  // The dock arrives instantly, on purpose. See docs/internals/overlays.md.
+  // The drawer arrives instantly, on purpose. See docs/internals/overlays.md.
 
-  // Swipe down to MINIMIZE — the shared recognizer, the dock's own outcome.
-  // Disabled when there is no minimize to reach, so the gesture can never fall
-  // through to a discard (see the header comment).
-  // No `suppressMotion` to consume: this surface renders no motion class (see
-  // above), so there is no keyframe for a drag to fight over.
   useOverlayDrag({
     panelRef,
     grabRef: handleRef,
     direction: "down",
-    onOutcome: () => onMinimize?.(),
-    // The panel is PARKED by a minimize, not unmounted — it comes straight back
-    // with the session still live, so it must return to its resting transform.
-    // Which is also why it passes no `panelMounted` (#2725): this element has no
-    // unmount for the motion latch to expire on, and it needs none — the commit
-    // clears the latch itself, and the dock renders no motion class anyway.
+    onOutcome: () => minimizeRunningWorkout?.(),
+    // Minimizing parks this panel instead of unmounting it. Clear the drag
+    // transform before hiding so the restored workspace returns at rest.
     commitSettle: "rest",
-    enabled: Boolean(onMinimize) && !hidden,
+    enabled: Boolean(minimizeRunningWorkout) && !hidden,
   });
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-surface sm:p-8 ${OVERLAY_SCRIM_TINT_SM} ${
+      data-testid="activity-workspace"
+      className={`fixed inset-0 z-50 flex items-start justify-end overflow-y-auto overscroll-contain bg-surface ${OVERLAY_SCRIM_TINT_SM} ${
         hidden ? "hidden" : ""
       }`}
-      onClick={onClose}
+      onClick={() => closeRequestRef.current()}
     >
       {/* Bottom padding is plain p-4: the form's sticky footer re-spans it and
           carries the safe-area inset itself. */}
       <div
         ref={panelRef}
         data-testid="activity-overlay-panel"
-        className="min-h-full w-full bg-surface p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:min-h-0 sm:max-w-lg sm:rounded-xl sm:p-6 sm:pt-0 sm:shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={
+          workoutRunning
+            ? "Workout in progress"
+            : editData
+              ? "Edit activity"
+              : "New activity"
+        }
+        tabIndex={-1}
+        className="min-h-full w-full bg-surface p-4 pt-[max(1rem,env(safe-area-inset-top))] outline-hidden sm:max-w-2xl sm:border-l-2 sm:border-slate-300 sm:p-8 sm:pt-0 sm:shadow-2xl sm:dark:border-white/25"
         onClick={(e) => e.stopPropagation()}
       >
-        {onMinimize && (
-          <div className="-mt-1 mb-1 grid grid-cols-[1fr_auto_1fr] items-center sm:mt-0">
-            {/* The drag affordance sits centred over the panel and the explicit
-                button stays on the right: the gesture is a shortcut, never the
-                only way to minimize a running workout. */}
-            <span aria-hidden />
-            <OverlayDragHandle
-              handleRef={handleRef}
-              testId="workout-drag-handle"
-            />
+        {minimizeRunningWorkout && (
+          <div className="-mt-4 flex h-12 items-center justify-center sm:hidden">
             <button
+              ref={handleRef}
               type="button"
-              onClick={onMinimize}
+              onClick={minimizeRunningWorkout}
               data-testid="minimize-workout"
               aria-label="Minimize workout"
               title="Minimize workout"
-              className="justify-self-end rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
+              className={OVERLAY_DRAG_HANDLE_HIT}
             >
-              <IconChevronDown
-                className="h-5 w-5"
-                stroke={1.75}
-                aria-hidden="true"
-              />
+              <span className={OVERLAY_DRAG_HANDLE_BAR} />
             </button>
           </div>
         )}
@@ -186,12 +193,17 @@ export default function ActivityOverlay({
           prefill={prefill}
           initialDate={initialDate}
           live={live}
+          onLiveFinished={() => {
+            setWorkoutRunning(false);
+            onLiveFinished?.();
+          }}
           adoptRowId={adoptRowId}
           onRowOwned={onRowOwned}
           deloadContext={deloadContext}
           recoveringContext={recoveringContext}
           plateauHints={plateauHints}
-          onClose={onClose}
+          onClose={dismissWorkspace}
+          onCloseRequestReady={registerCloseRequest}
           onDeleted={onDeleted}
           stickyFooter
         />

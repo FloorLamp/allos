@@ -39,7 +39,7 @@ export interface ResolvedTrainingLogFeed {
 
 export interface TrainingLogFeedContext extends ResolvedTrainingLogFeed {
   // Whether the acting login can write to the ACTIVE profile — gates the per-card
-  // form-check video affordances (#1224). The server actions re-gate regardless.
+  // activity-media affordances (#1224). The server actions re-gate regardless.
   canWriteVideos: boolean;
   multi: boolean;
   actingProfileId: number;

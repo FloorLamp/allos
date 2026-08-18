@@ -262,9 +262,7 @@ test.describe("Weather & UV integration (#1172)", () => {
         .filter({ hasText: "Cycling" })
         .first(); // first-ok: fixture-owned single seeded ride
       await hydratedClick(member, rideRow);
-      const rideCard = member
-        .getByTestId("training-log-reading-pane")
-        .locator(".card", { hasText: "Cycling" });
+      const rideCard = member.getByTestId("training-activity-page");
       await expect(rideCard).toBeVisible();
       // Rendered in the LOGIN's scale (the fixture login reads Fahrenheit), which is
       // the point: the stamp is a display concern over a canonical °C reading.

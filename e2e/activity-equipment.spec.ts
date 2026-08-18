@@ -20,9 +20,7 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
     .first(); // first-ok: the seeded "Zone 2 bike" activity row (filtered by its unique title)
   await expect(row).toBeVisible();
   await hydratedClick(page, row);
-  const card = page
-    .getByTestId("training-log-reading-pane")
-    .locator(".card", { hasText: "Zone 2 bike" });
+  const card = page.getByTestId("training-activity-page");
   await expect(card).toBeVisible();
 
   // Session gear is quiet metadata in the card's third row, not a standalone
@@ -38,7 +36,7 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
   ).toBe(true);
 
   // Cycling titles lead to the canonical activity detail. The card's separate Edit
-  // action still opens the legacy editor with the linked gear preloaded — a real
+  // action still opens the shared editor with the linked gear preloaded — a real
   // equipment id is selected, labelled "Road Bike".
   await card.getByRole("button", { name: "Activity actions" }).click();
   await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
@@ -73,7 +71,7 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
   await expect(row).toBeVisible();
   await hydratedClick(page, row);
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
   const select = page.getByTestId("activity-equipment-select");
@@ -126,6 +124,10 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     await expect(door).toBeVisible();
     await expect(door).toHaveText(/Add equipment/);
     await expect(door).toHaveAttribute("href", "/equipment");
+    await expect(door).not.toHaveAttribute("target", "_blank");
+    await door.click();
+    await expect(page).toHaveURL(/\/equipment$/);
+    await expect(page.getByTestId("activity-form")).toHaveCount(0);
   } finally {
     await page.context().close();
   }
@@ -185,12 +187,12 @@ test("the strength picker creates and selects a travel machine without losing th
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();
 
-  // The full-registry door is always present and opens in a NEW TAB, so the
-  // in-progress workout is never navigated away from.
+  // The full-registry door is ordinary same-app navigation. The activity is
+  // already autosaved, so it does not need a surprise second tab.
   const door = page.getByTestId("strength-equipment-link");
   await expect(door).toBeVisible();
   await expect(door).toHaveAttribute("href", "/equipment");
-  await expect(door).toHaveAttribute("target", "_blank");
+  await expect(door).not.toHaveAttribute("target", "_blank");
 
   // Open the compact in-form quick-add.
   await page.getByTestId("strength-equipment-add").click();
@@ -242,6 +244,7 @@ test("the strength picker creates and selects a travel machine without losing th
       .getByRole("dialog")
       .getByRole("button", { name: "Delete", exact: true })
   );
+  await page.goto("/training?tab=log");
   await expect(
     page
       .getByRole("main")

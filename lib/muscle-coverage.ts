@@ -126,35 +126,47 @@ export interface MuscleCoverageContribution {
   activityId: number | null;
   credit: number;
   role: "primary" | "secondary";
+  count: number;
 }
 
 /**
  * The evidence behind `coverageFromSets`, using the exact same catalog identity,
  * warm-up exclusion, window, and credit constants. Overview's per-muscle
- * drill-in formats these rows; it never tries to reverse-engineer the aggregate.
+ * drill-in formats these rows; repeated sets from the same activity are grouped
+ * by exercise, role, and credit so the UI does not repeat identical evidence.
  */
 export function coverageContributions(
   sets: CoverageSet[],
   today: string,
   windowDays?: number
 ): Map<MuscleId, MuscleCoverageContribution[]> {
-  const out = new Map<MuscleId, MuscleCoverageContribution[]>();
+  const grouped = new Map<MuscleId, Map<string, MuscleCoverageContribution>>();
   const add = (
     muscle: MuscleId,
     set: CoverageSet,
     credit: number,
     role: MuscleCoverageContribution["role"]
   ) => {
-    const rows = out.get(muscle) ?? [];
-    rows.push({
+    const rows = grouped.get(muscle) ?? new Map();
+    const activityId = set.activityId ?? null;
+    const key = [activityId ?? "", set.date, set.exercise, role, credit].join(
+      "\u0000"
+    );
+    const existing = rows.get(key);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+    rows.set(key, {
       muscle,
       exercise: set.exercise,
       date: set.date,
-      activityId: set.activityId ?? null,
+      activityId,
       credit,
       role,
+      count: 1,
     });
-    out.set(muscle, rows);
+    grouped.set(muscle, rows);
   };
 
   for (const set of sets) {
@@ -173,13 +185,16 @@ export function coverageContributions(
     }
   }
 
-  for (const rows of out.values()) {
+  const out = new Map<MuscleId, MuscleCoverageContribution[]>();
+  for (const [muscle, contributions] of grouped) {
+    const rows = [...contributions.values()];
     rows.sort(
       (a, b) =>
         b.date.localeCompare(a.date) ||
         a.exercise.localeCompare(b.exercise) ||
         b.credit - a.credit
     );
+    out.set(muscle, rows);
   }
   return out;
 }

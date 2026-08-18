@@ -3,8 +3,22 @@ import {
   activityDisclosureSummary,
   importedActivityDetails,
   importedActivityStats,
+  relativeEffortPresentation,
   type ImportedActivityMetrics,
 } from "@/lib/activity-import-details";
+
+describe("relativeEffortPresentation", () => {
+  it("names a known provider and falls back cleanly when provenance is unknown", () => {
+    expect(relativeEffortPresentation(3, "Strava · edited")).toEqual({
+      label: "Strava effort 3",
+      help: "Strava calls this Relative Effort: an estimate of cardiovascular load from heart-rate intensity and duration, not a 1–10 rating.",
+    });
+    expect(relativeEffortPresentation(3)).toEqual({
+      label: "Effort 3",
+      help: "An estimate of cardiovascular load based on heart-rate intensity and duration. It is not a 1–10 effort rating.",
+    });
+  });
+});
 
 const FULL: ImportedActivityMetrics = {
   avg_hr: 148,

@@ -11,9 +11,9 @@ import {
   deleteActivityVideoCore,
   getActivityVideos,
 } from "@/lib/activity-video-write";
-import type { ActivityVideoView } from "@/components/activity/ActivityVideoStrip";
+import type { ActivityMediaView } from "@/components/activity/ActivityMediaStrip";
 
-// Server Actions for the TRAINING form-check video domain (#1224 phase 1). The
+// Server Actions for the TRAINING activity-media domain (#1224 phase 1). The
 // whole gate shape lives here (auth-blind cores below): requireWriteAccess →
 // parse/validate → ingestVideo (sniff + caps, never the client type) → poster
 // strip via the photo pipeline → domain write core → revalidate. Active-profile
@@ -99,17 +99,17 @@ export async function deleteActivityVideoAction(
 // surface, and matching the gate of the actions beside it keeps this file's auth
 // tier uniform (#319). Profile-scoped by the core query, so a forged activity id
 // returns nothing rather than another profile's clips.
-export async function listActivityVideosAction(
+export async function listActivityMediaAction(
   activityId: number
 ): Promise<
-  { ok: true; videos: ActivityVideoView[] } | { ok: false; error: string }
+  { ok: true; media: ActivityMediaView[] } | { ok: false; error: string }
 > {
   const { profile } = await requireWriteAccess();
   if (!Number.isInteger(activityId) || activityId <= 0)
     return { ok: false, error: "That activity is no longer available." };
   return {
     ok: true,
-    videos: getActivityVideos(profile.id, activityId).map((v) => ({
+    media: getActivityVideos(profile.id, activityId).map((v) => ({
       id: v.id,
       exercise: v.exercise,
       caption: v.caption,

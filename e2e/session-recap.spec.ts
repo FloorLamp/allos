@@ -49,7 +49,7 @@ async function startLiveSession(page: Page, title: string) {
 async function openRowForEdit(page: Page, row: Locator) {
   await hydratedClick(page, row);
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
 }

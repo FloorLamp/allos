@@ -32,7 +32,7 @@ async function pickActivity(page: Page, name: string) {
 //  1. Command-palette inline quick-log: `weight 84.3` parses (pure
 //     parseQuickLog), previews, and Enter commits it through paletteQuickLog →
 //     insertBodyMetric (the same write the Body form uses).
-//  2. Repeat-last: a card's "Log again" opens a CREATE form pre-filled from the
+//  2. Repeat-last: a card's "Duplicate activity" opens a CREATE form pre-filled from the
 //     stored activity; the seeded, complete session auto-saves as a NEW row.
 //  3. Bulk table delete + undo: selecting rows in Data → Manage deletes them
 //     through captureDelete (per row) and one "Undo" restores the whole batch.
@@ -69,7 +69,7 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
   await expect(weightCell).toContainText("84.3");
 });
 
-test("'Log again' pre-fills a create form that saves a new activity (#29)", async ({
+test("'Duplicate activity' pre-fills a create form that saves a new activity (#29)", async ({
   page,
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
@@ -81,25 +81,26 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
   await expect(titleRows.first()).toBeVisible(); // first-ok: the "Training Log merge keeper" row (filtered) — one match
   const before = await titleRows.count();
 
-  // Select the record into the reading pane (#2897), then its overflow (⋯)
-  // menu → "Log again".
+  // Open the canonical record, then use its overflow (⋯) menu → "Duplicate activity".
   await hydratedClick(
     page,
     titleRows.first() // first-ok: the "Training Log merge keeper" row (filtered) — one match
   );
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByRole("button", { name: "Activity actions" })
     .click();
-  await page.getByTestId("log-again").click();
+  await expect(page.getByTestId("delete-activity")).toBeVisible();
+  await page.getByTestId("duplicate-activity").click();
 
   // The editor opens pre-filled — its heading carries the source title.
   await expect(
     page.getByRole("heading", { name: "Training Log merge keeper" })
   ).toBeVisible();
 
-  // The prefilled, complete session auto-saves as a NEW row (dated today), so a
-  // second row with the same title appears on the feed.
+  // The prefilled, complete session auto-saves as a NEW row (dated today). Return
+  // to the log to verify that a second row with the same title was created.
+  await page.goto("/training?tab=log");
   await expect(titleRows).toHaveCount(before + 1);
 
   // Clean up the row this test just created: the editor is still open on it, so
@@ -114,6 +115,7 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
+  await page.goto("/training?tab=log");
   await expect(titleRows).toHaveCount(before);
 });
 
@@ -145,10 +147,13 @@ test("Training Log actions share the search toolbar and stay outside the editor 
     "href",
     /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
   );
-  // The weekly-routine chips left this row for Overview/Plan (#2892): the row
-  // carries the cadence strip alone now.
+  // The weekly-routine chips remain on Overview/Plan (#2892); this row carries
+  // only the literal weekly summary and recent cadence.
   const routineRow = page.getByTestId("training-log-routine-row");
   await expect(routineRow.getByText("Weekly routine")).toHaveCount(0);
+  await expect(page.getByTestId("training-log-week-summary")).toContainText(
+    /\d+ sessions? · \d+\/7 days active/
+  );
 
   // The longer window is reserved for the largest practical layout. At an
   // intermediate desktop width, the strip contracts to its newest 14 days.
@@ -260,7 +265,7 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   // EDIT mode from there.
   await hydratedClick(page, pushRow);
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
 
@@ -333,12 +338,11 @@ test("editing cardio duration updates the parent session total", async ({
     .filter({ hasText: "Intervals" })
     .first(); // first-ok: the "Intervals" activity row (filtered by its title) — order-agnostic
   await expect(row).toBeVisible();
-  // Select into the reading pane, then edit from there (#2897). The pane stays
-  // on this record across editor open/close, so the RESTORE below re-enters
-  // through the pane's Edit — a second row click would toggle the pane away.
+  // Open the canonical record and edit it there. Closing the workspace returns
+  // to the same record, so the restore can use its Edit button again.
   await hydratedClick(page, row);
   const paneEdit = page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit");
   await paneEdit.click();
 
@@ -346,15 +350,15 @@ test("editing cardio duration updates the parent session total", async ({
   await expect(duration).toHaveValue("28");
   await duration.fill("35");
   await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(row.getByTestId("activity-summary-row")).toContainText("35 min");
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByTestId("activity-summary")).toContainText("35 min");
 
   // Restore the shared seed row so other specs remain order-independent.
   await paneEdit.click();
   await page.getByTestId("cardio-duration").fill("28");
   await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(row.getByTestId("activity-summary-row")).toContainText("28 min");
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByTestId("activity-summary")).toContainText("28 min");
 });
 
 test("logging a manual cardio activity auto-fills an editable estimated-calorie value (#151)", async ({
@@ -456,17 +460,18 @@ test("the activity form keeps workout entry primary and context visible across b
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
 
-  // This test targets the DOCKED editor variant. The #979 registration race is
-  // structurally gone with the reading pane (#2897): the pane renders only
-  // after the SAME isDesktop settle that registers the dock, so by the time
-  // its Edit button exists, an edit opened from it always docks.
+  // The row opens its canonical page; Edit always uses the shared activity
+  // workspace rather than re-parenting the form into the Training Log.
   await hydratedClick(page, pushRow);
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
+  const workspace = page.getByTestId("activity-workspace");
+  const drawer = page.getByTestId("activity-overlay-panel");
+  await expect(workspace).toBeVisible();
+  await expect(drawer).toBeVisible();
   const header = page.getByTestId("activity-form-header");
-  await expect(header).toHaveCSS("padding-top", "20px");
 
   // The single visible title is editable in place; there is no duplicate Name
   // field beneath it. Its desktop header stays with a long docked form.
@@ -496,7 +501,7 @@ test("the activity form keeps workout entry primary and context visible across b
   expect(await header.evaluate((node) => getComputedStyle(node).position)).toBe(
     "sticky"
   );
-  // padding-top 20px is already pinned by the docked-open loop above.
+  // The workspace header keeps a stable top and bottom inset.
   await expect(header).toHaveCSS("padding-bottom", "20px");
 
   // Workout rows use separators instead of nested cards, session metadata is
@@ -516,32 +521,28 @@ test("the activity form keeps workout entry primary and context visible across b
     formBox!.x + formBox!.width
   );
   const headerBox = await header.boundingBox();
-  const dockBox = await page.getByTestId("activity-editor-dock").boundingBox();
-  const firstTrainingLogCardBox = await page
-    .getByRole("main")
-    .locator('[id^="activity-"]')
-    .first() // first-ok: any activity card, measured only for its header bounding box — order-agnostic
-    .boundingBox();
+  const drawerBox = await drawer.boundingBox();
+  const viewport = page.viewportSize();
   expect(headerBox).not.toBeNull();
-  expect(dockBox).not.toBeNull();
-  expect(firstTrainingLogCardBox).not.toBeNull();
-  expect(Math.abs(dockBox!.y - firstTrainingLogCardBox!.y)).toBeLessThanOrEqual(
-    1
-  );
+  expect(drawerBox).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(drawerBox!.x + drawerBox!.width).toBe(viewport!.width);
+  expect(drawerBox!.width).toBeLessThan(viewport!.width);
+  // The drawer itself grows with the long form. Its surface must continue behind
+  // content below the first viewport instead of letting the form spill over a
+  // viewport-height background.
+  expect(drawerBox!.height).toBeGreaterThan(viewport!.height);
   expect(headerBox!.x).toBe(partBox!.x);
   expect(headerBox!.x + headerBox!.width).toBe(partBox!.x + partBox!.width);
-  expect(headerBox!.y).toBeLessThanOrEqual(dockBox!.y + 2);
+  expect(headerBox!.y).toBeLessThanOrEqual(drawerBox!.y + 2);
 
-  // The toolbar scrolls away inside this pane; neither the pane nor the form's
-  // sticky header retains a top offset afterward.
-  const editorScroll = page.getByTestId("activity-editor-scroll");
-  await expect(editorScroll).toHaveCSS("top", "0px");
+  // The workspace owns the scroll; the sticky form header stays at its top.
+  const editorScroll = workspace;
   await editorScroll.evaluate((node) => {
     node.scrollTop = 100;
   });
   const [scroller, stickyHeader] = await settledBoxes([editorScroll, header]);
   expect(stickyHeader.y - scroller.y).toBeLessThanOrEqual(1);
-  await expect(header).toHaveCSS("padding-top", "20px");
   await editorScroll.evaluate((node) => {
     node.scrollTop = 0;
   });
@@ -563,6 +564,13 @@ test("the activity form keeps workout entry primary and context visible across b
   expect(inputStyles.map((style) => style.height)).toEqual(
     inputStyles.map(() => inputStyles[0].height)
   );
+  const activityInput = standardInputs[0];
+  const committedActivity = await activityInput.inputValue();
+  const identityIcon = header.getByTestId("activity-icon");
+  const committedIcon = await identityIcon.getAttribute("data-icon");
+  await activityInput.fill(`${committedActivity} changed`);
+  await expect(identityIcon).toHaveAttribute("data-icon", committedIcon!);
+  await pickActivity(page, committedActivity);
   await expect(page.locator('label[for="activity-date"]')).toHaveText("Date");
   await expect(page.locator('label[for="activity-start-time"]')).toHaveText(
     "Start"
@@ -614,20 +622,14 @@ test("the activity form keeps workout entry primary and context visible across b
       .evaluate((node) => getComputedStyle(node).filter)
   ).not.toBe("none");
 
-  // Crossing into the mobile presentation closes the desktop dock. At 390px
-  // the row expands the record in place (#2897). The title now goes to the
-  // canonical detail page, so editing stays the explicit menu action here.
+  // At the mobile breakpoint the same workspace becomes full-screen and keeps
+  // the in-progress form mounted.
   await page.setViewportSize({ width: 390, height: 844 });
-  // Wait for the width mode to settle (aria-expanded appears only when
-  // expand-in-place is live) — a click before the settle deselects instead.
-  await expect(pushRow).toHaveAttribute("aria-expanded", "false");
-  await pushRow.click();
-  const mobileCard = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the one Push day card expanded beside its row
-  await expect(
-    mobileCard.getByTestId("activity-detail-link")
-  ).toHaveAccessibleName("Push day");
-  await hydratedClick(page, mobileCard.getByTestId("overflow-menu-trigger"));
-  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+  await expect(workspace).toBeVisible();
+  const mobileDrawerBox = await drawer.boundingBox();
+  expect(mobileDrawerBox).not.toBeNull();
+  expect(mobileDrawerBox!.x).toBe(0);
+  expect(mobileDrawerBox!.width).toBe(390);
   const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();
   expect(
@@ -781,7 +783,7 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
   await expect(newRow).toBeVisible();
   await hydratedClick(page, newRow);
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
@@ -789,6 +791,7 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
+  await page.goto("/training?tab=log");
   await expect(newRow).toHaveCount(0);
 });
 

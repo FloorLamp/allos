@@ -505,7 +505,7 @@ export default function CyclingOverviewDetails({
       (data.powerBests.length > 0 || data.loadPoints.length > 0) ? (
         <CardGroup
           title="Power profile"
-          description="Personal best rolling efforts and FTP-relative training load."
+          tooltip="Shows all-time best rolling power efforts alongside training load relative to FTP."
           className="lg:col-span-2"
           data-testid="cycling-power-profile"
         >

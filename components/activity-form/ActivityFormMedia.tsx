@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import ActivityVideoStrip, {
-  type ActivityVideoView,
-} from "@/components/activity/ActivityVideoStrip";
-import { listActivityVideosAction } from "@/app/(app)/training/video-actions";
+import ActivityMediaStrip, {
+  type ActivityMediaView,
+} from "@/components/activity/ActivityMediaStrip";
+import { listActivityMediaAction } from "@/app/(app)/training/video-actions";
 
-// The activity editor's "Form check" block (#1457) — the ADD entry point for
-// training clips, and the reason the Training Log card's strip could stop rendering an
+// The activity editor's media block (#1457) — the ADD entry point for attached
+// clips, and the reason the Training Log card's strip could stop rendering an
 // empty state on every writable activity.
 //
 // Why HERE: attaching a clip is an act of editing the activity, so it belongs with
@@ -30,22 +30,29 @@ import { listActivityVideosAction } from "@/app/(app)/training/video-actions";
 // It owns its own fetch: the editor is a client component opened from several entry
 // points (Training Log card, repeat, live resume), so unlike the Training Log card — which is
 // handed clips by the feed — there is no server component above it holding them.
-export default function ActivityFormCheck({
+export default function ActivityFormMedia({
   activityId,
+  className = "",
+  onCountChange,
 }: {
   activityId: number;
+  className?: string;
+  onCountChange?: (count: number) => void;
 }) {
-  const [videos, setVideos] = useState<ActivityVideoView[] | null>(null);
+  const [media, setMedia] = useState<ActivityMediaView[] | null>(null);
 
   const load = useCallback(() => {
     let cancelled = false;
-    void listActivityVideosAction(activityId).then((r) => {
-      if (!cancelled) setVideos(r.ok ? r.videos : []);
+    void listActivityMediaAction(activityId).then((r) => {
+      if (cancelled) return;
+      const next = r.ok ? r.media : [];
+      setMedia(next);
+      onCountChange?.(next.length);
     });
     return () => {
       cancelled = true;
     };
-  }, [activityId]);
+  }, [activityId, onCountChange]);
 
   // Re-reads on activity change. The clip actions' own revalidate repaints the
   // server tree behind the editor; this component's state is client-side and
@@ -54,13 +61,13 @@ export default function ActivityFormCheck({
 
   // Until the first read lands, render nothing rather than an empty-state flash
   // that would claim "no clips" about an activity that may well have some.
-  if (videos == null) return null;
+  if (media == null) return null;
 
   return (
-    <section data-testid="activity-form-check">
-      <ActivityVideoStrip
+    <section data-testid="activity-form-media" className={className}>
+      <ActivityMediaStrip
         activityId={activityId}
-        videos={videos}
+        media={media}
         // The editor is reachable only with write access (the card gates
         // `openEdit` on it) and every action re-checks server-side.
         canWrite

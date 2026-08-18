@@ -27,14 +27,11 @@ function cardsByTitle(page: Page, text: string | RegExp) {
     .filter({ hasText: text });
 }
 
-// Open the stored session for edit: select the row into the reading pane
-// (a pure client toggle — hydratedClick closes the pre-hydration window),
-// then the pane header's Edit opens the docked editor. The old
-// click-the-card-title edit path is gone (#2897).
+// Open the stored session's canonical page, then launch its shared workspace.
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
   await hydratedClick(page, row);
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
 }
@@ -75,6 +72,7 @@ async function sweepProbes(page: Page): Promise<void> {
     const row = probes.first(); // first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
     await openEditorFromRow(page, row);
     await confirmDelete(page);
+    await page.goto("/training?tab=log");
     await expect(probes).toHaveCount(n - 1);
   }
 }
@@ -179,5 +177,6 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // confirm), restoring the seed state for order-independent sibling specs. The
   // start-of-test sweep tolerates the case where a failed run skipped this.
   await confirmDelete(page);
+  await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(0);
 });

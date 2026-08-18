@@ -9,14 +9,17 @@ import type { AppRoute } from "@/lib/hrefs";
 export function PageHeader({
   title,
   subtitle,
+  leading,
   action,
   compactBelowSm = false,
   hideSubtitleBelowSm = false,
+  stackActionBelowSm = false,
   actionAlign = "end",
   className = "",
 }: {
   title: string;
   subtitle?: React.ReactNode;
+  leading?: React.ReactNode;
   action?: React.ReactNode;
   // Give up the whole heading band below `sm` (issue #1485 F, following the #1413
   // dashboard precedent): the title goes `sr-only` and the subtitle is dropped, so
@@ -30,6 +33,8 @@ export function PageHeader({
   // Keep the page title but drop read-once orientation copy on phones. This is
   // useful for tabbed hubs whose navigation already supplies the local context.
   hideSubtitleBelowSm?: boolean;
+  // Give long page identity the full phone width, then place actions below it.
+  stackActionBelowSm?: boolean;
   actionAlign?: "start" | "end";
   className?: string;
 }) {
@@ -40,31 +45,42 @@ export function PageHeader({
   // <h1> pages were converted rather than restyled in place.
   return (
     <div
-      className={`flex ${
+      className={`flex ${stackActionBelowSm ? "flex-wrap sm:flex-nowrap" : ""} ${
         actionAlign === "start" ? "items-start" : "items-end"
       } justify-between gap-4 md:mb-6 ${
         compactBelowSm ? "sm:mb-4" : "mb-4"
       } ${className}`}
     >
-      <div>
-        <h1
-          className={`text-xl font-bold text-slate-900 md:text-2xl dark:text-slate-100 ${
-            compactBelowSm ? "sr-only sm:not-sr-only" : ""
-          }`}
-        >
-          {title}
-        </h1>
-        {subtitle && (
-          <div
-            className={`mt-1 text-sm text-slate-500 dark:text-slate-400 ${
-              compactBelowSm || hideSubtitleBelowSm ? "hidden sm:block" : ""
+      <div
+        className={`flex min-w-0 items-center gap-3 sm:gap-4 ${
+          stackActionBelowSm ? "w-full sm:w-auto sm:flex-1" : ""
+        }`}
+      >
+        {leading ? <div className="shrink-0">{leading}</div> : null}
+        <div className="min-w-0">
+          <h1
+            className={`text-xl font-bold text-slate-900 md:text-2xl dark:text-slate-100 ${
+              compactBelowSm ? "sr-only sm:not-sr-only" : ""
             }`}
           >
-            {subtitle}
-          </div>
-        )}
+            {title}
+          </h1>
+          {subtitle && (
+            <div
+              className={`mt-1 text-sm text-slate-500 dark:text-slate-400 ${
+                compactBelowSm || hideSubtitleBelowSm ? "hidden sm:block" : ""
+              }`}
+            >
+              {subtitle}
+            </div>
+          )}
+        </div>
       </div>
-      {action}
+      {action ? (
+        <div className={stackActionBelowSm ? "ml-auto sm:ml-0" : undefined}>
+          {action}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -288,12 +304,14 @@ export function ActivityTypeIcon({
   type,
   title,
   sportNames,
+  composite = false,
 }: {
   type: string;
   title?: string;
   // Structured component/sport names (e.g. Strava's canonical "Cycling"),
   // matched before the free-text title so an imported ride icons as a bike.
   sportNames?: string[];
+  composite?: boolean;
 }) {
   // Bare icon, matching the activity modal heading — no circle, no per-type color.
   return (
@@ -306,6 +324,7 @@ export function ActivityTypeIcon({
         type={type}
         title={title}
         sportNames={sportNames}
+        composite={composite}
         className="h-6 w-6"
       />
     </span>

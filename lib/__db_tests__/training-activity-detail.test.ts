@@ -48,12 +48,18 @@ function addActivity(
   );
 }
 
-function addSet(activityId: number, exercise: string, setNumber: number): void {
+function addSet(
+  activityId: number,
+  exercise: string,
+  setNumber: number,
+  weightKg = 100,
+  reps = 5
+): void {
   db.prepare(
     `INSERT INTO exercise_sets
        (activity_id, exercise, set_number, weight_kg, reps, warmup)
-     VALUES (?, ?, ?, 100, 5, 0)`
-  ).run(activityId, exercise, setNumber);
+     VALUES (?, ?, ?, ?, ?, 0)`
+  ).run(activityId, exercise, setNumber, weightKg, reps);
 }
 
 let profileId: number;
@@ -115,6 +121,46 @@ describe("getActivityDetailData (#2870)", () => {
     const detail = getActivityDetailData(profileId, mondayLegs, UNITS)!;
     expect(detail.heartRate.minutes).toEqual([]);
     expect(detail.heartRate.zoneMinutes).toBeNull();
+  });
+
+  it("classifies historical and current strength records on their activity rows", () => {
+    const recordsProfile = newProfile("Detail Strength Records");
+    const baseline = addActivity(recordsProfile, "2026-01-01", "Baseline");
+    addSet(baseline, "Bench Press", 1, 80);
+    const formerRecord = addActivity(
+      recordsProfile,
+      "2026-02-01",
+      "Former record"
+    );
+    addSet(formerRecord, "Bench Press", 1, 90);
+    const currentRecord = addActivity(
+      recordsProfile,
+      "2026-03-01",
+      "Current record"
+    );
+    addSet(currentRecord, "Bench Press", 1, 100);
+
+    expect(
+      getActivityDetailData(recordsProfile, baseline, UNITS)!.partRecords
+    ).toEqual([null]);
+    expect(
+      getActivityDetailData(recordsProfile, formerRecord, UNITS)!.partRecords
+    ).toEqual([
+      {
+        e1rm: "running",
+        weight: "running",
+        href: "/training?tab=analyze&kind=strength&item=Bench+Press&metric=e1rm&range=all&lane=none",
+      },
+    ]);
+    expect(
+      getActivityDetailData(recordsProfile, currentRecord, UNITS)!.partRecords
+    ).toEqual([
+      {
+        e1rm: "all-time",
+        weight: "all-time",
+        href: "/training?tab=analyze&kind=strength&item=Bench+Press&metric=e1rm&range=all&lane=none",
+      },
+    ]);
   });
 
   it("loads laps and segments for non-cycling sessions, scoped to the profile", () => {

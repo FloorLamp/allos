@@ -1,3 +1,6 @@
+"use client";
+
+import { useCallback, useState } from "react";
 import { IconChevronRight } from "@tabler/icons-react";
 import type { DistanceUnit } from "@/lib/settings";
 import type { ActivityEditData } from "@/lib/activity-form-model";
@@ -5,7 +8,7 @@ import NotesField from "./NotesField";
 import EstimatedCalories from "./EstimatedCalories";
 import ImportedActivityDetails from "./ImportedActivityDetails";
 import RouteMap from "@/components/RouteMap";
-import ActivityFormCheck from "./ActivityFormCheck";
+import ActivityFormMedia from "./ActivityFormMedia";
 
 // The activity form's collapsible "More details" disclosure (#1207 extraction):
 // notes, the manual calorie estimate, imported-metric read-outs, and the route map.
@@ -26,6 +29,7 @@ export default function ActivityMoreDetails({
   editData,
   activityId,
   distanceUnit,
+  onRevealPopulated,
 }: {
   open: boolean;
   onToggle: () => void;
@@ -44,7 +48,26 @@ export default function ActivityMoreDetails({
   // covers create mode once autosave has inserted the row. Null before that.
   activityId: number | null;
   distanceUnit: DistanceUnit;
+  onRevealPopulated: () => void;
 }) {
+  const [mediaCount, setMediaCount] = useState<number | null>(null);
+  const handleMediaCount = useCallback(
+    (count: number) => {
+      setMediaCount(count);
+      if (count > 0) onRevealPopulated();
+    },
+    [onRevealPopulated]
+  );
+
+  const disclosureSummary = [
+    notes.trim() ? "Notes" : null,
+    mediaCount && mediaCount > 0
+      ? `${mediaCount} ${mediaCount === 1 ? "media item" : "media items"}`
+      : null,
+    editData?.route_polyline ? "Route" : null,
+    ...summary,
+  ].filter((item): item is string => item != null);
+
   return (
     <section data-testid="activity-more-details">
       <button
@@ -59,9 +82,9 @@ export default function ActivityMoreDetails({
             data-testid="more-details-summary"
             className="block truncate text-xs text-slate-500 dark:text-slate-400"
           >
-            {summary.length > 0
-              ? summary.join(" · ")
-              : "Notes and optional supporting data"}
+            {disclosureSummary.length > 0
+              ? disclosureSummary.join(" · ")
+              : "Notes, media, and optional data"}
           </span>
         </span>
         <IconChevronRight
@@ -69,28 +92,27 @@ export default function ActivityMoreDetails({
           className={`h-4 w-4 shrink-0 text-slate-400 transition-[color,filter,transform] group-hover:text-brand-500 group-hover:filter-[drop-shadow(0_0_3px_currentColor)] ${open ? "rotate-90" : ""}`}
         />
       </button>
-      {open && (
-        <div className="mt-3 space-y-5">
-          <NotesField notes={notes} onNotesChange={onNotesChange} />
+      <div className={open ? "mt-3 space-y-5" : "hidden"}>
+        <NotesField notes={notes} onNotesChange={onNotesChange} />
 
-          {/* Estimated calories are manual-only. Imported active energy is
-              read-only inside ImportedActivityDetails below. */}
-          {showEstimate && (
-            <EstimatedCalories
-              value={displayedEstCalories}
-              edited={estEdited}
-              autoEstimateKcal={autoEstimateKcal}
-              onChange={onEstChange}
-              onReset={onEstReset}
-            />
-          )}
-
-          <ImportedActivityDetails
-            activity={editData}
-            distanceUnit={distanceUnit}
+        {/* Estimated calories are manual-only. Imported active energy is
+            read-only inside ImportedActivityDetails below. */}
+        {showEstimate && (
+          <EstimatedCalories
+            value={displayedEstCalories}
+            edited={estEdited}
+            autoEstimateKcal={autoEstimateKcal}
+            onChange={onEstChange}
+            onReset={onEstReset}
           />
+        )}
 
-          {/* Form check (#1457) — needs a SAVED activity id, not edit mode (#1520
+        <ImportedActivityDetails
+          activity={editData}
+          distanceUnit={distanceUnit}
+        />
+
+        {/* Attached media (#1457) — needs a SAVED activity id, not edit mode (#1520
               fixed the confusion: this gated on `editData`, which stays null for a
               create-mode form's whole life, so the block never appeared while
               logging). The id is the resolved `editData?.id ?? createdId` the parent
@@ -100,28 +122,31 @@ export default function ActivityMoreDetails({
               instead of holding the first render's (empty) read. Deferred upload —
               holding the file client-side until a row exists — stays rejected
               (#1457); the block simply appears once the row does. */}
-          {activityId != null && (
-            <ActivityFormCheck key={activityId} activityId={activityId} />
-          )}
+        {activityId != null && (
+          <ActivityFormMedia
+            key={activityId}
+            activityId={activityId}
+            onCountChange={handleMediaCount}
+          />
+        )}
 
-          {editData?.route_polyline && (
-            <section
-              data-testid="activity-form-route"
-              aria-labelledby="activity-form-route-title"
-            >
-              <h3 id="activity-form-route-title" className="label mb-2">
-                Route
-              </h3>
-              <RouteMap
-                polyline={editData.route_polyline}
-                width={480}
-                height={96}
-                className="h-auto w-full rounded-lg border border-black/10 bg-slate-50 text-brand-600 dark:border-white/10 dark:bg-ink-900 dark:text-brand-400"
-              />
-            </section>
-          )}
-        </div>
-      )}
+        {editData?.route_polyline && (
+          <section
+            data-testid="activity-form-route"
+            aria-labelledby="activity-form-route-title"
+          >
+            <h3 id="activity-form-route-title" className="label mb-2">
+              Route
+            </h3>
+            <RouteMap
+              polyline={editData.route_polyline}
+              width={480}
+              height={96}
+              className="h-auto w-full rounded-lg border border-black/10 bg-slate-50 text-brand-600 dark:border-white/10 dark:bg-ink-900 dark:text-brand-400"
+            />
+          </section>
+        )}
+      </div>
     </section>
   );
 }

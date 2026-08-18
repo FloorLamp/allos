@@ -44,7 +44,11 @@
 //     and validates those directly.
 
 import type { Route } from "next";
-import type { CardioMetric, RangeId } from "./analyze-view";
+import type {
+  CardioMetric,
+  ExerciseCompareMetric,
+  RangeId,
+} from "./analyze-view";
 import { continuousReadingSlug } from "./reading-cadence";
 import type { PanelId } from "./biomarker-panels";
 import type { GrowthMetric } from "./growth";
@@ -482,6 +486,28 @@ export function cyclingRideHref(id: number, lens: CyclingLens): AppRoute {
     params.set("item", lens.activity);
   }
   return `${path}?${params.toString()}` as AppRoute;
+}
+
+// The strength progression view for one movement. A PR link supplies the exact
+// metric, all-time range, and load context that explain the record; ordinary
+// exercise links can omit those refinements and let Analyze use its defaults.
+export function strengthAnalyzeHref(
+  exercise: string,
+  options: {
+    metric?: ExerciseCompareMetric;
+    range?: RangeId;
+    lane?: string;
+  } = {}
+): AppRoute {
+  const params = new URLSearchParams({
+    tab: "analyze",
+    kind: "strength",
+    item: exercise,
+  });
+  if (options.metric) params.set("metric", options.metric);
+  if (options.range) params.set("range", options.range);
+  if (options.lane) params.set("lane", options.lane);
+  return `/training?${params.toString()}` as AppRoute;
 }
 
 export function cyclingOverviewHref(lens: CyclingLens): AppRoute {

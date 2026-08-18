@@ -6,13 +6,9 @@ import { describe, expect, it } from "vitest";
 // The overlay motion/gesture chokepoint (issue #1469).
 //
 // The app has three bottom/edge-anchored overlay surfaces — the mobile nav
-// drawer, BottomSheet, and the activity dock's expanded editor. Their DISMISSAL
-// contracts differ on purpose (#1428: the sheet discards, the dock minimizes)
-// and must keep differing. Their MOTION and GESTURE MECHANICS must not: before
-// this they carried three durations, two scrim treatments, two drag-handle
-// geometries and zero shared recognizers, and the fourth surface would have made
-// it four. Convergence that lives only in a code review is convergence that
-// lasts one PR, so this scan is the thing that actually holds it.
+// drawer, BottomSheet, and the activity workspace. Their lifecycle contracts
+// differ on purpose. They share the overlay module's visual and gesture
+// primitives; the activity workspace resolves its drag to minimize.
 //
 // Four rules, each with an allowlist that must be justified in prose:
 //
@@ -45,7 +41,7 @@ const OVERLAY_SURFACES = new Map<string, string>([
   ],
   [
     "components/ActivityOverlay.tsx",
-    "the activity dock's expanded editor — session lifecycle; swipe-down resolves to MINIMIZE, never discard (#1428)",
+    "the activity workspace — session lifecycle; its draggable bar minimizes rather than discards",
   ],
   [
     "components/ProfileIdentityBar.tsx",
@@ -176,10 +172,8 @@ describe("overlay motion chokepoint", () => {
     }
     expect(
       offenders,
-      "An overlay surface must take its motion classes, scrim, panel chrome, " +
-        "drag handle and drag recognizer from components/overlay — that module " +
-        "is what makes the drawer, the sheet and the dock ONE system with three " +
-        "outcomes rather than three hand-rolled panels (#1469)."
+      "An overlay surface must consume the shared primitives it uses from " +
+        "components/overlay rather than hand-rolling a parallel system (#1469)."
     ).toEqual([]);
   });
 

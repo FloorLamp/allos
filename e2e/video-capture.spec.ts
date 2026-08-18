@@ -130,7 +130,7 @@ async function pickActivity(page: Page, name: string) {
     .click();
 }
 
-test("upload → poster grid → open player → Range serve → location warning → delete (form-check surface)", async ({
+test("upload → poster grid → open player → Range serve → location warning → delete (activity media)", async ({
   browser,
 }) => {
   test.slow(); // upload + a route compile on first hit
@@ -143,7 +143,7 @@ test("upload → poster grid → open player → Range serve → location warnin
     await page.goto("/training?tab=log");
 
     // Select the seeded session's row into the reading pane (#2897): the full
-    // record card — the form-check strip's home — renders there, not on the
+    // record card — the activity-media strip's home — renders there, not on the
     // slim feed. hydratedClick: a pure client toggle whose first post-goto
     // click can land pre-hydration.
     const row = page
@@ -152,13 +152,13 @@ test("upload → poster grid → open player → Range serve → location warnin
       .filter({ hasText: "Squat session (e2e)" })
       .first(); // first-ok: the fixture profile's one seeded activity — order-agnostic
     await hydratedClick(page, row);
-    const pane = page.getByTestId("training-log-reading-pane");
+    const pane = page.getByTestId("training-activity-page");
     await expect(pane.getByTestId("activity-card-body")).toBeVisible();
 
-    // #1457: with no clips, the record card carries NO form-check section at all —
+    // #1457: with no clips, the record card carries NO media section at all —
     // no heading, no empty text, no button. It used to render on every writable
     // activity regardless of type or content.
-    await expect(pane.getByTestId(`activity-video-strip-${aid}`)).toHaveCount(
+    await expect(pane.getByTestId(`activity-media-strip-${aid}`)).toHaveCount(
       0
     );
 
@@ -166,7 +166,7 @@ test("upload → poster grid → open player → Range serve → location warnin
     // pane's Edit (openEdit → EDIT mode, which is where an activityId exists).
     await pane.getByTestId("activity-page-edit").click();
 
-    // Form check sits inside the collapsible More details section. Drive the
+    // Media sits inside the collapsible More details section. Drive the
     // disclosure to OPEN rather than blind-toggling it: it's a pure client toggle
     // inside a freshly mounted editor, so a tap can land before that subtree
     // hydrates (#830) and be swallowed, and a second blind click on an
@@ -181,10 +181,15 @@ test("upload → poster grid → open player → Range serve → location warnin
       }
       await expect(moreDetails).toHaveAttribute("aria-expanded", "true");
     }).toPass({ timeout: 20_000 }); // topass-ok: drives a client-only disclosure open past the pre-hydration swallow — no server POST to await, so settledClick doesn't apply
-    const formCheck = page.getByTestId("activity-form-check");
-    await expect(formCheck).toBeVisible({ timeout: 20_000 });
-    const editorStrip = formCheck.getByTestId(`activity-video-strip-${aid}`);
-    await expect(editorStrip.getByTestId("video-clip-add")).toBeVisible();
+    const mediaSection = page.getByTestId("activity-form-media");
+    await expect(mediaSection).toBeVisible({ timeout: 20_000 });
+    await expect(
+      mediaSection.getByRole("heading", { name: "Media", exact: true })
+    ).toBeVisible();
+    const editorStrip = mediaSection.getByTestId(`activity-media-strip-${aid}`);
+    await expect(editorStrip.getByTestId("video-clip-add")).toHaveText(
+      "Add media"
+    );
 
     // Upload a location-tagged synthetic clip via the editor's file input.
     const clip = buildMp4Fixture({
@@ -193,7 +198,7 @@ test("upload → poster grid → open player → Range serve → location warnin
       location: true,
     });
     await editorStrip.getByTestId("video-clip-input").setInputFiles({
-      name: "form-check.mp4",
+      name: "activity-media.mp4",
       mimeType: "video/mp4",
       buffer: clip,
     });
@@ -212,7 +217,7 @@ test("upload → poster grid → open player → Range serve → location warnin
     // selection), so re-select the row to read the card in the pane.
     await page.goto("/training?tab=log");
     await hydratedClick(page, row);
-    const strip = pane.getByTestId(`activity-video-strip-${aid}`);
+    const strip = pane.getByTestId(`activity-media-strip-${aid}`);
     await expect(strip).toBeVisible();
     // Read surface: playback and per-clip controls, but no add affordance here.
     await expect(strip.getByTestId("video-clip-add")).toHaveCount(0);
@@ -257,7 +262,7 @@ test("upload → poster grid → open player → Range serve → location warnin
     // Delete → the card's per-clip control still works (only ADD moved away), and
     // with the last clip gone the whole section disappears again (#1457).
     await settledClick(page, strip.getByTestId(`video-clip-delete-${clipId}`));
-    await expect(page.getByTestId(`activity-video-strip-${aid}`)).toHaveCount(
+    await expect(page.getByTestId(`activity-media-strip-${aid}`)).toHaveCount(
       0,
       { timeout: 20_000 }
     );
@@ -266,7 +271,7 @@ test("upload → poster grid → open player → Range serve → location warnin
   }
 });
 
-test("Form check appears mid-CREATE, as soon as autosave has made the row (#1524)", async ({
+test("Media appears mid-CREATE, as soon as autosave has made the row (#1524)", async ({
   browser,
 }) => {
   test.slow(); // upload + a route compile on first hit
@@ -278,7 +283,7 @@ test("Form check appears mid-CREATE, as soon as autosave has made the row (#1524
   try {
     // #1524: the block used to gate on `editData`, which is null for a create-mode
     // form's WHOLE LIFE — so while first-time logging (the moment you'd want to
-    // attach a form-check clip) it never appeared, and the only way in was to save,
+    // attach activity media) it never appeared, and the only way in was to save,
     // close and reopen the activity.
     await page.goto("/training?tab=log");
     await page
@@ -289,21 +294,23 @@ test("Form check appears mid-CREATE, as soon as autosave has made the row (#1524
 
     // Nothing entered yet → no saved row → correctly NO block (the #1457 data
     // constraint is unchanged; deferred client-side upload stays rejected).
-    await expect(page.getByTestId("activity-form-check")).toHaveCount(0);
+    await expect(page.getByTestId("activity-form-media")).toHaveCount(0);
 
     // Complete a set: autosave (700ms debounce) INSERTs the activity, and the
     // block appears on that null→created transition without a reopen.
     await pickActivity(page, "Barbell Bench Press");
     await page.getByTestId("set1-weight").fill("20");
     await page.getByTestId("set1-reps-stepper").locator("input").fill("5");
-    const formCheck = page.getByTestId("activity-form-check");
-    await expect(formCheck).toBeVisible({ timeout: 20_000 });
+    const mediaSection = page.getByTestId("activity-form-media");
+    await expect(mediaSection).toBeVisible({ timeout: 20_000 });
 
     // It targets the row autosave just created — read the id off the strip the
     // block rendered, which is also what the upload will attach to.
-    const strip = formCheck.locator('[data-testid^="activity-video-strip-"]');
+    const strip = mediaSection.locator(
+      '[data-testid^="activity-media-strip-"]'
+    );
     const testid = await strip.getAttribute("data-testid");
-    createdId = Number(testid!.replace("activity-video-strip-", ""));
+    createdId = Number(testid!.replace("activity-media-strip-", ""));
     expect(createdId).toBeGreaterThan(0);
     expect(createdId).not.toBe(activityId()); // the seeded activity, not this one
 

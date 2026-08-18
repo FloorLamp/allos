@@ -10,8 +10,9 @@ import EditLockNotice from "@/components/EditLockNotice";
 //
 // When the row is an edit-LOCKED integration import (#133/#659), `editLockId` is its
 // id: the label gets a consequence tooltip and a short lock marker. Compact Training Log
-// cards and activity editor headers use the quiet icon treatment; "Resume sync
-// updates" lives in the activity overflow menu rather than competing with metadata.
+// Cards use the quiet treatment; sticky activity editor headers use compact source
+// state. "Resume sync updates" lives in the activity overflow menu rather than
+// competing with metadata.
 export default function ActivityProvenance({
   label,
   createdAt,
@@ -27,9 +28,9 @@ export default function ActivityProvenance({
   // The activity id when this is a hand-edited integration row (the clearable lock),
   // else undefined.
   editLockId?: number;
-  // Training Log cards and editor headers use a quiet provenance line. Other record
-  // surfaces can retain the badge treatment where provenance needs more weight.
-  variant?: "badge" | "quiet";
+  // Training Log cards use a quiet provenance line; sticky editor headers use the
+  // source-only compact treatment. Other record surfaces retain the badge treatment.
+  variant?: "badge" | "quiet" | "compact";
   className?: string;
 }) {
   // Only surface "edited" when the update is genuinely later than creation — the
@@ -44,6 +45,34 @@ export default function ActivityProvenance({
   // without inventing a relative edit time.
   const displayLabel = showEdited ? sourceName : label;
   const activityLockConsequence = `You edited this activity, so ${sourceName} won’t update it.`;
+  if (variant === "compact") {
+    return (
+      <div
+        className={`inline-flex min-w-0 items-center text-xs text-slate-500 dark:text-slate-400${
+          className ? ` ${className}` : ""
+        }`}
+        data-testid="activity-provenance"
+      >
+        <span
+          className="truncate font-medium"
+          data-testid="activity-provenance-source"
+        >
+          {sourceName}
+          {showEdited ? " · edited" : ""}
+        </span>
+        {editLockId != null ? (
+          <EditLockNotice
+            table="activities"
+            id={editLockId}
+            showResume={false}
+            appearance="icon"
+            consequence={activityLockConsequence}
+            className="ml-1 shrink-0"
+          />
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div
       className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400${

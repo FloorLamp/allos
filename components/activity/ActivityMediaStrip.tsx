@@ -9,8 +9,8 @@ import {
   updateActivityVideoCaptionAction,
 } from "@/app/(app)/training/video-actions";
 
-// Per-activity form-check video strip (#1224 phase 1). Attach a lift/movement clip
-// to an activity for later form review; each clip streams from the session-scoped
+// Per-activity media strip (#1224 phase 1). Attach a video or audio clip to an
+// activity; each clip streams from the session-scoped
 // Range serve route (/api/activity-video/[id]). Active-profile scoped (the Training Log
 // is the acting profile's training surface). A clip carrying embedded location
 // metadata shows the privacy note.
@@ -20,7 +20,7 @@ import {
 //   - The Training Log CARD (`showAdd` omitted) is a READ surface: it renders only when
 //     clips exist. It used to render for every writable activity regardless of type
 //     or content, so a Strava easy run, a walk, and an imported swim each carried a
-//     "Form check" heading, a "No clips…" line, and a button — the affordance was
+//     "Media" heading, an empty-state line, and a button — the affordance was
 //     loudest exactly where it was useless, and it cost that vertical space on
 //     EVERY card (the #1416/#1455 mobile-density concern). Per-clip caption edit and
 //     delete stay (`canWrite` still gates those) — only the ADD entry point moved.
@@ -30,7 +30,7 @@ import {
 // No type gate in either place (owner call): a clip on a run is unusual but
 // legitimate, and a heuristic here would be one more thing to maintain.
 
-export interface ActivityVideoView {
+export interface ActivityMediaView {
   id: number;
   exercise: string | null;
   caption: string | null;
@@ -39,16 +39,16 @@ export interface ActivityVideoView {
   durationSec: number | null;
 }
 
-export default function ActivityVideoStrip({
+export default function ActivityMediaStrip({
   activityId,
-  videos,
+  media,
   canWrite,
   showAdd = false,
   compact = false,
   onChange,
 }: {
   activityId: number;
-  videos: ActivityVideoView[];
+  media: ActivityMediaView[];
   canWrite: boolean;
   // Render the add affordance (and therefore the empty state). The editor sets it;
   // the Training Log card does not.
@@ -60,16 +60,16 @@ export default function ActivityVideoStrip({
   onChange?: () => void;
 }) {
   // Without the add affordance this is a pure read surface, so an empty one has
-  // nothing to say — render nothing rather than an empty "Form check" block.
-  if (videos.length === 0 && !showAdd) return null;
+  // nothing to say — render nothing rather than an empty "Media" block.
+  if (media.length === 0 && !showAdd) return null;
 
-  const clips: VideoClipView[] = videos.map((v) => ({
-    id: v.id,
-    label: v.exercise ?? "Form check",
-    caption: v.caption,
-    kind: v.kind,
-    hasLocation: v.hasLocation,
-    durationSec: v.durationSec,
+  const clips: VideoClipView[] = media.map((item) => ({
+    id: item.id,
+    label: item.exercise ?? "Activity media",
+    caption: item.caption,
+    kind: item.kind,
+    hasLocation: item.hasLocation,
+    durationSec: item.durationSec,
   }));
 
   return (
@@ -80,15 +80,15 @@ export default function ActivityVideoStrip({
           : "mt-3 border-t border-black/5 pt-3 dark:border-white/10"
       }
     >
-      {!compact && <h4 className="section-label mb-2">Form check</h4>}
+      {!compact && <h4 className="section-label mb-2">Media</h4>}
       <VideoClipGrid
         clips={clips}
         serveBase="/api/activity-video"
         canWrite={canWrite}
         showAdd={showAdd}
-        testid={`activity-video-strip-${activityId}`}
-        emptyText="No clips. Add one to review your form on this session."
-        addLabel="Add form clip"
+        testid={`activity-media-strip-${activityId}`}
+        emptyText="No media attached yet. Add a video or audio clip."
+        addLabel="Add media"
         onUpload={async (file, poster, caption) => {
           const fd = new FormData();
           fd.set("activityId", String(activityId));

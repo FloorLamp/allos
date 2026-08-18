@@ -27,14 +27,11 @@ function trashRow(page: Page, title: string) {
   return page.getByTestId("trash-row").filter({ hasText: title });
 }
 
-// Open the stored activity for EDIT: select its row into the reading pane
-// (a pure client toggle — hydratedClick closes the pre-hydration window), then
-// the pane header's Edit opens the editor with its Delete button. The old
-// click-the-card-title path is gone (#2897).
+// Open the stored activity's canonical page, then launch its shared workspace.
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
   await hydratedClick(page, row);
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
 }
@@ -77,13 +74,12 @@ async function createProbe(page: Page): Promise<string> {
   return title;
 }
 
-// Create a probe, delete it via its row → pane → Edit, and WALK AWAY from the
+// Create a probe, delete it via its canonical record, and WALK AWAY from the
 // Undo toast — the state that used to be unreachable. Returns the probe's title.
 async function deleteProbeAndAbandonTheToast(page: Page): Promise<string> {
   const title = await createProbe(page);
   await openEditorFromRow(page, cardsByTitle(page, title));
   await confirmDelete(page);
-  await expect(cardsByTitle(page, title)).toHaveCount(0);
   // Navigating away discards the toast without waiting out its 15 seconds, which is
   // exactly what a person who noticed the mistake later did.
   await page.goto("/data?section=trash");

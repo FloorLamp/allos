@@ -17,6 +17,7 @@ export function StatBox({
   badge,
   progress,
   className,
+  variant = "card",
   "data-testid": testId,
 }: {
   label: string;
@@ -35,12 +36,18 @@ export function StatBox({
   progress?: number;
   // Extra classes on the box (e.g. "col-span-2" for a full-width goal).
   className?: string;
+  // Dense detail groups already provide their own enclosing surface and rules.
+  variant?: "card" | "plain";
   "data-testid"?: string;
 }) {
   return (
     <div
       data-testid={testId}
-      className={`rounded-lg bg-slate-50 px-3 py-2 dark:bg-ink-900 ${className ?? ""}`}
+      className={`${
+        variant === "plain"
+          ? "min-w-0"
+          : "rounded-lg bg-slate-50 px-3 py-2 dark:bg-ink-900"
+      } ${className ?? ""}`}
     >
       <dt className="flex items-center gap-1.5 section-label">
         {label}

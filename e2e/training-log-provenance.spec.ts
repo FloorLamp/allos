@@ -2,17 +2,15 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import { hydratedClick } from "./helpers";
 
-// #2897 turned the Log feed into slim rows: the full record card renders in the
-// desktop reading pane once its row is selected. Select by title (rows carry the
-// title plus a compact summary line) and return the pane's card, so every
-// card-internal assertion scopes to where the content now lives. Rows are pure
-// client toggles with no POST to await, so selection goes through hydratedClick.
+// The Log feed is a slim index into canonical activity records. Return to that
+// index before each selection, then scope record assertions to the activity page.
 function readingPane(page: Page) {
-  return page.getByTestId("training-log-reading-pane");
+  return page.getByTestId("training-activity-page");
 }
 async function openInPane(page: Page, row: Locator, title: string) {
+  await page.goto("/training?tab=log");
   await hydratedClick(page, row);
-  const card = readingPane(page).locator(".card", { hasText: title });
+  const card = readingPane(page).filter({ hasText: title });
   await expect(card).toBeVisible();
   return card;
 }
@@ -62,7 +60,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   );
   await expect(stravaCard.getByTestId("edit-lock-badge")).toHaveCount(0);
   await expect(stravaCard.getByTestId("edit-lock-icon")).toHaveAttribute(
-    "title",
+    "aria-label",
     "You edited this activity, so Strava won’t update it."
   );
   await expect(
@@ -106,7 +104,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
     /^[1-9]\d*$/
   );
   await page.waitForTimeout(900); // waitfortimeout-ok: bounded absence-of-effect: wait past the 700ms autosave debounce, then assert the manual row stayed un-edited — opening it must not trip autosave; non-occurrence has no positive event to await
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Done" }).click();
   await expect(manualCard.getByTestId("activity-provenance")).not.toContainText(
     "edited"
   );
@@ -138,7 +136,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   // Opening an imported row must not run the manual calorie auto-fill, dirty
   // the form, and trigger the 700 ms autosave/edit lock by itself.
   await page.waitForTimeout(900); // waitfortimeout-ok: bounded absence-of-effect: wait past the 700ms autosave debounce, then assert the imported row stayed un-edited — opening it must not run the calorie auto-fill; non-occurrence has no positive event to await
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Done" }).click();
   await expect(
     healthConnectCard.getByTestId("activity-provenance")
   ).not.toContainText("edited");
@@ -310,11 +308,13 @@ test("training log cards prioritize a summary and progressively disclose details
   expect(largestVisuals).not.toBeNull();
   expect(largestVisuals!.width).toBeGreaterThan(175);
 
-  // On a phone there is no pane — tapping the row expands the full card in
-  // place, where the same box follows the details as a shallow, full-width strip.
+  // On a phone the canonical page uses the same full-width record body.
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/training?tab=log");
   await rideRow.click();
-  const mobileRide = page.locator(".card", { hasText: "Strava morning ride" });
+  const mobileRide = page
+    .getByTestId("training-activity-page")
+    .filter({ hasText: "Strava morning ride" });
   await expect(mobileRide).toBeVisible();
   const mobileVisuals = await mobileRide
     .getByTestId("activity-visuals")
@@ -354,7 +354,7 @@ test("strength target status is named and muscle filters are quiet text", async 
   await expect(
     page.getByTestId("activity-target-status").filter({ hasText: "Target met" })
   ).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Done" }).click();
 
   // Muscle labels are quiet text everywhere the record renders — filterable
   // (the pane injects the tag handler like the old feed card did) but never
@@ -435,7 +435,7 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   const editorHeader = page.getByTestId("activity-form-header");
   await expect(editorHeader.getByTestId("edit-lock-badge")).toHaveCount(0);
   await expect(editorHeader.getByTestId("edit-lock-icon")).toHaveAttribute(
-    "title",
+    "aria-label",
     "You edited this activity, so Strava won’t update it."
   );
   await expect(details).toContainText("Recorded measurements");
@@ -493,17 +493,8 @@ test("the activity editor shows all stored Strava measurements as read-only", as
     )
   ).toBe(4);
   await page.setViewportSize({ width: 390, height: 844 });
-  // Switching presentation modes closes the docked editor; reopen the same
-  // activity — on a phone the row expands the full card in place, whose
-  // overflow menu still carries Edit. WAIT for the width mode to settle first:
-  // the row advertises aria-expanded only once expand-in-place is its live
-  // affordance, and a click landing before the settle would hit the desktop
-  // branch (deselect) instead.
-  await expect(stravaRow).toHaveAttribute("aria-expanded", "false");
-  await stravaRow.click();
-  const mobileCard = page.locator(".card", { hasText: "Strava morning ride" });
-  await mobileCard.getByRole("button", { name: "Activity actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+  // The same open workspace becomes full-screen on a phone without losing form
+  // state or changing to another presentation.
   const mobilePrimary = page.getByTestId("strava-primary-stats");
   await expect(mobilePrimary).toBeVisible();
   expect(
