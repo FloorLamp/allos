@@ -60,6 +60,11 @@ import type { LifecycleSuppressionPolicy } from "./lifecycle";
 // for findings that are neither good nor bad (a neutral metric move).
 export type FindingTone = CoachingTone | "info";
 
+export const FINDING_DASHBOARD_RELEVANCE = {
+  supporting: 1,
+  review: 2,
+} as const;
+
 export interface Finding {
   // Origin namespace — an Upcoming domain ("dose"/"biomarker"/…), "coaching", or
   // "digest". Drives iconography/grouping, not identity.
@@ -106,6 +111,12 @@ export interface Finding {
   // explanatory-first. Empty/absent for findings with no structured reason.
   reasons?: Reason[];
   tone?: FindingTone;
+  // How strongly this finding has earned unsolicited dashboard reach. The
+  // coaching tab still shows the complete active set; the dashboard rollup
+  // applies its declared relevance floor to this value. Producers may override
+  // the tone-derived default when an informational family becomes material in
+  // aggregate (for example, several established lifts lapsing together).
+  dashboardRelevance?: number;
   // Optional supporting evidence (the number/hint behind the finding) for surfaces
   // that show a rationale line; opaque to the envelope.
   evidence?: string | null;
@@ -283,7 +294,7 @@ export function prToFinding(pr: PR, weightUnit: WeightUnit): Finding {
   // spelling — so keying the raw name split ONE record across two keys ("Curl" vs
   // "Barbell Curl") and re-spelled a key when the oldest session was deleted. The
   // key now follows exactly the identity the stats group on, as #1399/#1610 already
-  // did for the plateau/stale findings. `supersedes` carries the pre-#1931 shape so
+  // did for plateau findings. `supersedes` carries the pre-#1931 shape so
   // a dismissal stored under the raw name keeps suppressing (#436 dual-read).
   const dedupeKey = prStrengthDismissalKey(
     pr.exercise,

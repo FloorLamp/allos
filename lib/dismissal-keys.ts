@@ -110,8 +110,8 @@ export function immunizationCodesLosingBacking(
 //      are ONE record but produced two different keys, and deleting the oldest session
 //      silently re-spelled the key of a record that had not changed. Same for cardio,
 //      whose stats group case-insensitively while the key carried the raw casing. This
-//      is exactly what #1399/#1610 fixed for the plateau/stale findings, which now key
-//      on `movementLoadKey`/`exerciseHistoryKey`; the PR celebration was left behind.
+//      is exactly what #1399/#1610 fixed for plateau findings, which key on
+//      `movementLoadKey`; the PR celebration was left behind.
 //   2. Nothing swept it. A dismissal minted for a movement/activity whose sets are
 //      later renamed, re-laned or deleted stays in the table forever, and a genuinely
 //      NEW record earned under a recycled name arrives pre-silenced — the celebration

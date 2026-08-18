@@ -51,10 +51,16 @@ import {
   type LedgerItem,
   type LedgerServing,
 } from "./food-drug-ledger";
+
 import type { Finding } from "./findings";
 import type { UpcomingItem } from "./upcoming";
 import { intakeHref } from "./hrefs";
 import type { AppRoute } from "./hrefs";
+
+// One profile may track arbitrarily many matching medications. Bound this
+// per-entity family before suppression so dismissing the visible findings cannot
+// promote an endless next batch.
+export const FOOD_DRUG_VARIANCE_FINDING_LIMIT = 3;
 
 // How far back the ledger reads: two variance windows, which also covers every event
 // lookup (today) with one query.
@@ -244,14 +250,16 @@ export function buildFoodDrugVarianceFindings(
   profileId: number,
   date: string
 ): Finding[] {
-  return foodDrugVarianceFindingsFor(profileId, date).map((f) => ({
-    domain: "coaching",
-    dedupeKey: f.dedupeKey,
-    title: foodDrugVarianceTitle(f),
-    detail: foodDrugVarianceDetail(f),
-    tone: "info" as const,
-    evidence: foodDrugVarianceEvidence(f),
-    actionHref: ITEM_HREF,
-    actionLabel: "View medication",
-  }));
+  return foodDrugVarianceFindingsFor(profileId, date)
+    .slice(0, FOOD_DRUG_VARIANCE_FINDING_LIMIT)
+    .map((f) => ({
+      domain: "coaching",
+      dedupeKey: f.dedupeKey,
+      title: foodDrugVarianceTitle(f),
+      detail: foodDrugVarianceDetail(f),
+      tone: "info" as const,
+      evidence: foodDrugVarianceEvidence(f),
+      actionHref: ITEM_HREF,
+      actionLabel: "View medication",
+    }));
 }
