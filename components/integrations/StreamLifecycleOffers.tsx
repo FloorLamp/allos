@@ -1,5 +1,8 @@
 import { IconDeviceWatch } from "@tabler/icons-react";
-import { getStreamLifecycleOffers } from "@/lib/queries/stream-lifecycle";
+import {
+  getStreamLifecycleOffers,
+  type StreamLifecycleOffer,
+} from "@/lib/queries/stream-lifecycle";
 import {
   acceptStreamReminder,
   declineStreamReminder,
@@ -34,6 +37,7 @@ export default async function StreamLifecycleOffers({
   profileId,
   canWrite,
   className,
+  offers: providedOffers,
 }: {
   profileId: number;
   /**
@@ -45,9 +49,14 @@ export default async function StreamLifecycleOffers({
    */
   canWrite: boolean;
   className?: string;
+  /**
+   * A parent placement manifest can gather this once so its visibility describes
+   * real output. Other surfaces may omit it and keep the component self-gathering.
+   */
+  offers?: readonly StreamLifecycleOffer[];
 }) {
   if (!canWrite) return null;
-  const offers = getStreamLifecycleOffers(profileId);
+  const offers = providedOffers ?? getStreamLifecycleOffers(profileId);
   if (offers.length === 0) return null;
 
   return (

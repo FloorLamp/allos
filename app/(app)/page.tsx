@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -114,8 +114,18 @@ import {
   rollupCoachingFindings,
   widgetDisplayState,
 } from "@/lib/dashboard-widgets";
-import { rankNowCards, NOW_CARD_IDS } from "@/lib/now-strip";
+import {
+  NO_DASHBOARD_RANK_REASONS,
+  isNowCardId,
+  rankDashboard,
+  timingForNowCard,
+  visibleDashboardPlacements,
+  type DashboardPlacement,
+  type DashboardTiming,
+  type RankableDashboardSurface,
+} from "@/lib/dashboard-relevance";
 import { getNotifySchedule } from "@/lib/settings/notifications";
+import { getStreamLifecycleOffers } from "@/lib/queries/stream-lifecycle";
 import { getIllnessHeroUi } from "@/lib/settings";
 import { getMoodCheckinIgnored, getProfileMoodCheckin } from "@/lib/settings";
 import { isMoodCheckinPaused, MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
@@ -1310,6 +1320,10 @@ export default async function Dashboard() {
   // explicitly not eating time, so deriving a meal distribution from it would be
   // the new engine this issue's scope guard forbids.
   const nowSlots = getNotifySchedule(profile.id).supplementMinutes;
+  // This used to be gathered inside StreamLifecycleOffers. Resolve it here once
+  // so the placement manifest can distinguish a live offer from normal silence.
+  const streamLifecycleOffers =
+    access === "write" ? getStreamLifecycleOffers(profile.id) : [];
   const nowMealAnchors = [
     nowSlots.Morning,
     nowSlots.Midday,
@@ -1323,7 +1337,7 @@ export default async function Dashboard() {
   // `emptyIds` is excluded deliberately: a data-aware widget with no data yet is
   // still "available" — it renders an ONBOARDING CTA rather than content — and
   // promoting that would put a "connect a source" prompt at the top of the page
-  // every mealtime. That is precisely the filler card lib/now-strip.ts refuses.
+  // every mealtime. That is precisely the filler card dashboard-relevance refuses.
   // A DORMANT widget is excluded for the same reason (#2652): its card is one line
   // saying the domain went quiet, which is the opposite of a card worth promoting to
   // the top of the page at a mealtime.
@@ -1338,24 +1352,21 @@ export default async function Dashboard() {
       )
       .map((w) => w.id)
   );
-  const nowEligible = NOW_CARD_IDS.filter((id) =>
-    id === "session-recap" ? showRecapCard : gridPromotable.has(id)
-  );
   // Eligibility only excludes the EMPTY case above, and the widget's empty gate
   // tolerates lag up to the relabel window — so it can still be showing a night
   // from several days ago. The "how did you sleep" card is a claim about THIS
   // morning, so it needs the strict last-night freshness, not merely a rendered
   // widget (the wakeDay-vs-today comparison NowSignals.freshSleepSummary asks for).
   const nowFreshSleep =
-    nowEligible.includes("sleep-last-night") &&
+    gridPromotable.has("sleep-last-night") &&
     sleepPresentation?.freshness === "last-night";
   // …and the waiting state is the other thing the sleep card can legitimately say
   // this morning (#2097). It is a real answer to "how did I sleep", not filler, so
   // it earns the same promotion — the strip's own `since >= 0` gate still keeps the
   // pre-wake in-progress state off the top of the page.
   const nowSleepWaiting =
-    nowEligible.includes("sleep-last-night") && sleepWaiting != null;
-  const nowCardIds = rankNowCards({
+    gridPromotable.has("sleep-last-night") && sleepWaiting != null;
+  const nowSignals = {
     minutesOfDay: nowMinutes,
     // Only computed when sleep is actually in play — it is a 28-night regularity
     // pass, not worth running on an evening render that can't use it.
@@ -1369,26 +1380,266 @@ export default async function Dashboard() {
       ? (finishedPresence?.sinceMin ?? null)
       : null,
     mealAnchors: nowMealAnchors,
-    eveningAnchor: nowSlots.Evening != null ? nowSlots.Evening * 60 : null,
+    eveningAnchor: nowSlots.Evening,
     checkInDone: todayMood != null,
-    eligible: nowEligible,
+  };
+  // One placement manifest (#3080). The page still owns gathering and JSX;
+  // every already-built surface is adapted once, and the pure ranker owns its
+  // zone, order, hide/availability state, and Now promotion.
+  const profileSubject = { scope: "profile" as const, profileId: profile.id };
+  const activeTiming = (active: boolean): DashboardTiming => ({
+    kind: "until-signal",
+    active,
   });
-  const nowPromoted = new Set<string>(nowCardIds);
-  // Each strip card is a REFERENCE to the node the grid already built — the same
-  // component, the same data, never a second rendering. The grid keeps the widget
-  // in Customize (so its order/visibility preference survives) and only skips it in
-  // normal mode, via `promoted` below.
-  const nowStripCards: NowStripCard[] = nowCardIds
-    .map((id) => ({
-      id,
-      node:
-        id === "session-recap"
-          ? finishedRecap && (
-              <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
-            )
-          : gridWidgets.find((w) => w.id === id)?.node,
+  const staticSurfaces: RankableDashboardSurface[] = [
+    {
+      placementId: "illness-hero",
+      nodeKey: "illness-hero",
+      groupKey: "priority",
+      subject: { scope: "household" },
+      visible: heroCockpits.length > 0,
+      available: heroCockpits.length > 0,
+      promotable: false,
+      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+      timing: activeTiming(heroCockpits.length > 0),
+      currentPlacement: "priority",
+      currentOrder: 0,
+    },
+    {
+      placementId: "needs-attention",
+      nodeKey: "needs-attention",
+      groupKey: "priority",
+      subject: profileSubject,
+      visible: true,
+      available: true,
+      promotable: false,
+      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+      timing: { kind: "always" },
+      currentPlacement: "priority",
+      currentOrder: 1,
+    },
+    {
+      placementId: "recently-resolved",
+      nodeKey: "recently-resolved",
+      groupKey: null,
+      subject: { scope: "household" },
+      visible: recentlyResolved.length > 0,
+      available: recentlyResolved.length > 0,
+      promotable: false,
+      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+      timing: activeTiming(recentlyResolved.length > 0),
+      currentPlacement: "pre-grid",
+      currentOrder: 0,
+    },
+    {
+      placementId: "stream-lifecycle-offers",
+      nodeKey: "stream-lifecycle-offers",
+      groupKey: null,
+      subject: profileSubject,
+      visible: streamLifecycleOffers.length > 0,
+      available: streamLifecycleOffers.length > 0,
+      promotable: false,
+      obligation: "may",
+      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+      timing: activeTiming(streamLifecycleOffers.length > 0),
+      currentPlacement: "pre-grid",
+      currentOrder: 1,
+    },
+    {
+      placementId: "session-recap",
+      nodeKey: "session-recap",
+      groupKey: null,
+      subject: profileSubject,
+      visible: showRecapCard,
+      available: showRecapCard,
+      promotable: showRecapCard,
+      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+      timing: timingForNowCard("session-recap", nowSignals),
+      currentPlacement: "pre-grid",
+      currentOrder: 2,
+    },
+    {
+      placementId: "onboarding-resume",
+      nodeKey: "onboarding-resume",
+      groupKey: null,
+      subject: profileSubject,
+      visible: onboardingState != null && onboardingPresence != null,
+      available: onboardingState != null && onboardingPresence != null,
+      promotable: false,
+      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+      timing: activeTiming(
+        onboardingState != null && onboardingPresence != null
+      ),
+      currentPlacement: "pre-grid",
+      currentOrder: 3,
+    },
+    {
+      placementId: "onboarding-checklist",
+      nodeKey: "onboarding-checklist",
+      groupKey: null,
+      subject: profileSubject,
+      visible:
+        onboardingChecklist != null && onboardingChecklistCompletion != null,
+      available:
+        onboardingChecklist != null && onboardingChecklistCompletion != null,
+      promotable: false,
+      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+      timing: activeTiming(
+        onboardingChecklist != null && onboardingChecklistCompletion != null
+      ),
+      currentPlacement: "pre-grid",
+      currentOrder: 4,
+    },
+    {
+      placementId: "household-strip",
+      nodeKey: "household-strip",
+      groupKey: null,
+      subject: { scope: "household" },
+      visible: householdEntries.length > 0 || promoInHouseholdStrip,
+      available: householdEntries.length > 0 || promoInHouseholdStrip,
+      promotable: false,
+      rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+      timing: activeTiming(
+        householdEntries.length > 0 || promoInHouseholdStrip
+      ),
+      currentPlacement: "pre-grid",
+      currentOrder: 5,
+    },
+  ];
+  const widgetSurfaces: RankableDashboardSurface[] = gridWidgets.map(
+    (widget, currentOrder) => {
+      return {
+        placementId: widget.id,
+        nodeKey: widget.id,
+        groupKey: null,
+        subject: profileSubject,
+        visible: widget.visible,
+        available: widget.available,
+        promotable: gridPromotable.has(widget.id),
+        rankReasons: { ...NO_DASHBOARD_RANK_REASONS },
+        timing: isNowCardId(widget.id)
+          ? timingForNowCard(widget.id, nowSignals)
+          : { kind: "always" },
+        currentPlacement: "grid",
+        currentOrder,
+      };
+    }
+  );
+  const dashboardPlacements = rankDashboard(
+    [...staticSurfaces, ...widgetSurfaces],
+    { now: nowSignals }
+  );
+
+  // Each node is constructed once. Placements reference nodeKey; a promotion
+  // changes the zone and the grid skips that same id in normal mode.
+  const placementNodes = new Map<string, ReactNode>();
+  placementNodes.set(
+    "illness-hero",
+    <IllnessHero
+      cockpits={heroCockpits}
+      initialCollapsedActive={heroUi.collapsedActive}
+      initialOpenOtherId={heroUi.openOtherId}
+      saveState={saveIllnessHeroState}
+    />
+  );
+  placementNodes.set(
+    "needs-attention",
+    <NeedsAttentionHero
+      items={attention}
+      today={on}
+      formatPrefs={formatPrefs}
+      preferCollapsed={getAttentionHeroCollapsed(login.id)}
+      saveCollapsed={saveAttentionHeroCollapsed}
+    />
+  );
+  placementNodes.set(
+    "recently-resolved",
+    <RecentlyResolvedReopen
+      items={recentlyResolved}
+      showHouseholdPromo={promoInReopenBand}
+      dismissAction={dismissRecentlyResolved}
+    />
+  );
+  placementNodes.set(
+    "stream-lifecycle-offers",
+    <StreamLifecycleOffers
+      profileId={profile.id}
+      canWrite={access === "write"}
+      offers={streamLifecycleOffers}
+    />
+  );
+  placementNodes.set(
+    "session-recap",
+    finishedRecap ? (
+      <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
+    ) : null
+  );
+  placementNodes.set(
+    "onboarding-resume",
+    onboardingState && onboardingPresence ? (
+      <OnboardingResumeCard
+        state={onboardingState}
+        presence={onboardingPresence}
+      />
+    ) : null
+  );
+  placementNodes.set(
+    "onboarding-checklist",
+    onboardingChecklist && onboardingChecklistCompletion ? (
+      <OnboardingChecklist
+        focuses={onboardingChecklist.focuses}
+        completion={onboardingChecklistCompletion}
+      />
+    ) : null
+  );
+  placementNodes.set(
+    "household-strip",
+    <HouseholdStrip
+      entries={householdEntries}
+      showHouseholdPromo={promoInHouseholdStrip}
+    />
+  );
+  for (const widget of gridWidgets) {
+    placementNodes.set(widget.id, widget.node);
+  }
+
+  const priorityPlacements = visibleDashboardPlacements(
+    dashboardPlacements,
+    "priority"
+  );
+  const priorityById = new Map(
+    priorityPlacements.map((placement) => [placement.placementId, placement])
+  );
+  const nowPlacements = visibleDashboardPlacements(dashboardPlacements, "now");
+  const nowPlacementIds = nowPlacements.map(
+    (placement) => placement.placementId
+  );
+  const nowStripCards: NowStripCard[] = nowPlacements
+    .map((placement) => ({
+      id: placement.placementId,
+      node: placementNodes.get(placement.nodeKey),
     }))
-    .filter((c): c is NowStripCard => c.node != null);
+    .filter((card): card is NowStripCard => card.node != null);
+  const preGridPlacements = visibleDashboardPlacements(
+    dashboardPlacements,
+    "pre-grid"
+  );
+  const widgetById = new Map(gridWidgets.map((widget) => [widget.id, widget]));
+  const rankedGridWidgets = dashboardPlacements
+    .filter((placement) => placement.currentPlacement === "grid")
+    .sort(
+      (a, b) =>
+        a.currentOrder - b.currentOrder ||
+        a.placementId.localeCompare(b.placementId)
+    )
+    .map((placement) => widgetById.get(placement.placementId))
+    .filter((widget): widget is GridWidget => widget != null);
+  const placementNode = (placement: DashboardPlacement): ReactNode =>
+    placementNodes.get(placement.nodeKey) ?? null;
+  const priorityNode = (placementId: string): ReactNode => {
+    const placement = priorityById.get(placementId);
+    return placement ? placementNode(placement) : null;
+  };
 
   return (
     <div>
@@ -1409,23 +1660,10 @@ export default async function Dashboard() {
           dashboard canvas. With no open episode, Needs attention remains full-width. */}
       <div
         data-testid="dashboard-priority-row"
-        className={`mb-6 grid min-w-0 items-start gap-6 ${heroCockpits.length > 0 ? "xl:grid-cols-2" : ""}`}
+        className={`mb-6 grid min-w-0 items-start gap-6 ${priorityById.has("illness-hero") ? "xl:grid-cols-2" : ""}`}
       >
-        <IllnessHero
-          cockpits={heroCockpits}
-          initialCollapsedActive={heroUi.collapsedActive}
-          initialOpenOtherId={heroUi.openOtherId}
-          saveState={saveIllnessHeroState}
-        />
-        <div className="min-w-0">
-          <NeedsAttentionHero
-            items={attention}
-            today={on}
-            formatPrefs={formatPrefs}
-            preferCollapsed={getAttentionHeroCollapsed(login.id)}
-            saveCollapsed={saveAttentionHeroCollapsed}
-          />
-        </div>
+        {priorityNode("illness-hero")}
+        <div className="min-w-0">{priorityNode("needs-attention")}</div>
       </div>
       {/* The moment's most relevant card(s), above the user's own grid (#1413 A).
           Renders nothing at all when no signal is firing. */}
@@ -1433,45 +1671,15 @@ export default async function Dashboard() {
         cards={nowStripCards}
         dateLabel={formatLongDate(on, formatPrefs)}
       />
-      {recentlyResolved.length > 0 && (
-        <RecentlyResolvedReopen
-          items={recentlyResolved}
-          showHouseholdPromo={promoInReopenBand}
-          dismissAction={dismissRecentlyResolved}
-        />
-      )}
-      {/* The continuous-stream on/offboarding offer (#2162) — a wearable that just
-          started delivering, or one whose reminders have paused themselves. Class 2:
-          it competes for space here, is answered in one tap, and stays dismissed.
-          Renders nothing at all on almost every day. */}
-      <StreamLifecycleOffers
-        profileId={profile.id}
-        canWrite={access === "write"}
-      />
-      {/* Skipped when the Now strip promoted it — one render, never two (#1413). */}
-      {showRecapCard && finishedRecap && !nowPromoted.has("session-recap") && (
-        <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
-      )}
-      {onboardingState && onboardingPresence && (
-        <OnboardingResumeCard
-          state={onboardingState}
-          presence={onboardingPresence}
-        />
-      )}
-      {onboardingChecklist && onboardingChecklistCompletion && (
-        <OnboardingChecklist
-          focuses={onboardingChecklist.focuses}
-          completion={onboardingChecklistCompletion}
-        />
-      )}
-      <HouseholdStrip
-        entries={householdEntries}
-        showHouseholdPromo={promoInHouseholdStrip}
-      />
+      {preGridPlacements.map((placement) => (
+        <Fragment key={placement.placementId}>
+          {placementNode(placement)}
+        </Fragment>
+      ))}
       <DashboardGrid
         key={profile.id}
-        widgets={gridWidgets}
-        promoted={nowCardIds}
+        widgets={rankedGridWidgets}
+        promoted={nowPlacementIds}
         saveAction={saveDashboardLayout}
       />
     </div>
