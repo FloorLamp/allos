@@ -306,7 +306,7 @@ export default async function CyclePage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-black/5 bg-white/60 px-3 py-2 dark:border-white/5 dark:bg-ink-900/40">
+    <div className="rounded-lg border border-(--border) bg-surface px-3 py-2">
       <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
       <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
         {value}

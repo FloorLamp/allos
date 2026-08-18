@@ -59,7 +59,7 @@ export default function LevelBadge({
             onClick={() => setOpen(false)}
           >
             <div
-              className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl sm:p-5 dark:bg-ink-900"
+              className="w-full max-w-lg rounded-xl bg-surface p-4 shadow-xl sm:p-5"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">

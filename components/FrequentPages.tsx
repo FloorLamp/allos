@@ -121,7 +121,7 @@ export default function FrequentPages({
             href={page.href}
             onClick={onNavigate}
             data-testid={`frequent-page-${page.href}`}
-            className="press rounded-full border border-black/10 bg-white/70 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300 dark:hover:bg-ink-750"
+            className="press rounded-full border border-(--border) bg-surface px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
           >
             {page.label}
           </Link>

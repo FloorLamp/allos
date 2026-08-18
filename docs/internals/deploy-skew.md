@@ -511,7 +511,7 @@ Pure (`lib/__tests__/sw-update.test.ts`, `lib/__tests__/theme.test.ts`,
 skew classifiers' positives and their deliberate negatives, the queue predicate's
 stale-action case, the guard's state machine including a 25-pass broken-deploy
 simulation that must produce exactly one reload, the marker contract, and that the
-two error-card palettes genuinely invert rather than merely differ.
+the light and dark error-card schemes genuinely invert rather than merely differ.
 
 Pure (`lib/__tests__/deployed-version-watch.test.ts`): **how the signal is produced**,
 which is the half nothing tested before #2329 — every other pure test takes

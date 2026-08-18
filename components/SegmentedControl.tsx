@@ -85,15 +85,19 @@ export default function SegmentedControl<T extends string | number>({
       role="group"
       aria-label={ariaLabel}
       data-testid={testId}
-      className={`inline-flex rounded-lg bg-slate-100 p-1 dark:bg-ink-800 ${className}`}
+      // Identifies the shared control for styling and tests.
+      data-segmented=""
+      className={`inline-flex rounded-lg bg-(--seg-bg) p-1 ${className}`}
     >
       {options.map((option) => {
         const active = value === option.value;
+        // The selected segment fills with the shared seg-active pair (the
+        // Botanical census's accent-filled pill).
         const segmentClass = `shrink-0 rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition ${
           option.icon ? "inline-flex items-center gap-1.5 " : ""
         }${
           active
-            ? "bg-white text-slate-900 shadow-xs dark:bg-ink-700 dark:text-slate-100"
+            ? "bg-(--seg-active-bg) text-(--seg-active-fg) shadow-xs"
             : "text-slate-500 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-500 dark:text-slate-400 dark:hover:text-slate-100 dark:disabled:hover:text-slate-400"
         }`;
         const body = (

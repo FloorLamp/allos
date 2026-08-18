@@ -49,7 +49,7 @@ export default function FilterPills<T extends string>({
     `shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm font-medium transition ${
       active
         ? "border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300"
-        : "border-black/10 bg-white/80 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-300 dark:hover:bg-ink-750"
+        : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
     }`;
 
   return (

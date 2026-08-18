@@ -419,7 +419,7 @@ export default function ConsumptionSection({
         <ModalShell
           title={`Add ${def.label.toLowerCase()} entry`}
           onClose={() => setAddOpen(false)}
-          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-lg rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
         >
           <form
             className="mt-4 grid gap-3 sm:grid-cols-2"
@@ -457,7 +457,7 @@ export default function ConsumptionSection({
         <ModalShell
           title={`${capSet ? "Change" : "Set"} ${def.label.toLowerCase()} weekly cap`}
           onClose={() => setCapOpen(false)}
-          className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-lg rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
         >
           <form
             className="mt-4 space-y-4"

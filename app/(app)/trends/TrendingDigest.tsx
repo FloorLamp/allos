@@ -72,7 +72,7 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
       return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300";
     if (item.rangeShift === "into-range")
       return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300";
-    return "border-slate-200 bg-white/70 text-slate-700 dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200";
+    return "border-slate-200 bg-surface text-slate-700 dark:border-white/10 dark:text-slate-200";
   };
 
   const renderChip = (item: TrendItem) => {

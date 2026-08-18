@@ -22,7 +22,7 @@ import {
 //
 //   1. Replacing the root layout also replaces the THEME-BOOT SCRIPT, so no `dark`
 //      class is ever set; a hard-coded light card then reads as the app flipping
-//      theme on top of whatever else went wrong. The palette is now chosen from the
+//      theme on top of whatever else went wrong. The colors are now chosen from the
 //      same stored theme the boot script reads — one theme source, not two.
 //   2. "Try again" called `reset()`: a re-render of the same stale runtime, reaching
 //      for the same chunks the deploy deleted, failing identically every time. The
@@ -43,7 +43,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  // Lazy initializer rather than an effect: the palette is decided on the very first
+  // Lazy initializer rather than an effect: the scheme is decided on the very first
   // client render, so the card never paints light-then-dark. Server-rendered output
   // (no window) falls back to light and is corrected at hydration, which is what the
   // suppressHydrationWarning below covers — the same trade the root layout makes.

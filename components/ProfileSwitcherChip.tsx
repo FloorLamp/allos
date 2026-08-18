@@ -57,7 +57,7 @@ export default function ProfileSwitcherChip({
     </>
   );
   const className =
-    "inline-flex max-w-full min-w-0 items-center gap-2 rounded-full border border-black/10 bg-white/70 py-1 pl-1 pr-2 text-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900/70 dark:hover:bg-ink-850";
+    "inline-flex max-w-full min-w-0 items-center gap-2 rounded-full border border-(--border) bg-surface py-1 pl-1 pr-2 text-sm transition hover:bg-(--ghost-hover)";
 
   if (acting) {
     return (

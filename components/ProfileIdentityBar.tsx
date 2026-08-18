@@ -204,7 +204,7 @@ export default function ProfileIdentityBar({
       className={`flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition ${
         isMobile
           ? "tap-target press -ml-1 flex-1 hover:bg-slate-100 dark:hover:bg-ink-750"
-          : "w-full border border-black/10 bg-white/70 hover:bg-white dark:border-white/10 dark:bg-ink-850 dark:hover:bg-ink-800"
+          : "w-full border border-black/10 bg-(--ghost) hover:bg-(--ghost-hover) dark:border-white/10"
       } ${mounted ? "" : "cursor-progress"}`}
     >
       <span aria-hidden className="flex shrink-0 items-center -space-x-2">
@@ -303,7 +303,7 @@ export default function ProfileIdentityBar({
           data-testid="profile-switcher-panel"
           className={`${
             open ? "flex" : "hidden"
-          } absolute inset-x-0 top-full z-20 mt-1 max-h-[50vh] flex-col overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-white p-2 shadow-lg dark:border-white/10 dark:bg-ink-850`}
+          } absolute inset-x-0 top-full z-20 mt-1 max-h-[50vh] flex-col overflow-y-auto overscroll-contain rounded-lg border border-(--border) bg-surface p-2 shadow-lg`}
         >
           {panel}
         </div>
@@ -330,7 +330,7 @@ export default function ProfileIdentityBar({
               role="dialog"
               aria-modal="true"
               aria-label="Switch profile"
-              className={`absolute inset-x-0 top-0 flex max-h-[85vh] flex-col rounded-b-2xl border-b bg-white pt-[max(0.5rem,env(safe-area-inset-top))] dark:bg-ink-950 ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelMotion}`}
+              className={`absolute inset-x-0 top-0 flex max-h-[85vh] flex-col rounded-b-2xl border-b bg-surface pt-[max(0.5rem,env(safe-area-inset-top))] ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelMotion}`}
             >
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1">
                 {panel}

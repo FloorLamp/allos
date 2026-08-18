@@ -75,7 +75,7 @@ export default function CheckInSection({
             data-testid={`checkin-section-${id}-toggle`}
             aria-expanded={expanded}
             onClick={onToggle}
-            className="shrink-0 text-xs text-brand-600 hover:underline dark:text-brand-400"
+            className="shrink-0 text-xs text-link"
           >
             {expanded ? "Less" : toggleLabel}
           </button>

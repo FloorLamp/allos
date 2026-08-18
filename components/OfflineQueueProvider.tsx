@@ -425,7 +425,7 @@ export default function OfflineQueueProvider({
             {rejected.map((r) => (
               <li
                 key={r.intent.key}
-                className="flex items-start justify-between gap-2 rounded-lg bg-white/60 px-2 py-1.5 dark:bg-black/20"
+                className="flex items-start justify-between gap-2 rounded-lg bg-surface px-2 py-1.5"
               >
                 <span>
                   <span className="font-medium">

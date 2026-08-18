@@ -33,7 +33,7 @@ export default function ImportTabStrip({
             data-testid={`import-tab-${t.key}`}
             className={`badge inline-flex items-center gap-1 transition ${
               active
-                ? "bg-brand-600 text-white dark:bg-brand-500 dark:text-white"
+                ? "bg-(--seg-active-bg) text-(--seg-active-fg)"
                 : "bg-slate-100 text-slate-700 hover:bg-brand-100 hover:text-brand-700 dark:bg-ink-800 dark:text-slate-200 dark:hover:bg-brand-950 dark:hover:text-brand-300"
             }`}
           >

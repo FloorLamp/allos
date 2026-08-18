@@ -775,7 +775,7 @@ export default async function SupplementsTab({
 
       {notScheduled.length > 0 && (
         <details data-testid="not-scheduled-section" className="group">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200">
             <span>More supplements ({notScheduled.length})</span>
             <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
           </summary>
@@ -1204,7 +1204,7 @@ export default async function SupplementsTab({
               >
                 <div
                   data-testid="supplement-sidebar-surface"
-                  className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-xs dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
+                  className="divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
                 >
                   <section className="p-4">
                     <h2 className="mb-3 section-label">Insights</h2>
@@ -1265,7 +1265,7 @@ export default async function SupplementsTab({
               >
                 <div
                   data-testid="supplement-sidebar-surface"
-                  className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 bg-white/60 shadow-xs dark:divide-white/5 dark:border-white/10 dark:bg-ink-850/70"
+                  className="divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
                 >
                   <SupplementWeeklyAdherence
                     days={weeklyAdherenceDays}

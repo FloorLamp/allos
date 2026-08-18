@@ -75,7 +75,7 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
           value={maxRuns}
           onChange={(e) => setMaxRuns(Number(e.target.value))}
           onBlur={() => save({ autoSuggest, maxRuns })}
-          className="mt-1 w-24 rounded-md border border-black/10 bg-white px-2 py-1 text-sm dark:border-white/10 dark:bg-ink-900"
+          className="mt-1 w-24 rounded-md border border-(--field-bd) bg-field px-2 py-1 text-sm"
         />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           The ceiling on cadence-driven AI runs (supplement suggestions + daily

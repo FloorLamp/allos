@@ -30,6 +30,11 @@
 
 import type { ActivityType } from "./types/training"; // type-only: erased, no cycle
 
+/** Muscle-anatomy coverage uses the Botanical accent through the shared CSS token. */
+export const chartMuscleRamp = {
+  fill: "var(--color-brand-600)",
+} as const;
+
 // Categorical series palette — pick distinct entries for a multi-series chart.
 // Five slots, in fixed order; a hue is never generated for an Nth series.
 export const chartSeries = {
@@ -38,7 +43,11 @@ export const chartSeries = {
   // fold had collapsed sky/cyan/teal into emerald, which cost the palette its
   // only cool tone and produced the two near-identical greens.
   sky: "#0284c7",
-  amber: "#d97706", // amber-600  — warm yellow-orange (absorbs orange)
+  // Warm yellow-orange (absorbs orange). Re-stepped a hair below amber-600:
+  // Botanical's light card surface is slightly darker than white, and #d97706
+  // fell to 2.96:1 there. #d47506 clears 3:1 on both Botanical surfaces while
+  // holding the amber↔rose deutan pair at the 8.0 target.
+  amber: "#d47506",
   rose: "#e11d48", // rose-600   — red/pink (absorbs raw red)
   violet: "#8b5cf6", // violet-500 — purple (absorbs blue/indigo)
 } as const;
@@ -128,14 +137,14 @@ export const chartActivityRamp: CellRamp = {
     "text-slate-950 dark:text-slate-950",
   ],
   light: {
-    empty: "#f1f5f9", // slate-100
-    steps: ["#86efac", "#4ade80", "#22c55e", "#16a34a"], // brand 300→600
-    labelText: ["#1e293b", "#020617", "#020617", "#020617", "#020617"],
+    empty: "#ecf2e8",
+    steps: ["#86efac", "#4ade80", "#22c55e", "#16a34a"],
+    labelText: ["#1e3226", "#0c1710", "#0c1710", "#0c1710", "#0c1710"],
   },
   dark: {
-    empty: "#141a17", // ink-800
-    steps: ["#166534", "#15803d", "#16a34a", "#22c55e"], // brand 800→500
-    labelText: ["#f1f5f9", "#ffffff", "#ffffff", "#020617", "#020617"],
+    empty: "#141c16",
+    steps: ["#166534", "#15803d", "#16a34a", "#22c55e"],
+    labelText: ["#ecf2e8", "#ffffff", "#ffffff", "#0c1710", "#0c1710"],
   },
 };
 
@@ -158,14 +167,14 @@ export const chartObservationRamp: CellRamp = {
     "text-white dark:text-slate-950",
   ],
   light: {
-    empty: "#f1f5f9", // slate-100
+    empty: "#ecf2e8",
     steps: ["#bfdbfe", "#93c5fd", "#60a5fa", "#2563eb"],
-    labelText: ["#1e293b", "#020617", "#020617", "#020617", "#ffffff"],
+    labelText: ["#1e3226", "#0c1710", "#0c1710", "#0c1710", "#ffffff"],
   },
   dark: {
-    empty: "#141a17", // ink-800
+    empty: "#141c16",
     steps: ["#1d4ed8", "#3b82f6", "#93c5fd", "#dbeafe"],
-    labelText: ["#f1f5f9", "#ffffff", "#020617", "#020617", "#020617"],
+    labelText: ["#ecf2e8", "#ffffff", "#0c1710", "#0c1710", "#0c1710"],
   },
 };
 
@@ -179,13 +188,13 @@ export const chartObservationRamp: CellRamp = {
 export const chartAdherenceState = {
   taken: {
     class: "bg-brand-700 text-white dark:bg-brand-500 dark:text-brand-950",
-    light: "#15803d", // brand-700
-    dark: "#22c55e", // brand-500
+    light: "#15803d",
+    dark: "#22c55e",
   },
   partial: {
     class: "bg-brand-300 text-brand-900 dark:bg-brand-800 dark:text-brand-100",
-    light: "#86efac", // brand-300
-    dark: "#166534", // brand-800
+    light: "#86efac",
+    dark: "#166534",
   },
   skipped: {
     // slate-400, not the slate-300 this shipped with: against the pale `partial`
@@ -193,8 +202,8 @@ export const chartAdherenceState = {
     // adjacent cells in the same grid that a full-color reader could not
     // confidently separate. One step darker clears it at 21.8.
     class: "bg-slate-400 text-slate-900 dark:bg-ink-700 dark:text-slate-200",
-    light: "#94a3b8", // slate-400
-    dark: "#283029", // ink-700
+    light: "#86a190",
+    dark: "#263129",
   },
   missed: {
     class: "bg-rose-600 text-white dark:bg-rose-500 dark:text-rose-950",

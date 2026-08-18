@@ -324,7 +324,7 @@ export default function ActivityCardMenu({
                         data-testid="merge-keeper-select"
                         value={keeperId}
                         onChange={(e) => chooseKeeper(Number(e.target.value))}
-                        className="mt-1 block w-full rounded-sm border border-black/10 bg-white px-1.5 py-1 text-sm text-slate-700 dark:border-white/10 dark:bg-ink-800 dark:text-slate-200"
+                        className="mt-1 block w-full rounded-sm border border-(--field-bd) bg-field px-1.5 py-1 text-sm text-slate-700 dark:text-slate-200"
                       >
                         <option value={activity.id}>
                           {activity.title} (this)

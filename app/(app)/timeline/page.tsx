@@ -145,8 +145,12 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   practice: IconSparkles,
 };
 
+// Timeline rows are the quiet card tier: they share Botanical's card surface and
+// semantic border, but a dense chronological feed does not give every row its own
+// shadow. Only rows whose whole shell is interactive receive the hover fill.
 const CARD_CLASS =
-  "border-black/10 bg-white text-slate-700 dark:border-white/10 dark:bg-ink-900 dark:text-slate-200";
+  "border-(--border) bg-surface text-slate-700 dark:text-slate-200";
+const CARD_HOVER_CLASS = "transition duration-150 hover:bg-(--ghost-hover)";
 
 const BADGE_CLASS: Record<TimelineCategory, string> = {
   activity:
@@ -277,7 +281,7 @@ function EventCard({
   const collapsed = (
     <>
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/70 text-current ring-1 ring-black/5 dark:bg-black/10 dark:ring-white/10">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--ghost) text-current ring-1 ring-black/5 dark:ring-white/10">
           {icon}
         </div>
         <div className="min-w-0 flex-1">
@@ -290,7 +294,7 @@ function EventCard({
             </span>
             {canExpand && (
               <span
-                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition group-open:rotate-180 group-hover:bg-white/70 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:bg-black/10 dark:group-hover:text-slate-200"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition group-open:rotate-180 group-hover:bg-(--ghost-hover) group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200"
                 aria-hidden
               >
                 <IconChevronDown className="h-3.5 w-3.5" stroke={2} />
@@ -312,7 +316,7 @@ function EventCard({
               {event.meta.map((m, index) => (
                 <span
                   key={`${event.id}:meta:${index}:${m}`}
-                  className="rounded-sm bg-white/60 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-black/10 dark:text-slate-400"
+                  className="rounded-sm bg-(--ghost) px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-400"
                 >
                   {m}
                 </span>
@@ -336,7 +340,7 @@ function EventCard({
                   <Link
                     key={`${event.id}:ref:${index}:${ref.label}`}
                     href={ref.href}
-                    className="rounded-sm bg-white/60 px-1.5 py-0.5 text-xs text-brand-700 transition hover:underline dark:bg-black/10 dark:text-brand-300"
+                    className="rounded-sm bg-(--ghost) px-1.5 py-0.5 text-xs text-brand-700 transition hover:underline dark:text-brand-300"
                   >
                     {ref.label}
                   </Link>
@@ -349,7 +353,7 @@ function EventCard({
     </>
   );
 
-  const shellClass = `rounded-lg border px-4 py-3 shadow-xs transition duration-150 hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`;
+  const shellClass = `rounded-lg border px-4 py-3 ${canExpand ? CARD_HOVER_CLASS : ""} ${CARD_CLASS}`;
 
   if (!canExpand) {
     return <div className={`group block ${shellClass}`}>{collapsed}</div>;
@@ -512,7 +516,7 @@ function TimelineFoldCard({
         testId={`${testId}-toggle`}
         label={fold.label}
         ariaExpanded={fold.open}
-        className={`flex items-center gap-3 rounded-lg border px-4 py-3 shadow-xs transition hover:bg-brand-50 dark:hover:bg-brand-950/40 ${CARD_CLASS}`}
+        className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${CARD_HOVER_CLASS} ${CARD_CLASS}`}
       >
         <span
           className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition dark:text-slate-400 ${
@@ -1003,7 +1007,7 @@ export default async function TimelinePage(props: {
                   idPrefix="timeline"
                   rightSlot={
                     <>
-                      <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+                      <span className="whitespace-nowrap rounded-full border border-(--border) bg-(--ghost) px-3 py-1 text-slate-500 dark:text-slate-400">
                         {throughLabel}
                       </span>
                       {latestDay && oldestDay && latestDay !== oldestDay && (
@@ -1287,7 +1291,7 @@ export default async function TimelinePage(props: {
               <div className="flex justify-center pb-2 pt-4">
                 <TimelineFilterLink
                   href={filterHref(category, range, show + SHOW_STEP)}
-                  className="rounded-full border border-black/10 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200 dark:hover:bg-ink-850"
+                  className="rounded-full border border-(--border) bg-surface px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200"
                 >
                   Load more
                 </TimelineFilterLink>
@@ -1379,7 +1383,7 @@ export default async function TimelinePage(props: {
                   href={filterHref(category, range, show + SHOW_STEP, [
                     ...openFolds,
                   ])}
-                  className="rounded-full border border-black/10 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200 dark:hover:bg-ink-850"
+                  className="rounded-full border border-(--border) bg-surface px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) dark:text-slate-200"
                 >
                   Load more
                 </TimelineFilterLink>

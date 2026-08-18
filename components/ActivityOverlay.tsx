@@ -135,7 +135,7 @@ export default function ActivityOverlay({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-white sm:p-8 dark:bg-ink-900 ${OVERLAY_SCRIM_TINT_SM} ${
+      className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-surface sm:p-8 ${OVERLAY_SCRIM_TINT_SM} ${
         hidden ? "hidden" : ""
       }`}
       onClick={onClose}
@@ -145,7 +145,7 @@ export default function ActivityOverlay({
       <div
         ref={panelRef}
         data-testid="activity-overlay-panel"
-        className="min-h-full w-full bg-white p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:min-h-0 sm:max-w-lg sm:rounded-xl sm:p-6 sm:pt-0 sm:shadow-xl dark:bg-ink-900"
+        className="min-h-full w-full bg-surface p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:min-h-0 sm:max-w-lg sm:rounded-xl sm:p-6 sm:pt-0 sm:shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {onMinimize && (

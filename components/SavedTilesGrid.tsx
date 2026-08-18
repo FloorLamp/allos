@@ -179,7 +179,7 @@ export default function SavedTilesGrid({
               ))}
               {addTile ? (
                 <div
-                  className="col-span-2 flex items-center justify-center rounded-xl border border-dashed border-black/10 bg-white/40 px-4 py-3 lg:col-span-1 lg:min-h-48 dark:border-white/10 dark:bg-ink-900/40"
+                  className="col-span-2 flex items-center justify-center rounded-xl border border-dashed border-(--border) bg-surface/40 px-4 py-3 lg:col-span-1 lg:min-h-48"
                   data-testid="save-trend-picker-slot"
                 >
                   {addTile}

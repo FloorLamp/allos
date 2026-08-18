@@ -52,7 +52,7 @@ export default function PrimarySourcePicker({
           value={source}
           disabled={isPending}
           data-testid={`primary-source-${metric}`}
-          className="min-w-0 w-full rounded-sm border border-black/10 bg-white px-2 py-1 text-xs text-slate-700 sm:w-auto sm:max-w-full dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
+          className="min-w-0 w-full rounded-sm border border-(--field-bd) bg-field px-2 py-1 text-xs text-slate-700 sm:w-auto sm:max-w-full dark:text-slate-200"
           onChange={(e) => {
             const next = e.currentTarget.value;
             // Automatic has no source to be strict about; drop the mode with it

@@ -61,7 +61,7 @@ function TrainingLogRow({
       data-testid="training-log-row"
       aria-expanded={expandable ? expanded : undefined}
       onClick={() => onOpen(activity.id)}
-      className={`flex w-full items-center gap-3 rounded-lg border bg-white px-3 py-2 text-left transition scroll-mt-[calc(6rem+env(safe-area-inset-top))] dark:bg-ink-900 ${
+      className={`flex w-full items-center gap-3 rounded-lg border bg-surface px-3 py-2 text-left transition scroll-mt-[calc(6rem+env(safe-area-inset-top))] ${
         active
           ? "border-brand-500 ring-1 ring-brand-500 dark:border-brand-400 dark:ring-brand-400"
           : "border-black/10 hover:border-black/20 dark:border-white/10 dark:hover:border-white/20"

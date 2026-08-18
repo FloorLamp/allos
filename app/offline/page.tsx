@@ -155,7 +155,7 @@ export default function OfflinePage() {
             <IconArrowLeft className="h-4 w-4" stroke={1.75} />
             Back
           </button>
-          <div className="offline-card rounded-2xl border border-black/10 bg-white/70 p-5 dark:border-white/5 dark:bg-ink-950/70">
+          <div className="offline-card rounded-2xl border border-(--border) bg-surface p-5">
             <OfflineSnapshotView env={openEnv} now={new Date()} />
           </div>
         </PageContainer>
@@ -173,7 +173,7 @@ export default function OfflinePage() {
         <div className="mb-8 flex items-center justify-center gap-2">
           <Wordmark markClassName="h-8 w-14" />
         </div>
-        <div className="offline-card rounded-2xl border border-black/10 bg-white/70 p-6 shadow-xs backdrop-blur-xl dark:border-white/5 dark:bg-ink-950/70">
+        <div className="offline-card rounded-2xl border border-(--border) bg-surface p-6 shadow-xs">
           <h1 className="mb-1 text-lg font-semibold text-slate-800 dark:text-slate-100">
             You&apos;re offline
           </h1>

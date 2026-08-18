@@ -65,10 +65,7 @@ export default function ActiveProtocolWidget({
             data-testid={`active-protocol-${p.id}`}
           >
             <div className="flex items-baseline justify-between gap-2">
-              <Link
-                href={p.href}
-                className="min-w-0 truncate font-medium text-brand-700 hover:underline dark:text-brand-300"
-              >
+              <Link href={p.href} className="min-w-0 truncate text-link">
                 {p.name}
               </Link>
               <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
@@ -140,7 +137,7 @@ export default function ActiveProtocolWidget({
         <Link
           href="/longevity#protocols"
           data-testid="active-protocols-more"
-          className="mt-3 inline-block text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+          className="mt-3 inline-block text-xs text-link-muted"
         >
           +{overflow.length} more protocol{overflow.length === 1 ? "" : "s"} →
         </Link>

@@ -357,7 +357,7 @@ export default async function TrendsPage(props: {
                 isCustomRange(range, todayStr, extraRanges) ? (
                   <span
                     data-testid="range-summary-chip"
-                    className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400"
+                    className="whitespace-nowrap rounded-full border border-(--border) bg-(--ghost) px-3 py-1 text-slate-500 dark:text-slate-400"
                   >
                     {rangeSummaryLabel(range, todayStr)}
                   </span>

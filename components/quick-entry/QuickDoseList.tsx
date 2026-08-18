@@ -89,7 +89,7 @@ export default function QuickDoseList({
         <li
           key={dose.doseId}
           data-testid={`quick-entry-dose-${dose.doseId}`}
-          className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2 dark:border-white/10 dark:bg-ink-900"
+          className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2"
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium text-slate-800 dark:text-slate-100">

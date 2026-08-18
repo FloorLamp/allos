@@ -548,7 +548,7 @@ export default async function OnboardingPage({
                     <span
                       data-testid={`notification-preview-${intent.id}`}
                       aria-live="polite"
-                      className="mt-3 hidden rounded-lg border border-brand-200 bg-white/70 px-3 py-2 text-xs leading-relaxed text-brand-800 peer-checked:block dark:border-brand-500/25 dark:bg-ink-900/50 dark:text-brand-200"
+                      className="mt-3 hidden rounded-lg border border-brand-200 bg-surface px-3 py-2 text-xs leading-relaxed text-brand-800 peer-checked:block dark:border-brand-500/25 dark:text-brand-200"
                     >
                       <span className="mr-1 font-semibold">Preview:</span>
                       {intent.preview}

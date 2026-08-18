@@ -102,7 +102,7 @@ function BrandedCheckbox({
         className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-1 dark:peer-focus-visible:ring-offset-ink-900 ${
           checked
             ? "border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500"
-            : "border-black/20 bg-white text-transparent dark:border-white/20 dark:bg-ink-900"
+            : "border-black/20 bg-field text-transparent dark:border-white/20"
         }`}
       >
         <IconCheck className="h-3 w-3" stroke={3} />
@@ -597,7 +597,7 @@ export default function StrengthSets({
               ? // Divider on BOTH sides now that the reps stepper is symmetric
                 // (#1524: − input +), exactly like the weight stepper's input.
                 "number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
-              : `input bg-white dark:bg-ink-900 ${blocked ? blockedField : ""}`
+              : `input ${blocked ? blockedField : ""}`
           }
         />
       );
@@ -615,7 +615,7 @@ export default function StrengthSets({
         title={
           invalid ? "Enter time as m:ss or seconds, e.g. 1:30 or 90" : undefined
         }
-        className={`input bg-white dark:bg-ink-900 ${
+        className={`input ${
           invalid
             ? "border-rose-300 dark:border-rose-800"
             : blocked
@@ -655,7 +655,7 @@ export default function StrengthSets({
               value={bwInput}
               onChange={(e) => onBwInput(e.target.value)}
               placeholder={`Bodyweight (${units.weightUnit})`}
-              className="input bg-white dark:bg-ink-900"
+              className="input"
             />
             <button
               type="button"
@@ -778,7 +778,7 @@ export default function StrengthSets({
       {recent.length > 0 && (
         <div
           data-testid="recent-sessions"
-          className="mt-2 rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-900"
+          className="mt-2 rounded-md border border-black/10 bg-surface px-2.5 py-1.5 text-xs dark:border-white/10"
         >
           <div className="section-label">Recent</div>
           {/* Each row is a "repeat this session" fill path (#923) while the part is
@@ -991,7 +991,7 @@ export default function StrengthSets({
                     })
                   }
                   placeholder="—"
-                  className="input w-16 bg-white px-2 py-1 disabled:opacity-40 dark:bg-ink-900"
+                  className="input w-16 px-2 py-1 disabled:opacity-40"
                 />
               </label>
               <label className="flex cursor-pointer items-center gap-1.5">
@@ -1021,7 +1021,7 @@ export default function StrengthSets({
           band of headings. */}
       <div
         data-testid="set-column-headings"
-        className="sticky top-(--set-schema-top) z-9 -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
+        className="sticky top-(--set-schema-top) z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
       >
         <span className="hidden w-12 shrink-0 sm:block">Set</span>
         {!timed && !isBodyweight(p.name) ? (
@@ -1092,7 +1092,7 @@ export default function StrengthSets({
                       {!timed && !isBodyweight(p.name) ? (
                         <div
                           data-testid="weight-stepper"
-                          className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                          className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-field focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 ${
                             flags.weight
                               ? blockedField
                               : "border-black/10 dark:border-white/10"
@@ -1166,7 +1166,7 @@ export default function StrengthSets({
                             )
                           }
                           placeholder={units.weightUnit}
-                          className={`input bg-white dark:bg-ink-900 ${
+                          className={`input ${
                             flags.weight ? blockedField : ""
                           }`}
                         />
@@ -1179,7 +1179,7 @@ export default function StrengthSets({
                       {!timed ? (
                         <div
                           data-testid="reps-stepper"
-                          className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                          className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-field focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 ${
                             flags.effort
                               ? blockedField
                               : "border-black/10 dark:border-white/10"
@@ -1247,7 +1247,7 @@ export default function StrengthSets({
                     data-testid={
                       si === 0 ? "set1-weight-stepper" : "weight-stepper"
                     }
-                    className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                    className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-field focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 ${
                       sideFlags(s.weight, s.reps, s.duration).weight
                         ? blockedField
                         : "border-black/10 dark:border-white/10"
@@ -1313,7 +1313,7 @@ export default function StrengthSets({
                           )
                         : units.weightUnit
                     }
-                    className={`input bg-white dark:bg-ink-900 ${
+                    className={`input ${
                       sideFlags(s.weight, s.reps, s.duration).weight
                         ? blockedField
                         : ""
@@ -1329,7 +1329,7 @@ export default function StrengthSets({
                     data-testid={
                       si === 0 ? "set1-reps-stepper" : "reps-stepper"
                     }
-                    className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                    className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-field focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 ${
                       sideFlags(s.weight, s.reps, s.duration).effort
                         ? blockedField
                         : "border-black/10 dark:border-white/10"

@@ -109,14 +109,14 @@ export default function RecentlyResolvedReopen({
         <div
           key={item.episodeId}
           data-testid={`recently-resolved-${item.episodeId}`}
-          className="flex flex-wrap items-center gap-2 rounded-lg border border-black/5 bg-white/60 px-3 py-2 text-sm shadow-xs dark:border-white/10 dark:bg-black/10"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm shadow-xs"
         >
           <Avatar profile={item.profile} size="sm" />
           <span className="min-w-0 flex-1 text-slate-600 dark:text-slate-300">
             Recently resolved:{" "}
             <Link
               href={item.episodeHref}
-              className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+              className="text-link"
               data-testid="recently-resolved-link"
             >
               {item.situation}

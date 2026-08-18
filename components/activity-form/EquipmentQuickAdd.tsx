@@ -103,7 +103,7 @@ export default function EquipmentQuickAdd({
   return (
     <div
       data-testid="strength-equipment-quickadd"
-      className="mt-2 w-full rounded-md border border-black/10 bg-white px-2.5 py-2 dark:border-white/10 dark:bg-ink-900"
+      className="mt-2 w-full rounded-md border border-black/10 bg-surface px-2.5 py-2 dark:border-white/10"
     >
       <div className="section-label">New equipment</div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -115,14 +115,14 @@ export default function EquipmentQuickAdd({
           placeholder="Name (e.g. Hotel chest press)"
           aria-label="Equipment name"
           data-testid="strength-equipment-new-name"
-          className="input min-w-0 flex-1 bg-white dark:bg-ink-900"
+          className="input min-w-0 flex-1"
         />
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           aria-label="Equipment category"
           data-testid="strength-equipment-new-category"
-          className="input w-auto bg-white dark:bg-ink-900"
+          className="input w-auto"
         >
           <option value="">Category…</option>
           {STRENGTH_CATEGORIES.map((c) => (
@@ -140,7 +140,7 @@ export default function EquipmentQuickAdd({
           placeholder={`Weight (${unit}, optional)`}
           aria-label="Equipment weight"
           data-testid="strength-equipment-new-weight"
-          className="input w-32 bg-white dark:bg-ink-900"
+          className="input w-32"
         />
       </div>
       {error && (

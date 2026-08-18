@@ -162,7 +162,7 @@ function chipClass(pressed: boolean): string {
   return `tap-target rounded-full border px-2.5 py-1 text-xs font-medium transition ${
     pressed
       ? "border-brand-400 bg-brand-50 text-brand-700 dark:border-brand-600 dark:bg-brand-950/60 dark:text-brand-200"
-      : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+      : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
   }`;
 }
 
@@ -1137,7 +1137,7 @@ export default function FoodLogBar({
             // The overflow is grouped by tier, so rank is not recoverable from DOM order
             // there.
             data-rank={rankBySlug.get(g.slug)}
-            className="flex items-center gap-3 rounded-lg border border-black/10 bg-white px-3 py-2 dark:border-white/10 dark:bg-ink-900"
+            className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2"
           >
             <FoodGroupIcon
               slug={g.slug}
@@ -1228,7 +1228,7 @@ export default function FoodLogBar({
     <div>
       <div
         data-testid="food-log-context"
-        className="-mx-2 mb-3 bg-white/95 px-2 py-2 md:sticky md:top-0 md:z-10 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
+        className="-mx-2 mb-3 bg-surface/95 px-2 py-2 md:sticky md:top-0 md:z-10 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -1329,8 +1329,8 @@ export default function FoodLogBar({
                   onClick={() => setActiveSlot(meal)}
                   className={`flex min-h-12 min-w-0 flex-col items-stretch justify-center rounded-lg border p-2 text-left transition sm:h-full sm:justify-start sm:p-2.5 ${
                     activeSlot === meal
-                      ? "border-brand-400 bg-white ring-1 ring-brand-200 dark:border-brand-600 dark:bg-ink-700 dark:ring-brand-900"
-                      : "border-black/10 bg-white/60 hover:bg-white dark:border-white/10 dark:bg-ink-900/60 dark:hover:bg-ink-800"
+                      ? "border-brand-400 bg-surface ring-1 ring-brand-200 dark:border-brand-600 dark:ring-brand-900"
+                      : "border-(--border) bg-(--ghost) hover:bg-(--ghost-hover)"
                   }`}
                 >
                   <span className="flex items-center justify-between gap-2">
@@ -1391,7 +1391,7 @@ export default function FoodLogBar({
                   data-slot={event.mealSlot}
                   data-group={event.groupKey}
                   aria-busy={removingId === event.id || undefined}
-                  className={`flex items-center gap-2 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-sm dark:border-white/10 dark:bg-ink-900 ${
+                  className={`flex items-center gap-2 rounded-lg border border-(--border) bg-surface px-3 py-1.5 text-sm ${
                     removingId === event.id ? "opacity-50" : ""
                   }`}
                 >
@@ -1602,7 +1602,7 @@ export default function FoodLogBar({
           <details data-testid="food-more-groups" className="group">
             <summary
               data-testid="food-more-groups-summary"
-              className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-black/10 bg-white/70 px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750"
+              className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
             >
               <span>More food groups ({moreGroups.length})</span>
               <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
@@ -1626,7 +1626,7 @@ export default function FoodLogBar({
         <ModalShell
           title="Dietary preferences"
           onClose={() => setPreferencesOpen(false)}
-          className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
         >
           <div className="mt-4 min-h-0 overflow-y-auto pr-1">
             <DietaryPreferencesForm
@@ -1658,7 +1658,7 @@ export default function FoodLogBar({
             setEditing(null);
             setDraft(null);
           }}
-          className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl outline-hidden sm:p-5 dark:bg-ink-900"
+          className="w-full max-w-md rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
         >
           <div data-testid="food-correct-modal" className="mt-4 space-y-3">
             <p

@@ -292,7 +292,7 @@ export default function DateField({
               left: pos?.left ?? 0,
               visibility: pos ? "visible" : "hidden",
             }}
-            className="z-70 w-72 rounded-lg border border-black/10 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-ink-900"
+            className="z-70 w-72 rounded-lg border border-black/10 bg-surface p-3 shadow-lg dark:border-white/10"
           >
             <div className="mb-2 flex items-center justify-between gap-1">
               <div className="flex items-center gap-1">

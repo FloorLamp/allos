@@ -22,10 +22,7 @@ export default function ShellTabStrip({
   if (!config || disabledPageIds.includes(config.pageId)) return null;
 
   return (
-    <div
-      data-testid="shell-tab-strip"
-      className="bg-white/80 backdrop-blur-xl md:hidden dark:bg-ink-950/80"
-    >
+    <div data-testid="shell-tab-strip" className="bg-(--nav) md:hidden">
       <TabFirstTabs config={config} flush />
     </div>
   );

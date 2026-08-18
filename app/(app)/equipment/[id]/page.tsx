@@ -41,7 +41,7 @@ function Stat({
   return (
     <div
       data-testid={testId}
-      className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10"
+      className="rounded-lg border border-(--border) bg-surface px-4 py-3"
     >
       <div className="section-label">{label}</div>
       <div className="mt-1 text-lg font-semibold tabular-nums text-slate-800 dark:text-slate-100">
@@ -162,7 +162,7 @@ export default async function EquipmentDetailPage(props: {
       </div>
 
       {trendPoints.length > 0 ? (
-        <div className="mt-6 rounded-xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-black/10">
+        <div className="mt-6 rounded-xl border border-(--border) bg-surface p-4">
           <EquipmentTrend
             points={trendPoints}
             label={

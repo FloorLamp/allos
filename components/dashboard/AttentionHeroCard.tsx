@@ -140,7 +140,7 @@ export default function AttentionHeroCard({
           <Link
             href="/upcoming"
             aria-label="View all needs attention"
-            className="inline-flex shrink-0 items-center gap-0.5 text-xs text-brand-600 hover:underline dark:text-brand-400"
+            className="inline-flex shrink-0 items-center gap-0.5 text-xs text-link"
           >
             <span className="hidden sm:inline">View all</span>
             <IconArrowRight className="h-4 w-4" aria-hidden="true" />
