@@ -56,6 +56,7 @@ import {
 } from "../fixture-logins";
 import {
   seedMemberLogin,
+  adultFixtureProfileId,
   fixtureProfileId,
   grantProfile,
   rileyProfileId,
@@ -207,7 +208,7 @@ export function seedIllness(): void {
   // not the empty state) and the Nutrition → Supplements situations bar shows the
   // "1 situational item now active" activation acknowledgment. Read-only in the specs, so
   // it stays repeat-safe and never perturbs the other sick fixtures' cockpit assertions.
-  const sitCoachId = fixtureProfileId(SITCOACH_PROFILE);
+  const sitCoachId = adultFixtureProfileId(SITCOACH_PROFILE);
   seedSickEpisode(sitCoachId, { activateSituation: true });
   {
     const on = today(sitCoachId);

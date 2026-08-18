@@ -188,6 +188,11 @@ test.beforeAll(() => {
       .get(OWNED_PROFILE) as { id: number } | undefined;
     const profileId = existing?.id ?? createFixtureProfile(db, OWNED_PROFILE);
     db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value)
+         VALUES (?, 'birthdate', '1988-01-01')
+         ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(profileId);
+    db.prepare(
       "INSERT OR IGNORE INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
     ).run(OWNED_LOGIN, hashPasswordSync(E2E_MEMBER_PASSWORD));
     const loginId = (

@@ -17,7 +17,7 @@ import {
   E2E_LOGIN_WELLSYM,
   WELL_SYMPTOM_PROFILE,
 } from "../fixture-logins";
-import { seedMemberLogin, fixtureProfileId } from "./common";
+import { seedMemberLogin, adultFixtureProfileId } from "./common";
 
 // How far back the rest-episode fixture's training-context activity sits. Any value
 // ≥ 1 keeps today out of `trainingDates`; 10 also puts it outside every streak/load
@@ -51,7 +51,7 @@ export function seedRestEpisode(): void {
   // the profile timezone (zonedWallTimeToUtc + getTimezone) rather than naive
   // `${day}THH:MM` strings, so the rotating pinned instance zone (#1417) moves the whole
   // calendar together and the offset survives every rotation.
-  const reId = fixtureProfileId(REST_EPISODE_PROFILE);
+  const reId = adultFixtureProfileId(REST_EPISODE_PROFILE);
   const reTz = getTimezone(reId);
   const COACH_TODAY = today(reId);
   const COACH_YESTERDAY = shiftDateStr(COACH_TODAY, -1);
@@ -111,7 +111,7 @@ export function seedRestCard(): void {
   // this spec's ack/snooze writes never race the neighbor coaching specs. Idempotent —
   // clears its own fixture rows first. Synthetic values only; relative dates never stale.
   {
-    const rcId = fixtureProfileId(REST_CARD_PROFILE);
+    const rcId = adultFixtureProfileId(REST_CARD_PROFILE);
     // Pin this dedicated profile to UTC so the spec's per-test reset (which rebuilds
     // the same signal state from frozenNow()'s UTC date) and this seed agree on the
     // calendar date regardless of the prelude-pinned zone or the run's start hour.
@@ -180,7 +180,7 @@ export function seedWellDayTilt(): void {
   // suggest-only illness bridge present but not required. Isolated so the symptom write never
   // perturbs a neighbor coaching fixture. Idempotent; synthetic only.
   {
-    const wsId = fixtureProfileId(WELL_SYMPTOM_PROFILE);
+    const wsId = adultFixtureProfileId(WELL_SYMPTOM_PROFILE);
     const wsToday = today(wsId);
     db.prepare(
       `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:well-symptom'`

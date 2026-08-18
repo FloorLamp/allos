@@ -74,7 +74,12 @@ import {
   SETUP_HEALTH_QUIET_PROFILE,
   SETUP_HEALTH_GAP_MED,
 } from "../fixture-logins";
-import { seedMemberLogin, fixtureProfileId, grantProfile } from "./common";
+import {
+  seedMemberLogin,
+  adultFixtureProfileId,
+  fixtureProfileId,
+  grantProfile,
+} from "./common";
 import {
   completeOnboardingState,
   initialOnboardingState,
@@ -614,8 +619,8 @@ export function seedMultiProfile(): void {
   // dose-confirm buttons) + one weigh-in (the dashboard weight widget renders). The
   // spec asserts the not-self naming on the OTHER profile (never the login's own).
   {
-    const ownSelfId = fixtureProfileId(OWN_SELF_PROFILE);
-    const ownOtherId = fixtureProfileId(OWN_OTHER_PROFILE);
+    const ownSelfId = adultFixtureProfileId(OWN_SELF_PROFILE);
+    const ownOtherId = adultFixtureProfileId(OWN_OTHER_PROFILE);
     const seedOwnDose = (profileId: number, name: string): void => {
       if (
         !db

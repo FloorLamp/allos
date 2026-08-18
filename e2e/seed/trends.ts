@@ -82,7 +82,12 @@ import {
   TRENDS_CURRENCY_BODY_FAT_DAYS,
   TRENDS_CURRENCY_BODY_FAT_PCT,
 } from "../fixture-logins";
-import { ins, seedMemberLogin, fixtureProfileId } from "./common";
+import {
+  ins,
+  seedMemberLogin,
+  adultFixtureProfileId,
+  fixtureProfileId,
+} from "./common";
 
 // ── Trends -> Overview -> body census mobile overhaul ──
 export function seedBodyMobile(): void {
@@ -321,7 +326,7 @@ export function seedFitnessLens(): void {
   // near-present). Read-only in its spec. Idempotent: its own rows are cleared and
   // rewritten (child exercise_sets go first — they reach profile through the
   // activity, so the parents can't be deleted under them).
-  const fitId = fixtureProfileId(TRENDS_FITNESS_PROFILE);
+  const fitId = adultFixtureProfileId(TRENDS_FITNESS_PROFILE);
   const fitToday = today(fitId);
 
   db.prepare(
