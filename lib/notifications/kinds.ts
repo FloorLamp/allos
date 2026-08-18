@@ -111,6 +111,9 @@ export type NotificationKindEntry = {
   // Hidden for a profile too young for food-group logging (the same predicate the
   // Food tab uses).
   requiresFoodLogging?: boolean;
+  // Hidden while the workout-oriented Training product is not relevant. Existing
+  // unfinished-session cleanup remains visible and therefore does not set this bit.
+  requiresTraining?: boolean;
   // The intake reminder SLOT(S) this kind's send actually rides (#2161 review).
   //
   // Declared only for a kind with no schedule of its own: it fires at one of these
@@ -190,6 +193,7 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
       "Sent on the usual training schedule when behind on the weekly routine.",
     safety: false,
     control: { type: "toggle", field: "workout_enabled" },
+    requiresTraining: true,
   },
   {
     kind: "workout-stale",
@@ -205,6 +209,7 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     blurb: "A short summary line after a session is logged.",
     safety: false,
     control: { type: "always" },
+    requiresTraining: true,
   },
   {
     kind: "food",

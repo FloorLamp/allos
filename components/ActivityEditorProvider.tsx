@@ -58,6 +58,9 @@ interface ActivityEditorApi {
   openLive: () => void;
   // Whether live workout mode is available.
   canStartWorkout: boolean;
+  // Whether this profile may create workout-oriented activity records at all.
+  // Existing records remain editable and an existing live session resumable.
+  trainingRelevant: boolean;
   // Strength-specific creation/programming eligibility for the acting profile.
   // Existing strength records remain editable and a running session resumable.
   strengthTrainingAvailable: boolean;
@@ -123,6 +126,7 @@ export default function ActivityEditorProvider({
   equipment,
   recentActivityEquipment = [],
   bodyweightKg,
+  trainingRelevant,
   strengthTrainingAvailable,
   lastActivity = null,
   deloadContext,
@@ -142,6 +146,7 @@ export default function ActivityEditorProvider({
   // form's activity-level equipment picker, narrowed per-activity by the form.
   recentActivityEquipment?: number[];
   bodyweightKg: number | null;
+  trainingRelevant: boolean;
   strengthTrainingAvailable: boolean;
   // The single most recent activity (issue #337), seeding the "Repeat last
   // activity" palette command / mobile quick action. null when nothing's logged.
@@ -311,10 +316,10 @@ export default function ActivityEditorProvider({
         // The page beneath may BE the discarded row's — don't strand the
         // reader on a just-deleted activity; the hub is where they started.
         if (window.location.pathname === `/training/activity/${id}`)
-          router.replace("/training");
+          router.replace(trainingRelevant ? "/training" : "/timeline");
       })
       .catch(() => {});
-  }, [live, editData, router]);
+  }, [live, editData, router, trainingRelevant]);
 
   const startLiveSession = useCallback(
     (
@@ -456,6 +461,7 @@ export default function ActivityEditorProvider({
   const api: ActivityEditorApi = useMemo(
     () => ({
       openCreate: (createPrefill) => {
+        if (!trainingRelevant) return;
         if (createPrefill?.type === "strength" && !strengthTrainingAvailable)
           return;
         setEditData(null);
@@ -485,10 +491,13 @@ export default function ActivityEditorProvider({
           resumeOffer();
           return;
         }
-        if (!strengthTrainingAvailable) return;
+        if (!trainingRelevant || !strengthTrainingAvailable) return;
         startLiveSession({ type: "strength", title: "" }, null);
       },
-      canStartWorkout: strengthTrainingAvailable || offer.kind === "resume",
+      canStartWorkout:
+        (trainingRelevant && strengthTrainingAvailable) ||
+        offer.kind === "resume",
+      trainingRelevant,
       strengthTrainingAvailable,
       workoutOffer: offer,
       openSession: (prefillData) => {
@@ -499,6 +508,7 @@ export default function ActivityEditorProvider({
           resumeOffer();
           return;
         }
+        if (!trainingRelevant) return;
         if (prefillData.type !== "cardio" && !strengthTrainingAvailable) return;
         startLiveSession(
           {
@@ -523,6 +533,7 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       openRepeat: (data) => {
+        if (!trainingRelevant) return;
         if (activityEditDataHasStrength(data) && !strengthTrainingAvailable)
           return;
         setEditData(null);
@@ -536,7 +547,7 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       openRepeatLast: () => {
-        if (!lastActivity) return;
+        if (!trainingRelevant || !lastActivity) return;
         if (
           activityEditDataHasStrength(lastActivity) &&
           !strengthTrainingAvailable
@@ -553,6 +564,7 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       hasLastActivity:
+        trainingRelevant &&
         lastActivity != null &&
         (strengthTrainingAvailable ||
           !activityEditDataHasStrength(lastActivity)),
@@ -574,6 +586,7 @@ export default function ActivityEditorProvider({
       registerDock,
       tz,
       lastActivity,
+      trainingRelevant,
       strengthTrainingAvailable,
       subjectName,
       offer,

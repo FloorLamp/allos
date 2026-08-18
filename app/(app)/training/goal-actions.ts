@@ -35,7 +35,10 @@ import {
 } from "@/lib/queries/biomarker-plot";
 import { GOAL_PACE_PREFIX, goalPaceSignalKey } from "@/lib/goal-pacing";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
-import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 // Dismiss a goal-pacing finding (issue #45, domain 6): an off-pace goal or the safe-
 // rate weight-loss caution. Hides it through the shared findings-bus suppression
@@ -312,6 +315,8 @@ function goalValues(c: GoalCols) {
 
 export async function createGoal(formData: FormData): Promise<FormResult> {
   const { login, profile } = await requireWriteAccess();
+  if (!isTrainingRelevant(getProfileAge(profile.id)))
+    return formError("Goals aren’t available for this profile’s age.");
   if (
     formData.get("kind") === "exercise" &&
     !isStrengthTrainingRelevant(getProfileAge(profile.id))
@@ -353,6 +358,9 @@ export async function updateGoal(formData: FormData): Promise<FormResult> {
       "SELECT exercise, target_weight_kg, target_value, target_date FROM goals WHERE id = ? AND profile_id = ?"
     )
     .get(id, profile.id) as StoredWeights | undefined;
+  if (!stored) return formError("Couldn't find that goal.");
+  if (!isTrainingRelevant(getProfileAge(profile.id)))
+    return formError("Goals aren’t available for this profile’s age.");
   if (
     formData.get("kind") === "exercise" &&
     stored?.exercise == null &&
@@ -392,6 +400,8 @@ export async function updateGoal(formData: FormData): Promise<FormResult> {
 
 export async function updateProgress(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  if (!isTrainingRelevant(getProfileAge(profile.id)))
+    return formError("Goals aren’t available for this profile’s age.");
   const id = Number(formData.get("id"));
   const current = formData.get("current_value");
   if (!id) return formError("Couldn't find that goal.");
@@ -415,6 +425,8 @@ export async function updateProgress(formData: FormData): Promise<FormResult> {
 // the CURRENT status still matches its row and stays idempotent success.
 export async function setStatus(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  if (!isTrainingRelevant(getProfileAge(profile.id)))
+    return formError("Goals aren’t available for this profile’s age.");
   const id = Number(formData.get("id"));
   const status = String(formData.get("status"));
   if (!id) return formError("Couldn't find that goal.");

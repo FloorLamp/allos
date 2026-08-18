@@ -14,6 +14,8 @@ import AnalyzeSection from "./AnalyzeSection";
 import PlanSection from "./PlanSection";
 import { isRealIsoDate } from "@/lib/date";
 import { today } from "@/lib/db";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +27,10 @@ export default async function TrainingPage(props: {
 }) {
   const searchParams = await props.searchParams;
   const { profile } = await requireSession();
-  // Activity history and ordinary movement logging stay age-neutral. Each section
-  // applies the shared life-stage policy to strength programming and adult norms.
+  // The workout product stands down through early childhood. Activity facts are
+  // still preserved and their record-level pages remain reachable from Timeline,
+  // search, and imports; only the hub/create/programming experience redirects.
+  if (!isTrainingRelevant(getProfileAge(profile.id))) redirect("/");
 
   // Retired tab names redirect to their canonical URLs (#2892/#2894) — an
   // explicit mapping, not the unknown-tab fallback, because these links live on

@@ -48,6 +48,19 @@ function goalRows(profileId: number) {
 beforeEach(() => revalidate.mockClear());
 
 describe("createGoal", () => {
+  it("refuses every new goal through early childhood", async () => {
+    const login = createLogin();
+    const profile = createProfile("toddler-freeform-goal", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 2);
+
+    const result = await createGoal(
+      fd({ kind: "freeform", title: "Run a 5k" })
+    );
+    expect(result.ok).toBe(false);
+    expect(goalRows(profile.id)).toHaveLength(0);
+  });
+
   it("refuses a new strength goal for a child", async () => {
     const login = createLogin();
     const profile = createProfile("child-strength-goal", login.id);

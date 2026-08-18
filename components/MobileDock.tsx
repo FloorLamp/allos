@@ -74,8 +74,8 @@ import {
 //
 // ── THE PUCK IS FOR EVERY PROFILE ───────────────────────────────────────
 //
-// Activity logging is age-neutral. Adult-only write cores remain independently
-// gated by their own life-stage policies.
+// The puck remains useful at every life stage for food, body, and care logs. Its
+// Train segment is removed while the workout product is not relevant.
 
 const ICONS: Record<DockIcon, typeof IconPlus> = {
   dashboard: IconLayoutDashboard,
@@ -90,11 +90,15 @@ const SLOT_CLASS =
 
 const CAPTION_CLASS = "max-w-full truncate text-xs leading-none font-medium";
 
-export default function MobileDock() {
+export default function MobileDock({
+  trainingRelevant = true,
+}: {
+  trainingRelevant?: boolean;
+}) {
   const pathname = usePathname();
   const { drawerOpen, setDrawerOpen, logSheetOpen, setLogSheetOpen } =
     useMobileChrome();
-  const slots = dockSlots();
+  const slots = dockSlots(trainingRelevant);
   const active = activeDockSlotId(slots, pathname);
   const edgeRef = useBottomEdgeClaim<HTMLElement>();
 

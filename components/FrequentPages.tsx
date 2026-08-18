@@ -64,9 +64,11 @@ function publishVisits(raw: string): void {
 export default function FrequentPages({
   onNavigate,
   adultContentAvailable = true,
+  trainingRelevant = true,
 }: {
   onNavigate?: () => void;
   adultContentAvailable?: boolean;
+  trainingRelevant?: boolean;
 }) {
   const pathname = usePathname();
   const storedSnapshot = useSyncExternalStore(
@@ -74,9 +76,13 @@ export default function FrequentPages({
     readVisitsSnapshot,
     serverVisitsSnapshot
   );
+  const excludedHrefs = [
+    ...(adultContentAvailable ? [] : (["/longevity"] as const)),
+    ...(trainingRelevant ? [] : (["/training"] as const)),
+  ];
   const pages: TrackedPage[] = frequentPages(parsePageVisits(storedSnapshot), {
     currentPath: pathname,
-    excludedHrefs: adultContentAvailable ? undefined : ["/longevity"],
+    excludedHrefs,
   });
 
   useEffect(() => {

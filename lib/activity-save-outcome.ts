@@ -10,6 +10,8 @@ export function saveOutcomeMessage(
   reason: Extract<SaveActivityOutcome, { ok: false }>["reason"]
 ): string {
   switch (reason) {
+    case "training-unavailable":
+      return "Workout logging isn’t available for this profile’s age.";
     case "strength-unavailable":
       return "Strength workouts aren’t available for this profile’s age.";
     case "not-owned":

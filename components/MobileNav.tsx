@@ -63,6 +63,7 @@ export default function MobileNav({
   viewIds = [],
   readOnlyIds = [],
   adultContentAvailable = true,
+  trainingRelevant = true,
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
@@ -92,6 +93,8 @@ export default function MobileNav({
   readOnlyIds?: number[];
   // Known-adult predicate for the Longevity nav entry.
   adultContentAvailable?: boolean;
+  // False through early childhood; hides workout logging and navigation.
+  trainingRelevant?: boolean;
   // Reveals the admin-only nav entries (the household overview) in the drawer.
   isAdmin?: boolean;
   // True when the instance has >1 profile; gates the Household overview.
@@ -268,6 +271,7 @@ export default function MobileNav({
                 // anything (#1801). Same component, placed once per viewport.
                 showIdentityBar={false}
                 adultContentAvailable={adultContentAvailable}
+                trainingRelevant={trainingRelevant}
                 isAdmin={isAdmin}
                 multiProfile={multiProfile}
                 foodLoggingRelevant={foodLoggingRelevant}

@@ -161,6 +161,17 @@ describe("visibleSettingsGroups", () => {
     expect(ids).toContain("health");
   });
 
+  it("drops the Training group through early childhood", () => {
+    const ids = visibleSettingsGroups({
+      isAdmin: false,
+      trainingRelevant: false,
+      nutritionRelevant: true,
+    }).map((g) => g.id);
+    expect(ids).not.toContain("training");
+    expect(ids).toContain("nutrition");
+    expect(ids).toContain("health");
+  });
+
   it("preserves registry order (member groups before admin ones)", () => {
     const ids = visibleSettingsGroups(full).map((g) => g.id);
     const lastMember = ids.lastIndexOf("privacy");

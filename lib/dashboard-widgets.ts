@@ -78,6 +78,8 @@ export interface WidgetDef {
   // Adult-only route/content class (Longevity and Protocols). The page resolves
   // this from isLongevityRelevant so unknown age hides as well as a known minor.
   requiresAdultContent?: boolean;
+  // Hidden while the workout product is not relevant (through early childhood).
+  requiresTraining?: boolean;
   // Hidden when the named nav-relevance bit is false for the active profile — the
   // #1042 `relevanceKey` gate applied to the dashboard. Only "cycle" is used today
   // (the Cycle-phase card, gated on the SAME bit as the Cycle nav entry, so the card
@@ -139,6 +141,7 @@ export interface WidgetGate {
   // The nav-relevance `cycle` bit; gates `relevanceKey === "cycle"` widgets.
   cycle?: boolean;
   adultContent?: boolean;
+  training?: boolean;
 }
 
 // Per-profile customization. `order` is the display order of widget ids; `hidden`
@@ -391,6 +394,7 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
       "One focused suggestion — train or rest — from your routine and recovery.",
     defaultOn: true,
     fitness: true,
+    requiresTraining: true,
     // Today's train/rest decision, with the action link on it.
     actionable: true,
     span: "half",
@@ -720,11 +724,13 @@ export function customizableWidgetDefs(gate: WidgetGate = {}): WidgetDef[] {
   const foodLogging = gate.foodLogging ?? true;
   const cycle = gate.cycle ?? true;
   const adultContent = gate.adultContent ?? true;
+  const training = gate.training ?? true;
   return DASHBOARD_WIDGETS.filter(
     (w) =>
       !w.pinned &&
       !(w.requiresFoodLogging && !foodLogging) &&
       !(w.requiresAdultContent && !adultContent) &&
+      !(w.requiresTraining && !training) &&
       !(w.relevanceKey === "cycle" && !cycle)
   );
 }

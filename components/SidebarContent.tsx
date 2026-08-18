@@ -59,6 +59,7 @@ export default function SidebarContent({
   readOnlyIds = [],
   showIdentityBar = true,
   adultContentAvailable = true,
+  trainingRelevant = true,
   isAdmin = false,
   multiProfile = false,
   foodLoggingRelevant = true,
@@ -91,6 +92,8 @@ export default function SidebarContent({
   showIdentityBar?: boolean;
   // Known-adult predicate for the Longevity nav entry. Logging stays available.
   adultContentAvailable?: boolean;
+  // Workout product relevance for the active profile (false below age 5).
+  trainingRelevant?: boolean;
   // Reveals any admin-only nav entries; the pages themselves still call
   // requireAdmin().
   isAdmin?: boolean;
@@ -307,10 +310,12 @@ export default function SidebarContent({
       <FrequentPages
         onNavigate={onNavigate}
         adultContentAvailable={adultContentAvailable}
+        trainingRelevant={trainingRelevant}
       />
-      <TrainingLogCalendar activeDates={activityDates} />
+      {trainingRelevant && <TrainingLogCalendar activeDates={activityDates} />}
       <Nav
         adultContentAvailable={adultContentAvailable}
+        trainingRelevant={trainingRelevant}
         isAdmin={isAdmin}
         multiProfile={multiProfile}
         foodLoggingRelevant={foodLoggingRelevant}

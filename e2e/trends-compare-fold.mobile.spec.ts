@@ -14,7 +14,7 @@ import { followLink } from "./helpers";
 //   A. the strip is FIVE chips in frequency order — Overview | Body | Fitness |
 //      Nutrition | Insights — which is what makes it fit a 390px phone unclipped;
 //   B. Compare stopped being a tab and became a SECTION of Insights, and with it
-//      self-history analytics remain available at every life stage.
+//      body self-history analytics remain available for a school-age minor.
 //
 // Runs in the `mobile` project (390×844) by its file name alone; the desktop
 // project testIgnores `*.mobile.spec.ts`. The chip-fit assertion is only
@@ -130,8 +130,8 @@ test.describe("B — Compare folded into Insights", () => {
   });
 });
 
-test.describe("C — self-history analytics are age-neutral", () => {
-  test("a minor gets Fitness and the complete Insights surface", async ({
+test.describe("C — school-age self-history analytics stay available", () => {
+  test("a school-age minor gets Fitness and the complete Insights surface", async ({
     browser,
   }) => {
     test.slow(); // local `next dev` compiles the Trends route on first hit

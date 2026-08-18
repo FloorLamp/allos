@@ -95,6 +95,8 @@ import type { NavRelevance, NavRelevanceKey } from "./nav-relevance";
 //     still shows the calm note there), and the Supplements tab is always
 //     reachable. Eligible on unknown age (hide only on a positive infant match
 //     AND no intake items).
+//   - `requiresTraining`: hides the workout product through early childhood.
+//     Existing activity records remain reachable through record-level links.
 //   - `relevanceKey`: hidden when the server-resolved relevance bitset
 //     (lib/nav-relevance.ts, issue #1042) reads false for that key — the
 //     data/life-stage gate for the Cycle entry and the data-presence gate for
@@ -106,6 +108,7 @@ export function isNavLeafVisible(
     adminOnly?: boolean;
     requiresMultiProfile?: boolean;
     requiresFoodLogging?: boolean;
+    requiresTraining?: boolean;
     relevanceKey?: NavRelevanceKey;
   },
   ctx: {
@@ -114,12 +117,14 @@ export function isNavLeafVisible(
     multiProfile: boolean;
     foodLoggingRelevant: boolean;
     hasIntakeItems: boolean;
+    trainingRelevant?: boolean;
     relevance: NavRelevance;
     adultOnlyHrefs: ReadonlySet<string>;
   }
 ): boolean {
   if (leaf.adminOnly && !ctx.isAdmin) return false;
   if (leaf.requiresMultiProfile && !ctx.multiProfile) return false;
+  if (leaf.requiresTraining && ctx.trainingRelevant === false) return false;
   if (leaf.relevanceKey && !ctx.relevance[leaf.relevanceKey]) return false;
   if (
     leaf.requiresFoodLogging &&

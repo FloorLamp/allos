@@ -15,9 +15,11 @@
 // fixtures only (no PHI).
 
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { searchAll } from "@/lib/queries";
 import type { SearchHit } from "@/lib/search-rank";
+import { shiftDateStr } from "@/lib/date";
+import { setProfileBirthdate } from "@/lib/settings";
 
 function newProfile(name: string): number {
   const profileId = Number(
@@ -126,6 +128,40 @@ describe("command-palette hit hrefs deep-link to their target (#1568)", () => {
     expect(hit(p, "PHREF Squat", "goal", "PHREF Squat 100kg").href).toBe(
       "/training?tab=goals"
     );
+  });
+
+  it("keeps activity records searchable but removes workout-product hits for a toddler", () => {
+    const p = newProfile("palette-toddler");
+    setProfileBirthdate(p, shiftDateStr(today(p), -730));
+    const activityId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title)
+           VALUES (?, ?, 'cardio', 'PHREF Imported Toddler Walk')`
+        )
+        .run(p, today(p)).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO goals (profile_id, title, metric, target_value, status)
+       VALUES (?, 'PHREF Toddler 5k', 'distance', 5, 'active')`
+    ).run(p);
+
+    expect(
+      hit(
+        p,
+        "PHREF Imported Toddler",
+        "activity",
+        "PHREF Imported Toddler Walk"
+      ).href
+    ).toBe(`/training/activity/${activityId}`);
+    expect(
+      searchAll(p, "PHREF Toddler 5k").some((g) => g.domain === "goal")
+    ).toBe(false);
+    expect(
+      searchAll(p, "Training")
+        .flatMap((g) => g.hits)
+        .some((h) => h.href === "/training" || h.href.startsWith("/training?"))
+    ).toBe(false);
   });
 
   // #1595 extended the fan-out with nine entity domains, so the same rule has nine

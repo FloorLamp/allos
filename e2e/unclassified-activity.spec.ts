@@ -21,8 +21,8 @@ import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 //
 // `DURATION_ACTIVITY_TYPES` renders the SQL that Timeline, the sidebar calendar
 // and Search share, so an omission would make a profile's own imported workout
-// vanish from three surfaces at once. The child fixture proves those reads remain
-// age-neutral.
+// vanish from three surfaces at once. The toddler fixture proves existing/imported
+// facts remain visible even when the workout product itself is unavailable.
 //
 // Fixture ownership (#868): every planted row carries a unique marker and is deleted
 // in beforeAll/afterAll. Deep-past dates, synthetic values, no shared seed row touched.
@@ -125,7 +125,7 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
   browser,
 }) => {
   test.slow();
-  // Every activity type is age-neutral and remains visible across activity surfaces.
+  // Existing/imported activity facts remain visible on age-neutral record surfaces.
   const member = await loginAs(browser, {
     username: E2E_LOGIN_CHILD,
     password: E2E_MEMBER_PASSWORD,
@@ -134,6 +134,13 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
     await member.goto(`/timeline?from=${CHILD_DATE}&to=${CHILD_DATE}`);
     const row = member.getByText(CHILD_TITLE).first(); // first-ok: the ONLY row on this deep-past single-day view is the one this spec planted
     await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.click();
+    await expect(member).toHaveURL(/\/training\/activity\/\d+$/);
+    const ledger = member.getByTestId("activity-ledger-navigation");
+    await expect(ledger.getByRole("link", { name: "timeline" })).toBeVisible();
+    await expect(
+      ledger.getByRole("link", { name: "training log" })
+    ).toHaveCount(0);
   } finally {
     await member.context().close();
   }

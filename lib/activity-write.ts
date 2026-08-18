@@ -36,7 +36,10 @@ import { creditRoutineSession } from "@/lib/routines";
 import { cleanupOrphanPrDismissals } from "@/lib/queries/upcoming/suppressions";
 import { canonicalRpe } from "@/lib/rpe";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
-import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 interface SetInput {
   exercise: string;
@@ -147,8 +150,9 @@ export function saveActivityCore(
   const profile = { id: profileId };
   const id = formData.get("id") ? Number(formData.get("id")) : null;
   const type = String(formData.get("type")) as ActivityType;
-  // Activity logging is age-neutral. Adult-population benchmarks are gated at
-  // their read surfaces; every activity type remains a profile-owned record.
+  // Existing/imported activity facts are age-neutral. New manual logging is
+  // checked after the scoped existing-row lookup below, so corrections remain
+  // possible even when the workout product is not relevant.
   const title = String(formData.get("title") ?? "").trim();
   const date = String(formData.get("date") ?? "").trim();
   // Reject non-ISO dates server-side too: the client gates on this, but the
@@ -259,6 +263,13 @@ export function saveActivityCore(
         | undefined)
     : undefined;
   if (id && !existing) return { ok: false, reason: "not-owned" };
+  // Early-childhood profiles keep every activity fact already on their record,
+  // and those rows remain correctable. They cannot create a new workout through
+  // the manual or offline form path. External integration ingestion is a record
+  // boundary rather than a workout-product affordance and remains age-neutral.
+  if (!existing && !isTrainingRelevant(getProfileAge(profile.id))) {
+    return { ok: false, reason: "training-unavailable" };
+  }
   const existingHasStrength =
     existing?.type === "strength" ||
     existing?.has_sets === 1 ||

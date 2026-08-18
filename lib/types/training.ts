@@ -497,5 +497,9 @@ export type SaveActivityOutcome =
   | { ok: true; id: number } // row inserted/updated; `id` is its row id
   | {
       ok: false;
-      reason: "invalid" | "not-owned" | "strength-unavailable";
+      reason:
+        | "invalid"
+        | "not-owned"
+        | "training-unavailable"
+        | "strength-unavailable";
     };

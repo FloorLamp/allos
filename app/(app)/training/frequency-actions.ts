@@ -6,13 +6,17 @@ import { db, writeTx } from "@/lib/db";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
   isStrengthProgrammingScope,
+  isTrainingFrequencyScope,
   type FrequencyScopeKind,
 } from "@/lib/frequency-targets";
 import { REGION_SCOPES, GROUP_SCOPES, TYPE_SCOPES } from "@/lib/lifts";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { normalizePracticeName, practiceIdentity } from "@/lib/practice";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
-import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 // Allowed scope_value strings per scope_kind, used to validate input.
 function isValidScope(kind: FrequencyScopeKind, value: string): boolean {
@@ -52,6 +56,11 @@ export async function createFrequencyTarget(formData: FormData) {
     scope_kind: kind,
     scope_value: value,
   });
+  if (
+    isTrainingFrequencyScope({ scope_kind: kind }) &&
+    !isTrainingRelevant(getProfileAge(profile.id))
+  )
+    return;
   if (strengthScope && !isStrengthTrainingRelevant(getProfileAge(profile.id)))
     return;
   const perWeek = Math.max(

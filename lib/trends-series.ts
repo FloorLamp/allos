@@ -22,6 +22,7 @@ import type { BiomarkerPickerGroup } from "./biomarker-rank";
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import { getUnitPrefs, getProfileAge, getSituationEvents } from "./settings";
 import { showBodyFat } from "./growth-metrics";
+import { isTrainingRelevant } from "./life-stage";
 import {
   buildAnnotations,
   buildProtocolWindows,
@@ -186,6 +187,7 @@ export function buildMetricSeries(
   // Body fat % is not a datapoint we surface for children (kids growth trends) —
   // drop its tile for a minor, matching the body census age-aware layout.
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
 
   const pointsFor = (id: string): { date: string; value: number }[] => {
     switch (id) {
@@ -222,21 +224,23 @@ export function buildMetricSeries(
     }
   };
 
-  return METRIC_DEFS.filter((d) => !(d.id === "bodyfat" && hideBodyFat)).map(
-    (d) => ({
-      key: metricSeriesKey(d.id),
-      label: d.label,
-      shortLabel: d.shortLabel,
-      unit: d.id === "weight" || d.id === "volume" ? weightUnitSuffix : d.unit,
-      color: d.color,
-      href: d.href,
-      kind: "metric" as const,
-      decimals: d.decimals,
-      points: filterSeriesByRange(pointsFor(d.id), range),
-      range: null,
-      minPctChange: d.minPctChange,
-    })
-  );
+  return METRIC_DEFS.filter(
+    (d) =>
+      !(d.id === "bodyfat" && hideBodyFat) &&
+      (trainingRelevant || d.id !== "volume")
+  ).map((d) => ({
+    key: metricSeriesKey(d.id),
+    label: d.label,
+    shortLabel: d.shortLabel,
+    unit: d.id === "weight" || d.id === "volume" ? weightUnitSuffix : d.unit,
+    color: d.color,
+    href: d.href,
+    kind: "metric" as const,
+    decimals: d.decimals,
+    points: filterSeriesByRange(pointsFor(d.id), range),
+    range: null,
+    minPctChange: d.minPctChange,
+  }));
 }
 
 // Rebuild a saved trend metric that is not one of the original standard Overview
@@ -415,8 +419,11 @@ export function listCompareOptions(profileId: number): {
   biomarkers: TrendOption[];
 } {
   const hideBodyFat = !showBodyFat(getProfileAge(profileId));
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
   const metrics = METRIC_DEFS.filter(
-    (d) => !(d.id === "bodyfat" && hideBodyFat)
+    (d) =>
+      !(d.id === "bodyfat" && hideBodyFat) &&
+      (trainingRelevant || d.id !== "volume")
   ).map((d) => ({
     key: metricSeriesKey(d.id),
     label: d.label,

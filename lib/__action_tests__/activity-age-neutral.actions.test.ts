@@ -1,5 +1,5 @@
-// SERVER-ACTION TIER — ordinary activity logging/history is age-neutral (#3067),
-// while new strength-specific content starts in adolescence.
+// SERVER-ACTION TIER — activity facts remain age-neutral, while workout creation
+// starts after early childhood and strength starts in adolescence.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -23,7 +23,7 @@ function activityCount(profileId: number): number {
   ).n;
 }
 
-describe("saveActivity life-stage strength gate (#3067)", () => {
+describe("saveActivity life-stage gates (#3067)", () => {
   it.each([
     ["adolescent", 13],
     ["adult", 30],
@@ -58,29 +58,32 @@ describe("saveActivity life-stage strength gate (#3067)", () => {
   });
 
   it.each([
-    ["child", 4],
-    ["unknown age", null],
-  ])("refuses new strength content for a %s profile", async (_label, age) => {
-    const login = createLogin();
-    const profile = createProfile(`strength-blocked-${age}`, login.id);
-    actAs(login, profile);
-    if (age != null) setStoredAge(profile.id, age);
+    ["early-childhood", 4, "training-unavailable"],
+    ["unknown age", null, "strength-unavailable"],
+  ])(
+    "refuses new strength content for a %s profile",
+    async (_label, age, reason) => {
+      const login = createLogin();
+      const profile = createProfile(`strength-blocked-${age}`, login.id);
+      actAs(login, profile);
+      if (age != null) setStoredAge(profile.id, age);
 
-    const result = await saveActivity(
-      fd({
-        type: "strength",
-        title: "Squat",
-        date: "2026-07-06",
-        components: "[]",
-        sets: JSON.stringify([{ exercise: "Squat", weight: 80, reps: 5 }]),
-      })
-    );
+      const result = await saveActivity(
+        fd({
+          type: "strength",
+          title: "Squat",
+          date: "2026-07-06",
+          components: "[]",
+          sets: JSON.stringify([{ exercise: "Squat", weight: 80, reps: 5 }]),
+        })
+      );
 
-    expect(result).toEqual({ ok: false, reason: "strength-unavailable" });
-    expect(activityCount(profile.id)).toBe(0);
-  });
+      expect(result).toEqual({ ok: false, reason });
+      expect(activityCount(profile.id)).toBe(0);
+    }
+  );
 
-  it("keeps ordinary movement logging available to a child", async () => {
+  it("refuses new ordinary movement logging through early childhood", async () => {
     const login = createLogin();
     const profile = createProfile("child-walk", login.id);
     actAs(login, profile);
@@ -99,6 +102,26 @@ describe("saveActivity life-stage strength gate (#3067)", () => {
             duration_min: 20,
           },
         ]),
+        sets: "[]",
+      })
+    );
+
+    expect(result).toEqual({ ok: false, reason: "training-unavailable" });
+    expect(activityCount(profile.id)).toBe(0);
+  });
+
+  it("keeps ordinary movement logging available from age five", async () => {
+    const login = createLogin();
+    const profile = createProfile("school-age-walk", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 5);
+
+    const result = await saveActivity(
+      fd({
+        type: "cardio",
+        title: "Walk to the park",
+        date: "2026-07-06",
+        components: "[]",
         sets: "[]",
       })
     );
@@ -130,11 +153,11 @@ describe("saveActivity life-stage strength gate (#3067)", () => {
       })
     );
 
-    expect(result).toEqual({ ok: false, reason: "strength-unavailable" });
+    expect(result).toEqual({ ok: false, reason: "training-unavailable" });
     expect(activityCount(profile.id)).toBe(0);
   });
 
-  it("allows a child profile to correct an existing strength record", async () => {
+  it("allows an early-childhood profile to correct an existing strength record", async () => {
     const login = createLogin();
     const profile = createProfile("child-history", login.id);
     actAs(login, profile);

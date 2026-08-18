@@ -9,6 +9,8 @@ import { estimateMaxHr } from "@/lib/training-zones";
 import PageContainer from "@/components/PageContainer";
 import SettingsGroupLayout from "../SettingsGroupLayout";
 import TrainingZonesForm from "../profile/TrainingZonesForm";
+import { redirect } from "next/navigation";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function TrainingSettingsPage() {
   const { login, profile } = await requireSession();
   const age = getProfileAge(profile.id);
+  if (!isTrainingRelevant(age)) redirect("/settings");
   return (
     <SettingsGroupLayout group="training" login={login} profile={profile}>
       <PageContainer width="form" className="space-y-6">

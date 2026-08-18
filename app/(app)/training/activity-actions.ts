@@ -36,7 +36,10 @@ import {
 } from "@/lib/workout-finish";
 import { isRealIsoDate } from "@/lib/date";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
-import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 // Re-validate every surface that reads activity-derived data after a create/edit/
 // merge/delete: the Training Log feed on /training, the /trends fitness-volume chart +
@@ -93,6 +96,7 @@ export async function startWorkout(
 ): Promise<({ ok: true } & StartWorkoutResult) | { ok: false }> {
   const { profile } = await requireWriteAccess();
   const type = formData.get("type") === "cardio" ? "cardio" : "strength";
+  if (!isTrainingRelevant(getProfileAge(profile.id))) return { ok: false };
   if (
     type === "strength" &&
     !isStrengthTrainingRelevant(getProfileAge(profile.id))

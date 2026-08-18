@@ -53,8 +53,9 @@ import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 // ftab=cardio` from a Telegram nudge or a bookmark still lands here, now on a page
 // where the zone content it wanted is simply a section.
 //
-// Activity history remains age-neutral. Strength-specific analytics are shown only
-// once the shared adolescent strength threshold is met.
+// Existing activity history remains an age-neutral record. This workout-oriented
+// tab starts at age 5, and strength-specific analytics wait for the shared
+// adolescent threshold.
 export default async function FitnessSection({ range }: { range: DateRange }) {
   const { profile } = await requireSession();
   const strengthTrainingAvailable = isStrengthTrainingRelevant(

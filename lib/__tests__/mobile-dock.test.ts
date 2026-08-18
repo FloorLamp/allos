@@ -24,6 +24,16 @@ describe("dockSlots", () => {
     expect(dockSlots()).toHaveLength(DOCK_SLOT_COUNT);
   });
 
+  it("uses Timeline instead of Training through early childhood", () => {
+    expect(dockSlots(false).map((s) => s.id)).toEqual([
+      "home",
+      "timeline",
+      "trends",
+      "more",
+    ]);
+    expect(dockSlots(false)).toHaveLength(DOCK_SLOT_COUNT);
+  });
+
   it("gives every slot but More a destination, and More none", () => {
     for (const slot of dockSlots()) {
       if (slot.id === "more") expect(slot.href).toBeNull();

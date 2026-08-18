@@ -90,6 +90,15 @@ export function isStrengthProgrammingScope(target: {
   );
 }
 
+// Targets owned by the workout product rather than Nutrition or Wellness.
+// `substance` remains in Training's cadence home today, so it follows that
+// surface's relevance policy as well.
+export function isTrainingFrequencyScope(target: {
+  scope_kind: string;
+}): boolean {
+  return target.scope_kind !== "food_group" && target.scope_kind !== "practice";
+}
+
 export function frequencyScopeLabel(kind: string, value: string): string {
   if (!value) return value;
   if (kind === "group") return GROUP_LABELS[value] ?? value;

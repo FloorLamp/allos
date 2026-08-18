@@ -75,19 +75,22 @@ const customPayload = (name = "My Split") =>
 
 describe("adoptRoutineTemplateAction", () => {
   it.each([
-    ["child", 4],
-    ["unknown-age profile", null],
-  ])("does not offer strength programming to a %s", async (_label, age) => {
-    const login = createLogin();
-    const profile = createProfile(`routine-gated-${age}`, login.id);
-    actAs(login, profile);
-    if (age != null) setStoredAge(profile.id, age);
+    ["early-childhood profile", 4, "training unavailable"],
+    ["unknown-age profile", null, "strength unavailable"],
+  ])(
+    "does not offer strength programming to a %s",
+    async (_label, age, error) => {
+      const login = createLogin();
+      const profile = createProfile(`routine-gated-${age}`, login.id);
+      actAs(login, profile);
+      if (age != null) setStoredAge(profile.id, age);
 
-    expect(
-      await adoptRoutineTemplateAction(fd({ template_id: "full-body-3x" }))
-    ).toEqual({ ok: false, error: "strength unavailable" });
-    expect(getRoutines(profile.id)).toHaveLength(0);
-  });
+      expect(
+        await adoptRoutineTemplateAction(fd({ template_id: "full-body-3x" }))
+      ).toEqual({ ok: false, error });
+      expect(getRoutines(profile.id)).toHaveLength(0);
+    }
+  );
 
   it("copies a template into the profile's routine tables and revalidates", async () => {
     const { profile } = seedActor();

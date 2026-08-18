@@ -12,9 +12,10 @@
 // instead of scattered constants a new surface can silently re-invent.
 //
 // This module owns CONTENT-FRAMING lines (adult fitness science vs
-// child-appropriate presentation). Activity records and ordinary movement logging
-// are age-neutral. Strength-specific creation/programming starts in adolescence;
-// adult-population statistics still use the stricter adult predicate below.
+// child-appropriate presentation). Existing and imported activity records remain
+// age-neutral facts, while the workout-oriented Training product starts at age 5.
+// Strength-specific creation/programming starts in adolescence; adult-population
+// statistics still use the stricter adult predicate below.
 //
 // NULL-AGE POLICY (documented once, here): `lifeStage(null)` is `null` — "unknown".
 // Each predicate then states its own unknown-age default, and those defaults are
@@ -27,7 +28,12 @@
 //     adult-validated number without a known adult age.
 
 export type LifeStage =
-  "infant" | "child" | "adolescent" | "adult" | "older-adult";
+  | "infant"
+  | "early-childhood"
+  | "child"
+  | "adolescent"
+  | "adult"
+  | "older-adult";
 
 // ── Named boundaries (whole years) — the members of the one model ───────────────
 // Every age cutoff in the codebase is one of these boundaries (or carries a
@@ -37,6 +43,11 @@ export type LifeStage =
 
 // < 1 y — infant (head-circumference charts, WHO 0–24 mo curves live below here).
 export const INFANT_MAX_AGE = 1;
+
+// < 5 y — early childhood. Allos' Training surface is a workout logger and
+// programming tool, not a general movement diary; it stands down below this
+// boundary while imported/existing activity facts remain part of the record.
+export const EARLY_CHILDHOOD_MAX_AGE = 5;
 
 // < 13 y — AAP uses percentile-based pediatric BP thresholds below this age and
 // switches to adult static thresholds at/after it. The child→adolescent boundary.
@@ -65,14 +76,16 @@ function known(age: number | null | undefined): age is number {
   return age != null && Number.isFinite(age) && age >= 0;
 }
 
-// Ordinal rank of the life stages (infant < child < adolescent < adult < older-adult),
-// so a "minimum life stage" gate is a simple comparison. Only used by meetsMinLifeStage.
+// Ordinal rank of the life stages (infant < early-childhood < child < adolescent <
+// adult < older-adult), so a "minimum life stage" gate is a simple comparison. Only
+// used by meetsMinLifeStage.
 const LIFE_STAGE_RANK: Record<LifeStage, number> = {
   infant: 0,
-  child: 1,
-  adolescent: 2,
-  adult: 3,
-  "older-adult": 4,
+  "early-childhood": 1,
+  child: 2,
+  adolescent: 3,
+  adult: 4,
+  "older-adult": 5,
 };
 
 // The profile's life stage from its age in whole years, or null when the age is
@@ -80,6 +93,7 @@ const LIFE_STAGE_RANK: Record<LifeStage, number> = {
 export function lifeStage(age: number | null | undefined): LifeStage | null {
   if (!known(age)) return null;
   if (age < INFANT_MAX_AGE) return "infant";
+  if (age < EARLY_CHILDHOOD_MAX_AGE) return "early-childhood";
   if (age < PEDIATRIC_BP_MAX_AGE) return "child";
   if (age < ADULT_MIN_AGE) return "adolescent";
   if (age < OLDER_ADULT_MIN_AGE) return "adult";
@@ -118,6 +132,17 @@ export function isStrengthTrainingRelevant(
   age: number | null | undefined
 ): age is number {
   return known(age) && age >= PEDIATRIC_BP_MAX_AGE;
+}
+
+// Workout logging, programming, goals, analytics, and coaching start after
+// early childhood (age >= 5). This does not delete or suppress record facts:
+// existing/imported activities remain readable and existing rows can be
+// corrected. Unknown age stays eligible because missing profile data is not a
+// positive early-childhood match; strength still applies its stricter unknown-
+// age policy independently.
+export function isTrainingRelevant(age: number | null | undefined): boolean {
+  const stage = lifeStage(age);
+  return stage !== "infant" && stage !== "early-childhood";
 }
 
 // Legal minor for a KNOWN age. Unknown → false because "unknown" is not evidence

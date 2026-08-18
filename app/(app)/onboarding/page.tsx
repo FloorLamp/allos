@@ -34,6 +34,7 @@ import {
 import {
   isLongevityRelevant,
   isStrengthTrainingRelevant,
+  isTrainingRelevant,
 } from "@/lib/life-stage";
 import {
   completeOnboarding,
@@ -212,27 +213,30 @@ export default async function OnboardingPage({
   const unlockedStep = nextOnboardingStep(state, hasFirstValue);
   const activeStep = resolveOnboardingStep(params.step, state, hasFirstValue);
   const readOnly = access === "read";
-  const strengthTrainingAvailable = isStrengthTrainingRelevant(
-    getProfileAge(profile.id)
-  );
+  const profileAge = getProfileAge(profile.id);
+  const trainingRelevant = isTrainingRelevant(profileAge);
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const layout = getDashboardLayout(profile.id);
   const dashboardWidgetList = resolveWidgetList(layout, undefined, {
     adultContent: isLongevityRelevant(getProfileAge(profile.id)),
+    training: trainingRelevant,
   });
   const visibleWidgets = new Set(
     dashboardWidgetList
       .filter((widget) => widget.visible)
       .map((widget) => widget.def.id)
   );
-  const activeRoutine = state.focuses.includes("fitness")
-    ? getActiveRoutine(profile.id)
-    : null;
-  const replaceTargets = state.focuses.includes("fitness")
-    ? getTrainingTargetsToReplace(profile.id).map((target) => ({
-        label: frequencyScopeLabel(target.scope_kind, target.scope_value),
-        perWeek: target.per_week,
-      }))
-    : [];
+  const activeRoutine =
+    trainingRelevant && state.focuses.includes("fitness")
+      ? getActiveRoutine(profile.id)
+      : null;
+  const replaceTargets =
+    trainingRelevant && state.focuses.includes("fitness")
+      ? getTrainingTargetsToReplace(profile.id).map((target) => ({
+          label: frequencyScopeLabel(target.scope_kind, target.scope_value),
+          perWeek: target.per_week,
+        }))
+      : [];
   const hasEquipment = getEquipment(profile.id).length > 0;
   const starterRoutineTemplates = ROUTINE_TEMPLATES.filter(
     (template) => template.audience === "beginner"
@@ -330,7 +334,11 @@ export default async function OnboardingPage({
         {activeStep === 2 && (
           <section className="card" data-testid="onboarding-outcomes">
             <form action={saveOnboardingFocuses} className="space-y-4">
-              <FocusChoices selected={state.focuses} readOnly={readOnly} />
+              <FocusChoices
+                selected={state.focuses}
+                readOnly={readOnly}
+                trainingRelevant={trainingRelevant}
+              />
               {!readOnly && (
                 <WizardActions backStep={1}>
                   <SubmitButton

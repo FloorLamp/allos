@@ -28,10 +28,12 @@ export default function ActivityLedgerNav({
   olderId,
   newerId,
   lens = null,
+  trainingRelevant = true,
 }: {
   olderId: number | null;
   newerId: number | null;
   lens?: CyclingLens | null;
+  trainingRelevant?: boolean;
 }) {
   const activityHref = (id: number) =>
     lens ? cyclingRideHref(id, lens) : trainingActivityPageHref(id);
@@ -42,8 +44,8 @@ export default function ActivityLedgerNav({
       data-testid="activity-ledger-navigation"
     >
       <PendingLink
-        href="/training?tab=log"
-        label="training log"
+        href={trainingRelevant ? "/training?tab=log" : "/timeline"}
+        label={trainingRelevant ? "training log" : "timeline"}
         className="inline-flex items-center gap-1 font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
       >
         {(pending) => (
@@ -53,7 +55,7 @@ export default function ActivityLedgerNav({
               size="h-4 w-4"
               icon={<IconChevronLeft className="h-4 w-4" aria-hidden />}
             />
-            Training log
+            {trainingRelevant ? "Training log" : "Timeline"}
           </>
         )}
       </PendingLink>

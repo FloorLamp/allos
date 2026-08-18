@@ -30,7 +30,7 @@ import { getSleepArrivals } from "@/lib/queries/metrics";
 import { inferWorkoutSchedule, typicalWakeTime } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
-import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import { isFoodLoggingRelevant, isTrainingRelevant } from "@/lib/life-stage";
 import {
   isPushConfigured,
   countPushSubscriptionsForLogin,
@@ -211,6 +211,8 @@ export default async function NotificationsSettingsPage() {
   // slot time is sub-hourly and that cadence can't land on it, say so here rather
   // than delivering late silently. Absent (tick never ran) reads as hourly.
   const schedule = getNotifySchedule(profile.id);
+  const profileAge = getProfileAge(profile.id);
+  const trainingRelevant = isTrainingRelevant(profileAge);
   const observedTickMin = Number(getSetting("notify_tick_interval_min")) || 60;
   // The reader's clock convention (#964/#1163), for DISPLAY copy on this page only —
   // captions, the suggestion card, the Auto slot label, the quiet-hours options and
@@ -319,11 +321,12 @@ export default async function NotificationsSettingsPage() {
             <PageContainer width="reading">
               <NotificationPrefs
                 schedule={schedule}
-                workoutSummary={workoutScheduleSummary(profile.id)}
+                workoutSummary={
+                  trainingRelevant ? workoutScheduleSummary(profile.id) : ""
+                }
+                trainingRelevant={trainingRelevant}
                 foodTelegramEnabled={getProfileFoodTelegram(profile.id)}
-                foodLoggingRelevant={isFoodLoggingRelevant(
-                  getProfileAge(profile.id)
-                )}
+                foodLoggingRelevant={isFoodLoggingRelevant(profileAge)}
                 moodCheckinEnabled={getProfileMoodCheckin(profile.id)}
                 moodRecapEnabled={getProfileMoodRecap(profile.id)}
                 sleepDigestEnabled={getProfileSleepDigest(profile.id)}

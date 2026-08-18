@@ -61,6 +61,7 @@ import {
   isFoodLoggingRelevant,
   isLongevityRelevant,
   isStrengthTrainingRelevant,
+  isTrainingRelevant,
 } from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import {
@@ -117,6 +118,7 @@ import { freshnessAgeDays } from "@/lib/freshness";
 import { getRecapCard } from "@/lib/notifications/recap-data";
 import {
   findingsForDashboardHome,
+  dashboardHabitDomain,
   resolveWidgetList,
   rollupCoachingFindings,
   widgetDisplayState,
@@ -218,9 +220,9 @@ export default async function Dashboard() {
   if (access === "write" && storedOnboarding?.status === "not_started") {
     redirect("/onboarding");
   }
-  const strengthTrainingAvailable = isStrengthTrainingRelevant(
-    getProfileAge(profile.id)
-  );
+  const profileAge = getProfileAge(profile.id);
+  const trainingRelevant = isTrainingRelevant(profileAge);
+  const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const on = today(profile.id);
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -248,9 +250,14 @@ export default async function Dashboard() {
   // fire-and-forget, never blocking render, and a hard no-op unless the profile's
   // cadence is a calendar one AND its period has elapsed AND the inputs changed.
   // Wrapped in the AI-log context so the run's events carry the acting ids.
-  void withAiLogContext({ loginId: login.id, profileId: profile.id }, () =>
-    runRecommendation(profile.id, { trigger: "scheduled", loginId: login.id })
-  );
+  if (trainingRelevant) {
+    void withAiLogContext({ loginId: login.id, profileId: profile.id }, () =>
+      runRecommendation(profile.id, {
+        trigger: "scheduled",
+        loginId: login.id,
+      })
+    );
+  }
 
   // Tier 1 — the "Needs attention" hero. Pinned + non-hideable, so it's computed
   // unconditionally (outside the customizable grid). Renders the act-now SUBSET of
@@ -345,6 +352,7 @@ export default async function Dashboard() {
     foodLogging: isFoodLoggingRelevant(getProfileAge(profile.id)),
     cycle: getNavRelevance(profile.id).cycle,
     adultContent: isLongevityRelevant(getProfileAge(profile.id)),
+    training: trainingRelevant,
   };
   const list = resolveWidgetList(
     getDashboardLayout(profile.id),
@@ -643,11 +651,12 @@ export default async function Dashboard() {
   }
 
   // goals-and-habits: one combined overview of outcomes + weekly behaviors.
-  const goals = has("goals-habits")
-    ? getOutcomeGoals(profile.id)
-        .filter((g) => isGoalLive(g))
-        .slice(0, 4)
-    : [];
+  const goals =
+    has("goals-habits") && trainingRelevant
+      ? getOutcomeGoals(profile.id)
+          .filter((g) => isGoalLive(g))
+          .slice(0, 4)
+      : [];
   const goalProgress = has("goals-habits")
     ? getOutcomeGoalProgressMap(profile.id, goals)
     : new Map();
@@ -655,7 +664,9 @@ export default async function Dashboard() {
   const freqTargets = has("goals-habits")
     ? getFrequencyTargetProgress(profile.id).filter(
         ({ target }) =>
-          strengthTrainingAvailable || !isStrengthProgrammingScope(target)
+          (trainingRelevant ||
+            dashboardHabitDomain(target.scope_kind) !== "training") &&
+          (strengthTrainingAvailable || !isStrengthProgrammingScope(target))
       )
     : [];
 
@@ -663,29 +674,30 @@ export default async function Dashboard() {
   // (deterministic, no AI), filtered to age-appropriate guidance at every life stage.
   // Snoozed recommendations (findings bus, #39) drop out here, so a "Not today"
   // on the top rec surfaces the next-ranked one until the snooze expires.
-  const coachingRecs = has("coaching")
-    ? activeByKey(
-        recommendCoaching(
-          strengthAppropriateCoachingInput(
-            gatherCoachingInput(
-              profile.id,
-              units.weightUnit,
-              units.distanceUnit,
-              // The login's temperature scale (#1967): a °F reader sees the weather-parking
-              // figure in °F here. The notification path keeps canonical °C.
-              units.temperatureUnit
-            ),
-            strengthTrainingAvailable
-          )
-        ).filter(
-          (recommendation) =>
-            strengthTrainingAvailable || recommendation.kind !== "strength"
-        ),
-        (r) => coachingDedupeKey(r.id),
-        getFindingSuppressions(profile.id),
-        on
-      )
-    : [];
+  const coachingRecs =
+    has("coaching") && trainingRelevant
+      ? activeByKey(
+          recommendCoaching(
+            strengthAppropriateCoachingInput(
+              gatherCoachingInput(
+                profile.id,
+                units.weightUnit,
+                units.distanceUnit,
+                // The login's temperature scale (#1967): a °F reader sees the weather-parking
+                // figure in °F here. The notification path keeps canonical °C.
+                units.temperatureUnit
+              ),
+              strengthTrainingAvailable
+            )
+          ).filter(
+            (recommendation) =>
+              strengthTrainingAvailable || recommendation.kind !== "strength"
+          ),
+          (r) => coachingDedupeKey(r.id),
+          getFindingSuppressions(profile.id),
+          on
+        )
+      : [];
 
   // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE
   // collectCoachingFindings computation (data-quality joins it, #1045), filtered
@@ -722,14 +734,17 @@ export default async function Dashboard() {
             ),
             coachingSuppressions,
             on
-          ).filter(
-            (finding) =>
-              strengthTrainingAvailable ||
-              (finding.domain !== "training-strength" &&
-                finding.domain !== "training-obs" &&
-                finding.domain !== "muscle-volume" &&
-                finding.domain !== "fitness-check")
-          ),
+          ).filter((finding) => {
+            const strengthTrainingFinding =
+              finding.domain === "training-strength" ||
+              finding.domain === "training-obs" ||
+              finding.domain === "muscle-volume" ||
+              finding.domain === "fitness-check";
+            return (
+              !strengthTrainingFinding ||
+              (trainingRelevant && strengthTrainingAvailable)
+            );
+          }),
           coachingSuppressions
         )
       : [];
@@ -1174,6 +1189,7 @@ export default async function Dashboard() {
             goalProgress={goalProgress}
             freqTargets={freqTargets}
             today={on}
+            trainingRelevant={trainingRelevant}
           />
         );
       case "coaching":

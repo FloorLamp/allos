@@ -37,7 +37,7 @@ import { getFindingSuppressions } from "../queries/upcoming";
 import type { CoachingInput } from "../coaching";
 import type { WorkoutRecommendation } from "./workout-format";
 import { getProfileAge } from "../settings/profile-attrs";
-import { isStrengthTrainingRelevant } from "../life-stage";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "../life-stage";
 
 export type { WorkoutRecommendation };
 
@@ -50,6 +50,7 @@ export function recommendWorkout(
   gathered?: CoachingInput,
   now: Date = clockNow()
 ): WorkoutRecommendation | null {
+  if (!isTrainingRelevant(getProfileAge(profileId))) return null;
   // One gather, one core — the dashboard, the overview, and this reminder all
   // read the same computation, so they can't drift.
   const input = strengthAppropriateCoachingInput(

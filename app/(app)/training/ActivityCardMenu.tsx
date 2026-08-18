@@ -53,7 +53,7 @@ interface PendingConflictMerge {
 //    itself an edit affordance.
 //  • "Log again" (issue #29) — opens a CREATE form pre-filled from this activity
 //    (title, exercises, sets) with the date reset to today, so repeating a
-//    session is one tap + a save. Always available.
+//    session is one tap + a save when the workout product and activity type apply.
 //  • "Merge with…" (issue #64) — reveals a picker of the OTHER activities logged
 //    the SAME day and folds the chosen one into this card (this card is the
 //    keeper) via mergeActivities, wired through useUndoableDelete so the delete
@@ -128,7 +128,7 @@ export default function ActivityCardMenu({
   const [pendingConflict, setPendingConflict] =
     useState<PendingConflictMerge | null>(null);
   const undoable = useUndoableDelete();
-  const { openEdit, openRepeat, strengthTrainingAvailable } =
+  const { openEdit, openRepeat, trainingRelevant, strengthTrainingAvailable } =
     useActivityEditor();
   const { busy: resumingSync, resumeSyncUpdates } = useResumeSyncUpdates(
     "activities",
@@ -374,21 +374,22 @@ export default function ActivityCardMenu({
                   Edit
                 </button>
               ) : null}
-              {(strengthTrainingAvailable ||
-                !activityEditDataHasStrength(activity)) && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-testid="log-again"
-                  className={MENU_ITEM}
-                  onClick={() => {
-                    setOpen(false);
-                    openRepeat(activity);
-                  }}
-                >
-                  Log again
-                </button>
-              )}
+              {trainingRelevant &&
+                (strengthTrainingAvailable ||
+                  !activityEditDataHasStrength(activity)) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="log-again"
+                    className={MENU_ITEM}
+                    onClick={() => {
+                      setOpen(false);
+                      openRepeat(activity);
+                    }}
+                  >
+                    Log again
+                  </button>
+                )}
               {canWrite && siblings.length > 0 && (
                 <button
                   type="button"

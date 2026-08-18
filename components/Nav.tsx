@@ -51,6 +51,9 @@ type Leaf = {
   // adult food-group serving catalog is meaningless there (issue #591). Cosmetic;
   // the page re-checks isFoodLoggingRelevant server-side. Eligible on unknown age.
   requiresFoodLogging?: boolean;
+  // Workout-oriented Training stands down through early childhood. Existing
+  // activity facts remain reachable from their record links.
+  requiresTraining?: boolean;
   // Entries carrying a `relevanceKey` are dropped when the server-resolved
   // relevance bitset (lib/nav-relevance.ts, issue #1042) reads false for that
   // key. Cycle, Sleep, Progress photos, and Wellness use it in nav; the
@@ -181,7 +184,12 @@ const RECORDS: Group = {
 // sit at the bottom regardless of how important their content is.
 const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
-  { href: "/training", label: "Training", icon: IconBarbell },
+  {
+    href: "/training",
+    label: "Training",
+    icon: IconBarbell,
+    requiresTraining: true,
+  },
   {
     href: "/nutrition",
     label: "Nutrition",
@@ -316,6 +324,7 @@ function NavGroup({
   multiProfile,
   foodLoggingRelevant,
   hasIntakeItems,
+  trainingRelevant,
   relevance,
   badges,
 }: {
@@ -325,6 +334,7 @@ function NavGroup({
   multiProfile: boolean;
   foodLoggingRelevant: boolean;
   hasIntakeItems: boolean;
+  trainingRelevant: boolean;
   relevance: NavRelevance;
   badges: NavBadges;
 }) {
@@ -341,6 +351,7 @@ function NavGroup({
       multiProfile,
       foodLoggingRelevant,
       hasIntakeItems,
+      trainingRelevant,
       relevance,
       adultOnlyHrefs: ADULT_ONLY_HREFS,
     })
@@ -398,6 +409,7 @@ export default function Nav({
   multiProfile = false,
   foodLoggingRelevant = true,
   hasIntakeItems = false,
+  trainingRelevant = true,
   relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
 }: {
@@ -415,6 +427,8 @@ export default function Nav({
   // supplement even though food-group logging isn't relevant. Defaults false so
   // the Food-logging gate stands on its own when a caller doesn't thread it.
   hasIntakeItems?: boolean;
+  // False through early childhood; hides the workout-oriented Training leaf.
+  trainingRelevant?: boolean;
   // The server-resolved relevance bitset (issue #1042) gating entries flagged
   // with a `relevanceKey` (Cycle/Sleep/Progress/Wellness in nav; the
   // Vision/Dental bits gate the /records specialty sections). Defaults all-true
@@ -435,6 +449,7 @@ export default function Nav({
           multiProfile,
           foodLoggingRelevant,
           hasIntakeItems,
+          trainingRelevant,
           relevance,
           adultOnlyHrefs: ADULT_ONLY_HREFS,
         })
@@ -451,6 +466,7 @@ export default function Nav({
             multiProfile={multiProfile}
             foodLoggingRelevant={foodLoggingRelevant}
             hasIntakeItems={hasIntakeItems}
+            trainingRelevant={trainingRelevant}
             relevance={relevance}
             badges={badges}
           />

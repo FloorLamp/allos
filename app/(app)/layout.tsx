@@ -40,6 +40,7 @@ import {
   isFoodLoggingRelevant,
   isLongevityRelevant,
   isStrengthTrainingRelevant,
+  isTrainingRelevant,
 } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
@@ -127,6 +128,7 @@ export default async function AppLayout({
   const weekStart = getWeekStart(profile.id);
   const profileAge = getProfileAge(profile.id);
   const adultContentAvailable = isLongevityRelevant(profileAge);
+  const trainingRelevant = isTrainingRelevant(profileAge);
   const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const suggestions = getActivitySuggestions(profile.id);
   const timelineDates = getTimelineDates(profile.id);
@@ -275,6 +277,7 @@ export default async function AppLayout({
                       equipment={equipment}
                       recentActivityEquipment={recentActivityEquipment}
                       bodyweightKg={bodyweightKg}
+                      trainingRelevant={trainingRelevant}
                       strengthTrainingAvailable={strengthTrainingAvailable}
                       lastActivity={lastActivity}
                       deloadContext={deloadContext}
@@ -304,6 +307,7 @@ export default async function AppLayout({
                               viewIds={scope.viewIds}
                               readOnlyIds={readOnlyIds}
                               adultContentAvailable={adultContentAvailable}
+                              trainingRelevant={trainingRelevant}
                               isAdmin={isAdmin}
                               multiProfile={multiProfile}
                               foodLoggingRelevant={foodLoggingRelevant}
@@ -336,6 +340,7 @@ export default async function AppLayout({
                                 viewIds={scope.viewIds}
                                 readOnlyIds={readOnlyIds}
                                 adultContentAvailable={adultContentAvailable}
+                                trainingRelevant={trainingRelevant}
                                 isAdmin={isAdmin}
                                 multiProfile={multiProfile}
                                 foodLoggingRelevant={foodLoggingRelevant}
@@ -377,7 +382,7 @@ export default async function AppLayout({
                       transformed ancestor re-parents `position: fixed` to itself,
                       which would slide the dock off the bottom of the screen with
                       the top bar. */}
-                        <MobileDock />
+                        <MobileDock trainingRelevant={trainingRelevant} />
                       </MobileChromeProvider>
                       <CommandPalette
                         profileName={session.profile.name}

@@ -4,11 +4,13 @@ import {
   isAdultForClinical,
   isLongevityRelevant,
   isStrengthTrainingRelevant,
+  isTrainingRelevant,
   isMinor,
   isAdultBpRegime,
   isGrowthTracked,
   isFoodLoggingRelevant,
   INFANT_MAX_AGE,
+  EARLY_CHILDHOOD_MAX_AGE,
   PEDIATRIC_BP_MAX_AGE,
   ADULT_MIN_AGE,
   GROWTH_CHART_MAX_AGE,
@@ -21,10 +23,12 @@ import { GROWTH_CHART_MAX_AGE as GROWTH_METRICS_CEILING } from "@/lib/growth-met
 import { MAX_AGE_MONTHS } from "@/lib/growth";
 
 describe("lifeStage classifier", () => {
-  it("maps ages onto the five named stages", () => {
+  it("maps ages onto the six named stages", () => {
     expect(lifeStage(0)).toBe("infant");
     expect(lifeStage(0.5)).toBe("infant");
-    expect(lifeStage(1)).toBe("child");
+    expect(lifeStage(1)).toBe("early-childhood");
+    expect(lifeStage(4)).toBe("early-childhood");
+    expect(lifeStage(5)).toBe("child");
     expect(lifeStage(12)).toBe("child");
     expect(lifeStage(13)).toBe("adolescent");
     expect(lifeStage(17)).toBe("adolescent");
@@ -42,7 +46,8 @@ describe("lifeStage classifier", () => {
   });
 
   it("boundaries are contiguous and ordered", () => {
-    expect(INFANT_MAX_AGE).toBeLessThan(PEDIATRIC_BP_MAX_AGE);
+    expect(INFANT_MAX_AGE).toBeLessThan(EARLY_CHILDHOOD_MAX_AGE);
+    expect(EARLY_CHILDHOOD_MAX_AGE).toBeLessThan(PEDIATRIC_BP_MAX_AGE);
     expect(PEDIATRIC_BP_MAX_AGE).toBeLessThan(ADULT_MIN_AGE);
     expect(ADULT_MIN_AGE).toBeLessThan(GROWTH_CHART_MAX_AGE);
     expect(GROWTH_CHART_MAX_AGE).toBeLessThan(OLDER_ADULT_MIN_AGE);
@@ -82,6 +87,19 @@ describe("isStrengthTrainingRelevant — adolescent strength floor (13)", () => 
     expect(isStrengthTrainingRelevant(4)).toBe(false);
     expect(isStrengthTrainingRelevant(null)).toBe(false);
     expect(isStrengthTrainingRelevant(undefined)).toBe(false);
+  });
+});
+
+describe("isTrainingRelevant — workout-product floor (5)", () => {
+  it("stands down through early childhood but not on unknown age", () => {
+    expect(isTrainingRelevant(0)).toBe(false);
+    expect(isTrainingRelevant(2)).toBe(false);
+    expect(isTrainingRelevant(4)).toBe(false);
+    expect(isTrainingRelevant(5)).toBe(true);
+    expect(isTrainingRelevant(12)).toBe(true);
+    expect(isTrainingRelevant(40)).toBe(true);
+    expect(isTrainingRelevant(null)).toBe(true);
+    expect(isTrainingRelevant(undefined)).toBe(true);
   });
 });
 

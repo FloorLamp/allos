@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
 import { getProfileAge } from "../settings";
-import { isLongevityRelevant } from "../life-stage";
+import { isLongevityRelevant, isTrainingRelevant } from "../life-stage";
 import { vaccineDisplayName } from "../immunization-catalog";
 import {
   matchTier,
@@ -1138,13 +1138,19 @@ const PAGES: {
   },
 ];
 
-function pageHits(query: string): SearchHit[] {
+function pageHits(query: string, trainingRelevant = true): SearchHit[] {
   const q = query.trim().toLowerCase();
-  return PAGES.filter(
-    (p) =>
-      matchTier(p.title, query) > 0 ||
-      (p.keywords ? p.keywords.includes(q) : false)
-  ).map((p) => ({
+  return PAGES.filter((p) => {
+    const trainingPage =
+      p.href === "/training" ||
+      p.href.startsWith("/training?") ||
+      p.href === "/settings/training";
+    return (
+      (trainingRelevant || !trainingPage) &&
+      (matchTier(p.title, query) > 0 ||
+        (p.keywords ? p.keywords.includes(q) : false))
+    );
+  }).map((p) => ({
     domain: "page" as const,
     key: `page:${p.href}:${p.title}`,
     title: p.title,
@@ -1163,7 +1169,9 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
   const query = rawQuery.trim().slice(0, 100);
   if (query.length < 1) return [];
   const like = likePattern(query);
-  const longevityRelevant = isLongevityRelevant(getProfileAge(profileId));
+  const age = getProfileAge(profileId);
+  const longevityRelevant = isLongevityRelevant(age);
+  const trainingRelevant = isTrainingRelevant(age);
   const hits: SearchHit[] = [
     ...clinicalResultHits(profileId, like),
     ...imagingHits(profileId, like),
@@ -1186,9 +1194,9 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
     ...familyHistoryHits(profileId, like),
     ...carePlanHits(profileId, like),
     ...careGoalHits(profileId, like),
-    ...pageHits(query),
+    ...pageHits(query, trainingRelevant),
     ...activityHits(profileId, like),
-    ...goalHits(profileId, like),
+    ...(trainingRelevant ? goalHits(profileId, like) : []),
   ];
 
   return rankAndGroup(hits, query, PER_DOMAIN_CAP);

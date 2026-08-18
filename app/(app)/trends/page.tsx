@@ -37,6 +37,9 @@ import TrendsSectionShell, {
 } from "./TrendsSectionShell";
 import type { AppRoute } from "@/lib/hrefs";
 import { parseTab, trendsTabStrip, type TrendsTab } from "@/lib/trends-tabs";
+import { getProfileAge } from "@/lib/settings/profile-attrs";
+import { isTrainingRelevant } from "@/lib/life-stage";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +132,8 @@ export default async function TrendsPage(props: {
   // The retired NESTED `?ftab=` (#1492) maps the same way: it names Fitness when no
   // live `?tab=` is present, and its value is then ignored.
   const requestedTab = parseTab(searchParams.tab, searchParams.ftab);
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
+  if (requestedTab === "fitness" && !trainingRelevant) redirect("/trends");
   const activeTab = requestedTab;
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
@@ -207,7 +212,7 @@ export default async function TrendsPage(props: {
   // FOUR entries since #1644 — Vitals merged into Body (#1486), Compare into
   // Insights (#1489), and Body into Overview — in frequency order (Overview |
   // Fitness | Nutrition | Insights).
-  const tabStrip = trendsTabStrip();
+  const tabStrip = trendsTabStrip(trainingRelevant);
 
   // The phone range trigger is built from the SAME predicates the pills light
   // themselves with, so its compact label can never disagree with the expanded

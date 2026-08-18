@@ -146,8 +146,7 @@ describe("resolveWidgets / resolveWidgetList", () => {
     expect(ids(visible)).toContain("weekly-recap");
   });
 
-  // Issue #1221 — the per-profile WidgetGate (the dashboard twin of the nav's
-  // per-entry gating): requiresFoodLogging + relevanceKey === "cycle".
+  // Per-profile WidgetGate — the dashboard twin of nav relevance.
   it("gate foodLogging:false drops nutrition-today (the infant-profile food gate)", () => {
     const shown = resolveWidgets(null, new Set(), {
       foodLogging: false,
@@ -170,6 +169,14 @@ describe("resolveWidgets / resolveWidgetList", () => {
     const shown = resolveWidgets(null);
     expect(ids(shown)).toContain("cycle-phase");
     expect(ids(shown)).toContain("nutrition-today");
+  });
+
+  it("gate training:false drops workout coaching from the grid and Customize", () => {
+    const visible = resolveWidgets(null, new Set(), { training: false });
+    expect(ids(visible)).not.toContain("coaching");
+    const list = resolveWidgetList(null, new Set(), { training: false });
+    expect(list.map((w) => w.def.id)).not.toContain("coaching");
+    expect(list.map((w) => w.def.id)).toContain("goals-habits");
   });
 
   it("a gated widget in a stored order is still dropped when its gate bit is off", () => {

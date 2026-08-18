@@ -169,6 +169,14 @@ describe("isNavLeafVisible", () => {
     expect(isNavLeafVisible(leaf, ctx({ multiProfile: false }))).toBe(false);
   });
 
+  it("hides the Training leaf when the workout product is not relevant", () => {
+    const leaf = { href: "/training", requiresTraining: true };
+    expect(isNavLeafVisible(leaf, ctx({ trainingRelevant: true }))).toBe(true);
+    expect(isNavLeafVisible(leaf, ctx({ trainingRelevant: false }))).toBe(
+      false
+    );
+  });
+
   it("shows Household to any login with 2+ accessible profiles (issue #31)", () => {
     // Household is gated on multi-profile ONLY (no longer adminOnly): a caregiver
     // member with several grants must see it, while a single-profile login (member
@@ -288,11 +296,11 @@ describe("isNavLeafVisible", () => {
     expect(isNavLeafVisible(cycle, ctx())).toBe(true);
   });
 
-  it("keeps /training visible at every life stage", () => {
+  it("does not conflate the Training gate with adult-only content", () => {
     expect(
       isNavLeafVisible(
-        { href: "/training" },
-        ctx({ adultContentAvailable: false })
+        { href: "/training", requiresTraining: true },
+        ctx({ adultContentAvailable: false, trainingRelevant: true })
       )
     ).toBe(true);
   });

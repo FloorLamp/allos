@@ -50,7 +50,7 @@ export type SettingsGroupId = (typeof SETTINGS_GROUP_IDS)[number];
 // A group whose relevance depends on the active profile, not on the login's role:
 // Nutrition is hidden for a profile too young for food-group logging. The group's
 // page still exists; only the nav entry is dropped, so no link can 404.
-export type SettingsGroupRelevance = "nutrition";
+export type SettingsGroupRelevance = "nutrition" | "training";
 
 export type SettingsGroupPage = {
   href: AppRoute;
@@ -122,6 +122,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     adminOnly: false,
     summary:
       "Heart-rate zones, the weekly zone-2 target, and your daily step target.",
+    relevance: "training",
   },
   {
     id: "nutrition",
@@ -224,6 +225,8 @@ export type SettingsGroupContext = {
   isAdmin: boolean;
   // Whether food-group logging is relevant for the active profile.
   nutritionRelevant: boolean;
+  // Whether the workout product is relevant for the active profile.
+  trainingRelevant?: boolean;
 };
 
 // The groups a given viewer should SEE in navigation. Member logins never see an
@@ -235,6 +238,8 @@ export function visibleSettingsGroups(
   return SETTINGS_GROUPS.filter((g) => {
     if (g.adminOnly && !ctx.isAdmin) return false;
     if (g.relevance === "nutrition" && !ctx.nutritionRelevant) return false;
+    if (g.relevance === "training" && ctx.trainingRelevant === false)
+      return false;
     return true;
   });
 }

@@ -51,7 +51,8 @@ export interface DockSlot {
  * Four, always — two either side of the puck. A fifth would put a destination
  * under the raised centre control, and a third would leave the row visibly
  * unbalanced; the owner's resolution (#2651, 2026-08-13) fixes the set at
- * Home · Training · [puck] · Trends · More.
+ * Home · Training · [puck] · Trends · More, with Timeline replacing
+ * Training through early childhood so the four-slot geometry stays balanced.
  */
 export const DOCK_SLOT_COUNT = 4;
 
@@ -66,6 +67,12 @@ const TRAINING: DockSlot = {
   label: "Training",
   icon: "barbell",
   href: "/training",
+};
+const TIMELINE: DockSlot = {
+  id: "timeline",
+  label: "Timeline",
+  icon: "timeline",
+  href: "/timeline",
 };
 const TRENDS: DockSlot = {
   id: "trends",
@@ -83,10 +90,10 @@ const MORE: DockSlot = {
 /**
  * The dock's four slots, in tap order (left to right; the puck sits between
  * index 1 and index 2).
- *
+ * Training is replaced by Timeline when the workout product is not relevant.
  */
-export function dockSlots(): DockSlot[] {
-  return [HOME, TRAINING, TRENDS, MORE];
+export function dockSlots(trainingRelevant = true): DockSlot[] {
+  return [HOME, trainingRelevant ? TRAINING : TIMELINE, TRENDS, MORE];
 }
 
 /**

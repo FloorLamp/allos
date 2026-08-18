@@ -26,6 +26,7 @@ import {
 import { buildDigestSeries } from "./trends-series";
 import { summarizeTrends } from "./trends-digest";
 import { getUnitPrefs, getProfileSex, getProfileAge } from "./settings";
+import { isTrainingRelevant } from "./life-stage";
 import { quickRanges } from "./timeline-format";
 import {
   composeOfflineNarrative,
@@ -66,22 +67,27 @@ function gatherInsightContext(
     loginId != null
       ? getUnitPrefs(loginId)
       : { weightUnit: "kg" as const, distanceUnit: "km" as const };
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
 
-  const activities = getActivitiesByDate(profileId, date);
+  const activities = trainingRelevant
+    ? getActivitiesByDate(profileId, date)
+    : [];
 
   // PRs set ON the day (withinDays = 0), as celebratory findings.
   // byLoadContext (#1610): a record belongs to the implement it was set on, and
   // prToFinding names that implement and keys on its lane.
-  const strengthPrs = recentPRs(
-    getStrengthByExercise(profileId, true),
-    date,
-    0
-  ).map((pr) => prToFinding(pr, units.weightUnit));
-  const cardioPrs = recentCardioPRs(
-    getCardioByActivity(profileId, units.distanceUnit),
-    date,
-    0
-  ).map((pr) => cardioPrToFinding(pr, units.distanceUnit));
+  const strengthPrs = trainingRelevant
+    ? recentPRs(getStrengthByExercise(profileId, true), date, 0).map((pr) =>
+        prToFinding(pr, units.weightUnit)
+      )
+    : [];
+  const cardioPrs = trainingRelevant
+    ? recentCardioPRs(
+        getCardioByActivity(profileId, units.distanceUnit),
+        date,
+        0
+      ).map((pr) => cardioPrToFinding(pr, units.distanceUnit))
+    : [];
 
   // "What's trending" digest over the trailing 90-day window, adapted to findings.
   // By LABEL, not index — #1938 grew the shared set to four pills, and this read
@@ -105,9 +111,9 @@ function gatherInsightContext(
     date
   ).flatMap((g) => g.items);
 
-  const goalCount = getOutcomeGoals(profileId).filter((g) =>
-    isGoalLive(g)
-  ).length;
+  const goalCount = trainingRelevant
+    ? getOutcomeGoals(profileId).filter((g) => isGoalLive(g)).length
+    : 0;
 
   // Clinical/demographic context (issue #415): active conditions, active intake
   // (kind-labelled so the model tells a medication from a supplement), and profile

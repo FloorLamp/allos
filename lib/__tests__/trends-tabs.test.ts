@@ -71,6 +71,14 @@ describe("trendsTabStrip", () => {
       expect(entry.label).toBeTruthy();
     }
   });
+
+  it("omits Fitness when the workout product is not relevant", () => {
+    expect(trendsTabStrip(false).map((entry) => entry.id)).toEqual([
+      "overview",
+      "nutrition",
+      "insights",
+    ]);
+  });
 });
 
 // #1492: the nested Fitness strip (`?ftab=strength|cardio|sport`) retires the same

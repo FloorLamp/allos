@@ -112,7 +112,7 @@ describe("habitualLogSegment", () => {
     expect(habitualLogSegment(all, { food: LOG_HABIT_MIN_DAYS })).toBe("food");
   });
 
-  it("can select Train from age-neutral activity history", () => {
+  it("can select Train from an eligible profile's activity history", () => {
     const segments = logSheetSegments(true);
     expect(habitualLogSegment(segments, { train: 80, care: 20 })).toBe("train");
   });

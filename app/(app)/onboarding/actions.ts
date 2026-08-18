@@ -61,6 +61,7 @@ import {
 import {
   isLongevityRelevant,
   isStrengthTrainingRelevant,
+  isTrainingRelevant,
 } from "@/lib/life-stage";
 import { DEFAULT_PROTEIN_GOAL_LEVEL } from "@/lib/protein";
 import type { Sex } from "@/lib/types";
@@ -80,6 +81,12 @@ export async function startOnboardingRoutine(
   formData: FormData
 ): Promise<OnboardingRoutineResult> {
   const { profile } = await requireWriteAccess();
+  if (!isTrainingRelevant(getProfileAge(profile.id))) {
+    return {
+      ok: false,
+      error: "Training routines aren’t available for this profile’s age.",
+    };
+  }
   if (!isStrengthTrainingRelevant(getProfileAge(profile.id))) {
     return {
       ok: false,
@@ -162,11 +169,13 @@ export async function saveOnboardingFocuses(formData: FormData) {
   const state = getOnboardingState(profile.id) ?? initialOnboardingState();
   if (!state.profilePath)
     onboardingError("Choose who this profile is for first.", 2);
-  const next = onboardingWithFocuses(
-    state,
-    formData.getAll("focus"),
-    utcInstant()
-  );
+  const submittedFocuses = formData
+    .getAll("focus")
+    .filter(
+      (focus) =>
+        focus !== "fitness" || isTrainingRelevant(getProfileAge(profile.id))
+    );
+  const next = onboardingWithFocuses(state, submittedFocuses, utcInstant());
   if (next.focuses.length === 0) {
     onboardingError("Choose one or two outcomes to continue.", 2);
   }

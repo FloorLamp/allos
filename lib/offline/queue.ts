@@ -694,6 +694,7 @@ export function classifySetReplay(outcome: SaveActivityOutcome): {
   if (outcome.ok) return { status: "done" };
   switch (outcome.reason) {
     case "strength-unavailable":
+    case "training-unavailable":
       return {
         status: "rejected",
         reason:

@@ -11,7 +11,10 @@ import {
   getProfileAge,
 } from "@/lib/settings";
 import { kindOf } from "@/lib/types";
-import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 import { kgTo, kmTo, round } from "@/lib/units";
 import { formatLastUsed } from "@/lib/usage-format";
 import { formatRecordDate } from "@/lib/record-format";
@@ -66,6 +69,7 @@ export default async function EquipmentDetailPage(props: {
   if (!equipment) notFound();
 
   const kind = kindOf(equipment.category);
+  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
   if (
     kind === "strength" &&
     !isStrengthTrainingRelevant(getProfileAge(profile.id))
@@ -172,8 +176,16 @@ export default async function EquipmentDetailPage(props: {
           <EmptyState
             compact
             testId="equipment-no-usage"
-            message="No sessions have used this equipment yet. Tag a workout with it to start building usage history."
-            action={{ href: "/training", label: "Log a workout" }}
+            message={
+              trainingRelevant
+                ? "No sessions have used this equipment yet. Tag a workout with it to start building usage history."
+                : "No sessions have used this equipment yet."
+            }
+            action={
+              trainingRelevant
+                ? { href: "/training", label: "Log a workout" }
+                : undefined
+            }
           />
         </div>
       )}

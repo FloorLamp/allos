@@ -28,8 +28,9 @@
 // value already falls through to the default. Adding an alias would be a shim for
 // a link that already lands correctly, which is exactly what #1635 forbids.
 //
-// Every tab is age-neutral. Population benchmarks and adult clinical models gate
-// inside the components that render those numbers.
+// Fitness is the workout-product tab and is omitted through early childhood.
+// Population benchmarks and adult clinical models keep their stricter gates inside
+// the components that render those numbers.
 
 export const TRENDS_TABS = [
   "overview",
@@ -112,6 +113,8 @@ const TAB_LABELS: Record<TrendsTab, string> = {
 };
 
 // The tab strip, in display order — FOUR entries since #1644.
-export function trendsTabStrip(): TrendsTabEntry[] {
-  return TRENDS_TABS.map((id) => ({ id, label: TAB_LABELS[id] }));
+export function trendsTabStrip(trainingRelevant = true): TrendsTabEntry[] {
+  return TRENDS_TABS.filter((id) => trainingRelevant || id !== "fitness").map(
+    (id) => ({ id, label: TAB_LABELS[id] })
+  );
 }

@@ -95,6 +95,24 @@ describe("onboarding actions", () => {
     );
   });
 
+  it("does not store a fitness focus through early childhood", async () => {
+    const login = createLogin({ username: "onboarding-toddler-focus" });
+    const profile = createTestProfile("Toddler", login.id);
+    actAs(login, profile);
+    setStoredAge(profile.id, 2);
+    setOnboardingState(profile.id, {
+      ...initialOnboardingState(),
+      profilePath: "caregiving",
+    });
+
+    const focuses = new FormData();
+    focuses.append("focus", "fitness");
+    focuses.append("focus", "metrics-labs");
+    await redirected(saveOnboardingFocuses(focuses));
+
+    expect(getOnboardingState(profile.id)?.focuses).toEqual(["metrics-labs"]);
+  });
+
   it("writes profile facts at profile tier and units at login tier", async () => {
     const login = createLogin({ username: "onboarding-basics" });
     const profile = createTestProfile("Temporary", login.id);

@@ -126,7 +126,8 @@ export interface QuickLogItem {
   hint: string;
   icon: QuickLogIcon;
   target: QuickLogTarget;
-  // Marks activity entries for grouping; activity logging itself is age-neutral.
+  // Marks workout-product entries so the shell can remove them when Training is
+  // not relevant for the active profile.
   training?: boolean;
   // True for the entries only a CYCLE-RELEVANT profile should see (#1892). Gated on
   // the SAME `cycle` relevance bit as the Cycle nav entry and the dashboard phase

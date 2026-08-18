@@ -117,15 +117,22 @@ export default function QuickLogSheet({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { openCreate, openLive, workoutOffer, canStartWorkout } =
-    useActivityEditor();
+  const {
+    openCreate,
+    openLive,
+    workoutOffer,
+    canStartWorkout,
+    trainingRelevant,
+  } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
 
   const segments = logSheetSegments(cycleRelevant)
     .map((entry) => ({
       ...entry,
       items: entry.items.filter(
-        (item) => item.target.kind !== "live" || canStartWorkout
+        (item) =>
+          !item.training ||
+          (item.target.kind === "live" ? canStartWorkout : trainingRelevant)
       ),
     }))
     .filter((entry) => entry.items.length > 0);

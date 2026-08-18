@@ -17,7 +17,10 @@ import {
   getRoutineWithDays,
 } from "@/lib/routines";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
-import { isStrengthTrainingRelevant } from "@/lib/life-stage";
+import {
+  isStrengthTrainingRelevant,
+  isTrainingRelevant,
+} from "@/lib/life-stage";
 
 // Dismiss a Training-watch observation: a training-balance finding (issue #45, domain
 // 4 — a push/pull volume imbalance, a stale exercise, or a plateaued lift) OR a
@@ -56,6 +59,9 @@ function routineIdFrom(formData: FormData): number | null {
 }
 
 function strengthUnavailable(profileId: number): RoutineActionResult | null {
+  if (!isTrainingRelevant(getProfileAge(profileId))) {
+    return { ok: false, error: "training unavailable" };
+  }
   return isStrengthTrainingRelevant(getProfileAge(profileId))
     ? null
     : { ok: false, error: "strength unavailable" };

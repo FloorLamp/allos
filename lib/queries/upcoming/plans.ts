@@ -166,6 +166,7 @@ function isUnmetWeeklyTarget(p: FrequencyTargetProgress): boolean {
 // are counted plainly by their own domains in the same band, which is honest and
 // costs no new digest surface.
 export function trainingPaceLine(profileId: number): string | null {
+  if (!isTrainingRelevant(getProfileAge(profileId))) return null;
   return weeklyTargetPaceLine(
     weeklyFloorTargets(profileId)
       .filter((p) => weeklyTargetIdentity(p)?.domain === "training")
@@ -422,3 +423,5 @@ import { getOutcomeGoals } from "../training";
 import { getStepsPaceObservation } from "../steps-target";
 import { stepsPaceKey } from "../../steps-target";
 import { trendsSectionHref } from "../../trends-sections";
+import { isTrainingRelevant } from "../../life-stage";
+import { getProfileAge } from "../../settings/profile-attrs";

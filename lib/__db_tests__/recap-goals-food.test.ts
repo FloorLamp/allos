@@ -15,7 +15,7 @@ import { shiftDateStr } from "@/lib/date";
 import { utcInstant } from "@/lib/date";
 import { gatherRecapInput } from "@/lib/notifications/recap-data";
 import { buildRecap, recapLineAnnotation } from "@/lib/recap";
-import { getTimezone, setWeekMode } from "@/lib/settings";
+import { getTimezone, setStoredAge, setWeekMode } from "@/lib/settings";
 import { zonedWallTimeToUtc } from "@/lib/date";
 
 function newProfile(name: string): number {
@@ -68,6 +68,28 @@ function addGoal(
 }
 
 describe("recap goal lines key on the achievement, not the deadline (#2394)", () => {
+  it("omits workout and goal content through early childhood", () => {
+    const p = newProfile("recap-toddler");
+    const td = today(p);
+    setStoredAge(p, 2);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title)
+       VALUES (?, ?, 'cardio', 'Imported stroller walk')`
+    ).run(p, td);
+    addGoal(p, {
+      title: "Legacy running goal",
+      status: "achieved",
+      achieved_at: localMiddayInstant(p, td),
+    });
+
+    const input = gatherRecapInput(p);
+    expect(input.workouts).toEqual([]);
+    expect(input.prevWorkouts).toEqual([]);
+    expect(input.prLabels).toEqual([]);
+    expect(input.goalsCompleted).toEqual([]);
+    expect(input.goalsMissed).toEqual([]);
+  });
+
   it("reports a goal achieved this week that has NO target date at all", () => {
     // The profile the issue was filed from: every goal deadline-free, so the old
     // `target_date != null` filter made the line unreachable for all of them.
