@@ -43,7 +43,10 @@ import { specsNeedingIsolation } from "@/vitest.isolation";
 // spec fails until someone states why, and removing one fails until the budget is
 // lowered to lock the improvement in. A `<=` would have let the 49 accumulate
 // exactly as it did.
-const DB_ISOLATED = 29;
+// dashboard-placement-manifest imports the real async page and needs private
+// request-session/auth substitutions plus a no-op scheduled-AI boundary. Making
+// those substitutions shared would change the behavior exercised by every DB spec.
+const DB_ISOLATED = 30;
 // 6 since #2970: radiation-dose-unlisted-modality replaces the typical-dose DATASET, to
 // reach a case the shipped one cannot express — a modality whose entry resolves to 0 mSv
 // and that is absent from the non-ionizing list. The classifier must call that "not

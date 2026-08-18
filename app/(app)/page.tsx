@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -119,8 +119,6 @@ import {
   isNowCardId,
   rankDashboard,
   timingForNowCard,
-  visibleDashboardPlacements,
-  type DashboardPlacement,
   type DashboardTiming,
   type RankableDashboardSurface,
 } from "@/lib/dashboard-relevance";
@@ -131,12 +129,9 @@ import { getMoodCheckinIgnored, getProfileMoodCheckin } from "@/lib/settings";
 import { isMoodCheckinPaused, MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
 import { onboardingNeedsSetup } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
-import { PageHeader } from "@/components/ui";
-import DashboardGrid, {
-  type GridWidget,
-} from "@/components/dashboard/DashboardGrid";
+import type { GridWidget } from "@/components/dashboard/DashboardGrid";
 import NeedsAttentionHero from "@/components/dashboard/NeedsAttentionHero";
-import NowStrip, { type NowStripCard } from "@/components/dashboard/NowStrip";
+import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
 import HouseholdStrip, {
   type HouseholdStripEntry,
 } from "@/components/dashboard/HouseholdStrip";
@@ -1603,85 +1598,14 @@ export default async function Dashboard() {
     placementNodes.set(widget.id, widget.node);
   }
 
-  const priorityPlacements = visibleDashboardPlacements(
-    dashboardPlacements,
-    "priority"
-  );
-  const priorityById = new Map(
-    priorityPlacements.map((placement) => [placement.placementId, placement])
-  );
-  const nowPlacements = visibleDashboardPlacements(dashboardPlacements, "now");
-  const nowPlacementIds = nowPlacements.map(
-    (placement) => placement.placementId
-  );
-  const nowStripCards: NowStripCard[] = nowPlacements
-    .map((placement) => ({
-      id: placement.placementId,
-      node: placementNodes.get(placement.nodeKey),
-    }))
-    .filter((card): card is NowStripCard => card.node != null);
-  const preGridPlacements = visibleDashboardPlacements(
-    dashboardPlacements,
-    "pre-grid"
-  );
-  const widgetById = new Map(gridWidgets.map((widget) => [widget.id, widget]));
-  const rankedGridWidgets = dashboardPlacements
-    .filter((placement) => placement.currentPlacement === "grid")
-    .sort(
-      (a, b) =>
-        a.currentOrder - b.currentOrder ||
-        a.placementId.localeCompare(b.placementId)
-    )
-    .map((placement) => widgetById.get(placement.placementId))
-    .filter((widget): widget is GridWidget => widget != null);
-  const placementNode = (placement: DashboardPlacement): ReactNode =>
-    placementNodes.get(placement.nodeKey) ?? null;
-  const priorityNode = (placementId: string): ReactNode => {
-    const placement = priorityById.get(placementId);
-    return placement ? placementNode(placement) : null;
-  };
-
   return (
-    <div>
-      {/* Desktop only (issue #1413, section C): on a phone the nav already says
-          where you are, and "Dashboard — today is <date>" costs a chunk of a much
-          shorter screen before any content. The date survives below `md` on the Now
-          strip's corner. Not a mirrored pair — there is no second mobile branch to
-          drift from, just an element the phone doesn't get. */}
-      <div className="hidden md:block">
-        <PageHeader
-          title="Dashboard"
-          subtitle={`Today is ${formatLongDate(on, formatPrefs)} — here's your health at a glance.`}
-        />
-      </div>
-      {/* Illness hero (#858): pinned before the customizable grid. It leads above
-          Needs attention on smaller screens (the mobile 7am case); at XL the two
-          equally weighted cards share the row so neither stretches across the wide
-          dashboard canvas. With no open episode, Needs attention remains full-width. */}
-      <div
-        data-testid="dashboard-priority-row"
-        className={`mb-6 grid min-w-0 items-start gap-6 ${priorityById.has("illness-hero") ? "xl:grid-cols-2" : ""}`}
-      >
-        {priorityNode("illness-hero")}
-        <div className="min-w-0">{priorityNode("needs-attention")}</div>
-      </div>
-      {/* The moment's most relevant card(s), above the user's own grid (#1413 A).
-          Renders nothing at all when no signal is firing. */}
-      <NowStrip
-        cards={nowStripCards}
-        dateLabel={formatLongDate(on, formatPrefs)}
-      />
-      {preGridPlacements.map((placement) => (
-        <Fragment key={placement.placementId}>
-          {placementNode(placement)}
-        </Fragment>
-      ))}
-      <DashboardGrid
-        key={profile.id}
-        widgets={rankedGridWidgets}
-        promoted={nowPlacementIds}
-        saveAction={saveDashboardLayout}
-      />
-    </div>
+    <DashboardPlacementCanvas
+      profileId={profile.id}
+      dateLabel={formatLongDate(on, formatPrefs)}
+      placements={dashboardPlacements}
+      placementNodes={placementNodes}
+      gridWidgets={gridWidgets}
+      saveAction={saveDashboardLayout}
+    />
   );
 }

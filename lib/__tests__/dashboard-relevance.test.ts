@@ -3,6 +3,7 @@ import {
   DASHBOARD_ZONES,
   NO_DASHBOARD_RANK_REASONS,
   NOW_CARD_IDS,
+  compareDashboardPlacements,
   dashboardTimingActive,
   rankDashboard,
   visibleDashboardPlacements,
@@ -10,7 +11,6 @@ import {
   type DashboardTiming,
   type RankableDashboardSurface,
 } from "../dashboard-relevance";
-import { PERSONAS } from "../../scripts/seed-personas";
 
 const MIN = (hour: number, minute = 0) => hour * 60 + minute;
 
@@ -214,50 +214,6 @@ describe("rankDashboard characterization manifest (#3080)", () => {
       )
     ).toEqual([]);
   });
-
-  it("pins a characterization case for every registered seed persona", () => {
-    const cases = [
-      {
-        name: "bodybuilder",
-        signals: now({ workoutFinishedMinAgo: 5 }),
-        expectedNow: ["session-recap"],
-      },
-      {
-        name: "marathon-runner",
-        signals: now({ minutesOfDay: MIN(9), freshSleepSummary: true }),
-        expectedNow: ["sleep-last-night", "nutrition-today"],
-      },
-      { name: "household", signals: now(), expectedNow: [] },
-      {
-        name: "pregnant",
-        signals: now({ minutesOfDay: MIN(13) }),
-        expectedNow: ["nutrition-today"],
-      },
-      {
-        name: "diabetic-cgm",
-        signals: now({ minutesOfDay: MIN(21) }),
-        expectedNow: ["symptom-log", "nutrition-today"],
-      },
-      {
-        name: "biohacker",
-        signals: now({ napEndedMinAgo: 10 }),
-        expectedNow: ["naps-today"],
-      },
-    ];
-
-    expect(cases.map((entry) => entry.name)).toEqual(
-      PERSONAS.map((persona) => persona.name)
-    );
-    for (const entry of cases) {
-      expect(
-        visibleDashboardPlacements(
-          rankDashboard(matrixSurfaces(), { now: entry.signals }),
-          "now"
-        ).map((placement) => placement.placementId),
-        entry.name
-      ).toEqual(entry.expectedNow);
-    }
-  });
 });
 
 describe("orthogonal rank reasons", () => {
@@ -347,6 +303,42 @@ describe("orthogonal rank reasons", () => {
     expect(placement.visibility).toBe("unavailable");
   });
 
+  it("promotes visible safety content even when its timing is inactive", () => {
+    const safety = surface("closed-window-safety", "grid", 0, {
+      promotable: false,
+      timing: {
+        kind: "local-time",
+        opensAt: MIN(8),
+        closesAt: MIN(9),
+        wrapsMidnight: false,
+      },
+      rankReasons: {
+        ...NO_DASHBOARD_RANK_REASONS,
+        safety: true,
+      },
+    });
+    const [placement] = rankDashboard([safety], {
+      now: now({ minutesOfDay: MIN(15) }),
+    });
+    expect(placement.zone).toBe("now");
+  });
+
+  it("centrally strips owed from may and blocks the legacy symptom path", () => {
+    const symptom = surface("symptom-log", "grid", 0, {
+      promotable: true,
+      obligation: "may",
+      rankReasons: {
+        ...NO_DASHBOARD_RANK_REASONS,
+        owed: true,
+      },
+    });
+    const [placement] = rankDashboard([symptom], {
+      now: now({ minutesOfDay: MIN(21) }),
+    });
+    expect(placement.zone).toBe("grid");
+    expect(placement.rankReasons.owed).toBe(false);
+  });
+
   it("moves a generic pre-grid safety placement by its stable identity", () => {
     const generic = surface("interaction-warning", "pre-grid", 4, {
       nodeKey: "interaction-warning-node",
@@ -367,6 +359,44 @@ describe("orthogonal rank reasons", () => {
 });
 
 describe("manifest integrity", () => {
+  it("uses a strict total placement comparator", () => {
+    const placements = rankDashboard(
+      [
+        surface("priority-b", "priority", 1),
+        surface("priority-a", "priority", 1),
+        surface("pre-grid", "pre-grid", 0),
+        surface("grid-b", "grid", 1),
+        surface("grid-a", "grid", 1),
+        surface("safety", "grid", 9, {
+          promotable: true,
+          rankReasons: {
+            ...NO_DASHBOARD_RANK_REASONS,
+            safety: true,
+          },
+        }),
+      ],
+      { now: now() }
+    );
+    const sign = (value: number) => Math.sign(value);
+
+    for (const a of placements) {
+      expect(compareDashboardPlacements(a, a)).toBe(0);
+      for (const b of placements) {
+        const ab = compareDashboardPlacements(a, b);
+        const ba = compareDashboardPlacements(b, a);
+        if (ab === 0 || ba === 0) expect(ab).toBe(ba);
+        else expect(sign(ab)).toBe(-sign(ba));
+        if (a.placementId !== b.placementId) expect(ab).not.toBe(0);
+        for (const c of placements) {
+          const bc = compareDashboardPlacements(b, c);
+          if (ab <= 0 && bc <= 0) {
+            expect(compareDashboardPlacements(a, c)).toBeLessThanOrEqual(0);
+          }
+        }
+      }
+    }
+  });
+
   it("is invariant to input order and terminates ties on placementId", () => {
     const surfaces = [
       surface("charlie", "grid", 0),

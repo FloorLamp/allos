@@ -22,7 +22,12 @@ const ranker = fs.readFileSync(
   path.join(root, "lib", "dashboard-relevance.ts"),
   "utf8"
 );
+const canvas = fs.readFileSync(
+  path.join(root, "components", "dashboard", "DashboardPlacementCanvas.tsx"),
+  "utf8"
+);
 const returnBody = page.slice(page.lastIndexOf("  return ("));
+const canvasReturnBody = canvas.slice(canvas.lastIndexOf("  return ("));
 const staticStart = page.indexOf(
   "const staticSurfaces: RankableDashboardSurface[]"
 );
@@ -76,17 +81,26 @@ describe("dashboard placement ownership (#3080)", () => {
     expect(page.match(/\brankDashboard\(/g)).toHaveLength(1);
     expect(page).not.toMatch(/\brankNowCards\(/);
     expect(page).not.toMatch(/from ["']@\/lib\/now-strip["']/);
-    expect(page).toContain("preGridPlacements.map((placement)");
-    expect(page).toContain("widgets={rankedGridWidgets}");
-    expect(page).toContain("id: placement.placementId");
-    expect(page).toContain("node: placementNodes.get(placement.nodeKey)");
-    expect(page).toContain("promoted={nowPlacementIds}");
-    expect(page).not.toMatch(/nowPlacements[^;]+isNowCardId/s);
-
     const directComponents = [
       ...returnBody.matchAll(/<([A-Z][A-Za-z0-9]*)\b/g),
     ].map((match) => match[1]);
-    expect([...new Set(directComponents)].sort()).toEqual([
+    expect([...new Set(directComponents)]).toEqual([
+      "DashboardPlacementCanvas",
+    ]);
+    expect(canvas).toContain("placementNodes.get(placement.nodeKey)");
+    expect(canvas).toContain("preGridPlacements.map((placement)");
+    expect(canvas).toContain("widgets={rankedGridWidgets}");
+    expect(canvas).toContain("promoted={nowPlacementIds}");
+    expect(canvas).not.toMatch(/\bchildren\??:/);
+    // A page-level node has no prop through which it can reach the canvas, and a
+    // direct JSX child such as `{rogueNode}` fails here rather than hiding behind
+    // the old capitalized-component-only scan.
+    expect(canvasReturnBody).not.toMatch(/>\s*\{\s*[A-Za-z_$][\w$]*\s*\}\s*</);
+
+    const canvasComponents = [
+      ...canvasReturnBody.matchAll(/<([A-Z][A-Za-z0-9]*)\b/g),
+    ].map((match) => match[1]);
+    expect([...new Set(canvasComponents)].sort()).toEqual([
       "DashboardGrid",
       "Fragment",
       "NowStrip",

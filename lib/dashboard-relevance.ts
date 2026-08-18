@@ -353,6 +353,24 @@ function declaredNowScore(surface: RankableDashboardSurface): number | null {
   return null;
 }
 
+function mayAllowsReason(
+  surface: RankableDashboardSurface,
+  reason: keyof DashboardRankReasons
+): boolean {
+  return (
+    surface.obligation !== "may" ||
+    (reason !== "owed" && reason !== "windowOpen")
+  );
+}
+
+function effectiveRankReasons(
+  surface: RankableDashboardSurface
+): DashboardRankReasons {
+  return surface.obligation === "may" && surface.rankReasons.owed
+    ? { ...surface.rankReasons, owed: false }
+    : surface.rankReasons;
+}
+
 function compareHome(
   a: RankableDashboardSurface,
   b: RankableDashboardSurface
@@ -384,8 +402,9 @@ export function rankDashboard(
   const visiblePromotable = surfaces.filter(
     (surface) =>
       visibilityOf(surface) === "visible" &&
-      surface.promotable &&
-      dashboardTimingActive(surface.timing, signals.now.minutesOfDay)
+      (surface.rankReasons.safety ||
+        (surface.promotable &&
+          dashboardTimingActive(surface.timing, signals.now.minutesOfDay)))
   );
   const nowById = new Map<
     string,
@@ -409,10 +428,7 @@ export function rankDashboard(
     const surface = nowSurfaceByCard.get(id)!;
     const score = scoreNowCard(id, nowSignals);
     const reason = reasonForNowCard(id);
-    if (
-      score !== null &&
-      !(surface.obligation === "may" && reason === "windowOpen")
-    ) {
+    if (score !== null && mayAllowsReason(surface, reason)) {
       nowById.set(surface.placementId, {
         score,
         safety: surface.rankReasons.safety,
@@ -454,26 +470,31 @@ export function rankDashboard(
     .map((surface): DashboardPlacement => {
       const zoneOrder = promotedOrder.get(surface.placementId);
       const promoted = zoneOrder !== undefined;
+      const rankReasons = effectiveRankReasons(surface);
+      const promotedReason = promotedRank.get(surface.placementId)?.reason;
       return {
         ...surface,
         rankReasons:
-          promoted && promotedRank.get(surface.placementId)?.reason
-            ? {
-                ...surface.rankReasons,
-                [promotedRank.get(surface.placementId)!.reason!]: true,
-              }
-            : surface.rankReasons,
+          promoted && promotedReason
+            ? { ...rankReasons, [promotedReason]: true }
+            : rankReasons,
         zone: promoted ? "now" : surface.currentPlacement,
         zoneOrder: promoted ? zoneOrder : surface.currentOrder,
         visibility: visibilityOf(surface),
       };
     })
-    .sort(
-      (a, b) =>
-        ZONE_ORDER[a.zone] - ZONE_ORDER[b.zone] ||
-        a.zoneOrder - b.zoneOrder ||
-        a.placementId.localeCompare(b.placementId)
-    );
+    .sort(compareDashboardPlacements);
+}
+
+export function compareDashboardPlacements(
+  a: DashboardPlacement,
+  b: DashboardPlacement
+): number {
+  return (
+    ZONE_ORDER[a.zone] - ZONE_ORDER[b.zone] ||
+    a.zoneOrder - b.zoneOrder ||
+    a.placementId.localeCompare(b.placementId)
+  );
 }
 
 export function visibleDashboardPlacements(
