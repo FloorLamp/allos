@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 // returns `scaleX`/`scaleY` alongside `x`/`y`, sized so the moving item morphs
 // toward the dimensions of the slot it is currently passing over. Where the items
 // are uniform — the Trends Overview's equal-width, row-height-matched tiles — that
-// scale is ~1 and nobody ever saw it. The dashboard's Customize cards vary wildly
+// scale is ~1 and nobody ever saw it. Dashboard cards vary wildly
 // in height, so the SAME code visibly squashed and stretched the card being
 // dragged, which is what the owner reported.
 //
@@ -69,13 +69,12 @@ describe("sortable items translate, they do not scale (#1891)", () => {
   const consumers = sortableConsumers();
 
   // The sweep must not be able to pass by finding nothing. Both known consumers —
-  // the dashboard's Customize grid and the Trends Overview's starred tiles — are
+  // dashboard cards and the Trends Overview's starred tiles — are
   // named, so deleting or renaming one is a deliberate edit here rather than a
   // silent loss of coverage.
   it("finds every useSortable consumer", () => {
     expect(consumers.map((c) => c.file).sort()).toEqual([
       "components/SavedTilesGrid.tsx",
-      "components/dashboard/DashboardGrid.tsx",
     ]);
   });
 

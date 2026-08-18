@@ -14,11 +14,7 @@ import {
   zonedDateParts,
   zonedWallTimeToUtc,
 } from "../../lib/date";
-import {
-  setDashboardLayout,
-  setWeekMode,
-  getTimezone,
-} from "../../lib/settings";
+import { setWeekMode, getTimezone } from "../../lib/settings";
 import { setFixtureTimezone } from "../fixture-timezones";
 import {
   resetOnboardingProfileRows,
@@ -86,8 +82,6 @@ import {
   ONBOARDING_PROFILE,
   E2E_LOGIN_WHATSNEW,
   WHATS_NEW_PROFILE,
-  E2E_LOGIN_REORDER,
-  REORDER_PROFILE,
   NO_GEAR_PROFILE,
   DUP_REVIEW_PROFILE,
 } from "../fixture-logins";
@@ -105,12 +99,6 @@ import {
 // ── Weekly recap + milestones ──
 export function seedWeeklyRecap(): void {
   // ── Weekly recap + milestones fixtures (issue #32) ────────────────────────────
-  // The Weekly-recap dashboard widget is off by default (it stays quiet), so pin a
-  // layout for profile 1 that makes ONLY it a known-visible widget; every other
-  // widget falls back to its registry default. This gives the recap spec a
-  // deterministic card to assert on. Synthetic — no PHI.
-  setDashboardLayout(PROFILE_ID, { order: ["weekly-recap"], hidden: [] });
-
   // Pin profile 1 to rolling week_mode so the recap covers a trailing seven days
   // (issue #223): the recap now honors week_mode, and under the default calendar
   // mode the current-week window would shrink toward the week-start day, so on some
@@ -134,7 +122,7 @@ export function seedWeeklyRecap(): void {
   ).run(PROFILE_ID, milestoneDate);
 
   console.log(
-    "e2e: seeded weekly-recap dashboard layout + a milestone timeline entry for profile 1"
+    "e2e: seeded weekly recap data + a milestone timeline entry for profile 1"
   );
 }
 
@@ -928,18 +916,6 @@ export function seedWhatsNew(): void {
     seedMemberLogin(E2E_LOGIN_WHATSNEW, whatsNewId, "write");
     console.log(
       `e2e: seeded what's-new fixture — login ${E2E_LOGIN_WHATSNEW} granted profile ${whatsNewId} (${WHATS_NEW_PROFILE}) (#1421)`
-    );
-  }
-
-  // ── #1891 phone dashboard-reorder fixture ────────────────────────────────────
-  // A dedicated login + profile whose `dashboard_layout` the reorder spec OWNS (it
-  // saves an order and a hidden id). No health data: Customize lists every eligible
-  // widget regardless, which is exactly the list the spec reorders. Idempotent.
-  {
-    const reorderId = fixtureProfileId(REORDER_PROFILE);
-    seedMemberLogin(E2E_LOGIN_REORDER, reorderId, "write");
-    console.log(
-      `e2e: seeded dashboard-reorder fixture — login ${E2E_LOGIN_REORDER} granted profile ${reorderId} (${REORDER_PROFILE}) (#1891)`
     );
   }
 }

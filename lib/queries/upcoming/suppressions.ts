@@ -6,6 +6,7 @@
 // dynamic no-bleed guard in lib/__db_tests__/upcoming.scoping.test.ts).
 
 import { db, hoistedStatement } from "../../db";
+import { snapshotCached } from "../../read-snapshot";
 import { type SuppressionRecord } from "../../upcoming-suppress";
 import {
   biomarkerDismissalKey,
@@ -70,7 +71,7 @@ const FINDING_SUPPRESSIONS_STMT = hoistedStatement(
   `SELECT signal_key, snooze_until, dismissed_at
      FROM upcoming_dismissals WHERE profile_id = ?`
 );
-export function getFindingSuppressions(
+function getFindingSuppressionsUncached(
   profileId: number
 ): Map<string, SuppressionRecord> {
   const rows = FINDING_SUPPRESSIONS_STMT.all(profileId) as {
@@ -86,6 +87,14 @@ export function getFindingSuppressions(
     });
   return m;
 }
+// The dashboard's explicitly read-only attention census may open a short-lived
+// read snapshot. Server Actions and notification ticks do not, preserving the
+// write-then-read and cross-process freshness constraints documented above.
+export const getFindingSuppressions = snapshotCached(
+  "upcoming.finding-suppressions",
+  (profileId: number) => String(profileId),
+  getFindingSuppressionsUncached
+);
 
 // ---- Generalized suppression writers (issue #39) ----
 // The table-usage side of the findings bus: the Upcoming actions AND the coaching/

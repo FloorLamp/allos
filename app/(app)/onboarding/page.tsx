@@ -5,7 +5,6 @@ import SubmitButton from "@/components/SubmitButton";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { LogoMark } from "@/components/Wordmark";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
-import { resolveWidgetList } from "@/lib/dashboard-widgets";
 import { getEquipment } from "@/lib/equipment";
 import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import {
@@ -23,7 +22,6 @@ import { ROUTINE_TEMPLATES } from "@/lib/routine-templates";
 import { getActiveRoutine, getTrainingTargetsToReplace } from "@/lib/routines";
 import {
   getOnboardingState,
-  getDashboardLayout,
   getStoredAge,
   getTimezone,
   getUnitPrefs,
@@ -32,7 +30,6 @@ import {
   getProfileAge,
 } from "@/lib/settings";
 import {
-  isLongevityRelevant,
   isStrengthTrainingRelevant,
   isTrainingRelevant,
 } from "@/lib/life-stage";
@@ -40,11 +37,9 @@ import {
   completeOnboarding,
   continueOnboardingData,
   saveOnboardingBasics,
-  saveOnboardingDashboard,
   saveOnboardingFocuses,
   saveOnboardingNotifications,
 } from "./actions";
-import DashboardChoices from "./DashboardChoices";
 import FocusChoices from "./FocusChoices";
 import AgeInputs from "./AgeInputs";
 import ProfilePathChoices from "./ProfilePathChoices";
@@ -53,28 +48,11 @@ import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
-const ONBOARDING_WIDGET_DESCRIPTIONS: Record<string, string> = {
-  "recent-labs": "Latest lab results and flags.",
-  "next-appointment": "Your next scheduled visit.",
-  coaching: "A daily train-or-rest suggestion.",
-  "coaching-observations": "Health patterns worth noticing.",
-  "healthspan-pillars": "Key long-term health signals.",
-  "weight-trend": "Recent weight changes.",
-  "nutrition-today": "Today's protein against your goal.",
-  "steps-today": "Steps today versus your prior 7 days.",
-  "vitals-latest": "Your latest blood pressure and resting heart rate.",
-  "cycle-phase": "Your current cycle day and phase.",
-  "goals-habits": "Goals and weekly habits.",
-  "symptom-log": "A daily check-in — mood, feeling unwell, and as-needed meds.",
-  "weekly-recap": "A periodic progress summary — weekly, monthly or quarterly.",
-};
-
 const ONBOARDING_STEP_LABELS = [
   "Profile",
   "Priorities",
   "Profile details",
   "Add data",
-  "Dashboard",
   "Notifications",
   "Finish",
 ] as const;
@@ -84,7 +62,6 @@ const ONBOARDING_STEP_TITLES = [
   "What should Allos help with first?",
   "Personalize this profile",
   "Bring in your data",
-  "Choose your starting cards",
   "How should Allos keep you updated?",
   "Allos is ready",
 ] as const;
@@ -94,9 +71,8 @@ const ONBOARDING_STEP_SUBTITLES = [
   "Choose one or two priorities. Everything else remains available.",
   "Add what you know now. You can leave unknown details blank and update them later.",
   "Connect a service first, import a file, or add something yourself.",
-  "Keep the suggested dashboard cards or adjust the starting view.",
   "Choose what sounds useful. Delivery stays off until you enable a channel.",
-  "Your starting dashboard is personalized and ready to use.",
+  "Your dashboard is ready to use.",
 ] as const;
 
 function OnboardingProgress({
@@ -116,7 +92,7 @@ function OnboardingProgress({
           {ONBOARDING_STEP_LABELS[step - 1]}
         </span>
       </div>
-      <ol className="grid grid-cols-7 gap-1.5">
+      <ol className="grid grid-cols-6 gap-1.5">
         {ONBOARDING_STEP_LABELS.map((label, index) => {
           const itemStep = (index + 1) as OnboardingStep;
           return (
@@ -216,16 +192,6 @@ export default async function OnboardingPage({
   const profileAge = getProfileAge(profile.id);
   const trainingRelevant = isTrainingRelevant(profileAge);
   const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
-  const layout = getDashboardLayout(profile.id);
-  const dashboardWidgetList = resolveWidgetList(layout, undefined, {
-    adultContent: isLongevityRelevant(getProfileAge(profile.id)),
-    training: trainingRelevant,
-  });
-  const visibleWidgets = new Set(
-    dashboardWidgetList
-      .filter((widget) => widget.visible)
-      .map((widget) => widget.def.id)
-  );
   const activeRoutine =
     trainingRelevant && state.focuses.includes("fitness")
       ? getActiveRoutine(profile.id)
@@ -254,12 +220,6 @@ export default async function OnboardingPage({
       description: template.description,
       dayCount: template.days.length,
     }));
-  const widgetChoices = dashboardWidgetList.map(({ def: widget }) => ({
-    id: widget.id,
-    label: widget.label,
-    description:
-      ONBOARDING_WIDGET_DESCRIPTIONS[widget.id] ?? widget.description,
-  }));
   const selectedFocusLabels = state.focuses.map(
     (focus) => onboardingFocusDef(focus).label
   );
@@ -283,8 +243,8 @@ export default async function OnboardingPage({
       ) : (
         <PageHeader
           title={
-            activeStep === 7
-              ? `${ONBOARDING_STEP_TITLES[6]} for ${profile.name}`
+            activeStep === 6
+              ? `${ONBOARDING_STEP_TITLES[5]} for ${profile.name}`
               : ONBOARDING_STEP_TITLES[activeStep - 1]
           }
           subtitle={ONBOARDING_STEP_SUBTITLES[activeStep - 1]}
@@ -554,33 +514,6 @@ export default async function OnboardingPage({
         )}
 
         {activeStep === 5 && (
-          <section className="card" data-testid="onboarding-dashboard">
-            <form action={saveOnboardingDashboard} className="space-y-4">
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Needs attention always stays at the top. You can reorder or
-                change these cards from the dashboard at any time.
-              </p>
-              <DashboardChoices
-                widgets={widgetChoices}
-                initiallyVisible={[...visibleWidgets]}
-                readOnly={readOnly}
-              />
-              {!readOnly && (
-                <WizardActions backStep={4}>
-                  <SubmitButton
-                    className="btn w-36"
-                    pendingLabel="Saving…"
-                    requireSelection="widget"
-                  >
-                    Next
-                  </SubmitButton>
-                </WizardActions>
-              )}
-            </form>
-          </section>
-        )}
-
-        {activeStep === 6 && (
           <section className="card" data-testid="onboarding-notifications">
             <form action={saveOnboardingNotifications} className="space-y-4">
               <div className="space-y-3">
@@ -624,7 +557,7 @@ export default async function OnboardingPage({
                 ))}
               </div>
               {!readOnly && (
-                <WizardActions backStep={5}>
+                <WizardActions backStep={4}>
                   <SubmitButton
                     className="btn w-36"
                     pendingLabel="Saving…"
@@ -638,7 +571,7 @@ export default async function OnboardingPage({
           </section>
         )}
 
-        {activeStep === 7 && (
+        {activeStep === 6 && (
           <section className="card" data-testid="onboarding-finish">
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-3">
@@ -675,7 +608,7 @@ export default async function OnboardingPage({
               </p>
               {!readOnly && (
                 <form action={completeOnboarding}>
-                  <WizardActions backStep={6} showExit={false}>
+                  <WizardActions backStep={5} showExit={false}>
                     <SubmitButton
                       className="btn w-36"
                       pendingLabel="Finishing…"

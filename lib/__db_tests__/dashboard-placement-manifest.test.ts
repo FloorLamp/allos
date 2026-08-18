@@ -1,13 +1,9 @@
-// DB INTEGRATION TIER — #3080's acceptance evidence against the real dashboard
-// gather. Each SeedPersona is applied to the migrated schema, the actual async
-// page function runs under a scoped session, and the ranked placements passed to
-// the sole canvas are captured. This is deliberately not a second surface model.
+// Real-schema candidate census and query budget for the dashboard cutover (#3096).
 
 import type { ReactElement } from "react";
-import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { utcInstant } from "@/lib/date";
+import { utcInstant, shiftDateStr } from "@/lib/date";
 import { zonedWallTimeToUtc } from "@/lib/calendar-ics";
 import { reconcileFlags } from "@/lib/queries";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
@@ -24,10 +20,8 @@ import {
   normalizeOnboardingFocuses,
   serializeOnboardingState,
 } from "@/lib/onboarding";
-import { shiftDateStr } from "@/lib/date";
 import { PERSONAS, type PersonaContext } from "../../scripts/seed-personas";
 import type { SessionProfile } from "@/lib/auth";
-import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
@@ -106,7 +100,7 @@ function ctxFor(profileId: number): PersonaContext {
             profilePath,
             focuses: normalizeOnboardingFocuses(focuses),
             basicsComplete: true,
-            layoutReviewed: true,
+            dataReviewed: true,
             notificationIntent: "later",
             notificationsReviewed: true,
             checklistDismissed: true,
@@ -134,8 +128,6 @@ function profiles(ids: readonly number[]): SessionProfile[] {
     .all(...ids) as SessionProfile[];
 }
 
-const normalizeSql = (sql: string) => sql.replace(/\s+/g, " ").trim();
-
 function installStatementTrace() {
   const executed: string[] = [];
   const realPrepare = db.prepare.bind(db);
@@ -149,7 +141,7 @@ function installStatementTrace() {
           ["get", "all", "run", "iterate"].includes(String(property))
         ) {
           return (...args: unknown[]) => {
-            executed.push(normalizeSql(sql));
+            executed.push(sql.replace(/\s+/g, " ").trim());
             return value.apply(target, args);
           };
         }
@@ -157,189 +149,17 @@ function installStatementTrace() {
       },
     });
   }) as typeof db.prepare);
-  return {
-    clear: () => executed.splice(0),
-    statements: () => [...executed],
-  };
+  return { clear: () => executed.splice(0), count: () => executed.length };
 }
 
-function compactManifest(placements: readonly DashboardPlacement[]): string[] {
-  return placements.map((placement) =>
-    [
-      placement.placementId,
-      placement.zone,
-      placement.visibility,
-      placement.groupKey ?? "-",
-    ].join(":")
-  );
-}
-
-const manifests = new Map<string, string[]>();
-const statementRuns = new Map<string, string[]>();
+const manifests = new Map<
+  string,
+  DashboardPlacementCanvasProps["placements"]
+>();
+const queryCounts = new Map<string, number>();
 const previousTestNow = process.env.ALLOS_TEST_NOW;
 
-const EXPECTED_PERSONA_MANIFESTS: Record<string, readonly string[]> = {
-  bodybuilder: [
-    "illness-hero:priority:hidden:priority",
-    "needs-attention:priority:visible:priority",
-    "nutrition-today:now:visible:-",
-    "recently-resolved:pre-grid:hidden:-",
-    "stream-lifecycle-offers:pre-grid:hidden:-",
-    "session-recap:pre-grid:hidden:-",
-    "onboarding-resume:pre-grid:hidden:-",
-    "onboarding-checklist:pre-grid:hidden:-",
-    "household-strip:pre-grid:hidden:-",
-    "symptom-log:grid:visible:-",
-    "coaching:grid:visible:-",
-    "goals-habits:grid:visible:-",
-    "active-protocols:grid:hidden:-",
-    "data-quality:grid:visible:-",
-    "steps-today:grid:visible:-",
-    "vitals-latest:grid:visible:-",
-    "next-appointment:grid:unavailable:-",
-    "recent-labs:grid:visible:-",
-    "sleep-last-night:grid:visible:-",
-    "naps-today:grid:unavailable:-",
-    "weight-trend:grid:visible:-",
-    "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:visible:-",
-    "weekly-recap:grid:hidden:-",
-  ],
-  "marathon-runner": [
-    "illness-hero:priority:hidden:priority",
-    "needs-attention:priority:visible:priority",
-    "recently-resolved:pre-grid:hidden:-",
-    "stream-lifecycle-offers:pre-grid:hidden:-",
-    "session-recap:pre-grid:hidden:-",
-    "onboarding-resume:pre-grid:hidden:-",
-    "onboarding-checklist:pre-grid:hidden:-",
-    "household-strip:pre-grid:hidden:-",
-    "symptom-log:grid:visible:-",
-    "coaching:grid:visible:-",
-    "goals-habits:grid:visible:-",
-    "active-protocols:grid:hidden:-",
-    "data-quality:grid:visible:-",
-    "nutrition-today:grid:visible:-",
-    "steps-today:grid:visible:-",
-    "vitals-latest:grid:visible:-",
-    "cycle-phase:grid:visible:-",
-    "next-appointment:grid:unavailable:-",
-    "recent-labs:grid:visible:-",
-    "sleep-last-night:grid:visible:-",
-    "naps-today:grid:unavailable:-",
-    "weight-trend:grid:visible:-",
-    "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:unavailable:-",
-    "weekly-recap:grid:hidden:-",
-  ],
-  household: [
-    "illness-hero:priority:visible:priority",
-    "needs-attention:priority:visible:priority",
-    "recently-resolved:pre-grid:hidden:-",
-    "stream-lifecycle-offers:pre-grid:hidden:-",
-    "session-recap:pre-grid:hidden:-",
-    "onboarding-resume:pre-grid:hidden:-",
-    "onboarding-checklist:pre-grid:hidden:-",
-    "household-strip:pre-grid:visible:-",
-    "symptom-log:grid:visible:-",
-    "coaching:grid:visible:-",
-    "goals-habits:grid:visible:-",
-    "active-protocols:grid:hidden:-",
-    "data-quality:grid:visible:-",
-    "nutrition-today:grid:visible:-",
-    "steps-today:grid:visible:-",
-    "vitals-latest:grid:visible:-",
-    "next-appointment:grid:visible:-",
-    "recent-labs:grid:visible:-",
-    "sleep-last-night:grid:visible:-",
-    "naps-today:grid:unavailable:-",
-    "weight-trend:grid:visible:-",
-    "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:visible:-",
-    "weekly-recap:grid:hidden:-",
-  ],
-  pregnant: [
-    "illness-hero:priority:hidden:priority",
-    "needs-attention:priority:visible:priority",
-    "recently-resolved:pre-grid:hidden:-",
-    "stream-lifecycle-offers:pre-grid:hidden:-",
-    "session-recap:pre-grid:hidden:-",
-    "onboarding-resume:pre-grid:hidden:-",
-    "onboarding-checklist:pre-grid:hidden:-",
-    "household-strip:pre-grid:visible:-",
-    "symptom-log:grid:visible:-",
-    "coaching:grid:visible:-",
-    "goals-habits:grid:visible:-",
-    "active-protocols:grid:hidden:-",
-    "data-quality:grid:visible:-",
-    "nutrition-today:grid:visible:-",
-    "steps-today:grid:visible:-",
-    "vitals-latest:grid:visible:-",
-    "cycle-phase:grid:visible:-",
-    "next-appointment:grid:visible:-",
-    "recent-labs:grid:visible:-",
-    "sleep-last-night:grid:visible:-",
-    "naps-today:grid:unavailable:-",
-    "weight-trend:grid:visible:-",
-    "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:unavailable:-",
-    "weekly-recap:grid:hidden:-",
-  ],
-  "diabetic-cgm": [
-    "illness-hero:priority:hidden:priority",
-    "needs-attention:priority:visible:priority",
-    "recently-resolved:pre-grid:hidden:-",
-    "stream-lifecycle-offers:pre-grid:hidden:-",
-    "session-recap:pre-grid:hidden:-",
-    "onboarding-resume:pre-grid:hidden:-",
-    "onboarding-checklist:pre-grid:hidden:-",
-    "household-strip:pre-grid:visible:-",
-    "symptom-log:grid:visible:-",
-    "coaching:grid:visible:-",
-    "goals-habits:grid:visible:-",
-    "active-protocols:grid:hidden:-",
-    "data-quality:grid:visible:-",
-    "nutrition-today:grid:visible:-",
-    "steps-today:grid:visible:-",
-    "vitals-latest:grid:visible:-",
-    "next-appointment:grid:visible:-",
-    "recent-labs:grid:visible:-",
-    "sleep-last-night:grid:visible:-",
-    "naps-today:grid:unavailable:-",
-    "weight-trend:grid:visible:-",
-    "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:unavailable:-",
-    "weekly-recap:grid:hidden:-",
-  ],
-  biohacker: [
-    "illness-hero:priority:hidden:priority",
-    "needs-attention:priority:visible:priority",
-    "recently-resolved:pre-grid:hidden:-",
-    "stream-lifecycle-offers:pre-grid:hidden:-",
-    "session-recap:pre-grid:hidden:-",
-    "onboarding-resume:pre-grid:hidden:-",
-    "onboarding-checklist:pre-grid:hidden:-",
-    "household-strip:pre-grid:hidden:-",
-    "symptom-log:grid:visible:-",
-    "coaching:grid:visible:-",
-    "goals-habits:grid:visible:-",
-    "active-protocols:grid:hidden:-",
-    "data-quality:grid:visible:-",
-    "nutrition-today:grid:visible:-",
-    "steps-today:grid:visible:-",
-    "vitals-latest:grid:visible:-",
-    "next-appointment:grid:unavailable:-",
-    "recent-labs:grid:visible:-",
-    "sleep-last-night:grid:visible:-",
-    "naps-today:grid:unavailable:-",
-    "weight-trend:grid:visible:-",
-    "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:visible:-",
-    "weekly-recap:grid:hidden:-",
-  ],
-};
-
-describe("actual dashboard placement manifests", () => {
+describe("actual atomic dashboard manifests", () => {
   beforeAll(async () => {
     process.env.ALLOS_TEST_NOW = "2026-08-18T13:00:00.000Z";
     session.loginId = (
@@ -347,7 +167,9 @@ describe("actual dashboard placement manifests", () => {
         .prepare(
           "SELECT id FROM logins WHERE role = 'admin' ORDER BY id LIMIT 1"
         )
-        .get() as { id: number }
+        .get() as {
+        id: number;
+      }
     ).id;
     const trace = installStatementTrace();
     const { default: Dashboard } = await import("../../app/(app)/page");
@@ -358,14 +180,15 @@ describe("actual dashboard placement manifests", () => {
       persona.apply(ctxFor(profileId));
       const createdIds = allProfileIds().filter((id) => !before.has(id));
       session.accessible = profiles(createdIds);
-      session.profile = session.accessible.find((p) => p.id === profileId)!;
-
+      session.profile = session.accessible.find(
+        (profile) => profile.id === profileId
+      )!;
       trace.clear();
       const element =
         (await Dashboard()) as ReactElement<DashboardPlacementCanvasProps>;
       expect(element.type).toBe(DashboardPlacementCanvas);
-      manifests.set(persona.name, compactManifest(element.props.placements));
-      statementRuns.set(persona.name, trace.statements());
+      manifests.set(persona.name, element.props.placements);
+      queryCounts.set(persona.name, trace.count());
     }
   }, 120_000);
 
@@ -375,24 +198,40 @@ describe("actual dashboard placement manifests", () => {
   });
 
   for (const persona of PERSONAS) {
-    it(`${persona.name}: captures the actual page manifest`, () => {
-      const manifest = manifests.get(persona.name)!;
-      expect(manifest).toEqual(EXPECTED_PERSONA_MANIFESTS[persona.name]);
+    it(`${persona.name}: matches semantic expectations and identity invariants`, () => {
+      const placements = manifests.get(persona.name)!;
+      const candidates = placements.map((placement) => placement.candidate);
+      const candidateIds = candidates.map((candidate) => candidate.candidateId);
+      const factKeys = candidates.map((candidate) => candidate.factKey);
+      expect(new Set(candidateIds).size).toBe(candidateIds.length);
+      expect(new Set(factKeys).size).toBe(factKeys.length);
+      for (const expected of persona.dashboard.expect) {
+        expect(candidateIds.some((id) => id.startsWith(expected))).toBe(true);
+      }
+      for (const absent of persona.dashboard.absent) {
+        expect(candidateIds.some((id) => id.startsWith(absent))).toBe(false);
+      }
+      expect(
+        placements.every((placement) =>
+          candidateIds.includes(placement.candidate.candidateId)
+        )
+      ).toBe(true);
     });
   }
 
-  it("pins the real gather's query count and statement set", () => {
-    const statements = statementRuns.get("bodybuilder")!;
-    const statementSet = [...new Set(statements)].sort();
-    expect(statements).toHaveLength(761);
-    expect(statementSet).toHaveLength(137);
-    // The digest pins every normalized SQL statement, not only the cardinality.
-    // A changed statement with the same count therefore still fails the budget.
-    expect(
-      crypto
-        .createHash("sha256")
-        .update(JSON.stringify(statementSet))
-        .digest("hex")
-    ).toBe("b61855e73293fe61414ad24e648c1903a1c44d6d5302dd097794605b70ed79bf");
+  it("exercises both manual and external engagement evidence", () => {
+    const engagement = [...manifests.values()]
+      .flat()
+      .map((placement) => placement.candidate.relevance)
+      .filter((relevance) => relevance.kind === "profile-data")
+      .map((relevance) => relevance.engagement);
+    expect(engagement).toContain("manual");
+    expect(engagement).toContain("external");
+  });
+
+  it("does not exceed the phase-1 query budget", () => {
+    for (const [persona, count] of queryCounts) {
+      expect(count, persona).toBeLessThanOrEqual(500);
+    }
   });
 });

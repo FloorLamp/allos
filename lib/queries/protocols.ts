@@ -987,80 +987,97 @@ export interface ActiveProtocolSummary {
 export function getActiveProtocolSummaries(
   profileId: number,
   today: string,
-  weightUnit: WeightUnit
+  weightUnit: WeightUnit,
+  frequencyProgress: readonly FrequencyTargetProgress[] = getFrequencyTargetProgress(
+    profileId
+  )
 ): ActiveProtocolSummary[] {
   const spellingsByIdentity = getPracticeSpellingsMap(profileId);
-  return getProtocols(profileId)
-    .filter((p) => p.end_date == null)
-    .map((protocol) => {
-      const adherenceProgress = getProtocolAdherence(profileId, protocol);
-      const practice = getProtocolPractice(profileId, protocol);
-      const comparison = getProtocolComparison(
-        profileId,
-        protocol,
+  const progressByTargetId = new Map(
+    frequencyProgress.map((progress) => [progress.target.id, progress])
+  );
+  const protocols = getProtocols(profileId).filter((p) => p.end_date == null);
+  // Several active protocols commonly measure the same outcome. Resolve each
+  // profile series once, then compare that shared series against each protocol's
+  // own date window.
+  const outcomeSeriesByKey = new Map(
+    [...new Set(protocols.flatMap((protocol) => protocol.outcomeKeys))].map(
+      (key) => [key, resolveOutcomeSeries(profileId, key, weightUnit)] as const
+    )
+  );
+  return protocols.map((protocol) => {
+    const adherenceProgress =
+      protocol.frequency_target_id == null
+        ? null
+        : (progressByTargetId.get(protocol.frequency_target_id) ?? null);
+    const practice = getProtocolPractice(profileId, protocol);
+    const comparison = compareProtocol(
+      protocol.outcomeKeys
+        .map((key) => outcomeSeriesByKey.get(key) ?? null)
+        .filter((series): series is OutcomeSeries => series != null),
+      {
+        startDate: protocol.start_date,
+        endDate: protocol.end_date,
         today,
-        weightUnit
-      );
-      const primary = comparison.outcomes[0] ?? null;
-      // Inclusive elapsed days: a protocol started today reads "1 day in".
-      const daysElapsed =
-        (daysBetweenDateStr(protocol.start_date, today) ?? 0) + 1;
-      return {
-        id: protocol.id,
-        name: protocol.name,
-        href: protocolHref(protocol.id),
-        daysElapsed,
-        adherence:
-          practice && adherenceProgress
-            ? {
-                count: adherenceProgress.count,
-                perWeek: practice.perWeek,
-                perWeekMax: adherenceProgress.per_week_max,
-                pace: adherenceProgress.pace,
-                atCeiling: adherenceProgress.atCeiling,
-                label: protocolPracticeLabel(
-                  practice.scopeKind,
-                  practice.value
-                ),
-                noun: protocolPracticeNoun(practice.scopeKind),
-              }
-            : null,
-        practice,
-        practiceTodayCount:
-          practice?.scopeKind === "practice"
-            ? getPracticeDayCount(
-                profileId,
-                practice.value,
-                today,
-                practiceSpellingsFor(spellingsByIdentity, practice.value)
-              )
-            : 0,
-        practiceUsuallyToday:
-          practice?.scopeKind === "practice" &&
-          isPredictedPracticeDay(profileId, practice.value, today) === true,
-        // One LIMIT-1 indexed read per practice-scoped active protocol, over the
-        // spellings this gather already resolved — the same bounded shape as the
-        // today-count beside it.
-        practicePreviousDurationMin:
-          practice?.scopeKind === "practice"
-            ? practiceDurationPrefill(
-                getPracticeSessions(
-                  profileId,
-                  practice.value,
-                  1,
-                  undefined,
-                  practiceSpellingsFor(spellingsByIdentity, practice.value)
-                )
-              )
-            : null,
-        primaryOutcome: primary
+      }
+    );
+    const primary = comparison.outcomes[0] ?? null;
+    // Inclusive elapsed days: a protocol started today reads "1 day in".
+    const daysElapsed =
+      (daysBetweenDateStr(protocol.start_date, today) ?? 0) + 1;
+    return {
+      id: protocol.id,
+      name: protocol.name,
+      href: protocolHref(protocol.id),
+      daysElapsed,
+      adherence:
+        practice && adherenceProgress
           ? {
-              label: primary.label,
-              betterness: primary.betterness,
-              framing: primary.framing,
-              insufficient: primary.insufficient,
+              count: adherenceProgress.count,
+              perWeek: practice.perWeek,
+              perWeekMax: adherenceProgress.per_week_max,
+              pace: adherenceProgress.pace,
+              atCeiling: adherenceProgress.atCeiling,
+              label: protocolPracticeLabel(practice.scopeKind, practice.value),
+              noun: protocolPracticeNoun(practice.scopeKind),
             }
           : null,
-      };
-    });
+      practice,
+      practiceTodayCount:
+        practice?.scopeKind === "practice"
+          ? getPracticeDayCount(
+              profileId,
+              practice.value,
+              today,
+              practiceSpellingsFor(spellingsByIdentity, practice.value)
+            )
+          : 0,
+      practiceUsuallyToday:
+        practice?.scopeKind === "practice" &&
+        isPredictedPracticeDay(profileId, practice.value, today) === true,
+      // One LIMIT-1 indexed read per practice-scoped active protocol, over the
+      // spellings this gather already resolved — the same bounded shape as the
+      // today-count beside it.
+      practicePreviousDurationMin:
+        practice?.scopeKind === "practice"
+          ? practiceDurationPrefill(
+              getPracticeSessions(
+                profileId,
+                practice.value,
+                1,
+                undefined,
+                practiceSpellingsFor(spellingsByIdentity, practice.value)
+              )
+            )
+          : null,
+      primaryOutcome: primary
+        ? {
+            label: primary.label,
+            betterness: primary.betterness,
+            framing: primary.framing,
+            insufficient: primary.insufficient,
+          }
+        : null,
+    };
+  });
 }

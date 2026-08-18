@@ -7,7 +7,7 @@ import {
   MAX_WAITING_WINDOW_MIN,
   type SleepWaitingSignals,
 } from "@/lib/sleep-waiting";
-import { DEFAULT_WAKE_MINUTES } from "@/lib/now-strip";
+import { DEFAULT_WAKE_MINUTES } from "@/lib/dashboard-relevance";
 
 // The morning waiting window (#2097). What these pin is the PRECEDENCE as much as
 // the branches: "no last night, past typical wake" is true every morning after

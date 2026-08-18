@@ -81,9 +81,6 @@ export function resetOnboardingProfileRows(
     WHERE routine_id IN (SELECT id FROM routines WHERE profile_id = ?)`
   ).run(profileId);
   db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(profileId);
-  db.prepare(
-    `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'dashboard_layout'`
-  ).run(profileId);
 }
 
 // Stamp the profile back to the wizard's entry state (not_started, version 1,

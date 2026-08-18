@@ -1,6 +1,6 @@
 // The ONE list computation behind every drag-reorder in the app (issue #1485 C).
 //
-// Reorder had grown two languages: DashboardGrid's drag handles (the established
+// Reorder had grown two languages: card drag handles (the established
 // one) and the Trends Overview tiles' per-tile up/down arrows. C converges them on
 // drag, and the rule that makes "one reorder language" true below the UI is that
 // both consumers move ids through the SAME pure function — the drag mechanics are

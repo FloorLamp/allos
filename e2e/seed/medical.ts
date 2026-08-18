@@ -530,9 +530,8 @@ export function seedDataQualityGaps(): void {
       `INSERT INTO goals (profile_id, title, status) VALUES (?, 'Feel better all around', 'active')`
     ).run(dqAdultId);
 
-    // #1219 item 4 — four ONGOING protocols (end_date null) + a stored dashboard
-    // layout that shows the off-by-default active-protocols widget, so the widget
-    // caps at 3 and renders the "+1 more" overflow link. Distinct start dates pin
+    // #1219 item 4 — four ONGOING protocols (end_date null), so the atomic protocol
+    // facts cap at 3 and render the "+1 more" overflow link. Distinct start dates pin
     // the shown/overflow split (getProtocols orders by start_date DESC).
     db.prepare(
       `DELETE FROM protocols WHERE profile_id = ? AND name LIKE 'DQ Protocol %'`
@@ -549,12 +548,6 @@ export function seedDataQualityGaps(): void {
         shiftDateStr(dqAdultToday, -(10 + i))
       );
     }
-    setAttr(
-      dqAdultId,
-      "dashboard_layout",
-      JSON.stringify({ order: ["active-protocols"], hidden: [] })
-    );
-
     seedMemberLogin(E2E_LOGIN_DQ_ADULT, dqAdultId, "write");
     console.log(
       `e2e: seeded data-quality ADULT fixture — profile ${dqAdultId} (${DQ_ADULT_PROFILE}) (#1146/#1219)`

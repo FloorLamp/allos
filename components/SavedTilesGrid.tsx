@@ -17,7 +17,7 @@ import { reorderSaved } from "@/app/(app)/saved-actions";
 // The Trends Overview "★ Starred" grid, made DRAGGABLE (issue #1485 C).
 //
 // The tiles' order used to move only through a pair of up/down arrows in each
-// tile's corner ⋯ menu — a SECOND reorder language beside DashboardGrid's
+// tile's corner ⋯ menu — a SECOND reorder language beside the retired dashboard
 // established drag, for the same job. C converges them: a tile is lifted and
 // dropped (press-and-hold on touch, a deliberate few pixels with a mouse) through
 // the SHARED mechanism in components/SortableOrder.tsx that the dashboard also

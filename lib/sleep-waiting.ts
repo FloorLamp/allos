@@ -1,4 +1,4 @@
-import { DEFAULT_WAKE_MINUTES } from "./now-strip";
+import { DEFAULT_WAKE_MINUTES } from "./dashboard-relevance";
 
 // The morning waiting window (issue #2097) — ONE pure decision, consumed by the
 // dashboard tile, the /sleep hero and the Now strip, so the three cannot disagree

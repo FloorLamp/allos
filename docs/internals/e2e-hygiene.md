@@ -1096,44 +1096,6 @@ calls on CONTROLLED inputs — the #1941 shape — and it was the second iterati
 the raw call, that was rescuing a swallowed first attempt. Deleting a loop means
 re-reading every interaction inside it and giving each its own settled form.
 
-### A bare `.click()` on a Server-Action control is the same bet (#1947)
-
-`dashboard.spec`'s "temporary appointment absence" test failed 2-of-3 on unmodified
-`main`: the customize **Save** was a bare `.click()`, so the assertion below it
-raced the action round-trip on the 5 s default. The snapshot said so plainly — the
-page still in customize mode, `Saving` up, Save disabled. The same spec already used
-`settledClick` twenty lines earlier for the household chip, so the fix was
-consistency, not a technique.
-
-**Measured, not argued** (CDP CPU throttle standing in for a loaded shard, 3 runs
-each; the same instrument #1964 used):
-
-| CPU throttle | Save's action POST resolves | "Edit dashboard" back |
-| ------------ | --------------------------- | --------------------- |
-| 1× (idle)    | 1.9–2.1 s                   | 2.1–2.6 s             |
-| 8×           | 2.6–3.0 s                   | 3.2–4.6 s             |
-| 20×          | 3.9–4.4 s                   | **7.0–7.2 s**         |
-
-So the bare click's 5 s default loses outright at 20×, and is inside its own
-margin of error at 8×. `settledClick` does not raise a ceiling — it **absorbs the
-slow part into the helper's own 15 s budget**: after it returns, the remaining wait
-for the client flip is 2.8–3.1 s at 20×, comfortably back inside the 5 s default.
-That is the whole difference between waiting on the right signal and widening the
-wrong one.
-
-Worth stating because the reflex is the other one: **do not widen the ceiling.** That
-is the move this suite has lost with repeatedly (`wellness-practices:137` went 5 s →
-20 s → 45 s → `test.slow()` and still overran; what fixed it was removing the work,
-#1901/#1903), and a declared `{ timeout: N }` above 30 s is inert without
-`test.slow()` anyway. `settledClick` waits for the actual signal, which is faster in
-the common case and correct in the slow one.
-
-Sweeping the rest of that file turned up the other half of the same audit: the
-visit dialog's **Add** (a `<form action>` submit whose "Appointment saved" toast is
-only raised after the action resolves) had the identical shape, and three
-`Edit dashboard`/`Cancel` clicks are pure client toggles on the heaviest page in the
-app — `hydratedClick`, not `settledClick` and not a retry loop, since they TOGGLE.
-
 ### When the APP is the other writer — `openCareOverviewSection` (#2231)
 
 `hydratedClick`'s rule ("a toggle must be clicked ONCE, never retried") assumes the

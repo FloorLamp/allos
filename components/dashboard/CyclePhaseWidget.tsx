@@ -36,7 +36,7 @@ import {
 // typed refusals, so a stale dashboard tap is refused rather than double-logged.
 //
 // With no history at all, the card IS the offer: the self-hide became the registry's
-// data-aware CTA (`dataAware` in lib/dashboard-widgets.ts). Relevance-gated in the
+// data-aware CTA. Relevance-gated in the
 // registry on the SAME `cycle` bit as the nav entry, so it never reaches a profile where
 // cycle tracking is irrelevant.
 //
@@ -50,10 +50,12 @@ import {
 export default function CyclePhaseWidget({
   forecast,
   control,
+  showReading = true,
 }: {
   forecast?: CycleForecast | null;
   // The ONE state, resolved once on the server. Never recomputed here.
   control: CycleControlState;
+  showReading?: boolean;
 }) {
   const { day, phase, suspension } = control;
   const projected = forecast?.kind === "forecast" ? forecast : null;
@@ -61,56 +63,58 @@ export default function CyclePhaseWidget({
   return (
     <div className="card" data-testid="cycle-phase-widget">
       <WidgetHeader title="Cycle phase" href="/medical/cycles" />
-      <div className="flex items-start gap-3">
-        <IconDroplet
-          className="mt-1 h-5 w-5 shrink-0 text-rose-500 dark:text-rose-400"
-          stroke={1.75}
-          aria-hidden="true"
-        />
-        <div className="min-w-0">
-          {derived ? (
-            <>
-              <div
-                className="text-lg font-semibold text-slate-800 dark:text-slate-100"
-                data-testid="cycle-phase-value"
-              >
-                Cycle day {day} · {CYCLE_PHASE_LABELS[phase]}
-              </div>
-              {projected ? (
+      {showReading && (
+        <div className="flex items-start gap-3">
+          <IconDroplet
+            className="mt-1 h-5 w-5 shrink-0 text-rose-500 dark:text-rose-400"
+            stroke={1.75}
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            {derived ? (
+              <>
                 <div
-                  className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
-                  data-testid="cycle-phase-forecast"
+                  className="text-lg font-semibold text-slate-800 dark:text-slate-100"
+                  data-testid="cycle-phase-value"
                 >
-                  Next period {projected.windowStart} – {projected.windowEnd} ·{" "}
-                  {FORECAST_CONFIDENCE_LABELS[projected.confidence]}
+                  Cycle day {day} · {CYCLE_PHASE_LABELS[phase]}
                 </div>
-              ) : (
-                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  Derived from your logged periods.
-                </div>
-              )}
-            </>
-          ) : suspension ? (
-            // Not an empty state: the CTA copy below would tell someone with a recorded
-            // pregnancy to "log your period to start tracking". Say the pause instead —
-            // the same sentence the Cycle page's own hero says (#2801).
-            <div
-              className="text-sm text-slate-500 dark:text-slate-400"
-              data-testid="cycle-phase-suspended"
-            >
-              {CYCLE_SUSPENSION_NOTES[suspension]}
-            </div>
-          ) : (
-            <div
-              className="text-sm text-slate-500 dark:text-slate-400"
-              data-testid="cycle-phase-empty"
-            >
-              Log your period to start tracking. The cycle day and phase are
-              derived from what you record.
-            </div>
-          )}
+                {projected ? (
+                  <div
+                    className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+                    data-testid="cycle-phase-forecast"
+                  >
+                    Next period {projected.windowStart} – {projected.windowEnd}{" "}
+                    · {FORECAST_CONFIDENCE_LABELS[projected.confidence]}
+                  </div>
+                ) : (
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    Derived from your logged periods.
+                  </div>
+                )}
+              </>
+            ) : suspension ? (
+              // Not an empty state: the CTA copy below would tell someone with a recorded
+              // pregnancy to "log your period to start tracking". Say the pause instead —
+              // the same sentence the Cycle page's own hero says (#2801).
+              <div
+                className="text-sm text-slate-500 dark:text-slate-400"
+                data-testid="cycle-phase-suspended"
+              >
+                {CYCLE_SUSPENSION_NOTES[suspension]}
+              </div>
+            ) : (
+              <div
+                className="text-sm text-slate-500 dark:text-slate-400"
+                data-testid="cycle-phase-empty"
+              >
+                Log your period to start tracking. The cycle day and phase are
+                derived from what you record.
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <div className="mt-3">
         <PeriodOfferButton state={control} surface="widget" variant="compact" />
       </div>

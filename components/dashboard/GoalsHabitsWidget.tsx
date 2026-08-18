@@ -5,7 +5,7 @@ import {
   dashboardHabitDomain,
   dashboardGoalsHabitsLayout,
   summarizeDashboardHabits,
-} from "@/lib/dashboard-widgets";
+} from "@/lib/dashboard-presentation";
 import { goalBarClass, goalPaceTone, goalPct } from "@/lib/outcome-goals";
 import { frequencyScopeLabel } from "@/lib/frequency-targets";
 import type { GoalProgress } from "@/lib/goal-progress";
@@ -22,6 +22,7 @@ export default function GoalsHabitsWidget({
   freqTargets,
   today,
   trainingRelevant = true,
+  showLogActions = true,
 }: {
   goals: OutcomeGoal[];
   goalProgress: Map<number, GoalProgress>;
@@ -29,6 +30,7 @@ export default function GoalsHabitsWidget({
   // The active profile's today (YYYY-MM-DD) — the pace clock for goal bars (#780).
   today: string;
   trainingRelevant?: boolean;
+  showLogActions?: boolean;
 }) {
   const {
     open: allOpenTargets,
@@ -213,49 +215,50 @@ export default function GoalsHabitsWidget({
                   )}
                 </div>
               )}
-              {(openTargets.length > 0 || hasMultipleHabitDomains) && (
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  {hasOpenTrainingTarget && (
-                    <LogActivityButton className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
-                      Log activity →
-                    </LogActivityButton>
-                  )}
-                  {hasOpenFoodTarget && (
-                    <Link
-                      href="/nutrition"
-                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                    >
-                      Log food serving →
-                    </Link>
-                  )}
-                  {hasOpenPracticeTarget && (
-                    <Link
-                      href="/wellness"
-                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                    >
-                      Log practice session →
-                    </Link>
-                  )}
-                  {hasFoodContent &&
-                    (hasTrainingContent || hasPracticeContent) && (
+              {showLogActions &&
+                (openTargets.length > 0 || hasMultipleHabitDomains) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    {hasOpenTrainingTarget && (
+                      <LogActivityButton className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
+                        Log activity →
+                      </LogActivityButton>
+                    )}
+                    {hasOpenFoodTarget && (
                       <Link
                         href="/nutrition"
-                        className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                        className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
                       >
-                        Manage food habits →
+                        Log food serving →
                       </Link>
                     )}
-                  {hasPracticeContent &&
-                    (hasTrainingContent || hasFoodContent) && (
+                    {hasOpenPracticeTarget && (
                       <Link
                         href="/wellness"
-                        className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                        className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
                       >
-                        Manage practices →
+                        Log practice session →
                       </Link>
                     )}
-                </div>
-              )}
+                    {hasFoodContent &&
+                      (hasTrainingContent || hasPracticeContent) && (
+                        <Link
+                          href="/nutrition"
+                          className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                        >
+                          Manage food habits →
+                        </Link>
+                      )}
+                    {hasPracticeContent &&
+                      (hasTrainingContent || hasFoodContent) && (
+                        <Link
+                          href="/wellness"
+                          className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                        >
+                          Manage practices →
+                        </Link>
+                      )}
+                  </div>
+                )}
             </section>
           )}
         </div>

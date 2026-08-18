@@ -233,7 +233,7 @@ export default async function AppLayout({
   const showOnboardingReturn =
     onboarding?.status === "in_progress" &&
     onboarding.basicsComplete &&
-    !onboarding.layoutReviewed;
+    !onboarding.notificationsReviewed;
   return (
     <TimezoneProvider tz={timezone}>
       <WeekStartProvider weekStart={weekStart}>

@@ -42,8 +42,8 @@ under **Settings → Notifications**; and **milestone alerts** — a brief note 
 you cross a milestone (your 10th/50th/100th/… workout, or a completed goal). Both
 are rule-based and work with **no AI configured**. Milestones are always recorded
 to your **Timeline** (under the **Milestone** filter) regardless of the alert
-toggle. The recap is also available as an off-by-default **Recap** dashboard card
-(enable it from the dashboard's **Customize** control).
+toggle. The recap is also available in the dashboard's **Everything** section
+when its reporting window has a recap to show.
 
 The recap also has a **cadence** — _Weekly_, _Monthly_ or _Quarterly_, beside the
 day and time on the same row. It sets the **shortest** period the recap reports

@@ -7,6 +7,7 @@
 // don't re-gather.
 
 import { cache } from "../../request-cache";
+import { snapshotCached } from "../../read-snapshot";
 import {
   deriveRiskFactors,
   familyConditionRefs,
@@ -26,7 +27,7 @@ import { getOtotoxicWarnings } from "../intake";
 // family_history row; personal conditions from the ACTIVE conditions only (a
 // resolved condition no longer modulates cadence). The occupational/immune
 // attributes are the self-declared profile flags.
-export const getRiskFactors = cache(function getRiskFactors(
+const getRiskFactorsForRequest = cache(function getRiskFactors(
   profileId: number
 ): Set<RiskFactor> {
   return deriveRiskFactors({
@@ -68,3 +69,8 @@ export const getRiskFactors = cache(function getRiskFactors(
     ototoxicMedication: getOtotoxicWarnings(profileId).length > 0,
   });
 });
+export const getRiskFactors = snapshotCached(
+  "upcoming.risk-factors",
+  (profileId: number) => String(profileId),
+  getRiskFactorsForRequest
+);

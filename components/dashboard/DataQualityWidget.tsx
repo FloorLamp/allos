@@ -4,7 +4,7 @@ import FindingsList from "@/components/FindingsList";
 import {
   capDashboardList,
   DATA_QUALITY_GAPS_CAP,
-} from "@/lib/dashboard-widgets";
+} from "@/lib/dashboard-presentation";
 import { dismissDataQualityGap } from "@/app/(app)/actions";
 
 // Dashboard "Data quality" widget (issue #1045). The structural gaps that silently

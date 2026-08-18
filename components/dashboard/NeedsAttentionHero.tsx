@@ -25,6 +25,7 @@ import { resolveFollowUp } from "@/app/(app)/upcoming/actions";
 import {
   groupAttentionForCard,
   attentionCardItems,
+  cardBandForItem,
   attentionCountLabel,
   attentionHeroState,
   attentionSetupItems,
@@ -34,7 +35,6 @@ import {
   type CardBand,
 } from "@/lib/attention";
 import AttentionHeroCard from "@/components/dashboard/AttentionHeroCard";
-import AppBadge from "@/components/AppBadge";
 import {
   isItemSuppressibleFlag,
   upcomingDueText,
@@ -100,6 +100,7 @@ function Row({
   now,
   tone,
   formatPrefs,
+  canWrite = true,
 }: {
   item: UpcomingItem;
   now: string;
@@ -107,6 +108,7 @@ function Row({
   // The viewer's date shape (#964) — the due text prints a calendar date at planning
   // distance (#2579-B), and a rendered date follows the login's prefs.
   formatPrefs: DisplayFormatPrefs;
+  canWrite?: boolean;
 }) {
   const Icon = DOMAIN_ICON[item.domain] ?? IconAlertTriangle;
   return (
@@ -148,7 +150,7 @@ function Row({
         exactly the surface most likely to be stale — a dashboard tab open since
         yesterday — and a tap on a since-paused item or a retired dose must say so
         instead of silently re-rendering the row. */}
-        {item.doseId != null && (
+        {canWrite && item.doseId != null && (
           <DoseConfirmButton
             action={markAttentionDose}
             // Act → toast → Undo (#2642). The hero is the surface most likely to be
@@ -163,7 +165,8 @@ function Row({
             Mark taken
           </DoseConfirmButton>
         )}
-        {item.doseId == null &&
+        {canWrite &&
+          item.doseId == null &&
           item.followUpResolve == null &&
           item.actionLabel && (
             <Link
@@ -175,7 +178,7 @@ function Row({
           )}
         {/* Finding follow-up resolution offer (issue #700): confirm-first outcome
         buttons, identical to the Upcoming page's. */}
-        {item.followUpResolve != null && (
+        {canWrite && item.followUpResolve != null && (
           <FollowUpResolveControls
             action={async (fd) => {
               "use server";
@@ -190,7 +193,7 @@ function Row({
         for suppressible items (Upcoming-derived + biomarker flags); structural
         signals (review/integration) are resolved, not snoozed. A care-persistent
         overdue follow-up (#700) gets a snooze-ONLY menu (resists dismiss). */}
-        {isItemSuppressibleFlag(item) && (
+        {canWrite && isItemSuppressibleFlag(item) && (
           <SnoozeDismissMenu
             signalKey={item.key}
             snoozeOnly={item.carePersistent === true}
@@ -200,6 +203,31 @@ function Row({
         )}
       </div>
     </div>
+  );
+}
+
+export function DashboardAttentionAtom({
+  item,
+  today,
+  formatPrefs,
+  canWrite,
+}: {
+  item: UpcomingItem;
+  today: string;
+  formatPrefs: DisplayFormatPrefs;
+  canWrite: boolean;
+}) {
+  const band = cardBandForItem(item, today);
+  return (
+    <article className="card" data-testid="dashboard-attention-atom">
+      <Row
+        item={item}
+        now={today}
+        tone={band ? BAND_TONE[band] : "text-slate-600 dark:text-slate-300"}
+        formatPrefs={formatPrefs}
+        canWrite={canWrite}
+      />
+    </article>
   );
 }
 
@@ -306,10 +334,6 @@ export default function NeedsAttentionHero({
           aria-label="Needs attention"
           className="card flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-emerald-500 py-3 dark:border-l-emerald-400"
         >
-          {/* Clears the installed-PWA icon badge (#1424). Mounting it on THIS
-            branch too is the point: the card below isn't rendered at count 0, so
-            a badge set on a previous visit would otherwise never come off. */}
-          <AppBadge count={count} />
           <div
             data-testid="attention-all-clear"
             className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
@@ -347,12 +371,6 @@ export default function NeedsAttentionHero({
   // rows, which keep their inline Server Action forms and stay server-rendered.
   return (
     <>
-      {/* Same count the card's own badge shows, painted on the installed app
-          icon (#1424) — one number, two surfaces, no second query. A SIBLING of
-          the card, not a child: the card's body sits inside a <Collapse>, and a
-          badge that stopped updating whenever the user collapsed the hero would
-          be a silent, viewport-shaped bug. */}
-      <AppBadge count={count} />
       <AttentionHeroCard
         count={count}
         topBand={heroState.topBand}

@@ -5,7 +5,6 @@ import {
   continueOnboardingData,
   deferOnboarding,
   saveOnboardingBasics,
-  saveOnboardingDashboard,
   saveOnboardingFocuses,
   saveOnboardingNotifications,
   saveOnboardingProfilePath,
@@ -14,7 +13,6 @@ import {
 import { createProfile as createProfileAction } from "@/app/(app)/settings/family/actions";
 import { db } from "@/lib/db";
 import {
-  getDashboardLayout,
   getOnboardingState,
   getNotifySchedule,
   getStoredAge,
@@ -69,7 +67,7 @@ describe("onboarding actions", () => {
     expect(getOnboardingState(created.id)).toEqual(initialOnboardingState());
   });
 
-  it("stores selected outcomes and seeds a profile-scoped dashboard layout", async () => {
+  it("stores selected outcomes", async () => {
     const login = createLogin({ username: "onboarding-focus" });
     const profile = createTestProfile("New Person", login.id);
     actAs(login, profile);
@@ -87,12 +85,6 @@ describe("onboarding actions", () => {
       status: "in_progress",
       focuses: ["fitness", "metrics-labs"],
     });
-    expect(getDashboardLayout(profile.id)?.hidden).not.toContain(
-      "weight-trend"
-    );
-    expect(getDashboardLayout(profile.id)?.hidden).toContain(
-      "next-appointment"
-    );
   });
 
   it("does not store a fitness focus through early childhood", async () => {
@@ -263,7 +255,6 @@ describe("onboarding actions", () => {
       profilePath: "self",
       focuses: ["fitness"],
       basicsComplete: true,
-      layoutReviewed: true,
       notificationIntent: "later",
       notificationsReviewed: true,
     });
@@ -277,7 +268,7 @@ describe("onboarding actions", () => {
     expect(getOnboardingState(profile.id)?.status).toBe("complete");
   });
 
-  it("persists layout review and notification intent before completion", async () => {
+  it("persists notification intent before completion", async () => {
     const login = createLogin({ username: "onboarding-review" });
     const profile = createTestProfile("Review Person", login.id);
     actAs(login, profile);
@@ -289,13 +280,6 @@ describe("onboarding actions", () => {
       basicsComplete: true,
       dataReviewed: true,
     });
-
-    const layout = new FormData();
-    layout.append("widget", "next-appointment");
-    layout.append("widget", "coaching-observations");
-    await redirected(saveOnboardingDashboard(layout));
-    expect(getOnboardingState(profile.id)?.layoutReviewed).toBe(true);
-    expect(getDashboardLayout(profile.id)?.hidden).toContain("recent-labs");
 
     await redirected(
       saveOnboardingNotifications(fd({ notification_intent: "safety-only" }))
@@ -331,31 +315,6 @@ describe("onboarding actions", () => {
     });
   });
 
-  it("persists age-neutral fitness widgets for a minor", async () => {
-    const login = createLogin({ username: "onboarding-restricted-layout" });
-    const profile = createTestProfile("Restricted Layout", login.id);
-    actAs(login, profile);
-    setProfileBirthdate(profile.id, "2018-01-01");
-    setOnboardingState(profile.id, {
-      ...initialOnboardingState(),
-      status: "in_progress",
-      profilePath: "self",
-      focuses: ["fitness"],
-      basicsComplete: true,
-      dataReviewed: true,
-    });
-
-    const layout = new FormData();
-    layout.append("widget", "recent-labs");
-    layout.append("widget", "coaching");
-    layout.append("widget", "goals-habits");
-    await redirected(saveOnboardingDashboard(layout));
-
-    expect(getDashboardLayout(profile.id)?.order).toContain("coaching");
-    expect(getDashboardLayout(profile.id)?.order).toContain("goals-habits");
-    expect(getDashboardLayout(profile.id)?.order).toContain("recent-labs");
-  });
-
   it("revisiting a completed step keeps the profile complete (#887)", async () => {
     const login = createLogin({ username: "onboarding-revisit" });
     const profile = createTestProfile("Finished Person", login.id);
@@ -368,7 +327,6 @@ describe("onboarding actions", () => {
       focuses: ["fitness", "metrics-labs"],
       basicsComplete: true,
       dataReviewed: true,
-      layoutReviewed: true,
       notificationsReviewed: true,
       startedAt: "2026-05-31T09:00:00.000Z",
       completedAt,

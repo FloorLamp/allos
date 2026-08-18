@@ -1,5 +1,6 @@
 import { db, hoistedStatement, today, writeTx } from "../db";
 import { cache } from "../request-cache";
+import { snapshotCached } from "../read-snapshot";
 import { readAllForUpdate } from "../tx";
 import { ageFromBirthdate, ageMonthsFrom } from "../date";
 import { normalizeExcludedGroups } from "../dietary-preferences";
@@ -1148,11 +1149,16 @@ const ACTIVE_SITUATIONS_STMT = hoistedStatement(
   `SELECT name FROM situations
     WHERE profile_id = ? AND active = 1 ORDER BY name COLLATE NOCASE`
 );
-export function getActiveSituations(profileId: number): string[] {
+function getActiveSituationsUncached(profileId: number): string[] {
   return (ACTIVE_SITUATIONS_STMT.all(profileId) as { name: string }[]).map(
     (r) => r.name
   );
 }
+export const getActiveSituations = snapshotCached(
+  "profile.active-situations",
+  (profileId: number) => String(profileId),
+  getActiveSituationsUncached
+);
 
 // Set the profile's active situations to exactly `situations` (by name). Rows are
 // upserted into the one NOCASE vocabulary and their `active` flag toggled; a name

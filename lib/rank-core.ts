@@ -182,7 +182,7 @@ export function itemsFromLayout<Id extends string>(
 // anything the stored order has never seen — a card added by a later release, or one
 // that only just gained data — is APPENDED in ranked order rather than reshuffling
 // what the user arranged. Unknown/stale stored ids are dropped (a card removed by a
-// release must not leave a hole), which is the `resolveWidgetList` posture applied
+// release must not leave a hole), which is the registry-merge posture applied
 // to a ranked default instead of a registry default.
 export function mergeStoredOrder<Id extends string>(
   ranked: readonly Id[],
