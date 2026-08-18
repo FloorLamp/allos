@@ -571,10 +571,13 @@ export default async function CyclingActivityDetail(props: {
             <SessionComparisonCard
               comparison={data.comparison}
               testId="ride-comparison"
+              noun={`${activityNoun}s`}
+              singularNoun={activityNoun}
             >
               <RideComparisonChart
                 metrics={comparisonMetrics}
                 lens={rideLens}
+                noun={activityNoun}
               />
             </SessionComparisonCard>
           ) : null}

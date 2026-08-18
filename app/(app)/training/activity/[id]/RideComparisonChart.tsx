@@ -31,14 +31,16 @@ export interface RideComparisonChartMetric {
 export default function RideComparisonChart({
   metrics,
   lens,
+  noun,
 }: {
   metrics: RideComparisonChartMetric[];
   lens: CyclingLens | null;
+  noun: "ride" | "session";
 }) {
   return (
     <SessionComparisonChart
-      noun="rides"
-      singularNoun="ride"
+      noun={`${noun}s`}
+      singularNoun={noun}
       testIdPrefix="ride-comparison"
       initialMetric={
         metrics.some((metric) => metric.key === lens?.metric)
