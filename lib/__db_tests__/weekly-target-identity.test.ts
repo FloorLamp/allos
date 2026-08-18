@@ -11,10 +11,15 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { trainingItems, trainingPaceLine } from "@/lib/queries/upcoming/plans";
+import {
+  trainingItems,
+  trainingPaceLine,
+  WEEKLY_TARGET_IDENTITY,
+} from "@/lib/queries/upcoming/plans";
 import { practiceIdentity } from "@/lib/practice";
 import { setStoredAge, setWeekMode } from "@/lib/settings";
 import { trainingSignalKey } from "@/lib/workout-nudge";
+import { FREQUENCY_SCOPE_KINDS } from "@/lib/frequency-targets";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -54,6 +59,23 @@ function addTarget(
 }
 
 describe("weekly floor targets carry their SCOPE's identity (#2578)", () => {
+  it("declares a life-stage policy for every scope that emits a weekly row", () => {
+    expect(
+      FREQUENCY_SCOPE_KINDS.map((kind) => [
+        kind,
+        WEEKLY_TARGET_IDENTITY[kind]?.lifeStage ?? null,
+      ])
+    ).toEqual([
+      ["region", "age-neutral"],
+      ["group", "age-neutral"],
+      ["type", "age-neutral"],
+      ["food_group", "age-neutral"],
+      ["mobility_region", "age-neutral"],
+      ["substance", null],
+      ["practice", null],
+    ]);
+  });
+
   it("a food_group target is a nutrition target, on the Nutrition food tab", () => {
     const { profileId } = makeProfile("wti-food");
     const id = addTarget(profileId, "food_group", "berries", 4);

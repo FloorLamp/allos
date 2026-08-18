@@ -15,6 +15,7 @@ import {
   paceOfAgingPhrase,
   inputCompleteness,
   completenessChecklistMessage,
+  bioAgeSurface,
   isBioAgeHiddenForAge,
 } from "../bio-age";
 import { AGE_INPUT_KEY, type PhenoAgeInputEffect } from "../derived-biomarkers";
@@ -281,8 +282,9 @@ describe("isBioAgeHiddenForAge", () => {
     expect(isBioAgeHiddenForAge(50)).toBe(false);
   });
 
-  it("hides on unknown age", () => {
-    expect(isBioAgeHiddenForAge(null)).toBe(true);
+  it("keeps the input checklist eligible on unknown age without exposing a number", () => {
+    expect(isBioAgeHiddenForAge(null)).toBe(false);
+    expect(bioAgeSurface(isBioAgeHiddenForAge(null), 0, 3)).toBe("checklist");
   });
 });
 

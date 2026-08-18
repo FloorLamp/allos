@@ -361,11 +361,12 @@ export function isBioAgeAgeInput(e: PhenoAgeInputEffect): boolean {
 
 // ── Adult gate ────────────────────────────────────────────────────────────────
 
-// Hidden for minor and unknown-age profiles. PhenoAge is an adult population model,
-// so missing age cannot safely opt into it. This is the inverse of the shared
-// adult-clinical predicate (lib/life-stage).
+// Hidden for a KNOWN minor. Unknown age stays eligible for the Results checklist:
+// that surface shows which inputs are present/missing, never a PhenoAge number.
+// Adult-population outputs independently require isAdultForClinical at their model
+// or route boundary (for example Longevity and its healthspan pillars).
 export function isBioAgeHiddenForAge(age: number | null): boolean {
-  return !isAdultForClinical(age);
+  return age != null && !isAdultForClinical(age);
 }
 
 // ── Surface state ─────────────────────────────────────────────────────────────
@@ -384,7 +385,8 @@ export function isBioAgeHiddenForAge(age: number | null): boolean {
 // catalog and the answer is useful whether or not the panel is complete. The states
 // come from here rather than from either page, so the two can never disagree about
 // whether bio-age renders at all. `hiddenForProfile` is the caller's combined gate
-// (`isBioAgeHiddenForAge`).
+// (`isBioAgeHiddenForAge` for the Results checklist; adult-only callers may add
+// their own content-class boundary).
 export type BioAgeSurface = "hidden" | "checklist" | "hero";
 
 export function bioAgeSurface(

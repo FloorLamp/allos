@@ -24,8 +24,8 @@ export function goalItems(profileId: number): UpcomingItem[] {
 // as "a training target" put "Berries — Weekly training target" on the live page with
 // a barbell glyph and a /training link. The scope is what the row is ABOUT, so the
 // scope decides the identity: the domain (which picks the row's glyph), the honest
-// detail line, and a destination that actually holds the target. Identity, not
-// filtering — every one of these targets belongs on the page.
+// detail line, a destination that actually holds the target, and its life-stage
+// policy. Identity, not filtering — every one of these targets belongs on the page.
 //
 // Two scope kinds declare `null` — this builder renders no row for them — and
 // neither is an omission:
@@ -43,24 +43,32 @@ export function goalItems(profileId: number): UpcomingItem[] {
 // id, is shared with the workout nudge's suppression bus (#245), and every stored
 // dismissal in `upcoming_dismissals` uses it. Identity is what was wrong; the key was
 // never wrong, so re-keying would only orphan dismissals.
-const WEEKLY_TARGET_IDENTITY: Record<
+export const WEEKLY_TARGET_IDENTITY: Record<
   FrequencyScopeKind,
-  { domain: UpcomingDomain; detail: string; href: AppRoute } | null
+  {
+    domain: UpcomingDomain;
+    detail: string;
+    href: AppRoute;
+    lifeStage: "age-neutral";
+  } | null
 > = {
   region: {
     domain: "training",
     detail: "Weekly training target",
     href: "/training",
+    lifeStage: "age-neutral",
   },
   group: {
     domain: "training",
     detail: "Weekly training target",
     href: "/training",
+    lifeStage: "age-neutral",
   },
   type: {
     domain: "training",
     detail: "Weekly training target",
     href: "/training",
+    lifeStage: "age-neutral",
   },
   // A food-group serving target (#579/#580). It lives on the Nutrition Food tab's
   // weekly-habits card, which is where its progress, its trend strip and its untrack
@@ -69,6 +77,7 @@ const WEEKLY_TARGET_IDENTITY: Record<
     domain: "nutrition-target",
     detail: "Weekly nutrition target",
     href: nutritionTabHref("food"),
+    lifeStage: "age-neutral",
   },
   // A mobility-region habit (#840). It DOES live on the Training hub (the mobility
   // card), so the href is right and only the identity was wrong: mobilizing a region
@@ -78,6 +87,7 @@ const WEEKLY_TARGET_IDENTITY: Record<
     domain: "mobility-target",
     detail: "Weekly mobility target",
     href: "/training",
+    lifeStage: "age-neutral",
   },
   practice: null,
   substance: null,

@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import PageContainer from "@/components/PageContainer";
 import ActivityIcon from "@/components/ActivityIcon";
 import { PageHeader } from "@/components/ui";

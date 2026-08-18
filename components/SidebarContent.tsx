@@ -304,7 +304,10 @@ export default function SidebarContent({
       lives in the SHARED content, so the desktop sidebar and the mobile drawer
       offer the same jumps. Renders nothing until a page clears the "this is a
       habit" floor, so a fresh login sees no empty section. */}
-      <FrequentPages onNavigate={onNavigate} />
+      <FrequentPages
+        onNavigate={onNavigate}
+        adultContentAvailable={adultContentAvailable}
+      />
       <TrainingLogCalendar activeDates={activityDates} />
       <Nav
         adultContentAvailable={adultContentAvailable}

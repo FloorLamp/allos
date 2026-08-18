@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { getEquipment } from "@/lib/equipment";
 import { getEquipmentUsage } from "@/lib/queries";
 import { getUnitPrefs } from "@/lib/settings";
