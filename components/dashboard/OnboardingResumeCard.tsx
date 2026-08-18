@@ -52,7 +52,7 @@ export default function OnboardingResumeCard({
         </div>
         <Link
           href="/onboarding"
-          className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+          className="inline-flex shrink-0 items-center gap-1 text-sm text-link"
         >
           Continue setup <IconArrowRight className="h-4 w-4" />
         </Link>

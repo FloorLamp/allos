@@ -85,10 +85,7 @@ export default function GoalsHabitsWidget({
           {trainingRelevant ? (
             <>
               No goals or weekly habits yet —{" "}
-              <Link
-                href="/training"
-                className="text-brand-600 hover:underline dark:text-brand-400"
-              >
+              <Link href="/training" className="text-link">
                 set them up in Training
               </Link>
               .
@@ -190,24 +187,18 @@ export default function GoalsHabitsWidget({
                   {hiddenTrainingTargets.length > 0 && (
                     <Link
                       href="/training?tab=goals"
-                      className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                      className="text-xs text-link-muted"
                     >
                       +{hiddenTrainingTargets.length} more training →
                     </Link>
                   )}
                   {hiddenFoodTargets.length > 0 && (
-                    <Link
-                      href="/nutrition"
-                      className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-                    >
+                    <Link href="/nutrition" className="text-xs text-link-muted">
                       +{hiddenFoodTargets.length} more food habits →
                     </Link>
                   )}
                   {hiddenPracticeTargets.length > 0 && (
-                    <Link
-                      href="/wellness"
-                      className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-                    >
+                    <Link href="/wellness" className="text-xs text-link-muted">
                       +{hiddenPracticeTargets.length} more practices →
                     </Link>
                   )}
@@ -216,23 +207,17 @@ export default function GoalsHabitsWidget({
               {(openTargets.length > 0 || hasMultipleHabitDomains) && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {hasOpenTrainingTarget && (
-                    <LogActivityButton className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
+                    <LogActivityButton className="text-xs text-link">
                       Log activity →
                     </LogActivityButton>
                   )}
                   {hasOpenFoodTarget && (
-                    <Link
-                      href="/nutrition"
-                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                    >
+                    <Link href="/nutrition" className="text-xs text-link">
                       Log food serving →
                     </Link>
                   )}
                   {hasOpenPracticeTarget && (
-                    <Link
-                      href="/wellness"
-                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                    >
+                    <Link href="/wellness" className="text-xs text-link">
                       Log practice session →
                     </Link>
                   )}
@@ -240,7 +225,7 @@ export default function GoalsHabitsWidget({
                     (hasTrainingContent || hasPracticeContent) && (
                       <Link
                         href="/nutrition"
-                        className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                        className="text-xs text-link-muted"
                       >
                         Manage food habits →
                       </Link>
@@ -249,7 +234,7 @@ export default function GoalsHabitsWidget({
                     (hasTrainingContent || hasFoodContent) && (
                       <Link
                         href="/wellness"
-                        className="text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+                        className="text-xs text-link-muted"
                       >
                         Manage practices →
                       </Link>

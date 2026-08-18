@@ -327,7 +327,7 @@ export default function NeedsAttentionHero({
           <Link
             href="/upcoming"
             data-testid={more > 0 ? "attention-more-upcoming" : undefined}
-            className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+            className="text-xs text-link"
           >
             {more > 0 ? `${more} scheduled later` : "View upcoming"}
           </Link>
@@ -389,7 +389,7 @@ export default function NeedsAttentionHero({
                   <Link
                     href={moreLinks.perBand[group.band]!.href}
                     data-testid={`attention-overflow-${group.band}`}
-                    className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    className="block rounded-lg px-2 py-1.5 text-xs text-link"
                   >
                     {moreLinks.perBand[group.band]!.text}
                   </Link>
@@ -406,7 +406,7 @@ export default function NeedsAttentionHero({
             <Link
               href={moreLinks.trailing.href}
               data-testid="attention-more-upcoming"
-              className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+              className="block text-xs text-link"
             >
               {moreLinks.trailing.text}
             </Link>

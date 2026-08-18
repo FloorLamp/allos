@@ -106,15 +106,16 @@ test.describe("offline shell without scripts", () => {
     // No script ran, so the class-based theme never engaged…
     await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
 
-    // …yet the shell paints the dark base: the ink page colour and light text
-    // from the media fallback, not the light theme's off-white.
+    // …yet the shell paints the dark base: the Botanical "Conservatory Night"
+    // canvas and light text from the media fallback, not the light off-white
+    // (#2701 — a script-less page is always the base palette, by design).
     expect(
       await shell.evaluate((el) => getComputedStyle(el).backgroundColor)
-    ).toBe("rgb(9, 12, 11)");
+    ).toBe("rgb(9, 14, 11)");
     const heading = page.getByRole("heading", { name: "You're offline" });
     await expect(heading).toBeVisible();
     expect(await heading.evaluate((el) => getComputedStyle(el).color)).toBe(
-      "rgb(241, 245, 249)"
+      "rgb(231, 238, 226)"
     );
   });
 });

@@ -85,7 +85,7 @@ export default function DateTimeFields({
               id="activity-date"
               value={date}
               onChange={onDate}
-              inputClassName="bg-white dark:bg-ink-900"
+              inputClassName=""
               required
             />
           </div>
@@ -114,7 +114,7 @@ export default function DateTimeFields({
                   durationDerived ? "Calculated from start and end" : undefined
                 }
                 onChange={(e) => onSessionDuration(e.target.value)}
-                className={`input h-[38px] bg-white pr-9 dark:bg-ink-900 ${
+                className={`input h-[38px] pr-9 ${
                   durationDerived ? "text-slate-500 dark:text-slate-400" : ""
                 } ${durationError ? "border-rose-300 dark:border-rose-800" : ""}`}
               />
@@ -165,7 +165,7 @@ export default function DateTimeFields({
               type="time"
               value={startTime}
               onChange={(e) => onStartTime(e.target.value)}
-              className="input mt-1 h-[38px] bg-white dark:bg-ink-900"
+              className="input mt-1 h-[38px]"
             />
           </div>
           <div>
@@ -203,7 +203,7 @@ export default function DateTimeFields({
               value={endTime}
               min={startTime || undefined}
               onChange={(e) => onEndTime(e.target.value)}
-              className={`input mt-1 h-[38px] bg-white dark:bg-ink-900 ${timeError ? "border-rose-300 dark:border-rose-800" : ""}`}
+              className={`input mt-1 h-[38px] ${timeError ? "border-rose-300 dark:border-rose-800" : ""}`}
             />
           </div>
         </div>

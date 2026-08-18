@@ -109,7 +109,7 @@ export default function CompactDateMenu({
                 optionRefs.current[days.length - 1]?.focus();
               }
             }}
-            className="absolute top-full left-0 z-30 mt-1 min-w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-ink-900"
+            className="absolute top-full left-0 z-30 mt-1 min-w-44 overflow-hidden rounded-xl border border-black/10 bg-surface py-1 shadow-lg dark:border-white/10"
           >
             {days.map((day, index) => {
               const selected = day.date === value;

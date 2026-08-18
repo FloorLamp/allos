@@ -179,7 +179,7 @@ export default async function StarredSection({ range }: { range: DateRange }) {
         // in lib/__tests__/empty-state-panel-scan.test.ts's allowlist with that
         // reason; if EmptyState ever earns a responsive variant, this is its caller.
         <div
-          className="flex min-h-8 items-center justify-between gap-3 sm:block sm:rounded-xl sm:border sm:border-dashed sm:border-black/10 sm:bg-white sm:p-10 sm:text-center sm:text-sm sm:text-slate-500 sm:dark:border-white/10 sm:dark:bg-ink-900 sm:dark:text-slate-400"
+          className="flex min-h-8 items-center justify-between gap-3 sm:block sm:rounded-xl sm:border sm:border-dashed sm:border-(--border) sm:bg-surface sm:p-10 sm:text-center sm:text-sm sm:text-slate-500 sm:dark:text-slate-400"
           data-testid="starred-empty-state"
         >
           <span className="hidden sm:inline">

@@ -27,6 +27,18 @@
   }
 }
 
+/* ── Botanical appearance (#2701) ─────────────────────────────────────────────
+   These tokens define Allos's single visual language; light/dark/system remains
+   the only user-selectable appearance choice.
+
+   Tailwind v4 compiles every color utility to a CSS-variable reference
+   (`text-slate-800` → `var(--color-slate-800)`), so re-pointing a ramp step
+   here updates every call site with no sweep. Three ramps define the system —
+   brand (accent), slate (text/greys), ink (dark surfaces) — plus
+   the exact amber/rose/emerald steps the NOTICE_TONE family uses (50/300/800
+   light, 950/900/200 dark). Everything structural flows through the semantic
+   chokepoint tokens in the `:root` blocks after this one. */
+
 @theme {
   --breakpoint-3xl: 1920px;
 
@@ -42,12 +54,61 @@
   --color-brand-900: #14532d;
   --color-brand-950: #052e16;
 
-  --color-ink-700: #283029;
-  --color-ink-750: #1a211d;
-  --color-ink-800: #141a17;
-  --color-ink-850: #0f1412;
-  --color-ink-900: #0c100e;
-  --color-ink-950: #070a09;
+  /* Botanical green-greys — the slate ramp carries the palette's tone-on-tone
+     text and grey fills (light muted #4e6354, dark text #d9e8de / muted #86a190
+     are the census's --m-ink/--m-muted values). */
+  --color-slate-50: #f2f6ef;
+  --color-slate-100: #ecf2e8;
+  --color-slate-200: #d9e8de;
+  --color-slate-300: #b2c6b9;
+  --color-slate-400: #86a190;
+  --color-slate-500: #4e6354;
+  --color-slate-600: #405446;
+  --color-slate-700: #2f4237;
+  --color-slate-800: #1e3226;
+  --color-slate-900: #16281c;
+  --color-slate-950: #0c1710;
+
+  /* Botanical green-blacks ("Conservatory Night"): ink-850 is the dark card
+     surface, ink-950 the near-black floor. */
+  --color-ink-700: #263129;
+  --color-ink-750: #1a231d;
+  --color-ink-800: #141c16;
+  --color-ink-850: #101711;
+  --color-ink-900: #0b110d;
+  --color-ink-950: #070a08;
+
+  /* The notice family's exact steps (Notice.tsx / FindingCard tone map), tuned
+     for Botanical. Only these six steps per hue change; the rest of each ramp
+     stays Tailwind's (chart hexes are literals in lib/chart-colors.ts and are
+     unaffected). */
+  --color-amber-50: #f0e4c0;
+  --color-amber-300: #d9c887;
+  --color-amber-800: #6e4e0a;
+  --color-amber-200: #dcc27a;
+  --color-amber-900: #413b1b;
+  --color-amber-950: #171a10;
+  --color-emerald-50: #d8e9cf;
+  --color-emerald-300: #aecf9f;
+  --color-emerald-800: #1d4f2c;
+  --color-emerald-200: #a5d9b1;
+  --color-emerald-900: #2a4630;
+  --color-emerald-950: #121d13;
+  --color-rose-50: #f2d6d3;
+  --color-rose-300: #d8aca8;
+  --color-rose-800: #8c2f39;
+  --color-rose-200: #dfa1a8;
+  --color-rose-900: #46252a;
+  --color-rose-950: #1c1315;
+}
+
+/* Semantic surfaces as utilities (`bg-surface`, `bg-field`): `inline` makes the
+   utility emit `var(--surface)` directly, so an elevation surface (toast, popup
+   menu, dialog, sticky header) or a form field follows the current mode
+   with one class — `bg-white dark:bg-ink-900` pairs were swept to these. */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-field: var(--field);
 }
 
 /*
@@ -64,7 +125,98 @@
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
+    /* The Botanical divider tone (was gray-200): an unqualified `border`
+       follows the mode instead of staying a cool neutral. */
+    border-color: var(--divider, currentcolor);
+  }
+
+  /* Tailwind v4's preflight leaves buttons at `cursor: default` (matching the
+     native UA default), so every kebab trigger, chevron toggle, segment, and
+     combobox in the app read as inert to the pointer. Interactive means
+     pointer, one rule (#2719 review): enabled buttons and button-roled
+     elements, disclosure summaries, native selects, and combobox triggers.
+     Disabled controls keep their explicit not-allowed cursors (.btn family,
+     the checkbox rules below). */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="combobox"]:not(:disabled),
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+}
+
+/* ── Semantic chokepoint tokens — Botanical light ───────────────────────────
+   One variable per chokepoint, exactly the census's token spec (#2701). Every
+   structural primitive below — body, .card, .btn family, .input,
+   SegmentedControl — reads these rather than restating colors. `--field-bd` is
+   the WCAG 1.4.11 field-boundary token: card borders may be atmospheric, but
+   control boundaries hold ≥3:1 in light and dark. */
+:root {
+  --canvas: linear-gradient(180deg, #ecf3e7 0%, #dfeadb 100%);
+  /* The canvas gradient's end color as a plain COLOR: `background: var(--canvas)`
+     alone leaves background-color transparent (a gradient is an image), and a
+     transparent body borrows whatever is behind it in overscroll regions. */
+  --canvas-base: #dfeadb;
+  /* The navigation ground (#2719 review): the sidebar / mobile chrome panel,
+     deliberately a step apart from BOTH the canvas and the card surface so the
+     nav reads as its own zone in both modes. */
+  --nav: #e6efe0;
+  --surface: #f4f8f0;
+  --border: #ccdcc4;
+  --border-strong: #ccdcc4;
+  --divider: #dde8d6;
+  --card-shadow: 0 2px 6px rgba(34, 56, 38, 0.07);
+  --accent-soft: #dcead3;
+  --btn: #166534;
+  --btn-fg: #f0f7ea;
+  --btn-hover: #125429;
+  --danger-btn: #a8433f;
+  --danger-btn-fg: #f5f9f1;
+  --danger-btn-hover: #933837;
+  --ghost: #eef4e8;
+  --ghost-hover: #e3ecda;
+  --field: #f8fbf5;
+  --field-bd: #78907e;
+  --seg-bg: #e3edda;
+  --seg-active-bg: #166534;
+  --seg-active-fg: #f0f7ea;
+  --empty-cell: #e6eedd;
+  --radius-card: 14px;
+  --radius-control: 0.5rem;
+  /* Select chevron, drawn in the muted tone. A data-URI cannot read
+     currentColor, so each mode supplies its own token. */
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234e6354' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Dark twin ("Conservatory Night"). Scoped `not print` like the dark variant
+   itself, so printing from a dark session still produces the light passport. */
+@media not print {
+  :root.dark {
+    --canvas: linear-gradient(180deg, #090e0b 0%, #060908 100%);
+    --canvas-base: #060908;
+    --nav: #0d130f;
+    --surface: #101711;
+    --border: #202e24;
+    --border-strong: #202e24;
+    --divider: #182319;
+    --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+    --accent-soft: rgba(74, 222, 128, 0.11);
+    --btn: #1d7a44;
+    --btn-fg: #e7f5eb;
+    --btn-hover: #22904f;
+    --danger-btn: #8f3a41;
+    --danger-btn-fg: #f4e7e8;
+    --danger-btn-hover: #a3474f;
+    --ghost: #17251c;
+    --ghost-hover: #1e3024;
+    --field: #0f1811;
+    --field-bd: #5c7263;
+    --seg-bg: #121c15;
+    --seg-active-bg: #4ade80;
+    --seg-active-fg: #0a130d;
+    --empty-cell: #131e16;
+    --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2386a190' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   }
 }
 
@@ -81,23 +233,46 @@
      (Tinted borders — amber/rose/emerald, the Notice family — and focus/selected
      `border-brand-*` borders are their own token set and stay literal.) Guarded by
      border-alpha-language.test.ts and hover-fill-language.test.ts. */
-  /* Frosted glass: translucent surface + backdrop blur lets the page glow
-     diffuse through; soft shadow for elevation, hairline border for the edge. */
+  /* The STANDARD card tier (#2701): opaque Botanical surface, 1.5px border,
+     and a restrained shadow. The Vitals frosted glass is retired —
+     `backdrop-filter` was the single biggest paint cost on card-dense pages and
+     the blur has nothing left to diffuse over an opaque tone-on-tone canvas. */
   /* Padding is responsive (issue #1416, section A): a phone spends ~11% of a
      390px line on a p-5 card's two gutters, and the app stacks cards. p-4 below
      `sm`, the unchanged p-5 from `sm` up — ONE tokenized change here rather than
      a per-page sweep, so every card on every surface tightens together. */
   --card-gutter: 1rem;
-  --card-radius: 0.75rem;
-  @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-4 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 sm:p-5 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
+  --card-radius: var(--radius-card);
+  @apply min-w-0 max-w-full p-4 sm:p-5;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
   @media (min-width: 640px) {
     --card-gutter: 1.25rem;
   }
-  /* backdrop-filter makes every .card its own stacking context. Elevate every
-     card ancestor of an OPEN combobox so the listbox can clear later sibling
-     cards; raising the listbox alone cannot escape its card's stacking context. */
+  /* Kept from the frosted era, re-evaluated (#2701): the card no longer forms a
+     stacking context itself (no backdrop-filter), but an OPEN combobox's
+     listbox must still paint over later sibling cards, and elevating the one
+     ancestor card is cheaper to reason about than auditing every surface a
+     combobox can appear on. Belt-and-braces, not load-bearing. */
   &:has([role="combobox"][aria-expanded="true"]) {
     @apply relative z-20;
+  }
+}
+
+@utility card-quiet {
+  /* The QUIET card tier (#2701): border, no shadow — for repeated list items
+     (timeline events are the first tenant) where a stack of shadows reads as
+     noise. Same surface, same border, same responsive gutter as .card. */
+  --card-gutter: 1rem;
+  --card-radius: var(--radius-card);
+  @apply min-w-0 max-w-full p-4 sm:p-5;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  @media (min-width: 640px) {
+    --card-gutter: 1.25rem;
   }
 }
 
@@ -111,7 +286,15 @@
 }
 
 @utility input {
-  @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-hidden focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
+  /* Field boundaries are their own token (#2701, WCAG 1.4.11): a control's
+     boundary holds ≥3:1 against the field and the canvas in both modes — the
+     atmospheric card border may not double as an input edge. The
+     field fill token replaces the old per-call-site `bg-white dark:bg-ink-900`
+     overrides, so a field reads as a field on any tinted card. */
+  @apply w-full px-3 py-2 text-sm outline-hidden focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:text-slate-100 dark:placeholder:text-slate-500;
+  border: 1px solid var(--field-bd);
+  border-radius: var(--radius-control);
+  background-color: var(--field);
   /* The field counterpart of the button family's disabled treatment (#1450 B).
      `.input` previously declared nothing for `:disabled`, so a disabled field
      was indistinguishable from an editable one except by trying to type in it. */
@@ -120,15 +303,14 @@
   }
   /* Native <select> draws its dropdown caret hard against the right edge. Swap
      it for a custom chevron with breathing room, and reserve right padding so
-     the option text never slides under it. */
+     the option text never slides under it. The chevron is the `--chevron`
+     token (a data-URI cannot read currentColor), so it follows the muted tone
+     in each mode. */
   &:is(select) {
     @apply appearance-none bg-no-repeat pr-9;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-image: var(--chevron);
     background-position: right 0.75rem center;
     background-size: 1rem;
-  }
-  :root.dark &:is(select) {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   }
 }
 
@@ -152,18 +334,30 @@
      list in a light theme, leaving light text on a white popup. */
   &:is(select) {
     @apply cursor-pointer appearance-none rounded-sm bg-transparent bg-no-repeat pr-4 font-semibold text-slate-700 outline-hidden hover:bg-slate-100 focus:ring-1 focus:ring-brand-400 dark:text-slate-200 dark:hover:bg-ink-800;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-image: var(--chevron);
     background-position: right 0.125rem center;
     background-size: 0.7rem;
   }
-  :root.dark &:is(select) {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  }
   :root.dark &:is(select) option {
-    /* ink-900 to match the calendar surface; slate-200 text for legibility. */
-    background-color: #0c100e;
-    color: #e2e8f0;
+    /* The dark surface behind the open option list; slate-200 supplies legible
+       text. Tokens, not literals (#2701). */
+    background-color: var(--surface);
+    color: var(--color-slate-200);
   }
+}
+
+@utility text-link {
+  /* The ONE inline action-link treatment (#2719 review): brand tone, medium
+     weight, underline on hover. Dashboard widgets had four near-copies
+     (brand-600 vs brand-700, with and without font-medium); this is the
+     survivor. Size stays contextual (compose with text-xs/text-sm). */
+  @apply font-medium text-brand-600 hover:underline dark:text-brand-400;
+}
+
+@utility text-link-muted {
+  /* The quiet sibling: a secondary link that starts muted and takes the brand
+     tone on hover — for "manage …" / "+N more" links beside primary actions. */
+  @apply font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400;
 }
 
 @utility label {
@@ -180,12 +374,19 @@
 }
 
 @utility btn {
-  /* Button family. A shared focus-visible ring (brand-500 with a surface-colored
-     offset) gives every keyboard-focused button the same affordance — the app
-     otherwise relied on the browser default outline (issue #794 cluster 8c). The
-     dark offset is ink-950, matching the near-black page surface the buttons sit
-     against. */
-  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-linear-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-xs transition hover:from-brand-600 hover:to-brand-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  /* Button family. Solid Botanical fill — the Vitals gradient is retired (#2701:
+     no gradients on buttons; bold lives in structure, not saturation). A shared
+     focus-visible ring (brand-500 with a surface-colored offset) gives every
+     keyboard-focused button the same affordance — the app otherwise relied on
+     the browser default outline (issue #794 cluster 8c). The dark offset is
+     ink-950, matching the near-black page surface the buttons sit against. */
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium shadow-xs transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  border-radius: var(--radius-control);
+  background-color: var(--btn);
+  color: var(--btn-fg);
+  &:hover {
+    background-color: var(--btn-hover);
+  }
   /* ONE disabled treatment for the whole button family (issue #1450 cluster B).
      `disabled:opacity-50` used to fade the SATURATED fill instead of replacing
      it: a disabled "Create login" rendered as washed-out green with white text
@@ -208,7 +409,13 @@
 }
 
 @utility btn-ghost {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-black/10 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750 dark:focus-visible:ring-offset-ink-950;
+  @apply inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:text-slate-200 dark:focus-visible:ring-offset-ink-950;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background-color: var(--ghost);
+  &:hover {
+    background-color: var(--ghost-hover);
+  }
   &:disabled {
     @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
   }
@@ -218,7 +425,13 @@
 }
 
 @utility btn-danger {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-xs transition hover:bg-rose-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium shadow-xs transition focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  border-radius: var(--radius-control);
+  background-color: var(--danger-btn);
+  color: var(--danger-btn-fg);
+  &:hover {
+    background-color: var(--danger-btn-hover);
+  }
   &:disabled {
     @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
   }
@@ -235,7 +448,12 @@
 }
 
 @utility badge {
+  /* Botanical's pale badge fills sit ~1.2:1 on its tinted cards, so every badge
+     wears a border mixed from its own text tone — automatically tone-matched,
+     with no per-tone rule. */
   @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  border: 1px solid
+    var(--badge-bd, color-mix(in srgb, currentColor 30%, transparent));
 }
 
 @utility th {
@@ -568,58 +786,14 @@
      already carry their own hover/active styles. */
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-x: contain;
-    /* Vitals light page: airy off-white with a soft green glow up top + a faint
-     vertical gradient, so the canvas isn't flat. */
-    background:
-      radial-gradient(
-        1000px 480px at 82% -12%,
-        rgba(34, 197, 94, 0.14),
-        transparent 60%
-      ),
-      linear-gradient(180deg, #e4ece6 0%, #cdd9d1 100%);
+    /* The Botanical canvas follows the mode through root tokens. The Vitals
+       glow and dot texture are retired with the theme (#2701). */
+    background: var(--canvas);
+    /* After the shorthand (which resets it): the gradient is an IMAGE, and a
+     body with no background-color shows the UA ground through overscroll. */
+    background-color: var(--canvas-base);
     background-attachment: fixed;
     min-height: 100vh;
-  }
-
-  /* Vitals dark page: de-blued near-black with a soft green glow up top. */
-  :root.dark body {
-    background:
-      radial-gradient(
-        1100px 520px at 80% -10%,
-        rgba(34, 197, 94, 0.06),
-        transparent 60%
-      ),
-      #090c0b;
-    background-attachment: fixed;
-    min-height: 100vh;
-  }
-
-  /* Dotted texture on the page background, BEHIND content. The frosted cards'
-   backdrop-blur smooths it out where they sit, so the dots read only on the
-   bare background — never on the cards. A spaced polka-dot grid (cheap tiled
-   radial-gradient; no SVG filter). */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background-image: radial-gradient(
-      circle,
-      rgba(20, 30, 24, 0.1) 1.5px,
-      transparent 1.6px
-    );
-    background-size: 22px 22px;
-    /* Fade the dots in from top (transparent) to bottom (full). */
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
-    mask-image: linear-gradient(to bottom, transparent 0%, #000 100%);
-  }
-  :root.dark body::before {
-    background-image: radial-gradient(
-      circle,
-      rgba(255, 255, 255, 0.07) 1.5px,
-      transparent 1.6px
-    );
   }
 }
 
@@ -722,15 +896,18 @@
 @keyframes micro-settle {
   0% {
     transform: scale(0.94);
-    box-shadow: 0 0 0 0 rgb(34 197 94 / 0.45);
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--color-brand-500) 45%, transparent);
   }
   60% {
     transform: scale(1.04);
-    box-shadow: 0 0 0 6px rgb(34 197 94 / 0.18);
+    box-shadow: 0 0 0 6px
+      color-mix(in srgb, var(--color-brand-500) 18%, transparent);
   }
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 10px rgb(34 197 94 / 0);
+    box-shadow: 0 0 0 10px
+      color-mix(in srgb, var(--color-brand-500) 0%, transparent);
   }
 }
 .motion-settle {
@@ -1114,41 +1291,39 @@
    page under OS dark — for a page whose scripts may not have run, the OS
    preference is the only signal available, and honoring it is the point.
    Colour values restate the `:root.dark` body/card rules above and the ink
-   palette (`@theme` above); they cannot be Tailwind `dark:` variants because
+   colors (`@theme` above); they cannot be Tailwind `dark:` variants because
    those key on the class this page may never receive. */
 @media (prefers-color-scheme: dark) {
+  /* Values restate the Botanical dark tokens as literals. This page's scripts
+     may never run, and `dark:` variants cannot key on a class it may never
+     receive. */
   :root:not(.dark) [data-offline-shell] {
     color-scheme: dark;
-    color: #e2e8f0; /* slate-200 */
-    background:
-      radial-gradient(
-        1100px 520px at 80% -10%,
-        rgba(34, 197, 94, 0.06),
-        transparent 60%
-      ),
-      #090c0b;
+    color: #d9e8de; /* slate-200 */
+    background-color: #090e0b; /* --canvas top: the gradient is only an image */
+    background-image: linear-gradient(180deg, #090e0b 0%, #060908 100%);
   }
   :root:not(.dark) [data-offline-shell] .offline-card {
-    background: rgba(7, 10, 9, 0.7); /* ink-950/70 */
-    border-color: rgba(255, 255, 255, 0.05);
+    background: #101711; /* --surface */
+    border-color: #202e24; /* --border */
   }
   :root:not(.dark) [data-offline-shell] h1 {
-    color: #f1f5f9; /* slate-100 */
+    color: #e7eee2; /* slate-100 */
   }
   :root:not(.dark) [data-offline-shell] p {
-    color: #94a3b8; /* slate-400 */
+    color: #86a190; /* slate-400 */
   }
   :root:not(.dark) [data-offline-shell] .btn-ghost {
-    border-color: rgba(255, 255, 255, 0.1);
-    background: #0f1412; /* ink-850 */
-    color: #e2e8f0; /* slate-200 */
+    border-color: #202e24; /* --border */
+    background: #17251c; /* --ghost */
+    color: #d9e8de; /* slate-200 */
   }
 }
 
 /* ── SECTION: Print: the medical passport ── */
 /* Print: produce a clean one/two-page "medical passport" (issue #105). Chrome
    (nav, buttons) opts out with Tailwind's `print:hidden`; here we set page
-   margins, flatten the frosted-glass surfaces to plain bordered cards, and force
+   margins, flatten the tinted card surfaces to plain bordered cards, and force
    backgrounds/flag colors to actually render (browsers drop them by default).
 
    Dark-mode printing (issue #794 cluster 7c): the theme is class-based (`.dark`
@@ -1159,7 +1334,7 @@
    utilities are neutralized. The hand-written `:root.dark` rules below cover the
    non-Tailwind bits: the dark body background is already beaten by the white
    `html, body` rule here, and `color-scheme` is forced to light so form controls,
-   scrollbars, and any UA-drawn chrome render in the light palette too. */
+   scrollbars, and any UA-drawn chrome render in the light scheme too. */
 @media print {
   @page {
     margin: 14mm;
@@ -1176,10 +1351,10 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .card {
+  .card,
+  .card-quiet {
     background: #fff !important;
     box-shadow: none !important;
-    backdrop-filter: none !important;
   }
 
   /* Scoped printing (#1042 phase 3). The Passport page stacks two print
@@ -1213,7 +1388,8 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 input[type="time"]::-webkit-datetime-edit-hour-field:focus,
 input[type="time"]::-webkit-datetime-edit-minute-field:focus,
 input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
-  background-color: rgba(34, 197, 94, 0.18);
+  /* The shared brand step, not a hardcoded Vitals green (#2701 sweep). */
+  background-color: color-mix(in srgb, var(--color-brand-500) 18%, transparent);
   color: inherit;
   border-radius: 0.25rem;
   outline: none;

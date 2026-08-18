@@ -35,7 +35,7 @@ export default function AnnotationToggleBar({
             onClick={() => onToggle(kind)}
             className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
               on
-                ? "border-slate-300 bg-white text-slate-700 dark:border-white/15 dark:bg-ink-800 dark:text-slate-200"
+                ? "border-(--border) bg-surface text-slate-700 dark:text-slate-200"
                 : "border-black/10 bg-transparent text-slate-500 dark:border-white/10 dark:text-slate-400"
             }`}
           >

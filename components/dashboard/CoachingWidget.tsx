@@ -122,10 +122,7 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
               {/* The secondary rec carries the same actionHref as the top one
                   (#1219) — render it as a compact link, not inert text. */}
               {secondary.actionHref ? (
-                <Link
-                  href={secondary.actionHref}
-                  className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-                >
+                <Link href={secondary.actionHref} className="text-link">
                   {secondary.title}
                 </Link>
               ) : (

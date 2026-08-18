@@ -1,4 +1,4 @@
-// The ONE theme decision, and the one palette that cannot use it.
+// The ONE theme decision.
 //
 // Everywhere in the app, "is it dark?" is answered by a `dark` class on <html> and
 // then by Tailwind's `dark:` variants — set before first paint by the inline boot
@@ -26,8 +26,8 @@ export const THEME_STORAGE_KEY = "theme";
  * than imported: this is a string of source that must execute before any bundle
  * does, so it cannot call `isDarkTheme` — but it lives HERE, beside the rule it
  * transcribes, and `lib/__tests__/theme.test.ts` executes it against `isDarkTheme`
- * across the whole stored × prefersDark matrix so the two cannot drift. (That pin
- * caught a real one on arrival: the old copy's `t || 'system'` read an
+ * across the whole stored × prefersDark matrix, so the copies cannot drift.
+ * (That pin caught a real one on arrival: the old copy's `t || 'system'` read an
  * unrecognised stored value as light, where `normalizeThemeChoice` means system —
  * hence `t !== 'light'`, the same "anything unrecognised defers to the OS".)
  *
@@ -77,11 +77,9 @@ export function isDarkTheme({
  * Inline colours for the top-level error card (#1906).
  *
  * Values are the same ones the stylesheet uses, restated as literals because this is
- * the one surface that cannot reach the stylesheet: the light page is globals.css's
- * `#e4ece6` body and a white panel; the dark page is its `#090c0b` body with the
- * `ink-800`/`ink-750` surfaces and slate text the rest of the dark theme uses. The
- * brand green stays put in both — a primary action that changes colour with the
- * scheme reads as a different button, and this one is the same button.
+ * the one surface that cannot reach the stylesheet. The page uses the Botanical
+ * canvas, the panel its surface, and the buttons its action tokens, so the error card
+ * is recognisably the same app even with globals.css gone.
  */
 export type ErrorCardPalette = {
   page: string;
@@ -97,36 +95,37 @@ export type ErrorCardPalette = {
   secondaryBorder: string;
 };
 
-const LIGHT_ERROR_CARD: ErrorCardPalette = {
-  page: "#e4ece6",
-  panel: "#ffffff",
-  panelShadow: "0 10px 30px rgba(15,23,42,0.15)",
-  heading: "#1e293b",
-  body: "#64748b",
-  muted: "#94a3b8",
-  primaryBackground: "#16a34a",
-  primaryText: "#ffffff",
-  secondaryBackground: "#ffffff",
-  secondaryText: "#334155",
-  secondaryBorder: "rgba(15,23,42,0.12)",
-};
-
-const DARK_ERROR_CARD: ErrorCardPalette = {
-  page: "#090c0b",
-  panel: "#141a17",
-  panelShadow: "0 10px 30px rgba(0,0,0,0.45)",
-  heading: "#f1f5f9",
-  body: "#94a3b8",
-  muted: "#64748b",
-  primaryBackground: "#16a34a",
-  primaryText: "#ffffff",
-  secondaryBackground: "#1a211d",
-  secondaryText: "#e2e8f0",
-  secondaryBorder: "rgba(255,255,255,0.12)",
+const ERROR_CARD: { light: ErrorCardPalette; dark: ErrorCardPalette } = {
+  light: {
+    page: "#ecf3e7",
+    panel: "#f4f8f0",
+    panelShadow: "0 10px 30px rgba(34,56,38,0.15)",
+    heading: "#1e3226",
+    body: "#4e6354",
+    muted: "#86a190",
+    primaryBackground: "#166534",
+    primaryText: "#f0f7ea",
+    secondaryBackground: "#eef4e8",
+    secondaryText: "#405446",
+    secondaryBorder: "#ccdcc4",
+  },
+  dark: {
+    page: "#090e0b",
+    panel: "#101711",
+    panelShadow: "0 10px 30px rgba(0,0,0,0.45)",
+    heading: "#e7eee2",
+    body: "#86a190",
+    muted: "#5c7263",
+    primaryBackground: "#1d7a44",
+    primaryText: "#e7f5eb",
+    secondaryBackground: "#17251c",
+    secondaryText: "#d9e8de",
+    secondaryBorder: "#202e24",
+  },
 };
 
 export function errorCardPalette(dark: boolean): ErrorCardPalette {
-  return dark ? DARK_ERROR_CARD : LIGHT_ERROR_CARD;
+  return ERROR_CARD[dark ? "dark" : "light"];
 }
 
 // ── The re-assert diagnostic (#2183) ─────────────────────────────────────────

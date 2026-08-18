@@ -63,7 +63,7 @@ export default function VitalsTodayStrip({
           <div
             key={row.key}
             data-testid={`vitals-today-${row.key}`}
-            className={`min-w-0 bg-white/55 px-4 py-3.5 sm:px-5 sm:py-4 dark:bg-ink-800/70 ${
+            className={`min-w-0 bg-surface px-4 py-3.5 sm:px-5 sm:py-4 ${
               rows.length % 2 === 1 && index === rows.length - 1
                 ? "col-span-2 sm:col-span-1"
                 : ""

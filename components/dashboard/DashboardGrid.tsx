@@ -52,7 +52,7 @@ const SPAN_CLASS: Record<WidgetSpan, string> = {
 // `useSortable`'s activator bindings are passed in rather than looked up here so
 // the grip is the same button whether it sits on a card corner or a compact row.
 const CONTROL_CLASS =
-  "rounded-md border border-black/10 bg-white/90 p-1 text-slate-500 shadow-xs hover:text-slate-800 dark:border-white/10 dark:bg-ink-900/90 dark:text-slate-400 dark:hover:text-slate-100";
+  "rounded-md border border-(--border) bg-surface p-1 text-slate-500 shadow-xs hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100";
 
 // Taken off `useSortable`'s own return type rather than imported from a dnd-kit
 // subpath: `SyntheticListenerMap` only lives behind a `dist/` deep import, and the
@@ -143,7 +143,7 @@ function WidgetEditorItem({
   if (compact) {
     return (
       <div
-        className={`flex min-h-12 items-center gap-2 rounded-lg bg-white px-2 py-2 dark:bg-ink-900 ${
+        className={`flex min-h-12 items-center gap-2 rounded-lg bg-surface px-2 py-2 ${
           hidden
             ? "ring-1 ring-dashed ring-slate-300 dark:ring-ink-700"
             : "ring-1 ring-brand-300 dark:ring-brand-700"
@@ -476,7 +476,7 @@ export default function DashboardGrid({
       </SortableOrder>
 
       {/* Sticky Save / Cancel bar. */}
-      <div className="sticky bottom-4 z-30 mt-6 flex items-center justify-end gap-3 rounded-xl border border-black/10 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm dark:border-white/10 dark:bg-ink-900/95">
+      <div className="sticky bottom-4 z-30 mt-6 flex items-center justify-end gap-3 rounded-xl border border-black/10 bg-surface/95 px-4 py-3 shadow-lg backdrop-blur-sm dark:border-white/10">
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
         <button
           type="button"

@@ -1017,7 +1017,7 @@ export default async function ImportDetailPage(props: {
                 >
                   {dropGroups.map((g) => (
                     <div key={g.reason} data-testid="drop-group">
-                      <div className="sticky top-0 z-10 -mx-1 flex items-center gap-2 rounded-sm bg-white/90 px-1 py-1 backdrop-blur-xs dark:bg-ink-900/90">
+                      <div className="sticky top-0 z-10 -mx-1 flex items-center gap-2 rounded-sm bg-surface/95 px-1 py-1 backdrop-blur-xs">
                         <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                           {g.label}
                         </span>

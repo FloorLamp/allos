@@ -311,7 +311,7 @@ export default function ImageCropper({
         role="dialog"
         aria-modal="true"
         aria-label="Crop photo"
-        className="mt-[6vh] w-full max-w-sm rounded-xl bg-white p-4 shadow-xl sm:p-6 dark:bg-ink-900"
+        className="mt-[6vh] w-full max-w-sm rounded-xl bg-surface p-4 shadow-xl sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">

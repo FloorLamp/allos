@@ -54,34 +54,26 @@ describe("errorCardPalette (#1906)", () => {
   const dark = errorCardPalette(true);
 
   it("gives the dark scheme a genuinely dark card, not the light one", () => {
-    // The reported symptom was "the app switches to light mode and things look
-    // broken" — a hard-coded light panel over a dark-mode app. These are the two
-    // colours that produced it.
     expect(dark.page).not.toBe(light.page);
     expect(dark.panel).not.toBe(light.panel);
     expect(dark.heading).not.toBe(light.heading);
   });
 
   it("actually inverts, rather than merely differing", () => {
-    // A palette that differed but stayed bright would pass the test above while
-    // reproducing the bug, so assert the direction: dark surfaces below light text,
-    // light surfaces below dark text.
     expect(luminance(dark.page)).toBeLessThan(luminance(light.page));
     expect(luminance(dark.panel)).toBeLessThan(luminance(dark.heading));
     expect(luminance(light.panel)).toBeGreaterThan(luminance(light.heading));
   });
 
-  it("keeps the primary action the same button in both schemes", () => {
-    // The brand green is the app's primary everywhere; a primary that changed colour
-    // with the scheme would read as a different action.
-    expect(dark.primaryBackground).toBe(light.primaryBackground);
-    expect(dark.primaryText).toBe(light.primaryText);
+  it("keeps the primary action readable in both schemes", () => {
+    for (const card of [light, dark]) {
+      expect(
+        contrast(card.primaryText, card.primaryBackground)
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
-  it("matches the page backgrounds the stylesheet and viewport tint already use", () => {
-    // Not decorative duplication: this card replaces globals.css, so its two page
-    // colours have to be the ones the rest of the app paints, or an error looks like
-    // a different app.
+  it("matches the page backgrounds the stylesheet already uses", () => {
     const css = fs.readFileSync(path.join(REPO, "app/globals.css"), "utf8");
     expect(css).toContain(light.page);
     expect(css).toContain(dark.page);
@@ -127,7 +119,9 @@ describe("THEME_BOOT_SCRIPT ≡ isDarkTheme (#2183)", () => {
       THEME_BOOT_SCRIPT
     );
     run(
-      { getItem: (k: string) => (k === THEME_STORAGE_KEY ? stored : null) },
+      {
+        getItem: (k: string) => (k === THEME_STORAGE_KEY ? stored : null),
+      },
       {
         matchMedia: (q: string) => ({
           matches: q === "(prefers-color-scheme: dark)" && prefersDark,
@@ -264,4 +258,19 @@ function luminance(hex: string): number {
   const g = parseInt(value.slice(2, 4), 16) / 255;
   const b = parseInt(value.slice(4, 6), 16) / 255;
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG contrast ratio (with proper sRGB linearization, unlike the rough
+ *  luminance above — a 4.5:1 gate needs the real formula). */
+function contrast(a: string, b: string): number {
+  const lin = (hex: string): number => {
+    const value = hex.replace("#", "");
+    const channel = (i: number) => {
+      const c = parseInt(value.slice(i, i + 2), 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  };
+  const [hi, lo] = [lin(a), lin(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
 }

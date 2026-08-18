@@ -8,8 +8,12 @@
 export type ProgressPaceTone = "met" | "on-pace" | "behind" | "failed";
 
 export const PACE_FILL_CLASS: Record<ProgressPaceTone, string> = {
-  met: "bg-emerald-500",
-  "on-pace": "bg-brand-500",
+  // The 600 step, not 500 (#2719 review): progress bars and routine-chip
+  // squares are the same green as links and the active tab now, so a goals
+  // page shows one accent green instead of stacking a brighter "data green"
+  // on top of it.
+  met: "bg-emerald-600",
+  "on-pace": "bg-brand-600",
   behind: "bg-amber-500",
   failed: "bg-rose-500",
 };

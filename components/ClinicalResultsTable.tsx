@@ -938,9 +938,7 @@ export default function ClinicalResultsTable({
           <thead>
             <tr className="border-b border-black/5 dark:border-white/10">
               {multiView && (
-                <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                  Profile
-                </th>
+                <th className="th sticky top-0 z-10 bg-surface">Profile</th>
               )}
               <SortableHeader
                 column="name"
@@ -953,21 +951,19 @@ export default function ClinicalResultsTable({
               the rows are already partitioned into panel groups emitted in curated
               clinical order, so a panel sort would reorder rows within groups that
               no ordering can move (#1581 section B). */}
-              <th className="th sticky top-0 z-10 hidden bg-white md:table-cell dark:bg-ink-900">
+              <th className="th sticky top-0 z-10 hidden bg-surface md:table-cell">
                 Panel
               </th>
-              <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                Value
-              </th>
+              <th className="th sticky top-0 z-10 bg-surface">Value</th>
               {/* Reference hides below `sm`: the value cell already flags
               out-of-range results, and full ranges live on the detail page. */}
-              <th className="th sticky top-0 z-10 hidden bg-white sm:table-cell dark:bg-ink-900">
+              <th className="th sticky top-0 z-10 hidden bg-surface sm:table-cell">
                 Reference
               </th>
-              <th className="th sticky top-0 z-10 hidden bg-white md:table-cell dark:bg-ink-900">
+              <th className="th sticky top-0 z-10 hidden bg-surface md:table-cell">
                 Notes
               </th>
-              <th className="th sticky top-0 z-10 hidden bg-white md:table-cell dark:bg-ink-900">
+              <th className="th sticky top-0 z-10 hidden bg-surface md:table-cell">
                 Category
               </th>
               <SortableHeader
@@ -976,7 +972,7 @@ export default function ClinicalResultsTable({
                 defaultSort={DEFAULT_SORT}
                 defaultDir="desc"
               />
-              <th className="th sticky top-0 z-10 bg-white text-right dark:bg-ink-900">
+              <th className="th sticky top-0 z-10 bg-surface text-right">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>

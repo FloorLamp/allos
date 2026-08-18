@@ -36,7 +36,7 @@ export default function WidgetHeader({
         {titleHref ? (
           <Link
             href={titleHref}
-            className="inline-flex items-center gap-1 text-brand-600 hover:underline dark:text-brand-400"
+            className="inline-flex items-center gap-1 text-link"
           >
             {title} <IconArrowRight className="h-4 w-4" />
           </Link>
@@ -51,7 +51,7 @@ export default function WidgetHeader({
             href={href}
             aria-label={`${linkLabel} ${title.toLowerCase()}`}
             data-testid="widget-header-nav"
-            className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline dark:text-brand-400"
+            className="inline-flex items-center gap-1 text-xs text-link"
           >
             {linkLabel} <IconArrowRight className="h-4 w-4" />
           </Link>

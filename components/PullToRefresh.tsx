@@ -162,7 +162,7 @@ export default function PullToRefresh() {
       }}
     >
       <span
-        className="mt-[max(0.5rem,env(safe-area-inset-top))] flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-white shadow-md dark:border-white/10 dark:bg-ink-850"
+        className="mt-[max(0.5rem,env(safe-area-inset-top))] flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-surface shadow-md"
         style={{ transform: `rotate(${rotation}deg)` }}
       >
         <IconRefresh

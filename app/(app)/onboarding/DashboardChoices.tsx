@@ -78,7 +78,7 @@ export default function DashboardChoices({
             {preview.map((widget) => (
               <div
                 key={widget.id}
-                className="rounded-lg border border-black/5 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-xs dark:border-white/5 dark:bg-ink-900 dark:text-slate-200"
+                className="rounded-lg border border-(--border) bg-surface px-3 py-2 text-xs font-medium text-slate-700 shadow-xs dark:text-slate-200"
               >
                 {widget.label}
               </div>

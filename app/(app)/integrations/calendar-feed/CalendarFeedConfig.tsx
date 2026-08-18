@@ -221,7 +221,7 @@ export default function CalendarFeedConfig({
                 className={`px-3 py-1.5 text-sm font-medium capitalize ${
                   curDetail === d
                     ? "bg-brand-600 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-50 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                    : "bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
                 }`}
               >
                 {d}

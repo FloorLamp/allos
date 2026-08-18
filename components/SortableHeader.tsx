@@ -79,9 +79,7 @@ export default function SortableHeader({
   sp.set("dir", next.dir);
 
   return (
-    <th
-      className={`th sticky top-0 z-10 bg-white dark:bg-ink-900 ${className}`}
-    >
+    <th className={`th sticky top-0 z-10 bg-surface ${className}`}>
       <Link
         href={currentPathHref(`${pathname}?${sp.toString()}`)}
         className="inline-flex items-center gap-1 hover:text-brand-700 dark:hover:text-brand-400"

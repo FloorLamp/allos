@@ -43,7 +43,7 @@ export default function UpdateReadyBar({
 }) {
   return (
     <div
-      className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_LEFT} ${BOTTOM_EDGE_NOTICE_LAYER} mb-12 flex max-w-[min(22rem,calc(100vw-2rem))] items-center gap-3 rounded-lg border border-black/10 bg-white/95 px-3 py-2 text-sm shadow-lg backdrop-blur-sm dark:border-white/10 dark:bg-ink-850/95`}
+      className={`fixed ${BOTTOM_EDGE_NOTICE_BOTTOM} ${BOTTOM_EDGE_GUTTER_LEFT} ${BOTTOM_EDGE_NOTICE_LAYER} mb-12 flex max-w-[min(22rem,calc(100vw-2rem))] items-center gap-3 rounded-lg border border-black/10 bg-surface/95 px-3 py-2 text-sm shadow-lg backdrop-blur-sm dark:border-white/10`}
       data-testid="update-ready-bar"
       role="status"
     >

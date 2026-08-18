@@ -31,7 +31,7 @@ export default function ActivityFormFooter({
       data-testid="activity-form-footer"
       className={`flex items-center justify-between gap-2 ${
         stickyFooter
-          ? "sticky bottom-0 -mx-4 -mb-4 border-t border-black/5 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-bottom-8 sm:-mx-6 sm:-mb-6 sm:rounded-b-xl sm:px-6 dark:border-white/10 dark:bg-ink-900"
+          ? "sticky bottom-0 -mx-4 -mb-4 border-t border-black/5 bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:-bottom-8 sm:-mx-6 sm:-mb-6 sm:rounded-b-xl sm:px-6 dark:border-white/10"
           : "pt-2"
       }`}
     >

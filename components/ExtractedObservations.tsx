@@ -224,19 +224,15 @@ export default function ExtractedObservations({
                       defaultSort="name"
                     />
                   )}
-                  <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                    Value
-                  </th>
+                  <th className="th sticky top-0 z-10 bg-surface">Value</th>
                   {analyte && (
-                    <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
+                    <th className="th sticky top-0 z-10 bg-surface">
                       Reference
                     </th>
                   )}
-                  <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                    Notes
-                  </th>
+                  <th className="th sticky top-0 z-10 bg-surface">Notes</th>
                   {analyte && (
-                    <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
+                    <th className="th sticky top-0 z-10 bg-surface">
                       Category
                     </th>
                   )}
@@ -247,9 +243,7 @@ export default function ExtractedObservations({
                     defaultDir="desc"
                   />
                   {analyte && (
-                    <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
-                      Actions
-                    </th>
+                    <th className="th sticky top-0 z-10 bg-surface">Actions</th>
                   )}
                 </tr>
               </thead>
@@ -284,7 +278,7 @@ export default function ExtractedObservations({
         )}
 
         {processing && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-ink-900/70">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-surface/70">
             <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
               Processing…
             </span>

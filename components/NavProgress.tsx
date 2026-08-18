@@ -74,7 +74,7 @@ export default function NavProgress() {
         <div
           role="status"
           data-testid="nav-load-failed"
-          className="flex max-w-[min(26rem,calc(100vw-1.5rem))] items-center gap-3 rounded-lg border border-black/10 bg-white/95 px-3 py-2 text-sm shadow-lg backdrop-blur-sm dark:border-white/10 dark:bg-ink-850/95"
+          className="flex max-w-[min(26rem,calc(100vw-1.5rem))] items-center gap-3 rounded-lg border border-black/10 bg-surface/95 px-3 py-2 text-sm shadow-lg backdrop-blur-sm dark:border-white/10"
         >
           <span>{"Couldn't load — check your connection."}</span>
           <button

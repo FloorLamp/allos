@@ -293,7 +293,7 @@ export default function SidebarContent({
           openGlobalSearch();
           onNavigate?.();
         }}
-        className="flex items-center gap-2 rounded-lg border border-black/10 bg-white/70 px-3 py-2 text-sm text-slate-500 transition hover:bg-slate-100 dark:border-white/10 dark:bg-ink-850 dark:text-slate-400 dark:hover:bg-ink-750"
+        className="flex items-center gap-2 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm text-slate-500 transition hover:bg-(--ghost-hover) dark:text-slate-400"
       >
         <IconSearch className="h-4 w-4 shrink-0" stroke={1.75} />
         <span className="flex-1 text-left">Search…</span>
@@ -329,7 +329,7 @@ export default function SidebarContent({
       thing logout ends — it was never a fact about the acting PROFILE, which is
       why it left the switcher in #1801. */}
       <div className="mt-auto flex flex-col gap-2">
-        <div className="flex flex-col gap-1 rounded-lg border border-black/10 bg-white/70 p-1 dark:border-white/10 dark:bg-ink-850">
+        <div className="flex flex-col gap-1 rounded-lg border border-(--border) bg-surface p-1">
           <p
             data-testid="signed-in-as"
             className="px-2 pt-1 text-xs text-slate-500 dark:text-slate-400"
@@ -371,7 +371,7 @@ export default function SidebarContent({
             </button>
           </form>
         </div>
-        <div className="grid grid-cols-2 rounded-lg border border-black/10 bg-white/70 p-1 dark:border-white/10 dark:bg-ink-850">
+        <div className="grid grid-cols-2 rounded-lg border border-(--border) bg-surface p-1">
           <ThemeToggle bare />
           {/* The wrapper (not the link) fills the cell, so the clickable area
           stays as small as the hash itself. */}

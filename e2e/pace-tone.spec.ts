@@ -13,8 +13,8 @@ import { type Locator } from "@playwright/test";
 // bar/square fill and chip border must match these exactly — that's the "one map"
 // contract the two surfaces can't drift from.
 const FILL: Record<string, string> = {
-  met: "bg-emerald-500",
-  "on-pace": "bg-brand-500",
+  met: "bg-emerald-600",
+  "on-pace": "bg-brand-600",
   behind: "bg-amber-500",
   failed: "bg-rose-500",
 };

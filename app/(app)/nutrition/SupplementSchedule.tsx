@@ -69,7 +69,7 @@ export default function SupplementSchedule({
     <div data-testid="intake-schedule">
       <div
         data-testid="intake-schedule-context"
-        className="-mx-2 mb-2 bg-white/95 px-2 py-1.5 md:sticky md:top-0 md:z-10 md:mb-3 md:py-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
+        className="-mx-2 mb-2 bg-surface/95 px-2 py-1.5 md:sticky md:top-0 md:z-10 md:mb-3 md:py-2 md:backdrop-blur-sm lg:static lg:mx-0 lg:bg-transparent lg:p-0"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -172,8 +172,8 @@ export default function SupplementSchedule({
               onClick={() => setSlot(option.value)}
               className={`flex min-h-12 min-w-0 flex-col items-stretch justify-center rounded-lg border p-2 text-left transition sm:h-full sm:justify-start sm:p-2.5 ${
                 slot === option.value
-                  ? "border-brand-400 bg-white ring-1 ring-brand-200 dark:border-brand-600 dark:bg-ink-700 dark:ring-brand-900"
-                  : "border-black/10 bg-white/60 hover:bg-white dark:border-white/10 dark:bg-ink-900/60 dark:hover:bg-ink-800"
+                  ? "border-brand-400 bg-surface ring-1 ring-brand-200 dark:border-brand-600 dark:ring-brand-900"
+                  : "border-(--border) bg-(--ghost) hover:bg-(--ghost-hover)"
               }`}
             >
               <span className="flex items-center justify-between gap-2">

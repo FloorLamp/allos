@@ -53,7 +53,7 @@ export default async function SettingsIndexPage() {
             <Link
               href={g.route}
               data-testid={`settings-group-${g.id}`}
-              className="card block transition-colors hover:border-brand-400/60 hover:bg-slate-50 dark:hover:bg-ink-800"
+              className="card block transition-colors hover:bg-slate-100 dark:hover:bg-ink-800"
             >
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-medium text-slate-800 dark:text-slate-100">
@@ -89,7 +89,7 @@ export default async function SettingsIndexPage() {
                 <Link
                   href={g.route}
                   data-testid={`settings-group-${g.id}`}
-                  className="card block transition-colors hover:border-brand-400/60 hover:bg-slate-50 dark:hover:bg-ink-800"
+                  className="card block transition-colors hover:bg-slate-100 dark:hover:bg-ink-800"
                 >
                   <span className="font-medium text-slate-800 dark:text-slate-100">
                     {g.label}

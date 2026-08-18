@@ -286,7 +286,7 @@ export default function GoalForm({
             className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
               kind === k
                 ? "border-brand-500 bg-brand-500 text-white"
-                : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
             }`}
           >
             {KIND_LABEL[k]}
@@ -319,7 +319,7 @@ export default function GoalForm({
                       className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                         active
                           ? "border-brand-500 bg-brand-500 text-white"
-                          : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                          : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
                       }`}
                     >
                       {eq}
@@ -385,7 +385,7 @@ export default function GoalForm({
                     className={`rounded-full border px-3 py-1 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
                       active
                         ? "border-brand-500 bg-brand-500 text-white"
-                        : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                        : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
                     }`}
                   >
                     {m.label}
@@ -556,7 +556,7 @@ export default function GoalForm({
                     className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
                       active
                         ? "border-brand-500 bg-brand-500 text-white"
-                        : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                        : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
                     }`}
                   >
                     {BODY_METRIC_LABELS[bm]}
@@ -663,7 +663,7 @@ export default function GoalForm({
                   className={`rounded-full border px-3 py-1 text-sm font-medium transition ${
                     direction === d
                       ? "border-brand-500 bg-brand-500 text-white"
-                      : "border-black/10 bg-white text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-800"
+                      : "border-(--border) bg-surface text-slate-600 hover:bg-(--ghost-hover) dark:text-slate-300"
                   }`}
                 >
                   {DIRECTION_LABEL[d]}

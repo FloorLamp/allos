@@ -183,7 +183,7 @@ export default function MobilityLogBar({
                     className={`tap-target inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
                       on
                         ? "border-brand-600 bg-brand-600 text-white"
-                        : "border-black/10 bg-white text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-ink-900 dark:text-slate-200 dark:hover:bg-ink-800"
+                        : "border-(--border) bg-surface text-slate-700 hover:bg-(--ghost-hover) dark:text-slate-200"
                     }`}
                   >
                     {on && <IconCheck className="h-3.5 w-3.5" stroke={2.5} />}
