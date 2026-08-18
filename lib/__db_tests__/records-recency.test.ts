@@ -242,11 +242,12 @@ describe("#2164 — the archive refresh ask", () => {
     const aDetail = a.detail ?? "";
     const bDetail = b.detail ?? "";
     expect(a.title).toBe(b.title);
+    // The score is the only meaningful input that differs. Identical copy after
+    // normalizing the data frontier proves neither vendor value influenced it;
+    // searching for bare digits is date-sensitive (for example, July 12).
     expect(aDetail.replace(low.frontier, "F")).toBe(
       bDetail.replace(high.frontier, "F")
     );
-    expect(aDetail).not.toContain("12");
-    expect(bDetail).not.toContain("99");
   });
 });
 
