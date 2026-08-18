@@ -117,6 +117,7 @@ export default function ActivityForm({
   recoveringContext = { temperedRegions: [], constraints: [] },
   plateauHints = [],
   onClose,
+  onDeleted,
   stickyFooter = false,
 }: {
   units: UnitPrefs;
@@ -163,6 +164,9 @@ export default function ActivityForm({
   recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
   onClose: () => void;
+  // The provider owns route context. Report a completed delete so it can leave a
+  // canonical detail URL that now points at no record.
+  onDeleted?: (id: number) => void;
   // In the overlay the (often taller-than-viewport) form scrolls, so the action
   // row pins to the bottom of the screen and gains a Done button — otherwise
   // closing means scrolling back up to the ✕. The docked editor keeps the plain
@@ -997,6 +1001,7 @@ export default function ActivityForm({
         deletedMessage: "Activity deleted.",
       });
       onClose();
+      onDeleted?.(id);
     } finally {
       setSaving(false);
     }

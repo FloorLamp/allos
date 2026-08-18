@@ -56,6 +56,7 @@ export default function ActivityOverlay({
   hidden = false,
   onMinimize,
   onClose,
+  onDeleted,
 }: {
   units: UnitPrefs;
   suggestions: ActivitySuggestions;
@@ -83,6 +84,7 @@ export default function ActivityOverlay({
   // dock instead of unmounting. Absent ⇒ the overlay closes normally.
   onMinimize?: () => void;
   onClose: () => void;
+  onDeleted?: (id: number) => void;
 }) {
   // Lock the page behind only while the overlay is actually visible; a minimized
   // (hidden) overlay must not trap scroll on the page the user is now browsing.
@@ -190,6 +192,7 @@ export default function ActivityOverlay({
           recoveringContext={recoveringContext}
           plateauHints={plateauHints}
           onClose={onClose}
+          onDeleted={onDeleted}
           stickyFooter
         />
       </div>

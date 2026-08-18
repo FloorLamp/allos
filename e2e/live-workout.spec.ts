@@ -117,8 +117,8 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  // The next test shares this worker database. Wait for the delete action's
-  // redirect so its active-presence cleanup cannot leak a Resume offer forward.
+  // Deleting the activity from its canonical page leaves that now-dead URL and
+  // clears its live presence before the next test shares this worker database.
   await page.waitForURL(/\/training(\?.*)?$/);
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 });

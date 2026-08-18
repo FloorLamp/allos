@@ -321,6 +321,14 @@ export default function ActivityEditorProvider({
       .catch(() => {});
   }, [live, editData, router, trainingRelevant]);
 
+  const leaveDeletedActivityPage = useCallback(
+    (id: number) => {
+      if (window.location.pathname === `/training/activity/${id}`)
+        router.replace(trainingRelevant ? "/training" : "/timeline");
+    },
+    [router, trainingRelevant]
+  );
+
   const startLiveSession = useCallback(
     (
       kind: { type: "strength" | "cardio"; title: string },
@@ -668,6 +676,7 @@ export default function ActivityEditorProvider({
               recoveringContext={recoveringContext}
               plateauHints={plateauHints}
               onClose={() => setOpen(false)}
+              onDeleted={leaveDeletedActivityPage}
             />,
             dockEl
           )
@@ -702,6 +711,7 @@ export default function ActivityEditorProvider({
               setOpen(false);
               abandonEmptyLiveRow();
             }}
+            onDeleted={leaveDeletedActivityPage}
           />
         ))}
       {/* Spacer so the fixed bottom bar never overlaps the last of the page
