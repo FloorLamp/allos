@@ -50,7 +50,10 @@ import {
   weekdayMissSignalKey,
   ADHERENCE_PREFIX,
 } from "@/lib/adherence-patterns";
-import { TRAINING_OBS_PREFIX } from "@/lib/training-observations";
+import {
+  TRAINING_OBS_PREFIX,
+  staleExerciseGroupSignalKey,
+} from "@/lib/training-observations";
 import {
   weightAnomalySignalKey,
   detectWeightAnomalies,
@@ -205,6 +208,89 @@ describe("buildTrainingObservationFindings — merged plateau series (#432)", ()
       plateaus[0].dedupeKey.startsWith(`${TRAINING_OBS_PREFIX}plateau:`)
     ).toBe(true);
     expect(plateaus[0].title.toLowerCase()).toContain("curl");
+  });
+});
+
+describe("buildTrainingObservationFindings — bounded stale family (#3090)", () => {
+  it("collapses a 24-exercise, four-session-week profile's three lapsed lifts into one finding", () => {
+    const { profileId, anchor } = makeProfile("training-3090-reporting");
+    const insertActivity = db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min)
+       VALUES (?, ?, 'strength', 'Library session', 60)`
+    );
+    const insertSet = db.prepare(
+      `INSERT INTO exercise_sets
+         (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, ?, 1, 20, 8)`
+    );
+
+    // Twenty-one current exercises spread across four sessions per week for three
+    // weeks. Each is established and recent, so none belongs in the lapsed family.
+    const current = Array.from(
+      { length: 21 },
+      (_, index) => `Library exercise ${String(index + 1).padStart(2, "0")}`
+    );
+    for (const day of [0, -2, -4, -6, -7, -9, -11, -13, -14, -16, -18, -20]) {
+      const activityId = Number(
+        insertActivity.run(profileId, shiftDateStr(anchor, day)).lastInsertRowid
+      );
+      for (const exercise of current) insertSet.run(activityId, exercise);
+    }
+
+    // Three established lifts have each crossed the 21-day lapse floor. Their
+    // different last dates also pin the collapsed row's name order.
+    for (const [exercise, lastDay] of [
+      ["Deadlift", -28],
+      ["Pull Up", -30],
+      ["Hack Squat", -32],
+    ] as const) {
+      for (let session = 0; session < 3; session++) {
+        const activityId = Number(
+          insertActivity.run(
+            profileId,
+            shiftDateStr(anchor, lastDay - session * 7)
+          ).lastInsertRowid
+        );
+        insertSet.run(activityId, exercise);
+      }
+    }
+
+    const exerciseCount = db
+      .prepare(
+        `SELECT COUNT(DISTINCT s.exercise) AS n
+           FROM exercise_sets s
+           JOIN activities a ON a.id = s.activity_id
+          WHERE a.profile_id = ?`
+      )
+      .get(profileId) as { n: number };
+    expect(exerciseCount.n).toBe(24);
+
+    const stale = buildTrainingObservationFindings(profileId, anchor).filter(
+      (finding) => finding.domain === "training-stale"
+    );
+    expect(stale).toHaveLength(1);
+    expect(stale[0]).toMatchObject({
+      dedupeKey: staleExerciseGroupSignalKey(),
+      title: "3 lifts have lapsed — Deadlift, Pull Up, and Hack Squat",
+      dashboardRelevance: 2,
+    });
+
+    // Dismiss the family, then add another qualifying member. The family keeps the
+    // same monthly identity, so the new lift cannot become a fresh replacement row.
+    dismissFinding(profileId, stale[0].dedupeKey);
+    for (let session = 0; session < 3; session++) {
+      const activityId = Number(
+        insertActivity.run(profileId, shiftDateStr(anchor, -34 - session * 7))
+          .lastInsertRowid
+      );
+      insertSet.run(activityId, "Lat Pulldown");
+    }
+    const afterDismissal = activeFindings(
+      buildTrainingObservationFindings(profileId, anchor),
+      getFindingSuppressions(profileId),
+      anchor
+    ).filter((finding) => finding.domain === "training-stale");
+    expect(afterDismissal).toEqual([]);
   });
 });
 

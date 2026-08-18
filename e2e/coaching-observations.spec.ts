@@ -117,7 +117,7 @@ function declinePastRaisings(n: number): void {
   }
 }
 
-test("repeat dismissal de-prioritises, then retires, a coaching topic (#2386)", async ({
+test("repeat dismissal eventually retires a coaching topic (#2386)", async ({
   page,
 }) => {
   resetCoachingObservationDismissals();
@@ -125,22 +125,17 @@ test("repeat dismissal de-prioritises, then retires, a coaching topic (#2386)", 
   const rollup = page.getByRole("main").getByTestId("coaching-observations");
   const lead = rollup.getByTestId("coaching-observations-item");
 
-  // Never declined: it is raised routinely, in the lead slice.
+  // Never declined: it is raised routinely.
   await page.goto("/");
   await expect(rollup).toBeVisible();
   await expect(lead.filter({ hasText: DISMISS_PRESS })).toHaveCount(1);
 
-  // Two separate raisings declined → it stops LEADING: still rendered, behind every
-  // topic the user has not answered.
+  // Two separate raisings declined → it is quieter in ordering, but the thresholded
+  // widget does not hide it behind a capped overflow.
   declinePastRaisings(2);
   await page.goto("/");
-  await expect(rollup).toContainText(DISMISS_PRESS);
-  await expect(lead.filter({ hasText: DISMISS_PRESS })).toHaveCount(0);
-  await expect(
-    rollup
-      .getByTestId("coaching-observations-more-item")
-      .filter({ hasText: DISMISS_PRESS })
-  ).toHaveCount(1);
+  await expect(lead.filter({ hasText: DISMISS_PRESS })).toHaveCount(1);
+  await expect(rollup.getByTestId("coaching-observations-more")).toHaveCount(0);
 
   // Four → retired from the routine surface altogether.
   declinePastRaisings(4);

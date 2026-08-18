@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ACTIVE_PROTOCOLS_CAP,
-  COACHING_OBSERVATIONS_CAP,
+  COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD,
   DASHBOARD_WIDGETS,
   DATA_QUALITY_GAPS_CAP,
   capDashboardList,
@@ -474,8 +474,7 @@ describe("capDashboardList (#1219)", () => {
     });
   });
 
-  it("pins the widget cap policy: observations 2, data-quality 3, protocols 3", () => {
-    expect(COACHING_OBSERVATIONS_CAP).toBe(2);
+  it("pins the remaining list caps", () => {
     expect(DATA_QUALITY_GAPS_CAP).toBe(3);
     expect(ACTIVE_PROTOCOLS_CAP).toBe(3);
   });
@@ -552,10 +551,10 @@ describe("finding dashboard homes (#1533)", () => {
   // A stand-in for the ONE collectCoachingFindings set: two observational patterns
   // (no dashboard home of their own) plus two structural gaps (homed to the widget).
   const activeCoaching = [
-    { dedupeKey: "training-obs:plateau:bench" },
-    { dedupeKey: "goal-pace:7" },
-    { dedupeKey: "data-quality:birthdate" },
-    { dedupeKey: "data-quality:smoking" },
+    { dedupeKey: "training-obs:plateau:bench", tone: "caution" },
+    { dedupeKey: "goal-pace:7", tone: "caution" },
+    { dedupeKey: "data-quality:birthdate", dashboardRelevance: 2 },
+    { dedupeKey: "data-quality:smoking", dashboardRelevance: 2 },
   ];
   const allVisible = () => true;
   const visibleExcept = (hidden: string) => (id: string) => id !== hidden;
@@ -581,8 +580,8 @@ describe("finding dashboard homes (#1533)", () => {
     expect([...rollupKeys, ...homedKeys].sort()).toEqual(
       activeCoaching.map((f) => f.dedupeKey).sort()
     );
-    // The rollup's own count is its length — "N patterns worth reviewing" can no
-    // longer be inflated by rows rendered in the other card.
+    // The threshold-clearing set cannot be inflated by rows rendered in the other
+    // card.
     expect(rollup.length).toBe(2);
   });
 
@@ -596,19 +595,28 @@ describe("finding dashboard homes (#1533)", () => {
     );
   });
 
-  it("an unregistered family always lands in the rollup, whatever is visible", () => {
-    const findings = [{ dedupeKey: "adherence:vitamin-d" }];
+  it("an unregistered family lands in the rollup when it clears the floor", () => {
+    const findings = [
+      { dedupeKey: "adherence:vitamin-d", dashboardRelevance: 2 },
+    ];
     expect(rollupCoachingFindings(findings, allVisible)).toHaveLength(1);
     expect(findingsForDashboardHome(findings, "data-quality")).toHaveLength(0);
   });
 
-  it("the capped slice and its overflow are computed over the rollup's own set", () => {
-    // The #1219 disclosure must not be padded with rows already on screen: cap the
-    // filtered set, never activeCoaching.
-    const rollup = rollupCoachingFindings(activeCoaching, allVisible);
-    const { shown, overflow } = capDashboardList(rollup, 1);
-    expect(shown).toHaveLength(1);
-    expect(overflow).toHaveLength(1);
-    expect([...shown, ...overflow]).toHaveLength(rollup.length);
+  it("hides the card when every residual finding is below the relevance floor", () => {
+    const belowFloor = [
+      { dedupeKey: "adherence:one", tone: "info" },
+      { dedupeKey: "demote-obligation:two", dashboardRelevance: 1 },
+    ];
+    expect(COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD).toBe(2);
+    expect(rollupCoachingFindings(belowFloor, allVisible)).toEqual([]);
+  });
+
+  it("renders every threshold-clearing finding instead of capping the set", () => {
+    const qualifying = Array.from({ length: 5 }, (_, index) => ({
+      dedupeKey: `goal-pace:${index}`,
+      dashboardRelevance: 2,
+    }));
+    expect(rollupCoachingFindings(qualifying, allVisible)).toEqual(qualifying);
   });
 });

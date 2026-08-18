@@ -152,7 +152,7 @@ import {
   type DisplayFormatPrefs,
 } from "./format-date";
 import { describeEta } from "./trend-projection";
-import type { Finding } from "./findings";
+import { FINDING_DASHBOARD_RELEVANCE, type Finding } from "./findings";
 import {
   clinicalResultDetailHref,
   nutritionTabHref,
@@ -174,10 +174,12 @@ import {
   detectPushPullImbalance,
   detectStaleExercises,
   detectPlateaus,
+  staleExerciseGroupSignalKey,
   BALANCE_WINDOW_DAYS,
   PLATEAU_WINDOW_DAYS,
   type TrainingObservation,
 } from "./training-observations";
+
 import { plateauInlineHint } from "./plateau-advice";
 import { coverageFromSets } from "./muscle-coverage";
 import {
@@ -231,6 +233,23 @@ import {
 import { doseDueOn, doseSlotChangedSince, timeBucket } from "./intake-schedule";
 import { unrecordedScheduleChangeOn } from "./intake-cadence";
 
+// Profile-owned entities can grow without bound; dashboard findings cannot. Each
+// fan-out family declares its generation limit here, before shared suppression is
+// applied. That ordering is the important contract: dismissing the visible set does
+// not promote a fresh set from the same family.
+export const COACHING_ENTITY_FINDING_LIMITS = {
+  medicationDuplication: 3,
+  staleExerciseNames: 3,
+  trainingPlateau: 3,
+  bodyHygiene: 3,
+  endurancePlan: 3,
+  prolongedBleeding: 1,
+  goalPacing: 3,
+  adherencePattern: 3,
+  demotionSuggestion: 3,
+  targetRightSize: 3,
+} as const;
+
 // ---- #449: the unified coaching-findings collection -------------------------
 
 // The four observational domains below (training balance/plateau, body-metric
@@ -272,6 +291,7 @@ export function buildFitnessCheckFindings(
       title: "Fitness check due",
       detail: `Your last fitness check was ${formatLongDate(d.lastDate, prefs)}${ago}. Re-run the battery to refresh your percentiles and see check-over-check change.`,
       tone: "info",
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         "Informational — you set the retest cadence in Profile settings.",
       actionHref: "/training/fitness-check" as AppRoute,
@@ -338,6 +358,7 @@ export function buildMedicationDuplicationFindings(
         `ingredient, so their doses count together toward the redose window and ` +
         `daily max.`,
       tone: "info",
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         "Informational — tracking an OTC and a prescription strength separately " +
         "is often deliberate; this note only makes the shared ingredient visible.",
@@ -345,7 +366,10 @@ export function buildMedicationDuplicationFindings(
       actionLabel: "View medications",
     });
   }
-  return findings;
+  return findings.slice(
+    0,
+    COACHING_ENTITY_FINDING_LIMITS.medicationDuplication
+  );
 }
 
 // ---- Structural data-quality gaps (#1045) ----------------------------------
@@ -403,6 +427,7 @@ export function buildDataQualityFindings(profileId: number): Finding[] {
     detail: gap.whyLine,
     // Calm, structural FYI — never an alarm, never a push (coaching tier).
     tone: "info",
+    dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
     evidence: `Unblocks ${gap.leverage} ${gap.leverage === 1 ? "engine" : "engines"} once fixed.`,
     actionHref: gap.ctaHref,
     actionLabel: "Fix it",
@@ -662,7 +687,7 @@ export function buildEndurancePlanFindings(
       actionLabel: "View plan",
     });
   }
-  return out;
+  return out.slice(0, COACHING_ENTITY_FINDING_LIMITS.endurancePlan);
 }
 
 // ---- Nutrition (#767): goal-scaled protein-adequacy observation ------------
@@ -778,20 +803,21 @@ export function buildCycleBleedingFindings(
   profileId: number,
   today: string
 ): Finding[] {
-  return prolongedBleedingObservations(listCyclePeriods(profileId), today).map(
-    (obs) => ({
+  return prolongedBleedingObservations(listCyclePeriods(profileId), today)
+    .slice(0, COACHING_ENTITY_FINDING_LIMITS.prolongedBleeding)
+    .map((obs) => ({
       domain: "cycle-bleeding",
       dedupeKey: obs.dedupeKey,
       title: obs.title,
       detail: obs.detail,
       // Calm, observational — never an alarm, never a push (coaching tier).
       tone: "info",
+      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
       evidence:
         "Recorded from your own period log — informational, not a diagnosis.",
       actionHref: "/medical/cycles",
       actionLabel: "View cycle log",
-    })
-  );
+    }));
 }
 
 // ---- Trying-to-conceive workup prompt (#1680) ------------------------------
@@ -982,6 +1008,45 @@ function trainingObservationToFinding(o: TrainingObservation): Finding {
   };
 }
 
+function listNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names.at(-1)}`;
+}
+
+function staleExerciseGroupFinding(
+  observations: readonly TrainingObservation[]
+): Finding | null {
+  if (observations.length === 0) return null;
+  const names = observations
+    .slice(0, COACHING_ENTITY_FINDING_LIMITS.staleExerciseNames)
+    .flatMap((observation) =>
+      observation.exercise ? [observation.exercise] : []
+    );
+  const title =
+    observations.length === 1
+      ? `${names[0]} has lapsed`
+      : observations.length <= names.length
+        ? `${observations.length} lifts have lapsed — ${listNames(names)}`
+        : `Several lifts have lapsed — ${listNames(names)}`;
+  const detail =
+    observations.length === 1
+      ? `You trained ${names[0]} regularly but not in the last three to eight weeks. ` +
+        "If it is still part of your plan, work it back into the rotation."
+      : "These were trained regularly but not in the last three to eight weeks. " +
+        "If they are still part of your plan, work them back into the rotation.";
+  return {
+    domain: "training-stale",
+    dedupeKey: staleExerciseGroupSignalKey(),
+    title,
+    detail,
+    tone: "info",
+    dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
+    actionHref: "/training?tab=overview",
+    actionLabel: "View training",
+  };
+}
+
 // Every training-balance finding for a profile: a push/pull volume imbalance over the
 // trailing 4 weeks, stale exercises (in rotation but lapsed), and plateaued lifts
 // (estimated-1RM flat ~6 weeks). Not suppression-filtered — the caller applies the
@@ -1006,11 +1071,11 @@ export function buildTrainingObservationFindings(
     { byLoadContext: true }
   );
 
-  const observations: TrainingObservation[] = [];
+  const findings: Finding[] = [];
   const imbalance = detectPushPullImbalance(setCounts);
-  if (imbalance) observations.push(imbalance);
-  observations.push(
-    ...detectStaleExercises(
+  if (imbalance) findings.push(trainingObservationToFinding(imbalance));
+  const stale = staleExerciseGroupFinding(
+    detectStaleExercises(
       stats.map((s) => ({
         exercise: s.exercise,
         sessions: s.sessions,
@@ -1019,6 +1084,7 @@ export function buildTrainingObservationFindings(
       today
     )
   );
+  if (stale) findings.push(stale);
   // Cross-reference the routine's mesocycle (#741): when its deload week is ≤2 weeks
   // away, the plateau finding points at that built-in light week instead of advising
   // an ad-hoc deload. Same ONE gather every deload surface reads.
@@ -1027,9 +1093,13 @@ export function buildTrainingObservationFindings(
     cycle && cycle.weeksUntilDeload <= 2
       ? { weeksUntilDeload: cycle.weeksUntilDeload }
       : null;
-  observations.push(...detectPlateaus(e1rmSeries, today, upcomingDeload));
+  findings.push(
+    ...detectPlateaus(e1rmSeries, today, upcomingDeload)
+      .slice(0, COACHING_ENTITY_FINDING_LIMITS.trainingPlateau)
+      .map(trainingObservationToFinding)
+  );
 
-  return observations.map(trainingObservationToFinding);
+  return findings;
 }
 
 // ---- #923: inline plateau hint for the activity form -----------------------
@@ -1202,9 +1272,9 @@ export function buildBodyHygieneFindings(
     date: w.date,
     weightKg: w.weight_kg,
   }));
-  return detectWeightAnomalies(weights, today).map((a) =>
-    weightAnomalyToFinding(a, wu, prefs)
-  );
+  return detectWeightAnomalies(weights, today)
+    .slice(0, COACHING_ENTITY_FINDING_LIMITS.bodyHygiene)
+    .map((a) => weightAnomalyToFinding(a, wu, prefs));
 }
 
 // ---- Domain 6: goal pacing (Training → Goals) -----------------------------
@@ -1239,6 +1309,7 @@ export function buildGoalPacingFindings(
   // (getWeights); body-fat / resting-HR goals would need their own series and are a
   // documented follow-up, so we pace weight goals — the common case.
   for (const g of goals) {
+    if (findings.length >= COACHING_ENTITY_FINDING_LIMITS.goalPacing) break;
     if (
       !isGoalLive(g) ||
       g.body_metric !== "weight" ||
@@ -1307,6 +1378,7 @@ export function buildGoalPacingFindings(
     bmCandidates.map((x) => x.target.name)
   );
   for (const { g, target, targetDate } of bmCandidates) {
+    if (findings.length >= COACHING_ENTITY_FINDING_LIMITS.goalPacing) break;
     const plot = bmPlots.get(target.name) ?? null;
     if (!plot || !sameUnit(target.unit, plot.unit)) continue;
     const latest = plot.points.at(-1) ?? null;
@@ -1495,7 +1567,9 @@ export function buildAdherencePatternFindings(
     });
   }
 
-  return detectAdherencePatterns(inputs).map(adherencePatternToFinding);
+  return detectAdherencePatterns(inputs)
+    .slice(0, COACHING_ENTITY_FINDING_LIMITS.adherencePattern)
+    .map(adherencePatternToFinding);
 }
 
 // ---- Domain: obligation demotion suggestions (coaching tier, issue #1505) ----
@@ -1536,18 +1610,20 @@ export function buildDemotionSuggestionFindings(
     periodAnchor: today.slice(0, 4),
   }));
 
-  return detectDemotionCandidates(inputs).map((c) => ({
-    domain: "demote-obligation",
-    dedupeKey: c.key,
-    supersedes: c.legacyKey,
-    title: c.title,
-    detail: c.detail,
-    // Calm FYI — an observation about the user's own log, never an alarm.
-    tone: "info" as const,
-    evidence: `${c.takenDays} of ${c.occurrences} scheduled days over the last ${DEMOTION_WINDOW_DAYS} days`,
-    actionHref: nutritionTabHref("supplements"),
-    actionLabel: "Open supplements",
-  }));
+  return detectDemotionCandidates(inputs)
+    .slice(0, COACHING_ENTITY_FINDING_LIMITS.demotionSuggestion)
+    .map((c) => ({
+      domain: "demote-obligation",
+      dedupeKey: c.key,
+      supersedes: c.legacyKey,
+      title: c.title,
+      detail: c.detail,
+      // Calm FYI — an observation about the user's own log, never an alarm.
+      tone: "info" as const,
+      evidence: `${c.takenDays} of ${c.occurrences} scheduled days over the last ${DEMOTION_WINDOW_DAYS} days`,
+      actionHref: nutritionTabHref("supplements"),
+      actionLabel: "Open supplements",
+    }));
 }
 
 // ---- Domain: frequency-target right-sizing (coaching tier, issue #1670) ----
@@ -1618,9 +1694,9 @@ export function buildTargetRightSizeFindings(
   profileId: number,
   today: string
 ): Finding[] {
-  return collectRightSizeCandidates(profileId, today).map(
-    rightSizeCandidateFinding
-  );
+  return collectRightSizeCandidates(profileId, today)
+    .slice(0, COACHING_ENTITY_FINDING_LIMITS.targetRightSize)
+    .map(rightSizeCandidateFinding);
 }
 
 // One candidate's Finding envelope. Exported so a domain's own suggestion card can

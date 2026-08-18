@@ -25,6 +25,7 @@
 // the daily check-in. A deliberate violation needs a NAMED exception in that test.
 
 import { DATA_QUALITY_PREFIX } from "./data-quality";
+import { FINDING_DASHBOARD_RELEVANCE } from "./findings";
 import type { DormancyDomain } from "./domain-dormancy";
 import type { ReorderStrategy } from "./drag-order";
 
@@ -188,15 +189,38 @@ export function findingDashboardHome(dedupeKey: string): string | null {
 // caller passes a VISIBILITY predicate — "is this widget actually on the person's
 // dashboard right now?", i.e. the resolved item's `visible` flag, not mere catalog
 // eligibility (the page resolves hidden widgets too, so Customize can preview them).
-// Callers MUST derive the widget's count and its cap/overflow from this result, not
-// from the unfiltered input — the count has to equal what is on screen.
-export function rollupCoachingFindings<T extends { dedupeKey: string }>(
-  findings: readonly T[],
-  isWidgetVisible: (widgetId: string) => boolean
-): T[] {
+// The rollup is thresholded rather than capped: below-floor observations stay on
+// their origin tabs, while every qualifying observation renders. An explicit
+// producer score wins; otherwise caution/action clears the floor and calm info does
+// not. This is attention policy, not presentation slicing.
+export const COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD =
+  FINDING_DASHBOARD_RELEVANCE.review;
+
+export function coachingObservationRelevance(finding: {
+  tone?: string;
+  dashboardRelevance?: number;
+}): number {
+  if (finding.dashboardRelevance != null) return finding.dashboardRelevance;
+  return finding.tone === "caution" || finding.tone === "action"
+    ? FINDING_DASHBOARD_RELEVANCE.review
+    : FINDING_DASHBOARD_RELEVANCE.supporting;
+}
+
+export function rollupCoachingFindings<
+  T extends {
+    dedupeKey: string;
+    tone?: string;
+    dashboardRelevance?: number;
+  },
+>(findings: readonly T[], isWidgetVisible: (widgetId: string) => boolean): T[] {
   return findings.filter((f) => {
     const home = findingDashboardHome(f.dedupeKey);
-    return home === null || !isWidgetVisible(home);
+    const belongsInRollup = home === null || !isWidgetVisible(home);
+    return (
+      belongsInRollup &&
+      coachingObservationRelevance(f) >=
+        COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD
+    );
   });
 }
 
@@ -214,8 +238,6 @@ export function findingsForDashboardHome<T extends { dedupeKey: string }>(
 // that shows "N of M" must also offer a path to the hidden M−N. The caps are
 // named here so the widgets and the pure test agree on the policy.
 
-// Coaching observations rollup: top 2 (the calm dashboard slice, #449).
-export const COACHING_OBSERVATIONS_CAP = 2;
 // Data-quality gaps widget: top 3 by leverage (#1045).
 export const DATA_QUALITY_GAPS_CAP = 3;
 // Active protocols: 3 rows, the standard list-widget footprint (#660/#1219).

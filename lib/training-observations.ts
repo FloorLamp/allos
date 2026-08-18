@@ -135,6 +135,14 @@ export function staleExerciseSignalKey(
   return `${staleExerciseLegacyKey(exercise)}:${lapseAnchor}`;
 }
 
+// The collapsed stale-family finding has one stable identity, regardless of how many
+// established lifts happen to be inside the stale band. Dismissing the family is an
+// answer about this class of observation, so a changing member list or month boundary
+// cannot turn the next lift into a replacement row.
+export function staleExerciseGroupSignalKey(): string {
+  return `${TRAINING_OBS_PREFIX}stale-group`;
+}
+
 // A plateau finding keyed by the exercise AND the e1RM level bucket: a NEW plateau at
 // a different working weight lands in a new bucket → re-fires; a plateau holding at
 // the same load keeps one anchor so the dismissal sticks.

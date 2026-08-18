@@ -8,6 +8,7 @@ import {
   trainingBalanceSignalKey,
   trainingBalanceLegacyKey,
   staleExerciseSignalKey,
+  staleExerciseGroupSignalKey,
   staleExerciseLegacyKey,
   plateauSignalKey,
   plateauLegacyKey,
@@ -212,10 +213,15 @@ describe("isPlateau / detectPlateaus", () => {
     for (const k of [
       trainingBalanceSignalKey("push"),
       staleExerciseSignalKey("Deadlift", "2026-02"),
+      staleExerciseGroupSignalKey(),
       plateauSignalKey("Bench Press", "20"),
     ]) {
       expect(k.startsWith(TRAINING_OBS_PREFIX)).toBe(true);
     }
+  });
+
+  it("gives the collapsed stale family one stable identity", () => {
+    expect(staleExerciseGroupSignalKey()).toBe("training-obs:stale-group");
   });
 });
 

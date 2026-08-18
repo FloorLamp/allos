@@ -25,8 +25,9 @@ attention** hero, AND the Telegram nudge (one assessor). The **coaching tier** �
 the four observational builders
 (`buildTrainingObservationFindings`/`buildBodyHygieneFindings`/`buildGoalPacingFindings`/`buildAdherencePatternFindings`,
 aggregated by `collectCoachingFindings`) — is _calm/observational_: it reaches
-its own tab AND the hideable dashboard **Coaching observations** rollup, but
-**never a notification and never the non-hideable hero** (reach without noise).
+its own tab and is eligible for the hideable dashboard **Coaching observations**
+rollup when it clears that surface's relevance floor, but **never a notification
+and never the non-hideable hero** (reach without noise).
 A new observational engine joins the coaching tier by adding its builder to
 `collectCoachingFindings` and its dedupeKey prefix to the registry; it does NOT
 get a push channel unless it's genuinely _care_. Every surface renders the SAME
@@ -58,11 +59,27 @@ an attention slot) always does. A cold-start state must never newly page anyone.
 for findings that would otherwise render only on their own tab, so a family that
 has earned its OWN dashboard widget is excluded from it: `FINDING_DASHBOARD_HOME`
 in `lib/dashboard-widgets.ts` maps a dedupeKey prefix to that widget id, and the
-page splits `activeCoaching` into the homed slice and the rollup's catch-all. The
-two sets are disjoint, their union is the whole set, the rollup's count and
-"Show N more" overflow are computed over what it renders, and hiding the home
-widget puts its family straight back into the rollup. A new family with its own
-widget adds one registry line — it does not add another one-off filter.
+page splits `activeCoaching` into the homed slice and the rollup's eligible
+residual. The two rendered sets are disjoint. Hiding the home widget returns its
+family to the residual, where the same relevance floor decides whether it has
+earned dashboard reach. A new family with its own widget adds one registry line —
+it does not add another one-off filter.
+
+**The rollup has a relevance floor, not a row cap (#3090).**
+`COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD` is `review` (2). A producer's explicit
+`Finding.dashboardRelevance` wins; otherwise `caution`/`action` clears the floor
+and calm informational findings remain on their origin tabs. When nothing clears
+the floor, there is no card. When several findings clear it, all render: the card
+never says “N of M” and never hides a withheld queue behind “Show more.”
+
+Profile-entity fan-out is bounded before suppression, per family, in
+`COACHING_ENTITY_FINDING_LIMITS` (and the food–drug variance family's adjacent
+declaration). That ordering means dismissing the generated set cannot promote the
+next rows from the same family. Closed catalogs remain bounded by their registries.
+Stale exercises collapse further into one stable family finding: it names at most
+three newest-lapsed lifts, says “several” rather than exposing a hidden count when
+the tail is longer, and keeps the same dismissible identity as members or months
+change.
 
 **The same contract governs the Upcoming page's display aggregation (#1504).**
 The planning page folds a band's scheduled `dose` rows into one disclosure, its

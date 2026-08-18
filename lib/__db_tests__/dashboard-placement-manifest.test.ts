@@ -229,7 +229,7 @@ const EXPECTED_PERSONA_MANIFESTS: Record<string, readonly string[]> = {
     "naps-today:grid:unavailable:-",
     "weight-trend:grid:visible:-",
     "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:visible:-",
+    "coaching-observations:grid:unavailable:-",
     "weekly-recap:grid:hidden:-",
   ],
   household: [
@@ -282,7 +282,7 @@ const EXPECTED_PERSONA_MANIFESTS: Record<string, readonly string[]> = {
     "naps-today:grid:unavailable:-",
     "weight-trend:grid:visible:-",
     "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:visible:-",
+    "coaching-observations:grid:unavailable:-",
     "weekly-recap:grid:hidden:-",
   ],
   "diabetic-cgm": [
@@ -308,7 +308,7 @@ const EXPECTED_PERSONA_MANIFESTS: Record<string, readonly string[]> = {
     "naps-today:grid:unavailable:-",
     "weight-trend:grid:visible:-",
     "healthspan-pillars:grid:visible:-",
-    "coaching-observations:grid:visible:-",
+    "coaching-observations:grid:unavailable:-",
     "weekly-recap:grid:hidden:-",
   ],
   biohacker: [

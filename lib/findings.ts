@@ -60,6 +60,11 @@ import type { LifecycleSuppressionPolicy } from "./lifecycle";
 // for findings that are neither good nor bad (a neutral metric move).
 export type FindingTone = CoachingTone | "info";
 
+export const FINDING_DASHBOARD_RELEVANCE = {
+  supporting: 1,
+  review: 2,
+} as const;
+
 export interface Finding {
   // Origin namespace — an Upcoming domain ("dose"/"biomarker"/…), "coaching", or
   // "digest". Drives iconography/grouping, not identity.
@@ -106,6 +111,12 @@ export interface Finding {
   // explanatory-first. Empty/absent for findings with no structured reason.
   reasons?: Reason[];
   tone?: FindingTone;
+  // How strongly this finding has earned unsolicited dashboard reach. The
+  // coaching tab still shows the complete active set; the dashboard rollup
+  // applies its declared relevance floor to this value. Producers may override
+  // the tone-derived default when an informational family becomes material in
+  // aggregate (for example, several established lifts lapsing together).
+  dashboardRelevance?: number;
   // Optional supporting evidence (the number/hint behind the finding) for surfaces
   // that show a rationale line; opaque to the envelope.
   evidence?: string | null;
