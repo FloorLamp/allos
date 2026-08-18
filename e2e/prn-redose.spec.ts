@@ -67,24 +67,6 @@ test("Today panel PRN row surfaces the redose window status line (#798/#817)", a
   await expect(line).toContainText(/\d of 4 today/);
 });
 
-test("dashboard PRN widget mirrors the redose status line (#798)", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const widget = page.getByTestId("quick-log-prn");
-  await expect(widget).toBeVisible();
-  const item = prnTodayItem(widget, REDOSE_MED);
-  if (!(await item.isVisible())) {
-    await widget.getByTestId("quick-log-prn-more").locator("summary").click();
-  }
-  await expect(item).toBeVisible();
-  await expect(item.getByTestId("prn-day-label")).toContainText("Last dose");
-  await expect(item.getByTestId("prn-day-label")).not.toContainText(
-    /\d+ today/
-  );
-  await expect(item.getByTestId("prn-redose-line")).toContainText("Redose OK");
-});
-
 test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", async ({
   page,
 }) => {

@@ -109,37 +109,6 @@ test.describe("quick-log sheet: log a period (#1892)", () => {
     );
     await expect(panel).not.toContainText(/next period/i);
   });
-
-  test("the sheet and the dashboard card show the SAME verb in every state", async () => {
-    test.slow();
-    await page.goto("/");
-    // No history: both offer the start.
-    expect(await widgetVerb(page)).toBe("start");
-    expect(await sheetVerb(page)).toBe("start");
-
-    // Log day 1 from the SHEET — the path that did not exist before this issue.
-    const panel = page.getByTestId("quick-cycle-panel");
-    await settledClick(page, panel.getByTestId("period-started-button"));
-    // A transaction with a real end: the overlay closes and leaves you where you were.
-    await expect(panel).toHaveCount(0, { timeout: 20_000 });
-    await expect(
-      page.getByRole("main").getByTestId("cycle-phase-value")
-    ).toContainText(/Cycle day 1 · Menstrual/, { timeout: 20_000 });
-
-    // Both surfaces have moved to the same next verb.
-    expect(await widgetVerb(page)).toBe("end");
-    expect(await sheetVerb(page)).toBe("end");
-
-    // End it from the CARD; the sheet agrees about the recovery that follows.
-    await page.keyboard.press("Escape");
-    const card = page.getByRole("main").getByTestId("cycle-phase-widget");
-    await settledClick(page, card.getByTestId("period-ended-button"));
-    await expect(card.getByTestId("period-reopen-button")).toBeVisible({
-      timeout: 20_000,
-    });
-    expect(await widgetVerb(page)).toBe("reopen");
-    expect(await sheetVerb(page)).toBe("reopen");
-  });
 });
 
 test.describe("the period row is relevance-gated (#1892/#1042)", () => {

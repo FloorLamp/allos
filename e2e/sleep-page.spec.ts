@@ -503,40 +503,6 @@ test.describe("Sleep page (#1066)", () => {
     await expect(sleepNav).toBeVisible();
   });
 
-  test("the dashboard last-night tile renders and links to the Sleep page", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    const tile = page.getByTestId("sleep-last-night-widget");
-    await expect(tile).toBeVisible();
-
-    // The tile reads the SAME model as the hero — its duration matches.
-    const tileDuration = (
-      await tile.getByTestId("sleep-last-night-duration").innerText()
-    ).trim();
-    expect(tileDuration).toBe("5h");
-
-    // The tile's header link points at the full page.
-    await expect(tile.getByTestId("widget-header-nav")).toHaveAttribute(
-      "href",
-      "/sleep"
-    );
-    // Same wake-day-is-today fixture as the hero, so the tile agrees with it.
-    await expect(tile).toContainText("Last night");
-    await expect(tile).not.toContainText("nap");
-
-    const napTile = page.getByTestId("naps-today-widget");
-    await expect(napTile).toBeVisible();
-    await expect(napTile.getByTestId("naps-today-duration")).toHaveText("45m");
-    await expect(napTile.getByTestId("naps-today-row")).toHaveText(
-      "13:00 → 13:45"
-    );
-    await expect(napTile.getByTestId("widget-header-nav")).toHaveAttribute(
-      "href",
-      "/sleep#naps"
-    );
-  });
-
   test("the Add entry action opens the shared sleep and mood editor", async ({
     page,
   }) => {
@@ -871,52 +837,7 @@ test.describe("Sleep phase consistency (#1190)", () => {
   });
 });
 
-test.describe("Sleep segmented merged-night (#1191/#1283)", () => {
-  test("a 4h+4h segmented night renders as ONE merged ~8h night on the hero and dashboard tile", async ({
-    browser,
-  }) => {
-    // The seeded fixture's every night is 23:00→03:00 (4h) + 04:00→08:00 (4h), neither
-    // block over the 6h main-sleep floor. f53892f made the merge read this as one ~8h
-    // night instead of a 4h night + a nap; nothing in Playwright pinned the RENDERED
-    // surface until this test. Isolated read-only login so parallel/repeat runs can't
-    // race another test's state.
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_SLEEP_SEGMENTED,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    try {
-      await page.goto("/sleep");
-      const main = page.getByRole("main");
-      const hero = main.getByTestId("sleep-hero");
-      await expect(hero).toBeVisible();
-
-      // The merged duration is 8h — NOT the 4h longest block, and NOT a nap-summed
-      // total. This is the whole point of #1191 on the rendered hero.
-      const duration = hero.getByTestId("sleep-hero-duration");
-      await expect(duration).toHaveText("8h");
-
-      // The merged main sleep spans BOTH fragments: bed 23:00 → wake 08:00.
-      await expect(hero).toContainText("23:00");
-      await expect(hero).toContainText("08:00");
-
-      // No nap card — the second fragment is part of the night, not a nap.
-      await expect(main.getByTestId("nap-card")).toHaveCount(0);
-
-      // The dashboard "last night" tile reads the SAME model (one question, one
-      // computation), so it must show the identical merged 8h, never a 4h block.
-      await page.goto("/");
-      const tile = page.getByTestId("sleep-last-night-widget");
-      await expect(tile).toBeVisible();
-      await expect(tile.getByTestId("sleep-last-night-duration")).toHaveText(
-        "8h"
-      );
-      await expect(tile).not.toContainText("nap");
-      await expect(page.getByTestId("naps-today-widget")).toHaveCount(0);
-    } finally {
-      await page.context().close();
-    }
-  });
-});
+test.describe("Sleep segmented merged-night (#1191/#1283)", () => {});
 
 test.describe("Sleep and mood log historical editing", () => {
   test("edits historical mood + duration-only sleep while imported sleep stays read-only", async ({

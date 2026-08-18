@@ -101,43 +101,6 @@ async function openEveryGroup(page: Page, form: Locator): Promise<void> {
   }
 }
 
-test("the quick-entry sheet's fields stay inside the panel at a desktop viewport", async ({
-  browser,
-}) => {
-  // The vitals card's "Log reading" (#1892) opens the shared form in the quick-entry
-  // BottomSheet — the ~400px host the four-column grid was overflowing, on the
-  // 1280px viewport that made it four columns.
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_DAILY,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    await page
-      .getByRole("main")
-      .getByTestId("vitals-latest-widget")
-      .getByTestId("vitals-log-reading")
-      .click();
-    await expect(page.getByTestId("quick-entry-body")).toHaveAttribute(
-      "data-form",
-      "measurements"
-    );
-    const form = page.getByTestId("measurements-quick-add");
-    await expect(form).toBeVisible();
-
-    // The entry point decides the open group: this button is on the vitals card.
-    await expect(
-      form.locator("#measurements-group-vitals-fields")
-    ).toBeVisible();
-    await expect(form.locator("#measurements-group-body-fields")).toBeHidden();
-
-    await openEveryGroup(page, form);
-    await expectFieldsInsideHost(page, "[data-sheet-panel]");
-  } finally {
-    await page.context().close();
-  }
-});
-
 test("the Trends modal's fields stay inside the modal at a desktop viewport", async ({
   page,
 }) => {

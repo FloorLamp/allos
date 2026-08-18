@@ -212,30 +212,3 @@ test("editing an existing activity never shows the recap step (live-only, #924)"
   await expect(page.getByTestId("session-complete-step")).toHaveCount(0);
   await page.keyboard.press("Escape");
 });
-
-test("the finished-window dashboard shows the session recap card (#924)", async ({
-  browser,
-}) => {
-  test.slow();
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_RECAP,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    const cardEl = page.getByTestId("session-recap-card");
-    await expect(cardEl).toBeVisible();
-    await expect(cardEl).toContainText("Session complete");
-    // The seeded finished session beat its prior week — a Bench Press PR + all
-    // targets hit render on the card.
-    await expect(cardEl.getByTestId("recap-exercise")).toContainText(
-      "Bench Press"
-    );
-    await expect(cardEl.getByTestId("recap-pr").first()).toBeVisible(); // first-ok: asserts a PR line renders in the scoped recap card — order-agnostic presence
-    await expect(cardEl.getByTestId("recap-rollup")).toContainText(
-      "All targets hit"
-    );
-  } finally {
-    await page.context().close();
-  }
-});

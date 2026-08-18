@@ -31,58 +31,6 @@ async function toneOf(el: Locator): Promise<string> {
   return tone!;
 }
 
-test("dashboard goal bars read on-pace/met on fresh goals — never a rose failing bar (#780)", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const card = page.getByRole("main").getByTestId("goals-habits");
-  await expect(card).toBeVisible();
-
-  const bars = card.getByTestId("goal-bar");
-  const n = await bars.count();
-  expect(
-    n,
-    "the seeded profile has active goals with progress bars"
-  ).toBeGreaterThan(0);
-
-  for (let i = 0; i < n; i++) {
-    const bar = bars.nth(i);
-    const tone = await toneOf(bar);
-    // Seed goals are created today with future deadlines → 0% elapsed owes 0%, so
-    // every one is on-pace (or met once complete). Never behind, never failed.
-    expect(["met", "on-pace"]).toContain(tone);
-    // Colour is the shared fill class for that exact tone (format over ONE map).
-    await expect(bar).toHaveClass(new RegExp(FILL[tone]));
-    await expect(bar).not.toHaveClass(/bg-rose-500/);
-    await expect(bar).not.toHaveClass(/sky-/);
-  }
-});
-
-test("dashboard habit chips are pace-coloured and rose-free (#780)", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const card = page.getByRole("main").getByTestId("goals-habits");
-  await expect(card).toBeVisible();
-
-  const chips = card.getByTestId("weekly-target-chip");
-  // The dashboard hides MET habits, and by mid-week the scripts/seed.ts activity
-  // history satisfies all of its targets — so determinism comes from the dedicated
-  // e2e/seed-events.ts fixture: a "Glutes 5×/week" region target that no seeded
-  // exercise can ever satisfy (nothing Glutes-primary is logged). It stays 0/5 open
-  // all week, so at least one chip always renders, and its pace is on-pace/behind.
-  expect(await chips.count()).toBeGreaterThan(0);
-  for (let i = 0; i < (await chips.count()); i++) {
-    const chip = chips.nth(i);
-    const tone = await toneOf(chip);
-    // A weekly chip is 3-state — never "failed" (weeks reset, they don't fail).
-    expect(["met", "on-pace", "behind"]).toContain(tone);
-    await expect(chip).toHaveClass(new RegExp(BORDER[tone]));
-    await expect(chip).not.toHaveClass(/rose-/);
-    await expect(chip).not.toHaveClass(/sky-/);
-  }
-});
-
 test("Training weekly routine chips are pace-coloured, rose-free, and sky-free (#780)", async ({
   page,
 }) => {

@@ -497,7 +497,6 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "mobile-ui-polish.spec.ts": 1,
   "multi-view.spec.ts": 3,
   "nway-merge.spec.ts": 1,
-  "pause-situation.spec.ts": 1,
   "preventive-upcoming.spec.ts": 2,
   "protocol-practice.spec.ts": 1,
   "records-recency.spec.ts": 1,

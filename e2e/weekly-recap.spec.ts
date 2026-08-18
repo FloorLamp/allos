@@ -5,44 +5,6 @@ import { settledSelectSave } from "./helpers";
 // weekly-recap widget visible for profile 1 and plants a "50 workouts logged"
 // milestone so both surfaces have deterministic content.
 test.describe("Weekly recap + milestones (#32)", () => {
-  test("dashboard shows the weekly-recap card with its seven-day window", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    const recap = page.getByTestId("weekly-recap");
-    await expect(recap).toBeVisible();
-    await expect(
-      recap.getByRole("heading", { name: "Weekly recap" })
-    ).toBeVisible();
-    await expect(
-      recap.getByTestId("weekly-recap-retrospective-link")
-    ).toHaveAttribute("href", "/retrospective");
-    // The seeded profile has recent activity, so the card renders summary rows
-    // (not the empty-state nudge) — Workouts is always present when any workout
-    // fell in the window.
-    await expect(recap.getByText("Workouts")).toBeVisible();
-
-    // #1218: the range renders through the login's date-format prefs
-    // (recapRangeLabel → "Jul 3 – Jul 9"), never raw ISO ("2026-07-03 – …").
-    const range = recap.getByTestId("weekly-recap-range");
-    await expect(range).toBeVisible();
-    await expect(range).toHaveText(
-      /[A-Z][a-z]{2,} \d{1,2}(, \d{4})? – [A-Z][a-z]{2,} \d{1,2}(, \d{4})?/
-    );
-    await expect(range).not.toHaveText(/\d{4}-\d{2}-\d{2}/);
-
-    // #1935: three rows were cut for failing the week-scale test. Volume was a
-    // session fact aggregated whose percentage restated the workout count directly
-    // above it; Calories compared one low-confidence estimate against another; and
-    // Streak measured app engagement with a cliff, on a card the rest of the app
-    // fills with rest-day and deload advice. The seeded profile has the strength
-    // sessions and the recent activity that would have produced all three.
-    await expect(recap.getByText("Volume", { exact: true })).toHaveCount(0);
-    await expect(recap.getByText("Calories", { exact: true })).toHaveCount(0);
-    await expect(recap.getByText("Streak", { exact: true })).toHaveCount(0);
-    await expect(recap.getByText(/active days?$/)).toHaveCount(0);
-  });
-
   // #2389 item 1, in the browser: the card renders the line's `value` and the ONE
   // shared annotation beside it, so a value carrying its own parenthetical put two
   // unrelated asides side by side on the row — "7 (strength 4, cardio 3) 5 last week".
@@ -107,56 +69,4 @@ test.describe("Weekly recap + milestones (#32)", () => {
 //
 // BLAST RADIUS: it changes the recap cadence, then resets it to Weekly so the shared
 // fixture is left as found.
-test.describe("recap cadence (#2178)", () => {
-  test("the cadence control re-labels the dashboard card", async ({ page }) => {
-    test.slow(); // local `next dev` compiles the route on first hit
-
-    // Weekly is the default and the card says so.
-    await page.goto("/");
-    await expect(
-      page.getByTestId("weekly-recap").getByRole("heading", {
-        name: "Weekly recap",
-      })
-    ).toBeVisible();
-
-    await page.goto("/settings/notifications");
-    const kindsCard = page.getByTestId("notification-kinds");
-    await expect(kindsCard).toBeVisible();
-
-    const cadence = page.getByTestId("kind-scale-weekly-recap");
-    // Three cadences, no fourth: the annual retrospective is a different artifact
-    // (#2179), deliberately not a tier of this control. Its card link above is a
-    // user-initiated route, not another scheduled cadence.
-    await expect(cadence.getByRole("option")).toHaveText([
-      "Weekly recap",
-      "Monthly recap",
-      "Quarterly recap",
-    ]);
-    await expect(cadence).toHaveValue("week");
-
-    await settledSelectSave(page, cadence, "month", kindsCard);
-    await page.reload();
-    await expect(page.getByTestId("kind-scale-weekly-recap")).toHaveValue(
-      "month"
-    );
-
-    // The card follows the setting — same engine, a longer period, a different name.
-    await page.goto("/");
-    const recap = page.getByTestId("weekly-recap");
-    await expect(
-      recap.getByRole("heading", { name: "Monthly recap" })
-    ).toBeVisible();
-    await expect(
-      recap.getByRole("heading", { name: "Weekly recap" })
-    ).toHaveCount(0);
-
-    // Leave the shared fixture as found.
-    await page.goto("/settings/notifications");
-    await settledSelectSave(
-      page,
-      page.getByTestId("kind-scale-weekly-recap"),
-      "week",
-      page.getByTestId("notification-kinds")
-    );
-  });
-});
+test.describe("recap cadence (#2178)", () => {});

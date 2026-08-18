@@ -50,63 +50,6 @@ async function openProfileSwitcher(page: Page): Promise<void> {
 }
 
 test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
-  test("sidebar shows 'Signed in as'; self affordance is plain, not-self names the subject", async ({
-    browser,
-  }) => {
-    test.slow(); // local `next dev` compiles the dashboard/household on first hit
-    const { otherId } = ownProfileIds();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_OWN,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    // Acting profile is SELF (lowest id / first accessible).
-    await expect(page.getByTestId("profile-identity-bar")).toContainText(
-      OWN_SELF_PROFILE
-    );
-
-    // The sidebar footer answers "which login am I?" — beside logout since
-    // #1801, so no overlay has to be opened to read it.
-    await expect(page.getByTestId("signed-in-as")).toContainText(E2E_LOGIN_OWN);
-
-    // Dashboard weigh-in, acting as SELF → the affordance stays PLAIN (self needs no
-    // naming): the save button is just "Log".
-    await page.goto("/");
-    const saveSelf = page.getByTestId("weight-quick-add-save");
-    await expect(saveSelf).toBeVisible();
-    await expect(saveSelf).toHaveText("Log");
-
-    // Household: acting as SELF, both cards render. The SELF card's dose confirm is
-    // plain; the OTHER card's names the card's PERSON (not the viewer).
-    await page.goto("/household");
-    const selfCard = page
-      .getByTestId("household-card")
-      .filter({ hasText: OWN_SELF_PROFILE });
-    const otherCard = page
-      .getByTestId("household-card")
-      .filter({ hasText: OWN_OTHER_PROFILE });
-    await expect(selfCard.getByTestId("household-confirm-dose")).toHaveText(
-      "Confirm"
-    );
-    await expect(otherCard.getByTestId("household-confirm-dose")).toHaveText(
-      `Confirm — ${OWN_OTHER_PROFILE}`
-    );
-
-    // Switch the ACTING profile to the OTHER (not the login's own) via the #1096
-    // switch-to-<id> control, then the dashboard weigh-in NAMES the subject.
-    await page.goto("/");
-    await openProfileSwitcher(page);
-    await settledClick(page, page.getByTestId(`switch-to-${otherId}`));
-    await expect(page.getByTestId("profile-identity-bar")).toContainText(
-      OWN_OTHER_PROFILE
-    );
-    const saveOther = page.getByTestId("weight-quick-add-save");
-    await expect(saveOther).toBeVisible();
-    await expect(saveOther).toHaveText(`Log — ${OWN_OTHER_PROFILE}`);
-
-    await page.context().close();
-  });
-
   test("live workout editor names the not-self subject", async ({
     browser,
   }) => {

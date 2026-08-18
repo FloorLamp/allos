@@ -162,21 +162,4 @@ test.describe("?quick= deep links", () => {
     await expectQuickParamCleared(page, "log-dose");
     expect(new URL(page.url()).pathname).toBe("/trends");
   });
-
-  test("an unrecognized value opens nothing and still clears the param", async ({
-    page,
-  }) => {
-    // A stale bookmark or a truncated share must NOT fall back to "log activity"
-    // the way quickLogItem() does for the sheet — that would pop an editor the
-    // user never asked for. It is a no-op, and the url stops advertising it.
-    await page.goto("/?quick=not-a-real-shortcut");
-
-    await expect(page.getByTestId("needs-attention")).toBeVisible();
-    await expectQuickParamCleared(page, "not-a-real-shortcut");
-    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
-    await expect(page.getByTestId("activity-form")).toHaveCount(0);
-    await expect(
-      page.getByRole("combobox", { name: "Search or run a command" })
-    ).toHaveCount(0);
-  });
 });

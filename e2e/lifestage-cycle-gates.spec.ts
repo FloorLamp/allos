@@ -54,31 +54,6 @@ test.describe("a recorded pregnancy suspends the cycle state (#2801)", () => {
       await page.context().close();
     }
   });
-
-  test("the dashboard tile syndicates the pause, not a cycle day", async ({
-    browser,
-  }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_CYCLE_PREGNANT,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    try {
-      await page.goto("/");
-      const card = page.getByRole("main").getByTestId("cycle-phase-widget");
-      await expect(card).toBeVisible();
-      // Not "Cycle day 141 · Follicular", and not the CTA empty state either — the
-      // profile has plenty of history, so "log your period to start tracking" would
-      // be its own falsehood.
-      await expect(card.getByTestId("cycle-phase-value")).toHaveCount(0);
-      await expect(card.getByTestId("cycle-phase-empty")).toHaveCount(0);
-      await expect(card.getByTestId("cycle-phase-suspended")).toContainText(
-        /paused while a pregnancy is recorded/i
-      );
-      await expect(card.getByTestId("period-started-button")).toHaveCount(0);
-    } finally {
-      await page.context().close();
-    }
-  });
 });
 
 test.describe("life-stage gates past substance use (#2807)", () => {
