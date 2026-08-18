@@ -217,6 +217,24 @@ describe("atomic dashboard placement", () => {
     });
   });
 
+  it("keeps preventive affordances actionable in the placement manifest", () => {
+    const item = {
+      key: "visit:dental_cleaning",
+      domain: "visit" as const,
+      title: "Dental cleaning",
+      href: "/records/history/visits" as const,
+      dueDate: "2026-01-01",
+      preventiveRuleKey: "dental_cleaning",
+    };
+    const [candidate] = attentionCandidates(subject, [item], "2026-08-18");
+    expect(candidate).toMatchObject({
+      kind: "action",
+      obligation: "should",
+      rankReasons: { owed: true },
+    });
+    expect(rank([candidate])[0].lane).toBe("now");
+  });
+
   it("does not let grouping change rank", () => {
     const candidate = action("grouped", "must", { owed: true });
     const without = rank([{ ...candidate, groupKey: null }]);

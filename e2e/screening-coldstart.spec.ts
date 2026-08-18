@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
+import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_PREVENTIVE,
@@ -92,7 +93,7 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
     ).toBeVisible();
   });
 
-  test("a RECORDED history that lapsed still bands Overdue and still reaches the hero", async () => {
+  test("a RECORDED history that lapsed still bands Overdue and reaches Now", async () => {
     test.slow();
     await lapsed.goto("/upcoming");
     const main = lapsed.getByRole("main");
@@ -117,15 +118,14 @@ test.describe("never-recorded screenings read as setup, not overdue (#1433)", ()
         .getByTestId("upcoming-item-screening:blood_pressure")
     ).toBeVisible();
 
-    // And it is loud where it should be: on the hero, in a band, in the count.
+    // And it remains prominent on the atomic dashboard rather than being reduced
+    // to setup metadata or omitted with the retired composite hero.
     await lapsed.goto("/");
-    const dash = lapsed.getByRole("main");
-    await expect(
-      dash.getByTestId("attention-item-visit:dental_cleaning")
-    ).toBeVisible();
-    const heroCount = Number(
-      await dash.getByTestId("attention-count").innerText()
+    const dentalAttention = dashboardCandidatePrefix(
+      lapsed,
+      "attention.fact:visit:dental_cleaning"
     );
-    expect(heroCount).toBeGreaterThan(0);
+    await expect(dentalAttention).toBeVisible();
+    await expect(dentalAttention).toHaveAttribute("data-lane", "now");
   });
 });

@@ -31,9 +31,19 @@ export function attentionCandidates(
       item.signalGroup == null &&
       (bandForItem(item, today) === "overdue" ||
         bandForItem(item, today) === "today");
+    // Carry the owning Upcoming surface's declared affordances. `actionLabel`
+    // covers only navigation-first status rows; the typed one-tap actions have
+    // their own source fields and are still action candidates even when the
+    // current viewer cannot perform the write.
     const actionable =
       item.actionLabel != null ||
+      item.altAction != null ||
       item.doseId != null ||
+      item.practiceTargetId != null ||
+      item.preventiveRuleKey != null ||
+      item.bookHref != null ||
+      item.carePlanItemId != null ||
+      item.conditionSuggestion != null ||
       item.followUpResolve != null ||
       item.followUpSettle != null;
     const common = {
