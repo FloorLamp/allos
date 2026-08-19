@@ -143,11 +143,23 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 });
 
-test("finishing an empty live workout discards its create-at-start row", async ({
+test("editing another activity resumes an empty live workout without stranding its row", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
   await startLiveWorkout(page);
+
+  await page
+    .getByRole("button", { name: "Minimize workout", exact: true })
+    .click();
+  await page.goBack();
+  await page.waitForURL(/\/training\?tab=log$/);
+
+  const olderActivity = page.getByTestId("training-log-row").first(); // first-ok: live drafts are excluded from the log, so every visible row is an older stored activity
+  await hydratedClick(page, olderActivity.getByRole("link").first()); // first-ok: the activity title is the row's first link
+  await page.waitForURL(/\/training\/activity\/\d+$/);
+  await hydratedClick(page, page.getByTestId("activity-page-edit"));
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 
   await page.getByTestId("finish-workout").click();
   await page.getByTestId("recap-save").click();

@@ -440,6 +440,18 @@ export default function ActivityEditorProvider({
     resumeLive();
   }, [offer, resumeLive]);
 
+  // A live-origin workspace owns this editor until it is explicitly closed or
+  // deleted. Active/minimized sessions resume; after Finish has switched off the
+  // live presentation, competing entry points leave the completed workspace in
+  // place so its eventual close can still clean up an empty create-at-start row.
+  const preserveCurrentWorkout = useCallback(() => {
+    if (offer.kind === "resume") {
+      resumeOffer();
+      return true;
+    }
+    return liveCleanupPendingRef.current;
+  }, [offer, resumeOffer]);
+
   // Memoized so always-mounted consumers (e.g. MobileNav's quick-log button)
   // only re-render when open/editData actually change — not on every provider
   // render (dock registration churns on training log mount/unmount). `offer` is a
@@ -447,6 +459,7 @@ export default function ActivityEditorProvider({
   const api: ActivityEditorApi = useMemo(
     () => ({
       openCreate: (createPrefill) => {
+        if (preserveCurrentWorkout()) return;
         if (!trainingRelevant) return;
         if (createPrefill?.type === "strength" && !strengthTrainingAvailable)
           return;
@@ -470,10 +483,7 @@ export default function ActivityEditorProvider({
         // A session is already running (#1893): reopen it. Never clear the editor and
         // never re-stamp liveStartEpoch — that would silently reset the running
         // session's clock and drop its in-flight sets.
-        if (offer.kind === "resume") {
-          resumeOffer();
-          return;
-        }
+        if (preserveCurrentWorkout()) return;
         if (!trainingRelevant || !strengthTrainingAvailable) return;
         startLiveSession({ type: "strength", title: "" }, null);
       },
@@ -487,10 +497,7 @@ export default function ActivityEditorProvider({
         // Same guard as openLive (#1893): the routine card's "Log this session" must
         // not discard a workout already in progress. The running session wins; the
         // routine slate is still one tap away once it is finished.
-        if (offer.kind === "resume") {
-          resumeOffer();
-          return;
-        }
+        if (preserveCurrentWorkout()) return;
         if (!trainingRelevant) return;
         if (prefillData.type !== "cardio" && !strengthTrainingAvailable) return;
         startLiveSession(
@@ -502,6 +509,7 @@ export default function ActivityEditorProvider({
         );
       },
       openEdit: (data) => {
+        if (preserveCurrentWorkout()) return;
         setEditData(data);
         setCreateDate(null);
         setPrefill(null);
@@ -513,6 +521,7 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       openRepeat: (data) => {
+        if (preserveCurrentWorkout()) return;
         if (!trainingRelevant) return;
         if (activityEditDataHasStrength(data) && !strengthTrainingAvailable)
           return;
@@ -528,6 +537,7 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       openRepeatLast: () => {
+        if (preserveCurrentWorkout()) return;
         if (!trainingRelevant || !lastActivity) return;
         if (
           activityEditDataHasStrength(lastActivity) &&
@@ -571,8 +581,8 @@ export default function ActivityEditorProvider({
       strengthTrainingAvailable,
       subjectName,
       offer,
-      resumeOffer,
       startLiveSession,
+      preserveCurrentWorkout,
       abandonEmptyLiveRow,
       leaveFor,
     ]
