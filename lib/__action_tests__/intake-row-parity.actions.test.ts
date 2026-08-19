@@ -198,7 +198,7 @@ describe("OTC row parity (#843, extended by #3216)", () => {
         name: "Acetaminophen",
         product: "Children's oral suspension (160 mg / 5 mL)",
         obligation: "may",
-        doses: oneDose("160 mg / 5 mL"),
+        doses: oneDose("160 mg"),
       })
     );
 

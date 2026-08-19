@@ -40,6 +40,7 @@ export default function PediatricDoseBandPicker({
   currentAmount,
   onBandSelect,
   onFormulationChange,
+  hideFormulationSelect = false,
 }: {
   idPrefix: string;
   result: PickerResult;
@@ -51,6 +52,10 @@ export default function PediatricDoseBandPicker({
   currentAmount: string;
   onBandSelect: (band: PediatricBand) => void;
   onFormulationChange: (slug: string) => void;
+  // The merged intake form (#3216) states the formulation as a derived CHIP ROW above
+  // the facts, so the picker renders no select of its own — one datum, one control.
+  // It still reads the chosen formulation, to show each band's volume.
+  hideFormulationSelect?: boolean;
 }) {
   const formatPrefs = useFormatPrefs();
   const orderedBands = [...bands].sort((a, b) => a.minLbs - b.minLbs);
@@ -63,7 +68,7 @@ export default function PediatricDoseBandPicker({
 
   return (
     <div className="mt-1 space-y-2 text-slate-600 dark:text-slate-300">
-      {formulations.length > 0 ? (
+      {formulations.length > 0 && !hideFormulationSelect ? (
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
           <label className="text-xs" htmlFor={`${idPrefix}-formulation`}>
             Formulation

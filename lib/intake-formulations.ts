@@ -82,19 +82,26 @@ export function defaultFormulationSlug(input: {
 
 // The dose amount a formulation implies for a given milligram figure.
 //
-// MILLIGRAMS LEAD, DELIBERATELY. A suspension's dose is measured as a volume, so the
-// volume has to be in the amount — but `parseAmountMg` (#1854) reads the leading mass
-// and is what turns the day's logged doses into a milligram exposure against the
-// confirmed mg/day ceiling. An amount written volume-first parses as nothing, and the
-// safety counter would silently fall back to counting doses for exactly the liquid
-// pediatric case that most needs the milligram basis. So the amount states both, mg
-// first: "160 mg / 5 mL" — the shape parseAmountMg already documents.
-export function formulationDoseAmount(
-  formulation: PrnFormulation | null | undefined,
-  mg: number
-): string {
-  const ml = mlForBand(formulation, mg);
-  return ml != null ? `${mg} mg / ${ml} mL` : `${mg} mg`;
+// THE VOLUME IS NOT STORED HERE, and that is the whole decision. #3216 asks a
+// formulation switch to re-derive the dose "volume-first with strength equivalence",
+// and a suspension's dose really is a volume — but the volume is already DERIVED at
+// every display boundary by `formatMedicationDoseProduct`, which scales the product's
+// concentration to the selected milligrams and renders "240 mg / 7.5 mL". So the
+// switch re-derives `product`, and the amount stays milligrams. Writing the volume
+// into the amount too would be the same datum in two columns, free to drift the
+// moment someone edits one — and it would break two shipped readers outright:
+//
+//   • `formatMedicationDoseProduct` matches a bare "<n> mg" amount to pair with the
+//     concentration; a volume-carrying amount falls through and renders the
+//     concentration twice ("240 mg / 7.5 mL · 160 mg / 5 mL").
+//   • `parseAmountMg` (#1854) reads a LEADING mass off the snapshotted amount to sum
+//     the day's exposure against a confirmed mg/day ceiling. Anything it cannot read
+//     silently degrades the counter to counting doses.
+//
+// The band PICKER still shows the volume beside each band — there it is a label the
+// person reads before measuring, not a value the row stores.
+export function formulationDoseAmount(mg: number): string {
+  return `${mg} mg`;
 }
 
 // The redose preset a formulation implies: the child label's figures behind a

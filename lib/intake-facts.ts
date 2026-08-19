@@ -228,6 +228,7 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
       f.critical ? "critical" : null,
     ]),
     state: "stated",
+    suggested: suggested.has("importance"),
   });
 
   // A medication always states which it is: "OTC" is a fact, not an absence — it is

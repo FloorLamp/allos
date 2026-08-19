@@ -480,16 +480,16 @@ export default function IntakeItemForm({
       setMinIntervalHours(String(preset.minIntervalHours));
       setMaxDailyCount(String(preset.maxDailyCount));
     }
-    const formulation =
-      prnDefaults?.pediatric?.formulations.find((f) => f.slug === slug) ?? null;
+    // The amount stays in milligrams; the VOLUME is derived from the product at every
+    // display boundary, so a switch re-derives the product and the reader does the rest.
     const mg =
       pediatricResult?.kind === "dose"
         ? pediatricResult.mg
         : (prnDefaults?.adult.doseMgLow ?? null);
-    if (mg != null)
+    if (mg != null && !touched.has("doseAmount"))
       setDoses((ds) =>
         ds.map((d, i) =>
-          i === 0 ? { ...d, amount: formulationDoseAmount(formulation, mg) } : d
+          i === 0 ? { ...d, amount: formulationDoseAmount(mg) } : d
         )
       );
   }
@@ -639,14 +639,10 @@ export default function IntakeItemForm({
 
   function selectPediatricBand(band: PediatricBand) {
     setSelectedPediatricBandMinLbs(band.minLbs);
-    const formulation =
-      prnDefaults?.pediatric?.formulations.find((f) => f.slug === activeSlug) ??
-      null;
+    markTouched("doseAmount");
     setDoses((current) =>
       current.map((dose, index) =>
-        index === 0
-          ? { ...dose, amount: formulationDoseAmount(formulation, band.mg) }
-          : dose
+        index === 0 ? { ...dose, amount: formulationDoseAmount(band.mg) } : dose
       )
     );
   }
@@ -1206,6 +1202,50 @@ export default function IntakeItemForm({
                     onSaved={(next) => {
                       setPediatricContext(next);
                       setSelectedPediatricBandMinLbs(null);
+                      // A new weight re-derives the label's OFFER, never the
+                      // caregiver's own number. An untouched suggestion follows the
+                      // new band — and is CLEARED when the new weight has no band,
+                      // because leaving the old weight's figure standing would be a
+                      // dose attributed to a measurement that no longer supports it.
+                      if (!prnDefaults || touched.has("doseAmount")) return;
+                      const nextResult = pediatricDoseSuggestion({
+                        entry: prnDefaults,
+                        ageMonths: next.ageMonths as number,
+                        weightKg: next.weightKg,
+                        weightDate: next.weightDate,
+                        today: next.today,
+                        formulationSlug: activeSlug || null,
+                      });
+                      const offered = suggestedFields.has("doseAmount");
+                      if (
+                        nextResult.kind === "dose" &&
+                        (offered || !doses[0]?.amount.trim())
+                      ) {
+                        setDoses((current) =>
+                          current.map((dose, index) =>
+                            index === 0
+                              ? {
+                                  ...dose,
+                                  amount: formulationDoseAmount(nextResult.mg),
+                                }
+                              : dose
+                          )
+                        );
+                        setSuggestedFields((current) =>
+                          new Set(current).add("doseAmount")
+                        );
+                      } else if (nextResult.kind !== "dose" && offered) {
+                        setDoses((current) =>
+                          current.map((dose, index) =>
+                            index === 0 ? { ...dose, amount: "" } : dose
+                          )
+                        );
+                        setSuggestedFields((current) => {
+                          const nextSet = new Set(current);
+                          nextSet.delete("doseAmount");
+                          return nextSet;
+                        });
+                      }
                     }}
                   />
                 )}
@@ -1222,6 +1262,7 @@ export default function IntakeItemForm({
                     currentAmount={doses[0]?.amount ?? ""}
                     onBandSelect={selectPediatricBand}
                     onFormulationChange={pickFormulation}
+                    hideFormulationSelect
                   />
                 )}
               </section>

@@ -22,7 +22,8 @@ export type IntakeFact =
   | "notes"
   | "rules";
 
-// The form within `scope` (a host panel, a modal, or the page).
+// The form within `scope` — a host panel, a modal, or the page. Pass the CONTAINER,
+// never the form locator itself.
 export function intakeForm(scope: Page | Locator): Locator {
   return scope.getByTestId("intake-item-form");
 }
@@ -42,7 +43,14 @@ export async function openFact(
     if (await chip.count()) {
       await hydratedClick(page, chip);
     } else {
+      // The fact has nothing to state, so it lives behind the one trailing
+      // affordance. Wait for that panel before reaching into it — otherwise a click
+      // swallowed by an open combobox listbox reports as "the fact does not exist".
       await hydratedClick(page, form.getByTestId("intake-fact-more"));
+      await expect(form.getByTestId("intake-editor")).toHaveAttribute(
+        "data-panel",
+        "more"
+      );
       await hydratedClick(page, form.getByTestId(`intake-more-${fact}`));
     }
   }

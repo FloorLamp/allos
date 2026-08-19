@@ -9,6 +9,7 @@ import {
 } from "@/lib/intake-formulations";
 import { prnDefaultsFor } from "@/lib/prn-defaults";
 import { parseAmountMg } from "@/lib/prn-redose";
+import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 
 // The formulation chip row (#3216 decision 2). One ingredient is several products;
 // the row surfaces the choice, the profile's age picks the default, and a switch
@@ -58,22 +59,26 @@ describe("intake formulation row (#3216)", () => {
     ).toBe(stored);
   });
 
-  it("a suspension's dose amount carries the volume AND stays readable as milligrams", () => {
+  it("a suspension stores MILLIGRAMS — the volume is derived, never a second copy", () => {
     const formulation = ibuprofen!.pediatric!.formulations.find(
       (f) => f.mgPerMl === 20
     )!;
-    const amount = formulationDoseAmount(formulation, 100);
-    expect(amount).toContain("mL");
-    // THE POINT. #1854's day-exposure counter reads the LEADING mass off the
-    // snapshotted amount. An amount written volume-first parses as nothing, and the
-    // milligram basis would silently degrade to counting doses for exactly the liquid
-    // pediatric case that most needs it.
+    const amount = formulationDoseAmount(100);
+    // The volume belongs to the PRODUCT and is scaled at every display boundary by
+    // formatMedicationDoseProduct. Writing it into the amount as well would put one
+    // datum in two columns — and both of the readers below would break on it.
+    expect(amount).toBe("100 mg");
+    expect(formatMedicationDoseProduct(amount, formulation.label)).toBe(
+      "100 mg / 5 mL"
+    );
+    // #1854's day-exposure counter reads the LEADING mass off the snapshotted amount;
+    // anything it cannot read degrades the ceiling to counting doses.
     expect(parseAmountMg(amount)).toBe(100);
   });
 
-  it("a solid dose states milligrams alone", () => {
-    expect(formulationDoseAmount(null, 200)).toBe("200 mg");
-    expect(parseAmountMg(formulationDoseAmount(null, 200))).toBe(200);
+  it("a solid dose states milligrams too, and the two paths agree", () => {
+    expect(formulationDoseAmount(200)).toBe("200 mg");
+    expect(parseAmountMg(formulationDoseAmount(200))).toBe(200);
   });
 
   it("switching to a pediatric product re-derives the child's redose preset", () => {
