@@ -143,6 +143,20 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 });
 
+test("finishing an empty live workout discards its create-at-start row", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=log");
+  await startLiveWorkout(page);
+
+  await page.getByTestId("finish-workout").click();
+  await page.getByTestId("recap-save").click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+
+  await page.waitForURL(/\/training(\?.*)?$/);
+  await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+});
+
 // Issue #1893 — THE EPOCH PIN. `openLive()` used to clear the editor and re-stamp
 // `liveStartEpoch` from the wall clock unconditionally, which is exactly the instant the #921
 // dock's elapsed timer ticks off: tapping an entry point mid-workout silently reset the

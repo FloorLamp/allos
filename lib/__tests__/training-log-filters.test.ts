@@ -24,6 +24,7 @@ function card(opts: {
   type?: ActivityType;
   source?: string | null;
   fault?: string | null;
+  components?: string | null;
   parts?: {
     name: string;
     muscle?: string | null;
@@ -41,7 +42,7 @@ function card(opts: {
       intensity: null,
       start_time: null,
       end_time: null,
-      components: null,
+      components: opts.components ?? null,
       notes: null,
       source: opts.source === undefined ? null : opts.source,
       sets: [],
@@ -182,6 +183,28 @@ describe("trainingLogCardMatches", () => {
     expect(trainingLogCardMatches(bench, withFilters({ query: "kayak" }))).toBe(
       false
     );
+  });
+
+  it("matches a folded pure-effort component that has no rendered part", () => {
+    const ride = card({
+      id: 3,
+      title: "Morning Ride",
+      type: "cardio",
+      source: "strava",
+      components: JSON.stringify([
+        {
+          name: "Cycling",
+          type: "cardio",
+          distance_km: 20,
+          duration_min: 45,
+        },
+      ]),
+      parts: [],
+    });
+
+    expect(
+      trainingLogCardMatches(ride, withFilters({ query: "cycling" }))
+    ).toBe(true);
   });
 
   it("is case-insensitive and trims the query", () => {

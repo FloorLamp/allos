@@ -6,10 +6,10 @@
 // it here (like lib/activity-form-model.ts did for form parsing) makes the whole
 // derivation unit-testable and keeps HistorySection a thin data-fetch + render.
 //
-// The header's durationText/distanceText/speedText and a single cardio part's
-// `detail` string are now BOTH produced here from the SAME activity, so the "one
-// question, one computation" rule holds — a folded single cardio/sport effort
-// surfaces as a clickable row and its now-redundant header meta is suppressed.
+// The header's durationText/distanceText/speedText and cardio part detail are
+// produced here from the SAME activity, so the "one question, one computation"
+// rule holds. A lone pure cardio/sport component is folded into the header instead
+// of repeating a second row beneath the activity title.
 
 import type { Activity, ExerciseSet, ActivityComponent } from "./types";
 import { parseComponents } from "./types";

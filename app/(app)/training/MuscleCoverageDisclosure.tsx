@@ -7,10 +7,12 @@ import type {
   PointerEvent,
   ReactNode,
 } from "react";
+import { createContext, useContext } from "react";
 
 const TARGET_SELECTOR = "[data-muscle-target], [data-coverage-row-target]";
 const ACTIVITY_SELECTOR = "[data-activity-muscles]";
 const SOURCE_SELECTOR = `${TARGET_SELECTOR}, ${ACTIVITY_SELECTOR}`;
+const MuscleCoverageDisclosureContext = createContext(false);
 
 function targetFor(element: Element): string | null {
   return (
@@ -42,6 +44,13 @@ export default function MuscleCoverageDisclosure({
 }: {
   children: ReactNode;
 }) {
+  const disclosureAlreadyManaged = useContext(MuscleCoverageDisclosureContext);
+
+  // The detail page coordinates exercise rows and the coverage card through one
+  // page-level disclosure. The card also owns this behavior when rendered alone
+  // on Overview, so nested instances deliberately defer to their nearest owner.
+  if (disclosureAlreadyManaged) return children;
+
   function expandRow(container: HTMLDivElement, control: Element) {
     const target = control.getAttribute("data-muscle-target");
     if (!target) return;
@@ -121,23 +130,25 @@ export default function MuscleCoverageDisclosure({
   }
 
   return (
-    <div
-      onClick={onClick}
-      onKeyDown={onKeyDown}
-      onPointerOver={(event: PointerEvent<HTMLDivElement>) =>
-        highlightFrom(event.currentTarget, event.target)
-      }
-      onPointerOut={(event: PointerEvent<HTMLDivElement>) =>
-        clearFrom(event.currentTarget, event.target, event.relatedTarget)
-      }
-      onFocus={(event: FocusEvent<HTMLDivElement>) =>
-        highlightFrom(event.currentTarget, event.target)
-      }
-      onBlur={(event: FocusEvent<HTMLDivElement>) =>
-        clearFrom(event.currentTarget, event.target, event.relatedTarget)
-      }
-    >
-      {children}
-    </div>
+    <MuscleCoverageDisclosureContext.Provider value>
+      <div
+        onClick={onClick}
+        onKeyDown={onKeyDown}
+        onPointerOver={(event: PointerEvent<HTMLDivElement>) =>
+          highlightFrom(event.currentTarget, event.target)
+        }
+        onPointerOut={(event: PointerEvent<HTMLDivElement>) =>
+          clearFrom(event.currentTarget, event.target, event.relatedTarget)
+        }
+        onFocus={(event: FocusEvent<HTMLDivElement>) =>
+          highlightFrom(event.currentTarget, event.target)
+        }
+        onBlur={(event: FocusEvent<HTMLDivElement>) =>
+          clearFrom(event.currentTarget, event.target, event.relatedTarget)
+        }
+      >
+        {children}
+      </div>
+    </MuscleCoverageDisclosureContext.Provider>
   );
 }

@@ -56,6 +56,7 @@ import {
 import MuscleCoverageCard from "../../MuscleCoverageCard";
 import MuscleCoverageDisclosure from "../../MuscleCoverageDisclosure";
 import type { MuscleId } from "@/lib/lifts";
+import { parseSubjectParam } from "@/lib/subject-param";
 import CyclingActivityDetail, { cyclingLens } from "./CyclingActivityDetail";
 import {
   ActivityDetailActions,
@@ -88,14 +89,8 @@ export default async function TrainingActivityPage(props: {
 
   const { login, profile } = await requireSession();
   const searchParams = await props.searchParams;
-  const rawSubject = searchParams?.subject;
-  const subjectValue = Array.isArray(rawSubject) ? rawSubject[0] : rawSubject;
-  const requestedSubjectId = subjectValue
-    ? /^\d+$/.test(subjectValue)
-      ? Number(subjectValue)
-      : null
-    : profile.id;
-  if (requestedSubjectId == null || requestedSubjectId <= 0) notFound();
+  const requestedSubjectId =
+    parseSubjectParam(searchParams?.subject) ?? profile.id;
   const subjectProfile =
     requestedSubjectId === profile.id
       ? profile

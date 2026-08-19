@@ -192,6 +192,13 @@ export default function ActivityEditorProvider({
     ((beforeClose?: () => void) => Promise<boolean>) | null
   >(null);
   const markEditorLinkFollowedRef = useRef<() => void>(() => {});
+  const [liveRowId, setLiveRowId] = useState<number | null>(null);
+  const liveSessionSeqRef = useRef(0);
+  const liveOwnedRowIdRef = useRef<number | null>(null);
+  // Finish changes the editor out of live PRESENTATION before the finished form
+  // closes. Keep cleanup eligibility as separate session provenance so an empty
+  // create-at-start row is still discarded after recap Save -> Done.
+  const liveCleanupPendingRef = useRef(false);
 
   const leaveFor = useCallback(
     async (href: AppRoute) => {
@@ -222,6 +229,8 @@ export default function ActivityEditorProvider({
   // so a reload mid-workout resumes the same clock.
   const resumeLive = useCallback(() => {
     if (!liveEditData) return;
+    liveCleanupPendingRef.current = true;
+    liveOwnedRowIdRef.current = liveEditData.id;
     setEditData(liveEditData);
     setPrefill(null);
     setLive(true);
@@ -244,9 +253,6 @@ export default function ActivityEditorProvider({
   // A create that returns after the form already owns a DIFFERENT row (or
   // after the session was replaced) is discarded — never a husk beside the
   // form's own row.
-  const [liveRowId, setLiveRowId] = useState<number | null>(null);
-  const liveSessionSeqRef = useRef(0);
-  const liveOwnedRowIdRef = useRef<number | null>(null);
   const onLiveRowOwned = useCallback(
     (id: number) => {
       liveOwnedRowIdRef.current = id;
@@ -264,11 +270,13 @@ export default function ActivityEditorProvider({
   // Without this, the empty draft keeps presence "active" for 90 minutes and
   // the resume bar haunts every page offering a session with nothing in it.
   const abandonEmptyLiveRow = useCallback(() => {
-    if (!live) return;
+    if (!liveCleanupPendingRef.current) return;
+    liveCleanupPendingRef.current = false;
     // The session is over: invalidate any still-in-flight create so it
     // discards itself instead of stranding an orphan row nobody adopted.
     liveSessionSeqRef.current++;
     const id = liveOwnedRowIdRef.current ?? editData?.id ?? null;
+    liveOwnedRowIdRef.current = null;
     if (id == null) return;
     const fd = new FormData();
     fd.set("activity_id", String(id));
@@ -276,13 +284,14 @@ export default function ActivityEditorProvider({
     void discardWorkout(fd)
       .then((out) => {
         if (out.kind !== "discarded") return;
+        setDismissedPresenceId(id);
         // The page beneath may BE the discarded row's — don't strand the
         // reader on a just-deleted activity; the hub is where they started.
         if (window.location.pathname === `/training/activity/${id}`)
           router.replace(trainingRelevant ? "/training" : "/timeline");
       })
       .catch(() => {});
-  }, [live, editData, router, trainingRelevant]);
+  }, [editData, router, trainingRelevant]);
 
   const leaveDeletedActivityPage = useCallback(
     (id: number) => {
@@ -291,6 +300,8 @@ export default function ActivityEditorProvider({
       // workspace and its dock before suppressing stale server-hydrated presence.
       setMinimized(false);
       setOpen(false);
+      liveCleanupPendingRef.current = false;
+      liveOwnedRowIdRef.current = null;
       setDismissedPresenceId(id);
       if (window.location.pathname === `/training/activity/${id}`)
         router.replace(trainingRelevant ? "/training" : "/timeline");
@@ -309,6 +320,7 @@ export default function ActivityEditorProvider({
       setLive(true);
       setLiveRowId(null);
       liveOwnedRowIdRef.current = null;
+      liveCleanupPendingRef.current = true;
       const seq = ++liveSessionSeqRef.current;
       setLiveStartEpoch(Date.now());
       setMinimized(false);
@@ -389,6 +401,8 @@ export default function ActivityEditorProvider({
       setCreateDate(null);
       setPrefill(null);
       setLive(true);
+      liveCleanupPendingRef.current = true;
+      liveOwnedRowIdRef.current = null;
       setLiveStartEpoch(Date.now());
       setMinimized(false);
       setOpen(true);
@@ -444,6 +458,8 @@ export default function ActivityEditorProvider({
             : null
         );
         setLive(false);
+        liveCleanupPendingRef.current = false;
+        liveOwnedRowIdRef.current = null;
         setLiveStartEpoch(null);
         setMinimized(false);
         if (createPrefill?.type || createPrefill?.date)
@@ -490,6 +506,8 @@ export default function ActivityEditorProvider({
         setCreateDate(null);
         setPrefill(null);
         setLive(false);
+        liveCleanupPendingRef.current = false;
+        liveOwnedRowIdRef.current = null;
         setLiveStartEpoch(null);
         setMinimized(false);
         setOpen(true);
@@ -502,6 +520,8 @@ export default function ActivityEditorProvider({
         setCreateDate(null);
         setPrefill(buildRepeatPrefill(data, todayStr(tz)));
         setLive(false);
+        liveCleanupPendingRef.current = false;
+        liveOwnedRowIdRef.current = null;
         setLiveStartEpoch(null);
         setMinimized(false);
         setRepeatNonce((n) => n + 1);
@@ -518,6 +538,8 @@ export default function ActivityEditorProvider({
         setCreateDate(null);
         setPrefill(buildRepeatPrefill(lastActivity, todayStr(tz)));
         setLive(false);
+        liveCleanupPendingRef.current = false;
+        liveOwnedRowIdRef.current = null;
         setLiveStartEpoch(null);
         setMinimized(false);
         setRepeatNonce((n) => n + 1);
