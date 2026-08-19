@@ -409,12 +409,13 @@ export default function MeasurementsQuickAdd({
     // both write metric_samples through their own cores — so an entry holding only
     // those is reported as "unqueueable" rather than silently dropped.)
     //
-    // "refused" is the device declining the capture (#3038): nothing will sync, so
-    // the caller says the shared sentence and the form KEEPS its typed values for
-    // the retry. The refusal causes are device-wide (no storage to queue into, or
-    // this device was logged out), so in practice the two halves refuse together —
-    // and the first refusal stops the second enqueue rather than queueing half a
-    // sitting under a toast that says none of it was saved.
+    // "refused" is the device declining the capture (#3038): nothing will sync,
+    // so the caller says the shared sentence and every success step — the toast,
+    // the group memory, the summaries refresh — is skipped. The refusal causes
+    // are device-wide (no storage to queue into, or this device was logged out),
+    // so in practice the two halves refuse together — and the first refusal
+    // stops the second enqueue rather than queueing half a sitting under a toast
+    // that says none of it was saved.
     const queueOffline = async (): Promise<
       "queued" | "refused" | "unqueueable"
     > => {

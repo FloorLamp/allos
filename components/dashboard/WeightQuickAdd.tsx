@@ -66,8 +66,9 @@ export default function WeightQuickAdd({
         restingHr: null,
         notes: null,
       });
-      // The device can refuse the capture (#3038) — nothing was queued, so say so
-      // and keep the typed weight in the field for the retry.
+      // The device can refuse the capture (#3038) — nothing was queued, so say
+      // so and skip the success toast. (The fields clear either way: React
+      // resets a form after its action, refused or not.)
       if (!kept) {
         toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
         return;

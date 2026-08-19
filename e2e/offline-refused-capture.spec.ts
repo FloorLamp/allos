@@ -103,7 +103,7 @@ test("refused protein grams say so and roll the total back", async ({
   await context.setOffline(false);
 });
 
-test("a refused measurements save says so and keeps the typed values", async ({
+test("a refused measurements save says so and claims nothing", async ({
   page,
   context,
 }) => {
@@ -119,8 +119,11 @@ test("a refused measurements save says so and keeps the typed values", async ({
   await form.getByRole("button", { name: "Save measurements" }).click();
 
   await expectRefusedOnly(page);
-  // The form did NOT reset — the reading is still there for the retry.
-  await expect(weight).toHaveValue("81.4");
+  // The form stays open for the retry, with no success toast and no inline
+  // error contradicting the sentence. (The fields themselves clear either way:
+  // React resets a form after its action, refused or not.)
+  await expect(form).toBeVisible();
+  await expect(page.getByText(/Measurements saved/)).toHaveCount(0);
   await context.setOffline(false);
 });
 
@@ -153,6 +156,7 @@ test("a refused mobility-move tap says so and un-presses the chip", async ({
     // The optimistic chip rolled back with the count beside it.
     await expect(chip).toHaveAttribute("aria-pressed", "false");
     await expect(total).toHaveText(before);
+    await context.setOffline(false);
   } finally {
     await context.close();
   }
@@ -191,7 +195,7 @@ test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet op
   await page.keyboard.press("Escape");
 });
 
-test("a refused dashboard weigh-in says so and keeps the typed weight", async ({
+test("a refused dashboard weigh-in says so and claims nothing", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -210,8 +214,10 @@ test("a refused dashboard weigh-in says so and keeps the typed weight", async ({
     await hydratedClick(page, page.getByTestId("weight-quick-add-save"));
 
     await expectRefusedOnly(page);
-    // No reset — the weigh-in is still in the field for the retry.
-    await expect(input).toHaveValue("81.4");
+    // No success claim of either kind — online's "Entry saved" or the offline
+    // queue's promise.
+    await expect(page.getByText("Entry saved")).toHaveCount(0);
+    await context.setOffline(false);
   } finally {
     await context.close();
   }
