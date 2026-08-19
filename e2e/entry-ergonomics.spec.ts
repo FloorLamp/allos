@@ -113,14 +113,28 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   await page.goto("/training?tab=log");
   await expect(titleRows).toHaveCount(before + 1);
 
-  // Clean up the row this test just created: the editor is still open on it, so
-  // delete it from there. The e2e DB is shared across specs (the harness seeds
-  // once), and a lingering today-dated activity would (a) collide with the
+  // Clean up the row this test just created through its canonical record. The e2e
+  // DB is shared across specs (the harness seeds once), and a lingering today-dated
+  // activity would (a) collide with the
   // training-log-merge fixture's "Training Log merge keeper" title and (b) add a new "Today"
   // day-group that shifts the training log's visible-day window, throwing off the
   // absolute card counts in training-log-merge / undo-delete. Restoring the seed state
   // here keeps those specs order-independent.
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await followLink(
+    page,
+    titleRows
+      .first() // first-ok: the just-created duplicate is today's newest matching row
+      .getByRole("link", {
+        name: "Training Log merge keeper",
+        exact: true,
+      }),
+    /\/training\/activity\/\d+$/
+  );
+  await hydratedClick(
+    page,
+    page.getByRole("button", { name: "Activity actions" })
+  );
+  await page.getByTestId("delete-activity").click();
   await page
     .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })

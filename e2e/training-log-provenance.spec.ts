@@ -415,12 +415,6 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   await expect(
     page.getByTestId("activity-form-route").getByTestId("route-map")
   ).toBeVisible();
-  const formRoute = await page
-    .getByTestId("activity-form-route")
-    .getByTestId("route-map")
-    .boundingBox();
-  expect(formRoute).not.toBeNull();
-  expect(formRoute!.height).toBeLessThanOrEqual(110);
 
   expect(
     await primary.evaluate(

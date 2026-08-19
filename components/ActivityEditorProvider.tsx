@@ -286,6 +286,11 @@ export default function ActivityEditorProvider({
 
   const leaveDeletedActivityPage = useCallback(
     (id: number) => {
+      // A running workspace closes through its minimize path. Deletion is the
+      // exception: the session no longer exists, so clear both the mounted
+      // workspace and its dock before suppressing stale server-hydrated presence.
+      setMinimized(false);
+      setOpen(false);
       setDismissedPresenceId(id);
       if (window.location.pathname === `/training/activity/${id}`)
         router.replace(trainingRelevant ? "/training" : "/timeline");

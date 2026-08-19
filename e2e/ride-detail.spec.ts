@@ -70,7 +70,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
     .getByTestId("ride-summary-line");
   await expect(primarySummary).toContainText("62 min");
   await expect(primarySummary).toContainText("24.5 km");
-  await expect(primarySummary).toContainText("148 bpm");
+  await expect(primarySummary).toContainText("148/171 bpm");
   await expect(primarySummary).toContainText("72");
   await expect(primarySummary).toContainText("648 kcal");
   await expect(page.getByTestId("ride-stat-max-heart-rate")).toContainText(

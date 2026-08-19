@@ -107,9 +107,12 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
     coverage.locator("summary").first() // first-ok: asserts any workout-scoped muscle disclosure exposes its accessible toggle label
   ).toHaveAttribute("aria-label", /Show or hide what counts for/);
 
-  const benchRow = pushCard
-    .getByTestId("training-log-strength-row")
-    .filter({ hasText: "Bench Press" });
+  const benchRow = pushCard.getByTestId("training-log-strength-row").filter({
+    has: pushCard.getByRole("link", {
+      name: "Barbell Bench Press",
+      exact: true,
+    }),
+  });
   const chest = figure.locator('[data-muscle-target="coverage-chest"]');
   await chest.locator("path").first().hover(); // first-ok: either bilateral chest path bubbles to the same muscle highlight target
   await expect(benchRow).toHaveAttribute("data-highlighted", "true");

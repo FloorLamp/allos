@@ -43,11 +43,10 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
     )
   ).toBe(true);
 
-  // Cycling titles lead to the canonical activity detail. The card's separate Edit
-  // action still opens the shared editor with the linked gear preloaded — a real
+  // Cycling titles lead to the canonical activity detail. Its primary Edit action
+  // opens the shared editor with the linked gear preloaded — a real
   // equipment id is selected, labelled "Road Bike".
-  await card.getByRole("button", { name: "Activity actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+  await card.getByTestId("activity-page-edit").click();
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   await expect(select).toHaveValue(/\d+/);
