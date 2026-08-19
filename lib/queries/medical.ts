@@ -420,6 +420,62 @@ export function getClinicalObservations(
   return getObservationsSnapshot(profileId, observationFiltersKey(filters));
 }
 
+export type DashboardClinicalObservation = ClinicalObservation & {
+  previous_id: number | null;
+  previous_flag: MedicalFlag | null;
+};
+
+// The current lab reading and its immediately-prior comparable family reading,
+// in one bounded row per family. This replaces the dashboard's current-only
+// gather when it needs to decide the closed non-notable → notable transition;
+// it does not issue one history query per result and it uses the same de-duplicated
+// #482 family identity as getClinicalObservations.
+const getDashboardClinicalObservationsSnapshot = snapshotCached(
+  "medical.dashboard-current-with-prior",
+  (profileId: number) => String(profileId),
+  (profileId: number): DashboardClinicalObservation[] =>
+    db
+      .prepare(
+        `WITH ${DEDUP_IDS_CTE},
+              dashboard_ranked AS (
+                SELECT id,
+                       ${BIOMARKER_FAMILY_KEY} AS family_key,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY ${BIOMARKER_FAMILY_KEY} COLLATE NOCASE
+                         ORDER BY date DESC, id DESC
+                       ) AS rn
+                  FROM medical_records
+                 WHERE profile_id = ?
+                   AND category = 'lab'
+                   AND ${IN_DEDUPED}
+              )
+         SELECT medical_records.*,
+                (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
+                  AS provider_name,
+                (SELECT p.name FROM providers p WHERE p.id = medical_records.ordering_provider_id)
+                  AS ordering_provider_name,
+                1 AS is_latest,
+                previous_record.id AS previous_id,
+                previous_record.flag AS previous_flag
+           FROM dashboard_ranked current_rank
+           JOIN medical_records ON medical_records.id = current_rank.id
+           LEFT JOIN dashboard_ranked previous_rank
+             ON previous_rank.family_key = current_rank.family_key COLLATE NOCASE
+            AND previous_rank.rn = 2
+           LEFT JOIN medical_records previous_record
+             ON previous_record.id = previous_rank.id
+          WHERE current_rank.rn = 1
+          ORDER BY medical_records.date DESC, medical_records.id DESC`
+      )
+      .all(profileId, profileId) as DashboardClinicalObservation[]
+);
+
+export function getDashboardClinicalObservations(
+  profileId: number
+): DashboardClinicalObservation[] {
+  return getDashboardClinicalObservationsSnapshot(profileId);
+}
+
 // HOW MANY observations a filter set selects, without hydrating one (#2116). The
 // /household out-of-range badge renders a number per accessible profile and used to
 // take `.length` of the full read: the same DEDUP+LATEST pass, but every matching row

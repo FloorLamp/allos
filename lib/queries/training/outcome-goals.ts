@@ -4,6 +4,7 @@ import {
   computeBodyGoalProgress,
   computeGoalProgress,
 } from "../../goal-progress";
+import { shiftDateStr } from "../../date";
 import {
   biomarkerGoalCheckIn,
   biomarkerTargetOf,
@@ -19,7 +20,7 @@ import {
 } from "../../outcome-goals";
 import type { BodyMetricKind, OutcomeGoal } from "../../types";
 import { biomarkerPlots } from "../biomarker-plot";
-import { getLatestBodyMetric } from "../metrics";
+import { getLatestBodyMetricDailyPoints } from "../metrics";
 
 // Training-SPECIFIC goal reads. The scope-kind-generic `frequency_targets`
 // machinery that used to sit below them serves five domains, only one of which is
@@ -67,13 +68,22 @@ export function getOutcomeGoalProgressMap(
   // Body-metric goals: latest body-metric value vs baseline → target.
   const bodyGoals = goals.filter((g) => g.body_metric);
   if (bodyGoals.length) {
-    const latest: Record<BodyMetricKind, number | null> = {
-      weight: getLatestBodyMetric(profileId, "weight"),
-      body_fat: getLatestBodyMetric(profileId, "body_fat"),
-      resting_hr: getLatestBodyMetric(profileId, "resting_hr"),
+    const points: Record<BodyMetricKind, { date: string; value: number }[]> = {
+      weight: getLatestBodyMetricDailyPoints(profileId, "weight"),
+      body_fat: getLatestBodyMetricDailyPoints(profileId, "body_fat"),
+      resting_hr: getLatestBodyMetricDailyPoints(profileId, "resting_hr"),
     };
     for (const g of bodyGoals) {
-      out.set(g.id, computeBodyGoalProgress(g, latest[g.body_metric!]));
+      const series = points[g.body_metric!];
+      const current = computeBodyGoalProgress(g, series.at(-1)?.value ?? null);
+      const previous =
+        series.length > 1
+          ? computeBodyGoalProgress(g, series.at(-2)!.value)
+          : null;
+      out.set(g.id, {
+        ...current,
+        previous: previous ? { pct: previous.pct, done: previous.done } : null,
+      });
     }
   }
 
@@ -105,8 +115,23 @@ export function getOutcomeGoalProgressMap(
         plot?.points ?? [],
         plot?.unit ?? target.unit
       );
+      const previous =
+        plot && plot.points.length > 1
+          ? computeBiomarkerGoalProgress(
+              target,
+              plot.points.slice(0, -1),
+              plot.unit ?? target.unit
+            )
+          : null;
       out.set(g.id, {
         ...progress,
+        previous: previous
+          ? {
+              pct: previous.pct,
+              done: previous.done,
+              asOf: previous.asOf,
+            }
+          : null,
         checkIn: biomarkerGoalCheckIn(
           progress.asOf,
           retestDaysForBiomarker(target.name),
@@ -122,6 +147,7 @@ export function getOutcomeGoalProgressMap(
   // "Today" in the profile's timezone anchors the trailing recent-form window
   // computeGoalProgress uses to derive `current` (vs the lifetime PR).
   const t = today(profileId);
+  const previousDay = shiftDateStr(t, -1);
 
   // Resolve which exercise NAMES satisfy some goal from the cheap distinct-name
   // list (goal→set matching folds equipment variants to their base — see
@@ -142,7 +168,8 @@ export function getOutcomeGoalProgressMap(
   );
   if (matchingNames.length === 0) {
     // Every exGoal still gets an entry (empty progress), matching the old loop.
-    for (const g of exGoals) out.set(g.id, computeGoalProgress(g, [], t));
+    for (const g of exGoals)
+      out.set(g.id, { ...computeGoalProgress(g, [], t), previous: null });
     return out;
   }
   const rows = db
@@ -183,7 +210,23 @@ export function getOutcomeGoalProgressMap(
       const arr = byExercise.get(k);
       if (arr) matched.push(...arr);
     }
-    out.set(g.id, computeGoalProgress(g, matched, t));
+    const progress = computeGoalProgress(g, matched, t);
+    // Exclude today's evidence before asking the existing goal model for the
+    // previous-day result. computeGoalProgress deliberately treats a lifetime
+    // best as complete even when it falls outside its recent-form window, so
+    // passing today's sets with an earlier clock would leak future completion
+    // backward into the comparison.
+    const previousRows = matched.filter(
+      (row) => row.date != null && row.date <= previousDay
+    );
+    const previous = computeGoalProgress(g, previousRows, previousDay);
+    out.set(g.id, {
+      ...progress,
+      previous:
+        previousRows.length > 0
+          ? { pct: previous.pct, done: previous.done }
+          : null,
+    });
   }
   return out;
 }

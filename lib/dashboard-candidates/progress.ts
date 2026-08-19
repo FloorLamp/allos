@@ -1,6 +1,7 @@
 import { profileDataRelevance } from "./candidate";
 import {
   action,
+  changed,
   reading,
   state,
   statement,
@@ -17,19 +18,27 @@ export const progressCandidates = {
   ) {
     return statement(ctx, `${family}:${id}`, factKey, null);
   },
-  goal(ctx: DomainCandidateContext, id: number) {
+  goal(ctx: DomainCandidateContext, id: number, promoted = false) {
     return reading(
       ctx,
       `goal.progress:${id}`,
       `outcome-goal.progress:${id}`,
       `goal:${id}`,
-      "manual"
+      "manual",
+      "current",
+      promoted
+        ? {
+            rankReasons: changed,
+            readingPromotion: "outcome-goal-transition",
+          }
+        : {}
     );
   },
   targetProgress(
     ctx: DomainCandidateContext,
     id: number,
-    standingEligible = true
+    standingEligible = true,
+    promoted = false
   ) {
     return reading(
       ctx,
@@ -38,7 +47,36 @@ export const progressCandidates = {
       `target:${id}`,
       "manual",
       "current",
-      { standingEligible }
+      {
+        standingEligible,
+        ...(promoted
+          ? {
+              rankReasons: changed,
+              readingPromotion: "weekly-target-transition" as const,
+            }
+          : {}),
+      }
+    );
+  },
+  trainingResult(
+    ctx: DomainCandidateContext,
+    key: string,
+    day: string,
+    ageDays: number
+  ) {
+    const group = `training.result:${day}`;
+    return reading(
+      ctx,
+      `training.result:${key}:${day}`,
+      `${group}:${key}`,
+      group,
+      "manual",
+      "current",
+      {
+        timing: { kind: "local-days", ageDays, maxDays: 0 },
+        rankReasons: changed,
+        readingPromotion: "training-best",
+      }
     );
   },
   targetLog(

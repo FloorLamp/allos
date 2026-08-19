@@ -48,6 +48,14 @@ export interface GoalProgress {
   // exercise-linked goals set it; body-metric goals (computeBodyGoalProgress)
   // leave it undefined.
   lifetimeBest?: number;
+  // The immediately-prior comparable domain result, when one exists. It is
+  // carried by the gather for semantic transition consumers; progress math does
+  // not infer it from a raw delta.
+  previous?: {
+    pct: number;
+    done: boolean;
+    asOf?: string | null;
+  } | null;
 }
 
 export interface GoalSetRow {

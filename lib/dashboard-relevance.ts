@@ -35,6 +35,22 @@ export type DashboardTiming =
   | { kind: "local-days"; ageDays: number; maxDays: number }
   | { kind: "until-signal"; active: boolean };
 
+export type DashboardTimingDisposition =
+  | { kind: "active" }
+  | { kind: "future-today"; opensAt: number }
+  | { kind: "expired" };
+
+// The owner-ratified reading-promotion registry (#3077 / #3137). A reading may
+// carry `changed` only when it names one of these existing semantic signals.
+// Raw numeric deltas deliberately have no representation here.
+export type DashboardReadingPromotion =
+  | "clinical-non-notable-to-notable"
+  | "weekly-target-transition"
+  | "outcome-goal-transition"
+  | "training-best"
+  | "sleep-arrived"
+  | "nap-ended";
+
 export type DashboardCandidateKind =
   "action" | "reading" | "statement" | "state";
 export type DashboardObligation = "must" | "should" | "may";
@@ -71,6 +87,7 @@ export interface DashboardCandidateBase {
   relevance: DashboardRelevancePolicy;
   timing: DashboardTiming;
   rankReasons: DashboardRankReasons;
+  readingPromotion?: DashboardReadingPromotion;
   standingEligible?: boolean;
   sourceOrder: number;
 }
@@ -90,6 +107,7 @@ export interface DashboardPlacement {
   candidate: DashboardCandidate;
   lane: DashboardLane;
   laneOrder: number;
+  timingDisposition: DashboardTimingDisposition;
   standingFamilyKey?: StandingFamilyKey;
   standingSection?: StandingSectionKey;
 }
@@ -113,25 +131,40 @@ function minuteInWindow(
     : minute >= window.opensAt && minute <= window.closesAt;
 }
 
-export function dashboardTimingActive(
+export function resolveDashboardTiming(
   timing: DashboardTiming,
   minutesOfDay: number
-): boolean {
+): DashboardTimingDisposition {
   switch (timing.kind) {
     case "always":
-      return true;
-    case "local-time":
-      return minuteInWindow(minutesOfDay, timing);
-    case "local-time-windows":
-      return timing.windows.some((window) =>
-        minuteInWindow(minutesOfDay, window)
-      );
+      return { kind: "active" };
+    case "local-time": {
+      if (minuteInWindow(minutesOfDay, timing)) return { kind: "active" };
+      if (minutesOfDay < timing.opensAt)
+        return { kind: "future-today", opensAt: timing.opensAt };
+      return { kind: "expired" };
+    }
+    case "local-time-windows": {
+      if (timing.windows.some((window) => minuteInWindow(minutesOfDay, window)))
+        return { kind: "active" };
+      const laterOpening = timing.windows
+        .map((window) => window.opensAt)
+        .filter((opensAt) => opensAt > minutesOfDay)
+        .sort((a, b) => a - b)[0];
+      return laterOpening == null
+        ? { kind: "expired" }
+        : { kind: "future-today", opensAt: laterOpening };
+    }
     case "since-event":
-      return timing.ageMinutes >= 0 && timing.ageMinutes <= timing.maxMinutes;
+      return timing.ageMinutes >= 0 && timing.ageMinutes <= timing.maxMinutes
+        ? { kind: "active" }
+        : { kind: "expired" };
     case "local-days":
-      return timing.ageDays >= 0 && timing.ageDays <= timing.maxDays;
+      return timing.ageDays >= 0 && timing.ageDays <= timing.maxDays
+        ? { kind: "active" }
+        : { kind: "expired" };
     case "until-signal":
-      return timing.active;
+      return timing.active ? { kind: "active" } : { kind: "expired" };
   }
 }
 
@@ -139,11 +172,14 @@ export function localTimeWindow(
   opensAt: number,
   closesAt: number
 ): DashboardTiming {
+  const opening = Math.max(0, Math.min(1439, opensAt));
+  const rawClose = Math.max(0, closesAt);
+  const closing = rawClose % 1440;
   return {
     kind: "local-time",
-    opensAt: Math.max(0, opensAt),
-    closesAt: Math.min(1439, closesAt),
-    wrapsMidnight: false,
+    opensAt: opening,
+    closesAt: closing,
+    wrapsMidnight: rawClose >= 1440 || closing < opening,
   };
 }
 
@@ -199,6 +235,19 @@ function validateCandidates(candidates: readonly DashboardCandidate[]): void {
       );
     }
     candidateIds.add(candidate.candidateId);
+    if (candidate.kind === "reading") {
+      if (
+        candidate.rankReasons.changed !==
+        (candidate.readingPromotion != null)
+      )
+        throw new Error(
+          `Dashboard reading promotion mismatch: ${candidate.candidateId}`
+        );
+    } else if (candidate.readingPromotion != null) {
+      throw new Error(
+        `Non-reading dashboard promotion: ${candidate.candidateId}`
+      );
+    }
   }
 }
 
@@ -212,18 +261,38 @@ export function rankDashboardCandidates(
   // Validate before applicability so a latent duplicate cannot become live later
   // when profile state, access, or life-stage applicability changes.
   validateCandidates(candidates);
-  const applicable = candidates.filter((candidate) => candidate.applicable);
+  const applicable = candidates
+    .filter((candidate) => candidate.applicable)
+    .map((candidate) => ({
+      candidate,
+      timingDisposition: resolveDashboardTiming(
+        candidate.timing,
+        signals.minutesOfDay
+      ),
+    }));
+  const live = applicable.filter(
+    ({ candidate, timingDisposition }) =>
+      candidate.rankReasons.safety || timingDisposition.kind !== "expired"
+  );
 
-  const rankedNow = applicable
+  const rankedNow = live
     .filter(
-      (candidate) =>
-        candidate.rankReasons.safety ||
-        dashboardTimingActive(candidate.timing, signals.minutesOfDay)
+      ({ candidate, timingDisposition }) =>
+        candidate.rankReasons.safety || timingDisposition.kind === "active"
     )
-    .map((candidate) => ({ candidate, score: nowScore(candidate) }))
+    .map(({ candidate, timingDisposition }) => ({
+      candidate,
+      timingDisposition,
+      score: nowScore(candidate),
+    }))
     .filter(
-      (entry): entry is { candidate: DashboardCandidate; score: number } =>
-        entry.score !== null
+      (
+        entry
+      ): entry is {
+        candidate: DashboardCandidate;
+        timingDisposition: DashboardTimingDisposition;
+        score: number;
+      } => entry.score !== null
     )
     .sort(
       (a, b) =>
@@ -252,19 +321,30 @@ export function rankDashboardCandidates(
     selectedNow.map((entry, index) => [entry.candidate.candidateId, index])
   );
 
-  const remaining = applicable.filter(
-    (candidate) =>
+  const remaining = live.filter(
+    ({ candidate }) =>
       !nowIds.has(candidate.candidateId) && !nowFacts.has(candidate.factKey)
   );
-  const standing = resolveStandingMembers(remaining, signals.activeProfileId);
+  const standing = resolveStandingMembers(
+    remaining
+      .filter(({ timingDisposition }) => timingDisposition.kind === "active")
+      .map(({ candidate }) => candidate),
+    signals.activeProfileId
+  );
+  const dispositionByCandidateId = new Map(
+    live.map(({ candidate, timingDisposition }) => [
+      candidate.candidateId,
+      timingDisposition,
+    ])
+  );
   const everythingFacts = new Set<string>();
   const everything = remaining
     .filter(
-      (candidate) =>
+      ({ candidate }) =>
         !standing.memberIds.has(candidate.candidateId) &&
         !standing.factKeys.has(candidate.factKey)
     )
-    .sort((a, b) => {
+    .sort(({ candidate: a }, { candidate: b }) => {
       const kinds: Record<DashboardCandidateKind, number> = {
         action: 0,
         statement: 1,
@@ -273,29 +353,32 @@ export function rankDashboardCandidates(
       };
       return kinds[a.kind] - kinds[b.kind] || compareSource(a, b);
     })
-    .filter((candidate) => {
+    .filter(({ candidate }) => {
       if (everythingFacts.has(candidate.factKey)) return false;
       everythingFacts.add(candidate.factKey);
       return true;
     });
 
   return [
-    ...selectedNow.map(({ candidate }) => ({
+    ...selectedNow.map(({ candidate, timingDisposition }) => ({
       candidate,
       lane: "now" as const,
       laneOrder: nowOrder.get(candidate.candidateId)!,
+      timingDisposition,
     })),
     ...standing.members.map(({ candidate, family }, laneOrder) => ({
       candidate,
       lane: "standing" as const,
       laneOrder,
+      timingDisposition: dispositionByCandidateId.get(candidate.candidateId)!,
       standingFamilyKey: family.key,
       standingSection: family.section,
     })),
-    ...everything.map((candidate, laneOrder) => ({
+    ...everything.map(({ candidate, timingDisposition }, laneOrder) => ({
       candidate,
       lane: "everything" as const,
       laneOrder,
+      timingDisposition,
     })),
   ];
 }
