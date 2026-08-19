@@ -508,6 +508,11 @@ export const BIOMARKER_PANELS: Record<
     "Stool Ova and Parasites",
     "Stool Red Blood Cells",
     "Stool White Blood Cells",
+    // The modern gut panel (#2787) — inflammation, exocrine pancreatic function,
+    // and the stool infection test a current gut workup actually orders.
+    "Fecal Calprotectin",
+    "Pancreatic Elastase-1, Stool",
+    "H. pylori Stool Antigen",
   ],
   "heavy-metals": ["Lead", "Mercury", "Arsenic", "Aluminum"],
   pfas: [

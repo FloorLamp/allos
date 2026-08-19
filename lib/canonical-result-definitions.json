@@ -4620,6 +4620,42 @@
       "panel": "stool"
     },
     {
+      "name": "Fecal Calprotectin",
+      "category": "lab",
+      "unit": "ug/g",
+      "ref_low": null,
+      "ref_high": 120,
+      "optimal_low": null,
+      "optimal_high": 50,
+      "direction": "lower_better",
+      "note": "Calprotectin in stool — a neutrophil protein that rises with bowel inflammation, used to separate inflammatory bowel disease from irritable bowel syndrome. Under 50 ug/g is normal, 50–120 is a borderline band labs usually repeat, and above 120 is raised. NSAIDs, proton-pump inhibitors and a recent gut infection all push it up.",
+      "panel": "stool"
+    },
+    {
+      "name": "Pancreatic Elastase-1, Stool",
+      "category": "lab",
+      "unit": "ug/g",
+      "ref_low": 100,
+      "ref_high": null,
+      "optimal_low": 200,
+      "optimal_high": null,
+      "direction": "higher_better",
+      "note": "Pancreatic elastase-1 measured in stool — how much digestive enzyme the pancreas is putting out. Low is the abnormal direction: above 200 ug/g is sufficient, 100–200 ug/g indicates moderate exocrine insufficiency, and below 100 ug/g severe. A watery sample dilutes the result and can read falsely low.",
+      "panel": "stool"
+    },
+    {
+      "name": "H. pylori Stool Antigen",
+      "category": "lab",
+      "unit": null,
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Helicobacter pylori antigen in stool, a test for current infection. Qualitative (Positive/Negative). No numeric band. Proton-pump inhibitors, antibiotics and bismuth taken shortly before the sample can turn it falsely negative.",
+      "panel": "stool"
+    },
+    {
       "name": "Atypical Lymphocytes",
       "category": "lab",
       "unit": "%",

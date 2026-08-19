@@ -1666,6 +1666,22 @@
       "description": "White blood cells seen when a stool sample is examined under the microscope. They suggest that diarrhea has an inflammatory or invasive cause, such as certain bacterial infections or inflammatory bowel disease, rather than a purely secretory one."
     },
     {
+      "name": "Fecal Calprotectin",
+      "full_name": "Fecal Calprotectin",
+      "description": "A protein released by white blood cells in the gut wall, measured in a stool sample. It rises when the bowel is inflamed, which is why it is used to separate inflammatory bowel disease from irritable bowel syndrome and to follow how active a known inflammatory bowel disease is. Anti-inflammatory painkillers, acid-reducing medicines and a recent gut infection can raise it too."
+    },
+    {
+      "name": "Pancreatic Elastase-1, Stool",
+      "abbreviation": "PE-1",
+      "full_name": "Pancreatic Elastase-1, Stool",
+      "description": "A digestive enzyme made by the pancreas and measured in a stool sample, used as a stand-in for how much enzyme the pancreas is producing overall. Here a LOW result is the abnormal one: it points to the pancreas not making enough enzyme to digest food properly, which tends to show up as bloating, greasy stools and weight loss. A very watery sample dilutes the result and can read falsely low."
+    },
+    {
+      "name": "H. pylori Stool Antigen",
+      "full_name": "Helicobacter pylori Stool Antigen",
+      "description": "A test for pieces of the bacterium Helicobacter pylori in a stool sample. H. pylori lives in the stomach lining and is a common cause of ulcers and long-running stomach inflammation, and this test reports whether the infection is present now rather than whether someone carried it in the past. Acid-reducing medicines, recent antibiotics and bismuth can make it read negative while the infection is still there."
+    },
+    {
       "name": "Atypical Lymphocytes",
       "full_name": "Atypical (Reactive) Lymphocytes",
       "description": "Lymphocytes that look enlarged or activated under the microscope, reported as a percentage of white blood cells. They are most often a normal immune reaction to a viral infection such as mononucleosis. This is a separate line from the overall lymphocyte percentage, not another way of stating it."
