@@ -1,7 +1,7 @@
 ---
 name: reconcile-tracker
 description: Reconcile the issue tracker and roadmap against main — verify each issue's citations, dependencies and status claims, patch only the factual drift, and flag everything that needs judgment. Use for a scheduled or on-demand tracker maintenance pass, never as a CI gate.
-allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
+allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(npx tsx scripts/orchestration/reconcile-labels.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
 ---
 
 # Tracker reconciliation
@@ -49,6 +49,17 @@ compliance:
 - **Three patch kinds exist and no fourth.** `status-marker`, `cross-ref`,
   `path-refresh`. Anything you want to say that does not fit one of those three
   is a finding, not a patch.
+- **Labels have three ops and a standing exception to "flag, don't judge".**
+  The second writer is `scripts/orchestration/reconcile-labels.ts`. Removing a
+  `RETIRED_LABELS` entry and resetting a priority slot to the priority the
+  issue's own body states are FACTS, and automatic. **Assigning a domain label
+  is a judgment, and the owner has ruled (2026-08-19) that this routine makes
+  it rather than flagging it — asking only when the evidence is genuinely
+  split.** That narrows #865's "judgment calls get FLAGGED, not made" for this
+  one axis and nothing else; every other judgment call is still flagged.
+  Both endpoints it writes through are per-issue LABELS endpoints: DELETE takes
+  no request body, POST takes one built from exactly one field. Neither has a
+  field an issue's state could ride in.
 
 Also, standing: **do not run the write half while another reconciliation or
 triage sweep is in flight.** Duplicate or conflicting edits to a tracker are
@@ -112,6 +123,48 @@ glyph against code. Flip the verified ones with `status-marker` patches; flag
 the rest. (As of 2026-08-12 the tracker has none open — this step is a no-op
 until one appears, which is worth reporting rather than silently skipping.)
 
+### 4b. Label hygiene — judge it, ask only when split
+
+Three findings, and you now settle two of them yourself.
+
+**`retired-label` — automatic.** The writer removes it. A retired label is a
+fact about the taxonomy; it routes nothing. Refused as `would-strand` when it
+is the issue's only domain-ish label, because that trades wrongly-labelled for
+invisible-to-clustering — those land in the domain worksheet instead.
+
+**`priority-slot` — automatic where the body already ruled.** This tracker's
+owner rulings write their verdict in prose ("**Priority dropped P2 → P3.**",
+"Priority unchanged at P2"). When the label contradicts a stated priority, the
+label is what drifted, and `decidePriorityLabel` resets it. It invents nothing:
+a body that states no priority yields `no-stated-priority` and stays a
+question. `parked` and a double-booked slot are never overruled by prose —
+somebody chose those deliberately, so they come back as `slot-contested`.
+
+**`no-domain` — you judge it.** Run the writer with no plan; it prints a
+worksheet ranking what each stranded issue's own citations point at
+(`scoreDomains`). Then decide:
+
+- **One domain clearly leads** — assign it. Write a plan file and apply.
+- **The evidence is split, or points nowhere tracked** — that is the ambiguous
+  case. ASK the owner, with the tally in hand so the question is answerable in
+  one line.
+- **The work is genuinely cross-cutting** — `design` is a real domain and the
+  right answer, not a shrug (`docs/orchestration/dispatch.md`).
+
+The tally is evidence, not a verdict: it cannot know an issue citing `lib/db.ts`
+is really about notifications. Read the issue before trusting it. An add may
+only FILL a gap — the writer refuses `already-classified`, because re-filing
+work that already has a home is an argument, not reconciliation.
+
+Plan shape:
+
+```json
+{ "3051": [{ "label": "wellness", "reason": "protocols and pillars" }] }
+```
+
+The sweep only reads OPEN issues and the writer refuses closed ones: a closed
+issue's labels are historical record, not queue state.
+
 ### 5. Docs contract check
 
 `docs/**` `Status:` lines and README navigation versus shipped reality. The
@@ -152,6 +205,30 @@ npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply
 `plan.json` maps issue number → array of `AnchoredPatch`. Dry-run first,
 always: the dry run re-reads every current body and reports which anchors still
 hold, so you see the refusals before anything is written.
+
+**Never re-run a plan with `--apply` twice.** Several path refreshes contain
+their own anchor inside the replacement (`intake-safety.ts` →
+`lib/queries/upcoming/intake-safety.ts`), so a second pass nests them. A fresh
+gather will not re-propose an applied patch, because the corrected path now
+resolves — so re-gather, never replay.
+
+**Never hand-widen an anchor to force a refusal through.** An
+`anchor-ambiguous` refusal means the basename appears more than once and the
+plan cannot say which; writing a longer context-bearing anchor to get past it
+is exactly the fuzzy fallback the contract forbids. Flag it.
+
+## Applying label changes
+
+```bash
+npx tsx scripts/orchestration/reconcile-labels.ts                    # dry run + worksheet
+npx tsx scripts/orchestration/reconcile-labels.ts --apply            # removals + priority
+npx tsx scripts/orchestration/reconcile-labels.ts --plan p.json --apply   # + your domain calls
+```
+
+It builds the removal and priority work itself from the live tracker, takes
+domain adds only from `--plan`, re-reads each issue immediately before writing,
+and prints one line per write with its refusal reason. Same discipline as the
+applier: dry run first, and never while another sweep is in flight.
 
 ## Scheduling
 

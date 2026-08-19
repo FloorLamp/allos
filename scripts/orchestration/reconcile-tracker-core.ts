@@ -724,6 +724,234 @@ export interface LabelFinding {
   detail: string;
 }
 
+/** One proposed label removal, and why. Removal is the ONLY label op. */
+export interface LabelRemoval {
+  issue: number;
+  label: string;
+  reason: string;
+}
+
+export type LabelRemovalOutcome =
+  { ok: true } | { ok: false; refusal: LabelRemovalRefusal; detail: string };
+
+export type LabelRemovalRefusal =
+  "not-retired" | "not-carried" | "issue-closed" | "would-strand";
+
+/**
+ * Whether one label may be taken off one issue — the whole judgment, as a pure
+ * function over the issue's CURRENT labels.
+ *
+ * Removal of a retired label is a FACT: the taxonomy no longer contains it
+ * (`RETIRED_LABELS`, `docs/orchestration/dispatch.md`), so the label routes
+ * nothing and says nothing. Choosing which domain label an issue should carry
+ * instead is a JUDGMENT — it decides how the issue clusters and who gets
+ * dispatched to it — so this module cannot express it. There is no add op, and
+ * `no-domain` findings stay flagged for a human exactly as before.
+ *
+ * The `would-strand` guard is the one that earns its keep: `lib` is a retired
+ * label that nonetheless satisfies nothing, and stripping it from an issue
+ * carrying no real domain label would move that issue from "wrongly labelled"
+ * to "invisible to clustering" — a hygiene pass making the queue worse.
+ */
+export function decideLabelRemoval(
+  issue: TrackerIssue,
+  label: string
+): LabelRemovalOutcome {
+  if (!(RETIRED_LABELS as readonly string[]).includes(label)) {
+    return {
+      ok: false,
+      refusal: "not-retired",
+      detail: `\`${label}\` is not a retired label; only ${RETIRED_LABELS.join(", ")} may be removed`,
+    };
+  }
+  if (issue.state !== "open") {
+    return {
+      ok: false,
+      refusal: "issue-closed",
+      detail:
+        "the issue is closed — a closed issue's labels are historical record, not queue state",
+    };
+  }
+  if (!issue.labels.includes(label)) {
+    return {
+      ok: false,
+      refusal: "not-carried",
+      detail: `the issue no longer carries \`${label}\` — it drifted since the evidence was gathered`,
+    };
+  }
+  const remaining = issue.labels.filter((l) => l !== label);
+  if (
+    !remaining.some((l) => (DOMAIN_LABELS as readonly string[]).includes(l))
+  ) {
+    return {
+      ok: false,
+      refusal: "would-strand",
+      detail:
+        "removing it would leave no domain label — the issue would become invisible to by-domain clustering",
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Every retired label carried by an open issue, as removals. Derived from the
+ * same snapshot the report is, so the plan cannot name an issue the sweep did
+ * not examine.
+ */
+/**
+ * Which domain a path belongs to, as prefix/substring evidence.
+ *
+ * DELIBERATELY EVIDENCE, NOT A VERDICT. This table cannot know that an issue
+ * citing `lib/db.ts` is really about notifications; it knows only that the
+ * citation points at the db tier. `scoreDomains` therefore returns the whole
+ * ranked tally and the agent half reads it, exactly as it reads a citation set
+ * rather than being handed a conclusion. Entries are ordered most specific
+ * first, and the first match wins so `lib/notifications/digest-data.ts` scores
+ * notifications rather than db.
+ */
+const DOMAIN_EVIDENCE: ReadonlyArray<[RegExp, string]> = [
+  [/^\.github\/workflows\//, "ci"],
+  [/^e2e\//, "e2e"],
+  [/^docs\//, "docs"],
+  [/^lib\/notifications\/|notify-|telegram/, "notifications"],
+  [
+    /^lib\/integrations\/|withings|strava|health-connect|epic|fhir/,
+    "integrations",
+  ],
+  [/^lib\/migrations\/|^lib\/db\.ts$|__db_tests__|migration/, "db"],
+  [/^lib\/reference-range\/|biomarker|lab-|loinc/, "biomarkers"],
+  [/trend-metric|body-metric|waist|weight|measurement/, "body-metrics"],
+  [
+    /^lib\/cda\/|^lib\/medical-|medical-record|preventive|immunization|allergy|condition|encounter|provider/,
+    "medical-passport",
+  ],
+  [/training|activity|workout|lift|exercise/, "training"],
+  [/nutrition|food|protein|meal|recipe/, "nutrition"],
+  [/longevity|protocol|wellness|practice|healthspan|sleep/, "wellness"],
+  [/intake|medication|supplement|dose/, "intake"],
+  [/auth|login|password|session|api-token|redact|security/, "security"],
+  [/mobile|dock|viewport/, "mobile"],
+  [/goal|habit|streak/, "goals"],
+  [/insight|coach|^lib\/ai|recap|digest/, "insights"],
+  [/perf|bench/, "performance"],
+  [/wearable|garmin|oura|fitbit/, "wearable"],
+];
+
+export interface DomainScore {
+  domain: string;
+  hits: number;
+  /** The citations that produced the hits, so a reader can check the tally. */
+  evidence: readonly string[];
+}
+
+/**
+ * Rank the domains an issue's own citations point at, strongest first.
+ *
+ * The tally is over citations that RESOLVE to a tracked file: an issue naming
+ * a module it proposes should not vote on where the issue belongs, for the
+ * same reason a proposed symbol is not drift.
+ */
+export function scoreDomains(
+  issue: TrackerIssue,
+  index: RepoIndex
+): DomainScore[] {
+  const tally = new Map<string, string[]>();
+  for (const citation of parsePathCitations(issue.body)) {
+    const resolved = resolvePath(index, citation.path);
+    if (resolved.kind !== "exact" && resolved.kind !== "suffix") continue;
+    for (const [pattern, domain] of DOMAIN_EVIDENCE) {
+      if (!pattern.test(resolved.file)) continue;
+      const bucket = tally.get(domain) ?? [];
+      if (!bucket.includes(citation.path)) bucket.push(citation.path);
+      tally.set(domain, bucket);
+      break;
+    }
+  }
+  return [...tally.entries()]
+    .map(([domain, evidence]) => ({ domain, hits: evidence.length, evidence }))
+    .sort((a, b) => b.hits - a.hits || a.domain.localeCompare(b.domain));
+}
+
+/**
+ * A priority the BODY states about itself — "Priority dropped P2 → P3",
+ * "Priority unchanged at P2". This tracker's owner rulings write those lines
+ * routinely, which makes a label that contradicts one a FACT that has drifted
+ * rather than a judgment to be made: the owner already ruled, in prose, and the
+ * label did not follow. Where the body states nothing, this returns null and
+ * the slot stays a question for a human.
+ *
+ * An arrow form reports the RIGHT-hand side: "P2 → P3" resolves to P3.
+ */
+export function parseStatedPriority(body: string): string | null {
+  const patterns: RegExp[] = [
+    /\bPriority\b[^.\n]*?\b(P[0-3])\s*(?:→|->)\s*(P[0-3])\b/i,
+    /\bPriority\b[^.\n]*?\b(?:unchanged at|stays|remains|is|:)\s*(P[0-3])\b/i,
+    /\bPriority\b[^.\n]*?\b(?:dropped|raised|lowered|bumped)\s*(?:to)?\s*(P[0-3])\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(body);
+    if (!match) continue;
+    // The last captured group is the resulting priority in every form above.
+    const groups = match.slice(1).filter(Boolean);
+    return groups[groups.length - 1]!.toUpperCase();
+  }
+  return null;
+}
+
+export type PriorityOutcome =
+  | { ok: true; from: string | null; to: string }
+  | {
+      ok: false;
+      refusal:
+        | "no-stated-priority"
+        | "already-correct"
+        | "issue-closed"
+        | "slot-contested";
+    };
+
+/**
+ * Reconcile an issue's priority-slot label against the priority its own body
+ * states. Purely factual: it never invents a priority, it only makes the label
+ * agree with a ruling already written down.
+ */
+export function decidePriorityLabel(issue: TrackerIssue): PriorityOutcome {
+  if (issue.state !== "open") return { ok: false, refusal: "issue-closed" };
+  const stated = parseStatedPriority(issue.body);
+  if (stated === null) return { ok: false, refusal: "no-stated-priority" };
+  const slots = issue.labels.filter((l) =>
+    (PRIORITY_SLOT_LABELS as readonly string[]).includes(l)
+  );
+  // Two slots plus a stated priority is a contradiction a human should see:
+  // somebody parked this deliberately, and prose cannot outrank that.
+  if (slots.length > 1) return { ok: false, refusal: "slot-contested" };
+  if (slots.length === 1 && slots[0] === stated) {
+    return { ok: false, refusal: "already-correct" };
+  }
+  if (slots.length === 1 && slots[0] === "parked") {
+    return { ok: false, refusal: "slot-contested" };
+  }
+  return { ok: true, from: slots[0] ?? null, to: stated };
+}
+
+export function planLabelRemovals(
+  issues: readonly TrackerIssue[]
+): LabelRemoval[] {
+  const out: LabelRemoval[] = [];
+  for (const issue of issues) {
+    if (issue.state !== "open") continue;
+    for (const label of issue.labels) {
+      if (!(RETIRED_LABELS as readonly string[]).includes(label)) continue;
+      if (!decideLabelRemoval(issue, label).ok) continue;
+      out.push({
+        issue: issue.number,
+        label,
+        reason: `\`${label}\` was retired 2026-08-15 and routes nothing`,
+      });
+    }
+  }
+  return out;
+}
+
 export function checkLabelHygiene(
   issues: readonly TrackerIssue[]
 ): LabelFinding[] {
