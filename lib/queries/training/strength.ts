@@ -24,9 +24,15 @@ import {
   movementLoadKey,
   resolveBodyweightKind,
 } from "../../lifts";
-import type { WeightUnit } from "../../settings";
+import { getProfileSex, type WeightUnit } from "../../settings";
 import { estimate1RM } from "../../strength";
 import { contradictsFreeWeightStandard } from "../../equipment-availability";
+import { shiftDateStr } from "../../date";
+import {
+  strengthLadderRows,
+  type StrengthLadderRow,
+} from "../../strength-ladder";
+import { getLatestBodyMetric } from "../metrics";
 import { cache, loadWeightsAsc, recentWindowStart } from "./common";
 
 export interface RecentSession {
@@ -647,6 +653,23 @@ export function getExerciseSetCountsSince(
 // strength-progression chart keeps its movement-wide series until that surface can
 // render labeled load contexts; the SQL scan and per-set math are identical either
 // way (one computation, one grouping choice).
+//
+// `opts.freeWeightOnly` (#3132) adds the EQUIPMENT-CATEGORY axis to what the series
+// is allowed to fold: with it, a set whose implement contradicts a free-weight
+// population standard (`contradictsFreeWeightStandard`, #2326) contributes no point,
+// exactly as it contributes nothing to `ExerciseStat.freeWeightE1rmKg`. It is the
+// SAME per-set question asked of the same history, not a second rule: a day backed
+// only by machine sets yields no point at all, and a movement backed only by machine
+// sets yields no series — which is the honest answer, since a barbell table has
+// nothing to say about either.
+//
+// OPT-IN, because the two lanes answer different questions. Plateau detection and the
+// Trends progression chart want the lifter's real e1RM history, machine included: a
+// machine press is a real set and a real plateau. The standards ladder wants the lane
+// it can score, and it must place BOTH of its dots from that one lane — a current dot
+// read from `freeWeightE1rmKg` against a prior read from the blended series compared
+// two different measurements and manufactured both a spurious regression and a masked
+// PR (#3132).
 export interface E1rmSeriesRow {
   exercise: string;
   // The load context this series belongs to when grouped by it — the registry
@@ -660,14 +683,18 @@ export function getExerciseE1rmSeries(
   profileId: number,
   since?: string,
   until?: string,
-  opts: { byLoadContext?: boolean } = {}
+  opts: { byLoadContext?: boolean; freeWeightOnly?: boolean } = {}
 ): E1rmSeriesRow[] {
   const byLoadContext = opts.byLoadContext === true;
+  const freeWeightOnly = opts.freeWeightOnly === true;
   const rows = db
     .prepare(
       `SELECT s.exercise, a.date,
               s.weight_kg, s.reps, s.weight_kg_right, s.reps_right,
-              s.equipment_id AS equipmentId, eq.name AS equipment
+              s.equipment_id AS equipmentId, eq.name AS equipment,
+              -- …and the implement's CATEGORY, the axis a free-weight-restricted
+              -- series reads (#2326/#3132). Always selected; only read when asked for.
+              eq.category AS equipmentCategory
          FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
          LEFT JOIN equipment eq ON eq.id = s.equipment_id
         WHERE a.profile_id = ? AND (s.reps IS NOT NULL OR s.reps_right IS NOT NULL)
@@ -691,6 +718,7 @@ export function getExerciseE1rmSeries(
     reps_right: number | null;
     equipmentId: number | null;
     equipment: string | null;
+    equipmentCategory: string | null;
   }[];
 
   const weights = loadWeightsAsc(profileId);
@@ -706,6 +734,13 @@ export function getExerciseE1rmSeries(
     }
   >();
   for (const r of rows) {
+    // Does THIS set's own implement rule it out of a free-weight comparison (#2326)?
+    // Asked per set, exactly as getStrengthByExercise asks it for freeWeightE1rmKg —
+    // a name's history routinely mixes implements, and the row knows something the
+    // name does not. Skipped outright rather than zeroed, so a machine-only day
+    // contributes no point instead of a point the standards table can't read (#3132).
+    if (freeWeightOnly && contradictsFreeWeightStandard(r.equipmentCategory))
+      continue;
     // Canonical, variant-collapsed key so a lift's variants merge into ONE series
     // exactly as getStrengthByExercise aggregates them (#331/#432) — plus the
     // equipment lane when the caller asked for load contexts (#1610).
@@ -1159,3 +1194,40 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     })
     .sort((a, b) => b.e1rmKg - a.e1rmKg);
 });
+
+// The Overview strength-standards ladder's rows (#3089), assembled here rather than
+// in the page so BOTH of its dots are read from ONE measurement lane and that choice
+// is provable (#3132).
+//
+// The current dot is `freeWeightE1rmKg` — a machine-backed set states nothing against
+// a barbell population table (#2326) — so the prior dot has to come from the SAME
+// free-weight-restricted history. Reading it from the unfiltered series compared two
+// different measurements: it placed a prior standing bands above a lifter's real
+// free-weight standing (a regression they never had), and the inflated prior held
+// `moved` false so a genuine free-weight PR lost its "· PR" suffix and its place in
+// the movement sort.
+//
+// `PRIOR_WINDOW_DAYS` back is "about 90 days ago" as the ladder labels it. A lift
+// with no free-weight point that old simply gets no prior dot — the one-dot state the
+// Longevity pillar already renders.
+const PRIOR_WINDOW_DAYS = 90;
+export function getStrengthLadder(
+  profileId: number,
+  todayStr: string
+): StrengthLadderRow[] {
+  const series = new Map(
+    getExerciseE1rmSeries(profileId, undefined, undefined, {
+      freeWeightOnly: true,
+    }).map((row) => [exerciseHistoryKey(row.exercise), row])
+  );
+  return strengthLadderRows(
+    getStrengthByExercise(profileId).map((stat) => ({
+      exercise: stat.exercise,
+      currentE1rmKg: stat.freeWeightE1rmKg,
+      points: series.get(exerciseHistoryKey(stat.exercise))?.points ?? [],
+    })),
+    shiftDateStr(todayStr, -PRIOR_WINDOW_DAYS),
+    getProfileSex(profileId),
+    getLatestBodyMetric(profileId, "weight")
+  );
+}
