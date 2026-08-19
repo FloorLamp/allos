@@ -1,6 +1,6 @@
 // Pure shapes + formatters for the illness-episode view (issue #801). NO DB/network
 // imports, so these are unit-tested in lib/__tests__ and shared by EVERY surface
-// (timeline card, dashboard illness hero, Household page "sick day" chip, share/print) —
+// (timeline card, dashboard illness Now group, Household page "sick day" chip, share/print) —
 // the one-question-one-computation discipline (#221). The DB gather that fills an
 // `AssembledEpisode` lives in lib/illness-episode.ts; this module never touches the DB.
 //

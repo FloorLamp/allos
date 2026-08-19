@@ -62,10 +62,10 @@ import {
   rileyProfileId,
 } from "./common";
 
-// ── Illness hero, situation-aware coaching, caregiver + visit history ──
+// ── Illness Now group, situation-aware coaching, caregiver + visit history ──
 export function seedIllness(): void {
-  // ── Illness hero fixtures (#858) ──────────────────────────────────────────────
-  // Dedicated logins/profiles for the illness hero so its mutations (collapse state, a
+  // ── Illness Now group fixtures (#858) ──────────────────────────────────────────────
+  // Dedicated logins/profiles for the illness Now group so its mutations (collapse state, a
   // cross-profile dose/temp) never touch the shared admin session (profile 1's live
   // episode) — repeat-safe under CI's --repeat-each=3. The DB is reset each webServer
   // boot, so these inserts don't accumulate across boots; the episode row is DELETE'd
@@ -277,7 +277,7 @@ export function seedIllness(): void {
 
   // ── Situation-aware coaching fixture (#837 / #662 item 1) ─────────────────────
   // A dedicated sick profile WITH training history + one situational supplement, so the
-  // dashboard coaching widget shows the illness HELD note (coaching has gap nags to hold,
+  // dashboard coaching atom shows the illness HELD note (coaching has gap nags to hold,
   // not the empty state) and the Nutrition → Supplements situations bar shows the
   // "1 situational item now active" activation acknowledgment. Read-only in the specs, so
   // it stays repeat-safe and never perturbs the other sick fixtures' cockpit assertions.
@@ -383,7 +383,7 @@ export function seedIllness(): void {
   grantProfile(careLoginId, sickKidBId);
 
   console.log(
-    `e2e: seeded illness-hero fixtures — sick self ${sickSelfId}, sick kids ${sickKidAId}/${sickKidBId}, caregiver ${careLoginId} (#858)`
+    `e2e: seeded illness-now-group fixtures — sick self ${sickSelfId}, sick kids ${sickKidAId}/${sickKidBId}, caregiver ${careLoginId} (#858)`
   );
 
   // ── Household-rollup + illness-episode caregiver fixtures (#868 census hardening) ──

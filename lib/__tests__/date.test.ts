@@ -363,7 +363,7 @@ describe("ageInMonthsExact (issue #405 — fractional growth-chart age)", () => 
 });
 
 // The canonical age-in-months POLICY (issue #310), shared by the schedule engines,
-// the dashboard immunizations widget, and the immunization pages so every surface
+// the dashboard immunization placement, and the immunization pages so every surface
 // agrees which vaccines are due. This is the ONE computation those four sites now
 // route through.
 describe("ageMonthsFrom (canonical age-in-months policy)", () => {

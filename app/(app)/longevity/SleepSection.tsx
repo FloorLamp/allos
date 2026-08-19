@@ -16,7 +16,7 @@ import PillarStat from "./PillarStat";
 // computation (lib/sleep-regularity via the lib/queries/sleep seam — the same
 // numbers Trends → Overview → body census and the weekly recap render), expanded with the timing
 // spread, the travel insight, and the rolling trend. The headline stat is the
-// SAME Pillar object the dashboard widget renders.
+// SAME Pillar object the dashboard presentation renders.
 export default async function SleepSection({
   section,
 }: {

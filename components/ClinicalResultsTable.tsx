@@ -155,7 +155,7 @@ function nameCell(r: {
 // "2 months ago", and a "Source document" link. On a card that is three stacked
 // lines under one DATE label, two of which say the same thing and one of which is
 // not a date at all. The age is the shared compact formatter now (#1216, via
-// lib/reading-date-line) so this row and the dashboard's recent-labs widget round
+// lib/reading-date-line) so this row and the dashboard's clinical-result readout round
 // into the same buckets, the over-a-year amber treatment and its title ride on the
 // AGE token (the age is what went stale), and the provenance link moved to the row's
 // ⋯ menu, which is what that menu is for. Older readings in a run still omit the age.

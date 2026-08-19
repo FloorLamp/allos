@@ -273,7 +273,7 @@ with no band is a judgment with no visible basis. `MedicalValue` gains
 `showFlagLabel`, which renders `flagLabel` visibly **instead of** the `sr-only` span
 (never both — the severity is announced once), decided by
 `medicalValueFlagText`/`medicalValueCaret` in `lib/medical-value.ts`. The biomarkers
-table and `/results/clinical-results/view`'s readings table adopt it, and `RecentLabsWidget`
+table and `/results/clinical-results/view`'s readings table adopt it, and `RecentLabReadout`
 migrates onto it and drops the parallel label #1220 built beside the component. The
 other `MedicalValue` call sites — Timeline, Passport, ExtractedObservations,
 BiomarkerScale, the Longevity section, the import preview — keep the `sr-only` label

@@ -1,6 +1,6 @@
 // Pure formatters for the PRN redose notice (#798) — no DB/network, unit-tested in
 // lib/__tests__/redose-format.test.ts. Shared by the notify orchestrator (the
-// Telegram/push body) and the on-page surfacing (the med card + dashboard widget), so
+// Telegram/push body) and the on-page surfacing (the med card + dashboard presentation), so
 // every surface phrases the SAME redose state identically ("one question, one
 // computation"). INFORMATIONAL only: the copy states elapsed time against the user's
 // OWN confirmed numbers — never "you can take more".
@@ -103,7 +103,7 @@ export function redoseNoticeMessage(input: {
   };
 }
 
-// The marker-agnostic status line for the med card / dashboard widget, or null when
+// The marker-agnostic status line for the med card / dashboard presentation, or null when
 // there's nothing useful to say (nothing logged today). Never permissive — it reports
 // window state and the running count, deferring to the user's judgment:
 //   • at the confirmed max → "Max reached · 4 of 4 today"

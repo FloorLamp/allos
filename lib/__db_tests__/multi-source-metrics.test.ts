@@ -27,7 +27,6 @@ import {
   getBodyMetricDailySeries,
   getBodyMetricSeriesBySource,
   getBodyMetricSeriesBySourceInRange,
-  getDashboardStats,
   getHrDailySummary,
   getLatestBodyMetricDated,
   getMetricDailyTotals,
@@ -594,11 +593,10 @@ describe("single-value + series reads honor the primary source", () => {
   });
 });
 
-describe("getDashboardStats — Current weight honors the primary source (#302)", () => {
+describe("getLatestBodyMetricDated — Current weight honors the primary source (#302)", () => {
   // The exact cross-surface disagreement from the issue: a configured primary
-  // weight source plus a LATER manual weigh-in. The dashboard stat must show the
-  // primary source's reading (like the passport/goals/strength surfaces), not the
-  // newer manual one — routed through getLatestBodyMetricDated, not a raw query.
+  // weight source plus a LATER manual weigh-in. The canonical reader must show the
+  // primary source's reading, not the newer manual one.
   const HC_DATE = "2024-03-01"; // primary source, earlier
   const MANUAL_DATE = "2024-03-05"; // manual quick-add, later
 
@@ -615,7 +613,7 @@ describe("getDashboardStats — Current weight honors the primary source (#302)"
   });
 
   it("without a primary source, the stat is the newest reading of any source", () => {
-    expect(getDashboardStats(profileId).latestWeight).toEqual({
+    expect(getLatestBodyMetricDated(profileId, "weight")).toEqual({
       value: 85,
       date: MANUAL_DATE,
     });
@@ -623,14 +621,10 @@ describe("getDashboardStats — Current weight honors the primary source (#302)"
 
   it("with a primary source set, the stat follows it even though it is older", () => {
     setMetricSourcePriorityEntry(profileId, "weight", "health-connect");
-    expect(getDashboardStats(profileId).latestWeight).toEqual({
+    expect(getLatestBodyMetricDated(profileId, "weight")).toEqual({
       value: 80,
       date: HC_DATE,
     });
-    // And it agrees with the canonical reader every other surface uses.
-    expect(getLatestBodyMetricDated(profileId, "weight")).toEqual(
-      getDashboardStats(profileId).latestWeight
-    );
   });
 });
 

@@ -307,7 +307,7 @@ function goalHits(profileId: number, like: string): SearchHit[] {
     subtitle: r.category ? `${r.category} · ${r.status}` : r.status,
     // The Goals tab, not the Training hub's default Log tab (#1568) — `goals` is
     // the tab vocabulary's own id (lib/training-tabs.ts), the same deep link the
-    // dashboard widget and the goal-pacing finding use.
+    // dashboard presentation and the goal-pacing finding use.
     href: "/training?tab=goals",
     date: null,
   }));

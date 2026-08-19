@@ -30,7 +30,7 @@ export interface StandingReadingFamily {
           | "buildPillars"
           | "recentLabHighlights"
           | "outcome-goal-source"
-          | "summarizeDashboardHabits";
+          | "orderDashboardHabits";
       };
   cap?: number;
 }
@@ -204,7 +204,7 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     // rather than a loose fact: it celebrates the transition in Now and, once
     // that decays, /training owns it (#3186).
     matches: idStartsWith("target.weekly-progress:"),
-    memberOrder: { kind: "source", authority: "summarizeDashboardHabits" },
+    memberOrder: { kind: "source", authority: "orderDashboardHabits" },
     cap: 4,
   },
 ] as const;

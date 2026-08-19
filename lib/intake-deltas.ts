@@ -13,7 +13,7 @@
 //   RESUMED        — taken again after a miss run long enough to have been a lapse.
 //
 // ONE computation, formatted by every digest channel (#221): the Telegram morning
-// digest, the weekly recap (Telegram + the dashboard recap widget), and the
+// digest, the weekly recap (Telegram + the dashboard recap atoms), and the
 // household card all render `classifyIntakeDeltas` through `intakeDeltaLine`. No
 // channel computes its own variant, and no channel invents news — a quiet window
 // produces no deltas, `intakeDeltaLine` returns null, and the line is omitted.

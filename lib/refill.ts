@@ -106,7 +106,7 @@ export function isLowSupply(
 // its history-aware taken-log rate, or the schedule-count fallback baked into
 // getRefillRates — dropping to `fallbackDosesPerDay` only when the item has no
 // rate at all (e.g. quantity tracked but no doses and no history). The intake surfaces
-// row badge and the dashboard Low-supply widget both format over this, so they
+// row badge and the dashboard low-supply placement both format over this, so they
 // can never disagree about how long an item lasts ("one question, one
 // computation": lib/refill is the engine, surfaces are formatters).
 export function daysOfSupplyForItem(
@@ -282,7 +282,7 @@ export interface RefillTrackedItem {
   qty_per_dose: number;
 }
 
-// One item flagged as running low, for the dashboard widget.
+// One item flagged as running low, for the dashboard presentation.
 export interface LowSupplyItem {
   id: number;
   name: string;
@@ -290,7 +290,7 @@ export interface LowSupplyItem {
   daysLeft: number;
 }
 
-// The dashboard Low-supply widget's list — a PURE formatter over the shared
+// The dashboard low-supply placement's list — a PURE formatter over the shared
 // getRefillRates rates (issue #301), so it agrees with the intake surface badge,
 // Upcoming, and the Telegram nudge instead of hand-rolling a schedule-count
 // rate from the raw dose-row count (the deprecated method the header warns

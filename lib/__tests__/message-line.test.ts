@@ -360,7 +360,7 @@ const ALLOW: { module: string; includes: string; why: string }[] = [
   {
     module: "lib/recap.ts",
     includes: "parts.length > 0 ? parts.join(",
-    why: "recapLineAnnotation renders the recap CARD's annotation run — a styled <span> beside the value in a dashboard widget, not a message line. It takes its part ORDER from messageLineQualifiers over recapMessageLine, so the card and the Telegram recap can never order or select a line's qualifiers differently (#221); the message itself is composed by formatMessageLine in renderRecapMessage.",
+    why: "recapLineAnnotation renders the recap CARD's annotation run — a styled <span> beside the value in a dashboard presentation, not a message line. It takes its part ORDER from messageLineQualifiers over recapMessageLine, so the card and the Telegram recap can never order or select a line's qualifiers differently (#221); the message itself is composed by formatMessageLine in renderRecapMessage.",
   },
   {
     module: "lib/recap.ts",

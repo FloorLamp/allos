@@ -1780,9 +1780,9 @@ export function getPrnOverMaxItems(
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// One PRN med surfaced for one-tap logging (dashboard widget + med card): its id,
+// One PRN med surfaced for one-tap logging (dashboard presentation + med card): its id,
 // name, and today's administration count + latest intake time. Since #798 it also
-// carries the confirmed redose interval/max (null when not configured) so the widget
+// carries the confirmed redose interval/max (null when not configured) so each surface
 // can render a marker-agnostic "redose open / next in ~Xh" status line without a
 // second query (the same window math the notice uses, via redoseWindowStatus).
 // Since #1027 it ALSO carries the ingredient-FAMILY counters — the combined count,
@@ -1806,17 +1806,17 @@ export interface PrnMedForQuickLog {
   familyMaxDailyCount: number | null;
   // The family's amount-aware day exposure (#1854) from the ONE family gather —
   // null when no ceiling is confirmed. Feeds prnQuickLogRedoseStatus so the
-  // widget/card/Telegram "N of M" line reads milligrams when they're known.
+  // quick-log/card/Telegram "N of M" line reads milligrams when they're known.
   familyExposure: PrnDayExposure | null;
   // Number of active items in the ingredient family (1 for a solo item) — lets the
-  // widget note that the counters span sibling items.
+  // quick-log content note that the counters span sibling items.
   familyMemberCount: number;
 }
 
-// Active PRN (as-needed) medications for the quick-log widget, each with today's
+// Active PRN (as-needed) medications for the shared quick-log content, each with today's
 // administration count + latest intake time. Recently-used float to the top (most
-// recent last-administration first — the widget's "recently-used" ordering), then
-// alphabetical. One profile-scoped read so the widget and any other surface agree;
+// recent last-administration first — the quick-log content's ordering), then
+// alphabetical. One profile-scoped read so every surface agrees;
 // the #1027 family counters are overlaid from the ONE getMedicationFamilyStates
 // gather so every redose surface widens identically.
 export function getPrnMedicationsForQuickLog(

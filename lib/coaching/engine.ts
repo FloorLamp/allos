@@ -51,7 +51,7 @@ import {
 //
 // A deterministic (no-AI) "one clear thing to do today" recommender. It ranks a
 // small set of independently-derived recommendations and returns them
-// highest-priority first, so the dashboard widget shows the top one (and can
+// highest-priority first, so the dashboard presentation shows the top one (and can
 // show a secondary), and the Training overview's next-workout card renders the
 // top one — now recovery-aware.
 //
@@ -97,7 +97,7 @@ export interface Recommendation {
   // ordinary training/rest recs whose `detail` already stands alone.
   reasons?: Reason[];
   // Calm context lines riding ALONGSIDE the recommendation (issues #666/#838), carried on
-  // the ONE model so every surface (Training-overview card, dashboard widget, Telegram)
+  // the ONE model so every surface (Training-overview card, dashboard presentation, Telegram)
   // renders the same text (#221): active-injury exclusion disclosures ("Avoiding Chest
   // (right shoulder injury)") and curated condition consideration notes. Informational —
   // the recommendation itself is unchanged. Absent when there's no injury/condition
@@ -291,7 +291,7 @@ export interface CoachingInput {
   considerations?: ConditionConsideration[];
   // The plan-aware cardio ARM for the soonest active endurance plan (#839) — pre-computed
   // by the gather (which applies the illness pause, #837). Threaded through so the
-  // dashboard widget + Telegram render the same note the Training overview does. Absent /
+  // dashboard presentation + Telegram render the same note the Training overview does. Absent /
   // null ⇒ no active plan (or held by illness).
   endurancePlanArm?: EnduranceArm | null;
   // Weather context (#1724) — today's conditions plus the profile's own revealed
@@ -1106,7 +1106,7 @@ function trainingRecommendations(
   tu: TemperatureUnit
 ): Recommendation[] {
   const recs = nw.items.map((item) => formatWorkoutItem(item, nw, today, wu));
-  // Calm context notes (#666/#838) ride on the TOP training rec so the dashboard widget
+  // Calm context notes (#666/#838) ride on the TOP training rec so the dashboard presentation
   // and Telegram render the same disclosure/consideration text the Training overview does
   // (one computation, #221). Attached only to the lead card to avoid duplication.
   const notes = contextNotes(nw, tu);

@@ -15,7 +15,7 @@ import { bioAgeDelta } from "@/lib/bio-age";
 import type { CanonicalResultDefinition } from "@/lib/types";
 
 // The Longevity page is the EXPANDED formatter over the SAME pillar model the
-// dashboard widget compact-renders (#1042 phase 4, the #221 one-model-two-
+// dashboard presentation compact-renders (#1042 phase 4, the #221 one-model-two-
 // formatters precedent). These tests pin that for one fixture model, both
 // surfaces carry identical facts: the widget renders buildPillars' output
 // directly, and the page's sections are a pure regrouping of the SAME objects —

@@ -126,7 +126,7 @@ in.").
 
 Write like a family member, not a chart. Everyday household language leads:
 "meds" over "medications" in headlines and buttons, conversational prompts over
-clinical labels (the dashboard PRN widget is `"Log a dose"`, not "Log a PRN
+clinical labels (the PRN quick-log content says `"Log a dose"`, not "Log a PRN
 dose").
 
 Two bounded exceptions:

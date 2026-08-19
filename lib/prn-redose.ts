@@ -253,7 +253,7 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 }
 
 // A marker-AGNOSTIC redose status for the always-on SURFACING paths (the med card,
-// the dashboard PRN widget) — unlike redoseNoticeDecision, this ignores the one-shot
+// the shared PRN quick-log content) — unlike redoseNoticeDecision, this ignores the one-shot
 // notification marker, because a card should always show the current window state, not
 // go silent after the notice fired. Returns null when nothing has been logged yet
 // (no window to describe). The interval/max are the item's confirmed numbers.

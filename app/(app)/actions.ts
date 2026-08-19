@@ -6,7 +6,7 @@ import {
   requireSession,
   requireWriteAccess,
 } from "@/lib/auth";
-import { setIllnessHeroUi } from "@/lib/settings";
+import { setIllnessNowUi } from "@/lib/settings";
 import { dismissRecentlyResolvedEpisode } from "@/lib/recently-resolved";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -54,17 +54,17 @@ export type UsualRoutineResult =
     }
   | { ok: false; error: string };
 
-// Persist the acting profile's illness-hero collapse/expand state (issue #858): whether
+// Persist the acting profile's illness Now-group collapse/expand state (issue #858): whether
 // its own cockpit is collapsed to the one-line headline and which OTHER accessible
 // profile's accordion is expanded. It is gated on the active profile's write access
 // and stored under it. No
 // revalidation — the client already reflects the toggle; this only survives a reload.
-export async function saveIllnessHeroState(
+export async function saveIllnessNowState(
   collapsedActive: boolean,
   openOtherKey: string | null
 ) {
   const { profile } = await requireWriteAccess();
-  setIllnessHeroUi(profile.id, {
+  setIllnessNowUi(profile.id, {
     collapsedActive: collapsedActive === true,
     openOtherKey:
       typeof openOtherKey === "string" && openOtherKey.length > 0
@@ -101,7 +101,7 @@ export async function dismissRecentlyResolved(episodeId: number) {
   revalidateRoute("/");
 }
 
-// "Snooze" on the dashboard Coaching widget (findings bus, #39; renamed from "Not
+// "Snooze" on the dashboard coaching atom (findings bus, #39; renamed from "Not
 // today" in #1150 so it doesn't read as a "I'll rest" stance next to "Training
 // anyway"): snooze the top recommendation until tomorrow through the shared
 // suppression store, so the next-ranked recommendation surfaces for the rest of the
@@ -157,9 +157,9 @@ export async function dismissCoachingObservation(formData: FormData) {
   revalidateRoute("/");
 }
 
-// The Data quality widget's dismiss (#1045/#1219 nit): TODAY it shares the
+// The Data quality atom's dismiss (#1045/#1219 nit): TODAY it shares the
 // coaching-observation core above — the `data-quality:` keys ride the same bus and
-// pass the same prefix guard — but the two widgets get distinct named actions so
+// pass the same prefix guard — but the two atoms get distinct named actions so
 // they can diverge safely (a data-quality-only behavior change must never silently
 // alter the coaching rollup's dismiss, and vice versa). Same gate: requireWriteAccess
 // inside the delegate.

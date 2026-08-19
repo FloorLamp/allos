@@ -1416,9 +1416,9 @@ The same inference feeds the calm "usually a session day" note on the
 protocol/practice cards (rendered surfaces, quiet without a pattern), and the
 nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice.
 **Every one-tap practice log now records what it shows (#2204, owner ruling).** The
-inline duration stepper is on all four practice affordances — the quick-log
-sheet, the Wellness card, the protocol detail card, and the dashboard's
-Active-protocols widget — each rendering `practiceDurationPrefill` over the
+inline duration stepper is on all three practice affordances — the quick-log
+sheet, the Wellness card, and the protocol detail card — each rendering
+`practiceDurationPrefill` over the
 practice's last LOGGED session. `LogPracticeButton` routes the stepper's render
 and the tap's write through ONE `stepperShown` expression, so no surface can
 post a duration that is not on screen. The expanded modal survives where it
@@ -1961,10 +1961,10 @@ mixed-scope Notifications model. It renders as a third select on the recap row's
 `day-time` control, because it is the same consent as the day and the time: one
 slot, one arrival.
 
-**The dashboard card** follows the setting — the same gather drives card and send
-(#221's identical-numbers invariant), the card on the **in-progress** period and
-the send on the one that **closed**. The persisted widget id stays `weekly-recap`;
-renaming it would silently un-place every saved dashboard layout.
+**Dashboard recap atoms** follow the setting — the same gather drives dashboard
+and send (#221's identical-numbers invariant), the dashboard on the **in-progress**
+period and the send on the one that **closed**. `weekly-recap` remains the stable
+presentation selector; there is no saved dashboard layout.
 
 **Not a fourth cadence.** The annual retrospective (#2179) is a member of
 `RECAP_SCALES` — it is the same engine over a longer window — and deliberately

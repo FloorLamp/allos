@@ -2,14 +2,14 @@
 //
 // Practices are dated one-tap logs against a weekly min–max RANGE. Every other
 // surface already answers "how am I doing THIS week" (the /wellness card, the
-// Goals-and-habits widget, Upcoming, the Telegram nudge); nothing answered "how
+// goal/habit atoms, Upcoming, the Telegram nudge); nothing answered "how
 // consistent has this actually been". This module owns the decisions that second
 // question needs, so they are unit-tested rather than inlined on a Server
 // Component — and, critically, so they FORMAT the practice domain's existing
 // verdicts instead of re-deriving them (#221).
 //
 // The one computation it formats is `frequencyRangeState` from lib/practice.ts —
-// the same function the card, the widget, Upcoming and the nudge key on. A
+// the same function the card, the atoms, Upcoming and the nudge key on. A
 // COMPLETED week is simply that state evaluated with the week fully elapsed, so a
 // week the card called "met" can never read "under floor" here.
 //

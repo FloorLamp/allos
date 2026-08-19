@@ -706,7 +706,7 @@ export interface PracticeTrend {
 //     question the app had already answered.
 //   • The verdict per week is `practiceWeekVerdict`, which is
 //     `frequencyRangeState` with the week fully elapsed — the same computation the
-//     /wellness card, the Goals-and-habits widget, Upcoming and the Telegram nudge
+//     /wellness card, the goal/habit atoms, Upcoming and the Telegram nudge
 //     key on. Trends formats those decisions; it never makes its own.
 //
 // TRACKED only: a practice with no weekly cadence has no floor and no ceiling, so

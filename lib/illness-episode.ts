@@ -3,7 +3,7 @@
 // re-derived here), this gathers every ingredient of the illness story — per-symptom
 // severity series, the temperature/fever curve (#800), PRN administrations with their
 // snapshotted amounts (#797), and the conditions bridged from the range — into ONE
-// `AssembledEpisode`. EVERY surface (timeline card, dashboard illness hero, Household
+// `AssembledEpisode`. EVERY surface (timeline card, dashboard illness Now group, Household
 // page "sick day" chip, share/print page) formats over this result; there is
 // no second episode engine (#221). The pure shapes + formatters live in
 // lib/illness-episode-format.ts; this module owns only the DB gather.
@@ -425,7 +425,7 @@ export function episodeForProfileSituationDate(
 }
 
 // The profile's CURRENT open illness episode (containing today), assembled — or null
-// when not currently sick. The illness hero's cross-profile accordion + the Household
+// when not currently sick. The illness Now group's cross-profile accordion + the Household
 // page "sick day" chip key on this.
 export function currentEpisodeForProfile(
   profileId: number
@@ -462,7 +462,7 @@ function assembleCurrentEpisode(
 }
 
 // The profile's open episode ROW (containing today), assembled — WITHOUT the
-// has-a-signal gate, so the illness hero's ACTIVE cockpit (issue #858) appears the
+// has-a-signal gate, so the illness Now group's ACTIVE cockpit (issue #858) appears the
 // instant the illness situation is activated, before the first symptom/temp is logged
 // (the #843 door-A flow, which needs the logging surface visible immediately). An open
 // row exists whenever the situation is active (syncOpenIllnessEpisode opens it), so this
@@ -478,7 +478,7 @@ export function openEpisodeForProfile(
 }
 
 // openEpisodeForProfile over an already-gathered state row (#2115), for the acting
-// profile's own hero cockpit — same ungated rule, no second SELECT.
+// profile's own illness Now cockpit — same ungated rule, no second SELECT.
 export function openEpisodeFromState(
   state: ProfileEpisodeState
 ): AssembledEpisode | null {

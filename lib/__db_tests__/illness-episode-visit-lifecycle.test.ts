@@ -188,7 +188,7 @@ describe("recently-resolved reopen eligibility (#1140 Part A)", () => {
     expect(reopenEligibleEpisodeForProfile(q)).toBeNull();
   });
 
-  it("hides the affordance when the same situation is open again (a hero cockpit)", () => {
+  it("hides the affordance when the same situation is open again (an illness Now cockpit)", () => {
     const p = newProfile("Relapse");
     createEpisodeRow(
       p,

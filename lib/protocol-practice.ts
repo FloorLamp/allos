@@ -18,7 +18,7 @@ const PRACTICE_TYPE_LABELS: Record<string, string> = {
 
 // The human "<label>" noun for a practice's scope — activity-type SESSIONS or
 // food-group SERVINGS (e.g. "Strength sessions", "Fatty fish servings"). Shared by
-// the protocol detail card and the active-protocol dashboard widget (issue #660) so
+// the protocol detail card and the dashboard protocol candidates (issue #660) so
 // the two adherence surfaces read the same phrase (one question, one computation).
 export function protocolPracticeLabel(
   scopeKind: "type" | "food_group" | "practice",
@@ -33,42 +33,14 @@ export function protocolPracticeLabel(
 
 // The COUNTING NOUN for a practice's weekly progress — "3 days this week" for a
 // wellness practice (it is a per-DAY habit), "3 servings" for a food group, "3
-// sessions" for an activity type. The protocol detail card and the Active-protocols
-// dashboard widget both feed it to PracticeWeeklyProgress, so the same protocol
-// cannot be counted in two different units on two surfaces (#221, #2008).
+// sessions" for an activity type. The protocol detail card feeds it to
+// PracticeWeeklyProgress; the shared count stays in the frequency-target model.
 export function protocolPracticeNoun(
   scopeKind: "type" | "food_group" | "practice"
 ): string {
   if (scopeKind === "practice") return "day";
   if (scopeKind === "food_group") return "serving";
   return "session";
-}
-
-// The dashboard already prints the protocol name one line above its adherence.
-// When the adherence label repeats that same leading phrase, keep only the useful
-// remainder ("Red light therapy" + "Red light therapy sessions" → "Sessions").
-// A shorter shared word-prefix handles protocol names with a suffix such as
-// "Strength baseline" beside "Strength sessions" without changing the model.
-export function dedupeProtocolAdherenceLabel(
-  protocolName: string,
-  adherenceLabel: string
-): string | undefined {
-  const nameWords = protocolName.trim().split(/\s+/);
-  const labelWords = adherenceLabel.trim().split(/\s+/);
-  let shared = 0;
-  while (
-    shared < nameWords.length &&
-    shared < labelWords.length &&
-    nameWords[shared].localeCompare(labelWords[shared], undefined, {
-      sensitivity: "base",
-    }) === 0
-  ) {
-    shared += 1;
-  }
-  if (shared === 0) return adherenceLabel;
-  const remainder = labelWords.slice(shared).join(" ");
-  if (!remainder) return undefined;
-  return remainder[0].toUpperCase() + remainder.slice(1);
 }
 
 // The activity types a practice can target — the same coarse type set

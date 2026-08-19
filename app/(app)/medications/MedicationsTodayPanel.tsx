@@ -1,5 +1,5 @@
 import { IconCircleCheck } from "@tabler/icons-react";
-import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
+import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import MomentSlot from "@/components/medications/MomentSlot";
@@ -24,7 +24,7 @@ import type { MedCardData } from "./med-data";
 // Scheduled meds due today get their dose check-offs (the shared tri-state
 // DoseStatusControl — same control the supplement row uses), and PRN meds get an
 // administration row with a one-tap Log button (the reused QuickLogPrnControl the
-// dashboard widget renders, so "log a PRN dose" is one interaction everywhere).
+// dashboard presentation renders, so "log a PRN dose" is one interaction everywhere).
 // Renders nothing when there's nothing to act on — no standing empty panel.
 //
 // Time-aware (#852 item 1): rows are ordered by the SHARED doseSortKey comparator

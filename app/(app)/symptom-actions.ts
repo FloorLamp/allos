@@ -77,7 +77,7 @@ function revalidateSymptoms(): void {
   revalidateRoute("/timeline");
 }
 
-// Cross-profile write gating for the illness hero (issue #858). The hero lets a caregiver
+// Cross-profile write gating for the illness Now group (issue #858). The hero lets a caregiver
 // log for a household member WITHOUT switching, so the bar may post an explicit
 // `profileId`: when present the write is gated by requireProfileWriteAccess(target) — the
 // #31 cross-profile gate that asserts the target is reachable AND write; when absent the

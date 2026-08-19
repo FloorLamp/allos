@@ -25,7 +25,7 @@ export const CYCLE_STALE_PROFILE = "Cycle Stale Open (e2e)";
 // both cycle-RELEVANT by life stage rather than by data, because the whole point is the
 // state a profile is in BEFORE it has any cycle data:
 //
-//   • CTA — no cycle rows at all. This is the state the dashboard phase widget used to
+//   • CTA — no cycle rows at all. This is the state the dashboard control atom used to
 //     SELF-HIDE on, which is precisely the state of someone who has not logged day 1 yet.
 //     The spec mutates it (start → end → the reopen window) and clears its own rows before
 //     every test, so --repeat-each starts from the same place.

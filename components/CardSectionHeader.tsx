@@ -3,10 +3,9 @@ import { IconArrowRight } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
 import type { ReactNode } from "react";
 
-// Shared card header for dashboard widgets: the title on the left and a small
-// "go to the full page" link on the right. Extracted so the widgets that used to
-// be inline cards keep byte-identical markup without repeating it.
-export default function WidgetHeader({
+// Shared header for a card or nested section: the title on the left and a small
+// "go to the full page" link on the right.
+export default function CardSectionHeader({
   title,
   href,
   linkLabel = "View all",
@@ -50,7 +49,6 @@ export default function WidgetHeader({
           <Link
             href={href}
             aria-label={`${linkLabel} ${title.toLowerCase()}`}
-            data-testid="widget-header-nav"
             className="inline-flex items-center gap-1 text-xs text-link"
           >
             {linkLabel} <IconArrowRight className="h-4 w-4" />

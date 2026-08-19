@@ -108,7 +108,7 @@ export function goalUpcomingDetail(
 
 // The single "what percent complete is this goal?" computation, shared by every
 // surface that renders a goal percentage (the household card via goalHighlights,
-// the dashboard's ActiveGoalsWidget, and the training GoalsManager) so they can
+// the dashboard's GoalProgressAtom, and the training GoalsManager) so they can
 // never disagree (issue #307 — this was re-derived inline in three places, and
 // the goals page's auto-vs-manual test had drifted).
 //

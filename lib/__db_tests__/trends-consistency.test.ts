@@ -28,7 +28,6 @@ import {
 } from "@/lib/trends-series";
 import {
   getBodyMetricDailySeries,
-  getDashboardStats,
   getLatestBodyMetricDated,
   getTrainingZoneData,
   getZone2MinutesInWindow,
@@ -98,12 +97,11 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
     expect(weight.points[weight.points.length - 1].value).toBe(80);
   });
 
-  it("the tile's latest agrees with the dashboard QuickStats current weight (#395)", () => {
+  it("the Overview weight series agrees with the canonical current weight (#395)", () => {
     const [weight] = buildMetricSeries(profileId, 1, {});
-    const tileLatest = weight.points[weight.points.length - 1].value;
-    expect(tileLatest).toBe(getDashboardStats(profileId).latestWeight?.value);
-    expect(getDashboardStats(profileId).latestWeight).toEqual(
-      getLatestBodyMetricDated(profileId, "weight")
+    const overviewLatest = weight.points[weight.points.length - 1].value;
+    expect(overviewLatest).toBe(
+      getLatestBodyMetricDated(profileId, "weight")?.value
     );
   });
 
@@ -120,11 +118,8 @@ describe("#395/#396 — weight surfaces share the one-source-per-day series", ()
     expect(byKey.get("metric:volume")).toBe("/training?tab=analyze");
   });
 
-  it("household current weight + trend arrow match the dashboard and compare DAYS not devices (#396)", () => {
-    // The page now derives the displayed value from getDashboardStats().latestWeight…
-    const displayed = getDashboardStats(profileId).latestWeight;
-    expect(displayed).toEqual(getLatestBodyMetricDated(profileId, "weight"));
-    expect(displayed?.value).toBe(80);
+  it("household current weight + trend arrow use the canonical value and compare DAYS not devices (#396)", () => {
+    expect(getLatestBodyMetricDated(profileId, "weight")?.value).toBe(80);
 
     // …and the arrow from the two newest days of the deduped series. Both days are
     // 80 (primary), so the arrow is FLAT — not the ordering-dependent 80→80.6 "↑"

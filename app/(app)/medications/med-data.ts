@@ -193,7 +193,7 @@ export interface MedicationsData {
   current: MedCardData[];
   past: MedCardData[];
   // The recently-used active PRN meds for the Today panel, with pre-formatted
-  // day-summary + redose-window lines (same read the dashboard widget uses).
+  // day-summary + redose-window lines (same read the dashboard presentation uses).
   prnToday: {
     id: number;
     name: string;
@@ -541,7 +541,7 @@ export function loadMedicationsData(
     // Family-widened window math (#1027): the clock/count/max span the ingredient
     // family, so an OTC sibling's dose holds this row's "Redose OK" too. The gate is
     // the shared prnQuickLogRedoseStatus (#221) — one computation across this list,
-    // the dashboard widget and the Telegram `/dose` list.
+    // the dashboard presentation and the Telegram `/dose` list.
     const redoseStatus = prnQuickLogRedoseStatus(m, nowInstant);
     const redoseLine = redoseCardLabel(redoseStatus, m.familyMemberCount);
     return {

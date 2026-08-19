@@ -515,7 +515,7 @@ export async function endEpisodeAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
   // Cross-profile gating (issue #858): a caregiver ends a household member's episode
-  // ("feeling better") from the hero cockpit without switching. An explicit `profileId`
+  // ("feeling better") from the illness Now cockpit without switching. An explicit `profileId`
   // gates on the TARGET (requireProfileWriteAccess, the #31 gate); absent, the active
   // profile is used (requireWriteAccess). endEpisodeCore is profile-scoped by episode id,
   // so a forged id from another profile is dropped even past the gate.

@@ -79,7 +79,7 @@ describe("medicalValueFlagText with showFlagLabel", () => {
   });
 
   it("widens to the directionless flags a caret never covered", () => {
-    // This is what lets RecentLabsWidget drop its parallel label: its own map
+    // This is what lets RecentLabReadout drop its parallel label: its own map
     // labelled "Abnormal"/"Immune"/"Non-optimal" too.
     expect(medicalValueFlagText("abnormal", true)).toEqual({
       label: "Abnormal",

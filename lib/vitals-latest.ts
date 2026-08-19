@@ -12,7 +12,7 @@
 // notification: this is one card's copy.
 //
 // The principle is #1216's, not a new one. That issue put a recency floor on the Recent
-// labs widget — same dashboard, same glance context — because "a value beyond it read as
+// clinical-result readout — same dashboard, same glance context — because "a value beyond it read as
 // 'current' on a glance dashboard is the dishonesty this closes". Vitals never inherited
 // it (LAB_CATEGORIES is `lab` only, #1076), and this card shipped afterwards, so a
 // four-year-old blood pressure rendered as a headline number with a trend arrow.

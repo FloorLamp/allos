@@ -1,5 +1,5 @@
 // Pure formatters for PRN (as-needed) administrations (#797) — no DB/network, so
-// unit-tested in lib/__tests__. Shared by the medications card / dashboard widget
+// unit-tested in lib/__tests__. Shared by the medications card / dashboard presentation
 // (the "2 today · last 4:02pm" line) and the Telegram /dose tap toast, so every
 // surface renders one administration the same way ("one question, one computation").
 

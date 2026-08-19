@@ -1,6 +1,6 @@
 // SERVER-ACTION TIER — the wellness-practice one-tap log action (#1259).
 //
-// logPractice is the ONE shared write path (protocol detail, Active-protocols widget,
+// logPractice is the ONE shared write path (protocol detail, Wellness card,
 // and — via its own wrapper — the Telegram Done button). It runs through the auth-blind
 // write core (logPracticeSession, profileId-first) behind requireWriteAccess. This pins:
 //   - it writes against the ACTING profile (scoping),

@@ -1,7 +1,7 @@
 // The DB gather + acked-marker store behind the stale-open-episode nudge (issue #859
 // item 1). Auth-blind (profileId-first, never imports lib/auth) — the Server Action
 // owns the gate. The nudge is SUGGEST-ONLY and NEVER auto-closes (#560): it surfaces
-// on the hero cockpit + episode page, and the caregiver taps to backdate-end.
+// on the illness Now cockpit + episode page, and the caregiver taps to backdate-end.
 //
 // The per-episode ACK marker keeps the nudge from nagging daily: once the caregiver
 // dismisses it ("keep the episode open") the episode id is remembered, so the same

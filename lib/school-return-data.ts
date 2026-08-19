@@ -2,7 +2,7 @@
 // profile's open illness episode into the two logged clocks the PURE
 // computeSchoolReturn (lib/school-return.ts) needs: the last FEVER-RANGE temperature
 // reading and the last ANTIPYRETIC administration. ONE gather, three formatters — the
-// hero cockpit, the episode page, and the household line all render over the SAME
+// illness Now cockpit, the episode page, and the household line all render over the SAME
 // SchoolReturnStatus (#221), never a second engine.
 //
 // Every statement is profile-scoped (the temperature series rides the already-scoped
