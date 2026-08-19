@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { followLink } from "./helpers";
@@ -135,11 +136,17 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   const addPanel = addDialog.getByTestId("supplement-add-panel");
   await expect(addPanel).toBeVisible();
   await expect(addPanel).toHaveCSS("padding-left", "4px");
+  // The modal opens on the name and the facts it will save — no editors (#3216), so
+  // the dose is a chip that PROMPTS for itself rather than an empty input.
   await expect(addDialog.getByLabel("Name")).toBeVisible();
-  await expect(addDialog.getByLabel("Amount").first()).toBeVisible(); // first-ok: first basic dose row in the scoped modal
-  await expect(
-    addDialog.getByTestId("supplement-more-options")
-  ).not.toHaveAttribute("open", "");
+  await expect(addDialog.getByTestId("intake-editor")).toHaveCount(0);
+  await expect(addDialog.getByTestId("intake-fact-dose")).toHaveAttribute(
+    "data-fact-state",
+    "missing"
+  );
+  const dose = await openFact(page, "dose", addDialog);
+  await expect(dose.getByLabel("Amount").first()).toBeVisible(); // first-ok: first basic dose row in the scoped modal
+  await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Close" }).click();
 
   // Supplements use the same recent-day lens as Food, then large slot cards.

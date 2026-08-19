@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { expandUpcomingAggregates, settledClick } from "./helpers";
@@ -233,13 +234,14 @@ test("a medication's obligation control defaults to Must and states each level's
     ).run(med, `${dayBack(30)} 08:00:00`);
 
     await page.goto(`/medications/${med}?action=edit`);
-    const obligation = page.getByTestId("med-obligation");
+    const importance = await openFact(page, "importance");
+    const obligation = importance.getByTestId("intake-obligation");
     await expect(obligation).toHaveValue("must");
 
     // The consequence of the CURRENT choice is always on screen — "May" must never be
     // a bare adjective, which is the failure the whole model exists to fix. Each level
     // names what it does, from the one shared copy the confirm dialog also quotes.
-    const hint = page.getByTestId("med-obligation-hint");
+    const hint = importance.getByTestId("intake-obligation-hint");
     await expect(hint).toContainText(/follow-up nudge/i);
 
     await obligation.selectOption("should");
@@ -250,8 +252,11 @@ test("a medication's obligation control defaults to Must and states each level's
 
     await obligation.selectOption("may");
     await expect(hint).toContainText(/no reminders and no misses/i);
-    // Choosing May reveals the as-needed dose shape it IS (#851/#798 key off it).
-    await expect(page.getByTestId("redose-block")).toBeVisible();
+    // Choosing May reveals the as-needed dose shape it IS (#851/#798 key off it) —
+    // now under the TIMING fact, which is where "when and how often" lives.
+    await closeEditor(page);
+    const timing = await openFact(page, "timing");
+    await expect(timing.getByTestId("redose-block")).toBeVisible();
 
     // Nothing is written by looking: the stored obligation is untouched until save.
     const stored = db

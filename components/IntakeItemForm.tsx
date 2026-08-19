@@ -197,6 +197,9 @@ export default function IntakeItemForm({
   const catalogOptions = useIntakeOptions();
   const [error, setError] = useState<string | null>(null);
   const [openPanel, setOpenPanel] = useState<IntakeOpenPanel | null>(null);
+  // Whether the rules panel was entered to ADD one (the chip row's "+ rule") rather
+  // than to correct an existing sentence.
+  const [rulesStartOnMenu, setRulesStartOnMenu] = useState(false);
 
   const supplySeed = initialSupply ? itemSeedFromPool(initialSupply) : null;
   const seededRef = useRef(supplySeed);
@@ -1112,8 +1115,14 @@ export default function IntakeItemForm({
           <IntakeFactRow
             summary={summary}
             openEditor={openPanel}
-            onOpen={setOpenPanel}
-            onAddRule={() => setOpenPanel("rules")}
+            onOpen={(key) => {
+              setRulesStartOnMenu(false);
+              setOpenPanel(key);
+            }}
+            onAddRule={() => {
+              setRulesStartOnMenu(true);
+              setOpenPanel("rules");
+            }}
             onRemoveRule={(id) =>
               setRules((current) => current.filter((r) => r.id !== id))
             }
@@ -1456,9 +1465,11 @@ export default function IntakeItemForm({
         return (
           <div className="sm:col-span-2">
             <IntakeRulesEditor
+              key={rulesStartOnMenu ? "add" : "edit"}
               rules={rules}
               setRules={setRules}
               others={others}
+              startOnMenu={rulesStartOnMenu}
             />
           </div>
         );

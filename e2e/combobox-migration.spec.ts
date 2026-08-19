@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
@@ -185,8 +186,11 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       exact: true,
     });
     await nameField.fill(SUPP);
-    await addForm.getByLabel("When").selectOption("situational");
-    const situation = addForm.getByRole("combobox", {
+    // Since #3216 "only take it when X" is a RULE SENTENCE over the same two columns
+    // (condition + situation), not a When select plus a Situation combobox.
+    const rules = await openFact(page, "rules", addForm);
+    await rules.getByTestId("intake-rule-add-only-when").click();
+    const situation = rules.getByRole("combobox", {
       name: "Situation",
       exact: true,
     });
@@ -195,6 +199,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
       .getByRole("listbox")
       .getByRole("button", { name: new RegExp(`Use .*${CUSTOM_SITUATION}`) })
       .click();
+    await closeEditor(page, addForm);
     await settledClick(
       page,
       addForm.getByRole("button", { name: "Add", exact: true })
@@ -211,8 +216,9 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     await addForm
       .getByRole("combobox", { name: "Name", exact: true })
       .fill("another");
-    await addForm.getByLabel("When").selectOption("situational");
-    await addForm
+    const reopened = await openFact(page, "rules", addForm);
+    await reopened.getByTestId("intake-rule-add-only-when").click();
+    await reopened
       .getByRole("combobox", { name: "Situation", exact: true })
       .fill("E2EMig");
     await expect(
@@ -237,7 +243,8 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     const addCard = page.getByRole("dialog", { name: "Add supplement" });
     await expect(addCard).toBeVisible();
 
-    const amount = addCard.getByLabel("Amount");
+    const doseEditor = await openFact(page, "dose", addCard);
+    const amount = doseEditor.getByLabel("Amount");
     // getByLabel("Amount") must resolve to exactly the input — the Clear button that
     // appears once the field has a value must NOT also claim the "Amount" label (the
     // shard-2 `medication-prefill` strict-mode double-match).
@@ -248,12 +255,12 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // Focusing the sibling select dismisses the dropdown (blur-close), so the "Add
     // dose" button beneath it is no longer obscured and the click lands — a second
     // dose row appears.
-    await addCard.getByLabel("Time of day").selectOption("Morning");
+    await doseEditor.getByLabel("Time of day").selectOption("Morning");
     await expect(addCard.getByRole("listbox")).toHaveCount(0);
-    await addCard
+    await doseEditor
       .getByRole("button", { name: "Add dose", exact: true })
       .click();
-    await expect(addCard.getByLabel("Amount")).toHaveCount(2);
+    await expect(doseEditor.getByLabel("Amount")).toHaveCount(2);
     // No submit — nothing is written to the DB.
   });
 });

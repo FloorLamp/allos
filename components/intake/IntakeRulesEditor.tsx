@@ -43,13 +43,18 @@ export default function IntakeRulesEditor({
   rules,
   setRules,
   others,
+  startOnMenu = false,
 }: {
   rules: IntakeRule[];
   setRules: (next: IntakeRule[]) => void;
   others: { id: number; name: string }[];
+  // Opened from the chip row's "+ rule": the person has already said they want to add
+  // one, so the sentence menu is the first thing they see rather than a second button
+  // asking the same question.
+  startOnMenu?: boolean;
 }) {
   const situationOptions = useSituationOptions();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(startOnMenu);
   const firstOtherId = others[0]?.id ?? 0;
   // A pair needs something to pair WITH, so those two sentences are offered only
   // when the profile has another item; the rest always apply.
