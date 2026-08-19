@@ -4,7 +4,6 @@ import {
   computeBodyGoalProgress,
   computeGoalProgress,
 } from "../../goal-progress";
-import { shiftDateStr } from "../../date";
 import {
   biomarkerGoalCheckIn,
   biomarkerTargetOf,
@@ -76,13 +75,23 @@ export function getOutcomeGoalProgressMap(
     for (const g of bodyGoals) {
       const series = points[g.body_metric!];
       const current = computeBodyGoalProgress(g, series.at(-1)?.value ?? null);
-      const previous =
-        series.length > 1
-          ? computeBodyGoalProgress(g, series.at(-2)!.value)
+      const createdDay = g.created_at.slice(0, 10);
+      const hasGoalPeriodEvidence = series.some(
+        (point) => point.date >= createdDay
+      );
+      const baseline =
+        hasGoalPeriodEvidence && g.baseline_value != null
+          ? computeBodyGoalProgress(g, g.baseline_value)
           : null;
       out.set(g.id, {
         ...current,
-        previous: previous ? { pct: previous.pct, done: previous.done } : null,
+        previous: baseline
+          ? {
+              pct: baseline.pct,
+              done: baseline.done,
+              comparisonDate: createdDay,
+            }
+          : null,
       });
     }
   }
@@ -115,21 +124,25 @@ export function getOutcomeGoalProgressMap(
         plot?.points ?? [],
         plot?.unit ?? target.unit
       );
-      const previous =
-        plot && plot.points.length > 1
+      const createdDay = g.created_at.slice(0, 10);
+      const hasGoalPeriodEvidence =
+        plot?.points.some((point) => point.date >= createdDay) ?? false;
+      const baseline =
+        hasGoalPeriodEvidence && target.baselineValue != null
           ? computeBiomarkerGoalProgress(
               target,
-              plot.points.slice(0, -1),
-              plot.unit ?? target.unit
+              [{ date: createdDay, value: target.baselineValue }],
+              plot?.unit ?? target.unit
             )
           : null;
       out.set(g.id, {
         ...progress,
-        previous: previous
+        previous: baseline
           ? {
-              pct: previous.pct,
-              done: previous.done,
-              asOf: previous.asOf,
+              pct: baseline.pct,
+              done: baseline.done,
+              asOf: baseline.asOf,
+              comparisonDate: createdDay,
             }
           : null,
         checkIn: biomarkerGoalCheckIn(
@@ -147,7 +160,6 @@ export function getOutcomeGoalProgressMap(
   // "Today" in the profile's timezone anchors the trailing recent-form window
   // computeGoalProgress uses to derive `current` (vs the lifetime PR).
   const t = today(profileId);
-  const previousDay = shiftDateStr(t, -1);
 
   // Resolve which exercise NAMES satisfy some goal from the cheap distinct-name
   // list (goal→set matching folds equipment variants to their base — see
@@ -211,20 +223,23 @@ export function getOutcomeGoalProgressMap(
       if (arr) matched.push(...arr);
     }
     const progress = computeGoalProgress(g, matched, t);
-    // Exclude today's evidence before asking the existing goal model for the
-    // previous-day result. computeGoalProgress deliberately treats a lifetime
-    // best as complete even when it falls outside its recent-form window, so
-    // passing today's sets with an earlier clock would leak future completion
-    // backward into the comparison.
-    const previousRows = matched.filter(
-      (row) => row.date != null && row.date <= previousDay
+    const createdDay = g.created_at.slice(0, 10);
+    const baselineRows = matched.filter(
+      (row) => row.date != null && row.date < createdDay
     );
-    const previous = computeGoalProgress(g, previousRows, previousDay);
+    const hasGoalPeriodEvidence = matched.some(
+      (row) => row.date != null && row.date >= createdDay
+    );
+    const baseline = computeGoalProgress(g, baselineRows, createdDay);
     out.set(g.id, {
       ...progress,
       previous:
-        previousRows.length > 0
-          ? { pct: previous.pct, done: previous.done }
+        baselineRows.length > 0 && hasGoalPeriodEvidence
+          ? {
+              pct: baseline.pct,
+              done: baseline.done,
+              comparisonDate: createdDay,
+            }
           : null,
     });
   }

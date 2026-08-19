@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveDashboardTiming,
   localTimeWindow,
+  mealTimeWindows,
   rankDashboardCandidates,
   type DashboardCandidate,
   type DashboardTiming,
@@ -430,6 +431,38 @@ describe("atomic dashboard placement", () => {
       kind: "future-today",
       opensAt: 1380,
     });
+  });
+
+  it("normalizes early and late meal anchors across midnight", () => {
+    expect(localTimeWindow(-30, 30)).toEqual({
+      kind: "local-time",
+      opensAt: 1410,
+      closesAt: 30,
+      wrapsMidnight: true,
+    });
+    const timing = mealTimeWindows([30, 1410]);
+    expect(timing).toEqual({
+      kind: "local-time-windows",
+      windows: [
+        { opensAt: 1410, closesAt: 90, wrapsMidnight: true },
+        { opensAt: 1350, closesAt: 30, wrapsMidnight: true },
+      ],
+    });
+    const windows = (
+      timing as Extract<DashboardTiming, { kind: "local-time-windows" }>
+    ).windows;
+    for (const [window, opening, closing] of [
+      [windows[0], 1410, 90],
+      [windows[1], 1350, 30],
+    ] as const) {
+      const one = { kind: "local-time" as const, ...window };
+      expect(resolveDashboardTiming(one, opening)).toEqual({ kind: "active" });
+      expect(resolveDashboardTiming(one, closing)).toEqual({ kind: "active" });
+      expect(resolveDashboardTiming(one, closing + 1)).toEqual({
+        kind: "future-today",
+        opensAt: opening,
+      });
+    }
   });
 
   it("keeps future-today facts live and removes expired facts from every lane", () => {

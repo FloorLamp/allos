@@ -55,6 +55,7 @@ export interface GoalProgress {
     pct: number;
     done: boolean;
     asOf?: string | null;
+    comparisonDate?: string;
   } | null;
 }
 

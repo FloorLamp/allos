@@ -93,7 +93,9 @@ export function outcomeGoalProgressChanged(
   const previousPace = goalPaceTone(progress.previous.pct, {
     createdAt: goal.created_at,
     targetDate: goal.target_date,
-    today: perResult ? today : shiftDateStr(today, -1),
+    today: perResult
+      ? today
+      : (progress.previous.comparisonDate ?? shiftDateStr(today, -1)),
     ...(perResult ? { evidenceDate: progress.previous.asOf ?? null } : {}),
   });
   return outcomeGoalStateChanged(

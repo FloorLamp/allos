@@ -230,17 +230,115 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
     );
     db.prepare(
       `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
-       VALUES (?, ?, 78, 'manual'), (?, ?, 70, 'manual')`
+       VALUES (?, ?, 70, 'manual'), (?, ?, 69, 'manual')`
     ).run(profileId, shiftDateStr(anchor, -1), profileId, anchor);
 
     const goal = getOutcomeGoals(profileId).find(({ id }) => id === goalId)!;
     const progress = getOutcomeGoalProgressMap(profileId, [goal]).get(goalId)!;
     expect(progress).toMatchObject({
-      current: 70,
+      current: 69,
       done: true,
-      previous: { pct: 20, done: false },
+      previous: { pct: 0, done: false },
     });
     expect(outcomeGoalProgressChanged(goal, progress, anchor)).toBe(true);
+    expect(
+      outcomeGoalProgressChanged(goal, progress, shiftDateStr(anchor, 1))
+    ).toBe(true);
+  });
+
+  it("does not fabricate outcome transitions from pre-goal evidence", () => {
+    const profileId = newProfile("dashboard-goal-pre-period-control");
+    const anchor = today(profileId);
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+       VALUES (?, ?, 70, 'manual')`
+    ).run(profileId, shiftDateStr(anchor, -1));
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, canonical_name, value, value_num, unit, flag)
+       VALUES (?, ?, 'lab', 'LDL Cholesterol', 'LDL Cholesterol', '90', 90,
+               'mg/dL', 'normal')`
+    ).run(profileId, shiftDateStr(anchor, -1));
+    const activityId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities (profile_id, date, type, title, source)
+           VALUES (?, ?, 'strength', 'Strength', 'manual')`
+        )
+        .run(profileId, shiftDateStr(anchor, -1)).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO exercise_sets
+         (activity_id, exercise, set_number, weight_kg, reps)
+       VALUES (?, 'Bench Press', 1, 60, 5)`
+    ).run(activityId);
+    const insertGoal = db.prepare(
+      `INSERT INTO goals
+         (profile_id, title, status, body_metric, baseline_value, target_value,
+          biomarker_name, target_direction, unit, exercise, metric,
+          target_weight_kg, target_date, created_at)
+       VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    const bodyId = Number(
+      insertGoal.run(
+        profileId,
+        "Historical body",
+        "weight",
+        80,
+        70,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        shiftDateStr(anchor, 30),
+        anchor
+      ).lastInsertRowid
+    );
+    const biomarkerId = Number(
+      insertGoal.run(
+        profileId,
+        "Historical LDL",
+        null,
+        120,
+        100,
+        "LDL Cholesterol",
+        "below",
+        "mg/dL",
+        null,
+        null,
+        null,
+        shiftDateStr(anchor, 30),
+        anchor
+      ).lastInsertRowid
+    );
+    const exerciseId = Number(
+      insertGoal.run(
+        profileId,
+        "Historical bench",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        "Bench Press",
+        "weight",
+        60,
+        shiftDateStr(anchor, 30),
+        anchor
+      ).lastInsertRowid
+    );
+    const goals = getOutcomeGoals(profileId).filter(({ id }) =>
+      [bodyId, biomarkerId, exerciseId].includes(id)
+    );
+    const progress = getOutcomeGoalProgressMap(profileId, goals);
+    for (const goal of goals) {
+      const result = progress.get(goal.id)!;
+      expect(result.previous).toBeNull();
+      expect(outcomeGoalProgressChanged(goal, result, anchor)).toBe(false);
+    }
   });
 
   it("reuses the existing all-history strength verdict for today's record", () => {
@@ -261,7 +359,7 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
          VALUES (?, 'Bench Press', 1, ?, 5)`
       ).run(activityId, weight);
     };
-    addSet(shiftDateStr(anchor, -1), 50);
+    addSet(shiftDateStr(anchor, -2), 50);
     addSet(anchor, 60);
 
     const records = recentPRs(
@@ -287,7 +385,7 @@ describe("dashboard reading-promotion gathers (#3137)", () => {
               target_date, created_at)
            VALUES (?, 'Bench 60 kg', 'active', 'Bench Press', 'weight', 60, ?, ?)`
         )
-        .run(profileId, shiftDateStr(anchor, 30), shiftDateStr(anchor, -30))
+        .run(profileId, shiftDateStr(anchor, 30), shiftDateStr(anchor, -1))
         .lastInsertRowid
     );
     const goal = getOutcomeGoals(profileId).find(({ id }) => id === goalId)!;

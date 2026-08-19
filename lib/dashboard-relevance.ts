@@ -168,29 +168,32 @@ export function resolveDashboardTiming(
   }
 }
 
+function normalizedLocalWindow(opensAt: number, closesAt: number) {
+  const normalize = (minute: number) => ((minute % 1440) + 1440) % 1440;
+  const opening = normalize(opensAt);
+  const closing = normalize(closesAt);
+  return {
+    opensAt: opening,
+    closesAt: closing,
+    wrapsMidnight:
+      Math.floor(opensAt / 1440) !== Math.floor(closesAt / 1440) ||
+      closing < opening,
+  };
+}
+
 export function localTimeWindow(
   opensAt: number,
   closesAt: number
 ): DashboardTiming {
-  const opening = Math.max(0, Math.min(1439, opensAt));
-  const rawClose = Math.max(0, closesAt);
-  const closing = rawClose % 1440;
-  return {
-    kind: "local-time",
-    opensAt: opening,
-    closesAt: closing,
-    wrapsMidnight: rawClose >= 1440 || closing < opening,
-  };
+  return { kind: "local-time", ...normalizedLocalWindow(opensAt, closesAt) };
 }
 
 export function mealTimeWindows(anchors: readonly number[]): DashboardTiming {
   return {
     kind: "local-time-windows",
-    windows: anchors.map((anchor) => ({
-      opensAt: Math.max(0, anchor - MEAL_WINDOW_MIN),
-      closesAt: Math.min(1439, anchor + MEAL_WINDOW_MIN),
-      wrapsMidnight: false,
-    })),
+    windows: anchors.map((anchor) =>
+      normalizedLocalWindow(anchor - MEAL_WINDOW_MIN, anchor + MEAL_WINDOW_MIN)
+    ),
   };
 }
 
