@@ -24,6 +24,11 @@ import {
   checkDocsContracts,
   checkLabelHygiene,
   checkLineCitation,
+  decideLabelRemoval,
+  decidePriorityLabel,
+  parseStatedPriority,
+  planLabelRemovals,
+  scoreDomains,
   fencedRanges,
   gatherEvidence,
   parseDependencies,
@@ -695,6 +700,209 @@ describe("label hygiene (dispatch.md §Queue labels)", () => {
   });
 });
 
+describe("label removal — the only label op", () => {
+  it("removes a retired label from an open issue that keeps a domain", () => {
+    expect(
+      decideLabelRemoval(
+        issue({ number: 1, labels: ["lib", "P2", "notifications"] }),
+        "lib"
+      )
+    ).toEqual({ ok: true });
+  });
+
+  it("refuses to strand an issue with no domain label left", () => {
+    // The case that motivates the guard: `lib` is retired AND satisfies no
+    // domain, so a naive removal turns "wrongly labelled" into "invisible".
+    const outcome = decideLabelRemoval(
+      issue({ number: 2, labels: ["lib", "P2"] }),
+      "lib"
+    );
+    expect(outcome.ok).toBe(false);
+    expect(outcome).toMatchObject({ refusal: "would-strand" });
+  });
+
+  it("refuses any label that is not retired, however scruffy", () => {
+    for (const label of ["P2", "bug", "notifications", "needs-human"]) {
+      expect(
+        decideLabelRemoval(
+          issue({ number: 3, labels: [label, "training", "P1"] }),
+          label
+        )
+      ).toMatchObject({ ok: false, refusal: "not-retired" });
+    }
+  });
+
+  it("refuses a closed issue — its labels are history, not queue state", () => {
+    expect(
+      decideLabelRemoval(
+        issue({ number: 4, labels: ["lib", "training"], state: "closed" }),
+        "lib"
+      )
+    ).toMatchObject({ ok: false, refusal: "issue-closed" });
+  });
+
+  it("refuses a label the issue no longer carries", () => {
+    expect(
+      decideLabelRemoval(issue({ number: 5, labels: ["training"] }), "lib")
+    ).toMatchObject({ ok: false, refusal: "not-carried" });
+  });
+
+  it("plans every removable retired label and silently drops the rest", () => {
+    expect(
+      planLabelRemovals([
+        issue({ number: 6, labels: ["lib", "cleanup", "P2", "training"] }),
+        // Would strand — planned around, not planned in.
+        issue({ number: 7, labels: ["lib", "P3"] }),
+        issue({ number: 8, labels: ["P1", "design"] }),
+        issue({ number: 9, labels: ["lib", "db"], state: "closed" }),
+      ])
+    ).toEqual([
+      expect.objectContaining({ issue: 6, label: "lib" }),
+      expect.objectContaining({ issue: 6, label: "cleanup" }),
+    ]);
+  });
+
+  it("has no add op — a missing domain stays a FLAG, not a write", () => {
+    // The fact/judgment line, asserted rather than described: an issue with no
+    // domain label produces a hygiene FINDING and zero planned writes.
+    const stranded = issue({ number: 10, labels: ["P2"] });
+    expect(checkLabelHygiene([stranded])).toContainEqual(
+      expect.objectContaining({ kind: "no-domain" })
+    );
+    expect(planLabelRemovals([stranded])).toEqual([]);
+  });
+});
+
+describe("priority reconciled against the body's own ruling", () => {
+  it("reads the resulting priority out of the shapes owner rulings use", () => {
+    expect(parseStatedPriority("**Priority dropped P2 → P3.** Because.")).toBe(
+      "P3"
+    );
+    expect(parseStatedPriority("Priority unchanged at P2: the wiring")).toBe(
+      "P2"
+    );
+    expect(parseStatedPriority("Priority raised to P1 after the outage")).toBe(
+      "P1"
+    );
+    expect(parseStatedPriority("no ruling about urgency here")).toBeNull();
+    // A bare mention of a priority is not a ruling ABOUT this issue.
+    expect(parseStatedPriority("blocked by a P0 elsewhere")).toBeNull();
+  });
+
+  it("moves the label to the priority the body already ruled", () => {
+    expect(
+      decidePriorityLabel(
+        issue({
+          number: 1,
+          labels: ["P2", "training"],
+          body: "**Priority dropped P2 → P3.**",
+        })
+      )
+    ).toEqual({ ok: true, from: "P2", to: "P3" });
+  });
+
+  it("fills an absent slot from a stated priority", () => {
+    expect(
+      decidePriorityLabel(
+        issue({ number: 2, labels: ["db"], body: "Priority unchanged at P1" })
+      )
+    ).toEqual({ ok: true, from: null, to: "P1" });
+  });
+
+  it("invents nothing when the body states no priority", () => {
+    expect(
+      decidePriorityLabel(issue({ number: 3, labels: ["db"], body: "prose" }))
+    ).toMatchObject({ ok: false, refusal: "no-stated-priority" });
+  });
+
+  it("refuses to let prose overrule a deliberate park or a contested slot", () => {
+    expect(
+      decidePriorityLabel(
+        issue({
+          number: 4,
+          labels: ["parked", "db"],
+          body: "Priority unchanged at P2",
+        })
+      )
+    ).toMatchObject({ ok: false, refusal: "slot-contested" });
+    expect(
+      decidePriorityLabel(
+        issue({
+          number: 5,
+          labels: ["P1", "P3", "db"],
+          body: "Priority unchanged at P2",
+        })
+      )
+    ).toMatchObject({ ok: false, refusal: "slot-contested" });
+  });
+
+  it("is a no-op when the label already agrees", () => {
+    expect(
+      decidePriorityLabel(
+        issue({
+          number: 6,
+          labels: ["P3", "db"],
+          body: "Priority dropped to P3",
+        })
+      )
+    ).toMatchObject({ ok: false, refusal: "already-correct" });
+  });
+});
+
+describe("domain evidence", () => {
+  const index = repo({
+    "lib/notifications/digest-data.ts": "",
+    "lib/notifications/send-markers.ts": "",
+    "lib/db.ts": "",
+    "e2e/sleep-page.spec.ts": "",
+  });
+
+  it("tallies resolved citations by domain, strongest first", () => {
+    const scored = scoreDomains(
+      issue({
+        number: 1,
+        body: "See `lib/notifications/digest-data.ts` and `lib/notifications/send-markers.ts` and `lib/db.ts`.",
+      }),
+      index
+    );
+    expect(scored[0]).toMatchObject({ domain: "notifications", hits: 2 });
+    expect(scored[1]).toMatchObject({ domain: "db", hits: 1 });
+  });
+
+  it("scores the most specific match, not the first plausible one", () => {
+    // `lib/notifications/**` beats the db tier despite both patterns matching.
+    expect(
+      scoreDomains(
+        issue({ number: 2, body: "`lib/notifications/digest-data.ts`" }),
+        index
+      ).map((s) => s.domain)
+    ).toEqual(["notifications"]);
+  });
+
+  it("ignores a citation that resolves to nothing — a proposal does not vote", () => {
+    expect(
+      scoreDomains(
+        issue({ number: 3, body: "we will add `lib/not-built-yet.ts`" }),
+        index
+      )
+    ).toEqual([]);
+  });
+
+  it("returns a tally, never a verdict, when the evidence is split", () => {
+    const scored = scoreDomains(
+      issue({
+        number: 4,
+        body: "`lib/db.ts` and `e2e/sleep-page.spec.ts`",
+      }),
+      index
+    );
+    // One hit each: the caller has to see that this is a coin-flip, so the
+    // shape must not collapse to a single winner.
+    expect(scored).toHaveLength(2);
+    expect(new Set(scored.map((s) => s.hits))).toEqual(new Set([1]));
+  });
+});
+
 describe("docs contract", () => {
   it("fails a spec document with no Status line and finds its dead citations", () => {
     const index = repo({
@@ -993,6 +1201,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     "scripts/orchestration/reconcile-tracker-core.ts",
     "scripts/orchestration/reconcile-patch.ts",
     "scripts/orchestration/reconcile-apply.ts",
+    "scripts/orchestration/reconcile-labels.ts",
   ];
   const SKILL = ".claude/skills/reconcile-tracker/SKILL.md";
 
@@ -1044,15 +1253,47 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  it("only the applier writes, and its payload is built from one field", () => {
+  // TWO writers now, each confined to a different endpoint, and the point of
+  // this block is that neither confinement rests on intent. The body applier
+  // can name only `body`; the label writer sends no body at all. Everything
+  // else in the toolchain still holds no write verb whatsoever.
+  const WRITERS = [
+    "scripts/orchestration/reconcile-apply.ts",
+    "scripts/orchestration/reconcile-labels.ts",
+  ];
+
+  it("the body applier writes one verb and builds its payload from one field", () => {
     const applier = source("scripts/orchestration/reconcile-apply.ts");
-    // Exactly one non-GET verb in the whole toolchain, and it is this one.
     expect(applier.match(/"PATCH"/g)).toHaveLength(1);
     expect(applier).toContain("JSON.stringify({ body })");
-    for (const rel of MODULES.filter(
-      (m) => !m.endsWith("reconcile-apply.ts")
+    expect(applier).not.toMatch(/"(?:POST|PUT|DELETE)"/);
+  });
+
+  it("the label writer touches only the per-issue LABELS endpoints", () => {
+    const labels = source("scripts/orchestration/reconcile-labels.ts");
+    // Two verbs, one each. DELETE names its target in the PATH and sends no
+    // body at all; POST sends a payload built from exactly one field. Neither
+    // endpoint HAS a field an issue's state could ride in — which is why this
+    // stays a structural guarantee rather than a promise.
+    expect(labels.match(/"DELETE"/g)).toHaveLength(1);
+    expect(labels.match(/"POST"/g)).toHaveLength(1);
+    expect(labels).not.toMatch(/"(?:PATCH|PUT)"/);
+    expect(labels).toContain("/labels/${encodeURIComponent(label)}");
+    expect(labels).toContain("JSON.stringify({ labels })");
+    // Every write URL ends at a labels collection or one label within it.
+    for (const [, url] of labels.matchAll(
+      /`\$\{issueUrl\([^)]*\)\}([^`]*)`/g
     )) {
-      expect(source(rel)).not.toMatch(/"(?:PATCH|POST|PUT|DELETE)"/);
+      expect(url).toMatch(/^\/labels(\/\$\{encodeURIComponent\(label\)\})?$/);
+    }
+  });
+
+  it("nothing outside the two writers holds a write verb at all", () => {
+    for (const rel of MODULES.filter((m) => !WRITERS.includes(m))) {
+      expect({
+        rel,
+        writes: /"(?:PATCH|POST|PUT|DELETE)"/.test(source(rel)),
+      }).toEqual({ rel, writes: false });
     }
   });
 
