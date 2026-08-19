@@ -167,20 +167,22 @@ test("coverage anatomy renders beside the list on Training → Overview (#737)",
     "data-state",
     "trained"
   );
-  const quadsRow = coverage
-    .getByTestId("muscle-coverage-row")
-    .filter({ hasText: "Quads" });
-  await expect(quadsRow).not.toHaveAttribute("open");
+  // Use the final evidence row: unlike the first row, it is genuinely below the
+  // phone viewport when the diagram is at the top of the screen.
+  const furthestRow = coverage.locator('li[id^="coverage-"]').last(); // last-ok: the assertion is specifically about the row furthest from the diagram
+  const furthestDisclosure = furthestRow.getByTestId("muscle-coverage-row");
+  const targetId = (await furthestRow.getAttribute("id"))!;
+  await expect(furthestDisclosure).not.toHaveAttribute("open");
   await figure.evaluate((element) =>
     element.scrollIntoView({ block: "start" })
   );
-  await expect(quadsRow).not.toBeInViewport();
+  await expect(furthestRow).not.toBeInViewport();
   await hydratedClick(
     page,
-    figure.locator('[data-muscle-target="coverage-quads"] path').first() // first-ok: either bilateral quad path bubbles to the same muscle disclosure target
+    figure.locator(`[data-muscle-target="${targetId}"] path`).first() // first-ok: either bilateral path bubbles to the same muscle disclosure target
   );
-  await expect(quadsRow).toHaveAttribute("open", "");
-  await expect(quadsRow).toBeInViewport();
+  await expect(furthestDisclosure).toHaveAttribute("open", "");
+  await expect(furthestRow).toBeInViewport();
   // No catalog lift tags the neck, so it is always the neutral empty tint.
   await expect(figure.locator('[data-muscle="neck"]')).toHaveAttribute(
     "data-state",

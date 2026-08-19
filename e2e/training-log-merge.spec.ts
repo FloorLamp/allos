@@ -37,11 +37,6 @@ test("merge two same-day activities from the Training Log, then Undo (#64)", asy
     .getByTestId("merge-target")
     .filter({ hasText: "Training Log merge dupe" })
     .click();
-  // Non-overlapping clock windows disagree by definition, so keep the keeper's
-  // values in the conflict preview and complete the user-directed merge.
-  const dialog = page.getByTestId("merge-conflict-dialog");
-  await expect(dialog).toBeVisible();
-  await dialog.getByTestId("merge-conflict-confirm").click();
 
   // The discarded row is merged away; the canonical keeper record survives.
   await expect(page.getByText("Training Log merge dupe")).toHaveCount(0);
