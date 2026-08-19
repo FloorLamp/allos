@@ -8,7 +8,11 @@ import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
 import { microMotionPlan } from "@/lib/micro-motion";
-import { localDate, shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  localDate,
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import {
   DOSE_ACTION_AMBER,
   DOSE_ACTION_BRAND,
@@ -128,7 +132,7 @@ export default function DoseStatusControl({
     kind: "dose" | "skip-dose",
     next: "taken" | "skipped",
     tappedAt: Date
-  ) {
+  ): Promise<boolean> {
     setOptimistic(next);
     const kept = await enqueue(kind, localDate(tappedAt), {
       doseId,
@@ -137,19 +141,20 @@ export default function DoseStatusControl({
     // READ THE ANSWER. The queue can refuse — this device is logged out, or has no
     // IndexedDB to queue into — and the toast below promises the tap will sync. Claiming
     // a save that did not happen is worse than the missing save, because nothing later
-    // contradicts it: there is no badge, no dead-letter entry and no replay.
+    // contradicts it: there is no badge, no dead-letter entry and no replay. The answer
+    // is returned so the caller settles the ledger the same way (#3038): a refused
+    // capture must stay immediately retryable, not sit in a post-"success" cooldown.
     if (!kept) {
       setOptimistic(null);
-      toast("This tap wasn't saved. Try again once you're back online.", {
-        tone: "error",
-      });
-      return;
+      toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+      return false;
     }
     toast(
       next === "taken"
         ? "Dose saved offline — will sync when you reconnect."
         : "Skip saved offline — will sync when you reconnect."
     );
+    return true;
   }
 
   // The online write (used by both the acting path and every cross-profile write).
@@ -239,8 +244,13 @@ export default function DoseStatusControl({
         });
         return "nothing";
       }
-      await queue(target === "taken" ? "dose" : "skip-dose", target, tappedAt);
-      return "wrote";
+      return (await queue(
+        target === "taken" ? "dose" : "skip-dose",
+        target,
+        tappedAt
+      ))
+        ? "wrote"
+        : "nothing";
     }
 
     const fd = new FormData();
@@ -265,12 +275,13 @@ export default function DoseStatusControl({
         target !== "clear" &&
         shouldQueueOffline(stillOnline, err)
       ) {
-        await queue(
+        return (await queue(
           target === "taken" ? "dose" : "skip-dose",
           target,
           tappedAt
-        );
-        return "wrote";
+        ))
+          ? "wrote"
+          : "nothing";
       }
       toast("Couldn't update this dose. Try again.", {
         tone: "error",

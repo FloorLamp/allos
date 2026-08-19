@@ -5,7 +5,10 @@ import MoodValencePicker from "@/components/MoodValencePicker";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import { shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import { logMood } from "@/app/(app)/mood-actions";
 import { moodBackfillLabel, moodLabel } from "@/lib/mood";
 
@@ -98,13 +101,20 @@ export default function QuickMoodCheckin({
             err
           )
         ) {
-          await enqueue("mood", target.date, {
+          const kept = await enqueue("mood", target.date, {
             valence: n,
             energy: target.mood?.energy ?? null,
             anxiety: target.mood?.anxiety ?? null,
             factors: target.mood?.factors ?? [],
             note: target.mood?.notes ?? null,
           });
+          // The device refused the capture (#3038): nothing queued, so the face
+          // rolls back and the sheet STAYS OPEN — closing it is this surface's
+          // claim that the check-in landed.
+          if (!kept) {
+            toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+            return undefined; // rollback
+          }
           toast("Saved offline — will sync when you reconnect.");
           onDone();
           return { kind: "keep" };

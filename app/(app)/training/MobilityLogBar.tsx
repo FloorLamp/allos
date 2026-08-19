@@ -8,7 +8,10 @@ import type { MuscleRegion } from "@/lib/lifts";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import { shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import {
   logMobilityMove,
   unlogMobilityMove,
@@ -117,7 +120,13 @@ export default function MobilityLogBar({
             err
           )
         ) {
-          await enqueue("mobility", today, { move: slug });
+          const kept = await enqueue("mobility", today, { move: slug });
+          // The device refused the capture (#3038): nothing queued, so the chip
+          // rolls back rather than standing in for a write that never happened.
+          if (!kept) {
+            toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+            return { kind: "rollback" };
+          }
           toast("Saved offline — will sync when you reconnect.");
           return { kind: "keep" };
         }

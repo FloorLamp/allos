@@ -43,7 +43,10 @@ import {
   type EatingTimeChoice,
   type EatingTimeOption,
 } from "@/lib/food-eating-time";
-import { shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
 import OverflowMenu, {
   MENU_ITEM,
@@ -823,8 +826,8 @@ export default function FoodLogBar({
     // in for the server total until then. UNDO stays online-only — a decrement is
     // not a capture (see the lib/offline/queue.ts scope comment) — so an offline
     // "−" rolls back with an honest message instead of pretending.
-    const queueOffline = async () => {
-      await enqueue("food", activeDate, {
+    const queueOffline = async (): Promise<boolean> => {
+      const kept = await enqueue("food", activeDate, {
         entry: "serving",
         groupKey: slug,
         mealSlot: activeSlot,
@@ -836,7 +839,14 @@ export default function FoodLogBar({
         // and an unusable one costs the statement, never the serving.
         eatenAt: statedInstant(),
       });
+      // The device can refuse the capture (#3038) — say so in the shared sentence
+      // and report it, so the caller rolls the optimistic counts back.
+      if (!kept) {
+        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        return false;
+      }
       toast("Saved offline — will sync when you reconnect.");
+      return true;
     };
     const undoNeedsConnection = () => {
       toast("You're offline — removing a serving needs a connection.", {
@@ -844,9 +854,12 @@ export default function FoodLogBar({
       });
     };
     // Whether the tap reached a write at all, and what the write said — modeled so
-    // the ledger sees exactly one settlement per tap.
+    // the ledger sees exactly one settlement per tap. "refused" is the queue
+    // declining the capture (#3038): nothing was kept, so it settles as a
+    // rollback, never a phantom count.
     type ServingTap =
       | { kind: "queued" }
+      | { kind: "refused" }
       | { kind: "offline-undo" }
       | { kind: "wrote"; outcome: FoodLogResult };
     await ledger.tap<ServingTap>({
@@ -865,8 +878,9 @@ export default function FoodLogBar({
       write: async () => {
         if (typeof navigator !== "undefined" && navigator.onLine === false) {
           if (delta === -1) return { kind: "offline-undo" };
-          await queueOffline();
-          return { kind: "queued" };
+          return (await queueOffline())
+            ? { kind: "queued" }
+            : { kind: "refused" };
         }
         const fd = new FormData();
         fd.set("group_key", slug);
@@ -886,6 +900,8 @@ export default function FoodLogBar({
       },
       settle: (tap) => {
         if (tap.kind === "queued") return { kind: "keep" };
+        // Refused capture: queueOffline already said so; the counts roll back.
+        if (tap.kind === "refused") return { kind: "rollback" };
         if (tap.kind === "offline-undo") {
           undoNeedsConnection();
           return { kind: "rollback" };
@@ -950,8 +966,9 @@ export default function FoodLogBar({
         // Connection dropped mid-tap — queue an add instead of a false failure.
         if (shouldQueueOffline(navigator.onLine !== false, err)) {
           if (delta === 1) {
-            await queueOffline();
-            return { kind: "keep" };
+            return (await queueOffline())
+              ? { kind: "keep" }
+              : { kind: "rollback" };
           }
           undoNeedsConnection();
           return { kind: "rollback" };
