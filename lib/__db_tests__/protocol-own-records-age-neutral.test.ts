@@ -134,7 +134,12 @@ describe("protocol detail page (#3133)", () => {
       const page = await ProtocolDetailPage({
         params: Promise.resolve({ id: String(id) }),
       });
-      expect(treeText(page)).toContain(`Own detail fixture ${label}`);
+      const tree = treeText(page);
+      expect(tree).toContain(`Own detail fixture ${label}`);
+      // …and it renders READ-ONLY plus end/delete (#2993 line): the page hands
+      // ProtocolControls canRevise=false, which withholds Edit / Resume /
+      // "Run again" — the affordances whose actions refuse at this age.
+      expect(tree).toContain('"canRevise":false');
     }
   );
 });

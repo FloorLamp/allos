@@ -144,17 +144,16 @@ describe("createProtocol", () => {
   });
 });
 
-describe("existing protocol records follow the profile at every age (#3133)", () => {
+describe("the protocol write line at an ineligible age (#3133, the #2993 shape)", () => {
   // A recorded experiment is the profile's OWN data, never filtered from that
-  // profile (#3067): after the age becomes minor or unknown, the record stays
-  // correctable, endable, resumable, and deletable. Re-gating updateProtocol /
-  // updateProtocolOutcomes / endProtocol / resumeProtocol / deleteProtocol on
-  // isLongevityRelevant reds these cases.
+  // profile (#3067): after the age becomes minor or unknown, the record can
+  // always be ENDED and DELETED — refusing those was the "no path even to
+  // delete" harm. Re-gating endProtocol or deleteProtocol reds these cases.
   it.each([
     ["minor", 15],
     ["unknown", null],
   ] as const)(
-    "corrects, ends, resumes, and deletes an existing record at %s age",
+    "ends and deletes an existing record at %s age",
     async (_label, age) => {
       const { profile } = seedActor();
       await createProtocol(
@@ -163,35 +162,11 @@ describe("existing protocol records follow the profile at every age (#3133)", ()
       const protocol = getProtocols(profile.id)[0];
       setStoredAge(profile.id, age);
 
-      // Correctable: a rename and an outcome edit both land.
-      expect(
-        await updateProtocol(
-          protocolForm({ id: protocol.id, name: "Existing experiment (fixed)" })
-        )
-      ).toEqual({ ok: true });
-      expect(getProtocols(profile.id)[0].name).toBe(
-        "Existing experiment (fixed)"
-      );
-      expect(
-        await updateProtocolOutcomes(
-          protocolForm({ id: protocol.id, outcome_keys: ["metric:weight"] })
-        )
-      ).toEqual({ ok: true });
-      expect(getProtocols(profile.id)[0].outcomeKeys).toEqual([
-        "metric:weight",
-      ]);
-
-      // Endable — and an accidental end stays resumable.
       expect(await endProtocol(protocolForm({ id: protocol.id }))).toEqual({
         ok: true,
       });
       expect(getProtocols(profile.id)[0].end_date).not.toBeNull();
-      expect(await resumeProtocol(protocolForm({ id: protocol.id }))).toEqual({
-        ok: true,
-      });
-      expect(getProtocols(profile.id)[0].end_date).toBeNull();
 
-      // Deletable.
       expect(await deleteProtocol(protocolForm({ id: protocol.id }))).toEqual({
         ok: true,
         redirectTo: "/longevity#protocols",
@@ -200,8 +175,72 @@ describe("existing protocol records follow the profile at every age (#3133)", ()
     }
   );
 
-  // The adult-only content line stays exactly where #3091 drew it: STARTING a
-  // new run is gated — createProtocol (covered above) and runProtocolAgain.
+  // The record-REWRITING cores take the gate, exactly as #2993 gates editFast
+  // and reopenFast: an ungated updateProtocol accepts the identical field set
+  // creation does — the executed escalation on PR #3134 renamed a long-ended
+  // record to new content, flipped it back to ONGOING with no reopen-window
+  // check (end_date omission writes NULL), reactivated its situation, and
+  // minted an owned frequency target. Ungating updateProtocol /
+  // updateProtocolOutcomes / resumeProtocol reds these cases.
+  it.each([
+    ["minor", 15],
+    ["unknown", null],
+  ] as const)(
+    "refuses the rename-and-reopen escalation through update at %s age",
+    async (_label, age) => {
+      const { profile } = seedActor();
+      await createProtocol(
+        protocolForm({
+          name: "Innocuous ended block",
+          start_date: "1999-12-01",
+          end_date: "2000-01-01",
+          situation: "Old block",
+        })
+      );
+      const before = getProtocols(profile.id)[0];
+      expect(before.end_date).toBe("2000-01-01");
+      setStoredAge(profile.id, age);
+
+      const unavailable = {
+        ok: false,
+        error: "Protocols aren’t available for this profile’s age.",
+      };
+
+      // The falsifier's sequence: a rename + practice target, with end_date
+      // omitted so the row would reopen as ongoing.
+      expect(
+        await updateProtocol(
+          protocolForm({
+            id: before.id,
+            name: "Escalated experiment",
+            practice_type: "practice:Cold plunge",
+            practice_per_week: 5,
+          })
+        )
+      ).toEqual(unavailable);
+      expect(
+        await updateProtocolOutcomes(
+          protocolForm({ id: before.id, outcome_keys: ["index:phenoage"] })
+        )
+      ).toEqual(unavailable);
+      expect(await resumeProtocol(protocolForm({ id: before.id }))).toEqual(
+        unavailable
+      );
+
+      // The row is byte-identical: still its old name, still ended, no
+      // situation reactivated, no frequency target minted.
+      const after = getProtocols(profile.id)[0];
+      expect(after.name).toBe("Innocuous ended block");
+      expect(after.end_date).toBe("2000-01-01");
+      expect(after.outcomeKeys).toEqual(before.outcomeKeys);
+      expect(after.frequency_target_id).toBeNull();
+      expect(getActiveSituations(profile.id)).not.toContain("Old block");
+      expect(getFrequencyTargets(profile.id)).toEqual([]);
+    }
+  );
+
+  // Starting a NEW run is gated the same way — createProtocol (covered above)
+  // and runProtocolAgain.
   it.each([
     ["minor", 15],
     ["unknown", null],

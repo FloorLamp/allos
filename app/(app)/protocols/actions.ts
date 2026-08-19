@@ -23,15 +23,29 @@ import { getProfileAge } from "@/lib/settings";
 import { isLongevityRelevant } from "@/lib/life-stage";
 
 const log = createLogger("protocols");
-// The adult-only line for protocols (#3091/#3133): STARTING a new experiment —
-// createProtocol and runProtocolAgain — is adult-validated content and refuses
-// for a known minor or an unknown age. Everything that follows an EXISTING
-// record (update, outcomes, end, resume, delete) carries no age gate: a
-// profile's own data is never filtered from that profile (#3067), so an
-// already-recorded protocol stays correctable, endable, and deletable at every
-// age.
 const unavailable = () =>
   formError("Protocols aren’t available for this profile’s age.");
+
+// The adult-only line for protocols (#3091/#3133), drawn where the fasting
+// precedent (#2756/#2993) draws it. READS are never gated — a profile's own
+// recorded experiment stays visible on every surface (#3067). On the write side
+// the criterion is whether a core can leave the profile with MORE RECORDED
+// EXPERIMENT than it had:
+//   • createProtocol / runProtocolAgain start one — refused for a known minor
+//     or an unknown age.
+//   • updateProtocol / updateProtocolOutcomes rewrite what the profile is
+//     recorded as running (the full create field set; omitting end_date flips
+//     an ended row back to ongoing with no window check) — refused, as #2993
+//     gates editFast.
+//   • resumeProtocol turns a fixed interval back into a growing one — refused,
+//     as #2993 gates reopenFast.
+//   • endProtocol / deleteProtocol can only close or remove the record — ALWAYS
+//     allowed (the "no path even to delete" harm #3133 fixed), the endFast/
+//     discardFast exemptions.
+// Registered in ADULT_ONLY_WRITE_CORES so the scan holds this line (#2107).
+function protocolAdultOnlyRefusal(profileId: number) {
+  return isLongevityRelevant(getProfileAge(profileId)) ? null : unavailable();
+}
 
 export type CreateProtocolResult =
   | { ok: true; redirectTo: `/protocols/${number}` }
@@ -209,7 +223,8 @@ export async function createProtocol(
   formData: FormData
 ): Promise<CreateProtocolResult> {
   const { profile } = await requireWriteAccess();
-  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
+  const refusal = protocolAdultOnlyRefusal(profile.id);
+  if (refusal) return refusal;
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Name your protocol.");
   const startRaw = str(formData, "start_date");
@@ -276,6 +291,8 @@ export async function createProtocol(
 
 export async function updateProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  const refusal = protocolAdultOnlyRefusal(profile.id);
+  if (refusal) return refusal;
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
@@ -347,6 +364,8 @@ export async function updateProtocolOutcomes(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  const refusal = protocolAdultOnlyRefusal(profile.id);
+  if (refusal) return refusal;
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   if (!getProtocol(profile.id, id))
@@ -370,6 +389,10 @@ export async function updateProtocolOutcomes(
 // the registered core's (#2135); the action authorizes, maps the outcome to the user's
 // words, and revalidates. It deliberately does NOT pre-check the row: reading it here
 // would only re-open the window the core exists to close.
+//
+// NO age gate, deliberately (#3133, the endFast exemption's reasoning): ending can
+// only close the record — refusing it would strand an ineligible profile with an
+// experiment it can never stop.
 export async function endProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
@@ -386,11 +409,12 @@ export async function endProtocol(formData: FormData): Promise<FormResult> {
   }
 }
 
-// Resume is a correction of an accidental end within the reopen window — it
-// re-opens the EXISTING row rather than starting anything new, so like end and
-// delete it follows the record and carries no age gate (#3133).
+// Resume clears end_date, turning a fixed interval back into a growing one —
+// the reopenFast shape — so it takes the gate (see the line above).
 export async function resumeProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  const refusal = protocolAdultOnlyRefusal(profile.id);
+  if (refusal) return refusal;
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const outcome = resumeProtocolCore(profile.id, id, today(profile.id));
@@ -414,7 +438,8 @@ export async function runProtocolAgain(
   formData: FormData
 ): Promise<CreateProtocolResult> {
   const { profile } = await requireWriteAccess();
-  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
+  const refusal = protocolAdultOnlyRefusal(profile.id);
+  if (refusal) return refusal;
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
@@ -536,6 +561,9 @@ export async function runProtocolAgain(
   return { ok: true, redirectTo: `/protocols/${protocolId}` };
 }
 
+// NO age gate, deliberately (#3133, the discardFast exemption's reasoning): delete
+// only removes the record — a gate here would protect nothing and lock in a row.
+// Exempted by name in ADULT_ONLY_WRITE_CORES.
 export async function deleteProtocol(
   formData: FormData
 ): Promise<DeleteProtocolResult> {

@@ -120,9 +120,12 @@ export function isAdultForClinical(
 //
 // It is a CONTENT gate, not a data-retention rule (#3067/#3133): a protocol the
 // profile already recorded is that profile's own data and is NEVER filtered from
-// it — timeline, search, the record's detail page, trend overlays, and the
-// corrective/closing actions (update, end, resume, delete) read and follow the
-// record at every age and at unknown age, ungated.
+// it — timeline, search, the record's detail page, and trend overlays read the
+// record at every age and at unknown age, ungated. On the write side the line
+// follows the fasting precedent (#2993): ending and deleting the record are
+// always allowed (they only close or remove), while creating, editing, and
+// resuming take this predicate — see app/(app)/protocols/actions.ts and the
+// ADULT_ONLY_WRITE_CORES entry that enforces it.
 export function isLongevityRelevant(
   age: number | null | undefined
 ): age is number {

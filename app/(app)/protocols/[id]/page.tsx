@@ -65,11 +65,13 @@ export default async function ProtocolDetailPage(props: {
 
   // No age redirect here (#3133): this page is the record of the profile's OWN
   // experiment, and a profile's own data is never filtered from that profile
-  // (#3067) — it stays readable, correctable, endable, and deletable at every
-  // age and at unknown age. The adult-only content line applies to starting a
-  // NEW run: "Run again" is withheld below (and runProtocolAgain refuses
-  // server-side) when the profile is not longevity-relevant.
-  const canRunAgain = isLongevityRelevant(getProfileAge(profile.id));
+  // (#3067) — it stays readable, endable, and deletable at every age and at
+  // unknown age. The adult-only content line follows the fasting precedent
+  // (#2993, see actions.ts): the record-REWRITING controls — Edit, Resume,
+  // "Run again" — are withheld below (their actions refuse server-side) when
+  // the profile is not longevity-relevant, so the page renders read-only plus
+  // end/delete rather than forms the server would refuse.
+  const canRevise = isLongevityRelevant(getProfileAge(profile.id));
 
   const units = getUnitPrefs(login.id);
   const todayStr = today(profile.id);
@@ -194,7 +196,7 @@ export default async function ProtocolDetailPage(props: {
             resumeAction={resumeProtocol}
             runAgainAction={runProtocolAgain}
             deleteAction={deleteProtocol}
-            canRunAgain={canRunAgain}
+            canRevise={canRevise}
             asOf={todayStr}
           />
         </SituationOptionsProvider>

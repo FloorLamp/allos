@@ -28,12 +28,13 @@ import {
   DERIVED_SITU_POLLEN_ITEM,
   E2E_LOGIN_SITIMPACT,
   SITUATION_IMPACT_PROFILE,
+  TODDLER_PROTOCOL_NAME,
 } from "../fixture-logins";
 import {
   diffSituations,
   serializeSituationEvents,
 } from "../../lib/trend-annotations";
-import { seedMemberLogin, fixtureProfileId } from "./common";
+import { seedMemberLogin, fixtureProfileId, rileyProfileId } from "./common";
 
 // The coarse home location the derived-situations fixture's weather rows are keyed to
 // (~0.1° storage precision). Its own coordinate so the GLOBAL, location-keyed weather
@@ -186,6 +187,39 @@ export function seedCycleAndDerived(): void {
     console.log(
       `e2e: seeded pregnant cycle fixture — profile ${pregId} (${CYCLE_PREGNANT_PROFILE}) (#2801)`
     );
+  }
+
+  // ── The toddler-owned protocol record (#3133) ───────────────────────────────
+  // "Riley (child)" (scripts/seed.ts; reached through E2E_LOGIN_CHILD) gets ONE
+  // recorded, long-ended protocol, so the lifestage spec can observe both halves
+  // of the protocol line on one page: the record's own detail page renders at an
+  // ineligible age (a profile's own data is never filtered from that profile,
+  // #3067), while "Run again" — the create affordance this EXPIRED record would
+  // offer an adult (ended > PROTOCOL_REOPEN_WINDOW_DAYS back) — stays withheld.
+  // Ended 10 days back so the record sits inside the Timeline's event-grained
+  // fortnight, and read-only in its spec, so --repeat-each starts from the same
+  // place. Idempotent: cleared by name first.
+  {
+    const rileyId = rileyProfileId();
+    if (rileyId) {
+      const rileyAnchor = today(rileyId);
+      db.prepare(`DELETE FROM protocols WHERE profile_id = ? AND name = ?`).run(
+        rileyId,
+        TODDLER_PROTOCOL_NAME
+      );
+      db.prepare(
+        `INSERT INTO protocols (profile_id, name, start_date, end_date, outcome_keys)
+         VALUES (?, ?, ?, ?, '[]')`
+      ).run(
+        rileyId,
+        TODDLER_PROTOCOL_NAME,
+        shiftDateStr(rileyAnchor, -40),
+        shiftDateStr(rileyAnchor, -10)
+      );
+      console.log(
+        `e2e: seeded toddler-owned protocol — profile ${rileyId} (#3133)`
+      );
+    }
   }
 
   // ── Trying-to-conceive fixture (#1679/#1680) ─────────────────────────────────
