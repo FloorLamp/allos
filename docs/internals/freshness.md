@@ -160,10 +160,26 @@ nothing once its domain goes quiet. `DormancyDeclaration.renderWindowDays` names
 window and `dormancyWindowConflicts()` is empty by construction, so a domain cannot be
 added whose interval elapses while its section could still be rendering points.
 
-That is why only **weight** (a 90-day chart) and **sleep** (last night) are domains.
-`recent-labs` and `vitals-latest` render their latest reading at any age and are
-exemptions with that reason written beside them; collapsing either would need a FOLD
-that keeps its rows reachable in place (the #2685 URL-state pattern), not a line.
+The domains are **weight** (a 90-day chart), **sleep** (last night), and the two vital
+quantities — **blood-pressure** and **resting-hr** — at a year each (#3226). The vitals
+rows joined by SATISFYING the bound rather than by being excused from it: past
+`VITAL_DORMANCY_DAYS` the row renders no value, so its window and its interval are the
+same number and the collapse hides nothing. The year sits far outside each quantity's own
+presentation floor (180 days, 14 days), so the amber as-of treatment still owns the entire
+span where a reading is merely old; dormancy begins only past the point where the number
+has stopped describing the body. The two quantities are separate domains so one going
+quiet cannot collapse the other.
+
+`recent-labs` remains an exemption: its readout renders the latest row of every biomarker
+at any age, so it is not window-bounded and a collapse would hide values. Collapsing it
+would need a FOLD that keeps its rows reachable in place (the #2685 URL-state pattern),
+not a line.
+
+**Which sentence a dormant line uses.** The record and how long, always — but the unit
+follows the interval. A 90-day domain says days ("No weigh-in recorded in 150 days"); a
+year-scale one says the source month ("No blood pressure recorded since Mar 2022"),
+because "in 1,642 days" is a duration no reader can hold. Same claim, same ledger noun,
+legible unit.
 
 **What a dormant line may say.** The RECORD, and how long — "No weigh-in recorded
 in 150 days". Never the body, and never a guess at why: a domain is quiet either
