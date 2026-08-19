@@ -38,23 +38,62 @@ function insertProtocol(
     end?: string | null;
     equipment_id?: number | null;
     frequency_target_id?: number | null;
+    intake_item_id?: number | null;
   }
 ) {
   return Number(
     db
       .prepare(
         `INSERT INTO protocols
-           (profile_id, name, start_date, end_date, equipment_id, frequency_target_id)
-         VALUES (?, 'P', ?, ?, ?, ?)`
+           (profile_id, name, start_date, end_date, equipment_id,
+            frequency_target_id, intake_item_id)
+         VALUES (?, 'P', ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
         opts.start,
         opts.end ?? null,
         opts.equipment_id ?? null,
-        opts.frequency_target_id ?? null
+        opts.frequency_target_id ?? null,
+        opts.intake_item_id ?? null
       ).lastInsertRowid
   );
+}
+
+function insertIntakeItem(
+  profileId: number,
+  name: string
+): { itemId: number; doseId: number } {
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, kind, active, condition, obligation)
+         VALUES (?, ?, 'supplement', 1, 'daily', 'should')`
+      )
+      .run(profileId, name).lastInsertRowid
+  );
+  const doseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses
+           (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '5 g', 'morning', 'any', 0)`
+      )
+      .run(itemId).lastInsertRowid
+  );
+  return { itemId, doseId };
+}
+
+function insertDoseLog(
+  dose: { itemId: number; doseId: number },
+  date: string,
+  status: "taken" | "skipped" = "taken"
+) {
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, status)
+     VALUES (?, ?, ?, ?)`
+  ).run(dose.doseId, dose.itemId, date, status);
 }
 
 function insertActivity(
@@ -77,6 +116,7 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
     db.prepare("DELETE FROM protocols WHERE profile_id = 1").run();
     db.prepare("DELETE FROM frequency_targets WHERE profile_id = 1").run();
     db.prepare("DELETE FROM equipment WHERE profile_id = 1").run();
+    db.prepare("DELETE FROM intake_items WHERE profile_id = 1").run();
   });
 
   it("counts in-window activity events, including multiple sessions on one day", () => {
@@ -213,6 +253,125 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
       sessions: 0,
       lastUsed: null,
     });
+  });
+
+  // #2797: a supplement N-of-1 links the intake item and nothing else. Before the
+  // fourth ledger branch it matched no scope and reported 0 forever, so the app's
+  // own Creatine/NMN showcases rendered as abandoned experiments.
+  it("counts confirmed doses per day for a protocol linked only by intake_item_id", () => {
+    const creatine = insertIntakeItem(1, "Creatine Monohydrate");
+    const other = insertIntakeItem(1, "Vitamin D3");
+    const pid = insertProtocol(1, {
+      start: "2026-06-01",
+      end: "2026-06-30",
+      intake_item_id: creatine.itemId,
+    });
+
+    insertDoseLog(creatine, "2026-06-03");
+    // Two confirmed doses on one day are two events, as everywhere else here.
+    insertDoseLog(creatine, "2026-06-10");
+    insertDoseLog(creatine, "2026-06-10");
+    // Skipped is a logged NON-event.
+    insertDoseLog(creatine, "2026-06-12", "skipped");
+    // Out of window on both sides.
+    insertDoseLog(creatine, "2026-05-31");
+    insertDoseLog(creatine, "2026-07-01");
+    // A different item the protocol does not link.
+    insertDoseLog(other, "2026-06-10");
+
+    const protocol = getProtocol(1, pid)!;
+    expect(getProtocolUsage(1, protocol, "2026-07-31")).toEqual({
+      sessions: 3,
+      lastUsed: "2026-06-10",
+    });
+    expect(getProtocolUsageByDay(1, protocol, "2026-07-31")).toEqual([
+      { date: "2026-06-03", count: 1 },
+      { date: "2026-06-10", count: 2 },
+    ]);
+    const cells = getProtocolHeatmap(
+      1,
+      protocol,
+      "2026-07-31",
+      0
+    ).columns.flat();
+    expect(cells.find((cell) => cell.date === "2026-06-10")).toMatchObject({
+      count: 2,
+      outside: false,
+    });
+  });
+
+  it("keeps a gear-linked protocol on the activity ledger even when it also names an intake item", () => {
+    const sauna = createEquipment(1, {
+      name: "Sauna",
+      weight_kg: null,
+      category: "Sauna",
+    });
+    const nmn = insertIntakeItem(1, "Nicotinamide Mononucleotide");
+    const pid = insertProtocol(1, {
+      start: "2026-06-01",
+      end: "2026-06-30",
+      equipment_id: sauna.id,
+      intake_item_id: nmn.itemId,
+    });
+    insertActivity(1, "2026-06-05", "sport", sauna.id);
+    insertDoseLog(nmn, "2026-06-06");
+
+    const protocol = getProtocol(1, pid)!;
+    expect(getProtocolUsage(1, protocol, "2026-07-31")).toEqual({
+      sessions: 1,
+      lastUsed: "2026-06-05",
+    });
+  });
+
+  it("does not tally another profile's doses through a leaked intake_item_id", () => {
+    const otherProfile = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('Neighbour')").run()
+        .lastInsertRowid
+    );
+    const theirs = insertIntakeItem(otherProfile, "Creatine Monohydrate");
+    insertDoseLog(theirs, "2026-06-10");
+    const pid = insertProtocol(1, {
+      start: "2026-06-01",
+      end: "2026-06-30",
+      intake_item_id: theirs.itemId,
+    });
+
+    const protocol = getProtocol(1, pid)!;
+    expect(getProtocolUsage(1, protocol, "2026-07-31")).toEqual({
+      sessions: 0,
+      lastUsed: null,
+    });
+  });
+
+  it("slices per protocol when several intake protocols share one gather", () => {
+    const creatine = insertIntakeItem(1, "Creatine Monohydrate");
+    const nmn = insertIntakeItem(1, "Nicotinamide Mononucleotide");
+    const creatineId = insertProtocol(1, {
+      start: "2026-06-01",
+      end: "2026-06-15",
+      intake_item_id: creatine.itemId,
+    });
+    const nmnId = insertProtocol(1, {
+      start: "2026-06-16",
+      end: "2026-06-30",
+      intake_item_id: nmn.itemId,
+    });
+    insertDoseLog(creatine, "2026-06-05");
+    // In the NMN protocol's window, but the creatine protocol's item — neither
+    // protocol may claim it.
+    insertDoseLog(creatine, "2026-06-20");
+    insertDoseLog(nmn, "2026-06-20");
+    // In the creatine window, NMN's item — likewise unclaimed.
+    insertDoseLog(nmn, "2026-06-05");
+
+    const heatmaps = getProtocolHeatmaps(
+      1,
+      getProtocols(1).filter((p) => p.id === creatineId || p.id === nmnId),
+      "2026-07-31",
+      0
+    );
+    expect(heatmaps[creatineId].totalSessions).toBe(1);
+    expect(heatmaps[nmnId].totalSessions).toBe(1);
   });
 
   it("getProtocolPractice resolves the type + per-week; adherence reuses the weekly count", () => {

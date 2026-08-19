@@ -252,7 +252,8 @@ export function situationUsedByOtherProtocol(
 
 // Usage-during-window for a protocol (issues #344/#1583): event-row counts within
 // [start_date, end_date ?? today]. Each scope reads its own ledger: activities,
-// food_daily_totals, or practice_logs. Multi-session days remain multiple sessions.
+// food_daily_totals, practice_logs, or intake_item_logs. Multi-session days remain
+// multiple sessions.
 export interface ProtocolUsage {
   sessions: number;
   lastUsed: string | null;
@@ -266,9 +267,10 @@ type ProtocolUsageScope =
       equipmentId: number | null;
       activityType: string | null;
     }
+  | { kind: "intake"; itemId: number }
   | { kind: "none" };
 
-// Which of this reader's three event ledgers a cadence SOURCE lands in — the
+// Which of this reader's four event ledgers a cadence SOURCE lands in — the
 // third scope dispatcher (#2034), rebased onto the one registry so it cannot
 // disagree with the weekly ledger about what a target measures.
 //
@@ -321,6 +323,16 @@ function usageScopeFor(
       equipmentId: protocol.equipment_id,
       activityType,
     };
+  }
+
+  // A supplement/medication N-of-1 (#660) links the item and nothing else, so its
+  // ledger is the dose log (#2797): before this, such a protocol matched no branch
+  // and reported "0 sessions across 0 active days" forever — the shipped Creatine
+  // and NMN showcases read as abandoned experiments. Checked LAST so a protocol
+  // that also links a practice or equipment keeps measuring the intervention it
+  // already measured.
+  if (protocol.intake_item_id != null) {
+    return { kind: "intake", itemId: protocol.intake_item_id };
   }
   return { kind: "none" };
 }
@@ -550,6 +562,44 @@ export function getProtocolUsageByDayMap(
           (scope.equipmentId != null && r.equipment_id === scope.equipmentId) ||
           (scope.activityType != null && r.type === scope.activityType);
         if (!matches) continue;
+        tallyByDate(tallies, row.protocol.id, r.date, r.count);
+      }
+    }
+  }
+
+  // ---- intake_item_logs ----------------------------------------------------------
+  const intakes = scoped.filter((r) => r.scope.kind === "intake");
+  if (intakes.length > 0) {
+    const itemIds = [
+      ...new Set(
+        intakes.map((r) => (r.scope as { kind: "intake"; itemId: number }).itemId)
+      ),
+    ];
+    const span = spanOf(intakes);
+    // Only doses actually TAKEN count as usage — a skipped dose is a logged
+    // non-event. Joined to intake_items for the profile scope the log rows do not
+    // carry themselves, so a protocol pointing at another profile's item (or a
+    // deleted one) tallies nothing rather than leaking a count.
+    const rows = db
+      .prepare(
+        `SELECT l.date AS date, l.item_id AS item_id, COUNT(*) AS count
+           FROM intake_item_logs l
+           JOIN intake_items ii ON ii.id = l.item_id
+          WHERE ii.profile_id = ? AND l.status = 'taken'
+            AND l.item_id IN (${itemIds.map(() => "?").join(",")})
+            AND l.date >= ? AND l.date <= ?
+          GROUP BY l.date, l.item_id`
+      )
+      .all(profileId, ...itemIds, span.start, span.end) as {
+      date: string;
+      item_id: number;
+      count: number;
+    }[];
+    for (const row of intakes) {
+      const itemId = (row.scope as { kind: "intake"; itemId: number }).itemId;
+      for (const r of rows) {
+        if (r.item_id !== itemId) continue;
+        if (r.date < row.start || r.date > row.end) continue;
         tallyByDate(tallies, row.protocol.id, r.date, r.count);
       }
     }
