@@ -342,13 +342,33 @@ export function messagePointerKindAt(
 // strip a working affordance from the very message whose tap made the burst. Attributed
 // bursts are unaffected either way — they render only where their `messageRef` matches,
 // and a message with no pointer row matches none.
+//
+// EXCEPT ACROSS DOMAINS (#3108). The vacuous-newest allowance was kind-blind about the
+// message itself: with no live pointer of `kind` anywhere in the chat, a message of a
+// DIFFERENT domain — a `foodtime` token replayed onto a dose reminder — was "newest of
+// its domain" by vacancy and bound the unattributed burst, restamping servings from a
+// message that never mentioned food. So when the location's own pointer names another
+// kind, the message provably belongs to another domain and the ride-along is refused
+// outright, vacuous or not. `messageRef` stays the exact pointer-id match on purpose:
+// a burst STAMPED by a tap at this very message stays correctable from it whatever the
+// host kind — the digest's offer list legitimately hosts dose chips this way (#2443).
+// Only a message with NO pointer at all keeps the fail-open vacuous newest above.
 export function correctionMessageBinding(
   profileId: number,
   kind: string,
   ref: CorrectionMessageRef | null
 ): CorrectionMessageBinding {
   if (!ref) return FRESH_SEND_BINDING;
-  const messageRef = messagePointerIdAt(profileId, ref.chatId, ref.messageId);
+  const at = db
+    .prepare(
+      `SELECT id, kind FROM notify_messages
+        WHERE profile_id = ? AND chat_id = ? AND message_id = ?`
+    )
+    .get(profileId, String(ref.chatId), ref.messageId) as
+    { id: number; kind: string } | undefined;
+  const messageRef = at?.id ?? null;
+  // A message of another domain may carry its OWN bursts, never the riders (#3108).
+  if (at != null && at.kind !== kind) return { messageRef, isNewest: false };
   // The newest live pointer of this domain's kind in this chat — the same
   // (profile, chat, kind) axis the #1898 supersede rule works on, read through
   // idx_notify_messages_profile_chat_kind.

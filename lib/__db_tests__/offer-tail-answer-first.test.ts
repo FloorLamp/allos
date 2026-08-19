@@ -23,6 +23,7 @@ import {
 } from "@/lib/notifications/telegram-api";
 import { DOSE_TIME_PREFIXES } from "@/lib/notifications/correction-rows";
 import { OFFER_COLLAPSE_PREFIX } from "@/lib/notifications/offer-tail";
+import { markDoseTaken } from "@/lib/queries/intake/adherence";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 
 // This spec exercises the logic ABOVE the wire, so the four Telegram
@@ -190,5 +191,88 @@ describe("time chips on an offer-logged dose (#2418 part 2)", () => {
       ])
     );
     expect(calls).toEqual(["ack"]);
+  });
+});
+
+// ---- render and tap ask the SAME binding question (#3108 follow-up) ---------
+//
+// The offer list is the one place a DOSE-domain chip rides a message of another
+// kind. Its redraw once asked the binding with the HOST's kind (the digest's),
+// while the tap handler and the sweep's intake-dose family asked with the DOSE
+// domain's — so an UNATTRIBUTED dose burst (an ordinary web one-tap, no forgery
+// and no stale keyboard) was rendered here and then refused on touch, breaking
+// the invariant stated in lib/notifications/telegram-time-correction.ts: a chat
+// can never show a chip the handler would refuse.
+//
+// Red without the fix: the unattributed burst's chip renders and its tap answers
+// the not-bound refusal.
+describe("the offer list never shows a chip its own handler refuses (#3108)", () => {
+  const NOT_BOUND = "This message can't correct those entries any more";
+
+  function ownDose(): { itemId: number; doseId: number } {
+    const item = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+           VALUES (?, 'TG3108 Web Tab', 'medication', 1, 'should', 'daily')`
+        )
+        .run(p.profileId).lastInsertRowid
+    );
+    const dose = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 tab', 'morning', 'any', 0)`
+        )
+        .run(item).lastInsertRowid
+    );
+    return { itemId: item, doseId: dose };
+  }
+
+  it("every chip the redraw renders is one the tap handler accepts", async () => {
+    // The pointer for this (chat, message) may already stand from an earlier case
+    // in this file — one live pointer per delivered message is the invariant, so
+    // reuse it rather than inserting a second.
+    const existing = db
+      .prepare(
+        `SELECT id FROM notify_messages WHERE chat_id = ? AND message_id = ?`
+      )
+      .get(CHAT, MESSAGE_ID) as { id: number } | undefined;
+    if (!existing) seedDigestPointer();
+    const date = today(p.profileId);
+
+    // A web one-tap: honestly UNATTRIBUTED (no message), and fresh, so it is a
+    // burst looking for somewhere to ride.
+    const web = ownDose();
+    markDoseTaken(p.profileId, web.doseId, web.itemId, date);
+
+    // The user expands the digest's offer list and logs the `may` item from it —
+    // that tap IS attributed to the digest, and its chips are what #2443 adds.
+    await handleCallbackQuery(
+      cq(`prn:${p.profileId}:${itemId}:n3108`, [
+        [{ callback_data: `prn:${p.profileId}:${itemId}:n3108` }],
+        [{ callback_data: `${OFFER_COLLAPSE_PREFIX}:${p.profileId}:${date}` }],
+      ])
+    );
+
+    const keyboard = (markupMock.mock.calls.at(-1)?.[2] ?? []) as {
+      text: string;
+      callback_data?: string;
+    }[][];
+    const chips = keyboard
+      .flat()
+      .map((b) => b.callback_data ?? "")
+      .filter((t) => t.startsWith(`${DOSE_TIME_PREFIXES.chip}:`));
+    // Not vacuous: the tap that just landed still gets its chips.
+    expect(chips.length).toBeGreaterThan(0);
+
+    // Every one of them writes when tapped from THIS message — none answers the
+    // binding refusal.
+    for (const chip of chips) {
+      answerMock.mockClear();
+      await handleCallbackQuery(cq(chip, [[{ callback_data: chip }]]) as never);
+      const answer = answerMock.mock.calls.at(-1)?.[1] ?? "";
+      expect(answer, `chip ${chip}`).not.toContain(NOT_BOUND);
+    }
   });
 });
