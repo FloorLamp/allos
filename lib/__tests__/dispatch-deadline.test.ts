@@ -46,7 +46,10 @@ describe("settleWithinDeadline (#3057)", () => {
     const onLate = vi.fn();
     const results = await settleWithinDeadline(
       [
-        { id: "telegram", promise: Promise.resolve({ id: "telegram", ok: true }) },
+        {
+          id: "telegram",
+          promise: Promise.resolve({ id: "telegram", ok: true }),
+        },
         {
           id: "push",
           promise: Promise.resolve({
@@ -72,7 +75,10 @@ describe("settleWithinDeadline (#3057)", () => {
     let results: DispatchResult[] | null = null;
     void settleWithinDeadline(
       [
-        { id: "telegram", promise: Promise.resolve({ id: "telegram", ok: true }) },
+        {
+          id: "telegram",
+          promise: Promise.resolve({ id: "telegram", ok: true }),
+        },
         { id: "push", promise: stuck.promise },
       ],
       DEADLINE,

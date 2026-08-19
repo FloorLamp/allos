@@ -148,10 +148,13 @@ export async function dispatch(
     })),
     NOTIFICATION_DISPATCH_TIMEOUT_MS,
     (id, late) =>
-      log.warn("channel settled after the dispatch deadline; result discarded", {
-        channel: id,
-        ok: late.ok,
-      })
+      log.warn(
+        "channel settled after the dispatch deadline; result discarded",
+        {
+          channel: id,
+          ok: late.ok,
+        }
+      )
   );
   // Persist the delivery-health marker so a broken bot token / chat id becomes
   // visible in Settings instead of only surfacing as a tick exit code (#131).

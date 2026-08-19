@@ -101,7 +101,10 @@ describe("saveTelegramBotConfig registers the command menu (#3076)", () => {
     const calls = stubTelegramWire(["setMyCommands"]);
     await expect(
       saveTelegramBotConfig(
-        fd({ telegram_bot_token: "bot-token-flaky-3076", telegram_mode: "poll" })
+        fd({
+          telegram_bot_token: "bot-token-flaky-3076",
+          telegram_mode: "poll",
+        })
       )
     ).resolves.toBeUndefined();
     expect(calls.some((c) => c.method === "setMyCommands")).toBe(true);
