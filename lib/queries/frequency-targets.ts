@@ -2,7 +2,10 @@ import { isCadenceHome, type CadenceHome } from "../cadence";
 import type { FrequencyPace } from "../frequency-targets";
 import { frequencyRangeState } from "../practice";
 import type { FrequencyTarget } from "../types";
-import { getCadenceLedger } from "./cadence-ledger";
+import {
+  getCadenceCurrentAndPriorDay,
+  getCadenceLedger,
+} from "./cadence-ledger";
 import { snapshotCached } from "../read-snapshot";
 
 // The active-target list moved to the ledger (#2034) — it IS the ledger's tenant
@@ -45,6 +48,10 @@ export interface FrequencyTargetProgress {
   // without training today?" without re-deriving the window (#221). Rolling mode's
   // window is always the trailing 7 days, so this is 0 there: every day is the last day.
   daysLeftInWindow: number;
+  // The current period's comparison baseline. Calendar weeks compare with their
+  // zero-evidence opening state so a crossing persists until reversion/close;
+  // rolling windows compare with yesterday's trailing window, which closes daily.
+  previous?: { pace: FrequencyPace; met: boolean } | null;
 }
 
 // This week's progress for every FLOOR target — the current window of the cadence
@@ -60,32 +67,53 @@ export interface FrequencyTargetProgress {
 function getFrequencyTargetProgressUncached(
   profileId: number
 ): FrequencyTargetProgress[] {
-  return getCadenceLedger(profileId, {
-    weeks: 1,
-    includeCurrent: true,
-    direction: "floor",
-  }).map(({ target, weeks }) => {
-    const week = weeks[0];
-    // Range semantics (#1259): the FLOOR (per_week) drives met + pace; the optional
-    // ceiling (per_week_max) flips atCeiling once reached — a calm "that's plenty",
-    // never a red state. One computation (frequencyRangeState) shared by every surface.
-    const range = frequencyRangeState(
-      week.count,
-      target.per_week,
-      target.per_week_max,
-      week.elapsedDays
-    );
-    return {
-      target,
-      count: week.count,
-      per_week: target.per_week,
-      per_week_max: target.per_week_max,
-      met: range.met,
-      atCeiling: range.atCeiling,
-      pace: range.pace,
-      daysLeftInWindow: Math.max(0, 7 - week.elapsedDays),
-    };
-  });
+  return getCadenceCurrentAndPriorDay(profileId, "floor").map(
+    ({ target, declaredOn, weeks, existedWholeWindow }) => {
+      const current = weeks.at(-1)!;
+      const previous = weeks.at(-2);
+      // Range semantics (#1259): the FLOOR (per_week) drives met + pace; the optional
+      // ceiling (per_week_max) flips atCeiling once reached — a calm "that's plenty",
+      // never a red state. One computation (frequencyRangeState) shared by every surface.
+      const range = frequencyRangeState(
+        current.count,
+        target.per_week,
+        target.per_week_max,
+        current.elapsedDays
+      );
+      const rollingComparison =
+        previous != null &&
+        previous.start !== current.start &&
+        previous.end >= current.start;
+      const comparison = rollingComparison
+        ? previous && existedWholeWindow
+          ? { count: previous.count, elapsedDays: previous.elapsedDays }
+          : null
+        : declaredOn <= current.start
+          ? { count: 0, elapsedDays: 1 }
+          : null;
+      const previousRange = comparison
+        ? frequencyRangeState(
+            comparison.count,
+            target.per_week,
+            target.per_week_max,
+            comparison.elapsedDays
+          )
+        : null;
+      return {
+        target,
+        count: current.count,
+        per_week: target.per_week,
+        per_week_max: target.per_week_max,
+        met: range.met,
+        atCeiling: range.atCeiling,
+        pace: range.pace,
+        daysLeftInWindow: Math.max(0, 7 - current.elapsedDays),
+        previous: previousRange
+          ? { pace: previousRange.pace, met: previousRange.met }
+          : null,
+      };
+    }
+  );
 }
 export const getFrequencyTargetProgress = snapshotCached(
   "frequency-targets.progress",

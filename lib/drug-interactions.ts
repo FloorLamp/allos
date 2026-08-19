@@ -70,6 +70,12 @@ export interface InteractionItem {
   name: string;
   rxcui: string | null;
   rxcuiIngredients?: string[] | null;
+  // The item's LABEL ingredient names (issue #2856) — the supplement-side twin of
+  // `rxcuiIngredients`. A blend is one row whose name need not mention what is in it,
+  // so "Mood Support" carrying St. John's Wort matched no concept and passed the SSRI
+  // check silently. Optional; absent/empty for an item with no entered composition,
+  // which matches by name exactly as before.
+  ingredients?: readonly string[] | null;
   active: boolean;
 }
 
@@ -145,18 +151,26 @@ export function matchConceptKeysIn(
     name: string;
     rxcui: string | null;
     rxcuiIngredients?: string[] | null;
+    ingredients?: readonly string[] | null;
   },
   concepts: readonly Concept[]
 ): string[] {
   const keys = new Set<string>();
   const cuis = itemRxcuis(item);
-  const itemNorm = normalize(item.name);
+  // The item's NAME EVIDENCE (#2856): its own name, plus each label ingredient name.
+  // Each string is normalized and matched SEPARATELY rather than joined, because the
+  // synonym test is contiguous-token containment — concatenating "St" and "Johns
+  // Wort" would mint a phrase neither string contains. Widening only: without
+  // ingredient rows this is the single-name list it has always been.
+  const evidence = [item.name, ...(item.ingredients ?? [])]
+    .map((n) => normalize(n ?? ""))
+    .filter((n) => n.length > 0);
   for (const c of concepts) {
     if (c.rxcuis.some((cui) => cuis.has(cui))) {
       keys.add(c.key);
       continue;
     }
-    if (c.synonyms.some((syn) => nameContains(itemNorm, syn))) {
+    if (c.synonyms.some((syn) => evidence.some((e) => nameContains(e, syn)))) {
       keys.add(c.key);
     }
   }
@@ -168,6 +182,7 @@ export function matchConceptKeys(item: {
   name: string;
   rxcui: string | null;
   rxcuiIngredients?: string[] | null;
+  ingredients?: readonly string[] | null;
 }): string[] {
   return matchConceptKeysIn(item, CONCEPTS);
 }
@@ -258,6 +273,11 @@ export function interactionsForCandidate(
     name: string;
     rxcui: string | null;
     rxcuiIngredients?: string[] | null;
+    // The label ingredients typed into the form's repeater so far (#2856), so the
+    // inline notice answers while the blend is still being entered — the interaction
+    // appears as the person writes "St. John's Wort" into a "Mood Support" row,
+    // rather than only after the item is saved.
+    ingredients?: readonly string[] | null;
   },
   others: InteractionItem[]
 ): InteractionHit[] {
@@ -268,6 +288,7 @@ export function interactionsForCandidate(
       name: candidate.name,
       rxcui: candidate.rxcui,
       rxcuiIngredients: candidate.rxcuiIngredients,
+      ingredients: candidate.ingredients,
       active: true,
     },
     ...others.filter((o) => o.id !== CANDIDATE_ID),

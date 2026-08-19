@@ -156,6 +156,11 @@ export function nutrientByKey(key: string): DriNutrient | undefined {
 
 export type DoseUnit = "mg" | "mcg" | "g" | "iu";
 
+// The units an INGREDIENT row may be stored in (issue #2856): canonical mass, or an
+// International Unit that only a nutrient can convert. Grams are folded to mg at the
+// write boundary, so `g` is deliberately absent here.
+export type IngredientUnit = "mg" | "mcg" | "iu";
+
 export interface ParsedQuantity {
   value: number;
   unit: DoseUnit;
@@ -176,6 +181,68 @@ export function parseQuantity(amount: string | null): ParsedQuantity | null {
   let u = m[2].toLowerCase();
   if (u === "µg" || u === "ug") u = "mcg";
   return { value, unit: u as DoseUnit };
+}
+
+// The words a dose amount uses for a COUNTABLE LABEL UNIT — the thing a Supplement
+// Facts panel states its amounts "per" (issue #2856). An explicit list rather than a
+// pattern, because this is precisely the judgment that must not be inferred: every
+// word here is one whose count multiplies an ingredient amount, and a word absent from
+// it is a unit we do not know how to count.
+//
+// Volumes and drops are deliberately ABSENT. A millilitre is not a label unit: for a
+// liquid the panel states its amounts per serving, and the dose row IS that serving.
+// Counting them made a children's liquid multivitamin dosed "10 ml" read as ten
+// servings and raise two over-limit warnings at ten times the truth, on a child.
+const LABEL_UNIT_WORDS =
+  /^(?:caps?|capsules?|tabs?|tablets?|softgels?|gelcaps?|gummy|gummies|pills?|scoops?|servings?|packets?|sticks?|sachets?|lozenges?|chews?|wafers?|pieces?|doses?)$/i;
+
+// A stated count of label units anywhere in the amount, so it reads the same whichever
+// way round the person wrote it ("2 capsules (500 mg)" and "500 mg (2 capsules)").
+// The lookbehind refuses a digit that is part of something larger — without it the "2"
+// of "1/2 tablet" would be read as two tablets, turning a half dose into a double one.
+const LABEL_UNIT_COUNT_RE = /(?<![\d.,/])(\d+(?:\.\d+)?)\s*([a-z]+)\b/gi;
+
+// A bare number with no unit at all ("2") — a count, since there is nothing else it
+// could be.
+const BARE_COUNT_RE = /^\d+(?:\.\d+)?$/;
+
+// How many LABEL UNITS (capsules, tablets, scoops) one dose row is (issue #2856).
+// Ingredient amounts are stated per single label unit, so a blend taken two capsules
+// at a time contributes twice each ingredient — a question a name-only stack never had
+// to ask, because a name-derived amount IS the dose.
+//
+// THE RULE: a count only when the string STATES a count of label units. Everything
+// else is one serving. Both directions of guessing were wrong on a safety surface, and
+// the review of #2856 executed both:
+//
+//   * guessing UP from any leading number turned "10 ml" of a child's liquid
+//     multivitamin into ten servings — a false iron warning at 10x the truth;
+//   * refusing to look past a mass anywhere in the string turned "2 capsules (500 mg)"
+//     into one capsule and DROPPED a real 50 mg zinc exceedance.
+//
+// So the count word is what decides, and it is looked for anywhere in the string. A
+// pure mass or volume dose ("400 mg", "24 g", "10 ml") is ONE serving: how many
+// capsules or scoops that weighs is a fact about the product that the app does not
+// have, and inventing a scoop size to divide by would be the same class of error as
+// inventing an amount. Someone whose powder is really two scoops writes "2 scoops",
+// which this reads exactly.
+//
+// A fractional label ("1/2 tablet") reads as 1, not 0.5 or 2 — the fraction is not
+// parsed, and one serving is the cautious reading of a half dose for a risk total.
+export function doseUnitCount(amount: string | null): number {
+  const raw = (amount ?? "").trim();
+  if (!raw) return 1;
+  LABEL_UNIT_COUNT_RE.lastIndex = 0;
+  for (const m of raw.matchAll(LABEL_UNIT_COUNT_RE)) {
+    if (!LABEL_UNIT_WORDS.test(m[2])) continue;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  if (BARE_COUNT_RE.test(raw)) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 1;
 }
 
 // Milligrams-per-unit for the mass units, used to convert any mass dose into a
@@ -431,12 +498,31 @@ export interface StackItem {
   active: boolean;
   doseAmounts: (string | null)[];
   optional?: boolean;
+  // The item's label composition (issue #2856), when the person has entered it: one
+  // entry per ingredient, amounts already canonical and PER SINGLE DOSE UNIT. Absent
+  // or empty for the overwhelming majority of items, which are named by the one thing
+  // they contain and need no decomposition.
+  ingredients?: readonly StackIngredient[];
+}
+
+// One label ingredient in the stack checker's input. `amount`/`unit` are null
+// together when the label states no parseable quantity — the row still names a
+// substance for the safety belts, it just cannot feed a nutrient total.
+export interface StackIngredient {
+  name: string;
+  amount: number | null;
+  unit: IngredientUnit | null;
 }
 
 export interface NutrientContribution {
   name: string;
   amount: number;
   optional?: boolean;
+  // The ingredient rows that produced this amount (issue #2856), when the item's
+  // COMPOSITION spoke louder than its name — e.g. "zinc" for an "Eye Health+"
+  // capsule whose name mentions no mineral at all. Absent when the amount came from
+  // the item's own name, which is the ordinary single-substance case.
+  via?: string;
   // The compound form this item's stated mass was read as (issue #2798), when the
   // amount was too large to be a labeled ELEMENTAL dose — e.g. "magnesium
   // L-threonate" for a 2 g entry. Null/absent means the amount was counted exactly
@@ -462,10 +548,122 @@ export interface StackNutrientTotal {
   contributors: NutrientContribution[];
 }
 
+// One item's daily contribution to one nutrient, before it joins the stack total.
+interface ItemNutrientReading {
+  amount: number;
+  compound: string | null;
+  via?: string;
+}
+
+// What ONE item contributes to each nutrient in a day — the whole of the
+// name-vs-composition question, asked once, here (issue #2856).
+//
+// TWO READINGS, ONE VOCABULARY. An item can describe what it contains in two ways,
+// and BOTH go through the SAME NAME_MATCHERS:
+//
+//   * its NAME, dosed by its dose amounts — the original reading, unchanged, and the
+//     only one the vast majority of items have ("Zinc 30 mg");
+//   * its INGREDIENT ROWS, each dosed per label unit and multiplied by the number of
+//     units taken that day — the reading a blend has ("Eye Health+ · 1 cap", whose
+//     name matches no nutrient at all while its label states zinc 11 mg and copper
+//     2 mg).
+//
+// The matchers are applied PER INGREDIENT rather than once per item name, which is
+// the whole of phase 2: one matcher, wider input. Nothing is forked — an ingredient
+// named "Zinc (as bisglycinate)" resolves through the same patterns, and the same
+// excipient redaction, that "Zinc Bisglycinate" as an item name always has.
+//
+// WHY THE LARGER OF THE TWO, NOT THE SUM. A blend usually states the same substance
+// twice — "Vitamin D3 + K2" dosed "2000 IU / 100 mcg" WITH an ingredient row reading
+// vitamin D3 2000 IU — and adding those would double every such item's vitamin D
+// overnight. Taking the larger keeps the invariant the issue states in both
+// directions: composition can only WIDEN a total (a mistyped ingredient row can never
+// talk an item's own labeled dose down), and it can never double-count the substance
+// the item is named after.
+function itemNutrientAmounts(
+  item: StackItem
+): Map<string, ItemNutrientReading> {
+  const out = new Map<string, ItemNutrientReading>();
+
+  // ── The item's own name, dosed by its dose rows (the original reading) ──────────
+  const nameKey = resolveNutrientKey(item.name);
+  const nameNutrient = nameKey ? BY_KEY.get(nameKey) : undefined;
+  if (nameKey && nameNutrient) {
+    // Sum the item's dose rows FIRST, then read the day's total as elemental (#2798).
+    // The compound/elemental question is asked once per item, of the number it is
+    // actually about: a person taking Magtein as 1.5 g + 0.5 g takes 2 g of the
+    // compound a day, and asking it of each row separately answered "neither row is
+    // gram-scale" and left the whole defect standing on every split schedule.
+    let statedTotal = 0;
+    let contributed = false;
+    for (const amount of item.doseAmounts) {
+      const q = parseQuantity(amount);
+      if (!q) continue;
+      const converted = toNutrientUnit(q, nameNutrient);
+      if (converted == null) continue;
+      statedTotal += converted;
+      contributed = true;
+    }
+    if (contributed) {
+      const reading = elementalReading(item.name, nameNutrient, statedTotal);
+      out.set(nameKey, { amount: reading.amount, compound: reading.compound });
+    }
+  }
+
+  // ── The item's label composition, dosed by label units taken per day ────────────
+  const ingredients = item.ingredients ?? [];
+  if (ingredients.length === 0) return out;
+  // How many label units the day's schedule is. Summed across dose rows, so a blend
+  // taken 1 cap morning + 1 cap evening is two capsules of everything on the label.
+  const unitsPerDay = item.doseAmounts.reduce(
+    (n, amount) => n + doseUnitCount(amount),
+    0
+  );
+  if (unitsPerDay <= 0) return out;
+
+  const composed = new Map<string, { amount: number; via: string[] }>();
+  for (const ing of ingredients) {
+    if (ing.amount == null || ing.unit == null) continue;
+    const key = resolveNutrientKey(ing.name);
+    if (!key) continue;
+    const nutrient = BY_KEY.get(key);
+    if (!nutrient) continue;
+    const converted = toNutrientUnit(
+      { value: ing.amount * unitsPerDay, unit: ing.unit },
+      nutrient
+    );
+    if (converted == null) continue;
+    // The compound/elemental re-read (#2798) applies per INGREDIENT ROW here, because
+    // one row is one labeled compound — "Magnesium L-Threonate 2 g" on a line of a
+    // blend's label means exactly what it means on the front of its own bottle.
+    const reading = elementalReading(ing.name, nutrient, converted);
+    const bucket = composed.get(key) ?? { amount: 0, via: [] };
+    // Two rows CAN name one nutrient ("zinc picolinate" + "zinc gluconate"); those
+    // genuinely sum — it is the same element twice, stated twice.
+    bucket.amount += reading.amount;
+    bucket.via.push(ing.name);
+    composed.set(key, bucket);
+  }
+
+  for (const [key, bucket] of composed) {
+    const fromName = out.get(key);
+    if (fromName && fromName.amount >= bucket.amount) continue;
+    out.set(key, {
+      amount: bucket.amount,
+      compound: null,
+      via: bucket.via.join(" + "),
+    });
+  }
+  return out;
+}
+
 // Sum the ACTIVE stack's daily supplemental intake per nutrient. Each active item's
 // dose amounts are parsed → converted to the nutrient's canonical unit → summed;
 // items are grouped by nutrient so two magnesium products sum into one magnesium
-// total. Nutrients with no resolvable quantity (all "1 capsule") don't appear.
+// total. An item that carries LABEL COMPOSITION (#2856) also contributes through its
+// ingredient rows — see itemNutrientAmounts — so a blend's zinc finally stacks
+// against a standalone zinc. Nutrients with no resolvable quantity (all "1 capsule",
+// no ingredients) don't appear.
 // `ageYears`/`sex` select the UL/RDA band. Results are in nutrient (dataset) order.
 export function summarizeStack(
   items: StackItem[],
@@ -483,45 +681,23 @@ export function summarizeStack(
 
   for (const item of items) {
     if (!item.active) continue;
-    const key = resolveNutrientKey(item.name);
-    if (!key) continue;
-    const nutrient = BY_KEY.get(key);
-    if (!nutrient) continue;
-
-    // Sum the item's dose rows FIRST, then read the day's total as elemental (#2798).
-    // The compound/elemental question is asked once per item, of the number it is
-    // actually about: a person taking Magtein as 1.5 g + 0.5 g takes 2 g of the
-    // compound a day, and asking it of each row separately answered "neither row is
-    // gram-scale" and left the whole defect standing on every split schedule.
-    let statedTotal = 0;
-    let contributed = false;
-    for (const amount of item.doseAmounts) {
-      const q = parseQuantity(amount);
-      if (!q) continue;
-      const converted = toNutrientUnit(q, nutrient);
-      if (converted == null) continue;
-      statedTotal += converted;
-      contributed = true;
+    for (const [key, reading] of itemNutrientAmounts(item)) {
+      const bucket = totals.get(key) ?? {
+        amount: 0,
+        optionalAmount: 0,
+        contributors: [],
+      };
+      bucket.amount += reading.amount;
+      if (item.optional) bucket.optionalAmount += reading.amount;
+      bucket.contributors.push({
+        name: item.name,
+        amount: reading.amount,
+        optional: item.optional ? true : undefined,
+        compound: reading.compound ?? undefined,
+        via: reading.via,
+      });
+      totals.set(key, bucket);
     }
-    if (!contributed) continue;
-    const reading = elementalReading(item.name, nutrient, statedTotal);
-    const itemAmount = reading.amount;
-    const compound = reading.compound;
-
-    const bucket = totals.get(key) ?? {
-      amount: 0,
-      optionalAmount: 0,
-      contributors: [],
-    };
-    bucket.amount += itemAmount;
-    if (item.optional) bucket.optionalAmount += itemAmount;
-    bucket.contributors.push({
-      name: item.name,
-      amount: itemAmount,
-      optional: item.optional ? true : undefined,
-      compound: compound ?? undefined,
-    });
-    totals.set(key, bucket);
   }
 
   const out: StackNutrientTotal[] = [];
@@ -673,9 +849,13 @@ function compoundNote(
 }
 
 // One contributor's line: its per-item amount, marked "elemental" when the entered
-// amount was the compound's weight so the two numbers can't be confused.
+// amount was the compound's weight so the two numbers can't be confused, and naming
+// the INGREDIENT when the amount came from the item's label composition rather than
+// its name (#2856) — otherwise "Eye Health+ 11 mg" on a zinc line reads as a number
+// from nowhere, on a product whose name mentions no mineral.
 function contributorLine(c: NutrientContribution, unit: string): string {
-  return `${c.name} ${fmtAmount(c.amount)} ${unit}${c.compound ? " elemental" : ""}`;
+  const via = c.via ? ` (${c.via})` : "";
+  return `${c.name}${via} ${fmtAmount(c.amount)} ${unit}${c.compound ? " elemental" : ""}`;
 }
 
 // A short "what's contributing" evidence line: the items feeding the total, each

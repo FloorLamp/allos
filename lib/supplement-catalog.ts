@@ -10,6 +10,15 @@
 import type { TimeBucket } from "./intake-schedule";
 import type { FoodTiming } from "./types";
 
+// One ingredient on a catalogued blend's label, per SINGLE dose unit (one capsule,
+// softgel, scoop or stick — not per day). `amount` is the label text; leave it out
+// when the label states no number for that ingredient (a proprietary blend), which
+// still names the substance for the interaction and allergen matchers.
+export interface CatalogIngredient {
+  name: string;
+  amount?: string;
+}
+
 export interface SupplementCatalogEntry {
   name: string;
   dosages: string[];
@@ -17,6 +26,19 @@ export interface SupplementCatalogEntry {
   // Optional food-relationship default; when absent the form falls back to a
   // fat-soluble heuristic (see defaultFoodTiming in intake-schedule).
   defaultFoodTiming?: FoodTiming;
+  // Label composition for a BLEND (issue #2856), per single dose unit. Picking the
+  // entry SEEDS the form's ingredients repeater — it never writes: the person's save
+  // is the write (#798), and the figures below are what a typical label states, to be
+  // checked against the bottle in hand rather than trusted.
+  //
+  // Only blends carry this. A single-substance entry ("Zinc") needs no decomposition:
+  // its name already says what is in it, and the engines have always read that.
+  ingredients?: CatalogIngredient[];
+  // True when the list above is a CURATED SUBSET of a long label rather than all of
+  // it — the AG1 case, where a faithful transcription would be seventy-odd rows. The
+  // form says so out loud beside the seeded rows; claiming completeness we don't have
+  // would be worse than the free-text notes this feature replaces.
+  ingredientsPartial?: boolean;
 }
 
 export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
@@ -540,10 +562,51 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
     dosages: ["1 scoop", "12 g"],
     defaultTimeOfDay: "Morning",
     defaultFoodTiming: "empty_stomach",
+    // A curated SUBSET (#2856): the label runs to seventy-odd entries, so the seed
+    // carries the ones the engines act on — the micronutrients with upper limits, and
+    // the herbal actives the interaction belt knows — and the form says out loud that
+    // the rest of the label is not here. Amounts are per scoop.
+    ingredientsPartial: true,
+    ingredients: [
+      { name: "Vitamin C", amount: "420 mg" },
+      { name: "Zinc", amount: "15 mg" },
+      { name: "Selenium", amount: "20 mcg" },
+      { name: "Copper", amount: "0.19 mg" },
+      { name: "Ashwagandha" },
+      { name: "Rhodiola Rosea" },
+      { name: "Milk Thistle" },
+      { name: "Green Tea Extract" },
+    ],
   },
-  { name: "LMNT", dosages: ["1 packet"], defaultTimeOfDay: "Anytime" },
+  {
+    name: "LMNT",
+    dosages: ["1 packet"],
+    defaultTimeOfDay: "Anytime",
+    // Per stick. Potassium and magnesium are the reason this entry carries a
+    // composition at all: an electrolyte stick is invisible to both the potassium
+    // interaction screens and the magnesium upper limit under its brand name.
+    ingredients: [
+      { name: "Sodium", amount: "1000 mg" },
+      { name: "Chloride", amount: "1500 mg" },
+      { name: "Potassium", amount: "200 mg" },
+      { name: "Magnesium", amount: "60 mg" },
+    ],
+  },
   { name: "Liquid I.V.", dosages: ["1 packet"], defaultTimeOfDay: "Anytime" },
-  { name: "Emergen-C", dosages: ["1 packet"], defaultTimeOfDay: "Morning" },
+  {
+    name: "Emergen-C",
+    dosages: ["1 packet"],
+    defaultTimeOfDay: "Morning",
+    // Per packet.
+    ingredients: [
+      { name: "Vitamin C", amount: "1000 mg" },
+      { name: "Vitamin B6", amount: "10 mg" },
+      { name: "Vitamin B12", amount: "25 mcg" },
+      { name: "Zinc", amount: "2 mg" },
+      { name: "Manganese", amount: "0.5 mg" },
+      { name: "Potassium", amount: "200 mg" },
+    ],
+  },
   { name: "Ka'Chava", dosages: ["2 scoops"], defaultTimeOfDay: "Anytime" },
   {
     name: "Ritual Essential Multivitamin",
@@ -574,5 +637,18 @@ export const SUPPLEMENT_CATALOG: SupplementCatalogEntry[] = [
     name: "PreserVision AREDS 2",
     dosages: ["1 softgel", "2 softgels"],
     defaultTimeOfDay: "Morning",
+    // Per SOFTGEL — the label states the AREDS2 formula over the two-softgel daily
+    // serving, and ingredient amounts here are per single dose unit throughout, so the
+    // schedule (one softgel twice a day, or two at once) does the doubling. The zinc
+    // this adds up to is deliberately above the upper limit: that is what the trial
+    // formula contains, and it is exactly the fact a name-only stack could not see.
+    ingredients: [
+      { name: "Vitamin C", amount: "250 mg" },
+      { name: "Vitamin E", amount: "200 IU" },
+      { name: "Lutein", amount: "5 mg" },
+      { name: "Zeaxanthin", amount: "1 mg" },
+      { name: "Zinc", amount: "40 mg" },
+      { name: "Copper", amount: "1 mg" },
+    ],
   },
 ];

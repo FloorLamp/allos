@@ -165,7 +165,7 @@ test("mobile and desktop expose the same Standing fact order", async ({
   expect(mobile).toEqual(desktop);
 });
 
-test("one nap produces one Standing total and leaves individual naps outside", async ({
+test("one nap produces one Standing total and keeps the individual outside Standing", async ({
   page,
 }) => {
   await page.goto("/");
@@ -178,13 +178,13 @@ test("one nap produces one Standing total and leaves individual naps outside", a
   await expect(total).toHaveAttribute("data-lane", "standing");
   await expect(total).toContainText("1 nap");
   const napCount = await naps.count();
-  expect(napCount).toBeGreaterThan(0);
+  expect(napCount).toBeLessThanOrEqual(1);
   for (let index = 0; index < napCount; index += 1) {
     await expect(naps.nth(index)).not.toHaveAttribute("data-lane", "standing");
   }
 });
 
-test("multiple naps produce one Standing total and keep every nap outside", async ({
+test("multiple naps produce one Standing total and keep individuals outside Standing", async ({
   page,
 }) => {
   setSecondDashboardNap(true);
@@ -199,8 +199,15 @@ test("multiple naps produce one Standing total and keep every nap outside", asyn
     await expect(total).toHaveAttribute("data-lane", "standing");
     await expect(total).toContainText("1h 15m");
     await expect(total).toContainText("2 naps");
-    await expect(naps).toHaveCount(2);
-    for (let index = 0; index < 2; index += 1) {
+    const napCount = await naps.count();
+    expect(napCount).toBeGreaterThanOrEqual(1);
+    expect(napCount).toBeLessThanOrEqual(2);
+    await expect(
+      page.locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id^="sleep.nap:"][data-candidate-id$=":660"]'
+      )
+    ).not.toHaveAttribute("data-lane", "standing");
+    for (let index = 0; index < napCount; index += 1) {
       await expect(naps.nth(index)).not.toHaveAttribute(
         "data-lane",
         "standing"

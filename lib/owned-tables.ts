@@ -40,7 +40,8 @@
 // profile is deleted.
 //
 // NOT here (by design):
-//   • CHILD tables (exercise_sets, intake_item_doses/_logs/_pairs,
+//   • CHILD tables (exercise_sets, intake_item_doses/_logs/_pairs/_ingredients
+//     (#2856 — label composition, scoped through item_id → intake_items),
 //     intake_dose_schedule_versions — a GRANDCHILD, scoped through
 //     dose_id → intake_item_doses → intake_items (#1973),
 //     medication_courses, intake_item_side_effects, and the routine children

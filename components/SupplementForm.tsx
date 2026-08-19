@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import IntakeItemCombobox from "@/components/IntakeItemCombobox";
 import Combobox from "@/components/Combobox";
 import { useSituationOptions } from "@/components/SituationOptionsContext";
@@ -14,6 +14,12 @@ import DoseRowsEditor, {
   type DoseState,
 } from "@/components/intake/DoseRowsEditor";
 import RetiredDoses from "@/components/intake/RetiredDoses";
+import IngredientsEditor, {
+  emptyIngredient,
+  ingredientStates,
+  ingredientsAreEmpty,
+  type IngredientState,
+} from "@/components/intake/IngredientsEditor";
 import CadenceEditor, {
   type CadenceState,
 } from "@/components/intake/CadenceEditor";
@@ -32,6 +38,7 @@ import {
   type SupplyOption,
 } from "@/lib/supply-product";
 import type { InteractionItem } from "@/lib/drug-interactions";
+import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
 import type { PgxVariantInput } from "@/lib/pgx";
 import type { IntakeObligation } from "@/lib/types";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
@@ -71,6 +78,7 @@ export default function SupplementForm({
   action,
   supplement,
   doses: initialDoses,
+  ingredients: initialIngredients = [],
   retiredDoses = [],
   allIntakeItems = [],
   stackItems = [],
@@ -83,6 +91,8 @@ export default function SupplementForm({
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: IntakeItem;
   doses?: IntakeDose[];
+  // The edited item's label composition (#2856), for the ingredients repeater.
+  ingredients?: IntakeItemIngredient[];
   // Retired doses of the edited item (#2131), rendered with their Restore affordance.
   retiredDoses?: IntakeDose[];
   allIntakeItems?: { id: number; name: string }[];
@@ -170,6 +180,17 @@ export default function SupplementForm({
     seededRef.current = seed;
   }
 
+  // Label composition (#2856). Empty for the overwhelming majority of items; a blend
+  // is where it earns its place. A stored item round-trips its rows; an add form
+  // starts empty and only fills if the person asks for a row or picks a catalogued
+  // blend (which SEEDS — the save is still the write, #798).
+  const [ingredients, setIngredients] = useState<IngredientState[]>(() =>
+    ingredientStates(initialIngredients)
+  );
+  const [ingredientSeedNote, setIngredientSeedNote] = useState<string | null>(
+    null
+  );
+
   // Item-level calendar (#1602). Seeded from the stored row so an edit round-trips
   // rather than silently resetting a weekly medication to daily.
   const [cadence, setCadence] = useState<CadenceState>(() => ({
@@ -203,6 +224,7 @@ export default function SupplementForm({
       doses,
       cadence,
       pairRows,
+      ingredients,
     }),
     [
       name,
@@ -214,6 +236,7 @@ export default function SupplementForm({
       doses,
       cadence,
       pairRows,
+      ingredients,
     ]
   );
   type SupplementDraft = typeof draftExtra;
@@ -232,6 +255,7 @@ export default function SupplementForm({
       setDoses(d.doses);
       setCadence(d.cadence);
       setPairRows(d.pairRows);
+      setIngredients(d.ingredients ?? []);
     },
     confirmReplace: () =>
       confirm({
@@ -244,11 +268,54 @@ export default function SupplementForm({
 
   const entry = CATALOG_BY_NAME.get(name.trim().toLowerCase());
 
+  // The composition the person has entered so far, as plain names — what the inline
+  // interaction notice and the with-fat default both read (#2856). Memoized so the
+  // notice's own memo isn't invalidated by every keystroke elsewhere in the form.
+  const ingredientNames = useMemo(
+    () => ingredients.map((g) => g.name.trim()).filter((n) => n.length > 0),
+    [ingredients]
+  );
+
+  // The with-fat default, from composition (#2856 phase 4). A blend is named for what
+  // it is FOR, so "Eye Health+" reads as nothing fat-soluble while its label carries
+  // lutein and zeaxanthin. When the entered ingredients start implying with-fat, the
+  // rows still sitting at the untouched "any" default move to it — the same class of
+  // move as the catalog seeding a dose amount, visible in the select and editable.
+  //
+  // It fires on the EDGE (nothing → something fat-soluble) rather than on every
+  // render, so a person who deliberately sets a row back to "any" is not overruled by
+  // their own next keystroke.
+  const impliesWithFat =
+    defaultFoodTiming(name, null, ingredientNames) === "with_fat";
+  const wasWithFat = useRef(impliesWithFat);
+  useEffect(() => {
+    if (impliesWithFat && !wasWithFat.current) {
+      setDoses((ds) =>
+        ds.map((d) =>
+          d.food_timing === "any" ? { ...d, food_timing: "with_fat" } : d
+        )
+      );
+    }
+    wasWithFat.current = impliesWithFat;
+  }, [impliesWithFat]);
+
   // Picking a catalogued supplement seeds the first dose (amount/time/food) from the
-  // catalog — supplement-only behavior, unchanged from the pre-split form.
+  // catalog — supplement-only behavior, unchanged from the pre-split form — and, for a
+  // catalogued BLEND, its label composition too (#2856).
+  //
+  // SEEDING IS NOT WRITING (#798). The rows land in the repeater where they can be
+  // read, corrected and deleted; nothing reaches the database until Save. And a seed
+  // never overwrites composition the person has already typed: it fills only an empty
+  // repeater. The note beside the rows says where the numbers came from, and says out
+  // loud when the list is only the safety-relevant part of a long label.
   function onPickName(picked: string) {
     const e = CATALOG_BY_NAME.get(picked.toLowerCase());
-    const food = defaultFoodTiming(picked, e?.defaultFoodTiming);
+    const seeded = e?.ingredients ?? [];
+    const food = defaultFoodTiming(
+      picked,
+      e?.defaultFoodTiming,
+      seeded.map((g) => g.name)
+    );
     setDoses((ds) =>
       ds.map((d, i) =>
         i === 0
@@ -261,6 +328,15 @@ export default function SupplementForm({
           : d
       )
     );
+    if (seeded.length === 0 || !ingredientsAreEmpty(ingredients)) return;
+    setIngredients(
+      seeded.map((g) => ({ name: g.name, amount: g.amount ?? "" }))
+    );
+    setIngredientSeedNote(
+      e?.ingredientsPartial
+        ? `Prefilled with the part of the ${picked} label these checks use — not the whole label. Check it against your own bottle and add anything missing.`
+        : `Prefilled from a typical ${picked} label. Check it against your own bottle.`
+    );
   }
 
   async function handle(formData: FormData) {
@@ -271,6 +347,7 @@ export default function SupplementForm({
     formData.set("cadence_interval_days", cadence.intervalDays);
     formData.set("cadence_anchor_date", cadence.anchorDate);
     formData.set("pairs", JSON.stringify(pairRows));
+    formData.set("ingredients", JSON.stringify(ingredients));
     const label = name.trim() || "Supplement";
     // Consent gate (#1296): a situational hold on a `must` item silences
     // its reminders while the situation is active — confirm before linking it.
@@ -315,6 +392,8 @@ export default function SupplementForm({
       setCritical(false);
       setDoses([emptyDose()]);
       setPairRows([]);
+      setIngredients([]);
+      setIngredientSeedNote(null);
     }
   }
 
@@ -410,6 +489,26 @@ export default function SupplementForm({
         others={others}
       />
 
+      {/* The EMPTY-state affordance only. Once there are rows they render outside this
+        disclosure — see below — because composition that is about to be saved has to
+        be on screen when it is saved (#798). */}
+      {ingredients.length === 0 && (
+        <div className="sm:col-span-2">
+          <button
+            type="button"
+            data-testid="add-ingredients"
+            onClick={() => setIngredients([emptyIngredient()])}
+            className="btn-ghost btn-sm"
+          >
+            List what&apos;s in this
+          </button>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            For a blend: the label&apos;s ingredients and amounts, so
+            upper-limit totals and interaction checks can see them.
+          </p>
+        </div>
+      )}
+
       <IntakeNotesField fid={fid} defaultValue={s?.notes} />
     </>
   );
@@ -450,6 +549,7 @@ export default function SupplementForm({
 
       <IntakeInteractionNotices
         name={name}
+        ingredientNames={ingredientNames}
         rxcui={rx.rxcui}
         rxcuiIngredients={rx.rxcuiIngredients}
         stackItems={stackItems}
@@ -542,6 +642,22 @@ export default function SupplementForm({
         <RetiredDoses
           doses={retiredDoses}
           onRestored={(d) => setDoses((ds) => [...ds, d])}
+        />
+      )}
+
+      {/* Label composition (#2856) — the field that stops a blend's contents from
+        living in the notes box where no engine can read them.
+        ALWAYS AT THE TOP LEVEL, never inside the More-options disclosure. The rows can
+        arrive without being asked for: picking a catalogued blend seeds them, and
+        LMNT's potassium row alone mints a moderate interaction with an ACE inhibitor
+        that did not exist a moment earlier. A warning attributed to the person's own
+        item, derived from figures they were never shown, is not a confirmation — so
+        the rows sit in the open, above the Save button, from the moment they exist. */}
+      {ingredients.length > 0 && (
+        <IngredientsEditor
+          rows={ingredients}
+          setRows={setIngredients}
+          seedNote={ingredientSeedNote}
         />
       )}
 

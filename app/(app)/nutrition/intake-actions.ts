@@ -58,6 +58,12 @@ import {
   serializeRxcuiIngredients,
 } from "@/lib/rxnorm";
 import { orderIntakePair } from "@/lib/intake-pairs";
+import {
+  normalizeIngredientDrafts,
+  unreadableAmountMessage,
+  type IngredientDraftResult,
+  type IngredientWrite,
+} from "@/lib/intake-ingredients";
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { parseQuantityOnHand, resolveOnHandWrite } from "@/lib/refill";
 import {
@@ -496,6 +502,62 @@ function reconcilePairs(itemId: number, pairs: PairInput[], profileId: number) {
   }
 }
 
+// Parse the ingredients JSON the form's repeater submits (issue #2856). The posted
+// shape is the LABEL's own words — a name and the amount text as printed — and the
+// canonical (amount, unit) pair is derived here at the write boundary by the shared
+// pure normalizer, never trusted from the client. Blank rows are dropped; a row with a
+// name and no amount is KEPT, because "this blend contains St. John's Wort" is exactly
+// what the interaction belt needs even when the label hides the milligrams.
+//
+// ABSENT MEANS UNCHANGED (review of #2856). `null` here is "this form did not post a
+// composition", which is a different statement from "this item has no composition" and
+// must not clear one. Two forms share updateIntakeItem, and only one of them renders
+// the repeater; without this distinction a medication edit — or any future form
+// reusing the action — would silently delete a person's transcribed label. An explicit
+// empty array from a form that DOES render the repeater still clears it, which is how
+// someone removes every row.
+//
+// A row whose amount carries digits but is not one clean quantity refuses the whole
+// save (see readIngredientAmount): storing it as "no stated amount" would drop a real
+// upper-limit contribution exactly as quietly as the fabricated zero it replaced.
+function parseIngredients(formData: FormData): IngredientDraftResult | null {
+  if (!formData.has("ingredients")) return null;
+  let raw: unknown = [];
+  try {
+    raw = JSON.parse(String(formData.get("ingredients") ?? "[]"));
+  } catch {
+    raw = [];
+  }
+  const arr = Array.isArray(raw) ? raw : [];
+  return normalizeIngredientDrafts(
+    arr.map((g: any) => ({
+      name: typeof g?.name === "string" ? g.name : "",
+      amount_text: typeof g?.amount === "string" ? g.amount : "",
+    }))
+  );
+}
+
+// Replace an item's ingredient rows with the submitted set. Ingredients carry no child
+// data and no identity of their own — they are ATTRIBUTES of the item, restated in
+// full every time the form that owns them is saved — so delete-and-reinsert is both
+// simpler than diffing and exactly right (the intake_item_pairs posture). A null
+// `rows` is a form that posted no composition at all: leave what is stored alone. Must
+// run inside a transaction; the caller has already proven the item belongs to this
+// profile.
+function reconcileIngredients(itemId: number, rows: IngredientWrite[] | null) {
+  if (rows == null) return;
+  db.prepare("DELETE FROM intake_item_ingredients WHERE item_id = ?").run(
+    itemId
+  );
+  const ins = db.prepare(
+    `INSERT INTO intake_item_ingredients (item_id, name, amount_text, amount, unit, sort)
+     VALUES (?,?,?,?,?,?)`
+  );
+  rows.forEach((g, i) => {
+    ins.run(itemId, g.name, g.amount_text, g.amount, g.unit, i);
+  });
+}
+
 export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
@@ -543,6 +605,12 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
   }
   const doses = collapseOnDemandDoses(parseDoses(formData), f.isOnDemand);
   const pairs = parsePairs(formData);
+  const ingredients = parseIngredients(formData);
+  if (ingredients && !ingredients.ok) {
+    return formError(
+      unreadableAmountMessage(ingredients.name, ingredients.amountText)
+    );
+  }
   // Prescriber (#1051 semantics decision (a)): provider_id is the prescribing
   // INDIVIDUAL. The picker resolves-or-creates against the registry as an INDIVIDUAL
   // (type: "individual" — never the silent org default that mints mistyped person
@@ -637,6 +705,7 @@ export async function addIntakeItem(formData: FormData): Promise<FormResult> {
     const itemId = Number(info.lastInsertRowid);
     insertDoses(itemId, doses, todayStr);
     reconcilePairs(itemId, pairs, profile.id);
+    reconcileIngredients(itemId, ingredients?.ok ? ingredients.rows : null);
     // Ensure-course-on-create: a new medication opens an initial course
     // on the chosen date (today for quick-add). A no-op for supplements (kind
     // guard inside the helper).
@@ -699,6 +768,12 @@ export async function updateIntakeItem(
   }
   const doses = collapseOnDemandDoses(parseDoses(formData), f.isOnDemand);
   const pairs = parsePairs(formData);
+  const ingredients = parseIngredients(formData);
+  if (ingredients && !ingredients.ok) {
+    return formError(
+      unreadableAmountMessage(ingredients.name, ingredients.amountText)
+    );
+  }
   // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
   // concurrently-decremented counter, so we compare-and-set against this instead of
   // blindly writing the absolute submitted value (see resolveOnHandWrite).
@@ -986,6 +1061,7 @@ export async function updateIntakeItem(
     // later Restore never re-judges the gap.
     retireRemovedDoses(tx, profile.id, id, keptIds, todayStr);
     reconcilePairs(id, pairs, profile.id);
+    reconcileIngredients(id, ingredients?.ok ? ingredients.rows : null);
     // Ensure-course invariant: if this row is (or just became) a
     // medication, make sure it has at least one course. No-op when it already has
     // one or is a supplement. Uses the created_at-date fallback (no explicit start

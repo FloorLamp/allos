@@ -44,6 +44,36 @@
           "title": "The weekly recap leads with a headline and names a missed dose's day; dose reminders get per-stack one-taps",
           "kind": "feature",
           "issues": [3033, 3098]
+        },
+        {
+          "pr": 3127,
+          "title": "A post-workout reminder is claimed before it is sent, so a restart cannot send it twice",
+          "kind": "fix",
+          "issues": [3058, 2827]
+        },
+        {
+          "pr": 3134,
+          "title": "A young profile keeps its own protocol records; only creating one stays adult-only",
+          "kind": "fix",
+          "issues": [3133]
+        },
+        {
+          "pr": 3135,
+          "title": "Coaching suggestions that belong to no tab still appear in your rollup",
+          "kind": "fix",
+          "issues": [3129]
+        },
+        {
+          "pr": 3136,
+          "title": "Correcting a dose from a reminder changes only that reminder's dose, and a bulk tap cannot double-log",
+          "kind": "fix",
+          "issues": [2724, 3108, 3120]
+        },
+        {
+          "pr": 3147,
+          "title": "The biological-age inputs card says which draw it is from, and a stranded result flag is re-decided",
+          "kind": "fix",
+          "issues": [3050, 2937]
         }
       ]
     },
