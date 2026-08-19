@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
+  getActiveDaysStrip,
   getTrainingLogWeekSummary,
   getTrainingWeekDayTypes,
 } from "@/lib/queries";
@@ -222,5 +223,53 @@ describe("a started session that logged something is still a session", () => {
     const summary = getTrainingLogWeekSummary(liveId);
     expect(summary.activeDays).toBe(1);
     expect(summary.sessions).toBe(5);
+  });
+
+  it("the strip reads this whole rule the same way the caption does", () => {
+    // The strip's gather is a SECOND application of `isDraftActivityRow`, so it needs
+    // its own exposure to every "not a draft" case above — this profile's five
+    // entries are open-ended with no stored duration, and each is kept by a
+    // DIFFERENT clause of the rule (a set, a note, a distance, a source, an end).
+    // The spine fixture cannot pin that: its rows all carry a duration, which
+    // settles them before the set-count clause is ever reached.
+    const strip = getActiveDaysStrip(liveId, 7);
+    const summary = getTrainingLogWeekSummary(liveId);
+    expect(strip.totalSessions).toBe(summary.sessions);
+    expect(strip.activeDays).toBe(summary.activeDays);
+    expect([strip.totalSessions, strip.activeDays]).toEqual([5, 1]);
+  });
+});
+
+// THE LOG'S TWO NUMBERS SIT ON ONE SCREEN (#3056). `HistorySection` renders the week
+// caption (folded from `getTrainingWeekDayTypes`) and the trailing active-days strip
+// (folded from `getWorkoutDayDensity`) together, so the two gathers must answer the
+// same question about a draft. Excluding the husk from one and not the other would
+// have the Training Log visibly disagreeing with itself in two numbers a reader takes
+// in at once — worse than the disagreement with the feed that #3056 started from.
+describe("the active-days strip and the week caption agree about drafts", () => {
+  // A 7-day strip ends on today, so it spans exactly the fixture's rolling week —
+  // making the two folds directly comparable rather than approximately so.
+  const strip = () => getActiveDaysStrip(profileId, 7);
+
+  it("does not light the day whose only activity is a draft", () => {
+    const cell = strip().days.find((d) => d.date === day(-5));
+    expect(cell?.count).toBe(0);
+    expect(cell?.level).toBe(0);
+  });
+
+  it("states the SAME sessions and active days the caption states", () => {
+    const summary = getTrainingLogWeekSummary(profileId);
+    const s = strip();
+    expect(s.totalSessions).toBe(summary.sessions);
+    expect(s.activeDays).toBe(summary.activeDays);
+    // Both hand-pinned, so an agreeing pair of WRONG numbers cannot pass.
+    expect([s.totalSessions, s.activeDays]).toEqual([5, 3]);
+  });
+
+  it("keeps counting the busy day's real sessions beside its draft", () => {
+    const cell = strip().days.find((d) => d.date === todayStr);
+    expect(cell?.count).toBe(2);
+    // The drafts carry no duration, so minutes were never the tell — the count is.
+    expect(cell?.minutes).toBe(60);
   });
 });
