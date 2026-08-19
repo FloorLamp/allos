@@ -1,6 +1,82 @@
 {
   "days": [
     {
+      "date": "2026-08-19",
+      "entries": [
+        {
+          "pr": 3097,
+          "title": "Dashboard cards break into individual facts, each placed on its own merits",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 3105,
+          "title": "Two dose reminders answered minutes apart keep their own time chips, each correcting only its own dose",
+          "kind": "fix",
+          "issues": [3092]
+        },
+        {
+          "pr": 3107,
+          "title": "The Telegram command menu appears for polling setups too, and one stuck channel can't stall the rest of a send",
+          "kind": "fix",
+          "issues": [3076, 3057]
+        },
+        {
+          "pr": 3110,
+          "title": "An imported screening report offers a review-and-confirm, and a confirmed screening quiets its reminder",
+          "kind": "feature",
+          "issues": [3025]
+        },
+        {
+          "pr": 3111,
+          "title": "Imported medications keep the RxNorm code their document carried, and duplicate imports read as duplicates, not choices",
+          "kind": "fix",
+          "issues": [3070, 3069]
+        },
+        {
+          "pr": 3114,
+          "title": "If an offline entry couldn't be saved, the app says so instead of promising a sync",
+          "kind": "fix",
+          "issues": [3038, 2997, 3024]
+        },
+        {
+          "pr": 3117,
+          "title": "The weekly recap leads with a headline and names a missed dose's day; dose reminders get per-stack one-taps",
+          "kind": "feature",
+          "issues": [3033, 3098]
+        }
+      ]
+    },
+    {
+      "date": "2026-08-18",
+      "entries": [
+        {
+          "pr": 2719,
+          "title": "The app wears its new Botanical look, with Almanac and Floodlight palettes to pick from",
+          "kind": "feature",
+          "issues": [2701]
+        },
+        {
+          "pr": 3089,
+          "title": "The training overview and activity detail share one layout",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 3091,
+          "title": "Training and longevity guidance respect life stage",
+          "kind": "feature",
+          "issues": []
+        },
+        {
+          "pr": 3095,
+          "title": "Coaching observations stay within relevance, so the list stays short",
+          "kind": "feature",
+          "issues": []
+        }
+      ]
+    },
+    {
       "date": "2026-08-17",
       "entries": [
         {
