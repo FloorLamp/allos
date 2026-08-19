@@ -93,4 +93,27 @@ describe("atomic dashboard source boundary", () => {
     expect(fs.existsSync(path.join(directory, "domain.ts"))).toBe(false);
     expect(fs.existsSync(path.join(directory, "manifest.ts"))).toBe(false);
   });
+
+  it("keeps one pure Standing registry and no presentation-local ordering", () => {
+    const standing = fs.readFileSync(
+      path.join(root, "lib/dashboard-standing.ts"),
+      "utf8"
+    );
+    const relevance = fs.readFileSync(
+      path.join(root, "lib/dashboard-relevance.ts"),
+      "utf8"
+    );
+    const cluster = fs.readFileSync(
+      path.join(root, "components/dashboard/DashboardStandingCluster.tsx"),
+      "utf8"
+    );
+    expect(
+      runtimeSource().match(/export const STANDING_READING_ORDER\b/g)
+    ).toHaveLength(1);
+    expect(standing).not.toMatch(/from ["'](react|next\/|@\/components)/);
+    expect(relevance).not.toContain("isActingProfileReading");
+    expect(relevance).not.toContain('engagement !== "external"');
+    expect(cluster).not.toContain(".sort(");
+    expect(cluster).not.toContain('className="card"');
+  });
 });

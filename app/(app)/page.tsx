@@ -25,7 +25,6 @@ import {
   getHealthspanPillars,
   getLastNightSummary,
   getSleepWaitingState,
-  getSleepRegularity,
   getNapHistory,
   typicalWakeTime,
   getPrnMedicationsForQuickLog,
@@ -63,8 +62,11 @@ import {
 } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
-import { isGoalLive } from "@/lib/outcome-goals";
-import { isStrengthProgrammingScope } from "@/lib/frequency-targets";
+import { goalPct, isGoalLive } from "@/lib/outcome-goals";
+import {
+  frequencyScopeLabel,
+  isStrengthProgrammingScope,
+} from "@/lib/frequency-targets";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import { routineOrder } from "@/lib/dismissal-fatigue";
 import {
@@ -98,7 +100,7 @@ import {
   formatLongDate,
   daysRemainingLabel,
 } from "@/lib/format-date";
-import { recentLabHighlights } from "@/lib/recent-labs";
+import { RECENT_LAB_STALE_LABEL, recentLabHighlights } from "@/lib/recent-labs";
 import {
   DORMANCY_DOMAINS,
   WEIGHT_TREND_WINDOW_DAYS,
@@ -108,11 +110,14 @@ import {
 } from "@/lib/domain-dormancy";
 import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
 import { freshnessAgeDays } from "@/lib/freshness";
+import { glanceAgeToken } from "@/lib/glance-age";
+import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
 import { getRecapCard } from "@/lib/notifications/recap-data";
 import {
   coachingObservationFindings,
   dashboardHabitDomain,
   isDataQualityDashboardFinding,
+  summarizeDashboardHabits,
 } from "@/lib/dashboard-presentation";
 import {
   localTimeWindow,
@@ -144,6 +149,7 @@ import {
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import { DashboardAttentionAtom } from "@/components/dashboard/NeedsAttentionHero";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
+import type { DashboardStandingPresentation } from "@/components/dashboard/DashboardStandingCluster";
 import DashboardAtomCard from "@/components/dashboard/DashboardAtomCard";
 import RecentlyResolvedReopen, {
   type RecentlyResolvedItem,
@@ -186,7 +192,6 @@ import NextAppointmentWidget, {
   type NextAppointment,
 } from "@/components/dashboard/NextAppointmentWidget";
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
-import SleepLastNightWidget from "@/components/dashboard/SleepLastNightWidget";
 import SleepWaitingWidget from "@/components/dashboard/SleepWaitingWidget";
 import NapsTodayWidget from "@/components/dashboard/NapsTodayWidget";
 import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
@@ -216,6 +221,8 @@ import {
   withSettingReadCache,
 } from "@/lib/settings/kv";
 import { withReadSnapshot } from "@/lib/read-snapshot";
+import { proteinBasisPhrase, proteinTargetSummary } from "@/lib/protein";
+import { MedicalValue } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -566,8 +573,6 @@ async function renderDashboard(
   const sleepPresentation = sleepSummary
     ? sleepRecordPresentation(sleepSummary.wakeDay, on, formatPrefs)
     : null;
-  const sleepSri =
-    sleepSummary != null ? (getSleepRegularity(profile.id)?.sri ?? null) : null;
   // The morning waiting window (#2097). When it is open, the tile names the state
   // INSTEAD of showing a headline duration for a night nobody asked about — the
   // recorded night drops to a quiet secondary line and stays one tap away on /sleep.
@@ -585,14 +590,14 @@ async function renderDashboard(
   // and the combined duration appear without changing the main-sleep card.
   const todayNaps = getNapHistory(profile.id, 1).today;
 
-  // recent-labs (medical): the current reading per lab marker, flagged
-  // markers surfaced first so an out-of-range result is the headline. Selection
-  // policy is the shared recentLabHighlights (issue #313).
+  // Recent clinical results: gather every canonical member in the shared
+  // recentLabHighlights order. The Standing registry owns the six-row cap so the
+  // remaining results stay reachable in Everything.
   let labRows: RecentLabRow[] = [];
   {
     labRows = recentLabHighlights(
       getClinicalObservations(profile.id, { current: true }),
-      undefined,
+      Number.MAX_SAFE_INTEGER,
       on
     );
   }
@@ -640,11 +645,10 @@ async function renderDashboard(
     }
   }
 
-  // goals-and-habits: one combined overview of outcomes + weekly behaviors.
+  // Outcome goals and weekly targets remain individual facts. Their shared source
+  // models own member order; the Standing registry owns the visible family caps.
   const goals = trainingRelevant
-    ? getOutcomeGoals(profile.id)
-        .filter((g) => isGoalLive(g))
-        .slice(0, 4)
+    ? getOutcomeGoals(profile.id).filter((g) => isGoalLive(g))
     : [];
   const goalProgress = true
     ? getOutcomeGoalProgressMap(profile.id, goals)
@@ -658,6 +662,10 @@ async function renderDashboard(
           (strengthTrainingAvailable || !isStrengthProgrammingScope(target))
       )
     : [];
+  const orderedFreqTargets = [
+    ...summarizeDashboardHabits(freqTargets).open,
+    ...freqTargets.filter((progress) => progress.met),
+  ];
 
   // coaching: ranked, rule-based recommendations from the profile's own history
   // (deterministic, no AI), filtered to age-appropriate guidance at every life stage.
@@ -890,9 +898,19 @@ async function renderDashboard(
   const profileSubject = { scope: "profile" as const, profileId: profile.id };
   const candidates: DashboardCandidate[] = [];
   const candidateNodes = new Map<string, ReactNode>();
-  const add = (candidate: DashboardCandidate, node: ReactNode) => {
+  const standingPresentations = new Map<
+    string,
+    DashboardStandingPresentation
+  >();
+  const add = (
+    candidate: DashboardCandidate,
+    node: ReactNode,
+    standingPresentation?: DashboardStandingPresentation
+  ) => {
     candidates.push(candidate);
     candidateNodes.set(candidate.candidateId, node);
+    if (standingPresentation)
+      standingPresentations.set(candidate.candidateId, standingPresentation);
   };
   let sourceOrder = 0;
 
@@ -1262,7 +1280,8 @@ async function renderDashboard(
   );
   sourceOrder += coachingRecs.length;
 
-  goals.forEach((goal, index) =>
+  goals.forEach((goal, index) => {
+    const pct = goalPct(goal, goalProgress.get(goal.id));
     add(
       progressCandidates.goal(
         { subject: profileSubject, sourceOrder: sourceOrder + index },
@@ -1275,16 +1294,23 @@ async function renderDashboard(
         today={on}
         trainingRelevant={trainingRelevant}
         showLogActions={false}
-      />
-    )
-  );
+      />,
+      {
+        label: goal.title,
+        value: pct == null ? "In progress" : `${pct}%`,
+        href: "/training?tab=goals",
+        presence: "current",
+      }
+    );
+  });
   sourceOrder += goals.length;
-  freqTargets.forEach((progress, index) => {
+  orderedFreqTargets.forEach((progress, index) => {
     const id = progress.target.id;
     add(
       progressCandidates.targetProgress(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
-        id
+        id,
+        !progress.met
       ),
       <GoalsHabitsWidget
         goals={[]}
@@ -1293,7 +1319,22 @@ async function renderDashboard(
         today={on}
         trainingRelevant={trainingRelevant}
         showLogActions={false}
-      />
+      />,
+      {
+        label: frequencyScopeLabel(
+          progress.target.scope_kind,
+          progress.target.scope_value
+        ),
+        value: `${progress.count} of ${progress.per_week}`,
+        detail: "this week",
+        href:
+          dashboardHabitDomain(progress.target.scope_kind) === "food"
+            ? "/nutrition"
+            : dashboardHabitDomain(progress.target.scope_kind) === "practice"
+              ? "/wellness"
+              : "/training?tab=goals",
+        presence: "current",
+      }
     );
     add(
       progressCandidates.targetLog(
@@ -1319,7 +1360,7 @@ async function renderDashboard(
       />
     );
   });
-  sourceOrder += freqTargets.length * 2;
+  sourceOrder += orderedFreqTargets.length * 2;
 
   activeProtocols.forEach((protocol, index) => {
     add(
@@ -1415,7 +1456,13 @@ async function renderDashboard(
         proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
-      <NutritionTodayWidget today={proteinToday} routine={null} />
+      <NutritionTodayWidget today={proteinToday} routine={null} />,
+      {
+        value: `${proteinToday.todayIntake?.basis === "tracked" ? "" : "≥ "}${Math.round(proteinToday.todayGrams)} g`,
+        detail: `Goal ${proteinTargetSummary(proteinToday.target)} · From ${proteinToday.todayIntake ? proteinBasisPhrase(proteinToday.todayIntake.basis) : "logged foods"}`,
+        href: "/nutrition",
+        presence: "current",
+      }
     );
   else if (foodLoggingApplicable)
     add(
@@ -1430,7 +1477,13 @@ async function renderDashboard(
         message="No food logged yet."
         ctaLabel="Log food"
         ctaHref="/nutrition"
-      />
+      />,
+      {
+        detail: "No food logged yet.",
+        href: "/nutrition",
+        actionLabel: "Log food",
+        presence: "never",
+      }
     );
   if (routineControl)
     add(
@@ -1453,7 +1506,26 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         on
       ),
-      <StepsTodayWidget summary={stepsSummary} />
+      <StepsTodayWidget summary={stepsSummary} />,
+      {
+        value:
+          stepsSummary.today == null
+            ? "No steps logged yet today"
+            : stepsSummary.today.toLocaleString("en-US"),
+        detail:
+          [
+            stepsSummary.average7 == null
+              ? null
+              : `Prior 7 days · ${stepsSummary.average7.toLocaleString("en-US")} steps a day`,
+            stepsSummary.deltaPct == null
+              ? null
+              : `${stepsSummary.deltaPct > 0 ? "+" : ""}${stepsSummary.deltaPct}% vs prior 7 days`,
+          ]
+            .filter(Boolean)
+            .join(" · ") || undefined,
+        href: "/trends#body",
+        presence: "current",
+      }
     );
   else
     add(
@@ -1468,7 +1540,13 @@ async function renderDashboard(
         message="No step data yet."
         ctaLabel="Connect a source"
         ctaHref="/integrations/health-connect"
-      />
+      />,
+      {
+        detail: "No step data yet.",
+        href: "/integrations/health-connect",
+        actionLabel: "Connect a source",
+        presence: "never",
+      }
     );
 
   if (vitalsModel?.bp)
@@ -1482,7 +1560,40 @@ async function renderDashboard(
         model={{ bp: vitalsModel.bp, restingHr: null }}
         today={on}
         showLogAction={false}
-      />
+      />,
+      {
+        value: (() => {
+          const age = glanceAgeToken({
+            date: vitalsModel.bp.date,
+            today: on,
+            freshness: vitalsModel.bp.freshness,
+            form: "long",
+            floorLabel: VITAL_PRESENTATION_FLOORS["blood-pressure"].label,
+          });
+          const direction = vitalsModel.bp.direction;
+          return (
+            <span
+              className="inline-flex flex-wrap items-baseline gap-x-2"
+              data-testid="vitals-latest-bp"
+            >
+              <span>{`${vitalsModel.bp.systolic}/${vitalsModel.bp.diastolic} mmHg`}</span>
+              <span
+                data-testid="vitals-latest-bp-age"
+                data-stale={age.stale ? "true" : undefined}
+                title={age.title ?? undefined}
+                className={age.className}
+              >
+                {age.text}
+              </span>
+              {direction && (
+                <span className="sr-only">{`${direction === "flat" ? "flat" : direction} versus previous blood pressure`}</span>
+              )}
+            </span>
+          );
+        })(),
+        href: "/trends#body",
+        presence: "current",
+      }
     );
   if (vitalsModel?.restingHr)
     add(
@@ -1495,7 +1606,40 @@ async function renderDashboard(
         model={{ bp: null, restingHr: vitalsModel.restingHr }}
         today={on}
         showLogAction={false}
-      />
+      />,
+      {
+        value: (() => {
+          const age = glanceAgeToken({
+            date: vitalsModel.restingHr.date,
+            today: on,
+            freshness: vitalsModel.restingHr.freshness,
+            form: "long",
+            floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
+          });
+          const direction = vitalsModel.restingHr.direction;
+          return (
+            <span
+              className="inline-flex flex-wrap items-baseline gap-x-2"
+              data-testid="vitals-latest-resting-hr"
+            >
+              <span>{`${vitalsModel.restingHr.value} bpm resting`}</span>
+              <span
+                data-testid="vitals-latest-resting-hr-age"
+                data-stale={age.stale ? "true" : undefined}
+                title={age.title ?? undefined}
+                className={age.className}
+              >
+                {age.text}
+              </span>
+              {direction && (
+                <span className="sr-only">{`${direction === "flat" ? "flat" : direction} versus previous resting heart rate`}</span>
+              )}
+            </span>
+          );
+        })(),
+        href: "/trends#body",
+        presence: "current",
+      }
     );
   add(
     dailyCandidates.vitalLog(
@@ -1526,7 +1670,13 @@ async function renderDashboard(
         title={`Cycle day ${cycleModel.day}`}
         value={cycleModel.phase}
         href="/medical/cycles"
-      />
+      />,
+      {
+        value: `Day ${cycleModel.day}`,
+        detail: cycleModel.phase,
+        href: "/medical/cycles",
+        presence: "current",
+      }
     );
   if (cycleControl)
     add(
@@ -1558,15 +1708,45 @@ async function renderDashboard(
       <NextAppointmentWidget appointment={nextAppt} />
     );
 
-  labRows.forEach((row, index) =>
+  labRows.forEach((row, index) => {
+    const age = glanceAgeToken({
+      date: row.date,
+      today: on,
+      freshness: row.freshness,
+      form: "compact",
+      floorLabel: RECENT_LAB_STALE_LABEL,
+    });
     add(
       careCandidates.lab(
         { subject: profileSubject, sourceOrder: sourceOrder + index },
         row.name
       ),
-      <RecentLabsWidget rows={[row]} today={on} />
-    )
-  );
+      <RecentLabsWidget rows={[row]} today={on} />,
+      {
+        label: row.name,
+        value: (
+          <MedicalValue
+            value={row.value}
+            unit={row.unit}
+            flag={row.flag}
+            showFlagLabel
+          />
+        ),
+        detail: (
+          <span
+            data-testid="recent-lab-date"
+            data-stale={age.stale ? "true" : undefined}
+            title={age.title ?? undefined}
+            className={age.className}
+          >
+            {age.text}
+          </span>
+        ),
+        href: row.href,
+        presence: "current",
+      }
+    );
+  });
   sourceOrder += labRows.length;
   if (labRows.length === 0)
     add(
@@ -1576,12 +1756,18 @@ async function renderDashboard(
         sourceOrder: sourceOrder++,
       }),
       <WidgetEmpty
-        title="Labs"
+        title="Clinical results"
         icon={IconFlask}
-        message="No lab results yet."
-        ctaLabel="Import labs"
+        message="No clinical results yet."
+        ctaLabel="Import results"
         ctaHref="/data"
-      />
+      />,
+      {
+        detail: "No clinical results yet.",
+        href: "/data",
+        actionLabel: "Import results",
+        presence: "never",
+      }
     );
 
   const lastWeightRecord = weightSeries.at(-1)?.date ?? null;
@@ -1604,7 +1790,13 @@ async function renderDashboard(
         message="No weigh-ins yet."
         ctaLabel="Log weight"
         ctaHref="/trends"
-      />
+      />,
+      {
+        detail: "No weigh-ins yet.",
+        href: "/trends",
+        actionLabel: "Log weight",
+        presence: "never",
+      }
     );
   else if (weightDormant) {
     const ageDays =
@@ -1621,7 +1813,13 @@ async function renderDashboard(
         line={dormantRecordLine("weight", ageDays)}
         ctaLabel="Body metrics"
         ctaHref="/trends"
-      />
+      />,
+      {
+        detail: dormantRecordLine("weight", ageDays),
+        href: "/trends",
+        actionLabel: "Body metrics",
+        presence: "dormant",
+      }
     );
   } else {
     const latestWeight = bodyMetrics.at(-1);
@@ -1636,7 +1834,14 @@ async function renderDashboard(
           title="Latest weight"
           value={`${latestWeight.value} ${units.weightUnit}`}
           href="/trends"
-        />
+        />,
+        {
+          label: "Latest",
+          value: `${latestWeight.value} ${units.weightUnit}`,
+          detail: latestWeight.date,
+          href: "/trends",
+          presence: "current",
+        }
       );
     add(
       progressCandidates.weightTrend(
@@ -1655,7 +1860,14 @@ async function renderDashboard(
         formatPrefs={formatPrefs}
         today={on}
         subjectName={actingSubjectName}
-      />
+      />,
+      {
+        label: "Trend",
+        value: `${bodyMetrics.length} readings`,
+        detail: `${weightTrendSince} to ${on}`,
+        href: "/trends",
+        presence: "current",
+      }
     );
   }
 
@@ -1695,7 +1907,13 @@ async function renderDashboard(
         message="No sleep recorded yet."
         ctaLabel="Sync a source"
         ctaHref="/data"
-      />
+      />,
+      {
+        detail: "No sleep recorded yet.",
+        href: "/data",
+        actionLabel: "Sync a source",
+        presence: "never",
+      }
     );
   else if (sleepDormant) {
     const ageDays =
@@ -1712,7 +1930,13 @@ async function renderDashboard(
         line={dormantRecordLine("sleep", ageDays)}
         ctaLabel="Sync a source"
         ctaHref="/data"
-      />
+      />,
+      {
+        detail: dormantRecordLine("sleep", ageDays),
+        href: "/data",
+        actionLabel: "Sync a source",
+        presence: "dormant",
+      }
     );
   } else if (sleepPresentation?.freshness === "stale") {
     add(
@@ -1756,11 +1980,6 @@ async function renderDashboard(
               sleepSummary.wakeMinutes
             ),
       ],
-      [
-        "regularity",
-        "Sleep regularity",
-        sleepSri == null ? "—" : `${Math.round(sleepSri)}%`,
-      ],
     ] as const;
     values.forEach(([key, title, value], index) =>
       add(
@@ -1771,7 +1990,13 @@ async function renderDashboard(
           engagementFromSource(sleepSummary.source),
           sleepTiming
         ),
-        <DashboardAtomCard title={title} value={value} href="/sleep" />
+        <DashboardAtomCard title={title} value={value} href="/sleep" />,
+        {
+          label: title,
+          value,
+          href: "/sleep",
+          presence: "current",
+        }
       )
     );
     sourceOrder += values.length;
@@ -1789,7 +2014,7 @@ async function renderDashboard(
       <NapsTodayWidget naps={[nap]} timeFormat={formatPrefs.timeFormat} />
     )
   );
-  if (todayNaps.length > 1)
+  if (todayNaps.length > 0)
     add(
       sleepCandidates.napTotal(
         {
@@ -1804,7 +2029,15 @@ async function renderDashboard(
           todayNaps.reduce((sum, nap) => sum + nap.durationMin, 0)
         )}
         href="/sleep#naps"
-      />
+      />,
+      {
+        value: formatHm(
+          todayNaps.reduce((sum, nap) => sum + nap.durationMin, 0)
+        ),
+        detail: `${todayNaps.length} ${todayNaps.length === 1 ? "nap" : "naps"}`,
+        href: "/sleep#naps",
+        presence: "current",
+      }
     );
   sourceOrder += todayNaps.length + 1;
 
@@ -1818,7 +2051,14 @@ async function renderDashboard(
         },
         pillar.key
       ),
-      <HealthspanPillarsWidget pillars={[pillar]} />
+      <HealthspanPillarsWidget pillars={[pillar]} />,
+      {
+        label: pillar.label,
+        value: pillar.value,
+        detail: pillar.detail,
+        href: pillar.href,
+        presence: "current",
+      }
     )
   );
   sourceOrder += pillars.length;
@@ -1865,6 +2105,7 @@ async function renderDashboard(
       dateLabel={formatLongDate(on, formatPrefs)}
       placements={dashboardPlacements}
       candidateNodes={candidateNodes}
+      standingPresentations={standingPresentations}
       attentionBadgeCount={attentionBadgeCount}
     />
   );

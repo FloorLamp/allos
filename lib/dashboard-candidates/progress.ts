@@ -26,13 +26,19 @@ export const progressCandidates = {
       "manual"
     );
   },
-  targetProgress(ctx: DomainCandidateContext, id: number) {
+  targetProgress(
+    ctx: DomainCandidateContext,
+    id: number,
+    standingEligible = true
+  ) {
     return reading(
       ctx,
       `target.weekly-progress:${id}`,
       `frequency-target.progress:${id}`,
       `target:${id}`,
-      "manual"
+      "manual",
+      "current",
+      { standingEligible }
     );
   },
   targetLog(

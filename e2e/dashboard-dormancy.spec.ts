@@ -26,8 +26,6 @@ import { dashboardCandidatePrefix } from "./dashboard-candidate";
 // seedDormantDomains) — its whole value is an ABSENCE of recent records, which any
 // neighbouring write would destroy. This spec therefore only READS, on both profiles.
 
-const DORMANT_LINE = "widget-dormant-line";
-
 test("a quiet domain collapses to one line that states how long, and offers the fix (#2652)", async ({
   browser,
 }) => {
@@ -46,17 +44,13 @@ test("a quiet domain collapses to one line that states how long, and offers the 
   // offset, so a changed threshold or a reworded line fails here rather than passing
   // against a recomputed expectation.
   const weight = dashboardCandidatePrefix(page, "weight.dormant");
-  await expect(weight.getByTestId(DORMANT_LINE)).toHaveText(
-    "No weigh-in recorded in 150 days"
-  );
+  await expect(weight).toContainText("No weigh-in recorded in 150 days");
+  await expect(weight).toHaveAttribute("data-presence", "dormant");
   const sleep = dashboardCandidatePrefix(page, "sleep.dormant");
-  await expect(sleep.getByTestId(DORMANT_LINE)).toHaveText(
-    "No sleep recorded in 150 days"
-  );
+  await expect(sleep).toContainText("No sleep recorded in 150 days");
+  await expect(sleep).toHaveAttribute("data-presence", "dormant");
 
-  // Each collapsed card keeps its heading, so a reader navigating the page outline
-  // still finds the section — only its height changed.
-  await expect(weight.getByRole("heading", { name: "Weight" })).toBeVisible();
+  await expect(page.locator('[data-standing-family="weight"]')).toBeVisible();
 
   // REACH IS UNCHANGED: each collapsed line carries the link that would end the
   // silence, so what it replaced is one tap away.
@@ -80,11 +74,12 @@ test("dormant domains never regress to never-recorded copy (#2652)", async ({
   });
   await page.goto("/");
 
-  // The two dormant facts do not wear the onboarding component at all.
+  // The two dormant facts do not wear never-recorded presence.
   for (const id of ["weight.dormant", "sleep.dormant"]) {
-    const card = dashboardCandidatePrefix(page, id);
-    await expect(card.getByTestId("widget-dormant")).toBeVisible();
-    await expect(card.getByTestId("widget-empty")).toHaveCount(0);
+    await expect(dashboardCandidatePrefix(page, id)).toHaveAttribute(
+      "data-presence",
+      "dormant"
+    );
   }
 
   // The specific lie this replaces. The weight card's onboarding copy is "No weigh-ins
@@ -111,13 +106,11 @@ test("a card still showing a stale value is NOT collapsed (#2652)", async ({
   const labs = dashboardCandidatePrefix(page, "labs.latest:").filter({
     hasText: "Glucose",
   });
-  await expect(labs.getByTestId("widget-dormant")).toHaveCount(0);
+  await expect(labs).toHaveAttribute("data-presence", "current");
   await expect(labs).toContainText("Glucose");
-  // Its rows still carry their age labels — the presentation floor's treatment, intact.
-  await expect(labs.getByTestId("recent-lab-date")).not.toHaveCount(0);
 
   const vitals = dashboardCandidatePrefix(page, "vitals.blood-pressure:");
-  await expect(vitals.getByTestId("widget-dormant")).toHaveCount(0);
+  await expect(vitals).toHaveAttribute("data-presence", "current");
   await expect(vitals).toContainText("118");
   await page.close();
 });
@@ -134,7 +127,9 @@ test("a profile whose domains are current collapses nothing (#2652)", async ({
     page.getByRole("heading", { name: "Dashboard", level: 1 })
   ).toBeVisible();
   await expect(page.getByTestId("widget-dormant")).toHaveCount(0);
-  await expect(page.getByTestId(DORMANT_LINE)).toHaveCount(0);
+  await expect(
+    page.locator('[data-testid="dashboard-candidate"][data-presence="dormant"]')
+  ).toHaveCount(0);
   // Sanity that we are looking at a populated dashboard rather than an empty one, so
   // the zero above is an absence of dormancy and not an absence of cards.
   await expect(
