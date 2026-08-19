@@ -62,12 +62,12 @@ describe("classifyPull", () => {
 
   it("STILL arms under a modal that does not own the drag — #1878's contract", () => {
     // The counter-example, stated at the classifier so it cannot be lost again.
-    // A record form open in a ModalShell is `aria-modal` and has no touch
-    // gesture at all, so it cannot produce the drag clause 1 refuses; and per
-    // #1878 a refresh the USER asked for is never deferred — installed, a pull
-    // is the only way to ask. Swallowing it leaves someone pulling with no
-    // recourse, which is the regression e2e/dirty-form-refresh.mobile.spec.ts
-    // caught when this clause also asked "is a modal open".
+    // A surface that has NOT locked the body has taken no drag away from the
+    // page, so it cannot produce the gesture clause 1 refuses; and per #1878 a
+    // refresh the USER asked for is never deferred — installed, a pull is the
+    // only way to ask. Swallowing it leaves someone pulling with no recourse,
+    // which is the regression e2e/dirty-form-refresh.mobile.spec.ts caught when
+    // this clause also asked "is a modal open".
     const overlayOpen = overlayOwnsViewport({ bodyScrollLocked: false });
     expect(classifyPull(pull({ overlayOpen, deltaY: 400 })).kind).toBe("armed");
   });
@@ -87,10 +87,11 @@ describe("overlayOwnsViewport", () => {
   });
 
   it("a modal that never locked the body does NOT own the drag", () => {
-    // ModalShell and its consumers, MergeConflictDialog, PhotoGallery,
-    // FitnessTestTimer. None has a touch gesture, so none can produce the
-    // drag-dismiss this refuses — and a pull under one is legitimate (#1878).
-    // Asking "is a modal open" here answered true and swallowed it.
+    // MergeConflictDialog, PhotoGallery, FitnessTestTimer — what is left of that
+    // set since #2774 converged the record dialogs onto the body-locking sheet.
+    // None of these has a touch gesture, so none can produce the drag-dismiss
+    // this refuses, and a pull under one is legitimate (#1878). Asking "is a
+    // modal open" here answered true and swallowed it.
     expect(overlayOwnsViewport({ bodyScrollLocked: false })).toBe(false);
   });
 
