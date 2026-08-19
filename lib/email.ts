@@ -35,6 +35,24 @@ export interface OutboundEmail {
 // server.
 export { isEmailConfigured };
 
+// Explicit SMTP transport bounds (#3057). Nodemailer's own defaults (2-minute
+// connection, 10-minute socket) can outlive the shared whole-dispatch deadline
+// (NOTIFICATION_DISPATCH_TIMEOUT_MS, lib/notifications/dispatch-deadline.ts), so
+// one wedged relay could hold the email channel past every other channel's cap.
+// Each bound sits well below that deadline — asserted alongside the other
+// channel caps in lib/__db_tests__/post-workout-duplicates.test.ts. The socket
+// bound covers ONE SMTP session; the notification channel's per-recipient loop
+// stays under the whole-dispatch deadline as its final guard.
+export const EMAIL_CONNECTION_TIMEOUT_MS = 30_000;
+export const EMAIL_GREETING_TIMEOUT_MS = 30_000;
+export const EMAIL_SOCKET_TIMEOUT_MS = 60_000;
+
+const SMTP_TIMEOUTS = {
+  connectionTimeout: EMAIL_CONNECTION_TIMEOUT_MS,
+  greetingTimeout: EMAIL_GREETING_TIMEOUT_MS,
+  socketTimeout: EMAIL_SOCKET_TIMEOUT_MS,
+} as const;
+
 // Send one email through the configured relay. Throws when SMTP isn't configured
 // (callers gate on isEmailConfigured() first and surface friendly copy) or when
 // the relay rejects the message — auth mail is request-path, so a failure must
@@ -70,6 +88,7 @@ export async function sendEmail(msg: OutboundEmail): Promise<void> {
     secure: cfg.port === 465,
     requireTLS: cfg.port !== 465,
     auth: cfg.user ? { user: cfg.user, pass: cfg.password } : undefined,
+    ...SMTP_TIMEOUTS,
   });
 
   try {
@@ -110,6 +129,7 @@ export async function verifyEmailConfig(): Promise<{
     secure: cfg.port === 465,
     requireTLS: cfg.port !== 465,
     auth: cfg.user ? { user: cfg.user, pass: cfg.password } : undefined,
+    ...SMTP_TIMEOUTS,
   });
   try {
     await transport.verify();

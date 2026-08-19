@@ -79,50 +79,53 @@
 //
 // ── Why a queued run is BOUNDED ────────────────────────────────────────────
 //
-// Serializing makes one run's latency the next run's delay, and a dispatch has no
-// natural ceiling: `dispatch()` fans the channels under Promise.all, so the
-// slowest channel is the whole run's latency, and a push endpoint that accepts
-// the connection and then never answers is unbounded (web-push only arms a socket
-// timeout when one is passed — see PUSH_SEND_TIMEOUT_MS in ./push, which is the
-// same bound one layer down, and a socket timeout is not a whole-response
-// timeout).
+// Serializing makes one run's latency the next run's delay. `dispatch()` itself
+// is bounded now — the shared NOTIFICATION_DISPATCH_TIMEOUT_MS whole-dispatch
+// deadline (#3057, ./dispatch-deadline) resolves the fan-out even when a channel
+// never settles — so the delivery leg of a queued run has a ceiling of its own.
+// The queue still keeps a defensive whole-TASK guard, because a run is more than
+// its dispatch: the dynamic import of the heavy core, the completed-row
+// re-verification, and the message build all sit outside the dispatch deadline,
+// and any of them hanging would still stall the profile's chain and the notify
+// tick's exit drain — silence, which is the harm this tier exists to prevent.
 //
-// Unbounded, one stuck send would mean the NEXT activity never dispatches at all
-// and flushPostWorkoutDispatches() never returns, hanging the notify tick's exit
-// drain. That trades a duplicate for silence, and silence is the harm this tier
-// exists to prevent. So the queued task races a timeout: the slot is released,
-// the chain moves on, and the abandoned run is left to finish or not. If it never
-// delivered it never stamped, so the hourly tick's backstop re-delivers; if it
-// delivers late it stamped, and the marker keeps the backstop quiet. Losing the
-// ordering guarantee for a run that has already hung this long is the right trade
-// — the alternative is that everything after it is lost.
+// The guard is DERIVED from the shared deadline, strictly greater (never a
+// second competing 120s literal racing it at the same instant): a dispatch the
+// shared deadline is still bounding always resolves before this guard fires, so
+// the guard only ever trips on non-dispatch work that is genuinely stuck. When
+// it does, the slot is released, the chain moves on, and the abandoned run is
+// left to finish or not: if it never delivered it never stamped, so the hourly
+// tick's backstop re-delivers; if it delivers late it stamped, and the marker
+// keeps the backstop quiet. Losing the ordering guarantee for a run that has
+// already hung this long is the right trade — the alternative is that
+// everything after it is lost.
 
 import { createLogger, safeString } from "../log";
 import { clockOverride } from "../clock";
+import { NOTIFICATION_DISPATCH_TIMEOUT_MS } from "./dispatch-deadline";
 
 const log = createLogger("notify");
 
 export const POST_WORKOUT_DISPATCH_DELAY_MS = 60_000;
 
-// How long ONE queued dispatch may hold the chain before the queue gives up on it
-// (see the header). Generous against a healthy send — a Telegram call is capped at
-// TELEGRAM_CALL_TIMEOUT_MS (30s), Home Assistant at HOME_ASSISTANT_CALL_TIMEOUT_MS
-// (10s), a push send at PUSH_SEND_TIMEOUT_MS (30s) — so this only ever fires on
-// something genuinely stuck, never on a slow-but-working channel.
+// How long ONE queued run may hold the chain before the queue gives up on it
+// (see the header). Derived from the shared whole-dispatch deadline (#3057),
+// STRICTLY greater: dispatch() itself resolves at NOTIFICATION_DISPATCH_TIMEOUT_MS
+// with a bounded run's worth of headroom on top for the non-dispatch work a
+// queued run also does (the dynamic import of the heavy core, the completed-row
+// re-verification, the message build). A guard equal to the dispatch deadline
+// would race it at the same instant and could abandon a run whose dispatch was
+// about to resolve with results; strictly greater means the bounded dispatch
+// always wins and this guard only ever fires on non-dispatch work genuinely
+// stuck.
 //
-// That derivation is ASSERTED, not merely written down: lib/__db_tests__/
-// post-workout-duplicates.test.ts imports all four and reds unless this is at least
-// TWICE the largest channel cap. Twice, not merely above: a dispatch is a message
-// build plus a Promise.all fan-out, not one call, so a deadline barely over one
-// cap cuts off a merely-slow send — and cutting off a slow send is how the duplicate
-// this queue tolerates stops being the pathological case and becomes the normal one.
-// The multiple is provisional, chosen for headroom rather than measured.
-//
-// Lower this below the caps and every real send is abandoned mid-flight, putting the
-// abandoned run and its successor back into the read-then-act same-push race this
-// queue exists to close — and no other spec notices. Raise a channel cap toward it
-// and the same thing happens from the other side.
-export const POST_WORKOUT_DISPATCH_TIMEOUT_MS = 120_000;
+// The derivation is ASSERTED, not merely written down: lib/__db_tests__/
+// post-workout-duplicates.test.ts reds unless this is strictly greater than the
+// shared deadline (and the shared deadline itself clears every channel cap with
+// headroom). The 30s margin is provisional — chosen as generous against the
+// non-dispatch legs, not measured.
+export const POST_WORKOUT_DISPATCH_TIMEOUT_MS =
+  NOTIFICATION_DISPATCH_TIMEOUT_MS + 30_000;
 
 type DispatchRunner = (profileId: number, activityId: number) => Promise<void>;
 
@@ -221,8 +224,10 @@ export function queuePostWorkoutDispatch(
     // second run reads a marker the first has already stamped and declines.
     return serializeForProfile(profileId, async () => {
       try {
-        // Bounded (see the header): a dispatch that never settles must not take the
+        // Bounded (see the header): a run that never settles must not take the
         // next activity's dispatch — or the tick's exit drain — down with it.
+        // The dispatch leg is already bounded inside dispatch() (#3057); this
+        // strictly-greater guard covers the rest of the run.
         await withDispatchTimeout(
           runner(profileId, activityId),
           POST_WORKOUT_DISPATCH_TIMEOUT_MS

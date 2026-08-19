@@ -4,16 +4,17 @@
 import { writeTx } from "../db";
 import { instantNow } from "../clock";
 import { createLogger } from "../log";
-import {
-  type ChannelId,
-  type DispatchOptions,
-  type NotificationMessage,
-} from "./types";
+import { type DispatchOptions, type NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
 import { pushChannel } from "./push";
 import { homeAssistantChannel } from "./home-assistant";
 import { emailChannel } from "./email";
 import { decideMarker, type NotifyErrorMarker } from "./delivery-status";
+import {
+  NOTIFICATION_DISPATCH_TIMEOUT_MS,
+  settleWithinDeadline,
+  type DispatchResult,
+} from "./dispatch-deadline";
 import {
   readDeliveryMarker,
   readFailedChannel,
@@ -31,6 +32,15 @@ const log = createLogger("notifications");
 // "[Name] " label it was sent with (#377/#429).
 export { prefixForProfile } from "./attribution";
 export type { DispatchOptions } from "./types";
+// The shared whole-dispatch deadline and its typed timeout (#3057). Defined in
+// ./dispatch-deadline (a light module, so the post-workout queue can derive its
+// guard from the constant without pulling the channel stack); served from here
+// for the ordinary `from "@/lib/notifications"` path.
+export {
+  NOTIFICATION_DISPATCH_TIMEOUT_MS,
+  DispatchTimeoutError,
+} from "./dispatch-deadline";
+export type { DispatchResult } from "./dispatch-deadline";
 
 // The last persisted delivery failure for the Settings surface, or null when the
 // most recent attempted send succeeded (marker cleared). Global, like the backup
@@ -95,17 +105,22 @@ export function getChannels() {
   return [telegramChannel, pushChannel, homeAssistantChannel, emailChannel];
 }
 
-export interface DispatchResult {
-  id: ChannelId;
-  ok: boolean;
-  error?: string;
-}
-
 // Send a message to every channel configured for `profileId`. One channel
 // failing never blocks the others; returns a per-channel result so the caller
 // (CLI) can set its exit code. `opts` carries per-send routing a caller needs on top
 // of the profile's own channels — today only the escalation's explicit caregiver chat
 // (#1716) — so even a specially-routed safety message keeps the delivery accounting.
+//
+// BOUNDED (#3057): every channel starts concurrently and the whole fan-out
+// resolves no later than NOTIFICATION_DISPATCH_TIMEOUT_MS. A channel still
+// pending at the deadline gets an ok:false result with a typed timeout error —
+// never success, never "nothing configured" — so the caller's ordinary
+// channel-agnostic contact rule keeps working: any success stamps the slot
+// marker once (the timed-out sibling is recorded as Erroring below, not
+// replayed), and an all-fail leaves the marker unset for the retry band. The
+// abandoned send keeps running — nothing here can cancel a transport in flight
+// — but its late settlement is only logged; it cannot reach the returned
+// results or re-run the marker fold.
 export async function dispatch(
   profileId: number,
   msg: NotificationMessage,
@@ -116,18 +131,27 @@ export async function dispatch(
     log.warn("no configured channels; nothing sent");
     return [];
   }
-  const results = await Promise.all(
-    channels.map(async (c): Promise<DispatchResult> => {
-      try {
-        await c.send(profileId, msg, opts);
-        log.info("sent", { channel: c.id, title: msg.title });
-        return { id: c.id, ok: true };
-      } catch (e) {
-        const error = e instanceof Error ? e.message : String(e);
-        log.error("send failed", { channel: c.id, error });
-        return { id: c.id, ok: false, error };
-      }
-    })
+  const results = await settleWithinDeadline(
+    channels.map((c) => ({
+      id: c.id,
+      promise: (async (): Promise<DispatchResult> => {
+        try {
+          await c.send(profileId, msg, opts);
+          log.info("sent", { channel: c.id, title: msg.title });
+          return { id: c.id, ok: true };
+        } catch (e) {
+          const error = e instanceof Error ? e.message : String(e);
+          log.error("send failed", { channel: c.id, error });
+          return { id: c.id, ok: false, error };
+        }
+      })(),
+    })),
+    NOTIFICATION_DISPATCH_TIMEOUT_MS,
+    (id, late) =>
+      log.warn("channel settled after the dispatch deadline; result discarded", {
+        channel: id,
+        ok: late.ok,
+      })
   );
   // Persist the delivery-health marker so a broken bot token / chat id becomes
   // visible in Settings instead of only surfacing as a tick exit code (#131).
