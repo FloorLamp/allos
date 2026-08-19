@@ -289,6 +289,16 @@ export const OWNED_TABLES = [
   // this table grows with SENDS, so it carries a named cleanup class (#203): the
   // reconcile sweep drops pointers past Telegram's ~48h edit horizon on every pass.
   "notify_messages",
+  // Durable post-workout dispatch claims (#3058): one tiny row per announced
+  // activity, electing exactly one dispatcher for the finish nudge across
+  // processes. Profile-owned because the claim is ABOUT a profile's contact —
+  // and a claim that outlived its subject would be a row of orphaned delivery
+  // bookkeeping. Grows at the same rate as the notify_last_post_workout_*
+  // marker rows in profile_settings (one per announced activity, ids never
+  // recycle, #203) and is cleared by profile_id here, like them, on profile
+  // deletion. Its declared ON DELETE CASCADE never fires on that path — the
+  // sweep runs with foreign_keys OFF — membership in THIS list is what clears it.
+  "notify_post_workout_claims",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

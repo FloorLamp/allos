@@ -1138,9 +1138,29 @@ edit and a settings write cannot share a transaction, so the execution order
 carries the rest: the plan captures the strip target before anything is written,
 then the chokepoint **records first and strips second**, so a settings-write
 throw takes the strip down with it and a failed strip lands on a pointer that is
-already right. Residual, unchanged: a rotation is still best-effort against
-Telegram, so a strip that fails leaves one extra live keyboard until the #1779
-sweep's date close reaches it (for the food nudge, the day boundary — #2018).
+already right.
+
+**The strip is claimed, and its failures are classified (#2827).** The rotation's
+strip used to be a blind edit plus a plain pointer-row DELETE, and the barrier
+fixture (`lib/__db_tests__/food-rotation-claim.test.ts`) measured the suspected
+race REACHABLE through the real claim machinery: a rotation whose strip was in
+flight while the sweep read, claimed and re-rendered left a live food keyboard
+on the message the rotation had just closed, with no pointer row left for
+anything to ever strip — send-time date tokens included, the exact #947 harm.
+So `rotatePointer` now acquires the SAME claim vocabulary as `closeSuperseded`
+and the sweep (`claimMessagePointerClose`, the versioned row delete) before
+touching the network; a lost claim is a typed no-op (`PointerStripOutcome`) and
+performs no edit. Failure handling reuses `classifyTelegramFailure` — one
+classifier, one retention interpretation, no rotate-specific string matching:
+PERMANENT (message deleted/uneditable) retires the pointer row in the same call;
+TRANSIENT (rate limit, timeout, 5xx, unknown-conservative) restores the claimed
+row so the next sweep retries, bounded by the pointer's retention horizon. A
+strip target with no pointer row (best-effort bookkeeping failed at send) is
+still stripped blind — the settings pointer is that keyboard's only closer.
+Residual, shared with `closeSuperseded` and documented at `rotatePointer`: a
+claim taken while another claimant's edit is already in flight on the network is
+invisible to either side's witness — one network call wide, inside the #1788
+convergence posture.
 
 **Pointers read the DELIVERED keyboard.** Both extractors
 (`foodNudgePointerFromMessage`, `isHouseholdRoundMessage`) scanned the uncapped
@@ -3578,6 +3598,25 @@ stamp-on-delivery one-shot marker (`notify_last_post_workout_<activityId>`); the
 notify tick remains the mandatory backstop (and flushes tick-armed timers before
 exiting). Deliberately not quiet-hours-gated — a post-completion send answers an
 action the user just took.
+
+**One contact per session is database-enforced (#3058).** The marker check is
+read-then-act, and two callers sit outside #3021's per-profile promise chain:
+another process, and the core called directly while a queued run is mid-send.
+The owner ruling (2026-08-18) closes that at the schema:
+`notify_post_workout_claims` (one row per activity id — the announcement
+identity) elects exactly ONE dispatcher via its unique key, in the same
+immediate transaction that re-runs the marker and #2570 twin checks. Losers
+return typed `already-claimed`/`already-sent` outcomes without dispatching; the
+winner sends outside the transaction; any successful channel moves the claim to
+`sent` and stamps the marker in one transaction; a total failure RELEASES the
+claim for the retry band; a crashed `pending` claim is retryable only after a
+lease asserted longer than #3057's shared dispatch deadline and the queue's
+whole-task guard (`lib/notifications/post-workout-claim.ts`). The queue is now a
+latency/order optimization only. #2570's duplicate-cluster check and marker
+folding are untouched — claiming is per activity id, twins remain their job.
+The at-least-once boundary stands: a crash between a provider accepting and the
+`sent` commit can still duplicate a contact, never lose one; transport delivery
+is not exactly-once and is not described as such anywhere.
 
 **One supplement reminder per tick (#1154).** Every slot due on a tick —
 the four windows plus the PreWorkout pseudo-slot (an `anytime` pre_workout dose

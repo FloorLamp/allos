@@ -118,6 +118,10 @@ const CANONICAL_INSTANT_COLUMNS: Record<
     columns: ["started_at", "ended_at", "end_written_at"],
     why: "migration 20260816-fasts (#2756) — BORN canonical: the fasting lifecycle's claimed start and end, plus the instant that end was WRITTEN. The table is new, so the claim cannot be false, and the entry is what binds its first writer (lib/fast-store.ts, reached only through lib/fast-write.ts) to utcInstant() instead of letting the call site pick a shape. The first two are compared in SQL — the active-fast lookup, the range read the history and the annotation ride, and the overlap scan — so a bare value beside a canonical one would sort wrong while the query still looked right. `end_written_at` is compared in TS rather than SQL (the Undo's age bound), which is the same hazard one tier over: parseUtcSql reads it beside `ended_at`, so a bare shape there would be judged against canonical ones. No DEFAULT on any of the three. `created_at` beside them stays bare and is NOT claimed here.",
   },
+  notify_post_workout_claims: {
+    columns: ["claimed_at"],
+    why: "migration 20260819-post-workout-dispatch-claims (#3058) — BORN canonical: the dispatch-claim lease stamp. The table is new, so the claim cannot be false, and the entry binds its only writer (lib/notifications/post-workout-claim.ts) to instantNow() instead of SQLite's bare-shaped clock — the lease age is computed in TS via Date.parse, which reads a bare value as local time and would misjudge the lease by the host's UTC offset. No column DEFAULT; nothing compares it in SQL.",
+  },
   notify_lifecycle: {
     columns: ["at"],
     why: "migration 167 (#2233) — the delivery-health marker's failure instant, normalized off `new Date().toISOString()`'s millisecond shape (a THIRD serialization rule C could not see: the module that built the string, lib/notifications/index.ts, writes no SQL of its own — the #2205 phase 3 census caught it). The writer now binds instantNow(); nothing compares this column in SQL.",

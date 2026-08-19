@@ -1188,6 +1188,15 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  notify_post_workout_claims: [
+    {
+      column: "claimed_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "The #3058 dispatch-claim lease stamp. Born canonical (the table is new and its one writer binds instantNow), and compared only in JS against POST_WORKOUT_CLAIM_LEASE_MS; nothing compares it in SQL.",
+    },
+  ],
   optical_prescriptions: [
     {
       column: "issued_date",

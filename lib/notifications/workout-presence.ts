@@ -69,6 +69,12 @@ import {
   postWorkoutAnnouncedOn,
   postWorkoutFinishMarkerKey,
 } from "./post-workout-marker";
+import {
+  claimPostWorkoutDispatch,
+  finalizePostWorkoutClaim,
+  releasePostWorkoutClaim,
+  type PostWorkoutClaimResult,
+} from "./post-workout-claim";
 import { announcedActivityTwin } from "../queries/integrations";
 import { getProfileAge } from "../settings/profile-attrs";
 import { isTrainingRelevant } from "../life-stage";
@@ -221,14 +227,44 @@ function importedFacts(row: FinishRow): ImportedSessionFacts {
   };
 }
 
+// How one call to the claim-owning core resolved (#3058). `sent` is the only
+// arm that contacted anyone. The losing arms are typed rather than folded into
+// a boolean so a caller — and a test — can tell "another caller owns this send"
+// (`already-claimed` / `already-sent`, the durable claim's election) apart from
+// "this row's own one-shot already fired" (`already-announced`), the #2570
+// duplicate-cluster decline (`twin-announced`), an ineligible/empty run
+// (`skipped`), and the two retryable ends (`no-channel`, `failed`).
+export type PostWorkoutDispatchOutcome =
+  | "sent"
+  | "already-claimed"
+  | "already-sent"
+  | "already-announced"
+  | "twin-announced"
+  | "skipped"
+  | "no-channel"
+  | "failed";
+
 // Deliver the post-workout reminder for ONE activity — the shared dispatch core
 // (#1154 §B / #221): the presence-driven tick flagship AND the write-path
 // delayed dispatch (lib/notifications/post-workout-queue.ts) both call this, so
-// gating (dueness, the #924 recap composition, the #928 channel matrix) and the
-// one-shot marker can never fork. One-shot per activity id; only-when-pending;
-// the marker is stamped only on delivery (under writeTx with a re-read, so the
-// action-timer and the tick racing each other stamp at most once) so a
-// no-channel/failed run retries on the tick backstop.
+// gating (dueness, the #924 recap composition, the #928 channel matrix), the
+// one-shot marker AND the #3058 dispatch claim can never fork — no public or
+// core path may perform the read-then-send sequence around this function.
+// One-shot per activity id; only-when-pending; the marker is stamped only on
+// delivery so a no-channel/failed run retries on the tick backstop.
+//
+// THE CLAIM (#3058). The marker check above the dispatch is read-then-act, and
+// two callers outside one promise chain (another process; the core called
+// directly while a queued run is mid-send) could both pass it before either
+// stamped. So the send is now ELECTED: one immediate transaction re-runs the
+// eligibility checks (marker, #2570 twin) and inserts the durable `pending`
+// claim — the unique key picks exactly one winner across processes — and only
+// the winner dispatches, outside the transaction. Any successful channel moves
+// the claim to `sent` and stamps the marker in one transaction; a total failure
+// releases the claim for the retry band; a crashed winner's claim expires on
+// the lease (lib/notifications/post-workout-claim.ts). The residual crash
+// window between a provider accepting and the `sent` commit remains the
+// documented at-least-once boundary — see that module's header.
 //
 // `verifyCompletedToday` (the queued path) re-reads the activity at fire time
 // and skips — without burning the one-shot — unless the row still exists for
@@ -240,8 +276,9 @@ export async function runPostWorkoutForActivity(
   profileId: number,
   activityId: number,
   opts: { verifyCompletedToday?: boolean } = {}
-): Promise<{ failed: boolean }> {
-  if (!isTrainingRelevant(getProfileAge(profileId))) return { failed: false };
+): Promise<{ failed: boolean; outcome: PostWorkoutDispatchOutcome }> {
+  if (!isTrainingRelevant(getProfileAge(profileId)))
+    return { failed: false, outcome: "skipped" };
   const date = today(profileId);
   const finishRow = loadFinishRow(profileId, activityId);
   if (opts.verifyCompletedToday) {
@@ -250,11 +287,12 @@ export async function runPostWorkoutForActivity(
       finishRow.date !== date ||
       !isCompletedSessionRow(finishRow)
     )
-      return { failed: false };
+      return { failed: false, outcome: "skipped" };
   }
 
   const markerKey = postWorkoutFinishMarkerKey(activityId);
-  if (getProfileSetting(profileId, markerKey) != null) return { failed: false };
+  if (getProfileSetting(profileId, markerKey) != null)
+    return { failed: false, outcome: "already-announced" };
 
   // DUPLICATE AWARENESS (#2570). The one-shot above is keyed on a ROW; a session can
   // be several rows, and a merge destroys and recreates that identity. So the send
@@ -285,7 +323,7 @@ export async function runPostWorkoutForActivity(
       activity: activityId,
       announcedAs: announcedTwin,
     });
-    return { failed: false };
+    return { failed: false, outcome: "twin-announced" };
   }
 
   // The recap-led composition (#924): the session recap line LEADS, then the due
@@ -353,7 +391,42 @@ export async function runPostWorkoutForActivity(
     ask,
     finishRow?.type ?? null
   );
-  if (!msg) return { failed: false }; // nothing to send — don't burn the one-shot
+  // Nothing to send — don't burn the one-shot, and don't claim a dispatch that
+  // will never happen.
+  if (!msg) return { failed: false, outcome: "skipped" };
+
+  // THE ELECTION (#3058). One immediate transaction re-runs the eligibility
+  // checks the fast path above already answered — they were read OUTSIDE any
+  // lock, and this transaction is where they become the authoritative judgment
+  // — and inserts the durable `pending` claim. The unique key elects exactly
+  // one dispatcher across processes and database connections; a loser returns
+  // its typed outcome having contacted nobody.
+  const election = writeTx((): PostWorkoutClaimResult | "marker" | "twin" => {
+    if (getProfileSetting(profileId, markerKey) != null) return "marker";
+    if (
+      announcedActivityTwin(
+        profileId,
+        activityId,
+        (twinId) => postWorkoutAnnouncedOn(profileId, twinId) != null
+      ) != null
+    )
+      return "twin";
+    return claimPostWorkoutDispatch(profileId, activityId);
+  });
+  if (election !== "won") {
+    if (election === "already-claimed" || election === "already-sent") {
+      log.info("post-workout finish nudge declined — dispatch claimed", {
+        profile: profileId,
+        activity: activityId,
+        claim: election,
+      });
+      return { failed: false, outcome: election };
+    }
+    return {
+      failed: false,
+      outcome: election === "marker" ? "already-announced" : "twin-announced",
+    };
+  }
 
   // ATTRIBUTION (#1721). "🏋️ Post-workout — 2 doses" / "🏋️ Workout complete" name
   // nobody, and this is a dispatch-path builder, so it never met the tick's
@@ -361,21 +434,31 @@ export async function runPostWorkoutForActivity(
   // unattributable. prefixForProfile is the one derivation (#377/#429) — it labels
   // only when the instance tracks more than one profile, so a single-profile
   // instance is unchanged.
+  //
+  // The winner dispatches OUTSIDE the election transaction (#3058 contract): a
+  // network round trip can never sit inside a write lock three processes share.
   const results = await dispatch(
     profileId,
     prefixMessage(msg, prefixForProfile(profileId))
   );
-  if (results.length === 0) return { failed: false }; // no channel — fire later
+  if (results.length === 0) {
+    // No channel configured — release the claim so a later-configured channel
+    // (or the tick backstop) can elect a fresh winner.
+    releasePostWorkoutClaim(profileId, activityId);
+    return { failed: false, outcome: "no-channel" };
+  }
   const delivered = results.some((r) => r.ok);
   const failed = results.some((r) => !r.ok);
   if (delivered) {
-    // Stamp the one-shot under the write lock with a re-read (#468): the delayed
-    // action-timer (web process) and the hourly tick both run this core off the
-    // same marker — whoever delivers first stamps it; a concurrent second
-    // deliverer finding it already stamped doesn't re-stamp (the residual
-    // both-in-flight overlap is the documented at-least-once posture — a rare
-    // duplicate dose reminder is strictly safer than a missed one).
+    // Any successful channel finalizes the claim AND stamps the one-shot in ONE
+    // transaction (#3058 contract point 4): "this session was announced" is a
+    // single atomic fact, whichever of the marker and the claim a reader asks.
+    // The marker keeps its stamp-once re-read (#468) so a fold-carried value is
+    // never overwritten. The crash window between the provider accepting and
+    // this commit is the documented at-least-once boundary — a post-lease retry
+    // may duplicate a contact there, never lose one.
     writeTx(() => {
+      finalizePostWorkoutClaim(profileId, activityId);
       if (getProfileSetting(profileId, markerKey) == null) {
         setProfileSetting(profileId, markerKey, date);
       }
@@ -384,8 +467,13 @@ export async function runPostWorkoutForActivity(
       profile: profileId,
       activity: activityId,
     });
+    return { failed, outcome: "sent" };
   }
-  return { failed };
+  // TOTAL failure: release the claim so the existing retry band (the hourly
+  // tick backstop; the marker is unstamped) may try again immediately rather
+  // than after the lease.
+  releasePostWorkoutClaim(profileId, activityId);
+  return { failed, outcome: "failed" };
 }
 
 // Deliver the post-workout reminder once, at the moment the session is `finished`
@@ -393,10 +481,10 @@ export async function runPostWorkoutForActivity(
 export async function runPostWorkoutFinish(
   profileId: number,
   now: Date = clockNow()
-): Promise<{ failed: boolean }> {
+): Promise<{ failed: boolean; outcome: PostWorkoutDispatchOutcome }> {
   const presence = getWorkoutPresence(profileId, now);
   if (presence.state !== "finished" || presence.activityId == null)
-    return { failed: false };
+    return { failed: false, outcome: "skipped" };
   return runPostWorkoutForActivity(profileId, presence.activityId);
 }
 

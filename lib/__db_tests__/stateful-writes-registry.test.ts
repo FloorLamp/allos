@@ -62,6 +62,11 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "integration_backfill_jobs",
       // #2132: the open-course ⇔ active invariant's single write core.
       "medication_courses",
+      // #3058: the durable post-workout dispatch claim — the pending -> sent
+      // election whose unique key IS "one contact per session"; a raw write
+      // could mint a second concurrent winner or finalize a claim no channel
+      // earned.
+      "notify_post_workout_claims",
       // #2135: end_date's three-state machine (ongoing / resumable / expired) — the
       // pure eligibility was already shared with the control; the WRITE half is now a
       // core with an in-transaction re-read and typed refusals.
