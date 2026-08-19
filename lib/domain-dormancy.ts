@@ -93,10 +93,7 @@ export const VITAL_DORMANCY_DAYS = 365;
 // "vitals" domain would let a 2022 blood pressure collapse this morning's resting heart
 // rate, which is the family-level defect #3226 exists to prevent.
 export type DormancyDomain =
-  | "sleep"
-  | "weight"
-  | "blood-pressure"
-  | "resting-hr";
+  "sleep" | "weight" | "blood-pressure" | "resting-hr";
 
 export interface DormancyDeclaration {
   // What the collapsed line calls the missing RECORD — never the activity. "sleep

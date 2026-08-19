@@ -2,9 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   VITAL_PRESENTATION_FLOORS,
   presentedDirection,
+  vitalDormant,
   vitalPresentationFreshness,
   vitalsLatestModel,
 } from "@/lib/vitals-latest";
+import { VITAL_DORMANCY_DAYS } from "@/lib/domain-dormancy";
 import { shiftDateStr } from "@/lib/date";
 import type { LatestTrend } from "@/lib/latest-trend";
 
@@ -70,9 +72,11 @@ describe("presentedDirection", () => {
 
 describe("vitalsLatestModel", () => {
   it("keeps a stale reading's VALUE and withdraws only its currency claim", () => {
+    // Ten months: past the 180-day blood-pressure floor, well inside the year at which
+    // the row goes dormant. This is the whole span #2303 governs.
     const model = vitalsLatestModel(
-      trend(ago(1600), 122, 118),
-      trend(ago(1600), 78, 76),
+      trend(ago(300), 122, 118),
+      trend(ago(300), 78, 76),
       null,
       TODAY
     )!;
@@ -81,9 +85,10 @@ describe("vitalsLatestModel", () => {
     expect(model.bp).toEqual({
       systolic: 122,
       diastolic: 78,
-      date: ago(1600),
+      date: ago(300),
       freshness: "due",
       direction: null,
+      dormant: false,
     });
   });
 
@@ -100,6 +105,10 @@ describe("vitalsLatestModel", () => {
     expect(model.bp?.direction).toBeNull();
     expect(model.restingHr?.freshness).toBe("current");
     expect(model.restingHr?.direction).toBe("up");
+    // ...and they go DORMANT independently too: the years-old cuff reading has stopped
+    // arriving, yesterday's stream has not. A per-family verdict would flatten these.
+    expect(model.bp?.dormant).toBe(true);
+    expect(model.restingHr?.dormant).toBe(false);
   });
 
   it("needs both halves for a BP row, and dates it by the systolic reading", () => {
@@ -114,10 +123,61 @@ describe("vitalsLatestModel", () => {
     expect(model.restingHr).toBeNull();
   });
 
+  it("marks a year-quiet row dormant and a merely-stale one not", () => {
+    const stale = vitalsLatestModel(
+      trend(ago(VITAL_DORMANCY_DAYS), 122),
+      trend(ago(VITAL_DORMANCY_DAYS), 78),
+      trend(ago(VITAL_DORMANCY_DAYS), 61),
+      TODAY
+    )!;
+    expect(stale.bp?.dormant).toBe(false);
+    expect(stale.restingHr?.dormant).toBe(false);
+    // Both are long past their presentation floors here — dormancy is a SECOND verdict
+    // over the same date, not a rename of this one.
+    expect(stale.bp?.freshness).toBe("due");
+    expect(stale.restingHr?.freshness).toBe("due");
+
+    const quiet = vitalsLatestModel(
+      trend(ago(VITAL_DORMANCY_DAYS + 1), 122),
+      trend(ago(VITAL_DORMANCY_DAYS + 1), 78),
+      trend(ago(VITAL_DORMANCY_DAYS + 1), 61),
+      TODAY
+    )!;
+    expect(quiet.bp?.dormant).toBe(true);
+    expect(quiet.restingHr?.dormant).toBe(true);
+  });
+
   it("is null only when NEITHER quantity has a reading", () => {
     expect(vitalsLatestModel(null, null, null, TODAY)).toBeNull();
     expect(
       vitalsLatestModel(null, null, trend(ago(1), 61), TODAY)
     ).not.toBeNull();
+  });
+});
+
+describe("vitalDormant", () => {
+  it("is the boundary the registry declares — AT the interval is awake, one day past is dormant", () => {
+    for (const quantity of ["blood-pressure", "resting-hr"] as const) {
+      expect(vitalDormant(quantity, ago(VITAL_DORMANCY_DAYS), TODAY)).toBe(
+        false
+      );
+      expect(vitalDormant(quantity, ago(VITAL_DORMANCY_DAYS + 1), TODAY)).toBe(
+        true
+      );
+    }
+  });
+
+  it("never fires on a reading whose age is unknowable", () => {
+    // `absent` is not `dormant`: with no readable date there is no gap to report, and
+    // the row must not claim one.
+    expect(vitalDormant("blood-pressure", null, TODAY)).toBe(false);
+    expect(vitalDormant("blood-pressure", "not-a-date", TODAY)).toBe(false);
+    expect(vitalDormant("blood-pressure", ago(1600), null)).toBe(false);
+  });
+
+  it("never fires on a future-dated reading", () => {
+    expect(vitalDormant("blood-pressure", shiftDateStr(TODAY, 30), TODAY)).toBe(
+      false
+    );
   });
 });
