@@ -14,8 +14,7 @@ import {
   getRestingHrSignal,
   getSleepSignal,
   getStrengthByExercise,
-  getExerciseE1rmSeries,
-  getLatestBodyMetric,
+  getStrengthLadder,
   getWorkoutPresence,
   getActivitiesSince,
   getCardioZoneCoverage,
@@ -33,7 +32,6 @@ import {
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
-  getProfileSex,
   getProfileAge,
 } from "@/lib/settings";
 import {
@@ -88,15 +86,12 @@ import { recentSessionsView } from "@/lib/training-recent-sessions";
 import TrainingContextChips from "./TrainingContextChips";
 import FitnessCheckStrip from "./FitnessCheckStrip";
 import MuscleCoverageCard from "./MuscleCoverageCard";
-import StrengthStandardsLadder, {
-  type StrengthLadderRow,
-} from "./StrengthStandardsLadder";
+import StrengthStandardsLadder from "./StrengthStandardsLadder";
 import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
 import { buildMuscleVolumeFindings } from "@/lib/rule-findings";
 import { activeFindings } from "@/lib/findings";
 import { getFindingSuppressions } from "@/lib/queries";
-import { strengthLadderPlacement } from "@/lib/strength-ladder";
-import { exerciseHistoryKey } from "@/lib/lifts";
+import type { StrengthLadderRow } from "@/lib/strength-ladder";
 import { shiftDateStr } from "@/lib/date";
 import { rankTrainingSuites } from "@/lib/training-suite-rank";
 import { sessionOverviewRollup } from "@/lib/session-overview";
@@ -206,52 +201,11 @@ export default async function OverviewSection() {
     todayStr
   ).length;
 
-  const sex = getProfileSex(profile.id);
-  const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
-  const priorCutoff = shiftDateStr(todayStr, -90);
-  const e1rmSeries = new Map(
-    getExerciseE1rmSeries(profile.id).map((row) => [
-      exerciseHistoryKey(row.exercise),
-      row,
-    ])
-  );
-  const strengthLadderRows: StrengthLadderRow[] = adultClinicalContent
-    ? strength
-        .flatMap((stat): StrengthLadderRow[] => {
-          const series = e1rmSeries.get(exerciseHistoryKey(stat.exercise));
-          const prior = series?.points
-            .filter((point) => point.date <= priorCutoff)
-            .at(-1);
-          const placement = strengthLadderPlacement(
-            stat.exercise,
-            stat.freeWeightE1rmKg,
-            prior?.value ?? null,
-            sex,
-            bodyweightKg
-          );
-          return placement
-            ? [
-                {
-                  exercise: stat.exercise,
-                  placement,
-                },
-              ]
-            : [];
-        })
-        .sort((a, b) => {
-          const aMove =
-            a.placement.current.e1rmKg -
-            (a.placement.prior?.e1rmKg ?? a.placement.current.e1rmKg);
-          const bMove =
-            b.placement.current.e1rmKg -
-            (b.placement.prior?.e1rmKg ?? b.placement.current.e1rmKg);
-          return (
-            Number(b.placement.moved) - Number(a.placement.moved) ||
-            bMove - aMove ||
-            a.exercise.localeCompare(b.exercise)
-          );
-        })
-        .slice(0, 3)
+  // Both ladder dots come from ONE measurement lane, and getStrengthLadder is where
+  // that is decided and pinned (#3132). Gated on the adult-clinical floor, like the
+  // other population-norm surfaces: the standards tables are adult norms.
+  const ladderRows: StrengthLadderRow[] = adultClinicalContent
+    ? getStrengthLadder(profile.id, todayStr)
     : [];
   const recentActivities = getActivitiesSince(
     profile.id,
@@ -665,10 +619,7 @@ export default async function OverviewSection() {
               {/* Mobility remains a separate question and view (#482). */}
               <MobilitySection profileId={profile.id} today={todayStr} />
               {adultClinicalContent && (
-                <StrengthStandardsLadder
-                  rows={strengthLadderRows}
-                  weightUnit={wu}
-                />
+                <StrengthStandardsLadder rows={ladderRows} weightUnit={wu} />
               )}
             </>
           ) : suite === "endurance" ? (

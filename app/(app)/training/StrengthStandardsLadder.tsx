@@ -1,13 +1,8 @@
 import Link from "next/link";
 import { strengthLevelLabel } from "@/lib/strength-standards";
-import type { StrengthLadderPlacement } from "@/lib/strength-ladder";
+import type { StrengthLadderRow } from "@/lib/strength-ladder";
 import { fmtWeight } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
-
-export interface StrengthLadderRow {
-  exercise: string;
-  placement: StrengthLadderPlacement;
-}
 
 const BANDS = [
   "Untrained",
