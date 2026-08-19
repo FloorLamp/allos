@@ -30,32 +30,26 @@ test.describe("dashboard daily loop (#1221)", () => {
 
   test("Nutrition-today card shows today's protein against the goal band", async () => {
     await page.goto("/");
-    const card = page.getByRole("main").getByTestId("nutrition-today-widget");
+    const card = dashboardCandidatePrefix(page, "nutrition.protein:");
     await expect(card).toBeVisible();
     // Today's protein figure (a floor, "≥ N g") — the seeded food gives a non-zero read.
-    await expect(card.getByTestId("nutrition-today-protein")).toContainText(
-      /\d+ g/
-    );
+    await expect(card).toContainText(/\d+ g/);
     await expect(card).toContainText(/Goal/);
-    await expect(
-      card.getByRole("link", { name: /View all nutrition today/i })
-    ).toHaveAttribute("href", "/nutrition");
+    await expect(card.getByRole("link")).toHaveAttribute("href", "/nutrition");
   });
 
   test("Steps-today card shows today's steps versus the prior 7 days", async () => {
     await page.goto("/");
-    const card = page.getByRole("main").getByTestId("steps-today-widget");
+    const card = dashboardCandidatePrefix(page, "activity.steps:");
     await expect(card).toBeVisible();
-    await expect(card.getByTestId("steps-today-count")).toContainText(/[\d,]+/);
+    await expect(card).toContainText(/[\d,]+/);
     // The baseline names the days it covers (#1909). "7-day average" is the phrase
     // this card must NOT use: the metric detail page's Rolling summary answers a
     // different question over a different window and would own that label.
     await expect(card).toContainText(/Prior 7 days · [\d,]+ steps a day/);
     await expect(card).not.toContainText(/7-day average/);
     // Today (9,400) is above the baseline → an up delta line renders.
-    await expect(card.getByTestId("steps-today-delta")).toContainText(
-      /% vs prior 7 days/
-    );
+    await expect(card).toContainText(/% vs prior 7 days/);
   });
 
   test("Latest-vitals card shows the most recent BP and resting HR", async () => {
@@ -104,9 +98,9 @@ test.describe("dashboard daily loop (#1221)", () => {
     await page.goto("/");
     const card = dashboardCandidatePrefix(page, "cycle.phase:");
     await expect(card).toBeVisible();
-    await expect(card).toContainText(/Cycle day \d+/);
+    await expect(card).toContainText(/Day \d+/);
     await expect(card).toContainText(/menstrual|follicular|luteal/i);
-    await expect(card.getByRole("link", { name: "View" })).toHaveAttribute(
+    await expect(card.getByRole("link")).toHaveAttribute(
       "href",
       "/medical/cycles"
     );

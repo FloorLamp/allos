@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
+import { hydratedClick, settledClick, settledFill } from "./helpers";
 
 // Issue #340: live workout mode — the in-gym presentation of the SAME activity
 // editor (no second engine), driven end-to-end against the seeded DB.
@@ -21,13 +22,26 @@ import { openCommandPalette } from "./nav";
 // Pick an activity in the editor's exercise combobox (same shape-tolerant matcher
 // the entry-ergonomics spec documents).
 async function pickActivity(page: Page, name: string) {
-  await page.getByPlaceholder(/What did you do/).fill(name);
-  await page
+  const field = page.getByPlaceholder(/What did you do/);
+  await settledFill(page, field, name);
+  const option = page
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: name })
-    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
-    .click();
+    .first(); // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
+  await hydratedClick(page, option);
+  await expect(field).toHaveValue(name);
+}
+
+// Starting is one interaction with two completion boundaries: the imperative
+// Server Action creates the row, then the router applies its canonical page beneath
+// the already-open overlay. Wait for both before touching controlled form state.
+async function startLiveWorkout(page: Page) {
+  await settledClick(page, page.getByRole("main").getByTestId("start-workout"));
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await page.waitForURL(/\/training\/activity\/\d+$/);
+  await expect(page.getByTestId("session-in-progress")).toBeVisible();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
 }
 
 test("'Start workout' opens live mode with a rest timer (#340)", async ({
@@ -37,12 +51,11 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
 
   // The training log aside header carries a "Start workout" button (strength-centric,
   // shown when strength training is relevant). It opens the create editor in live mode.
-  await page.getByRole("main").getByTestId("start-workout").click();
+  await startLiveWorkout(page);
 
-  // The live control strip + rest timer render (addressed by testid; the editor
-  // mounts in the body-level overlay for live mode — see entry-ergonomics' note
-  // on why the editor isn't main-scoped).
-  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  // The live control strip's rest timer + Finish render (addressed by testid; the
+  // editor mounts in the body-level overlay for live mode — see entry-ergonomics'
+  // note on why the editor isn't main-scoped).
   const timer = page.getByTestId("rest-timer");
   await expect(timer).toBeVisible();
   await expect(page.getByTestId("finish-workout")).toBeVisible();
@@ -73,11 +86,7 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
 }) => {
   await page.goto("/training?tab=log");
 
-  await page.getByRole("main").getByTestId("start-workout").click();
-  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
-  // Settle on the session's page (#2870 step 3) before typing, so the
-  // create-at-start navigation can't race the combobox.
-  await page.waitForURL(/\/training\/activity\/\d+$/);
+  await startLiveWorkout(page);
 
   // Pick a lift the seed trains repeatedly so a coached suggestion exists, then
   // TAP "Use" to seed set 1 from it (#1971 retired the focus-fill: arriving in a

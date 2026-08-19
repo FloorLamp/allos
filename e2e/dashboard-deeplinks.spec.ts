@@ -21,7 +21,7 @@ import { dashboardCandidateWithText } from "./dashboard-candidate";
 //     med list (#1146);
 //   • capped list widgets reveal their overflow via "Show N more" (#1219), while
 //     Coaching observations renders its complete threshold-clearing set (#3090);
-//   • coaching's secondary rec renders as a link, a target-less goal row links to
+//   • coaching's secondary rec renders as a link, a target-less goal fact links to
 //     the goals surface, and the active-protocols widget caps + overflows (#1219).
 // Fixtures: the dedicated DQ_ADULT_PROFILE / DQ_GAPPY_PROFILE
 // members (e2e/seed-events.ts) — no shared-profile writes in this spec.
@@ -187,7 +187,7 @@ test("the measurements form honors ?focus=height (#1146 pediatric-height CTA)", 
   }
 });
 
-test("a target-less goal row links to the goals surface (#1219)", async ({
+test("a target-less Standing goal fact links to the goals surface (#1219)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -196,11 +196,15 @@ test("a target-less goal row links to the goals surface (#1219)", async ({
   });
   try {
     await page.goto("/");
-    const goalLink = page
+    const goalFact = page
       .getByRole("main")
-      .getByTestId("goals-habits")
-      .getByTestId("goal-title-link")
+      .locator('[data-standing-family="outcome-goals"]')
+      .locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id^="goal.progress:"][data-fact-key^="outcome-goal.progress:"]'
+      )
       .filter({ hasText: "Feel better all around" });
+    await expect(goalFact).toHaveAttribute("data-lane", "standing");
+    const goalLink = goalFact.getByRole("link");
     await expect(goalLink).toHaveAttribute("href", "/training?tab=goals");
     // The retired name redirects to its canonical Plan URL (#2892): the href
     // keeps its historic value, the landing carries the goals anchor.

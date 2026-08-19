@@ -8,8 +8,8 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
-// Dashboard weight quick-add (#1042 phase 2): the weight-trend widget's inline
-// form posts the SAME addBodyMetric write core as the Trends → Overview → body census quick-add,
+// Dashboard weight quick-add (#1042 phase 2): the independent Everything action
+// posts the SAME addBodyMetric write core as the Trends → Overview → body census quick-add,
 // so a weigh-in logged from the dashboard persists (survives a reload) and joins
 // the same deduped daily series the widget charts.
 //
@@ -51,6 +51,13 @@ test("dashboard weight quick-add logs a weigh-in that persists into the trend (#
   });
   try {
     await page.goto("/");
+    const quickAdd = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id="weight.quick-add"]'
+    );
+    await expect(quickAdd).toHaveAttribute("data-lane", "everything");
+    await expect(
+      page.locator('[data-standing-family="weight"]')
+    ).not.toContainText("Log today's weight");
     // Two seeded points → the chart state, with the newest seed as the server
     // latest (70.6 kg, the login's default display unit).
     const marker = page.getByTestId("weight-server-latest");
@@ -76,9 +83,14 @@ test("dashboard weight quick-add logs a weigh-in that persists into the trend (#
     // newest point, rendered by the chart-state widget.
     await page.reload();
     await expect(marker).toHaveAttribute("data-value", "71.4");
+    const weightFamily = page.locator('[data-standing-family="weight"]');
+    await expect(weightFamily).toContainText("View trend");
     await expect(
-      page.getByRole("heading", { name: "Weight trend" })
-    ).toBeVisible();
+      weightFamily.getByRole("link", { name: /View trend/ })
+    ).toHaveAttribute("href", "/trends#body");
+    await expect(
+      weightFamily.getByTestId("weight-quick-add-input")
+    ).toHaveCount(0);
 
     // And it appears in the same series on Trends → Overview → body census (the widget's link
     // target) — the one-computation check across both surfaces.

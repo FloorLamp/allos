@@ -7,11 +7,15 @@ import {
 } from "@/lib/dashboard-relevance";
 import NowStrip, { type NowStripCard } from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
+import DashboardStandingCluster, {
+  type DashboardStandingPresentation,
+} from "./DashboardStandingCluster";
 
 export interface DashboardPlacementCanvasProps {
   dateLabel: string;
   placements: readonly DashboardPlacement[];
   candidateNodes: ReadonlyMap<string, ReactNode>;
+  standingPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
   attentionBadgeCount: number;
 }
 
@@ -26,6 +30,7 @@ export default function DashboardPlacementCanvas({
   dateLabel,
   placements,
   candidateNodes,
+  standingPresentations,
   attentionBadgeCount,
 }: DashboardPlacementCanvasProps) {
   const nodeFor = (placement: DashboardPlacement) => {
@@ -77,24 +82,10 @@ export default function DashboardPlacementCanvas({
       <NowStrip cards={now} dateLabel={dateLabel} />
 
       {standing.length > 0 && (
-        <section className="mb-8" aria-labelledby="dashboard-standing-title">
-          <h2
-            id="dashboard-standing-title"
-            className="mb-3 text-lg font-semibold text-slate-900 dark:text-slate-100"
-          >
-            Standing
-          </h2>
-          <div
-            className="grid grid-cols-1 gap-3"
-            data-testid="dashboard-standing"
-          >
-            {standing.map((placement) => (
-              <Fragment key={placement.candidate.candidateId}>
-                {nodeFor(placement)}
-              </Fragment>
-            ))}
-          </div>
-        </section>
+        <DashboardStandingCluster
+          placements={standing}
+          presentations={standingPresentations}
+        />
       )}
 
       {everything.length > 0 && (

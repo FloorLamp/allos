@@ -4,6 +4,11 @@
 // placement; it imports no DB, auth, clock, or React code.
 
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "./notifications/schedule";
+import {
+  resolveStandingMembers,
+  type StandingFamilyKey,
+  type StandingSectionKey,
+} from "./dashboard-standing";
 
 export type DashboardSubject =
   | { scope: "profile"; profileId: number }
@@ -33,8 +38,6 @@ export type DashboardTiming =
 export type DashboardCandidateKind =
   "action" | "reading" | "statement" | "state";
 export type DashboardObligation = "must" | "should" | "may";
-export type DashboardDefaultPlacement = "standing" | "everything";
-
 export type DashboardRelevancePolicy =
   | {
       kind: "profile-data";
@@ -68,7 +71,7 @@ export interface DashboardCandidateBase {
   relevance: DashboardRelevancePolicy;
   timing: DashboardTiming;
   rankReasons: DashboardRankReasons;
-  defaultPlacement: DashboardDefaultPlacement;
+  standingEligible?: boolean;
   sourceOrder: number;
 }
 
@@ -87,6 +90,8 @@ export interface DashboardPlacement {
   candidate: DashboardCandidate;
   lane: DashboardLane;
   laneOrder: number;
+  standingFamilyKey?: StandingFamilyKey;
+  standingSection?: StandingSectionKey;
 }
 
 export const NOW_CANDIDATE_CAP = 2;
@@ -178,20 +183,6 @@ function nowScore(candidate: DashboardCandidate): number | null {
   return null;
 }
 
-function isActingProfileReading(
-  candidate: DashboardCandidate,
-  activeProfileId: number
-): boolean {
-  return (
-    candidate.kind === "reading" &&
-    candidate.relevance.kind === "profile-data" &&
-    candidate.relevance.engagement !== "external" &&
-    candidate.defaultPlacement === "standing" &&
-    candidate.subject.scope === "profile" &&
-    candidate.subject.profileId === activeProfileId
-  );
-}
-
 function compareSource(a: DashboardCandidate, b: DashboardCandidate): number {
   return (
     a.sourceOrder - b.sourceOrder ||
@@ -201,22 +192,17 @@ function compareSource(a: DashboardCandidate, b: DashboardCandidate): number {
 
 function validateCandidates(candidates: readonly DashboardCandidate[]): void {
   const candidateIds = new Set<string>();
-  const factKeys = new Set<string>();
   for (const candidate of candidates) {
     if (candidateIds.has(candidate.candidateId)) {
       throw new Error(
         `Duplicate dashboard candidateId: ${candidate.candidateId}`
       );
     }
-    if (factKeys.has(candidate.factKey)) {
-      throw new Error(`Duplicate live dashboard factKey: ${candidate.factKey}`);
-    }
     candidateIds.add(candidate.candidateId);
-    factKeys.add(candidate.factKey);
   }
 }
 
-// Now + Standing + Everything is an exact partition of applicable candidates.
+// Now + Standing + Everything is an exact once-by-factKey partition.
 // Safety is uncapped; the ordinary Now cap applies after safety is removed.
 export function rankDashboardCandidates(
   candidates: readonly DashboardCandidate[],
@@ -246,32 +232,38 @@ export function rankDashboardCandidates(
         b.score - a.score ||
         compareSource(a.candidate, b.candidate)
     );
+  const rankedNowFacts = new Set<string>();
+  const uniqueRankedNow = rankedNow.filter(({ candidate }) => {
+    if (rankedNowFacts.has(candidate.factKey)) return false;
+    rankedNowFacts.add(candidate.factKey);
+    return true;
+  });
   const selectedNow = [
-    ...rankedNow.filter((entry) => entry.candidate.rankReasons.safety),
-    ...rankedNow
+    ...uniqueRankedNow.filter((entry) => entry.candidate.rankReasons.safety),
+    ...uniqueRankedNow
       .filter((entry) => !entry.candidate.rankReasons.safety)
       .slice(0, NOW_CANDIDATE_CAP),
   ];
   const nowIds = new Set(
     selectedNow.map((entry) => entry.candidate.candidateId)
   );
+  const nowFacts = new Set(selectedNow.map((entry) => entry.candidate.factKey));
   const nowOrder = new Map(
     selectedNow.map((entry, index) => [entry.candidate.candidateId, index])
   );
 
   const remaining = applicable.filter(
-    (candidate) => !nowIds.has(candidate.candidateId)
+    (candidate) =>
+      !nowIds.has(candidate.candidateId) && !nowFacts.has(candidate.factKey)
   );
-  const standing = remaining
-    .filter((candidate) =>
-      isActingProfileReading(candidate, signals.activeProfileId)
-    )
-    .sort(compareSource);
-  const standingIds = new Set(
-    standing.map((candidate) => candidate.candidateId)
-  );
+  const standing = resolveStandingMembers(remaining, signals.activeProfileId);
+  const everythingFacts = new Set<string>();
   const everything = remaining
-    .filter((candidate) => !standingIds.has(candidate.candidateId))
+    .filter(
+      (candidate) =>
+        !standing.memberIds.has(candidate.candidateId) &&
+        !standing.factKeys.has(candidate.factKey)
+    )
     .sort((a, b) => {
       const kinds: Record<DashboardCandidateKind, number> = {
         action: 0,
@@ -280,6 +272,11 @@ export function rankDashboardCandidates(
         reading: 3,
       };
       return kinds[a.kind] - kinds[b.kind] || compareSource(a, b);
+    })
+    .filter((candidate) => {
+      if (everythingFacts.has(candidate.factKey)) return false;
+      everythingFacts.add(candidate.factKey);
+      return true;
     });
 
   return [
@@ -288,10 +285,12 @@ export function rankDashboardCandidates(
       lane: "now" as const,
       laneOrder: nowOrder.get(candidate.candidateId)!,
     })),
-    ...standing.map((candidate, laneOrder) => ({
+    ...standing.members.map(({ candidate, family }, laneOrder) => ({
       candidate,
       lane: "standing" as const,
       laneOrder,
+      standingFamilyKey: family.key,
+      standingSection: family.section,
     })),
     ...everything.map((candidate, laneOrder) => ({
       candidate,

@@ -94,14 +94,14 @@ test.describe("mobile clipping batch (#2614)", () => {
     expect(await overhangWithin(mood, card)).toBeLessThanOrEqual(1);
   });
 
-  test("item 4: the home Recent-labs label keeps its identity when the value is long", async ({
+  test("item 4: a home Clinical results label keeps its identity when the value is long", async ({
     page,
   }) => {
     await page.goto("/");
     const rows = page.getByTestId("recent-lab-row");
     await expect(rows.first()).toBeVisible(); // first-ok: the widget renders rows; the assertion below is over ALL of them
 
-    // No label is crushed to an ellipsis-with-two-letters. The row wraps its
+    // No label is crushed to an ellipsis. The row wraps its
     // value/age pair to a second line instead of spending the name column, so the
     // rendered name is never narrower than a couple of characters' worth.
     const crushed = await rows.evaluateAll((nodes) =>

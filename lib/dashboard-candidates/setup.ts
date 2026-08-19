@@ -57,7 +57,7 @@ export const setupCandidates = {
       "onboarding.setup",
       "unknown",
       "current",
-      { relevance: { kind: "setup" }, defaultPlacement: "everything" }
+      { relevance: { kind: "setup" } }
     );
   },
   householdAttention(ctx: DomainCandidateContext, count: number) {
