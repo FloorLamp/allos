@@ -711,9 +711,12 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     ).toEqual({ kind: "duplicate" });
 
     // Clearing the event makes the safety read fall back to immutable capture.
+    // State that as the identity it is: the read IS the row's own recorded_at.
+    // Asserting the absence of "14:00" instead reds for the minute the real clock
+    // spells it, because the fallback value is that clock (#3180).
     updateHistoricalDose(p, itemId, logId, date, null, null);
-    expect(getRedoseArmingState(p, itemId, date).latestGivenAt).not.toContain(
-      "14:00"
+    expect(getRedoseArmingState(p, itemId, date).latestGivenAt).toBe(
+      logRow(logId).recorded_at
     );
   });
 });
