@@ -208,6 +208,7 @@ import { migration as mPreventiveRecordDecisions } from "./20260819-preventive-r
 import { migration as mPostWorkoutDispatchClaims } from "./20260819-post-workout-dispatch-claims";
 import { migration as mIntakeItemIngredients } from "./20260819-intake-item-ingredients";
 import { migration as mGlucoseTrace } from "./20260819-glucose-trace";
+import { migration as mUnstrandHuskMilestones } from "./20260819-unstrand-husk-milestones";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -425,6 +426,7 @@ export const MIGRATIONS: Migration[] = [
   mPostWorkoutDispatchClaims,
   mIntakeItemIngredients,
   mGlucoseTrace,
+  mUnstrandHuskMilestones,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

@@ -1,3 +1,7 @@
+import {
+  isDraftActivityRow,
+  type DraftCandidateRow,
+} from "@/lib/activity-draft";
 import { hoistedStatement } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -69,11 +73,33 @@ import {
 // `lib/__tests__/log-sheet-sources.test.ts` holds this statement to it in both
 // directions — a declared store that is not counted, and a counted store that was
 // never declared, each fail.
+//
+// THE `activities` ARM IS ITS OWN STATEMENT (#3191), and this is the one place the
+// tagged-arm shape above is written twice. A create-at-start session is manual and
+// dated from its first second, so opening a session and logging nothing used to make
+// a Train habit day — and habit days are what decide which segment the sheet opens
+// on. Whether a row is a draft is settled by `isDraftActivityRow`
+// (lib/activity-draft.ts) reading the whole row, which a `COUNT(DISTINCT d)`
+// aggregate cannot show it; restating the rule in SQL would be a SECOND definition
+// of a draft, which is what the census forbids. So the arm keeps its `SELECT 'train'
+// AS segment` shape — the census test reads BOTH literals and holds this one to
+// `LOG_DAY_SOURCES` exactly as it holds the union — and emits its candidate DAYS,
+// which `getSegmentLogDays` folds to distinct non-draft days below. Cost: one extra
+// prepared statement on the app-shell path, which is the price of the rule having
+// one home.
+const TRAIN_HABIT_DAYS = hoistedStatement(
+  `SELECT 'train' AS segment, a.date AS d,
+          a.start_time, a.end_time, a.duration_min, a.components, a.notes,
+          a.distance_km, a.source,
+          EXISTS (
+            SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+          ) AS has_sets
+     FROM activities a
+    WHERE a.profile_id = @profileId AND a.source IS NULL AND a.date >= @from`
+);
+
 const HABIT_DAYS = hoistedStatement(
   `SELECT segment, COUNT(DISTINCT d) AS days FROM (
-     SELECT 'train' AS segment, date AS d FROM activities
-       WHERE profile_id = @profileId AND source IS NULL AND date >= @from
-     UNION ALL
      SELECT 'food' AS segment, date AS d FROM food_daily_totals
        WHERE profile_id = @profileId AND date >= @from
      UNION ALL
@@ -113,11 +139,32 @@ export function getSegmentLogDays(
   profileId: number,
   today: string
 ): SegmentLogDays {
-  const rows = HABIT_DAYS.all({
-    profileId,
-    from: shiftDateStr(today, -(LOG_HABIT_WINDOW_DAYS - 1)),
-  }) as { segment: LogSegmentId; days: number }[];
+  const from = shiftDateStr(today, -(LOG_HABIT_WINDOW_DAYS - 1));
+  const rows = HABIT_DAYS.all({ profileId, from }) as {
+    segment: LogSegmentId;
+    days: number;
+  }[];
   const out: Partial<Record<LogSegmentId, number>> = {};
   for (const r of rows) out[r.segment] = r.days;
+  // The Train arm's own distinct-day fold — a create-at-start draft is not a day
+  // this person logged training on (#3191), and only the pure rule can say which
+  // rows those are.
+  const trainRows = TRAIN_HABIT_DAYS.all({ profileId, from }) as (DraftCandidateRow & {
+    segment: LogSegmentId;
+    d: string | null;
+    /** 0 or 1 — the draft rule only asks whether ANY set exists. */
+    has_sets: number;
+  })[];
+  const trainDays = new Set<string>();
+  for (const row of trainRows) {
+    if (!row.d) continue;
+    if (isDraftActivityRow(row, row.has_sets)) continue;
+    trainDays.add(row.d);
+  }
+  // Tagged by the arm itself, like every other arm, and omitted at zero — the
+  // grouped union emits no row for a segment with no days, and the decision over
+  // this map (`openingLogSegment`) reads a missing segment as none.
+  const trainSegment = trainRows[0]?.segment;
+  if (trainSegment && trainDays.size > 0) out[trainSegment] = trainDays.size;
   return out;
 }
