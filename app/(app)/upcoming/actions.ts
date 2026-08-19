@@ -10,6 +10,8 @@ import {
   restoreFinding,
   recordPreventiveDone,
   setPreventiveOverride,
+  confirmPreventiveRecordDecision,
+  dismissPreventiveRecordCandidate,
   markCarePlanItemDone,
   logPracticeByTargetId,
 } from "@/lib/queries";
@@ -173,6 +175,54 @@ export async function markCarePlanDone(
   revalidateRoute("/records");
   revalidateRoute("/");
   return carePlanDoneResult(outcome);
+}
+
+// Confirm a preventive REVIEW CANDIDATE (issue #3025): "yes, this record shows
+// the screening was completed", with the date the person just confirmed or
+// changed in the control (the record date is only a prefill — the person's
+// answer is what the satisfaction stream receives). The rule key is validated
+// against the static catalog, the date must be a real day no later than the
+// item-profile's today, and the write core revalidates that the record and rule
+// still form the offered candidate — a forged profile/record/rule combination
+// writes nothing. Reconfirming is idempotent (the one decision row updates).
+export async function confirmPreventiveRecord(
+  formData: FormData
+): Promise<FormResult> {
+  const pid = await gateItemProfile(formData);
+  const recordId = Number(formData.get("record_id"));
+  const ruleKey = String(formData.get("rule_key") ?? "").trim();
+  const date = String(formData.get("confirmed_date") ?? "").trim();
+  if (!recordId || !ruleKey || !preventiveRuleByKey(ruleKey))
+    return formError("Couldn't find that suggestion.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today(pid))
+    return formError("Enter a valid date (today or earlier).");
+  const outcome = confirmPreventiveRecordDecision(pid, recordId, ruleKey, date);
+  if (outcome === "invalid-date")
+    return formError("Enter a valid date (today or earlier).");
+  if (outcome === "not-a-candidate")
+    return formError("Couldn't find that suggestion.");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
+  return formOk();
+}
+
+// Dismiss a preventive review candidate (issue #3025): stop offering THIS
+// record/rule suggestion. Suppresses only the candidate itself — the preventive
+// item, its due status, and its ordinary contact behavior are untouched. Same
+// validation as the confirm: a forged combination writes nothing.
+export async function dismissPreventiveRecord(
+  formData: FormData
+): Promise<FormResult> {
+  const pid = await gateItemProfile(formData);
+  const recordId = Number(formData.get("record_id"));
+  const ruleKey = String(formData.get("rule_key") ?? "").trim();
+  if (!recordId || !ruleKey || !preventiveRuleByKey(ruleKey))
+    return formError("Couldn't find that suggestion.");
+  const outcome = dismissPreventiveRecordCandidate(pid, recordId, ruleKey);
+  if (outcome !== "written") return formError("Couldn't find that suggestion.");
+  revalidateRoute("/upcoming");
+  revalidateRoute("/");
+  return formOk();
 }
 
 // Override a preventive rule as declined (an informed opt-out) or not applicable

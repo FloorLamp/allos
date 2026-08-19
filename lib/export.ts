@@ -1232,6 +1232,16 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM preventive_overrides WHERE profile_id = ?`,
   }),
   tableDataset({
+    key: "preventive_record_decisions",
+    label: "Screening review decisions",
+    table: "preventive_record_decisions",
+    columns: ["medical_record_id", "rule_key", "decision", "confirmed_date"],
+    select: `SELECT id, medical_record_id, rule_key, decision, confirmed_date
+       FROM preventive_record_decisions WHERE profile_id = ?
+       ORDER BY rule_key, medical_record_id`,
+    countSql: `SELECT COUNT(*) AS n FROM preventive_record_decisions WHERE profile_id = ?`,
+  }),
+  tableDataset({
     key: "protocols",
     label: "Protocols",
     table: "protocols",

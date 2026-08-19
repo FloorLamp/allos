@@ -23,6 +23,12 @@ import {
   type InferenceRecord,
 } from "../../preventive-inference";
 import { inferScreeningResultSatisfactions } from "../../preventive-screening-result";
+import {
+  derivePreventiveReviewCandidates,
+  preventiveEvidenceRecord,
+  type PreventiveReviewCandidate,
+  type PreventiveReviewSource,
+} from "../../preventive-review";
 import { inferOpticalRxSatisfactions } from "../../preventive-optical";
 import {
   getProfileSex,
@@ -60,17 +66,15 @@ export function getPreventiveSatisfactions(
     .all(profileId) as PreventiveSatisfaction[];
 }
 
-// Medical-record categories whose results can satisfy a screening: cholesterol/
-// A1c/glucose labs, blood-pressure vitals, and screening INSTRUMENT scores (#1076
-// — a PHQ-9 satisfies depression screening, an AUDIT-C alcohol screening). The
-// legacy `biomarker` bucket is retained for un-backfilled rows. Genomics/scans/
-// prescriptions/derived/reference are never screening RESULTS in this sense.
-const INFERENCE_RESULT_CATEGORIES = new Set([
-  "lab",
-  "biomarker",
-  "vitals",
-  "instrument",
-]);
+// Which medical-record categories are screening evidence, and through which
+// paths, is the CLOSED census in lib/preventive-review.ts (#3025): value-bearing
+// result categories (labs, vitals, instrument scores) keep the full #86 matching;
+// document categories (report, assessment) satisfy through structured identity
+// ONLY — an exact concept-map code or a curated canonical name — never through
+// their free-text title; the rest are excluded with a stated reason. An
+// unclassified category fails loudly instead of being silently dropped, which is
+// how a screened profile's Pap cytology (`category = 'report'`) got an overdue
+// cervical-screening nudge.
 
 // INFERRED satisfactions (issue #86): preventive rules a profile's EXISTING
 // records already satisfy — a colonoscopy procedure, a lipid/A1c result, a
@@ -116,18 +120,17 @@ export function getInferredPreventiveSatisfactions(
     });
   }
 
-  // Lab / vitals results → lab screenings, by canonical biomarker name (or the
-  // raw result name as a fallback synonym match).
+  // Medical-record rows → lab screenings, per the closed evidence census
+  // (lib/preventive-review.ts, #3025). Result rows keep the unchanged #86 shape
+  // (canonical biomarker name, or the raw result name as a fallback synonym
+  // match); document rows (report/assessment) contribute ONLY their structured
+  // identity — LOINC via the exact-code path, curated canonical name — with the
+  // free-text title withheld, so no wording auto-satisfies and none withholds an
+  // authored identity. Excluded categories and the #2877 NULL review state map
+  // to nothing.
   for (const r of getClinicalObservations(profileId)) {
-    if (r.category === null || !INFERENCE_RESULT_CATEGORIES.has(r.category))
-      continue;
-    records.push({
-      code: null,
-      name: r.name,
-      canonicalName: r.canonical_name,
-      date: r.date,
-      allow: ["screening"],
-    });
+    const rec = preventiveEvidenceRecord(r);
+    if (rec) records.push(rec);
   }
 
   // Completed appointments → visits (name-matched on the title PLUS the explicit
@@ -270,6 +273,154 @@ export function recordPreventiveDone(
   });
 }
 
+// ---- Preventive review decisions (issue #3025) ------------------------------
+//
+// The durable answer to a review candidate — one row per (profile, record, rule)
+// in preventive_record_decisions. A CONFIRMED row is the explicit stored link
+// between a report and its screening rule: it projects into the same
+// PreventiveSatisfaction stream as the manual and inferred events (below), and is
+// deliberately NOT duplicated into preventive_events — the record link is the
+// point, and the FK cascade retracts the satisfaction if the source record is
+// deleted. A DISMISSED row suppresses ONLY this candidate; it asserts nothing
+// about the screening and never suppresses the preventive item itself.
+
+// The report rows a review candidate can be derived from. Profile-scoped.
+function getReviewSourceReports(profileId: number): PreventiveReviewSource[] {
+  return db
+    .prepare(
+      `SELECT id, category, name, date, value
+         FROM medical_records
+        WHERE profile_id = ? AND category = 'report'`
+    )
+    .all(profileId) as PreventiveReviewSource[];
+}
+
+export interface PreventiveRecordDecision {
+  medicalRecordId: number;
+  ruleKey: string;
+  decision: "confirmed" | "dismissed";
+  confirmedDate: string | null;
+}
+
+// Every stored review decision for a profile. Profile-scoped.
+export function getPreventiveRecordDecisions(
+  profileId: number
+): PreventiveRecordDecision[] {
+  return db
+    .prepare(
+      `SELECT medical_record_id AS medicalRecordId, rule_key AS ruleKey,
+              decision, confirmed_date AS confirmedDate
+         FROM preventive_record_decisions WHERE profile_id = ?`
+    )
+    .all(profileId) as PreventiveRecordDecision[];
+}
+
+// The OFFERED review candidates for a profile: every derived candidate (a
+// valueless report whose title matches exactly one screening rule) that has no
+// stored decision yet. Confirmed pairs are answered (and now satisfy through the
+// projection below); dismissed pairs are answered too — the dismissal suppresses
+// exactly this candidate and nothing else. Profile-scoped.
+export function getPreventiveReviewOffers(
+  profileId: number
+): PreventiveReviewCandidate[] {
+  const decided = new Set(
+    getPreventiveRecordDecisions(profileId).map(
+      (d) => `${d.medicalRecordId}:${d.ruleKey}`
+    )
+  );
+  return derivePreventiveReviewCandidates(
+    getReviewSourceReports(profileId)
+  ).filter((c) => !decided.has(`${c.recordId}:${c.ruleKey}`));
+}
+
+export type PreventiveReviewDecisionOutcome =
+  "written" | "not-a-candidate" | "invalid-date";
+
+// Whether (recordId, ruleKey) still forms a derivable candidate for this
+// profile. DECISION-BLIND on purpose: the same derivation that offered the
+// candidate revalidates the write, so a forged profile/record/rule combination
+// (or a record edited since the offer) writes nothing, while reconfirming an
+// already-decided pair stays idempotent — the pair still derives after its
+// decision exists.
+function isDerivableCandidate(
+  profileId: number,
+  recordId: number,
+  ruleKey: string
+): boolean {
+  return derivePreventiveReviewCandidates(
+    getReviewSourceReports(profileId)
+  ).some((c) => c.recordId === recordId && c.ruleKey === ruleKey);
+}
+
+// Confirm a review candidate: "yes, this record shows the screening was
+// completed on `confirmedDate`" (the person confirmed or changed the prefilled
+// record date before this write). Upserts on the (profile, record, rule) unique
+// key, so reconfirming is idempotent and a changed date updates the one row.
+// Ends the rule's suppression episode exactly like recordPreventiveDone: the
+// dismissal is retired so the next cycle's due surfaces fresh (#1024); the
+// notify_last_preventive_<ruleKey> marker is cleared by the existing preventive
+// nudge lifecycle once the assessment is no longer actionable.
+export function confirmPreventiveRecordDecision(
+  profileId: number,
+  recordId: number,
+  ruleKey: string,
+  confirmedDate: string
+): PreventiveReviewDecisionOutcome {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(confirmedDate)) return "invalid-date";
+  if (!isDerivableCandidate(profileId, recordId, ruleKey))
+    return "not-a-candidate";
+  writeTx(() => {
+    db.prepare(
+      `INSERT INTO preventive_record_decisions
+         (profile_id, medical_record_id, rule_key, decision, confirmed_date)
+       VALUES (?, ?, ?, 'confirmed', ?)
+       ON CONFLICT(profile_id, medical_record_id, rule_key) DO UPDATE SET
+         decision = 'confirmed',
+         confirmed_date = excluded.confirmed_date,
+         updated_at = datetime('now')`
+    ).run(profileId, recordId, ruleKey, confirmedDate);
+    clearPreventiveDismissal(profileId, ruleKey);
+  });
+  return "written";
+}
+
+// Dismiss a review candidate: stop offering THIS record/rule pair. Not a claim
+// that the screening was skipped — the preventive item and its ordinary contact
+// behavior are untouched (that is what overrides/suppressions are for).
+export function dismissPreventiveRecordCandidate(
+  profileId: number,
+  recordId: number,
+  ruleKey: string
+): PreventiveReviewDecisionOutcome {
+  if (!isDerivableCandidate(profileId, recordId, ruleKey))
+    return "not-a-candidate";
+  db.prepare(
+    `INSERT INTO preventive_record_decisions
+       (profile_id, medical_record_id, rule_key, decision, confirmed_date)
+     VALUES (?, ?, ?, 'dismissed', NULL)
+     ON CONFLICT(profile_id, medical_record_id, rule_key) DO UPDATE SET
+       decision = 'dismissed',
+       confirmed_date = NULL,
+       updated_at = datetime('now')`
+  ).run(profileId, recordId, ruleKey);
+  return "written";
+}
+
+// CONFIRMED decisions as satisfactions — the explicit-link stream, merged into
+// the one assessor beside the manual and inferred streams (assessProfilePreventive
+// below). `(ruleKey, date)`, the exact shape the others emit. Profile-scoped.
+export function getConfirmedPreventiveRecordSatisfactions(
+  profileId: number
+): PreventiveSatisfaction[] {
+  return db
+    .prepare(
+      `SELECT rule_key AS ruleKey, confirmed_date AS date
+         FROM preventive_record_decisions
+        WHERE profile_id = ? AND decision = 'confirmed'`
+    )
+    .all(profileId) as PreventiveSatisfaction[];
+}
+
 // Set a declined / not-applicable override on a preventive rule, upserting on
 // (profile_id, rule_key) so re-setting flips the kind (mirrors the immunization
 // override writer). Profile-scoped.
@@ -346,13 +497,15 @@ function assessProfilePreventiveUncached(
     ageMonths: profileAgeMonths(profileId, today),
     sex: getProfileSex(profileId),
     // Manual "mark done" events PLUS inferred satisfactions from existing records
-    // (issue #86), merged into one stream. Both are `(ruleKey, date)`; the assessor
-    // takes the most recent per rule, so a manual event is never overwritten — a
-    // later real record simply advances the clock, exactly as a later manual event
-    // would. Overrides still win (they force not_recommended downstream).
+    // (issue #86) PLUS person-confirmed record links (#3025), merged into one
+    // stream. All are `(ruleKey, date)`; the assessor takes the most recent per
+    // rule, so a manual event is never overwritten — a later real record simply
+    // advances the clock, exactly as a later manual event would. Overrides still
+    // win (they force not_recommended downstream).
     satisfactions: [
       ...getPreventiveSatisfactions(profileId),
       ...getInferredPreventiveSatisfactions(profileId),
+      ...getConfirmedPreventiveRecordSatisfactions(profileId),
     ],
     overrides: getPreventiveOverrides(profileId),
     // Resolve smoking (issue #83): the structured record wins, else the imported

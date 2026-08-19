@@ -126,6 +126,7 @@ import {
   careCandidates,
   dailyCandidates,
   engagementFromSource,
+  preventiveReviewCandidate,
   progressCandidates,
   setupCandidates,
   sleepCandidates,
@@ -143,6 +144,7 @@ import {
 } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import { DashboardAttentionAtom } from "@/components/dashboard/NeedsAttentionHero";
+import PreventiveReviewAtom from "@/components/dashboard/PreventiveReviewAtom";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
 import DashboardAtomCard from "@/components/dashboard/DashboardAtomCard";
 import RecentlyResolvedReopen, {
@@ -917,6 +919,30 @@ async function renderDashboard(
     );
   }
   sourceOrder += attentionItems.length;
+
+  // Preventive review candidates (#3025): one fact per open record/rule pair
+  // riding on a due preventive item, keyed `preventive-review:<recordId>:
+  // <ruleKey>`. The builder bars them from the Now lane structurally (all rank
+  // reasons false, obligation "may"), so they can only render here in the
+  // exhaustive Everything lane — the same confirm-the-date / dismiss controls
+  // the Upcoming row shows beside the due item, and never a send.
+  for (const item of attentionItems) {
+    for (const offer of item.preventiveReview ?? []) {
+      add(
+        preventiveReviewCandidate(profileSubject, offer, sourceOrder++),
+        <PreventiveReviewAtom
+          title={item.title}
+          recordId={offer.recordId}
+          ruleKey={offer.ruleKey}
+          recordName={offer.recordName}
+          recordDate={offer.recordDate}
+          today={on}
+          profileId={profile.id}
+          canWrite={canWrite}
+        />
+      );
+    }
+  }
 
   for (const cockpit of heroCockpits.toSorted(
     (a, b) =>
