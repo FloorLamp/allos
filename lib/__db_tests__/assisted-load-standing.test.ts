@@ -20,7 +20,10 @@ import { shiftDateStr } from "@/lib/date";
 import { db, today } from "@/lib/db";
 import { recentPRs } from "@/lib/coaching";
 import { estimate1RM } from "@/lib/strength";
-import { strengthStanding, strengthStandingPercent } from "@/lib/strength-standards";
+import {
+  strengthStanding,
+  strengthStandingPercent,
+} from "@/lib/strength-standards";
 import { detectPlateaus } from "@/lib/training-observations";
 import { getExerciseE1rmSeries, getStrengthByExercise } from "@/lib/queries";
 
@@ -118,9 +121,7 @@ describe("assisted lift — the aggregate folds the counterweight out (#1922)", 
     expect(stat.topWeightKg).toBeLessThan(BODYWEIGHT_KG);
     // Same rows read as ADDED weight give exactly the inverted answer, which is
     // what makes the assertion above about the fold and not about the fixture.
-    expect(statFor(weightedId, WEIGHTED).topWeightKg).toBe(
-      BODYWEIGHT_KG + 40
-    );
+    expect(statFor(weightedId, WEIGHTED).topWeightKg).toBe(BODYWEIGHT_KG + 40);
   });
 
   it("places the standing at bodyweight MINUS assistance, on the base bands", () => {
@@ -166,9 +167,7 @@ describe("assisted lift — the aggregate folds the counterweight out (#1922)", 
   it("makes no ascending-load CLAIM about it: no PR, no plateau", () => {
     const t = today(assistedId);
     expect(recentPRs(getStrengthByExercise(assistedId), t, 365)).toEqual([]);
-    expect(
-      detectPlateaus(getExerciseE1rmSeries(assistedId), t)
-    ).toEqual([]);
+    expect(detectPlateaus(getExerciseE1rmSeries(assistedId), t)).toEqual([]);
     // Control: the same rows under the weighted name DO mint a record, so the
     // empty lists above are the exclusion rather than an inert fixture.
     const wt = today(weightedId);

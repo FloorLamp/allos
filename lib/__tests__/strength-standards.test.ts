@@ -366,7 +366,12 @@ describe("assisted pull-up placement (#1922)", () => {
     expect(s.clampedBodyweight).toBeNull();
     // …and a single clean bodyweight rep still sits exactly on the novice floor,
     // which is the anchor the dataset's own basis comment describes.
-    const bare = strengthStanding("Pull Up", effectiveLoadKg("added", 80, 0), "male", 80)!;
+    const bare = strengthStanding(
+      "Pull Up",
+      effectiveLoadKg("added", 80, 0),
+      "male",
+      80
+    )!;
     expect(bare.e1rmKg).toBe(80);
     expect(bare.level).toBe("novice");
     expect(bare.levelFloorKg).toBe(80);
@@ -375,12 +380,12 @@ describe("assisted pull-up placement (#1922)", () => {
 
 describe("standardsGap — the machine exclusion, stated rather than silent (#1922)", () => {
   it("names a machine MOVEMENT, whose exclusion is known from the catalog", () => {
-    expect(standardsGap("Leg Press", { e1rmKg: 200, freeWeightE1rmKg: 200 })).toBe(
-      "machine-implement"
-    );
-    expect(standardsGap("Machine Curl", { e1rmKg: 40, freeWeightE1rmKg: 40 })).toBe(
-      "machine-implement"
-    );
+    expect(
+      standardsGap("Leg Press", { e1rmKg: 200, freeWeightE1rmKg: 200 })
+    ).toBe("machine-implement");
+    expect(
+      standardsGap("Machine Curl", { e1rmKg: 40, freeWeightE1rmKg: 40 })
+    ).toBe("machine-implement");
     expect(standardsGapNote("machine-implement")).toContain("machine lifts");
   });
 
@@ -400,7 +405,9 @@ describe("standardsGap — the machine exclusion, stated rather than silent (#19
     ).toBeNull();
     // …and neither does an accessory nobody publishes norms for, where a machine
     // note would be a confidently wrong answer.
-    expect(standardsGap("Face Pull", { e1rmKg: 40, freeWeightE1rmKg: 40 })).toBeNull();
+    expect(
+      standardsGap("Face Pull", { e1rmKg: 40, freeWeightE1rmKg: 40 })
+    ).toBeNull();
     expect(standardsGapNote(null)).toBeNull();
   });
 
@@ -425,9 +432,9 @@ describe("assumesFreeWeightExecution — the soft nudge (#1922, #798 posture)", 
       assumesFreeWeightExecution({ e1rmKg: 100, freeWeightE1rmKg: 100 })
     ).toBe(false);
     // Wholly machine: there is no standing at all, so this is standardsGap's job.
-    expect(assumesFreeWeightExecution({ e1rmKg: 120, freeWeightE1rmKg: 0 })).toBe(
-      false
-    );
+    expect(
+      assumesFreeWeightExecution({ e1rmKg: 120, freeWeightE1rmKg: 0 })
+    ).toBe(false);
   });
 
   it("is informational, never a refusal — the note names the assumption", () => {

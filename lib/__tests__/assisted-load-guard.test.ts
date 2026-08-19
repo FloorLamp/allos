@@ -118,10 +118,15 @@ describe("assisted load — the catalog subject is non-empty and self-describing
     for (const name of ASSISTED_LIFTS) {
       // The load subtracts FROM something; without a bodyweight base there is
       // nothing to subtract from and the effective load collapses to zero.
-      expect(isBodyweight(name), `${name} must be bodyweight-loaded`).toBe(true);
+      expect(isBodyweight(name), `${name} must be bodyweight-loaded`).toBe(
+        true
+      );
       // And it must say which movement it is a lighter execution of, or it can
       // never place on a standard.
-      expect(assistedBaseLift(name), `${name} needs an assistedBase`).toBeTruthy();
+      expect(
+        assistedBaseLift(name),
+        `${name} needs an assistedBase`
+      ).toBeTruthy();
     }
   });
 
@@ -227,16 +232,19 @@ describe("assisted load — the EXCLUSION: no ascending-load claim is made", () 
     }
     // Control: the identically shaped history DOES mint a record for an added
     // lift, so the empty lists above are the exclusion and not an inert fixture.
-    expect(recentPRs([summaryFor(ADDED_CONTROL)], TODAY).length).toBeGreaterThan(
-      0
-    );
+    expect(
+      recentPRs([summaryFor(ADDED_CONTROL)], TODAY).length
+    ).toBeGreaterThan(0);
     expect(lastSessionPR(summaryFor(ADDED_CONTROL)).e1rm).toBe(true);
   });
 
   it("mints no per-session record standing", () => {
     const history = RISING_ASSISTANCE.map((s) => ({
       date: s.date,
-      e1rmKg: estimate1RM(effectiveLoadKg("assisted", BODYWEIGHT_KG, s.weightKg), 5),
+      e1rmKg: estimate1RM(
+        effectiveLoadKg("assisted", BODYWEIGHT_KG, s.weightKg),
+        5
+      ),
       e1rmReps: 5,
       topWeightKg: effectiveLoadKg("assisted", BODYWEIGHT_KG, s.weightKg),
     }));
@@ -250,9 +258,10 @@ describe("assisted load — the EXCLUSION: no ascending-load claim is made", () 
     expect(strengthSessionRecords(bestLast, last, true, "added").e1rm).toBe(
       "all-time"
     );
-    expect(
-      strengthSessionRecords(bestLast, last, true, "assisted")
-    ).toEqual({ e1rm: null, weight: null });
+    expect(strengthSessionRecords(bestLast, last, true, "assisted")).toEqual({
+      e1rm: null,
+      weight: null,
+    });
     // …and the real, rising-assistance history classifies nothing either way that
     // matters: its newest session is its WORST, so nothing to record.
     expect(strengthSessionRecords(history, last, true, "assisted")).toEqual({
@@ -278,9 +287,10 @@ describe("assisted load — the EXCLUSION: no ascending-load claim is made", () 
     expect(detectPlateaus([flat], TODAY).length).toBeGreaterThan(0);
     // …and the same flat series under an assisted NAME raises nothing.
     for (const name of ASSISTED_LIFTS) {
-      expect(detectPlateaus([{ ...flat, exercise: name }], TODAY), name).toEqual(
-        []
-      );
+      expect(
+        detectPlateaus([{ ...flat, exercise: name }], TODAY),
+        name
+      ).toEqual([]);
     }
   });
 
