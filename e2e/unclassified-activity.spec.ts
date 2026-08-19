@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { hydratedClick } from "./helpers";
 
 // An UNCLASSIFIED activity is a real, rendered row (#2272).
 //
@@ -141,6 +142,21 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
     await expect(
       ledger.getByRole("link", { name: "training log" })
     ).toHaveCount(0);
+
+    // The overflow delete follows the same life-stage-aware exit as every other
+    // leave path from this record, then Undo restores the spec-owned fixture.
+    await hydratedClick(
+      member,
+      member.getByRole("button", { name: "Activity actions" })
+    );
+    await member.getByTestId("delete-activity").click();
+    await member
+      .getByTestId("confirm-dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await expect(member).toHaveURL(/\/timeline$/);
+    await member.getByRole("button", { name: "Undo" }).click();
+    await expect(member.getByText("Restored.")).toBeVisible();
   } finally {
     await member.context().close();
   }

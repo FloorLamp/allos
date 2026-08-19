@@ -27,14 +27,14 @@ function cardsByTitle(page: Page, text: string | RegExp) {
     .filter({ hasText: text });
 }
 
-// Open the stored session for edit: select the row into the reading pane
-// (a pure client toggle — hydratedClick closes the pre-hydration window),
-// then the pane header's Edit opens the docked editor. The old
-// click-the-card-title edit path is gone (#2897).
+// Open the stored session's canonical page, then launch its shared workspace.
 async function openEditorFromRow(page: Page, row: Locator): Promise<void> {
-  await hydratedClick(page, row);
+  await hydratedClick(
+    page,
+    row.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the row
+  );
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
 }
@@ -57,7 +57,7 @@ async function confirmDelete(page: Page): Promise<void> {
   await settledClick(
     page,
     page
-      .getByRole("dialog")
+      .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
   );
 }
@@ -75,6 +75,7 @@ async function sweepProbes(page: Page): Promise<void> {
     const row = probes.first(); // first-ok: every PROBE_PREFIX row is this spec's own leftover; cleanup is order-agnostic
     await openEditorFromRow(page, row);
     await confirmDelete(page);
+    await page.goto("/training?tab=log");
     await expect(probes).toHaveCount(n - 1);
   }
 }
@@ -170,7 +171,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
     await expect(row).toBeVisible();
     // Reopen the stored session for edit via its row → the pane's Edit.
     await openEditorFromRow(page, row);
-    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    await expect(page.getByLabel("Activity name")).toHaveValue(title);
     // The RPE selector reloaded the persisted half-point value — the round-trip.
     await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");
   }).toPass({ timeout: 20_000 }); // topass-ok: reopen-until-persisted: re-goto + reopen the stored session until the persisted half-point RPE renders — a reload-until-rendered nav, no single awaitable event
@@ -179,5 +180,6 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // confirm), restoring the seed state for order-independent sibling specs. The
   // start-of-test sweep tolerates the case where a failed run skipped this.
   await confirmDelete(page);
+  await page.goto("/training?tab=log");
   await expect(cardsByTitle(page, title)).toHaveCount(0);
 });

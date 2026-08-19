@@ -11,8 +11,10 @@ import { useActivityEditor } from "@/components/ActivityEditorProvider";
 // "kept" outcome simply refreshes the page into its real record state.
 export default function DiscardDraftButton({
   activityId,
+  subjectProfileId,
 }: {
   activityId: number;
+  subjectProfileId?: number;
 }) {
   const router = useRouter();
   const { trainingRelevant } = useActivityEditor();
@@ -29,6 +31,8 @@ export default function DiscardDraftButton({
           const fd = new FormData();
           fd.set("activity_id", String(activityId));
           fd.set("if_empty", "1");
+          if (subjectProfileId != null)
+            fd.set("profile_id", String(subjectProfileId));
           const out = await discardWorkout(fd);
           if (out.kind === "discarded")
             router.replace(trainingRelevant ? "/training" : "/timeline");

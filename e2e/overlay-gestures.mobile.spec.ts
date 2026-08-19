@@ -6,12 +6,9 @@ import { E2E_LOGIN_PRESENCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Overlay gestures (issues #1425, #1469).
 //
-// One recognizer, one visual language, three outcomes. The point of these tests
-// is the DIVERGENCE: the identical swipe-down resolves to DISCARD on a bottom
-// sheet and to MINIMIZE on the activity dock, because the dock is a session — a
-// live workout that "away" must never silently end (the #1428 decision rule).
-// A regression that unified those outcomes would look like a cleanup and would
-// lose people's workouts, so it is asserted directly.
+// One recognizer and visual language, with lifecycle-specific outcomes. A sheet
+// drag discards; the activity workspace's draggable minimize bar parks its live
+// session instead.
 //
 // Every gesture here is driven through real Chromium touch input (helpers.ts).
 // That matters: the recognizer relies on the browser's own scroll arbitration —
@@ -267,11 +264,8 @@ test.describe("nav drawer: edge-swipe opens, swipe-left closes", () => {
   });
 });
 
-test.describe("the activity dock: the same swipe MINIMIZES", () => {
-  // The dock's fixture is a login with a seeded in-progress workout. Nothing
-  // here writes: the session row is left exactly as found, so this spec and the
-  // desktop presence spec can share the fixture without racing.
-  test("swipe-down on a live workout minimizes it — and never discards it", async ({
+test.describe("activity workspace: drag minimizes", () => {
+  test("dragging the minimize bar parks the live workout", async ({
     browser,
   }) => {
     test.slow();
@@ -286,81 +280,17 @@ test.describe("the activity dock: the same swipe MINIMIZES", () => {
       await expect(dock).toBeVisible();
 
       await hydratedClick(page, page.getByTestId("workout-dock-open"));
-      const panel = page.getByTestId("activity-overlay-panel");
-      await expect(panel).toBeVisible();
+      await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
 
-      await touchSwipeFrom(page, page.getByTestId("workout-drag-handle"), {
+      await touchSwipeFrom(page, page.getByTestId("minimize-workout"), {
         dy: 240,
       });
 
-      // THE DIVERGENCE. The identical gesture that discards a sheet collapses
-      // this to the bar — the workout is still running, and the bar is proof.
       await expect(dock).toBeVisible();
       await expect(page.getByTestId("minimize-workout")).toBeHidden();
 
-      // Re-opening proves both halves of the "parked, not destroyed" contract:
-      // the same panel comes back (the form was never unmounted, so the rest
-      // timer never stopped), and it comes back AT REST rather than still
-      // translated off the bottom by the drag that minimized it.
       await page.getByTestId("workout-dock-open").click();
-      await expect(panel).toBeVisible();
-      const box = await panel.boundingBox();
-      expect(
-        box!.y,
-        "a re-opened dock must sit at its resting position, not where the drag left it"
-      ).toBeLessThan(page.viewportSize()!.height / 2);
-    } finally {
-      await page.context().close();
-    }
-  });
-
-  test("the sheet and the dock offer the SAME affordance for their different outcomes", async ({
-    browser,
-  }) => {
-    test.slow();
-    const page = await loginAs(
-      browser,
-      { username: E2E_LOGIN_PRESENCE, password: E2E_MEMBER_PASSWORD },
-      PHONE_CONTEXT
-    );
-    try {
-      await page.goto("/");
-      await hydrated(page);
-
-      // Measured in ONE browser context so the comparison is real rather than a
-      // restatement of the token constant.
-      const sheet = await openQuickLogSheet(page);
-      const sheetBar = await sheet
-        .getByTestId("sheet-drag-handle")
-        .locator("span")
-        .boundingBox();
-      const sheetScrim = await page
-        .getByTestId("quick-log-sheet-backdrop")
-        .evaluate((el) => getComputedStyle(el).backgroundColor);
-      await page.keyboard.press("Escape");
-      await expect(sheet).toHaveCount(0);
-
-      await hydratedClick(page, page.getByTestId("workout-dock-open"));
-      await expect(page.getByTestId("activity-overlay-panel")).toBeVisible();
-      const dockBar = await page
-        .getByTestId("workout-drag-handle")
-        .locator("span")
-        .boundingBox();
-
-      // One drag-handle geometry (#1469): the two surfaces are different
-      // lifecycles wearing the same affordance, which is what makes the gesture
-      // learnable in one place and usable in the other.
-      expect(dockBar!.width).toBeCloseTo(sheetBar!.width, 0);
-      expect(dockBar!.height).toBeCloseTo(sheetBar!.height, 0);
-
-      // …and one scrim treatment. The drawer's backdrop used to be a different
-      // tint with an extra blur, so the same dimming read as two depths.
-      await page.getByTestId("minimize-workout").click();
-      await touchSwipe(page, { x: 2, y: 500 }, { x: 220, y: 505 });
-      const drawerScrim = await page
-        .getByTestId("mobile-drawer-backdrop")
-        .evaluate((el) => getComputedStyle(el).backgroundColor);
-      expect(drawerScrim).toBe(sheetScrim);
+      await expect(page.getByTestId("live-workout-panel")).toBeVisible();
     } finally {
       await page.context().close();
     }

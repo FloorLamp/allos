@@ -51,7 +51,7 @@ async function cleanUpDraft(page: Page): Promise<void> {
   await expect(del).toBeVisible();
   await del.click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await expect(page.getByTestId("activity-form")).toBeHidden();
@@ -172,11 +172,13 @@ test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
 
   // 7. The relocated guide trigger still opens the ONE shared overlay.
   await guide.click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByRole("dialog", {
+    name: "How to: Barbell Bench Press",
+  });
   await expect(dialog).toContainText("How to: Barbell Bench Press");
   await expect(dialog.getByTestId("exercise-guide")).toBeVisible();
   await dialog.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
 
   await expectNoClippedContent(page);
 

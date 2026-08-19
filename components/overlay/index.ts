@@ -1,14 +1,10 @@
 // The overlay primitive set (issue #1469) — the ONE import an overlay surface
 // needs.
 //
-// Three bottom/edge-anchored overlays exist: the mobile nav drawer
-// (components/MobileNav.tsx), BottomSheet (components/BottomSheet.tsx), and the
-// activity dock's expanded editor (components/ActivityOverlay.tsx). Their
-// DISMISSAL CONTRACTS differ by design and must keep differing — the #1428
-// owner decision: a sheet is transactional, so swipe-down DISCARDS it; the dock
-// is a session, so swipe-down MINIMIZES it and it never becomes discardable.
-// Their gesture mechanics and visual language, on the other hand, are one
-// system, and this module is that system:
+// The edge-anchored overlays share one visual vocabulary and gesture mechanics.
+// Their outcomes follow their lifecycle: the persistent activity workspace's
+// drag minimizes its running session instead of closing it. This module is the
+// shared system:
 //
 //   * useDragGesture   — the ONE recognizer (axis lock, directed travel,
 //                        distance-or-flick), over the pure lib/gesture.ts.

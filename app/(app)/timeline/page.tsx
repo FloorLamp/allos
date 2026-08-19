@@ -69,6 +69,7 @@ import {
   parseViewMode,
   type ViewMode,
 } from "@/lib/multi-view";
+import { parseSubjectParam } from "@/lib/subject-param";
 import { getUvDoseForDays } from "@/lib/queries/weather";
 import {
   getDaylightOutdoorMinutesByDay,
@@ -226,16 +227,6 @@ function parseShow(value: string | string[] | undefined): number {
   const n = Number(first);
   if (!Number.isFinite(n)) return DEFAULT_SHOW;
   return Math.min(Math.max(Math.trunc(n), DEFAULT_SHOW), MAX_SHOW);
-}
-
-// A day-deep-link's `subject` param (issue #1329): whose day a single-day view lands on.
-// Positive-integer profile ids only; anything else → undefined (falls back to acting).
-function parseSubjectParam(
-  value: string | string[] | undefined
-): number | undefined {
-  const first = Array.isArray(value) ? value[0] : value;
-  const n = Number(first);
-  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 function EventCard({

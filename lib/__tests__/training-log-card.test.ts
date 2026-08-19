@@ -193,8 +193,8 @@ describe("buildTrainingLogCards — strength parts", () => {
     const parts = group.cards[0].parts;
     expect(parts).toHaveLength(2);
     expect(parts[0]).toMatchObject({ kind: "strength", name: "Bench Press" });
-    // Two grouped sets → "100kg × 5 × 2".
-    expect(parts[0]).toHaveProperty("text", "100kg × 5 × 2");
+    // Two grouped sets → "100 kg × 5 × 2".
+    expect(parts[0]).toHaveProperty("text", "100 kg × 5 × 2");
     expect(parts[1]).toMatchObject({
       kind: "strength",
       name: "Overhead Press",
@@ -255,7 +255,7 @@ describe("buildTrainingLogCards — components vs legacy", () => {
 });
 
 describe("buildTrainingLogCards — single-pure-effort header fold", () => {
-  it("keeps a lone cardio effort clickable while moving its metrics to the header", () => {
+  it("does not repeat a lone cardio component below its activity title", () => {
     const a = activity({
       id: 1,
       type: "cardio",
@@ -268,14 +268,8 @@ describe("buildTrainingLogCards — single-pure-effort header fold", () => {
     });
     const [group] = build([a], []);
     const card = group.cards[0];
-    // The single cardio part remains a detail link without repeated metrics…
-    expect(card.parts).toHaveLength(1);
-    expect(card.parts[0]).toMatchObject({
-      kind: "cardio",
-      name: "Run",
-      detail: "",
-    });
-    // …while the scan-first header carries the primary measurements together.
+    expect(card.parts).toEqual([]);
+    // The scan-first header still carries the primary measurements together.
     expect(card.durationText).toBe("30 min");
     expect(card.distanceText).toBe("5 km");
     expect(card.speedText).toBe("10 km/h");
@@ -410,7 +404,6 @@ describe("activityMetrics", () => {
       "85 rpm",
       "500 kJ",
       "18°C",
-      "Effort 42",
     ]);
   });
 

@@ -3,19 +3,17 @@
 Status: shipped (issues #1425, #1469; the decision rule is #1428's owner
 comment)
 
-The app has four edge-anchored overlay surfaces. They look and move as one
-system and they resolve the same gesture to different outcomes — on purpose. This file is the reasoning behind that split, because "unify the
-overlays" is a tempting cleanup that would break the one part that must not be
-unified.
+The app has four edge-anchored overlay surfaces. They share one visual and
+gesture system while preserving their different lifecycle outcomes.
 
 ## The four surfaces
 
-| Surface                             | Anchor | Lifecycle     | The swipe resolves to               |
-| ----------------------------------- | ------ | ------------- | ----------------------------------- |
-| `components/BottomSheet.tsx`        | bottom | transactional | **discard** (dismiss, nothing kept) |
-| `components/MobileNav.tsx` drawer   | left   | transient     | **close**                           |
-| `components/ActivityOverlay.tsx`    | bottom | **session**   | **minimize** — never discard        |
-| `components/ProfileIdentityBar.tsx` | top    | transient     | **close**                           |
+| Surface                             | Anchor                            | Lifecycle     | Gesture outcome                     |
+| ----------------------------------- | --------------------------------- | ------------- | ----------------------------------- |
+| `components/BottomSheet.tsx`        | bottom                            | transactional | **discard** (dismiss, nothing kept) |
+| `components/MobileNav.tsx` drawer   | left                              | transient     | **close**                           |
+| `components/ActivityOverlay.tsx`    | bottom on phone, right on desktop | **session**   | **minimize** — never discard        |
+| `components/ProfileIdentityBar.tsx` | top                               | transient     | **close**                           |
 
 The profile switcher (#1801) is the only TOP-anchored panel: it drops from the
 identity bar in the phone's top bar, so the target appears where the finger
@@ -26,15 +24,13 @@ token pair, `useOverlayDrag` (whose axis/sign table gained the `up` row), and
 the drag handle, mounted at the panel's BOTTOM edge because that is the edge
 facing the reader.
 
-The dock is the one that matters. A live workout runs for an hour, survives
-navigation as the minimized bar, and "away" means STILL RUNNING. Wiring its
-swipe to `onClose` would make an in-progress session silently discardable by a
-stray flick — the destructive-gesture class this app refuses (which is also why
-swipe-to-complete on dose/finding rows was rejected outright in #1425).
-
-So the dock's drag is wired to `onMinimize` and is **disabled entirely** when
-there is no minimize to reach (a retro log/edit): it never falls back to a
-discard.
+The activity workspace is the one that matters. A live workout runs for an
+hour, survives navigation as the minimized bar, and "away" means STILL RUNNING.
+On mobile it has one horizontal minimize bar. The bar is both a real button and
+the drag handle, so touch, keyboard, and assistive technology all reach the same
+action without a second affordance. Its downward drag is wired to `onMinimize`;
+wiring it to `onClose` would make an in-progress session discardable. The
+desktop drawer omits the bar; its backdrop remains the minimize affordance.
 
 The same reasoning applies to the affordance that OPENS the editor (#1893). A
 minimized session's elapsed timer ticks off `liveStartEpoch`, and `openLive()`
@@ -67,23 +63,22 @@ Before this, the drawer ran at 220ms, the sheet at 240ms, and the dock had no
 animation at all; the drawer's scrim was a different tint with an extra blur.
 That is the "hand-mirrored second engine" shape at the presentation layer.
 
-### The one deliberate exception: the dock does not slide on mount
+### The deliberate activity-workspace exceptions
 
-The dock takes every primitive above except the enter animation, and the reason
-is worth keeping. Its panel is a full-height (`min-h-full`) child of its own
-scroll container, so sliding it in changes that container's scroll extent for
-the length of the animation and flips its scrollbar on and off. The width
-changes with it and the activity form re-wraps: a browser test caught the
-date/duration row landing 132px apart mid-enter (`e2e/entry-ergonomics.spec.ts`,
-the #188 layout assertion). Suppressing the scrollbar for that window only
-traded the glitch for 240ms in which the app's most complex form could not
-scroll.
+The workspace shares the scrim, surface chrome, drag recognizer, and handle
+geometry, but takes no enter animation. Its panel is a full-height
+(`min-h-full`) child of its own scroll container, so sliding it in changes that
+container's scroll extent for the length of the animation and flips its
+scrollbar on and off. The width changes with it and the activity form re-wraps:
+a browser test caught the date/duration row landing 132px apart mid-enter
+(`e2e/entry-ergonomics.spec.ts`, the #188 layout assertion). Suppressing the
+scrollbar for that window only traded the glitch for 240ms in which the app's
+most complex form could not scroll.
 
 A mount animation would also be inconsistent here in a way it is not on a sheet:
 minimizing HIDES this element rather than unmounting it (the rest timer has to
-keep running), so a restore could never replay the slide. The dock arrives
-instantly, on purpose — the convergence it owes is the scrim, chrome, handle,
-recognizer and reduced-motion posture, all of which it takes.
+keep running), so a restore could never replay the slide. The workspace arrives
+instantly, on purpose.
 
 ## Load-bearing details
 
@@ -108,9 +103,8 @@ its panel — but the quick-log sheet's `BottomSheet` is rendered unconditionall
 by `MobileNav`, and the quick-entry host retains its form after close, so those
 instances never unmount and one cancelled 30px drag muted that sheet's
 animations for the page's whole life. Consumers whose panel unmounts pass
-`panelMounted` (their `usePresence` `mounted`); the dock passes none, because a
-minimize parks its element rather than destroying it and its `commitSettle:
-"rest"` clears the latch itself.
+`panelMounted` (their `usePresence` `mounted`); the activity workspace uses
+`commitSettle: "rest"` because minimizing parks its panel instead.
 
 _It never reaches the scrim._ The backdrop carries no inline transform — nothing
 ever writes one — so there is no handshake to honour and gating it only cost the
@@ -149,11 +143,9 @@ one is about who owns the DRAG. A new fact belongs in it only if it names a
 surface that owns the gesture, and it owes the module a test in both directions.
 
 **`commitSettle: "away" | "rest"`.** A sheet is going away, so it finishes its
-travel while the consumer unmounts it. The dock is being PARKED — the same
-element stays mounted with a live workout inside it and is merely hidden — so it
-returns to its resting transform immediately. Animating it "away" would animate
-something already `display: none`, and leaving the transform behind would
-restore the panel translated off the bottom of the screen.
+travel while the consumer unmounts it. The activity workspace is being parked:
+the same element stays mounted with a live workout inside it and is merely
+hidden. It therefore returns to its resting transform before minimizing.
 
 **Touch events, not Pointer Events.** Chromium fires `pointercancel` — and stops
 sending `pointermove` — the moment its own scroll recognizer takes over, which
@@ -170,10 +162,11 @@ horizontal scrollers are unaffected. (Caveat: this governs the browser's
 overscroll gesture, not the platform's — an iOS Safari tab keeps its system
 edge-swipe-back; installed to the home screen there is none.)
 
-**Every gesture has a control beside it.** The drawer keeps its hamburger, the
-sheet its backdrop tap and Escape, the dock its minimize button, the Timeline
-its prev/next arrows — built from the SAME `timelineDayHref` destinations the
-swipe uses, so the two can never disagree about which day is next. A gesture is
+**Every gesture has a control path.** The drawer keeps its hamburger, the sheet
+its backdrop tap and Escape, the activity handle is itself a button, and the
+Timeline keeps its prev/next arrows — built from the SAME `timelineDayHref`
+destinations the swipe uses, so the two can never disagree about which day is
+next. A gesture is
 invisible, undiscoverable, and unavailable to a keyboard or a screen reader; it
 is never the only way to do anything.
 

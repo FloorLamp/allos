@@ -1,4 +1,4 @@
-import { requireSession, accessForProfile } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { requireScope, stampSubjects } from "@/lib/scope";
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import {
@@ -38,9 +38,6 @@ export interface ResolvedTrainingLogFeed {
 }
 
 export interface TrainingLogFeedContext extends ResolvedTrainingLogFeed {
-  // Whether the acting login can write to the ACTIVE profile — gates the per-card
-  // form-check video affordances (#1224). The server actions re-gate regardless.
-  canWriteVideos: boolean;
   multi: boolean;
   actingProfileId: number;
   // The source filter's option list, resolved server-side from the ledger's own
@@ -154,8 +151,6 @@ export async function resolveTrainingLogFeedContext(
     feed,
     groups,
     cursor,
-    canWriteVideos:
-      accessForProfile(login.id, login.role, profile.id) === "write",
     multi,
     actingProfileId: scope.actingProfileId,
     sourceOptions,

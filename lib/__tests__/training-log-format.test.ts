@@ -22,7 +22,7 @@ describe("summarizeExercise — rep-based", () => {
       row({ set_number: 3, weight_kg: 100, reps: 5 }),
     ];
     const s = summarizeExercise(sets, "kg");
-    expect(s.text).toBe("100kg × 5 × 3");
+    expect(s.text).toBe("100 kg × 5 × 3");
     expect(s.totalKg).toBe(1500);
   });
 
@@ -33,7 +33,7 @@ describe("summarizeExercise — rep-based", () => {
       row({ set_number: 3, weight_kg: 150, reps: 7 }),
     ];
     const s = summarizeExercise(sets, "kg");
-    expect(s.text).toBe("150kg × 8, 8, 7");
+    expect(s.text).toBe("150 kg × 8, 8, 7");
     expect(s.totalKg).toBe(150 * 8 + 150 * 8 + 150 * 7);
   });
 
@@ -43,7 +43,7 @@ describe("summarizeExercise — rep-based", () => {
       row({ set_number: 2, weight_kg: 100, reps: 5 }),
       row({ set_number: 3, weight_kg: 95, reps: 8 }),
     ];
-    expect(summarizeExercise(sets, "kg").text).toBe("100kg × 6, 5, 95kg × 8");
+    expect(summarizeExercise(sets, "kg").text).toBe("100 kg × 6, 5, 95 kg × 8");
   });
 
   it("drops the weight prefix for bodyweight (null) sets", () => {
@@ -70,7 +70,7 @@ describe("summarizeExercise — rep-based", () => {
       row({ set_number: 1, weight_kg: 100, reps: 6 }),
       row({ set_number: 2, weight_kg: 100, reps: 5 }),
     ];
-    expect(summarizeExercise(sets, "kg").text).toBe("100kg × 6, 5, 95kg × 8");
+    expect(summarizeExercise(sets, "kg").text).toBe("100 kg × 6, 5, 95 kg × 8");
   });
 
   it("carries no status for a single set", () => {
@@ -171,7 +171,7 @@ describe("summarizeExercise — warmup volume (#338)", () => {
     ];
     const s = summarizeExercise(sets, "kg");
     expect(s.totalKg).toBe(1000); // 100×5 × 2, the 60×5 warmup excluded
-    expect(s.text).toContain("60kg"); // still shown
+    expect(s.text).toContain("60 kg"); // still shown
   });
 
   it("excludes a warmup from per-side volume too", () => {
@@ -238,7 +238,7 @@ describe("summarizeExercise — per-side (asymmetric)", () => {
       }),
     ];
     const s = summarizeExercise(sets, "kg");
-    expect(s.text).toBe("L 14kg × 10 × 2 · R 12kg × 8 × 2");
+    expect(s.text).toBe("L 14 kg × 10 × 2 · R 12 kg × 8 × 2");
     expect(s.status).toBeNull();
     // Volume sums both sides.
     expect(s.totalKg).toBe(14 * 10 * 2 + 12 * 8 * 2);

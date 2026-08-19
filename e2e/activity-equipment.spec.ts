@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { hydratedClick, settledClick, settledFill } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Issue #342: the ACTIVITY-level equipment link. The seed links its "Zone 2 bike"
@@ -12,17 +17,18 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  // The feed renders slim rows (#2897); the full record card — gear included —
-  // lives in the reading pane once the row is selected.
+  // The feed renders slim rows; gear lives on the canonical activity page.
   const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "Zone 2 bike" })
     .first(); // first-ok: the seeded "Zone 2 bike" activity row (filtered by its unique title)
   await expect(row).toBeVisible();
-  await hydratedClick(page, row);
-  const card = page
-    .getByTestId("training-log-reading-pane")
-    .locator(".card", { hasText: "Zone 2 bike" });
+  await followLink(
+    page,
+    row.getByRole("link", { name: "Zone 2 bike", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
+  const card = page.getByTestId("training-activity-page");
   await expect(card).toBeVisible();
 
   // Session gear is quiet metadata in the card's third row, not a standalone
@@ -37,11 +43,10 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
     )
   ).toBe(true);
 
-  // Cycling titles lead to the canonical activity detail. The card's separate Edit
-  // action still opens the legacy editor with the linked gear preloaded — a real
+  // Cycling titles lead to the canonical activity detail. Its primary Edit action
+  // opens the shared editor with the linked gear preloaded — a real
   // equipment id is selected, labelled "Road Bike".
-  await card.getByRole("button", { name: "Activity actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+  await card.getByTestId("activity-page-edit").click();
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   await expect(select).toHaveValue(/\d+/);
@@ -64,16 +69,19 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
 }) => {
   await page.goto("/training?tab=log");
 
-  // Select the run's slim row into the reading pane (#2897), then open the
-  // editor from the pane's Edit — the old click-the-card-title path is gone.
+  // Follow the run's slim row to its canonical page, then open the shared editor.
   const row = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "5k run" })
     .first(); // first-ok: the seeded "5k run" activity row (filtered by its unique title)
   await expect(row).toBeVisible();
-  await hydratedClick(page, row);
+  await followLink(
+    page,
+    row.getByRole("link", { name: "5k run", exact: true }),
+    /\/training\/activity\/\d+$/
+  );
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
   const select = page.getByTestId("activity-equipment-select");
@@ -126,6 +134,10 @@ test("the activity form shows an 'Add equipment' door when the profile owns no g
     await expect(door).toBeVisible();
     await expect(door).toHaveText(/Add equipment/);
     await expect(door).toHaveAttribute("href", "/equipment");
+    await expect(door).not.toHaveAttribute("target", "_blank");
+    await door.click();
+    await expect(page).toHaveURL(/\/equipment$/);
+    await expect(page.getByTestId("activity-form")).toHaveCount(0);
   } finally {
     await page.context().close();
   }
@@ -185,12 +197,12 @@ test("the strength picker creates and selects a travel machine without losing th
     page.getByRole("button", { name: "Delete", exact: true })
   ).toBeVisible();
 
-  // The full-registry door is always present and opens in a NEW TAB, so the
-  // in-progress workout is never navigated away from.
+  // The full-registry door is ordinary same-app navigation. The activity is
+  // already autosaved, so it does not need a surprise second tab.
   const door = page.getByTestId("strength-equipment-link");
   await expect(door).toBeVisible();
   await expect(door).toHaveAttribute("href", "/equipment");
-  await expect(door).toHaveAttribute("target", "_blank");
+  await expect(door).not.toHaveAttribute("target", "_blank");
 
   // Open the compact in-form quick-add.
   await page.getByTestId("strength-equipment-add").click();
@@ -239,9 +251,10 @@ test("the strength picker creates and selects a travel machine without losing th
   await settledClick(
     page,
     page
-      .getByRole("dialog")
+      .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
   );
+  await page.goto("/training?tab=log");
   await expect(
     page
       .getByRole("main")
@@ -262,7 +275,7 @@ test("the strength picker creates and selects a travel machine without losing th
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await settledClick(
     page,
-    page.getByRole("dialog").getByRole("button", { name: "Delete" })
+    page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
   );
   await expect(row).toHaveCount(0);
 });

@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
+import { useRouter } from "next/navigation";
+import OverflowMenu, {
+  MENU_ITEM,
+  MENU_ITEM_DANGER,
+} from "@/components/OverflowMenu";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import MergeConflictDialog, {
@@ -17,7 +22,7 @@ import {
   type OverrideChoices,
 } from "@/lib/import-review/conflicts";
 import type { AppRoute } from "@/lib/hrefs";
-import { mergeActivities } from "./activity-actions";
+import { deleteActivity, mergeActivities } from "./activity-actions";
 import { activityEditDataHasStrength } from "@/lib/activity-form-model";
 
 // A same-day sibling this card can absorb: id + label, plus its fold-field values
@@ -51,8 +56,8 @@ interface PendingConflictMerge {
 //  • "View details" — read-first navigation to the canonical activity page.
 //  • "Edit" — opens the existing activity editor without making the title
 //    itself an edit affordance.
-//  • "Log again" (issue #29) — opens a CREATE form pre-filled from this activity
-//    (title, exercises, sets) with the date reset to today, so repeating a
+//  • "Duplicate activity" (issue #29) — opens a CREATE form pre-filled from this
+//    activity (title, exercises, sets) with the date reset to today, so repeating a
 //    session is one tap + a save when the workout product and activity type apply.
 //  • "Merge with…" (issue #64) — reveals a picker of the OTHER activities logged
 //    the SAME day and folds the chosen one into this card (this card is the
@@ -63,6 +68,8 @@ interface PendingConflictMerge {
 //    stays a single click, unchanged.
 //  • "Resume sync updates" — only for hand-edited integration rows. The compact
 //    provenance footer keeps the lock status; this menu owns the deliberate action.
+//  • "Delete activity" — the destructive final item, confirmed and undoable through
+//    the same delete path used by the editor.
 export default function ActivityCardMenu({
   activity,
   siblings,
@@ -73,8 +80,10 @@ export default function ActivityCardMenu({
   detailHref,
   canWrite = true,
   openMergeSignal,
+  deleteReturnHref,
+  mergeAwayHref,
 }: {
-  // The full card activity — the source for "Log again".
+  // The full card activity — the source for "Duplicate activity".
   activity: ActivityEditData;
   // The same-day, same-profile activities this one can absorb.
   siblings: MergeSibling[];
@@ -92,11 +101,18 @@ export default function ActivityCardMenu({
   // Whether the acting login may write to THIS card's subject profile (issue #1330).
   // Merge (edits the keeper + deletes the sibling) and resume-sync (clears the edit
   // lock) are subject-writes, so they're hidden on a read-only-granted member's card.
-  // "Log again" survives regardless — it CREATES on the acting profile, never the
-  // subject, so repeating a read-only member's workout logs it as yours.
+  // "Duplicate activity" survives regardless — it CREATES on the acting profile,
+  // never the subject, so repeating a read-only member's workout logs it as yours.
   canWrite?: boolean;
   // Bumped by a host that wants the merge picker opened (the overlap banner).
   openMergeSignal?: number;
+  // A canonical detail page leaves after deleting its record. Other hosts can omit
+  // this and let their own refreshed list remain in place.
+  deleteReturnHref?: AppRoute;
+  // A canonical detail page must leave the record that was just absorbed. The
+  // keeper id is only known after the picker runs, so the host supplies the
+  // subject-aware destination builder rather than a static return route.
+  mergeAwayHref?: (keeperId: number) => AppRoute;
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -128,12 +144,41 @@ export default function ActivityCardMenu({
   const [pendingConflict, setPendingConflict] =
     useState<PendingConflictMerge | null>(null);
   const undoable = useUndoableDelete();
+  const confirm = useConfirm();
+  const router = useRouter();
   const { openEdit, openRepeat, trainingRelevant, strengthTrainingAvailable } =
     useActivityEditor();
   const { busy: resumingSync, resumeSyncUpdates } = useResumeSyncUpdates(
     "activities",
     activity.id
   );
+  const canDuplicate =
+    trainingRelevant &&
+    (strengthTrainingAvailable || !activityEditDataHasStrength(activity));
+  const hasNonDestructiveItem =
+    detailHref != null ||
+    canDuplicate ||
+    (canWrite && siblings.length > 0) ||
+    (canWrite && editLocked);
+
+  async function removeActivity() {
+    const ok = await confirm({
+      title: "Delete activity",
+      message: `Delete “${activity.title}” (${activity.date})? You can undo this.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    const fd = new FormData();
+    fd.set("id", String(activity.id));
+    if (activity.subjectProfileId != null) {
+      fd.set("profile_id", String(activity.subjectProfileId));
+    }
+    await undoable(deleteActivity, fd, {
+      deletedMessage: "Activity deleted.",
+    });
+    if (deleteReturnHref) router.replace(deleteReturnHref);
+  }
 
   function resetPicker() {
     setPicking(false);
@@ -207,6 +252,9 @@ export default function ActivityCardMenu({
     await undoable(mergeActivities, fd, {
       deletedMessage: "Activities merged.",
     });
+    if (dropIds.includes(activity.id) && mergeAwayHref) {
+      router.replace(mergeAwayHref(keepId));
+    }
   }
 
   // Toggle a sibling's inclusion; unchecking the current keeper falls back to the card.
@@ -250,6 +298,7 @@ export default function ActivityCardMenu({
       <OverflowMenu
         label="Activity actions"
         open={open}
+        panelClassName={picking ? "w-72 max-w-[calc(100vw-1rem)]" : undefined}
         onOpenChange={(o) => {
           setOpen(o);
           if (!o) resetPicker();
@@ -374,22 +423,20 @@ export default function ActivityCardMenu({
                   Edit
                 </button>
               ) : null}
-              {trainingRelevant &&
-                (strengthTrainingAvailable ||
-                  !activityEditDataHasStrength(activity)) && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="log-again"
-                    className={MENU_ITEM}
-                    onClick={() => {
-                      setOpen(false);
-                      openRepeat(activity);
-                    }}
-                  >
-                    Log again
-                  </button>
-                )}
+              {canDuplicate && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="duplicate-activity"
+                  className={MENU_ITEM}
+                  onClick={() => {
+                    setOpen(false);
+                    openRepeat(activity);
+                  }}
+                >
+                  Duplicate activity
+                </button>
+              )}
               {canWrite && siblings.length > 0 && (
                 <button
                   type="button"
@@ -416,6 +463,23 @@ export default function ActivityCardMenu({
                   Resume sync updates
                 </button>
               )}
+              {canWrite && hasNonDestructiveItem ? (
+                <div
+                  role="separator"
+                  className="my-1 border-t border-black/10 dark:border-white/10"
+                />
+              ) : null}
+              {canWrite ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="delete-activity"
+                  className={MENU_ITEM_DANGER}
+                  onClick={() => void removeActivity()}
+                >
+                  Delete activity
+                </button>
+              ) : null}
             </>
           )
         }

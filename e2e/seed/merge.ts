@@ -28,9 +28,9 @@ export function seedMergeFixtures(): void {
 
   // ── Manual pair-merge fixture (issue #64) ─────────────────────────────────────
   // Two same-day MANUAL cardio activities the Training Log's manual merge test folds
-  // together — the "duplicate no heuristic catches" case (two manual rows, no clock
-  // windows, so detection deliberately ignores them). Distinct date + titles so this
-  // fixture never collides with the cross-source dedup pair above. Synthetic only.
+  // together — a deliberate user-directed merge whose clock windows do not overlap,
+  // so duplicate detection correctly leaves them alone. Distinct date + titles keep
+  // this fixture clear of the cross-source dedup pair above. Synthetic only.
   // RELATIVE date (#1048 frozen-clock follow-up): the training log feed's first page is the
   // newest TRAINING_LOG_PAGE_DAYS (14) days, and the run-start frozen clock advances daily,
   // so the old FIXED "2026-07-05" aged OFF page 1 — the merge specs couldn't see the
@@ -42,11 +42,28 @@ export function seedMergeFixtures(): void {
   ).run(PROFILE_ID, MERGE_DATE);
   const insMerge = db.prepare(
     `INSERT INTO activities
-     (profile_id, date, type, title, duration_min, distance_km, source, external_id, edited)
-   VALUES (?, ?, 'cardio', ?, ?, ?, NULL, NULL, 0)`
+     (profile_id, date, type, title, duration_min, distance_km, start_time,
+      end_time, source, external_id, edited)
+   VALUES (?, ?, 'cardio', ?, ?, ?, ?, ?, NULL, NULL, 0)`
   );
-  insMerge.run(PROFILE_ID, MERGE_DATE, "Training Log merge keeper", 40, 6);
-  insMerge.run(PROFILE_ID, MERGE_DATE, "Training Log merge dupe", 42, null);
+  insMerge.run(
+    PROFILE_ID,
+    MERGE_DATE,
+    "Training Log merge keeper",
+    40,
+    6,
+    "09:00",
+    "09:40"
+  );
+  insMerge.run(
+    PROFILE_ID,
+    MERGE_DATE,
+    "Training Log merge dupe",
+    42,
+    null,
+    "10:00",
+    "10:42"
+  );
 
   // ── Conflict-aware merge fixture (issue #100) ─────────────────────────────────
   // Two same-day MANUAL cardio rows that genuinely DISAGREE on duration (42 vs 51
@@ -58,8 +75,24 @@ export function seedMergeFixtures(): void {
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Conflict merge keeper', 'Conflict merge dupe')`
   ).run(PROFILE_ID, CONFLICT_DATE);
-  insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge keeper", 42, 5);
-  insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge dupe", 51, 5);
+  insMerge.run(
+    PROFILE_ID,
+    CONFLICT_DATE,
+    "Conflict merge keeper",
+    42,
+    5,
+    null,
+    null
+  );
+  insMerge.run(
+    PROFILE_ID,
+    CONFLICT_DATE,
+    "Conflict merge dupe",
+    51,
+    5,
+    null,
+    null
+  );
 
   // ── Overlapping same-day pair (#2870, the discovery banner) ──────────────────
   // Two sessions whose CLOCK WINDOWS overlap — the evidence the duplicate detector

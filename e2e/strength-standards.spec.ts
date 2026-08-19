@@ -1,51 +1,13 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
 // #152: an estimated 1RM gains a bodyweight-band strength-standard from ONE model
 // (lib/strength-standards.json) that now feeds every strength-level surface — the
-// exercise-detail coaching line + level badge, the Analyze "Benchmarks" card, and
-// the healthspan pillar. The seeded adult (profile 1) is male with a known
-// bodyweight and a rich barbell history (squat/bench/deadlift), so both surfaces
-// below must render for a core lift. The gate (hidden when sex/bodyweight unset, or
-// for an uncovered lift) is covered exhaustively by the pure unit tests
+// the Analyze "Benchmarks" card, exercise coaching, and the healthspan pillar.
+// The seeded adult (profile 1) is male with a known bodyweight and a rich barbell
+// history, so the card renders for a core lift. The gate (hidden when sex/bodyweight
+// is unset, or for an uncovered lift) is covered exhaustively by the pure unit tests
 // (lib/__tests__/strength-standards.test.ts) and the cross-surface agreement by
 // lib/__tests__/strength-level-consistency.test.ts — driving the settings form to
 // unset sex here would be brittle, so the e2e asserts the positive render only.
-
-test("exercise detail shows the bodyweight-band strength standard line (#152)", async ({
-  page,
-}) => {
-  // Training → Log: clicking a lift on a training log record opens the
-  // per-exercise detail panel, which carries the coaching STANDING line. (#1492
-  // moved this host: Trends → Fitness became the WINDOWED analytics lens — four
-  // sections of trend charts — so the full-history explorer that used to carry
-  // the panel is gone from it; /training owns the "do" surfaces. Analyze renders
-  // the SAME panel with showLevel=false, because there the standing is the
-  // Benchmarks card the second test drives — one standing per surface, never
-  // both.)
-  await page.goto("/training?tab=log");
-
-  const main = page.getByRole("main");
-  // The feed is slim rows (#2897): the exercise drill-in buttons live on the
-  // full record card in the reading pane, so select a seeded Leg day session
-  // first (hydratedClick — a pure client toggle right after the goto).
-  const legDayRow = main
-    .getByTestId("training-log-row")
-    .filter({ hasText: "Leg day" })
-    .first(); // first-ok: any seeded Leg day session carries Back Squat, and EVERY drill-in opens the same panel
-  await hydratedClick(page, legDayRow);
-  // A COVERED core lift (a dataset barbell lift). The seeded Leg day record
-  // carries Back Squat; the drill-in button names the lift it opens.
-  const squatDrillIn = page
-    .getByTestId("training-log-reading-pane")
-    .getByRole("button", { name: "Back Squat", exact: true })
-    .first(); // first-ok: the pane record's Back Squat drill-in — the lift may repeat across sets, and EVERY button opens the same panel
-  await squatDrillIn.click();
-  const standard = main.getByTestId("strength-standard").first(); // first-ok: asserts a strength-standard row renders — order-agnostic presence
-  await expect(standard).toBeVisible();
-  await expect(standard).toContainText("Strength standard");
-  // The coaching copy names a standard for the lifter's bodyweight.
-  await expect(standard).toContainText("at your bodyweight");
-});
 
 test("the Analyze Benchmarks card renders the unified bodyweight-band tiers (#152)", async ({
   page,
@@ -58,6 +20,8 @@ test("the Analyze Benchmarks card renders the unified bodyweight-band tiers (#15
 
   const main = page.getByRole("main");
   await expect(main.getByText("Benchmarks", { exact: true })).toBeVisible();
+  const standard = main.getByTestId("strength-standard");
+  await expect(standard).toContainText("at your bodyweight");
   // The ladder is bodyweight-adjusted (× BW rungs) and labeled as such.
   await expect(
     main.getByText("for your bodyweight & sex").first() // first-ok: asserts the bodyweight-adjusted label renders — order-agnostic presence

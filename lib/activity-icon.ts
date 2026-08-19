@@ -171,3 +171,31 @@ export function activityComponentSportNames(
     .filter((c) => c && typeof c.name === "string" && c.type !== "strength")
     .map((c) => c.name);
 }
+
+export type ActivityIconIdentity = { type: string; title?: string };
+
+// A composite identity is one whose committed components resolve to genuinely
+// different glyphs. Several lifts remain one strength identity (barbell), while
+// a bike/run or strength/cardio session uses the honest generic activity mark.
+export function activityIconIdentitiesAreComposite(
+  identities: ActivityIconIdentity[]
+): boolean {
+  return (
+    new Set(
+      identities.map((identity) =>
+        pickActivityIconKey(identity.type, identity.title)
+      )
+    ).size > 1
+  );
+}
+
+export function activityComponentsHaveCompositeIconIdentity(
+  componentsJson: string | null | undefined
+): boolean {
+  return activityIconIdentitiesAreComposite(
+    parseComponents(componentsJson).map((component) => ({
+      type: component.type,
+      title: component.name,
+    }))
+  );
+}

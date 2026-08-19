@@ -1,82 +1,78 @@
 "use client";
 
 import { memo } from "react";
+import Link from "next/link";
 import { ActivityTypeIcon } from "@/components/ui";
 import Avatar from "@/components/Avatar";
 import type { TrainingLogCardData } from "@/lib/training-log-card";
-import { activityComponentSportNames } from "@/lib/activity-icon";
+import {
+  activityComponentSportNames,
+  activityComponentsHaveCompositeIconIdentity,
+} from "@/lib/activity-icon";
+import { trainingActivityPageHref } from "@/lib/hrefs";
+import ActivityPartRows from "@/components/activity/ActivityPartRows";
+import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
 
-// The browse surface's slim row (#2897): type glyph, title, the summary line,
-// and the multi-view subject chip — everything already computed for the card,
-// one row tall. The row OWNS the #activity-N anchor (Telegram history is
-// immutable; the deep-link vocabulary lives here now), and its one gesture is
-// "open": the reading pane on desktop, expand-in-place on phones — the host
-// decides, the row just reports the tap.
+const LOG_ROW_PART_LIMIT = 3;
+
+// The browse surface's compact index row (#2897): identity and primary summary
+// on the left, then a capped rendering of the same activity parts and supporting
+// facts the canonical record receives. It owns the #activity-N anchor (Telegram
+// history is immutable; the deep-link vocabulary lives here now) and links to
+// the activity's canonical read page at every viewport.
 //
-// Memoized (React Compiler is not enabled in this repo): a selection or
-// expansion toggle re-renders only the rows whose flags flipped, not the whole
-// loaded window — the host passes ONE stable onOpen for every row.
+// Memoized because paging and filter changes can retain a large loaded window.
 //
-// The row's testids are -row suffixed: when a row is selected or expanded, the
-// record card mounts alongside it carrying the unsuffixed activity-summary and
-// subject-chip ids, and a shared id across both mounts would be ambiguous
-// (the e2e hidden-twin rule, #2305).
+// The row's testids are -row suffixed to distinguish index summaries from the
+// richer values on the destination page.
 function TrainingLogRow({
   card,
-  active,
-  expandable,
-  expanded,
   showSubjectChip,
-  onOpen,
+  onFilterTag,
 }: {
   card: TrainingLogCardData;
-  // Highlighted as the record currently open — the reading pane's selection,
-  // the docked editor's subject, or this row's own expansion.
-  active: boolean;
-  // Whether tapping expands IN PLACE at this width (phones). aria-expanded is
-  // honest only where that is the live affordance — on desktop the tap opens
-  // the aside's pane, which is not an expansion of this button.
-  expandable: boolean;
-  expanded: boolean;
   // Multi-view (#1330): the host says whether this card is a non-acting
   // member's (single view and own cards render no chip).
   showSubjectChip: boolean;
-  onOpen: (activityId: number) => void;
+  onFilterTag: (kind: "muscle" | "region", value: string) => void;
 }) {
   const { activity, subject } = card;
-  // The same field order the card's summary uses, minus nothing the row can
-  // carry as plain text.
-  const summary = [
-    card.timeText,
-    card.durationText,
-    card.distanceText,
-    card.speedText,
-    card.heartRateText,
-    card.calorieText,
-  ].filter((t): t is string => t != null && t !== "");
+  const parts = card.parts.slice(0, LOG_ROW_PART_LIMIT);
+  const remainingParts = Math.max(0, card.parts.length - parts.length);
+  const hasParts = parts.length > 0;
+  const supportingDetails = [
+    // Primary measurements already live in the shared summary above. Only
+    // disclose facts that summary cannot carry; imported analysis belongs on
+    // the activity page.
+    card.gear ? `Gear: ${card.gear}` : null,
+    card.routePolyline ? "Route recorded" : null,
+  ].filter((detail): detail is string => detail != null);
+  const hasDetails = parts.length > 0 || supportingDetails.length > 0;
   return (
-    <button
-      type="button"
+    <div
       id={`activity-${activity.id}`}
       data-testid="training-log-row"
-      aria-expanded={expandable ? expanded : undefined}
-      onClick={() => onOpen(activity.id)}
-      className={`flex w-full items-center gap-3 rounded-lg border bg-surface px-3 py-2 text-left transition scroll-mt-[calc(6rem+env(safe-area-inset-top))] ${
-        active
-          ? "border-brand-500 ring-1 ring-brand-500 dark:border-brand-400 dark:ring-brand-400"
-          : "border-black/10 hover:border-black/20 dark:border-white/10 dark:hover:border-white/20"
-      }`}
+      className="group relative grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 border-b border-black/10 px-2 py-3 text-left transition scroll-mt-[calc(6rem+env(safe-area-inset-top))] hover:bg-brand-50/40 lg:px-3 dark:border-white/10 dark:hover:bg-brand-950/20"
     >
       <ActivityTypeIcon
         type={activity.type}
         title={activity.title}
         sportNames={activityComponentSportNames(activity.components)}
+        composite={activityComponentsHaveCompositeIconIdentity(
+          activity.components
+        )}
       />
-      <span className="min-w-0 flex-1">
+      <div className="min-w-0 max-w-5xl">
         <span className="flex items-center gap-2">
-          <span className="truncate font-semibold text-slate-800 dark:text-slate-100">
+          <Link
+            href={trainingActivityPageHref(
+              activity.id,
+              showSubjectChip ? activity.subjectProfileId : undefined
+            )}
+            className="truncate font-semibold text-slate-800 transition-colors before:absolute before:inset-0 group-hover:text-brand-600 dark:text-slate-100 dark:group-hover:text-brand-400"
+          >
             {activity.title}
-          </span>
+          </Link>
           {card.fault && (
             <span
               role="img"
@@ -92,22 +88,56 @@ function TrainingLogRow({
             />
           )}
         </span>
-        {summary.length > 0 && (
-          <span
-            data-testid="activity-summary-row"
-            className="mt-0.5 block truncate text-xs text-slate-600 dark:text-slate-300"
-          >
-            {summary.join(" · ")}
-          </span>
+        <ActivitySummaryLine
+          timeText={card.timeText}
+          durationText={card.durationText}
+          distanceText={card.distanceText}
+          speedText={card.speedText}
+          heartRateText={card.heartRateText}
+          relativeEffort={activity.imported_metrics?.relative_effort}
+          relativeEffortProvider={card.provenance.label}
+          calorieText={card.calorieText}
+          intensity={activity.intensity}
+          heartRateZone={activity.heart_rate_zone}
+          testId="activity-summary-row"
+        />
+        {hasDetails && (
+          <div className="mt-1.5 min-w-0">
+            {hasParts && (
+              <ActivityPartRows
+                parts={parts}
+                remainingParts={remainingParts}
+                density="compact"
+                onFilterTag={onFilterTag}
+              />
+            )}
+            {supportingDetails.length > 0 && (
+              <ul
+                data-testid="training-log-supporting-details"
+                className={`${hasParts ? "mt-1" : ""} flex flex-wrap text-xs text-slate-500 dark:text-slate-400`}
+              >
+                {supportingDetails.map((detail, index) => (
+                  <li key={`${detail}-${index}`} className="whitespace-nowrap">
+                    {index > 0 && (
+                      <span aria-hidden className="mx-1.5">
+                        ·
+                      </span>
+                    )}
+                    {detail}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
-      </span>
+      </div>
       {/* Subject chip on a non-acting member's row (issue #1330): on-element
           identity naming whose activity this is, with a read-only badge when
           the caller can't write to that member — same vocabulary as the card. */}
       {showSubjectChip && subject && (
         <span
           data-testid={`subject-chip-${subject.profileId}-row`}
-          className="flex min-w-0 shrink-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
+          className="col-start-2 mt-2 flex min-w-0 shrink-0 items-center gap-1 justify-self-start rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 sm:col-start-3 sm:row-start-1 sm:mt-0 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
         >
           <Avatar
             profile={{
@@ -126,7 +156,7 @@ function TrainingLogRow({
           )}
         </span>
       )}
-    </button>
+    </div>
   );
 }
 

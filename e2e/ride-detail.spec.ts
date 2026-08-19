@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { followLink, hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
@@ -8,16 +8,20 @@ import {
   summarizeCyclingStreams,
 } from "@/lib/cycling-stream-summary";
 
-// The Log feed renders slim rows (#2897): a ride's ROW is a button that opens
-// the reading pane (desktop) or expands in place (phones), and the ride's
-// title link — activity-detail-link — lives on the full record card there. Select
-// the titled ride's row (hydratedClick: a pure client toggle whose first
-// post-goto click can land pre-hydration) and return the record card that
-// mounted, so the detail link is read from where it now renders.
+// The Log feed is a slim index. Selecting a ride navigates directly to its
+// canonical activity page at every viewport size.
 async function openRideRecord(page: Page, title: string) {
   const row = page.getByTestId("training-log-row").filter({ hasText: title });
-  await hydratedClick(page, row);
-  return page.locator(".card", { hasText: title });
+  await followLink(
+    page,
+    row.getByRole("link", { name: title, exact: true }),
+    /\/training\/activity\/\d+$/
+  );
+  const record = page
+    .getByTestId("training-activity-page")
+    .filter({ hasText: title });
+  await expect(record).toBeVisible();
+  return record;
 }
 
 test("a Training Log ride opens a read-first detail with the stored ride measurements", async ({
@@ -25,10 +29,8 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
 }) => {
   await page.goto("/training?tab=log");
 
-  const stravaCard = await openRideRecord(page, "Strava morning ride");
-  const detailLink = stravaCard.getByTestId("activity-detail-link");
-  await expect(detailLink).toHaveAttribute("href", /\/training\/activity\/\d+/);
-  await followLink(page, detailLink, /\/training\/activity\/\d+$/);
+  await openRideRecord(page, "Strava morning ride");
+  await expect(page).toHaveURL(/\/training\/activity\/\d+$/);
 
   const rideDetail = page.getByTestId("training-activity-page");
   await expect(rideDetail).toBeVisible();
@@ -47,13 +49,6 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
     )
   ).toBeLessThanOrEqual(2);
   await expect(page.getByTestId("ride-summary")).toHaveClass(/card/);
-  const sectionNavigation = page.getByTestId("activity-section-navigation");
-  await expect(sectionNavigation).toBeVisible();
-  for (const section of ["Overview", "Effort", "Course", "Details"]) {
-    await expect(
-      sectionNavigation.getByRole("link", { name: section, exact: true })
-    ).toHaveAttribute("href", `#${section.toLowerCase()}`);
-  }
   expect(
     await page
       .getByTestId("ride-summary")
@@ -67,51 +62,37 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
       .getByTestId("ride-summary")
       .getByRole("heading", { name: "Recorded measurements" })
   ).toHaveCount(0);
-  await expect(page.getByTestId("ride-stat-active-time")).toHaveClass(
-    /bg-slate-50/
-  );
   await expect(
     page.getByRole("heading", { name: "Strava morning ride", exact: true })
   ).toBeVisible();
-  await expect(page.getByTestId("ride-stat-active-time")).toContainText(
-    "62 min"
+  const primarySummary = page
+    .getByTestId("ride-summary")
+    .getByTestId("ride-summary-line");
+  await expect(primarySummary).toContainText("62 min");
+  await expect(primarySummary).toContainText("24.5 km");
+  await expect(primarySummary).toContainText("148/171 bpm");
+  await expect(primarySummary).toContainText("72");
+  await expect(primarySummary).toContainText("648 kcal");
+  await expect(page.getByTestId("ride-stat-max-heart-rate")).toContainText(
+    "171 bpm"
   );
-  await expect(page.getByTestId("ride-stat-distance")).toContainText("24.5 km");
-  await expect(page.getByTestId("ride-stat-heart-rate")).toContainText(
-    "148 bpm"
-  );
-  await expect(page.getByTestId("ride-stat-heart-rate")).toContainText(
-    "171 max"
-  );
-  await expect(page.getByTestId("ride-stat-heart-rate")).toContainText("Zone");
-  const heartRateValue = page
-    .getByTestId("ride-stat-heart-rate")
-    .locator("dd[style]");
-  await expect(heartRateValue).toHaveAttribute("style", /color:/);
-  await expect(heartRateValue).toHaveAttribute("title", /Zone \d/);
   await expect(page.getByTestId("ride-stat-power")).toContainText("186 W");
   await expect(page.getByTestId("ride-stat-power")).toContainText(
     "193 weighted"
   );
   await expect(page.getByTestId("ride-stat-power")).toContainText("612 max");
   await expect(page.getByTestId("ride-stat-power")).toContainText("W/kg");
-  await expect(page.getByTestId("ride-stat-speed")).toContainText("41.8 max");
+  await expect(page.getByTestId("ride-stat-max-speed")).toContainText("41.8");
   await expect(page.getByTestId("ride-stat-elevation")).toContainText("210 m");
   await expect(page.getByTestId("ride-stat-workout-type")).toContainText(
     "Workout"
-  );
-  await expect(page.getByTestId("ride-stat-relative-effort")).toContainText(
-    "72"
   );
   await expect(page.getByTestId("ride-stat-cadence")).toContainText("88 rpm");
   await expect(page.getByTestId("ride-stat-kilojoules")).toContainText(
     "692 kJ"
   );
   await expect(page.getByTestId("ride-stat-temperature")).toContainText("18°C");
-  await expect(page.getByTestId("ride-stat-active-kcal")).toContainText(
-    "648 kcal"
-  );
-  await expect(page.getByTestId("ride-stat-bike")).toContainText("Road Bike");
+  await expect(page.getByTestId("activity-gear")).toContainText("Road Bike");
   const highlights = page.getByTestId("session-highlights");
   await expect(highlights).toBeVisible();
   await expect(page.getByTestId("session-highlight-comparison")).toHaveCount(0);
@@ -121,9 +102,6 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   await expect(
     page.getByTestId("session-highlight-heart-rate-zone")
   ).toContainText("Zone 2");
-  await expect(page.getByTestId("ride-stat-heart-rate")).toContainText(
-    "Average falls in Zone"
-  );
   await expect(
     page.getByTestId("session-highlight-segment-results")
   ).toContainText("1 personal best");
@@ -303,13 +281,6 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   await expect(page.getByTestId("activity-notes-card")).toContainText(
     "steady endurance work"
   );
-  expect(
-    await page
-      .getByTestId("activity-provenance")
-      .evaluate(
-        (element) => element.closest('[data-testid^="activity-section-"]')?.id
-      )
-  ).toBe("details");
   await expect(page.getByTestId("activity-provenance")).toContainText("Strava");
   await expect(page.getByTestId("activity-provenance")).toContainText("edited");
 
@@ -715,9 +686,6 @@ test("cycling-family activities reuse rich analysis with indoor-aware surfaces",
   await expect(page.getByTestId("ride-cycling-overview-link")).toHaveText(
     "Spinning overview"
   );
-  await expect(
-    page.getByTestId("activity-section-navigation")
-  ).not.toContainText("Course");
   await expect(page.getByTestId("ride-summary")).not.toContainText(
     "Elevation gain"
   );
@@ -746,17 +714,12 @@ test("a ride detail scopes wearable HR minutes to that ride's clock window", asy
 }) => {
   await page.goto("/training?tab=log");
 
-  const zoneRide = await openRideRecord(page, "Zone 2 base ride");
-  await followLink(
-    page,
-    zoneRide.getByTestId("activity-detail-link"),
-    /\/training\/activity\/\d+$/
-  );
+  await openRideRecord(page, "Zone 2 base ride");
 
   const heartRate = page.getByTestId("session-heart-rate");
   const chart = page.getByTestId("session-heart-rate-chart");
   const zones = page.getByTestId("session-heart-rate-zones");
-  await expect(page.getByTestId("ride-stat-intensity")).toContainText(
+  await expect(page.getByTestId("activity-intensity")).toContainText(
     "Moderate"
   );
   await expect(heartRate).toContainText("60 recorded min");
@@ -765,9 +728,11 @@ test("a ride detail scopes wearable HR minutes to that ride's clock window", asy
       (element) => element.closest('[data-testid^="activity-section-"]')?.id
     )
   ).toBe("effort");
-  await expect(heartRate).toContainText(
-    "One-minute readings recorded during this ride"
-  );
+  await expect(
+    heartRate.getByRole("button", {
+      name: /Shows one-minute heart-rate readings from this ride/,
+    })
+  ).toBeVisible();
   await expect(chart).toBeVisible();
   await expect(chart.locator("svg")).toBeVisible();
   const zoneBands = chart.locator(".recharts-reference-area");
@@ -797,14 +762,7 @@ test("canonical activity navigation stays compact on a ride", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/training?tab=log");
 
-  // On phones the row expands the record in place (#2897); the title link is
-  // on that expanded card.
-  const stravaCard = await openRideRecord(page, "Strava morning ride");
-  await followLink(
-    page,
-    stravaCard.getByTestId("activity-detail-link"),
-    /\/training\/activity\/\d+$/
-  );
+  await openRideRecord(page, "Strava morning ride");
 
   const navigation = page.getByTestId("activity-ledger-navigation");
   const previous = page.getByTestId("activity-older-link");
@@ -835,17 +793,9 @@ test("canonical activity navigation stays compact on a ride", async ({
       (element) => element.scrollWidth <= element.clientWidth + 1
     )
   ).toBe(true);
-  const sectionNavigation = page.getByTestId("activity-section-navigation");
-  expect(
-    await sectionNavigation.evaluate(
-      (element) => element.scrollWidth <= element.clientWidth + 1
-    )
-  ).toBe(true);
   expect(
     await page
       .getByTestId("ride-recorded-measurements")
-      .evaluate(
-        (element) => getComputedStyle(element.parentElement!).borderTopWidth
-      )
+      .evaluate((element) => getComputedStyle(element).borderTopWidth)
   ).toBe("0px");
 });

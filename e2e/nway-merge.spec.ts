@@ -198,15 +198,9 @@ test.describe("N-way activity merge (#1081)", () => {
       await expect(page.getByText("NW sib A")).toBeVisible();
       await expect(page.getByText("NW sib B")).toBeVisible();
 
-      // Select the originating row into the reading pane (#2897 slim feed — a
-      // pure client toggle, so hydratedClick); the full record card with its
-      // overflow menu renders there. The pane sits at the top of the aside, so
-      // the (taller) downward menu — checkboxes + keeper select + Merge button —
-      // has full room below the trigger.
+      // Open the originating canonical record and its overflow menu.
       await hydratedClick(page, rowEl);
-      const cardEl = page
-        .getByTestId("training-log-reading-pane")
-        .locator(".card", { hasText: "NW card" });
+      const cardEl = page.getByTestId("training-activity-page");
       await expect(cardEl).toBeVisible();
       // Open the originating card's overflow menu → "Merge with…" → switch to the
       // multi-select / keeper-select mode.
@@ -229,21 +223,24 @@ test.describe("N-way activity merge (#1081)", () => {
       await page
         .getByTestId("merge-keeper-select")
         .selectOption({ label: "NW sib A" });
+      const originatingUrl = page.url();
       await settledClick(page, page.getByTestId("merge-run"));
 
-      // The sibling keeper remains; the originating card and the other sibling are gone.
-      await expect(page.getByText("NW card")).toHaveCount(0);
-      await expect(page.getByText("NW sib B")).toHaveCount(0);
-      await expect(page.getByText("NW sib A")).toBeVisible();
+      // The page's record was absorbed, so the canonical route follows the
+      // surviving sibling instead of re-rendering the deleted id as a 404.
+      await expect(page).not.toHaveURL(originatingUrl);
+      await expect(
+        page.getByRole("heading", { name: "NW sib A", level: 1 })
+      ).toBeVisible();
 
       // One undo toast reverses the entire N-way merge.
       await expect(page.getByText("Activities merged.")).toBeVisible();
       await settledClick(page, page.getByRole("button", { name: "Undo" }));
       await expect(page.getByText("Restored.")).toBeVisible();
 
-      // Reload for a deterministic server render: every dropped row is back, incl. the
-      // originating card that was absorbed by the sibling keeper.
-      await page.reload();
+      // Return to the log for a deterministic server render: every dropped row
+      // is back, including the originating record absorbed by the sibling keeper.
+      await page.goto("/training?tab=log");
       await expect(page.getByText("NW card")).toBeVisible();
       await expect(page.getByText("NW sib B")).toBeVisible();
       await expect(page.getByText("NW sib A")).toBeVisible();

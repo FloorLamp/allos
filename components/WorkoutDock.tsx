@@ -9,9 +9,8 @@ import {
 } from "@/components/overlay";
 
 // The app-wide minimized workout dock (issue #921): a full-width bottom bar that
-// keeps an in-progress session visible from every page (except the training log,
-// where the editor docks inline). The app layout adds bottom padding while it's
-// present so it never overlaps content.
+// keeps an in-progress session visible from every page. The app layout adds
+// bottom padding while it's present so it never overlaps content.
 //
 // It is bottom-edge LAYER 1 (components/overlay/tokens.ts): on a phone it sits
 // ABOVE the nav dock rather than over it, through the shared BOTTOM_EDGE_ABOVE_NAV

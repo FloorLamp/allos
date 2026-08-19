@@ -8,6 +8,7 @@ import {
   sessionBestSet,
   nextSetText,
   lastSessionPR,
+  strengthSessionRecords,
   recentPRs,
   speedKmh,
   recentCardioPRs,
@@ -761,6 +762,61 @@ describe("lastSessionPR", () => {
       ex({ bodyweight: true, bestDate: "2026-06-20", lastDate: "2026-06-20" })
     );
     expect(pr).toEqual({ e1rm: true, weight: false });
+  });
+});
+
+describe("strengthSessionRecords", () => {
+  const history = [
+    {
+      date: "2026-01-01",
+      e1rmKg: 100,
+      e1rmReps: 5,
+      topWeightKg: 80,
+    },
+    {
+      date: "2026-02-01",
+      e1rmKg: 110,
+      e1rmReps: 5,
+      topWeightKg: 85,
+    },
+    {
+      date: "2026-03-01",
+      e1rmKg: 105,
+      e1rmReps: 8,
+      topWeightKg: 90,
+    },
+    {
+      date: "2026-04-01",
+      e1rmKg: 120,
+      e1rmReps: 3,
+      topWeightKg: 90,
+    },
+  ];
+
+  it("distinguishes records set at the time from marks that remain all-time", () => {
+    expect(strengthSessionRecords(history, 1, false)).toEqual({
+      e1rm: "running",
+      weight: "running",
+    });
+    expect(strengthSessionRecords(history, 2, false)).toEqual({
+      e1rm: null,
+      weight: "all-time",
+    });
+    expect(strengthSessionRecords(history, 3, false)).toEqual({
+      e1rm: "all-time",
+      weight: null,
+    });
+  });
+
+  it("keeps the first date as a baseline and suppresses bodyweight load records", () => {
+    expect(strengthSessionRecords(history, 0, false)).toEqual({
+      e1rm: null,
+      weight: null,
+    });
+    expect(strengthSessionRecords(history, 3, true)).toEqual({
+      e1rm: "all-time",
+      weight: null,
+    });
   });
 });
 

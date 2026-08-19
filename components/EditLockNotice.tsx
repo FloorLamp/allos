@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { IconInfoCircle, IconLock } from "@tabler/icons-react";
+import { IconLock } from "@tabler/icons-react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { clearEditLock } from "@/app/(app)/data/review-actions";
 
 // The tables whose imported rows carry the user-edit lock (#133); the same set the
@@ -47,15 +48,7 @@ export default function EditLockNotice({
       data-testid="edit-lock-notice"
     >
       {appearance === "icon" ? (
-        <span
-          role="img"
-          aria-label={consequence}
-          title={consequence}
-          className="inline-flex"
-          data-testid="edit-lock-icon"
-        >
-          <IconInfoCircle className="h-3.5 w-3.5" stroke={2} aria-hidden />
-        </span>
+        <InfoTooltipIcon label={consequence} data-testid="edit-lock-icon" />
       ) : (
         <span
           className="badge inline-flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"

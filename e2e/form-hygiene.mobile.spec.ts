@@ -81,7 +81,7 @@ async function cleanUpDraft(page: Page): Promise<void> {
   await expect(del).toBeVisible();
   await del.click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await expect(page.getByTestId("activity-form")).toBeHidden();

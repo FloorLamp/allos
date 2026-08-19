@@ -15,9 +15,8 @@ import { hydratedClick, settledClick, settledFill } from "./helpers";
 //   3. Checking off a set (adding the next set) auto-starts the rest timer.
 //   4. "Finish workout" stamps end=now and collapses back to the plain form.
 
-// Create-at-start means every started session gets a row up front — and
-// CLOSING an empty session abandons it (the provider's if-empty discard), so
-// these specs leave nothing behind by simply closing what they opened.
+// Create-at-start means every started session gets a row up front. Leaving a
+// live workspace only minimizes it; specs explicitly delete their own draft.
 
 // Pick an activity in the editor's exercise combobox (same shape-tolerant matcher
 // the entry-ergonomics spec documents).
@@ -74,10 +73,22 @@ test("'Start workout' opens live mode with a rest timer (#340)", async ({
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-label", "Pause rest timer");
 
-  // No set was logged: closing ABANDONS the create-at-start row (#2870 step 3
-  // discards an empty session server-side) and, since the tab stood on the
-  // now-deleted row's page, returns to the training hub. Nothing to clean up.
+  // Leave the durable live row with an incomplete set. Closing this form would
+  // require a discard warning, but minimizing keeps it mounted and loses nothing.
+  await pickActivity(page, "Barbell Bench Press");
+  await page.getByTestId("set1-weight").fill("60");
+
+  // Escape is another leave gesture, so it parks rather than abandons the live
+  // session without presenting the form's destructive-close confirmation.
   await page.keyboard.press("Escape");
+  await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("workout-dock")).toBeVisible();
+  await page.getByTestId("workout-dock-open").click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByTestId("confirm-dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
   await page.waitForURL(/\/training(\?.*)?$/);
 });
 
@@ -123,13 +134,115 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   // Deleting the activity from its canonical page leaves that now-dead URL and
   // clears its live presence before the next test shares this worker database.
   await page.waitForURL(/\/training(\?.*)?$/);
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+});
+
+test("editing another activity resumes an empty live workout without stranding its row", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=log");
+  await startLiveWorkout(page);
+
+  await page
+    .getByRole("button", { name: "Minimize workout", exact: true })
+    .click();
+  await page.goBack();
+  await page.waitForURL(/\/training\?tab=log$/);
+
+  const olderActivity = page.getByTestId("training-log-row").first(); // first-ok: live drafts are excluded from the log, so every visible row is an older stored activity
+  await hydratedClick(page, olderActivity.getByRole("link").first()); // first-ok: the activity title is the row's first link
+  await page.waitForURL(/\/training\/activity\/\d+$/);
+  await hydratedClick(page, page.getByTestId("activity-page-edit"));
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+
+  await page.getByTestId("finish-workout").click();
+  await page.getByTestId("recap-save").click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  const discarded = page.waitForResponse(
+    (response) => response.request().method() === "POST" && response.ok()
+  );
+  await page
+    .getByTestId("confirm-dialog")
+    .getByRole("button", { name: "Close anyway", exact: true })
+    .click();
+  await discarded;
+
+  // Closing from the older activity leaves that page in place. A hard navigation
+  // proves the empty live row was deleted server-side, not merely hidden locally.
+  await page.goto("/training?tab=log");
+  await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+});
+
+// Issue #1893 — THE EPOCH PIN. `openLive()` used to clear the editor and re-stamp
+// `liveStartEpoch` from the wall clock unconditionally, which is exactly the instant the #921
+// dock's elapsed timer ticks off: tapping an entry point mid-workout silently reset the
+// running session's clock. Every entry point now renders one offer state and resumes.
+//
+// The assertion is the EPOCH, not the label. The dock prints whole minutes, so a reset
+// clock is invisible in the rendered text for a full minute — a label-only assertion
+// would pass against the very bug this fixes.
+test("mid-session, the workout entry point resumes and the session clock survives (#1893)", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=log");
+
+  const entry = page.getByRole("main").getByTestId("start-workout");
+  await expect(entry).toHaveAttribute("data-workout-offer", "start");
+  await expect(entry).toHaveText("Start workout");
+  await entry.click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  // #2870 step 3: the session got its row and the tab stands on its page.
+  await page.waitForURL(/\/training\/activity\/\d+$/);
+
+  // Minimize — the form stays MOUNTED and the clock keeps running. Off the
+  // Log view, the app-wide bar carries the pocketed session.
+  await page
+    .getByRole("button", { name: "Minimize workout", exact: true })
+    .click();
+  const dock = page.getByTestId("workout-dock");
+  await expect(dock).toBeVisible();
+  const startedAt = await dock.getAttribute("data-start-epoch");
+  expect(startedAt).toMatch(/^\d+$/);
+
+  // Back on the Log — SOFT history navigation (the pocketed form must stay
+  // mounted; a hard reload would re-derive the epoch from presence's
+  // minute-rounded reconstruction). goBack pops the start's own push, landing
+  // exactly on the ?tab=log we came from. The SAME entry control now offers
+  // the resume by name.
+  await page.goBack();
+  await page.waitForURL(/tab=log/);
+  await expect(entry).toHaveAttribute("data-workout-offer", "resume");
+  await expect(entry).toHaveText("Resume workout");
+
+  // Tapping it reopens the running session instead of starting a new one,
+  // without taking the reader away from the page beneath the workspace.
+  const logUrl = page.url();
+  await entry.click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  expect(page.url()).toBe(logUrl);
+  await page
+    .getByRole("button", { name: "Minimize workout", exact: true })
+    .click();
+  await expect(dock).toBeVisible();
+  // The pin: the same start instant, so the same elapsed time continues.
+  await expect(dock).toHaveAttribute("data-start-epoch", startedAt!);
+
+  // Restore from the bar and explicitly delete this test's session.
+  await page.getByTestId("workout-dock-open").click();
+  await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await page
+    .getByTestId("confirm-dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await page.waitForURL(/\/training(\?.*)?$/);
+  await expect(dock).toHaveCount(0);
 });
 
 test("the command palette offers 'Start workout' (#340)", async ({ page }) => {

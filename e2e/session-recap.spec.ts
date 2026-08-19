@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_RECAP, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
@@ -42,14 +42,16 @@ async function startLiveSession(page: Page, title: string) {
   await page.getByLabel("Activity name").fill(title);
 }
 
-// Reopen a stored session for EDIT from the Log's slim feed (#2897): select the
-// row into the reading pane (a pure client toggle — hydratedClick closes the
-// pre-hydration window), then the pane header's Edit opens the editor. The old
-// click-the-card-title path is gone.
+// Reopen a stored session for EDIT from the Log's slim feed: follow its title to
+// the canonical page, then use the page header's Edit action.
 async function openRowForEdit(page: Page, row: Locator) {
-  await hydratedClick(page, row);
+  await followLink(
+    page,
+    row.getByRole("link").first(), // first-ok: the canonical title link precedes any exercise links in the row
+    /\/training\/activity\/\d+$/
+  );
   await page
-    .getByTestId("training-log-reading-pane")
+    .getByTestId("training-activity-page")
     .getByTestId("activity-page-edit")
     .click();
 }
@@ -57,7 +59,7 @@ async function openRowForEdit(page: Page, row: Locator) {
 async function deleteOpenDraft(page: Page) {
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Delete", exact: true })
     .click();
 }
@@ -133,6 +135,8 @@ test("live Finish opens the Session complete recap step; Back returns to the edi
 }) => {
   test.slow();
   await startLiveSession(page, "E2E Recap Step");
+  const endTime = page.getByTestId("end-time-input");
+  await endTime.fill("23:59");
 
   // Finish opens the recap step (the only live-gated renderer) — the recap renders
   // with the session's working set, and the live control strip is hidden.
@@ -147,6 +151,7 @@ test("live Finish opens the Session complete recap step; Back returns to the edi
   await page.getByTestId("recap-back").click();
   await expect(page.getByTestId("session-complete-step")).toHaveCount(0);
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+  await expect(endTime).toHaveValue("23:59");
 
   await deleteOpenDraft(page);
 });

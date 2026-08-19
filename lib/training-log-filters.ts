@@ -13,16 +13,14 @@
 //
 // THE SUPERSET CONTRACT. The SQL day-selection is deliberately a SUPERSET of this
 // predicate: every card this predicate accepts sits on a day the SQL returns. SQL
-// may over-select a day whose only "match" is a component the card layer doesn't
-// render as a part — that day then simply comes back with no matching cards and is
-// dropped. What SQL must never do is under-select, because that is exactly the bug.
-// Any change to the predicate below must be mirrored by a same-or-wider change to
-// resolveTrainingLogFilterSpec / the day query.
+// may over-select, but it must never under-select because that silently loses a
+// matching card. Any change to the predicate below must be mirrored by a same-or-
+// wider change to resolveTrainingLogFilterSpec / the day query.
 
 import { regionForExercise } from "./lifts";
 import { activityProvenanceKey } from "./training-log-format";
 import type { DayGroup, TrainingLogCardData } from "./training-log-card";
-import { ACTIVITY_TYPES } from "./types";
+import { ACTIVITY_TYPES, parseComponents } from "./types";
 import type { ActivityType } from "./types";
 
 // A muscle/region badge filter, set by clicking a badge in the detail panel.
@@ -35,7 +33,7 @@ export interface TrainingLogTagFilter {
 // Action boundary (loadTrainingLogPage) as-is, so every field is a primitive or a
 // primitive record.
 export interface TrainingLogFilters {
-  // Free text, matched against the activity title and its rendered part names.
+  // Free text, matched against the activity title and its component/part names.
   query: string;
   // Activity type, or null for "All".
   type: ActivityType | null;
@@ -123,9 +121,8 @@ export function normalizeTrainingLogFilters(raw: unknown): TrainingLogFilters {
 
 // Does this built card match the active filters? THE definition — the server's
 // filtered page and the client's instant refinement both call it, so the two can't
-// disagree once a round-trip settles. Matches exactly the fields the pre-#1634
-// client filter matched (title + rendered part names, type, muscle/region badge,
-// fault) plus the new source filter.
+// disagree once a round-trip settles. Component names remain searchable even when
+// their lone pure-effort row is folded into the activity header for presentation.
 export function trainingLogCardMatches(
   card: TrainingLogCardData,
   f: TrainingLogFilters
@@ -151,7 +148,10 @@ export function trainingLogCardMatches(
   const q = f.query.trim().toLowerCase();
   if (!q) return true;
   if (card.activity.title.toLowerCase().includes(q)) return true;
-  return card.parts.some((p) => p.name.toLowerCase().includes(q));
+  if (card.parts.some((p) => p.name.toLowerCase().includes(q))) return true;
+  return parseComponents(card.activity.components).some((component) =>
+    component.name.toLowerCase().includes(q)
+  );
 }
 
 // Apply the predicate across a day-grouped feed, dropping days left with no cards.

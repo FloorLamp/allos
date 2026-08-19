@@ -113,18 +113,18 @@ export async function startWorkout(
 // started-but-abandoned session through the SAME core the Telegram "Discard"
 // button runs. `if_empty` gates the delete on the row having no logged content
 // — the close-path abandonment check, which must never take a row the user put
-// anything into. Auth + acting-profile gate here; the core refuses finished
-// rows and foreign ids on its own.
+// anything into. Multi-view detail pages carry the subject profile; ordinary
+// live-session callers fall back to the acting profile.
 export async function discardWorkout(
   formData: FormData
 ): Promise<DiscardEmptyOutcome> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("activity_id"));
   if (!Number.isFinite(id) || id <= 0) return { kind: "not-found" };
   const outcome =
     formData.get("if_empty") === "1"
-      ? discardWorkoutSessionIfEmpty(profile.id, id)
-      : discardWorkoutSession(profile.id, id);
+      ? discardWorkoutSessionIfEmpty(profileId, id)
+      : discardWorkoutSession(profileId, id);
   if (outcome.kind === "discarded") revalidateActivitySurfaces();
   return outcome;
 }

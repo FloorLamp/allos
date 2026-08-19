@@ -553,13 +553,13 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
 // ── Multi-view Training Log (issue #1330) ─────────────────────────────────
 // The Log feed becomes a MERGED, subject-stamped card feed across the
 // view-set: non-acting cards carry a subject chip, cross-profile merge candidates
-// never pair (two people's activities are never duplicates), and "Log again" on
+// never pair (two people's activities are never duplicates), and "Duplicate activity" on
 // another member's card logs it as YOURS (writeTarget: acting). Spec-OWNED fixtures
 // (E2E_LOGIN_MULTI's two profiles, each seeded manual activities — see
-// e2e/seed-events.ts). The log-again test writes a persistent row on the acting
+// e2e/seed-events.ts). The duplicate-activity test writes a persistent row on the acting
 // (owner) profile, so it resets that artifact for --repeat-each safety.
 
-// Delete the log-again artifact (a copy of the shared activity created on the owner
+// Delete the duplicate-activity artifact (a copy of the shared activity created on the owner
 // profile) so a re-run/retry starts clean, and return the two profile ids.
 function resetMultiTrainingLog(): { ownerId: number; sharedId: number } {
   const { ownerId, sharedId } = multiProfileIds();
@@ -567,7 +567,7 @@ function resetMultiTrainingLog(): { ownerId: number; sharedId: number } {
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
-    // The owner should own ONLY its two seeded rows; a prior log-again run may have
+    // The owner should own ONLY its two seeded rows; a prior duplicate-activity run may have
     // added a copy of the shared activity's title on the owner — remove it.
     db.prepare("DELETE FROM activities WHERE profile_id = ? AND title = ?").run(
       ownerId,
@@ -580,7 +580,7 @@ function resetMultiTrainingLog(): { ownerId: number; sharedId: number } {
 }
 
 // Count the owner's activities carrying the shared activity's title — nonzero only
-// after a "Log again" landed the shared card's session on the acting (owner) profile.
+// after "Duplicate activity" copied the shared card's session to the acting (owner) profile.
 function ownerCopiesOfSharedActivity(ownerId: number): number {
   const dbPath = workerDbPath();
   const db = new Database(dbPath);
@@ -653,14 +653,13 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
 
     // Cross-profile merge never pairs: the owner's Alpha record's merge picker
     // offers its same-DAY same-PROFILE sibling (Bravo) but NEVER the shared
-    // member's same-day card. The menu lives on the record — select the row
-    // into the reading pane first (#2897).
+    // member's same-day card. The menu lives on the canonical record.
     const ownerRow = page
       .locator('[id^="activity-"]')
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
     await hydratedClick(page, ownerRow);
     await page
-      .getByTestId("training-log-reading-pane")
+      .getByTestId("training-activity-page")
       .getByRole("button", { name: "Activity actions" })
       .click();
     await page.getByTestId("merge-with").click();
@@ -678,7 +677,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     await page.context().close();
   });
 
-  test("Log again on another member's card logs it as yours (writeTarget: acting)", async ({
+  test("Duplicate activity on another member's record logs it as yours (writeTarget: acting)", async ({
     browser,
   }) => {
     test.slow();
@@ -702,16 +701,16 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
 
-    // "Log again" on the SHARED member's record: opens a create prefill that
+    // "Duplicate activity" on the SHARED member's record opens a create prefill that
     // auto-saves a NEW session — on the ACTING (owner) profile, never the
-    // shared subject. Select the row into the reading pane for its menu (#2897).
+    // shared subject. Open the canonical record for its menu.
     await hydratedClick(page, sharedCard);
     await page
-      .getByTestId("training-log-reading-pane")
+      .getByTestId("training-activity-page")
       .getByRole("button", { name: "Activity actions" })
       .click();
-    await page.getByTestId("log-again").click();
-    // The editor opens (docked beside the feed on desktop / overlay on mobile).
+    await page.getByTestId("duplicate-activity").click();
+    // The shared activity workspace opens.
     await expect(page.getByTestId("activity-form")).toBeVisible();
 
     // The auto-save lands the repeated session on the OWNER — proving the write

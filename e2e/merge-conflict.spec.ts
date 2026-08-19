@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { followLink } from "./helpers";
 // Issue #100: conflict-aware merge preview. The e2e seed (e2e/seed-events) plants two
 // same-day MANUAL cardio rows on 2026-07-06 that genuinely DISAGREE on duration
 // ("Conflict merge keeper" 42 min vs "Conflict merge dupe" 51 min) but agree on
@@ -21,13 +21,17 @@ test("merge preview lets you override a conflicting field to the discarded value
   await expect(keeperRow.getByText("42 min")).toBeVisible();
   await expect(page.getByText("Conflict merge dupe")).toBeVisible();
 
-  // Select the keeper's row into the reading pane (#2897 slim feed — a pure
-  // client toggle, so hydratedClick), then open the pane card's overflow (⋯)
-  // menu → "Merge with…" → pick the dupe.
-  await hydratedClick(page, keeperRow);
-  const keeperCard = page
-    .getByTestId("training-log-reading-pane")
-    .locator(".card", { hasText: "Conflict merge keeper" });
+  // Open the keeper's canonical record, then use its overflow (⋯) menu →
+  // "Merge with…" → pick the dupe.
+  await followLink(
+    page,
+    keeperRow.getByRole("link", {
+      name: "Conflict merge keeper",
+      exact: true,
+    }),
+    /\/training\/activity\/\d+$/
+  );
+  const keeperCard = page.getByTestId("training-activity-page");
   await expect(keeperCard).toBeVisible();
   await keeperCard.getByRole("button", { name: "Activity actions" }).click();
   await page.getByTestId("merge-with").click();
@@ -59,9 +63,7 @@ test("merge preview lets you override a conflicting field to the discarded value
   // overridden duration (51 min), proving the override reached the DB — not the
   // keeper's original 42 min.
   await page.reload();
-  const merged = page
-    .locator('[id^="activity-"]')
-    .filter({ hasText: "Conflict merge keeper" });
+  const merged = page.getByTestId("training-activity-page");
   await expect(merged.getByText("51 min")).toBeVisible();
   await expect(merged.getByText("42 min")).toHaveCount(0);
 });
