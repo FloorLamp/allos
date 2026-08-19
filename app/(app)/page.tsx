@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { cloneElement, type ReactElement, type ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { IconFlask, IconMoon } from "@tabler/icons-react";
@@ -66,11 +66,8 @@ import {
 } from "@/lib/frequency-targets";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
 import { routineOrder } from "@/lib/dismissal-fatigue";
-import {
-  requireSession,
-  getAccessibleProfiles,
-  ownProfileForLogin,
-} from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
+import { requireScope, type ProfileScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
 import { currentFoodSlot } from "@/lib/queries/nutrition";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
@@ -86,6 +83,7 @@ import {
   getProfileHomeAssistant,
   getLoginTelegram,
   getRecentlyResolvedDismissed,
+  getIllnessHeroUi,
 } from "@/lib/settings";
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
 import { hasConnectedDataSource } from "@/lib/integrations/connections";
@@ -120,6 +118,7 @@ import {
 import {
   localTimeWindow,
   mealTimeWindows,
+  orderedIllnessGroupKeys,
   rankDashboardCandidates,
   type DashboardCandidate,
   type DashboardTiming,
@@ -149,6 +148,9 @@ import { getOnboardingDataPresence } from "@/lib/onboarding-data";
 import { DashboardAttentionAtom } from "@/components/dashboard/NeedsAttentionHero";
 import PreventiveReviewAtom from "@/components/dashboard/PreventiveReviewAtom";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
+import IllnessHero, {
+  type HeroCockpit,
+} from "@/components/dashboard/IllnessHero";
 import type { DashboardStandingPresentation } from "@/components/dashboard/DashboardStandingCluster";
 import DashboardAtomCard from "@/components/dashboard/DashboardAtomCard";
 import RecentlyResolvedReopen, {
@@ -157,19 +159,21 @@ import RecentlyResolvedReopen, {
 import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
 import {
   episodeStatesForProfiles,
+  openEpisodeRowsForProfiles,
   reopenEligibleFromState,
+  type ProfileEpisodeState,
 } from "@/lib/illness-episode-store";
-import {
-  currentEpisodeFromState,
-  openEpisodeFromState,
-} from "@/lib/illness-episode";
+import { openEpisodesFromState } from "@/lib/illness-episode";
 import {
   episodeCollapsedStatus,
+  episodeLatestDose,
+  assignOrderedEpisodeFacts,
   orderIllnessCockpits,
-  type AssembledEpisode,
 } from "@/lib/illness-episode-format";
-import { schoolReturnStatusFor } from "@/lib/school-return-data";
-import { schoolReturnCompactClause } from "@/lib/school-return";
+import {
+  gatherDashboardIllnessCockpits,
+  type DashboardIllnessCockpitModel,
+} from "@/lib/dashboard-illness-cockpit";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import {
   householdFanoutProfiles,
@@ -202,6 +206,7 @@ import NutritionTodayWidget from "@/components/dashboard/NutritionTodayWidget";
 import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
+import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import SymptomLogBar from "../../components/illness/SymptomLogBar";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
@@ -209,7 +214,7 @@ import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
 import HouseholdStrip from "@/components/dashboard/HouseholdStrip";
 import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
-import { dismissRecentlyResolved } from "./actions";
+import { dismissRecentlyResolved, saveIllnessHeroState } from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
@@ -242,6 +247,7 @@ export const dynamic = "force-dynamic";
 export default async function Dashboard() {
   return withSettingReadCache(async () => {
     const session = await requireSession();
+    const scope = await requireScope();
     preloadGlobalSettings();
     preloadLoginSettings(session.login.id);
     preloadProfileSettings([session.profile.id]);
@@ -256,12 +262,13 @@ export default async function Dashboard() {
           })
       );
     }
-    return withReadSnapshot(() => renderDashboard(session, profileAge));
+    return withReadSnapshot(() => renderDashboard(session, scope, profileAge));
   });
 }
 
 async function renderDashboard(
   session: Awaited<ReturnType<typeof requireSession>>,
+  scope: ProfileScope,
   profileAge: ReturnType<typeof getProfileAge>
 ) {
   const { login, profile, access } = session;
@@ -284,11 +291,10 @@ async function renderDashboard(
   // it disappears when the 60-min window closes on the next render. Skipped for a
   // Shown only when there's strength work to recap (a pure-cardio finish has no
   // working sets).
-  const finishedPresence = getWorkoutPresence(profile.id);
+  const workoutPresence = getWorkoutPresence(profile.id);
   const finishedRecap =
-    finishedPresence?.state === "finished" &&
-    finishedPresence.activityId != null
-      ? getSessionRecap(profile.id, finishedPresence.activityId)
+    workoutPresence?.state === "finished" && workoutPresence.activityId != null
+      ? getSessionRecap(profile.id, workoutPresence.activityId)
       : null;
   const showRecapCard =
     strengthTrainingAvailable &&
@@ -321,7 +327,7 @@ async function renderDashboard(
   // (hoistedStatement), so they compile once per connection rather than once per
   // chip. lib/__db_tests__/household-attention-count.test.ts pins both halves —
   // the integer and the one-compile-per-connection claim.
-  const accessible = await getAccessibleProfiles();
+  const accessible = scope.profiles;
   preloadProfileSettings(
     accessible.map((accessibleProfile) => accessibleProfile.id)
   );
@@ -329,7 +335,7 @@ async function renderDashboard(
   // name the subject when the login is acting as someone OTHER than its own profile,
   // so a weigh-in never silently lands on the wrong person's record. Null (no naming)
   // when acting as self or no own-profile is set. Disambiguated (#534).
-  const ownProfileId = ownProfileForLogin(login.id);
+  const ownProfileId = scope.ownProfileId;
   const actingSubjectName = writeSubjectName(
     ownProfileId,
     profile.id,
@@ -383,15 +389,12 @@ async function renderDashboard(
   const cycleApplicable = getCycleTrackingRelevance(profile.id, profileAge);
   const adultContentApplicable = isLongevityRelevant(profileAge);
 
-  // Illness hero (issue #858): every accessible OPEN illness episode as a per-patient
-  // cockpit, over the SAME #801 assembly the timeline/detail/share surfaces use (one
-  // question, one computation). The acting profile's own episode is the FULL cockpit at
-  // hero position (keyed on an OPEN episode row — hasActiveIllnessSituation — so it appears
-  // the instant the #843 door-A "I'm feeling sick" tap activates Illness, before the first
-  // symptom); every OTHER accessible profile's open episode (signal-gated
-  // currentEpisodeForProfile, so a not-yet-symptomatic member stays off the list) is a
-  // compact accordion line that expands in place. Grants-scoped upstream (accessible =
-  // getAccessibleProfiles). Replaces the former sick-household widget (folded in, #858).
+  // Every authorized OPEN illness episode becomes a whole cockpit, including a newly
+  // opened episode with no facts yet. Discovery is one grants-scoped query across the
+  // full profile scope; only profiles with open rows pay the downstream batched gather.
+  // The acting profile leads, then household profiles by numeric id, with stable episode
+  // order inside each profile. This full illness set intentionally sits outside the
+  // ordinary dashboard cap; the bounded strip/reopen/history gathers below are unchanged.
   //
   // ONE episode gather for the whole page (#2115). Three surfaces below ask about
   // the same two rows per member — the accordion (the row covering that member's
@@ -400,86 +403,214 @@ async function renderDashboard(
   // alone ran twice per profile per render. episodeStatesForProfiles reads them once
   // and every derivation below is a pure function of the result.
   //
-  // Bounded on the same set as the household strip (#2435/#2446): the accordion over
-  // the OTHER members, the reopen band and the promo over those plus the viewer,
-  // whose own just-resolved episode is the band's whole point.
   const illnessFanout = householdFanoutWithActing(accessible, profile.id);
-  const episodeStates = episodeStatesForProfiles([
-    // The viewer is always in the gather even in the degenerate case where the
-    // session's active profile is somehow not in its own accessible set — the hero
-    // is about them, so it must never fall back to a second read to find out.
-    ...new Set([profile.id, ...illnessFanout.map((p) => p.id)]),
-  ]);
+  const illnessProfiles = accessible.filter(
+    (accessibleProfile) => accessibleProfile.id !== profile.id
+  );
+  const openEpisodeRows = openEpisodeRowsForProfiles(scope.ids);
+  const openRowsByProfile = new Map<number, typeof openEpisodeRows>();
+  for (const row of openEpisodeRows) {
+    const rows = openRowsByProfile.get(row.profile_id) ?? [];
+    rows.push(row);
+    openRowsByProfile.set(row.profile_id, rows);
+  }
+  const openStateByProfile = new Map<number, ProfileEpisodeState>();
+  for (const [profileId, rows] of openRowsByProfile) {
+    const localToday = today(profileId);
+    const todayRows = rows.filter(
+      (row) => row.start_date == null || row.start_date <= localToday
+    );
+    if (todayRows.length === 0) continue;
+    openStateByProfile.set(profileId, {
+      profileId,
+      today: localToday,
+      todayRow: todayRows[0],
+      todayRows,
+      mostRecentClosed: null,
+    });
+  }
+  const episodeStates = episodeStatesForProfiles(
+    illnessFanout.map((illnessProfile) => illnessProfile.id)
+  );
   const episodeStateById = new Map(episodeStates.map((s) => [s.profileId, s]));
   const stateFor = (pid: number) => episodeStateById.get(pid)!;
-  const activeSick = hasActiveIllnessSituation(profile.id);
-  const activeEpisode = activeSick
-    ? openEpisodeFromState(stateFor(profile.id))
-    : null;
-  const otherSick = householdProfiles
-    .map((p) => ({ p, ep: currentEpisodeFromState(stateFor(p.id)) }))
-    .filter(
-      (x): x is { p: (typeof accessible)[number]; ep: AssembledEpisode } =>
-        x.ep !== null
-    );
+  const activeEpisodes = openStateByProfile.has(profile.id)
+    ? openEpisodesFromState(openStateByProfile.get(profile.id)!, {
+        includeEmpty: true,
+      })
+    : [];
+  const activeSick = activeEpisodes.length > 0;
+  const otherSick = illnessProfiles.flatMap((p) =>
+    openStateByProfile.has(p.id)
+      ? openEpisodesFromState(openStateByProfile.get(p.id)!, {
+          includeEmpty: true,
+        }).map((episode, episodeOrder) => ({ p, episode, episodeOrder }))
+      : []
+  );
 
   // Disambiguate every cockpit patient's name together (#531/#534 on-element identity).
   const heroProfiles = [
-    ...(activeEpisode ? [profile] : []),
-    ...otherSick.map((x) => x.p),
+    ...(activeEpisodes.length > 0 ? [profile] : []),
+    ...new Map(otherSick.map((x) => [x.p.id, x.p])).values(),
   ];
   const heroNames = disambiguateProfileNames(heroProfiles);
   const nameFor = (p: { id: number; name: string }) =>
     heroNames.get(p.id) ?? p.name;
 
   const orderedCockpits = orderIllnessCockpits([
-    ...(activeEpisode
-      ? [
-          {
-            profileId: profile.id,
-            isActive: true,
-            start: activeEpisode.start,
-            avatar: profile,
-            episode: activeEpisode,
-          },
-        ]
-      : []),
+    ...activeEpisodes.map((episode, episodeOrder) => ({
+      profileId: profile.id,
+      isActive: true,
+      episodeOrder,
+      episodeKey: String(episode.id),
+      avatar: profile,
+      episode,
+    })),
     ...otherSick.map((x) => ({
       profileId: x.p.id,
       isActive: false,
-      start: x.ep.start,
+      episodeOrder: x.episodeOrder,
+      episodeKey: String(x.episode.id),
       avatar: x.p,
-      episode: x.ep,
+      episode: x.episode,
     })),
   ]);
+  const presentationCockpitByEpisode = new Map(
+    assignOrderedEpisodeFacts(orderedCockpits).map((cockpit) => [
+      cockpit.episode.id,
+      cockpit,
+    ])
+  );
 
-  const heroCockpits = orderedCockpits.map((c) => {
-    const schoolReturn = schoolReturnStatusFor(c.profileId, c.episode);
+  const dashboardNow = clockNow();
+  const cockpitModelByEpisode = new Map<number, DashboardIllnessCockpitModel>();
+  const cockpitCountByProfile = new Map<number, number>();
+  for (const cockpit of orderedCockpits)
+    cockpitCountByProfile.set(
+      cockpit.profileId,
+      (cockpitCountByProfile.get(cockpit.profileId) ?? 0) + 1
+    );
+  for (const profileId of new Set(
+    orderedCockpits.map((cockpit) => cockpit.profileId)
+  )) {
+    const episodes = orderedCockpits
+      .filter((cockpit) => cockpit.profileId === profileId)
+      .map((cockpit) => cockpit.episode);
+    const presentationEpisodes = orderedCockpits
+      .filter((cockpit) => cockpit.profileId === profileId)
+      .map(
+        (cockpit) =>
+          presentationCockpitByEpisode.get(cockpit.episode.id)!.episode
+      );
+    const gathered = gatherDashboardIllnessCockpits(profileId, episodes, {
+      canWrite: scope.access.get(profileId) === "write",
+      temperatureUnit: units.temperatureUnit,
+      weightUnit: units.weightUnit,
+      now: dashboardNow,
+      presentationEpisodes,
+    });
+    for (const [episodeId, model] of gathered)
+      cockpitModelByEpisode.set(episodeId, model);
+  }
+
+  const heroCockpits: HeroCockpit[] = orderedCockpits.map((c) => {
+    const presentation = presentationCockpitByEpisode.get(c.episode.id);
+    if (!presentation)
+      throw new Error(`Missing dashboard illness presentation ${c.episode.id}`);
+    const displayEpisode = presentation.episode;
+    const model = cockpitModelByEpisode.get(c.episode.id);
+    if (!model)
+      throw new Error(`Missing dashboard illness cockpit ${c.episode.id}`);
+    const key = `${c.profileId}:${c.episodeKey}`;
+    const temperatureId = displayEpisode.latestTemp?.id;
+    const latestDose = episodeLatestDose(displayEpisode)?.id;
+    const clinicalStatus = episodeCollapsedStatus(
+      c.episode,
+      units.temperatureUnit,
+      {
+        timeZone: getTimezone(c.profileId),
+        timeFormat: formatPrefs.timeFormat,
+        now: clockNow(),
+      }
+    );
+    const displayStatus = episodeCollapsedStatus(
+      displayEpisode,
+      units.temperatureUnit,
+      {
+        timeZone: getTimezone(c.profileId),
+        timeFormat: formatPrefs.timeFormat,
+        now: clockNow(),
+      }
+    );
     return {
+      episodeKey: key,
+      episodeOrder: c.episodeOrder,
       profileId: c.profileId,
       profile: c.avatar,
       displayName: nameFor(c.avatar),
+      situation: c.episode.situation,
       isActive: c.isActive,
-      status: episodeCollapsedStatus(c.episode, units.temperatureUnit, {
-        timeZone: getTimezone(c.profileId),
-        timeFormat: formatPrefs.timeFormat,
-        // The frozen-clock seam (#1028 class): the reading's relative age must come
-        // from lib/clock, not a bare new Date() fallback — the suite freezes only
-        // the former.
-        now: clockNow(),
-      }),
-      feverFree: schoolReturn
-        ? {
-            label: schoolReturnCompactClause(schoolReturn).replace(
-              /^fever-free/,
-              "Fever-free"
+      canWrite: scope.access.get(c.profileId) === "write",
+      stateIdentity: careCandidates.illnessStateIdentity(key),
+      temperatureIdentity:
+        temperatureId == null
+          ? null
+          : careCandidates.illnessReadingIdentity(
+              "temperature",
+              key,
+              temperatureId
             ),
-            met: schoolReturn.met,
+      medicationIdentity:
+        latestDose == null
+          ? null
+          : careCandidates.illnessReadingIdentity(
+              "medication",
+              key,
+              latestDose
+            ),
+      status: {
+        ...clinicalStatus,
+        worsening: displayStatus.worsening,
+        temperature: displayStatus.temperature,
+        lastMeds: displayStatus.lastMeds,
+      },
+      feverFree: model.feverFree,
+      episodeHref: episodeHref(c.episode.id),
+      body: (
+        <IllnessCockpitBody
+          profileId={c.profileId}
+          episode={displayEpisode}
+          crossProfile={!c.isActive}
+          canWrite={scope.access.get(c.profileId) === "write"}
+          ownsSharedProfileControls={c.episodeOrder === 0}
+          hasPluralOpenEpisodes={
+            (cockpitCountByProfile.get(c.profileId) ?? 0) > 1
           }
-        : null,
-      episodeHref: c.episode.id != null ? episodeHref(c.episode.id) : null,
+          profileDisplayName={nameFor(c.avatar)}
+          model={model}
+          temperatureIdentity={
+            displayEpisode.latestTemp?.id == null
+              ? null
+              : careCandidates.illnessReadingIdentity(
+                  "temperature",
+                  key,
+                  displayEpisode.latestTemp.id
+                )
+          }
+          medicationIdentity={
+            latestDose == null
+              ? null
+              : careCandidates.illnessReadingIdentity(
+                  "medication",
+                  key,
+                  latestDose
+                )
+          }
+        />
+      ),
     };
   });
+  const heroUi = getIllnessHeroUi(profile.id);
 
   // Recently-resolved reopen affordance (issue #1140 Part A): for the viewer and every
   // bounded household member, the most-recent episode still inside its 7-day reopen
@@ -1031,12 +1162,31 @@ async function renderDashboard(
     }
   }
 
-  for (const cockpit of heroCockpits.toSorted(
-    (a, b) =>
-      Number(b.isActive) - Number(a.isActive) || a.profileId - b.profileId
-  )) {
-    const key = `${cockpit.profileId}:${cockpit.episodeHref ?? "open"}`;
+  if (workoutPresence?.state === "active") {
+    add(
+      setupCandidates.liveWorkout(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        workoutPresence.activityId
+      ),
+      <DashboardAtomCard
+        title="Workout in progress"
+        href="/training"
+        actionLabel="Continue"
+      />
+    );
+  }
+
+  for (const cockpit of heroCockpits) {
+    const key = cockpit.episodeKey;
     const href = cockpit.episodeHref ?? "/timeline";
+    const groupKey = `illness.episode:${key}`;
+    const episodeGroup = {
+      kind: "illness-episode" as const,
+      groupKey,
+      episodeKey: cockpit.episodeKey,
+      profileId: cockpit.profileId,
+      episodeOrder: cockpit.episodeOrder,
+    };
     const stateDetail = [
       cockpit.status.worsening ? "Symptoms worsening" : null,
       cockpit.feverFree?.label ?? null,
@@ -1049,7 +1199,8 @@ async function renderDashboard(
           subject: { scope: "profile", profileId: cockpit.profileId },
           sourceOrder: sourceOrder++,
         },
-        key
+        key,
+        { ...episodeGroup, memberRole: "state", memberOrder: 0 }
       ),
       <DashboardAtomCard
         title={`${cockpit.displayName} is sick`}
@@ -1066,7 +1217,9 @@ async function renderDashboard(
             sourceOrder: sourceOrder++,
           },
           "temperature",
-          key
+          key,
+          cockpit.status.temperature.id,
+          { ...episodeGroup, memberRole: "reading", memberOrder: 0 }
         ),
         <DashboardAtomCard
           title={`${cockpit.displayName}'s latest temperature`}
@@ -1085,7 +1238,9 @@ async function renderDashboard(
             sourceOrder: sourceOrder++,
           },
           "medication",
-          key
+          key,
+          medication.id,
+          { ...episodeGroup, memberRole: "reading", memberOrder: 1 }
         ),
         <DashboardAtomCard
           title={`${cockpit.displayName}'s latest illness medicine`}
@@ -1095,21 +1250,6 @@ async function renderDashboard(
         />
       );
     }
-    add(
-      careCandidates.illnessOpen(
-        {
-          subject: { scope: "profile", profileId: cockpit.profileId },
-          applicable: canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        key
-      ),
-      <DashboardAtomCard
-        title={`Update ${cockpit.displayName}'s illness care`}
-        href={href}
-        actionLabel="Open"
-      />
-    );
   }
 
   for (const item of recentlyResolved) {
@@ -1156,7 +1296,7 @@ async function renderDashboard(
     );
   }
 
-  const finishedActivityId = finishedPresence?.activityId;
+  const finishedActivityId = workoutPresence?.activityId;
   if (showRecapCard && finishedRecap && finishedActivityId != null) {
     const recapFacts = [
       ["sets", `${finishedRecap.totalWorkingSets} working sets`],
@@ -1172,7 +1312,7 @@ async function renderDashboard(
           { subject: profileSubject, sourceOrder: sourceOrder + index },
           finishedActivityId,
           key,
-          finishedPresence?.sinceMin ?? -1
+          workoutPresence?.sinceMin ?? -1
         ),
         <DashboardAtomCard
           title="Session complete"
@@ -2215,6 +2355,66 @@ async function renderDashboard(
     activeProfileId: profile.id,
     minutesOfDay: nowMinutes,
   });
+  const illnessGroupKeys = orderedIllnessGroupKeys(dashboardPlacements);
+  const heroByGroupKey = new Map(
+    heroCockpits.map((cockpit) => [cockpit.stateIdentity!.groupKey, cockpit])
+  );
+  const placedEpisodeCandidateIds = new Set(
+    dashboardPlacements
+      .filter(
+        (placement) =>
+          placement.lane === "now" && placement.nowLayer === "illness"
+      )
+      .map((placement) => placement.candidate.candidateId)
+  );
+  const placedHeroCockpits = illnessGroupKeys.map((groupKey) => {
+    const cockpit = heroByGroupKey.get(groupKey);
+    if (!cockpit)
+      throw new Error(`Missing dashboard illness group ${groupKey}`);
+    const stateIdentity = placedEpisodeCandidateIds.has(
+      cockpit.stateIdentity!.candidateId
+    )
+      ? cockpit.stateIdentity
+      : null;
+    const temperatureIdentity =
+      cockpit.temperatureIdentity &&
+      placedEpisodeCandidateIds.has(cockpit.temperatureIdentity.candidateId)
+        ? cockpit.temperatureIdentity
+        : null;
+    const medicationIdentity =
+      cockpit.medicationIdentity &&
+      placedEpisodeCandidateIds.has(cockpit.medicationIdentity.candidateId)
+        ? cockpit.medicationIdentity
+        : null;
+    const body = cockpit.body as ReactElement<
+      Parameters<typeof IllnessCockpitBody>[0]
+    >;
+    const episode = {
+      ...body.props.episode,
+      ...(cockpit.temperatureIdentity && !temperatureIdentity
+        ? { temperatures: [], maxTempF: null, latestTemp: null }
+        : {}),
+      ...(cockpit.medicationIdentity && !medicationIdentity
+        ? { medications: [], totalAdministrations: 0 }
+        : {}),
+    };
+    return {
+      ...cockpit,
+      stateIdentity,
+      temperatureIdentity,
+      medicationIdentity,
+      status: {
+        ...cockpit.status,
+        temperature: temperatureIdentity ? cockpit.status.temperature : null,
+        lastMeds: medicationIdentity ? cockpit.status.lastMeds : null,
+      },
+      body: cloneElement(body, {
+        episode,
+        temperatureIdentity,
+        medicationIdentity,
+      }),
+    };
+  });
 
   return (
     <DashboardPlacementCanvas
@@ -2223,6 +2423,16 @@ async function renderDashboard(
       candidateNodes={candidateNodes}
       standingPresentations={standingPresentations}
       attentionBadgeCount={attentionBadgeCount}
+      illnessGroupNode={
+        placedHeroCockpits.length > 0 ? (
+          <IllnessHero
+            cockpits={placedHeroCockpits}
+            initialCollapsedActive={heroUi.collapsedActive}
+            initialOpenOtherKey={heroUi.openOtherKey}
+            saveState={saveIllnessHeroState}
+          />
+        ) : undefined
+      }
     />
   );
 }

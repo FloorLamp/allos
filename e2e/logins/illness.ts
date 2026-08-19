@@ -16,6 +16,11 @@ export const SICK_SELF_PROFILE = "Sick Self (e2e)";
 export const E2E_LOGIN_SICK_COLLAPSE = "e2e_sick_collapse";
 export const SICK_COLLAPSE_PROFILE = "Sick Collapse (e2e)";
 
+// Three simultaneous illness-type situations for phase-5 whole-cockpit ordering and
+// independent close/reopen coverage. This login owns no other profile.
+export const E2E_LOGIN_MULTI_ILLNESS = "e2e_multi_illness";
+export const MULTI_ILLNESS_PROFILE = "Multi Illness (e2e)";
+
 // Situation-aware coaching (#837 / #662 item 1): a dedicated sick profile WITH training
 // history (so coaching has gap nags to HOLD, not the empty state) and one situational
 // supplement tied to the active Illness situation (so the situations-bar activation
@@ -36,18 +41,13 @@ export const SITCOACH_PROFILE = "Situation Coaching (e2e)";
 export const E2E_LOGIN_ILLNESS_CARE = "e2e_illness_care";
 export const ILLNESS_CARE_PROFILE = "Illness Care (e2e)";
 
-// A caregiver granted their OWN well base profile plus two currently-sick children
-// (Kid A owns a PRN med for the dose path). Acting as the well base profile, both kids
-// render as compact accordion cockpits — the multi-sick / cross-profile-temp case.
+// A caregiver granted their OWN sick base profile plus two currently-sick children
+// (Kid A owns a PRN med for the dose path). The base profile also carries the integrated
+// safety + live-workout case; both kids render as household accordion cockpits.
 export const E2E_LOGIN_CARE = "e2e_care";
 export const CARE_PARENT_PROFILE = "Care Parent (e2e)";
 export const SICK_KID_A_PROFILE = "Sick Kid A (e2e)";
 export const SICK_KID_B_PROFILE = "Sick Kid B (e2e)";
-
-// A SECOND caregiver granted their own well base profile plus Sick Kid A (shared with
-// CARE) — the co-caregiver case: a dose CARE logs for Kid A shows on this login's hero.
-export const E2E_LOGIN_COCARE = "e2e_cocare";
-export const COCARE_PARENT_PROFILE = "Co Parent (e2e)";
 
 // A member whose SOLE (active) profile carries a positive infection lab result
 // ("HIV Antibody: Reactive") that is NOT on its problem list, so the condition-

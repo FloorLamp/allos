@@ -1,4 +1,5 @@
 import type { AppRoute } from "../hrefs";
+import type { DashboardEpisodeGroup } from "../dashboard-relevance";
 import { profileDataRelevance } from "./candidate";
 import {
   action,
@@ -9,36 +10,59 @@ import {
   type DomainCandidateContext,
 } from "./shared";
 
+function illnessStateIdentity(key: string) {
+  return {
+    candidateId: `illness.state:${key}`,
+    factKey: `illness.episode:${key}`,
+    groupKey: `illness.episode:${key}`,
+  };
+}
+
+function illnessReadingIdentity(
+  kind: "temperature" | "medication",
+  key: string,
+  readingKey: string | number
+) {
+  return {
+    candidateId: `illness.${kind}:${key}`,
+    factKey: `illness.${kind}:${readingKey}`,
+    groupKey: `illness.episode:${key}`,
+  };
+}
+
 export const careCandidates = {
-  illnessState(ctx: DomainCandidateContext, key: string) {
+  illnessStateIdentity,
+  illnessReadingIdentity,
+  illnessState(
+    ctx: DomainCandidateContext,
+    key: string,
+    episodeGroup: DashboardEpisodeGroup
+  ) {
+    const identity = illnessStateIdentity(key);
     return state(
       ctx,
-      `illness.state:${key}`,
-      `illness.episode:${key}`,
-      `illness.episode:${key}`,
-      { rankReasons: changed }
+      identity.candidateId,
+      identity.factKey,
+      identity.groupKey,
+      { rankReasons: changed, episodeGroup }
     );
   },
   illnessReading(
     ctx: DomainCandidateContext,
     kind: "temperature" | "medication",
-    key: string
+    key: string,
+    readingKey: string | number,
+    episodeGroup: DashboardEpisodeGroup
   ) {
+    const identity = illnessReadingIdentity(kind, key, readingKey);
     return reading(
       ctx,
-      `illness.${kind}:${key}`,
-      `illness.${kind}:${key}`,
-      `illness.episode:${key}`,
-      "manual"
-    );
-  },
-  illnessOpen(ctx: DomainCandidateContext, key: string) {
-    return action(
-      ctx,
-      `illness.open:${key}`,
-      `illness.care-action:${key}`,
-      `illness.episode:${key}`,
-      "may"
+      identity.candidateId,
+      identity.factKey,
+      identity.groupKey,
+      "manual",
+      "current",
+      { episodeGroup }
     );
   },
   illnessReopen(ctx: DomainCandidateContext, key: string) {

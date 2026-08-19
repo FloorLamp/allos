@@ -61,9 +61,32 @@ export function getEpisodeMedReconciliation(
 ): EpisodeMedSuggestion[] {
   const row = getEpisodeRow(profileId, episodeId);
   if (!row) return [];
-  const start = row.start_date;
-  // The stored end_date IS the inclusive last active day (#2232).
-  const endInclusive = row.end_date ?? today(profileId);
+  return (
+    getEpisodeMedReconciliations(profileId, [
+      {
+        id: row.id,
+        start: row.start_date,
+        endInclusive: row.end_date ?? today(profileId),
+      },
+    ]).get(row.id) ?? []
+  );
+}
+
+export interface EpisodeReconciliationWindow {
+  id: number;
+  start: string | null;
+  endInclusive: string;
+}
+
+// Dashboard twin of the single-episode read above: gather the profile's active meds
+// and administration dates once, then apply the unchanged pure checklist to every
+// open episode window. Episode count changes result cardinality, not query count.
+export function getEpisodeMedReconciliations(
+  profileId: number,
+  episodes: readonly EpisodeReconciliationWindow[]
+): Map<number, EpisodeMedSuggestion[]> {
+  const out = new Map<number, EpisodeMedSuggestion[]>();
+  if (episodes.length === 0) return out;
 
   const meds = db
     .prepare(
@@ -78,7 +101,10 @@ export function getEpisodeMedReconciliation(
     rx: number;
     created_on: string;
   }[];
-  if (meds.length === 0) return [];
+  if (meds.length === 0) {
+    for (const episode of episodes) out.set(episode.id, []);
+    return out;
+  }
 
   const adminRows = db
     .prepare(
@@ -105,7 +131,16 @@ export function getEpisodeMedReconciliation(
     createdOn: m.created_on,
     administrationDates: datesByItem.get(m.id) ?? [],
   }));
-  return episodeMedChecklist(inputs, { start, endInclusive });
+  for (const episode of episodes) {
+    out.set(
+      episode.id,
+      episodeMedChecklist(inputs, {
+        start: episode.start,
+        endInclusive: episode.endInclusive,
+      })
+    );
+  }
+  return out;
 }
 
 // The most recent 'taken' administration DATE per medication for the profile, for the

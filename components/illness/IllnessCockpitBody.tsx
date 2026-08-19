@@ -1,30 +1,12 @@
-import { today } from "@/lib/db";
-import { now as clockNow } from "@/lib/clock";
-import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
-import {
-  getSymptomSeveritiesOnDate,
-  getSymptomNotesOnDate,
-  getSymptomLogOrder,
-  getCustomSymptomNames,
-  getPrnMedicationsForQuickLog,
-  getPediatricFormContext,
-  getEpisodeMedReconciliation,
-} from "@/lib/queries";
-import {
-  episodeAlternateLogDate,
-  type AssembledEpisode,
-} from "@/lib/illness-episode-format";
+import type { AssembledEpisode } from "@/lib/illness-episode-format";
 import SymptomLogBar from "./SymptomLogBar";
 import CockpitEndEpisode from "@/components/dashboard/CockpitEndEpisode";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
-import { getIntakeCatalogOptions } from "@/lib/queries";
 import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
-import { staleEpisodeNudgeFor } from "@/lib/stale-episode-data";
-import { schoolReturnStatusFor } from "@/lib/school-return-data";
-import { schoolReturnCompactClause } from "@/lib/school-return";
 import EpisodeLatestReadings from "@/components/illness/EpisodeLatestReadings";
+import type { DashboardIllnessCockpitModel } from "@/lib/dashboard-illness-cockpit";
 
 // The full illness-cockpit BODY for one patient (issue #858) — the expanded content the
 // hero shell (IllnessHero) reveals under the named header. It is the SAME machinery the
@@ -40,137 +22,132 @@ import EpisodeLatestReadings from "@/components/illness/EpisodeLatestReadings";
 // cockpit it is false and every write takes the plain active-profile path.
 export default function IllnessCockpitBody({
   profileId,
-  loginId,
   episode,
   crossProfile,
+  canWrite,
+  ownsSharedProfileControls,
+  hasPluralOpenEpisodes,
+  profileDisplayName,
+  model,
+  temperatureIdentity,
+  medicationIdentity,
 }: {
   profileId: number;
-  loginId: number;
   episode: AssembledEpisode;
   crossProfile: boolean;
+  canWrite: boolean;
+  ownsSharedProfileControls: boolean;
+  hasPluralOpenEpisodes: boolean;
+  profileDisplayName: string;
+  model: DashboardIllnessCockpitModel;
+  temperatureIdentity?: {
+    candidateId: string;
+    factKey: string;
+    groupKey: string;
+  } | null;
+  medicationIdentity?: {
+    candidateId: string;
+    factKey: string;
+    groupKey: string;
+  } | null;
 }) {
-  const date = today(profileId);
-  // Match the episode page's backfill boundary: yesterday is only a valid choice when
-  // it belongs to this episode. A same-day episode must not offer a dashboard write that
-  // the episode page then correctly omits from its own timeline.
-  const altDate =
-    episodeAlternateLogDate(episode.ongoing, episode.firstDay, date) ??
-    undefined;
-  const units = getUnitPrefs(loginId);
-  const temperatureUnit = units.temperatureUnit;
-  const tz = getTimezone(profileId);
+  const { date, temperatureUnit, timeZone, nowIso, feverFree } = model;
+  const controls = model.controls;
   // The write target the bar/control/end button post — only for a household member's
   // cockpit; the acting profile's own cockpit omits it (active-profile write path).
   const target = crossProfile ? profileId : undefined;
-
-  // Item 2: the school-return countdown (when a fever has been logged this episode) +
-  // Item 1: the suggest-only stale nudge (this open episode gone quiet) — both format
-  // over the ONE gathers (#221), shown on the cockpit alongside the episode page.
-  const schoolReturn = schoolReturnStatusFor(profileId, episode);
-  const staleNudge = staleEpisodeNudgeFor(profileId);
-  const showStaleNudge =
-    staleNudge != null && staleNudge.episodeId === episode.id
-      ? staleNudge
-      : null;
-
-  // Episode-end medication reconciliation (issue #880): the episode-associated meds the
-  // "Feeling better" / stale-end checklist offers to close, shared with the episode page
-  // via the ONE gather.
-  const medReconciliation =
-    episode.id != null
-      ? getEpisodeMedReconciliation(profileId, episode.id)
-      : [];
-
-  const prnMeds = getPrnMedicationsForQuickLog(profileId);
 
   return (
     <div className="mt-3 flex flex-col" data-testid="illness-cockpit-body">
       <EpisodeLatestReadings
         episode={episode}
         temperatureUnit={temperatureUnit}
-        timeZone={tz}
-        nowIso={clockNow().toISOString()}
+        timeZone={timeZone}
+        nowIso={nowIso}
         linkMedication
-        feverFree={
-          schoolReturn
-            ? {
-                label: schoolReturnCompactClause(schoolReturn).replace(
-                  /^fever-free/,
-                  "Fever-free"
-                ),
-                met: schoolReturn.met,
-              }
-            : null
-        }
+        feverFree={feverFree}
         className="mb-4 border-b border-black/5 pb-4 dark:border-white/5"
+        temperatureIdentity={temperatureIdentity}
+        medicationIdentity={medicationIdentity}
       />
 
-      <section>
-        <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-          Symptoms &amp; Temperature
-        </h3>
-        <SymptomLogBar
-          date={date}
-          altDate={altDate}
-          initial={getSymptomSeveritiesOnDate(profileId, date)}
-          initialAlt={
-            altDate ? getSymptomSeveritiesOnDate(profileId, altDate) : undefined
-          }
-          initialNotes={getSymptomNotesOnDate(profileId, date)}
-          initialAltNotes={
-            altDate ? getSymptomNotesOnDate(profileId, altDate) : undefined
-          }
-          symptoms={PICKER_SYMPTOMS}
-          customNames={getCustomSymptomNames(profileId)}
-          rankedKeys={getSymptomLogOrder(profileId)}
-          suggestActivateIllness={false}
-          showTemperature
-          temperatureUnit={temperatureUnit}
-          timeZone={tz}
-          profileId={target}
-          showTitle={false}
-        />
-      </section>
+      {canWrite && controls ? (
+        <section>
+          <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Symptoms
+          </h3>
+          {ownsSharedProfileControls && hasPluralOpenEpisodes ? (
+            <p
+              className="mb-3 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="illness-shared-profile-controls-context"
+            >
+              Temperature and medications are shared across {profileDisplayName}
+              &apos;s open episodes.
+            </p>
+          ) : null}
+          <SymptomLogBar
+            date={date}
+            altDate={controls.altDate}
+            initial={controls.initial}
+            initialAlt={controls.initialAlt}
+            initialNotes={controls.initialNotes}
+            initialAltNotes={controls.initialAltNotes}
+            symptoms={PICKER_SYMPTOMS}
+            customNames={controls.customNames}
+            rankedKeys={controls.rankedKeys}
+            suggestActivateIllness={false}
+            showTemperature={ownsSharedProfileControls}
+            temperatureUnit={temperatureUnit}
+            timeZone={timeZone}
+            profileId={target}
+            episodeId={episode.id ?? undefined}
+            showTitle={false}
+          />
+        </section>
+      ) : null}
 
-      {showStaleNudge && (
+      {canWrite && controls?.staleNudge && (
         <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/5">
           <StaleEpisodeNudge
-            episodeId={showStaleNudge.episodeId}
+            episodeId={controls.staleNudge.episodeId}
             profileId={target}
-            lastActivityDate={showStaleNudge.lastActivityDate}
-            quietDays={showStaleNudge.quietDays}
-            medReconciliation={medReconciliation}
+            lastActivityDate={controls.staleNudge.lastActivityDate}
+            quietDays={controls.staleNudge.quietDays}
+            medReconciliation={controls.medReconciliation}
           />
         </div>
       )}
 
-      {(prnMeds.length > 0 || !crossProfile) && (
-        <div
-          className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
-          data-testid="cockpit-prn"
-        >
-          {/* Its inline quick-add reads the SAME ranked medication options the
+      {canWrite &&
+        controls &&
+        ownsSharedProfileControls &&
+        (controls.prnMeds.length > 0 || !crossProfile) && (
+          <div
+            className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
+            data-testid="cockpit-prn"
+          >
+            {/* Its inline quick-add reads the SAME ranked medication options the
               Medications page offers (#1677) — resolved for the patient whose cockpit
               this is, not for whoever is looking at it. */}
-          <IntakeOptionsProvider options={getIntakeCatalogOptions(profileId)}>
-            <IllnessMedicationLogger
-              meds={prnMeds}
-              tz={tz}
-              profileId={target}
-              pediatric={getPediatricFormContext(profileId, units.weightUnit)}
-              canAdd={!crossProfile}
-              nowIso={clockNow().toISOString()}
-            />
-          </IntakeOptionsProvider>
-        </div>
-      )}
+            <IntakeOptionsProvider options={controls.intakeOptions}>
+              <IllnessMedicationLogger
+                meds={controls.prnMeds}
+                tz={timeZone}
+                profileId={target}
+                pediatric={controls.pediatric}
+                canAdd={!crossProfile}
+                nowIso={nowIso}
+              />
+            </IntakeOptionsProvider>
+          </div>
+        )}
 
-      {episode.id != null && (
+      {canWrite && controls && episode.id != null && (
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-black/5 pt-4 dark:border-white/5">
           <CockpitEndEpisode
             episodeId={episode.id}
             profileId={target}
-            meds={medReconciliation}
+            meds={controls.medReconciliation}
           />
         </div>
       )}

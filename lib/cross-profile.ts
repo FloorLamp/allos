@@ -221,6 +221,11 @@ export const CROSS_PROFILE_SQL_MODULES: readonly string[] = [
   // SELECT-DISTINCT-per-profile loop that answered the same question one member at a
   // time.
   "lib/queries/intake/supply-pool.ts",
+  // #3138: every currently-open illness row for the dashboard's authorized profile
+  // set. The SQL returns flat stored rows only; coverage is partitioned afterward
+  // against each profile's own local today, so no per-profile clock leaks into the
+  // set-based read.
+  "lib/illness-episode-store.ts",
 ];
 
 // True when a repo-relative path is a registered cross-profile module. Suffix match

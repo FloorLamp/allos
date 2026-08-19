@@ -61,12 +61,15 @@ export type UsualRoutineResult =
 // revalidation — the client already reflects the toggle; this only survives a reload.
 export async function saveIllnessHeroState(
   collapsedActive: boolean,
-  openOtherId: number | null
+  openOtherKey: string | null
 ) {
   const { profile } = await requireWriteAccess();
   setIllnessHeroUi(profile.id, {
     collapsedActive: collapsedActive === true,
-    openOtherId: typeof openOtherId === "number" ? openOtherId : null,
+    openOtherKey:
+      typeof openOtherKey === "string" && openOtherKey.length > 0
+        ? openOtherKey
+        : null,
   });
 }
 

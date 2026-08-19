@@ -56,6 +56,8 @@ export default function EpisodeLatestReadings({
   timeZone,
   nowIso,
   className = "",
+  temperatureIdentity,
+  medicationIdentity,
 }: {
   episode: AssembledEpisode;
   temperatureUnit?: TemperatureUnit;
@@ -68,6 +70,16 @@ export default function EpisodeLatestReadings({
   // nowIso prop. Server parents pass clockNow().toISOString().
   nowIso?: string;
   className?: string;
+  temperatureIdentity?: {
+    candidateId: string;
+    factKey: string;
+    groupKey: string;
+  } | null;
+  medicationIdentity?: {
+    candidateId: string;
+    factKey: string;
+    groupKey: string;
+  } | null;
 }) {
   const formatPrefs = useFormatPrefs();
   const temperature = episode.latestTemp;
@@ -83,6 +95,13 @@ export default function EpisodeLatestReadings({
         <dd
           className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm"
           data-testid="episode-last-temperature"
+          data-candidate-id={
+            temperature ? temperatureIdentity?.candidateId : undefined
+          }
+          data-fact-key={temperature ? temperatureIdentity?.factKey : undefined}
+          data-group-key={
+            temperature ? temperatureIdentity?.groupKey : undefined
+          }
         >
           {temperature ? (
             <>
@@ -128,6 +147,9 @@ export default function EpisodeLatestReadings({
         <dd
           className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm"
           data-testid="episode-last-dose"
+          data-candidate-id={dose ? medicationIdentity?.candidateId : undefined}
+          data-fact-key={dose ? medicationIdentity?.factKey : undefined}
+          data-group-key={dose ? medicationIdentity?.groupKey : undefined}
         >
           {dose ? (
             <>

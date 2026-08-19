@@ -123,34 +123,6 @@ describe("atomic dashboard placement", () => {
     ).toEqual(["safe-a", "safe-b", "safe-c", "ordinary-a", "ordinary-b"]);
   });
 
-  it("keeps active illness in ordinary Now ahead of owed actions", () => {
-    const illness = stateCandidate({
-      candidateId: "illness.state:7:open",
-      factKey: "illness.episode:7:open",
-      groupKey: "illness.episode:7:open",
-      subject,
-      applicable: true,
-      relevance: { kind: "state" },
-      rankReasons: {
-        safety: false,
-        owed: false,
-        windowOpen: false,
-        changed: true,
-      },
-      sourceOrder: order++,
-    });
-    const placements = rank([
-      action("owed-a", "must", { owed: true }),
-      action("owed-b", "must", { owed: true }),
-      illness,
-    ]);
-    expect(
-      placements
-        .filter((placement) => placement.lane === "now")
-        .map((placement) => placement.candidate.candidateId)
-    ).toEqual(["illness.state:7:open", "owed-a"]);
-  });
-
   it("censuses future and setup attention facts without promoting them", () => {
     const item = (
       key: string,

@@ -56,6 +56,22 @@ function parseSeverity(formData: FormData): number {
   return Math.round(Number(formData.get("severity")));
 }
 
+type EpisodeTarget =
+  | { kind: "absent" }
+  | { kind: "valid"; episodeId: number }
+  | { kind: "invalid" };
+
+function parseEpisodeTarget(formData: FormData): EpisodeTarget {
+  const raw = formData.get("episodeId");
+  if (raw == null) return { kind: "absent" };
+  const text = String(raw).trim();
+  if (!/^\d+$/.test(text)) return { kind: "invalid" };
+  const episodeId = Number(text);
+  return Number.isSafeInteger(episodeId) && episodeId > 0
+    ? { kind: "valid", episodeId }
+    : { kind: "invalid" };
+}
+
 function revalidateSymptoms(): void {
   revalidateRoute("/");
   revalidateRoute("/timeline");
@@ -84,12 +100,16 @@ export async function logSymptom(
     profileId = (await requireWriteAccess()).profile.id;
   }
   const symptom = String(formData.get("symptom") ?? "");
+  const episodeTarget = parseEpisodeTarget(formData);
+  if (episodeTarget.kind === "invalid")
+    return { ok: false, error: "That episode is no longer available." };
   const outcome = logSymptomCore(
     profileId,
     symptom,
     parseSeverity(formData),
     parseDate(formData, profileId),
-    String(formData.get("note") ?? "")
+    String(formData.get("note") ?? ""),
+    episodeTarget.kind === "valid" ? episodeTarget.episodeId : undefined
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't log that symptom." };
@@ -131,11 +151,15 @@ export async function lowerSymptom(
     profileId = (await requireWriteAccess()).profile.id;
   }
   const symptom = String(formData.get("symptom") ?? "");
+  const episodeTarget = parseEpisodeTarget(formData);
+  if (episodeTarget.kind === "invalid")
+    return { ok: false, error: "That episode is no longer available." };
   const outcome = lowerSymptomSeverityCore(
     profileId,
     symptom,
     parseSeverity(formData),
-    parseDate(formData, profileId)
+    parseDate(formData, profileId),
+    episodeTarget.kind === "valid" ? episodeTarget.episodeId : undefined
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't lower that symptom." };
@@ -157,11 +181,15 @@ export async function setSymptomNote(
     profileId = (await requireWriteAccess()).profile.id;
   }
   const symptom = String(formData.get("symptom") ?? "");
+  const episodeTarget = parseEpisodeTarget(formData);
+  if (episodeTarget.kind === "invalid")
+    return { ok: false, error: "That episode is no longer available." };
   const outcome = setSymptomNoteCore(
     profileId,
     symptom,
     parseDate(formData, profileId),
-    String(formData.get("note") ?? "")
+    String(formData.get("note") ?? ""),
+    episodeTarget.kind === "valid" ? episodeTarget.episodeId : undefined
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't save that note." };
@@ -182,10 +210,14 @@ export async function removeSymptom(
     profileId = (await requireWriteAccess()).profile.id;
   }
   const symptom = String(formData.get("symptom") ?? "");
+  const episodeTarget = parseEpisodeTarget(formData);
+  if (episodeTarget.kind === "invalid")
+    return { ok: false, error: "That episode is no longer available." };
   const outcome = removeSymptomCore(
     profileId,
     symptom,
-    parseDate(formData, profileId)
+    parseDate(formData, profileId),
+    episodeTarget.kind === "valid" ? episodeTarget.episodeId : undefined
   );
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't find that symptom." };

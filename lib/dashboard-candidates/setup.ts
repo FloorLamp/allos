@@ -2,11 +2,18 @@ import {
   action,
   changed,
   reading,
+  state,
   statement,
   type DomainCandidateContext,
 } from "./shared";
 
 export const setupCandidates = {
+  liveWorkout(ctx: DomainCandidateContext, activityId: number | null) {
+    const key = activityId ?? "active";
+    return state(ctx, `workout.live:${key}`, `workout.live:${key}`, null, {
+      rankReasons: changed,
+    });
+  },
   streamOffer(ctx: DomainCandidateContext, key: string) {
     return action(
       ctx,
