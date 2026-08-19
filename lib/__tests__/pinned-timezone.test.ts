@@ -9,7 +9,10 @@ import {
 } from "../date";
 import { mainSleepNights } from "../sleep-regularity";
 import { isLastNight } from "../sleep-summary";
-import { mealTimeWindows, resolveDashboardTiming } from "../dashboard-relevance";
+import {
+  mealTimeWindows,
+  resolveDashboardTiming,
+} from "../dashboard-relevance";
 import { DEFAULT_INTAKE_REMINDER_MINUTES } from "../notifications/schedule";
 
 // The e2e timezone pin (e2e/pinned-timezone.ts): for ANY frozen run-start
@@ -170,7 +173,8 @@ describe("pinned zone × meal-window dashboard timing (#3260 band)", () => {
       // The opt-out: read the SAME frozen instant in UTC rather than the pinned zone.
       const minute = localMinuteOfDay(frozen, "UTC");
       expect(minute, `utc hour ${h}`).toBe(h * 60 + 37);
-      if (resolveDashboardTiming(timing, minute).kind === "expired") dark.push(h);
+      if (resolveDashboardTiming(timing, minute).kind === "expired")
+        dark.push(h);
     }
     // Exactly the hours after the last meal window (20:00 + 60 min) closes.
     expect(dark).toEqual([21, 22, 23]);
