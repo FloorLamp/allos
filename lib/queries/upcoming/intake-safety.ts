@@ -17,7 +17,7 @@ import {
   TIME_BUCKET_LABELS,
 } from "../../intake-schedule";
 import { cadenceLabel } from "../../intake-cadence";
-import { intakeItemShortLabel } from "../../intake-short-name";
+import { intakeShortLabels } from "../../intake-short-name";
 import { doseSortKey } from "../../dose-order";
 import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
@@ -221,6 +221,22 @@ interface ScheduledDoseRow {
   item: ReturnType<typeof getIntakeItems>[number];
   dose: ReturnType<typeof getIntakeDoses>[number];
   taken: boolean;
+  // This item's chip/control label, resolved against the profile's WHOLE item set
+  // rather than from the item alone — see intakeShortLabels for why that set is the
+  // only safe input on a surface whose tap writes a dose.
+  shortLabel: string;
+}
+
+// The profile's collision-free short labels, keyed by item id. Both intake builders
+// call this over the SAME set — every item the profile owns, from one getIntakeItems
+// read — so the Upcoming chip, the household confirm row and the quick-log sheet can
+// never call one item by two different names, and no two items can share one label on
+// a control whose tap writes a dose.
+function shortLabelsById(
+  items: readonly ReturnType<typeof getIntakeItems>[number][]
+): Map<number, string> {
+  const labels = intakeShortLabels(items);
+  return new Map(items.map((item, i) => [item.id, labels[i]]));
 }
 
 // Today's scheduled dose set — must/should only, cadence- and context-gated — with
@@ -249,6 +265,7 @@ function scheduledDoseRows(
   };
 
   const byId = new Map(intakeItems.map((item) => [item.id, item]));
+  const shortLabels = shortLabelsById(intakeItems);
   const rows: ScheduledDoseRow[] = [];
   for (const dose of doses) {
     const item = byId.get(dose.item_id);
@@ -257,7 +274,12 @@ function scheduledDoseRows(
     // A weekly methotrexate is simply absent from the due list on its six off-days —
     // which is what lets it stay `must` instead of being demoted to silence it.
     if (!item || !item.active || !doseDueOn(item, dose, ctx)) continue;
-    rows.push({ item, dose, taken: taken.has(dose.id) });
+    rows.push({
+      item,
+      dose,
+      taken: taken.has(dose.id),
+      shortLabel: shortLabels.get(item.id)!,
+    });
   }
   return rows;
 }
@@ -279,6 +301,7 @@ export function doseDayProgress(
 function doseRowToItem({
   item,
   dose,
+  shortLabel,
 }: ScheduledDoseRow): UpcomingItem & { shortLabel: string } {
   const detail = [
     item.kind === "medication" ? "Medication" : null,
@@ -300,10 +323,10 @@ function doseRowToItem({
     key: `dose:${dose.id}`,
     domain: "dose",
     title: item.name,
-    // The chip/control form of the same name (#2858), resolved HERE from the item's
-    // own kind + product so every dose-row renderer reads one answer. `title` is
-    // still the record.
-    shortLabel: intakeItemShortLabel(item),
+    // The chip/control form of the same name (#2858), resolved by the gather against
+    // the profile's whole item set so every dose-row renderer reads one answer AND no
+    // two rows can wear the same one. `title` is still the record.
+    shortLabel,
     detail: detail || null,
     reasons: reasons.length ? reasons : undefined,
     href: intakeHref(item.kind),
@@ -345,6 +368,7 @@ function doseRowToItem({
 // null so nothing downstream can mistake one of these for work.
 export function offeredItems(profileId: number, today: string): UpcomingItem[] {
   const intakeItems = getIntakeItems(profileId);
+  const shortLabels = shortLabelsById(intakeItems);
   const doses = getIntakeDoses(profileId);
   const activeSituations = getEffectiveActiveSituations(profileId, today);
   const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
@@ -383,8 +407,9 @@ export function offeredItems(profileId: number, today: string): UpcomingItem[] {
       domain: "available",
       title: item.name,
       // Upcoming renders an offer as a CHIP whose text is the name (#2579-F), so the
-      // name it renders is a control label and takes the curated short form (#2858).
-      shortLabel: intakeItemShortLabel(item),
+      // name it renders is a control label and takes the curated short form (#2858)
+      // — collision-resolved across the profile, because that chip's tap WRITES.
+      shortLabel: shortLabels.get(item.id)!,
       detail:
         item.kind === "medication" ? "Medication · as needed" : "As needed",
       href: intakeHref(item.kind),

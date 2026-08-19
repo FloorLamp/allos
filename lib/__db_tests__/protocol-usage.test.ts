@@ -323,6 +323,58 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
     });
   });
 
+  // #2797 review caveat 1. An UNMEASURABLE frequency target has already answered
+  // "what does this protocol measure" — with "not a session ledger". Acquiring the
+  // dose ledger instead would report a substance CAP as usage, which is the
+  // adherence misread PROTOCOL_USAGE_LEDGER's own comment declines to create.
+  it("keeps reporting nothing when the frequency target is an unmeasurable scope", () => {
+    const substanceTargetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, per_week)
+           VALUES (1, 'substance', 'alcohol', 3)`
+        )
+        .run().lastInsertRowid
+    );
+    const item = insertIntakeItem(1, "Creatine Monohydrate");
+    const pid = insertProtocol(1, {
+      start: "2026-06-01",
+      end: "2026-06-30",
+      frequency_target_id: substanceTargetId,
+      intake_item_id: item.itemId,
+    });
+    insertDoseLog(item, "2026-06-05");
+    insertDoseLog(item, "2026-06-06");
+
+    expect(getProtocolUsage(1, getProtocol(1, pid)!, "2026-07-31")).toEqual({
+      sessions: 0,
+      lastUsed: null,
+    });
+  });
+
+  // #2797 review caveat 2. `intake_item_logs.item_id` is a NULLABLE denormalized
+  // shortcut (migration 011 finding #2); `intake_item_doses.item_id` is NOT NULL and
+  // FK-enforced. Reading the shortcut would silently drop a log that left it null and
+  // would disagree with every other reader of this ledger about who owns the row.
+  it("counts a dose whose log left the denormalized item_id null", () => {
+    const item = insertIntakeItem(1, "Creatine Monohydrate");
+    const pid = insertProtocol(1, {
+      start: "2026-06-01",
+      end: "2026-06-30",
+      intake_item_id: item.itemId,
+    });
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status)
+       VALUES (?, NULL, '2026-06-07', 'taken')`
+    ).run(item.doseId);
+
+    expect(getProtocolUsage(1, getProtocol(1, pid)!, "2026-07-31")).toEqual({
+      sessions: 1,
+      lastUsed: "2026-06-07",
+    });
+  });
+
   it("does not tally another profile's doses through a leaked intake_item_id", () => {
     const otherProfile = Number(
       db.prepare("INSERT INTO profiles (name) VALUES ('Neighbour')").run()

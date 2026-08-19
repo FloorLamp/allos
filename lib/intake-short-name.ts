@@ -168,3 +168,55 @@ export function intakeItemShortLabel(item: {
   }
   return item.name;
 }
+
+/**
+ * The short labels for a WHOLE SET of a profile's intake items, positionally —
+ * `out[i]` is the label for `items[i]` — with collisions resolved: any item whose
+ * short form is not unique in the set falls back to its FULL name.
+ *
+ * WHY THIS IS THE ONLY SAFE ENTRY POINT FOR A CONTROL THAT WRITES. Shortening is a
+ * MANY-TO-ONE map, and `intakeItemShortLabel` answers for one item in isolation, so
+ * it cannot see the sibling it lands on top of:
+ *
+ *   • the curated map aliases on purpose — "Coenzyme Q10" and "Ubiquinone" both
+ *     resolve to "CoQ10", and both magnesium glycinates share one entry;
+ *   • most of its VALUES are also plausible names in their own right, so an item
+ *     literally named "Creatine" collides with one named "Creatine Monohydrate"
+ *     even though only the second was shortened;
+ *   • the product fallback needs no curated entry at all — two items sharing a
+ *     brand's product line both render that product.
+ *
+ * Two identical labels over two different dose ids is a WRONG-SUBJECT hazard on any
+ * surface where the tap writes: a mistaken tap logs the wrong item's dose, moves the
+ * wrong redose window, decrements the wrong supply, and leaves the intended dose
+ * open. A longer chip is strictly better than a wrong dose, so ambiguity always
+ * loses to the full name here — never the other way round.
+ *
+ * Resolve over the profile's WHOLE item set, not the subset a surface happens to be
+ * rendering: a label that shortened or lengthened depending on which items were due
+ * today would be a different name for the same thing on two screens.
+ *
+ * Items whose FULL names are also identical stay identical — that is the pre-existing
+ * duplicate-name state every intake surface already qualifies with the dose detail
+ * beside it, and this function neither creates nor can fix it.
+ *
+ * Pure. Comparison is the same normalization the lookup uses, so "CoQ10" and "coq10"
+ * count as the collision they would read as.
+ */
+export function intakeShortLabels(
+  items: readonly {
+    name: string;
+    kind?: IntakeItemKind | null;
+    product?: string | null;
+  }[]
+): string[] {
+  const labels = items.map((item) => intakeItemShortLabel(item));
+  const counts = new Map<string, number>();
+  for (const label of labels) {
+    const key = normalizeIntakeName(label);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return labels.map((label, i) =>
+    (counts.get(normalizeIntakeName(label)) ?? 0) > 1 ? items[i].name : label
+  );
+}

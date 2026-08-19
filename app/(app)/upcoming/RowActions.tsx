@@ -51,6 +51,11 @@ const ACTION_ICON: Record<string, TablerIcon> = {
 // (#2858): it becomes the control's accessible name and its hover title, so a
 // shortened supplement name is never the only form the chip can be read as. Absent
 // on every chip whose label already IS the whole thing.
+//
+// A CHIP concern only. The overflow-menu presenter below renders `label` verbatim,
+// because the only surface that abbreviates (Upcoming's availability run) renders
+// with `fold={false}` and has no menu — giving the menu a branch no descriptor can
+// reach would be a second, untested definition of what a row action is called.
 type FullLabel = { fullLabel?: string };
 
 export type RowAction =
@@ -189,10 +194,6 @@ function RowActionMenuItems({
     <div className="border-b border-black/5 pb-1 sm:hidden dark:border-white/5">
       {actions.map((a) => {
         const Icon = a.icon ? ACTION_ICON[a.icon] : null;
-        // A menu item is a full-width row with no width budget, so it spends it on
-        // the WHOLE name when the chip abbreviated one (#2858). Same descriptor,
-        // two presenters — the abbreviation is a property of the narrow one.
-        const label = a.fullLabel ?? a.label;
         if (a.kind === "link") {
           return (
             <Link
@@ -202,7 +203,7 @@ function RowActionMenuItems({
               className={`${MENU_ITEM} flex items-center gap-1.5`}
             >
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
-              {label}
+              {a.label}
             </Link>
           );
         }
@@ -215,7 +216,7 @@ function RowActionMenuItems({
               className={`${MENU_ITEM} flex items-center gap-1.5`}
             >
               {Icon && <Icon className="h-3.5 w-3.5" stroke={1.75} />}
-              {label}
+              {a.label}
             </button>
           </form>
         );

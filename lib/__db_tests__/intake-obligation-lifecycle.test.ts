@@ -25,6 +25,7 @@ import { bodyFor } from "@/lib/notifications/types";
 import { db, today } from "@/lib/db";
 import { lastNDates, shiftDateStr } from "@/lib/date";
 import { collectUpcoming, offeredItems } from "@/lib/queries/upcoming";
+import { doseItems } from "@/lib/queries/upcoming/intake-safety";
 import {
   getIntakeItems,
   getIntakeDoses,
@@ -742,5 +743,57 @@ describe("#2579-F — an offer states its qualifier for a chip and for a sentenc
     // No dose ⇒ nothing to log, so the page renders this one as a plain link chip
     // rather than dropping it: an offer that vanished would read as a deletion.
     expect(offer!.doseId).toBeUndefined();
+  });
+});
+
+// ---- Part 6 (#2858 review, R1): an offer CHIP's label is a write control -----
+
+describe("#2858 — no two offer chips can wear the same short label", () => {
+  it("falls both sides of a collision back to their full names", () => {
+    // Upcoming renders each offer as a chip whose TAP LOGS THE DOSE. Two chips
+    // reading "CoQ10 · Morning" over two different dose ids is a wrong-subject
+    // hazard: the wrong item gets a taken row, the wrong supply is decremented,
+    // the wrong redose window moves and the intended dose is left open. The
+    // gather has to make that impossible — a chip renderer holds one row and
+    // cannot see the sibling it collides with.
+    const p = createProfile("Offer Collision (test)");
+    const day = today(p);
+    // The curated map aliases these two names onto "CoQ10" on purpose.
+    seedItem(p, "Coenzyme Q10", { obligation: "may" });
+    seedItem(p, "Ubiquinone", { obligation: "may" });
+
+    const offers = offeredItems(p, day).filter((i) =>
+      ["Coenzyme Q10", "Ubiquinone"].includes(i.title)
+    );
+    expect(offers).toHaveLength(2);
+    expect(offers.map((i) => i.shortLabel).sort()).toEqual([
+      "Coenzyme Q10",
+      "Ubiquinone",
+    ]);
+  });
+
+  it("still shortens an offer with nothing to collide with", () => {
+    // The fallback is targeted, not a retreat from shortening altogether.
+    const p = createProfile("Offer Solo Short (test)");
+    const day = today(p);
+    seedItem(p, "Coenzyme Q10", { obligation: "may" });
+
+    const offer = offeredItems(p, day).find((i) => i.title === "Coenzyme Q10");
+    expect(offer!.shortLabel).toBe("CoQ10");
+  });
+
+  it("agrees with the DUE gather about what one item is called", () => {
+    // The two builders resolve over the SAME profile-wide set, so an item cannot
+    // be "CoQ10" on one surface and "Coenzyme Q10" on another — the household
+    // confirm row and the Upcoming chip read the same field.
+    const p = createProfile("Offer Due Agree (test)");
+    const day = today(p);
+    seedItem(p, "Coenzyme Q10", { obligation: "may" });
+    seedItem(p, "Ubiquinone", { obligation: "must" });
+
+    const offer = offeredItems(p, day).find((i) => i.title === "Coenzyme Q10");
+    const due = doseItems(p, day).find((i) => i.title === "Ubiquinone");
+    expect(offer!.shortLabel).toBe("Coenzyme Q10");
+    expect(due!.shortLabel).toBe("Ubiquinone");
   });
 });

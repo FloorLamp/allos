@@ -28,7 +28,7 @@ import {
   dayHistoryWindow,
 } from "@/lib/day-history";
 import { FOOD_GROUPS, foodGroupShortName } from "@/lib/food-groups";
-import { intakeItemShortLabel } from "@/lib/intake-short-name";
+import { intakeShortLabels } from "@/lib/intake-short-name";
 import { EmptyState } from "@/components/ui";
 import StackedBarCard from "@/components/StackedBarCard";
 import ChartCard from "@/components/ChartCard";
@@ -124,12 +124,8 @@ export default async function NutritionSection({
   const doseItems = [...new Map(doseRows.map((d) => [d.itemId, d])).values()];
   // Each row's DISPLAY name in a chosen vocabulary, disambiguated: a name two
   // separately-managed items share earns the qualifier that tells them apart, and a
-  // pair that STILL collides earns an ordinal. Run twice — once over the full names,
-  // once over the curated short ones (#2858) — because the two vocabularies collide
-  // in different places: the short forms deliberately alias ("Coenzyme Q10" and
-  // "Ubiquinone" are both "CoQ10"), so a shortening that skipped this step would put
-  // two identical labels on two independent rows, which is the exact ambiguity the
-  // full-name pass already exists to prevent.
+  // pair that STILL collides earns an ordinal. Run over both vocabularies, because
+  // they collide in different places.
   const disambiguate = (
     nameOf: (item: (typeof doseItems)[number]) => string
   ) => {
@@ -164,7 +160,19 @@ export default async function NutritionSection({
   // the SAME `short` seam the food groups already use, so a 20-item dose vocabulary
   // fits its chip run instead of truncating every label to "Coenzyme…". `label`
   // stays the record's full name, in the tooltips and the aria copy.
-  const doseShortLabels = disambiguate((item) => intakeItemShortLabel(item));
+  //
+  // The SHORT names come from the shared resolver's set-aware entry point, which is
+  // the ONE definition of "what is this item called on a dense surface" — the same
+  // answer the Upcoming chips and the household confirm rows get. It has already
+  // dropped any label two items would have shared, so this pass only adds the
+  // qualifier/ordinal a duplicate FULL name still earns.
+  const shortNames = intakeShortLabels(doseItems);
+  const shortByItemId = new Map(
+    doseItems.map((item, i) => [item.itemId, shortNames[i]])
+  );
+  const doseShortLabels = disambiguate(
+    (item) => shortByItemId.get(item.itemId)!
+  );
   const doseGroups = doseItems.map((item) => ({
     key: String(item.itemId),
     label: doseLabels.get(item.itemId)!,
