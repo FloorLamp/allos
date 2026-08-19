@@ -25,6 +25,9 @@ export default function IllnessCockpitBody({
   episode,
   crossProfile,
   canWrite,
+  ownsSharedProfileControls,
+  hasPluralOpenEpisodes,
+  profileDisplayName,
   model,
   temperatureIdentity,
   medicationIdentity,
@@ -33,6 +36,9 @@ export default function IllnessCockpitBody({
   episode: AssembledEpisode;
   crossProfile: boolean;
   canWrite: boolean;
+  ownsSharedProfileControls: boolean;
+  hasPluralOpenEpisodes: boolean;
+  profileDisplayName: string;
   model: DashboardIllnessCockpitModel;
   temperatureIdentity?: {
     candidateId: string;
@@ -68,8 +74,17 @@ export default function IllnessCockpitBody({
       {canWrite && controls ? (
         <section>
           <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Symptoms &amp; Temperature
+            Symptoms
           </h3>
+          {ownsSharedProfileControls && hasPluralOpenEpisodes ? (
+            <p
+              className="mb-3 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="illness-shared-profile-controls-context"
+            >
+              Temperature and medications are shared across {profileDisplayName}
+              &apos;s open episodes.
+            </p>
+          ) : null}
           <SymptomLogBar
             date={date}
             altDate={controls.altDate}
@@ -81,7 +96,7 @@ export default function IllnessCockpitBody({
             customNames={controls.customNames}
             rankedKeys={controls.rankedKeys}
             suggestActivateIllness={false}
-            showTemperature
+            showTemperature={ownsSharedProfileControls}
             temperatureUnit={temperatureUnit}
             timeZone={timeZone}
             profileId={target}
@@ -105,6 +120,7 @@ export default function IllnessCockpitBody({
 
       {canWrite &&
         controls &&
+        ownsSharedProfileControls &&
         (controls.prnMeds.length > 0 || !crossProfile) && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"

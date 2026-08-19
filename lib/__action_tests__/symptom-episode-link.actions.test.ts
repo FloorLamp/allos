@@ -124,6 +124,46 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
         .get(profile.id, DATE, "cough")
     ).toBeUndefined();
   });
+
+  it("never treats a present malformed, zero, or closed episode target as absent", async () => {
+    const login = createLogin();
+    const profile = createProfile("Strict Target Actor", login.id);
+    actAs(login, profile);
+    const fallback = createEpisodeRow(
+      profile.id,
+      "Newest open",
+      "2026-03-03",
+      null
+    );
+    const closed = createEpisodeRow(
+      profile.id,
+      "Closed",
+      "2026-03-01",
+      "2026-03-03"
+    );
+
+    for (const [symptom, episodeId] of [
+      ["cough", "garbage"],
+      ["headache", "0"],
+      ["fatigue", String(closed)],
+    ] as const) {
+      expect(
+        await logSymptom(fd({ symptom, severity: 2, date: DATE, episodeId }))
+      ).toMatchObject({ ok: false });
+      expect(
+        db
+          .prepare(
+            "SELECT 1 FROM symptom_logs WHERE profile_id = ? AND date = ? AND symptom = ?"
+          )
+          .get(profile.id, DATE, symptom)
+      ).toBeUndefined();
+    }
+
+    expect(
+      await logSymptom(fd({ symptom: "nausea", severity: 2, date: DATE }))
+    ).toMatchObject({ ok: true });
+    expect(episodeIdOf(profile.id, "nausea")).toBe(fallback);
+  });
 });
 
 describe("setSymptomEpisode — detach / attach (#1093)", () => {

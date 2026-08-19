@@ -484,6 +484,12 @@ async function renderDashboard(
 
   const dashboardNow = clockNow();
   const cockpitModelByEpisode = new Map<number, DashboardIllnessCockpitModel>();
+  const cockpitCountByProfile = new Map<number, number>();
+  for (const cockpit of orderedCockpits)
+    cockpitCountByProfile.set(
+      cockpit.profileId,
+      (cockpitCountByProfile.get(cockpit.profileId) ?? 0) + 1
+    );
   for (const profileId of new Set(
     orderedCockpits.map((cockpit) => cockpit.profileId)
   )) {
@@ -576,6 +582,11 @@ async function renderDashboard(
           episode={displayEpisode}
           crossProfile={!c.isActive}
           canWrite={scope.access.get(c.profileId) === "write"}
+          ownsSharedProfileControls={c.episodeOrder === 0}
+          hasPluralOpenEpisodes={
+            (cockpitCountByProfile.get(c.profileId) ?? 0) > 1
+          }
+          profileDisplayName={nameFor(c.avatar)}
           model={model}
           temperatureIdentity={
             displayEpisode.latestTemp?.id == null

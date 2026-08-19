@@ -109,6 +109,50 @@ test("simultaneous episodes keep whole controls and close independently", async 
       page.getByTestId("illness-hero").getByTestId("symptom-headache-sev-2")
     ).toHaveCount(1);
 
+    const owningCockpit = bySituation("Stomach bug");
+    await expect(
+      page.getByTestId("illness-hero").getByTestId("temp-quick-toggle")
+    ).toHaveCount(1);
+    await expect(
+      page.getByTestId("illness-hero").getByTestId("cockpit-prn")
+    ).toHaveCount(1);
+    await expect(
+      owningCockpit.getByTestId("illness-shared-profile-controls-context")
+    ).toContainText("shared across");
+    for (const situation of ["Migraine", "Flu"]) {
+      await expect(
+        bySituation(situation).getByTestId("temp-quick-toggle")
+      ).toHaveCount(0);
+      await expect(
+        bySituation(situation).getByTestId("cockpit-prn")
+      ).toHaveCount(0);
+    }
+    const owningBar = owningCockpit.getByTestId("symptom-log-bar");
+    await openTempEntry(owningBar);
+    await owningBar.getByTestId("temp-quick-input").fill("101.9");
+    await owningBar.getByTestId("temp-quick-time").fill("12:00");
+    await settledClick(page, owningBar.getByTestId("temp-quick-save"));
+    await settledClick(page, owningCockpit.getByTestId("prn-log-now"));
+    await page.reload();
+    await expect(
+      bySituation("Stomach bug").getByTestId("episode-last-temperature")
+    ).toContainText("101.9");
+    await expect(
+      bySituation("Stomach bug").getByTestId("episode-last-dose")
+    ).toContainText("Ibuprofen");
+    await expect(
+      page
+        .getByTestId("illness-hero")
+        .getByTestId("episode-last-temperature")
+        .filter({ hasText: "101.9" })
+    ).toHaveCount(1);
+    await expect(
+      page
+        .getByTestId("illness-hero")
+        .getByTestId("episode-last-dose")
+        .filter({ hasText: "Ibuprofen" })
+    ).toHaveCount(1);
+
     const standingFingerprint = () =>
       page
         .getByTestId("dashboard-standing")

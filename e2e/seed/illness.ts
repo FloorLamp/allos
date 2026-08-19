@@ -244,6 +244,21 @@ export function seedIllness(): void {
      ON CONFLICT(profile_id, date, symptom)
      DO UPDATE SET severity = excluded.severity`
   ).run(multiIllnessId, multiToday);
+  const multiPrnId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, active, kind, condition, obligation,
+            quantity_on_hand, qty_per_dose, min_interval_hours, max_daily_count)
+         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'may', 20, 1, 6, 4)`
+      )
+      .run(multiIllnessId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses
+       (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '400 mg', 'any', 'any', 0)`
+  ).run(multiPrnId);
 
   // SICK_SELF: sole (active) profile is sick → its own FULL cockpit at hero position.
   seedMemberLogin(E2E_LOGIN_SICK_SELF, sickSelfId);
