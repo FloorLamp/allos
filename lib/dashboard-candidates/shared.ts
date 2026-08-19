@@ -1,5 +1,6 @@
 import type {
   DashboardCandidate,
+  DashboardEpisodeGroup,
   DashboardObligation,
   DashboardRankReasons,
   DashboardReadingPromotion,
@@ -30,6 +31,7 @@ interface Policy {
   rankReasons?: DashboardRankReasons;
   readingPromotion?: DashboardReadingPromotion;
   standingEligible?: boolean;
+  episodeGroup?: DashboardEpisodeGroup;
 }
 
 const applicable = (ctx: DomainCandidateContext) => ctx.applicable ?? true;

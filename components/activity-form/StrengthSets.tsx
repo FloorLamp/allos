@@ -15,6 +15,7 @@ import {
   composeVariant,
   defaultEquipment,
   exerciseHistoryKey,
+  loadKindOf,
   regionForExercise,
 } from "@/lib/lifts";
 import {
@@ -348,14 +349,19 @@ export default function StrengthSets({
     sets: Parameters<typeof sessionBestSet>[0]
   ): NextSet | null => {
     if (!hist) return null;
-    const best = sessionBestSet(sets, seedBase);
+    // The SIGN of the fold, from the movement's load kind (#1922): an assisted
+    // lift's logged weight is a counterweight, so it subtracts. suggestNextSet
+    // declines assisted lifts outright, but the seed is folded honestly here so
+    // the anchor this reads can never be an inverted load.
+    const seedLoadKind = loadKindOf(p.name);
+    const best = sessionBestSet(sets, seedBase, seedLoadKind);
     if (!(best && (hist.bodyweight || best.weightKg > 0))) return null;
     const base = suggestNextSet(
       {
         exercise: p.name,
         bodyweight: hist.bodyweight,
         lastSessionBest: best,
-        lastSessionSets: sessionWorkSets(sets, seedBase),
+        lastSessionSets: sessionWorkSets(sets, seedBase, seedLoadKind),
       },
       units.weightUnit
     );

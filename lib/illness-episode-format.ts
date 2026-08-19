@@ -26,6 +26,9 @@ export interface SymptomSeriesPoint {
   date: string;
   severity: number; // 1–4
   note: string | null;
+  // Present for DB-backed rows. Legacy/unlinked facts remain eligible for stable
+  // first-episode presentation ownership.
+  episodeId?: number | null;
 }
 
 // One symptom's severity-over-time series within the episode (oldest day first).
@@ -384,11 +387,17 @@ export function episodeHeadline(ep: AssembledEpisode): string {
 export interface EpisodeCollapsedStatus {
   dayLabel: string;
   temperature: {
+    id: number | string;
     value: string;
     when: string | null;
     high: boolean;
   } | null;
-  lastMeds: { name: string; dose: string | null; when: string | null } | null;
+  lastMeds: {
+    id: number | string;
+    name: string;
+    dose: string | null;
+    when: string | null;
+  } | null;
   worsening: boolean;
 }
 
@@ -470,6 +479,9 @@ export function episodeCollapsedStatus(
     dayLabel: day != null ? `${ep.situation} · Day ${day}` : ep.situation,
     temperature: temperature
       ? {
+          id:
+            temperature.id ??
+            `${temperature.date}:${temperature.time ?? "day"}`,
           value: fmtTemp(temperature.degF, tempUnit),
           when: collapsedReadingWhen(
             temperature.date,
@@ -483,6 +495,9 @@ export function episodeCollapsedStatus(
       : null,
     lastMeds: lastDose
       ? {
+          id:
+            lastDose.id ??
+            `${lastDose.itemId}:${lastDose.date}:${lastDose.time ?? "day"}`,
           name: lastDose.name,
           dose: formatMedicationDoseProduct(lastDose.amount, lastDose.product),
           when: collapsedReadingWhen(
@@ -608,23 +623,94 @@ export function householdSickLine(
   return parts.join(" · ");
 }
 
-// Order the illness-hero cockpits (issue #858): the acting profile's own open episode
-// first (it's the full cockpit at hero position), then every other accessible profile's
-// open episode by episode start (earliest first — longest-running patient leads), with a
-// stable profileId tie-break. Pure so the ordering is unit-tested independent of the DB
-// gather that fills each cockpit.
+// Order the illness cockpits: all acting-profile episodes first, then household
+// profiles by numeric id, preserving the owning gather's episode order and key.
+// Pure so ordering is tested independently of the DB gather that fills each cockpit.
 export function orderIllnessCockpits<
-  T extends { profileId: number; isActive: boolean; start: string | null },
+  T extends {
+    profileId: number;
+    isActive: boolean;
+    episodeOrder: number;
+    episodeKey: string;
+  },
 >(cockpits: readonly T[]): T[] {
-  return [...cockpits].sort((a, b) => {
-    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-    // A known start outranks a before-log null start; then earliest start first.
-    const an = a.start == null;
-    const bn = b.start == null;
-    if (an !== bn) return an ? 1 : -1;
-    if (a.start != null && b.start != null && a.start !== b.start)
-      return a.start < b.start ? -1 : 1;
-    return a.profileId - b.profileId;
+  return [...cockpits].sort(
+    (a, b) =>
+      Number(b.isActive) - Number(a.isActive) ||
+      a.profileId - b.profileId ||
+      a.episodeOrder - b.episodeOrder ||
+      a.episodeKey.localeCompare(b.episodeKey)
+  );
+}
+
+// Overlapping open episode windows can contain the same stored symptom, temperature,
+// or administration. Assign each atom to the first already-ordered episode so the
+// dashboard never renders or keys one stored fact twice (#3138). Episode state and
+// episode-specific conditions remain per episode.
+export function assignOrderedEpisodeFacts<
+  T extends { profileId: number; episode: AssembledEpisode },
+>(ordered: readonly T[]): T[] {
+  const symptoms = new Set<string>();
+  const temperatures = new Set<string>();
+  const administrations = new Set<string>();
+  return ordered.map((entry) => {
+    const { profileId, episode } = entry;
+    const ownedSymptoms = episode.symptoms.flatMap((series) => {
+      const points = series.points.filter((point) => {
+        if (point.episodeId != null && point.episodeId !== episode.id)
+          return false;
+        const key = `${profileId}:${series.symptom}:${point.date}`;
+        if (symptoms.has(key)) return false;
+        symptoms.add(key);
+        return true;
+      });
+      return points.length > 0
+        ? [
+            {
+              ...series,
+              points,
+              maxSeverity: Math.max(...points.map((p) => p.severity)),
+            },
+          ]
+        : [];
+    });
+    const ownedTemperatures = episode.temperatures.filter((temperature) => {
+      const key = `${profileId}:${temperature.id ?? `${temperature.date}:${temperature.time ?? "day"}`}`;
+      if (temperatures.has(key)) return false;
+      temperatures.add(key);
+      return true;
+    });
+    const ownedMedications = episode.medications.flatMap((medication) => {
+      const owned = medication.administrations.filter((administration) => {
+        const key = `${profileId}:${administration.id ?? `${medication.itemId}:${administration.date}:${administration.time ?? "day"}`}`;
+        if (administrations.has(key)) return false;
+        administrations.add(key);
+        return true;
+      });
+      return owned.length > 0
+        ? [{ ...medication, count: owned.length, administrations: owned }]
+        : [];
+    });
+    return {
+      ...entry,
+      episode: {
+        ...episode,
+        symptoms: ownedSymptoms,
+        distinctSymptomCount: ownedSymptoms.length,
+        temperatures: ownedTemperatures,
+        maxTempF: ownedTemperatures.reduce<number | null>(
+          (max, reading) =>
+            max == null || reading.degF > max ? reading.degF : max,
+          null
+        ),
+        latestTemp: ownedTemperatures.at(-1) ?? null,
+        medications: ownedMedications,
+        totalAdministrations: ownedMedications.reduce(
+          (count, medication) => count + medication.administrations.length,
+          0
+        ),
+      },
+    };
   });
 }
 

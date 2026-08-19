@@ -1683,6 +1683,53 @@
       ],
       "primaryMuscles": ["abs"],
       "secondaryMuscles": ["obliques", "front-delts", "glutes", "quads"]
+    },
+    {
+      "key": "assisted pull up",
+      "setup": [
+        "Set the counterweight on the assist machine, then kneel or stand on the pad.",
+        "Grip the bar wider than shoulders, palms facing away, arms straight, shoulders set down and back."
+      ],
+      "execution": [
+        "Pull your chest toward the bar, driving the elbows down and back.",
+        "Bring your chin over the bar.",
+        "Lower under control to a full hang, letting the pad carry only what you set it to."
+      ],
+      "breathing": "Exhale as you pull up, inhale as you lower.",
+      "commonMistakes": [
+        "Pushing off the pad with the legs instead of pulling with the back.",
+        "Cutting the bottom short rather than returning to a full hang.",
+        "Shrugging up rather than driving the elbows down."
+      ],
+      "safetyNotes": [
+        "The number you log here is the assistance, so a lower number is the harder set: progress by taking weight off the stack."
+      ],
+      "primaryMuscles": ["lats"],
+      "secondaryMuscles": ["biceps", "mid-back", "forearms"]
+    },
+    {
+      "key": "assisted dip",
+      "setup": [
+        "Set the counterweight on the assist machine, then kneel or stand on the pad.",
+        "Grip the bars and press up to arms straight, shoulders down.",
+        "Lean the torso slightly forward for chest emphasis, or stay upright for triceps."
+      ],
+      "execution": [
+        "Lower under control until your upper arms reach about parallel.",
+        "Keep the elbows tracking back, not flaring wide.",
+        "Press back up to lockout."
+      ],
+      "breathing": "Inhale as you lower, exhale as you press up.",
+      "commonMistakes": [
+        "Letting the pad bounce you out of the bottom.",
+        "Dropping too deep and overstressing the shoulders.",
+        "Shrugging the shoulders up at the bottom."
+      ],
+      "safetyNotes": [
+        "The number you log here is the assistance, so a lower number is the harder set: progress by taking weight off the stack."
+      ],
+      "primaryMuscles": ["chest"],
+      "secondaryMuscles": ["triceps", "front-delts"]
     }
   ]
 }

@@ -83,9 +83,13 @@ export interface SexStandards {
 }
 export interface LiftStandards {
   unit: "kg";
-  // A bodyweight lift (Pull Up): the "1RM" folds bodyweight + any added load, so
-  // the threshold kg is the total system load — a clean bodyweight rep sits near
-  // the novice band. Informational to consumers; the math is identical.
+  // A bodyweight lift (Pull Up): the "1RM" is the TOTAL SYSTEM LOAD — bodyweight
+  // combined with any external load — so a clean bodyweight rep sits near the
+  // novice band, a weighted rep above it, and an assisted rep below it. This is the
+  // table's BASIS, stated once (#1922): total, never the added load alone. It is
+  // what lets an assisted pull-up place honestly on these same bands at
+  // `bodyweight − assistance` without shifting where a weighted pull-up places.
+  // Informational to consumers; the math is identical.
   bodyweight: boolean;
   source: string;
   sexes: { male: SexStandards; female: SexStandards };
@@ -149,8 +153,8 @@ const LIFTS: Record<string, LiftSpec> = {
     male: r(0.75, 1.25, 1.75, 2.5, 3.0),
     female: r(0.6, 1.0, 1.5, 2.0, 2.5),
   },
-  // Pull Up folds bodyweight into the load; ratio < 1 implies assistance, ~1 a
-  // clean bodyweight rep, > 1 added weight.
+  // Pull Up's load is bodyweight ± external load (the total-system basis above);
+  // ratio < 1 implies assistance, ~1 a clean bodyweight rep, > 1 added weight.
   "Pull Up": {
     bodyweight: true,
     male: r(0.85, 1.0, 1.25, 1.5, 1.9),
@@ -245,9 +249,12 @@ export function buildStrengthStandards(): StrengthStandardsDataset {
       "Baked bodyweight-band strength-standards dataset (issue #152) for COACHING " +
       "CONTEXT on estimated 1RM. Thresholds are DERIVED (no proprietary tables): " +
       "lib/strength.ts anchor ratios scaled by bodyweight^(2/3) (Lietzke 1956, the " +
-      "cross-sectional-area law). Committed + HUMAN-REVIEWABLE; regenerate with " +
-      "`npm run gen:strength-standards`. INFORMATIONAL reference standards, NOT " +
-      "measurements or medical/coaching advice.",
+      "cross-sectional-area law). BASIS (#1922): a threshold is an absolute 1RM in " +
+      "kg, and for a `bodyweight` lift that kg is the TOTAL SYSTEM LOAD — bodyweight " +
+      "combined with any external load, ADDED for a weighted rep and SUBTRACTED for " +
+      "an assisted one — never the added load alone. Committed + HUMAN-REVIEWABLE; " +
+      "regenerate with `npm run gen:strength-standards`. INFORMATIONAL reference " +
+      "standards, NOT measurements or medical/coaching advice.",
     citation: [
       {
         source:

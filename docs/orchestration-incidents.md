@@ -707,3 +707,42 @@ Generalised: a proxy may raise an alarm, but it may not authorise the
 destructive response to that alarm. Both directions of this detector are now
 receipted — soothing over the dead (four times) and alarming over the living
 (once, and one careful subagent away from losing work).
+
+## The lane I retired out from under a live agent (2026-08-19)
+
+PR #3176 merged. I closed its ledger entry with `--keep`, then removed its
+worktree by hand with `git worktree remove --force`. An agent was inside that
+directory running gates. The directory vanished mid-run, taking an uncommitted
+fix with it — the one remaining item from the review that PR was closing — and
+the run reported `GATE format (LAST): FAIL (exit 2)` followed by `pwd: error
+retrieving current directory`.
+
+The agent reported the unexplained gate failure instead of quietly re-running,
+which is the only reason the cause was ever identified rather than filed as a
+formatting flake.
+
+It then diagnosed the cause as the brief having coupled it to a path from a
+previous dispatch (#3172 reused #3163's `wt-e2e-leak`). That is wrong, and worth
+recording as wrong: the coupling determined WHO was standing there, but the
+removal is what did it. I had said, after deleting `.next` from three live trees
+earlier the same day, that I would ask before touching an agent's worktree. I
+then did it again under a tidier name — "retiring a lane" — and did not notice
+that it was the same action.
+
+Two guards, because the two failures are different:
+
+- A worktree path now belongs to one dispatch forever, retired ones included.
+  Reusing a retired path couples two lanes to one directory and the coupling only
+  shows itself at retirement, when the removal lands on whoever is there now.
+- Retirement now asks whether a PROCESS is standing in the tree, not only whether
+  the tree was written recently. The agent's own point, and it is the sharper
+  one: its git state was clean and its branch was merged, so every proxy said the
+  lane was safe to reap. What was live was a gate run — and this project's own
+  brief tells agents to write logs to `$SCRATCH` rather than into the worktree,
+  so a long tier can run for minutes touching nothing inside it. A process whose
+  cwd is in the tree is not a proxy for occupancy; it is occupancy.
+
+Generalised, and this is the third time today the same shape has appeared: a
+proxy that answers a cheaper question than the one being asked will agree with
+the real answer right up until the case that matters. A clean tree meant
+"everything is pushed", not "nobody is here".

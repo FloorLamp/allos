@@ -71,6 +71,12 @@ import {
   type AnalyzeView,
   type RangeId,
 } from "@/lib/analyze-view";
+import {
+  assumesFreeWeightExecution,
+  FREE_WEIGHT_ASSUMED_NOTE,
+  standardsGap,
+  standardsGapNote,
+} from "@/lib/strength-standards";
 import { cardMetaEntries } from "@/lib/card-row";
 import { EmptyState } from "@/components/ui";
 import ActivityIcon from "@/components/ActivityIcon";
@@ -692,6 +698,16 @@ function strengthView({
   const benchmark = adultClinicalContent
     ? benchmarkState(stat.exercise, sex, stat.freeWeightE1rmKg, bodyweightKg)
     : null;
+  // #1922: when there IS no badge, say why rather than omitting it silently — the
+  // silence is what teaches a lifter to re-type a machine press under a barbell
+  // name. And when there IS one but machine sets sit in the same history, note the
+  // free-weight assumption behind it (#798: informational, never blocking).
+  const standardsNote =
+    adultClinicalContent && !benchmark
+      ? standardsGapNote(standardsGap(stat.exercise, stat))
+      : adultClinicalContent && assumesFreeWeightExecution(stat)
+        ? FREE_WEIGHT_ASSUMED_NOTE
+        : null;
   return {
     name: stat.exercise,
     displayName: loadContextLabel(
@@ -753,6 +769,11 @@ function strengthView({
             state={benchmark}
             weightUnit={units.weightUnit}
           />
+        )}
+        {standardsNote && (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {standardsNote}
+          </p>
         )}
       </>
     ),

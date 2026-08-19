@@ -276,6 +276,24 @@ function buildBrief(opts) {
   }
   const portBase = opts.portBase ?? allocatePortBase(active);
 
+  // A WORKTREE PATH BELONGS TO ONE DISPATCH, FOREVER — retired ones included.
+  // Reusing a retired dispatch's path couples two lanes to one directory, and the
+  // coupling only reveals itself at RETIREMENT: the first lane's PR merges, its
+  // tree is removed, and the removal lands on whoever is standing there now. That
+  // happened on 2026-08-19 — #3172's brief reused #3163's `wt-e2e-leak`, and the
+  // tree went out from under a live gate run, taking an uncommitted fix with it.
+  // Refused rather than warned, for the reason the port check gives: a brief that
+  // has already been pasted into an agent is not going to be re-read.
+  const priorWorktree = readLedger().find(
+    (r) => r.worktree === opts.worktree && r.branch !== opts.branch
+  );
+  if (priorWorktree) {
+    throw new Error(
+      `worktree ${opts.worktree} already belongs to dispatch ${priorWorktree.branch} (active or retired). ` +
+        `A path is never reused — pick a branch-specific one.`
+    );
+  }
+
   const nodeLine = node24
     ? `- export PATH=${node24}:$PATH in EVERY shell (verify better-sqlite3 loads)`
     : "- No node 24 found under /opt/nvm/versions/node — install it first:\n" +
@@ -691,6 +709,31 @@ function cmdList() {
 // worktree's commits, which would make every tree look permanently busy.
 const RECENT_WRITE_MS = 10 * 60_000;
 
+// Pids whose CURRENT WORKING DIRECTORY is inside `dir`. Occupancy, asked directly
+// rather than inferred from file mtimes — see the retirement guard for why the
+// proxy is not enough on its own. /proc is Linux-only; on anything else this
+// returns nothing and the mtime check carries the load alone, which is the same
+// safety this had before.
+export function processesIn(dir) {
+  const target = path.resolve(dir);
+  let pids;
+  try {
+    pids = fs.readdirSync("/proc").filter((n) => /^\d+$/.test(n));
+  } catch {
+    return [];
+  }
+  const self = String(process.pid);
+  return pids.filter((pid) => {
+    if (pid === self) return false;
+    try {
+      const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
+      return cwd === target || cwd.startsWith(target + path.sep);
+    } catch {
+      return false; // vanished, or not ours to read
+    }
+  });
+}
+
 export function worktreeIdleMs(dir) {
   let newest = 0;
   const walk = (d, depth) => {
@@ -926,6 +969,26 @@ push), or pass --keep to close the ledger entry without touching the tree.`
     // warning arrives after the only moment it could have helped. `--keep` still
     // closes the ledger entry without touching the tree, which is the right
     // command when an agent is genuinely finished but you want its worktree.
+    // AND ASK THE DIRECT QUESTION TOO: is a PROCESS standing in this directory?
+    // The write-recency check above is a proxy, and on 2026-08-19 it would have
+    // passed in the exact case that bit — an agent mid-gate-run, git state clean,
+    // branch already merged. Nothing about the tree looked live, because this
+    // brief tells agents to write their logs to $SCRATCH rather than into the
+    // worktree, so a long test tier can run for minutes touching nothing here.
+    // A process whose cwd is inside the tree is not a proxy for occupancy; it is
+    // occupancy.
+    const occupants = processesIn(wtPath);
+    if (occupants.length) {
+      console.error(
+        `REFUSED: ${occupants.length} process(es) are running inside ${wtPath} (pids ${occupants.join(", ")}).
+A clean tree and a merged branch do not mean nobody is here — a gate run writes
+its log to $SCRATCH and can touch nothing in the tree for minutes. Removing it
+now takes the directory out from under that run (this has happened). Wait for the
+agent's report, or pass --keep to close the ledger entry and leave the tree alone.`
+      );
+      process.exit(1);
+    }
+
     const idleMs = worktreeIdleMs(wtPath);
     if (idleMs !== null && idleMs < RECENT_WRITE_MS) {
       console.error(

@@ -208,13 +208,15 @@ describe("isCrossProfileSqlModule: registry membership (fixture-pinned)", () => 
     // #1787's portal run-report visibility read, which decides whether a portal ACCOUNT
     // is reachable by testing its bindings against the viewer's accessible set. The
     // third is #2116's poolIdsForProfiles — the shared-bottle ids an accessible set
-    // draws from, a flat list with no per-profile context in it. A NEW set-based reader
-    // adds its module here in the same PR as the ids-fed reader it protects — this list
-    // is the reviewed record of every one of them.
+    // draws from, a flat list with no per-profile context in it. #3138 adds the open
+    // illness rows, likewise flat; each profile's local-today membership is decided
+    // only after the query. A NEW set-based reader adds its module here in the same PR
+    // as the ids-fed reader it protects — this list is the reviewed record of all.
     expect(CROSS_PROFILE_SQL_MODULES).toEqual([
       "lib/queries/multi-view-lists.ts",
       "lib/portal-visibility.ts",
       "lib/queries/intake/supply-pool.ts",
+      "lib/illness-episode-store.ts",
     ]);
   });
 

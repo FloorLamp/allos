@@ -247,25 +247,24 @@ export function setFreeDays(profileId: number, days: number[]): void {
 // while an episode is open. Read defensively: a malformed blob falls back to defaults.
 export interface IllnessHeroUiState {
   collapsedActive: boolean;
-  openOtherId: number | null;
+  openOtherKey: string | null;
 }
 
 export function getIllnessHeroUi(profileId: number): IllnessHeroUiState {
   const fallback: IllnessHeroUiState = {
     collapsedActive: false,
-    openOtherId: null,
+    openOtherKey: null,
   };
   const v = getProfileSetting(profileId, "illness_hero_ui");
   if (!v) return fallback;
   try {
     const parsed = JSON.parse(v);
     if (!parsed || typeof parsed !== "object") return fallback;
-    const openOtherId =
-      typeof parsed.openOtherId === "number" &&
-      Number.isInteger(parsed.openOtherId)
-        ? parsed.openOtherId
+    const openOtherKey =
+      typeof parsed.openOtherKey === "string" && parsed.openOtherKey.length > 0
+        ? parsed.openOtherKey
         : null;
-    return { collapsedActive: parsed.collapsedActive === true, openOtherId };
+    return { collapsedActive: parsed.collapsedActive === true, openOtherKey };
   } catch {
     return fallback;
   }
@@ -277,10 +276,9 @@ export function setIllnessHeroUi(
 ): void {
   const normalized: IllnessHeroUiState = {
     collapsedActive: state.collapsedActive === true,
-    openOtherId:
-      typeof state.openOtherId === "number" &&
-      Number.isInteger(state.openOtherId)
-        ? state.openOtherId
+    openOtherKey:
+      typeof state.openOtherKey === "string" && state.openOtherKey.length > 0
+        ? state.openOtherKey
         : null,
   };
   setProfileSetting(profileId, "illness_hero_ui", JSON.stringify(normalized));

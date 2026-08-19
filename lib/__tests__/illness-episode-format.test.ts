@@ -14,6 +14,7 @@ import {
   isOpenEpisode,
   episodeConditionExternalId,
   episodeAlternateLogDate,
+  assignOrderedEpisodeFacts,
   illnessTimelineEvents,
   relativeEpisodeDateLabel,
   type AssembledEpisode,
@@ -177,11 +178,13 @@ describe("episodeCollapsedStatus", () => {
     ).toEqual({
       dayLabel: "Illness · Day 4",
       temperature: {
+        id: 1,
         value: "101.3 °F",
         when: "at 12:05 AM (18 hrs ago)",
         high: true,
       },
       lastMeds: {
+        id: "1:2026-06-04:16:02",
         name: "Ibuprofen",
         dose: "200 mg",
         when: "4:02 PM (2 hrs ago)",
@@ -405,25 +408,116 @@ describe("householdSickLine", () => {
 describe("orderIllnessCockpits", () => {
   it("puts the acting profile's cockpit first regardless of its start", () => {
     const ordered = orderIllnessCockpits([
-      { profileId: 2, isActive: false, start: "2026-06-01" },
-      { profileId: 1, isActive: true, start: "2026-06-05" },
+      { profileId: 2, isActive: false, episodeOrder: 0, episodeKey: "20" },
+      { profileId: 1, isActive: true, episodeOrder: 0, episodeKey: "10" },
     ]);
     expect(ordered.map((c) => c.profileId)).toEqual([1, 2]);
   });
-  it("orders other profiles by episode start (earliest first), then profileId", () => {
+  it("orders other profiles by numeric profile id, independent of input order", () => {
     const ordered = orderIllnessCockpits([
-      { profileId: 5, isActive: false, start: "2026-06-03" },
-      { profileId: 3, isActive: false, start: "2026-06-01" },
-      { profileId: 4, isActive: false, start: "2026-06-01" },
+      { profileId: 5, isActive: false, episodeOrder: 0, episodeKey: "50" },
+      { profileId: 3, isActive: false, episodeOrder: 0, episodeKey: "30" },
+      { profileId: 4, isActive: false, episodeOrder: 0, episodeKey: "40" },
     ]);
     expect(ordered.map((c) => c.profileId)).toEqual([3, 4, 5]);
   });
-  it("sorts a null (before-log) start after known starts", () => {
+  it("preserves the owning query order for simultaneous episodes", () => {
     const ordered = orderIllnessCockpits([
-      { profileId: 7, isActive: false, start: null },
-      { profileId: 6, isActive: false, start: "2026-06-02" },
+      { profileId: 7, isActive: false, episodeOrder: 1, episodeKey: "72" },
+      { profileId: 7, isActive: false, episodeOrder: 0, episodeKey: "71" },
     ]);
-    expect(ordered.map((c) => c.profileId)).toEqual([6, 7]);
+    expect(ordered.map((c) => c.episodeKey)).toEqual(["71", "72"]);
+  });
+});
+
+describe("assignOrderedEpisodeFacts", () => {
+  it("assigns overlapping stored facts only to the first ordered episode", () => {
+    const temperature = {
+      id: 9,
+      date: "2026-06-04",
+      time: "10:00",
+      degF: 101,
+      flag: "high",
+    };
+    const symptom = {
+      symptom: "cough",
+      label: "Cough",
+      points: [{ date: "2026-06-04", severity: 2, note: null }],
+      maxSeverity: 2,
+    };
+    const medication = {
+      itemId: 3,
+      name: "Ibuprofen",
+      count: 1,
+      administrations: [
+        {
+          id: 12,
+          date: "2026-06-04",
+          time: "11:00",
+          amount: "200 mg",
+        },
+      ],
+    };
+    const shared = ep({
+      symptoms: [symptom],
+      distinctSymptomCount: 1,
+      temperatures: [temperature],
+      latestTemp: temperature,
+      maxTempF: 101,
+      medications: [medication],
+      totalAdministrations: 1,
+    });
+
+    const [first, second] = assignOrderedEpisodeFacts([
+      { profileId: 7, episode: { ...shared, id: 1 } },
+      { profileId: 7, episode: { ...shared, id: 2 } },
+    ]);
+    expect(first.episode).toMatchObject({
+      distinctSymptomCount: 1,
+      totalAdministrations: 1,
+      maxTempF: 101,
+    });
+    expect(second.episode).toMatchObject({
+      symptoms: [],
+      temperatures: [],
+      medications: [],
+      distinctSymptomCount: 0,
+      totalAdministrations: 0,
+      maxTempF: null,
+      latestTemp: null,
+    });
+  });
+
+  it("presents an explicitly linked symptom only in its owning episode", () => {
+    const symptom = {
+      symptom: "headache",
+      label: "Headache",
+      points: [
+        {
+          date: "2026-06-03",
+          severity: 1,
+          note: null,
+          episodeId: 2,
+        },
+        {
+          date: "2026-06-04",
+          severity: 4,
+          note: null,
+          episodeId: 2,
+        },
+      ],
+      maxSeverity: 4,
+    };
+    const shared = ep({ symptoms: [symptom], distinctSymptomCount: 1 });
+
+    const [first, second] = assignOrderedEpisodeFacts([
+      { profileId: 7, episode: { ...shared, id: 1 } },
+      { profileId: 7, episode: { ...shared, id: 2 } },
+    ]);
+    expect(first.episode.symptoms).toEqual([]);
+    expect(second.episode.symptoms).toHaveLength(1);
+    expect(episodeCollapsedStatus(first.episode, "F").worsening).toBe(false);
+    expect(episodeCollapsedStatus(second.episode, "F").worsening).toBe(true);
   });
 });
 

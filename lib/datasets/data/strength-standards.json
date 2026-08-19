@@ -2,7 +2,7 @@
   "$schema": "allos-dataset/v1",
   "id": "strength-standards",
   "title": "Bodyweight-band strength standards",
-  "description": "Baked bodyweight-band strength-standards dataset (issue #152) for COACHING CONTEXT on estimated 1RM. Thresholds are DERIVED (no proprietary tables): lib/strength.ts anchor ratios scaled by bodyweight^(2/3) (Lietzke 1956, the cross-sectional-area law). Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:strength-standards`. INFORMATIONAL reference standards, NOT measurements or medical/coaching advice.",
+  "description": "Baked bodyweight-band strength-standards dataset (issue #152) for COACHING CONTEXT on estimated 1RM. Thresholds are DERIVED (no proprietary tables): lib/strength.ts anchor ratios scaled by bodyweight^(2/3) (Lietzke 1956, the cross-sectional-area law). BASIS (#1922): a threshold is an absolute 1RM in kg, and for a `bodyweight` lift that kg is the TOTAL SYSTEM LOAD — bodyweight combined with any external load, ADDED for a weighted rep and SUBTRACTED for an assisted one — never the added load alone. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:strength-standards`. INFORMATIONAL reference standards, NOT measurements or medical/coaching advice.",
   "citation": [
     {
       "source": "Derived thresholds — lib/strength.ts blended strength-standard anchor ratios scaled allometrically by bodyweight^(2/3) (Lietzke MH, Science 1956;124:486, the cross-sectional-area law).",

@@ -59,6 +59,111 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     expect(res.ok).toBe(true);
     expect(episodeIdOf(profile.id, "headache")).toBeNull();
   });
+
+  it("binds dashboard writes to the explicit older or middle open episode", async () => {
+    const login = createLogin();
+    const profile = createProfile("Plural Actor", login.id);
+    actAs(login, profile);
+    const older = createEpisodeRow(profile.id, "Flu", "2026-03-01", null);
+    const middle = createEpisodeRow(profile.id, "Migraine", "2026-03-02", null);
+    createEpisodeRow(profile.id, "Stomach bug", "2026-03-03", null);
+
+    expect(
+      await logSymptom(
+        fd({
+          symptom: "cough",
+          severity: 2,
+          date: DATE,
+          episodeId: older,
+        })
+      )
+    ).toMatchObject({ ok: true });
+    expect(
+      await logSymptom(
+        fd({
+          symptom: "headache",
+          severity: 3,
+          date: DATE,
+          episodeId: middle,
+        })
+      )
+    ).toMatchObject({ ok: true });
+
+    expect(episodeIdOf(profile.id, "cough")).toBe(older);
+    expect(episodeIdOf(profile.id, "headache")).toBe(middle);
+    expect(getEpisodeSymptomLogs(profile.id, older)).toEqual([
+      expect.objectContaining({ symptom: "cough", severity: 2 }),
+    ]);
+    expect(getEpisodeSymptomLogs(profile.id, middle)).toEqual([
+      expect.objectContaining({ symptom: "headache", severity: 3 }),
+    ]);
+  });
+
+  it("rejects an explicit episode that does not cover the posted day", async () => {
+    const login = createLogin();
+    const profile = createProfile("Future Actor", login.id);
+    actAs(login, profile);
+    const future = createEpisodeRow(profile.id, "Illness", "2026-03-05", null);
+    const other = createProfile("Other Subject", login.id);
+    const foreign = createEpisodeRow(other.id, "Illness", "2026-03-03", null);
+
+    const result = await logSymptom(
+      fd({ symptom: "cough", severity: 2, date: DATE, episodeId: future })
+    );
+    expect(result.ok).toBe(false);
+    expect(
+      await logSymptom(
+        fd({ symptom: "cough", severity: 2, date: DATE, episodeId: foreign })
+      )
+    ).toMatchObject({ ok: false });
+    expect(
+      db
+        .prepare(
+          "SELECT 1 FROM symptom_logs WHERE profile_id = ? AND date = ? AND symptom = ?"
+        )
+        .get(profile.id, DATE, "cough")
+    ).toBeUndefined();
+  });
+
+  it("never treats a present malformed, zero, or closed episode target as absent", async () => {
+    const login = createLogin();
+    const profile = createProfile("Strict Target Actor", login.id);
+    actAs(login, profile);
+    const fallback = createEpisodeRow(
+      profile.id,
+      "Newest open",
+      "2026-03-03",
+      null
+    );
+    const closed = createEpisodeRow(
+      profile.id,
+      "Closed",
+      "2026-03-01",
+      "2026-03-03"
+    );
+
+    for (const [symptom, episodeId] of [
+      ["cough", "garbage"],
+      ["headache", "0"],
+      ["fatigue", String(closed)],
+    ] as const) {
+      expect(
+        await logSymptom(fd({ symptom, severity: 2, date: DATE, episodeId }))
+      ).toMatchObject({ ok: false });
+      expect(
+        db
+          .prepare(
+            "SELECT 1 FROM symptom_logs WHERE profile_id = ? AND date = ? AND symptom = ?"
+          )
+          .get(profile.id, DATE, symptom)
+      ).toBeUndefined();
+    }
+
+    expect(
+      await logSymptom(fd({ symptom: "nausea", severity: 2, date: DATE }))
+    ).toMatchObject({ ok: true });
+    expect(episodeIdOf(profile.id, "nausea")).toBe(fallback);
+  });
 });
 
 describe("setSymptomEpisode — detach / attach (#1093)", () => {

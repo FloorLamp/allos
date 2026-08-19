@@ -1,6 +1,12 @@
 // Training coaching — strength: double-progression next-set targets and
 // strength personal records. Pure and client-safe — no DB/network.
-import { isTimed, liftInfo } from "../lifts";
+import {
+  effectiveLoadKg,
+  isAssisted,
+  isTimed,
+  liftInfo,
+  type LoadKind,
+} from "../lifts";
 import { plateauBreakAdvice, plateauBreakClause } from "../plateau-advice";
 import { judgeTargets } from "../training-log-format";
 import { estimate1RM } from "../strength";
@@ -150,10 +156,13 @@ interface SessionSet {
 // mirroring getStrengthByExercise's lastSessionBest so a suggestion built from
 // shipped history matches the exercise detail panel's. Each side of a per-side
 // set is its own candidate. `baseKg` folds the user's bodyweight into the load
-// for bodyweight movements (pass 0 otherwise). Null when no set has reps.
+// for bodyweight movements (pass 0 otherwise), and `loadKind` decides its SIGN —
+// an assisted movement's logged weight is a counterweight (#1922). Null when no
+// set has reps.
 export function sessionBestSet(
   sets: SessionSet[],
-  baseKg = 0
+  baseKg = 0,
+  loadKind: LoadKind = "added"
 ): {
   weightKg: number;
   reps: number;
@@ -169,10 +178,13 @@ export function sessionBestSet(
     if (s.warmup) continue; // warmups never anchor the progression (#338)
     const sides: { weight: number; reps: number }[] = [];
     if (s.reps != null)
-      sides.push({ weight: baseKg + (s.weight_kg ?? 0), reps: s.reps });
+      sides.push({
+        weight: effectiveLoadKg(loadKind, baseKg, s.weight_kg),
+        reps: s.reps,
+      });
     if (s.reps_right != null)
       sides.push({
-        weight: baseKg + (s.weight_kg_right ?? 0),
+        weight: effectiveLoadKg(loadKind, baseKg, s.weight_kg_right),
         reps: s.reps_right,
       });
     for (const side of sides) {
@@ -194,12 +206,14 @@ export function sessionBestSet(
 
 // Every rep-bearing set of one session flattened to a SessionWorkSet — the
 // companion to sessionBestSet's single anchor. Each side of a per-side set is
-// its own entry, `baseKg` folds bodyweight into the load the same way (pass 0
-// otherwise), and each entry keeps its declared intent so progression can judge
-// the whole session. Rep-less sets (e.g. a logged weight with no reps) drop out.
+// its own entry, `baseKg`/`loadKind` fold bodyweight into the load the same way
+// (pass 0 / "added" otherwise), and each entry keeps its declared intent so
+// progression can judge the whole session. Rep-less sets (e.g. a logged weight
+// with no reps) drop out.
 export function sessionWorkSets(
   sets: SessionSet[],
-  baseKg = 0
+  baseKg = 0,
+  loadKind: LoadKind = "added"
 ): SessionWorkSet[] {
   const out: SessionWorkSet[] = [];
   for (const s of sets) {
@@ -208,14 +222,14 @@ export function sessionWorkSets(
     const toFailure = s.to_failure === 1;
     if (s.reps != null)
       out.push({
-        weightKg: baseKg + (s.weight_kg ?? 0),
+        weightKg: effectiveLoadKg(loadKind, baseKg, s.weight_kg),
         reps: s.reps,
         targetReps,
         toFailure,
       });
     if (s.reps_right != null)
       out.push({
-        weightKg: baseKg + (s.weight_kg_right ?? 0),
+        weightKg: effectiveLoadKg(loadKind, baseKg, s.weight_kg_right),
         reps: s.reps_right,
         targetReps,
         toFailure,
@@ -352,6 +366,13 @@ export function suggestNextSet(
   wu: WeightUnit = "kg"
 ): NextSet | null {
   if (isTimed(s.exercise)) return null;
+  // An ASSISTED movement gets no next-set target (#1922). Progression here means
+  // "add load", and the number this lifter logs is the machine's counterweight —
+  // so the suggestion would read as "use more assistance", which is the opposite
+  // of progress. The honest target is less assistance, and that is a different
+  // instruction than the one this function is shaped to give; the exercise's
+  // standing on the strength ladder is where its progress is shown instead.
+  if (isAssisted(s.exercise)) return null;
   const last = s.lastSessionBest;
   if (!last) return null;
   const working = workingSets(s);
@@ -582,10 +603,16 @@ function deloadNextSet(exercise: string, ns: NextSet | null): NextSet | null {
 // one session so a brand-new exercise's first log isn't flagged as a "record".
 // Weight PRs are meaningless for bodyweight lifts (their "top weight" tracks
 // bodyweight), so they're suppressed there.
+//
+// ASSISTED movements mint no record at all (#1922). An assisted 1RM is not a
+// strength max — it is a measure of how much help was needed — so celebrating one
+// would announce a number that is not the claim it looks like. Their progress is
+// shown as a STANDING against the base movement's bands instead.
 export function lastSessionPR(s: ExerciseSummary): {
   e1rm: boolean;
   weight: boolean;
 } {
+  if (isAssisted(s.exercise)) return { e1rm: false, weight: false };
   const established = s.sessions > 1;
   return {
     e1rm: established && s.bestDate === s.lastDate,
@@ -631,9 +658,16 @@ function compareE1rm(
 export function strengthSessionRecords(
   history: StrengthRecordSession[],
   index: number,
-  bodyweight: boolean
+  bodyweight: boolean,
+  // #1922: an ASSISTED movement records nothing. Its per-session "best" is a
+  // measure of how little help was needed, not a strength max, so the record
+  // badge would announce a claim the number does not make. Same exclusion
+  // `recentPRs`/`lastSessionPR` apply, stated here as a parameter so the pure
+  // class guard can pin it without a rendered surface.
+  loadKind: LoadKind = "added"
 ): StrengthSessionRecords {
   const none: StrengthSessionRecords = { e1rm: null, weight: null };
+  if (loadKind === "assisted") return none;
   const current = history[index];
   if (!current) return none;
 
@@ -685,7 +719,9 @@ export interface PR {
 
 // Strength records set within the last `withinDays`, newest first. An exercise
 // can contribute both a 1RM PR and a separately dated top-weight PR. Bodyweight
-// lifts have no weight PR. First-ever logs (one session) are excluded.
+// lifts have no weight PR. First-ever logs (one session) are excluded, and so are
+// ASSISTED movements (#1922 — see lastSessionPR: an assisted 1RM is not a strength
+// max, so it is not a record to announce).
 export function recentPRs(
   stats: ExerciseSummary[],
   today: string,
@@ -694,6 +730,7 @@ export function recentPRs(
   const prs: PR[] = [];
   for (const s of stats) {
     if (s.sessions < 2) continue;
+    if (isAssisted(s.exercise)) continue;
     if (within(s.bestDate, today, withinDays)) {
       prs.push({
         exercise: s.exercise,

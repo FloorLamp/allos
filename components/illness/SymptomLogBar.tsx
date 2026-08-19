@@ -81,6 +81,7 @@ export default function SymptomLogBar({
   temperatureUnit = "F",
   timeZone,
   profileId,
+  episodeId,
   showTitle = true,
   textIntakeEnabled = false,
 }: {
@@ -120,6 +121,10 @@ export default function SymptomLogBar({
   // this so the server gates on the TARGET (requireProfileWriteAccess). Absent on the
   // default dashboard/Timeline mounts, which write the session's active profile.
   profileId?: number;
+  // The owning open episode for dashboard cockpit writes. The server validates that
+  // it belongs to the target profile and covers the posted day. Other mounts omit it
+  // and retain the established newest-open default association.
+  episodeId?: number;
   // Composed surfaces may already provide a section heading; keep the count/toggle row
   // without repeating "Daily symptoms" in that case.
   showTitle?: boolean;
@@ -326,6 +331,7 @@ export default function SymptomLogBar({
   // undefined), which write the session's active profile.
   const withTarget = (fd: FormData): FormData => {
     if (profileId != null) fd.set("profileId", String(profileId));
+    if (episodeId != null) fd.set("episodeId", String(episodeId));
     return fd;
   };
 

@@ -16,14 +16,33 @@ import type { AppRoute } from "@/lib/hrefs";
 // no data-fetch happens client-side. `status` is the collapsed at-a-glance reading;
 // `displayName` is already disambiguated by the page (#531).
 export interface HeroCockpit {
+  episodeKey: string;
+  episodeOrder: number;
   profileId: number;
   profile: AvatarProfile;
   displayName: string;
+  situation: string;
   isActive: boolean;
+  canWrite: boolean;
   status: EpisodeCollapsedStatus;
   feverFree: { label: string; met: boolean } | null;
   episodeHref: AppRoute | null;
   body: ReactNode;
+  stateIdentity: {
+    candidateId: string;
+    factKey: string;
+    groupKey: string;
+  } | null;
+  temperatureIdentity: {
+    candidateId: string;
+    factKey: string;
+    groupKey: string;
+  } | null;
+  medicationIdentity: {
+    candidateId: string;
+    factKey: string;
+    groupKey: string;
+  } | null;
 }
 
 const XL_QUERY = "(min-width: 1280px)";
@@ -43,7 +62,8 @@ function getXlSnapshot() {
 // profile's own episode is a FULL cockpit at hero position; every other accessible
 // profile's is a compact accordion line that expands IN PLACE into that profile's cockpit
 // WITHOUT switching the acting profile. One other-profile cockpit expands at a time; the
-// acting profile's cockpit collapses independently. Both remembered per viewer via
+// acting profile's primary cockpit and every additional active episode collapse
+// independently. The primary active and household choices are remembered per viewer via
 // saveState (persisted in the layout blob). COLLAPSIBLE, never hideable — a cockpit never
 // disappears while its episode is open; there is no dismiss control, only collapse.
 //
@@ -54,36 +74,51 @@ function getXlSnapshot() {
 export default function IllnessHero({
   cockpits,
   initialCollapsedActive,
-  initialOpenOtherId,
+  initialOpenOtherKey,
   saveState,
 }: {
   cockpits: HeroCockpit[];
   initialCollapsedActive: boolean;
-  initialOpenOtherId: number | null;
+  initialOpenOtherKey: string | null;
   saveState: (
     collapsedActive: boolean,
-    openOtherId: number | null
+    openOtherKey: string | null
   ) => Promise<void>;
 }) {
   const [collapsedActive, setCollapsedActive] = useState(
     initialCollapsedActive
   );
-  const [openOtherId, setOpenOtherId] = useState<number | null>(
-    initialOpenOtherId
+  const [openOtherKey, setOpenOtherKey] = useState<string | null>(
+    initialOpenOtherKey
   );
+  const [collapsedAdditionalActiveKeys, setCollapsedAdditionalActiveKeys] =
+    useState<ReadonlySet<string>>(() => new Set());
   const isXl = useSyncExternalStore(subscribeToXl, getXlSnapshot, () => false);
 
   if (cockpits.length === 0) return null;
 
-  function toggleActive() {
+  const primaryActiveKey = cockpits.find(
+    (cockpit) => cockpit.isActive
+  )?.episodeKey;
+
+  function toggleActive(episodeKey: string) {
+    if (episodeKey !== primaryActiveKey) {
+      setCollapsedAdditionalActiveKeys((current) => {
+        const next = new Set(current);
+        if (next.has(episodeKey)) next.delete(episodeKey);
+        else next.add(episodeKey);
+        return next;
+      });
+      return;
+    }
     const next = !collapsedActive;
     setCollapsedActive(next);
-    void saveState(next, openOtherId);
+    void saveState(next, openOtherKey);
   }
 
-  function toggleOther(profileId: number) {
-    const next = openOtherId === profileId ? null : profileId;
-    setOpenOtherId(next);
+  function toggleOther(episodeKey: string) {
+    const next = openOtherKey === episodeKey ? null : episodeKey;
+    setOpenOtherKey(next);
     void saveState(collapsedActive, next);
   }
 
@@ -94,19 +129,28 @@ export default function IllnessHero({
       className="flex min-w-0 w-full flex-col gap-3"
     >
       {cockpits.map((c) => {
-        // The active cockpit is one half of the XL priority row, where collapsing it
-        // would leave a conspicuous empty column. Its saved compact-screen preference
-        // still applies as soon as the viewport drops below XL. Household accordions
+        // Active cockpits stay open in the roomy XL layout. Their independent saved or
+        // local compact-screen preferences apply again below XL. Household accordions
         // retain their one-open-at-a-time behavior at every size.
         const lockedOpen = c.isActive && isXl;
         const expanded = c.isActive
-          ? lockedOpen || !collapsedActive
-          : openOtherId === c.profileId;
-        const bodyId = `illness-cockpit-body-${c.profileId}`;
+          ? lockedOpen ||
+            (c.episodeKey === primaryActiveKey
+              ? !collapsedActive
+              : !collapsedAdditionalActiveKeys.has(c.episodeKey))
+          : openOtherKey === c.episodeKey;
+        const bodyId = `illness-cockpit-body-${c.episodeKey}`;
+        const episodeLabel = `${c.situation} episode ${c.episodeOrder + 1}`;
         return (
           <div
-            key={c.profileId}
-            data-testid={`illness-cockpit-${c.profileId}`}
+            key={c.episodeKey}
+            data-testid={`illness-cockpit-${c.episodeKey}`}
+            data-episode-key={c.episodeKey}
+            data-profile-id={c.profileId}
+            data-situation={c.situation}
+            data-candidate-id={c.stateIdentity?.candidateId}
+            data-fact-key={c.stateIdentity?.factKey}
+            data-group-key={c.stateIdentity?.groupKey}
             data-active={c.isActive ? "true" : "false"}
             data-expanded={expanded ? "true" : "false"}
             className="card border-l-4 border-l-rose-500 dark:border-l-rose-400"
@@ -117,17 +161,19 @@ export default function IllnessHero({
             >
               <button
                 type="button"
-                data-testid={`illness-cockpit-toggle-${c.profileId}`}
+                data-testid={`illness-cockpit-toggle-${c.episodeKey}`}
                 aria-expanded={expanded}
                 aria-controls={bodyId}
                 aria-label={
                   lockedOpen
-                    ? `Illness details for ${c.displayName}`
-                    : `${expanded ? "Collapse" : "Expand"} illness details for ${c.displayName}`
+                    ? `${episodeLabel} details for ${c.displayName}`
+                    : `${expanded ? "Collapse" : "Expand"} ${episodeLabel} details for ${c.displayName}`
                 }
                 disabled={lockedOpen}
                 onClick={() =>
-                  c.isActive ? toggleActive() : toggleOther(c.profileId)
+                  c.isActive
+                    ? toggleActive(c.episodeKey)
+                    : toggleOther(c.episodeKey)
                 }
                 className="group flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-lg p-1 text-left transition hover:bg-slate-50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-ink-850 dark:disabled:hover:bg-transparent"
               >
@@ -140,10 +186,13 @@ export default function IllnessHero({
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span
-                      data-testid={`illness-cockpit-name-${c.profileId}`}
+                      data-testid={`illness-cockpit-name-${c.episodeKey}`}
                       className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100"
                     >
                       {c.displayName}
+                    </span>
+                    <span className="truncate text-xs text-slate-500 dark:text-slate-400">
+                      {c.situation}
                     </span>
                     {!lockedOpen &&
                       (expanded ? (
@@ -167,16 +216,23 @@ export default function IllnessHero({
                     className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
                   >
                     <span
-                      data-testid={`illness-cockpit-line-${c.profileId}`}
+                      data-testid={`illness-cockpit-line-${c.episodeKey}`}
                       className="contents"
                     >
                       <span data-testid="illness-cockpit-day">
                         {c.status.dayLabel}
                       </span>
-                      {c.status.temperature ? (
-                        <span className={expanded ? "hidden" : "contents"}>
+                      {c.status.temperature && !expanded ? (
+                        <span className="contents">
                           <span aria-hidden="true">·</span>
-                          <span data-testid="illness-cockpit-temperature">
+                          <span
+                            data-testid="illness-cockpit-temperature"
+                            data-candidate-id={
+                              c.temperatureIdentity?.candidateId
+                            }
+                            data-fact-key={c.temperatureIdentity?.factKey}
+                            data-group-key={c.temperatureIdentity?.groupKey}
+                          >
                             <span
                               className={
                                 c.status.temperature.high
@@ -192,10 +248,17 @@ export default function IllnessHero({
                           </span>
                         </span>
                       ) : null}
-                      {c.status.lastMeds ? (
-                        <span className={expanded ? "hidden" : "contents"}>
+                      {c.status.lastMeds && !expanded ? (
+                        <span className="contents">
                           <span aria-hidden="true">·</span>
-                          <span data-testid="illness-cockpit-last-meds">
+                          <span
+                            data-testid="illness-cockpit-last-meds"
+                            data-candidate-id={
+                              c.medicationIdentity?.candidateId
+                            }
+                            data-fact-key={c.medicationIdentity?.factKey}
+                            data-group-key={c.medicationIdentity?.groupKey}
+                          >
                             Last meds {c.status.lastMeds.name}
                             {c.status.lastMeds.dose
                               ? ` · ${c.status.lastMeds.dose}`
@@ -214,10 +277,10 @@ export default function IllnessHero({
                           </span>
                         </>
                       ) : null}
-                      {c.feverFree ? (
+                      {c.feverFree && !expanded ? (
                         <span
                           data-testid="illness-cockpit-fever-status"
-                          className={`badge tabular-nums ${expanded ? "hidden" : ""} ${
+                          className={`badge tabular-nums ${
                             c.feverFree.met
                               ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                               : "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
@@ -233,7 +296,7 @@ export default function IllnessHero({
               {c.episodeHref ? (
                 <Link
                   href={c.episodeHref}
-                  aria-label={`More details about ${c.displayName}'s illness episode`}
+                  aria-label={`More details about ${c.displayName}'s ${episodeLabel}`}
                   data-testid="illness-cockpit-full-episode"
                   className="inline-flex min-h-10 shrink-0 items-center rounded-md px-2 py-1.5 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-900"
                 >

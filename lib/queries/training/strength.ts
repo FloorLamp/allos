@@ -17,12 +17,15 @@ import type { SetStatus } from "../../training-log-format";
 import { judgeTargets, summarizeExercise } from "../../training-log-format";
 import {
   classifyBodyweightByExercise,
+  effectiveLoadKg,
   equipmentLoadLane,
   exerciseHistoryKey,
   exerciseHistoryNames,
   isBodyweight,
+  loadKindOf,
   movementLoadKey,
   resolveBodyweightKind,
+  type LoadKind,
 } from "../../lifts";
 import { getProfileSex, type WeightUnit } from "../../settings";
 import { estimate1RM } from "../../strength";
@@ -175,6 +178,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
   type AccumSession = Omit<RecentSession, "status">;
   interface AccumExercise {
     addBodyweight: boolean; // catalog bodyweight lift
+    loadKind: LoadKind; // whether a logged weight adds to or subtracts from it (#1922)
     // Window-local external-weight sighting, used ONLY as a fallback classifier
     // for an exercise absent from the all-history bodyweight map (one with no
     // rep-bearing set anywhere); the shipped flag prefers the map (#331).
@@ -190,6 +194,7 @@ export const getRecentExerciseHistory = cache(function getRecentExerciseHistory(
     if (!e) {
       e = {
         addBodyweight: isBodyweight(r.exercise),
+        loadKind: loadKindOf(r.exercise),
         sawExternalWeight: false,
         sessions: [],
       };
@@ -510,6 +515,8 @@ export function getExerciseComparison(
   if (rows.length === 0) return [];
 
   const addBodyweight = isBodyweight(rows[0].exercise);
+  // How a logged weight combines with that base (#1922) — `assisted` subtracts.
+  const loadKind = loadKindOf(rows[0].exercise);
   const weights = loadWeightsAsc(profileId);
   const bySession = new Map<
     number,
@@ -555,10 +562,13 @@ export function getExerciseComparison(
     for (const r of s.rows) {
       const sides: { weight: number; reps: number }[] = [];
       if (r.reps != null)
-        sides.push({ weight: baseKg + (r.weight_kg ?? 0), reps: r.reps });
+        sides.push({
+          weight: effectiveLoadKg(loadKind, baseKg, r.weight_kg),
+          reps: r.reps,
+        });
       if (r.reps_right != null)
         sides.push({
-          weight: baseKg + (r.weight_kg_right ?? 0),
+          weight: effectiveLoadKg(loadKind, baseKg, r.weight_kg_right),
           reps: r.reps_right,
         });
 
@@ -730,6 +740,7 @@ export function getExerciseE1rmSeries(
       equipmentId: number | null;
       equipment: string | null;
       addBodyweight: boolean;
+      loadKind: LoadKind;
       byDate: Map<string, { e1rm: number; reps: number }>;
     }
   >();
@@ -754,6 +765,7 @@ export function getExerciseE1rmSeries(
         equipmentId: byLoadContext ? r.equipmentId : null,
         equipment: byLoadContext ? r.equipment : null,
         addBodyweight: isBodyweight(r.exercise),
+        loadKind: loadKindOf(r.exercise),
         byDate: new Map(),
       };
       acc.set(key, e);
@@ -762,12 +774,18 @@ export function getExerciseE1rmSeries(
     const sides: { e1rm: number; reps: number }[] = [];
     if (r.reps != null)
       sides.push({
-        e1rm: estimate1RM(base + (r.weight_kg ?? 0), r.reps),
+        e1rm: estimate1RM(
+          effectiveLoadKg(e.loadKind, base, r.weight_kg),
+          r.reps
+        ),
         reps: r.reps,
       });
     if (r.reps_right != null)
       sides.push({
-        e1rm: estimate1RM(base + (r.weight_kg_right ?? 0), r.reps_right),
+        e1rm: estimate1RM(
+          effectiveLoadKg(e.loadKind, base, r.weight_kg_right),
+          r.reps_right
+        ),
         reps: r.reps_right,
       });
     for (const side of sides) {
@@ -1002,6 +1020,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     equipmentId: number | null;
     equipment: string | null;
     addBodyweight: boolean; // catalog bodyweight lift → fold bodyweight into load
+    loadKind: LoadKind; // …and whether a logged weight adds to it or subtracts (#1922)
     sawExternalWeight: boolean; // any set logged a weight
     dates: Set<string>;
     totalSets: number;
@@ -1051,6 +1070,7 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         equipmentId: laned ? r.equipmentId : null,
         equipment: laned ? r.equipment : null,
         addBodyweight: isBodyweight(r.exercise),
+        loadKind: loadKindOf(r.exercise),
         sawExternalWeight: false,
         dates: new Set(),
         totalSets: 0,
@@ -1101,10 +1121,13 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
     // when it has reps.
     const sides: { weight: number; reps: number }[] = [];
     if (r.reps != null)
-      sides.push({ weight: base + (r.weight_kg ?? 0), reps: r.reps });
+      sides.push({
+        weight: effectiveLoadKg(cur.loadKind, base, r.weight_kg),
+        reps: r.reps,
+      });
     if (r.reps_right != null)
       sides.push({
-        weight: base + (r.weight_kg_right ?? 0),
+        weight: effectiveLoadKg(cur.loadKind, base, r.weight_kg_right),
         reps: r.reps_right,
       });
     let setVol = 0;
@@ -1182,8 +1205,12 @@ export const getStrengthByExercise = cache(function getStrengthByExercise(
         bestReps: c.bestReps,
         bestDate: c.bestDate,
         lastActivityId: c.lastActivityId,
-        lastSessionBest: seedFresh ? sessionBestSet(seedRows, seedBase) : null,
-        lastSessionSets: seedFresh ? sessionWorkSets(seedRows, seedBase) : [],
+        lastSessionBest: seedFresh
+          ? sessionBestSet(seedRows, seedBase, c.loadKind)
+          : null,
+        lastSessionSets: seedFresh
+          ? sessionWorkSets(seedRows, seedBase, c.loadKind)
+          : [],
         lastDate: c.lastDate,
         bodyweight,
         volumeIsReps,
