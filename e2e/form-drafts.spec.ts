@@ -258,9 +258,9 @@ test("a long record form restores its state-only rows, then clears on submit (#1
     await expect(reopened.getByLabel("Name")).toHaveValue(SUPPLEMENT_NAME);
     const doseEditor2 = await openFact(page, "dose", reopened);
     await expect(doseEditor2.getByLabel("Amount").first()).toHaveValue("25 mg"); // first-ok: this form's own first dose row
-    await expect(doseEditor2.getByLabel("Time of day").first()).toHaveValue(
-      "Morning"
-    ); // first-ok: this form's own first dose row, one render, not a seeded list
+    await expect(
+      doseEditor2.getByLabel("Time of day").first() // first-ok: this form's own first dose row, one render, not a seeded list
+    ).toHaveValue("Morning");
     await closeEditor(page, reopened);
 
     await reopened.getByRole("button", { name: "Add", exact: true }).click();

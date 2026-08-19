@@ -74,8 +74,8 @@ test("dosage restructure keeps the taken history at its original amount", async 
   const doseEditor2 = await openFact(page, "dose", editForm);
   await doseEditor2
     .getByRole("button", { name: "Remove dose" })
-    .first()
-    .click(); // first-ok: removes the first (Morning) dose row — see comment above
+    .first() // first-ok: removes the first (Morning) dose row — see comment above
+    .click();
   await doseEditor2.getByLabel("Amount").first().fill("1000 mg"); // first-ok: the remaining dose's Amount field in this spec's edit form
   await doseEditor2.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the remaining dose's Time-of-day field in this spec's edit form
   await closeEditor(page, editForm);

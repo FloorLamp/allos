@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { expectNoClippedContent, settledClick } from "./helpers";
+import { expectNoClippedContent, hydratedClick, settledClick } from "./helpers";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { medicationRow } from "./med-card-helpers";
 
@@ -143,7 +143,10 @@ test("a value set in an editor still posts after the editor closes (#2014)", asy
   // Reopen the saved row: the note round-tripped through a form that never had it
   // on screen at submit time.
   const row = page.getByTestId("supplement-row").filter({ hasText: name });
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  await hydratedClick(
+    page,
+    row.getByRole("button", { name: "Supplement actions" })
+  );
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const editModal = page.getByRole("dialog", { name: `Edit ${name}` });
   const savedNotes = await openFact(page, "notes", editModal);
