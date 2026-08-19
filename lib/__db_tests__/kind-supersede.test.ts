@@ -24,6 +24,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubTelegramSends } from "./telegram-spies";
+import { TELEGRAM_FAILURE_FIXTURES } from "./telegram-failure-fixtures";
 
 import { db, today } from "@/lib/db";
 import { setSetting } from "@/lib/settings";
@@ -219,6 +220,30 @@ describe("one live keyboard per (chat, kind) — /dose (#1898)", () => {
     // The dead message is not carried forward as a target.
     expect(livePrnPointers()).toHaveLength(1);
   });
+
+  // THE SHARED CLASSIFIER FIXTURES (#2827): the same four failure shapes the
+  // #947/#1719 rotation runs (food-rotation-claim.test.ts), through the same
+  // list, so the two strip paths keep ONE failure classifier and ONE
+  // pointer-retention interpretation — permanent forgets, transient keeps.
+  for (const fixture of TELEGRAM_FAILURE_FIXTURES) {
+    it(`shares the ${fixture.name} classification with the rotation (${fixture.classified})`, async () => {
+      await doseCommand();
+      const first = livePrnPointers()[0];
+      closeMock.mockImplementation(async () => {
+        throw fixture.make();
+      });
+      closeMock.mockClear();
+
+      await doseCommand();
+
+      const stillNamed = livePrnPointers().some(
+        (x) => x.messageId === first.messageId
+      );
+      // permanent ⇒ the dead message is not carried forward as a target;
+      // transient ⇒ the restored row is what the next send/sweep retries from.
+      expect(stillNamed).toBe(fixture.classified === "transient");
+    });
+  }
 
   it("a failed close never turns a delivered message into a channel failure", async () => {
     const reminder: NotificationMessage = {
