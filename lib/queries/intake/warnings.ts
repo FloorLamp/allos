@@ -81,7 +81,11 @@ import { parseRxcuiIngredients } from "../../rxnorm";
 import { activeByKey } from "../../findings";
 import { getFindingSuppressions } from "../upcoming/suppressions";
 import { contributesToDailyLimit, isOnDemand } from "../../intake-schedule";
-import { getIntakeItems, getIntakeDoses } from "./schedule";
+import {
+  getIntakeItems,
+  getIntakeDoses,
+  getIntakeIngredientsByItem,
+} from "./schedule";
 
 // ---- Dietary limits: supplement stack-total UL warnings (issue #148) ----
 
@@ -162,6 +166,11 @@ function stackDriContext(
   // from the RDA reassurance share (disclosed as an aside). Filtering here would force
   // one direction on both questions, which is how the UL under-counted before.
   // The item's active flag is still gated downstream in the DRI math.
+  // Label composition (#2856): a blend's ingredient rows go through the SAME
+  // NAME_MATCHERS the item name does, applied per ingredient, so an "Eye Health+"
+  // capsule's zinc finally stacks against a standalone zinc instead of contributing
+  // nothing. Profile-scoped through the parent JOIN; no new scoping surface.
+  const ingredientsByItem = getIntakeIngredientsByItem(profileId);
   const items: StackItem[] = intakeItems
     .filter((item) => contributesToDailyLimit(item))
     .map((item) => ({
@@ -169,6 +178,11 @@ function stackDriContext(
       active: !!item.active,
       doseAmounts: dosesByItem.get(item.id) ?? [],
       optional: isOnDemand(item),
+      ingredients: (ingredientsByItem.get(item.id) ?? []).map((g) => ({
+        name: g.name,
+        amount: g.amount,
+        unit: g.unit,
+      })),
     }));
 
   const birthdate = getProfileBirthdate(profileId);
@@ -187,11 +201,17 @@ function stackDriContext(
 // Profile-scoped (getIntakeItems filters profile_id); inactive/paused rows are
 // dropped by the pure detector.
 export function getInteractionWarnings(profileId: number): InteractionHit[] {
+  // Label composition (#2856): the concept matcher reads each ingredient NAME as
+  // additional name evidence, so a "Mood Support" blend whose label carries St.
+  // John's Wort resolves the SSRI interaction its own name never could. Widening
+  // only — an item with no ingredient rows matches exactly as before.
+  const ingredientsByItem = getIntakeIngredientsByItem(profileId);
   const items: InteractionItem[] = getIntakeItems(profileId).map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,
     rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
+    ingredients: (ingredientsByItem.get(s.id) ?? []).map((g) => g.name),
     active: !!s.active,
   }));
   return detectInteractions(items);

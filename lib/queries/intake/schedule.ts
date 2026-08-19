@@ -12,6 +12,7 @@ import {
 import { db, hoistedStatement } from "../../db";
 import { snapshotCached } from "../../read-snapshot";
 import type { IntakeItem, IntakeDose, SupplementSuggestion } from "../../types";
+import type { IntakeItemIngredient } from "../../intake-ingredients";
 
 // Whether this profile has ANY intake item (supplement or medication). Drives the
 // Nutrition nav entry's visibility for an infant profile (#746): the food-group
@@ -79,6 +80,42 @@ export const getIntakeItems = snapshotCached(
   (profileId: number) => String(profileId),
   getIntakeItemsUncached
 );
+
+// ---- Label composition (issue #2856) ----
+
+// Every intake item's label ingredients for this profile, in label order. Scoped by
+// JOINing the parent — the table carries no profile_id of its own, being a CHILD like
+// intake_item_doses — so no read here can reach another person's shelf.
+//
+// The whole-profile shape rather than a per-item read, because that is how every
+// consumer wants it: the stack-total assembly, the interaction/allergen belts and the
+// supplements list each iterate the profile's items once and need each one's
+// composition beside it. Callers index by item_id (getIntakeIngredientsByItem).
+export function getIntakeIngredients(
+  profileId: number
+): IntakeItemIngredient[] {
+  return db
+    .prepare(
+      `SELECT g.* FROM intake_item_ingredients g
+         JOIN intake_items i ON i.id = g.item_id
+        WHERE i.profile_id = ?
+        ORDER BY g.item_id, g.sort, g.id`
+    )
+    .all(profileId) as IntakeItemIngredient[];
+}
+
+// The same rows grouped by item_id — the shape every consumer actually uses.
+export function getIntakeIngredientsByItem(
+  profileId: number
+): Map<number, IntakeItemIngredient[]> {
+  const out = new Map<number, IntakeItemIngredient[]>();
+  for (const row of getIntakeIngredients(profileId)) {
+    const list = out.get(row.item_id) ?? [];
+    list.push(row);
+    out.set(row.item_id, list);
+  }
+  return out;
+}
 
 // Kind-specific adapters are intentionally named after the subset they return.
 // Shared scheduling, adherence, and safety code reads getIntakeItems instead.
