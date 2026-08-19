@@ -175,7 +175,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
   }) => {
     test.slow();
     await page.goto("/nutrition?tab=supplements");
-    // The add-mode SupplementForm lives behind the "Add supplement" modal now.
+    // The add-mode intake form lives behind the "Add supplement" modal.
     await page.getByTestId("supplement-add-toggle").click();
     let addForm = page.getByRole("dialog", { name: "Add supplement" });
     await expect(addForm).toBeVisible();
@@ -238,7 +238,7 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // replacement must dismiss too (on blur / pointerdown-outside) or its overlay eats
     // the next control's click (the shard-1 `dose-history` interception).
     await page.goto("/nutrition?tab=supplements");
-    // The add-mode SupplementForm lives behind the "Add supplement" modal now.
+    // The add-mode intake form lives behind the "Add supplement" modal.
     await page.getByTestId("supplement-add-toggle").click();
     const addCard = page.getByRole("dialog", { name: "Add supplement" });
     await expect(addCard).toBeVisible();

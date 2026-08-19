@@ -31,7 +31,7 @@ const AUTH_STATE = workerAuthPath();
 // Create a supplement with a single daily Morning dose and return its row locator.
 async function createMorningSupplement(page: Page, name: string) {
   await page.goto("/nutrition?tab=supplements");
-  // The add-mode SupplementForm lives behind the "Add supplement" modal now.
+  // The add-mode intake form lives behind the "Add supplement" modal.
   await page.getByTestId("supplement-add-toggle").click();
   const addCard = page.getByRole("dialog", { name: "Add supplement" });
   await addCard.getByLabel("Name").fill(name);
