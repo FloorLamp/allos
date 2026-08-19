@@ -115,10 +115,7 @@ describe("usualRoutinePhrase — the label names EVERY write", () => {
     expect(
       usualRoutinePhrase(
         ["Berries"],
-        [
-          dose("Creatine", "Sleep stack"),
-          dose("Collagen", "AM stack"),
-        ]
+        [dose("Creatine", "Sleep stack"), dose("Collagen", "AM stack")]
       )
     ).toBe("Berries + Creatine and Collagen");
     expect(

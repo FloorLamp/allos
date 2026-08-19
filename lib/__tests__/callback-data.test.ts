@@ -5,6 +5,9 @@ import {
   escalationAckCloseText,
   escalationTakeCloseText,
   parseAllCallback,
+  parseStackTakeCallback,
+  stackTakeCallback,
+  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
   parseEscalationCallback,
   parsePreventiveCallback,
   parseRefillCallback,
@@ -94,6 +97,36 @@ describe("parseAllCallback", () => {
 
   it("its profile id resolves against a shared chat like a per-dose tap", () => {
     // resolveTapProfile accepts any token carrying a profileId.
+    expect(resolveTapProfile({ profileId: 2 }, [1, 2, 3])).toBe(2);
+    expect(resolveTapProfile({ profileId: 9 }, [1, 2, 3])).toBeNull();
+  });
+});
+
+describe("parseStackTakeCallback (#3098)", () => {
+  it("round-trips the builder's token — one source of truth for the shape", () => {
+    const token = stackTakeCallback(2, "2026-07-03", [11, 12, 13]);
+    expect(token).toBe("stacktake:2:2026-07-03:11,12,13");
+    expect(parseStackTakeCallback(token)).toEqual({
+      profileId: 2,
+      date: "2026-07-03",
+      doseIds: [11, 12, 13],
+    });
+  });
+
+  it("rejects malformed tokens — the ids are an upper bound, never a free-text field", () => {
+    expect(parseStackTakeCallback("stacktake:1:2026-07-03:")).toBeNull(); // empty ids
+    expect(parseStackTakeCallback("stacktake:1:2026-07-03:11,x")).toBeNull(); // non-numeric id
+    expect(parseStackTakeCallback("stacktake:0:2026-07-03:11")).toBeNull(); // zero profile
+    expect(parseStackTakeCallback("stacktake:1::11")).toBeNull(); // no date
+    expect(parseStackTakeCallback("all:1:Morning:2026-07-03")).toBeNull();
+    expect(parseStackTakeCallback(undefined)).toBeNull();
+  });
+
+  it("declares Telegram's callback ceiling for the compose-time drop rule", () => {
+    expect(TELEGRAM_CALLBACK_DATA_MAX_BYTES).toBe(64);
+  });
+
+  it("its profile id resolves against a shared chat like every tap token", () => {
     expect(resolveTapProfile({ profileId: 2 }, [1, 2, 3])).toBe(2);
     expect(resolveTapProfile({ profileId: 9 }, [1, 2, 3])).toBeNull();
   });

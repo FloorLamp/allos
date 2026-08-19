@@ -379,12 +379,7 @@ describe("buildRecap", () => {
     const line = recap.lines.find((l) => l.key === "prs")!;
     expect(line.value).toBe("4");
     // One note per record (#2391's homogeneous tail); the grammar punctuates them.
-    expect(line.notes).toEqual([
-      "Bench press",
-      "Squat",
-      "Deadlift",
-      "+1 more",
-    ]);
+    expect(line.notes).toEqual(["Bench press", "Squat", "Deadlift", "+1 more"]);
     expect(line.comparison.kind).toBe("none");
     // The headline's PR slot names the FIRST record, never a count (#3033).
     expect(recap.headline).toContain("a Bench press PR");
@@ -397,7 +392,12 @@ describe("buildRecap", () => {
     const prs = [
       {
         label: "Romanian Deadlift (Rep Trap Bar)",
-        set: { kind: "1rm" as const, weightKg: 100, reps: 5, bodyweight: false },
+        set: {
+          kind: "1rm" as const,
+          weightKg: 100,
+          reps: 5,
+          bodyweight: false,
+        },
       },
       {
         label: "Chin-up",
@@ -405,7 +405,12 @@ describe("buildRecap", () => {
       },
       {
         label: "Leg Press",
-        set: { kind: "weight" as const, weightKg: 180, reps: 0, bodyweight: false },
+        set: {
+          kind: "weight" as const,
+          weightKg: 180,
+          reps: 0,
+          bodyweight: false,
+        },
       },
     ];
     const line = buildRecap(baseInput({ prs })).lines.find(
@@ -1496,8 +1501,12 @@ describe("nutrient-missed line (#3033)", () => {
 
   it("keeps a 1-of-N nutrient in the Food tail — the threshold is exactly zero", () => {
     const recap = buildRecap(baseInput({ food: food(1) }));
-    expect(recap.lines.find((l) => l.key === "nutrient-missed")).toBeUndefined();
-    expect(recapLineAnnotation(recap.lines.find((l) => l.key === "food")!)).toBe(
+    expect(
+      recap.lines.find((l) => l.key === "nutrient-missed")
+    ).toBeUndefined();
+    expect(
+      recapLineAnnotation(recap.lines.find((l) => l.key === "food")!)
+    ).toBe(
       "13 food groups · protein on target 6 of 7 days · fiber on target 1 of 7 days"
     );
   });

@@ -303,9 +303,7 @@ export function renderWindowMessage(
   // (alcohol → adult) is dropped from a child's reminder tail. Null = unknown = shown.
   age: number | null = null
 ): NotificationMessage {
-  const pending = entries
-    .filter((e) => !e.taken && !e.skipped)
-    .sort(byDoseDay);
+  const pending = entries.filter((e) => !e.taken && !e.skipped).sort(byDoseDay);
   // Resolved doses (taken or skipped) list after the pending ones; ⏭️ marks a skip.
   const resolved = entries.filter((e) => e.taken || e.skipped).sort(byDoseDay);
 
@@ -401,8 +399,7 @@ function doseSessionActions(
         members.map((m) => m.dose.id)
       );
       if (
-        new TextEncoder().encode(data).length >
-        TELEGRAM_CALLBACK_DATA_MAX_BYTES
+        new TextEncoder().encode(data).length > TELEGRAM_CALLBACK_DATA_MAX_BYTES
       ) {
         continue;
       }
