@@ -132,8 +132,10 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await expect(
     healthConnectCard.getByTestId("activity-provenance-source")
   ).toHaveText("Google Health Connect");
+  await expect(
+    healthConnectCard.getByTestId("activity-page-time")
+  ).toContainText("06:45–07:09");
   const healthSummary = healthConnectCard.getByTestId("activity-summary");
-  await expect(healthSummary).toContainText("06:45–07:09");
   await expect(healthSummary).toContainText("24 min");
   await expect(healthSummary).toContainText("5 km");
   await expect(healthSummary).toContainText("12.5 km/h");
@@ -176,9 +178,7 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   );
   const routeMap = stravaCard.getByTestId("route-map");
   await expect(routeMap).toBeVisible();
-  const visualBox = stravaCard.getByTestId("activity-visuals");
-  await expect(visualBox).toBeVisible();
-  await expect(visualBox.getByTestId("route-map")).toBeVisible();
+  await expect(stravaCard.getByTestId("ride-route")).toContainText("Route");
   // It's an inline <svg> tracing a <path> — not an <img> (nothing is fetched).
   await expect(routeMap).toHaveJSProperty("tagName", "svg");
   await expect(routeMap.locator("path")).toHaveCount(1);
@@ -208,13 +208,15 @@ test("training log cards prioritize a summary and progressively disclose details
   const ride = await openActivityPage(page, rideRow, "Strava morning ride");
 
   // Primary measurements and intensity read as one quiet, scan-friendly line.
-  const summary = ride.getByTestId("activity-summary");
-  await expect(summary).toContainText("07:15–08:17");
+  await expect(ride.getByTestId("activity-page-time")).toContainText(
+    "07:15–08:17"
+  );
+  const summary = ride.getByTestId("ride-summary-line");
   await expect(summary).toContainText("62 min");
   await expect(summary).toContainText("148/171 bpm");
   const heartRate = ride.getByTestId("activity-heart-rate");
   await expect(heartRate).toHaveAttribute("title", "Zone 3 · Tempo");
-  await expectUtilityColor(heartRate, "text-slate-600");
+  await expectUtilityColor(heartRate, "text-slate-800");
   await expect(heartRate.getByTestId("activity-heart-rate-icon")).toHaveCSS(
     "color",
     "rgb(234, 179, 8)"
@@ -222,8 +224,6 @@ test("training log cards prioritize a summary and progressively disclose details
   await expect(summary).toContainText("24.5 km");
   await expect(summary).toContainText("648 kcal");
   await expect(summary).not.toContainText("≈ 648 kcal");
-  await expect(summary).toHaveClass(/text-slate-600/);
-  await expect(summary).toHaveClass(/dark:text-slate-300/);
 
   // Intensity renders on the full record: swap the pane to the hard session.
   const hardRow = page
@@ -240,26 +240,14 @@ test("training log cards prioritize a summary and progressively disclose details
   // Swap the pane back to the ride for its structured measurements.
   await openActivityPage(page, rideRow, "Strava morning ride");
 
-  // Rich measurements are structured list values, not a collection of badges.
+  // Quiet session metadata uses the same shared line as ordinary activities;
+  // cycling measurements remain grouped in the ride details below it.
   const metrics = ride.getByTestId("activity-metrics");
-  await expect(metrics.locator("li")).toHaveCount(8);
-  await expect(metrics).not.toContainText("148/171 bpm");
-  await expect(metrics).toContainText("210 m");
-  await expect(metrics).toContainText("186 W (193 NP)");
-  await expect(metrics).toContainText("88 rpm");
-  await expect(metrics).toContainText("692 kJ");
-  await expect(metrics).toContainText("18°C");
-  await expect(metrics).toContainText("Effort 72");
   await expect(metrics.getByTestId("activity-gear")).toHaveText("Road Bike");
   await expect(metrics.locator(".badge")).toHaveCount(0);
   await expect(metrics).toHaveClass(/text-slate-500/);
   await expect(metrics).toHaveClass(/dark:text-slate-400/);
-
-  // Cardio descriptions follow their names inline, matching strength rows,
-  // rather than being pushed to the far edge of the card.
-  const cardioRow = ride.getByTestId("training-log-cardio-row");
-  await expect(cardioRow).not.toHaveClass(/justify-between/);
-  await expect(cardioRow).toHaveClass(/gap-x-2/);
+  await expect(ride.getByTestId("ride-recorded-measurements")).toBeVisible();
 
   // Provenance remains present but uses the card's quiet footer treatment.
   const source = ride.getByTestId("activity-provenance-source");
@@ -270,89 +258,13 @@ test("training log cards prioritize a summary and progressively disclose details
   );
   await expect(source).not.toHaveClass(/text-slate-600/);
 
-  // Long notes disclose in place without opening the activity editor.
+  // Notes and route are discoverable sections on the canonical page.
   const notes = ride.getByTestId("activity-notes");
-  await expect(notes).toHaveClass(/text-slate-600/);
-  await expect(notes).toHaveClass(/dark:text-slate-300/);
-  const parts = ride.getByTestId("activity-parts");
-  const notesHandle = await notes.elementHandle();
-  expect(notesHandle).not.toBeNull();
-  expect(
-    await parts.evaluate(
-      (content, note) =>
-        Boolean(
-          content.compareDocumentPosition(note) &
-          Node.DOCUMENT_POSITION_FOLLOWING
-        ),
-      notesHandle!
-    )
-  ).toBe(true);
-  await expect(notes).toHaveClass(/line-clamp-2/);
-  const more = ride.getByRole("button", { name: "More" });
-  await more.click();
-  await expect(ride.getByRole("button", { name: "Less" })).toHaveAttribute(
-    "aria-expanded",
-    "true"
-  );
-  await expect(notes).not.toHaveClass(/line-clamp-2/);
-
-  // Route and muscle diagrams use the same compact box at the right of the card.
-  // A hybrid activity can put both visuals inside this one container.
-  const visuals = ride.getByTestId("activity-visuals");
-  await expect(visuals).toHaveClass(/rounded-lg/);
-  await expect(visuals).toHaveClass(/border/);
-  const desktopVisuals = await visuals.boundingBox();
-  const desktopRoute = await ride.getByTestId("route-map").boundingBox();
-  const desktopDetails = await ride
-    .getByTestId("activity-details")
-    .boundingBox();
-  const desktopParts = await ride.getByTestId("activity-parts").boundingBox();
-  expect(desktopVisuals).not.toBeNull();
-  expect(desktopRoute).not.toBeNull();
-  expect(desktopDetails).not.toBeNull();
-  expect(desktopParts).not.toBeNull();
-  expect(desktopVisuals!.x).toBeGreaterThan(desktopParts!.x);
-  expect(desktopVisuals!.width).toBeGreaterThan(90);
-  expect(desktopVisuals!.width).toBeLessThan(desktopParts!.width);
-  expect(desktopVisuals!.height).toBeCloseTo(128, 0);
-  expect(desktopRoute!.width).toBeLessThanOrEqual(desktopVisuals!.width);
-  expect(desktopRoute!.height).toBeLessThanOrEqual(desktopVisuals!.height);
-  // Details begin beside the visual instead of waiting for the visual's fixed
-  // height to finish and artificially enlarging the header section.
-  expect(desktopDetails!.y).toBeLessThan(
-    desktopVisuals!.y + desktopVisuals!.height
-  );
-
-  // The visual column gains room only at the largest breakpoint, once the
-  // two-column training log cards are themselves wide enough to preserve detail rows.
-  await page.setViewportSize({ width: 1536, height: 900 });
-  const largestVisuals = await visuals.boundingBox();
-  expect(largestVisuals).not.toBeNull();
-  expect(largestVisuals!.width).toBeGreaterThan(175);
-
-  // On a phone the canonical page uses the same full-width record body.
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/training?tab=log");
-  await rideRow.click();
-  const mobileRide = page
-    .getByTestId("training-activity-page")
-    .filter({ hasText: "Strava morning ride" });
-  await expect(mobileRide).toBeVisible();
-  const mobileVisuals = await mobileRide
-    .getByTestId("activity-visuals")
-    .boundingBox();
-  const mobileRoute = await mobileRide.getByTestId("route-map").boundingBox();
-  const mobileParts = await mobileRide
-    .getByTestId("activity-parts")
-    .boundingBox();
-  expect(mobileVisuals).not.toBeNull();
-  expect(mobileRoute).not.toBeNull();
-  expect(mobileParts).not.toBeNull();
-  expect(mobileVisuals!.height).toBeCloseTo(128, 0);
-  expect(mobileVisuals!.y).toBeGreaterThan(
-    mobileParts!.y + mobileParts!.height
-  );
-  expect(mobileRoute!.width).toBeGreaterThan(mobileRoute!.height * 2);
+  await expect(ride.getByTestId("activity-notes-card")).toContainText("Notes");
+  await expect(notes).toBeVisible();
+  await expect(
+    ride.getByTestId("ride-route").getByTestId("route-map")
+  ).toBeVisible();
 });
 
 test("strength target status is named and muscle filters are quiet text", async ({
@@ -468,7 +380,9 @@ test("the activity editor shows all stored Strava measurements as read-only", as
     "Strava"
   );
   await expect(
-    page.getByRole("heading", { name: "Route", exact: true })
+    page
+      .getByTestId("activity-form-route")
+      .getByRole("heading", { name: "Route", exact: true })
   ).toHaveClass(/label/);
   await expect(page.getByTestId("more-details-chevron")).toHaveClass(
     /rotate-90/

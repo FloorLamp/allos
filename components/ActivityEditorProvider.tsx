@@ -177,6 +177,9 @@ export default function ActivityEditorProvider({
   // The mounted live session's start instant (epoch ms) for the minimized bar.
   const [liveStartEpoch, setLiveStartEpoch] = useState<number | null>(null);
   const [editData, setEditData] = useState<ActivityEditData | null>(null);
+  const [dismissedPresenceId, setDismissedPresenceId] = useState<number | null>(
+    null
+  );
   // Whether the currently-open editor is in live workout mode (issue #340).
   const [live, setLive] = useState(false);
   // Repeat-last prefill: seeds a create form. Bumped `repeatNonce` forces a fresh
@@ -283,6 +286,7 @@ export default function ActivityEditorProvider({
 
   const leaveDeletedActivityPage = useCallback(
     (id: number) => {
+      setDismissedPresenceId(id);
       if (window.location.pathname === `/training/activity/${id}`)
         router.replace(trainingRelevant ? "/training" : "/timeline");
     },
@@ -389,7 +393,10 @@ export default function ActivityEditorProvider({
   // A fresh-load active session: nothing is mounted in this client, but the
   // server-hydrated #921 presence says one is running and its draft is reopenable.
   const hydrationActive =
-    !open && presence?.state === "active" && liveEditData != null;
+    !open &&
+    presence?.state === "active" &&
+    presence.activityId !== dismissedPresenceId &&
+    liveEditData != null;
 
   // THE start-vs-resume offer (#1893), derived once from the two facts the provider
   // already holds and handed to every entry point through the context. `open && live`

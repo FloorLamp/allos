@@ -5,6 +5,7 @@ import CardFootnote from "@/components/CardFootnote";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import { StatBox } from "@/components/StatBox";
+import ActivityMetricsLine from "@/components/activity/ActivityMetricsLine";
 import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
 import { activityTiming } from "@/lib/activity-timing";
 import {
@@ -430,12 +431,15 @@ export default async function CyclingActivityDetail(props: {
     base.card.activity.intensity != null;
   const hasRecordedMeasurements =
     hasPausedTime ||
-    data.equipment != null ||
     detailStats.length > 0 ||
     data.activity.imported_metrics?.max_hr != null ||
     data.activity.imported_metrics?.max_speed_kmh != null;
   const hasRideDetails =
-    hasPrimarySummary || hasRecordedMeasurements || highlights.length > 0;
+    hasPrimarySummary ||
+    base.card.contextMetrics.length > 0 ||
+    data.equipment != null ||
+    hasRecordedMeasurements ||
+    highlights.length > 0;
   const sectionLinks = [
     ...(hasEffort ? [{ id: "effort", label: "Effort" }] : []),
     ...(hasCourse ? [{ id: "course", label: "Course" }] : []),
@@ -476,6 +480,21 @@ export default async function CyclingActivityDetail(props: {
                   />
                 </div>
               ) : null}
+              <ActivityMetricsLine
+                metrics={base.card.contextMetrics}
+                gear={
+                  data.equipment
+                    ? {
+                        label: data.equipment.name,
+                        href:
+                          props.subjectProfileId == null
+                            ? equipmentHref(data.equipment.id)
+                            : undefined,
+                      }
+                    : null
+                }
+                className="mt-3"
+              />
               {hasRecordedMeasurements ? (
                 <dl
                   className="mt-4 grid gap-x-8 gap-y-4 border-b border-black/5 pb-4 sm:grid-cols-2 dark:border-white/10"
@@ -507,19 +526,6 @@ export default async function CyclingActivityDetail(props: {
                       value={`${data.activity.imported_metrics.max_hr} bpm`}
                       variant="plain"
                       data-testid="ride-stat-max-heart-rate"
-                    />
-                  ) : null}
-                  {data.equipment ? (
-                    <StatBox
-                      label="Bike"
-                      value={data.equipment.name}
-                      href={
-                        props.subjectProfileId == null
-                          ? equipmentHref(data.equipment.id)
-                          : undefined
-                      }
-                      variant="plain"
-                      data-testid="ride-stat-bike"
                     />
                   ) : null}
                   {detailStats.map((stat) => (

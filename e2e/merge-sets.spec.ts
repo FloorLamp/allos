@@ -27,11 +27,11 @@ test("merging re-parents the discarded row's sets onto the keeper, shown in the 
   const keeperCard = page.getByTestId("training-activity-page");
   await expect(keeperCard).toBeVisible();
   // Before the merge the keeper shows only its own exercise. Target the
-  // exercise-progression button by its EXACT accessible name — a substring getByText
+  // exercise drill-in link by its EXACT accessible name — a substring getByText
   // would also match the card's "Can't be saved as-is — …" fault badge, which echoes
   // the exercise name (the seeded set has no equipment picked).
   await expect(
-    keeperCard.getByRole("button", { name: "Bench Press", exact: true })
+    keeperCard.getByRole("link", { name: "Bench Press", exact: true })
   ).toBeVisible();
 
   // Open the record's overflow (⋯) menu → "Merge with…" → pick the dupe.
@@ -64,12 +64,12 @@ test("merging re-parents the discarded row's sets onto the keeper, shown in the 
   // Exact role-name locators again, so the fault badge's echo of an exercise name
   // can't create a strict-mode ambiguity.
   await expect(
-    merged.getByRole("button", { name: "Bench Press", exact: true })
+    merged.getByRole("link", { name: "Bench Press", exact: true })
   ).toBeVisible();
   await expect(
-    merged.getByRole("button", { name: "Back Squat", exact: true })
+    merged.getByRole("link", { name: "Back Squat", exact: true })
   ).toBeVisible();
   await expect(
-    merged.getByRole("button", { name: "Deadlift", exact: true })
+    merged.getByRole("link", { name: "Deadlift", exact: true })
   ).toBeVisible();
 });

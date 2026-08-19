@@ -5,8 +5,8 @@ import type { TrainingLogCardData } from "@/lib/training-log-card";
 import type { ProgressDelta } from "@/lib/progress-delta";
 import type { ActivityStrengthRecord } from "@/lib/training-activity-detail";
 import { activityEditDataHasStrength } from "@/lib/activity-form-model";
-import Link from "next/link";
 import ActivitySummaryLine from "@/components/activity/ActivitySummaryLine";
+import ActivityMetricsLine from "@/components/activity/ActivityMetricsLine";
 import ActivityPartRows from "@/components/activity/ActivityPartRows";
 import { equipmentHref, strengthAnalyzeHref } from "@/lib/hrefs";
 import type { MuscleId } from "@/lib/lifts";
@@ -52,44 +52,20 @@ export default function ActivityRecord({
       />
       {(card.metrics.length > 0 || card.gear || card.parts.length > 0) && (
         <div data-testid="activity-details" className="mt-4">
-          {(card.metrics.length > 0 || card.gear) && (
-            <ul
-              data-testid="activity-metrics"
-              aria-label="Activity details"
-              className="flex flex-wrap text-xs tabular-nums text-slate-500 dark:text-slate-400"
-            >
-              {card.metrics.map((metric, index) => (
-                <li key={metric} className="whitespace-nowrap">
-                  {index > 0 ? (
-                    <span aria-hidden className="mx-2">
-                      ·
-                    </span>
-                  ) : null}
-                  {metric}
-                </li>
-              ))}
-              {card.gear ? (
-                <li className="whitespace-nowrap">
-                  {card.metrics.length > 0 ? (
-                    <span aria-hidden className="mx-2">
-                      ·
-                    </span>
-                  ) : null}
-                  {drillInsVisible && card.activity.equipment_id != null ? (
-                    <Link
-                      href={equipmentHref(card.activity.equipment_id)}
-                      data-testid="activity-gear"
-                      className="hover:text-slate-700 hover:underline dark:hover:text-slate-200"
-                    >
-                      {card.gear}
-                    </Link>
-                  ) : (
-                    card.gear
-                  )}
-                </li>
-              ) : null}
-            </ul>
-          )}
+          <ActivityMetricsLine
+            metrics={card.metrics}
+            gear={
+              card.gear
+                ? {
+                    label: card.gear,
+                    href:
+                      drillInsVisible && card.activity.equipment_id != null
+                        ? equipmentHref(card.activity.equipment_id)
+                        : undefined,
+                  }
+                : null
+            }
+          />
           <ActivityPartRows
             parts={card.parts}
             className={

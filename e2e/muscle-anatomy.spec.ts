@@ -111,7 +111,7 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
     .getByTestId("training-log-strength-row")
     .filter({ hasText: "Bench Press" });
   const chest = figure.locator('[data-muscle-target="coverage-chest"]');
-  await chest.hover();
+  await chest.locator("path").first().hover(); // first-ok: either bilateral chest path bubbles to the same muscle highlight target
   await expect(benchRow).toHaveAttribute("data-highlighted", "true");
 
   await benchRow.hover();

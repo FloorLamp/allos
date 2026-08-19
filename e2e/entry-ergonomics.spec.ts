@@ -104,6 +104,9 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
   await expect(page.getByLabel("Activity name")).toHaveValue(
     "Training Log merge keeper"
   );
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
 
   // The prefilled, complete session auto-saves as a NEW row (dated today). Return
   // to the log to verify that a second row with the same title was created.
@@ -600,9 +603,6 @@ test("the activity form keeps workout entry primary and context visible across b
   const sessionDetails = page.getByTestId("session-details");
   await expect(sessionDetails).toBeVisible();
   await expect(sessionDetails).toHaveCSS("border-top-width", "0px");
-  await expect(
-    sessionDetails.getByRole("heading", { name: "Session details" })
-  ).toHaveClass("sr-only");
   expect(
     await page
       .getByTestId("date-time-fields")

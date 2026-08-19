@@ -267,7 +267,9 @@ export default async function TrainingActivityPage(props: {
           subtitle={
             <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
               <span>{formatLongDate(data.row.date, formatPrefs)}</span>
-              {card.timeText ? <span>· {card.timeText}</span> : null}
+              {card.timeText ? (
+                <span data-testid="activity-page-time">· {card.timeText}</span>
+              ) : null}
             </span>
           }
           action={

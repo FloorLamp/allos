@@ -62,9 +62,6 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
       .getByTestId("ride-summary")
       .getByRole("heading", { name: "Recorded measurements" })
   ).toHaveCount(0);
-  await expect(page.getByTestId("ride-stat-active-time")).toHaveClass(
-    /bg-slate-50/
-  );
   await expect(
     page.getByRole("heading", { name: "Strava morning ride", exact: true })
   ).toBeVisible();
@@ -76,9 +73,6 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   await expect(primarySummary).toContainText("148 bpm");
   await expect(primarySummary).toContainText("72");
   await expect(primarySummary).toContainText("648 kcal");
-  await expect(page.getByTestId("ride-stat-active-time")).toContainText(
-    "74 min"
-  );
   await expect(page.getByTestId("ride-stat-max-heart-rate")).toContainText(
     "171 bpm"
   );
@@ -98,7 +92,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
     "692 kJ"
   );
   await expect(page.getByTestId("ride-stat-temperature")).toContainText("18°C");
-  await expect(page.getByTestId("ride-stat-bike")).toContainText("Road Bike");
+  await expect(page.getByTestId("activity-gear")).toContainText("Road Bike");
   const highlights = page.getByTestId("session-highlights");
   await expect(highlights).toBeVisible();
   await expect(page.getByTestId("session-highlight-comparison")).toHaveCount(0);
@@ -802,8 +796,6 @@ test("canonical activity navigation stays compact on a ride", async ({
   expect(
     await page
       .getByTestId("ride-recorded-measurements")
-      .evaluate(
-        (element) => getComputedStyle(element.parentElement!).borderTopWidth
-      )
+      .evaluate((element) => getComputedStyle(element).borderTopWidth)
   ).toBe("0px");
 });

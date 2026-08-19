@@ -103,8 +103,11 @@ export interface TrainingLogCardData {
   // Measured active energy, or an explicitly approximate fallback when it is
   // missing, belongs with the primary summary rather than the rich-metrics row.
   calorieText: string | null;
-  // Compact chips for richer imported metrics (HR, elevation, power, etc.).
+  // Compact labels for richer imported metrics and session context.
   metrics: string[];
+  // Context that still belongs beside the common summary when a specialized
+  // detail view renders imported measurements in its own structured section.
+  contextMetrics: string[];
   // Session-level gear name (issue #342), e.g. "Road Bike" for a ride — resolved
   // from activity.equipment_id via the equipmentNames map (retired gear still
   // labels), or null when the activity has no gear linked.
@@ -504,6 +507,7 @@ export function buildTrainingLogCards({
       metrics: stamp
         ? [stamp, ...activityMetrics(a, units.distanceUnit)]
         : activityMetrics(a, units.distanceUnit),
+      contextMetrics: stamp ? [stamp] : [],
       gear:
         a.equipment_id != null
           ? (equipmentNames.get(a.equipment_id) ?? null)
