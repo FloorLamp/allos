@@ -26,7 +26,10 @@
 // The region vocabulary is `lib/injury-model.ts`'s and nothing else — see
 // lib/curated/niggle-lexicon.ts for how a typed word reaches it.
 
+import { daysBetweenDateStr, weekdayOfDateStr, WEEKDAYS_LONG } from "./date";
+import { formatRelativeDate } from "./format-date";
 import type { InjuryLaterality } from "./injury-model";
+import { regionForExercise, REGION_SCOPES } from "./lifts";
 import type { MuscleRegion } from "./lifts";
 
 // ── THE QUIET SPELL ──────────────────────────────────────────────────────────
@@ -121,4 +124,218 @@ export function niggleLabel(
   if (n.laterality === "left" || n.laterality === "right")
     return `${n.laterality} ${part}`;
   return part;
+}
+
+// ── THE THIRD AND WEAKEST COACHING TIER (#3211 part 3) ───────────────────────
+//
+// A live niggle gets #838's RECOVERING TREATMENT, not exclusion (#2948 part 3): the
+// region STAYS in the recommendation at tempered targets, with the disclosure naming
+// why. Three invariants, and all three are pinned in
+// lib/__tests__/workout-recommendation-niggles.test.ts:
+//
+//   1. THE TILT ONLY EVER WEAKENS A SESSION. It never strengthens, never excludes, and
+//      never re-ranks: `recommendNextWorkout` composes the tier AFTER the pick, so the
+//      items/focus/exercises a niggle-carrying profile gets are byte-for-byte the ones
+//      it would get with no niggle at all. Only the TARGET moves, and only downward —
+//      composed with a stronger tier by `Math.min`, never by replacement.
+//   2. ILLNESS HOLDS AND INJURY EXCLUSIONS OUTRANK IT. The illness hold is structural:
+//      `recommendCoaching` returns the held note before `recommendNextWorkout` is ever
+//      called, so a niggle cannot speak under a hold. The injury exclusion is enforced
+//      here — `niggleTempers` drops a region an ACTIVE injury already excluded, and
+//      `resolveTrainingTemper` returns the exclusion untouched.
+//   3. NEVER SILENT. Every temper carries its own rendered `note`, which every surface
+//      renders beside the suggestion (the #838 always-disclose rule).
+//
+// The tier is DELIBERATELY NOT an `InjuryConstraint` in disguise. A niggle is not an
+// injury — #2948 leaves the injury entity untouched — and every injury disclosure label
+// appends the word "injury" (`withInjuryWord`), so a niggle threaded through that
+// machinery would tell the user they have an injury they never created, and its
+// synthetic id would collide with a real one in `nw.injuryConstraints`. It rides the
+// SAME seam instead: one optional field on `NextWorkoutInput`, one field on
+// `NextWorkout`, one composition point per consumer.
+
+// How far a live niggle backs a target off, as a fraction of the ordinary next-set
+// target. STRICTLY MILDER than `RECOVERING_LOAD_FACTOR` (0.6) on purpose: "third and
+// weakest tier" is only true if the weakest tier also tempers the least, and a knee that
+// felt weird after Tuesday's squats is not a declared, managed injury. It is also kept
+// distinct from `DELOAD_LOAD_FACTOR` (0.9) so a niggle temper and a deload week are never
+// confusable in a rendered target.
+//
+// A SUGGESTION-strength constant, adjust-in-review — nothing is prescribed and the user
+// can always log whatever they lift.
+export const NIGGLE_LOAD_FACTOR = 0.85;
+
+// What the coaching gather hands the pure core: one LIVE niggle, already resolved to the
+// profile's own day. Liveness and the timezone both belong to the gather (the store's
+// `getLiveNiggles` and `getTimezone`), so the core stays pure and clock-free — the same
+// split `injuries` and `illness` already use.
+export interface NiggleCoachingContext {
+  region: MuscleRegion;
+  // `niggleLabel(n)` — "right knee", "hip", "knee (both sides)".
+  label: string;
+  // The profile-LOCAL day of the most recent report (YYYY-MM-DD), so the disclosure can
+  // say "from Tuesday" without the core knowing a timezone (#2205: instants are stored,
+  // days are derived at the boundary).
+  lastReportedDay: string;
+}
+
+// One tempered region, with everything a surface needs to disclose it.
+export interface NiggleTemper {
+  region: MuscleRegion;
+  label: string;
+  // The load fraction the suggestion applies.
+  factor: number;
+  lastReportedDay: string;
+  // The rendered disclosure line. Carried on the model rather than re-derived per
+  // surface, because the phrase needs `today` and the pure formatters downstream
+  // (`contextNotes`, the Training-tab chips) do not have it — the same shape
+  // `endurancePlanArm.note` and `ConditionConsideration.note` already use.
+  note: string;
+}
+
+// "Tuesday" / "yesterday" / "2 weeks ago" — when the person said it, in the shape that
+// stays true across the whole 14-day quiet spell. A weekday name is unambiguous only
+// inside the last week; past that it would name two possible days, so the phrase falls
+// back to the relative form the rest of the app uses.
+function reportedWhen(day: string, today: string): string {
+  const d = daysBetweenDateStr(day, today);
+  if (d == null) return day;
+  if (d <= 0) return "today";
+  if (d === 1) return "yesterday";
+  if (d < 7) return WEEKDAYS_LONG[weekdayOfDateStr(day)] ?? day;
+  return formatRelativeDate(day, today).toLowerCase();
+}
+
+// "Easing off Legs — right knee niggle from Tuesday" (#2948's own copy). Names the
+// region the target moved for, the niggle in the person's own word, and when they said
+// it — so the change is never silent and never mysterious.
+export function niggleTemperLine(
+  t: Pick<NiggleCoachingContext, "region" | "label" | "lastReportedDay">,
+  today: string
+): string {
+  return `Easing off ${t.region} — ${t.label} niggle from ${reportedWhen(
+    t.lastReportedDay,
+    today
+  )}`;
+}
+
+// The tempers a live niggle set produces, with the INJURY EXCLUSION APPLIED: a region an
+// ACTIVE injury has already taken off the table is not tempered, because there is
+// nothing left to temper and the card must not offer an eased-off target for a lift it
+// is simultaneously avoiding. Ordered by REGION_SCOPES (then input order) for a stable
+// read; two niggles on one region each keep their own line, because "left knee" and
+// "right knee" are two things the person said.
+export function niggleTempers(
+  niggles: readonly NiggleCoachingContext[],
+  excludedRegions: ReadonlySet<MuscleRegion>,
+  today: string
+): NiggleTemper[] {
+  const kept = niggles.filter((n) => !excludedRegions.has(n.region));
+  const order = new Map(REGION_SCOPES.map((r, i) => [r, i]));
+  return kept
+    .map((n, i) => ({ n, i }))
+    .sort(
+      (a, b) =>
+        (order.get(a.n.region) ?? REGION_SCOPES.length) -
+          (order.get(b.n.region) ?? REGION_SCOPES.length) || a.i - b.i
+    )
+    .map(({ n }) => ({
+      region: n.region,
+      label: n.label,
+      factor: NIGGLE_LOAD_FACTOR,
+      lastReportedDay: n.lastReportedDay,
+      note: niggleTemperLine(n, today),
+    }));
+}
+
+// The tempers covering one lift, by the lift's coarse region — the niggle tier is
+// region-scoped and only region-scoped (a niggle records WHERE it hurts, never a
+// movement pattern or a named lift, so there is no finer level to honor).
+export function nigglesCoveringExercise(
+  tempers: readonly NiggleTemper[],
+  exerciseName: string
+): NiggleTemper[] {
+  const region = regionForExercise(exerciseName);
+  if (region == null) return [];
+  return tempers.filter((t) => t.region === region);
+}
+
+// The composed verdict for ONE lift across all three tiers, in their fixed order. This
+// is the ONE place the ordering is written down, so every surface that seeds a target
+// (the coaching card, the Telegram nudge, the Training-overview session card) inherits
+// the same answer and a reorder cannot happen in one of them quietly.
+export interface TrainingTemper {
+  // Which tier decided this lift. "injury" covers a lift a recovering injury tempers
+  // (whether or not a niggle also covers it); "niggle" is the niggle-only case.
+  tier: "excluded" | "injury" | "niggle" | "clear";
+  // The `NextSetContext` flags — a tempered lift backs its load off to `factor`.
+  recoveringRegion: boolean;
+  factor: number;
+  // The niggle labels this lift's temper names, when the niggle tier contributed.
+  niggleLabels: string[];
+  // The next-set rationale to render, when the niggle tier is the ONLY reason the target
+  // moved. Null otherwise — a lift a recovering injury tempers keeps the injury copy,
+  // which is the honest one.
+  rationale: string | null;
+}
+
+export function resolveTrainingTemper(
+  // The injury tier's verdict for this lift (`exerciseInjuryVerdict`), passed in so this
+  // module never has to know how a constraint resolves.
+  verdict: { kind: "clear" | "tempered" | "excluded"; factor: number },
+  tempers: readonly NiggleTemper[],
+  exerciseName: string
+): TrainingTemper {
+  // TIER 1 — an injury exclusion outranks everything below it. A lift that is off the
+  // table has no target to ease off, and offering one would contradict the exclusion the
+  // same card discloses.
+  if (verdict.kind === "excluded")
+    return {
+      tier: "excluded",
+      recoveringRegion: false,
+      factor: 1,
+      niggleLabels: [],
+      rationale: null,
+    };
+
+  const covering = nigglesCoveringExercise(tempers, exerciseName);
+  const niggleFactor = covering.length
+    ? Math.min(...covering.map((t) => t.factor))
+    : null;
+  const niggleLabels = covering.map((t) => t.label);
+
+  // TIER 2 — a recovering injury tempers. The niggle can only make the ask SMALLER
+  // (`Math.min`), never larger: that is invariant 1, and it is why this is a min and not
+  // a replacement. In practice the injury's 0.6 already beats the niggle's 0.85, so the
+  // min is normally the injury's own factor — but a user-declared loadFactor above the
+  // niggle's would otherwise let a niggle STRENGTHEN the session, which must not happen.
+  if (verdict.kind === "tempered")
+    return {
+      tier: "injury",
+      recoveringRegion: true,
+      factor:
+        niggleFactor == null
+          ? verdict.factor
+          : Math.min(verdict.factor, niggleFactor),
+      niggleLabels,
+      rationale: null,
+    };
+
+  // TIER 3 — the niggle alone.
+  if (niggleFactor != null)
+    return {
+      tier: "niggle",
+      recoveringRegion: true,
+      factor: niggleFactor,
+      niggleLabels,
+      rationale: `Easing off — ${niggleLabels.join(", ")} niggle`,
+    };
+
+  return {
+    tier: "clear",
+    recoveringRegion: false,
+    factor: 1,
+    niggleLabels: [],
+    rationale: null,
+  };
 }

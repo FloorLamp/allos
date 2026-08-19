@@ -25,8 +25,15 @@ export default function TrainingContextChips({
       ...context.temperedExercises.flatMap((row) => row.limitations),
     ]),
   ];
+  // Live niggles (#3211 part 3) — the third and weakest tier. Their chips are SEPARATE
+  // from the injury chips (which deep-link to #injuries): a niggle is deliberately not an
+  // injury, has no record to link to, and must not read as one.
+  const niggleLabels = [
+    ...new Set(context.niggleTempers.map((t) => t.label)),
+  ];
   const hasContext =
     uniqueInjuryLabels.length > 0 ||
+    niggleLabels.length > 0 ||
     context.considerations.length > 0 ||
     context.substitutionSuggested;
   if (!hasContext) return null;
@@ -46,6 +53,15 @@ export default function TrainingContextChips({
           >
             {label}
           </Link>
+        ))}
+        {niggleLabels.map((label) => (
+          <span
+            key={`niggle-${label}`}
+            className="rounded-full bg-amber-100/70 px-2.5 py-1 text-xs font-medium text-amber-900 dark:bg-amber-500/10 dark:text-amber-200"
+            data-testid="training-niggle-chip"
+          >
+            {label} niggle
+          </span>
         ))}
         {context.considerations.map((consideration) => (
           <Link
@@ -96,6 +112,11 @@ export default function TrainingContextChips({
             {context.temperedExercises.map((row) => (
               <p key={row.exercise} data-testid="injury-exercise-temper-note">
                 {temperedExerciseLabel(row)}.
+              </p>
+            ))}
+            {context.niggleTempers.map((t) => (
+              <p key={`niggle-${t.region}-${t.label}`} data-testid="niggle-temper-note">
+                {t.note}.
               </p>
             ))}
             {limitations.map((limitation) => (
