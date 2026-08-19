@@ -7,6 +7,7 @@ import {
   IconBolt,
   IconChevronRight,
   IconDroplet,
+  IconToiletPaper,
   IconFileText,
   IconHeartbeat,
   IconMoodSmile,
@@ -97,6 +98,7 @@ const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   sparkles: IconSparkles,
   mood: IconMoodSmile,
   droplet: IconDroplet,
+  toilet: IconToiletPaper,
   document: IconFileText,
 };
 

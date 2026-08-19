@@ -1,3 +1,5 @@
+import { BRISTOL_STOOL_METRIC } from "./bristol-stool";
+
 // Instantaneous (point) metrics: a day can hold several readings, so they must be
 // averaged per day, not summed. Everything else (steps, distance, calories,
 // hydration, nutrition, sleep totals) is genuinely additive. body_fat_pct /
@@ -27,6 +29,16 @@ export const AVERAGED_METRICS = new Set([
   // Waist circumference (#2322) is a point measure like height: a tape reading and a
   // same-date imported one must AGREE (average), never SUM into a 168 cm waist.
   "waist_circumference_cm",
+  // Bristol stool form (#2785) — here as a FLOOR against the additive default, not
+  // as a claim that the mean means anything. The scale is categorical-ordinal, so
+  // neither aggregation is honest: an average reports a day of type 1 and type 7 as
+  // 4, textbook-normal. But SUM is the worse of the two by a distance, because it
+  // FABRICATES A REAL TYPE — two type-3s summing to 6 reads as "mushy", a value
+  // nobody recorded — while an average can only ever produce a fraction, which names
+  // no type at all and is visibly not one. The app's own reader never calls either:
+  // lib/bristol-stool.ts COUNTS, and the panel shape carries no field an averaging
+  // renderer could reach for.
+  BRISTOL_STOOL_METRIC,
 ]);
 
 // The per-day aggregation a metric uses: AVG for instantaneous point metrics,

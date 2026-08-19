@@ -113,6 +113,7 @@ import type * as M65 from "@/app/(app)/settings/profile/actions";
 import type * as M66 from "@/app/(app)/settings/server/actions";
 import type * as M67 from "@/app/(app)/settings/token-actions";
 import type * as M68 from "@/app/(app)/sleep/actions";
+import type * as MStool from "@/app/(app)/stool-actions";
 import type * as M69 from "@/app/(app)/stream-lifecycle-actions";
 import type * as M70 from "@/app/(app)/supplies/actions";
 import type * as M71 from "@/app/(app)/symptom-actions";
@@ -318,6 +319,7 @@ type Census = {
     ActionsAreSerializable<typeof M67>
   >;
   "app/(app)/sleep/actions.ts": Expect<ActionsAreSerializable<typeof M68>>;
+  "app/(app)/stool-actions.ts": Expect<ActionsAreSerializable<typeof MStool>>;
   "app/(app)/stream-lifecycle-actions.ts": Expect<
     ActionsAreSerializable<typeof M69>
   >;
@@ -453,6 +455,7 @@ const CENSUSED_MODULES = [
   "app/(app)/settings/server/actions.ts",
   "app/(app)/settings/token-actions.ts",
   "app/(app)/sleep/actions.ts",
+  "app/(app)/stool-actions.ts",
   "app/(app)/stream-lifecycle-actions.ts",
   "app/(app)/supplies/actions.ts",
   "app/(app)/symptom-actions.ts",

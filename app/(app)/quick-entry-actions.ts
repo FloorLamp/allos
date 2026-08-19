@@ -56,6 +56,7 @@ import {
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
 import type { QuickEntryForm } from "@/lib/quick-log";
+import { getBristolReadings } from "@/lib/queries/bristol-stool";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -195,6 +196,12 @@ export type QuickEntryData =
   // has no adult food-group catalog (#591), and "no doses due" is a real answer,
   // not an empty list to stare at. Carrying it as a VARIANT keeps the host from
   // inventing per-form emptiness rules.
+  | {
+      // Bristol stool form (#2785). The picker needs nothing gathered but the day's
+      // running count — the seven types are a committed vocabulary, not server state.
+      form: "stool";
+      todayCount: number;
+    }
   | { form: "unavailable"; message: string };
 
 export async function loadQuickEntry(
@@ -271,6 +278,13 @@ export async function loadQuickEntry(
         date,
         profileFoodSlotBoundaries(profile.id)
       ),
+    };
+  }
+
+  if (form === "stool") {
+    return {
+      form: "stool",
+      todayCount: getBristolReadings(profile.id, date, date).length,
     };
   }
 

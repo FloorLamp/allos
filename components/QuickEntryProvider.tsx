@@ -46,6 +46,9 @@ const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
 const QuickMoodCheckin = dynamic(
   () => import("./quick-entry/QuickMoodCheckin")
 );
+// Same rule, fifth body (#2785): the stool picker drags in the shared ledger hook,
+// the seven inline glyphs and the stool action's client reference; loaded on open.
+const QuickStoolForm = dynamic(() => import("./quick-entry/QuickStoolForm"));
 
 // The shared quick-entry overlay host (issue #1468).
 //
@@ -124,6 +127,9 @@ const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   cycle: { title: "Log period", ownsHeading: false },
   // #2130: the sheet's mood row — the same check-in write, a second mount.
   mood: { title: "Log mood", ownsHeading: false },
+  // #2785: the sheet's stool row. The panel owns no heading — the seven buttons ARE
+  // the question, and a printed one above them would say it twice.
+  stool: { title: "Log stool form", ownsHeading: false },
   document: { title: "Add document", ownsHeading: false },
 };
 
@@ -302,6 +308,12 @@ function QuickEntryBody({
       return (
         <QuickPracticeList practices={data.practices} today={data.today} />
       );
+    case "stool":
+      // No `onSaved`: like the food bar and the practice list, stool logging has no
+      // single "saved" moment — several movements a day is ordinary and a mis-tap is
+      // corrected by tapping again. The tap revalidates behind the sheet, so "stay
+      // where you were" still holds.
+      return <QuickStoolForm todayCount={data.todayCount} />;
     case "document":
       // The SAME UploadForm Data → File upload renders — same ingest engine, same
       // gates, same per-profile storage and dedup, and the #1423 camera input rides

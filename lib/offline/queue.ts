@@ -151,6 +151,9 @@ export const OFFLINE_QUEUE_COVERAGE = {
   "routine-usual": arguedExclusion(
     "Declared idempotent, excluded for `food-usual`'s reason and one MORE (#2458): the bundle's justification is server state on both axes, and its dose half CONFIRMS DOSES — an expired replay would double-log a meal window AND mis-decrement on-hand supply for three items, which is stock arithmetic against a total that moved (the excluded `medication-refill` class). The single-serving taps and the single-dose confirms underneath it queue exactly as they always did, so nothing is unreachable offline — only the shortcut is."
   ),
+  "stool-form": arguedExclusion(
+    "Not decided here, and deliberately not decided here. The capture would be mechanically ordinary — a date, a type and the captured instant, exactly the shape resolveCapturedInstant already carries, with no server-derived state behind the tap — so this is NOT the excluded class above. What is missing is a ruling: #2785 ships a v1 recording surface and says nothing about queueing a bodily-function timestamp from a device that may be shared or handed over, and inventing that ruling inside a vocabulary change is how a queue grows a flow nobody argued. Nothing is unreachable offline that was reachable before: the tap works online exactly as every other quick-entry form does."
+  ),
   "period-lifecycle": arguedExclusion(
     "A lifecycle write rendered from server state (#1892): the offer's verb is only valid against the state that produced it, and the write core's typed refusals need fresh state to refuse honestly. Replaying start/end against state that moved is the destructive-overwrite class the queue's scope comment excludes."
   ),

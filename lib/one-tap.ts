@@ -155,6 +155,12 @@ export const ONE_TAP_AFFORDANCES = {
     feedback: "outcome-toast",
     why: "Multi-session days are legitimate, but a practice is a ~daily thing: the second tap of a day is worth one question.",
   },
+  "stool-form": {
+    repeat: "additive",
+    expectedInterval: "none",
+    feedback: "outcome-toast",
+    why: "Each tap records ONE bowel movement at its own instant (#2785) — several a day is ordinary, and the metric_samples natural key includes start_time, so a second tap is a second observation rather than a correction of the first. Additive with no expected interval, like prn-dose: there is no cadence a repeat could violate, so a confirm here would only ask people to justify their digestion.",
+  },
   "medication-refill": {
     repeat: "cadenced",
     expectedInterval: "supply-cycle",
