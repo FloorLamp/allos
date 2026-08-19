@@ -27,6 +27,9 @@ import {
   PRN_FAMILY_PROFILE,
   E2E_LOGIN_COVERAGE,
   SAFETY_COVERAGE_PROFILE,
+  E2E_LOGIN_OFFLINE_SNAPSHOTS,
+  OFFLINE_SNAPSHOTS_PROFILE,
+  OFFLINE_SNAPSHOTS_MED,
   E2E_LOGIN_UPCOMING_AGG,
   UPCOMING_AGG_PROFILE,
   UPCOMING_AGG_WARFARIN,
@@ -46,6 +49,7 @@ import {
   PROFILE_ID,
   seedMemberLogin,
   fixtureProfileId,
+  adultFixtureProfileId,
   grantProfile,
 } from "./common";
 
@@ -640,5 +644,53 @@ export function seedUpcomingAggregate(): void {
   seedMemberLogin(E2E_LOGIN_UPCOMING_AGG, aggId, "write");
   console.log(
     `e2e: seeded Upcoming aggregation fixture — ${E2E_LOGIN_UPCOMING_AGG} granted ${UPCOMING_AGG_PROFILE} (${aggId}) (#1504)`
+  );
+}
+
+// ── Offline snapshots (#2908 / #3040) ──
+export function seedOfflineSnapshots(): void {
+  // offline-snapshots.spec.ts's own login + adult profile — the #3017 shape. The
+  // shared admin login/profile 1 could not host it: the spec exercises LOGOUT
+  // (which kills whatever session it authenticated with), and its offline dose tap
+  // is REPLAYED on reconnect as a real taken-dose write for the capturing profile —
+  // the leftover that cost offline-write-gate's R3d a red when it landed on the
+  // shared profile (#3040). Here the replay can only touch rows nothing else reads,
+  // and the spec observes the drain and un-takes the dose through the product's own
+  // control. ONE daily scheduled medication with an open course, so the profile has
+  // a med-list snapshot row, a dose-schedule snapshot row, and exactly one Today
+  // row to tap while offline. Idempotent hard-clear so a reused server re-seeds
+  // cleanly (and no stale taken-log survives). Synthetic, no PHI.
+  const offSnapId = adultFixtureProfileId(OFFLINE_SNAPSHOTS_PROFILE);
+  db.prepare(
+    `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(offSnapId);
+  db.prepare(
+    `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+  ).run(offSnapId);
+  db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(offSnapId);
+
+  const offSnapMedId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, notes, condition, obligation, kind, prescriber, active)
+         VALUES (?, ?, 'Daily maintenance med — offline snapshot fixture', 'daily', 'should', 'medication', 'Dr. Test Provider', 1)`
+      )
+      .run(offSnapId, OFFLINE_SNAPSHOTS_MED).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '1 tablet', 'Morning', 'any', 0)`
+  ).run(offSnapMedId);
+  db.prepare(
+    `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+     VALUES (?, ?, NULL, NULL, 'Ongoing — offline snapshot fixture')`
+  ).run(offSnapMedId, shiftDateStr(today(offSnapId), -30));
+
+  seedMemberLogin(E2E_LOGIN_OFFLINE_SNAPSHOTS, offSnapId, "write");
+  console.log(
+    `e2e: seeded offline-snapshots fixture — ${E2E_LOGIN_OFFLINE_SNAPSHOTS} granted ${OFFLINE_SNAPSHOTS_PROFILE} (${offSnapId}) (#3040)`
   );
 }

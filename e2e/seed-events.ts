@@ -84,6 +84,7 @@ import {
 } from "./seed/findings";
 import {
   seedMedicationCards,
+  seedOfflineSnapshots,
   seedPrnLedger,
   seedLowSupply,
   seedDrugAllergyCrosscheck,
@@ -276,6 +277,9 @@ seedDormantDomains();
 // Appended LAST (#3062): two new profiles make the no-routine and rest branches
 // visible without shifting any older fixture's row ids.
 seedOverviewActionStates();
+// Appended LAST (#3040): one new profile + login for offline-snapshots.spec.ts, so
+// every existing fixture's row ids stay exactly where they were.
+seedOfflineSnapshots();
 // LAST, and it must stay last: this mints the admin session every worker starts
 // with, and `createSession` records the profile the session lands on. Running it
 // before a fixture that adds profiles or grants would pin the session to a world

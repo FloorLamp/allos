@@ -1,15 +1,26 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
-import { hydratedClick, readyForOffline } from "./helpers";
+import { hydratedClick, readyForOffline, settledClick } from "./helpers";
 import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
+import {
+  E2E_LOGIN_OFFLINE_SNAPSHOTS,
+  OFFLINE_SNAPSHOTS_MED,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 
 // Offline read snapshots (#2908) — the render path, end to end, with a real service
 // worker and a real dead connection.
 //
-// This spec runs in its OWN unauthenticated context and logs in by hand (like
-// e2e/emergency-card.spec.ts) because it exercises LOGOUT, which destroys the session
-// row server-side and would otherwise invalidate the shared cookie every other spec
-// relies on.
+// This spec owns its LOGIN and its PROFILE (#3040, the #3017 coaching-episode
+// shape — see e2e/seed/intake.ts's seedOfflineSnapshots for why the shared ones
+// could not host it). It runs in its OWN unauthenticated context and logs in by
+// hand (like e2e/emergency-card.spec.ts) because it exercises LOGOUT, which
+// destroys the session row server-side and would otherwise invalidate the shared
+// cookie every other spec relies on. And it captures and replays against its own
+// profile because the reconnect replay writes a REAL taken-dose row for whatever
+// profile captured the tap — on the shared profile 1 that leftover cost
+// offline-write-gate's R3d a red while this spec's old drain assertion, a
+// count-0 on a fresh navigation, passed whether or not the drain had happened.
 //
 // What it pins, in the order a person would meet it:
 //   1. one authenticated visit captures the snapshots into IndexedDB;
@@ -25,8 +36,8 @@ const STORE = "snapshots";
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.fill('input[name="username"]', "admin");
-  await page.fill('input[name="password"]', "e2e-admin-pass");
+  await page.fill('input[name="username"]', E2E_LOGIN_OFFLINE_SNAPSHOTS);
+  await page.fill('input[name="password"]', E2E_MEMBER_PASSWORD);
   await page.click('button[type="submit"]');
   await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
     timeout: 20_000,
@@ -140,7 +151,7 @@ test("offline reads: one visit captures, /offline renders them with no network, 
     // The safety case: the med list, readable with no network and no session.
     await hydratedClick(page, page.getByTestId("offline-open-medication-list"));
     const meds = page.getByTestId("offline-snapshot-medication-list");
-    await expect(meds).toContainText("Sertraline");
+    await expect(meds).toContainText(OFFLINE_SNAPSHOTS_MED);
     // Every offline render carries its "as of" line — one vocabulary, not a banner
     // dialect per section.
     await expect(page.getByTestId("offline-snapshot-asof")).toContainText(
@@ -152,7 +163,7 @@ test("offline reads: one visit captures, /offline renders them with no network, 
     await hydratedClick(page, page.getByTestId("offline-open-dose-schedule"));
     await expect(
       page.getByTestId("offline-snapshot-dose-schedule")
-    ).toContainText("Sertraline");
+    ).toContainText(OFFLINE_SNAPSHOTS_MED);
   } finally {
     await context.setOffline(false);
   }
@@ -378,11 +389,12 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
   // The pills are in your hand and the network isn't there. The page is already
   // loaded and interactive, so the tap lands and the write queue catches it.
   await page.goto("/medications");
-  // The Today panel's own row for the seeded Sertraline — one dose, one row.
+  // The Today panel's own row for this spec's seeded med — one dose, one row, and
+  // an exact count this spec may assert because it owns the profile (#868).
   const row = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
-    .filter({ hasText: "Sertraline" });
+    .filter({ hasText: OFFLINE_SNAPSHOTS_MED });
   await expect(row).toHaveCount(1);
   await context.setOffline(true);
   try {
@@ -404,16 +416,37 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
     await settledOfflineRead(page);
     await hydratedClick(page, page.getByTestId("offline-open-dose-schedule"));
     const schedule = page.getByTestId("offline-snapshot-dose-schedule");
-    await expect(schedule).toContainText("Sertraline");
+    await expect(schedule).toContainText(OFFLINE_SNAPSHOTS_MED);
     await expect(schedule.getByTestId("offline-queued-mark")).toHaveCount(1);
   } finally {
     await context.setOffline(false);
   }
 
-  // Drain the queue so this spec leaves the world as it found it, then log out (this
-  // context's own session, never the shared one).
+  // Reconnected: navigating remounts the queue provider, whose on-load flush replays
+  // the tap. OBSERVE the drain (#3040) — the replayed write is a server fact only
+  // once this row renders taken, so wait for that, not for an absence. The old
+  // assertion here was a badge count-0 on a fresh navigation, which is equally true
+  // before the provider has read its queue — it passed whether or not the replay
+  // drained, and the leftover replay it certified cost offline-write-gate's R3d a
+  // red on the then-shared profile.
   await page.goto("/medications");
+  const takenUndo = row.getByRole("button", { name: "Mark not taken" });
+  await expect(takenUndo).toBeVisible({ timeout: 20_000 });
+  // Only after the drain is OBSERVED is "no badge" a claim about the queue rather
+  // than about a page that has not read it yet.
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
+
+  // Un-take the dose through the product's own control, so --repeat-each meets the
+  // same "Mark taken" row every time. Unconditional on purpose: the drain was just
+  // observed, so this is a deterministic undo, not the state-guessing conditional
+  // cleanup #3040 rejected. It restores this spec's OWN profile — the only world
+  // this spec touches.
+  await settledClick(page, takenUndo);
+  await expect(row.getByRole("button", { name: "Mark taken" })).toBeVisible({
+    timeout: 20_000,
+  });
+
+  // Then log out (this context's own session, never the shared one).
   await page.getByRole("button", { name: "Log out" }).click();
   await page.waitForURL(/\/login/, { timeout: 20_000 });
 });

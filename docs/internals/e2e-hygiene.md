@@ -1983,6 +1983,51 @@ click nor the thing it was waiting for. That is #890's causeless timeout, and it
 is what #2729's two failures were read through. `openConfirm` (`e2e/helpers.ts`)
 is the shared repair for the confirm case; `hydratedClick` is the rest of it.
 
+### "The page produced no traffic" was two findings wearing one message (#3029)
+
+`cycle-guards.spec.ts:69` failed `e2e (2)` about half the time on one branch and
+never locally — settledClick's timeout reporting _"NO same-origin POST was seen
+at all during the wait … The page produced no traffic"_ on a page whose two
+file-siblings passed in ~600ms. Everything local was green: the spec alone at
+`--repeat-each=5`, CDP CPU throttle at rate 20 AND rate 45 (past the CI
+ceiling), both on the branch and on an `origin/main` control. Co-residency is
+excluded by construction, not by re-running: the spec owns its login, page and
+context (`E2E_LOGIN_CYCLE_STALE`, no other spec signs in as it or writes its
+profile), every other `/medical/cycles` spec drives its own fixture profile, and
+hydration was already PROVEN before the click — the fill's settle asserts a
+hidden input value only React state can produce.
+
+The reading everyone took from that message — "the page stalled" — was more
+than the helper actually knew. `armActionPost`'s wait is a `waitForResponse`,
+and its "seen while waiting" ledger only ever recorded RESPONSES, so two
+different culprits printed the same line:
+
+- **no POST was ever issued** — the click landed but the action never
+  dispatched (a client-side guard returned early, a handler never ran, a
+  starved renderer ran no JS at all);
+- **a POST was issued and never answered** — the request left the browser and
+  the worker's app server (or the network leg) sat on it past the budget.
+
+The first blames the page; the second blames the server. They need opposite
+investigations, and the message could not tell them apart.
+
+So the arm now records same-origin POST **requests** from the moment of the
+interaction (the `request` event fires when the browser issues one, answered or
+not), and a timeout reports three states instead of two: answered-but-refused
+(the existing ledger), **issued-but-unanswered** (with each POST's path and
++elapsed), and **never-issued**. `settledClick` additionally reads the clicked
+control's state at diagnosis time under its own 2s bound — `SubmitButton`
+renders `aria-busy` + a pending label exactly while a form action is in flight,
+so "busy control + issued POST" convicts the server leg, "idle control + no
+POST" convicts the dispatch, and a probe that itself gets no answer convicts a
+renderer that is not running JS. The next occurrence of the #3029 shape names
+its culprit instead of re-opening all three hypotheses.
+
+Forced both ways before trusting it (the "prove a guard both ways" rule): a
+route holding the action POST's response past the budget produces the
+issued-but-unanswered message with the control `aria-busy`, and a client
+control that never posts produces never-issued with the control idle.
+
 ## Fix (f) — DB-per-worker isolation (#1538)
 
 Until this landed, the suite booted ONE app server against ONE seeded SQLite

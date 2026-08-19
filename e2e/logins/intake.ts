@@ -91,3 +91,21 @@ export const UPCOMING_AGG_APPOINTMENT_DAYS = 60;
 export const UPCOMING_AGG_APPOINTMENT_SOON =
   "Aggregate dermatology check (e2e)";
 export const UPCOMING_AGG_APPOINTMENT_SOON_DAYS = 3;
+
+// ── Offline snapshots (#2908 / #3040) ────────────────────────────────────────
+// A member granted ONE dedicated adult profile for offline-snapshots.spec.ts —
+// the #3017 own-profile/own-login shape. The shared admin login and profile 1
+// could not host this spec for two reasons, one per half of it:
+//   • it exercises LOGOUT, which destroys the session row server-side, so it must
+//     never authenticate with the shared worker storageState;
+//   • its offline dose tap is REPLAYED on reconnect, and that replay writes a real
+//     taken-dose row for whatever profile captured it. On profile 1 that leftover
+//     write cost offline-write-gate's R3d a red (#3040) — a drain the old spec
+//     asserted vacuously and never observed. On this profile the replay lands on
+//     rows nothing else reads, and the spec undoes it through the product's own
+//     un-take, observed rather than assumed.
+// One daily scheduled medication, so the profile has a med-list snapshot row, a
+// dose-schedule snapshot row, and exactly one Today row to tap offline.
+export const E2E_LOGIN_OFFLINE_SNAPSHOTS = "e2e_offline_snapshots";
+export const OFFLINE_SNAPSHOTS_PROFILE = "Offline Snapshots (e2e)";
+export const OFFLINE_SNAPSHOTS_MED = "Offline Snapshot Med (e2e)";
