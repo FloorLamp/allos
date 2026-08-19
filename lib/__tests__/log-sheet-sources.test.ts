@@ -24,11 +24,47 @@ const SOURCE = fs.readFileSync(
   "utf8"
 );
 
-// The statement's own text: the one backtick-quoted literal the module passes to
-// hoistedStatement. Sliced rather than exported, so the module keeps handing a
-// literal straight to the compiler where the owned-table scans can read it.
-const SQL_START = SOURCE.indexOf("`", SOURCE.indexOf("hoistedStatement(")) + 1;
-const SQL = SOURCE.slice(SQL_START, SOURCE.indexOf("`", SQL_START));
+// The statements' own text: EVERY backtick-quoted literal the module passes to
+// hoistedStatement, joined so the per-arm cases below read them as one census.
+// Sliced rather than exported, so the module keeps handing literals straight to the
+// compiler where the owned-table scans can read them.
+//
+// There are two literals from #3191 on. The `activities` arm left the union because
+// whether an activity row is a create-at-start draft is settled by
+// `isDraftActivityRow` reading the WHOLE row (lib/activity-draft.ts), which a
+// `COUNT(DISTINCT d)` aggregate cannot show it — and restating that rule in SQL
+// would be a second definition of a draft, which the census the #3056 work rests on
+// forbids. It kept the tagged-arm shape (`SELECT 'train' AS segment … FROM
+// activities … profile_id = @profileId … @from`), so every case below applies to it
+// unchanged; only the collection widened.
+function statementLiterals(): string[] {
+  const out: string[] = [];
+  let at = SOURCE.indexOf("hoistedStatement(");
+  while (at !== -1) {
+    const start = SOURCE.indexOf("`", at) + 1;
+    out.push(SOURCE.slice(start, SOURCE.indexOf("`", start)));
+    at = SOURCE.indexOf("hoistedStatement(", start);
+  }
+  return out;
+}
+const LITERALS = statementLiterals();
+const SQL = LITERALS.join("\nUNION ALL\n");
+
+// Tables an arm names WITHOUT producing a day from them, so neither the census nor
+// the per-arm pairing below reads one as a store: the JOIN'd parent a child table
+// scopes through (`intake_items` carries the profile filter, not the days), and the
+// correlated EXISTS the Train arm asks the draft rule's "has any set" half with
+// (`exercise_sets` decides whether an activity row is an entry, and contributes no
+// date). The EXISTS sits in the select list, so it is also the FIRST `FROM` in its
+// arm — `armTable` therefore skips these rather than taking the literal first match.
+const NO_DAYS_OF_ITS_OWN = ["intake_items", "exercise_sets"];
+
+function armTable(arm: string): string {
+  for (const m of arm.matchAll(/FROM\s+([a-z_]+)/g)) {
+    if (!NO_DAYS_OF_ITS_OWN.includes(m[1])) return m[1];
+  }
+  return "";
+}
 
 function declaredTables(): string[] {
   return Object.values(LOG_DAY_SOURCES).flatMap((v) =>
@@ -57,12 +93,10 @@ describe("LOG_DAY_SOURCES", () => {
   });
 
   it("declares every store it counts", () => {
-    // Every `FROM <table>` in the statement, minus the JOIN'd parent a child table
-    // scopes through (intake_items carries the profile filter, not the days).
     const counted = new Set(
       [...SQL.matchAll(/FROM\s+([a-z_]+)/g)].map((m) => m[1])
     );
-    counted.delete("intake_items");
+    for (const table of NO_DAYS_OF_ITS_OWN) counted.delete(table);
     const declared = new Set(declaredTables());
     for (const table of counted) {
       expect(declared, `${table} is counted but undeclared`).toContain(table);
@@ -106,9 +140,9 @@ describe("LOG_DAY_SOURCES", () => {
     const arms = SQL.split("UNION ALL").filter((a) => a.includes("FROM"));
     for (const arm of arms) {
       const segment = /SELECT '([a-z]+)' AS segment/.exec(arm)?.[1] ?? "";
-      // The arm's OWN table is its first FROM; a JOIN'd parent (intake_items) is
-      // how a child scopes to the profile and produces no days of its own.
-      const table = /FROM\s+([a-z_]+)/.exec(arm)?.[1] ?? "";
+      // The arm's OWN table is its first day-producing FROM — see
+      // NO_DAYS_OF_ITS_OWN for the two that are named without being counted.
+      const table = armTable(arm);
       const declaredFor = [...(expected.get(table) ?? [])];
       expect(
         declaredFor,

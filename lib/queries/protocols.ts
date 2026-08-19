@@ -7,6 +7,7 @@
 // login's display unit HERE (the units boundary), keeping the engine unit-agnostic.
 
 import { db } from "../db";
+import { isDraftActivityRow, type DraftCandidateRow } from "../activity-draft";
 import { getAllBiomarkerSeries, getCanonicalResultDefinition } from "./medical";
 import { getLogicalBodyMetricDailySeries } from "./logical-outcomes";
 import {
@@ -548,18 +549,63 @@ export function getProtocolUsageByDayMap(
         ? [`type IN (${types.map(() => "?").join(",")})`]
         : []),
     ].join(" OR ");
-    const rows = db
+    // A DRAFT IS NOT USAGE (#3191). Create-at-start writes the activity row — with
+    // its type, and with the gear it was started against — the moment the session
+    // opens, so a session someone opened and abandoned used to count as a use of the
+    // intervention. Probed on main against this very branch: an untouched draft in a
+    // protocol's lane moved `getProtocolUsage().sessions` from 0 to 1, and the
+    // positive control (a real logged session) moved it to 2. An N-of-1's whole
+    // point is what the person actually did during the window, and adherence is read
+    // as evidence about the experiment.
+    //
+    // The grouping moves from SQL to the fold so the pure rule can see each row: the
+    // draft-candidate columns and the "has any set" half (a correlated EXISTS on the
+    // same SELECT) ride along on the statement that was already here, and the fold
+    // applies `isDraftActivityRow`. Still ONE prepared statement, still narrowed to
+    // the protocols' own lanes, and the (date, equipment_id, type) groups the loop
+    // below consumes come out the same shape they always did.
+    const gathered = db
       .prepare(
-        `SELECT date, equipment_id, type, COUNT(*) AS count FROM activities
-          WHERE profile_id = ? AND date >= ? AND date <= ? AND (${lanes})
-          GROUP BY date, equipment_id, type`
+        `SELECT a.date AS date, a.equipment_id AS equipment_id, a.type AS type,
+                a.start_time, a.end_time, a.duration_min, a.components, a.notes,
+                a.distance_km, a.source,
+                EXISTS (
+                  SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+                ) AS has_sets
+           FROM activities a
+          WHERE a.profile_id = ? AND a.date >= ? AND a.date <= ? AND (${lanes})`
       )
-      .all(profileId, span.start, span.end, ...equipIds, ...types) as {
+      .all(
+        profileId,
+        span.start,
+        span.end,
+        ...equipIds,
+        ...types
+      ) as (DraftCandidateRow & {
       date: string;
       equipment_id: number | null;
       type: string;
-      count: number;
-    }[];
+      /** 0 or 1 — the draft rule only asks whether ANY set exists. */
+      has_sets: number;
+    })[];
+    const grouped = new Map<
+      string,
+      { date: string; equipment_id: number | null; type: string; count: number }
+    >();
+    for (const r of gathered) {
+      if (isDraftActivityRow(r, r.has_sets)) continue;
+      const key = `${r.date}\t${r.equipment_id ?? ""}\t${r.type}`;
+      const seen = grouped.get(key);
+      if (seen) seen.count++;
+      else
+        grouped.set(key, {
+          date: r.date,
+          equipment_id: r.equipment_id,
+          type: r.type,
+          count: 1,
+        });
+    }
+    const rows = [...grouped.values()];
     for (const row of acts) {
       const scope = row.scope as {
         kind: "activity";

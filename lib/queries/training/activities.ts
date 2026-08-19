@@ -698,14 +698,56 @@ const ACTIVITIES_BY_DATE_STMT = hoistedStatement(
   "SELECT * FROM activities WHERE profile_id = ? AND date = ? ORDER BY id DESC"
 );
 
+// THE DAYS THIS PROFILE TRAINED — descending, one entry per day.
+//
+// DRAFTS ARE NOT TRAINING DAYS (#3189). Create-at-start writes the activity row at
+// the session's first second, so a session someone opened and abandoned carries a
+// `date` like any other row. Every consumer of this list reads it as *the days this
+// person trained*: the coaching engine's training history
+// (lib/queries/coaching.ts), the rule findings' workout days (lib/rule-findings.ts),
+// the intake notifier and the supplement/medication workout-timing surfaces
+// (lib/notifications/intake.ts, lib/intake-history.ts, app/(app)/medications,
+// app/(app)/nutrition). None of them wants "days a session was opened" — they are
+// all asking about training that happened — so the husk is dropped here, once, at
+// the reader they share rather than at each of them.
+//
+// This matters more than a wrong tile: nobody READS this list. It is an input to
+// advice the person is then given, so a day they did not train can shape a rest
+// recommendation or an intake nudge with nothing on screen to disbelieve.
+//
+// The rule is NOT restated in SQL: the query gathers the draft-candidate columns
+// `isDraftActivityRow` already reads off a row plus the "has any set" half as a
+// correlated EXISTS on the same SELECT, and the fold applies THAT function. One
+// prepared statement, as before, and one definition of a draft
+// (lib/activity-draft.ts).
 export function getActivityDates(profileId: number): string[] {
-  return (
-    db
-      .prepare(
-        "SELECT DISTINCT date FROM activities WHERE profile_id = ? ORDER BY date DESC"
-      )
-      .all(profileId) as { date: string }[]
-  ).map((r) => r.date);
+  const rows = db
+    .prepare(
+      `SELECT a.date AS date,
+              a.start_time, a.end_time, a.duration_min, a.components, a.notes,
+              a.distance_km, a.source,
+              EXISTS (
+                SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+              ) AS has_sets
+         FROM activities a
+        WHERE a.profile_id = ?
+        ORDER BY a.date DESC`
+    )
+    .all(profileId) as (DraftCandidateRow & {
+    date: string;
+    /** 0 or 1 — the draft rule only asks whether ANY set exists (`setCount > 0`). */
+    has_sets: number;
+  })[];
+  // SQL supplied the DISTINCT before; the ordered scan supplies it now — equal dates
+  // are adjacent under `ORDER BY date DESC`, so a day is emitted by its first
+  // surviving row.
+  const dates: string[] = [];
+  for (const row of rows) {
+    if (isDraftActivityRow(row, row.has_sets)) continue;
+    if (dates[dates.length - 1] === row.date) continue;
+    dates.push(row.date);
+  }
+  return dates;
 }
 
 // The inferred training cadence — the shared weekly-rhythm shape (see
@@ -1026,22 +1068,47 @@ export function getActivityEditData(
 }
 
 export function getDashboardStats(profileId: number) {
-  const activityCount = (
-    db
-      .prepare("SELECT COUNT(*) c FROM activities WHERE profile_id = ?")
-      .get(profileId) as { c: number }
-  ).c;
   // Hard rolling 7-day window (today + the prior 6 days) behind the "Activities
   // (7d)" tile. This is intentionally NOT the training log week summary, which is now
   // week_mode-aware (lib/week-window.ts, #223) — the tile's label says "7d", so
   // keep the fixed window and don't "align" the two.
-  const last7 = (
-    db
-      .prepare(
-        "SELECT COUNT(*) c FROM activities WHERE profile_id = ? AND date >= ?"
-      )
-      .get(profileId, shiftDateStr(today(profileId), -6)) as { c: number }
-  ).c;
+  //
+  // The WINDOW stays unaligned; WHAT COUNTS does not (#3191). That comment is an
+  // argument about which days the tile spans, and it is a good one — it says nothing
+  // about what an activity is. A create-at-start session someone opened and never
+  // logged anything in is an address, not an entry (lib/activity-draft.ts), and this
+  // tile claims to count things you did, so the husk is not one of them. The
+  // Training Log's feed, its week caption and its day strip already agree about that
+  // (#3056, #3188); the dashboard tile now agrees too, on its own window.
+  //
+  // ONE statement for both numbers, where there were two: the rule needs the
+  // draft-candidate columns per row anyway, and `last7` is a slice of the same rows.
+  // The rule is not restated in SQL — the "has any set" half rides along as a
+  // correlated EXISTS and the fold applies `isDraftActivityRow` itself.
+  const since = shiftDateStr(today(profileId), -6);
+  const rows = db
+    .prepare(
+      `SELECT a.date AS date,
+              a.start_time, a.end_time, a.duration_min, a.components, a.notes,
+              a.distance_km, a.source,
+              EXISTS (
+                SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+              ) AS has_sets
+         FROM activities a
+        WHERE a.profile_id = ?`
+    )
+    .all(profileId) as (DraftCandidateRow & {
+    date: string;
+    /** 0 or 1 — the draft rule only asks whether ANY set exists (`setCount > 0`). */
+    has_sets: number;
+  })[];
+  let activityCount = 0;
+  let last7 = 0;
+  for (const row of rows) {
+    if (isDraftActivityRow(row, row.has_sets)) continue;
+    activityCount++;
+    if (row.date >= since) last7++;
+  }
   // Current weight routed through the canonical reconciled reader so it honors the
   // profile's primary-source priority (#14) — the same value the passport, goals,
   // and strength bodyweight calcs show. A raw newest-row query here silently
