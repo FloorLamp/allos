@@ -79,4 +79,18 @@ describe("atomic dashboard source boundary", () => {
       expect(page).toContain(builder);
     }
   });
+
+  it("keeps each candidate group in its own small domain module", () => {
+    const directory = path.join(root, "lib/dashboard-candidates");
+    for (const group of ["care", "daily", "progress", "setup", "sleep"]) {
+      const source = fs.readFileSync(
+        path.join(directory, `${group}.ts`),
+        "utf8"
+      );
+      expect(source).toContain(`export const ${group}Candidates`);
+      expect(source.split("\n").length).toBeLessThan(250);
+    }
+    expect(fs.existsSync(path.join(directory, "domain.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(directory, "manifest.ts"))).toBe(false);
+  });
 });
