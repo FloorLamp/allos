@@ -19,14 +19,11 @@ import { dashboardCandidateWithText } from "./dashboard-candidate";
 //   • data-quality CTAs land on the anchored smoking/risk forms, the prefilled
 //     biomarker add form, and the sole unconfirmed med's edit form / the filtered
 //     med list (#1146);
-//   • capped list widgets reveal their overflow via "Show N more" (#1219), while
-//     Coaching observations renders its complete threshold-clearing set (#3090);
-//   • coaching's secondary rec renders as a link, a target-less goal fact links to
-//     the goals surface, and the active-protocols widget caps + overflows (#1219).
+//   • a target-less goal fact links to the goals surface.
 // Fixtures: the dedicated DQ_ADULT_PROFILE / DQ_GAPPY_PROFILE
 // members (e2e/seed-events.ts) — no shared-profile writes in this spec.
 
-// Clear a fixture profile's data-quality dismissals so the widgets are populated
+// Clear a fixture profile's data-quality dismissals so the atoms are populated
 // regardless of retries or the neighbor data-quality spec's dismiss test (the
 // resetDataQualityDismissals pattern from #1045). BLAST RADIUS: only the
 // `data-quality:` namespace on the named fixture profile.

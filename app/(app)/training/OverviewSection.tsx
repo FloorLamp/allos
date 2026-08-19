@@ -291,7 +291,7 @@ export default async function OverviewSection() {
     restAck: getRestAck(profile.id, todayStr),
     // Situation-aware hold (#837): the SAME illness context gatherCoachingInput reads,
     // so this overview card holds the gap nags during an open episode exactly like the
-    // dashboard coaching widget — never a second, drifting derivation (#221).
+    // dashboard coaching atom — never a second, drifting derivation (#221).
     illness: getIllnessCoachingContext(profile.id, todayStr),
     // Rest-card tense (#921): soften "rest today" to next-session framing while a
     // session is live, matching the dashboard/Telegram surfaces (one computation).

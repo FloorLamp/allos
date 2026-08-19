@@ -9,7 +9,7 @@ import {
 describe("protocolPracticeNoun", () => {
   it("counts a wellness practice in DAYS and everything else in its own unit", () => {
     // A practice is a per-day habit ("3 days this week"); a food group is counted in
-    // servings and an activity type in sessions. ONE lookup, so the dashboard widget
+    // servings and an activity type in sessions. ONE lookup, so the dashboard presentation
     // and the protocol detail page cannot count the same protocol in two units
     // (#2008).
     expect(protocolPracticeNoun("practice")).toBe("day");

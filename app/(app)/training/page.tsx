@@ -54,7 +54,7 @@ export default async function TrainingPage(props: {
   // so this makes a /training visit compute one tab instead of all of them, at no
   // extra round-trips. The `?tab=` vocabulary is unchanged, so every deep link
   // (?tab=log from the timeline/integrations, ?tab=analyze from the plateau finding,
-  // ?tab=goals from the dashboard widget, …) lands exactly where it always did.
+  // ?tab=goals from the dashboard presentation, …) lands exactly where it always did.
   const activeSection: React.ReactNode = (() => {
     switch (activeTab) {
       case "analyze":

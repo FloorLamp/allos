@@ -7,7 +7,7 @@ import {
 
 // The next-period forecast card (issue #1679) — a pure FORMATTER over the one
 // forecastNextPeriod result (#221). It computes nothing: the window, the confidence tier
-// and the evidence all arrive decided, so this card and the dashboard tile can never
+// and the evidence all arrive decided, so this card and the dashboard atom can never
 // disagree about what was projected.
 //
 // The three shapes are the three honest answers:

@@ -65,7 +65,7 @@ export type QuickLogIcon =
 // the Wellness card carries (#1633); `document` mounts the SAME UploadForm Data → File
 // upload renders, camera input included (#1525).
 // `cycle` is the ONE period offer (#1892) — the overlay renders the SAME
-// `cycleControlState` the Cycle page control and the dashboard phase widget render,
+// `cycleControlState` the Cycle page control and dashboard control atom render,
 // gathered on open so a sheet opened this morning cannot offer yesterday's verb.
 // `mood` is the daily check-in's face row + backfill day chips (#2130/#2128) —
 // the SAME MoodValencePicker and `logMood` action the dashboard card runs, in a
@@ -318,7 +318,7 @@ export function primaryQuickLog(
 
 // The sheet's menu for a given profile. `cycleRelevant` is the #1042 `cycle`
 // relevance bit, the SAME one gating the Cycle
-//     nav entry and the dashboard phase widget (#1892). Defaults TRUE for the same
+//     nav entry and dashboard control atom (#1892). Defaults TRUE for the same
 //     reason DEFAULT_NAV_RELEVANCE does: a caller that hasn't threaded the bitset must
 //     never over-hide. The overlay re-checks it server-side, so a deep link cannot
 //     reach the offer on a profile the domain does not apply to either.
@@ -352,7 +352,7 @@ export const QUICK_LOG_DOMAIN_CENSUS = {
   mood: "log-mood",
   stool: "log-stool",
   symptom: arguedExclusion(
-    "Symptom logging is a state-routed PAIR, not one form: on a well day it is the #1300 quick bar behind the check-in card's reveal, and during an illness episode the hero cockpit owns it (#858 — one lifecycle, one door). A context-free sheet row would need the episode gather just to pick a form, and #1860 is actively reshaping that capture; membership waits on it rather than freezing one of the two halves here."
+    "Symptom logging is a state-routed PAIR, not one form: on a well day it is the #1300 quick bar behind the check-in card's reveal, and during an illness episode the illness Now cockpit owns it (#858 — one lifecycle, one door). A context-free sheet row would need the episode gather just to pick a form, and #1860 is actively reshaping that capture; membership waits on it rather than freezing one of the two halves here."
   ),
   substance: arguedExclusion(
     "Deliberate-access surface by doctrine: substance-use logging lives under Medical → Substance use with its #998 cap verdict rendered beside the tap, and the findings reach policy keeps it off general-purpose quick surfaces. A sheet row would detach the tap from the cap context that makes it honest."

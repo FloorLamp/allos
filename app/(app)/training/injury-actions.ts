@@ -38,7 +38,7 @@ import type { MovementPattern, MuscleId, MuscleRegion } from "@/lib/lifts";
 function revalidateInjuries(): void {
   revalidateRoute("/training");
   revalidateRoute("/timeline");
-  // The recommendation exclusion/tempering rides the dashboard coaching widget too.
+  // The recommendation exclusion/tempering rides the dashboard coaching atom too.
   revalidateRoute("/");
 }
 

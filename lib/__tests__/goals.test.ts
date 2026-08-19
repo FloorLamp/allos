@@ -476,7 +476,7 @@ describe("goalPct", () => {
 });
 
 // One question, one computation (issue #307): the household card, the dashboard
-// ActiveGoalsWidget, and the training GoalsManager all render a goal percentage
+// GoalProgressAtom, and the training GoalsManager all render a goal percentage
 // by calling goalPct. This pins that they resolve the SAME number for the same
 // fixture — replicating each surface's exact call expression, including the
 // GoalsManager quirk of only passing progress for `auto` (derived) goals.
@@ -513,17 +513,15 @@ describe("goalPct cross-surface parity", () => {
   ];
 
   for (const f of fixtures) {
-    it(`agrees across surfaces: ${f.name}`, () => {
+    it(`agrees across distinct consumers: ${f.name}`, () => {
       const progressMap = new Map<number, GoalProgress>();
       if (f.prog) progressMap.set(f.goal.id, f.prog);
       const progressRecord: Record<number, GoalProgress> = f.prog
         ? { [f.goal.id]: f.prog }
         : {};
 
-      // Household card (goalHighlights) and ActiveGoalsWidget both pass the
-      // progress-map lookup directly.
+      // Household goalHighlights passes the progress-map lookup directly.
       const household = goalPct(f.goal, progressMap.get(f.goal.id));
-      const widget = goalPct(f.goal, progressMap.get(f.goal.id));
 
       // GoalsManager only passes progress for goals it classifies as `auto`
       // (exercise-linked or body-metric); freeform goals get undefined.
@@ -534,7 +532,6 @@ describe("goalPct cross-surface parity", () => {
         auto ? progressRecord[f.goal.id] : undefined
       );
 
-      expect(widget).toBe(household);
       expect(goalsPage).toBe(household);
     });
   }

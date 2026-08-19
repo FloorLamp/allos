@@ -237,7 +237,7 @@ function resolveGivenAt(
   }
 }
 
-// Log one PRN (as-needed) administration from the dashboard quick-log widget (#797).
+// Log one PRN (as-needed) administration from any shared PRN quick-log surface (#797).
 // The auth gate + offset parsing live here; the write core (logAdministration) is
 // auth-blind and shared with the Telegram /dose path, so "gave it now / at 4:02pm"
 // is one computation. The result preserves whether the write was
@@ -246,7 +246,7 @@ function resolveGivenAt(
 export async function logMedicationAdministration(
   formData: FormData
 ): Promise<MedicationAdministrationResult> {
-  // Cross-profile gating (issue #858): the illness-hero cockpit logs a PRN dose for a
+  // Cross-profile gating (issue #858): the illness Now-group cockpit logs a PRN dose for a
   // household member without switching — an explicit `profileId` gates on the TARGET via
   // requireProfileWriteAccess (the #31 cross-profile gate); absent, the active profile is
   // used (requireWriteAccess). The dashboard/medications mounts send no profileId.

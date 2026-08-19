@@ -102,7 +102,7 @@ export function scheduledTodayItem(
 }
 
 // A PRN (as-needed) medication's one-tap administration row (`quick-log-prn-item`),
-// filtered to its name. Shared by the Today panel AND the dashboard quick-log widget
+// filtered to its name. Shared by the Today panel and PRN quick-log content
 // (the #797 one-computation control), so `scope` is whichever container the caller reads.
 export function prnTodayItem(scope: Locator | Page, name: string): Locator {
   return scope.getByTestId("quick-log-prn-item").filter({ hasText: name });

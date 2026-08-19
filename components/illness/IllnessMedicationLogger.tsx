@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
 import QuickAddMedication from "@/components/QuickAddMedication";
-import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
+import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import type { PrnMedForQuickLog } from "@/lib/queries";
 import type { PediatricFormContext } from "@/lib/prn-dosing";

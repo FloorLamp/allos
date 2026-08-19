@@ -77,7 +77,7 @@ function setSecondDashboardNap(enabled: boolean): void {
   }
 }
 
-test("the dashboard renders one fixed instrument cluster and no editor", async ({
+test("the dashboard renders the fixed four-zone instrument cluster", async ({
   page,
 }) => {
   await page.goto("/");
@@ -102,10 +102,6 @@ test("the dashboard renders one fixed instrument cluster and no editor", async (
   await expect(
     standing.locator('[data-standing-section="longer-view"]')
   ).toBeVisible();
-  await expect(
-    main.getByRole("button", { name: "Edit dashboard" })
-  ).toHaveCount(0);
-  await expect(main.getByText("Customize", { exact: true })).toHaveCount(0);
 });
 
 test("attention facts use write-capable atoms outside read-only Ahead", async ({
@@ -401,7 +397,7 @@ test("illness identities stay exact-once when the cockpit folds", async ({
     await page.goto("/");
     const main = page.getByRole("main");
     const cockpit = main
-      .getByTestId("illness-hero")
+      .getByTestId("illness-now-group")
       .locator('[data-active="true"]');
     await expect(cockpit).toHaveCount(1);
 

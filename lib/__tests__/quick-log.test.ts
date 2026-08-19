@@ -92,7 +92,7 @@ describe("quickLogMenu", () => {
   });
 
   // Issue #1892 — the cycle relevance gate, the SAME `cycle` bit as the Cycle nav
-  // entry and the dashboard phase widget.
+  // entry and dashboard control atom.
   it("drops the period row for a profile where cycle tracking is irrelevant", () => {
     const ids = quickLogMenu(false).map((i) => i.id);
     expect(ids).not.toContain("log-period");

@@ -1314,7 +1314,7 @@ A fifth failure class, orthogonal to the four above: **fixtures derive dates
 relative to the wall clock** (`today()`, "now − N hours/days"), so whether a
 seeded row lands inside a day/week window depends on WHEN the suite runs. A run
 that crosses local midnight invalidates its "today"-seeded specs en masse —
-observed twice during the 2026-07-18→19 window: `illness-hero`'s "00:05
+observed twice during the 2026-07-18→19 window: `illness Now-group`'s "00:05
 (Yesterday)" instead of a same-day relative age, `workout-presence`'s
 live-session chip/dock rendering nothing (the seeded draft's `date` no longer
 today), `workout-heatmap`'s active-day cells, `protocol-reach`'s ongoing
@@ -1350,7 +1350,7 @@ seam, **`lib/clock.ts`**:
   processes — a module-level `new Date()` would give each of them a different
   one). An externally-supplied `ALLOS_TEST_NOW` wins, so a boundary hour (e.g.
   `00:10` local) can be stress-tested on demand:
-  `ALLOS_TEST_NOW="<today>T00:10:00" npm run test:e2e -- illness-hero workout-presence`.
+  `ALLOS_TEST_NOW="<today>T00:10:00" npm run test:e2e -- dashboard-illness-phase5 workout-presence`.
 
 `ALLOS_TEST_NOW` is a **test hook, not an operator knob** — it is deliberately
 absent from `.env.example`. `bootTasks` (`lib/migrations/boot-tasks.ts`) logs a
@@ -2174,7 +2174,7 @@ a page-2 guard), which is a compounding retry in plain sight, not a slow one.
 shared-DB harness at `--workers=4` fails 20 tests; DB-per-worker at
 `--workers=4` fails 16 — and the six it drops are exactly the shared-world class
 (the dose ledger's restructure/skip history, 2FA enrolment, the login-scoped
-Trends default range, a cross-profile illness hero). At `--workers=1` the two
+Trends default range, a cross-profile illness Now group). At `--workers=1` the two
 harnesses are indistinguishable (4 vs 3 failures, ~11 min each; the residue
 fails on both and is an interaction-latency problem in that container, not
 isolation). Wall-clock on that box: 11.1 min at one worker, 8.3 min at two,

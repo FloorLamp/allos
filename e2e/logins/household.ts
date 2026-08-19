@@ -89,7 +89,7 @@ export const TL_WEST_TZ = "Etc/GMT+12"; // UTC−12
 // Own-profile link + not-self write affordances (issue #1013). A dedicated member
 // granted TWO adult profiles WRITE, with own_profile_id pointing at the FIRST — the
 // login's declared "self". Each carries a due-today dose + one weigh-in, so the
-// household cards render dose-confirm buttons and the dashboard weight widget renders.
+// household cards render dose-confirm buttons and the dashboard weight presentation renders.
 // Acting as SELF → affordances stay plain; switching to the OTHER (not the login's
 // own) → they NAME the subject ("Confirm — Own Other (e2e)", "Finish workout — …").
 // Both profiles have unknown ages; activity surfaces remain available while adult-only

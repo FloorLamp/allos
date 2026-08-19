@@ -146,7 +146,7 @@ export const ONBOARDING_PROFILE = "Onboarding Person (e2e)";
 
 // A second empty onboarding profile dedicated to the caregiver path. Keeping it
 // separate lets the self/metrics and caregiver browser tests run in parallel
-// without racing over onboarding state or dashboard layout.
+// without racing over onboarding state.
 export const E2E_LOGIN_ONBOARDING_CAREGIVER = "e2e_onboarding_caregiver";
 export const ONBOARDING_CAREGIVER_PROFILE = "Caregiver Onboarding Person (e2e)";
 
@@ -166,7 +166,7 @@ export const NAV_MALE_PROFILE = "Nav Cycle Male (e2e)";
 
 // ── Dashboard weight quick-add (#1042 phase 2) ────────────────────────────────
 // A dedicated, write-granted ADULT profile with two seeded weigh-ins (notes
-// 'e2e:seed-weight') so the dashboard weight-trend widget renders its chart.
+// 'e2e:seed-weight') so the dashboard weight presentation renders its chart.
 // Spec-owned on purpose (#868): the weight-quick-add spec resets every non-seed
 // body_metrics row on it at test start (the smoke.spec direct-DB precedent), so
 // it's repeat-safe and its writes never perturb a shared profile's weight series

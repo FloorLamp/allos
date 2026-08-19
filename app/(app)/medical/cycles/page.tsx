@@ -98,7 +98,7 @@ export default async function CyclePage() {
   const lengths = cycleLengths(periods); // oldest-first
   const trendData = lengths.map((l) => ({ date: l.start, value: l.days }));
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
-  // ONE forecast computation for the page (#221); the dashboard tile reads the same core.
+  // ONE forecast computation for the page (#221); the dashboard atom reads the same core.
   const forecast = getCycleForecast(profile.id, todayStr);
   // TTC is adult-only content — the same `!isMinor` line the other adult topics use
   // (#1174) — and off entirely until the user declares a start (the declared-only rule).

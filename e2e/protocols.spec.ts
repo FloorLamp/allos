@@ -5,8 +5,8 @@ import { frozenNow } from "./worker-env";
 //   1. Full create → compare flow: create a protocol with two body-metric outcomes
 //      and a past start date, land on its detail page, and see before/during
 //      panels. Self-cleaning (deletes the protocol it created).
-//   2. The healthspan-pillars dashboard widget renders, showing at least the
-//      optimal-biomarkers pillar (seed profile 1 has labs) — proving the widget
+//   2. The dashboard healthspan-pillar readouts render, showing at least the
+//      optimal-biomarkers pillar (seed profile 1 has labs) — proving the cluster
 //      renders only the pillars whose data exists.
 // The default specs run authenticated as admin acting as profile 1 (storageState).
 // Locators are scoped to the main content region to avoid the responsive shell.
@@ -318,5 +318,3 @@ test.describe("protocols recovery-gear filter (#592)", () => {
     ).toHaveCount(0);
   });
 });
-
-test.describe("healthspan pillars widget (issue #161)", () => {});

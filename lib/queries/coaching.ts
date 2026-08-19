@@ -137,13 +137,13 @@ export function getRestingHrSignal(profileId: number): RestingHrSignal | null {
 }
 
 // Assemble the full coaching input from profile-scoped reads. Used by the
-// dashboard Coaching widget's loader; the Training overview builds the same
+// dashboard coaching atom's loader; the Training overview builds the same
 // bundle inline from data it has already fetched (reusing the two signal
 // readers above). `distanceUnit` is only needed to satisfy getCardioByActivity's
 // signature — the engine reads activity name + last date, not formatted text.
 // The situation-aware coaching context (issue #837): the open flagged-illness
 // episode state + the most-recently-closed episode, read from the ONE
-// illness_episodes derivation (#856) — the SAME rows the illness hero/timeline use,
+// illness_episodes derivation (#856) — the SAME rows the illness Now group/timeline use,
 // never a second engine. A row covering today = an open episode (held); the most
 // recent closed row anchors the ease-back ramp (the pure engine applies the window).
 export function getIllnessCoachingContext(

@@ -159,7 +159,7 @@ export function getForecastSuspension(
 
 // THE next-period forecast for a profile: the profile-scoped period history plus the
 // resolved suspension, handed to the ONE pure projection. Every consumer (the Cycle
-// surface, the dashboard tile) calls this and formats the result.
+// surface, the dashboard atom) calls this and formats the result.
 export function getCycleForecast(
   profileId: number,
   todayStr: string

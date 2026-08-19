@@ -24,7 +24,7 @@ import type { UsualRoutineControlProps } from "@/components/dashboard/UsualRouti
 //     half IS `usualFoodOffer`'s 21-day regularity answer with its #998/#2380
 //     exclusions inherited, and whose dose half is the profile's own
 //     `time_of_day` declaration read back. The sheet renders the SAME
-//     <UsualRoutineControl> the dashboard's nutrition widget renders, over the
+//     <UsualRoutineControl> the dashboard's usual-routine atom renders, over the
 //     SAME props, so the two surfaces cannot promise different writes.
 //   • doses due NOW — `collectDueDosesNow`, the arrived-slot slice of the same
 //     scheduled-dose evaluation Household and Upcoming read, already filtered

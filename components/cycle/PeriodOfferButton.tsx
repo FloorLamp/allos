@@ -15,7 +15,7 @@ import {
 } from "@/app/(app)/medical/cycles/actions";
 
 // THE one-tap period affordance (issue #1892), rendered by every surface that offers
-// one: the Cycle page's quick actions, the dashboard phase widget, and the quick-log
+// one: the Cycle page's quick actions, the dashboard control atom, and the quick-log
 // sheet's overlay.
 //
 // It DECIDES NOTHING. The server resolves `cycleControlState` once
@@ -60,9 +60,9 @@ const TEST_IDS: Record<CyclePeriodWrite, string> = {
 };
 
 // Which surface is rendering — only ever used to build the wrapper's test id, so a
-// spec can address the widget's button and the sheet's button separately when both
+// spec can address the atom's button and the sheet's button separately when both
 // are on screen at once.
-export type PeriodOfferSurface = "page" | "widget" | "sheet";
+export type PeriodOfferSurface = "page" | "atom" | "sheet";
 
 export default function PeriodOfferButton({
   state,

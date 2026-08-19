@@ -99,8 +99,8 @@ test.describe("mobile clipping batch (#2614)", () => {
   }) => {
     // The RULE is unchanged from the census: a long clinical value may not cost the
     // reading its NAME at 390px. The SURFACE moved (#3186). This read
-    // `recent-lab-row` — RecentLabsWidget — and a Standing member never renders its
-    // widget node (DashboardStandingCluster renders the compact presentation
+    // `recent-lab-row` — RecentLabReadout — and a Standing member never renders its
+    // full atom node (DashboardStandingCluster renders the compact presentation
     // instead), so those rows were only ever the tail BEYOND the family cap: a
     // profile seating three markers and spilling none rendered zero of them. The
     // tail is no longer a dashboard fact, so the clinical rows a phone shows are

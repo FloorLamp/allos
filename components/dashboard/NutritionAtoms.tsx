@@ -1,5 +1,5 @@
 import { IconSalad } from "@tabler/icons-react";
-import WidgetHeader from "@/components/dashboard/WidgetHeader";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import {
   type ProteinToday,
   proteinBasisPhrase,
@@ -9,7 +9,7 @@ import UsualRoutineControl, {
   type UsualRoutineControlProps,
 } from "@/components/dashboard/UsualRoutineControl";
 
-// Dashboard "Nutrition today" tile (issue #1221): today's protein against the goal
+// Dashboard Nutrition today readout (issue #1221): today's protein against the goal
 // band, plus the trailing 7-day average — a thin FORMATTER over the SAME ProteinToday
 // model the Nutrition → Food gauge and the Telegram food-nudge read (getProteinToday,
 // #974/#221), so the card and those surfaces can never disagree. Today is IN PROGRESS,
@@ -27,28 +27,22 @@ import UsualRoutineControl, {
 // history the helper offers today's intake, which this card already shows two lines
 // up as its headline. Repeating it under an average's line would add a number and no
 // information.
-// THE COMPOSED MORNING ONE-TAP RIDES THIS CARD (#2458). No new widget id and no
-// layout migration: the offer is transient — a pure function of today's state, gone
-// the moment everything it names is logged — and a widget whose whole existence
-// flickers with the clock would be an unplaceable row in everyone's saved layout.
-// It sits ABOVE the protein readout because it is the thing you came to do.
-//
-// `today` is nullable for the same reason: the morning offer can stand for a profile
-// with no protein target at all (no body weight declared), and refusing to show the
-// tap because a NUMBER is unavailable would be the card's furniture outranking its
-// purpose. The page's empty-CTA gate reads the same pair.
-export default function NutritionTodayWidget({
-  today,
-  routine,
-}: {
-  today: ProteinToday | null;
-  routine?: UsualRoutineControlProps | null;
-}) {
+export function ProteinTodayAtom({ today }: { today: ProteinToday }) {
   return (
-    <div className="card" data-testid="nutrition-today-widget">
-      <WidgetHeader title="Nutrition today" href="/nutrition" />
-      {routine ? <UsualRoutineControl {...routine} /> : null}
-      {today ? <ProteinReadout today={today} /> : null}
+    <div className="card" data-testid="protein-today-atom">
+      <CardSectionHeader title="Nutrition today" href="/nutrition" />
+      <ProteinReadout today={today} />
+    </div>
+  );
+}
+
+// The composed morning one-tap is its own transient action candidate. It can exist
+// without a protein target, and disappears as soon as everything it names is logged.
+export function UsualRoutineAtom(props: UsualRoutineControlProps) {
+  return (
+    <div className="card" data-testid="usual-routine-atom">
+      <CardSectionHeader title="Nutrition today" href="/nutrition" />
+      <UsualRoutineControl {...props} />
     </div>
   );
 }

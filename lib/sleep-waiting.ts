@@ -1,7 +1,7 @@
 import { DEFAULT_WAKE_MINUTES } from "./dashboard-relevance";
 
 // The morning waiting window (issue #2097) — ONE pure decision, consumed by the
-// dashboard tile, the /sleep hero and the Now strip, so the three cannot disagree
+// dashboard sleep presentation, the /sleep hero and the Now strip, so the three cannot disagree
 // about whether the profile is waiting for last night.
 //
 // THE STATE THIS NAMES. Every morning there is a real, measurable gap: the user is

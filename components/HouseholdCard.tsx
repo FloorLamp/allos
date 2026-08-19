@@ -91,7 +91,7 @@ export interface HouseholdCardData {
   // (#921), else null. Live-only and unlinked (no cross-profile activity route).
   presence: string | null;
   // A compact structural data-quality gaps line (issue #1045), else null — the same
-  // ranked gap model the dashboard widget formats, condensed. Unlinked (a cross-
+  // ranked gap model the dashboard presentation formats, condensed. Unlinked (a cross-
   // profile deep link lands on a dead anchor, #879); tapping the card switches to
   // this profile where each gap's own CTA is reachable.
   dataQuality: string | null;

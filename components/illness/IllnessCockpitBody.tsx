@@ -9,9 +9,9 @@ import EpisodeLatestReadings from "@/components/illness/EpisodeLatestReadings";
 import type { DashboardIllnessCockpitModel } from "@/lib/dashboard-illness-cockpit";
 
 // The full illness-cockpit BODY for one patient (issue #858) — the expanded content the
-// hero shell (IllnessHero) reveals under the named header. It is the SAME machinery the
+// illness Now group reveals under the named header. It is the SAME machinery the
 // dashboard Symptoms card gathered (the one-tap SymptomLogBar with symptoms + temp) plus
-// the PRN dose log (the SAME redose computation the QuickLogPrn widget uses — one
+// the PRN dose log (the SAME redose computation QuickLogPrnContent uses — one
 // question, one computation) and the end-episode action. Rendered server-side (it needs
 // profile-scoped reads) and passed into the client shell as a node, so ONE component
 // serves the acting profile's cockpit and every household member's accordion cockpit.

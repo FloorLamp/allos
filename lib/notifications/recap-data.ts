@@ -8,7 +8,7 @@
 // markers, obeys the plan, and writes the markers back. Every scale rides the same
 // slot, so a longer period REPLACES the shorter one's send instead of adding a second.
 //
-// The SAME gatherRecapInput powers the dashboard recap widget, so the card and the
+// The SAME gatherRecapInput powers the dashboard recap atoms, so the card and the
 // notification always show identical numbers (#221) — the card on the in-progress
 // period, the send on the one that closed (#1021).
 
@@ -579,7 +579,7 @@ export function getRecapCard(
 
 // Gather + build a recap at an explicit scale (issue #20, #2178): the AI narrative
 // generator reuses this so the weekly/monthly/quarterly AI read narrates over the SAME
-// rule-based recap facts the dashboard widget and the notification already show.
+// rule-based recap facts the dashboard presentation and the notification already show.
 export function getScaleRecap(
   profileId: number,
   scale: RecapScale,

@@ -46,7 +46,6 @@ import { resolveTodayRoutineDayIndex } from "../../workout-recommendation";
 import type { ActivityEditData } from "../../activity-form-model";
 import { pickImportedActivityMetrics } from "../../activity-import-details";
 import type { Activity, ActivityType, ExerciseSet } from "../../types";
-import { getLatestBodyMetricDated } from "../metrics";
 import { cache, effortNameCounts, recentWindowStart } from "./common";
 
 export interface ActivitySuggestions {
@@ -1065,62 +1064,4 @@ export function getActivityEditData(
 ): ActivityEditData | null {
   const a = getActivityById(profileId, activityId);
   return a ? activityToEditData(profileId, a) : null;
-}
-
-export function getDashboardStats(profileId: number) {
-  // Hard rolling 7-day window (today + the prior 6 days) behind the "Activities
-  // (7d)" tile. This is intentionally NOT the training log week summary, which is now
-  // week_mode-aware (lib/week-window.ts, #223) — the tile's label says "7d", so
-  // keep the fixed window and don't "align" the two.
-  //
-  // The WINDOW stays unaligned; WHAT COUNTS does not (#3191). That comment is an
-  // argument about which days the tile spans, and it is a good one — it says nothing
-  // about what an activity is. A create-at-start session someone opened and never
-  // logged anything in is an address, not an entry (lib/activity-draft.ts), and this
-  // tile claims to count things you did, so the husk is not one of them. The
-  // Training Log's feed, its week caption and its day strip already agree about that
-  // (#3056, #3188); the dashboard tile now agrees too, on its own window.
-  //
-  // ONE statement for both numbers, where there were two: the rule needs the
-  // draft-candidate columns per row anyway, and `last7` is a slice of the same rows.
-  // The rule is not restated in SQL — the "has any set" half rides along as a
-  // correlated EXISTS and the fold applies `isDraftActivityRow` itself.
-  const since = shiftDateStr(today(profileId), -6);
-  const rows = db
-    .prepare(
-      `SELECT a.date AS date,
-              a.start_time, a.end_time, a.duration_min, a.components, a.notes,
-              a.distance_km, a.source,
-              EXISTS (
-                SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
-              ) AS has_sets
-         FROM activities a
-        WHERE a.profile_id = ?`
-    )
-    .all(profileId) as (DraftCandidateRow & {
-    date: string;
-    /** 0 or 1 — the draft rule only asks whether ANY set exists (`setCount > 0`). */
-    has_sets: number;
-  })[];
-  let activityCount = 0;
-  let last7 = 0;
-  for (const row of rows) {
-    if (isDraftActivityRow(row, row.has_sets)) continue;
-    activityCount++;
-    if (row.date >= since) last7++;
-  }
-  // Current weight routed through the canonical reconciled reader so it honors the
-  // profile's primary-source priority (#14) — the same value the passport, goals,
-  // and strength bodyweight calcs show. A raw newest-row query here silently
-  // disagreed with every other "current weight" surface (#302); one question, one
-  // computation.
-  const latestWeight = getLatestBodyMetricDated(profileId, "weight");
-  const activeGoals = (
-    db
-      .prepare(
-        "SELECT COUNT(*) c FROM goals WHERE profile_id = ? AND status = 'active' AND archived = 0"
-      )
-      .get(profileId) as { c: number }
-  ).c;
-  return { activityCount, last7, latestWeight, activeGoals };
 }

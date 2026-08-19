@@ -11,7 +11,7 @@
 // defect lived in the GATHER's input gate — exactly the #448 blind spot — so this
 // fixture drives the real loader and asserts the emitted `redoseLine` on BOTH surfacing
 // paths it feeds: the med card (`current[].prnRedoseLine`) and the Today panel
-// (`prnToday[].redoseLine`, the same read the dashboard PRN widget consumes).
+// (`prnToday[].redoseLine`, the same read the shared PRN quick-log content consumes).
 //
 // Fixtures are synthetic throwaway rows (per-file temp DB via setup.ts). No PHI.
 

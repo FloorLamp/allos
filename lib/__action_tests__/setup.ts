@@ -184,7 +184,7 @@ vi.mock("@/lib/auth", async () => {
     // set first (a member's grant), then accessForProfile (ungranted members default to
     // 'write', so it must never be consulted alone). Prod redirects on failure; here we
     // throw loudly. Admins pass (implicit all-write). Backs the #858 cross-profile
-    // illness-hero writes (log a household member's symptom/temp/dose without switching).
+    // illness Now-group writes (log a household member's symptom/temp/dose without switching).
     requireProfileWriteAccess: (profileId: number) => {
       const s = getActingSession();
       if (isDemoRestricted(isDemoMode(), s.login.role)) {

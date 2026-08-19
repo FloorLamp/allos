@@ -12,7 +12,7 @@
 // family: the latest administration across ALL members (the interval clock's arming
 // dose), today's combined administration count, and the most conservative confirmed
 // daily max among members. Consumers — the redose notice orchestrator, the over-max
-// care finding, the med card's redose line, and the dashboard quick-log widget —
+// care finding, the med card's redose line, and shared PRN quick-log content —
 // are formatters over this ONE state, so they can never disagree ("one question,
 // one computation").
 //

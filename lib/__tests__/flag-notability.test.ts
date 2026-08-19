@@ -55,7 +55,7 @@ const ALLOWLIST: { path: string; reason: string }[] = [
       "decision; notability still routes through flags.ts's canonical helpers.",
   },
   {
-    path: "components/dashboard/RecentLabsWidget.tsx",
+    path: "components/dashboard/RecentLabReadout.tsx",
     reason:
       "Badge-PRESENCE decision: renders a labeled chip for any non-normal flag, " +
       "including a NEUTRAL slate 'Immune' chip (its color is chosen by flagTone, " +

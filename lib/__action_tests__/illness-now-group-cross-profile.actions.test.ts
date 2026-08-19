@@ -1,6 +1,6 @@
-// SERVER-ACTION TIER — cross-profile illness-hero writes (issue #858).
+// SERVER-ACTION TIER — cross-profile illness Now-group writes (issue #858).
 //
-// The illness hero lets a caregiver log a household member's symptom / temperature / PRN
+// The illness Now group lets a caregiver log a household member's symptom / temperature / PRN
 // dose and end their episode WITHOUT switching the acting profile. The bar/control post an
 // explicit `profileId`; the action then gates on the TARGET via requireProfileWriteAccess
 // (the #31 cross-profile gate) instead of the active-profile requireWriteAccess. This tier
@@ -201,7 +201,7 @@ describe("cross-profile end-episode (#858)", () => {
 });
 
 // The cross-profile EPISODE-PAGE writes (#879): the caregiver opens a household member's
-// full episode page from the hero link and edits/promotes/shares it WITHOUT switching.
+// full episode page from the illness-group link and edits/promotes/shares it WITHOUT switching.
 // Each posts the target `profileId`; the gate is the #31 cross-profile gate.
 describe("cross-profile episode edit (#879)", () => {
   it("edits a granted member's episode note/outcome without switching", async () => {

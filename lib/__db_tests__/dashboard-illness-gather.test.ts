@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — the dashboard's per-profile illness reads (#2115 + #2446).
 //
 // One dashboard render used to ask about each accessible profile's illness episodes
-// THREE independent times: the hero accordion read the row covering that member's
+// THREE independent times: the illness Now group read the row covering that member's
 // today, the reopen band read the most-recently CLOSED row, and the household-history
 // promo read BOTH again — so the closed-row SELECT ran twice per profile per render
 // for two derivations of one fact, while the page's own comment claimed the reuse.
@@ -159,7 +159,7 @@ describe("dashboard illness gather — one read per fact, per profile", () => {
     // pNever: no episode rows at all.
   });
 
-  it("derives the accordion, the hero cockpit and the reopen line exactly as the per-profile reads did", () => {
+  it("derives the compact line, the illness cockpit and the reopen line exactly as the per-profile reads did", () => {
     for (const pid of all) {
       const state = episodeStateForProfile(pid);
       expect(currentEpisodeFromState(state)).toEqual(
@@ -227,7 +227,7 @@ describe("dashboard illness gather — one read per fact, per profile", () => {
       OPEN_BY_SITUATION
     );
 
-    // Exactly what the dashboard does with the gather: accordion + hero + reopen
+    // Exactly what the dashboard does with the gather: compact line + cockpit + reopen
     // band + the recently-sick promo, over one state per member.
     const states = episodeStatesForProfiles(all);
     for (const s of states) {
@@ -252,7 +252,7 @@ describe("dashboard illness gather — one read per fact, per profile", () => {
     );
 
     // The dashboard's reads EXACTLY as they were before this change: the accordion's
-    // currentEpisodeForProfile, the hero's openEpisodeForProfile, the reopen band's
+    // currentEpisodeForProfile, the cockpit's openEpisodeForProfile, the reopen band's
     // reopenEligibleEpisodeForProfile, and the promo's own two reads per profile.
     for (const pid of all) {
       currentEpisodeForProfile(pid);
@@ -263,7 +263,7 @@ describe("dashboard illness gather — one read per fact, per profile", () => {
       episodeStateForProfile(pid);
     }
 
-    // 5 profiles × (accordion + hero + promo today-row) and × (reopen + promo
+    // 5 profiles × (compact line + cockpit + promo today-row) and × (reopen + promo
     // closed-row): the duplication the issue reported, counted.
     expect(todayRow.calls()).toBe(all.length * 3);
     expect(closedRow.calls()).toBe(all.length * 2);

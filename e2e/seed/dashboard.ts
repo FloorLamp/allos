@@ -509,7 +509,7 @@ export function seedNowStrip(): void {
   // main-sleep floor — so the merge must read them as ONE ~8h night (bed 23:00 → wake
   // 08:00, no nap), the behavior f53892f shipped with no browser test for the rendered
   // hero/tile. Pin UTC so the wall-clock labels are explicit; the latest wake-day is
-  // "today" so the hero + dashboard tile both render it. Rebuilt every seed; no browser
+  // "today" so the hero + dashboard sleep presentation both render it. Rebuilt every seed; no browser
   // test writes or cleans this profile, so parallel / --repeat-each runs cannot contend.
   const sleepSegmentedId = fixtureProfileId(SLEEP_SEGMENTED_PROFILE);
   setFixtureTimezone(db, sleepSegmentedId, "sleep-segmented", "UTC");

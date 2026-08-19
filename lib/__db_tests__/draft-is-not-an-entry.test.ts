@@ -26,7 +26,6 @@ import { db, today } from "@/lib/db";
 import { utcSqlString } from "@/lib/date";
 import {
   getActivityDates,
-  getDashboardStats,
   getFrequencyTargetProgress,
   getProtocol,
   getProtocolUsage,
@@ -183,35 +182,6 @@ describe("getActivityDates — a day a session was only OPENED is not a training
   });
 });
 
-// ── #3191 — the dashboard's "Activities (7d)" tile and the all-time count ──────
-//
-// The tile's fixed 7-day window stays deliberately unaligned with the week summary
-// (its comment argues that, and the argument is about the WINDOW). What counts as an
-// activity is a different question, and a husk is not one.
-describe("getDashboardStats — a husk is not an activity on a tile that counts what you did", () => {
-  it("counts neither all-time nor in the 7-day window", () => {
-    const id = makeProfile("TILE");
-    const day = today(id);
-
-    expect(getDashboardStats(id)).toMatchObject({ activityCount: 0, last7: 0 });
-    addDraft(id, day, "cardio", "Opened and abandoned");
-    expect(getDashboardStats(id)).toMatchObject({ activityCount: 0, last7: 0 });
-    addLogged(id, day, "cardio", "Actually trained");
-    expect(getDashboardStats(id)).toMatchObject({ activityCount: 1, last7: 1 });
-  });
-
-  it("keeps the window difference the two numbers exist for", () => {
-    const id = makeProfile("TILE WINDOW");
-    // Eight days back is outside the tile's fixed [today − 6, today] window but
-    // inside the all-time count — the number the tile is deliberately not aligned
-    // with the week summary about.
-    addLogged(id, "2026-03-01", "cardio", "Long ago");
-    addLogged(id, today(id), "cardio", "Today");
-    addDraft(id, today(id), "cardio", "Today, never logged");
-    expect(getDashboardStats(id)).toMatchObject({ activityCount: 2, last7: 1 });
-  });
-});
-
 // ── #3191 — the Trends → Fitness day-history matrix ────────────────────────────
 //
 // A separate statement from the day-density gather #3188 fixed, and its own surface.
@@ -360,9 +330,8 @@ describe("getWorkoutPresence keeps seeing the draft — immune BY INTENT", () =>
       new Date(now.getTime() - 2 * 60_000)
     );
 
-    // Nothing else counts it...
+    // The activity-date reader does not count it...
     expect(getActivityDates(id)).toEqual([]);
-    expect(getDashboardStats(id)).toMatchObject({ activityCount: 0, last7: 0 });
     // ...and the dock still has a session running, which is the whole reason the
     // row is kept rather than discarded when someone walks away from it.
     expect(getWorkoutPresence(id, now)).toMatchObject({

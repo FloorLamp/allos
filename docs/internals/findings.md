@@ -54,15 +54,11 @@ unilaterally**, so narrowing a care finding's reach when the evidence does not
 support it needs no user decision — but the reverse (promoting a calm state into
 an attention slot) always does. A cold-start state must never newly page anyone.
 
-**One dashboard home per finding family (#1533).** The rollup's charter is reach
-for findings that would otherwise render only on their own tab, so a family that
-has earned its OWN dashboard widget is excluded from it: `FINDING_DASHBOARD_HOME`
-in `lib/dashboard-candidates/` maps each finding to an atomic candidate, and the
-page splits `activeCoaching` into the homed slice and the rollup's eligible
-residual. The two rendered sets are disjoint. Hiding the home widget returns its
-family to the residual, where the same relevance floor decides whether it has
-earned dashboard reach. A new family with its own widget adds one registry line —
-it does not add another one-off filter.
+**One dashboard candidate family per finding (#1533).** Data-quality findings map
+to data-quality statement candidates; other eligible findings map to coaching
+observation candidates. The page splits `activeCoaching` into those two disjoint
+slices before placement, so one finding cannot render twice. A new dedicated
+candidate family must join that explicit split instead of adding a second renderer.
 
 **The rollup has a relevance floor, not a row cap (#3090).**
 `COACHING_OBSERVATIONS_RELEVANCE_THRESHOLD` is `review` (2). A producer's explicit
@@ -273,7 +269,8 @@ copy problem and its own issue. The training→sleep pair is declared anyway so 
 null case is exercised end to end.
 
 **Reach.** Coaching tier, registered under `PAIRED_OBS_PREFIX`; joins
-`collectCoachingFindings` and renders on the calm, hideable dashboard rollup.
+`collectCoachingFindings` and renders as a calm coaching-observation candidate in
+Show everything.
 Never Upcoming, never a notification, never dashboard Now, never an obligation. Keys
 are `paired-obs:<pair>:<YYYY-MM>` and declare their stem as `episodeFamily`
 (#2543), so a dismissal is per-month and repeat declines are read as an answer
@@ -438,7 +435,7 @@ against ONE citable duration/trajectory line at a time. Red-flag COMBINATIONS
 "informational" — because that is diagnosis, and one missed emergency or one
 false alarm both end badly. No auto-created conditions, no auto-contacting
 anyone, no severity-only alarms without a citable duration source. The illness
-hero accordion / Household "sick day" chip's **worsening ↑** marker
+illness Now group / Household "sick day" chip's **worsening ↑** marker
 (`episodeIsWorsening`) is a pure visibility arrow over the same assembly — a
 trend indicator with no medical claim, distinct from these cited findings.
 
@@ -524,7 +521,7 @@ of the posture that makes people log honestly in the first place.
 **The variance finding is COACHING tier.** A week-over-week swing (both an
 absolute floor and a doubling/halving must clear, with an adoption guard so a new
 logger is not a swing) against advice of the "keep it steady" shape becomes a
-calm, hideable note keyed `food-drug-variance:<itemId>:<ruleId>`. It joins
+calm, dismissible note keyed `food-drug-variance:<itemId>:<ruleId>`. It joins
 `collectCoachingFindings` and reaches no notification and never dashboard Now.
 
 Both quote the entry's OWN advice sentence, its citation and the informational
@@ -919,7 +916,7 @@ fact about the app's own tracked situation, so it carries no `source`.
 Status: **shipped**
 
 During an OPEN flagged-illness episode (the `illness_episodes` row covering
-today, #856 — the SAME derivation the illness hero/timeline use, never a second
+today, #856 — the SAME derivation the illness Now group/timeline use, never a second
 engine), the coaching engine HOLDS the go-train / routine-gap / cardio-gap /
 behind-pace nags: `illnessCoachingMode(input.illness, today)`
 (`lib/coaching/engine.ts`) returns `held`, `recommendCoaching` skips the
@@ -1392,7 +1389,7 @@ Two implementation conventions worth reusing in a fourth domain:
   detector is currently suggesting, and a card left open while the cadence
   recovered refuses with a typed outcome.
 
-**Reach, stated once for the whole family:** coaching tier, calm and hideable,
+**Reach, stated once for the whole family:** coaching tier, calm and dismissible,
 with no send of its own — ever. #1670's only push presence is one extra button on
 the pace nudge that was already firing for the target's own reasons
 (`lib/notifications/practices.ts`), which is ride-the-nag in its strictest form.

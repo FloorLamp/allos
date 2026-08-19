@@ -161,7 +161,7 @@ export type QuickEntryData =
     }
   | {
       // The ONE cycle offer state (#1892) — the same `cycleControlState` the Cycle
-      // page control and the dashboard phase widget render, resolved here so the
+      // page control and dashboard control atom render, resolved here so the
       // overlay's button decides nothing. Gathered ON OPEN, which is the only way
       // the sheet's verb can be current: a layout-time snapshot would be exactly as
       // stale as the page it rode in on.
@@ -306,7 +306,7 @@ export async function loadQuickEntry(
 
   if (form === "cycle") {
     // Relevance-gated server-side on the SAME `cycle` bit as the sheet row, the Cycle
-    // nav entry, and the dashboard widget — so a hand-written `?quick=log-period` deep
+    // nav entry, and the dashboard presentation — so a hand-written `?quick=log-period` deep
     // link cannot reach the offer on a profile the domain does not apply to.
     if (!getNavRelevance(profile.id).cycle) {
       return {

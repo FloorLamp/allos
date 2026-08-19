@@ -5,7 +5,7 @@ import { frequencyPace, frequencyPaceLabel } from "@/lib/frequency-targets";
 // target was only ever "met" or "Behind", so on the first day of the week EVERY unmet
 // habit read amber "Behind". `frequencyPace` adds the "on-pace" middle state, and both
 // surfaces that show it (the /nutrition Weekly-habits badge and the dashboard
-// Goals-and-habits widget) key on this ONE computation — this file pins the input→state
+// goal/habit atoms) key on this ONE computation — this file pins the input→state
 // contract so the two can't drift.
 
 describe("frequencyPace", () => {
