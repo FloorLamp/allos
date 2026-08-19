@@ -98,6 +98,36 @@
           "title": "Stool-panel labs get curated ranges, constipation is loggable, and a one-tap Bristol scale records stool form",
           "kind": "feature",
           "issues": [2787, 2783, 2785]
+        },
+        {
+          "pr": 3175,
+          "title": "Both dots on the strength ladder come from the same measurement, so a machine set cannot invent a fall",
+          "kind": "fix",
+          "issues": [3132]
+        },
+        {
+          "pr": 3176,
+          "title": "Restored checks that the activity deep link scrolls to its row and a minimized workspace reopens at rest",
+          "kind": "fix",
+          "issues": [3172]
+        },
+        {
+          "pr": 3181,
+          "title": "Continuous glucose has a home: a per-reading trace, with mean glucose and time in range derived daily",
+          "kind": "feature",
+          "issues": [2810]
+        },
+        {
+          "pr": 3188,
+          "title": "A session you started but logged nothing in no longer counts toward your week or lights a day",
+          "kind": "fix",
+          "issues": [3056]
+        },
+        {
+          "pr": 3192,
+          "title": "Assistance subtracts: an assisted pull-up is scored at the weight you actually moved, not more",
+          "kind": "fix",
+          "issues": [1922]
         }
       ]
     },
