@@ -91,13 +91,20 @@
 //
 // The guard is DERIVED from the shared deadline, strictly greater (never a
 // second competing 120s literal racing it at the same instant): a dispatch the
-// shared deadline is still bounding always resolves before this guard fires, so
-// the guard only ever trips on non-dispatch work that is genuinely stuck. When
-// it does, the slot is released, the chain moves on, and the abandoned run is
-// left to finish or not: if it never delivered it never stamped, so the hourly
-// tick's backstop re-delivers; if it delivers late it stamped, and the marker
-// keeps the backstop quiet. Losing the ordering guarantee for a run that has
-// already hung this long is the right trade — the alternative is that
+// shared deadline is still bounding always resolves before this guard fires,
+// so what remains for the guard is the non-dispatch work. That is NOT quite
+// "only something genuinely stuck": a run whose dispatch lawfully consumed the
+// full deadline AND whose local legs are merely slow past the margin is
+// abandoned too, releasing the next queued run while this one is still in
+// flight — reopening the read-then-act window the chain exists to close. That
+// stays inside the documented at-least-once posture (the marker is stamped
+// only on delivery, so the worst case is the rare duplicate this queue already
+// tolerates, never a lost contact). When the guard fires, the slot is
+// released, the chain moves on, and the abandoned run is left to finish or
+// not: if it never delivered it never stamped, so the hourly tick's backstop
+// re-delivers; if it delivers late it stamped, and the marker keeps the
+// backstop quiet. Losing the ordering guarantee for a run that has already
+// held the chain this long is the right trade — the alternative is that
 // everything after it is lost.
 
 import { createLogger, safeString } from "../log";
@@ -116,8 +123,10 @@ export const POST_WORKOUT_DISPATCH_DELAY_MS = 60_000;
 // re-verification, the message build). A guard equal to the dispatch deadline
 // would race it at the same instant and could abandon a run whose dispatch was
 // about to resolve with results; strictly greater means the bounded dispatch
-// always wins and this guard only ever fires on non-dispatch work genuinely
-// stuck.
+// always wins, and what the guard cuts off is the non-dispatch remainder —
+// usually something genuinely stuck, though a full-deadline dispatch plus
+// merely-slow local legs past the margin is also abandoned (see the header:
+// at-least-once absorbs that as a rare duplicate, never a lost contact).
 //
 // The derivation is ASSERTED, not merely written down: lib/__db_tests__/
 // post-workout-duplicates.test.ts reds unless this is strictly greater than the

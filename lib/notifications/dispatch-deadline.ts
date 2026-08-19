@@ -20,8 +20,11 @@
 // This lives in its own module — not index.ts — because the post-workout queue
 // derives its whole-task guard from the constant, and post-workout-queue.ts is
 // deliberately light (armed from Server Actions and sync runners; the heavy
-// channel stack stays behind a dynamic import). index.ts re-exports everything
-// here, so `from "@/lib/notifications"` serves it unchanged.
+// channel stack stays behind a dynamic import). index.ts re-exports the PUBLIC
+// surface — NOTIFICATION_DISPATCH_TIMEOUT_MS, DispatchTimeoutError, and
+// DispatchResult — so `from "@/lib/notifications"` serves those unchanged;
+// settleWithinDeadline and DispatchAttempt stay here, dispatch()'s internal
+// machinery rather than API.
 
 import type { ChannelId } from "./types";
 
@@ -69,10 +72,13 @@ export interface DispatchAttempt {
 // on, and every handler chain stays attached so a late rejection never
 // surfaces as an unhandled rejection.
 //
-// dispatch() wraps every send in its own catch, so attempts should never
-// reject; a rejection is nevertheless folded into an ordinary failure result
-// here, because this helper's totality is what the no-unhandled-rejection
-// guarantee above rests on.
+// The no-unhandled-rejection guarantee above rests on this helper guarding
+// BOTH of its inputs, not on trusting either: dispatch() wraps every send in
+// its own catch, so attempts should never reject — a rejection is nevertheless
+// folded into an ordinary failure result here — and `onLateSettle` runs inside
+// its own catch, so a throwing observer (unreachable today: lib/log.ts is
+// total) is swallowed rather than surfacing from a promise chain nobody
+// awaits.
 export async function settleWithinDeadline(
   attempts: readonly DispatchAttempt[],
   deadlineMs: number,
@@ -115,7 +121,13 @@ export async function settleWithinDeadline(
   return attempts.map((a, i): DispatchResult => {
     const done = settled[i];
     if (done) return done;
-    void guarded[i].then((late) => onLateSettle(a.id, late));
+    void guarded[i]
+      .then((late) => onLateSettle(a.id, late))
+      .catch(() => {
+        // The observation is best-effort logging; a throwing observer has
+        // nowhere further to report and must not become an unhandled
+        // rejection (see the contract above).
+      });
     return {
       id: a.id,
       ok: false,

@@ -161,6 +161,36 @@ describe("settleWithinDeadline (#3057)", () => {
     }
   });
 
+  it("a THROWING onLateSettle observer never surfaces as an unhandled rejection", async () => {
+    // Unreachable today — dispatch() passes a log.warn wrapper and lib/log.ts
+    // is total — but the observation runs on a promise chain nobody awaits, so
+    // the guarantee has to live in the helper, not in the observer's manners.
+    const stuck = deferred<DispatchResult>();
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const pending = settleWithinDeadline(
+        [{ id: "push", promise: stuck.promise }],
+        DEADLINE,
+        () => {
+          throw new Error("observer blew up");
+        }
+      );
+      await vi.advanceTimersByTimeAsync(DEADLINE);
+      await pending;
+
+      stuck.resolve({ id: "push", ok: true });
+      await vi.advanceTimersByTimeAsync(0);
+      // Node reports unhandled rejections on a macrotask; give it one.
+      vi.useRealTimers();
+      await new Promise((res) => setTimeout(res, 0));
+
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
   it("a rejection BEFORE the deadline is an ordinary failure result", async () => {
     // dispatch() wraps every send in its own catch, so this should be
     // unreachable — but the helper's totality is what the no-unhandled-rejection
