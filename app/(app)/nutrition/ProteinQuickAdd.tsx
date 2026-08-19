@@ -5,7 +5,10 @@ import { IconPlus, IconMinus } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import { shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import RollingNumber from "@/components/RollingNumber";
 import {
@@ -56,9 +59,12 @@ export default function ProteinQuickAdd({
   const canSubmit = Number.isFinite(grams) && grams > 0 && !busy;
 
   // Whether the tap reached a write at all, and what the write said. Modeled instead
-  // of branching mid-flight so the ledger sees ONE settlement per tap.
+  // of branching mid-flight so the ledger sees ONE settlement per tap. "refused" is
+  // the queue declining the capture (#3038): nothing was kept, so it settles as a
+  // rollback, never a phantom total.
   type ProteinTap =
     | { kind: "queued" }
+    | { kind: "refused" }
     | { kind: "offline-undo" }
     | { kind: "wrote"; res: ProteinLogResult };
 
@@ -72,14 +78,21 @@ export default function ProteinQuickAdd({
     // signal never fails; the optimistic total stands in until then. UNDO stays
     // online-only — a decrement is not a capture (lib/offline/queue.ts scope
     // comment) — so an offline "−" rolls back with an honest message.
-    const queueOffline = async () => {
-      await enqueue("food", today, {
+    const queueOffline = async (): Promise<boolean> => {
+      const kept = await enqueue("food", today, {
         entry: "protein",
         groupKey: null,
         mealSlot: null,
         grams,
       });
+      // The device can refuse the capture (#3038) — say so in the shared sentence
+      // and report it, so the caller rolls the optimistic total back.
+      if (!kept) {
+        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        return false;
+      }
       toast("Saved offline — will sync when you reconnect.");
+      return true;
     };
     const undoNeedsConnection = () => {
       toast("You're offline — removing protein needs a connection.", {
@@ -97,8 +110,9 @@ export default function ProteinQuickAdd({
       write: async () => {
         if (typeof navigator !== "undefined" && navigator.onLine === false) {
           if (delta === -1) return { kind: "offline-undo" };
-          await queueOffline();
-          return { kind: "queued" };
+          return (await queueOffline())
+            ? { kind: "queued" }
+            : { kind: "refused" };
         }
         const fd = new FormData();
         fd.set("grams", String(grams));
@@ -113,6 +127,8 @@ export default function ProteinQuickAdd({
       },
       settle: (out) => {
         if (out.kind === "queued") return { kind: "keep" };
+        // Refused capture: queueOffline already said so; the total rolls back.
+        if (out.kind === "refused") return { kind: "rollback" };
         if (out.kind === "offline-undo") {
           undoNeedsConnection();
           return { kind: "rollback" };
@@ -128,8 +144,9 @@ export default function ProteinQuickAdd({
         // Connection dropped mid-tap — queue an add instead of a false failure.
         if (shouldQueueOffline(navigator.onLine !== false, err)) {
           if (delta === 1) {
-            await queueOffline();
-            return { kind: "keep" };
+            return (await queueOffline())
+              ? { kind: "keep" }
+              : { kind: "rollback" };
           }
           undoNeedsConnection();
           return { kind: "rollback" };

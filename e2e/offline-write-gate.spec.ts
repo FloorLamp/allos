@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Page, type BrowserContext } from "@playwright/test";
 import { hydratedClick } from "./helpers";
 import { SNAPSHOT_KINDS } from "@/lib/offline/snapshots";
+import { OFFLINE_CAPTURE_REFUSED_MESSAGE } from "@/lib/offline/queue";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { practiceIdentity } from "@/lib/practice";
@@ -906,8 +907,8 @@ test("R-A2 — a logout that SUCCEEDS still ends every lane, past the POST", asy
 // R-A4 was then re-run against its own mutant twice more, the way R-A/R-B/R-C were: with
 // its probe-count assertion removed it still fails on the GATE, and with the gate
 // assertion removed as well it still fails on the CONSEQUENCE — a draft typed after the
-// session died, sitting in the store that `clearDrafts` promises the next login will
-// never be offered.
+// session died, sitting in the store that the logout wipe (`clearQueue` in
+// lib/offline/queue-db.ts) promises the next login will never be offered.
 
 test("R-A3 — BARRIER 1 ALONE: a logout that SUCCEEDS never even asks the server", async ({
   page,
@@ -1153,11 +1154,9 @@ test("R-5 — a practice card does not claim a session the device refused to kee
     // POSITIVE EVIDENCE, which is why this needs no separate non-vacuity control: the
     // error toast can only come from the `!kept` branch, and that branch can only be
     // reached by a tap that ran, took the offline path, and was refused.
-    await expect(
-      tabB.getByText(
-        "This tap wasn't saved. Try again once you're back online."
-      )
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(tabB.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(
       tabB.getByText("Saved offline — it'll sync when you're back online.")
     ).toHaveCount(0);

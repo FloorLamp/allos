@@ -224,7 +224,7 @@ export default function SidebarContent({
   //   way back; the probe that follows cannot reach the server either, so this device
   //   re-opens the gate for a session that is already dead. Its surviving tabs go on
   //   writing drafts and intents, and those survive into the NEXT login — exactly what
-  //   `clearDrafts` in lib/offline/draft-db.ts says must never happen.
+  //   the logout wipe (`clearQueue` in lib/offline/queue-db.ts) says must never happen.
   //
   // The default stays this way round because the other way is worse: "unreachable counts
   // as gone" bricks every logout pressed in a dead zone, which is the common case, while
