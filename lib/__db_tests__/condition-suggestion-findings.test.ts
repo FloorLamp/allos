@@ -131,7 +131,7 @@ describe("condition-suggestion builder (#685, #448 fixture)", () => {
     });
 
     const now = today(p);
-    // It rides collectUpcoming (→ hero + Upcoming page).
+    // It rides collectUpcoming (→ Upcoming page + dashboard placement).
     expect(collectUpcoming(p, now).some((i) => i.key === item.key)).toBe(true);
     // A dismiss on its dedupeKey silences it everywhere through the shared bus.
     dismissFinding(p, item.key);

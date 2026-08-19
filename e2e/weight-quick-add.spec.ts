@@ -7,8 +7,9 @@ import {
   WEIGHT_QUICKADD_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { openDashboardAll } from "./helpers";
 
-// Dashboard weight quick-add (#1042 phase 2): the independent Everything action
+// Dashboard weight quick-add (#1042 phase 2): the independent Show-everything action
 // posts the SAME addBodyMetric write core as the Trends → Overview → body census quick-add,
 // so a weigh-in logged from the dashboard persists (survives a reload) and joins
 // the same deduped daily series the widget charts.
@@ -51,6 +52,7 @@ test("dashboard weight quick-add logs a weigh-in that persists into the trend (#
   });
   try {
     await page.goto("/");
+    await openDashboardAll(page);
     const quickAdd = page.locator(
       '[data-testid="dashboard-candidate"][data-candidate-id="weight.quick-add"]'
     );

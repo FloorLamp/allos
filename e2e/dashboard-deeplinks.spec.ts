@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink } from "./helpers";
+import { followLink, openDashboardAll } from "./helpers";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_DQ_ADULT,
@@ -60,6 +60,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
     });
     try {
       await page.goto("/");
+      await openDashboardAll(page);
       const ctaFor = (label: string) =>
         dashboardCandidateWithText(page, "data-quality.finding:", label)
           .getByTestId("data-quality-item")
@@ -93,6 +94,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
 
       // Follow the PhenoAge CTA: the biomarker add form opens prefilled.
       await page.goto("/");
+      await openDashboardAll(page);
       await followLink(
         page,
         ctaFor("Complete the PhenoAge panel"),
@@ -118,6 +120,7 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
     });
     try {
       await page.goto("/");
+      await openDashboardAll(page);
       const cta = dashboardCandidateWithText(
         page,
         "data-quality.finding:",

@@ -165,14 +165,14 @@ export function seedTodayPanel(): void {
   );
 }
 
-// ── Dashboard "Now" strip + collapsible hero ──
+// ── Dashboard Now placement ──
 export function seedNowStrip(): void {
   const iso = (d: Date) => d.toISOString();
-  // ── Dashboard "Now" strip + collapsible hero fixtures (issue #1413) ──────────
+  // ── Dashboard Now placement fixtures (issue #1413) ──────────────────────────
   // A profile whose dashboard deterministically shows BOTH halves of #1413: a
   // just-finished session (the Now strip's top-ranked card, same shape as the RECAP
   // fixture above) and one appointment scheduled TODAY, which gives the
-  // "Needs attention" hero a stable non-zero count for the collapse test.
+  // dashboard Now a stable second candidate.
   //
   // Why a just-finished workout rather than relying on the clock: the e2e run pins
   // local time to 13:mm (e2e/pinned-timezone.ts), which sits inside the default 13:00
@@ -214,7 +214,7 @@ export function seedNowStrip(): void {
        VALUES (?, 'Barbell Row', 1, 55, 8, 8),
               (?, 'Barbell Row', 2, 55, 8, 8)`
     ).run(finishedId, finishedId);
-    // One appointment TODAY → a due-today attention item, so the hero has a count.
+    // One appointment today → a due-today attention item in Now.
     db.prepare(
       `INSERT INTO appointments (profile_id, date, time_of_day, title, location, status)
      VALUES (?, ?, '16:00', ?, 'Test Clinic (e2e)', 'scheduled')`
@@ -246,7 +246,7 @@ export function seedNowStrip(): void {
   // (index 8, 0-based). Either alone escalates (crisisDecision = severe || selfHarm);
   // seeding both keeps the fixture robust to a band-threshold edit. That makes
   // mentalHealthCrisisItems emit a `suppressionPolicy: "safety-ungated"` attention
-  // item, which attentionHeroState must refuse to collapse (#449/#942).
+  // item, which the dashboard must keep in Now (#449/#942).
   // Synthetic score on a fictional profile — no PHI. Idempotent.
   const nowSafetyId = adultFixtureProfileId(NOW_SAFETY_PROFILE);
   db.prepare(
@@ -270,7 +270,7 @@ export function seedNowStrip(): void {
   seedMemberLogin(E2E_LOGIN_NOWSAFETY, nowSafetyId);
 
   console.log(
-    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment) and profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, safety-locked hero)`
+    `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment) and profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, uncapped safety fact)`
   );
 
   // Truly empty, isolated profiles for the goal-based onboarding paths (#719).

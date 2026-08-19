@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 import {
   E2E_LOGIN_DQ_GAPPY,
   E2E_LOGIN_DQ_COMPLETE,
@@ -54,6 +54,7 @@ test("the dashboard Data quality widget renders top gaps with fix-it CTAs (#1045
     password: E2E_MEMBER_PASSWORD,
   });
   await page.goto("/");
+  await openDashboardAll(page);
 
   const widget = dashboardCandidateWithText(
     page,
@@ -82,6 +83,7 @@ test("the Data quality widget self-hides on a structurally-complete profile (#10
     password: E2E_MEMBER_PASSWORD,
   });
   await page.goto("/");
+  await openDashboardAll(page);
   // The dashboard rendered (a known widget is present)…
   await expect(page.getByRole("main")).toBeVisible();
   // …but the data-quality widget is absent (the absent-pillar rule).
@@ -102,6 +104,7 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
   });
   const main = page.getByRole("main");
   await page.goto("/");
+  await openDashboardAll(page);
 
   // The Data quality widget is this family's dedicated dashboard home, so it owns
   // the gap…

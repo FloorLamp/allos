@@ -199,7 +199,7 @@ export function prnLogAnswerText(
 // ---- The over-max care finding's detail line (#798 / #1027 / #1854) ---------
 //
 // One formatter for the `prn-max:<itemId>` finding so every surface it reaches
-// (Upcoming, the attention hero, the digest) phrases the SAME verdict — and
+// (Upcoming, dashboard placement, the digest) phrases the SAME verdict — and
 // states the BASIS it was computed on. Milligrams read "2400 mg logged today …
 // max of 1200 mg per day" (with an honest "At least" lead when some doses had no
 // recorded amount — the mg lower bound that is already past the ceiling); the

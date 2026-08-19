@@ -882,7 +882,7 @@ export function seedVitalsToday(): void {
   // no doses — so its care-tier attention set is exactly the two age-derived
   // preventive findings (COVID-19, Influenza) that every adult profile carries.
   // app-badge.mobile.spec.ts asserts navigator.setAppBadge gets that count, dismisses
-  // both through the hero's own menu, and asserts the badge is CLEARED once the hero
+  // both through the dashboard atom's own menu, and asserts the badge is CLEARED once the atom
   // reads "All clear" — the one path that needs a dashboard to actually reach zero.
   // Write grant: dismissing is a write. The spec clears the dismissals itself at test
   // start, so re-runs and --repeat-each all begin from the same non-empty hero.

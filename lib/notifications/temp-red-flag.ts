@@ -1,10 +1,10 @@
 // Proactive single-reading temperature red-flag nudge (issue #859 item 3). Mirrors
 // ./illness-care: once a profile's current open episode logs a reading that crosses a
 // cited, age-banded red flag (the SAME tempRedFlagFindingFor computation the Upcoming
-// page + Needs-attention hero render), it pings — once per finding, bus-gated.
+// page and dashboard render), it pings — once per finding, bus-gated.
 //
 // CARE-TIER, BUS-GATED (like ./illness-care, per docs/internals/notifications.md): a
-// red-flag note is a REMINDER-class care finding, so a dismiss on Upcoming or the hero
+// red-flag note is a REMINDER-class care finding, so a dismiss on Upcoming or the dashboard
 // (keyed by the identical dedupeKey) holds it out of the push too. The marker
 // (notify_last_tempredflag_<dedupeKey>) suppresses re-nudging while the finding stays
 // actionable and is cleared the moment it's no longer actionable (a later normal

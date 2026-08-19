@@ -287,7 +287,7 @@ describe("the re-log confirm copy", () => {
 // a promise that every caller ANSWERS from markDoseTaken / markDoseSkipped's typed
 // outcome. The registry's internal invariants above can't see a Server Action that
 // quietly drops the outcome and returns void (the household confirm and the
-// attention hero both had) — so this source scan pins the class: a dose resolver
+// dashboard atom both had) — so this source scan pins the class: a dose resolver
 // called as a bare statement is a discarded outcome, and a discarded outcome is an
 // unconditional confirm waiting to happen.
 // ---------------------------------------------------------------------------

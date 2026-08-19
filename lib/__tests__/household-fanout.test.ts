@@ -1,6 +1,6 @@
-// The dashboard's cross-profile work is BOUNDED (#2432 follow-up): an admin
-// reaches every profile on the instance, and both the household strip and the
-// illness accordion do an expensive per-profile read. Measured on the e2e
+// The dashboard's cross-profile illness work is BOUNDED (#2432 follow-up): an admin
+// reaches every profile on the instance, and illness context does an expensive
+// per-profile read. Measured on the e2e
 // template's 180 profiles, that fan-out was ~90% of the dashboard's server
 // render. These pin the bound's shape, and the fact that it is a bound at all.
 import { describe, it, expect } from "vitest";

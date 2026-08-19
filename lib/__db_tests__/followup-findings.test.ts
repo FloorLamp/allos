@@ -102,7 +102,7 @@ describe("followUpItems builder (#700)", () => {
     expect(it.carePersistent).toBeUndefined();
     expect(it.followUpResolve).toBeUndefined();
 
-    // It rides collectUpcoming (reaches Upcoming/hero).
+    // It rides collectUpcoming (reaches Upcoming and dashboard placement).
     expect(collectUpcoming(p, now).some((u) => u.key === it.key)).toBe(true);
   });
 

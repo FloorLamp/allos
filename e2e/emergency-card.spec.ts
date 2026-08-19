@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
-import { hydratedClick, readyForOffline, settledClick } from "./helpers";
+import { hydratedClick, readyForOffline } from "./helpers";
+import { switchToProfile } from "./family-helpers";
 // Offline Emergency Card (issue #42), living as the #emergency section of the
 // Passport page since the #1042 phase-3 merge (the old /emergency route was
 // removed outright in #1635 and 404s). This spec runs in its OWN unauthenticated
@@ -205,13 +206,10 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   await expect(page.getByTestId("offline-view-emergency")).toHaveCount(0);
 });
 
-// #600: the wipe-on-switch contract must hold for EVERY switch affordance, not just
-// the header switcher. Switching via a household strip chip (a server-component form,
-// which can't attach the client cleanup) must still wipe the previous profile's
-// cached emergency card — that's what the centralized ProfileSwitchWatcher guarantees.
-// Before the fix, A's full card stayed readable session-free at /offline after the
-// switch.
-test("switching profiles via the household strip wipes the previous profile's emergency card (#600)", async ({
+// #600: switching profiles must wipe the previous profile's cached emergency card.
+// Before the centralized watcher, A's full card stayed readable session-free at
+// /offline after the switch.
+test("switching profiles wipes the previous profile's emergency card (#600)", async ({
   page,
 }) => {
   test.slow();
@@ -230,22 +228,9 @@ test("switching profiles via the household strip wipes the previous profile's em
     .poll(() => page.evaluate((k) => localStorage.getItem(k), LS_KEY))
     .toContain("Peanuts");
 
-  // Switch to profile 2 ("Riley (child)") via the dashboard household strip chip —
-  // a switch affordance that never ran the old per-button cleanup. Wait on the
-  // identity bar naming the new profile: the definitive switch signal.
+  // Switch to profile 2 ("Riley (child)") through the shared profile switcher.
   await page.goto("/");
-  // settledClick, not a bare click: the chip is a `<form action={switchProfileAction}>`
-  // submit whose POST + revalidate + redirect re-renders the DASHBOARD — the heaviest
-  // page in the app — so a bare click leaves the assertion racing that render. Same
-  // named ceiling family-helpers' switchToProfile uses for the same reason.
-  await settledClick(
-    page,
-    page.getByRole("main").getByTestId("household-chip-2")
-  );
-  await expect(page.getByTestId("profile-identity-bar")).toContainText(
-    "Riley (child)",
-    { timeout: 20_000 }
-  );
+  await switchToProfile(page, "Riley (child)");
 
   // The previous profile's offline card is wiped from this device …
   await expect

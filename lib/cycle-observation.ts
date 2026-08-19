@@ -1,7 +1,7 @@
 // The PURE decision half of the prolonged-bleeding observation (issue #1682 fix b).
 // Coaching-tier only (the #449 findings reach policy): it joins collectCoachingFindings,
 // its dedupeKey prefix is registered in RULE_FINDING_PREFIXES, and it NEVER notifies and
-// never reaches the non-hideable "Needs attention" hero.
+// never reaches dashboard Now.
 //
 // WHY OBSERVE RATHER THAN REFUSE. A long recorded period is the one plausibility failure
 // that must NOT be rejected at the write boundary: prolonged bleeding is real, and an app

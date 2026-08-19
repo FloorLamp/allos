@@ -22,7 +22,7 @@ import { compareSortHint } from "./dose-order";
 
 // The longest a user-requested snooze can push a finding out (~10 years). Clamped
 // so a tampered form can't set an absurd `snooze_until`. Baked into snoozeUntil so
-// every snooze writer (the dashboard hero, the Upcoming quick-snooze, and any
+// every snooze writer (dashboard atoms, the Upcoming quick-snooze, and any
 // future surface) shares one max — see snoozeUntil.
 const SNOOZE_MAX_DAYS = 3650;
 
@@ -129,7 +129,7 @@ export type UpcomingDomain =
   // resolution. Care-tier; an overdue one is care-persistent (see carePersistent).
   | "followup"
   // A severe mental-health instrument score / positive PHQ-9 item 9 (issue #716): a
-  // care-tier, NON-DISMISSIBLE crisis finding. Care-tier on-screen (Upcoming + hero)
+  // care-tier, NON-DISMISSIBLE crisis finding. Care-tier on-screen (Upcoming + Now)
   // but NEVER pushed — deliberately omitted from the digest DOMAIN_SEQ and given no
   // notify orchestrator, so no channel ever carries crisis content.
   | "mental-health"
@@ -142,16 +142,18 @@ export type UpcomingDomain =
   // An open PORTAL SYNC REQUEST (#1757): "run the portal tool on the computer with
   // Mom's login". A date-scheduled item — its due date is the request's EXPIRY, which
   // is the only deadline it has — and COACHING tier: calm, dismissible, on this page
-  // and in the digest line this page's grouping already produces, and deliberately
-  // never on the non-hideable "Needs attention" hero (see cardBandForItem).
+  // and in the digest line this page's grouping already produces. When its expiry is
+  // due, dashboard placement may treat it as owed; `attentionEmphasisBandForItem` still excludes it
+  // from the app badge.
   | "portal-sync"
   // A RECORDS-RECENCY ask (#2164 + #2176): the data that only a person can bring in
   // has aged past its declared horizon — a Fitbit Takeout archive whose exclusive
   // streams are weeks behind, or a manual-upload household whose newest lab result is
   // over a year old. The third leg of the #1757 pattern, and the same reach as it:
   // COACHING tier, calm, dismissible, on this page and in the digest line this page's
-  // grouping produces, never on the non-hideable hero (see cardBandForItem). It carries
-  // NO due date — nothing expires — so it declares its band instead.
+  // grouping produces. A week item may enter dashboard Ahead while `attentionEmphasisBandForItem`
+  // excludes it from the app badge. It carries NO due date — nothing expires — so it
+  // declares its band instead.
   | "records-recency"
   | "review";
 
@@ -251,7 +253,7 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
 export const UPCOMING_DOMAINS = Object.keys(DOMAIN_ORDER) as UpcomingDomain[];
 
 // The viewer's display units for measurement-carrying item strings (#1019 — the
-// display-unit policy): a WEB boundary (the Upcoming page, the dashboard hero)
+// display-unit policy): a WEB boundary (the Upcoming page, the dashboard)
 // resolves the login's prefs and passes them down so the item builders format
 // temperature/distance in the viewer's unit; a login-less caller (the Telegram
 // digest, the calendar feed, AI insights) omits them and gets canonical units
@@ -409,7 +411,7 @@ export interface UpcomingItem {
   // own, so each entry only ASKS — the row renders a confirm-the-date /
   // dismiss control per candidate (fact key `preventive-review:<recordId>:
   // <ruleKey>`). Rendered ONLY on the opened surfaces (the Upcoming row and the
-  // dashboard's exhaustive Everything lane); the digest, the nudge, and every
+  // dashboard's exhaustive Show everything remainder); the digest, the nudge, and every
   // other send never read this field, and dismissing a candidate suppresses
   // only itself — never the preventive item. Absent for every other item.
   preventiveReview?: {
@@ -490,9 +492,9 @@ export interface UpcomingItem {
 // "something's off" signal at all, it is the ABSENCE of history — an in-window
 // preventive rule with nothing on record. It rides the same mechanism because it
 // needs the same things (its own page grouping, no date band, the shared suppression
-// bus and dedupe key), but it is excluded from the dashboard hero's bands
-// (cardBandForItem) and from the digest, because a state derived from zero evidence
-// must never occupy an attention slot.
+// bus and dedupe key), but it is excluded from the care-tier app badge
+// (attentionEmphasisBandForItem) and from the digest, because a state derived from zero evidence
+// must never occupy Now.
 export type SignalGroup = "flagged" | "review" | "setup";
 
 // Whether an item participates in snooze/dismiss (issue #524). Undefined defaults
@@ -508,11 +510,9 @@ export interface BandGroup {
   items: UpcomingItem[];
 }
 
-// Total item count across all bands (issue #512): the Upcoming page had no total
-// anywhere, so the dashboard hero's "+N more in Upcoming" had no number to
-// reconcile against. This sums the banded groups (every collected item lands in
-// exactly one band, so it equals the collected count) and is the one figure the
-// page header shows.
+// Total item count across all bands (issue #512). This sums the banded groups (every
+// collected item lands in exactly one band, so it equals the collected count) and is
+// the one figure the page header shows.
 export function totalUpcomingCount(groups: BandGroup[]): number {
   return groups.reduce((sum, g) => sum + g.items.length, 0);
 }

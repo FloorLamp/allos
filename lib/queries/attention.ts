@@ -1,11 +1,12 @@
 // The unified attention gather (issues #171, #524). One profile-scoped entry point,
 // collectAttentionModel(), fans out across the EXISTING attention signals — the
 // Upcoming findings engine, the digest's newly-flagged-biomarker read (over the
-// hero's own stable window — issue #283), the failing-integration events, and the
+// dashboard's own stable window — issue #283), the failing-integration events, and the
 // review-inbox pair count — and hands them to the pure buildAttentionModel
-// (lib/attention.ts). This ONE model is rendered by BOTH surfaces: the dashboard
-// card (the act-now subset) and the Upcoming page (the full, time-ordered set), so
-// the two can never disagree on what an item means (issue #524).
+// (lib/attention.ts). Dashboard candidates project the shared model across Now,
+// Ahead, and Show everything; Upcoming renders the full time-ordered set. Only the
+// installed-app badge uses the care-tier subset, so surfaces cannot disagree on item
+// meaning (issue #524).
 //
 // No new table reads: every row-returning read here delegates to a function that
 // already filters profile_id (enforced by lib/__tests__/profile-scoping.test.ts),
@@ -18,7 +19,6 @@ import { cache } from "../request-cache";
 import {
   buildAttentionModel,
   buildFlaggedItem,
-  attentionCardItems,
   mergeAttentionPageGroups,
   groupAttentionByPerson,
   emptyMemberIds,
@@ -85,7 +85,7 @@ function flaggedAttentionSince(): string {
 
 const DAY_MS = 86_400_000;
 
-// The newly-flagged biomarkers for the hero's stable window, still LIVE (not
+// The newly-flagged biomarkers for the dashboard's stable window, still LIVE (not
 // snooze/dismiss-filtered). The caller decides whether to keep or drop the
 // suppressed ones — the live model drops them, the restore gather keeps only them.
 //
@@ -120,10 +120,9 @@ function flaggedRiskReasons(
 // the Telegram digest uses (over the stable window), the failing-integration
 // events, and the review-pair count. Flagged items go through the shared findings
 // bus too (issue #283): a `biomarker-flag:<name>` dismissal/snooze filters them
-// here, same store as every other finding. This is the item set BOTH surfaces
-// render — the dashboard card via attentionCardItems/groupAttentionForCard, the
-// Upcoming page via groupAttentionForPage.
-// `units` (#1019 display-unit policy): the two WEB boundaries (dashboard hero,
+// here, same store as every other finding. Dashboard candidates and the Upcoming
+// page both consume this same item set.
+// `units` (#1019 display-unit policy): the two WEB boundaries (dashboard,
 // Upcoming page) pass the viewer's login prefs so measurement-carrying item
 // strings render in the viewer's unit; count-only callers omit it (canonical).
 export function collectAttentionModel(
@@ -131,6 +130,17 @@ export function collectAttentionModel(
   today: string,
   units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
 ): UpcomingItem[] {
+  return collectAttentionDashboardData(profileId, today, units).attention;
+}
+
+// The dashboard needs both the unified attention model and the unchanged future
+// Upcoming subset. Return both from one gather so the horizon never pays for (or can
+// drift into) a second collectUpcoming fan-out.
+export function collectAttentionDashboardData(
+  profileId: number,
+  today: string,
+  units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
+): { upcoming: UpcomingItem[]; attention: UpcomingItem[] } {
   const suppressions = getFindingSuppressions(profileId);
   const factors = getRiskFactors(profileId);
   const flaggedBiomarkers = flaggedInWindow(profileId)
@@ -141,27 +151,17 @@ export function collectAttentionModel(
     // Attach the risk-layer reasons (issue #656 item 4) so the flag item explains
     // its elevation — one risk computation, shared with the retest generator.
     .map((b) => ({ ...b, riskReasons: flaggedRiskReasons(b, factors) }));
-  return buildAttentionModel({
-    upcoming: collectUpcoming(profileId, today, units),
-    flaggedBiomarkers,
-    integrations: getIntegrationAttention(profileId),
-    reviewCount: getReviewPairCount(profileId),
-    today,
-  });
-}
-
-// The dashboard-card ATTENTION COUNT for one profile — the number behind the hero's
-// badge and a household-strip chip. It's the CARD subset (the act-now slice), so a
-// chip's badge, the profile's own hero badge, and the "N shown" the card renders can
-// never disagree — and it excludes the far-future scheduled items the card hides
-// (issue #524), which is what a triage count should mean. Bounded work (a household
-// is a handful of profiles), every underlying read profile-scoped.
-export function attentionCountForProfile(
-  profileId: number,
-  today: string
-): number {
-  return attentionCardItems(collectAttentionModel(profileId, today), today)
-    .length;
+  const upcoming = collectUpcoming(profileId, today, units);
+  return {
+    upcoming,
+    attention: buildAttentionModel({
+      upcoming,
+      flaggedBiomarkers,
+      integrations: getIntegrationAttention(profileId),
+      reviewCount: getReviewPairCount(profileId),
+      today,
+    }),
+  };
 }
 
 // One row of the Upcoming page's "Snoozed & dismissed" section (issue #1151):

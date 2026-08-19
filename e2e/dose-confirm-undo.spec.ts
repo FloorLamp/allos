@@ -7,7 +7,7 @@ import { workerDbPath } from "./worker-env";
 // Act → toast → Undo, on the dose confirm (#2642).
 //
 // The household card is one of the two surfaces `DoseConfirmButton` serves (the dashboard
-// attention hero is the other — same component, same shared inverse), and it is the one
+// dashboard dose atom is the other — same component, same shared inverse), and it is the one
 // whose fixture can be owned outright: this spec creates its OWN item on the seeded second
 // profile and drops it afterwards, so nothing here depends on a seed row a neighbour might
 // consume, and nothing it writes is left behind.

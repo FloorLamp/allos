@@ -1,42 +1,21 @@
 // HOW MANY OTHER HOUSEHOLD MEMBERS THE DASHBOARD DOES PER-PROFILE WORK FOR.
 //
-// The dashboard renders FOUR cross-profile surfaces: the household strip (an
-// attention-count chip per member), the illness accordion (an open-episode line
-// per sick member), the recently-resolved reopen band, and the household-history
-// promo's recently-sick predicate. All four fan out over `accessible` — the
-// profiles the session may act as — and each does a genuinely expensive read per
-// profile: attentionCountForProfile runs the whole attention model (suppressions,
-// risk factors, flagged biomarkers, the Upcoming pipeline, integrations, review
-// counts), and the three illness surfaces read that member's episode rows (ONE
-// shared gather since #2115, but still one gather per member).
+// The dashboard's authorized illness context spans profiles: open episodes, recently
+// resolved reopen rows, and the household-history predicate all use the same bounded
+// episode gather. Ordinary other-profile attention is deliberately not a dashboard
+// fact (#3139).
 //
 // For a household that is fine — a family is a handful of people. But an ADMIN
 // reaches EVERY profile on the instance (lib/auth.ts accessibleProfiles), so the
 // per-member cost is multiplied by the whole instance rather than by one family.
-// Measured on the e2e template (180 profiles): the fan-out alone was ~1.69s of
-// the dashboard's ~1.56s server render — about 90% of it — and it emitted 1.5MB
-// of HTML, growing by ~9ms for every profile ever added. A caregiver-heavy real
-// instance hits the same wall.
-//
 // So the work is BOUNDED rather than left to scale with the instance. The bound
 // is deliberately well above a real household: twelve other members covers
 // multi-generational families and their carers with room to spare, while capping
 // the dashboard's cross-profile cost at roughly a tenth of a second.
 //
-// WHAT IS LEFT INSIDE THE BOUND (#2110): much of a member's gather was SQL
-// COMPILATION, not execution. Measured on a seeded sparse member (the shape a chip
-// usually has), one gather issued 91 prepares over 44 distinct texts — ~7.6ms of
-// compilation against ~1-2ms of execution — and paid it again for the next chip,
-// because a new profileId is a cache() miss and db.prepare compiles on every call.
-// The densest clusters are hoisted now (lib/queries/clinical.ts,
-// lib/queries/medical.ts with its immunizations/encounters siblings, the review-pair
-// loader): 33 prepares over 27 texts, ~1.9ms, and the same gather 12.1ms → 6.2ms.
-// The MODEL is untouched — the chip is still the number that member's own hero
-// shows, which is the only way to make it cheaper without changing what it CLAIMS.
-//
 // WHAT A LARGER SET SEES: the first twelve by profile id, which is the order
 // accessibleProfiles already returns (ORDER BY p.id) and therefore stable
-// between renders. Members past the bound are absent from these four surfaces
+// between renders. Members past the bound are absent from these illness surfaces
 // only — every profile remains reachable through the switcher, and its own
 // dashboard is unaffected. This is a display bound on a summary strip, not an
 // access rule, and it must never be used as one.

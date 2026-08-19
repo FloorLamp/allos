@@ -6,7 +6,7 @@ import {
   requireSession,
   requireWriteAccess,
 } from "@/lib/auth";
-import { setAttentionHeroCollapsed, setIllnessHeroUi } from "@/lib/settings";
+import { setIllnessHeroUi } from "@/lib/settings";
 import { dismissRecentlyResolvedEpisode } from "@/lib/recently-resolved";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -73,28 +73,11 @@ export async function saveIllnessHeroState(
   });
 }
 
-// Persist the VIEWER's "Needs attention" hero collapse preference (issue #1413,
-// section B). Per-login, so it follows the reader across profile switches.
-//
-// Gated on requireSession, NOT requireWriteAccess: this writes only to the acting
-// LOGIN's own settings row, so a read-only viewer of someone else's profile is
-// still entitled to choose how tall the hero is on their own screen. No
-// revalidation — the client already reflects the toggle; this only makes it
-// survive a reload.
-//
-// This can never hide the hero or its count (#449): the stored flag is one input
-// to attentionHeroState, which ignores it entirely for a safety-locked hero.
-export async function saveAttentionHeroCollapsed(collapsed: boolean) {
-  const { login } = await requireSession();
-  setAttentionHeroCollapsed(login.id, collapsed === true);
-}
-
 // Persist the VIEWER's hide of one "Recently resolved — reopen?" line (issue #1548),
 // so the X stops resurrecting on reload for the rest of the episode's 7-day window.
 //
-// Gated on requireSession, NOT requireWriteAccess, for the same reason as
-// saveAttentionHeroCollapsed: this writes only to the acting LOGIN's own settings row
-// (a per-login viewer preference), so a read-only caregiver is still entitled to tidy
+// Gated on requireSession, NOT requireWriteAccess: this writes only to the acting
+// LOGIN's own settings row (a per-login viewer preference), so a read-only caregiver is still entitled to tidy
 // their own dashboard. It grants no reach in the other direction either — the hide is
 // per-login, so a co-caregiver's copy of the line is untouched.
 //
@@ -105,9 +88,8 @@ export async function saveAttentionHeroCollapsed(collapsed: boolean) {
 // silent no-op by design — the action is idempotent and the caller has already hidden
 // the row optimistically; there is nothing for a viewer to correct.
 //
-// Revalidates "/": unlike the collapse preference, the dismissal changes WHICH server-
-// rendered band the dashboard's household-history promo link belongs to (#1549), so
-// the page must re-render rather than trust the client's optimistic hide.
+// Revalidates "/" so the server placement model drops the dismissed reopen fact and
+// re-evaluates the remaining typed illness context from fresh state.
 export async function dismissRecentlyResolved(episodeId: number) {
   const { login } = await requireSession();
   const accessible = await getAccessibleProfiles();
@@ -185,7 +167,7 @@ export async function dismissDataQualityGap(formData: FormData) {
   await dismissCoachingObservation(formData);
 }
 
-// Snooze one attention item from the hero: hide it (via the shared findings
+// Snooze one dashboard attention atom: hide it (via the shared findings
 // suppression store) until today + `days`, after which it reappears — matching the
 // Upcoming page's snooze exactly (same key, same store, same snoozeUntil clamp), so
 // a snooze here also silences the Telegram digest/push and the Upcoming list.
@@ -200,7 +182,7 @@ export async function snoozeAttention(formData: FormData) {
   revalidateRoute("/upcoming");
 }
 
-// Dismiss one attention item from the hero: hide it indefinitely (until restored
+// Dismiss one dashboard attention atom: hide it indefinitely (until restored
 // from the Upcoming page). Profile-scoped via the shared writer.
 export async function dismissAttention(formData: FormData) {
   const { profile } = await requireWriteAccess();
@@ -211,15 +193,15 @@ export async function dismissAttention(formData: FormData) {
   revalidateRoute("/upcoming");
 }
 
-// Inline "mark taken" for a due dose surfaced on the hero. Reuses the idempotent
+// Inline "mark taken" for a due dose surfaced by dashboard placement. Reuses the idempotent
 // markDoseTaken (verifies the dose belongs to this profile via its parent
 // supplement) — the same path the Upcoming page and Telegram callback use — so a
-// dose confirmed here drops off the hero and reflects everywhere. Profile-scoped.
+// dose confirmed here drops off the dashboard and reflects everywhere. Profile-scoped.
 //
 // The result CARRIES the typed outcome (#2106): the dose-status affordance declares
-// `outcome-toast`, and this action had been dropping the outcome — a stale hero tab's
+// `outcome-toast`, and this action had been dropping the outcome — a stale dashboard tab's
 // tap on a paused item or a retired dose logged nothing and the row just silently
-// re-rendered, indistinguishable from a lost tap. The hero's button renders every
+// re-rendered, indistinguishable from a lost tap. The dashboard atom renders every
 // branch through doseConfirmMessage.
 export async function markAttentionDose(
   formData: FormData
@@ -235,13 +217,13 @@ export async function markAttentionDose(
   return { ok: true, outcome };
 }
 
-// Take back the hero's "Mark taken" (#2642) — the inverse behind its Undo toast. Same
+// Take back the dashboard atom's "Mark taken" (#2642) — the inverse behind its Undo toast. Same
 // gate as the confirm (the acting profile's write access), same revalidation, and the
 // same discipline about answering: `undoDoseConfirm` re-derives whether this tap's row is
 // still the only thing standing for the day and refuses otherwise, and the button renders
 // that typed outcome rather than claiming the confirm came back.
 //
-// Nothing left the machine on the way in — a hero confirm sends no message — so the
+// Nothing left the machine on the way in — a dashboard confirm sends no message — so the
 // inverse is complete and local: the row goes, the supply it consumed is handed back, and
 // the dose is due again, which is precisely the state not tapping would have left.
 export async function undoAttentionDose(

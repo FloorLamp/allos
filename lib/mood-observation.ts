@@ -7,7 +7,7 @@
 //
 // Both are COACHING tier only (#449): they join collectCoachingFindings, their
 // prefixes are registered in RULE_FINDING_PREFIXES, and they NEVER notify and
-// never reach the non-hideable hero. Copy stays observational and non-diagnostic
+// never reach dashboard Now. Copy stays observational and non-diagnostic
 // — the bridge states co-occurrence ("the two often move together"), NEVER a
 // causal or clinical claim, and neither observation prompts an instrument or a
 // crisis resource (product-decided in #992: those escalations belong to #716 and

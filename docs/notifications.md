@@ -94,7 +94,7 @@ push). Informational only — not medical advice.
 
 **Dismiss once, silence everywhere.** Snoozing or dismissing a **refill**,
 **preventive-care**, or **training-target** item on the **Upcoming** page (or
-the dashboard attention banner) now also silences its **push nudge**, not just
+dashboard placement) now also silences its **push nudge**, not just
 the page and digest lines — the reminder and the nudge share the same identity,
 so one "I've decided about this" hides both. For the workout nudge that means
 dismissing every behind training target quiets the "today's workout" reminder (a

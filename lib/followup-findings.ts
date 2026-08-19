@@ -10,7 +10,7 @@
 //
 // Care tier, deliberately (#449): a possibly-missed nodule re-scan or an un-rechecked
 // flagged lab is the highest-harm failure the loop exists to prevent, so these items
-// band to the act-now slice (an overdue one lands on the non-hideable Needs-attention
+// band to the care tier (an overdue action is eligible for dashboard Now
 // hero), carry the #656 reason ("for the 6 mm RLL nodule (2026-03)" / "for the flagged
 // 8.2% (2026-05)"), and — once OVERDUE — are care-persistent: they resist an indefinite
 // dismiss (isItemHiddenBySuppression) the way a dose escalation resists the bus. The
@@ -242,7 +242,7 @@ function domainFollowUpItems<S>(
   return items;
 }
 
-// The finding follow-up items for the Upcoming/hero surface, across every domain
+// The finding follow-up items shared by Upcoming and dashboard placement, across every domain
 // adapter (imaging + flagged labs). Reads the profile's care_plan_items once and fans
 // each domain over it.
 export function followUpItems(

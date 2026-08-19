@@ -231,7 +231,7 @@ describe("the reach boundary — quiet-stream never escalates (constraint 4)", (
   });
 
   it("keeps a quiet-stream row OUT of the shared attention model", () => {
-    // The hero, the Upcoming page and — through the same builder — the morning
+    // Dashboard placement, the Upcoming page and — through the same builder — the morning
     // digest all read this model. A coaching-tier observation may not travel a send,
     // so the filter is in the builder rather than only in the wiring.
     const items = buildAttentionModel({

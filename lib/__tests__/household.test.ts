@@ -230,7 +230,7 @@ describe("pickNextAppointment", () => {
     expect(chosen?.key).toBe("appointment:5");
   });
 
-  // Fixture-parity guard for issue #303: the dashboard needs-attention hero and the
+  // Fixture-parity guard for issue #303: dashboard placement and the
   // household card must select the SAME appointment from the same source. Both derive
   // from getScheduledAppointments (ordered date ASC, time_of_day ASC, id ASC) — the
   // household maps each row to an UpcomingItem { dueDate }, the dashboard to

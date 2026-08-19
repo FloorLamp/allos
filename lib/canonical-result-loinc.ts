@@ -524,7 +524,7 @@ const QUALITATIVE_CLASS_BY_LOINC: Record<string, QualitativeLoincClass> = {
   // combined "ABORh Interpretation" row, and the name path's IMMUTABLE_ATTRIBUTE
   // regex keys on `\babo\b` — which does NOT match "ABORh" (no word boundary), so a
   // recorded blood type got no verdict at all: the extractor's guessed "abnormal"
-  // stood (a blood type on the attention hero / Telegram push) and it missed the
+  // stood (a blood type in dashboard placement / Telegram push) and it missed the
   // never-stale exemption ("retest overdue" nudged yearly for a value that cannot
   // change). The LOINC settles it regardless of how the source spells the name.
   "19057-9": "identity", // ABO+Rh group ("ABORh Interpretation")

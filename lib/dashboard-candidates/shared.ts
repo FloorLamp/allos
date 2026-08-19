@@ -32,6 +32,7 @@ interface Policy {
   readingPromotion?: DashboardReadingPromotion;
   standingEligible?: boolean;
   episodeGroup?: DashboardEpisodeGroup;
+  dashboardScope?: DashboardCandidate["dashboardScope"];
 }
 
 const applicable = (ctx: DomainCandidateContext) => ctx.applicable ?? true;

@@ -1,6 +1,6 @@
 // Shared "dose day" ordering (issue #297). ONE pure comparator for the order a
 // day's due doses read in, so the intake surface's due-today section and the Upcoming /
-// needs-attention surfaces answer "what does my dose day look like?" the same
+// attention surfaces answer "what does my dose day look like?" the same
 // way (the AGENTS.md one-question-one-computation rule, ordering edition).
 //
 // The order is: time bucket (Morning → Midday → Evening → Before sleep →

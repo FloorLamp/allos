@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { loginAs } from "./nav";
 import {
@@ -8,13 +8,22 @@ import {
   E2E_MEMBER_PASSWORD,
   WELL_SYMPTOM_PROFILE,
 } from "./fixture-logins";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 import {
   dashboardCandidatePrefix,
   dashboardCandidateWithText,
 } from "./dashboard-candidate";
 
 const ADMIN_PROFILE = "admin";
+
+function moodOpeningTimes(): { exact: string; oneMinuteLater: string } {
+  const minute = frozenNow().getUTCMinutes();
+  return {
+    exact: `13:${String(minute).padStart(2, "0")}`,
+    oneMinuteLater:
+      minute === 59 ? "14:00" : `13:${String(minute + 1).padStart(2, "0")}`,
+  };
+}
 
 test.afterEach(async ({ page }) => {
   await page.goto("/");
@@ -58,6 +67,7 @@ test("the well-day symptom action logs burden without activating illness", async
   });
   try {
     await page.goto("/");
+    await openDashboardAll(page);
     const symptom = dashboardCandidatePrefix(page, "symptom.well-day-log");
     await expect(symptom).toBeVisible();
     await expect(symptom).toHaveAttribute("data-kind", "action");
@@ -75,6 +85,7 @@ test("the well-day symptom action logs burden without activating illness", async
 
     await expect(async () => {
       await page.reload();
+      await openDashboardAll(page);
       await expect(
         dashboardCandidateWithText(
           page,
@@ -89,7 +100,11 @@ test("the well-day symptom action logs burden without activating illness", async
   }
 });
 
-function setIgnoredStreak(profileName: string, count: number): void {
+function setMoodCheckinState(
+  profileName: string,
+  count: number,
+  eveningTime: string
+): void {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
@@ -105,31 +120,38 @@ function setIgnoredStreak(profileName: string, count: number): void {
       `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'mood_checkin_ignored', ?)
        ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
     ).run(row.id, String(count));
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'notify_supp_evening_hour', ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+    ).run(row.id, eveningTime);
   } finally {
     db.close();
   }
 }
 
-test("the atomic mood action states when reminders are paused", async ({
+test("a mood check-in at its opening minute is actionable in Now", async ({
   page,
 }) => {
   const profile = await createProfileViaFamily(page, "checkinpause");
-  setIgnoredStreak(profile, 5);
+  setMoodCheckinState(profile, 5, moodOpeningTimes().exact);
   await page.goto("/");
 
   const mood = dashboardCandidatePrefix(page, "checkin.mood");
   await expect(mood).toBeVisible();
+  await expect(mood).toHaveAttribute("data-lane", "now");
   await expect(mood).toContainText("Daily reminders are paused.");
+  await expect(mood.getByRole("button")).not.toHaveCount(0);
 });
 
-test("the atomic mood action omits pause copy while reminders run", async ({
+test("a mood check-in one minute before opening is read-only in Ahead", async ({
   page,
 }) => {
-  const profile = await createProfileViaFamily(page, "checkinrunning");
-  setIgnoredStreak(profile, 0);
+  const profile = await createProfileViaFamily(page, "checkinahead");
+  setMoodCheckinState(profile, 0, moodOpeningTimes().oneMinuteLater);
   await page.goto("/");
 
   const mood = dashboardCandidatePrefix(page, "checkin.mood");
   await expect(mood).toBeVisible();
-  await expect(mood).not.toContainText("paused");
+  await expect(mood).toHaveAttribute("data-lane", "ahead");
+  await expect(mood.getByRole("button")).toHaveCount(0);
 });

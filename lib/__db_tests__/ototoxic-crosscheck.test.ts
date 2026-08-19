@@ -59,7 +59,7 @@ describe("getOtotoxicWarnings — active ototoxic meds (#717)", () => {
       (i) => i.domain === "ototoxic"
     );
     expect(up?.key).toBe(warnings[0].dedupeKey);
-    expect(up?.band).toBe("today"); // care-tier → Needs-attention hero
+    expect(up?.band).toBe("today"); // care-tier → current dashboard placement
 
     dismissFinding(profileId, warnings[0].dedupeKey);
     expect(

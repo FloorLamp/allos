@@ -8,6 +8,10 @@ import type {
   DashboardObligation,
   DashboardSubject,
 } from "../dashboard-relevance";
+import {
+  dashboardAttentionCandidateId,
+  dashboardAttentionFactKey,
+} from "../dashboard-attention-identity";
 
 function attentionObligation(
   item: UpcomingItem,
@@ -48,8 +52,8 @@ export function attentionCandidates(
       item.followUpResolve != null ||
       item.followUpSettle != null;
     const common = {
-      candidateId: `attention.fact:${item.key}`,
-      factKey: `upcoming.${item.key}`,
+      candidateId: dashboardAttentionCandidateId(item.key),
+      factKey: dashboardAttentionFactKey(item.key),
       groupKey: item.signalGroup
         ? `attention.${item.signalGroup}`
         : "attention.due",
@@ -83,7 +87,7 @@ export function attentionCandidates(
 // `preventive-review:<recordId>:<ruleKey>`. Structurally BARRED from the Now
 // lane: every rank reason is false and the obligation is "may", so nowScore is
 // null in rankDashboardCandidates and the fact can only land in the exhaustive
-// Everything lane — a suggestion the person goes looking for, never an
+// Show everything remainder — a suggestion the person goes looking for, never an
 // attention claim, never a send.
 export function preventiveReviewCandidate(
   subject: DashboardSubject,

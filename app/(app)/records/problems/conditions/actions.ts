@@ -129,7 +129,7 @@ export async function updateCondition(formData: FormData): Promise<FormResult> {
 }
 
 // Confirm a condition SUGGESTION (issue #685) into a problem-list Condition. The
-// suggest-only bridge (#560): the Upcoming/hero review item posts the suggested
+// suggest-only bridge (#560): the shared Upcoming/dashboard review item posts the suggested
 // name/code here on an explicit user confirm — the app never silently inserts. The
 // write core is idempotent (external_id keyed), so a double-tap is a no-op. Once
 // added, the concept collapses onto the new condition and the suggestion self-clears.

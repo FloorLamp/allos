@@ -145,7 +145,7 @@ describe("getPgxWarnings — the CYP2C19 poor × clopidogrel fixture (#710)", ()
     const warnings = getPgxWarnings(profileId);
     expect(warnings).toHaveLength(1);
     expect(warnings[0].severity).toBe("contraindicated");
-    // Care-tier: it surfaces on Upcoming banded to Today (→ the attention hero).
+    // Care-tier: it surfaces on Upcoming banded to Today (→ current dashboard placement).
     const item = collectUpcoming(profileId, todayStr).find(
       (i) => i.key === warnings[0].dedupeKey
     );

@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { openDashboardAll, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 import { plateauSignalKey } from "@/lib/training-observations";
 import {
@@ -50,6 +50,7 @@ test("the dashboard surfaces tab-only coaching observations (#449)", async ({
 }) => {
   resetCoachingObservationDismissals();
   await page.goto("/");
+  await openDashboardAll(page);
 
   const rollup = dashboardCandidateWithText(
     page,
@@ -67,6 +68,7 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
 }) => {
   resetCoachingObservationDismissals();
   await page.goto("/");
+  await openDashboardAll(page);
 
   const rollup = dashboardCandidateWithText(
     page,
@@ -137,12 +139,14 @@ test("repeat dismissal eventually retires a coaching topic (#2386)", async ({
 
   // Never declined: it is raised routinely.
   await page.goto("/");
+  await openDashboardAll(page);
   await expect(lead).toHaveCount(1);
 
   // Two separate raisings declined → it is quieter in ordering, but the thresholded
   // widget does not hide it behind a capped overflow.
   declinePastRaisings(2);
   await page.goto("/");
+  await openDashboardAll(page);
   await expect(lead).toHaveCount(1);
 
   // Four → retired from the routine surface altogether.

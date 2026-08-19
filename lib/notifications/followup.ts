@@ -1,7 +1,7 @@
 // Overdue safety-follow-up escalation (issue #1866, owner ruling 2026-08-01). Once
 // per waking day per profile, checks whether any tracked finding follow-up (#700)
-// is OVERDUE — the SAME followUpItems computation the Upcoming page + Needs-attention
-// hero render, one question one answer — and pushes on the conservative two-send
+// is OVERDUE — the SAME followUpItems computation Upcoming and dashboard placement
+// render, one question one answer — and pushes on the conservative two-send
 // cadence the pure planner (lib/followup-nudge.ts) owns: one send when the follow-up
 // crosses overdue, one repeat FOLLOWUP_REPEAT_DAYS later framed as final, then
 // nothing further — the finding keeps holding the calm surfaces forever.
@@ -98,7 +98,7 @@ export async function runFollowUpNudges(
   profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
-  // The SAME computation the Upcoming page / hero render. Overdue = the items the
+  // The SAME computation the Upcoming page and dashboard render. Overdue = the items the
   // builder marked care-persistent (exactly the overdue state, #700 ask 5).
   const items = followUpItems(profileId, date);
   const overdue = items.filter(

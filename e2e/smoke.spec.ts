@@ -1,8 +1,8 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
-import { followLink, openCommandPalette } from "./nav";
+import { followLink, loginAs, openCommandPalette } from "./nav";
+import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 import { workerDbPath } from "./worker-env";
 
@@ -171,8 +171,8 @@ test("the biological-age hero renders on Longevity, and Clinical results keeps t
 });
 
 // #209: the hero is ADULT-GATED exactly as the computation is — hidden entirely for a
-// child profile (PhenoAge is an adult population model). Switches to profile 2,
-// "Riley (child)", in an ISOLATED cookie-less context with its own fresh session, so
+// child profile (PhenoAge is an adult population model). Signs in as the dedicated
+// Riley-only member in an isolated context with its own fresh session, so
 // it never disturbs the shared admin session other specs depend on.
 test("biological-age hero is absent for a child profile (#209)", async ({
   browser,
@@ -181,40 +181,11 @@ test("biological-age hero is absent for a child profile (#209)", async ({
   // Longevity, since #2367 put the two halves of the gate on two pages — each a
   // first hit for this context. That is past the default budget on a loaded runner.
   test.slow();
-  const ctx = await browser.newContext({
-    storageState: { cookies: [], origins: [] },
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_CHILD,
+    password: E2E_MEMBER_PASSWORD,
   });
-  const page = await ctx.newPage();
   try {
-    await page.goto("/login");
-    await page.fill('input[name="username"]', "admin");
-    await page.fill('input[name="password"]', "e2e-admin-pass");
-    await page.click('button[type="submit"]');
-    await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
-      timeout: 20_000,
-    });
-
-    // Switch to profile 2 ("Riley (child)") via its household chip, then confirm the
-    // switch by the identity bar naming the new profile.
-    await page.goto("/");
-    // Same class as the Snooze above (#1513): the chip is a Server-Action form submit
-    // whose RESULT this asserts, so wait for the action's POST rather than assuming a
-    // pre-hydration tap landed.
-    await settledClick(
-      page,
-      page.getByRole("main").getByTestId("household-chip-2")
-    );
-    // The switch's own completion marker, on the heavy-page budget (#1306): the chip
-    // posts openProfileAction and redirects back to the dashboard, and settledClick's
-    // same-origin POST wait can be satisfied by an app-wide toaster poll instead of
-    // that action (#1437) — so the switch can still be in flight when this reads. The
-    // retry IS the wait; it just needs longer than the default 5s on the app's
-    // heaviest server render.
-    await expect(page.getByTestId("profile-identity-bar")).toContainText(
-      "Riley (child)",
-      { timeout: 15_000 }
-    );
-
     // On the child's Clinical results page NOTHING bio-age renders — not the hero (which
     // now lives on Longevity) and not the input panel that replaced it here.
     await page.goto("/results");
@@ -226,7 +197,7 @@ test("biological-age hero is absent for a child profile (#209)", async ({
       page.getByRole("main").getByTestId("bio-age-hero")
     ).toHaveCount(0);
   } finally {
-    await ctx.close();
+    await page.context().close();
   }
 });
 

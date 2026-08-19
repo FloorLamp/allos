@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
+import { openDashboardAll } from "./helpers";
 
 // Dashboard daily-loop recomposition (issue #1221): the four new cards — Nutrition
 // today, Steps today, Latest vitals, and Cycle phase — plus the folded "Take any
@@ -54,6 +55,7 @@ test.describe("dashboard daily loop (#1221)", () => {
 
   test("Latest-vitals card shows the most recent BP and resting HR", async () => {
     await page.goto("/");
+    await openDashboardAll(page);
     const bpCandidate = dashboardCandidatePrefix(
       page,
       "vitals.blood-pressure:"
@@ -108,6 +110,7 @@ test.describe("dashboard daily loop (#1221)", () => {
 
   test("the PRN medication action is its own atomic candidate", async () => {
     await page.goto("/");
+    await openDashboardAll(page);
     const medication = dashboardCandidatePrefix(page, "intake.prn:");
     await expect(medication).toBeVisible();
     await expect(medication).toHaveAttribute("data-kind", "action");

@@ -279,8 +279,8 @@ Two properties are the point:
   and does not silence the ask; an export that genuinely catches you up closes
   it, and the next drift is a new ask.
 - **It never sends.** It is a coaching-tier row: Upcoming plus the line the
-  morning digest's own banding yields, dismissible per episode, and never on the
-  non-hideable "Needs attention" hero. A household choosing to export
+  morning digest's own banding yields, dismissible per episode, and never in
+  dashboard placement. A household choosing to export
   occasionally is not a fault.
 
 A provider that declares no archive-exclusive streams raises nothing.
@@ -482,8 +482,8 @@ token actually reports runs for that portal login — your phone about your port
 token has reported yet. It reaches exactly two places: an **Upcoming** item and
 one line in the morning digest that already sends. It is dismissible, and
 dismissing it silences both. There is **no dedicated notification, ever**, and it
-never appears on the dashboard's "Needs attention" panel: portal hygiene is not a
-safety signal. A login with no mapped patients raises nothing at all — there
+never inflates the care-tier app badge; when its expiry is relevant, dashboard
+placement may surface the same fact. A login with no mapped patients raises nothing at all — there
 would be nobody to reach, and finishing setup is what the page itself is asking
 for.
 

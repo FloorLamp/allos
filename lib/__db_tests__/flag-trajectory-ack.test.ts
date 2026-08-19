@@ -70,7 +70,7 @@ describe("dismissing the biomarker flag silences the trajectory (#564)", () => {
     expect(flagItemsForLdl()).toHaveLength(1);
     expect(trajectoryForLdl().length).toBeGreaterThan(0);
 
-    // Dismiss the FLAG (what the dashboard hero / dismissAttention writes — the
+    // Dismiss the FLAG (what the dashboard atom / dismissAttention writes — the
     // shared family acknowledgment key).
     dismissFinding(p.profileId, biomarkerFlagDismissalKey("LDL Cholesterol"));
 

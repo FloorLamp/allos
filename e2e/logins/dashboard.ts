@@ -200,26 +200,22 @@ export const DAILY_LOOP_PROFILE = "Daily Loop (e2e)";
 export const E2E_LOGIN_WHATSNEW = "e2e_whatsnew";
 export const WHATS_NEW_PROFILE = "Whats New (e2e)";
 
-// ── Dashboard "Now" strip + collapsible hero (issue #1413) ───────────────────
+// ── Dashboard Now placement (issue #1413) ────────────────────────────────────
 // Two spec-owned fixtures for e2e/dashboard-now.mobile.spec.ts.
 //
 // The first carries a JUST-FINISHED strength session (so the Now strip's highest
 // signal fires deterministically — the strip is otherwise time-of-day dependent,
 // and the e2e clock pins local time to 13:mm) plus one appointment scheduled
-// TODAY, which gives the "Needs attention" hero a non-zero, stable count to
-// collapse. It needs its own LOGIN because the collapse preference is stored per
-// login (login_settings) and the spec toggles it — doing that on a shared login
-// would leak a collapsed hero into every other spec's dashboard.
+// TODAY, which gives Now a deterministic second atomic candidate. It has a dedicated
+// login so the fixture remains isolated from other dashboard specs.
 export const E2E_LOGIN_NOWSTRIP = "e2e_nowstrip";
 export const NOW_STRIP_PROFILE = "Now Strip (e2e)";
 export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
 
 // The second proves the #449 safety carve-out: a severe PHQ-9 reading (with a
 // positive item 9) makes the crisis finding fire, and that item declares
-// `suppressionPolicy: "safety-ungated"` — so its hero must render EXPANDED with no
-// collapse control at all, no matter what the viewer's preference says. Separate
-// from the profile above precisely because a safety-locked hero can't be collapsed:
-// one profile cannot exercise both contracts.
+// `suppressionPolicy: "safety-ungated"` — so its read-only fact remains uncapped in
+// Now with an honest navigation action and no write control.
 export const E2E_LOGIN_NOWSAFETY = "e2e_nowsafety";
 export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
 
@@ -251,10 +247,9 @@ export const FOLD_REOPEN_KID_B_SITUATION = "Strep throat";
 
 //   • FOLDTAIL — one child resolved 10 days ago: past the 7-day reopen window, still
 //     inside the 14-day promo window. The 8–14-day TAIL, where #1009's "surfaces near
-//     the illness hero" rationale is void because the hero is long gone. No reopen band
-//     exists, so the promo lands in the household strip's label row instead. The
-//     household is deliberately QUIET (no attention items anywhere), so the strip has
-//     NO chips — the orphan case #1549's sketch assumed away.
+//     the illness context" rationale is void because that context is long gone. The
+//     history link remains as typed illness context in Show everything. The household
+//     is deliberately quiet (no attention items anywhere).
 export const E2E_LOGIN_FOLDTAIL = "e2e_foldtail";
 export const FOLD_TAIL_PARENT_PROFILE = "Fold Tail Parent (e2e)";
 export const FOLD_TAIL_KID_PROFILE = "Fold Tail Kid (e2e)";

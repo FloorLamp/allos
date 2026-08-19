@@ -187,7 +187,7 @@ thing a memo over a safety counter may not do. Its arming-administration read is
 served by `intake_item_logs(item_id, recorded_at)` (migration 156) rather than a
 scan of the append-only ledger. A multi-item family also emits ONE calm coaching-tier
 duplication note (`med-dup:<familyKey>`, `buildMedicationDuplicationFindings` —
-never a push, never the hero). **Pediatric dosing** (`lib/prn-dosing.ts`, pure)
+never a push, never dashboard Now). **Pediatric dosing** (`lib/prn-dosing.ts`, pure)
 reproduces the OTC label's **weight-BAND chart** (never a mg/kg computation)
 from the profile's latest recorded weight + age: `pediatricDoseSuggestion` gates
 on the ingredient's hard **age refusal** ("under 6 months — ask a doctor",
@@ -633,7 +633,7 @@ is always available.
 - _Rendered aggregates — collapsed, never removed_: `collectUpcoming`'s `doseItems`
   is must+should only (isDueOn short-circuits `may`), and `offeredItems` gathers the
   may items on offer today into Upcoming's collapsed **available** disclosure. The
-  hero and the #1504 count read the due list; availability is deliberately outside
+  dashboard placement and the #1504 count read the due list; availability is deliberately outside
   the page total. Demotion is therefore a visible MOVE, not a disappearance.
 - _User-initiated LOGGING — dueness gates nudging, never logging_ (#2419). Every
   ACTIVE, unpaused item renders its one-tap log control on
@@ -943,7 +943,7 @@ each linked item keeps its own and draws that many units.
 single place either adjustment is written; they now resolve the item's
 `supply_id` (profile-scoped) and land on the POOL when it is set. Every dose-log
 path therefore becomes pool-aware with **no second decrement path**: the page
-tri-state (`setDoseStatusCore`), `markDoseTaken` (dashboard hero, Upcoming, the
+tri-state (`setDoseStatusCore`), `markDoseTaken` (dashboard atom, Upcoming, the
 household cockpit's cross-profile confirm, Telegram taps), `logAdministration`
 (PRN quick-log, `/dose`), the historical-dose backfill, the offline replay, and
 the administration undo/restore inverse. `refillSupply` (the one-tap "Refilled")

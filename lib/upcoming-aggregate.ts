@@ -7,7 +7,7 @@
 // bleeding note) were needles in that haystack.
 //
 // The fix ports the ALWAYS-PRESENT contract owner-confirmed in #1413-B for the
-// dashboard hero: the care tier's contract is not "always full", it is "always
+// dashboard placement: the care tier's contract is not "always full", it is "always
 // present" — the COUNT is never hidden, the VERTICAL COST becomes opt-in, and the
 // safety classes are exempt from the compaction entirely. Applied here:
 //
@@ -23,7 +23,7 @@
 // is persisted either: an aggregate is collapsed on every visit (stateless), so
 // there is no hidden per-user state that could make two people's pages disagree.
 //
-// The digest, the dashboard hero, and the calendar feed read the same model and are
+// The digest, dashboard placement, and the calendar feed read the same model and are
 // untouched — this is page-side presentation only.
 //
 // ── How the goal fold would learn it should stop (#2385, for #2579-A/B) ──
@@ -123,7 +123,7 @@ export function aggregateKindForDomain(
 //      that already means "the dismissal bus may never hide this" (a missed-dose
 //      ESCALATION, the #716 crisis finding). Reading the tier off the item's OWN
 //      declared policy through the shared `itemSuppressionPolicy` dispatcher — the
-//      same way the hero's collapse carve-out does (#1413-B) — means a future safety
+//      same way the dashboard capped-tail safety carve-out does (#1413-B) — means a future safety
 //      signal inherits the exemption automatically. A domain allowlist here would
 //      have to be separately remembered, which is exactly how a safety carve-out
 //      silently stops covering something.
@@ -185,7 +185,7 @@ export const AGGREGATE_MIN_ROWS = 3;
 // answer: the PRODUCER declares what the row is (`weeklyTarget`), and a reader that
 // cannot tell two rows apart is not allowed to guess from the bucket they share.
 //
-// PAGE-SIDE on purpose. `detail` stays on the item, so the dashboard hero, the digest
+// PAGE-SIDE on purpose. `detail` stays on the item, so dashboard placement, the digest
 // and the calendar feed are untouched — the charter's "not touched, by construction"
 // list — and this is what it says it is: a density decision belonging to the surface
 // whose charter states the density rule. Every other row's detail is returned

@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 // about what a card SAYS.
 //
 // Atomic placement has one reading order at every viewport, so Now is one column
-// just like Standing and Everything.
+// just like Standing, Ahead, and Show everything.
 //
 // Empty remains a real landmark: a quiet sentence, never a filler card or a
 // synthetic candidate. The mobile date stays here because the PageHeader is hidden.

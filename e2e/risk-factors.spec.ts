@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { followLink, settledClick } from "./helpers";
+import { followLink, openDashboardAll, settledClick } from "./helpers";
 import {
   E2E_LOGIN_RISK_REVIEW,
   RISK_REVIEW_PROFILE,
@@ -124,6 +124,7 @@ test.describe("risk-factor review — the negative declaration (#2299)", () => {
 
     // The dashboard offers the gap, with its fix-it CTA.
     await page.goto("/");
+    await openDashboardAll(page);
     const widget = main.getByTestId("data-quality");
     const gapRow = widget
       .getByTestId("data-quality-item")
@@ -164,6 +165,7 @@ test.describe("risk-factor review — the negative declaration (#2299)", () => {
     // And the gap is gone from the dashboard. It was this profile's ONLY structural
     // gap, so the widget self-hides entirely (the absent-pillar rule).
     await page.goto("/");
+    await openDashboardAll(page);
     await expect(
       main
         .getByTestId("data-quality-item")

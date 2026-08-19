@@ -79,9 +79,9 @@ describe("#997 — a completed mental_health visit satisfies depression + anxiet
   });
 });
 
-describe("#997 — household strip minimizes a mental_health visit", () => {
+describe("#997 — shared household rollup minimizes a mental_health visit", () => {
   it("shows only 'Medical appointment' by default; own Upcoming keeps the real title; override reveals it", () => {
-    const p = newProfile("MH strip");
+    const p = newProfile("MH rollup");
     const td = today(p);
     addAppointment(
       p,
@@ -91,7 +91,7 @@ describe("#997 — household strip minimizes a mental_health visit", () => {
       "mental_health"
     );
 
-    // Shared household strip → minimal by default.
+    // Shared household rollup → minimal by default.
     const rollup = collectHouseholdRollup(p, td);
     expect(rollup.nextAppointment).toBeTruthy();
     expect(rollup.nextAppointment!.title).toBe("Medical appointment");
@@ -100,14 +100,14 @@ describe("#997 — household strip minimizes a mental_health visit", () => {
     const own = collectUpcoming(p, td).find((i) => i.domain === "appointment");
     expect(own?.title).toBe("Therapy — Dr. Okafor");
 
-    // Owner opts into full shared detail → the strip reveals the real title.
+    // Owner opts into full shared detail → the rollup reveals the real title.
     setMentalHealthShareFull(p, true);
     const rollup2 = collectHouseholdRollup(p, td);
     expect(rollup2.nextAppointment!.title).toBe("Therapy — Dr. Okafor");
   });
 
-  it("a non-sensitive kind is shown in full on the household strip", () => {
-    const p = newProfile("Phys strip");
+  it("a non-sensitive kind is shown in full on the household rollup", () => {
+    const p = newProfile("Phys rollup");
     const td = today(p);
     addAppointment(
       p,

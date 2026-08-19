@@ -72,7 +72,7 @@ export const ONBOARDING_NOTIFICATION_INTENT_DEFS: readonly OnboardingNotificatio
       description:
         "Keep all reminder types off, including if you connect a delivery channel later.",
       preview:
-        "Nothing will be proposed for delivery. Needs attention and Upcoming remain available in the app.",
+        "Nothing will be proposed for delivery. Dashboard and Upcoming remain available in the app.",
     },
     {
       id: "later",

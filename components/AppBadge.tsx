@@ -5,19 +5,12 @@ import { appBadgeAction } from "@/lib/app-badge";
 
 // The installed-PWA app-icon badge (issue #1424, section B). Renders nothing.
 //
-// It is a FORMATTER, not an engine: `count` is the number
-// `components/dashboard/NeedsAttentionHero.tsx` already computed for its own
-// visible badge (`attentionCardItems(items, today).length` — the #449 care-tier
-// set), so the home-screen icon and the hero can never disagree. This component
-// deliberately imports no query layer; `lib/__tests__/app-badge-chokepoint.test.ts`
-// fails the build if it ever grows one, or if the Badging API is called from
-// anywhere else.
+// It is a FORMATTER, not an engine: `count` is the page's already-computed
+// `attentionBadgeItems(items, today).length` (#449 care-tier set). This component
+// deliberately imports no query layer and derives no dashboard policy.
 //
-// Mounted on BOTH of the hero's branches — including the all-clear one, where
-// `count` is 0. That is the whole reason it is a separate component rather than
-// an effect inside `AttentionHeroCard`: the card is not rendered at count 0, so
-// an effect living there could set a badge but never clear one, and a stale "3"
-// would outlive the last resolved item.
+// Mounted for every dashboard result, including all-clear where `count` is 0, so
+// the last resolved item clears a stale installed-app badge.
 //
 // Feature-detected and silent: browsers without the Badging API (Firefox, iOS
 // Safari today) simply have no `setAppBadge`, and Chromium REJECTS the promise

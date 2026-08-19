@@ -12,7 +12,7 @@ import {
 // overdue.
 //
 // The bug, observed on a real first install: the first dashboard a user ever sees
-// opened with "Needs attention 14" — four red "Overdue — none on record" rows plus
+// used to open with "Needs attention 14" — four red "Overdue — none on record" rows plus
 // "+8 more overdue in Upcoming" — about a profile that was thirty seconds old. The
 // only inputs were the age they had just typed in and the catalog's nominal
 // interval. That is manufactured obligation: it buries the day-one onboarding card,
@@ -21,11 +21,11 @@ import {
 // This spec pins BOTH halves of the fix, because either alone is a different bug:
 //
 //   1. ZERO EVIDENCE → no alarm. On a record-free profile no preventive row reaches
-//      the hero's bands or its count, nothing anywhere says "overdue", and the rules
-//      are still reachable — as ONE collapsed "Set up your screening history (N)"
-//      line on the hero and their own trailing group on Upcoming.
+//      the app badge or dashboard Now, nothing anywhere says "overdue", and the rules
+//      are still reachable in dashboard Show everything and their own trailing group
+//      on Upcoming.
 //   2. EVIDENCE → alarm, unchanged. On a profile whose recorded history genuinely
-//      lapsed, the same rules still band Overdue and still reach the hero.
+//      lapsed, the same rules still band Overdue and still reach dashboard Now.
 //
 // FIXTURE-OWNED per e2e hygiene (#868). Two dedicated member logins on two dedicated
 // profiles, both READ-ONLY here (this spec never writes), so concurrent workers and

@@ -20,8 +20,8 @@ import {
 //
 //   * SWITCH TO (the name button) changes the ACTING profile: the write target,
 //     the "whose settings apply" anchor. It posts switchProfileAction, i.e. the
-//     same setActiveProfile() boundary every other switch affordance uses (the
-//     household strip chips, ProfileSwitcherChip). #1801 moves where these
+//     same setActiveProfile() boundary every other switch affordance uses
+//     (ProfileSwitcherChip). #1801 moves where these
 //     controls live; it adds no write path.
 //   * SHOW IN VIEW (the eye) changes only the READ overlay — the #1096 view-set,
 //     persisted on the session and re-validated against the login's grants on

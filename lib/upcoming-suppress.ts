@@ -62,9 +62,8 @@ export function isItemHiddenBySuppression(
 // "snooze-only" (resists a dismiss, honors a live snooze), and everything else is
 // "normal".
 //
-// Exported because the suppression FILTER is no longer the only caller: the
-// dashboard hero's collapse carve-out (#1413 section B) asks the same question for
-// a different reason — "may this item be visually compacted?" — and a second
+// Exported because the suppression filter is no longer the only caller: dashboard
+// candidate ranking uses the same safety tier for its capped-tail carve-out, and a second
 // hand-rolled `?? (carePersistent ? …)` there would be exactly the drift this
 // dispatcher was extracted to prevent.
 export function itemSuppressionPolicy(

@@ -63,7 +63,7 @@ export interface DigestActivity {
 
 export interface DigestFlaggedBiomarker {
   // Canonical-preferred display name: the reading's canonical name when it has
-  // one, else its raw stored name (issue #283 — the hero deep-links by canonical
+  // one, else its raw stored name (issue #283 — dashboard placement deep-links by canonical
   // name, so the two must agree).
   name: string;
   // The canonical name when the reading is canonicalized, else null — gates
@@ -76,7 +76,7 @@ export interface DigestFlaggedBiomarker {
 // Collapse repeat flags of one analyte to its NEWEST reading (issue #283): the
 // input is newest-first (the read orders by created_at DESC), so keep the first
 // occurrence per lowercased name. Without this, two flagged readings of one
-// analyte yielded duplicate React keys on the hero and duplicate digest lines.
+// analyte yielded duplicate dashboard fact keys and duplicate digest lines.
 export function dedupeFlaggedByAnalyte(
   rows: DigestFlaggedBiomarker[]
 ): DigestFlaggedBiomarker[] {
@@ -566,7 +566,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     );
 
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
-  // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
+  // collectUpcoming formatter the Upcoming page and dashboard placement read. Doses are EXCLUDED from
   // the per-band counts (the glance line above already summarizes them) so a day of
   // only doses reads as one clean line, not "💊 3 doses" + "Today: 3 doses".
   //

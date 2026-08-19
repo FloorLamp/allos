@@ -170,9 +170,9 @@ not deleted, and _here_ is where to look.
   walks up from its own trigger (`MenuHelpers.anchorEl`) to the row's `data-dismiss-row`
   marker. That is the only reason the escape hatch exists.
 - **Only where a fold catches it.** Supplying `slideTarget` is the surface's declaration
-  that it HAS a fold. `/upcoming` does; the dashboard "Needs attention" hero does not and
-  passes nothing, because a row travelling toward nowhere teaches a place that does not
-  exist. A **snooze** does not travel either: it lands in the same fold, but a snooze is
+  that it HAS a fold. `/upcoming` does; dashboard atoms do not and pass nothing, because a
+  row travelling toward nowhere teaches a place that does not exist. A **snooze** does
+  not travel either: it lands in the same fold, but a snooze is
   a "later" whose row is coming back on its own, and "where did it go" is a question only
   a dismiss raises.
 - **The answer** (`app/(app)/upcoming/FoldSummary.tsx`) pulses when its count goes UP.

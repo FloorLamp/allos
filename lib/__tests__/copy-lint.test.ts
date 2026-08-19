@@ -50,7 +50,6 @@ const CROSS_PROFILE_PREFIXES = [
 ];
 const CROSS_PROFILE_FILES = new Set([
   "components/dashboard/HouseholdHistoryPromoLink.tsx",
-  "components/dashboard/HouseholdStrip.tsx",
   "components/HouseholdCard.tsx",
   "components/ProfileSwitcherChip.tsx",
   "components/SubjectChip.tsx",

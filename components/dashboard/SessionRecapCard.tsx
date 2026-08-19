@@ -5,8 +5,8 @@ import SessionRecapView from "@/components/SessionRecapView";
 
 // The finished-window dashboard card (#924): while derived workout presence reads
 // `finished` (lib/workout-presence.ts — the just-ended session, mode-agnostic), the
-// dashboard surfaces the recap of that session. Self-view only (the household chip
-// stays compact); it disappears when the finished window closes on the next render.
+// dashboard surfaces the recap of that session. Self-view only; it disappears when
+// the finished window closes on the next render.
 // A pure formatter over the ONE sessionRecap result — never gated on live mode.
 export default function SessionRecapCard({
   recap,

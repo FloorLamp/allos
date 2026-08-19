@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — the attention hero's flagged-biomarker window (#2112).
+// DB INTEGRATION TIER — the dashboard's flagged-biomarker window (#2112).
 //
 // `flaggedInWindow` sits inside BOTH per-member collectors the /upcoming page runs
 // (collectAttentionModel and collectSuppressedAttention), so on a multi-profile view

@@ -384,7 +384,7 @@ export function standingBadge(
 }
 
 // Which standings ESCALATE (#1880): Review's "Needs attention" card, the
-// profile-menu/Data badge, the dashboard hero item, and the digest's 🔌 lines all
+// profile-menu/Data badge, the dashboard candidate, and the digest's 🔌 lines all
 // gate on this. Everything else — including `intermittent` — is a rendered fact on
 // calm surfaces only; the reach of a flapping source may only ever narrow.
 //

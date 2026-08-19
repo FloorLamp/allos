@@ -802,6 +802,16 @@ export async function hydratedClick(
   await button.click();
 }
 
+/** Opens the dashboard's remembered exhaustive remainder when it exists. */
+export async function openDashboardAll(page: Page): Promise<void> {
+  const details = page.getByTestId("dashboard-all");
+  await expect(details).toHaveCount(1);
+  if ((await details.getAttribute("open")) == null) {
+    await hydratedClick(page, details.locator("summary"));
+  }
+  await expect(details).toHaveAttribute("open", "");
+}
+
 // Playwright surfaces a click on a link that a prior iteration already navigated
 // away from as an "element is not attached to the DOM" / "detached" error. That
 // is the ONE race followLink is allowed to swallow (the next URL check passes);

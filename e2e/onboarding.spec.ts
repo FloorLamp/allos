@@ -3,6 +3,7 @@ import { loginAs } from "./nav";
 import { resetOnboardingFixture, withE2eDb } from "./onboarding-reset";
 import { E2E_LOGIN_ONBOARDING, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { openDashboardAll } from "./helpers";
 
 // The wizard is stateful, so this spec resets its dedicated fixture before
 // every run. It covers the current six-step journey without preserving the
@@ -60,7 +61,7 @@ test("a new profile completes the six-step onboarding journey", async ({
     await finish.getByRole("button", { name: "View dashboard" }).click();
 
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByTestId("onboarding-resume-card")).toHaveCount(0);
+    await openDashboardAll(page);
     await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
   } finally {
     await page.context().close();

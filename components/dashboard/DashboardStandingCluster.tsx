@@ -29,7 +29,7 @@ export default function DashboardStandingCluster({
   placements,
   presentations,
 }: {
-  placements: readonly DashboardPlacement[];
+  placements: readonly Extract<DashboardPlacement, { lane: "standing" }>[];
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
 }) {
   return (

@@ -220,7 +220,7 @@ export function getSkippedDoseIds(
 //
 // TWO INTENTS, ONE CORE. `resolveOnly` is the difference and the only one:
 //   • resolveOnly (markDoseTaken / markDoseSkipped — Telegram, offline replay, the
-//     dashboard hero, the household cockpit): resolve an UNRESOLVED dose. ANY existing
+//     dashboard atom, the household cockpit): resolve an UNRESOLVED dose. ANY existing
 //     row short-circuits and is reported by its ACTUAL status (#280), so a stale ✅ on a
 //     dose meanwhile marked skipped is never answered "Logged" and never overwrites it.
 //   • the explicit set (setDoseStatusCore — the web tri-state check-off): the user is
@@ -425,7 +425,7 @@ function resolvedOutcome(outcome: DoseStatusOutcome): DoseTakenOutcome {
 }
 
 // Log a single dose as taken on `date`, idempotently — the non-React-context write used
-// by the dashboard hero, the Upcoming inline confirm, Telegram inline actions, the
+// by the dashboard atom, the Upcoming inline confirm, Telegram inline actions, the
 // household cockpit and the offline replay. Never deletes, never overwrites a deliberate
 // skip. Returns what actually happened so the caller can answer honestly: a tap on a
 // button whose dose was since deleted/retired by an edit, or whose item was paused, logs

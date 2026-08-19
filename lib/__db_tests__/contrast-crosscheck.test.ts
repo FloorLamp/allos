@@ -81,7 +81,7 @@ describe("getContrastSafetyWarnings — planned contrast × allergy/CKD (#701)",
     const item = upcoming.find((i) => i.key === hit.dedupeKey);
     expect(item, "contrast finding present on Upcoming").toBeTruthy();
     expect(item!.domain).toBe("contrast");
-    expect(item!.band).toBe("today"); // care-tier → reaches the attention hero
+    expect(item!.band).toBe("today"); // care-tier → current dashboard placement
     expect(item!.title).toBe(contrastTitle(hit));
     expect(item!.detail).toBe(contrastDetail(hit));
   });

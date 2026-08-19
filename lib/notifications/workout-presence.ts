@@ -1,6 +1,6 @@
 // Presence-driven notification nudges (issue #921). Both read the ONE derived
 // workout presence (getWorkoutPresence → computeWorkoutPresence) so they can't
-// drift from the dock / household chip that render the same state (#221).
+// drift from the dashboard recap / Household page that render the same state (#221).
 //
 //   1. runPostWorkoutFinish — the flagship. The moment a session transitions to
 //      `finished`, deliver the due, unresolved post_workout supplement doses

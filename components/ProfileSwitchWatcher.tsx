@@ -7,10 +7,10 @@ import { clearSnapshots } from "@/lib/offline/snapshot-db";
 // Device-local cleanup on a profile switch (issue #600). Mounted ONCE in the (app)
 // layout, it watches the session's active profile id and wipes the profile-specific
 // device-local state whenever that id changes — so EVERY switch affordance (the
-// header switcher, the household card, the household strip, and any future one) is
+// header switcher, the household card, and any future one) is
 // covered by construction, instead of each having to hand-mirror the wipe. That
 // hand-mirroring is exactly what drifted: the wipe lived only in the profile menu's
-// per-button onClick, so switching via a household chip left the previous profile's
+// per-button onClick, so switching outside the profile menu left the previous profile's
 // emergency card readable session-free at /offline.
 //
 // SCOPE — the emergency card and the offline READ SNAPSHOTS (#2908). Both are

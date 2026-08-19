@@ -7,7 +7,7 @@ import {
 } from "@/app/(app)/upcoming/actions";
 
 // The dashboard atom for one preventive REVIEW CANDIDATE (issue #3025) — the
-// Everything-lane rendering of the same fact the Upcoming row shows beside its
+// Show everything rendering of the same fact the Upcoming row shows beside its
 // due preventive item (`preventive-review:<recordId>:<ruleKey>`). The candidate
 // builder bars it from the Now lane structurally (see
 // lib/dashboard-candidates/attention.ts); this card is the go-looking surface.

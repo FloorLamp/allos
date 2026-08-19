@@ -119,7 +119,7 @@ export function recordInstrumentScore(
   return writeTx(() => {
     // category 'instrument' (#1076): a screening-instrument total scores onto its
     // own class, NOT the general lab bucket — so it joins the instrument series and
-    // can never leak into /results/clinical-results or the flagged hero.
+    // can never leak into /results/clinical-results or flagged-result placement.
     const info = db
       .prepare(
         `INSERT INTO medical_records

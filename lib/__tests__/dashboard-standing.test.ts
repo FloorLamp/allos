@@ -60,6 +60,8 @@ const rank = (candidates: readonly DashboardCandidate[]) =>
   rankDashboardCandidates(candidates, {
     activeProfileId: 7,
     minutesOfDay: 12 * 60,
+    today: "2026-08-19",
+    upcoming: [],
   });
 
 function standingIds(candidates: readonly DashboardCandidate[]): string[] {
@@ -257,7 +259,7 @@ describe("fixed Standing instrument cluster", () => {
     const other = reading("activity.steps:other", 0, {
       subject: { scope: "profile", profileId: 8 },
     });
-    expect(rank([other])[0].lane).toBe("everything");
+    expect(rank([other])).toEqual([]);
   });
 });
 

@@ -112,11 +112,11 @@ export type MedicalCategory =
   | "scan"
   | "prescription"
   // Non-lab analyte classes split out of the old "has a canonical range" bucket
-  // (#1076) so the lab surfaces (list/series/flagged hero/retest) scope to `lab`
+  // (#1076) so the lab surfaces (list/series/flagged-result placement/retest) scope to `lab`
   // ONLY and each of these reaches its own domain home instead:
   //   • instrument — validated screening-instrument TOTAL SCORES (PHQ-9, GAD-7,
   //     AUDIT-C, AUDIT, DAST-10) → the mental-health / substance-use surfaces.
-  //     Deliberately kept OFF the general biomarker hero (a depression/alcohol
+  //     Deliberately kept OFF general clinical-result placement (a depression/alcohol
   //     score must never leak into a shared health list).
   //   • derived — computed composites (Biological Age, PhenoAge) → the Longevity
   //     bio-age hero, not a measured-lab chart.

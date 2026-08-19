@@ -65,7 +65,7 @@
 // ── Reach: coaching tier, and nothing more ───────────────────────────────────
 // PAIRED_OBS_PREFIX is registered `coaching` in RULE_FINDING_REGISTRY. These findings
 // join collectCoachingFindings and render on the calm, hideable dashboard rollup. They
-// never reach Upcoming, never notify, never occupy the non-hideable hero, and never
+// never reach Upcoming, never notify, never occupy dashboard Now, and never
 // become an obligation. Dismissal is month-anchored (#436) so a dismissal silences the
 // pair for the month and a pattern that genuinely persists can resurface; the stem is
 // declared as `episodeFamily` (#2543) so repeat declines are read as an answer (#2386)

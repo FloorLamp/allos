@@ -54,7 +54,7 @@ switcher currently points at. This is a rule, not an accident: on a per-profile
 surface (Clinical results, Trends, the dashboard) `"Explore your results…"` is correct
 because "your" resolves to whoever is active.
 
-**Cross-profile surfaces never say "your".** The household strip, Family
+**Cross-profile surfaces never say "your".** The Household page, Family
 settings, and other-profile chips show data for people who are _not_ the active
 profile, so they use the profile's name or neutral phrasing:
 `"Everyone at a glance — confirm what's due…"`, not "your household". An admin
@@ -92,8 +92,8 @@ Range-scoped empties say what to change:
 ### 5. Case: sentence case, proper nouns Title Case
 
 Sentence case for buttons, labels, headings, and toasts. **Feature and nav names
-are Title Case as proper nouns** — "Supplements & Meds", the "Needs attention"
-hero — but a mid-sentence reference to the _concept_ stays lowercase. The
+are Title Case as proper nouns** — "Supplements & Meds", "Show everything" — but
+a mid-sentence reference to the _concept_ stays lowercase. The
 Telegram `"supplements & meds"` pairing in `intake-format.ts` is the
 documented example of a correct lowercase concept reference, not a bug.
 

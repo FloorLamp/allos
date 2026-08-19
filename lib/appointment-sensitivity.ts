@@ -5,9 +5,9 @@ import type { AppointmentKind } from "./types";
 // lib/__tests__/appointment-sensitivity.test.ts.
 //
 // Most appointment kinds show whatever detail the shared surface is set to — the
-// household strip and the .ics family calendar feed already carry a minimal/full
+// household rollups and the .ics family calendar feed already carry a minimal/full
 // PHI toggle (lib/settings/calendar-feed.ts). A MENTAL-HEALTH visit is different:
-// "Psychiatry — Dr X" must not leak into a household strip or an exported family
+// "Psychiatry — Dr X" must not leak into a household rollup or an exported family
 // calendar by default, even when other kinds show full detail. So a mental_health
 // visit DEFAULTS to minimal ("Medical appointment") on any shared surface — the one
 // kind where the default flips toward privacy — and the profile OWNER can override
