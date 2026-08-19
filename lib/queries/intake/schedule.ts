@@ -12,7 +12,10 @@ import {
 import { db, hoistedStatement } from "../../db";
 import { snapshotCached } from "../../read-snapshot";
 import type { IntakeItem, IntakeDose, SupplementSuggestion } from "../../types";
-import type { IntakeItemIngredient } from "../../intake-ingredients";
+import {
+  parseItemIngredients,
+  type IntakeItemIngredient,
+} from "../../intake-ingredients";
 
 // Whether this profile has ANY intake item (supplement or medication). Drives the
 // Nutrition nav entry's visibility for an infant profile (#746): the food-group
@@ -57,7 +60,32 @@ const INTAKE_ITEMS_STMT = hoistedStatement(
                 AS indication_condition_name,
               (SELECT ss.name FROM shared_supplies ss
                 WHERE ss.id = intake_items.supply_id)
-                AS supply_name
+                AS supply_name,
+              -- Label composition (#2856) rides along in the ITEM read rather than
+              -- costing a statement of its own. It is a child table nearly every item
+              -- has no rows in, and a separate gather cost one query per profile per
+              -- render on the household dashboard — the surface with the tightest
+              -- query budget in the app. As a correlated subselect over
+              -- idx_intake_item_ingredients_item it is an index probe per item and
+              -- ZERO extra statements, which is the only footprint a feature this
+              -- optional should have on the hottest read here.
+              --
+              -- NULLIF(..., '[]') so the overwhelmingly common no-composition case
+              -- comes back NULL and is never parsed (see parseItemIngredients).
+              NULLIF(
+                (SELECT json_group_array(json_object(
+                          'id', g.id,
+                          'item_id', g.item_id,
+                          'name', g.name,
+                          'amount_text', g.amount_text,
+                          'amount', g.amount,
+                          'unit', g.unit,
+                          'sort', g.sort
+                        ) ORDER BY g.sort, g.id)
+                   FROM intake_item_ingredients g
+                  WHERE g.item_id = intake_items.id),
+                '[]'
+              ) AS ingredients_json
          FROM intake_items
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
@@ -83,29 +111,25 @@ export const getIntakeItems = snapshotCached(
 
 // ---- Label composition (issue #2856) ----
 
-// Every intake item's label ingredients for this profile, in label order. Scoped by
-// JOINing the parent — the table carries no profile_id of its own, being a CHILD like
-// intake_item_doses — so no read here can reach another person's shelf.
+// Every intake item's label ingredients for this profile, in label order.
 //
-// The whole-profile shape rather than a per-item read, because that is how every
-// consumer wants it: the stack-total assembly, the interaction/allergen belts and the
-// supplements list each iterate the profile's items once and need each one's
-// composition beside it. Callers index by item_id (getIntakeIngredientsByItem).
+// NO SQL OF ITS OWN. The rows arrive on the item read above as `ingredients_json`, so
+// this is a projection over an already-cached result: profile scoping is the parent
+// statement's (`intake_items.profile_id = ?`), and asking for composition costs no
+// query at all. It started as a separate gather and that was one statement per profile
+// per render — enough to put the household dashboard over its phase-1 query budget the
+// week main's own dashboard work consumed the remaining headroom.
+//
+// Snapshot-cached so the JSON of a blend's label is parsed once per request rather
+// than once per consumer: the stack totals, the interaction detector and the
+// supplements list all ask.
 function getIntakeIngredientsUncached(
   profileId: number
 ): IntakeItemIngredient[] {
-  return db
-    .prepare(
-      `SELECT g.* FROM intake_item_ingredients g
-         JOIN intake_items i ON i.id = g.item_id
-        WHERE i.profile_id = ?
-        ORDER BY g.item_id, g.sort, g.id`
-    )
-    .all(profileId) as IntakeItemIngredient[];
+  return getIntakeItems(profileId).flatMap((item) =>
+    parseItemIngredients(item.ingredients_json)
+  );
 }
-// Snapshot-cached like getIntakeItems beside it, and for the same reason: the stack
-// totals, the interaction detector and the supplements list each ask for it, so one
-// render of a household page would otherwise repeat the read per consumer per member.
 export const getIntakeIngredients = snapshotCached(
   "intake.ingredients",
   (profileId: number) => String(profileId),

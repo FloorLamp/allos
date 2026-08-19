@@ -211,6 +211,28 @@ export function unreadableAmountMessage(
   );
 }
 
+// Read the `ingredients_json` an intake item carries (lib/queries/intake/schedule.ts)
+// into rows. NULL — the case for nearly every item, which has no composition — parses
+// to nothing without touching JSON.parse at all, which is what keeps the fold onto the
+// hottest read in the app free.
+//
+// Defensive only against a malformed blob, never against a shape: the JSON is produced
+// by our own json_object() projection of our own columns, so a parse failure would mean
+// the database handed back something impossible. Degrading to "this item has no stated
+// composition" is the same reading a proprietary blend gets, and the alternative —
+// throwing inside the item read — would take down every intake surface for one bad row.
+export function parseItemIngredients(
+  json: string | null | undefined
+): IntakeItemIngredient[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? (parsed as IntakeItemIngredient[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 // The ingredient NAMES of an item, for the token matchers. Deliberately just the
 // names: the belts ask "does this item carry substance X", which is a question about
 // identity, never about how much.

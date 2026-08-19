@@ -9,7 +9,7 @@
 //
 // SYNTHETIC ONLY: invented products, ordinary supplement-facts amounts, no PHI.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
   addIntakeItem,
@@ -213,6 +213,84 @@ describe("the write boundary", () => {
     expect(getIntakeIngredients(profile.id)).toHaveLength(1);
     expect(getIntakeIngredients(other.id)).toEqual([]);
     expect([...getIntakeIngredientsByItem(other.id).keys()]).toEqual([]);
+  });
+});
+
+describe("what composition costs", () => {
+  it("arrives on the item read, without a query of its own", async () => {
+    // The household dashboard is the surface with the tightest query budget in the
+    // app, and composition is a child table nearly every item has no rows in. A
+    // separate gather cost one statement per profile per render, which was enough to
+    // put that budget over the moment main's own dashboard work took the remaining
+    // headroom. It now rides along as a correlated subselect on the item read.
+    const { profile } = seedActor();
+    await addIntakeItem(
+      fd({
+        name: "Eye Health+",
+        condition: "daily",
+        doses: JSON.stringify([{ amount: "1 cap", food_timing: "any" }]),
+        ingredients: ingredientsField([
+          { name: "Lutein", amount: "10 mg" },
+          { name: "Zinc", amount: "11 mg" },
+        ]),
+      })
+    );
+
+    // THE POSITIVE HALF, and the one that does the work: the composition is ON the
+    // item row. Reinstating a separate child-table gather reds this immediately,
+    // whatever the statement trace below can or cannot see.
+    const [item] = getIntakeItems(profile.id);
+    expect(item.ingredients_json).toContain("Lutein");
+    expect(item.ingredients_json).toContain("Zinc");
+
+    // THE NEGATIVE HALF: nothing selects the child table while composition is being
+    // read. The sentinel is not decoration — the item statement is hoisted and was
+    // prepared long before this spy went up, so without proof the trace is live an
+    // empty `executed` would pass this vacuously and pin nothing.
+    const executed: string[] = [];
+    const realPrepare = db.prepare.bind(db);
+    vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+      const statement = realPrepare(sql);
+      return new Proxy(statement, {
+        get(target, property) {
+          const value = Reflect.get(target, property, target);
+          if (
+            typeof value === "function" &&
+            ["get", "all", "run", "iterate"].includes(String(property))
+          ) {
+            return (...args: unknown[]) => {
+              executed.push(String(sql).replace(/\s+/g, " ").trim());
+              return (value as (...a: unknown[]) => unknown).apply(
+                target,
+                args
+              );
+            };
+          }
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    }) as typeof db.prepare);
+
+    let byItem: ReturnType<typeof getIntakeIngredientsByItem>;
+    try {
+      db.prepare("SELECT 1 AS sentinel").get();
+      byItem = getIntakeIngredientsByItem(profile.id);
+    } finally {
+      vi.restoreAllMocks();
+    }
+
+    expect(executed.some((sql) => sql.includes("sentinel"))).toBe(true);
+    expect(
+      executed.filter((sql) => /from\s+intake_item_ingredients/i.test(sql))
+    ).toEqual([]);
+
+    // And the rows are all there, canonical reading included.
+    expect(
+      [...byItem.values()].flat().map((g) => [g.name, g.amount, g.unit])
+    ).toEqual([
+      ["Lutein", 10, "mg"],
+      ["Zinc", 11, "mg"],
+    ]);
   });
 });
 
