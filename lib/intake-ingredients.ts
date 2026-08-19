@@ -21,7 +21,7 @@
 // CONFIRM-NEVER-SILENT (#798). Nothing in this module writes. Catalog prefill and
 // the parse below produce FORM STATE; the user's save is the write.
 
-import { parseQuantity, type IngredientUnit } from "./dri";
+import type { IngredientUnit } from "./dri";
 
 // One label ingredient of an intake item, as stored. `amount`/`unit` are the
 // canonical reading PER SINGLE DOSE UNIT (one capsule/tablet/scoop) and are both
@@ -45,64 +45,142 @@ export interface IngredientDraft {
   amount_text: string;
 }
 
-// The canonical reading of a label amount, per single dose unit.
+// What a label's amount text says, read at the write boundary.
 //
+//   quantity   - a single, unambiguous number and unit.
+//   none       - no digits at all ("Proprietary blend", "Organic mushroom complex"),
+//                an ordinary label shape. The row still names a substance for the
+//                interaction and allergen matchers; it just feeds no total.
+//   unreadable - digits are there but they do not form one clean quantity. REFUSED at
+//                the write boundary rather than guessed at.
+export type IngredientAmountReading =
+  | { kind: "quantity"; amount: number; unit: IngredientUnit }
+  | { kind: "none" }
+  | { kind: "unreadable" };
+
+// THE PARSE IS WHOLE-STRING AND STRICT, AND THAT IS THE POINT (review of #2856).
+//
+// The first cut of this delegated to dri.parseQuantity, which scans for the first
+// number+unit ANYWHERE in a string. Over a DOSE amount that is right and
+// long-standing. Over a LABEL amount it was a fabrication engine, because a US
+// Supplement Facts panel writes its thousands with a comma and the repeater tells the
+// person to type the amount exactly as the label writes it:
+//
+//     "1,000 mg"  ->  the scan skipped "1," and matched "000 mg"  ->  0 mg
+//     "5,000 IU"  ->  0 IU
+//     "1,500 mg"  ->  500 mg
+//     "2,5 g"     ->  5000 mg   (a European decimal comma, read ten times high)
+//
+// A niacin row reading "1,000 mg" - twenty-eight times the adult upper limit - was
+// stored as a fully-formed, schema-valid ZERO and contributed to nothing. Both CHECK
+// constraints passed: the reading was present, it was simply wrong. And a zero meaning
+// "we could not read this" is indistinguishable from a zero meaning "none of this is
+// in here", which is exactly the trust the UL layer cannot afford to lose.
+//
+// So the whole string must be one quantity, or it is not a number at all:
+//   * grouped thousands separators are ACCEPTED, because real labels use them and the
+//     grouping is what makes them unambiguous (digits in threes after the first group);
+//   * a comma that is NOT a thousands group ("2,5 g") is REFUSED rather than guessed -
+//     reading it as 2.5 or as 25 is a coin flip on a safety number;
+//   * anything else carrying digits but not forming exactly one quantity is refused
+//     too: a range ("1-2 mg"), two quantities, a stray character.
+//
+// Refusal surfaces as an error on the form naming the offending string (see
+// normalizeIngredientDrafts), so the person corrects their own label text. Nothing is
+// stored, nothing is silently dropped, and no number is invented.
+const AMOUNT_RE =
+  /^(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(mcg|\u00b5g|ug|mg|g|iu)$/i;
+
 // Mass converts to milligrams or micrograms: grams fold to mg at the boundary
 // (canonical-units-at-the-write-boundary), mcg stays mcg so a 100 mcg label does not
 // become 0.1 mg on the way in.
 //
 // INTERNATIONAL UNITS DO NOT CONVERT HERE, on purpose. An IU is defined per
-// SUBSTANCE — 1 IU of vitamin D is 0.025 mcg and 1 IU of vitamin E is something else
-// entirely — so turning it into mass requires knowing which nutrient this is, which
-// is the matchers' question, not the write boundary's. The value is kept as stated
-// with unit 'iu' and converted per-nutrient downstream by the SAME dri.toNutrientUnit
-// the dose-amount path already uses.
-//
-// Returns null when the text carries no quantity at all, which is an ordinary label
-// shape ("Proprietary blend", "Organic mushroom complex") and must stay null rather
-// than becoming a fabricated zero.
-export function parseIngredientAmount(
+// SUBSTANCE - 1 IU of vitamin D is 0.025 mcg and 1 IU of vitamin E is something else
+// entirely - so turning it into mass requires knowing which nutrient this is, which is
+// the matchers' question, not the write boundary's. The value is kept as stated with
+// unit 'iu' and converted per-nutrient downstream by the SAME dri.toNutrientUnit the
+// dose-amount path already uses.
+export function readIngredientAmount(
   text: string | null
-): { amount: number; unit: IngredientUnit } | null {
-  const q = parseQuantity(text);
-  if (!q) return null;
-  if (q.unit === "g") return { amount: q.value * 1000, unit: "mg" };
-  return { amount: q.value, unit: q.unit };
+): IngredientAmountReading {
+  const raw = (text ?? "").trim();
+  if (!raw) return { kind: "none" };
+  const m = raw.match(AMOUNT_RE);
+  if (!m) {
+    // No digits at all is a label stating no quantity - legitimate, and a different
+    // thing from a quantity we could not read.
+    return /\d/.test(raw) ? { kind: "unreadable" } : { kind: "none" };
+  }
+  const value = Number(m[1].replace(/,/g, ""));
+  if (!Number.isFinite(value)) return { kind: "unreadable" };
+  const u = m[2].toLowerCase();
+  if (u === "g") return { kind: "quantity", amount: value * 1000, unit: "mg" };
+  const unit = u === "\u00b5g" || u === "ug" ? "mcg" : u;
+  return { kind: "quantity", amount: value, unit: unit as IngredientUnit };
 }
 
-// Normalize the posted repeater rows into what the write path stores: trimmed names,
-// blank rows dropped (an empty repeater row is a person mid-thought, not a claim),
-// the amount text preserved as typed, and the canonical pair derived.
-//
-// A row with a name and no amount is KEPT: "this blend contains St. John's Wort" is
-// the whole point of the interaction belt even when the label hides the milligrams
-// inside a proprietary blend. A row with an amount and no name is dropped — an amount
-// of nothing names no substance and no engine could read it.
-export function normalizeIngredientDrafts(rows: readonly IngredientDraft[]): {
+// One stored ingredient row, before it has an id.
+export interface IngredientWrite {
   name: string;
   amount_text: string | null;
   amount: number | null;
   unit: IngredientUnit | null;
-}[] {
-  const out: {
-    name: string;
-    amount_text: string | null;
-    amount: number | null;
-    unit: IngredientUnit | null;
-  }[] = [];
+}
+
+// The write path's answer for a posted repeater: the rows to store, or the ONE row
+// whose amount could not be read.
+export type IngredientDraftResult =
+  | { ok: true; rows: IngredientWrite[] }
+  | { ok: false; name: string; amountText: string };
+
+// Normalize the posted repeater rows into what the write path stores: trimmed names,
+// blank rows dropped (an empty repeater row is a person mid-thought, not a claim), the
+// amount text preserved as typed, and the canonical pair derived.
+//
+// A row with a name and no amount is KEPT: "this blend contains St. John's Wort" is
+// the whole point of the interaction belt even when the label hides the milligrams
+// inside a proprietary blend. A row with an amount and no name is dropped - an amount
+// of nothing names no substance and no engine could read it.
+//
+// An amount carrying digits that is not one clean quantity STOPS THE SAVE (see
+// readIngredientAmount): the person is told which string could not be read and fixes
+// it. The alternative - storing null and moving on - would read as "this ingredient
+// has no stated amount" and would drop a real upper-limit contribution as quietly as
+// the zero it replaced.
+export function normalizeIngredientDrafts(
+  rows: readonly IngredientDraft[]
+): IngredientDraftResult {
+  const out: IngredientWrite[] = [];
   for (const row of rows) {
     const name = (row.name ?? "").trim();
     if (!name) continue;
     const text = (row.amount_text ?? "").trim();
-    const parsed = parseIngredientAmount(text || null);
+    const reading = readIngredientAmount(text || null);
+    if (reading.kind === "unreadable") {
+      return { ok: false, name, amountText: text };
+    }
     out.push({
       name,
       amount_text: text || null,
-      amount: parsed?.amount ?? null,
-      unit: parsed?.unit ?? null,
+      amount: reading.kind === "quantity" ? reading.amount : null,
+      unit: reading.kind === "quantity" ? reading.unit : null,
     });
   }
-  return out;
+  return { ok: true, rows: out };
+}
+
+// The message the form shows when a label amount could not be read. Names the exact
+// string so the person can see which row to fix, and shows the shapes that work.
+export function unreadableAmountMessage(
+  name: string,
+  amountText: string
+): string {
+  return (
+    `Couldn't read \u201c${amountText}\u201d as the amount of ${name}. ` +
+    `Use one number and a unit \u2014 like 250 mg, 1,000 mg, 400 mcg or 5000 IU \u2014 ` +
+    `or leave the amount blank if the label doesn't give one.`
+  );
 }
 
 // The ingredient NAMES of an item, for the token matchers. Deliberately just the

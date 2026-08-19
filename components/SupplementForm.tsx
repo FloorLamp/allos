@@ -489,15 +489,10 @@ export default function SupplementForm({
         others={others}
       />
 
-      {/* Label composition (#2856) — the field that stops a blend's contents from
-        living in the notes box where no engine can read them. */}
-      {ingredients.length > 0 ? (
-        <IngredientsEditor
-          rows={ingredients}
-          setRows={setIngredients}
-          seedNote={ingredientSeedNote}
-        />
-      ) : (
+      {/* The EMPTY-state affordance only. Once there are rows they render outside this
+        disclosure — see below — because composition that is about to be saved has to
+        be on screen when it is saved (#798). */}
+      {ingredients.length === 0 && (
         <div className="sm:col-span-2">
           <button
             type="button"
@@ -647,6 +642,22 @@ export default function SupplementForm({
         <RetiredDoses
           doses={retiredDoses}
           onRestored={(d) => setDoses((ds) => [...ds, d])}
+        />
+      )}
+
+      {/* Label composition (#2856) — the field that stops a blend's contents from
+        living in the notes box where no engine can read them.
+        ALWAYS AT THE TOP LEVEL, never inside the More-options disclosure. The rows can
+        arrive without being asked for: picking a catalogued blend seeds them, and
+        LMNT's potassium row alone mints a moderate interaction with an ACE inhibitor
+        that did not exist a moment earlier. A warning attributed to the person's own
+        item, derived from figures they were never shown, is not a confirmation — so
+        the rows sit in the open, above the Save button, from the moment they exist. */}
+      {ingredients.length > 0 && (
+        <IngredientsEditor
+          rows={ingredients}
+          setRows={setIngredients}
+          seedNote={ingredientSeedNote}
         />
       )}
 

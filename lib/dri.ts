@@ -183,29 +183,66 @@ export function parseQuantity(amount: string | null): ParsedQuantity | null {
   return { value, unit: u as DoseUnit };
 }
 
+// The words a dose amount uses for a COUNTABLE LABEL UNIT — the thing a Supplement
+// Facts panel states its amounts "per" (issue #2856). An explicit list rather than a
+// pattern, because this is precisely the judgment that must not be inferred: every
+// word here is one whose count multiplies an ingredient amount, and a word absent from
+// it is a unit we do not know how to count.
+//
+// Volumes and drops are deliberately ABSENT. A millilitre is not a label unit: for a
+// liquid the panel states its amounts per serving, and the dose row IS that serving.
+// Counting them made a children's liquid multivitamin dosed "10 ml" read as ten
+// servings and raise two over-limit warnings at ten times the truth, on a child.
+const LABEL_UNIT_WORDS =
+  /^(?:caps?|capsules?|tabs?|tablets?|softgels?|gelcaps?|gummy|gummies|pills?|scoops?|servings?|packets?|sticks?|sachets?|lozenges?|chews?|wafers?|pieces?|doses?)$/i;
+
+// A stated count of label units anywhere in the amount, so it reads the same whichever
+// way round the person wrote it ("2 capsules (500 mg)" and "500 mg (2 capsules)").
+// The lookbehind refuses a digit that is part of something larger — without it the "2"
+// of "1/2 tablet" would be read as two tablets, turning a half dose into a double one.
+const LABEL_UNIT_COUNT_RE = /(?<![\d.,/])(\d+(?:\.\d+)?)\s*([a-z]+)\b/gi;
+
+// A bare number with no unit at all ("2") — a count, since there is nothing else it
+// could be.
+const BARE_COUNT_RE = /^\d+(?:\.\d+)?$/;
+
 // How many LABEL UNITS (capsules, tablets, scoops) one dose row is (issue #2856).
-// Ingredient amounts are stated per single dose unit, so a blend taken two capsules
-// at a time contributes twice each ingredient — a question a name-only stack never
-// had to ask, because a name-derived amount IS the dose.
+// Ingredient amounts are stated per single label unit, so a blend taken two capsules
+// at a time contributes twice each ingredient — a question a name-only stack never had
+// to ask, because a name-derived amount IS the dose.
 //
-// A dose row that states a MASS or an IU quantity ("400 mg", "5000 IU") counts as ONE
-// unit: that string is the item's strength, not a count of label units, and reading
-// "400 mg" as four hundred capsules would multiply a blend's zinc by four hundred on
-// the most safety-critical number this app computes. Otherwise the leading number is
-// the count ("2 capsules" → 2, "1 cap" → 1), and anything without one — including an
-// empty amount — is one unit, the same assumption the dose strips already display.
+// THE RULE: a count only when the string STATES a count of label units. Everything
+// else is one serving. Both directions of guessing were wrong on a safety surface, and
+// the review of #2856 executed both:
 //
-// A fractional label ("1/2 tablet") reads as 1 rather than 0.5: the leading number is
-// taken as written. That errs HIGH, the direction this module errs in everywhere (see
-// the conservative-direction rule below) — a small over-count on a half dose is
-// recoverable, silently under-counting a real exceedance is not.
+//   * guessing UP from any leading number turned "10 ml" of a child's liquid
+//     multivitamin into ten servings — a false iron warning at 10x the truth;
+//   * refusing to look past a mass anywhere in the string turned "2 capsules (500 mg)"
+//     into one capsule and DROPPED a real 50 mg zinc exceedance.
+//
+// So the count word is what decides, and it is looked for anywhere in the string. A
+// pure mass or volume dose ("400 mg", "24 g", "10 ml") is ONE serving: how many
+// capsules or scoops that weighs is a fact about the product that the app does not
+// have, and inventing a scoop size to divide by would be the same class of error as
+// inventing an amount. Someone whose powder is really two scoops writes "2 scoops",
+// which this reads exactly.
+//
+// A fractional label ("1/2 tablet") reads as 1, not 0.5 or 2 — the fraction is not
+// parsed, and one serving is the cautious reading of a half dose for a risk total.
 export function doseUnitCount(amount: string | null): number {
-  if (!amount || !amount.trim()) return 1;
-  if (parseQuantity(amount)) return 1;
-  const m = amount.match(/^\s*(\d+(?:\.\d+)?)/);
-  if (!m) return 1;
-  const n = Number(m[1]);
-  return Number.isFinite(n) && n > 0 ? n : 1;
+  const raw = (amount ?? "").trim();
+  if (!raw) return 1;
+  LABEL_UNIT_COUNT_RE.lastIndex = 0;
+  for (const m of raw.matchAll(LABEL_UNIT_COUNT_RE)) {
+    if (!LABEL_UNIT_WORDS.test(m[2])) continue;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  if (BARE_COUNT_RE.test(raw)) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 1;
 }
 
 // Milligrams-per-unit for the mass units, used to convert any mass dose into a

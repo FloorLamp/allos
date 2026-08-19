@@ -1009,22 +1009,48 @@ const compositionUl = (items: StackItem[]) =>
   stackUlWarnings(items, 40, "male");
 
 describe("doseUnitCount (#2856)", () => {
-  it("reads a leading count as label units", () => {
+  it("reads a stated count of label units", () => {
     expect(doseUnitCount("1 capsule")).toBe(1);
     expect(doseUnitCount("2 capsules")).toBe(2);
     expect(doseUnitCount("2 softgels")).toBe(2);
     expect(doseUnitCount("1 scoop")).toBe(1);
+    expect(doseUnitCount("2 SCOOPS")).toBe(2);
+    // A bare number is a count; there is nothing else it could be.
+    expect(doseUnitCount("2")).toBe(2);
   });
 
-  it("reads a mass or IU strength as ONE unit, never as a count", () => {
-    // The failure this guards: "400 mg" read as four hundred capsules would multiply
-    // every ingredient by four hundred on the app's most safety-critical number.
+  it("finds the count beside a strength, whichever order it was written", () => {
+    // Review of #2856: refusing to look past a mass anywhere in the string turned a
+    // two-capsule dose into one and DROPPED a real 50 mg zinc exceedance.
+    expect(doseUnitCount("2 capsules (500 mg)")).toBe(2);
+    expect(doseUnitCount("500 mg (2 capsules)")).toBe(2);
+  });
+
+  it("reads a mass or IU strength as ONE serving, never as a count", () => {
+    // Reading "400 mg" as four hundred capsules would multiply every ingredient by
+    // four hundred on the app's most safety-critical number.
     expect(doseUnitCount("400 mg")).toBe(1);
     expect(doseUnitCount("5000 IU")).toBe(1);
     expect(doseUnitCount("2 g")).toBe(1);
+    // How many 12 g scoops "24 g" is depends on a scoop size the app does not have;
+    // someone whose powder is really two scoops writes "2 scoops".
+    expect(doseUnitCount("24 g")).toBe(1);
   });
 
-  it("treats an absent or wordless amount as one unit", () => {
+  it("reads a VOLUME as one serving, not as that many units", () => {
+    // Review of #2856: a children's liquid multivitamin dosed "10 ml" read as ten
+    // servings and raised two over-limit warnings at ten times the truth, on a child.
+    expect(doseUnitCount("10 ml")).toBe(1);
+    expect(doseUnitCount("30 drops")).toBe(1);
+    expect(doseUnitCount("1 tsp")).toBe(1);
+  });
+
+  it("never turns a fraction into a multiple", () => {
+    // The "2" of "1/2 tablet" is half a tablet, not two of them.
+    expect(doseUnitCount("1/2 tablet")).toBe(1);
+  });
+
+  it("treats an absent or wordless amount as one serving", () => {
     expect(doseUnitCount(null)).toBe(1);
     expect(doseUnitCount("")).toBe(1);
     expect(doseUnitCount("one capsule")).toBe(1);
@@ -1057,6 +1083,29 @@ describe("composition stacking (#2856)", () => {
     // The evidence line NAMES the ingredient, so the 11 mg is checkable against the
     // bottle instead of appearing from a product whose name mentions no mineral.
     expect(ulWarningEvidence(warning)).toContain("Eye Health+ (Zinc) 11 mg");
+  });
+
+  it("counts a blend dosed with a strength beside the count", () => {
+    // The dropped-warning case in full: 2 x 25 mg zinc is 50 mg against a 40 mg UL,
+    // and the whole string has to be read to see it.
+    const twoCaps = blend(
+      "Eye Health+",
+      ["2 capsules (500 mg)"],
+      [{ name: "Zinc", amount: 25, unit: "mg" }]
+    );
+    const [warning] = compositionUl([twoCaps]);
+    expect(warning.total).toBeCloseTo(50, 5);
+  });
+
+  it("does not multiply a liquid dose by its millilitres", () => {
+    // A child's liquid multivitamin: iron 10 mg per 10 ml serving, not per ml.
+    const liquid = blend(
+      "Kids Multi Liquid",
+      ["10 ml"],
+      [{ name: "Iron", amount: 10, unit: "mg" }]
+    );
+    const totals = summarizeStack([liquid], 5, "female");
+    expect(totals.find((t) => t.key === "iron")?.total).toBeCloseTo(10, 5);
   });
 
   it("multiplies ingredient amounts by the label units taken that day", () => {

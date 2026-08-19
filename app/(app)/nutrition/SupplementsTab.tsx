@@ -629,11 +629,16 @@ export default async function SupplementsTab({
   // The item stack (name + cached RxCUI(s) + active) threaded to every form for
   // the client-side create/edit interaction notice. Cached ingredient CUIs (issue
   // #279) keep a combination product matchable against ingredient-keyed concepts.
+  // Composition rides along (#2856): the notice must answer the SAME for a pair of
+  // items whichever one is being entered. Without it, typing the blend against a saved
+  // SSRI warned while typing the SSRI against the saved blend said nothing — one pair,
+  // one profile, two answers decided by the order the person happened to add them.
   const stackItems: InteractionItem[] = intakeItems.map((s) => ({
     id: s.id,
     name: s.name,
     rxcui: s.rxcui,
     rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
+    ingredients: (ingredientsBySupp.get(s.id) ?? []).map((g) => g.name),
     active: !!s.active,
   }));
 

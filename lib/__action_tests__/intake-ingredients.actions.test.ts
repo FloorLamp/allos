@@ -16,6 +16,7 @@ import {
   updateIntakeItem,
   deleteIntakeItem,
 } from "@/app/(app)/nutrition/intake-actions";
+import { loadMedicationsData } from "@/app/(app)/medications/med-data";
 import {
   getIntakeItems,
   getIntakeIngredients,
@@ -137,6 +138,68 @@ describe("the write boundary", () => {
     ).toEqual({ n: 0 });
   });
 
+  it("refuses the save when a label amount cannot be read, storing nothing", async () => {
+    // The comma case end to end. "1,000 mg" of niacin is 28x the adult upper limit;
+    // it used to be stored as a schema-valid ZERO that contributed to nothing.
+    const { profile } = seedActor();
+    const result = await addIntakeItem(
+      fd({
+        name: "Energy Blend",
+        condition: "daily",
+        ingredients: ingredientsField([
+          { name: "Vitamin C", amount: "500 mg" },
+          { name: "Astaxanthin", amount: "2,5 g" },
+        ]),
+      })
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("2,5 g");
+    // Nothing at all was written — not the item, not the readable rows beside it.
+    expect(getIntakeItems(profile.id)).toEqual([]);
+    expect(getIntakeIngredients(profile.id)).toEqual([]);
+  });
+
+  it("stores a thousands-separated label as the number the label states", async () => {
+    const { profile } = seedActor();
+    setStoredAge(profile.id, 40);
+    await addIntakeItem(
+      fd({
+        name: "Energy Blend",
+        condition: "daily",
+        doses: JSON.stringify([{ amount: "1 capsule", food_timing: "any" }]),
+        ingredients: ingredientsField([{ name: "Niacin", amount: "1,000 mg" }]),
+      })
+    );
+    expect(getIntakeIngredients(profile.id)[0].amount).toBe(1000);
+    // And it reaches the upper-limit surface, which is the point of storing it.
+    const [warning] = getDietaryLimitWarnings(profile.id);
+    expect(warning.key).toBe("niacin");
+    expect(warning.total).toBeCloseTo(1000, 5);
+  });
+
+  it("leaves stored composition alone when a form posts no ingredients field", async () => {
+    // Two forms share updateIntakeItem and only one renders the repeater. An absent
+    // field is "this form did not post a composition", never "this item has none".
+    const { profile } = seedActor();
+    await addIntakeItem(
+      fd({
+        name: "Mood Support",
+        condition: "daily",
+        ingredients: ingredientsField([
+          { name: "St. John's Wort", amount: "300 mg" },
+        ]),
+      })
+    );
+    const id = getIntakeItems(profile.id)[0].id;
+    await updateIntakeItem(
+      fd({ id: String(id), name: "Mood Support", condition: "daily" })
+    );
+    expect(getIntakeIngredients(profile.id).map((r) => r.name)).toEqual([
+      "St. John's Wort",
+    ]);
+  });
+
   it("reads only this profile's composition", async () => {
     const { profile } = seedActor();
     const other = createProfile("Second person");
@@ -188,6 +251,26 @@ describe("what the engines now see", () => {
       "Eye Health+",
       "Zinc",
     ]);
+  });
+
+  it("hands the saved stack its composition, so the form notice is symmetric", async () => {
+    // Review of #2856: composition reached the CANDIDATE being typed but not the
+    // saved items it was compared against, so the same two items warned in one entry
+    // order and were silent in the other. The pages that build the form's stack must
+    // carry it.
+    const { profile } = seedActor();
+    await addIntakeItem(
+      fd({
+        name: "Mood Support",
+        condition: "daily",
+        ingredients: ingredientsField([
+          { name: "St. John's Wort", amount: "300 mg" },
+        ]),
+      })
+    );
+    const { stackItems } = loadMedicationsData(profile.id);
+    const blend = stackItems.find((i) => i.name === "Mood Support");
+    expect(blend?.ingredients).toEqual(["St. John's Wort"]);
   });
 
   it("catches St. John's Wort inside a blend against an SSRI", async () => {

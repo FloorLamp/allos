@@ -368,6 +368,23 @@ describe("blend composition (#2856)", () => {
     expect(hits[0].severity).toBe("major");
   });
 
+  it("answers the same whichever of the two is being entered", () => {
+    // Review of #2856: composition reached the CANDIDATE but not the saved stack, so
+    // typing the blend against a saved SSRI warned while typing the SSRI against the
+    // saved blend said nothing — one pair, one profile, two answers decided by the
+    // order the person happened to add them.
+    const enteringBlend = interactionsForCandidate(
+      { name: "Mood Support", rxcui: null, ingredients: ["St. John's Wort"] },
+      [ssri]
+    );
+    const enteringSsri = interactionsForCandidate(
+      { name: "Sertraline", rxcui: null },
+      [blend(["St. John's Wort"])]
+    );
+    expect(enteringSsri).toHaveLength(1);
+    expect(enteringSsri[0].severity).toBe(enteringBlend[0].severity);
+  });
+
   it("does not join ingredient names into phrases neither one carries", () => {
     // The synonym test is contiguous-token containment, so concatenating rows would
     // mint "st johns wort" out of two innocent ones. Each string is matched alone.
