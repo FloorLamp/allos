@@ -10,6 +10,12 @@
           "issues": []
         },
         {
+          "pr": 3099,
+          "title": "Adding, editing and finishing an activity all happen in one workspace, with the activity page as the full record",
+          "kind": "feature",
+          "issues": []
+        },
+        {
           "pr": 3105,
           "title": "Two dose reminders answered minutes apart keep their own time chips, each correcting only its own dose",
           "kind": "fix",
@@ -70,10 +76,28 @@
           "issues": [2724, 3108, 3120]
         },
         {
+          "pr": 3144,
+          "title": "A supplement name shortens only when the short form cannot be confused with something else on your shelf",
+          "kind": "fix",
+          "issues": [2797, 2858]
+        },
+        {
           "pr": 3147,
           "title": "The biological-age inputs card says which draw it is from, and a stranded result flag is re-decided",
           "kind": "fix",
           "issues": [3050, 2937]
+        },
+        {
+          "pr": 3149,
+          "title": "Supplements can list what is in them, and those ingredient amounts count toward your daily limits",
+          "kind": "feature",
+          "issues": [2856]
+        },
+        {
+          "pr": 3165,
+          "title": "Stool-panel labs get curated ranges, constipation is loggable, and a one-tap Bristol scale records stool form",
+          "kind": "feature",
+          "issues": [2787, 2783, 2785]
         }
       ]
     },
