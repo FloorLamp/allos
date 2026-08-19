@@ -135,10 +135,12 @@ describe("import adopts the source-supplied RxCUI (#3070)", () => {
     expect(getMedicationsMissingRxcuiCount(p)).toBe(1);
   });
 
-  it("a renewal fills an existing UNCODED med's rxcui", () => {
+  it("a renewal fills an existing UNCODED med's rxcui — and the data-quality gap drops by one", () => {
     const p = newProfile("RxcuiRenewFill");
     const manualId = seedManualMed(p, "Albuterol", null);
+    expect(getMedicationsMissingRxcuiCount(p)).toBe(1); // the "confirm 1 match" gap
     importCcd(p, newDocument(p), ALBUTEROL_CCD);
+    expect(getMedicationsMissingRxcuiCount(p)).toBe(0); // newly coded — gap gone
 
     // Renewal, not a new item — and the previously uncoded med now carries the
     // source-supplied code.
