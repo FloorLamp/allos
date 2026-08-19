@@ -28,6 +28,7 @@ import { reconciledFlag, plottableReadingValue } from "../reference-range";
 import {
   computeDerivedReadings,
   derivedInputCanonicalNames,
+  derivedInputSlots,
   presentInputKeysFor,
   derivedInputUnitsFor,
   DERIVED_NAMES,
@@ -38,7 +39,11 @@ import {
   type PhenoAgeReferenceResolver,
 } from "../derived-biomarkers";
 import { convertToCanonical } from "../unit-conversions";
-import { PHENOAGE_INPUT_NAMES, phenoAgeReferenceValue } from "../bio-age";
+import {
+  PHENOAGE_INPUT_NAMES,
+  phenoAgeReferenceValue,
+  type BioAgePanel,
+} from "../bio-age";
 import type { ClinicalObservation } from "../types";
 
 // The numeric an arithmetic index can consume from a stored reading, WITH its
@@ -159,6 +164,9 @@ const getDerivedComputation = cache(function getDerivedComputation(
   // the same slot while accepting different names, so a slot's presence is only an
   // answer once you say which index is asking.
   presentInputsByIndex: Map<DerivedName, Set<string>>;
+  // Which of an index's input SLOTS each DRAW DATE carries (#3050) — the per-draw
+  // twin of presentInputsByIndex, keyed index → date → filled slot keys.
+  inputSlotsByIndexAndDate: Map<DerivedName, Map<string, Set<string>>>;
   sex: ReturnType<typeof getProfileSex>;
   status: ReturnType<typeof getProfileReproductiveStatus>;
 } {
@@ -204,6 +212,31 @@ const getDerivedComputation = cache(function getDerivedComputation(
     DERIVED_NAMES.map((n) => [n, presentInputKeysFor(n, hasReading)])
   );
 
+  // The same question asked PER DRAW DATE (#3050): which of an index's slots does the
+  // panel drawn on this date carry? `presentInputsByIndex` answers "ever" — the right
+  // question for "which analytes do I still need to go and get" — and cannot answer
+  // "did this morning's panel complete the model", because a panel one analyte short
+  // produces no reading at all and so appears nowhere in `readings`. Built from the
+  // series already loaded above (one pass, no extra read), and keyed by index for the
+  // same reason presence is (#2372): a slot is only filled on behalf of the index that
+  // accepts that spelling.
+  const inputSlotsByIndexAndDate = new Map<
+    DerivedName,
+    Map<string, Set<string>>
+  >(
+    DERIVED_NAMES.map((n) => {
+      const byDate = new Map<string, Set<string>>();
+      for (const slot of derivedInputSlots(n))
+        for (const accepted of slot.accepts)
+          for (const r of seriesByCanonical.get(accepted) ?? []) {
+            const filled = byDate.get(r.date) ?? new Set<string>();
+            filled.add(slot.key);
+            byDate.set(r.date, filled);
+          }
+      return [n, byDate];
+    })
+  );
+
   // Dates already covered by a stored reading of each derived analyte — skip them
   // (a lab reporting the index directly wins its draw over a computed one).
   const storedDatesByName: Partial<Record<DerivedName, Set<string>>> = {};
@@ -224,7 +257,13 @@ const getDerivedComputation = cache(function getDerivedComputation(
       phenoAgeReference: phenoAgeReferenceResolver(profileId, sex, status),
     }
   );
-  return { readings, presentInputsByIndex, sex, status };
+  return {
+    readings,
+    presentInputsByIndex,
+    inputSlotsByIndexAndDate,
+    sex,
+    status,
+  };
 });
 
 export function getDerivedBiomarkerReadings(
@@ -380,8 +419,10 @@ export interface BioAgeDraw {
 export function getBioAgeReadings(profileId: number): {
   draws: BioAgeDraw[];
   presentInputs: string[];
+  panels: BioAgePanel[];
 } {
-  const { readings, presentInputsByIndex } = getDerivedComputation(profileId);
+  const { readings, presentInputsByIndex, inputSlotsByIndexAndDate } =
+    getDerivedComputation(profileId);
   const draws: BioAgeDraw[] = readings
     .filter((r) => r.name === "PhenoAge")
     .map((r) => ({
@@ -398,8 +439,59 @@ export function getBioAgeReadings(profileId: number): {
   // here and does not silently count for HOMA-IR beside it.
   const phenoPresent =
     presentInputsByIndex.get("PhenoAge") ?? new Set<string>();
+  // Every DATED panel that carries at least one of the nine, oldest-first, with what
+  // it carried and what it lacked (#3050). `draws` can only speak for the panels that
+  // COMPLETED — a panel one analyte short computes nothing and is absent from it
+  // entirely — so this is the only thing that can say "your July re-draw missed
+  // hs-CRP, which is why the number is still June's". Same computation, no extra read.
+  const slotsByDate =
+    inputSlotsByIndexAndDate.get("PhenoAge") ?? new Map<string, Set<string>>();
+  const panels: BioAgePanel[] = [...slotsByDate.keys()].sort().map((date) => {
+    const filled = slotsByDate.get(date) ?? new Set<string>();
+    return {
+      date,
+      present: PHENOAGE_INPUT_NAMES.filter((n) => filled.has(n)),
+      missing: PHENOAGE_INPUT_NAMES.filter((n) => !filled.has(n)),
+    };
+  });
   return {
     draws,
     presentInputs: PHENOAGE_INPUT_NAMES.filter((n) => phenoPresent.has(n)),
+    panels,
+  };
+}
+
+// A draw reduced to WHEN it was drawn. Deliberately not `Pick<BioAgeDraw, "date">`:
+// the point is a shape that cannot grow back into the draw, so it is written out.
+export interface BioAgeDrawDate {
+  date: string;
+}
+
+/**
+ * The CATALOG half of the bio-age gather (#3050), for the Results card — the same
+ * getBioAgeReadings computation with the ESTIMATE PROJECTED OUT.
+ *
+ * #2367 put the number, the delta, the pace and the per-input effects on /longevity
+ * and left this page the question of which analytes you have. Handing the card the
+ * full `BioAgeDraw[]` left the whole hero in scope: a source scan over the estimate's
+ * vocabulary pins the SPELLING, and ordinary destructuring — or `latest["bioAge"]` —
+ * walks straight past it, which is how a review demonstrated the card rendering the
+ * estimate, the calendar age and the delta with every guard green.
+ *
+ * So the split is a TYPE, not a convention: what comes back is draw DATES, the
+ * present inputs and the dated panels, and there is no `bioAge` on any of them to
+ * render. Same cache()d computation, no second gather — the same reasoning already
+ * applied one level in, where `bioAgeInputsStatus` takes `readonly {date}[]`.
+ */
+export function getBioAgeInputCatalog(profileId: number): {
+  drawDates: BioAgeDrawDate[];
+  presentInputs: string[];
+  panels: BioAgePanel[];
+} {
+  const { draws, presentInputs, panels } = getBioAgeReadings(profileId);
+  return {
+    drawDates: draws.map((d) => ({ date: d.date })),
+    presentInputs,
+    panels,
   };
 }
