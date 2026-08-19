@@ -108,7 +108,7 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
   ).toHaveAttribute("aria-label", /Show or hide what counts for/);
 
   const benchRow = pushCard.getByTestId("training-log-strength-row").filter({
-    has: pushCard.getByRole("link", {
+    has: page.getByRole("link", {
       name: "Barbell Bench Press",
       exact: true,
     }),

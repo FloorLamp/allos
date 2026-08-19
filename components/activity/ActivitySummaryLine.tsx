@@ -9,7 +9,18 @@ const INTENSITY_DOT: Record<string, string> = {
   hard: "bg-rose-500 dark:bg-rose-400",
 };
 
+type SummaryMetric =
+  | "time"
+  | "duration"
+  | "heartRate"
+  | "relativeEffort"
+  | "distance"
+  | "speed"
+  | "calories"
+  | "intensity";
+
 interface SummaryItem {
+  key: SummaryMetric;
   label: string;
   value: string;
   intensity?: string | null;
@@ -17,6 +28,7 @@ interface SummaryItem {
   color?: string;
   title?: string;
   tooltip?: string;
+  detail?: React.ReactNode;
 }
 
 function summaryTestId(item: SummaryItem): string | undefined {
@@ -86,6 +98,7 @@ export default function ActivitySummaryLine({
   heartRateZone,
   density = "compact",
   testId = "activity-summary",
+  metricDetails,
 }: {
   timeText: string | null;
   durationText: string | null;
@@ -99,6 +112,7 @@ export default function ActivitySummaryLine({
   heartRateZone?: ZoneId | null;
   density?: "compact" | "detail";
   testId?: string;
+  metricDetails?: Partial<Record<SummaryMetric, React.ReactNode>>;
 }) {
   const intensityKey = intensity?.toLowerCase() ?? null;
   const heartRate = zonePresentation(heartRateZone);
@@ -107,34 +121,75 @@ export default function ActivitySummaryLine({
       ? relativeEffortPresentation(relativeEffort, relativeEffortProvider)
       : null;
   const items: (SummaryItem | null)[] = [
-    timeText ? { label: "Time", value: timeText } : null,
-    durationText ? { label: "Duration", value: durationText } : null,
+    timeText
+      ? {
+          key: "time",
+          label: "Time",
+          value: timeText,
+          detail: metricDetails?.time,
+        }
+      : null,
+    durationText
+      ? {
+          key: "duration",
+          label: "Duration",
+          value: durationText,
+          detail: metricDetails?.duration,
+        }
+      : null,
     heartRateText
       ? {
+          key: "heartRate",
           label: "Heart rate",
           value: heartRateText,
           heartRate: true,
           color: heartRate?.color,
           title: heartRate?.title,
+          detail: metricDetails?.heartRate,
         }
       : null,
     relativeEffortItem
       ? {
+          key: "relativeEffort",
           label: "Effort",
           value: relativeEffortItem.label,
           tooltip: relativeEffortItem.help,
+          detail: metricDetails?.relativeEffort,
         }
       : null,
-    distanceText ? { label: "Distance", value: distanceText } : null,
-    speedText ? { label: "Average speed", value: speedText } : null,
-    calorieText ? { label: "Calories", value: calorieText } : null,
+    distanceText
+      ? {
+          key: "distance",
+          label: "Distance",
+          value: distanceText,
+          detail: metricDetails?.distance,
+        }
+      : null,
+    speedText
+      ? {
+          key: "speed",
+          label: "Average speed",
+          value: speedText,
+          detail: metricDetails?.speed,
+        }
+      : null,
+    calorieText
+      ? {
+          key: "calories",
+          label: "Calories",
+          value: calorieText,
+          detail: metricDetails?.calories,
+        }
+      : null,
     intensity
       ? {
+          key: "intensity",
           label: "Intensity",
           value: intensity.replace(/^\w/, (character) =>
             character.toUpperCase()
           ),
           intensity: intensityKey,
+          detail: metricDetails?.intensity,
         }
       : null,
   ];
@@ -149,9 +204,9 @@ export default function ActivitySummaryLine({
         data-density={density}
         className="grid grid-cols-2 gap-x-5 gap-y-4 border-y border-black/5 py-4 sm:grid-cols-4 dark:border-white/10"
       >
-        {summary.map((item, index) => (
+        {summary.map((item) => (
           <div
-            key={index}
+            key={item.key}
             data-testid={summaryTestId(item)}
             title={item.title}
             className="flex min-w-0 flex-col items-start gap-1"
@@ -160,6 +215,11 @@ export default function ActivitySummaryLine({
             <dd>
               <SummaryValue item={item} detail />
             </dd>
+            {item.detail ? (
+              <dd className="text-xs leading-4 text-slate-500 dark:text-slate-400">
+                {item.detail}
+              </dd>
+            ) : null}
           </div>
         ))}
       </dl>
@@ -174,7 +234,7 @@ export default function ActivitySummaryLine({
     >
       {summary.map((item, index) => (
         <span
-          key={index}
+          key={item.key}
           data-testid={summaryTestId(item)}
           title={item.title}
           className="inline-flex items-center whitespace-nowrap"

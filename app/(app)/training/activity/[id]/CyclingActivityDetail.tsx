@@ -477,6 +477,11 @@ export default async function CyclingActivityDetail(props: {
                     heartRateZone={base.card.activity.heart_rate_zone}
                     density="detail"
                     testId="ride-summary-line"
+                    metricDetails={{
+                      speed: summaryStatSub("speed"),
+                      heartRate: summaryStatSub("heart_rate"),
+                      relativeEffort: summaryStatSub("relative_effort"),
+                    }}
                   />
                 </div>
               ) : null}
