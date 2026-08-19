@@ -291,6 +291,26 @@ test.describe("activity workspace: drag minimizes", () => {
 
       await page.getByTestId("workout-dock-open").click();
       await expect(page.getByTestId("live-workout-panel")).toBeVisible();
+
+      // AT ITS RESTING POSITION, not where the drag left it (#3172 F4).
+      // `commitSettle: "rest"` exists for exactly this: minimizing HIDES this
+      // panel rather than unmounting it, so the drag's inline transform would
+      // otherwise still be on the element when the dock shows it again. The
+      // default settle deliberately leaves a panel that was sent AWAY away
+      // ("until the consumer unmounts it") — which this consumer never does, so
+      // the restored workspace would arrive translated 240px down the screen.
+      // toBeVisible() cannot see that; a non-empty bounding box off the bottom
+      // of the viewport is still "visible".
+      const panel = page.getByTestId("activity-overlay-panel");
+      await expect
+        .poll(
+          async () =>
+            panel.evaluate(
+              (element) => (element as HTMLElement).style.transform
+            ),
+          { message: "a re-opened workspace must carry no drag transform" }
+        )
+        .toBe("");
     } finally {
       await page.context().close();
     }

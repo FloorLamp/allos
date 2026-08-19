@@ -692,6 +692,19 @@ test("cycling-family activities reuse rich analysis with indoor-aware surfaces",
   await expect(page.getByTestId("ride-summary")).not.toContainText(
     "Temperature"
   );
+  // The SECTION, not just the summary line (#3172 F3). `hasCourse` gates both a
+  // nav entry and the section itself, and what survived here pinned only the
+  // summary — so an indoor Spinning session rendering an empty route map and a
+  // segments block would have shipped green.
+  await expect(page.getByTestId("activity-section-course")).toHaveCount(0);
+  // The nav ENTRY too (`hasCourse` gates both). Counted rather than read as
+  // text, because an indoor session may not clear the three-section bar at all
+  // and a not.toContainText against a missing nav fails for the wrong reason.
+  await expect(
+    page.locator(
+      '[data-testid="activity-section-navigation"] a[href="#course"]'
+    )
+  ).toHaveCount(0);
   await expect(page.getByTestId("ride-comparison")).toContainText(
     "1 similar session"
   );
@@ -798,4 +811,42 @@ test("canonical activity navigation stays compact on a ride", async ({
       .getByTestId("ride-recorded-measurements")
       .evaluate((element) => getComputedStyle(element).borderTopWidth)
   ).toBe("0px");
+});
+
+// ActivityDetailSectionNav had NO coverage anywhere in the repo (#3172 F2): the
+// unification changed the section set from Overview/... to Effort/Course/Muscles/
+// Details, and the assertions were deleted rather than updated. Two things were
+// left free to regress silently — the href/id agreement every in-page anchor
+// depends on, and the "at least three sections" gate.
+test("the activity section nav links resolve to the sections they name", async ({
+  page,
+}) => {
+  await page.goto("/training?tab=log");
+  await openRideRecord(page, "Strava morning ride");
+
+  const nav = page.getByTestId("activity-section-navigation");
+  await expect(nav).toBeVisible();
+  const links = nav.getByRole("link");
+  // The gate: the nav renders only past three optional sections, so a ride that
+  // shows it must have at least that many.
+  const count = await links.count();
+  expect(count).toBeGreaterThanOrEqual(3);
+
+  const targets: string[] = [];
+  for (let index = 0; index < count; index++) {
+    const href = await links.nth(index).getAttribute("href");
+    expect(href).toMatch(/^#[a-z]+$/);
+    targets.push(href!.slice(1));
+  }
+  // An outdoor ride is the case that HAS a course, which is the positive half of
+  // the indoor assertion above.
+  expect(targets).toContain("course");
+
+  for (const id of targets) {
+    // THE ASSERTION: every anchor lands on a real section. Renaming a section id
+    // without the nav breaks every in-page link on the page, and nothing else in
+    // the repo would notice.
+    await expect(page.locator(`section#${id}`)).toHaveCount(1);
+    await expect(page.getByTestId(`activity-section-${id}`)).toHaveCount(1);
+  }
 });
