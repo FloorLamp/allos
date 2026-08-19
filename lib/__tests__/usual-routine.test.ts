@@ -78,11 +78,13 @@ describe("namesPhrase", () => {
 });
 
 describe("usualRoutinePhrase — the label names EVERY write", () => {
+  const dose = (name: string, stack: string | null = null) => ({ name, stack });
+
   it("keeps the seam between servings and dose confirms visible", () => {
     expect(
       usualRoutinePhrase(
         ["Fermented foods", "Berries"],
-        ["Creatine", "Collagen", "B-complex"]
+        [dose("Creatine"), dose("Collagen"), dose("B-complex")]
       )
     ).toBe("Fermented foods and Berries + Creatine, Collagen and B-complex");
   });
@@ -91,6 +93,52 @@ describe("usualRoutinePhrase — the label names EVERY write", () => {
     expect(usualRoutinePhrase(["Fermented foods", "Berries"], [])).toBe(
       "Fermented foods and Berries"
     );
+  });
+
+  // #3098: when the whole rider shares one non-null stack, the dose half takes
+  // the profile's OWN name for exactly those doses, count kept checkable.
+  it("compresses an all-one-stack rider to the stack's name and count", () => {
+    expect(
+      usualRoutinePhrase(
+        ["Fermented foods", "Berries"],
+        [
+          dose("Creatine", "Sleep stack"),
+          dose("Collagen", "Sleep stack"),
+          dose("Magnesium", "Sleep stack"),
+          dose("Ashwagandha", "Sleep stack"),
+        ]
+      )
+    ).toBe("Fermented foods and Berries + Sleep stack (4)");
+  });
+
+  it("keeps the enumeration for a mixed rider — two stacks, or any unstacked dose", () => {
+    expect(
+      usualRoutinePhrase(
+        ["Berries"],
+        [dose("Creatine", "Sleep stack"), dose("Collagen", "AM stack")]
+      )
+    ).toBe("Berries + Creatine and Collagen");
+    expect(
+      usualRoutinePhrase(
+        ["Berries"],
+        [dose("Creatine", "Sleep stack"), dose("Collagen")]
+      )
+    ).toBe("Berries + Creatine and Collagen");
+  });
+
+  it("never renames a single dose to its stack — one member is not the group", () => {
+    expect(
+      usualRoutinePhrase(["Berries"], [dose("Creatine", "Sleep stack")])
+    ).toBe("Berries + Creatine");
+  });
+
+  it("treats a blank stack label as unstacked", () => {
+    expect(
+      usualRoutinePhrase(
+        ["Berries"],
+        [dose("Creatine", "  "), dose("Collagen", "  ")]
+      )
+    ).toBe("Berries + Creatine and Collagen");
   });
 });
 

@@ -87,7 +87,9 @@ import { DISMISS_ROW_ATTR } from "./dismiss-row";
 import FoldSummary from "./FoldSummary";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import FollowUpSettleControls from "@/components/FollowUpSettleControls";
+import PreventiveReviewControls from "@/components/PreventiveReviewControls";
 import ExplainFinding from "@/components/ExplainFinding";
+import { preventiveReviewQuestion } from "@/lib/preventive-review";
 import {
   markTaken,
   snoozeItem,
@@ -98,6 +100,8 @@ import {
   overridePreventive,
   resolveFollowUp,
   settleFollowUp,
+  confirmPreventiveRecord,
+  dismissPreventiveRecord,
   dismissMultiviewHintAction,
 } from "./actions";
 import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
@@ -1406,6 +1410,37 @@ function Row({
           </div>
         </div>
       )}
+      {/* Preventive review candidates (issue #3025), BESIDE the due item they
+          could resolve: each valueless report that matched exactly this rule
+          asks its confirm-the-date / dismiss question. Write-gated like the
+          row's other item-targeted actions; the candidate never bands, never
+          counts, and never reaches a send. */}
+      {actionVisible &&
+        item.preventiveReview != null &&
+        item.preventiveReview.length > 0 && (
+          <div className="flex basis-full flex-col gap-1.5 pl-8">
+            {item.preventiveReview.map((offer) => (
+              <PreventiveReviewControls
+                key={`${offer.recordId}:${offer.ruleKey}`}
+                confirmAction={async (fd) => {
+                  "use server";
+                  return confirmPreventiveRecord(fd);
+                }}
+                dismissAction={async (fd) => {
+                  "use server";
+                  return dismissPreventiveRecord(fd);
+                }}
+                recordId={offer.recordId}
+                ruleKey={offer.ruleKey}
+                recordName={offer.recordName}
+                recordDate={offer.recordDate}
+                question={preventiveReviewQuestion(offer.ruleKey)}
+                today={now}
+                profileId={item.profileId}
+              />
+            ))}
+          </div>
+        )}
     </div>
   );
 }

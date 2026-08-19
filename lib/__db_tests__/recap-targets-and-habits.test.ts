@@ -99,7 +99,7 @@ describe("the recap reports the closed week's target verdicts (#2395)", () => {
     const recap = buildRecap(gatherRecapInput(pid, "kg", "week", true));
 
     const line = recap.lines.find((l) => l.key === "targets")!;
-    expect(line.value).toBe("1 of 2 targets met");
+    expect(line.value).toBe("1 of 2 met");
     expect(recapLineAnnotation(line)).toBe("short on Back");
 
     // The count STAYS (#2395: a count of what happened and a verdict against what was
@@ -121,7 +121,7 @@ describe("the recap reports the closed week's target verdicts (#2395)", () => {
 
     const recap = buildRecap(gatherRecapInput(pid, "kg", "week", true));
     const line = recap.lines.find((l) => l.key === "targets")!;
-    expect(line.value).toBe("0 of 1 target met");
+    expect(line.value).toBe("0 of 1 met");
     expect(recapLineAnnotation(line)).toBe("short on Cardio");
   });
 
@@ -161,7 +161,7 @@ describe("the recap reports the closed week's target verdicts (#2395)", () => {
     const recap = buildRecap(gatherRecapInput(pid, "kg", "week", true));
     const line = recap.lines.find((l) => l.key === "targets")!;
     // The head counts FLOORS; the cap is stated in its own vocabulary beside them.
-    expect(line.value).toBe("1 of 2 targets met");
+    expect(line.value).toBe("1 of 2 met");
     expect(recapLineAnnotation(line)).toBe(
       "short on Back · over the Alcohol cap"
     );
@@ -201,7 +201,7 @@ describe("the recap reports the closed week's target verdicts (#2395)", () => {
     logActivity(pid, dayBack(pid, 4), "cardio");
     const passed = buildRecap(gatherRecapInput(pid, "kg", "week", true));
     const line = passed.lines.find((l) => l.key === "targets")!;
-    expect(line.value).toBe("1 of 1 target met");
+    expect(line.value).toBe("1 of 1 met");
     expect(recapLineAnnotation(line)).toBe("past the weekly maximum on Cardio");
   });
 });

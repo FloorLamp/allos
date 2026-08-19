@@ -1,3 +1,6 @@
+import { fmtWeight } from "./units";
+import type { WeightUnit } from "./settings";
+
 export type MuscleRegion =
   "Chest" | "Back" | "Shoulders" | "Arms" | "Legs" | "Glutes" | "Core";
 
@@ -1160,6 +1163,34 @@ export function loadContextLabel(
   equipmentLabel: string | null | undefined
 ): string {
   return equipmentLabel ? `${exercise} (${equipmentLabel})` : exercise;
+}
+
+/**
+ * The SET a strength record was performed with, as a clause — "at 120 kg × 5",
+ * "at bodyweight × 12", "top set at 140 kg" — in the reader's weight unit (#3033).
+ *
+ * ONE phrasing for every surface that states a record as performed: the PR finding
+ * (`prToFinding`) and the recap's PR line render this same clause, so the
+ * celebration and the summary can never spell one lift's record two ways. The three
+ * cases are the record model's own: an e1RM-kind record is a weight × reps set, a
+ * bodyweight lift's load is the body (reps alone), and a top-weight record carries
+ * no rep count to claim — rendering it as a set would invent one.
+ */
+export function prSetClause(
+  pr: {
+    kind: "1rm" | "weight";
+    weightKg: number;
+    reps: number;
+    bodyweight: boolean;
+  },
+  weightUnit: WeightUnit
+): string {
+  if (pr.kind === "weight") {
+    return `top set at ${fmtWeight(pr.weightKg, weightUnit)}`;
+  }
+  return pr.bodyweight
+    ? `at bodyweight × ${pr.reps}`
+    : `at ${fmtWeight(pr.weightKg, weightUnit)} × ${pr.reps}`;
 }
 
 /**

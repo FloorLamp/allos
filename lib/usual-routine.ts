@@ -54,6 +54,9 @@ export interface UsualRoutineDose {
   // The amount/product line beside the name, already formatted by the gather — the
   // same string the reminder keyboards show, so the two surfaces name a dose alike.
   detail: string | null;
+  // The item's stack label (#3098) — the profile's OWN name for a group taken
+  // together. Feeds the label compression below; null/absent for an unstacked item.
+  stack?: string | null;
 }
 
 // What one tap would write, both halves. Only ever built when the food half stands.
@@ -91,20 +94,42 @@ export function namesPhrase(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+// The dose half of the label, as the phrase says it (#3098). When EVERY rider dose
+// (two or more) shares one non-null stack, the enumeration compresses to the
+// profile's OWN name for exactly those doses — "Sleep stack (4)" — with the count
+// keeping the promise checkable. Mixed riders (two stacks, any unstacked dose) and
+// single-dose riders keep the full enumeration: a one-dose rider renamed to its
+// stack would name the group while writing one member, which the label-is-a-promise
+// doctrine forbids.
+function dosesPhrase(
+  doses: readonly Pick<UsualRoutineDose, "name" | "stack">[]
+): string {
+  const stacks = new Set(doses.map((d) => d.stack?.trim() || null));
+  const [only] = stacks;
+  if (doses.length >= 2 && stacks.size === 1 && only) {
+    return `${only} (${doses.length})`;
+  }
+  return namesPhrase(doses.map((d) => d.name));
+}
+
 // The whole label, both halves, in one sentence: "fermented and berries + creatine,
-// collagen and B-complex". The `+` is the seam between two DIFFERENT kinds of write —
-// servings and dose confirms — and keeping it visible is what stops the sentence from
-// reading as one undifferentiated list of five things.
+// collagen and B-complex" — or, when the rider is exactly one whole stack,
+// "fermented and berries + Sleep stack (4)" (#3098). The `+` is the seam between two
+// DIFFERENT kinds of write — servings and dose confirms — and keeping it visible is
+// what stops the sentence from reading as one undifferentiated list of five things.
 //
-// Pure and shared so the dashboard control, its accessible name and the Telegram
-// button (#2460) all promise the same writes in the same words.
+// Pure and shared so the dashboard control, its accessible name and any chat
+// surface (#2460) all promise the same writes in the same words — the compression
+// lives HERE so no surface can compress differently. The answer text
+// (`usualRoutineAnswerText`) is untouched: what was actually written is still
+// reported dose by dose, partial truths included.
 export function usualRoutinePhrase(
   foodNames: readonly string[],
-  doseNames: readonly string[]
+  doses: readonly Pick<UsualRoutineDose, "name" | "stack">[]
 ): string {
   const food = namesPhrase(foodNames);
-  if (doseNames.length === 0) return food;
-  return `${food} + ${namesPhrase(doseNames)}`;
+  if (doses.length === 0) return food;
+  return `${food} + ${dosesPhrase(doses)}`;
 }
 
 // WHAT THE TAP ACTUALLY DID, in one sentence — the shared answer for the dashboard

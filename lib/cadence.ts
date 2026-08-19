@@ -416,7 +416,7 @@ function namedList(labels: readonly string[]): string {
 const plural = (n: number, word: string): string =>
   `${word}${n === 1 ? "" : "s"}`;
 
-// The closed week's rollup: "4 of 5 targets met" with the laggards named, and the cap
+// The closed week's rollup: "4 of 5 met" with the laggards named, and the cap
 // tenants stated in their own vocabulary. Null for a profile with no targets.
 export function cadenceWeekVerdictLine(
   entries: readonly CadenceTargetVerdict[]
@@ -431,14 +431,16 @@ export function cadenceWeekVerdictLine(
   const heldCaps = caps.filter((e) => e.verdict !== "over-cap");
 
   // The head counts whichever partition the profile actually has. A cap-only profile
-  // gets a cap-only head: rolling its caps into a "targets met" count would state a
+  // gets a cap-only head: rolling its caps into a floor-met count would state a
   // floor's success condition over a scope that has none.
+  //
+  // The floors head deliberately does not say the word "target" (#3033): this line
+  // renders under the recap's "Targets" label, and "Targets: 6 of 7 targets met"
+  // printed the label's word inside its own value. The caps head keeps its own noun
+  // — "weekly caps held" is not the label's word.
   const value =
     floors.length > 0
-      ? `${floors.length - short.length} of ${floors.length} ${plural(
-          floors.length,
-          "target"
-        )} met`
+      ? `${floors.length - short.length} of ${floors.length} met`
       : `${heldCaps.length} of ${caps.length} weekly ${plural(
           caps.length,
           "cap"

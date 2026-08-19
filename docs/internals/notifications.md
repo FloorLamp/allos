@@ -1857,7 +1857,8 @@ that merely still _works_ at a longer scale is not admitted.
 added under that same test, and each names the one scale its fact exists at.
 
 - `targets` — the closed week's **verdict** against the frequency targets the
-  profile declared: "4 of 5 targets met — short on Back". Week-only, because a
+  profile declared: "Targets: 4 of 5 met — short on Back" (#3033 dropped the
+  head's repeat of the label's own word). Week-only, because a
   verdict is a week fact by definition: at day scale only PACE exists (which the
   morning digest already reports, in the same rollup grammar), and at month scale
   it becomes a distribution. The verdict is read from the cadence ledger and never
@@ -1888,7 +1889,7 @@ condition applied to a scope that has none.
 
 **A bare failure is not a message.** Target verdicts and cap records are
 deliberately NOT evidence in the recap's emptiness test: a period with nothing else
-in it stays empty, so "0 of 2 targets met" can never be the whole of a send on a
+in it stays empty, so "0 of 2 met" can never be the whole of a send on a
 week someone spent ill, travelling or deliberately resting. The period's food
 habits ARE evidence — that is #2396's ruling (a profile that only logs food has not
 had an empty period) reaching month scale, where the weekly coverage line does not

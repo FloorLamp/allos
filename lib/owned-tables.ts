@@ -60,6 +60,11 @@ export const OWNED_TABLES = [
   "immunization_overrides",
   "preventive_events",
   "preventive_overrides",
+  // Preventive review decisions (#3025). Ordered BEFORE medical_records: its
+  // medical_record_id FK cascades on delete, but deleteProfile clears by
+  // profile_id explicitly, and clearing the child first keeps that sweep
+  // order-safe regardless of the cascade.
+  "preventive_record_decisions",
   "goals",
   "medical_records",
   // Structured genomic variants (#709). Ordered BEFORE medical_documents so

@@ -1,6 +1,7 @@
 import type { UpcomingItem } from "../upcoming";
 import { bandForItem } from "../upcoming";
 import { itemSuppressionPolicy } from "../upcoming-suppress";
+import { preventiveReviewFactKey } from "../preventive-review";
 import { actionCandidate, statementCandidate } from "./candidate";
 import type {
   DashboardCandidate,
@@ -74,5 +75,30 @@ export function attentionCandidates(
           obligation: attentionObligation(item, setup),
         })
       : statementCandidate(common);
+  });
+}
+
+// A preventive REVIEW CANDIDATE (#3025): one dashboard fact per open
+// record/rule candidate riding on a due preventive item, keyed
+// `preventive-review:<recordId>:<ruleKey>`. Structurally BARRED from the Now
+// lane: every rank reason is false and the obligation is "may", so nowScore is
+// null in rankDashboardCandidates and the fact can only land in the exhaustive
+// Everything lane — a suggestion the person goes looking for, never an
+// attention claim, never a send.
+export function preventiveReviewCandidate(
+  subject: DashboardSubject,
+  offer: { recordId: number; ruleKey: string },
+  sourceOrder: number
+): DashboardCandidate {
+  const key = preventiveReviewFactKey(offer);
+  return actionCandidate({
+    candidateId: key,
+    factKey: key,
+    groupKey: "attention.preventive-review",
+    subject,
+    applicable: true,
+    relevance: { kind: "event" },
+    obligation: "may",
+    sourceOrder,
   });
 }

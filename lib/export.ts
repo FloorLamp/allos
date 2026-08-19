@@ -1232,6 +1232,16 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM preventive_overrides WHERE profile_id = ?`,
   }),
   tableDataset({
+    key: "preventive_record_decisions",
+    label: "Screening review decisions",
+    table: "preventive_record_decisions",
+    columns: ["medical_record_id", "rule_key", "decision", "confirmed_date"],
+    select: `SELECT id, medical_record_id, rule_key, decision, confirmed_date
+       FROM preventive_record_decisions WHERE profile_id = ?
+       ORDER BY rule_key, medical_record_id`,
+    countSql: `SELECT COUNT(*) AS n FROM preventive_record_decisions WHERE profile_id = ?`,
+  }),
+  tableDataset({
     key: "protocols",
     label: "Protocols",
     table: "protocols",
@@ -1514,6 +1524,12 @@ export const DELETE_POLICY = {
   immunization_overrides: { revalidate: ["/records", "/"] },
   preventive_events: { revalidate: ["/upcoming", "/"] },
   preventive_overrides: { revalidate: ["/upcoming", "/"] },
+  // A review decision (#3025) is a plain id + profile_id delete: nothing FKs into
+  // the table and no derived state is stored — dropping a confirmed row simply
+  // retracts its satisfaction and re-offers the candidate on the next assessment,
+  // which is exactly what "delete this from my record" means here. Not an undo
+  // root (no UNDO_KINDS entry), so DATASET_UNDO_KIND needs no decision.
+  preventive_record_decisions: { revalidate: ["/upcoming", "/"] },
   protocols: { revalidate: ["/longevity", "/"] },
   milestones: { revalidate: ["/"] },
   equipment: {

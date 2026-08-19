@@ -80,6 +80,8 @@ import {
   tapDateGuard,
   keyboardDoseFootprint,
   parseAllCallback,
+  parseStackTakeCallback,
+  type StackTakeCallback,
   parseEscalationCallback,
   parseFoodLogCallback,
   parseFoodExpandCallback,
@@ -144,6 +146,7 @@ import {
   withDoseCorrections,
 } from "./intake";
 import {
+  INTAKE_SEND_SLOTS,
   notifiableWindowDoses,
   renderMergedIntakeMessage,
 } from "./intake-format";
@@ -213,6 +216,15 @@ export async function handleCallbackQuery(
   const all = parseAllCallback(cq.data);
   if (all) {
     await handleAllTaken(cq, all);
+    return;
+  }
+
+  // "✅ <Stack> (n)" — mark one stack's still-pending doses taken (#3098). The
+  // token's dose ids are an UPPER BOUND; the handler re-derives the pending set
+  // and writes only the intersection.
+  const stackTake = parseStackTakeCallback(cq.data);
+  if (stackTake) {
+    await handleStackTaken(cq, stackTake);
     return;
   }
 
@@ -1172,6 +1184,121 @@ async function handleAllTaken(
         profileId,
         parts,
         all.date,
+        getProfileAge(profileId)
+      ),
+      { ref: { chatId, messageId } }
+    )
+  );
+}
+
+// Mark one STACK's still-pending doses taken in one tap (#3098). The token's dose
+// ids are an UPPER BOUND, exactly the parseAllCallback → handler posture one
+// button over: the pending, notifiable set is re-derived fresh from current state
+// and the write is the INTERSECTION of that set with the ids the button named —
+// so a stale, forged, or replayed token cannot write outside what currently
+// stands. Another profile's dose id or a retired dose is not in the re-derived
+// set (and markDoseTaken independently re-verifies the dose → item → profile
+// chain besides); a dose meanwhile resolved is left alone; a second tap finds an
+// empty intersection and answers nothing-to-log rather than confirming.
+async function handleStackTaken(
+  cq: TelegramCallbackQuery,
+  stack: StackTakeCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(stack, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, {
+      alert: true,
+    });
+    return;
+  }
+
+  // Re-derive the day's notifiable dose session from CURRENT state, across every
+  // send slot — the token deliberately carries no slot (its bytes are spent on the
+  // ids), and a dose lives in exactly one slot, so the union is the same floored
+  // set the slot sends listed. Floor-filtered (#1156) like the All tap: a `may`
+  // supplement the send excluded is never logged by a bulk tap.
+  const listed = new Set(stack.doseIds);
+  const current = INTAKE_SEND_SLOTS.flatMap((slot) =>
+    notifiableWindowDoses(collectWindowDoses(profileId, slot, stack.date))
+  ).filter((e) => listed.has(e.dose.id));
+  const messageId = cq.message?.message_id;
+  const notifyMessageId =
+    chatId != null && messageId != null
+      ? messagePointerIdAt(profileId, chatId, messageId)
+      : null;
+  let logged = 0;
+  let alreadyResolved = 0;
+  for (const e of current) {
+    // A resolved dose (taken, or deliberately skipped — #232) is left alone.
+    if (e.taken || e.skipped) {
+      alreadyResolved++;
+      continue;
+    }
+    if (
+      markDoseTaken(
+        profileId,
+        e.dose.id,
+        e.item.id,
+        stack.date,
+        undefined,
+        notifyMessageId
+      ) === "logged"
+    ) {
+      logged++;
+    }
+  }
+  await answerCallbackQuery(
+    cq.id,
+    current.length === 0
+      ? "Not logged — this reminder is out of date. Open the app."
+      : logged > 0
+        ? `Logged ${GLYPH.done}`
+        : alreadyResolved > 0
+          ? // Everything the button named is already resolved (a race, or a second
+            // tap) — nothing was inserted, so don't claim a fresh log (#280).
+            `Already logged ${GLYPH.done}`
+          : "Not logged — this reminder is out of date. Open the app.",
+    // Only the arms that contradict the button demand a dismissal.
+    { alert: logged === 0 && alreadyResolved === 0 }
+  );
+
+  if (chatId == null || messageId == null) return;
+
+  // Rebuild from current state through the same path every dose tap uses, so the
+  // stack's rows show as taken (and the message collapses to the completion
+  // summary once nothing is pending).
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  const footprint = keyboardDoseFootprint(rows);
+  const parts = slotSessionForKeyboard(
+    profileId,
+    [...footprint.doseIds, ...stack.doseIds],
+    footprint.slots,
+    stack.date
+  );
+  if (parts.length === 0) {
+    if (rows.length === 0) return;
+    await closeMessage(
+      profileId,
+      chatId,
+      messageId,
+      replacementWithTitle(cq.message?.text, OUTDATED_MESSAGE_TEXT)
+    );
+    return;
+  }
+  await rebuildMessage(
+    profileId,
+    chatId,
+    messageId,
+    withDoseCorrections(
+      profileId,
+      renderMergedIntakeMessage(
+        profileId,
+        parts,
+        stack.date,
         getProfileAge(profileId)
       ),
       { ref: { chatId, messageId } }

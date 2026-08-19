@@ -783,7 +783,12 @@ fire off the same evidence (test-pinned). `intakeDeltaLine` is the ONE formatter
 `getIntakeDeltaLine` the ONE server entry point; the Telegram morning digest, the
 weekly recap (and so the dashboard recap widget) and the Household card all render
 that single result. Quiet windows produce no line; the fraction — now over must+should
-only — demotes to secondary detail.
+only — demotes to secondary detail. A caller reporting on a MULTI-DAY window (the
+weekly recap) passes that window, and a single-occurrence miss then names its day
+("Missed: Coenzyme Q10 on Wednesday"; a `Mon, Aug 4`-style date when the miss
+precedes the window) — resolved inside the formatter as a function of the window,
+never a per-caller flag (#3033). The day-scale callers pass nothing and keep the
+run-length copy.
 
 See [the attention doctrine](findings.md#the-attention-doctrine) for the general
 rules this change is the first implementation of.

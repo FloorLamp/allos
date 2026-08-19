@@ -352,6 +352,16 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/upcoming/actions.ts",
+    fn: "confirmPreventiveRecord",
+    why: "multi-view (#1096): confirms a preventive review candidate (#3025) on the ITEM's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId); the write core additionally revalidates the (record, rule) pair still derives for that profile",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "dismissPreventiveRecord",
+    why: "multi-view (#1096): dismisses a preventive review candidate (#3025) on the ITEM's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId); suppresses only that record/rule candidate, never the preventive item",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
     fn: "resolveFollowUp",
     why: "multi-view (#1096): resolves a follow-up on the ITEM's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
