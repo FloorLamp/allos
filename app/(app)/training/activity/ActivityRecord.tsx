@@ -19,17 +19,19 @@ export default function ActivityRecord({
   partDeltas,
   partRecords,
   highlightMusclesByExercise,
+  drillInsVisible = true,
 }: {
   card: TrainingLogCardData;
   partDeltas?: (ProgressDelta | null)[];
   partRecords?: (ActivityStrengthRecord | null)[];
   highlightMusclesByExercise?: Record<string, MuscleId[]>;
+  drillInsVisible?: boolean;
 }) {
   const { strengthTrainingAvailable } = useActivityEditor();
   const strengthRecord = activityEditDataHasStrength(card.activity);
 
   const exerciseHref =
-    !strengthRecord || strengthTrainingAvailable
+    drillInsVisible && (!strengthRecord || strengthTrainingAvailable)
       ? (name: string) => strengthAnalyzeHref(name)
       : undefined;
 
@@ -73,7 +75,7 @@ export default function ActivityRecord({
                       ·
                     </span>
                   ) : null}
-                  {card.activity.equipment_id != null ? (
+                  {drillInsVisible && card.activity.equipment_id != null ? (
                     <Link
                       href={equipmentHref(card.activity.equipment_id)}
                       data-testid="activity-gear"
@@ -101,7 +103,7 @@ export default function ActivityRecord({
                 : partDeltas
             }
             partRecords={
-              strengthRecord && !strengthTrainingAvailable
+              !drillInsVisible || (strengthRecord && !strengthTrainingAvailable)
                 ? undefined
                 : partRecords
             }

@@ -29,7 +29,7 @@ function strengthRecordPresentation(record: ActivityStrengthRecord): {
         : null,
   ].filter((fact): fact is string => fact != null);
   return {
-    label: allTime ? "All-time PR" : "PR at the time",
+    label: allTime ? "All-time PR" : "PR achieved",
     help: facts.join(" "),
     standing: allTime ? "all-time" : "running",
   };
@@ -180,7 +180,7 @@ export default function ActivityPartRows({
                   {delta.label}
                 </span>
               )}
-              {recordPresentation ? (
+              {record && recordPresentation ? (
                 <span className="inline-flex items-center whitespace-nowrap">
                   <Link
                     href={record.href}

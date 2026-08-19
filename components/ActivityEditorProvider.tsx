@@ -303,7 +303,10 @@ export default function ActivityEditorProvider({
       const seq = ++liveSessionSeqRef.current;
       setLiveStartEpoch(Date.now());
       setMinimized(false);
-      if (prefillData) setRepeatNonce((n) => n + 1);
+      // Give every live session a fresh form instance. The nonce then remains
+      // stable when Finish turns live mode off, so the completed activity stays
+      // mounted for its recap instead of remounting as a blank create form.
+      setRepeatNonce((n) => n + 1);
       setOpen(true);
 
       const fd = new FormData();
@@ -585,11 +588,7 @@ export default function ActivityEditorProvider({
     ? `edit-${editData.id}`
     : prefill
       ? `repeat-${repeatNonce}`
-      : live
-        ? "live"
-        : createDate
-          ? `create-${repeatNonce}`
-          : "create";
+      : `create-${repeatNonce}`;
 
   return (
     <Ctx.Provider value={api}>

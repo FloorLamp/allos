@@ -49,8 +49,8 @@ import { zoneForBpm, type ZoneModel } from "./training-zones";
 import type { ActivityVideoRow } from "./activity-video-write";
 
 // A media clip attached to an activity (#1224), in the SERIALIZABLE
-// shape the card renders — booleans/numbers only, so it crosses the server/client
-// boundary into TrainingLogCard. Built from the ActivityVideoRow the feed gathers.
+// shape the activity detail page renders — booleans/numbers only, so it crosses
+// the server/client boundary. Built from the ActivityVideoRow the feed gathers.
 export interface TrainingLogCardMedia {
   id: number;
   exercise: string | null;

@@ -27,17 +27,21 @@ export default function ActivityLedgerNav({
   olderId,
   newerId,
   lens = null,
+  subjectProfileId,
   trainingRelevant = true,
   contextLink,
 }: {
   olderId: number | null;
   newerId: number | null;
   lens?: CyclingLens | null;
+  subjectProfileId?: number;
   trainingRelevant?: boolean;
   contextLink?: { href: AppRoute; label: string } | null;
 }) {
   const activityHref = (id: number) =>
-    lens ? cyclingRideHref(id, lens) : trainingActivityPageHref(id);
+    lens
+      ? cyclingRideHref(id, lens, subjectProfileId)
+      : trainingActivityPageHref(id, subjectProfileId);
 
   return (
     <div

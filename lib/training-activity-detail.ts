@@ -378,7 +378,14 @@ export function getActivityDetailData(
         ? {
             ...records,
             href: strengthAnalyzeHref(part.name, {
-              metric: records.e1rm ? "e1rm" : "top",
+              metric:
+                records.e1rm === "all-time"
+                  ? "e1rm"
+                  : records.weight === "all-time"
+                    ? "top"
+                    : records.e1rm
+                      ? "e1rm"
+                      : "top",
               range: "all",
               lane,
             }),

@@ -161,6 +161,32 @@ describe("getActivityDetailData (#2870)", () => {
         href: "/training?tab=analyze&kind=strength&item=Bench+Press&metric=e1rm&range=all&lane=none",
       },
     ]);
+
+    const mixedProfile = newProfile("Detail Mixed Strength Records");
+    const mixedBaseline = addActivity(
+      mixedProfile,
+      "2026-01-01",
+      "Mixed baseline"
+    );
+    addSet(mixedBaseline, "Bench Press", 1, 80, 5);
+    const mixedRecord = addActivity(mixedProfile, "2026-02-01", "Mixed record");
+    addSet(mixedRecord, "Bench Press", 1, 90, 3);
+    const laterE1rm = addActivity(
+      mixedProfile,
+      "2026-03-01",
+      "Later estimated max"
+    );
+    addSet(laterE1rm, "Bench Press", 1, 85, 8);
+
+    expect(
+      getActivityDetailData(mixedProfile, mixedRecord, UNITS)!.partRecords
+    ).toEqual([
+      {
+        e1rm: "running",
+        weight: "all-time",
+        href: "/training?tab=analyze&kind=strength&item=Bench+Press&metric=top&range=all&lane=none",
+      },
+    ]);
   });
 
   it("loads laps and segments for non-cycling sessions, scoped to the profile", () => {

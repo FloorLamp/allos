@@ -19,6 +19,7 @@ function fmtSets(value: number): string {
 type MuscleCoverageCardProps = {
   coverage: CoverageListRow[];
   contributions: Map<MuscleId, MuscleCoverageContribution[]>;
+  drillInsVisible?: boolean;
 } & (
   | {
       scope?: "window";
@@ -31,7 +32,7 @@ type MuscleCoverageCardProps = {
 );
 
 export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
-  const { coverage, contributions } = props;
+  const { coverage, contributions, drillInsVisible = true } = props;
   const activityScoped = props.scope === "activity";
   const helperText = activityScoped
     ? `Working sets from this workout. Primary muscles get 1 set of credit; assisting muscles get ${SECONDARY_CREDIT}.`
@@ -152,12 +153,18 @@ export default function MuscleCoverageCard(props: MuscleCoverageCardProps) {
                           className="flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500 dark:text-slate-400"
                           data-testid="muscle-coverage-contribution"
                         >
-                          <Link
-                            href={`/training?tab=analyze&kind=strength&item=${encodeURIComponent(entry.exercise)}`}
-                            className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-                          >
-                            {entry.exercise}
-                          </Link>
+                          {drillInsVisible ? (
+                            <Link
+                              href={`/training?tab=analyze&kind=strength&item=${encodeURIComponent(entry.exercise)}`}
+                              className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+                            >
+                              {entry.exercise}
+                            </Link>
+                          ) : (
+                            <span className="font-medium text-slate-700 dark:text-slate-200">
+                              {entry.exercise}
+                            </span>
+                          )}
                           <span>
                             {entry.role === "primary" ? "Primary" : "Assisting"}
                             {` · ${fmtSets(entry.credit)} credit × ${entry.count}`}

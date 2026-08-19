@@ -126,6 +126,7 @@ export default function ActivityMoreDetails({
           <ActivityFormMedia
             key={activityId}
             activityId={activityId}
+            subjectProfileId={editData?.subjectProfileId}
             onCountChange={handleMediaCount}
           />
         )}

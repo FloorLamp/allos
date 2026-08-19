@@ -246,6 +246,7 @@ export default async function CyclingActivityDetail(props: {
   base: ActivityDetailData;
   showMuscles: boolean;
   showDetails: boolean;
+  subjectProfileId?: number;
 }) {
   const { activityId: id, profileId, units, formatPrefs, base } = props;
   const splitDistanceM = units.distanceUnit === "mi" ? 5 * 1609.344 : 5 * 1000;
@@ -512,7 +513,11 @@ export default async function CyclingActivityDetail(props: {
                     <StatBox
                       label="Bike"
                       value={data.equipment.name}
-                      href={equipmentHref(data.equipment.id)}
+                      href={
+                        props.subjectProfileId == null
+                          ? equipmentHref(data.equipment.id)
+                          : undefined
+                      }
                       variant="plain"
                       data-testid="ride-stat-bike"
                     />
@@ -840,10 +845,12 @@ export default async function CyclingActivityDetail(props: {
                           rideLens
                             ? cyclingRideHref(
                                 data.routeHistory.fastest.id,
-                                rideLens
+                                rideLens,
+                                props.subjectProfileId
                               )
                             : trainingActivityPageHref(
-                                data.routeHistory.fastest.id
+                                data.routeHistory.fastest.id,
+                                props.subjectProfileId
                               )
                         }
                         className="font-medium text-brand-700 hover:underline dark:text-brand-300"

@@ -7,8 +7,7 @@ import ActivityMediaStrip, {
 import { listActivityMediaAction } from "@/app/(app)/training/video-actions";
 
 // The activity editor's media block (#1457) — the ADD entry point for attached
-// clips, and the reason the Training Log card's strip could stop rendering an
-// empty state on every writable activity.
+// clips, and the reason read surfaces do not need to carry an add affordance.
 //
 // Why HERE: attaching a clip is an act of editing the activity, so it belongs with
 // the activity's other fields rather than shouting from a read surface. Burying it
@@ -28,14 +27,17 @@ import { listActivityMediaAction } from "@/app/(app)/training/video-actions";
 // editor's own id timing (#924), not this.
 //
 // It owns its own fetch: the editor is a client component opened from several entry
-// points (Training Log card, repeat, live resume), so unlike the Training Log card — which is
-// handed clips by the feed — there is no server component above it holding them.
+// points (Training Log, repeat, live resume), so unlike the activity detail page —
+// which is handed clips by its server loader — there is no server component above
+// it holding them.
 export default function ActivityFormMedia({
   activityId,
+  subjectProfileId,
   className = "",
   onCountChange,
 }: {
   activityId: number;
+  subjectProfileId?: number;
   className?: string;
   onCountChange?: (count: number) => void;
 }) {
@@ -43,7 +45,7 @@ export default function ActivityFormMedia({
 
   const load = useCallback(() => {
     let cancelled = false;
-    void listActivityMediaAction(activityId).then((r) => {
+    void listActivityMediaAction(activityId, subjectProfileId).then((r) => {
       if (cancelled) return;
       const next = r.ok ? r.media : [];
       setMedia(next);
@@ -52,7 +54,7 @@ export default function ActivityFormMedia({
     return () => {
       cancelled = true;
     };
-  }, [activityId, onCountChange]);
+  }, [activityId, onCountChange, subjectProfileId]);
 
   // Re-reads on activity change. The clip actions' own revalidate repaints the
   // server tree behind the editor; this component's state is client-side and
@@ -72,6 +74,7 @@ export default function ActivityFormMedia({
         // `openEdit` on it) and every action re-checks server-side.
         canWrite
         showAdd
+        subjectProfileId={subjectProfileId}
         onChange={load}
       />
     </section>

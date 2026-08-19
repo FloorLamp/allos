@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidateRoute } from "@/lib/revalidate";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireProfileWriteAccess, requireWriteAccess } from "@/lib/auth";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { ingestVideo } from "@/lib/video/ingest";
 import { posterBytesFrom } from "@/lib/video/poster";
@@ -16,10 +16,10 @@ import type { ActivityMediaView } from "@/components/activity/ActivityMediaStrip
 // Server Actions for the TRAINING activity-media domain (#1224 phase 1). The
 // whole gate shape lives here (auth-blind cores below): requireWriteAccess →
 // parse/validate → ingestVideo (sniff + caps, never the client type) → poster
-// strip via the photo pipeline → domain write core → revalidate. Active-profile
-// scoped (the Training Log is the acting profile's training surface, not a cross-
-// profile household page); the core also verifies the activity belongs to the
-// profile, so a forged activity id is rejected past the gate.
+// strip via the photo pipeline → domain write core → revalidate. A multi-view
+// editor carries its subject profile explicitly and is gated against that
+// profile; ordinary callers keep using the active profile. The core also checks
+// that the activity belongs to the resolved profile.
 
 function revalidateActivitySurfaces() {
   revalidateRoute("/training");
@@ -28,12 +28,26 @@ function revalidateActivitySurfaces() {
   revalidateRoute("/");
 }
 
+async function targetProfileId(formData: FormData): Promise<number | null> {
+  const raw = formData.get("profile_id");
+  if (raw == null) return (await requireWriteAccess()).profile.id;
+  const profileId = Number(raw);
+  if (!Number.isInteger(profileId) || profileId <= 0) {
+    await requireWriteAccess();
+    return null;
+  }
+  await requireProfileWriteAccess(profileId);
+  return profileId;
+}
+
 // Attach a clip to one of the profile's activities. `exercise` optionally names a
 // lift for per-lift filtering.
 export async function uploadActivityVideoAction(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await targetProfileId(formData);
+  if (profileId == null)
+    return formError("That activity is no longer available.");
   const activityId = Number(formData.get("activityId"));
   if (!Number.isInteger(activityId) || activityId <= 0)
     return formError("That activity is no longer available.");
@@ -49,7 +63,7 @@ export async function uploadActivityVideoAction(
   const poster = await posterBytesFrom(formData.get("poster"));
 
   const outcome = addActivityVideoCore(
-    profile.id,
+    profileId,
     { activityId, exercise, caption },
     ingested.video,
     poster
@@ -64,12 +78,13 @@ export async function uploadActivityVideoAction(
 export async function updateActivityVideoCaptionAction(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await targetProfileId(formData);
+  if (profileId == null) return formError("That clip is no longer available.");
   const id = Number(formData.get("videoId"));
   if (!Number.isInteger(id) || id <= 0)
     return formError("That clip is no longer available.");
   const caption = String(formData.get("caption") ?? "");
-  if (!updateActivityVideoCaptionCore(profile.id, id, caption))
+  if (!updateActivityVideoCaptionCore(profileId, id, caption))
     return formError("That clip is no longer available.");
   revalidateActivitySurfaces();
   return formOk();
@@ -79,19 +94,20 @@ export async function updateActivityVideoCaptionAction(
 export async function deleteActivityVideoAction(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await targetProfileId(formData);
+  if (profileId == null) return formError("That clip is no longer available.");
   const id = Number(formData.get("videoId"));
   if (!Number.isInteger(id) || id <= 0)
     return formError("That clip is no longer available.");
-  deleteActivityVideoCore(profile.id, id);
+  deleteActivityVideoCore(profileId, id);
   revalidateActivitySurfaces();
   return formOk();
 }
 
 // Read the clips attached to one activity (#1457). The activity EDITOR is a client
-// component reached from several entry points (Training Log card, repeat, live resume),
-// so it can't be handed clips from a server component the way the Training Log feed
-// hands them to the card — it asks for them when it opens, and again after an
+// component reached from several entry points (Training Log, repeat, live resume),
+// so it can't be handed clips from a server component the way the activity detail
+// page is — it asks for them when it opens, and again after an
 // upload/delete, since its own client state outlives the server re-render these
 // actions trigger.
 //
@@ -100,16 +116,28 @@ export async function deleteActivityVideoAction(
 // tier uniform (#319). Profile-scoped by the core query, so a forged activity id
 // returns nothing rather than another profile's clips.
 export async function listActivityMediaAction(
-  activityId: number
+  activityId: number,
+  subjectProfileId?: number
 ): Promise<
   { ok: true; media: ActivityMediaView[] } | { ok: false; error: string }
 > {
-  const { profile } = await requireWriteAccess();
+  let profileId: number | null;
+  if (subjectProfileId == null) {
+    profileId = (await requireWriteAccess()).profile.id;
+  } else if (Number.isInteger(subjectProfileId) && subjectProfileId > 0) {
+    await requireProfileWriteAccess(subjectProfileId);
+    profileId = subjectProfileId;
+  } else {
+    await requireWriteAccess();
+    profileId = null;
+  }
+  if (profileId == null)
+    return { ok: false, error: "That activity is no longer available." };
   if (!Number.isInteger(activityId) || activityId <= 0)
     return { ok: false, error: "That activity is no longer available." };
   return {
     ok: true,
-    media: getActivityVideos(profile.id, activityId).map((v) => ({
+    media: getActivityVideos(profileId, activityId).map((v) => ({
       id: v.id,
       exercise: v.exercise,
       caption: v.caption,

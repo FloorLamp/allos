@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import EquipmentRegistryLink from "./EquipmentRegistryLink";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";

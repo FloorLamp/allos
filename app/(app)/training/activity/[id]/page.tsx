@@ -7,7 +7,11 @@ import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import ActivityMediaStrip from "@/components/activity/ActivityMediaStrip";
 import NotesText from "@/components/NotesText";
 import { IconAlertTriangle } from "@tabler/icons-react";
-import { accessForProfile, requireSession } from "@/lib/auth";
+import {
+  accessForProfile,
+  getAccessibleProfiles,
+  requireSession,
+} from "@/lib/auth";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
@@ -83,17 +87,53 @@ export default async function TrainingActivityPage(props: {
   if (!Number.isInteger(id) || id <= 0) notFound();
 
   const { login, profile } = await requireSession();
+  const searchParams = await props.searchParams;
+  const rawSubject = searchParams?.subject;
+  const subjectValue = Array.isArray(rawSubject) ? rawSubject[0] : rawSubject;
+  const requestedSubjectId = subjectValue
+    ? /^\d+$/.test(subjectValue)
+      ? Number(subjectValue)
+      : null
+    : profile.id;
+  if (requestedSubjectId == null || requestedSubjectId <= 0) notFound();
+  const subjectProfile =
+    requestedSubjectId === profile.id
+      ? profile
+      : (await getAccessibleProfiles()).find(
+          (candidate) => candidate.id === requestedSubjectId
+        );
+  if (!subjectProfile) notFound();
+  const subjectProfileId = subjectProfile.id;
+  const crossProfile = subjectProfileId !== profile.id;
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
-  const trainingRelevant = isTrainingRelevant(getProfileAge(profile.id));
-  const data = getActivityDetailData(profile.id, id, units, formatPrefs);
-  if (!data) notFound();
+  const trainingRelevant = isTrainingRelevant(getProfileAge(subjectProfileId));
+  const detail = getActivityDetailData(
+    subjectProfileId,
+    id,
+    units,
+    formatPrefs
+  );
+  if (!detail) notFound();
+  // The profile selector is authorized above at the request boundary. Stamp the
+  // subject onto the edit model so every write from this page targets the row's
+  // owner while Duplicate still deliberately creates for the acting profile.
+  const data = crossProfile
+    ? {
+        ...detail,
+        card: {
+          ...detail.card,
+          activity: {
+            ...detail.card.activity,
+            subjectProfileId,
+          },
+        },
+      }
+    : detail;
 
   const card = data.card;
   const cycling = isCyclingActivity(data.row);
-  const parsedCyclingLens = cycling
-    ? cyclingLens(await props.searchParams)
-    : null;
+  const parsedCyclingLens = cycling ? cyclingLens(searchParams) : null;
   const rideLens = parsedCyclingLens
     ? {
         ...parsedCyclingLens,
@@ -104,30 +144,33 @@ export default async function TrainingActivityPage(props: {
       }
     : null;
   const cyclingName = cyclingActivityName(data.row) ?? "Cycling";
-  const cyclingOverviewLink = cycling
-    ? {
-        href: rideLens
-          ? cyclingOverviewHref(rideLens)
-          : cyclingName.trim().toLowerCase() === "cycling"
-            ? CYCLING_OVERVIEW_HREF
-            : cyclingOverviewHref({
-                metric: "distance",
-                range: "all",
-                activity: cyclingName,
-              }),
-        label: `${cyclingName} overview`,
-      }
-    : null;
+  const cyclingOverviewLink =
+    cycling && !crossProfile
+      ? {
+          href: rideLens
+            ? cyclingOverviewHref(rideLens)
+            : cyclingName.trim().toLowerCase() === "cycling"
+              ? CYCLING_OVERVIEW_HREF
+              : cyclingOverviewHref({
+                  metric: "distance",
+                  range: "all",
+                  activity: cyclingName,
+                }),
+          label: `${cyclingName} overview`,
+        }
+      : null;
   const canWrite =
-    accessForProfile(login.id, login.role, profile.id) === "write";
+    accessForProfile(login.id, login.role, subjectProfileId) === "write";
 
   // The session's live/draft state (#2870 step 3). While presence says THIS
   // activity is the running session, the page is the record-in-progress; a
   // zero-content row that is NOT running is a draft — this page is its only
   // address (the feed hides it), so it says so and offers the discard.
-  const presence = getWorkoutPresence(profile.id);
+  const presence = getWorkoutPresence(subjectProfileId);
   const liveActive =
-    presence.state === "active" && presence.activityId === data.row.id;
+    !crossProfile &&
+    presence.state === "active" &&
+    presence.activityId === data.row.id;
   const heartRateSeries = sessionHeartRateSeries(
     data.heartRate.window,
     data.heartRate.minutes
@@ -233,7 +276,7 @@ export default async function TrainingActivityPage(props: {
               mergeCandidates={mergeCandidates}
               keeperLabel={card.provenance.label}
               foldValues={card.foldValues}
-              editLocked={card.provenance.editLocked}
+              editLocked={!crossProfile && card.provenance.editLocked}
               units={units}
               canWrite={canWrite}
             />
@@ -249,6 +292,7 @@ export default async function TrainingActivityPage(props: {
           olderId={data.olderId}
           newerId={data.newerId}
           lens={rideLens}
+          subjectProfileId={crossProfile ? subjectProfileId : undefined}
           trainingRelevant={trainingRelevant}
           contextLink={cyclingOverviewLink}
         />
@@ -264,25 +308,34 @@ export default async function TrainingActivityPage(props: {
               Draft — this workout was started but nothing was logged. It
               appears only here and expires on its own.
             </span>
-            {canWrite && <DiscardDraftButton activityId={data.row.id} />}
+            {canWrite && (
+              <DiscardDraftButton
+                activityId={data.row.id}
+                subjectProfileId={
+                  crossProfile ? subjectProfileId : undefined
+                }
+              />
+            )}
           </div>
         ) : null}
         <ActivityOverlapBanner
           overlapping={data.overlappingSiblings}
           canWrite={canWrite}
+          subjectProfileId={crossProfile ? subjectProfileId : undefined}
         />
 
         <MuscleCoverageDisclosure>
           {cycling ? (
             <CyclingActivityDetail
               activityId={id}
-              profileId={profile.id}
+              profileId={subjectProfileId}
               units={units}
               formatPrefs={formatPrefs}
               rideLens={rideLens}
               base={data}
               showMuscles={activityMuscleCoverage.length > 0}
               showDetails={hasRecordDetails}
+              subjectProfileId={crossProfile ? subjectProfileId : undefined}
             />
           ) : (
             <>
@@ -299,6 +352,7 @@ export default async function TrainingActivityPage(props: {
                   partDeltas={data.partDeltas}
                   partRecords={data.partRecords}
                   highlightMusclesByExercise={activityMusclesByExercise}
+                  drillInsVisible={!crossProfile}
                 />
                 <ActivityDetailSectionNav sections={optionalSections} />
 
@@ -575,6 +629,7 @@ export default async function TrainingActivityPage(props: {
                 scope="activity"
                 coverage={activityMuscleCoverage}
                 contributions={activityMuscleContributions}
+                drillInsVisible={!crossProfile}
               />
             </section>
           ) : null}
@@ -619,6 +674,9 @@ export default async function TrainingActivityPage(props: {
                     media={card.media}
                     canWrite={canWrite}
                     compact
+                    subjectProfileId={
+                      crossProfile ? subjectProfileId : undefined
+                    }
                   />
                 </CardGroup>
               ) : null}

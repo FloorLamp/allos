@@ -118,9 +118,11 @@ export function ActivityDetailActions({
 export function ActivityOverlapBanner({
   overlapping,
   canWrite,
+  subjectProfileId,
 }: {
   overlapping: MergeSibling[];
   canWrite: boolean;
+  subjectProfileId?: number;
 }) {
   const { openMerge } = useMergeSignal();
   if (!canWrite || overlapping.length === 0) return null;
@@ -149,7 +151,7 @@ export function ActivityOverlapBanner({
         {overlapping.map((sibling) => (
           <Link
             key={sibling.id}
-            href={trainingActivityPageHref(sibling.id)}
+            href={trainingActivityPageHref(sibling.id, subjectProfileId)}
             data-testid={`activity-overlap-compare-${sibling.id}`}
             className="font-medium underline underline-offset-2"
           >

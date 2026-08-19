@@ -63,7 +63,10 @@ function TrainingLogRow({
       <div className="min-w-0 max-w-5xl">
         <span className="flex items-center gap-2">
           <Link
-            href={trainingActivityPageHref(activity.id)}
+            href={trainingActivityPageHref(
+              activity.id,
+              showSubjectChip ? activity.subjectProfileId : undefined
+            )}
             className="truncate font-semibold text-slate-800 transition-colors before:absolute before:inset-0 group-hover:text-brand-600 dark:text-slate-100 dark:group-hover:text-brand-400"
           >
             {activity.title}
