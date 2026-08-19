@@ -70,6 +70,10 @@ section rather than restating it, so the rule cannot drift per surface.
   raises `$SCRATCH/.agents_dead`, every later run keeps reporting the fleet as
   dead, and only `orchestrator-checkin.sh --relaunched` clears it. Clear it
   after the rescues and the relaunches, never before.
+- The verdict authorises the RESCUE, never the RELAUNCH: a snapshot resume
+  changes both ids while the process tree survives. Confirm with `ListAgents`
+  before relaunching — rescuing a live tree costs a junk commit, relaunching
+  onto one puts two writers on a worktree.
 - Resume agents with a precise state summary. Never run background work that
   depends on an ephemeral completion event.
 
