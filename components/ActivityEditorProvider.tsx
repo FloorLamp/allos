@@ -580,7 +580,9 @@ export default function ActivityEditorProvider({
     },
     () => !window.matchMedia("(min-width: 640px)").matches
   );
-  markEditorLinkFollowedRef.current = markEditorLinkFollowed;
+  useEffect(() => {
+    markEditorLinkFollowedRef.current = markEditorLinkFollowed;
+  }, [markEditorLinkFollowed]);
 
   // Remount fresh each time so state initializes from editData/prefill. The
   // nonce keeps repeated "Log again" taps from reusing a stale mount.
