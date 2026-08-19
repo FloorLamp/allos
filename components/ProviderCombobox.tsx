@@ -28,6 +28,7 @@ export default function ProviderCombobox({
   ariaLabel = "Provider",
   onlyType,
   closeStopsPropagation,
+  onChange,
 }: {
   // The registry rows to offer. Defaults to the section-level ProviderOptionsContext
   // (where a form is nested under a ProviderOptionsProvider); the affiliation picker
@@ -42,6 +43,9 @@ export default function ProviderCombobox({
   // counterpart type). Free text is still allowed — it creates under the caller's type.
   onlyType?: ProviderType;
   closeStopsPropagation?: boolean;
+  // Notified with the bare provider NAME whenever the value changes, for a form that
+  // posts from state rather than from the hidden input (#3216).
+  onChange?: (name: string) => void;
 }) {
   const fromContext = useProviderOptions();
   const source = providers ?? fromContext;
@@ -78,7 +82,10 @@ export default function ProviderCombobox({
         id={id}
         ariaLabel={ariaLabel}
         value={value}
-        onChange={setValue}
+        onChange={(next) => {
+          setValue(next);
+          onChange?.(providerSubmitName(model, next));
+        }}
         options={model.labels}
         iconFor={iconFor}
         allowFreeText

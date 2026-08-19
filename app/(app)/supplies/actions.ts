@@ -133,7 +133,11 @@ function fields(
 // also seeds a NEW one, and the bottle's form is part of what it seeds.
 export async function listSharedSupplyOptions(): Promise<SupplyOption[]> {
   const scope = await requireScope();
-  return listLinkableSupplies(scope.ids).map(supplyOption);
+  // Each option carries its own members so the intake form can label the row with the
+  // bottle's count and read the kind its siblings lend (#3216).
+  return listLinkableSupplies(scope.ids).map((supply) =>
+    supplyOption(supply, poolMembers(supply.id))
+  );
 }
 
 // Create a shared bottle. Creating an EMPTY cabinet entry touches nobody's data, so the

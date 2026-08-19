@@ -143,12 +143,13 @@ function doseLabel(f: IntakeFactInput): string {
   return join([head, ...extras]);
 }
 
-// The timing sentence. An as-needed item states its redose ceiling (the two numbers
-// that decide the #798 notice); a scheduled item states its cadence and slot.
+// The timing sentence — WHEN, never how important. An as-needed item's timing is its
+// redose ceiling (the two numbers that decide the #798 notice) and nothing else: the
+// words "as needed" belong to the importance chip, and stating them in both places
+// would be the same datum rendered twice.
 function timingLabel(f: IntakeFactInput): string {
   if (f.obligation === "may") {
     return join([
-      "as needed",
       f.minIntervalHours.trim()
         ? `≤ every ${f.minIntervalHours.trim()} h`
         : null,
@@ -194,7 +195,12 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
       : { key: "dose", label: "add a dose", state: "missing" }
   );
 
-  chips.push({ key: "timing", label: timingLabel(f), state: "stated" });
+  // A scheduled item always has a schedule to state; an as-needed one with no
+  // confirmed ceiling has nothing, and an empty chip claiming timing is worse than
+  // the trailing affordance that says where the fact lives.
+  const timing = timingLabel(f);
+  if (f.obligation === "may") pushOptional(chips, more, "timing", timing);
+  else chips.push({ key: "timing", label: timing, state: "stated" });
 
   chips.push({
     key: "importance",

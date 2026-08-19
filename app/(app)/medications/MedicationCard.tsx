@@ -47,7 +47,7 @@ import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
-import MedicationForm from "@/components/MedicationForm";
+import IntakeItemForm from "@/components/IntakeItemForm";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import ProviderName from "@/components/ProviderName";
 import FoodGuidance from "@/components/FoodGuidance";
@@ -238,9 +238,10 @@ export default function MedicationCard({
   if (editing && canWrite) {
     return (
       <div className="card relative z-20 bg-slate-50/60 dark:bg-ink-900/60">
-        <MedicationForm
+        <IntakeItemForm
           action={updateIntakeItem}
-          medication={s}
+          kind="medication"
+          item={s}
           doses={doses}
           retiredDoses={retiredDoses}
           allIntakeItems={allIntakeItems}

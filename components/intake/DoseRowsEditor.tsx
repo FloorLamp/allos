@@ -48,11 +48,17 @@ export default function DoseRowsEditor({
   amountPlaceholder = "amount",
   singleAmountOnly = false,
   weekStart = 0,
+  hideFoodTiming = false,
 }: {
   doses: DoseState[];
   setDoses: Dispatch<SetStateAction<DoseState[]>>;
   dosageOptions: string[];
   amountPlaceholder?: string;
+  // The merged intake form (#3216) states the food relationship as a RULE SENTENCE
+  // ("Take with food"), which writes this same `food_timing`. Two editors for one
+  // field is the drift the merge removes, so the form that owns the sentence hides
+  // the per-row select and the sentence writes every row.
+  hideFoodTiming?: boolean;
   // The profile's first day of the week, so the per-dose chips are ordered exactly
   // like every other calendar surface.
   weekStart?: number;
@@ -85,29 +91,31 @@ export default function DoseRowsEditor({
             allowFreeText
             placeholder={amountPlaceholder}
           />
-          <select
-            value={d.food_timing}
-            onChange={(e) =>
-              setDoses((ds) => {
-                const first = ds[0] ?? emptyDose();
-                return [
-                  {
-                    ...first,
-                    food_timing: e.target.value as FoodTiming,
-                    time_of_day: "",
-                  },
-                ];
-              })
-            }
-            className="input"
-            aria-label="Food timing"
-          >
-            {FOOD_TIMINGS.map((ft) => (
-              <option key={ft} value={ft}>
-                {FOOD_TIMING_LABELS[ft]}
-              </option>
-            ))}
-          </select>
+          {!hideFoodTiming && (
+            <select
+              value={d.food_timing}
+              onChange={(e) =>
+                setDoses((ds) => {
+                  const first = ds[0] ?? emptyDose();
+                  return [
+                    {
+                      ...first,
+                      food_timing: e.target.value as FoodTiming,
+                      time_of_day: "",
+                    },
+                  ];
+                })
+              }
+              className="input"
+              aria-label="Food timing"
+            >
+              {FOOD_TIMINGS.map((ft) => (
+                <option key={ft} value={ft}>
+                  {FOOD_TIMING_LABELS[ft]}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           As-needed doses have no set time — the redose reminder covers “when”.
@@ -124,9 +132,13 @@ export default function DoseRowsEditor({
           <div
             key={i}
             className={`grid gap-2 sm:items-center ${
-              doses.length > 1
-                ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)_2.5rem]"
-                : "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]"
+              hideFoodTiming
+                ? doses.length > 1
+                  ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.5rem]"
+                  : "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+                : doses.length > 1
+                  ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)_2.5rem]"
+                  : "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]"
             }`}
           >
             <Combobox
@@ -149,20 +161,22 @@ export default function DoseRowsEditor({
                 </option>
               ))}
             </select>
-            <select
-              value={d.food_timing}
-              onChange={(e) =>
-                setDose(i, { food_timing: e.target.value as FoodTiming })
-              }
-              className="input"
-              aria-label="Food timing"
-            >
-              {FOOD_TIMINGS.map((ft) => (
-                <option key={ft} value={ft}>
-                  {FOOD_TIMING_LABELS[ft]}
-                </option>
-              ))}
-            </select>
+            {!hideFoodTiming && (
+              <select
+                value={d.food_timing}
+                onChange={(e) =>
+                  setDose(i, { food_timing: e.target.value as FoodTiming })
+                }
+                className="input"
+                aria-label="Food timing"
+              >
+                {FOOD_TIMINGS.map((ft) => (
+                  <option key={ft} value={ft}>
+                    {FOOD_TIMING_LABELS[ft]}
+                  </option>
+                ))}
+              </select>
+            )}
             {doses.length > 1 && (
               <button
                 type="button"
