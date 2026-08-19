@@ -136,3 +136,32 @@ export function predictedOnDay(
   if (!rhythm.hasPattern) return null;
   return rhythm.weekdays.includes(weekdayOfDateStr(date));
 }
+
+// ---- The rhythm MOMENT a dashboard window opens in (#3224) ------------------
+//
+// "Is now a moment this normally happens?" — the dashboard's question, answered
+// from the same predicted-day/typical-hour signal the nudge retimer reads
+// (`practiceNudgeReleased`, lib/practice.ts). Distinct from that one on purpose:
+// the nudge asks "may I send yet", so it releases from the typical hour onward
+// and falls back to sending anyway once the week's last predicted day has passed
+// — a message must never be silently lost. A Now card is not a send. It asks
+// whether THIS minute is the moment, so it is a band centred on the typical hour
+// and it closes again afterwards; nothing is lost when it does, because the
+// action stays in Show everything's Act group and a behind-pace target still
+// carries `owed`.
+//
+// The honesty rule (see this file's header) is the first line: no pattern means
+// UNKNOWN, and an unknown moment is not an open one.
+export const RHYTHM_MOMENT_MIN = 90;
+
+export function rhythmMomentOpen(
+  rhythm: WeeklyRhythm,
+  date: string,
+  minuteOfDay: number
+): boolean {
+  if (predictedOnDay(rhythm, date) !== true) return false;
+  // Circular distance from the typical hour, so a band around 00:00 or 23:00
+  // reaches across midnight into the same day's minutes rather than truncating.
+  const offset = (minuteOfDay - rhythm.hour * 60 + 1440) % 1440;
+  return offset <= RHYTHM_MOMENT_MIN || offset >= 1440 - RHYTHM_MOMENT_MIN;
+}

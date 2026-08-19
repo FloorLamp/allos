@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
+  frequencyTargetLogWindowOpen,
   getWellnessPractices,
   inferPracticeSchedule,
   isPredictedPracticeDay,
@@ -194,6 +195,44 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     expect(timed).toEqual(untimed);
     // And no rhythm is named for it (#558: no pattern says nothing).
     expect(untimed!.body).not.toContain("usually");
+  });
+
+  // #3224 — the dashboard's Now window for a target's log action, over the same
+  // inference. The defect it replaces spelled the window "not met this week",
+  // which is true for seven days.
+  it("opens the log window only at the rhythm's moment, and never without a rhythm", () => {
+    const pid = makeProfile("rhythm-log-window");
+    // Wednesday, so the Wed/Fri habit predicts today.
+    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
+    const t = today(pid);
+    practiceTarget(pid, "Red light therapy", 3);
+    seedWeeklyHabit(pid, "Red light therapy", t, 3, 8, "18:30");
+    seedWeeklyHabit(pid, "Red light therapy", t, 5, 8, "18:30");
+    practiceTarget(pid, "Breathwork", 3);
+    logPracticeSession(pid, "Breathwork", shiftDateStr(t, -1));
+
+    const rhythmic = { scope_kind: "practice", scope_value: "Red light therapy" };
+    // 18:30 is the habit; the window is open around it and shut well before.
+    expect(frequencyTargetLogWindowOpen(pid, rhythmic, t, 18 * 60)).toBe(true);
+    expect(frequencyTargetLogWindowOpen(pid, rhythmic, t, 9 * 60)).toBe(false);
+    // Thursday is not a predicted day, at the typical hour or any other.
+    const thursday = shiftDateStr(t, 1);
+    expect(frequencyTargetLogWindowOpen(pid, rhythmic, thursday, 18 * 60)).toBe(
+      false
+    );
+
+    // A practice with no pattern has no moment to open, all day long.
+    const young = { scope_kind: "practice", scope_value: "Breathwork" };
+    for (const minute of [8 * 60, 12 * 60, 18 * 60, 22 * 60]) {
+      expect(frequencyTargetLogWindowOpen(pid, young, t, minute)).toBe(false);
+    }
+
+    // A training-scope target has no per-target rhythm to ask at all — the
+    // "Log Lower body" card that occupied the owner's Now all week.
+    const lower = { scope_kind: "group", scope_value: "Lower" };
+    for (const minute of [8 * 60, 18 * 60]) {
+      expect(frequencyTargetLogWindowOpen(pid, lower, t, minute)).toBe(false);
+    }
   });
 
   it("surfaces: usuallyToday flags a predicted day and stays false with no pattern (#558)", () => {

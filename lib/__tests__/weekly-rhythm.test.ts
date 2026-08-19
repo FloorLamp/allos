@@ -11,6 +11,8 @@ import {
   modalHour,
   predictedOnDay,
   rhythmMinDates,
+  rhythmMomentOpen,
+  RHYTHM_MOMENT_MIN,
   RHYTHM_EVENING_FALLBACK_HOUR,
   RHYTHM_WINDOW_WEEKS,
   type RhythmRow,
@@ -269,5 +271,60 @@ describe("practiceRhythmDaysText — data, not advice", () => {
   it("names the inferred days", () => {
     expect(practiceRhythmDaysText([1, 3, 5])).toBe("usually Mon/Wed/Fri");
     expect(practiceRhythmDaysText([0])).toBe("usually Sun");
+  });
+});
+
+// ---- The dashboard's rhythm MOMENT (#3224) ----------------------------------
+//
+// The Now window for a weekly target's log action. Distinct from the nudge
+// release above: this closes again after the moment passes, and no-pattern is
+// never an open window.
+
+describe("rhythmMomentOpen", () => {
+  // 2026-06-17 is a Wednesday (weekday 3); 2026-06-18 a Thursday.
+  const WED = "2026-06-17";
+  const THU = "2026-06-18";
+
+  it("no pattern is never an open moment — the honesty rule, un-negotiated", () => {
+    const none = {
+      weekdays: [0, 1, 2, 3, 4, 5, 6],
+      hour: 18,
+      hasPattern: false,
+    };
+    for (const minute of [0, 8 * 60, 18 * 60, 23 * 60 + 59]) {
+      expect(rhythmMomentOpen(none, WED, minute)).toBe(false);
+      expect(rhythmMomentOpen(none, THU, minute)).toBe(false);
+    }
+  });
+
+  it("opens on a predicted day around the typical hour and closes again", () => {
+    const r = rhythm([3], 18);
+    expect(rhythmMomentOpen(r, WED, 18 * 60)).toBe(true);
+    expect(rhythmMomentOpen(r, WED, 18 * 60 - RHYTHM_MOMENT_MIN)).toBe(true);
+    expect(rhythmMomentOpen(r, WED, 18 * 60 + RHYTHM_MOMENT_MIN)).toBe(true);
+    // One minute past either edge the moment is over — a window, not a span.
+    expect(rhythmMomentOpen(r, WED, 18 * 60 - RHYTHM_MOMENT_MIN - 1)).toBe(
+      false
+    );
+    expect(rhythmMomentOpen(r, WED, 18 * 60 + RHYTHM_MOMENT_MIN + 1)).toBe(
+      false
+    );
+    // Nowhere near the habit, on the right day, is still not the moment.
+    expect(rhythmMomentOpen(r, WED, 8 * 60)).toBe(false);
+  });
+
+  it("stays shut on a day the rhythm does not predict, at any hour", () => {
+    const r = rhythm([3], 18);
+    for (const minute of [0, 8 * 60, 18 * 60, 23 * 60 + 59]) {
+      expect(rhythmMomentOpen(r, THU, minute)).toBe(false);
+    }
+  });
+
+  it("reaches across midnight for a habit at the edge of the day", () => {
+    // Typical hour 00: 23:00 the same evening is inside the band, 22:00 is not.
+    const r = rhythm([3], 0);
+    expect(rhythmMomentOpen(r, WED, 23 * 60)).toBe(true);
+    expect(rhythmMomentOpen(r, WED, 22 * 60)).toBe(false);
+    expect(rhythmMomentOpen(r, WED, 60)).toBe(true);
   });
 });
