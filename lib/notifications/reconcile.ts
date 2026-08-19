@@ -153,6 +153,8 @@ import {
   type MessagePointer,
 } from "./message-pointers";
 import { classifyTelegramFailure } from "./telegram-error";
+import { standingUsualOffer } from "./usual-routine-attach";
+import { pruneNotifyOffers } from "./offer-store";
 import { messageKeyboard } from "./telegram-render";
 import {
   closeMessage,
@@ -461,6 +463,13 @@ const intakeDose: FamilyReconciler = {
           ids.every((id) => id && resolvedFor(date).has(id))
         )
           dead.add(t);
+      } else if (f[0] === "usual") {
+        // The composed one-tap (#2460) is HOST-INHERITED: it elects no family, so
+        // whichever family owns the message it rides decides when it dies — and both
+        // decide it the same way, by asking whether the STORED offer still names
+        // anything that stands. Once it does not, the button goes and the named line
+        // with it; until then the rebuild re-renders it REDUCED to the remainder.
+        if (!standingUsualOffer(profileId, Number(f[2]), p.date)) dead.add(t);
       } else if (f[0] === "demote") {
         // The ⤓ May suggestion is moot once the item IS `may` — the same
         // already-demoted refusal its own typed outcome would answer with.
@@ -725,7 +734,7 @@ const food: FamilyReconciler = {
   // now on their own message (#2264): a chip for a burst another message produced is
   // dead here whatever its age.
   dead(profileId, tokens, p) {
-    return deadCorrectionTokens(
+    const dead = deadCorrectionTokens(
       tokens,
       FOOD_TIME_PREFIXES,
       new Set(
@@ -739,6 +748,16 @@ const food: FamilyReconciler = {
         ).map((b) => b.fromId)
       )
     );
+    // The composed one-tap (#2460) rides this family too, and dies here by the SAME
+    // question the dose reminder asks of it — the stored offer against what stands.
+    // It is the one button on this keyboard that CAN resolve: the quick-log rows never
+    // do, but the bundle is an offer, and an offer that has been taken is spent.
+    for (const t of tokens) {
+      const f = fields(t);
+      if (f[0] !== "usual") continue;
+      if (!standingUsualOffer(profileId, Number(f[2]), p.date)) dead.add(t);
+    }
+    return dead;
   },
   rebuild(profileId, tokens, p) {
     for (const t of tokens) {
@@ -1310,6 +1329,11 @@ export async function reconcileProfileMessages(
     failed: 0,
   };
   result.pruned = pruneMessagePointers(profileId);
+  // The stored offers (#2460) age out on the same pass and the same horizon: an offer
+  // is only ever redeemed from a live message, so it can never usefully outlive one.
+  // Not counted in `pruned` — that number is pointers, and two units in one field is a
+  // number nobody can read.
+  pruneNotifyOffers(profileId);
   const td = today(profileId);
 
   for (const pointer of liveMessagePointers(profileId)) {

@@ -14,6 +14,14 @@ import {
 import { buildWorkoutTargetReminder } from "../notifications/workouts";
 import { buildPracticeReminder } from "../notifications/practices";
 import { buildFoodNudge } from "../notifications/food";
+import { attachUsualRoutine } from "../notifications/usual-routine-attach";
+import {
+  attachUsualForSlots,
+  dispatchableUsual,
+  planUsualRoutine,
+  type UsualRoutineSlotPlan,
+} from "../notifications/usual-routine-plan";
+import type { FoodSlot } from "../food-slot";
 import { FOOD_NUDGE_WINDOWS } from "../notifications/food-format";
 import { standsDownForFast } from "../fasting-standdown";
 import { getActiveFastCached } from "../queries/fasting";
@@ -333,6 +341,37 @@ export async function tickProfile(
   const prefix = prefixForProfile(profileId);
   let anyFailed = false;
 
+  // ── THE COMPOSED ONE-TAP'S PLACEMENT (#2460) ──────────────────────────────
+  //
+  // One button, the whole morning — the habitual food groups AND the doses declared for
+  // the window and still owed today. It is not a send of its own and never will be
+  // (contact-consent, findings.md §2): it DECORATES whichever of the window's messages
+  // is already going out, and never both.
+  //
+  // Deciding that is cross-message knowledge, which is why it lives HERE rather than in
+  // either builder: `buildFoodNudge` has five callers and none of them knows anything
+  // about the dose reminder, and the reverse is just as true. The plan computes the
+  // candidate ONCE per window and hands the already-decided attachment to whichever
+  // message takes it; the builders are untouched and ask nothing.
+  //
+  // The gate is the food opt-in, exactly as the nudge's is: the bundle always contains
+  // food writes, and food-buttons-in-chat is an expressed opt-in. Its dose confirms
+  // need no additional consent — those writes are already one tap away on the same
+  // message.
+  const usualPlans = new Map<FoodSlot, UsualRoutineSlotPlan>();
+  if (
+    getProfileFoodTelegram(profileId) &&
+    telegramChannel.isConfigured(profileId)
+  ) {
+    for (const w of FOOD_NUDGE_WINDOWS) {
+      const slotMinute = sched.supplementMinutes[w];
+      if (slotMinute == null || !slotDue(slotMinute, minute, tickMinutes))
+        continue;
+      const plan = planUsualRoutine(profileId, w, date, true);
+      if (plan) usualPlans.set(w, plan);
+    }
+  }
+
   // ── IntakeItem dose reminders: ONE merged send per tick (#1154) ────────────
   // Every slot due (and unsent) this tick — the four fixed windows plus the
   // workout-relative PreWorkout pseudo-slot — coalesces into ONE message, so two
@@ -375,9 +414,19 @@ export async function tickProfile(
         slots: intakeSlotsDue.join(","),
       });
     } else {
+      // PRIORITY 1 (#2460): the dose reminder IS sending, and it covers the bundle's
+      // window, so it takes the bundle — it is the message already carrying the stack's
+      // one-taps, and this is the upgrade of its `All` row. Claimed only now, when the
+      // message exists: a slot whose reminder had nothing to say leaves the bundle for
+      // the food nudge instead of spending it on a message that never went out.
+      const message = attachUsualForSlots(
+        built.message,
+        built.slots,
+        usualPlans
+      );
       const { delivered, failed } = await send(
         profileId,
-        prefixMessage(built.message, prefix)
+        prefixMessage(message, prefix)
       );
       if (failed) anyFailed = true;
       // Mark each contributing slot once delivered so none re-sends later today;
@@ -486,7 +535,24 @@ export async function tickProfile(
         dueSlots.push({
           slot: `food_${w}`,
           markerKey: foodNudgeMarkerKey(w),
-          build: () => buildFoodNudge(profileId, w, date),
+          // PRIORITY 2 (#2460): a habitual window whose dose reminder did NOT send —
+          // no pending doses, or none due this slot — still gets the bundle, which
+          // degrades to the food half. The claim happens inside the build, after
+          // `runTickSlot`'s per-day marker check and only when the nudge itself
+          // exists, so the same "never spent on a message that never went out" rule
+          // holds on this side too. If the dose reminder already took it, `claim`
+          // answers null and this is the plain nudge.
+          build: () => {
+            const nudge = buildFoodNudge(profileId, w, date);
+            return nudge
+              ? dispatchableUsual(
+                  attachUsualRoutine(
+                    nudge,
+                    usualPlans.get(w)?.claim("food") ?? null
+                  )
+                )
+              : null;
+          },
         });
     }
   }
