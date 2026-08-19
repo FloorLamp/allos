@@ -1179,6 +1179,22 @@ export const TIME_COLUMNS = {
       convention: "bare",
     },
   ],
+  niggles: [
+    {
+      column: "reported_at",
+      semantic: "window-start",
+      grain: "instant",
+      convention: "canonical",
+      note: "When the person FIRST reported this niggle — i.e. when they tapped the confirm chip on the note that named it. Migration 20260819-niggles (#2948), BORN canonical (lib/clock.ts instantNow). `window-start` on the `injuries.since` reading: it opens the span the niggle has been going on for, and never advances — a re-report moves last_reported_at and leaves this alone. It is deliberately NOT the row's `event` column: the fact every consumer reads is the FRESHEST report, so declaring two events here would be exactly the substitution-wearing-a-declaration the index forbids.",
+    },
+    {
+      column: "last_reported_at",
+      semantic: "event",
+      grain: "instant",
+      convention: "canonical",
+      note: "The MOST RECENT report of the same niggle (same region + laterality). Migration 20260819-niggles (#2948), BORN canonical. `event`, not `lifecycle`: a re-report is a fact about the person's body, not a transition in the row's bookkeeping. It is also the whole expiry clock — a niggle is live iff now - last_reported_at < NIGGLE_QUIET_DAYS (lib/niggle-model.ts), so nothing is stored about expiry and nothing has to run to resolve one.",
+    },
+  ],
   notify_lifecycle: [
     {
       column: "at",

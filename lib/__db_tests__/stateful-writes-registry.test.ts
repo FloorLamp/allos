@@ -62,6 +62,11 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       "integration_backfill_jobs",
       // #2132: the open-course ⇔ active invariant's single write core.
       "medication_courses",
+      // #2948: the niggle's one transition is a compare-and-set — advance the LIVE
+      // row on this (region, laterality) key, or mint one when none is live. A raw
+      // INSERT elsewhere would create a second simultaneous right-knee niggle, and
+      // since liveness is derived rather than stored, nothing would show it.
+      "niggles",
       // #3058: the durable post-workout dispatch claim — the pending -> sent
       // election whose unique key IS "one contact per session"; a raw write
       // could mint a second concurrent winner or finalize a claim no channel
