@@ -2951,10 +2951,13 @@ populates Telegram's own `/` autocomplete menu, and Telegram scopes it per bot �
 there is no per-chat variant a self-hosted instance can keep current for every chat
 it joins. So the registered list stays GENERIC (every verb the build ships) and the
 handlers keep owning per-chat gating; `/help` is the per-chat-honest answer. It is
-registered by the same Settings → Server action that registers the webhook, since
-that is the one moment the operator is provably holding a working token — and
-deliberately NOT fatal: a failed menu registration must not report a working
-webhook as broken, so it degrades to a named caveat in the action's message.
+registered from the bot-token SAVE (`saveTelegramBotConfig`), mode-independent —
+the one action both transports run while the operator is provably holding a token
+(#3076; registering only from the webhook action left every polling instance with
+no menu at all, since the Register-webhook button doesn't even render in polling
+mode). Deliberately NOT fatal, the `deleteWebhook` precedent: a failed menu
+registration must never fail the token save, so it degrades to a warning log.
+`setMyCommands` has exactly one call site.
 
 **`/mood` on demand.** The scheduled check-in rides the evening slot; if it
 scrolled away or the day got away from someone there was no path back to it. The
