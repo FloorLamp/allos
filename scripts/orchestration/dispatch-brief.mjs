@@ -352,9 +352,15 @@ ${nodeLine}
   do not quote gates out of it.
 - CI ARTIFACTS ARE UNREACHABLE from this container: \`*.blob.core.windows.net\` returns
   403 CONNECT through the agent proxy, so a playwright-report zip or an
-  error-context.md from a real CI run CANNOT be downloaded. Job LOGS are fine via the
-  API. If a brief (mine included) tells you to fetch an artifact, that instruction is
-  wrong — say so and reproduce locally instead.
+  error-context.md from a real CI run CANNOT be downloaded. If a brief (mine included)
+  tells you to fetch an artifact, that instruction is wrong — say so and reproduce
+  locally instead.
+- JOB LOGS ARE THE SAME STORY, and this line used to claim otherwise. \`GET
+  /actions/jobs/<id>/logs\` 302s to that same blob host, so the REST route DIES — two
+  agents burned a cycle on it before it was corrected. The ONE route that works is
+  \`mcp__github__get_job_logs\` with \`return_content: true\`, and that is the justified
+  exception to "use curl REST, not the MCP tools". Note its tail lands in the runner's
+  post-job cleanup, so ask for enough \`tail_lines\` (~140) to reach the test summary.
 - DIAGNOSING A CI-ONLY FAILURE: it may be TIMING rather than co-residency. A tap that
   lands pre-hydration is swallowed with no error — Playwright's actionability checks
   pass, because the element is fine — and the next assertion fails as "element(s) not
