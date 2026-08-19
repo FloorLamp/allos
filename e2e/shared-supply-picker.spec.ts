@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { openFact } from "./intake-form-helpers";
 
 test("creating a shared bottle confirms the write and cannot duplicate it", async ({
   page,
@@ -20,7 +21,10 @@ test("creating a shared bottle confirms the write and cannot duplicate it", asyn
   await page.getByRole("menuitem", { name: "Edit" }).click();
 
   const editDialog = page.getByRole("dialog", { name: `Edit ${itemName}` });
-  const picker = editDialog.getByTestId("shared-supply-picker");
+  // The shared-supply control is the supply fact's editor now (#3216); its own
+  // separate-submit, one-way count-migration design is untouched.
+  const supply = await openFact(page, "supply", editDialog);
+  const picker = supply.getByTestId("shared-supply-picker");
   const apply = picker.getByTestId("shared-supply-apply");
   await expect(apply).toBeDisabled();
 
