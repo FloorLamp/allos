@@ -15,6 +15,7 @@ import {
   dedupeKeyHasKnownPrefix,
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
+import { coachingObservationFindings } from "@/lib/dashboard-presentation";
 import { SUN_EXPOSURE_PREFIX } from "@/lib/sun-exposure";
 
 function newProfile(name: string): number {
@@ -71,6 +72,10 @@ describe("buildSunExposureFindings (#571)", () => {
     // It joins the unified coaching rollup.
     const all = collectCoachingFindings(p, anchor, "kg");
     expect(all.map((x) => x.dedupeKey)).toContain(f.dedupeKey);
+
+    // The rollup is this class's ONLY surface, so it must clear the shipped
+    // dashboard relevance floor explicitly (#3129).
+    expect(coachingObservationFindings([f])).toHaveLength(1);
   });
 
   it("stays silent without a home location", () => {

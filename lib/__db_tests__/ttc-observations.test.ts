@@ -41,6 +41,7 @@ import {
   dedupeKeyHasKnownPrefix,
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
+import { coachingObservationFindings } from "@/lib/dashboard-presentation";
 
 function newProfile(name: string): number {
   return Number(
@@ -313,6 +314,10 @@ describe("the workup prompt is coaching-tier and stays there (#448 fixture)", ()
 
     const coaching = collectCoachingFindings(p, anchor, "kg");
     expect(coaching.some((c) => c.dedupeKey === f.dedupeKey)).toBe(true);
+
+    // The rollup is this class's ONLY surface, so it must clear the shipped
+    // dashboard relevance floor explicitly (#3129).
+    expect(coachingObservationFindings([f])).toHaveLength(1);
   });
 
   it("says nothing before the threshold, and nothing without a declaration", () => {

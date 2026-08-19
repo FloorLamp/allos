@@ -72,6 +72,18 @@ and calm informational findings remain on their origin tabs. When nothing clears
 the floor, there is no card. When several findings clear it, all render: the card
 never says “N of M” and never hides a withheld queue behind “Show more.”
 
+**A class with no origin tab must declare its rollup relevance (#3129).** The
+tone-derived default assumes an origin tab exists to fall back on. A whole set of
+coaching classes has none — mood, the sleep↔mood bridge, sun exposure, oral
+health, paired observations, the TTC workup prompt, food–drug variance — their
+sole reach IS the rollup, so each of those producers sets
+`dashboardRelevance: review` explicitly (the same mechanism #3095 used for the
+five it annotated). Leaving one at the default doesn't calm it down; it erases
+it. `lib/__tests__/coaching-rollup-reach-scan.test.ts` holds the census: every
+collectCoachingFindings builder is classified rollup-only (annotation enforced)
+or origin-tab (the claimed surface verified), and a new builder must choose a
+side.
+
 Profile-entity fan-out is bounded before suppression, per family, in
 `COACHING_ENTITY_FINDING_LIMITS` (and the food–drug variance family's adjacent
 declaration). That ordering means dismissing the generated set cannot promote the
