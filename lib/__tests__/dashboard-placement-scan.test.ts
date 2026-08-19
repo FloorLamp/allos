@@ -53,6 +53,27 @@ describe("atomic dashboard source boundary", () => {
     expect(canvas).toContain(
       "candidateNodes.get(placement.candidate.candidateId)"
     );
+    expect(canvas).toContain('placement.lane !== "standing"');
+    expect(canvas).toContain("Missing dashboard candidate node for");
+  });
+
+  it("keeps nodes for readings phase 4 can move out of Standing", () => {
+    const page = fs.readFileSync(path.join(root, "app/(app)/page.tsx"), "utf8");
+    const protein = page.slice(
+      page.indexOf("if (proteinToday)"),
+      page.indexOf("else if (foodLoggingApplicable)")
+    );
+    const sleep = page.slice(
+      page.indexOf("values.forEach(([key, title, value], index)"),
+      page.indexOf("sourceOrder += values.length")
+    );
+
+    expect(protein).toContain("add(");
+    expect(protein).toContain("<NutritionTodayWidget");
+    expect(protein).not.toContain("addStandingOnly(");
+    expect(sleep).toContain("add(");
+    expect(sleep).toContain("<DashboardAtomCard");
+    expect(sleep).not.toContain("addStandingOnly(");
   });
 
   it("keeps candidate definitions behind the React-free domain builders", () => {

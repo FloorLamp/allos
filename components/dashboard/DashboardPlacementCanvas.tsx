@@ -33,6 +33,17 @@ export default function DashboardPlacementCanvas({
   standingPresentations,
   attentionBadgeCount,
 }: DashboardPlacementCanvasProps) {
+  const missingNode = placements.find(
+    (placement) =>
+      placement.lane !== "standing" &&
+      candidateNodes.get(placement.candidate.candidateId) == null
+  );
+  if (missingNode) {
+    throw new Error(
+      `Missing dashboard candidate node for ${missingNode.candidate.candidateId} in ${missingNode.lane}`
+    );
+  }
+
   const nodeFor = (placement: DashboardPlacement) => {
     const node = candidateNodes.get(placement.candidate.candidateId);
     if (node == null) return null;

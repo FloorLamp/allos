@@ -1470,7 +1470,7 @@ async function renderDashboard(
   }
 
   if (proteinToday)
-    addStandingOnly(
+    add(
       dailyCandidates.protein(
         {
           subject: profileSubject,
@@ -1481,6 +1481,7 @@ async function renderDashboard(
         proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
+      <NutritionTodayWidget today={proteinToday} routine={null} />,
       {
         value: `${proteinToday.todayIntake?.basis === "tracked" ? "" : "≥ "}${Math.round(proteinToday.todayGrams)} g`,
         detail: [
@@ -1959,7 +1960,7 @@ async function renderDashboard(
       ],
     ] as const;
     values.forEach(([key, title, value], index) =>
-      addStandingOnly(
+      add(
         sleepCandidates.reading(
           { subject: profileSubject, sourceOrder: sourceOrder + index },
           key,
@@ -1967,6 +1968,7 @@ async function renderDashboard(
           engagementFromSource(sleepSummary.source),
           sleepTiming
         ),
+        <DashboardAtomCard title={title} value={value} href="/sleep" />,
         {
           label: title,
           value,
