@@ -66,7 +66,9 @@ test("a lift whose pre-cutoff work was all machine gets NO prior dot", async ({
     // One dot, and it is the CURRENT one: absence of the prior is the claim, so the
     // present dot has to be named too or "no prior" would also pass on a row that
     // rendered nothing at all.
-    await expect(declined.getByTestId("strength-ladder-current")).toHaveCount(1);
+    await expect(declined.getByTestId("strength-ladder-current")).toHaveCount(
+      1
+    );
     await expect(declined.getByTestId("strength-ladder-prior")).toHaveCount(0);
     // Declining the prior is not the same as declaring a PR.
     await expect(declined).not.toContainText("· PR");
