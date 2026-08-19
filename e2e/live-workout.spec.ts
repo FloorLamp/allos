@@ -164,12 +164,18 @@ test("editing another activity resumes an empty live workout without stranding i
   await page.getByTestId("finish-workout").click();
   await page.getByTestId("recap-save").click();
   await page.getByRole("button", { name: "Done", exact: true }).click();
+  const discarded = page.waitForResponse(
+    (response) => response.request().method() === "POST" && response.ok()
+  );
   await page
     .getByTestId("confirm-dialog")
     .getByRole("button", { name: "Close anyway", exact: true })
     .click();
+  await discarded;
 
-  await page.waitForURL(/\/training(\?.*)?$/);
+  // Closing from the older activity leaves that page in place. A hard navigation
+  // proves the empty live row was deleted server-side, not merely hidden locally.
+  await page.goto("/training?tab=log");
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
 });
 
