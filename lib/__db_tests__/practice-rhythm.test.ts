@@ -225,7 +225,10 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     );
 
     // A practice with no pattern has no moment to open, all day long.
-    const young = { scope_kind: "practice", scope_value: "Breathwork" } as const;
+    const young = {
+      scope_kind: "practice",
+      scope_value: "Breathwork",
+    } as const;
     for (const minute of [8 * 60, 12 * 60, 18 * 60, 22 * 60]) {
       expect(frequencyTargetLogWindowOpen(pid, young, t, minute)).toBe(false);
     }
