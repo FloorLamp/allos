@@ -198,10 +198,9 @@ test("Add medication opens one inline quick-add and full-details workspace", asy
   await expect(panel).toHaveCount(0);
   await page.getByTestId("medication-add-toggle").click();
   await expect(panel).toBeVisible();
-  await expect(panel.getByTestId("quick-add-medication")).toBeVisible();
+  await expect(panel.getByTestId("intake-item-form")).toBeVisible();
 
-  await panel.getByTestId("medication-add-full").click();
-  await expect(panel.getByTestId("quick-add-medication")).toHaveCount(0);
+  await expect(panel.getByTestId("intake-item-form")).toHaveCount(0);
   const nameInput = panel.getByRole("combobox", { name: "Name" });
   await expect(nameInput).toBeVisible();
   // Before a catalog medication is selected there is no description preview in
@@ -264,7 +263,7 @@ test("the medication workspace stays usable without horizontal overflow on mobil
   await expectNoClippedContent(page);
 
   await page.getByTestId("medication-add-toggle").click();
-  await expect(page.getByTestId("quick-add-medication")).toBeVisible();
+  await expect(page.getByTestId("intake-item-form")).toBeVisible();
   await expectNoClippedContent(page);
 });
 

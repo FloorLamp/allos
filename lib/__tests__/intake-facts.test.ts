@@ -196,3 +196,26 @@ describe("intake fact summary (#3216)", () => {
     expect(named.rules[0].label).toContain("Iron");
   });
 });
+
+describe("selection-prefill marking survives the merge (#846 → #3216)", () => {
+  it("a fact still showing the datasets' offer is marked, and a stated one is not", () => {
+    // #846's guarantee: a prefilled value is an editable SUGGESTION, not a fact the
+    // person asserted. The old form said so on the field's label; the merged form has
+    // no always-visible field, so the chip has to carry it.
+    const marked = intakeFactSummary(
+      base({ amount: "200 mg", suggestedFacts: new Set(["dose"] as const) })
+    );
+    expect(marked.chips.find((c) => c.key === "dose")?.suggested).toBe(true);
+    const stated = intakeFactSummary(base({ amount: "200 mg" }));
+    expect(stated.chips.find((c) => c.key === "dose")?.suggested).toBe(false);
+  });
+
+  it("a missing essential is never marked as a suggestion", () => {
+    const summary = intakeFactSummary(
+      base({ suggestedFacts: new Set(["dose"] as const) })
+    );
+    const dose = summary.chips.find((c) => c.key === "dose");
+    expect(dose?.state).toBe("missing");
+    expect(dose?.suggested).toBeUndefined();
+  });
+});

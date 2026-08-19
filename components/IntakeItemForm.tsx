@@ -57,7 +57,7 @@ import {
 } from "@/lib/medication-info";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 import { SUPPLEMENT_BRANDS } from "@/lib/supplement-brands";
-import { prnDefaultsFor } from "@/lib/prn-defaults";
+import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
 import type { PediatricBand } from "@/lib/datasets/prn-defaults";
 import {
   formulationSlugForProduct,
@@ -73,7 +73,7 @@ import {
   formulationRedosePreset,
   pediatricContextLine,
 } from "@/lib/intake-formulations";
-import { resolveIntakePrefill } from "@/lib/intake-prefill";
+import { resolveIntakePrefill, type PrefillField } from "@/lib/intake-prefill";
 import {
   CONDITION_LABELS,
   OBLIGATIONS,
@@ -298,6 +298,26 @@ export default function IntakeItemForm({
   const [supplyLabel, setSupplyLabel] = useState<string | null>(
     s?.supply_name ?? initialSupply?.name ?? null
   );
+  // Selection-prefill bookkeeping (#846). `suggested` marks facts still showing the
+  // datasets' offer; `touched` records what the person edited, so a LATER pick never
+  // clobbers a value they typed. Both survive the merge because both were guarantees,
+  // not decorations — the marking is what keeps a prefill from reading as a fact.
+  const [suggestedFields, setSuggestedFields] = useState<Set<PrefillField>>(
+    new Set()
+  );
+  const [touched, setTouched] = useState<Set<PrefillField>>(new Set());
+  function markTouched(...fields: PrefillField[]) {
+    setSuggestedFields((prev) => {
+      const next = new Set(prev);
+      for (const f of fields) next.delete(f);
+      return next;
+    });
+    setTouched((prev) => {
+      const next = new Set(prev);
+      for (const f of fields) next.add(f);
+      return next;
+    });
+  }
   const [formulationSlug, setFormulationSlug] = useState("");
   const [selectedPediatricBandMinLbs, setSelectedPediatricBandMinLbs] =
     useState<number | null>(null);
@@ -393,6 +413,20 @@ export default function IntakeItemForm({
   const isChildProfile =
     pediatricContext?.ageMonths != null &&
     pediatricContext.ageMonths < PEDIATRIC_MAX_AGE_MONTHS;
+  // The age-aware label figures to OFFER (#851 item 12) — pediatric for a child where
+  // the label differs, else adult, and NULL for a child whose ingredient has no
+  // pediatric figure (a deliberate refusal to prefill adult numbers below a child's
+  // floor, #798).
+  const redoseDefaults = prnDefaults
+    ? redoseLabelDefaults(prnDefaults, isChildProfile)
+    : null;
+  // The educational "what is this drug" explainer, matched from the name. Passive
+  // context beside the field it explains — it is not a fact being saved, so it is not
+  // a chip.
+  const medInfo = useMemo(
+    () => (isMed ? getMedicationInfo(name) : null),
+    [isMed, name]
+  );
 
   // ---- Formulation (decision 2) ----
   const choices = useMemo(
@@ -497,7 +531,14 @@ export default function IntakeItemForm({
       rxcui: rx.rxcui,
       rxcuiIngredients: rx.rxcuiIngredients,
     });
-    const pf = resolveIntakePrefill({ info, prn, pediatric: pediatricContext });
+    const touchedRec: Partial<Record<PrefillField, boolean>> = {};
+    for (const f of touched) touchedRec[f] = true;
+    const pf = resolveIntakePrefill({
+      info,
+      prn,
+      pediatric: pediatricContext,
+      touched: touchedRec,
+    });
     setBrandNarrowing(
       pf.brandSuggestions?.length
         ? medicationBrandOptions(pf.brandSuggestions)
@@ -521,6 +562,7 @@ export default function IntakeItemForm({
         )
       );
     }
+    setSuggestedFields(new Set(pf.marked));
     // The label's food relationship arrives as a SUGGESTED rule — an offer that
     // renders marked and deletable, never a silent write (#1505).
     setRules((current) => [
@@ -614,53 +656,105 @@ export default function IntakeItemForm({
   const effectiveCondition = ruleFields.condition ?? condition;
 
   // ---- The state the mapping posts ----
-  const formState: IntakeItemFormState = {
-    id: s?.id ?? null,
-    kind,
-    name,
-    brand,
-    product,
-    stack,
-    condition: effectiveCondition,
-    situation: ruleFields.situation,
-    pauseSituation: ruleFields.pauseSituation,
-    obligation,
-    critical,
-    escalateAfterMin,
-    escalateChatId,
-    minIntervalHours,
-    maxDailyCount,
-    maxDailyAmountMg,
-    redoseNotice,
-    rx: rxFlag,
-    prescriber,
-    pharmacy,
-    rxNumber,
-    provider,
-    providerId: s?.provider_id ?? null,
-    providerLoaded: s?.provider_name ?? "",
-    indicationConditionId,
-    startedOn,
-    endDate,
-    courseId: course?.id ?? null,
-    cadence,
-    doses: doses.map((d) => ({
-      ...d,
-      food_timing: ruleFields.foodTiming ?? "any",
-    })),
-    pairs: ruleFields.pairs,
-    ingredients,
-    notes,
-    rxcui: rx.rxcui,
-    rxcuiIngredients: rx.rxcuiIngredients ?? [],
-    quantityOnHand,
-    qtyPerDose,
-    quantityOnHandLoaded:
-      s?.quantity_on_hand != null
-        ? String(Math.max(0, s.quantity_on_hand))
-        : "",
-    supplyId,
-  };
+  // Memoized because it IS the draft (#1699): a new object every render would rewrite
+  // the local draft on every render rather than on every change.
+  const formState: IntakeItemFormState = useMemo(
+    () => ({
+      id: s?.id ?? null,
+      kind,
+      name,
+      brand,
+      product,
+      stack,
+      condition: effectiveCondition,
+      situation: ruleFields.situation,
+      pauseSituation: ruleFields.pauseSituation,
+      obligation,
+      critical,
+      escalateAfterMin,
+      escalateChatId,
+      minIntervalHours,
+      maxDailyCount,
+      maxDailyAmountMg,
+      redoseNotice,
+      rx: rxFlag,
+      prescriber,
+      pharmacy,
+      rxNumber,
+      provider,
+      providerId: s?.provider_id ?? null,
+      providerLoaded: s?.provider_name ?? "",
+      indicationConditionId,
+      startedOn,
+      endDate,
+      courseId: course?.id ?? null,
+      cadence,
+      doses: doses.map((d) => ({
+        ...d,
+        food_timing: ruleFields.foodTiming ?? "any",
+      })),
+      pairs: ruleFields.pairs,
+      ingredients,
+      notes,
+      rxcui: rx.rxcui,
+      rxcuiIngredients: rx.rxcuiIngredients ?? [],
+      quantityOnHand,
+      qtyPerDose,
+      quantityOnHandLoaded:
+        s?.quantity_on_hand != null
+          ? String(Math.max(0, s.quantity_on_hand))
+          : "",
+      supplyId,
+    }),
+    [
+      s,
+      kind,
+      name,
+      brand,
+      product,
+      stack,
+      effectiveCondition,
+      ruleFields,
+      obligation,
+      critical,
+      escalateAfterMin,
+      escalateChatId,
+      minIntervalHours,
+      maxDailyCount,
+      maxDailyAmountMg,
+      redoseNotice,
+      rxFlag,
+      prescriber,
+      pharmacy,
+      rxNumber,
+      provider,
+      indicationConditionId,
+      startedOn,
+      endDate,
+      course,
+      cadence,
+      doses,
+      ingredients,
+      notes,
+      rx.rxcui,
+      rx.rxcuiIngredients,
+      quantityOnHand,
+      qtyPerDose,
+      supplyId,
+    ]
+  );
+
+  // Which FACT each still-suggested field belongs to, so the chip carries the #846
+  // marking the old always-visible inputs carried on their labels.
+  const suggestedFacts = useMemo(() => {
+    const out = new Set<IntakeFactKey>();
+    for (const field of suggestedFields) {
+      if (field === "doseAmount") out.add("dose");
+      else if (field === "asNeeded") out.add("importance");
+      else out.add("timing");
+    }
+    return out;
+  }, [suggestedFields]);
 
   const summary = intakeFactSummary({
     kind,
@@ -699,6 +793,7 @@ export default function IntakeItemForm({
     notes,
     rules,
     itemNames,
+    suggestedFacts,
   });
 
   // ---- Draft (#1699) ----
@@ -864,6 +959,8 @@ export default function IntakeItemForm({
     setDoses([emptyDose()]);
     setCadence(emptyIntakeCadence());
     setRules([]);
+    setSuggestedFields(new Set());
+    setTouched(new Set());
     setOpenPanel(null);
   }
 
@@ -922,6 +1019,34 @@ export default function IntakeItemForm({
           placeholder={affordances.namePlaceholder}
         />
         <RxNormAffordance name={name} rx={rx} />
+        {isChildProfile && name.trim() && isMed && !prnDefaults?.pediatric ? (
+          <p
+            data-testid="medication-pediatric-no-chart"
+            className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          >
+            No pediatric label weight-band chart is available for this
+            medication.
+          </p>
+        ) : null}
+        {medInfo && (
+          <dl
+            data-testid="medication-info-preview"
+            className="mt-3 space-y-1 text-sm"
+          >
+            <div>
+              <dt className="section-label">Category</dt>
+              <dd className="mt-0.5 font-medium text-slate-700 dark:text-slate-200">
+                {medInfo.drug_class ?? "Medication"}
+              </dd>
+            </div>
+            <div>
+              <dt className="section-label">Description</dt>
+              <dd className="mt-0.5 leading-relaxed text-slate-500 dark:text-slate-400">
+                {medInfo.description}
+              </dd>
+            </div>
+          </dl>
+        )}
       </div>
 
       {lockedKind == null && (
@@ -1103,7 +1228,12 @@ export default function IntakeItemForm({
             )}
             <DoseRowsEditor
               doses={doses}
-              setDoses={setDoses}
+              setDoses={(update) => {
+                // Any hand edit protects the dose-derived fields from a LATER pick.
+                markTouched("doseAmount", "timeOfDay");
+                setSelectedPediatricBandMinLbs(null);
+                setDoses(update);
+              }}
               dosageOptions={[...dosageOptions]}
               amountPlaceholder={isMed ? "e.g. 200 mg" : "amount"}
               singleAmountOnly={obligation === "may"}
@@ -1157,8 +1287,27 @@ export default function IntakeItemForm({
                 data-testid="redose-block"
                 className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
               >
-                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  Redose reminder (optional)
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    Redose reminder (optional)
+                  </div>
+                  {redoseDefaults && (
+                    <button
+                      type="button"
+                      data-testid="redose-prefill"
+                      className="btn-ghost btn-sm"
+                      onClick={() => {
+                        setMinIntervalHours(
+                          String(redoseDefaults.minIntervalHours)
+                        );
+                        setMaxDailyCount(String(redoseDefaults.maxDailyCount));
+                        markTouched("minIntervalHours", "maxDailyCount");
+                      }}
+                      title={`Use ${redoseDefaults.tier} label defaults: ${redoseDefaults.minIntervalHours} hours, maximum ${redoseDefaults.maxDailyCount} doses per day`}
+                    >
+                      Use label defaults
+                    </button>
+                  )}
                 </div>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Reminds you when the minimum interval has passed — these are
@@ -1178,7 +1327,10 @@ export default function IntakeItemForm({
                       min={0}
                       step="any"
                       value={minIntervalHours}
-                      onChange={(e) => setMinIntervalHours(e.target.value)}
+                      onChange={(e) => {
+                        setMinIntervalHours(e.target.value);
+                        markTouched("minIntervalHours");
+                      }}
                       className="input"
                       placeholder="e.g. 6"
                     />
@@ -1194,7 +1346,10 @@ export default function IntakeItemForm({
                       min={1}
                       step={1}
                       value={maxDailyCount}
-                      onChange={(e) => setMaxDailyCount(e.target.value)}
+                      onChange={(e) => {
+                        setMaxDailyCount(e.target.value);
+                        markTouched("maxDailyCount");
+                      }}
                       className="input"
                       placeholder="e.g. 4"
                     />
@@ -1260,9 +1415,10 @@ export default function IntakeItemForm({
                 id={`intake-obligation-${fid}`}
                 data-testid="intake-obligation"
                 value={obligation}
-                onChange={(e) =>
-                  setObligation(e.target.value as IntakeObligation)
-                }
+                onChange={(e) => {
+                  setObligation(e.target.value as IntakeObligation);
+                  markTouched("asNeeded");
+                }}
                 className="input"
               >
                 {OBLIGATIONS.map((o) => (

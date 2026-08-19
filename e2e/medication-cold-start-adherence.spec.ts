@@ -58,8 +58,7 @@ test("a just-added medication shows no adherence percentage, not 0% (#1442)", as
   const name = `${ADDED_MED_PREFIX} ${nameStamp}-${Math.floor(Math.random() * 1e6)}`;
 
   await page.getByTestId("medication-add-toggle").click();
-  await page.getByTestId("medication-add-quick").click();
-  const addCard = page.getByTestId("quick-add-medication");
+  const addCard = page.getByTestId("intake-item-form");
   await expect(addCard).toBeVisible();
   await addCard.getByLabel("Medication").fill(name);
   await addCard.getByTestId("quick-add-amount").fill("200 mg");

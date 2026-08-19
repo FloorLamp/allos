@@ -22,7 +22,6 @@ const PRN_MED = "PRN Quicklog Med (e2e)";
 
 async function openFullAdd(page: Page) {
   await page.getByTestId("medication-add-toggle").click();
-  await page.getByTestId("medication-add-full").click();
   const panel = page.getByTestId("medication-add-panel");
   await expect(panel).toBeVisible();
   return panel;

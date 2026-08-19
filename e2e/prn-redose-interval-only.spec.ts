@@ -45,7 +45,6 @@ test("PRN med with ONLY a minimum interval still shows redose guidance (#1458)",
 
   // --- Add the med: as-needed, 6h minimum interval, daily maximum LEFT BLANK ---
   await page.getByTestId("medication-add-toggle").click();
-  await page.getByTestId("medication-add-full").click();
   const addCard = page.getByTestId("medication-add-panel");
   await expect(addCard).toBeVisible();
   await addCard.getByLabel("Name").fill(name);

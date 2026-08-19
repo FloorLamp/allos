@@ -48,6 +48,10 @@ export interface IntakeFactChip {
   // review read one wording.
   label: string;
   state: IntakeFactState;
+  // The datasets supplied this and the person has not touched it (#846). It is an
+  // editable SUGGESTION, not a fact they stated, and the chip has to say so — that
+  // marking is the whole difference between prefilling and asserting.
+  suggested?: boolean;
 }
 
 export interface IntakeRuleChip {
@@ -97,6 +101,8 @@ export interface IntakeFactInput {
   rules: readonly IntakeRule[];
   // Names for the pair sentences, by item id.
   itemNames: ReadonlyMap<number, string>;
+  // Facts still showing a label-derived suggestion the person has not touched (#846).
+  suggestedFacts?: ReadonlySet<IntakeFactKey>;
 }
 
 export const INTAKE_FACT_NOUNS: Record<IntakeFactKey, string> = {
@@ -188,10 +194,16 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
   const chips: IntakeFactChip[] = [];
   const more: IntakeFactKey[] = [];
 
+  const suggested = f.suggestedFacts ?? new Set<IntakeFactKey>();
   const dose = doseLabel(f);
   chips.push(
     dose
-      ? { key: "dose", label: dose, state: "stated" }
+      ? {
+          key: "dose",
+          label: dose,
+          state: "stated",
+          suggested: suggested.has("dose"),
+        }
       : { key: "dose", label: "add a dose", state: "missing" }
   );
 
@@ -199,8 +211,15 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
   // confirmed ceiling has nothing, and an empty chip claiming timing is worse than
   // the trailing affordance that says where the fact lives.
   const timing = timingLabel(f);
-  if (f.obligation === "may") pushOptional(chips, more, "timing", timing);
-  else chips.push({ key: "timing", label: timing, state: "stated" });
+  if (f.obligation === "may")
+    pushOptional(chips, more, "timing", timing, suggested.has("timing"));
+  else
+    chips.push({
+      key: "timing",
+      label: timing,
+      state: "stated",
+      suggested: suggested.has("timing"),
+    });
 
   chips.push({
     key: "importance",
@@ -271,9 +290,10 @@ function pushOptional(
   chips: IntakeFactChip[],
   more: IntakeFactKey[],
   key: IntakeFactKey,
-  label: string | false | 0 | null | undefined
+  label: string | false | 0 | null | undefined,
+  suggested = false
 ): void {
-  if (label) chips.push({ key, label, state: "stated" });
+  if (label) chips.push({ key, label, state: "stated", suggested });
   else more.push(key);
 }
 

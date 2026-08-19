@@ -57,6 +57,14 @@ export default function IntakeFactRow({
           }
         >
           {chip.label}
+          {chip.suggested && (
+            <span
+              data-testid="prefill-badge"
+              className="ml-1.5 text-xs font-medium text-brand-700 dark:text-brand-300"
+            >
+              from label defaults
+            </span>
+          )}
         </button>
       ))}
 

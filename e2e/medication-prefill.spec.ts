@@ -26,7 +26,6 @@ const RANK_BRAND = "Zyrtec";
 
 async function openFullAdd(page: Page) {
   await page.getByTestId("medication-add-toggle").click();
-  await page.getByTestId("medication-add-full").click();
   const panel = page.getByTestId("medication-add-panel");
   await expect(panel).toBeVisible();
   return panel;
@@ -143,17 +142,15 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await page.goto("/medications");
     await page.getByTestId("medication-add-toggle").click();
     const panel = page.getByTestId("medication-add-panel");
-    const quickAdd = panel.getByTestId("quick-add-medication");
+    const quickAdd = panel.getByTestId("intake-item-form");
 
     // An unsupported medication says that its chart is unavailable rather than
     // silently looking like an adult/unknown profile.
-    await panel.getByTestId("medication-add-full").click();
     const fullAdd = panel.getByRole("tabpanel");
     await fullAdd.getByLabel("Name").fill("Hydrocortisone");
     await expect(
       fullAdd.getByTestId("medication-pediatric-no-chart")
     ).toContainText("No pediatric label weight-band chart");
-    await panel.getByTestId("medication-add-quick").click();
 
     await quickAdd.getByLabel("Medication").fill("Acetaminophen");
     await quickAdd
@@ -289,10 +286,9 @@ test("the medication picker opens on this profile's own medications (#1677)", as
   // ONE options source, both call sites (#221): the quick-add's head must be the full
   // form's head, byte for byte.
   await page.keyboard.press("Escape");
-  await page.getByTestId("medication-add-quick").click();
   const quickAdd = page
     .getByTestId("medication-add-panel")
-    .getByTestId("quick-add-medication");
+    .getByTestId("intake-item-form");
   await expect(quickAdd).toBeVisible();
   expect(await openOptionLabels(quickAdd, "Medication")).toEqual(full);
 });

@@ -73,7 +73,6 @@ test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", a
   await page.goto("/medications");
 
   await page.getByTestId("medication-add-toggle").click();
-  await page.getByTestId("medication-add-full").click();
   const addCard = page.getByTestId("medication-add-panel");
   await expect(addCard).toBeVisible();
 
