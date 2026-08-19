@@ -211,7 +211,10 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     practiceTarget(pid, "Breathwork", 3);
     logPracticeSession(pid, "Breathwork", shiftDateStr(t, -1));
 
-    const rhythmic = { scope_kind: "practice", scope_value: "Red light therapy" };
+    const rhythmic = {
+      scope_kind: "practice",
+      scope_value: "Red light therapy",
+    } as const;
     // 18:30 is the habit; the window is open around it and shut well before.
     expect(frequencyTargetLogWindowOpen(pid, rhythmic, t, 18 * 60)).toBe(true);
     expect(frequencyTargetLogWindowOpen(pid, rhythmic, t, 9 * 60)).toBe(false);
@@ -222,14 +225,14 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     );
 
     // A practice with no pattern has no moment to open, all day long.
-    const young = { scope_kind: "practice", scope_value: "Breathwork" };
+    const young = { scope_kind: "practice", scope_value: "Breathwork" } as const;
     for (const minute of [8 * 60, 12 * 60, 18 * 60, 22 * 60]) {
       expect(frequencyTargetLogWindowOpen(pid, young, t, minute)).toBe(false);
     }
 
     // A training-scope target has no per-target rhythm to ask at all — the
     // "Log Lower body" card that occupied the owner's Now all week.
-    const lower = { scope_kind: "group", scope_value: "Lower" };
+    const lower = { scope_kind: "group", scope_value: "Lower" } as const;
     for (const minute of [8 * 60, 18 * 60]) {
       expect(frequencyTargetLogWindowOpen(pid, lower, t, minute)).toBe(false);
     }
