@@ -6,8 +6,14 @@ import {
   bestStanding,
   strengthStandingPhrase,
   bodyweightMultiple,
+  assumesFreeWeightExecution,
+  standardsGap,
+  standardsGapNote,
+  FREE_WEIGHT_ASSUMED_NOTE,
   STRENGTH_STANDARD_LIFTS,
 } from "@/lib/strength-standards";
+import { effectiveLoadKg } from "@/lib/lifts";
+import { estimate1RM } from "@/lib/strength";
 import { fmtWeight } from "@/lib/units";
 
 // Pure lookup tests for the baked bodyweight-band strength standards (issue #152).
@@ -255,5 +261,176 @@ describe("bodyweightMultiple — 1RM ÷ bodyweight", () => {
   });
   it("is null for a non-positive 1RM", () => {
     expect(bodyweightMultiple(0, 80)).toBeNull();
+  });
+});
+
+// ── #1922: assisted placement, and the pin that weighted placement did not move ──
+//
+// The Pull Up table's basis is the TOTAL SYSTEM LOAD (stated once in the dataset
+// header): bodyweight combined with any external load. That single fact is what
+// lets an assisted pull-up place honestly on the same bands, and it is also why
+// adding the assisted path CANNOT move a weighted pull-up — the weighted lift's
+// e1RM and the bands it is compared against are both untouched.
+//
+// Pull Up male @80 kg floors: [68, 80, 100, 120, 152].
+
+describe("assisted pull-up placement (#1922)", () => {
+  const BW = 80;
+
+  it("places an assisted pull-up at bodyweight MINUS the assistance", () => {
+    // 10 kg of assistance × 5 reps ⇒ 70 kg of system load ⇒ e1RM 81.67, which
+    // clears the novice floor (80) but not intermediate (100).
+    const s = strengthStanding(
+      "Assisted Pull Up",
+      estimate1RM(effectiveLoadKg("assisted", BW, 10), 5),
+      "male",
+      BW
+    )!;
+    expect(s.lift).toBe("Pull Up"); // scored against the movement it substitutes for
+    expect(s.exercise).toBe("Assisted Pull Up"); // …but named by what was logged
+    expect(s.bodyweightLift).toBe(true);
+    expect(s.level).toBe("novice");
+    expect(s.levelFloorKg).toBe(80);
+    expect(s.nextLevel).toBe("intermediate");
+  });
+
+  it("drops a level as the lifter takes more help", () => {
+    // 25 kg of assistance ⇒ 55 kg of load ⇒ e1RM 64.17, below the beginner floor.
+    const s = strengthStanding(
+      "Assisted Pull Up",
+      estimate1RM(effectiveLoadKg("assisted", BW, 25), 5),
+      "male",
+      BW
+    )!;
+    expect(s.level).toBe("untrained");
+    expect(s.nextLevel).toBe("beginner");
+    expect(s.nextFloorKg).toBe(68);
+  });
+
+  it("declines to place when assistance cancels the load entirely", () => {
+    // Assistance ≥ bodyweight leaves no measurable load; the fold clamps at 0 and
+    // the lookup already refuses a non-positive 1RM.
+    expect(
+      strengthStanding(
+        "Assisted Pull Up",
+        estimate1RM(effectiveLoadKg("assisted", BW, 95), 5),
+        "male",
+        BW
+      )
+    ).toBeNull();
+  });
+
+  it("clamps at the table edges exactly as the base movement does", () => {
+    // Below the lowest male band (50 kg) the thresholds clamp and the standing
+    // says so — the assisted path inherits this rather than re-deriving it.
+    const light = strengthStanding(
+      "Assisted Pull Up",
+      estimate1RM(effectiveLoadKg("assisted", 45, 5), 5),
+      "male",
+      45
+    )!;
+    expect(light.clampedBodyweight).toBe("low");
+    const heavy = strengthStanding(
+      "Assisted Pull Up",
+      estimate1RM(effectiveLoadKg("assisted", 150, 40), 5),
+      "male",
+      150
+    )!;
+    expect(heavy.clampedBodyweight).toBe("high");
+  });
+
+  it("leaves an ASSISTED lift with no covered base unplaceable", () => {
+    // Assisted Dip → Dip, which carries no standards table. No standing, and no
+    // accidental fallback onto some other lift's bands.
+    expect(strengthStanding("Assisted Dip", 60, "male", BW)).toBeNull();
+  });
+
+  it("PIN: today's weighted pull-up placement is unchanged", () => {
+    // 20 kg added × 5 reps at 80 kg bodyweight ⇒ 100 kg system load ⇒ e1RM 116.67:
+    // clears intermediate (100), short of advanced (120) by 3.33 kg. This is the
+    // placement that existed before assisted loads were modeled, asserted on the
+    // properties (level, floors, distance) rather than a rendering of them.
+    const s = strengthStanding(
+      "Pull Up",
+      estimate1RM(effectiveLoadKg("added", 80, 20), 5),
+      "male",
+      80
+    )!;
+    expect(s.lift).toBe("Pull Up");
+    expect(s.e1rmKg).toBeCloseTo(116.667, 3);
+    expect(s.level).toBe("intermediate");
+    expect(s.levelFloorKg).toBe(100);
+    expect(s.nextLevel).toBe("advanced");
+    expect(s.nextFloorKg).toBe(120);
+    expect(s.toNextKg).toBeCloseTo(3.333, 3);
+    expect(s.clampedBodyweight).toBeNull();
+    // …and a single clean bodyweight rep still sits exactly on the novice floor,
+    // which is the anchor the dataset's own basis comment describes.
+    const bare = strengthStanding("Pull Up", effectiveLoadKg("added", 80, 0), "male", 80)!;
+    expect(bare.e1rmKg).toBe(80);
+    expect(bare.level).toBe("novice");
+    expect(bare.levelFloorKg).toBe(80);
+  });
+});
+
+describe("standardsGap — the machine exclusion, stated rather than silent (#1922)", () => {
+  it("names a machine MOVEMENT, whose exclusion is known from the catalog", () => {
+    expect(standardsGap("Leg Press", { e1rmKg: 200, freeWeightE1rmKg: 200 })).toBe(
+      "machine-implement"
+    );
+    expect(standardsGap("Machine Curl", { e1rmKg: 40, freeWeightE1rmKg: 40 })).toBe(
+      "machine-implement"
+    );
+    expect(standardsGapNote("machine-implement")).toContain("machine lifts");
+  });
+
+  it("names a machine-only HISTORY under a placeable name (#2326's evidence)", () => {
+    // A bare "Overhead Press" whose every set was logged on a registry machine:
+    // freeWeightE1rmKg is 0, so there is no standing — and now a reason.
+    expect(
+      standardsGap("Overhead Press", { e1rmKg: 90, freeWeightE1rmKg: 0 })
+    ).toBe("machine-history");
+    expect(standardsGapNote("machine-history")).toContain("machine");
+  });
+
+  it("stays silent when the silence has nothing to do with machines", () => {
+    // A placeable lift with free-weight work behind it needs no explanation…
+    expect(
+      standardsGap("Overhead Press", { e1rmKg: 90, freeWeightE1rmKg: 90 })
+    ).toBeNull();
+    // …and neither does an accessory nobody publishes norms for, where a machine
+    // note would be a confidently wrong answer.
+    expect(standardsGap("Face Pull", { e1rmKg: 40, freeWeightE1rmKg: 40 })).toBeNull();
+    expect(standardsGapNote(null)).toBeNull();
+  });
+
+  it("keeps an ASSISTED lift out of the machine explanation", () => {
+    // An assist machine is a counterweight, not a fixed path: the movement places,
+    // so there is no gap to explain.
+    expect(
+      standardsGap("Assisted Pull Up", { e1rmKg: 70, freeWeightE1rmKg: 70 })
+    ).toBeNull();
+  });
+});
+
+describe("assumesFreeWeightExecution — the soft nudge (#1922, #798 posture)", () => {
+  it("fires only when free-weight and machine work coexist under one name", () => {
+    // Mixed history: the standing is scored from the free-weight sets alone, so the
+    // assumption behind it is worth stating.
+    expect(
+      assumesFreeWeightExecution({ e1rmKg: 120, freeWeightE1rmKg: 100 })
+    ).toBe(true);
+    // Wholly free-weight: nothing to disclose.
+    expect(
+      assumesFreeWeightExecution({ e1rmKg: 100, freeWeightE1rmKg: 100 })
+    ).toBe(false);
+    // Wholly machine: there is no standing at all, so this is standardsGap's job.
+    expect(assumesFreeWeightExecution({ e1rmKg: 120, freeWeightE1rmKg: 0 })).toBe(
+      false
+    );
+  });
+
+  it("is informational, never a refusal — the note names the assumption", () => {
+    expect(FREE_WEIGHT_ASSUMED_NOTE).toContain("free-weight");
   });
 });
