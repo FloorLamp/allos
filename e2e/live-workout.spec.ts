@@ -152,6 +152,10 @@ test("finishing an empty live workout discards its create-at-start row", async (
   await page.getByTestId("finish-workout").click();
   await page.getByTestId("recap-save").click();
   await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page
+    .getByTestId("confirm-dialog")
+    .getByRole("button", { name: "Close anyway", exact: true })
+    .click();
 
   await page.waitForURL(/\/training(\?.*)?$/);
   await expect(page.getByTestId("workout-dock")).toHaveCount(0);
