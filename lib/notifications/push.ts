@@ -195,13 +195,15 @@ export function getPushSubscriptionsForProfile(
 // the Telegram channel's 30s cap.
 //
 // It is a SOCKET timeout, not a whole-response one (a trickle of packets never
-// trips it), so it is the first of two bounds rather than the only one: the
-// post-workout queue also races its own POST_WORKOUT_DISPATCH_TIMEOUT_MS, because
-// silence on a safety signal is worse than a duplicate.
+// trips it), so it is the first of two bounds rather than the only one:
+// dispatch() itself resolves at the shared NOTIFICATION_DISPATCH_TIMEOUT_MS
+// whole-dispatch deadline (#3057), because silence on a safety signal is worse
+// than a duplicate.
 //
-// Exported so the queue's deadline can be ASSERTED against it: raising this above
-// POST_WORKOUT_DISPATCH_TIMEOUT_MS reds the notification tier, because a channel cap
-// past the whole-dispatch deadline means every slow send is abandoned mid-flight.
+// Exported so the shared deadline can be ASSERTED against it: raising this above
+// NOTIFICATION_DISPATCH_TIMEOUT_MS reds the notification tier, because a channel
+// cap past the whole-dispatch deadline means every slow send is abandoned
+// mid-flight.
 export const PUSH_SEND_TIMEOUT_MS = 30_000;
 
 // Push a message to an explicit set of subscriptions. Prunes endpoints the

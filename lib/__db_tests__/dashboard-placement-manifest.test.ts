@@ -25,6 +25,7 @@ import type { SessionProfile } from "@/lib/auth";
 import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
+import { STANDING_READING_ORDER } from "@/lib/dashboard-standing";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -156,7 +157,12 @@ const manifests = new Map<
   string,
   DashboardPlacementCanvasProps["placements"]
 >();
+const standingPresentations = new Map<
+  string,
+  DashboardPlacementCanvasProps["standingPresentations"]
+>();
 const queryCounts = new Map<string, number>();
+const personaProfileIds = new Map<string, number>();
 const previousTestNow = process.env.ALLOS_TEST_NOW;
 
 describe("actual atomic dashboard manifests", () => {
@@ -188,7 +194,12 @@ describe("actual atomic dashboard manifests", () => {
         (await Dashboard()) as ReactElement<DashboardPlacementCanvasProps>;
       expect(element.type).toBe(DashboardPlacementCanvas);
       manifests.set(persona.name, element.props.placements);
+      standingPresentations.set(
+        persona.name,
+        element.props.standingPresentations
+      );
       queryCounts.set(persona.name, trace.count());
+      personaProfileIds.set(persona.name, profileId);
     }
   }, 120_000);
 
@@ -227,6 +238,68 @@ describe("actual atomic dashboard manifests", () => {
       .map((relevance) => relevance.engagement);
     expect(engagement).toContain("manual");
     expect(engagement).toContain("external");
+  });
+
+  it("keeps semantic Standing order, scope, caps, and external readings", () => {
+    const familyIndex = new Map(
+      STANDING_READING_ORDER.map((family, index) => [family.key, index])
+    );
+    let externalStanding = 0;
+    for (const [persona, placements] of manifests) {
+      const profileId = personaProfileIds.get(persona)!;
+      const presentations = standingPresentations.get(persona)!;
+      const standing = placements.filter(
+        (placement) => placement.lane === "standing"
+      );
+      expect(
+        standing.every(({ candidate }) =>
+          presentations.has(candidate.candidateId)
+        ),
+        `${persona}:Standing presentation`
+      ).toBe(true);
+      const indices = standing.map((placement) =>
+        familyIndex.get(placement.standingFamilyKey!)
+      );
+      expect(indices, persona).toEqual(indices.toSorted((a, b) => a! - b!));
+      expect(
+        standing.every(
+          ({ candidate }) =>
+            candidate.subject.scope === "profile" &&
+            candidate.subject.profileId === profileId
+        ),
+        persona
+      ).toBe(true);
+      for (const family of STANDING_READING_ORDER) {
+        if (family.cap == null) continue;
+        expect(
+          standing.filter(
+            (placement) => placement.standingFamilyKey === family.key
+          ).length,
+          `${persona}:${family.key}`
+        ).toBeLessThanOrEqual(family.cap);
+      }
+      externalStanding += standing.filter(
+        ({ candidate }) =>
+          candidate.relevance.kind === "profile-data" &&
+          candidate.relevance.engagement === "external"
+      ).length;
+    }
+    expect(externalStanding).toBeGreaterThan(0);
+  });
+
+  it("keeps sleep regularity only in its healthspan family", () => {
+    for (const placements of manifests.values()) {
+      expect(
+        placements.some(({ candidate }) =>
+          candidate.candidateId.startsWith("sleep.regularity:")
+        )
+      ).toBe(false);
+      for (const placement of placements.filter(({ candidate }) =>
+        candidate.candidateId.includes("sleep-regularity")
+      )) {
+        expect(placement.standingFamilyKey).toBe("healthspan-pillars");
+      }
+    }
   });
 
   it("does not exceed the phase-1 query budget", () => {

@@ -300,6 +300,24 @@ export async function saveTelegramBotConfig(formData: FormData) {
       });
     }
   }
+  // Register the `/` autocomplete menu (#1895) whenever a token is saved,
+  // MODE-INDEPENDENT (#3076): this is the one action both transports run while
+  // the operator is provably holding a bot token. Registering only from the
+  // webhook action left every polling instance — the default transport — with
+  // no command menu at all. The list stays instance-level and generic;
+  // commandsForChat keeps owning what a given chat may actually use.
+  //
+  // Best-effort, the deleteWebhook precedent: a failed registration must never
+  // fail the token save, so it degrades to a warning log.
+  if (cfg.telegramBotToken) {
+    try {
+      await setMyCommands(registrableCommands());
+    } catch (e) {
+      log.warn("setMyCommands on bot-config save failed", {
+        err: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
   revalidateRoute("/settings/server");
 }
 
@@ -327,22 +345,8 @@ export async function registerTelegramWebhook(): Promise<{
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
-  // Register the `/` autocomplete menu in the same action (#1895) — this is the one
-  // moment the operator is provably holding a working bot token, so making it a second
-  // button would just be a second thing to forget.
-  //
-  // DELIBERATELY NOT FATAL: the webhook is what makes the bot work, and the command
-  // menu is discoverability on top of it. A registration that fails must not report the
-  // working webhook as broken, so it degrades to a named caveat.
-  try {
-    await setMyCommands(registrableCommands());
-  } catch (e) {
-    return {
-      ok: true,
-      message: `Webhook registered ✅ — but couldn't register the /command menu: ${
-        e instanceof Error ? e.message : String(e)
-      }`,
-    };
-  }
+  // The `/` command menu is NOT registered here: saveTelegramBotConfig owns that
+  // (#3076) — the save always precedes this action (the Settings button saves
+  // first), and one registration site can't disagree with a second.
   return { ok: true, message: "Webhook registered ✅" };
 }

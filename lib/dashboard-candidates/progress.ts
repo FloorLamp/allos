@@ -26,13 +26,19 @@ export const progressCandidates = {
       "manual"
     );
   },
-  targetProgress(ctx: DomainCandidateContext, id: number) {
+  targetProgress(
+    ctx: DomainCandidateContext,
+    id: number,
+    standingEligible = true
+  ) {
     return reading(
       ctx,
       `target.weekly-progress:${id}`,
       `frequency-target.progress:${id}`,
       `target:${id}`,
-      "manual"
+      "manual",
+      "current",
+      { standingEligible }
     );
   },
   targetLog(
@@ -143,6 +149,15 @@ export const progressCandidates = {
       `weight.trend:${since}:${day}`,
       "weight.summary",
       engagement
+    );
+  },
+  weightQuickAdd(ctx: DomainCandidateContext, day: string) {
+    return action(
+      ctx,
+      "weight.quick-add",
+      `weight.quick-add-offer:${day}`,
+      "weight.summary",
+      "may"
     );
   },
   healthspan(ctx: DomainCandidateContext, key: string) {

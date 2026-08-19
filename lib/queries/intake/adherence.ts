@@ -2208,6 +2208,9 @@ export function getDoseCorrectionBursts(
 //   no-burst  — the anchor row is gone or belongs to another profile. Nothing written.
 //   out-of-range — the resolver refused at least one row (a chip that would walk the
 //               burst past the floor, #2206). All-or-nothing: a burst is one error.
+//   not-bound — the caller's `stillBound` guard refused the re-derived burst (#3092
+//               follow-up): by write time it no longer belongs to the message the tap
+//               came from. Nothing written.
 export type DoseRestampOutcome =
   | {
       kind: "restamped";
@@ -2216,7 +2219,8 @@ export type DoseRestampOutcome =
       anchor: { doseId: number; date: string };
     }
   | { kind: "no-burst" }
-  | { kind: "out-of-range" };
+  | { kind: "out-of-range" }
+  | { kind: "not-bound" };
 
 // Correct a burst of administration instants (issue #2020).
 //
@@ -2244,13 +2248,22 @@ export type DoseRestampOutcome =
 export function restampDoseLogsCore(
   profileId: number,
   fromLogId: number,
-  resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null
+  resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null,
+  // The tap-time binding, re-evaluated INSIDE this write transaction (#3092 follow-up).
+  // The handler's own check runs before its write call, but an `await` separates the
+  // two, and a concurrent handler's pointer delete landing in that gap re-merges the
+  // anchor into the null partition — so the burst the transaction re-derives is the one
+  // the binding must hold FOR. The caller builds this from the SAME predicate its
+  // renderer used (`burstsForMessage` + `correctionMessageBinding`); a chat-less caller
+  // passes nothing and keeps the unguarded behavior.
+  stillBound?: (burst: CorrectionBurst) => boolean
 ): DoseRestampOutcome {
   return writeTx(() => {
     const rows = db
       .prepare(
         `SELECT l.id AS id, l.dose_id AS doseId, l.date AS date,
-                l.recorded_at AS tapAt, l.occurred_at AS statedAt, s.name AS name
+                l.recorded_at AS tapAt, l.occurred_at AS statedAt,
+                l.notify_message_id AS messageRef, s.name AS name
            FROM intake_item_logs l
            JOIN intake_item_doses d ON d.id = l.dose_id
            JOIN intake_items s ON s.id = d.item_id
@@ -2265,6 +2278,7 @@ export function restampDoseLogsCore(
       date: string;
       tapAt: string;
       statedAt: string | null;
+      messageRef: number | null;
       name: string;
     }[];
     const taps: {
@@ -2288,11 +2302,16 @@ export function restampDoseLogsCore(
         id: t.row.id,
         tapAt: t.tapAt,
         statedAt: t.statedAt,
+        // A burst is one message's error (#3092): the write partitions by the same
+        // provenance the renderer partitioned by, so a chip re-stamps exactly the
+        // rows whose correction row it was.
+        messageRef: t.row.messageRef,
         label: t.row.name,
       })),
       fromLogId
     );
     if (!burst) return { kind: "no-burst" as const };
+    if (stillBound && !stillBound(burst)) return { kind: "not-bound" as const };
 
     // Resolve every row before writing any: one refusal refuses the burst.
     const targets = new Map<number, Date>();

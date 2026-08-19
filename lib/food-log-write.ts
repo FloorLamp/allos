@@ -29,7 +29,11 @@ import { type FoodSlot } from "./food-slot";
 import { foodSlotForProfileEvent } from "./profile-food-slot";
 import { getTimezone } from "./settings";
 import { isProteinNudgeKey } from "./protein-nudge";
-import { burstFrom, type TapEvent } from "./correction-time";
+import {
+  burstFrom,
+  type CorrectionBurst,
+  type TapEvent,
+} from "./correction-time";
 import { captureDelete } from "./undo-delete-db";
 
 // Where an event's eating instant came from (issue #2019, migration 154). `tap` is the
@@ -601,10 +605,14 @@ export interface FoodTapRow extends TapEvent {
 //   out-of-range — the resolver refused at least one row (a chip that would walk the
 //               burst past the floor, #2206). ALL-OR-NOTHING: a burst is one error, so
 //               moving part of it would leave the ledger in a state no tap asked for.
+//   not-bound — the caller's `stillBound` guard refused the re-derived burst (#3092
+//               follow-up): by write time it no longer belongs to the message the tap
+//               came from. Nothing written.
 export type FoodRestampOutcome =
   | { kind: "restamped"; count: number; movedDays: number }
   | { kind: "no-burst" }
-  | { kind: "out-of-range" };
+  | { kind: "out-of-range" }
+  | { kind: "not-bound" };
 
 // Re-stamp a whole burst's eating time (issue #2019).
 //
@@ -640,7 +648,15 @@ export type FoodRestampOutcome =
 export function restampFoodEventsCore(
   profileId: number,
   fromEventId: number,
-  resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null
+  resolve: (row: { tapAt: string; statedAt: string | null }) => Date | null,
+  // The tap-time binding, re-evaluated INSIDE this write transaction (#3092 follow-up).
+  // The handler's own check runs before its write call, but an `await` separates the
+  // two, and a concurrent handler's pointer delete landing in that gap re-merges the
+  // anchor into the null partition — so the burst the transaction re-derives is the one
+  // the binding must hold FOR. The caller builds this from the SAME predicate its
+  // renderer used (`burstsForMessage` + `correctionMessageBinding`); a chat-less caller
+  // passes nothing and keeps the unguarded behavior.
+  stillBound?: (burst: CorrectionBurst) => boolean
 ): FoodRestampOutcome {
   return writeTx(() => {
     // The burst is re-derived from the LEDGER at tap time, from the anchor id forward —
@@ -648,7 +664,8 @@ export function restampFoodEventsCore(
     // some earlier keyboard rendered.
     const rows = db
       .prepare(
-        `SELECT id, group_key, date, recorded_at, occurred_at FROM food_log_events
+        `SELECT id, group_key, date, recorded_at, occurred_at, notify_message_id
+           FROM food_log_events
           WHERE profile_id = ? AND id >= ?
           ORDER BY recorded_at, id
           LIMIT 200`
@@ -659,6 +676,7 @@ export function restampFoodEventsCore(
       date: string;
       recorded_at: string;
       occurred_at: string | null;
+      notify_message_id: number | null;
     }[];
     const byId = new Map(rows.map((r) => [r.id, r]));
     const burst = burstFrom(
@@ -666,11 +684,16 @@ export function restampFoodEventsCore(
         id: r.id,
         tapAt: r.recorded_at,
         statedAt: r.occurred_at,
+        // A burst is one message's error (#3092): the write partitions by the same
+        // provenance the renderer partitioned by, so a chip re-stamps exactly the
+        // rows whose correction row it was.
+        messageRef: r.notify_message_id,
         label: r.group_key,
       })),
       fromEventId
     );
     if (!burst) return { kind: "no-burst" as const };
+    if (stillBound && !stillBound(burst)) return { kind: "not-bound" as const };
 
     // RESOLVE EVERY ROW BEFORE WRITING ANY (#2206). One refusal refuses the burst, so a
     // chip that has run out of room cannot half-move a meal.
