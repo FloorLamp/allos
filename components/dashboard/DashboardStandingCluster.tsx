@@ -41,7 +41,7 @@ export default function DashboardStandingCluster({
         Standing
       </h2>
       <div
-        className="overflow-hidden rounded-xl border border-black/10 bg-white dark:border-white/10 dark:bg-ink-900"
+        className="overflow-hidden rounded-xl border border-(--border) bg-surface"
         data-testid="dashboard-standing"
       >
         {SECTIONS.map((section) => {
@@ -58,11 +58,11 @@ export default function DashboardStandingCluster({
               key={section.key}
               aria-labelledby={`dashboard-standing-${section.key}`}
               data-standing-section={section.key}
-              className="border-b border-black/10 last:border-b-0 dark:border-white/10"
+              className="border-b border-(--divider) last:border-b-0"
             >
               <h3
                 id={`dashboard-standing-${section.key}`}
-                className="bg-slate-50 px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:bg-ink-950/60 dark:text-slate-400"
+                className="bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
               >
                 {section.label}
               </h3>
@@ -70,7 +70,7 @@ export default function DashboardStandingCluster({
                 {families.map(({ family, members }) => (
                   <div
                     key={family.key}
-                    className="grid gap-1 border-t border-black/5 px-4 py-3 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4 dark:border-white/5"
+                    className="grid gap-1 border-t border-(--divider) px-4 py-3 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4"
                     data-standing-family={family.key}
                     data-standing-composition={family.composition}
                   >

@@ -230,13 +230,15 @@ test("the clinical family cap leaves its tail in Everything", async ({
   );
   expect(standingCount).toBe(6);
   expect(tailCount).toBeGreaterThan(0);
-  const firstTail = page
-    .locator(
-      '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"][data-lane="everything"]'
-    )
-    .first();
-  await expect(firstTail).toContainText("Recent clinical results");
-  await expect(firstTail).not.toContainText("Recent labs");
+  const tails = page.locator(
+    '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"][data-lane="everything"]'
+  );
+  const tailTexts = await tails.allTextContents();
+  expect(tailTexts.length).toBeGreaterThan(0);
+  expect(
+    tailTexts.every((text) => text.includes("Recent clinical results"))
+  ).toBe(true);
+  expect(tailTexts.every((text) => !text.includes("Recent labs"))).toBe(true);
 });
 
 test("every applicable fact appears in exactly one atomic lane", async ({
