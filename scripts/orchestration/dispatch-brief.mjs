@@ -391,6 +391,11 @@ ${issueLines}
 ${MIGRATION_LINES}
 - Immediately before opening the PR: git merge origin/main && npm run typecheck.
   A signature that widened while you worked is not a textual conflict.
+- Never typecheck with bare npx tsc --noEmit. npm run typecheck runs next typegen
+  first, and a fresh worktree has no .next/types, so bare tsc reports three
+  TS2578 "Unused '@ts-expect-error'" in lib/__tests__/revalidate-route.test.ts.
+  That is a GUARD firing exactly as its comment there says it will, not a
+  regression on your branch — two agents have now hunted it.
 - Gates: run bash scripts/orchestration/agent-gates.sh from the worktree root — it
   runs lint, typecheck, the pure tests, the DB tier when your diff touches anything
   it imports, the e2e-hygiene scan when specs changed, phi-scan, and format LAST, in
