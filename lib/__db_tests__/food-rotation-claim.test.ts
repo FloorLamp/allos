@@ -178,9 +178,7 @@ describe("rotation racing the sweep, through the real claim (#2827 A)", () => {
     const live = liveFoodPointers();
     expect(live).toHaveLength(1);
     expect(live[0].messageId).toBeGreaterThan(msg1);
-    expect(getFoodNudgePointer(p.profileId)?.messageId).toBe(
-      live[0].messageId
-    );
+    expect(getFoodNudgePointer(p.profileId)?.messageId).toBe(live[0].messageId);
   });
 
   it("the sweep claiming FIRST makes the rotation's loss a typed no-op — no edit at all", async () => {
@@ -251,9 +249,7 @@ describe("strip failures split permanent/transient (#2827 B)", () => {
       });
       await sendNudge();
 
-      const stillNamed = liveFoodPointers().some(
-        (x) => x.messageId === msg1
-      );
+      const stillNamed = liveFoodPointers().some((x) => x.messageId === msg1);
       if (fixture.classified === "permanent") {
         // The message is gone for good: the row is retired NOW, not after three
         // days of doomed hourly retries.
@@ -268,9 +264,7 @@ describe("strip failures split permanent/transient (#2827 B)", () => {
         stripMock.mockImplementation(async () => {});
         editTextMock.mockClear();
         await reconcileProfileMessages(p.profileId);
-        expect(
-          editTextMock.mock.calls.some((c) => c[1] === msg1)
-        ).toBe(true);
+        expect(editTextMock.mock.calls.some((c) => c[1] === msg1)).toBe(true);
       }
     });
   }

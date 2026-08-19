@@ -308,6 +308,7 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `notify_lifecycle` | `at` | event | instant | canonical | Was `new Date().toISOString()` — milliseconds and a `Z`, a third serialization phase 1's rule C could not see because the module that builds the string writes no SQL of its own. Migration 167 (#2233) normalized the stored values and the writer now binds instantNow(). Nothing compares it in SQL. |
 | `notify_messages` | `date` | day | day | n/a |  |
 | `notify_messages` | `sent_at` | event | instant | bare |  |
+| `notify_post_workout_claims` | `claimed_at` | event | instant | canonical | The #3058 dispatch-claim lease stamp. Born canonical (the table is new and its one writer binds instantNow), and compared only in JS against POST_WORKOUT_CLAIM_LEASE_MS; nothing compares it in SQL. |
 | `optical_prescriptions` | `issued_date` | event | day | n/a |  |
 | `optical_prescriptions` | `expiry_date` | planned | day | n/a |  |
 | `optical_prescriptions` | `created_at` | bookkeeping | instant | bare |  |

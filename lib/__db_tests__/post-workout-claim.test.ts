@@ -239,7 +239,8 @@ describe("channel outcomes move the claim (#3058)", () => {
     // transaction — a partial failure is a delivery, never a retry.
     const routed = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("homeassistant")) return new Response(null, { status: 200 });
+      if (url.includes("homeassistant"))
+        return new Response(null, { status: 200 });
       return new Response(null, { status: 502 });
     });
     vi.stubGlobal("fetch", routed);

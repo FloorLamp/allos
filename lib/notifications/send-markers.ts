@@ -483,6 +483,10 @@ export const NON_MARKER_NOTIFY_KEYS: readonly {
     what: "the live-message pointer TABLE (migration 135), enumerated in lib/owned-tables.ts",
   },
   {
+    key: "notify_post_workout_claims",
+    what: "the durable post-workout dispatch-claim TABLE (#3058, migration 20260819-post-workout-dispatch-claims), enumerated in lib/owned-tables.ts — the unique-key election beside the id-keyed notify_last_post_workout_ marker it hardens",
+  },
+  {
     key: "notify_message_id",
     what: "a COLUMN, not a key: the #2264 tap-provenance link on food_log_events and intake_item_logs (migration 170), referencing notify_messages(id) so a correction row renders only on the message that produced its burst",
   },

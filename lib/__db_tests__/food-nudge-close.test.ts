@@ -155,17 +155,21 @@ describe("food nudge close-previous keyboard (#947)", () => {
     expect(secondPtr.messageId).not.toBe(firstPtr.messageId);
   });
 
-  it("a FAILING strip KEEPS the pointer — that keyboard is still live (#2749)", async () => {
+  it("a TRANSIENTLY failing strip KEEPS the pointer — that keyboard is still live (#2749/#2827)", async () => {
     await dispatch(p.profileId, buildFoodNudge(p.profileId, "Morning", t)!);
     const firstPtr = getFoodNudgePointer(p.profileId)!;
     stripMock.mockImplementation(async () => {
-      throw new Error("Bad Request: message to edit not found");
+      throw new Error("Bad Gateway");
     });
     await dispatch(p.profileId, buildFoodNudge(p.profileId, "Midday", t)!);
 
     // The chat still shows the old keyboard, so forgetting its pointer would strand a
     // live keyboard nothing could ever close. Both rows stay, and the sweep closes the
-    // stale one at rollover.
+    // stale one at rollover. (This used to hold for EVERY failure; #2827 split the
+    // interpretation through classifyTelegramFailure — a PERMANENT failure now retires
+    // the row in the same call, because "message to edit not found" means the keyboard
+    // is NOT still live. The full permanent/transient matrix, shared with
+    // closeSuperseded, is in food-rotation-claim.test.ts.)
     expect(liveFoodMessageIds()).toContain(firstPtr.messageId);
     expect(liveFoodMessageIds()).toHaveLength(2);
   });
