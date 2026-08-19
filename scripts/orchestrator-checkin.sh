@@ -134,11 +134,38 @@ elif [ "$sid" = "$sid_stored" ]; then
   echo "session:  UNCHANGED ($sid)"
 else
   echo "session:  *** RESTARTED *** (was $sid_stored, now $sid)"
-  echo "  >>> Every subagent and every in-process timer died with the old session."
+  echo "  >>> Assume every subagent and in-process timer died with the old session."
   echo "  >>> The roster below records DISPATCH, not liveness — treat all of it as DEAD."
   echo "  >>> PRESERVE-FIRST DRILL applies to every dirty worktree before relaunching."
+  echo "  >>> THEN CONFIRM WITH ListAgents BEFORE RELAUNCHING ANYTHING — see below."
   SESSION_NEW=1
 fi
+
+# WHICH WAY THIS VERDICT IS SAFE, AND WHICH WAY IT IS NOT.
+#
+# Both detectors above are PROXIES: they compare the identity of the machine and
+# of the claude process, and infer the fleet from that. Snapshot-style resume
+# breaks the inference in the direction the comments above never considered —
+# both ids change while the process TREE IS RESTORED, so the recorder reports a
+# restart over agents that are still running.
+#
+# Observed 2026-08-19T10:14Z, minutes after the sticky-flag fix above shipped for
+# the opposite failure. boot-id changed, session changed, uptime reset — and
+# `ListAgents` showed the two dispatched agents still RUNNING, 33 and 34 minutes
+# in. Acting on the verdict, the orchestrator relaunched both, putting TWO
+# WRITERS ON ONE WORKTREE on two branches at once. One relaunch detected the
+# collision and stood down with nothing written; the other ran full test tiers in
+# a tree its sibling was editing, which is a phantom-failure generator even when
+# it writes no source. Nothing was lost, and only because a subagent was careful.
+#
+# So the rule is asymmetric, and both halves matter:
+#   RESCUE on the verdict — committing a dirty tree costs a junk commit if the
+#     agent was alive, and saves unrepeatable work if it was not. Cheap either way.
+#   RELAUNCH only after CONFIRMING with a source that actually knows liveness —
+#     ListAgents, not this script. A relaunch onto a live agent is a second
+#     writer, and the doctrine's own rule (never edit a live agent's worktree
+#     without an acknowledgement) is violated by the relaunch itself.
+# A proxy may raise the alarm. It may not authorise the destructive response.
 
 # One flag for the one consequence. A machine reboot and a session restart differ
 # in what else they take down (tmp dirs, dev servers, the port map) but agree

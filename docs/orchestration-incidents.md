@@ -666,3 +666,44 @@ every later run, and cleared only by an explicit
 one invocation, so an ack written for an older restart cannot swallow a newer
 one detected in the same run. Cost of forgetting to clear it: a loud reminder.
 Cost of never seeing it: an agent's uncommitted work.
+
+## The restart that killed nobody (2026-08-19)
+
+Minutes after the sticky-flag fix above shipped for a recorder that soothed over
+DEAD agents, the same recorder cried restart over LIVE ones — and this time the
+orchestrator believed it.
+
+At 10:14Z the check-in reported both detectors tripped: boot-id changed, session
+identity changed (`532:1118` → `511:1282`), uptime reset to 25m. Everything the
+script knows how to look at said the world had been replaced. It had not: the
+container had been resumed from a snapshot, so both ids were new and THE PROCESS
+TREE WAS RESTORED. `ListAgents`, asked afterwards, showed the two dispatched
+agents still RUNNING, 33 and 34 minutes in — straight through the "restart".
+
+Acting on the verdict, the orchestrator ran the preserve-first drill (correct,
+and it did rescue five genuinely unpushed files) and then relaunched both
+dispatches (wrong). That put **two writers on one worktree, on two branches at
+once**. What saved it was not the tooling:
+
+- the biomarker relaunch noticed a `git rm` racing its own, watched a file get
+  rewritten during a 20-second sleep it ran deliberately to test for a live
+  writer, wrote nothing at all, and stopped to ask;
+- the intake relaunch made no source change and no GitHub write, but did run the
+  full unit and DB tiers inside a tree its sibling was editing — a
+  phantom-failure generator that had to be relayed to the owner so a contended
+  red would not be chased as a regression.
+
+The rule this bought is asymmetric, and the asymmetry is the whole lesson:
+
+- **RESCUE on the verdict.** Committing a dirty tree costs a junk commit if the
+  agent turns out to be alive, and saves unrepeatable work if it is not. A proxy
+  is good enough to authorise something that cheap.
+- **RELAUNCH only after confirming liveness with something that actually knows**
+  — `ListAgents`, never the recorder. A relaunch onto a live agent IS the
+  two-writers accident, and it violates the standing rule against editing a live
+  agent's worktree without an acknowledgement; the relaunch is the edit.
+
+Generalised: a proxy may raise an alarm, but it may not authorise the
+destructive response to that alarm. Both directions of this detector are now
+receipted — soothing over the dead (four times) and alarming over the living
+(once, and one careful subagent away from losing work).
