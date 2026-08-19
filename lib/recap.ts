@@ -694,6 +694,18 @@ export function recapLineAnnotation(line: RecapLine): string | undefined {
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
+// The per-line IDENTITY a keyed surface uses — the widget's React key, the
+// dashboard's per-line candidate id. `key` alone was that identity until #3033
+// added the ONE key that can legitimately appear once per nutrient
+// (`nutrient-missed`), so that key is qualified by its label; every other line's
+// id stays byte-identical to its pre-#3033 value. One helper, so no keyed
+// consumer can collide a second time.
+export function recapLineId(line: RecapLine): string {
+  return line.key === "nutrient-missed"
+    ? `${line.key}.${line.label.toLowerCase()}`
+    : line.key;
+}
+
 export interface Recap {
   // Which scale this recap speaks at — carried on the result so a surface never has
   // to re-derive it from the window's length.

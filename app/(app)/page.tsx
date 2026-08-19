@@ -113,6 +113,7 @@ import { freshnessAgeDays } from "@/lib/freshness";
 import { glanceAgeToken } from "@/lib/glance-age";
 import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
 import { getRecapCard } from "@/lib/notifications/recap-data";
+import { recapLineId } from "@/lib/recap";
 import {
   coachingObservationFindings,
   dashboardHabitDomain,
@@ -2150,7 +2151,9 @@ async function renderDashboard(
           applicable: trainingRelevant,
           sourceOrder: sourceOrder + index,
         },
-        line.key,
+        // The shared per-line identity (#3033): `nutrient-missed` can appear once
+        // per nutrient, and a bare line.key would mint duplicate candidate ids.
+        recapLineId(line),
         weeklyRecap.start,
         weeklyRecap.end
       ),

@@ -9,6 +9,7 @@ import {
   pickRecapNarrative,
   medianWeeklyWorkouts,
   recapLineAnnotation,
+  recapLineId,
   RECAP_COMPARISON_KINDS,
   RECAP_LINE_MODEL,
   lineSpeaksAt,
@@ -1532,6 +1533,42 @@ describe("nutrient-missed line (#3033)", () => {
     // Only the FIRST (source order, not severity) enters the headline.
     expect(recap.headline).toContain("protein missed all week");
     expect(recap.headline).not.toContain("fiber");
+  });
+});
+
+// ── #3033: the per-line identity every keyed surface shares ──────────────────
+//
+// The dashboard mints one candidate per recap line and the widget keys its rows;
+// both used the bare line key, and `nutrient-missed` is the ONE key that can
+// appear once per nutrient — two 0-of-N nutrients then crashed the dashboard
+// with a duplicate candidate id. Red if the disambiguation is removed.
+describe("recapLineId (#3033)", () => {
+  it("disambiguates only the repeatable key; every other id stays the bare key", () => {
+    const recap = buildRecap(
+      baseInput({
+        workouts: [{ date: "2026-07-08", type: "strength" }],
+        adherence: { taken: 12, skipped: 0, due: 14 },
+        food: {
+          daysLogged: 7,
+          groups: 13,
+          nutrients: [
+            { nutrient: "protein" as const, onTarget: 0, days: 6 },
+            { nutrient: "fiber" as const, onTarget: 0, days: 7 },
+          ],
+        },
+      })
+    );
+    const ids = recap.lines.map(recapLineId);
+    // Unique across the whole card — the dashboard candidate registry's own bar.
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain("nutrient-missed.protein");
+    expect(ids).toContain("nutrient-missed.fiber");
+    // Every non-repeatable line keeps its pre-#3033 identity byte-for-byte.
+    for (const line of recap.lines) {
+      if (line.key !== "nutrient-missed") {
+        expect(recapLineId(line)).toBe(line.key);
+      }
+    }
   });
 });
 
