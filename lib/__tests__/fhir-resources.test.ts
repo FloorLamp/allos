@@ -304,6 +304,54 @@ describe("FHIR MedicationRequest / MedicationStatement → medication record", (
     });
     // Shared `ccda:rx:` medication key → dedups with the same drug from a CCD.
     expect(m.external_id).toBe("ccda:rx:314076:2023-01-04");
+    // The RxNorm-system coding is adopted as the source-supplied RxCUI (#3070).
+    expect(m.rxcui).toBe("314076");
+  });
+
+  it("adopts an RxNorm-system coding as rxcui and ignores a SNOMED/NDC one (#3070)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "MedicationRequest",
+          status: "active",
+          authoredOn: "2023-03-01",
+          medicationCodeableConcept: {
+            text: "Albuterol 0.83 MG/ML Inhalation Solution",
+            coding: [
+              // A SNOMED coding first — pickCoding's external_id fallback would
+              // take it, but it must never become the rxcui.
+              { system: "http://snomed.info/sct", code: "372897005" },
+              {
+                system: "http://www.nlm.nih.gov/research/umls/rxnorm",
+                code: "630208",
+              },
+            ],
+          },
+        },
+        {
+          resourceType: "MedicationRequest",
+          status: "active",
+          authoredOn: "2023-03-02",
+          medicationCodeableConcept: {
+            text: "NDC-only inhaler",
+            coding: [
+              {
+                system: "http://hl7.org/fhir/sid/ndc",
+                code: "12345-6789-01",
+              },
+            ],
+          },
+        },
+      ])
+    );
+    expect(r.observations).toHaveLength(2);
+    const [rxnormCoded, ndcCoded] = r.observations;
+    expect(rxnormCoded.rxcui).toBe("630208");
+    // The external_id keys on the same (RxNorm-preferred) code it always did.
+    expect(rxnormCoded.external_id).toBe("ccda:rx:630208:2023-03-01");
+    // NDC only → no rxcui; the external_id keeps its existing first-coding key.
+    expect(ndcCoded.rxcui).toBeNull();
+    expect(ndcCoded.external_id).toBe("ccda:rx:12345-6789-01:2023-03-02");
   });
 
   it("captures prescriber (requester), pharmacy (dispenseRequest.performer), and Rx number (identifier) — #417", () => {
