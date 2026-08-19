@@ -61,8 +61,24 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
   ).toBeVisible();
 
   // The note itself — the line this whole feature is about.
-  await settledClick(page, page.getByTestId("more-details-summary"));
-  await settledFill(page, page.getByLabel("Notes"), "right knee weird");
+  // A pure client disclosure — it reveals the Notes field, it does not post.
+  await hydratedClick(page, page.getByTestId("more-details-summary"));
+  // The note's debounced autosave is what carries it to the server. Arm the wait for
+  // that Server-Action POST BEFORE typing, so the navigation below cannot race an
+  // unsaved note — which would surface as "notes card not found" and read like the chip
+  // is broken rather than like the save had not landed.
+  const noteSaved = page.waitForResponse(
+    (resp) =>
+      resp.request().method() === "POST" &&
+      new URL(resp.url()).origin === new URL(page.url()).origin,
+    { timeout: 30_000 }
+  );
+  await settledFill(
+    page,
+    page.getByRole("textbox", { name: "Notes" }),
+    "right knee weird"
+  );
+  await noteSaved;
 
   // Open the saved session's own page, where the record — and the offer — live.
   await page.goto("/training?tab=log");
@@ -99,7 +115,8 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
   await expect(page.getByTestId("niggle-chip")).toHaveCount(0);
 
   // Cleanup: remove the probe session.
-  await page.getByRole("link", { name: /Edit/ }).first().click(); // first-ok: the page's single edit affordance
+  await hydratedClick(page, page.getByTestId("activity-page-edit"));
+  await expect(page.getByTestId("activity-form")).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await settledClick(
     page,
