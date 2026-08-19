@@ -50,6 +50,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
   `scripts/orchestration/agent-gates.sh`.
 - Agents push after every meaningful step. The remote branch is the durable
   checkpoint.
+- A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
+  source files carry a deliberate NUL separator, so rg calls them binary and
+  skips them — a plain `rg` reports a clean sweep it never took.
+  `lib/__tests__/nul-byte-census.test.ts` names them.
 
 ## Per-unit pipeline
 

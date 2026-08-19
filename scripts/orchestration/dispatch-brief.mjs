@@ -353,6 +353,10 @@ ${nodeLine}
   do not assume the brief checked. #2657 was briefed as untouched when its fold and
   month rollup had shipped hours earlier in #2685; the agent found it, and only
   because it looked.
+- A CENSUS MEANT TO BE EXHAUSTIVE MUST PASS ripgrep's \`--binary\` (\`-a\`). Several
+  source files carry a deliberate NUL as a composite-key separator, so rg calls them
+  BINARY and skips them: a plain \`rg <pattern>\` reports a clean sweep it never took.
+  They are listed in lib/__tests__/nul-byte-census.test.ts (#3206).
 - $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
   this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
   from another cluster's worktree, and do not write to /tmp instead.
@@ -391,6 +395,11 @@ ${issueLines}
 ${MIGRATION_LINES}
 - Immediately before opening the PR: git merge origin/main && npm run typecheck.
   A signature that widened while you worked is not a textual conflict.
+- Never typecheck with bare npx tsc --noEmit. npm run typecheck runs next typegen
+  first, and a fresh worktree has no .next/types, so bare tsc reports three
+  TS2578 "Unused '@ts-expect-error'" in lib/__tests__/revalidate-route.test.ts.
+  That is a GUARD firing exactly as its comment there says it will, not a
+  regression on your branch — two agents have now hunted it.
 - Gates: run bash scripts/orchestration/agent-gates.sh from the worktree root — it
   runs lint, typecheck, the pure tests, the DB tier when your diff touches anything
   it imports, the e2e-hygiene scan when specs changed, phi-scan, and format LAST, in
@@ -909,6 +918,31 @@ export function stallVerdict({ ageMs, idleMs, thresholdMs }) {
   return { kind: "moving", alarm: false };
 }
 
+// Whether a lane may be RETIRED yet (#3212).
+//
+// Retiring closes the ledger entry and the roster row, which between them are the
+// whole board — so retiring a lane whose PR is still open does not merely tidy
+// up, it deletes the orchestrator's only record that the PR exists. On
+// 2026-08-19 exactly that happened: agent/3180-3206-test-hygiene was retired
+// while PR #3212 was open and green, and it sat unmerged for an hour until a
+// disk sweep noticed its abandoned worktree.
+//
+// The fact this reads is a REMOTE REF SURVIVING A PRUNE. Squash-merging deletes
+// the remote head branch, so a remote that is still there after `fetch --prune`
+// means the work has not landed. It is the same fact the retirement path already
+// computed to decide whether to delete the LOCAL branch — but it computed it
+// after the worktree was gone, and only printed "(not merged?)" as prose. A
+// warning after the last moment it could have helped is the shape every other
+// guard in this file refuses.
+//
+// `keep` short-circuits: --keep closes the ledger entry and touches nothing else,
+// which is the right command for a genuinely abandoned branch.
+export function retireVerdict({ remoteAlive, keep }) {
+  if (keep) return { ok: true, reason: "keep" };
+  if (remoteAlive) return { ok: false, reason: "unmerged" };
+  return { ok: true, reason: "merged-and-tidied" };
+}
+
 function cmdDone(argv) {
   const branch = argv.find((a) => !a.startsWith("--"));
   const keep = argv.includes("--keep");
@@ -1002,6 +1036,42 @@ to close the ledger entry and leave the tree alone.`
     }
   }
 
+  // AND ASK WHETHER THE WORK ACTUALLY LANDED. The two guards above ask who is
+  // standing in the tree; neither asks whether there is anything left to do.
+  //
+  // On 2026-08-19 a lane was retired while its PR was still OPEN and green.
+  // Retiring closes the ledger entry and the roster row, which between them are
+  // the whole board — so the PR simply stopped existing as far as the
+  // orchestrator was concerned, and sat unmerged for an hour until a disk sweep
+  // happened to notice its worktree. Nothing was lost, but nothing would have
+  // found it either.
+  //
+  // The signal is already computed below, where it prints "its remote still
+  // exists (not merged?)" AFTER the worktree has been removed — a warning that
+  // arrives after the only moment it could have helped, which is the shape this
+  // file's other guards exist to refuse. Squash-merging deletes the remote head
+  // branch, so a remote ref that SURVIVES a prune means the work has not landed.
+  // Hoisted here, and refusing.
+  {
+    if (!keep) git("fetch --prune origin", { allowFail: true });
+    const remoteAlive =
+      git(`show-ref --verify refs/remotes/origin/${branch}`, {
+        allowFail: true,
+      }) !== null;
+    if (!retireVerdict({ remoteAlive, keep }).ok) {
+      console.error(
+        `REFUSED: origin/${branch} still exists after a prune, so its work has NOT
+been merged — a squash-merge deletes the remote branch. Retiring now closes the
+ledger entry and the roster row, which are the whole board: the PR would stop
+being tracked while it is still open (this has happened — #3212 sat green and
+unmerged for an hour).
+Merge the PR first, then retire. If the branch is genuinely ABANDONED, pass
+--keep to close the ledger entry and leave the branch and tree alone.`
+      );
+      process.exit(1);
+    }
+  }
+
   appendLedger({ at: new Date().toISOString(), status: "done", branch });
   rosterClose(branch);
   console.log(`closed ${branch} — freed port base ${entry.portBase}`);
@@ -1020,28 +1090,16 @@ to close the ledger entry and leave the tree alone.`
       console.log(`could not remove worktree ${wtPath} — remove by hand`);
     }
   }
-  // Prune BEFORE judging the local branch: the squash-merge deleted the remote
-  // ref, and a stale remote-tracking ref would make "remote still exists" lie.
-  git("fetch --prune origin", { allowFail: true });
+  // The guard above already pruned and established that the remote ref is gone,
+  // which IS the merged-and-tidied shape (the #2621 rule), so the local branch
+  // is safe to drop. -D, not -d: a squash-merged branch is never an ancestor of
+  // main, so -d refuses even though the content landed.
   if (
     git(`show-ref --verify refs/heads/${branch}`, { allowFail: true }) !== null
   ) {
-    const remoteGone =
-      git(`show-ref --verify refs/remotes/origin/${branch}`, {
-        allowFail: true,
-      }) === null;
-    if (remoteGone) {
-      // -D, not -d: a squash-merged branch is never an ancestor of main, so -d
-      // refuses even though the content landed. Remote-gone after prune IS the
-      // merged-and-tidied shape (the #2621 rule).
-      if (git(`branch -D ${branch}`, { allowFail: true }) !== null) {
-        console.log(
-          `deleted local branch ${branch} (remote gone — merged and tidied)`
-        );
-      }
-    } else {
+    if (git(`branch -D ${branch}`, { allowFail: true }) !== null) {
       console.log(
-        `kept local branch ${branch} — its remote still exists (not merged?)`
+        `deleted local branch ${branch} (remote gone — merged and tidied)`
       );
     }
   }

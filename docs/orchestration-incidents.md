@@ -746,3 +746,40 @@ Generalised, and this is the third time today the same shape has appeared: a
 proxy that answers a cheaper question than the one being asked will agree with
 the real answer right up until the case that matters. A clean tree meant
 "everything is pushed", not "nobody is here".
+
+## The PR I retired off my own board (2026-08-19)
+
+`agent/3180-3206-test-hygiene` opened PR #3212 and I retired the lane. The PR was
+open, green, and unmerged. Retiring closes the ledger entry and the roster row,
+and between them those are the whole board — so the PR did not become
+lower-priority, it stopped existing as far as the orchestrator was concerned. It
+sat there for an hour while I merged four other PRs and dispatched three lanes.
+
+It was found by accident. Disk was down to 2.4G with three trees live, I went
+looking for space, and `git worktree list` showed a worktree for a lane the
+ledger said was finished. Only then did asking why produce the PR. Had disk been
+comfortable, nothing in the system would have raised it: no check-in reads
+GitHub, and the roster — the one thing that does get read after a restart — had
+already been told the lane was done.
+
+The signal was not missing. It was computed, and discarded. The retirement path
+pruned, asked whether `origin/<branch>` still existed, and used the answer to
+decide whether to delete the LOCAL branch — printing `kept local branch … — its
+remote still exists (not merged?)` when it did. That line was on my screen. It
+appears _after_ the worktree has been removed and the ledger entry closed, as
+prose, with a question mark. A squash-merge deletes the remote head branch, so
+that ref surviving a prune is not a hint that the work might be unmerged; it is
+proof that it is.
+
+The fix hoists the same fact ahead of every destructive step and refuses on it,
+with `--keep` as the way out for a genuinely abandoned branch. The decision is
+now `retireVerdict`, a pure function, pinned in
+`lib/__tests__/dispatch-retire.test.ts` in both directions — because a guard that
+refuses ordinary clean retirements would be routed around within the hour, and
+then the second direction would not exist either.
+
+The shape is one this file already names twice, arriving from a new angle: a
+warning that fires after the last moment it could have helped is not a weaker
+guard than a refusal, it is not a guard. Both of the other retirement guards in
+that file say so in their own comments, and I wrote those comments. The check
+that got this wrong was sitting between them.
