@@ -116,6 +116,18 @@ function soleComponentActivity(
   return null;
 }
 
+// DRAFTS ARE NOT SESSIONS HERE EITHER (#3191). This is a separate statement from the
+// day-density gather above — a different surface with a different consumer, which is
+// why #3188 left it alone — but it answers the same question about a row, so it
+// answers it the same way. Measured on main: one untouched create-at-start draft
+// titled "Push Day" produced a matrix cell reading 1 session, and the positive
+// control (a real logged session on the same day) moved it to 2. A draft is titled
+// and typed at the moment the session opens, so it lands on a real activity's row in
+// the matrix and reads as a session of it.
+//
+// The rule is not restated in SQL: the draft-candidate columns and the "has any set"
+// half (a correlated EXISTS on the same SELECT) ride along, and the fold applies
+// `isDraftActivityRow`. Still one prepared statement.
 export function getWorkoutActivityDays(
   profileId: number,
   since: string,
@@ -123,22 +135,32 @@ export function getWorkoutActivityDays(
 ): WorkoutActivityDay[] {
   const rows = db
     .prepare(
-      `SELECT date, title, type, components, COALESCE(duration_min, 0) AS minutes
-         FROM activities
-        WHERE profile_id = ? AND date >= ? AND date <= ?
-        ORDER BY date ASC, id ASC`
+      `SELECT a.date AS date, a.title AS title, a.type AS type,
+              a.components AS components,
+              COALESCE(a.duration_min, 0) AS minutes,
+              a.start_time, a.end_time, a.duration_min, a.notes, a.distance_km,
+              a.source,
+              EXISTS (
+                SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+              ) AS has_sets
+         FROM activities a
+        WHERE a.profile_id = ? AND a.date >= ? AND a.date <= ?
+        ORDER BY a.date ASC, a.id ASC`
     )
-    .all(profileId, since, until) as {
+    .all(profileId, since, until) as (DraftCandidateRow & {
     date: string;
     title: string;
     type: string;
     components: string | null;
     minutes: number;
-  }[];
+    /** 0 or 1 — the draft rule only asks whether ANY set exists (`setCount > 0`). */
+    has_sets: number;
+  })[];
 
   const labelByKey = new Map<string, string>();
   const byDayKey = new Map<string, WorkoutActivityDay>();
   for (const r of rows) {
+    if (isDraftActivityRow(r, r.has_sets)) continue;
     const label =
       soleComponentActivity(r.type, r.components) ??
       workoutActivityLabel(r.title);

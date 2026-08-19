@@ -1,4 +1,5 @@
 import { db, today } from "../db";
+import { isDraftActivityRow, type DraftCandidateRow } from "../activity-draft";
 import {
   CADENCE_SCOPES,
   cadenceDirection,
@@ -287,16 +288,43 @@ export function cadenceCounts(
   const typeWeeks = new Map<string, Set<string>[]>();
   const mobilityWeeks = new Map<MuscleRegion, Set<string>[]>();
   if (needs.has("activity-type") || needs.has("mobility-moves")) {
-    const rows = db
+    // A DRAFT CREDITS NOTHING (#3190, owner-ruled). Create-at-start picks the type
+    // when the session opens, so a session someone opened and abandoned used to
+    // credit a "train 3×/week" target for that day — measured, not hypothetical.
+    // That is credit for training that did not happen, and it does something: the
+    // target flips `met`/`pace`/`atCeiling`, which silences the nudge that would
+    // have asked the person to train. A husk can talk the app out of reminding you.
+    //
+    // The rule is not restated in SQL: the draft-candidate columns and the "has any
+    // set" half (a correlated EXISTS on the same SELECT — `idx_sets_activity` serves
+    // it) ride along on the gather that was already here, and the fold applies
+    // `isDraftActivityRow`. Still ONE prepared statement, and the cadence ledger is
+    // on the dashboard path (#3164).
+    //
+    // Filtered ONCE, for both arms. The mobility-moves arm below is immune on its
+    // own terms — it reads components, and a row with components is not a draft — so
+    // dropping husks before it changes nothing there; two arms reading one row set
+    // with two different ideas of which rows are real would be the defect, not the
+    // saving.
+    const gathered = db
       .prepare(
-        `SELECT date, type, components FROM activities
-          WHERE profile_id = ? AND date >= ? AND date <= ?`
+        `SELECT a.date AS date, a.type AS type, a.components AS components,
+                a.start_time, a.end_time, a.duration_min, a.notes, a.distance_km,
+                a.source,
+                EXISTS (
+                  SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+                ) AS has_sets
+           FROM activities a
+          WHERE a.profile_id = ? AND a.date >= ? AND a.date <= ?`
       )
-      .all(profileId, firstStart, lastEnd) as {
+      .all(profileId, firstStart, lastEnd) as (DraftCandidateRow & {
       date: string;
       type: string;
       components: string | null;
-    }[];
+      /** 0 or 1 — the draft rule only asks whether ANY set exists. */
+      has_sets: number;
+    })[];
+    const rows = gathered.filter((r) => !isDraftActivityRow(r, r.has_sets));
 
     if (needs.has("activity-type")) {
       const addType = (type: string, date: string, bucket: number) => {

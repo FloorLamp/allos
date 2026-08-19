@@ -6,6 +6,7 @@
 // profile per hourly tick from scripts/notify.ts, next to the refill/digest runs.
 
 import { db, writeTx } from "./db";
+import { isDraftActivityRow, type DraftCandidateRow } from "./activity-draft";
 import { getProfileAge, getPublicUrl } from "./settings";
 import { getOutcomeGoals } from "./queries";
 import {
@@ -32,14 +33,39 @@ export function getFiredMilestoneKeys(profileId: number): Set<string> {
 }
 
 // Count of every activity ever logged (the "Nth workout" basis). Profile-scoped.
+//
+// A DRAFT IS NOT A WORKOUT (#3190, owner-ruled). Create-at-start writes the row when
+// the session opens, so a session someone opened and abandoned used to count toward
+// the Nth-workout thresholds — measured, not hypothetical. This one cannot be put
+// right later the way a wrong tile can: the notification is unrecallable once sent,
+// and `recordMilestones` then writes the key as fired, so a husk does not merely
+// produce a wrong recognition — it CONSUMES the moment, and the real Nth workout
+// never gets one. Wrong once, permanently, per milestone. (Keys already stranded
+// that way are released by migration 20260819-unstrand-husk-milestones.)
+//
+// The rule is not restated in SQL: the query gathers the draft-candidate columns
+// `isDraftActivityRow` already reads off a row plus the "has any set" half as a
+// correlated EXISTS on the same SELECT, and the fold applies THAT function. One
+// prepared statement, as before — this runs once per profile per hourly tick, off
+// every render path.
 function totalWorkouts(profileId: number, includeStrength: boolean): number {
-  const row = db
+  const rows = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM activities
-        WHERE profile_id = ? AND (? = 1 OR type != 'strength')`
+      `SELECT a.start_time, a.end_time, a.duration_min, a.components, a.notes,
+              a.distance_km, a.source,
+              EXISTS (
+                SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+              ) AS has_sets
+         FROM activities a
+        WHERE a.profile_id = ? AND (? = 1 OR a.type != 'strength')`
     )
-    .get(profileId, includeStrength ? 1 : 0) as { n: number };
-  return row.n;
+    .all(profileId, includeStrength ? 1 : 0) as (DraftCandidateRow & {
+    /** 0 or 1 — the draft rule only asks whether ANY set exists (`setCount > 0`). */
+    has_sets: number;
+  })[];
+  let n = 0;
+  for (const row of rows) if (!isDraftActivityRow(row, row.has_sets)) n++;
+  return n;
 }
 
 // Gather the cumulative stats the pure engine needs for one profile.
