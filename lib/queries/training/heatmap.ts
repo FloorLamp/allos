@@ -12,25 +12,62 @@ import {
   type WorkoutDayDensity,
 } from "../../workout-heatmap";
 import { shiftDateStr } from "../../date";
+import {
+  isDraftActivityRow,
+  type DraftCandidateRow,
+} from "../../activity-draft";
 
 // Sessions + total training minutes per profile-local day, on/after `since`. ONE
 // SQL pass, profile-scoped. `activities.date` is already the profile-local calendar
 // day at ingest (issue #94), so grouping by it buckets in the profile timezone.
+//
+// DRAFTS DO NOT COUNT (#3056), for the same reason the week's own tallies exclude
+// them: a create-at-start session that logged nothing is an address, not an entry.
+// This gather is what lights the Training Log's and History's active-days strip,
+// which sits on the SAME SCREEN as the week caption folded from
+// `getTrainingWeekDayTypes` — so a draft counted here would have the Log stating two
+// different weeks in two numbers a reader takes in together. The rule is not
+// restated in SQL: the query gathers the draft-candidate columns
+// `isDraftActivityRow` already reads off a row, and the fold applies THAT function.
+// Still ONE prepared statement — the "has any set" half folds onto this SELECT as a
+// correlated EXISTS (`idx_sets_activity` serves it), never a per-row set query.
 export function getWorkoutDayDensity(
   profileId: number,
   since: string
 ): WorkoutDayDensity[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT date,
-              COUNT(*) AS count,
-              CAST(COALESCE(SUM(duration_min), 0) AS INTEGER) AS minutes
-         FROM activities
-        WHERE profile_id = ? AND date >= ?
-        GROUP BY date
-        ORDER BY date ASC`
+      `SELECT a.date AS date,
+              COALESCE(a.duration_min, 0) AS minutes,
+              a.start_time, a.end_time, a.duration_min, a.components, a.notes,
+              a.distance_km, a.source,
+              EXISTS (
+                SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+              ) AS has_sets
+         FROM activities a
+        WHERE a.profile_id = ? AND a.date >= ?
+        ORDER BY a.date ASC`
     )
-    .all(profileId, since) as WorkoutDayDensity[];
+    .all(profileId, since) as (DraftCandidateRow & {
+    date: string;
+    minutes: number;
+    /** 0 or 1 — the draft rule only asks whether ANY set exists (`setCount > 0`). */
+    has_sets: number;
+  })[];
+  const byDate = new Map<string, WorkoutDayDensity>();
+  for (const row of rows) {
+    if (isDraftActivityRow(row, row.has_sets)) continue;
+    const day = byDate.get(row.date);
+    if (day) {
+      day.count++;
+      day.minutes += row.minutes;
+    } else {
+      byDate.set(row.date, { date: row.date, count: 1, minutes: row.minutes });
+    }
+  }
+  // The grouped SELECT this replaced emitted its days ascending; the fold states
+  // that order explicitly rather than inheriting it from SQLite's grouping strategy.
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // Sessions + minutes per profile-local day AND named activity, in
