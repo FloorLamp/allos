@@ -43,12 +43,11 @@ describe("the two real notes from #2948", () => {
   });
 
   it("offers both when one note carries both, split on the comma", () => {
-    const { candidates } = detectNiggles(
-      `${REAL_NOTE_KNEE}, ${REAL_NOTE_HIP}`
-    );
-    expect(
-      candidates.map((c) => `${c.laterality} ${c.bodyTerm}`)
-    ).toEqual(["right knee", "left hip"]);
+    const { candidates } = detectNiggles(`${REAL_NOTE_KNEE}, ${REAL_NOTE_HIP}`);
+    expect(candidates.map((c) => `${c.laterality} ${c.bodyTerm}`)).toEqual([
+      "right knee",
+      "left hip",
+    ]);
   });
 });
 
@@ -147,7 +146,9 @@ describe("conservative-list discipline", () => {
 describe("the chip's copy", () => {
   it("asks rather than announces, and names the person's own word", () => {
     const c = detectNiggles(REAL_NOTE_KNEE).candidates[0];
-    expect(niggleChipPrompt(c)).toBe("Sounds like a right knee niggle — track it?");
+    expect(niggleChipPrompt(c)).toBe(
+      "Sounds like a right knee niggle — track it?"
+    );
   });
 
   it("says both sides explicitly rather than picking one", () => {
@@ -158,7 +159,8 @@ describe("the chip's copy", () => {
 
 describe("the quiet spell (#2948 part 1)", () => {
   const day = (n: number) =>
-    new Date(Date.UTC(2026, 7, 1) + n * 86_400_000).toISOString().slice(0, 19) + "Z";
+    new Date(Date.UTC(2026, 7, 1) + n * 86_400_000).toISOString().slice(0, 19) +
+    "Z";
 
   it("names the expiry window as a constant in the decided range", () => {
     expect(NIGGLE_QUIET_DAYS).toBeGreaterThanOrEqual(10);

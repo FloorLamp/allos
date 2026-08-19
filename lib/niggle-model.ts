@@ -81,7 +81,10 @@ export function niggleKey(
 export function niggleExpiresAt(lastReportedAt: string): string {
   const t = Date.parse(lastReportedAt);
   if (!Number.isFinite(t)) return lastReportedAt;
-  return new Date(t + NIGGLE_QUIET_DAYS * MS_PER_DAY).toISOString().slice(0, 19) + "Z";
+  return (
+    new Date(t + NIGGLE_QUIET_DAYS * MS_PER_DAY).toISOString().slice(0, 19) +
+    "Z"
+  );
 }
 
 // Is this niggle still live at `now`? The boundary is EXCLUSIVE at the far end: a niggle

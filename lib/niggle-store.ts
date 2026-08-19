@@ -82,7 +82,10 @@ export function getNiggles(profileId: number): Niggle[] {
 // The LIVE set — what a consumer that wants "what is bothering this person right now"
 // should read. `now` is injectable so a caller with a frozen clock (tests, a recap
 // composed for a stated instant) gets a deterministic answer.
-export function getLiveNiggles(profileId: number, now = instantNow()): Niggle[] {
+export function getLiveNiggles(
+  profileId: number,
+  now = instantNow()
+): Niggle[] {
   return liveNiggles(getNiggles(profileId), now);
 }
 
@@ -102,7 +105,10 @@ export type ReportNiggleOutcome =
   // `kind` names which transition happened, so the caller's confirmation can say the
   // truth ("Tracking it" vs "Noted again") instead of one message for both.
   | { ok: true; kind: "created" | "re-reported"; id: number }
-  | { ok: false; reason: "invalid-region" | "invalid-laterality" | "not-owned" };
+  | {
+      ok: false;
+      reason: "invalid-region" | "invalid-laterality" | "not-owned";
+    };
 
 // Record a niggle, or advance the one already live on the same key. The ONLY write path
 // to this table.
@@ -119,7 +125,8 @@ export function reportNiggle(
   report: NiggleReport,
   now = instantNow()
 ): ReportNiggleOutcome {
-  if (!isValidRegion(report.region)) return { ok: false, reason: "invalid-region" };
+  if (!isValidRegion(report.region))
+    return { ok: false, reason: "invalid-region" };
   const laterality = report.laterality ?? null;
   if (laterality != null && !isValidLaterality(laterality))
     return { ok: false, reason: "invalid-laterality" };
@@ -152,7 +159,9 @@ export function reportNiggle(
       id: number;
       last_reported_at: string;
     }[];
-    const live = existing.find((r) => isNiggleLive({ lastReportedAt: r.last_reported_at }, now));
+    const live = existing.find((r) =>
+      isNiggleLive({ lastReportedAt: r.last_reported_at }, now)
+    );
     if (live) {
       db.prepare(
         `UPDATE niggles SET last_reported_at = ? WHERE id = ? AND profile_id = ?`

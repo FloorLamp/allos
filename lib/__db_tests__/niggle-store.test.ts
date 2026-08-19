@@ -12,12 +12,14 @@ import { NIGGLE_QUIET_DAYS } from "@/lib/niggle-model";
 
 const DAY_MS = 86_400_000;
 const at = (dayOffset: number) =>
-  new Date(Date.UTC(2026, 7, 1) + dayOffset * DAY_MS).toISOString().slice(0, 19) +
-  "Z";
+  new Date(Date.UTC(2026, 7, 1) + dayOffset * DAY_MS)
+    .toISOString()
+    .slice(0, 19) + "Z";
 
 function makeProfile(name: string): number {
   return Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name).lastInsertRowid
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+      .lastInsertRowid
   );
 }
 
@@ -28,8 +30,7 @@ function makeActivity(profileId: number, notes: string): number {
         `INSERT INTO activities (profile_id, date, type, title, notes)
          VALUES (?, '2026-08-01', 'strength', 'Leg day', ?)`
       )
-      .run(profileId, notes)
-      .lastInsertRowid
+      .run(profileId, notes).lastInsertRowid
   );
 }
 
@@ -64,7 +65,11 @@ describe("reportNiggle", () => {
   it("re-reports the live row instead of minting a second one", () => {
     const p = makeProfile("Niggle Re-report");
     reportNiggle(p, { region: "Legs", laterality: "right" }, at(0));
-    const again = reportNiggle(p, { region: "Legs", laterality: "right" }, at(3));
+    const again = reportNiggle(
+      p,
+      { region: "Legs", laterality: "right" },
+      at(3)
+    );
     expect(again).toMatchObject({ ok: true, kind: "re-reported" });
 
     const rows = getNiggles(p);
@@ -148,19 +153,16 @@ describe("reportNiggle", () => {
 
   it("refuses a region outside the injury vocabulary", () => {
     const p = makeProfile("Niggle Vocabulary");
-    expect(
-      reportNiggle(p, { region: "Kneecaps" as never }, at(0))
-    ).toEqual({ ok: false, reason: "invalid-region" });
+    expect(reportNiggle(p, { region: "Kneecaps" as never }, at(0))).toEqual({
+      ok: false,
+      reason: "invalid-region",
+    });
     expect(getNiggles(p)).toHaveLength(0);
   });
 
   it("stores a source exercise as its canonical identity, never a raw label", () => {
     const p = makeProfile("Niggle Exercise");
-    reportNiggle(
-      p,
-      { region: "Legs", sourceExercise: "Back Squat" },
-      at(0)
-    );
+    reportNiggle(p, { region: "Legs", sourceExercise: "Back Squat" }, at(0));
     expect(getNiggles(p)[0].sourceExercise).toBe("back squat");
   });
 });

@@ -23,8 +23,7 @@ function seedActivity(profileId: number, notes: string): number {
         `INSERT INTO activities (profile_id, date, type, title, notes)
          VALUES (?, '2026-08-01', 'strength', 'Leg day', ?)`
       )
-      .run(profileId, notes)
-      .lastInsertRowid
+      .run(profileId, notes).lastInsertRowid
   );
 }
 

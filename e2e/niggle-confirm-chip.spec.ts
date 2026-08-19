@@ -41,7 +41,11 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
   );
   // A plain (equipment-variant-free) barbell lift, so a complete set is savable with no
   // per-set equipment pick.
-  await settledFill(page, page.getByPlaceholder(/What did you do/), "Back Squat");
+  await settledFill(
+    page,
+    page.getByPlaceholder(/What did you do/),
+    "Back Squat"
+  );
   await page
     .getByRole("listbox")
     .getByRole("button")
@@ -96,7 +100,9 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
   // and the copy says so.
   const chip = page.getByTestId("niggle-chip");
   await expect(chip).toBeVisible();
-  await expect(chip).toContainText("Sounds like a right knee niggle — track it?");
+  await expect(chip).toContainText(
+    "Sounds like a right knee niggle — track it?"
+  );
   // The structured facts behind the sentence: the injury-model region and side, not a
   // parallel body-part vocabulary.
   await expect(chip).toHaveAttribute("data-region", "Legs");

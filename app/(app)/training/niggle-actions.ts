@@ -27,8 +27,7 @@ import { isValidLaterality } from "@/lib/injury-model";
 // profile, and `reportNiggle` re-verifies that the source activity belongs to it, so a
 // forged activity id cannot attach one profile's session to another profile's niggle.
 export type ConfirmNiggleOutcome =
-  | ReportNiggleOutcome
-  | { ok: false; reason: "no-candidate" };
+  ReportNiggleOutcome | { ok: false; reason: "no-candidate" };
 
 export async function confirmNiggle(
   formData: FormData
