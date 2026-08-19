@@ -170,7 +170,14 @@ export function standingUsualOffer(
   const doses: UsualRoutineDose[] = fresh.doses.filter((d) =>
     offeredDoses.has(d.doseId)
   );
-  if (groups.length === 0 && doses.length === 0) return null;
+  // THE FLOOR THE REDUCTION BOTTOMS OUT ON. A bundle earns its place by being FASTER
+  // than the rows beneath it, which is the same rule `usualFoodOffer` states for the
+  // food half alone (FOOD_USUAL_MIN_GROUPS: "a single group is one tap either way").
+  // Generalised to the composition, because after a reduction the two halves are
+  // interchangeable as savings: the remainder must be at least two writes, and it must
+  // still contain food — the food half is this offer's GATE and there was never a
+  // dose-only shape of it (lib/usual-routine.ts).
+  if (groups.length === 0 || groups.length + doses.length < 2) return null;
   return { window: stored.window, groups, doses };
 }
 
