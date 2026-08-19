@@ -509,10 +509,24 @@ export function seedRoutineUsual(): void {
   // the same, which must NEVER appear. A `may` item has no dueness (#1505/#2419), and
   // that is the predicate the exclusion rides; nothing in the offer reads obligation.
   //
-  // UTC with the default 11:00/15:00 boundaries, so 08:00Z is Morning, 12:00Z Midday and
-  // 19:00Z Evening. Idempotent: every fixture-owned row is cleared first.
+  // THIS PROFILE FOLLOWS THE RUN'S PINNED INSTANCE TIMEZONE (#3260). It used to opt
+  // out to UTC, on the since-falsified claim that it needed "fixed 08:00Z/12:00Z/19:00Z
+  // events": every instant below is already built from a profile-LOCAL wall time through
+  // `zonedWallTimeToUtc` (#1417), so the opt-out bought the fixture nothing and cost it
+  // determinism. Under a UTC pin the profile's local minute-of-day IS the run's real UTC
+  // start hour, and the dashboard candidate this fixture exists to render carries
+  // meal-window timing (`mealTimeWindows`, the intake anchors ±60 min): past 21:00 local
+  // no meal window is left today, the candidate resolves `expired`, and an expired
+  // candidate is dropped from EVERY lane — `openDashboardAll` cannot reach it. The spec
+  // was therefore red for the ~3 hours of each day a run started in [21:00, 24:00) UTC
+  // and green the other 21. Following the pinned zone puts the frozen clock at 13:mm
+  // local, which IS `DEFAULT_INTAKE_REMINDER_MINUTES.Midday` (13:00), so the offer sits
+  // at the centre of a meal window at every possible UTC start hour rather than near an
+  // edge. lib/__tests__/pinned-timezone.test.ts pins that invariant.
+  //
+  // Local 08:00 is Morning, 12:00 Midday and 19:00 Evening under the default 11:00/15:00
+  // food boundaries. Idempotent: every fixture-owned row is cleared first.
   const routineId = adultFixtureProfileId(ROUTINE_USUAL_PROFILE);
-  setFixtureTimezone(db, routineId, "routine-usual", "UTC");
   const routineAnchor = today(routineId);
   db.prepare(`DELETE FROM food_daily_totals WHERE profile_id = ?`).run(
     routineId
