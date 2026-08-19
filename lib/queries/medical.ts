@@ -508,7 +508,18 @@ export interface CurrentFlaggedReading {
 const FLAGGED_CURRENT_COLUMNS = `COALESCE(NULLIF(TRIM(canonical_name), ''), name) AS name,
           NULLIF(TRIM(canonical_name), '') AS canonicalName,
           value, flag, date`;
-const FLAGGED_DENYLIST = `AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')`;
+// The shared "this reading is flagged" predicate for the care-tier reads below.
+//
+// It used to be a DENYLIST — `flag NOT IN ('normal','immune')` — which asks "is this
+// token one of the two neutral words?" rather than "is this token one we mark?". The
+// two questions differ on exactly one input: a token this build does not recognise
+// (#2937). A rolled-back build reads such a value as "Normal" everywhere (flagLabel's
+// fallback, isNormalFlag, and neither range filter) while the denylist counted it as
+// flagged, so the row raised a permanent review item reading "Flagged normal — 44":
+// normal and flagged at once, filterable by neither state. Spelling it as the SAME
+// NOTABLE_FLAGS list the predicates read makes display and query agree by
+// construction, and is identical for every token this build does know.
+const FLAGGED_NOTABLE = `AND ${flagInSql(NOTABLE_FLAGS)}`;
 const FLAGGED_WINDOW = `AND created_at > ? AND date >= date(?)`;
 
 const FLAGGED_LABS_STMT = {
@@ -519,7 +530,7 @@ const FLAGGED_LABS_STMT = {
        FROM medical_records
       WHERE profile_id = ? AND ${LATEST_IN_GROUP}
         AND category = 'lab'
-        ${FLAGGED_DENYLIST}
+        ${FLAGGED_NOTABLE}
       ORDER BY date DESC, id ASC`
   ),
   windowed: hoistedStatement(
@@ -529,7 +540,7 @@ const FLAGGED_LABS_STMT = {
        FROM medical_records
       WHERE profile_id = ? AND ${LATEST_IN_GROUP}
         AND category = 'lab'
-        ${FLAGGED_DENYLIST}
+        ${FLAGGED_NOTABLE}
         ${FLAGGED_WINDOW}
       ORDER BY date DESC, id ASC`
   ),
@@ -543,7 +554,7 @@ const FLAGGED_VITALS_STMT = {
        FROM medical_records
       WHERE profile_id = ? AND ${LATEST_IN_GROUP}
         AND category = 'vitals'
-        ${FLAGGED_DENYLIST}
+        ${FLAGGED_NOTABLE}
       ORDER BY date DESC, id ASC`
   ),
   windowed: hoistedStatement(
@@ -553,7 +564,7 @@ const FLAGGED_VITALS_STMT = {
        FROM medical_records
       WHERE profile_id = ? AND ${LATEST_IN_GROUP}
         AND category = 'vitals'
-        ${FLAGGED_DENYLIST}
+        ${FLAGGED_NOTABLE}
         ${FLAGGED_WINDOW}
       ORDER BY date DESC, id ASC`
   ),
@@ -590,9 +601,10 @@ const CURRENT_QUALITATIVE_STMT = hoistedStatement(
 // severity bands #716/#998). The mental-health/substance sensitivity is load-
 // bearing: a depression/alcohol score can never leak into the general health hero.
 //
-// Flag set: the digest denylist (`flag NOT IN ('normal','immune')`) — equivalent
-// to range:"nonoptimal" over the known flag set, and it keeps #544's "immune" (a
-// good durable-immunity status) off the care-tier surface.
+// Flag set: the NOTABLE_FLAGS list (FLAGGED_NOTABLE) — the same membership
+// range:"nonoptimal" spells, so the two surfaces agree by construction rather than by
+// two lists happening to match, and #544's "immune" (a good durable-immunity status)
+// stays off the care-tier surface. It was a denylist until #2937; see FLAGGED_NOTABLE.
 //
 // Recency (#557 fix 2): when `since` is given the read is windowed by BOTH the
 // import cursor (`created_at > since` — the digest send-cursor / hero stable

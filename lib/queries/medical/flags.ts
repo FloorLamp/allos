@@ -86,6 +86,37 @@ const RECONCILABLE_FLAGS = new Set([
   "reported-low",
 ]);
 
+// …plus ANY token this build does not recognise (#2937). The set above is a forward
+// contract — each release lists what its own reconcile may restate — and it cannot
+// name a value that does not exist yet, so a database upgraded past a token-
+// introducing build and then rolled back stranded those rows permanently: never
+// selected, and simultaneously "Normal" by label and flagged by the shared denylist.
+//
+// An unrecognised token is exactly the row a reconcile should re-decide. No source can
+// write one (the extractor and the CDA ingest are held to MEDICAL_FLAGS), so it was
+// written by a FUTURE build of this same pass; re-deriving it in the vocabulary this
+// build does have is the only honest answer available. The rule is stated ONCE, here
+// and in reconciledFlag's tail, so the next flag value ships without its author having
+// to think about rollback — its only obligation is to join KNOWN_FLAGS, which the type
+// checker enforces.
+//
+// NO FLAG_LOGIC_VERSION BUMP RIDES WITH THIS, deliberately. The version exists to
+// force stored rows to re-derive when the logic that wrote them changes; here no row a
+// build at-or-below this one could have written is affected (an unrecognised token is
+// unreachable from this vocabulary). The rollback case re-reconciles on its own: the
+// future build stored ITS canonical-flags signature, which cannot equal this build's,
+// so `reconcileFlagsIfCanonicalChanged` runs on the first boot after the rollback —
+// which is the boot that now repairs the stranded rows.
+const isReconcilable = (flag: string | null | undefined): boolean =>
+  flag == null || RECONCILABLE_FLAGS.has(flag) || !isKnownFlag(flag);
+
+// The row-selection predicate's SQL twin, spelled from the same two lists so the
+// query and the TS gate cannot drift.
+const reconcilableSql = (): string =>
+  `(flag IS NULL OR flag IN (${[...RECONCILABLE_FLAGS]
+    .map((f) => `'${f}'`)
+    .join(",")}) OR ${unknownFlagSql()})`;
+
 // Preview twin of reconcileFlags: derive the flags the post-commit reconcile WILL
 // write for a NOT-yet-persisted batch of observations (the reprocess preview's fresh
 // extraction), mutating each observation's `flag` in place. Without this, the preview
@@ -102,9 +133,7 @@ export function previewReconcileFlags(
   if (observations.length === 0) return;
   const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
   const numericRows = observations.flatMap((r, i) =>
-    r.canonical?.trim() &&
-    r.value_num != null &&
-    (r.flag == null || RECONCILABLE_FLAGS.has(r.flag))
+    r.canonical?.trim() && r.value_num != null && isReconcilable(r.flag)
       ? [
           {
             id: i,
@@ -145,13 +174,12 @@ export function previewReconcileFlags(
 export function reconcileFlags(profileId: number, ids?: number[]): number {
   // profile_id scopes every row, so an id from another profile in `ids` simply
   // can't match — the caller's list is never trusted on its own.
-  // The revisitable-flag set is the SAME constant the preview twin gates on
-  // (RECONCILABLE_FLAGS — fixed app-controlled tokens, safe to inline in SQL), so
-  // the two eligibility checks cannot drift.
-  const reconcilable = [...RECONCILABLE_FLAGS].map((f) => `'${f}'`).join(",");
+  // The revisitable-flag rule is the SAME one the preview twin gates on
+  // (RECONCILABLE_FLAGS plus any unrecognised token — fixed app-controlled tokens,
+  // safe to inline in SQL), so the two eligibility checks cannot drift.
   let sql = `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
      WHERE profile_id = ? AND canonical_name IS NOT NULL AND value_num IS NOT NULL
-       AND (flag IS NULL OR flag IN (${reconcilable}))`;
+       AND ${reconcilableSql()}`;
   const args: number[] = [profileId];
   if (ids) {
     if (ids.length === 0) return 0;
@@ -246,6 +274,7 @@ import {
   computeQualitativeFlagChanges,
 } from "../../flag-reconcile";
 import type { PersistInput } from "../../import-shape";
+import { isKnownFlag, unknownFlagSql } from "../../reference-range";
 import {
   getStoredAge,
   getProfileBirthdate,
