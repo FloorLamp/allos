@@ -7,6 +7,10 @@ import {
 } from "../../companions";
 import { shiftDateStr } from "../../date";
 import {
+  isDraftActivityRow,
+  type DraftCandidateRow,
+} from "../../activity-draft";
+import {
   inferWeeklyRhythm,
   predictedOnDay,
   RHYTHM_WINDOW_WEEKS,
@@ -259,6 +263,16 @@ export interface TrainingLogWeekSummary {
 // honest fix is the bound, not a second window for the picture. `start + 6` is the
 // window's last day in both week modes (a calendar week ends on its seventh day; a
 // rolling window ends on today).
+//
+// DRAFTS DO NOT COUNT (#3056). Create-at-start writes the activity row at the
+// session's first second, so "start a session and log nothing" used to grow a block
+// on the band and add one to every caption folded from these rows — while the
+// Training Log's own feed, which applies `isDraftActivityRow`, correctly showed
+// nothing. Three surfaces stating the same week (#221) stated two different weeks,
+// and an abandoned draft held the inflated number until the expiry sweep reached it.
+// The rule is NOT restated in SQL here: the query gathers the draft-candidate
+// columns `isDraftActivityRow` already reads off a row, and the fold applies THAT
+// function. One definition of a draft, in lib/activity-draft.ts.
 export interface TrainingWeekDayTypeRow {
   date: string;
   type: ActivityType;
@@ -280,15 +294,43 @@ export function getTrainingWeekDayTypes(
   // on the week-start day) or a rolling 7-day window.
   const start = weekWindowStart(profileId);
   const end = shiftDateStr(start, 6);
+  // ONE statement still (#3164's budget is on statements executed, and the week is
+  // read on every Training render): the per-row draft columns and the "has any set"
+  // half fold onto the same SELECT as a correlated EXISTS, rather than a second
+  // query per row or a second pass over `exercise_sets`. `idx_sets_activity`
+  // (activity_id) serves the subquery.
   const rows = db
     .prepare(
-      `SELECT date, type, COUNT(*) count FROM activities
-        WHERE profile_id = ? AND date >= ? AND date <= ?
-        GROUP BY date, type
-        ORDER BY date`
+      `SELECT a.date AS date, a.type AS type,
+              a.start_time, a.end_time, a.duration_min, a.components, a.notes,
+              a.distance_km, a.source,
+              EXISTS (
+                SELECT 1 FROM exercise_sets s WHERE s.activity_id = a.id
+              ) AS has_sets
+         FROM activities a
+        WHERE a.profile_id = ? AND a.date >= ? AND a.date <= ?`
     )
-    .all(profileId, start, end) as TrainingWeekDayTypeRow[];
-  return { start, end, rows };
+    .all(profileId, start, end) as (DraftCandidateRow & {
+    date: string;
+    type: ActivityType;
+    /** 0 or 1 — the draft rule only asks whether ANY set exists (`setCount > 0`). */
+    has_sets: number;
+  })[];
+  const counts = new Map<string, TrainingWeekDayTypeRow>();
+  for (const row of rows) {
+    if (isDraftActivityRow(row, row.has_sets)) continue;
+    const key = `${row.date}\t${row.type}`;
+    const seen = counts.get(key);
+    if (seen) seen.count++;
+    else counts.set(key, { date: row.date, type: row.type, count: 1 });
+  }
+  // The grouped SELECT this replaced emitted its groups in (date, type) order; the
+  // fold states that order explicitly rather than inheriting it from SQLite's
+  // grouping strategy.
+  const grouped = [...counts.values()].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type)
+  );
+  return { start, end, rows: grouped };
 }
 
 export function getTrainingLogWeekSummary(
