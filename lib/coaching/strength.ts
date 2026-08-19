@@ -542,6 +542,11 @@ export interface NextSetContext {
   // caller so this module stays decoupled from the injury model; when omitted, a set
   // `recoveringRegion` is a no-op (fail-safe: never silently shave without a factor).
   recoveringFactor?: number | null;
+  // What to SAY about the temper, when the reason is not a recovering injury (#3211
+  // part 3: a live niggle tempers the same way, and the rendered rationale must not tell
+  // the user they have an injury they never created). Absent/null ⇒ the injury copy,
+  // byte-for-byte the prior text.
+  temperRationale?: string | null;
 }
 
 // Apply every active modifier to a base next-set, sequenced temper-THEN-deload so a
@@ -555,7 +560,12 @@ export function contextualNextSet(
 ): NextSet | null {
   let ns = base;
   if (ctx.recoveringRegion && ctx.recoveringFactor != null) {
-    ns = temperRecoveringNextSet(ns, exercise, ctx.recoveringFactor);
+    ns = temperRecoveringNextSet(
+      ns,
+      exercise,
+      ctx.recoveringFactor,
+      ctx.temperRationale ?? undefined
+    );
   }
   if (ctx.deloadWeek) {
     ns = deloadAdjust({ exercise, sets: 0, nextSet: ns }).nextSet;
@@ -570,20 +580,23 @@ export function contextualNextSet(
 // reps (no load to shave); load is rounded to the exercise's own increment so it stays
 // plate-loadable. ONE pure function so every surface (Training-overview card, dashboard,
 // Telegram nudge) shares the same math and can't drift (#221).
+export const TEMPER_RECOVERING_RATIONALE =
+  "Easing back from injury — lighter while the region recovers";
+
 export function temperRecoveringNextSet(
   ns: NextSet | null,
   exercise: string,
-  factor: number
+  factor: number,
+  // What to say about the shave. Defaults to the recovering-injury copy; a caller whose
+  // temper came from a different tier (#3211's live niggle) passes its own, so the
+  // rendered rationale names the real reason.
+  rationale: string = TEMPER_RECOVERING_RATIONALE
 ): NextSet | null {
   if (!ns || ns.bodyweight || ns.weightKg <= 0) return ns;
   const inc = weightIncrementKg(exercise);
   const raw = ns.weightKg * factor;
   const weightKg = Math.max(inc, Math.round(raw / inc) * inc);
-  return {
-    ...ns,
-    weightKg,
-    rationale: "Easing back from injury — lighter while the region recovers",
-  };
+  return { ...ns, weightKg, rationale };
 }
 
 function deloadNextSet(exercise: string, ns: NextSet | null): NextSet | null {
