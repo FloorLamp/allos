@@ -59,7 +59,6 @@ import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
 import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
   getUnitPrefs,
-  getProfileAge,
   getProfileAgeOn,
   getProfileReproductiveStatus,
   getProfileSex,
@@ -77,7 +76,7 @@ import {
 import { goalPaceTone, goalPct } from "@/lib/outcome-goals";
 import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
-import { isAdultForClinical, isLongevityRelevant } from "@/lib/life-stage";
+import { isAdultForClinical } from "@/lib/life-stage";
 import { PageHeader, EmptyState, MedicalValue } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { type BiomarkerBands } from "@/components/BiomarkerChart";
@@ -364,14 +363,14 @@ export default async function ClinicalResultDetailPage(props: {
   // chart's epoch axis clips anything outside the plotted extent; the client
   // BiomarkerTrendChart owns the per-type toggle. Protocol windows are narrowed to
   // the protocols that DECLARE this biomarker as an outcome (not every protocol).
+  // Drawn at every age (#3133): a recorded protocol is the profile's own data,
+  // never filtered from that profile (#3067) — only creation is adult-gated.
   const openRange = { from: undefined, to: undefined };
   const chartAnnotations = buildTrendAnnotations(profile.id, openRange);
-  const protocolWindows = isLongevityRelevant(getProfileAge(profile.id))
-    ? buildProtocolWindows(
-        getProtocolWindowsForOutcome(profile.id, `result:${canonical}`),
-        openRange
-      )
-    : [];
+  const protocolWindows = buildProtocolWindows(
+    getProtocolWindowsForOutcome(profile.id, `result:${canonical}`),
+    openRange
+  );
 
   const refRange = cb ? formatRange(ref.low, ref.high, cb.unit) : null;
   const optimalRange = cb ? formatRange(opt.low, opt.high, cb.unit) : null;

@@ -22,11 +22,7 @@ import type { BiomarkerPickerGroup } from "./biomarker-rank";
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import { getUnitPrefs, getProfileAge, getSituationEvents } from "./settings";
 import { showBodyFat } from "./growth-metrics";
-import {
-  isLongevityRelevant,
-  isStrengthTrainingRelevant,
-  isTrainingRelevant,
-} from "./life-stage";
+import { isStrengthTrainingRelevant, isTrainingRelevant } from "./life-stage";
 import {
   buildAnnotations,
   buildProtocolWindows,
@@ -510,12 +506,13 @@ export function buildTrendAnnotations(
 // `range`. Every protocol the profile runs is shaded on the Body/Compare charts —
 // matching how the point annotations (medications/appointments) show regardless of
 // which metric is charted; the per-analyte biomarker chart narrows to the targeting
-// protocol instead. Reads only the profile-scoped getProtocolWindows.
+// protocol instead. Reads only the profile-scoped getProtocolWindows. No age gate
+// (#3133): recorded protocols are the profile's own data, never filtered from the
+// profile that recorded them (#3067) — the adult-only line gates creation only.
 export function buildProtocolTrendWindows(
   profileId: number,
   range: DateRange
 ): TrendWindow[] {
-  if (!isLongevityRelevant(getProfileAge(profileId))) return [];
   return buildProtocolWindows(getProtocolWindows(profileId), range);
 }
 

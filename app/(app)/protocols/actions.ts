@@ -23,6 +23,13 @@ import { getProfileAge } from "@/lib/settings";
 import { isLongevityRelevant } from "@/lib/life-stage";
 
 const log = createLogger("protocols");
+// The adult-only line for protocols (#3091/#3133): STARTING a new experiment —
+// createProtocol and runProtocolAgain — is adult-validated content and refuses
+// for a known minor or an unknown age. Everything that follows an EXISTING
+// record (update, outcomes, end, resume, delete) carries no age gate: a
+// profile's own data is never filtered from that profile (#3067), so an
+// already-recorded protocol stays correctable, endable, and deletable at every
+// age.
 const unavailable = () =>
   formError("Protocols aren’t available for this profile’s age.");
 
@@ -269,7 +276,6 @@ export async function createProtocol(
 
 export async function updateProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);
@@ -341,7 +347,6 @@ export async function updateProtocolOutcomes(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   if (!getProtocol(profile.id, id))
@@ -367,7 +372,6 @@ export async function updateProtocolOutcomes(
 // would only re-open the window the core exists to close.
 export async function endProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const outcome = endProtocolCore(profile.id, id, today(profile.id));
@@ -382,9 +386,11 @@ export async function endProtocol(formData: FormData): Promise<FormResult> {
   }
 }
 
+// Resume is a correction of an accidental end within the reopen window — it
+// re-opens the EXISTING row rather than starting anything new, so like end and
+// delete it follows the record and carries no age gate (#3133).
 export async function resumeProtocol(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const outcome = resumeProtocolCore(profile.id, id, today(profile.id));
@@ -534,7 +540,6 @@ export async function deleteProtocol(
   formData: FormData
 ): Promise<DeleteProtocolResult> {
   const { profile } = await requireWriteAccess();
-  if (!isLongevityRelevant(getProfileAge(profile.id))) return unavailable();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that protocol.");
   const existing = getProtocol(profile.id, id);

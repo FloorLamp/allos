@@ -438,11 +438,14 @@ describe("protocols are searchable (#344/#1595)", () => {
     );
   });
 
+  // A recorded protocol is the profile's OWN data, and a profile's own data is
+  // never filtered from that profile (#3067/#3133) — search matches it at every
+  // age. Re-gating searchAll's protocolHits on isLongevityRelevant reds this.
   it.each([
     ["minor", "2015-01-01"],
     ["unknown age", null],
   ])(
-    "withholds adult-only protocol hits for a profile with %s",
+    "matches the profile's own protocol for a profile with %s",
     (_label, birthdate) => {
       const profileId = Number(
         db
@@ -454,14 +457,18 @@ describe("protocols are searchable (#344/#1595)", () => {
           "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', ?)"
         ).run(profileId, birthdate);
       }
-      db.prepare(
-        `INSERT INTO protocols (profile_id, name, start_date)
-       VALUES (?, 'Hidden protocol fixture', '2026-04-03')`
-      ).run(profileId);
-
-      expect(hits(profileId, "Hidden protocol fixture", "protocol")).toEqual(
-        []
+      const rowId = Number(
+        db
+          .prepare(
+            `INSERT INTO protocols (profile_id, name, start_date)
+       VALUES (?, 'Own protocol fixture', '2026-04-03')`
+          )
+          .run(profileId).lastInsertRowid
       );
+
+      const found = hits(profileId, "Own protocol fixture", "protocol");
+      expect(found).toHaveLength(1);
+      expect(found[0].href).toBe(`/protocols/${rowId}`);
     }
   );
 });

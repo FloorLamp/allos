@@ -144,26 +144,90 @@ describe("createProtocol", () => {
   });
 });
 
-describe("adult-only protocol lifecycle", () => {
-  it("blocks every direct mutation after an adult profile becomes a minor", async () => {
-    const { profile } = seedActor();
-    await createProtocol(protocolForm({ name: "Existing experiment" }));
-    const protocol = getProtocols(profile.id)[0];
-    setStoredAge(profile.id, 15);
-    const form = protocolForm({ id: protocol.id, name: protocol.name });
-    const unavailable = {
-      ok: false,
-      error: "Protocols aren’t available for this profile’s age.",
-    };
+describe("existing protocol records follow the profile at every age (#3133)", () => {
+  // A recorded experiment is the profile's OWN data, never filtered from that
+  // profile (#3067): after the age becomes minor or unknown, the record stays
+  // correctable, endable, resumable, and deletable. Re-gating updateProtocol /
+  // updateProtocolOutcomes / endProtocol / resumeProtocol / deleteProtocol on
+  // isLongevityRelevant reds these cases.
+  it.each([
+    ["minor", 15],
+    ["unknown", null],
+  ] as const)(
+    "corrects, ends, resumes, and deletes an existing record at %s age",
+    async (_label, age) => {
+      const { profile } = seedActor();
+      await createProtocol(
+        protocolForm({ name: "Existing experiment", start_date: "2026-05-01" })
+      );
+      const protocol = getProtocols(profile.id)[0];
+      setStoredAge(profile.id, age);
 
-    expect(await updateProtocol(form)).toEqual(unavailable);
-    expect(await updateProtocolOutcomes(form)).toEqual(unavailable);
-    expect(await endProtocol(form)).toEqual(unavailable);
-    expect(await resumeProtocol(form)).toEqual(unavailable);
-    expect(await runProtocolAgain(form)).toEqual(unavailable);
-    expect(await deleteProtocol(form)).toEqual(unavailable);
-    expect(getProtocols(profile.id)).toHaveLength(1);
-  });
+      // Correctable: a rename and an outcome edit both land.
+      expect(
+        await updateProtocol(
+          protocolForm({ id: protocol.id, name: "Existing experiment (fixed)" })
+        )
+      ).toEqual({ ok: true });
+      expect(getProtocols(profile.id)[0].name).toBe(
+        "Existing experiment (fixed)"
+      );
+      expect(
+        await updateProtocolOutcomes(
+          protocolForm({ id: protocol.id, outcome_keys: ["metric:weight"] })
+        )
+      ).toEqual({ ok: true });
+      expect(getProtocols(profile.id)[0].outcomeKeys).toEqual([
+        "metric:weight",
+      ]);
+
+      // Endable — and an accidental end stays resumable.
+      expect(await endProtocol(protocolForm({ id: protocol.id }))).toEqual({
+        ok: true,
+      });
+      expect(getProtocols(profile.id)[0].end_date).not.toBeNull();
+      expect(await resumeProtocol(protocolForm({ id: protocol.id }))).toEqual({
+        ok: true,
+      });
+      expect(getProtocols(profile.id)[0].end_date).toBeNull();
+
+      // Deletable.
+      expect(await deleteProtocol(protocolForm({ id: protocol.id }))).toEqual({
+        ok: true,
+        redirectTo: "/longevity#protocols",
+      });
+      expect(getProtocols(profile.id)).toEqual([]);
+    }
+  );
+
+  // The adult-only content line stays exactly where #3091 drew it: STARTING a
+  // new run is gated — createProtocol (covered above) and runProtocolAgain.
+  it.each([
+    ["minor", 15],
+    ["unknown", null],
+  ] as const)(
+    "still refuses to start a NEW run from an expired record at %s age",
+    async (_label, age) => {
+      const { profile } = seedActor();
+      await createProtocol(
+        protocolForm({
+          name: "Expired run",
+          start_date: "1999-12-01",
+          end_date: "2000-01-01",
+        })
+      );
+      const protocol = getProtocols(profile.id)[0];
+      setStoredAge(profile.id, age);
+
+      expect(await runProtocolAgain(protocolForm({ id: protocol.id }))).toEqual(
+        {
+          ok: false,
+          error: "Protocols aren’t available for this profile’s age.",
+        }
+      );
+      expect(getProtocols(profile.id)).toHaveLength(1);
+    }
+  );
 });
 
 describe("updateProtocolOutcomes", () => {

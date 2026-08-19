@@ -37,6 +37,7 @@ export default function ProtocolControls({
   resumeAction,
   runAgainAction,
   deleteAction,
+  canRunAgain = true,
   asOf,
 }: {
   protocol: Protocol;
@@ -53,6 +54,10 @@ export default function ProtocolControls({
   deleteAction: (
     formData: FormData
   ) => Promise<FormResult & { redirectTo?: "/longevity#protocols" }>;
+  // Whether starting a NEW run is offered (#3133): protocol creation is
+  // adult-only content, so the page withholds "Run again" for a minor or
+  // unknown-age profile while every record-following control above stays.
+  canRunAgain?: boolean;
   asOf: string;
 }) {
   const formatPrefs = useFormatPrefs();
@@ -203,7 +208,7 @@ export default function ProtocolControls({
                         Resume
                       </button>
                     )}
-                    {reopen.kind === "expired" && (
+                    {canRunAgain && reopen.kind === "expired" && (
                       <button
                         type="button"
                         className={MENU_ITEM}

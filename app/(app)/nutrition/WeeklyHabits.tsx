@@ -22,8 +22,6 @@ import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import SubmitButton from "@/components/SubmitButton";
 import { trackFoodHabit } from "./actions";
 import UntrackHabitButton from "./UntrackHabitButton";
-import { getProfileAge } from "@/lib/settings";
-import { isLongevityRelevant } from "@/lib/life-stage";
 
 // Per-verdict cell styling for the N-week consistency strip (#954). `met` reads green,
 // `short`/`empty` amber/slate, the in-progress current week a hollow brand ring, and a
@@ -60,10 +58,10 @@ export default function WeeklyHabits({
   // medication's own row shows (informational, never blocking the habit).
   const medications = getIntakeSafetyContext(profileId).medications;
   // The protocol (if any) that adopted each habit as its intervention — so untracking a
-  // measured habit confirms first (#748 item 6).
-  const protocolByTarget = isLongevityRelevant(getProfileAge(profileId))
-    ? getFrequencyTargetProtocolNames(profileId)
-    : new Map<number, string>();
+  // measured habit confirms first (#748 item 6). Read at every age (#3133): an
+  // existing protocol is the profile's own record, never filtered from that
+  // profile (#3067) — only protocol creation is adult-gated.
+  const protocolByTarget = getFrequencyTargetProtocolNames(profileId);
   // N-week consistency trend per habit (#954): the same weekly rollup extended over
   // ~8 weeks so "is this habit sticking?" gets a surface. Keyed by target id.
   const trends = getFoodHabitTrends(profileId, formatPrefs);
