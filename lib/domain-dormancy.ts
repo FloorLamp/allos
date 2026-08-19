@@ -24,8 +24,19 @@
 // nothing once its domain goes quiet. There, the collapse replaces an empty card with
 // an honest line and hides not one number.
 //
-// That is why this registry is small, and why `recent-labs` and `vitals-latest` are
-// exemptions with that reason written beside them rather than domains here.
+// That is why this registry is small. `recent-labs` is still an exemption on exactly
+// that ground: its readout renders the latest row of every biomarker at any age, so a
+// collapse would hide values.
+//
+// `vitals-latest` USED TO BE the other exemption, on the same ground, and #3226 retired
+// it — not by weakening the rule but by making the section window-bounded, which is what
+// the rule actually asks for. A blood pressure past a YEAR stops being rendered as a
+// value at all, so past that point the row is already showing nothing and the collapse
+// hides nothing. The interval is deliberately far outside the quantity's presentation
+// floor (180 days for BP), so the amber as-of treatment #2303 established still owns the
+// whole span where the reading is merely old: dormancy begins only where the reading has
+// stopped being a description of the body. Each vital quantity is its OWN domain, so a
+// resting HR that arrived this morning is untouched by a blood pressure from 2022.
 //
 // WHAT THE LINE MAY CLAIM. Dormancy is a fact about the RECORD, never about the body.
 // "No sleep recorded in 152 days" is true; "you have not slept in 152 days" is not, and
@@ -63,9 +74,29 @@ export const DORMANCY_DEFAULT_DAYS = 90;
 // days the chart has no points left to hide.
 export const WEIGHT_TREND_WINDOW_DAYS = 90;
 
+// Past this, a dated vital stops being rendered as a value and becomes a dormant line
+// (#3226). It is the year that `RECENT_LAB_STALE_DAYS` already argues for one card over:
+// a reading whose own floor lapsed a year ago has stopped being a stale description of
+// the body and become a historical fact about the ledger.
+//
+// It is named here rather than in `vitals-latest` because the declarations below have to
+// BE it: the collapse is only honest because past this many days the row renders no
+// value, so the interval and the render window are the same number by construction.
+export const VITAL_DORMANCY_DAYS = 365;
+
 // The domains a section can be dormant IN. Adding one is a deliberate edit with a
 // declaration and a test to update, never an inheritance.
-export type DormancyDomain = "sleep" | "weight";
+//
+// The two vital quantities are SEPARATE domains, and that is the point rather than an
+// accident of naming: they arrive on entirely different cadences (a wearable stream and
+// an episodic cuff reading), so one going quiet says nothing about the other. A single
+// "vitals" domain would let a 2022 blood pressure collapse this morning's resting heart
+// rate, which is the family-level defect #3226 exists to prevent.
+export type DormancyDomain =
+  | "sleep"
+  | "weight"
+  | "blood-pressure"
+  | "resting-hr";
 
 export interface DormancyDeclaration {
   // What the collapsed line calls the missing RECORD — never the activity. "sleep
@@ -105,6 +136,28 @@ export const DORMANCY_DOMAINS: Record<DormancyDomain, DormancyDeclaration> = {
     reason:
       "Self-measured; weeks apart is ordinary, a season of silence is the scale going unused.",
     renderWindowDays: WEIGHT_TREND_WINDOW_DAYS,
+  },
+  // Episodic: a weekly logger or an annual physical, so the 90-day default would collapse
+  // an ordinary cadence. A year is the interval past which the number has stopped being a
+  // description — and past which this row renders no value, which is what lets it
+  // collapse at all.
+  "blood-pressure": {
+    record: "blood pressure",
+    collapseAfterDays: VITAL_DORMANCY_DAYS,
+    reason:
+      "Episodic by nature; a year is where a cuff reading stops describing the body and becomes history.",
+    renderWindowDays: VITAL_DORMANCY_DAYS,
+  },
+  // A daily wearable stream, whose 14-day presentation floor already withdraws the
+  // currency claim. Dormancy is the far end of the same span, not a second staleness: it
+  // fires only once the stream has been silent long enough that the last number is a
+  // record rather than a reading.
+  "resting-hr": {
+    record: "resting heart rate",
+    collapseAfterDays: VITAL_DORMANCY_DAYS,
+    reason:
+      "A daily stream whose own floor is 14 days; a year of silence is the source gone, not a gap.",
+    renderWindowDays: VITAL_DORMANCY_DAYS,
   },
 };
 
@@ -158,6 +211,41 @@ export function dormantRecordLine(
   const days = Math.max(0, Math.trunc(ageDays));
   return `No ${record} recorded in ${days} ${days === 1 ? "day" : "days"}`;
 }
+
+// The same sentence for a domain whose silence is measured in YEARS, which is the only
+// reason this exists beside `dormantRecordLine`: "No blood pressure recorded in 1,642
+// days" is a number nobody can read as a duration, and the reader has to do arithmetic to
+// recover the one fact they wanted. At year scale the SOURCE MONTH is the legible form of
+// exactly the same claim — still the record, never the body, and still never a guess at
+// why. Domains on a 90-day interval keep the day count, where days are the natural unit.
+//
+// Returns null for a date it cannot read, so a caller can fall back rather than render a
+// sentence with a hole in it.
+export function dormantRecordSince(
+  domain: DormancyDomain,
+  lastRecordDate: string | null | undefined
+): string | null {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(lastRecordDate ?? "");
+  if (!match) return null;
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return null;
+  return `No ${DORMANCY_DOMAINS[domain].record} recorded since ${MONTH_ABBREVIATIONS[month - 1]} ${match[1]}`;
+}
+
+const MONTH_ABBREVIATIONS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
 
 // Domains that would collapse while their section could still be showing something —
 // i.e. an interval LONGER than the window the section renders over would be fine, but an

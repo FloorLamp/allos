@@ -3,6 +3,7 @@ import { profileDataRelevance } from "./candidate";
 import {
   action,
   reading,
+  state,
   type DomainCandidateContext,
   type Engagement,
 } from "./shared";
@@ -128,6 +129,22 @@ export const dailyCandidates = {
       `vitals.${kind}:${date}`,
       `vitals.${kind}:${date}`,
       "vitals.latest"
+    );
+  },
+  // The same row's slot when the quantity has gone quiet for a year (#3226). Its
+  // candidateId keeps the `vitals.<kind>:` prefix so the Standing family claims it in the
+  // seat the reading vacated — same section, same order, no family-level collapse.
+  vitalDormant(
+    ctx: DomainCandidateContext,
+    kind: "blood-pressure" | "resting-heart-rate",
+    lastRecord: string
+  ) {
+    return state(
+      ctx,
+      `vitals.${kind}:dormant`,
+      `vitals.${kind}:dormancy:${lastRecord}`,
+      "vitals.latest",
+      { relevance: profileDataRelevance("dormant") }
     );
   },
   vitalLog(ctx: DomainCandidateContext, day: string, hasReadings: boolean) {
