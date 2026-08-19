@@ -164,7 +164,7 @@ export default function MergeConflictDialog({
         className="absolute inset-0 bg-black/40"
         onClick={busy ? undefined : onCancel}
       />
-      <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl bg-surface p-4 shadow-xl">
+      <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-xl bg-surface p-4 shadow-xl">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           These records disagree
         </h2>

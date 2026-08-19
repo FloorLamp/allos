@@ -88,13 +88,18 @@ export function motionClass(
 //                 as the card falling off the screen). The media query lives in
 //                 the stylesheet, so ONE class name is right at both widths with
 //                 no resize listener and no wrong first paint.
+//   * "centered" — the CENTERED presentation (#2774): a card centred at every
+//                 width, for the anatomy exceptions that are not flickable at any
+//                 size (the command palette, the camera fallback). Fades, both
+//                 widths, for the same reason "dialog" fades above `md`.
 //   * "scrim"   — the backdrop behind any of them. Fades, never slides.
 //
 // This is the only place that names an `.overlay-*` class. Every overlay surface
 // calls this function instead of writing the class string itself, which is what
 // makes "one duration + easing token pair" enforceable rather than aspirational
 // — see lib/__tests__/overlay-motion-chokepoint.test.ts.
-export type OverlayAnchor = "bottom" | "left" | "top" | "dialog" | "scrim";
+export type OverlayAnchor =
+  "bottom" | "left" | "top" | "dialog" | "centered" | "scrim";
 
 export function overlayMotionClass(
   anchor: OverlayAnchor,

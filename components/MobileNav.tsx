@@ -256,7 +256,7 @@ export default function MobileNav({
             <aside
               ref={drawerRef}
               data-testid="mobile-drawer"
-              className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
+              className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto overscroll-contain border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
             >
               <SidebarContent
                 activityDates={activityDates}

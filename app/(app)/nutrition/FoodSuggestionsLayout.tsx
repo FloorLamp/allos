@@ -221,7 +221,7 @@ export default function FoodSuggestionsLayout({
           <ModalShell
             title="Lab suggestions"
             onClose={() => setOpen(false)}
-            className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col rounded-xl bg-surface p-4 shadow-xl outline-hidden sm:p-5"
+            size="lg"
           >
             <div
               id="nutrition-suggestions-panel"

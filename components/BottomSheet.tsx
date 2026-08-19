@@ -13,10 +13,13 @@ import {
   useOverlayDrag,
   OVERLAY_PANEL_BORDER,
   OVERLAY_PANEL_ELEVATION,
+  OVERLAY_PANEL_MAX_WIDTH,
   OVERLAY_PANEL_RADIUS_BOTTOM,
   OVERLAY_SAFE_BOTTOM,
   OVERLAY_SCRIM,
+  type OverlaySize,
 } from "./overlay";
+import { IconX } from "@tabler/icons-react";
 
 // The bottom sheet — the phone's modal surface (issue #1416, section E).
 //
@@ -57,6 +60,17 @@ import {
 //                confirm/picker wants: thumb-reachable on a phone, and the
 //                familiar centered card on a desktop where "anchored to the
 //                bottom edge" would read as a notification, not a decision.
+//                Since #2774 this is what EVERY former ModalShell consumer
+//                renders as — ModalShell is now a thin wrapper over this file
+//                (components/ModalShell.tsx), so the app has ONE dialog
+//                primitive and one scroll owner instead of two of each.
+//   * "centered" — a card centred at EVERY width. The recorded ANATOMY
+//                EXCEPTION, not a preference: a surface with no bottom edge to
+//                flick toward at any size (the command palette, the camera
+//                fallback). Each one is registered in
+//                lib/__tests__/overlay-motion-chokepoint.test.ts with its
+//                justification, so the exception list is reviewable rather than
+//                whatever happened to get typed.
 //
 // Both share this file's focus trap, Escape handling, backdrop dismissal, scroll
 // lock, portal, and presence/exit timing — so there is one implementation of the
@@ -72,7 +86,7 @@ import {
 // scrim-tap dismissal on it would make an in-progress workout silently
 // discardable. The dock never becomes discardable; do not migrate it here.
 
-export type SheetPresentation = "sheet" | "dialog";
+export type SheetPresentation = "sheet" | "dialog" | "centered";
 
 export default function BottomSheet({
   open,
@@ -86,6 +100,9 @@ export default function BottomSheet({
   presentation = "sheet",
   zIndexClass = "z-60",
   titleHidden = false,
+  size = "sm",
+  showClose = false,
+  onGestureDismiss,
 }: {
   open: boolean;
   onClose: () => void;
@@ -98,7 +115,8 @@ export default function BottomSheet({
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   // #1425 seam: the drag layer takes the panel element from here.
   panelRef?: React.RefObject<HTMLDivElement | null>;
-  // Sheet everywhere (default) vs sheet-below-`md`/centered-above. See above.
+  // Sheet everywhere (default) vs sheet-below-`md`/centered-above vs centered
+  // at every width. See above.
   presentation?: SheetPresentation;
   // The stacking layer. Defaults to the sheet's own `z-60`. A surface that must
   // out-rank the toasts (`z-100`) — a confirm, which is a DECISION the viewer
@@ -113,6 +131,24 @@ export default function BottomSheet({
   // visually-hidden heading — so screen readers announce it exactly as before;
   // this is never a way to ship a nameless dialog.
   titleHidden?: boolean;
+  // How wide the panel gets from `sm` up (#2774). Below `sm` every presentation
+  // is full-width, so there is nothing to choose. See OVERLAY_PANEL_MAX_WIDTH
+  // for what the three buckets mean; the default is the sheet's historical
+  // `sm:max-w-md`.
+  size?: OverlaySize;
+  // Draw an explicit Close control in the header. A sheet does not need one —
+  // its drag handle IS the affordance and the scrim is a tap away — but a
+  // CENTERED card has neither, so every dialog-presentation consumer that used
+  // to be a ModalShell keeps the "✕" it has always had.
+  showClose?: boolean;
+  // Called INSTEAD of onClose when the surface is dismissed by a GESTURE — a
+  // flick on the drag handle, or a tap on the scrim. Escape and the Close button
+  // deliberately still call onClose: those are targeted actions on a named
+  // control, and this seam exists for the two dismissals that are not (#2774,
+  // consequence B). A consumer hosting a form that may hold five typed minutes of
+  // family history routes them through a confirm; a transactional quick-entry
+  // sheet leaves this unset and keeps its one-flick discard (#1428).
+  onGestureDismiss?: () => void;
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const { mounted, phase } = usePresence(open, motionMs("sheet", reduceMotion));
@@ -122,6 +158,11 @@ export default function BottomSheet({
   const titleId = useId();
   const descriptionId = useId();
 
+  // The lock is REFERENCE-COUNTED (components/useLockBodyScroll.ts), which is
+  // what makes it safe for a dialog opened over an already-open sheet: the body
+  // stays locked until the LAST surface releases, whatever order they close in.
+  // #2774 made that a load-bearing invariant rather than a nicety, because every
+  // former ModalShell consumer now holds a lock too.
   useLockBodyScroll(mounted);
   // Stop trapping focus / answering Escape the moment the exit starts, so a
   // closing sheet can't swallow the next Escape or steal focus back.
@@ -136,19 +177,23 @@ export default function BottomSheet({
     panelRef,
     grabRef: handleRef,
     direction: "down",
-    onOutcome: onClose,
+    onOutcome: onGestureDismiss ?? onClose,
     // The panel unmounts between opens, so the motion latch expires with it
     // (#2725) — without this, one drag on a sheet whose COMPONENT never
     // unmounts (the quick-log sheet, the quick-entry host) mutes its animations
     // for the rest of the page's life.
     panelMounted: mounted,
-    enabled: open,
+    // A centred card is not flickable at any width, so it never arms the
+    // recognizer (its handle is not rendered either — this is the same fact
+    // stated where the hook can see it).
+    enabled: open && presentation !== "centered",
   });
 
   if (!mounted || typeof document === "undefined") return null;
 
   const entering = phase === "enter";
   const asDialog = presentation === "dialog";
+  const asCentered = presentation === "centered";
   const motionPhase = entering ? "enter" : "exit";
   // The scrim animates UNCONDITIONALLY — the drawer's and the switcher's shape
   // (#2725). The `suppressMotion` latch below exists for one reason only: a
@@ -165,27 +210,54 @@ export default function BottomSheet({
   // the slide-up below `md` and becomes a fade from `md` up — the media query
   // lives in the stylesheet so one class name covers both viewports (a JS width
   // check would need a resize listener and would still be wrong between
-  // hydration and the first paint).
+  // hydration and the first paint). A centred card has no edge to travel from at
+  // either width, so it fades at both.
   const panelMotion = suppressMotion
     ? ""
     : overlayMotionClass(
-        asDialog ? "dialog" : "bottom",
+        asCentered ? "centered" : asDialog ? "dialog" : "bottom",
         motionPhase,
         reduceMotion
       );
+  // Scrim tap and flick share ONE exit, so a consumer that guards discards
+  // cannot accidentally guard half of them.
+  const dismissByGesture = onGestureDismiss ?? onClose;
+
+  // Where the panel sits in the viewport, and the chrome that follows from it.
+  // Bottom-anchored surfaces square off against the screen edge and clear the
+  // home indicator; a centred card floats, so it rounds all the way round and
+  // owes the home indicator nothing.
+  const containerAnchor = asCentered
+    ? "items-center p-4"
+    : asDialog
+      ? "items-end md:items-center md:p-4"
+      : "items-end";
+  const panelShape = asCentered
+    ? "max-h-[85dvh] rounded-2xl border px-4 pt-4 pb-4 sm:px-6 sm:pt-5 sm:pb-5"
+    : `max-h-[85dvh] border-t px-4 pt-1 sm:pb-4 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_SAFE_BOTTOM} ${
+        asDialog ? "md:max-h-[80dvh] md:border md:px-6 md:pt-5 md:pb-5" : ""
+      }`;
+  const titleClass = titleHidden
+    ? "sr-only"
+    : `font-semibold text-slate-900 dark:text-slate-100 ${
+        asDialog || asCentered ? "text-lg" : "text-base"
+      }`;
+  const heading = (
+    <h2 id={titleId} className={titleClass}>
+      {title}
+    </h2>
+  );
 
   return createPortal(
     <div
-      className={`fixed inset-0 ${zIndexClass} flex justify-center ${
-        asDialog ? "items-end md:items-center md:p-4" : "items-end"
-      }`}
+      className={`fixed inset-0 ${zIndexClass} flex justify-center ${containerAnchor}`}
       data-testid={testId}
       data-phase={phase}
       data-presentation={presentation}
     >
       <div
         className={`${OVERLAY_SCRIM} ${backdropMotion}`}
-        onClick={onClose}
+        onClick={dismissByGesture}
         aria-hidden
         data-testid={`${testId}-backdrop`}
       />
@@ -197,40 +269,61 @@ export default function BottomSheet({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={`relative flex max-h-[85dvh] w-full flex-col overflow-y-auto border-t bg-surface px-4 pt-1 outline-hidden sm:max-w-md sm:pb-4 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${OVERLAY_SAFE_BOTTOM} ${
-          asDialog ? "md:max-h-[80dvh] md:border md:px-6 md:pt-5 md:pb-5" : ""
-        } ${panelMotion}`}
+        // THE PANEL DOES NOT SCROLL — its content region does (#2774). Before
+        // this the panel was the scroller and the header scrolled away with the
+        // form; more importantly, ModalShell's version of the same shape scrolled
+        // a `fixed inset-0` container over an UNLOCKED body, so a drag its
+        // scroller declined chained straight out to the document and the page
+        // underneath drifted. One scroll owner, `overscroll-contain` on it, and a
+        // locked body behind it is the whole of that fix.
+        className={`relative flex w-full flex-col overflow-hidden bg-surface outline-hidden ${OVERLAY_PANEL_MAX_WIDTH[size]} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelShape} ${panelMotion}`}
       >
         {/* The drag affordance, now functional (#1425): a downward drag from
         here dismisses the sheet. A centered dialog is not flickable, so the
         responsive presentation drops the handle from `md` up exactly where that
         stops being true (#1428) — and the recognizer goes with it, since a
-        hidden element receives no pointer events. */}
-        <OverlayDragHandle
-          handleRef={handleRef}
-          className={`mb-0.5 ${asDialog ? "md:hidden" : ""}`}
-        />
-        <h2
-          id={titleId}
-          className={
-            titleHidden
-              ? "sr-only"
-              : `font-semibold text-slate-900 dark:text-slate-100 ${
-                  asDialog ? "text-lg" : "text-base"
-                }`
-          }
-        >
-          {title}
-        </h2>
+        hidden element receives no pointer events. A card centred at EVERY width
+        never draws one at all. */}
+        {!asCentered && (
+          <OverlayDragHandle
+            handleRef={handleRef}
+            className={`mb-0.5 ${asDialog ? "md:hidden" : ""}`}
+          />
+        )}
+        {showClose ? (
+          <div
+            className={`flex shrink-0 items-start gap-3 ${
+              titleHidden ? "justify-end" : "justify-between"
+            }`}
+          >
+            {heading}
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 text-slate-500 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300"
+              aria-label="Close"
+              title="Close"
+            >
+              <IconX className="h-5 w-5" />
+            </button>
+          </div>
+        ) : (
+          heading
+        )}
         {description && (
           <p
             id={descriptionId}
-            className="mt-0.5 text-sm text-slate-500 dark:text-slate-400"
+            className="mt-0.5 shrink-0 text-sm text-slate-500 dark:text-slate-400"
           >
             {description}
           </p>
         )}
-        <div className="mt-3">{children}</div>
+        <div
+          className="mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+          data-sheet-content
+        >
+          {children}
+        </div>
       </div>
     </div>,
     document.body

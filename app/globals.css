@@ -1182,6 +1182,20 @@
   }
 }
 
+/* The CENTERED presentation (issue #2774): a card centred at EVERY width, for
+   the recorded anatomy exceptions — the command palette and the camera fallback,
+   which are not thumb-flickable surfaces at any size. It fades at both widths
+   for the same reason the dialog fades above `md`: there is no bottom edge to
+   travel from. Kept as its own anchor rather than reusing "scrim" so the
+   vocabulary still says what is moving. */
+.overlay-enter-centered {
+  animation: overlay-fade-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+.overlay-exit-centered {
+  animation: overlay-fade-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
+}
+
 /* The drag settle (issues #1425 / #1469). While a finger is on a panel the
    recognizer writes `transform` inline frame by frame with no transition at all
    (the panel IS the finger); on release the consumer adds this class for one
@@ -1256,7 +1270,9 @@
   .overlay-enter-top,
   .overlay-exit-top,
   .overlay-enter-dialog,
-  .overlay-exit-dialog {
+  .overlay-exit-dialog,
+  .overlay-enter-centered,
+  .overlay-exit-centered {
     animation: none;
   }
   .overlay-settle {
