@@ -271,6 +271,73 @@ test("a clean converged form dismisses in one gesture, with no question", async 
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
 });
 
+test("a refused flick leaves the scrim tap still guarded — the whole chain, end to end", async ({
+  page,
+}) => {
+  test.slow();
+  // THE SEQUENCE THAT FAILED IN CI, kept deliberately (#2774).
+  //
+  // The three tests above each start from a dialog in a known state, which is the
+  // better structure and how they should be read. This one exists because
+  // splitting them removed the only coverage of the sequence that actually broke:
+  // flick, refuse, then tap the scrim. It was green locally ten times over —
+  // including at 20x CPU throttling, instrumented, with the tap landing on
+  // `modal-shell-backdrop` and the form still dirty every run — and red on CI,
+  // while the scrim tap from a STANDING START passed there. That difference says
+  // state left by the refusal round-trip is implicated, and deleting the sequence
+  // would guarantee we never find out.
+  //
+  // So it is written with every synchronisation this file has learned — settled
+  // animation before any measurement, the panel proven back at rest before the
+  // tap — and no shortcut past them. If it goes red again, that is evidence of a
+  // real race rather than a flaky fixture, and the assertions below are ordered
+  // to say WHICH race it is.
+  await page.goto("/records/history/visits");
+  await expect(page.getByTestId("visits-upcoming")).toBeVisible();
+
+  const dialog = await openAddVisit(page);
+  const title = dialog.getByLabel(TITLE_FIELD);
+  await expect(title).toBeVisible();
+  await title.fill(DRAFT);
+  const atRest = await restingPanelTop(dialog);
+
+  await touchSwipeFrom(page, dialog.getByTestId("sheet-drag-handle"), {
+    dy: 260,
+  });
+  const confirm = page.getByTestId("confirm-dialog");
+  await expect(confirm).toBeVisible();
+  await hydratedClick(
+    page,
+    confirm.getByRole("button", { name: "Keep editing" })
+  );
+  await expect(confirm).toBeHidden();
+  // The panel is proven home BEFORE the tap is aimed, so the tap cannot be
+  // chasing a moving target and a red below cannot be blamed on one.
+  await expect
+    .poll(() => panelTop(dialog), {
+      message: "the form must be back at rest before the scrim is aimed at",
+    })
+    .toBe(atRest);
+
+  await page.touchscreen.tap(195, Math.round(atRest / 2));
+
+  // ORDERED TO DIAGNOSE. If the guard failed OPEN, the dialog is already gone and
+  // the typing with it — a dirty form silently discarded by a scrim tap, which is
+  // the precise harm this feature exists to prevent. That is a different bug from
+  // a tap the surface merely swallowed, and a future red should not leave the
+  // reader guessing which one they are looking at.
+  await expect(
+    dialog,
+    "a scrim tap must never discard a dirty form silently"
+  ).toHaveCount(1);
+  await expect(
+    confirm,
+    "a scrim tap on a dirty form must raise the confirm, even after an earlier flick was refused"
+  ).toBeVisible();
+  await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
+  await expect(dialog).toHaveCount(0);
+});
+
 test("a dialog stacked over a sheet leaves the page held until the last one closes", async ({
   page,
 }) => {
