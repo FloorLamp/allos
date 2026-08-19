@@ -231,11 +231,25 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     }
 
     // A training-scope target has no per-target rhythm to ask at all — the
-    // "Log Lower body" card that occupied the owner's Now all week.
+    // "Log Lower body" card that occupied the owner's Now all week. Its scope
+    // VALUE deliberately collides with a rhythmic practice of the same name here:
+    // scope kind decides whose rhythm may be asked, never the spelling.
+    seedWeeklyHabit(pid, "Lower", t, 3, 8, "18:30");
+    seedWeeklyHabit(pid, "Lower", t, 5, 8, "18:30");
     const lower = { scope_kind: "group", scope_value: "Lower" } as const;
     for (const minute of [8 * 60, 18 * 60]) {
       expect(frequencyTargetLogWindowOpen(pid, lower, t, minute)).toBe(false);
     }
+    // …and the practice of that name genuinely does have one, so the row above is
+    // a scope decision rather than an absent fixture.
+    expect(
+      frequencyTargetLogWindowOpen(
+        pid,
+        { scope_kind: "practice", scope_value: "Lower" },
+        t,
+        18 * 60
+      )
+    ).toBe(true);
   });
 
   it("surfaces: usuallyToday flags a predicted day and stays false with no pattern (#558)", () => {
