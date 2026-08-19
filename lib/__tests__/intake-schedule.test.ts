@@ -413,6 +413,27 @@ describe("defaultFoodTiming", () => {
     expect(defaultFoodTiming("Magnesium Glycinate")).toBe("any");
     expect(defaultFoodTiming("Creatine")).toBe("any");
   });
+
+  // Label composition (#2856). A blend is named for what it is FOR, so the item that
+  // most needs the with-fat hint is the one whose name can never earn it.
+  it("reads the keywords over ingredient names too", () => {
+    expect(defaultFoodTiming("Eye Health+")).toBe("any");
+    expect(
+      defaultFoodTiming("Eye Health+", null, ["Zinc", "Lutein", "Copper"])
+    ).toBe("with_fat");
+  });
+
+  it("still honors an explicit timing over a fat-soluble ingredient", () => {
+    expect(
+      defaultFoodTiming("Eye Health+", "empty_stomach", ["Lutein"])
+    ).toBe("empty_stomach");
+  });
+
+  it("stays any when nothing on the label is fat-soluble", () => {
+    expect(defaultFoodTiming("Mood Support", null, ["Zinc", "Glycine"])).toBe(
+      "any"
+    );
+  });
 });
 
 describe("parseDosage", () => {

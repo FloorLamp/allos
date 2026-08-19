@@ -36,6 +36,12 @@ beforeAll(() => {
   db.prepare(
     `INSERT INTO intake_item_side_effects (item_id, course_id, effect) VALUES (?, ?, 'nausea')`
   ).run(p.supplementId, courseId);
+  // Label composition (#2856) — the child entity whose absence from the capture would
+  // restore a blend the upper-limit and interaction engines had gone blind to.
+  db.prepare(
+    `INSERT INTO intake_item_ingredients (item_id, name, amount_text, amount, unit, sort)
+     VALUES (?, 'Zinc', '11 mg', 11, 'mg', 0)`
+  ).run(p.supplementId);
 });
 
 const count = (sql: string, ...args: unknown[]) =>
@@ -97,7 +103,7 @@ describe("activity delete → undo", () => {
 });
 
 describe("intake-item delete → undo (full cascade)", () => {
-  it("restores the item, doses, logs, pairs, courses, and side effects with FKs intact", () => {
+  it("restores the item, doses, logs, pairs, courses, side effects and ingredients with FKs intact", () => {
     const undoId = captureDelete("intake-item", p.profileId, p.supplementId);
     expect(undoId).not.toBeNull();
 
@@ -108,6 +114,12 @@ describe("intake-item delete → undo (full cascade)", () => {
     expect(
       count(
         "SELECT COUNT(*) c FROM intake_item_doses WHERE item_id = ?",
+        p.supplementId
+      )
+    ).toBe(0);
+    expect(
+      count(
+        "SELECT COUNT(*) c FROM intake_item_ingredients WHERE item_id = ?",
         p.supplementId
       )
     ).toBe(0);
@@ -168,6 +180,21 @@ describe("intake-item delete → undo (full cascade)", () => {
         course!.id
       )
     ).toBe(1);
+
+    // Composition came back on the restored item, canonical reading and all.
+    const ingredient = db
+      .prepare(
+        "SELECT name, amount_text, amount, unit FROM intake_item_ingredients WHERE item_id = ?"
+      )
+      .get(newId) as
+      | { name: string; amount_text: string; amount: number; unit: string }
+      | undefined;
+    expect(ingredient).toEqual({
+      name: "Zinc",
+      amount_text: "11 mg",
+      amount: 11,
+      unit: "mg",
+    });
   });
 });
 
